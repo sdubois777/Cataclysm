@@ -5,6 +5,8 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For an ailment's kind by its name, which the status action tests apply a Cripple by. Issue #1833.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
 // For the Fervour pool a health cost fills. Issue #954.
@@ -28202,6 +28204,1134 @@ bool FCataclysmChargeSharePathAndExplosionsTest::RunTest(const FString&)
 	TestEqual(TEXT("4 m into an 8 m walk, the enemy loses 0.3 of the step's OWN blow more under the share row, and "
 				   "no more: the path row's hit, dealt straight after it, took nothing from the row"),
 			  (LostBy(ShareMet) - LostBy(RowsMet)) / OwnStepBlow, (AtFullRange / 100.0f) * 0.5f, RatioTolerance);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// THE STATUS LAYER. Ruled 2026-10-08, issue #1833.
+//
+// S1, "Your first hit against each enemy applies all your active DoTs
+// instantly": one status name, `UCataclysmAbilitySystemComponent::AllDotsStatus`,
+// that `apply_status` applies as each of the five damage over time ailments.
+//
+// S2, "Chronomancer's Time-Lock (6-Piece Bonus)": one action on
+// `afflicted_death` that stuns every enemy within
+// `UCataclysmContagion::SpreadFromTheDyingMetres` of the enemy that died, after
+// one roll of the row's chance, for the row's Stack Seconds.
+//
+// EVERY ROW HERE IS MADE BY HAND. No row is authored in this layer.
+//
+// WHO STRIKES. `first_hit_dealt` is raised by `ACataclysmPlayerCharacter` and by
+// nothing else, so every S1 test and the S2 test of a death to the wearer's own
+// hit use a possessed player character. The other S2 tests use a bare fighter,
+// which hears `afflicted_death` as any character with an ability system of ours
+// does. A creature is a real `ACataclysmEnemyCharacter`, because only its
+// `HandleDeath` raises that event.
+//
+// NO FIGURE OF A BLOW IS ASSUMED. Each scene measures what the striker's blow
+// takes on a creature of its own, 30 metres away, before any row is worn.
+// --------------------------------------------------------------------------
+
+namespace CataclysmStatusActionsTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** The five damage over time ailments, in the order the engine applies them, and the sixth that is not one of them. */
+	const TCHAR* const StatusFiveDotTags[] = {
+		TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"), TEXT("Keyword.DoT.Disease"),
+		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn")};
+	const TCHAR* const StatusVoidSplinterTag = TEXT("Keyword.DoT.VoidSplinter");
+	const TCHAR* const StatusPoisonTag = TEXT("Keyword.DoT.Poison");
+	const TCHAR* const StatusCrippleTag = TEXT("Status.Debuff.Cripple");
+
+	/** A possessed player character at the origin with an attack damage of 100. */
+	struct FStatusPlayer
+	{
+		ACataclysmPlayerCharacter* Character = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+
+		explicit FStatusPlayer(UWorld* World)
+		{
+			ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+			AbilitySystem = PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+			Character = World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+			if (Character && PlayerState && AbilitySystem)
+			{
+				Character->SetPlayerState(PlayerState);
+				Character->OnRep_PlayerState();
+				AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+													   100.0f);
+			}
+		}
+
+		bool IsComplete() const { return Character && AbilitySystem; }
+	};
+
+	/** A creature of the monsters' side standing here, with this maximum health and full. */
+	ACataclysmEnemyCharacter* StatusCreature(UWorld* World, const FVector& At, float Health)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(At, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(Health);
+		}
+		return Made;
+	}
+
+	UCataclysmAbilitySystemComponent* StatusSystemOf(const AActor* Who)
+	{
+		return IsValid(Who)
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who))
+			: nullptr;
+	}
+
+	float StatusHealthOf(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* System = StatusSystemOf(Who);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	}
+
+	float StatusMaximumOf(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* System = StatusSystemOf(Who);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	}
+
+	bool StatusGone(const AActor* Who) { return !IsValid(Who) || UCataclysmSkillEffects::IsDead(Who); }
+
+	FGameplayTag StatusActionTag(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	bool StatusCarries(const AActor* Who, const TCHAR* TagName)
+	{
+		const UCataclysmAbilitySystemComponent* System = StatusSystemOf(Who);
+		const FGameplayTag Tag = StatusActionTag(TagName);
+		return System && Tag.IsValid() && System->HasMatchingGameplayTag(Tag);
+	}
+
+	/** How many of the five damage over time ailments this character carries. */
+	int32 StatusFiveCarried(const AActor* Who)
+	{
+		int32 Count = 0;
+		for (const TCHAR* Name : StatusFiveDotTags)
+		{
+			Count += StatusCarries(Who, Name) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** Whether every one of the five tags, and Void Splinter's, is in the tag vocabulary. */
+	bool StatusTagsAreRegistered()
+	{
+		bool bAll = StatusActionTag(StatusVoidSplinterTag).IsValid() && StatusActionTag(StatusCrippleTag).IsValid();
+		for (const TCHAR* Name : StatusFiveDotTags)
+		{
+			bAll = bAll && StatusActionTag(Name).IsValid();
+		}
+		return bAll;
+	}
+
+	/** How many of these are stunned right now. */
+	int32 StatusStunnedAmong(const TArray<ACataclysmEnemyCharacter*>& Creatures)
+	{
+		int32 Count = 0;
+		for (const ACataclysmEnemyCharacter* Each : Creatures)
+		{
+			Count += IsValid(Each) && UCataclysmSkillEffects::IsStunned(Each) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/** The row of S1, made by hand: on the first hit, at this chance, with this trigger cooldown. */
+	FCataclysmPoolAction StatusAllDotsRow(float Chance, float CooldownSeconds)
+	{
+		FCataclysmPoolAction Row;
+		Row.Event = FName(TEXT("first_hit_dealt"));
+		Row.ApplyStatus = ECataclysmApplyStatus::Chance;
+		Row.StatusName = UCataclysmAbilitySystemComponent::AllDotsStatus;
+		Row.Percent = Chance;
+		Row.TriggerCooldownSeconds = CooldownSeconds;
+		Row.TriggerKey = FName(TEXT("Test:apply_status:first_hit_dealt"));
+		return Row;
+	}
+
+	/** The row of S2, made by hand: at this chance, a stun of this many seconds. */
+	FCataclysmPoolAction StatusTimeLockRow(float Chance, float Seconds)
+	{
+		FCataclysmPoolAction Row;
+		Row.Event = FName(TEXT("afflicted_death"));
+		Row.bStunNearTheDying = true;
+		Row.Percent = Chance;
+		Row.StackSeconds = Seconds;
+		Row.TriggerKey = FName(TEXT("Test:stun_near_the_dying:afflicted_death"));
+		return Row;
+	}
+
+	/** `By` poisons `On` for ten seconds at this much a tick, scaled by nothing of `By`'s. */
+	bool StatusPoisons(AActor* By, AActor* On, float DamagePerTick = 1.0f)
+	{
+		return UCataclysmSkillEffects::ApplyDamageOverTime(By, On, DamagePerTick, 10.0f,
+			StatusActionTag(StatusPoisonTag), /*bScalesWithInstigator=*/false);
+	}
+
+	/** One flat modifier of `Stat` on a base of nothing, kept to `OnlyFor` when that is a tag. Replaces what was worn. */
+	void StatusWearOneStat(UCataclysmAbilitySystemComponent* System, const TCHAR* Stat, float Value,
+						   const FGameplayTag& OnlyFor = FGameplayTag())
+	{
+		if (!System)
+		{
+			return;
+		}
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = Value;
+		if (OnlyFor.IsValid())
+		{
+			Flat.RequiredTags = FGameplayTagContainer(OnlyFor);
+		}
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		System->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** What the player's blow of 100% takes from a creature with health to spare, measured 30 metres away. */
+	float StatusMeasuredBlow(UWorld* World, AActor* Striker)
+	{
+		const float Plenty = 100000.0f;
+		ACataclysmEnemyCharacter* Far = StatusCreature(World, FVector(0, 30 * M, 0), Plenty);
+		if (!Far)
+		{
+			return 0.0f;
+		}
+		const float Before = StatusHealthOf(Far);
+		UCataclysmSkillEffects::ApplyHit(Striker, Far, /*DamagePercent=*/100.0f);
+		return Before - StatusHealthOf(Far);
+	}
+
+	/** Where the creature that dies stands in every S2 scene, and the three that stand 2, 3 and 4 metres from it. */
+	const FVector StatusBody(2 * M, 0, 0);
+	const FVector StatusTwoAway(4 * M, 0, 0);
+	const FVector StatusThreeAway(2 * M, 3 * M, 0);
+	const FVector StatusFourAway(2 * M, -4 * M, 0);
+	/** And one 7 metres from it, outside the 5. */
+	const FVector StatusSevenAway(2 * M, 7 * M, 0);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsAllDotsOnAFirstHitTest,
+	"Cataclysm.StatusActions.AFirstHitThatTakesATenthLeavesEachOfTheFiveDamageOverTimeAilmentsOnItsTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S1. A possessed player character's first hit on a creature takes more than a tenth of its maximum health and
+ * leaves it alive. With the row worn, the creature then carries each of the five damage over time ailments and not
+ * Void Splinter. THE CONTROL IS THE SAME SCENE WITHOUT THE ROW, in a world of its own: the creature carries none.
+ *
+ * STANDING: the player at the origin; the creature 2 m along +X with a maximum health of 500; the creature the
+ * blow is measured on 30 m along +Y.
+ */
+bool FCataclysmStatusActionsAllDotsOnAFirstHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		bool bCarries[5] = {false, false, false, false, false};
+		bool bVoidSplinter = false;
+	};
+
+	const auto Run = [this](const TCHAR* Who, bool bWithTheRow) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FStatusPlayer Player(World);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a possessed player character"), Who), Player.IsComplete())
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the six tags are registered"), Who),
+						 StatusTagsAreRegistered()))
+		{
+			return Read;
+		}
+		const float Blow = StatusMeasuredBlow(World, Player.Character);
+		ACataclysmEnemyCharacter* Target = StatusCreature(World, FVector(2 * M, 0, 0), 500.0f);
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the creature"), Who), Target))
+		{
+			return Read;
+		}
+		const float Maximum = StatusMaximumOf(Target);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the blow takes at least a tenth of the creature's maximum"),
+									   Who), Maximum > 0.0f && Blow >= Maximum * 0.1f)
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: and less than the whole of it"), Who), Blow < Maximum))
+		{
+			return Read;
+		}
+		if (bWithTheRow)
+		{
+			Player.AbilitySystem->SetPoolActions({StatusAllDotsRow(100.0f, /*CooldownSeconds=*/0.0f)});
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Target, /*DamagePercent=*/100.0f);
+
+		for (int32 Index = 0; Index < 5; ++Index)
+		{
+			Read.bCarries[Index] = StatusCarries(Target, StatusFiveDotTags[Index]);
+		}
+		Read.bVoidSplinter = StatusCarries(Target, StatusVoidSplinterTag);
+		Read.bSetUp = TestFalse(*FString::Printf(TEXT("%s: set-up: the creature lives through the blow"), Who),
+								StatusGone(Target));
+		return Read;
+	};
+
+	const FRead Control = Run(TEXT("without the row"), false);
+	const FRead Worn = Run(TEXT("with the row"), true);
+	if (!Control.bSetUp || !Worn.bSetUp)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("control: without the row the first hit leaves no bleed"), Control.bCarries[0]);
+	TestFalse(TEXT("control: no poison"), Control.bCarries[1]);
+	TestFalse(TEXT("control: no disease"), Control.bCarries[2]);
+	TestFalse(TEXT("control: no necrosis"), Control.bCarries[3]);
+	TestFalse(TEXT("control: no burn"), Control.bCarries[4]);
+
+	TestTrue(TEXT("with the row the first hit leaves a bleed on the creature"), Worn.bCarries[0]);
+	TestTrue(TEXT("and a poison"), Worn.bCarries[1]);
+	TestTrue(TEXT("and a disease"), Worn.bCarries[2]);
+	TestTrue(TEXT("and a necrosis"), Worn.bCarries[3]);
+	TestTrue(TEXT("and a burn"), Worn.bCarries[4]);
+	TestFalse(TEXT("and no void splinter: the five are the five, and it is the sixth"), Worn.bVoidSplinter);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsASmallFirstHitTest,
+	"Cataclysm.StatusActions.AFirstHitThatTakesUnderATenthLeavesNoneOfTheFive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S1, the owner's rule of 2026-09-02 (#917). The same player, the same row, the same blow: a creature the blow
+ * takes under a tenth of carries none of the five afterwards. THE CONTROL IS A SECOND CREATURE IN THE SAME WORLD
+ * the same blow takes more than a tenth of, which carries all five, so the size of the blow against the creature's
+ * maximum is the one thing that differs.
+ *
+ * STANDING: the player at the origin; the large creature 2 m along +X with a maximum health of 100,000; the small
+ * one 2 m along +Y with 500; the creature the blow is measured on 30 m along +Y.
+ */
+bool FCataclysmStatusActionsASmallFirstHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FStatusPlayer Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Player.IsComplete())
+		|| !TestTrue(TEXT("set-up: the six tags are registered"), StatusTagsAreRegistered()))
+	{
+		return false;
+	}
+	const float Blow = StatusMeasuredBlow(World, Player.Character);
+	ACataclysmEnemyCharacter* Large = StatusCreature(World, FVector(2 * M, 0, 0), 100000.0f);
+	ACataclysmEnemyCharacter* Small = StatusCreature(World, FVector(0, 2 * M, 0), 500.0f);
+	if (!TestNotNull(TEXT("set-up: the large creature"), Large)
+		|| !TestNotNull(TEXT("set-up: the small creature"), Small))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the blow takes something, and under a tenth of the large creature's maximum"),
+				  Blow > 0.0f && Blow < StatusMaximumOf(Large) * 0.1f)
+		|| !TestTrue(TEXT("set-up: and at least a tenth of the small creature's, and not the whole of it"),
+					 Blow >= StatusMaximumOf(Small) * 0.1f && Blow < StatusMaximumOf(Small)))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetPoolActions({StatusAllDotsRow(100.0f, /*CooldownSeconds=*/0.0f)});
+
+	const float LargeBefore = StatusHealthOf(Large);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Large, /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the small hit reached the large creature's health"),
+				  LargeBefore - StatusHealthOf(Large) > 0.0f))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Small, /*DamagePercent=*/100.0f);
+
+	TestEqual(TEXT("a first hit that takes under a tenth of the creature's maximum leaves none of the five"),
+			  StatusFiveCarried(Large), 0);
+	TestEqual(TEXT("control: the same blow as a first hit on a creature it takes over a tenth of leaves all five"),
+			  StatusFiveCarried(Small), 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsImmuneToOneOfTheFiveTest,
+	"Cataclysm.StatusActions.ATargetUnaffectedByOneOfTheFiveStillTakesTheOtherFour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S1. A creature carrying `ailment_immunity` for bleeding, "Unaffected by bleeding", takes the first hit: it
+ * carries no bleed and each of the other four. The loop that applies the five does not stop at the refusal, and
+ * bleed is the FIRST of the five, so a loop that stopped would leave none. THE CONTROL IS A CREATURE WITHOUT THE
+ * IMMUNITY in the same world, which carries the bleed.
+ *
+ * THE IMMUNITY IS CHECKED BEFORE THE HIT, by an application that goes nowhere near the row: the player applies a
+ * bleed to the immune creature directly and it is refused.
+ *
+ * STANDING: the player at the origin; the immune creature 2 m along +X and the plain one 2 m along +Y, each with a
+ * maximum health of 500.
+ */
+bool FCataclysmStatusActionsImmuneToOneOfTheFiveTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FStatusPlayer Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Player.IsComplete())
+		|| !TestTrue(TEXT("set-up: the six tags are registered"), StatusTagsAreRegistered()))
+	{
+		return false;
+	}
+	const float Blow = StatusMeasuredBlow(World, Player.Character);
+	ACataclysmEnemyCharacter* Immune = StatusCreature(World, FVector(2 * M, 0, 0), 500.0f);
+	ACataclysmEnemyCharacter* Plain = StatusCreature(World, FVector(0, 2 * M, 0), 500.0f);
+	if (!TestNotNull(TEXT("set-up: the immune creature"), Immune)
+		|| !TestNotNull(TEXT("set-up: the plain creature"), Plain))
+	{
+		return false;
+	}
+	const FGameplayTag Bleed = StatusActionTag(StatusFiveDotTags[0]);
+	StatusWearOneStat(StatusSystemOf(Immune), UCataclysmDamageCalculation::AilmentImmunityStat, 1.0f, Bleed);
+	if (!TestTrue(TEXT("set-up: the blow takes at least a tenth of each creature's maximum, and not the whole"),
+				  Blow >= StatusMaximumOf(Immune) * 0.1f && Blow < StatusMaximumOf(Immune)
+					  && Blow >= StatusMaximumOf(Plain) * 0.1f && Blow < StatusMaximumOf(Plain))
+		|| !TestFalse(TEXT("set-up: a bleed applied to the immune creature directly is refused"),
+					  UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Immune, 1.0f, 10.0f, Bleed,
+						  /*bScalesWithInstigator=*/false))
+		|| !TestEqual(TEXT("set-up: and it carries none of the five before the hit"), StatusFiveCarried(Immune), 0))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetPoolActions({StatusAllDotsRow(100.0f, /*CooldownSeconds=*/0.0f)});
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Immune, /*DamagePercent=*/100.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Plain, /*DamagePercent=*/100.0f);
+
+	TestFalse(TEXT("a creature unaffected by bleeding carries no bleed after the first hit"),
+			  StatusCarries(Immune, StatusFiveDotTags[0]));
+	TestTrue(TEXT("and it carries the poison"), StatusCarries(Immune, StatusFiveDotTags[1]));
+	TestTrue(TEXT("and the disease"), StatusCarries(Immune, StatusFiveDotTags[2]));
+	TestTrue(TEXT("and the necrosis"), StatusCarries(Immune, StatusFiveDotTags[3]));
+	TestTrue(TEXT("and the burn"), StatusCarries(Immune, StatusFiveDotTags[4]));
+	TestTrue(TEXT("control: a creature without the immunity carries the bleed"),
+			 StatusCarries(Plain, StatusFiveDotTags[0]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsSeveralFirstHitsAtOnceTest,
+	"Cataclysm.StatusActions.SeveralFirstHitsInOneInstantEachLeaveTheFiveOnlyWhenTheRowsCooldownIsNought",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S1, why the row states a Trigger Cooldown of 0. Three creatures are each struck for the first time in one
+ * instant, with no step of the clock between the blows, as the blows of one swing land. Under a row with a
+ * trigger cooldown of nought each of the three carries all five. THE CONTROL IS THE SAME SCENE UNDER THE DEFAULT
+ * OF A QUARTER OF A SECOND, the figure the generator writes for a hit-fired event when the cell is empty: the
+ * first creature carries all five and the other two none, and their first hits are spent.
+ *
+ * THREE BLOWS AT ONE INSTANT STAND FOR ONE SWING. No skill is used: the row hangs on the event each blow raises,
+ * and the cooldown is read off the world's clock, which does not move here.
+ *
+ * STANDING: the player at the origin; the three creatures 2 m along +X, +Y and -X, each with a maximum of 500.
+ */
+bool FCataclysmStatusActionsSeveralFirstHitsAtOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		int32 Carried[3] = {-1, -1, -1};
+	};
+
+	const auto Run = [this](const TCHAR* Who, float CooldownSeconds) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FStatusPlayer Player(World);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a possessed player character"), Who), Player.IsComplete())
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the six tags are registered"), Who),
+						 StatusTagsAreRegistered()))
+		{
+			return Read;
+		}
+		const float Blow = StatusMeasuredBlow(World, Player.Character);
+		ACataclysmEnemyCharacter* Three[3] = {
+			StatusCreature(World, FVector(2 * M, 0, 0), 500.0f),
+			StatusCreature(World, FVector(0, 2 * M, 0), 500.0f),
+			StatusCreature(World, FVector(-2 * M, 0, 0), 500.0f)};
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: three creatures"), Who), Three[0] && Three[1] && Three[2]))
+		{
+			return Read;
+		}
+		const float Maximum = StatusMaximumOf(Three[0]);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the blow takes at least a tenth of a creature's maximum "
+											"and not the whole"), Who),
+					  Maximum > 0.0f && Blow >= Maximum * 0.1f && Blow < Maximum))
+		{
+			return Read;
+		}
+		Player.AbilitySystem->SetPoolActions({StatusAllDotsRow(100.0f, CooldownSeconds)});
+
+		// THE THREE BLOWS, WITH NO STEP OF THE CLOCK BETWEEN THEM.
+		for (ACataclysmEnemyCharacter* Each : Three)
+		{
+			UCataclysmSkillEffects::ApplyHit(Player.Character, Each, /*DamagePercent=*/100.0f);
+		}
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			Read.Carried[Index] = StatusFiveCarried(Three[Index]);
+		}
+		Read.bSetUp = TestFalse(*FString::Printf(TEXT("%s: set-up: all three live through their blows"), Who),
+								StatusGone(Three[0]) || StatusGone(Three[1]) || StatusGone(Three[2]));
+		return Read;
+	};
+
+	const FRead Quarter = Run(TEXT("a quarter of a second"), 0.25f);
+	const FRead Nought = Run(TEXT("nought"), 0.0f);
+	if (!Quarter.bSetUp || !Nought.bSetUp)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("control: under the default quarter of a second the first creature struck carries all five"),
+			  Quarter.Carried[0], 5);
+	TestEqual(TEXT("control: the second, struck in the same instant, carries none"), Quarter.Carried[1], 0);
+	TestEqual(TEXT("control: nor does the third"), Quarter.Carried[2], 0);
+
+	TestEqual(TEXT("under a trigger cooldown of nought the first creature carries all five"), Nought.Carried[0], 5);
+	TestEqual(TEXT("and so does the second, struck in the same instant"), Nought.Carried[1], 5);
+	TestEqual(TEXT("and the third"), Nought.Carried[2], 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsTimeLockAtAHitTest,
+	"Cataclysm.StatusActions.AnAfflictedEnemyKilledByTheWearersOwnHitStunsThoseWithinFiveMetresForTheRowsSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S2, and the first half of the ruling on depth. A possessed player character poisons a creature and then kills it
+ * with one blow of its own. With the row at a chance of 100 and 2 seconds, the creatures 2, 3 and 4 metres from
+ * the body are stunned and the one 7 metres from it is not; a creature 2 metres away is still stunned a second and
+ * a half later and is not a second after that. THE CONTROL IS THE SAME SCENE WITH THE CHANCE AT NOUGHT, in a world
+ * of its own: nobody is stunned.
+ *
+ * WHY A PLAYER CHARACTER AND NOT A BARE FIGHTER. Its blow raises `hit_dealt`, `first_hit_dealt` and `kill` on it
+ * round the death, as a blow does in play. The death is heard because each of those has returned before the
+ * creature's health is written or its death handled; a striker that raised none of them would not show that.
+ *
+ * STANDING: the player at the origin; the creature that dies 2 m along +X with a maximum health of 50; the others
+ * as `StatusTwoAway` to `StatusSevenAway` say, each with 100,000.
+ */
+bool FCataclysmStatusActionsTimeLockAtAHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		bool bTwo = false;
+		bool bThree = false;
+		bool bFour = false;
+		bool bSeven = false;
+		bool bTwoAtOneAndAHalf = false;
+		bool bTwoAtTwoAndAHalf = false;
+	};
+
+	const auto Run = [this](const TCHAR* Who, float Chance) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FStatusPlayer Player(World);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a possessed player character"), Who), Player.IsComplete())
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the tags are registered"), Who),
+						 StatusTagsAreRegistered()))
+		{
+			return Read;
+		}
+		const float Blow = StatusMeasuredBlow(World, Player.Character);
+		const float Plenty = 100000.0f;
+		ACataclysmEnemyCharacter* Dying = StatusCreature(World, StatusBody, 50.0f);
+		ACataclysmEnemyCharacter* Two = StatusCreature(World, StatusTwoAway, Plenty);
+		ACataclysmEnemyCharacter* Three = StatusCreature(World, StatusThreeAway, Plenty);
+		ACataclysmEnemyCharacter* Four = StatusCreature(World, StatusFourAway, Plenty);
+		ACataclysmEnemyCharacter* Seven = StatusCreature(World, StatusSevenAway, Plenty);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: five creatures"), Who),
+					  Dying && Two && Three && Four && Seven)
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the blow takes more than the dying creature holds"), Who),
+						 Blow > StatusMaximumOf(Dying) + 1.0f)
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the player poisons the creature that will die"), Who),
+						 StatusPoisons(Player.Character, Dying))
+			|| !TestEqual(*FString::Printf(TEXT("%s: set-up: nobody is stunned before the death"), Who),
+						  StatusStunnedAmong({Two, Three, Four, Seven}), 0))
+		{
+			return Read;
+		}
+		Player.AbilitySystem->SetPoolActions({StatusTimeLockRow(Chance, /*Seconds=*/2.0f)});
+
+		// THE ONE BLOW, the player's own.
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Dying, /*DamagePercent=*/100.0f);
+
+		Read.bTwo = UCataclysmSkillEffects::IsStunned(Two);
+		Read.bThree = UCataclysmSkillEffects::IsStunned(Three);
+		Read.bFour = UCataclysmSkillEffects::IsStunned(Four);
+		Read.bSeven = UCataclysmSkillEffects::IsStunned(Seven);
+		Read.bSetUp = TestTrue(*FString::Printf(TEXT("%s: set-up: the blow killed the poisoned creature"), Who),
+							   StatusGone(Dying));
+
+		// A SECOND AND A HALF, THEN ONE MORE: either side of the two seconds, and neither on a tick.
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		Read.bTwoAtOneAndAHalf = UCataclysmSkillEffects::IsStunned(Two);
+		CataclysmTestWorld::RunClock(World, 1.0f);
+		Read.bTwoAtTwoAndAHalf = UCataclysmSkillEffects::IsStunned(Two);
+		return Read;
+	};
+
+	const FRead Never = Run(TEXT("a chance of nought"), 0.0f);
+	const FRead Always = Run(TEXT("a chance of 100"), 100.0f);
+	if (!Never.bSetUp || !Always.bSetUp)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("control: at a chance of nought the creature 2 m from the body is not stunned"), Never.bTwo);
+	TestFalse(TEXT("control: nor the one 3 m from it"), Never.bThree);
+	TestFalse(TEXT("control: nor the one 4 m from it"), Never.bFour);
+
+	TestTrue(TEXT("at a chance of 100 the creature 2 m from the body is stunned"), Always.bTwo);
+	TestTrue(TEXT("and the one 3 m from it"), Always.bThree);
+	TestTrue(TEXT("and the one 4 m from it"), Always.bFour);
+	TestFalse(TEXT("the one 7 m from it is not: the reach is 5"), Always.bSeven);
+	TestTrue(TEXT("a second and a half later the creature 2 m away is still stunned"), Always.bTwoAtOneAndAHalf);
+	TestFalse(TEXT("and a second after that it is not: the stun lasted the row's 2 seconds"),
+			  Always.bTwoAtTwoAndAHalf);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsTimeLockNeedsADotTest,
+	"Cataclysm.StatusActions.AnEnemyThatDiesCarryingNoDamageOverTimeOfTheWearersStunsNobody",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S2, and the pin on "one of your debuffs". The event is `afflicted_death` as it stands, which is raised for the
+ * six damage over time ailments and for nothing else. Three scenes, each in a world of its own, each a creature
+ * killed by the wearer's own blow beside three others, the row at a chance of 100:
+ *   1. the creature carries nothing of the wearer's: nobody is stunned;
+ *   2. it carries the wearer's Cripple and nothing else: nobody is stunned, although a Cripple is a debuff;
+ *   3. THE CONTROL: it carries the wearer's poison: all three are stunned.
+ *
+ * STANDING: the wearer, a bare fighter, at the origin; the creature that dies 2 m along +X with a maximum of 50;
+ * the three others 2, 3 and 4 metres from it.
+ */
+bool FCataclysmStatusActionsTimeLockNeedsADotTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	enum class ECarried : uint8
+	{
+		Nothing,
+		Cripple,
+		Poison,
+	};
+
+	const auto Run = [this](const TCHAR* Who, ECarried Carried) -> int32
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return -1;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Wearer(World, FVector::ZeroVector);
+		const float Plenty = 100000.0f;
+		ACataclysmEnemyCharacter* Dying = StatusCreature(World, StatusBody, 50.0f);
+		ACataclysmEnemyCharacter* Two = StatusCreature(World, StatusTwoAway, Plenty);
+		ACataclysmEnemyCharacter* Three = StatusCreature(World, StatusThreeAway, Plenty);
+		ACataclysmEnemyCharacter* Four = StatusCreature(World, StatusFourAway, Plenty);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: four creatures and the tags"), Who),
+					  Dying && Two && Three && Four && StatusTagsAreRegistered()))
+		{
+			return -1;
+		}
+		if (Carried == ECarried::Cripple)
+		{
+			const FCataclysmAilmentKind* Cripple = UCataclysmAilments::KindNamed(TEXT("Cripple"));
+			if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the game has a Cripple"), Who), Cripple)
+				|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the wearer cripples the creature"), Who),
+							 UCataclysmAilments::Apply(Wearer.Actor, Dying, *Cripple, /*Magnitude=*/1.0f))
+				|| !TestTrue(*FString::Printf(TEXT("%s: set-up: and it carries the Cripple"), Who),
+							 StatusCarries(Dying, StatusCrippleTag)))
+			{
+				return -1;
+			}
+		}
+		else if (Carried == ECarried::Poison)
+		{
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the wearer poisons the creature"), Who),
+						  StatusPoisons(Wearer.Actor, Dying)))
+			{
+				return -1;
+			}
+		}
+		if (!TestEqual(*FString::Printf(TEXT("%s: set-up: it carries none of the five but what the scene gave it"),
+										Who), StatusFiveCarried(Dying), Carried == ECarried::Poison ? 1 : 0))
+		{
+			return -1;
+		}
+		Wearer.AbilitySystem->SetPoolActions({StatusTimeLockRow(100.0f, /*Seconds=*/2.0f)});
+
+		UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying, /*DamagePercent=*/100.0f);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the blow killed the creature"), Who), StatusGone(Dying)))
+		{
+			return -1;
+		}
+		return StatusStunnedAmong({Two, Three, Four});
+	};
+
+	const int32 WithNothing = Run(TEXT("carrying nothing"), ECarried::Nothing);
+	const int32 WithACripple = Run(TEXT("carrying a Cripple"), ECarried::Cripple);
+	const int32 WithAPoison = Run(TEXT("carrying a poison"), ECarried::Poison);
+	if (WithNothing < 0 || WithACripple < 0 || WithAPoison < 0)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an enemy that dies carrying nothing of the wearer's stuns nobody"), WithNothing, 0);
+	TestEqual(TEXT("an enemy that dies carrying only the wearer's Cripple stuns nobody: a debuff that is not damage "
+				   "over time does not raise the event"), WithACripple, 0);
+	TestEqual(TEXT("control: an enemy that dies carrying the wearer's poison stuns all three beside it"),
+			  WithAPoison, 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsTimeLockKeepsTheStunsRulesTest,
+	"Cataclysm.StatusActions.TheTimeLockStunsNoBossAndNoEnemyAboveTheWearersHealthCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S2, two of the stun's own rules. The freeze is the game's stun with every rule it has.
+ *
+ * A BOSS IS NEVER STUNNED. A creature of the first boss rarity stands 2 m from the body and a plain creature 3 m
+ * from it: the plain one is stunned and the boss is not.
+ *
+ * THE WEARER'S HEALTH CEILING. Two plain creatures stand by the body, one at four fifths of its maximum health and
+ * one at two fifths. Without the ceiling both are stunned, THE CONTROL. With "You cannot apply CC effects to
+ * enemies above 50% HP" worn, the stat at 50, the one at two fifths is stunned and the one at four fifths is not.
+ *
+ * STANDING: the wearer, a bare fighter, at the origin; the creature that dies 2 m along +X with a maximum of 50,
+ * carrying the wearer's poison; the others 2, 3 and 4 metres from it.
+ */
+bool FCataclysmStatusActionsTimeLockKeepsTheStunsRulesTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		bool bFirst = false;
+		bool bSecond = false;
+	};
+
+	enum class EScene : uint8
+	{
+		ABossAndAPlainCreature,
+		HealthyAndHurt,
+		HealthyAndHurtUnderTheCeiling,
+	};
+
+	const auto Run = [this](const TCHAR* Who, EScene Scene) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Wearer(World, FVector::ZeroVector);
+		const float Plenty = 10000.0f;
+		ACataclysmEnemyCharacter* Dying = StatusCreature(World, StatusBody, 50.0f);
+		ACataclysmEnemyCharacter* First = StatusCreature(World, StatusTwoAway, Plenty);
+		ACataclysmEnemyCharacter* Second = StatusCreature(World, StatusThreeAway, Plenty);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: three creatures and the tags"), Who),
+					  Dying && First && Second && StatusTagsAreRegistered()))
+		{
+			return Read;
+		}
+		if (Scene == EScene::ABossAndAPlainCreature)
+		{
+			First->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+			First->SetHealth(Plenty);
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the first creature is a boss and the second is not"),
+										   Who), First->IsBoss() && !Second->IsBoss()))
+			{
+				return Read;
+			}
+		}
+		else
+		{
+			// FOUR FIFTHS AND TWO FIFTHS OF EACH ONE'S OWN MAXIMUM, read back and not assumed.
+			UCataclysmAbilitySystemComponent* Healthy = StatusSystemOf(First);
+			UCataclysmAbilitySystemComponent* Hurt = StatusSystemOf(Second);
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: each has an ability system of ours"), Who),
+						  Healthy && Hurt))
+			{
+				return Read;
+			}
+			Healthy->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+											 StatusMaximumOf(First) * 0.8f);
+			Hurt->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+										  StatusMaximumOf(Second) * 0.4f);
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the first is above half health and the second below"),
+										   Who),
+						  StatusHealthOf(First) > StatusMaximumOf(First) * 0.5f
+							  && StatusHealthOf(Second) < StatusMaximumOf(Second) * 0.5f
+							  && StatusHealthOf(Second) > 0.0f))
+			{
+				return Read;
+			}
+		}
+		if (Scene == EScene::HealthyAndHurtUnderTheCeiling)
+		{
+			StatusWearOneStat(Wearer.AbilitySystem, UCataclysmSkillEffects::CrowdControlHealthCeilingStat, 50.0f);
+		}
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the wearer poisons the creature that will die"), Who),
+					  StatusPoisons(Wearer.Actor, Dying)))
+		{
+			return Read;
+		}
+		Wearer.AbilitySystem->SetPoolActions({StatusTimeLockRow(100.0f, /*Seconds=*/2.0f)});
+
+		UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying, /*DamagePercent=*/100.0f);
+
+		Read.bFirst = UCataclysmSkillEffects::IsStunned(First);
+		Read.bSecond = UCataclysmSkillEffects::IsStunned(Second);
+		Read.bSetUp = TestTrue(*FString::Printf(TEXT("%s: set-up: the blow killed the poisoned creature"), Who),
+							   StatusGone(Dying));
+		return Read;
+	};
+
+	const FRead Boss = Run(TEXT("a boss"), EScene::ABossAndAPlainCreature);
+	const FRead Free = Run(TEXT("no ceiling"), EScene::HealthyAndHurt);
+	const FRead Ceiling = Run(TEXT("the ceiling"), EScene::HealthyAndHurtUnderTheCeiling);
+	if (!Boss.bSetUp || !Free.bSetUp || !Ceiling.bSetUp)
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a boss 2 m from the body is not stunned"), Boss.bFirst);
+	TestTrue(TEXT("control: the plain creature 3 m from the same body is"), Boss.bSecond);
+
+	TestTrue(TEXT("control: without the ceiling the creature at four fifths of its health is stunned"), Free.bFirst);
+	TestTrue(TEXT("control: and so is the one at two fifths"), Free.bSecond);
+	TestFalse(TEXT("with the ceiling at 50 the creature at four fifths of its health is not stunned"),
+			  Ceiling.bFirst);
+	TestTrue(TEXT("and the one at two fifths is"), Ceiling.bSecond);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsSecondTimeLockTest,
+	"Cataclysm.StatusActions.ASecondTimeLockInsideFiveSecondsNeitherStunsAgainNorLengthensTheFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S2, the stun's rule two: a stunned target cannot be stunned again for five seconds, counted from when the stun
+ * began. One bystander stands within 5 m of four poisoned creatures, which the wearer kills one at a time. The row
+ * is at a chance of 100 and 2 seconds.
+ *   at 0 s    the first dies:  the bystander is stunned;
+ *   at 1.5 s  the second dies, while that stun is running;
+ *   at 2.5 s  the bystander is NOT stunned: the first stun ended at 2 s, so the second death did not lengthen it;
+ *   at 2.5 s  the third dies:  the bystander is NOT stunned, being inside the five seconds;
+ *   at 5.5 s  the fourth dies: the bystander IS stunned, THE CONTROL that the five seconds are what refused it.
+ *
+ * STANDING: the wearer, a bare fighter, at the origin; the four that die 2 m along +X, +Y, -X and -Y, each with a
+ * maximum of 50 and the wearer's poison at one point a tick; the bystander at (1.5 m, 1.5 m), which is 1.6 m from
+ * the first two and 3.8 m from the last two.
+ */
+bool FCataclysmStatusActionsSecondTimeLockTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Dying[4] = {
+		StatusCreature(World, FVector(2 * M, 0, 0), 50.0f),
+		StatusCreature(World, FVector(0, 2 * M, 0), 50.0f),
+		StatusCreature(World, FVector(-2 * M, 0, 0), 50.0f),
+		StatusCreature(World, FVector(0, -2 * M, 0), 50.0f)};
+	ACataclysmEnemyCharacter* Bystander = StatusCreature(World, FVector(1.5f * M, 1.5f * M, 0), 100000.0f);
+	if (!TestTrue(TEXT("set-up: five creatures and the tags"),
+				  Dying[0] && Dying[1] && Dying[2] && Dying[3] && Bystander && StatusTagsAreRegistered()))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Each : Dying)
+	{
+		if (!TestTrue(TEXT("set-up: the wearer poisons each creature that will die"),
+					  StatusPoisons(Wearer.Actor, Each)))
+		{
+			return false;
+		}
+	}
+	Wearer.AbilitySystem->SetPoolActions({StatusTimeLockRow(100.0f, /*Seconds=*/2.0f)});
+
+	// AT 0 s.
+	UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying[0], /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the first blow killed the first creature"), StatusGone(Dying[0])))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the first death stuns the bystander"), UCataclysmSkillEffects::IsStunned(Bystander));
+
+	// AT 1.5 s, WHILE THAT STUN IS RUNNING.
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	if (!TestTrue(TEXT("set-up: the bystander is still stunned a second and a half in"),
+				  UCataclysmSkillEffects::IsStunned(Bystander))
+		|| !TestFalse(TEXT("set-up: the second creature is still alive, its poison having taken a point a tick"),
+					  StatusGone(Dying[1])))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying[1], /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the second blow killed the second creature"), StatusGone(Dying[1])))
+	{
+		return false;
+	}
+
+	// AT 2.5 s.
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestFalse(TEXT("at two and a half seconds the bystander is not stunned: the second death did not lengthen the "
+				   "first stun"), UCataclysmSkillEffects::IsStunned(Bystander));
+	if (!TestFalse(TEXT("set-up: the third creature is still alive"), StatusGone(Dying[2])))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying[2], /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the third blow killed the third creature"), StatusGone(Dying[2])))
+	{
+		return false;
+	}
+	TestFalse(TEXT("a death inside five seconds of the first stun does not stun the bystander again"),
+			  UCataclysmSkillEffects::IsStunned(Bystander));
+
+	// AT 5.5 s, PAST THE FIVE.
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	if (!TestFalse(TEXT("set-up: the fourth creature is still alive"), StatusGone(Dying[3]))
+		|| !TestFalse(TEXT("set-up: and the bystander is not stunned before the fourth death"),
+					  UCataclysmSkillEffects::IsStunned(Bystander)))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying[3], /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("set-up: the fourth blow killed the fourth creature"), StatusGone(Dying[3])))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: a death past the five seconds stuns the bystander again"),
+			 UCataclysmSkillEffects::IsStunned(Bystander));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatusActionsTimeLockAndDepthTest,
+	"Cataclysm.StatusActions.ADeathToATickRollsTheTimeLockAndADeathToARowsOwnActionDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * S2, the ruling on depth. The Time-Lock is built on `afflicted_death` as it is heard today, and a character that
+ * is already acting on an event hears no second event: only a blast is kept. Three scenes, each in a world of its
+ * own, the row at a chance of 100 and 4 seconds, the creature that dies carrying the wearer's poison:
+ *   1. IT DIES TO A TICK of that poison, which nobody is acting on an event for: all three beside it are stunned;
+ *   2. IT DIES TO THE WEARER'S OWN BLOW, THE CONTROL for the third: all three are stunned;
+ *   3. IT DIES TO A ROW'S OWN ACTION, a smite of every enemy near the wearer that the wearer's row makes on an
+ *      event: nobody is stunned. The smite did strike, which is read off a bystander's health.
+ * The second and third differ only in what dealt the killing blow.
+ *
+ * THE TICK. The creature holds a hundredth of a point of health and the poison takes five a tick, so its first
+ * tick kills. The clock runs two and a half seconds, between ticks, and the stun is four seconds so that it is
+ * still running then whichever tick did it.
+ *
+ * STANDING: the wearer, a bare fighter, at the origin; the creature that dies 2 m along +X; the three others 2, 3
+ * and 4 metres from it, all within 5 m of the wearer too, so the smite reaches them.
+ */
+bool FCataclysmStatusActionsTimeLockAndDepthTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatusActionsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	enum class EKilledBy : uint8
+	{
+		ATick,
+		TheWearersOwnBlow,
+		ARowsOwnAction,
+	};
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		int32 Stunned = -1;
+		float BystanderLost = 0.0f;
+	};
+
+	const auto Run = [this](const TCHAR* Who, EKilledBy KilledBy) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Wearer(World, FVector::ZeroVector);
+		const float Plenty = 100000.0f;
+		ACataclysmEnemyCharacter* Dying = StatusCreature(World, StatusBody, 50.0f);
+		ACataclysmEnemyCharacter* Two = StatusCreature(World, StatusTwoAway, Plenty);
+		ACataclysmEnemyCharacter* Three = StatusCreature(World, StatusThreeAway, Plenty);
+		ACataclysmEnemyCharacter* Four = StatusCreature(World, StatusFourAway, Plenty);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: four creatures and the tags"), Who),
+					  Dying && Two && Three && Four && StatusTagsAreRegistered()))
+		{
+			return Read;
+		}
+
+		// THE ROW THAT SMITES is worn in every scene, so the rows are not what differs. It hangs on an event only
+		// the third scene raises.
+		FCataclysmPoolAction Smite;
+		Smite.Event = FName(TEXT("skill_use"));
+		Smite.Nearby = ECataclysmNearbyAction::Smite;
+		Smite.Percent = 100.0f;
+		Smite.TriggerKey = FName(TEXT("Test:smite_nearby:skill_use"));
+		Wearer.AbilitySystem->SetPoolActions({StatusTimeLockRow(100.0f, /*Seconds=*/4.0f), Smite});
+
+		const float TwoBefore = StatusHealthOf(Two);
+		if (KilledBy == EKilledBy::ATick)
+		{
+			UCataclysmAbilitySystemComponent* Its = StatusSystemOf(Dying);
+			if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: the creature has an ability system of ours"), Who),
+							 Its))
+			{
+				return Read;
+			}
+			Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.01f);
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the wearer poisons it at five a tick"), Who),
+						  StatusPoisons(Wearer.Actor, Dying, /*DamagePerTick=*/5.0f))
+				|| !TestFalse(*FString::Printf(TEXT("%s: set-up: and it is alive until a tick"), Who),
+							  StatusGone(Dying))
+				|| !TestEqual(*FString::Printf(TEXT("%s: set-up: and nobody is stunned yet"), Who),
+							  StatusStunnedAmong({Two, Three, Four}), 0))
+			{
+				return Read;
+			}
+			CataclysmTestWorld::RunClock(World, 2.5f);
+		}
+		else
+		{
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the wearer poisons it"), Who),
+						  StatusPoisons(Wearer.Actor, Dying)))
+			{
+				return Read;
+			}
+			if (KilledBy == EKilledBy::TheWearersOwnBlow)
+			{
+				UCataclysmSkillEffects::ApplyHit(Wearer.Actor, Dying, /*DamagePercent=*/100.0f);
+			}
+			else
+			{
+				// THE EVENT THE SMITING ROW HANGS ON. The smite is dealt inside this call, so the death it
+				// causes is heard while the wearer is acting.
+				Wearer.AbilitySystem->ActOnEvent(FName(TEXT("skill_use")));
+			}
+		}
+
+		Read.Stunned = StatusStunnedAmong({Two, Three, Four});
+		Read.BystanderLost = TwoBefore - StatusHealthOf(Two);
+		Read.bSetUp = TestTrue(*FString::Printf(TEXT("%s: set-up: the poisoned creature died"), Who),
+							   StatusGone(Dying));
+		return Read;
+	};
+
+	const FRead Tick = Run(TEXT("a tick"), EKilledBy::ATick);
+	const FRead Blow = Run(TEXT("the wearer's own blow"), EKilledBy::TheWearersOwnBlow);
+	const FRead Row = Run(TEXT("a row's own action"), EKilledBy::ARowsOwnAction);
+	if (!Tick.bSetUp || !Blow.bSetUp || !Row.bSetUp)
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the row's smite struck the bystander 2 m from the body"), Row.BystanderLost > 0.0f)
+		|| !TestEqual(TEXT("set-up: and nothing struck it in the scene of the wearer's own blow"), Blow.BystanderLost,
+					  0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an afflicted enemy that dies to a tick of the wearer's poison stuns all three beside it"),
+			  Tick.Stunned, 3);
+	TestEqual(TEXT("control: one that dies to the wearer's own blow stuns all three"), Blow.Stunned, 3);
+	TestEqual(TEXT("one that dies to a row's own action stuns nobody: the death is heard while the wearer is "
+				   "acting, and only a blast is kept then"), Row.Stunned, 0);
 	return true;
 }
 

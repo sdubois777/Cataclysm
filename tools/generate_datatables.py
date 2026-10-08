@@ -4495,6 +4495,14 @@ MAX_SCALE_STEPS = 100
 
 #: The longest a row's own stacks may last, in seconds. Issue #1833. The
 #: sentences state 2 to 5; the same 60 second sanity bound the clocks use.
+#:
+#: WHAT THE STACK SECONDS COLUMN HOLDS, BY ROW. How long an own stack lasts,
+#: on a stat row scaled by `own_stacks`; the window of a placed stack, on
+#: `PLACED_ACTIONS`; the window a nearby action's Every Nth counts in, on
+#: `NEARBY_ACTIONS`; and, since 2026-10-08, HOW LONG A STUN LASTS on
+#: `STUN_NEAR_THE_DYING_ACTION`, where it is bounded by `MAX_STATUS_SECONDS`
+#: and not by this. That last is a duration with no stack behind it: a new
+#: use of the column, ruled 2026-10-08, because the row's value is its chance.
 MAX_STACK_SECONDS = 60.0
 
 
@@ -5110,6 +5118,26 @@ BLAST_FROM_THE_DYING_EVENTS = (
     "afflicted_death",
 )
 
+#: The action that STUNS EVERY ENEMY NEAR AN ENEMY THAT DIED carrying one of the
+#: wearer's damage over time ailments. Ruled 2026-10-08: "Chronomancer's
+#: Time-Lock (6-Piece Bonus): When an enemy dies while affected by one of your
+#: debuffs, there is a 25% chance for a 'Time-Lock' to occur. This freezes all
+#: nearby enemies for 2 seconds". The owner, 2026-10-08: "Yes it acts like a
+#: stun". TWO FIGURES ON ONE ROW: the value is the chance, above 0 and up to
+#: 100, rolled once for the death; Stack Seconds is how long the stun lasts,
+#: above 0 and up to `MAX_STATUS_SECONDS`. Both are required.
+#: `UCataclysmAbilitySystemComponent::StunNearTheDyingAction` holds the same
+#: name.
+STUN_NEAR_THE_DYING_ACTION = "stun_near_the_dying"
+
+#: The events that stun may hang on: the one raised on whoever afflicted an
+#: enemy that died, carrying the dead enemy as the centre. NOT `kill`: the
+#: sentence asks whose debuff the enemy carried and not who landed the last
+#: blow, and `kill` is raised on the killer alone.
+STUN_NEAR_THE_DYING_EVENTS = (
+    "afflicted_death",
+)
+
 #: The actions that DEAL THE REMAINING DAMAGE of the wearer's own damage over
 #: time effects, as one instance each. Issue #1833 group D part 4, ruled
 #: 2026-10-01. The value is a percentage of that remaining damage, above 0 and up
@@ -5188,6 +5216,16 @@ APPLY_STATUSES = (
     "Stagger",
     "Random Debuff",
 )
+
+#: One more status, which `apply_status` ALONE may name: EACH OF THE FIVE DAMAGE
+#: OVER TIME AILMENTS of `AILMENTS`, applied in turn. The owner, 2026-10-08, for
+#: "Your first hit against each enemy applies all your active DoTs instantly":
+#: "Go with the first". The row's chance is rolled once for all five. NOT IN
+#: `APPLY_STATUSES`, AND ON PURPOSE: `apply_status_to_self` reads that list too,
+#: and this name is not for the wearer; nor may `apply_status_seconds` name it,
+#: because five ailments have five durations and a row states one.
+#: `UCataclysmAbilitySystemComponent::AllDotsStatus` holds the same name.
+ALL_DOTS_STATUS = "All DoTs"
 
 #: The actions that lay a status ON THE WEARER. Ruled 2026-10-06, for five
 #: drawbacks: "Taking a hit has a 15%-25% chance to trigger a random negative
@@ -5492,6 +5530,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action in REMAINING_DAMAGE_ACTIONS or action in ALL_APPLY_STATUS_ACTIONS
             or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION
             or action == BLAST_FROM_THE_DYING_ACTION
+            or action == STUN_NEAR_THE_DYING_ACTION
             or action == STRIKE_TARGET_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
@@ -5768,6 +5807,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_blast_from_the_dying_action(index, who, action, event, fraction_of,
                                            kind, raw, headers)
         return
+    if action == STUN_NEAR_THE_DYING_ACTION:
+        _check_stun_near_the_dying_action(index, who, action, event,
+                                          fraction_of, kind, raw, headers)
+        return
     if action == CLEANSE_ACTION:
         _check_cleanse_action(index, who, action, event, fraction_of, kind,
                               raw, headers)
@@ -5803,6 +5846,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(ALL_APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
+            f"or {STUN_NEAR_THE_DYING_ACTION}; "
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
@@ -6065,6 +6109,32 @@ def _check_blast_from_the_dying_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} blasts from an enemy "
                 f"that died and states {column} {written!r}. Its value is a "
                 f"share and nothing else, so the column must be empty.")
+
+
+def _check_stun_near_the_dying_action(index: int, who: str, action: str,
+                                      event: str, fraction_of: str, kind: str,
+                                      raw, headers: dict[str, int]) -> None:
+    """Everything a stun near the dying must say, and everything it must not.
+    Ruled 2026-10-08. The event must be raised on whoever afflicted the enemy
+    that died and name that enemy; the chance is checked where the value is
+    read and the seconds where Stack Seconds is. A fraction, a value kind and a
+    scale each mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in STUN_NEAR_THE_DYING_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} stuns the enemies near an "
+            f"enemy that died on the event {event or '(none)'!r}. Only an event "
+            f"raised on whoever afflicted the dead enemy, naming it, can: "
+            f"{', '.join(STUN_NEAR_THE_DYING_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} stuns the enemies near "
+                f"an enemy that died and states {column} {written!r}. Its value "
+                f"is a chance and its Stack Seconds how long the stun lasts, "
+                f"and nothing else, so the column must be empty.")
 
 
 def _check_overkill_explosion_action(index: int, who: str, action: str,
@@ -6522,6 +6592,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != DAMAGE_IMMUNITY_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != BLAST_FROM_THE_DYING_ACTION \
+                    and action != STUN_NEAR_THE_DYING_ACTION \
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != STRIKE_TARGET_ACTION \
@@ -6703,6 +6774,17 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} blasts for {low:g} "
                     f"to {high:g} per cent of a dead enemy's maximum health. It "
                     f"blasts for above 0 and up to 100.")
+
+        # A STUN NEAR THE DYING'S VALUE IS ITS CHANCE, above 0 and up to 100,
+        # rolled once for the death. Ruled 2026-10-08. 100 is always. Its
+        # seconds are checked where Stack Seconds is read.
+        if action == STUN_NEAR_THE_DYING_ACTION:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} stuns the enemies "
+                    f"near an enemy that died with a chance of {low:g} to "
+                    f"{high:g}. A chance is above 0 and up to 100, and 100 is "
+                    f"always.")
 
         # AN OVERKILL EXPLOSION'S VALUE IS A SHARE OF THE OVERKILL, above 0 and
         # up to the bound. Ruled 2026-10-07.
@@ -6886,6 +6968,23 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} places {action} "
                     f"worth {low:g} to {high:g} a stack. A stack takes away a "
                     f"share, so both ends are above nought.")
+        elif action == STUN_NEAR_THE_DYING_ACTION:
+            # HOW LONG THE STUN LASTS. Ruled 2026-10-08: a chance and a duration
+            # on one row, the duration here because the value is the chance.
+            # Required, and bounded as a stated status's seconds are and not as
+            # a stack's. No stack is behind it. See `MAX_STACK_SECONDS` for
+            # everything else this column holds.
+            if not stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} stuns the enemies "
+                    f"near an enemy that died and states no Stack Seconds. On "
+                    f"{action} that column is how long the stun lasts.")
+            stack_seconds = number(stack_text, "Stack Seconds", index)
+            if not 0.0 < stack_seconds <= MAX_STATUS_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} stuns for "
+                    f"{stack_seconds:g} seconds. A stun lasts above 0 and up to "
+                    f"{MAX_STATUS_SECONDS:g}.")
         elif not action and scale == "consecutive_hits":
             # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. The event must
             # name who was struck, the cap is required, and there is no window.
@@ -7109,12 +7208,16 @@ def enchantment_effects(book) -> list[dict]:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} states Stack "
                     f"Seconds High and no Stack Seconds, so it would be dropped.")
-            if not stack_seconds < stack_seconds_high <= MAX_STACK_SECONDS:
+            # A STUN'S SECONDS KEEP THEIR OWN BOUND AT THE HIGH END TOO. Ruled
+            # 2026-10-08. See `STUN_NEAR_THE_DYING_ACTION`.
+            longest = (MAX_STATUS_SECONDS if action == STUN_NEAR_THE_DYING_ACTION
+                       else MAX_STACK_SECONDS)
+            if not stack_seconds < stack_seconds_high <= longest:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has stacks lasting "
                     f"{stack_seconds:g} to {stack_seconds_high:g} seconds. The "
                     f"high end is above Stack Seconds and at most "
-                    f"{MAX_STACK_SECONDS:g}.")
+                    f"{longest:g}.")
             if (stack_seconds, stack_seconds_high) not in enchantment_ranges(words[name]):
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has stacks lasting "
@@ -7270,6 +7373,9 @@ def enchantment_effects(book) -> list[dict]:
             known = {"apply_status_seconds": APPLY_STATUSES_FOR_SECONDS,
                      "apply_status_to_self_seconds": APPLY_STATUSES_TO_SELF_FOR_SECONDS,
                      "apply_status_to_self_sized": (APPLIED_DOT_STATUS,),
+                     # AND `apply_status` ALONE MAY NAME ALL FIVE DAMAGE OVER
+                     # TIME AILMENTS AT ONCE. The owner, 2026-10-08.
+                     "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,),
                      }.get(action, APPLY_STATUSES)
             if ailment not in known:
                 raise DataError(
