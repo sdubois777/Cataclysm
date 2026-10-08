@@ -804,8 +804,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 573 over 484: two rows on two enchantments.
 #: AND 577 OVER 487 SINCE THE CHARGE ROWS,
 #: issue #1833, 2026-10-08, from 575 over 486: two rows on one enchantment.
-AUTHORED_ROWS = 577
-AUTHORED_ENCHANTMENTS = 487
+#: AND 579 OVER 489 SINCE THE FIRST-HIT AILMENTS ROW AND CHRONOMANCER'S SIX-PIECE,
+#: issue #1833, 2026-10-08, from 577 over 487: two rows on two enchantments.
+AUTHORED_ROWS = 579
+AUTHORED_ENCHANTMENTS = 489
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
