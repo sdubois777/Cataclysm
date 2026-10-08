@@ -2,6 +2,52 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — "Traps last 50%-100% longer before expiring" is built as a row, and two trap sentences and one on healing skills are recorded as not written
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS RULED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+**The sentence is the gadget duration row with the trap tag.** A labelled judgement. **The owner allowed the tag
+`Type.Trap` on the Spike Trap and nothing else about traps, and this row needs nothing else**: it adds no trap
+state. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Traps last 50%-100% longer before expiring | `minion_duration` | increased | 50 to 100 | `Type.Trap` |
+
+EnchantmentEffects 549 to 550, over 463 to 464 enchantments.
+
+**Why it reaches a trap:** a minion is given its life span when it is summoned, and its summoner is asked for
+`minion_duration` with the minion's own type tags (`ACataclysmMinion::Spawn`, the call of
+`UCataclysmCommand::SummonerMultiplierFor`). "Gadgets last 30%-60% longer" is the same row with
+`Type.Deployable`. **A Spike Trap carries both tags, so a wearer of both rows has both increases on it, summed.**
+
+### THREE SENTENCES THAT WERE TRIED AND ARE NOT WRITTEN, SO THE NEXT PERSON DOES NOT TRY THEM AGAIN
+
+Each row below was written into a copy of the workbook on 2026-10-07 and **the generator accepted it**. None is
+written, for the reason given.
+
+| Sentence | The row that was tried | Why it is not written |
+| :-- | :-- | :-- |
+| Traps have 30%-50% increased trigger radius | `minion_range`, increased, 30 to 50, `Type.Trap` | **Held.** A trigger radius is one of the trap states the owner deferred, and a Spike Trap has none. `minion_range` lengthens a machine's reach and its notice radius, so the row would make a sentence about triggering change those, and would be rewritten when traps are built |
+| Your trap skills get +1-6 to max trap count | `minion_cap_bonus`, flat, 1 to 6, `Type.Trap` | **Held.** The cap is asked with the skill's tags and only where the skill states a cap. One skill carries `Type.Trap` and states one, `War_Spear_Ultimate`, which places two Ballistas and three Spike Traps under one cap of five. The row would raise that cap over all its machines, Ballistas included, which is not the sentence |
+| Healing skills restore 30%-60% more HP | `healing_received`, more, 30 to 60, `Type.Heal` | **The row would never apply.** The game asks for `healing_received` with no tags (`UCataclysmRegeneration`, the call of `StatAppliedTo` with an empty tag container), so a row requiring `Type.Heal` is never matched. Healing skills are with the owner |
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTrapDurationRowLengthensASpikeTrapsLifeAndNoOtherMachines`: the real row worn at its
+  best roll. The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. A Spike Trap
+  summoned from the built table lasts twice what a Spike Trap of a summoner wearing nothing lasts; a Ballista and
+  an Imp last what they did.
+
+**Not tested here:** a Spike Trap placed by a skill in play outliving its stated duration.
+
+---
+
 ## 2026-10-07 — A worn row makes a movement skill do four things: pull nearby enemies to its user where it arrives, hit every enemy a charge's path crossed, go in a random direction, and explode where it began and where it arrived. Engine only; no row authored
 
 **Built and run on 2026-10-07 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
