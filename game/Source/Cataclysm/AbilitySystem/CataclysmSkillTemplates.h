@@ -132,6 +132,18 @@ public:
 							const FGameplayAbilityActivationInfo ActivationInfo,
 							bool bReplicateEndAbility, bool bWasCancelled) override;
 
+	/**
+	 * A strike is cut short by a hit like any skill, EXCEPT WHILE ITS WEAPON
+	 * STANDS IN THE GROUND. Ruled 2026-10-08.
+	 *
+	 * Buried Fire stays active for as long as its sword stands, and by then it
+	 * has done what a hit could stop: the sword is planted and the ground burns.
+	 * Ending it there would hand the sword back, which no sentence asks for.
+	 * BEFORE THE SWORD IS IN THE GROUND it is a swing waiting to connect like
+	 * any other, and a hit loses it; nothing is planted.
+	 */
+	virtual bool CanBeInterruptedByAHit() const override;
+
 	/** One swing. Public so a test can drive it without a timer. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 SwingOnce(float DamagePercent = -1.0f);
@@ -512,6 +524,29 @@ public:
 								 const FGameplayEventData* TriggerEventData) override;
 
 	/**
+	 * Stops a rack that is still being emptied, however the skill ended. Ruled
+	 * 2026-10-08. A shot already in the air is its own actor and is not touched.
+	 *
+	 * PUBLIC BECAUSE THE BASE IS, as `UCataclysmSkillTemplate::EndAbility` says.
+	 */
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* ActorInfo,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicateEndAbility, bool bWasCancelled) override;
+
+	/**
+	 * A projectile skill is cut short by a hit while its throw has not left the
+	 * hand and while a rack is being emptied, AND NOT ONCE ITS ONE SHOT IS IN THE
+	 * AIR. Ruled 2026-10-08, the last clause a judgement of the writing session.
+	 *
+	 * A skill that throws once stays active until its shot finishes, so that it
+	 * can leave the ground the flight earned; it has nothing more to do itself.
+	 * The ruling keeps "a projectile in flight", so there is nothing a hit could
+	 * take from it, and ending it would only change what its end is called.
+	 */
+	virtual bool CanBeInterruptedByAHit() const override;
+
+	/**
 	 * Resolve the hit as a beam, with no actor and no flight.
 	 *
 	 * ONLY FOR A SPEED OF ZERO now, and for a throw with nowhere to go. A skill
@@ -768,6 +803,9 @@ public:
 							const FGameplayAbilityActorInfo* ActorInfo,
 							const FGameplayAbilityActivationInfo ActivationInfo,
 							bool bReplicateEndAbility, bool bWasCancelled) override;
+
+	/** A self buff in its duration is never cut short by a hit. Ruled 2026-10-08. */
+	virtual bool CanBeInterruptedByAHit() const override { return false; }
 
 	/** Enemies burning within Radius when the buff went up. Burning Wrath scales on it. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
@@ -1094,6 +1132,18 @@ public:
 								 const FGameplayAbilityActorInfo* ActorInfo,
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
+
+	/**
+	 * Stops a walk or a flicker that is still under way, however the skill
+	 * ended. Ruled 2026-10-08: an interrupted move stops where it is, and does
+	 * none of what it does on arriving.
+	 *
+	 * PUBLIC BECAUSE THE BASE IS, as `UCataclysmSkillTemplate::EndAbility` says.
+	 */
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* ActorInfo,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicateEndAbility, bool bWasCancelled) override;
 
 	/** Where the caster ended up. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
@@ -1470,6 +1520,17 @@ private:
 	TSet<TWeakObjectPtr<AActor>> StruckAlready;
 
 	FTimerHandle AdvanceTimer;
+
+	/**
+	 * When a walk or a flicker ends by itself: `FinishAdvance` or `FinishFlicker`
+	 * at the row's `Duration`. One handle for both, since a use is one or the
+	 * other.
+	 *
+	 * A MEMBER SINCE 2026-10-08. It was a local variable in each of the two
+	 * places that set it, so nothing could name it afterwards; `EndAbility`
+	 * clears it by name now, beside the two above.
+	 */
+	FTimerHandle StopTimer;
 };
 
 /**
@@ -1506,6 +1567,17 @@ public:
 								 const FGameplayAbilityActorInfo* ActorInfo,
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
+
+	/**
+	 * Stops a rift that is still open from spawning or collapsing, however the
+	 * skill ended. Ruled 2026-10-08. What it has already made stays.
+	 *
+	 * PUBLIC BECAUSE THE BASE IS, as `UCataclysmSkillTemplate::EndAbility` says.
+	 */
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* ActorInfo,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicateEndAbility, bool bWasCancelled) override;
 
 	/** Spawn one. Public so a test can drive the cap without waiting. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
@@ -1793,6 +1865,9 @@ public:
 							const FGameplayAbilityActorInfo* ActorInfo,
 							const FGameplayAbilityActivationInfo ActivationInfo,
 							bool bReplicateEndAbility, bool bWasCancelled) override;
+
+	/** An aura that is on is never cut short by a hit. Ruled 2026-10-08. */
+	virtual bool CanBeInterruptedByAHit() const override { return false; }
 
 	/**
 	 * The key was pressed again while the aura is running. Switch it off.

@@ -104,6 +104,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: all, each asked by one helper of `UCataclysmProjectileSkill`.
 #: The flag by which a worn row forbids walking added one more on 2026-10-08,
 #: asked by the one helper the player controller's refusal of a step calls.
+#: The flag by which a landed hit cuts short a running skill added one more on
+#: 2026-10-08, asked in `NoteHitTaken` with each running skill's tags.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -745,6 +747,12 @@ INVENTORY = {
         "whether a worn row forbids the character to walk (ruled 2026-10-08), "
         "asked by CannotWalkByARow for the player controller's refusal of a "
         "step; walking is not a skill, so no tags, and there is no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(HitTakenCancelsSkillsStat), Running->SkillTags, 0.0f'):
+        "whether a landed hit cuts short a skill its wearer is using (ruled "
+        "2026-10-08), asked by NoteHitTaken once for each running skill with "
+        "that skill's tags; a flag about the skill, so the blow that landed "
+        "is not handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

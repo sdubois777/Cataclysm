@@ -2826,7 +2826,16 @@ float UCataclysmAbilitySystemComponent::SecondsSinceEvaded() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastEvadeAtSeconds);
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::HitTakenCancelsSkillsStat = TEXT("hit_taken_cancels_skills");
+
 void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded)
+{
+	// NOBODY NAMED AND NOT A TICK. A blow nobody is named for interrupts as any
+	// other landed blow does; see the form below.
+	NoteHitTaken(bLanded, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
+}
+
+void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime)
 {
 	if (const UWorld* World = GetWorld())
 	{
@@ -2836,6 +2845,51 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded)
 	// AND A HIT TAKEN IS HALF OF WHAT "IN COMBAT" MEANS. Issue #1815.
 	NoteCombatEvent();
 
+	// AND IT CUTS SHORT THE SKILLS THIS CHARACTER IS USING, IF A ROW SAYS SO.
+	// Ruled 2026-10-08. A LANDED HIT, NOT A TICK, AND NOT THE CHARACTER'S OWN.
+	//
+	// THE CHARACTER'S OWN IS ITS BODY OR ITS OWNER. A player's ability system is
+	// owned by the player state and worn by the pawn, and a blow may name
+	// either as its instigator.
+	const bool bOwnBlow = Attacker && (Attacker == GetAvatarActor() || Attacker == GetOwnerActor());
+	if (bLanded && !bDamageOverTime && !bOwnBlow)
+	{
+		// ASKED FOR EACH RUNNING SKILL WITH ITS OWN TAGS, so a row requiring
+		// `Type.Channel` reaches a channelled skill and no other, and a row with
+		// no tags reaches them all. The skill is asked first whether a hit could
+		// cut it short at all, which is what leaves a self buff, an aura and a
+		// planted weapon alone and saves the lookup for every skill not running.
+		//
+		// COLLECTED FIRST AND CANCELLED AFTER, because cancelling changes the
+		// list being walked, as `ClearWhatDeathEnds` says of its own.
+		TArray<FGameplayAbilitySpecHandle> CutShort;
+		for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+		{
+			if (!Spec.IsActive())
+			{
+				continue;
+			}
+
+			const UCataclysmSkillTemplate* Running = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Running && Running->CanBeInterruptedByAHit()
+				&& StatForSkill(FName(HitTakenCancelsSkillsStat), Running->SkillTags, 0.0f) > 0.0f)
+			{
+				CutShort.Add(Spec.Handle);
+			}
+		}
+
+		// CANCELLED, WHICH REFUNDS NOTHING: the cost and the cooldown were
+		// committed when the skill was used. Each skill's own `EndAbility` stops
+		// what it had still to do.
+		for (const FGameplayAbilitySpecHandle& Handle : CutShort)
+		{
+			CancelAbilityHandle(Handle);
+		}
+	}
+
+	// AFTER THE CANCEL, AND THE ORDER IS DELIBERATE. A row that answers a hit by
+	// starting something was not running when the hit landed, so what it starts
+	// here is not among the skills collected above.
 	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
 }
 
