@@ -300,6 +300,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// refusal of a step. Ruled 2026-10-08: "You cannot move while channeling
 		// any skill". A flag. No gameplay attribute and no base.
 		TEXT("cannot_walk"),
+		// Whether a landed hit cuts short the skills this character is using,
+		// read by UCataclysmAbilitySystemComponent::NoteHitTaken once for each
+		// running skill with that skill's tags. Ruled 2026-10-08: "Taking a hit
+		// interrupts any skill currently being used" and "Taking damage while
+		// channeling interrupts the channel immediately". A flag. No gameplay
+		// attribute and no base.
+		TEXT("hit_taken_cancels_skills"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
