@@ -210,6 +210,44 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// zero, and a character already at or above a reduced ceiling is simply not
 	// healed. Neither is a fault, and neither loses anything: what would have
 	// been restored had nowhere to go.
+	//
+	// BUT WHAT HAD NOWHERE TO GO IS OVERHEAL, AND A ROW MAY KEEP IT. Ruled
+	// 2026-10-07: "Overheal converts to a temporary shield absorbing up to
+	// 10%-20% of your max HP". See `UCataclysmAbilitySystemComponent::NoteOverheal`.
+	//
+	// HERE, BEFORE THE RETURN BELOW, because a heal on a character already at
+	// its ceiling is all overheal and that return is where it leaves.
+	//
+	// IN POINTS OF HEALTH: what is offered at this line, which is after the
+	// row that raises a heal and after whatever reduces healing received,
+	// less what fits under the ceiling. THE CEILING, NOT THE MAXIMUM: a heal
+	// stopped by a healing ceiling or by reserved health overflows there.
+	//
+	// HEALTH ONLY. Mana and the energy shield come through this function too,
+	// and the sentence is about healing.
+	//
+	// A HEAL REFUSED ABOVE, by a held swing or by a full reduction, never
+	// reaches this line and leaves no overheal: nothing was offered.
+	//
+	// AND NOT THE CHARACTER'S OWN REGENERATION. Ruled 2026-10-07: "overheal
+	// converts" is a heal the character received beyond what fitted.
+	// Regeneration comes through here every step, at full health too, so
+	// counting it would make the row a second shield that refills by itself,
+	// which the sentence does not promise. Regeneration is known by the tag
+	// `ApplyStep` hands over with it, `Keyword.Regeneration`; leech carries
+	// `Keyword.Leech` and still counts.
+	const FGameplayTag OwnRegeneration = UCataclysmFervour::RegenerationTag();
+	const bool bIsOwnRegeneration = OwnRegeneration.IsValid() && Healing.HasTag(OwnRegeneration);
+	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute() && !bIsOwnRegeneration)
+	{
+		if (UCataclysmAbilitySystemComponent* Overhealed =
+				Cast<UCataclysmAbilitySystemComponent>(&AbilitySystem))
+		{
+			const float Room = Ceiling > 0.0f ? FMath::Max(0.0f, Ceiling - Current) : 0.0f;
+			Overhealed->NoteOverheal(Gain - FMath::Min(Gain, Room));
+		}
+	}
+
 	if (Ceiling <= 0.0f || Current >= Ceiling)
 	{
 		return;

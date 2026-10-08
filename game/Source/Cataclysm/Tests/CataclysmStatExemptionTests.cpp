@@ -6442,6 +6442,42 @@ namespace CataclysmStatExemptionTest
 					   PoisonLeft(true), 10.0f, 0.1f);
 	}
 
+	/**
+	 * `overheal_absorb_percent_of_maximum_health`, read by `UCataclysmAbilitySystemComponent::NoteOverheal` where
+	 * `UCataclysmRegeneration::TopUp` finds a heal of health did not all fit. Ruled 2026-10-07. Two characters at
+	 * full health of 1,000 are each offered a heal of 100; only the one carrying the stat, at a flat 20, holds a
+	 * temporary absorb afterwards, and it holds the 100 that did not fit.
+	 *
+	 * STANDING: the plain character at the origin, the carrying one 100 m along Y.
+	 */
+	void ProbeOverhealAbsorb(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Held(World, FVector(0, 100 * M, 0));
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::OverhealAbsorbCapStat), 20.0f}});
+		for (FScopedSwinger* Healed : {&Plain, &Held})
+		{
+			Healed->Set(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Healed->Set(Vital::GetHealthAttribute(), 1000.0f);
+			UCataclysmRegeneration::TopUp(*Healed->AbilitySystem, Vital::GetHealthAttribute(),
+										  Vital::GetMaxHealthAttribute(), 100.0f);
+		}
+
+		Test.TestEqual(TEXT("a character without overheal_absorb_percent_of_maximum_health holds no temporary "
+							"absorb after a heal at full health"),
+					   Plain.AbilitySystem->TemporaryAbsorbHeld(), 0.0f);
+		Test.TestEqual(TEXT("and one carrying it holds the 100 that did not fit, so NoteOverheal really reads it"),
+					   Held.AbilitySystem->TemporaryAbsorbHeld(), 100.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6556,6 +6592,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("experience_gain"), &ProbeExperienceGain},
 			{TEXT("mana_cost_as_maximum_mana_percent"), &ProbeManaCostAsMaximumManaPercent},
 			{TEXT("class_resource_generation"), &ProbeClassResourceGeneration},
+			{TEXT("overheal_absorb_percent_of_maximum_health"), &ProbeOverhealAbsorb},
 		};
 		return Made;
 	}
