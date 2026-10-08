@@ -531,6 +531,64 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — "Enemies with Necrosis have 1%-2% less maximum health" and "Summoned minions inherit 10%-25% of your armor and resistances" are built as rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT NO TEST SHOWS
+
+- **Every minion takes every blow with no armour and no resistance today, and the minion row is the first thing
+  that gives a minion either.** A finding about the merged game, said first in the entry that built the stat.
+- **On an enemy at full health the Necrosis row removes 1% to 2% of its health each time Necrosis is applied
+  afresh, and that health is not given back when the Necrosis ends.** On a hurt enemy it changes only what
+  "below N% health" means. The loss is not damage: no hit, no kill credit, no number.
+- **Some dungeon rules also write an enemy's maximum health.** For a rule that writes from its own record the
+  lowering is lost and the enemy is left 1% to 2% above its right maximum. Not tested; on the owner's play-check
+  list. The entry that built the number names the rules.
+- **On a difficulty tier whose penalty puts a player's resistance under nought, the minion row gives that
+  player's minions armour and nothing for that damage type.**
+- **The tests here read what the wearer holds and afflict nothing and summon nothing.** That an enemy's maximum
+  then falls, and a minion then takes less, are tested in the entry that built them, with the rows made by hand.
+
+### WHAT WAS BUILT
+
+The rows the entry "An ailment can lower its carrier's maximum health, and a minion takes a share of its
+summoner's armour and resistances" of 2026-10-08 left to the session holding the design workbook, each as that
+entry's table states it. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Enemies with Necrosis have 1%-2% less maximum health | Action `ailment_max_health_removed`, Ailment `Necrosis`, 1 to 2 |
+| Summoned minions inherit 10%-25% of your armor and resistances | `minion_defences_percent_of_yours`, flat, 10 to 25, no Required Tags |
+
+EnchantmentEffects 573 to 575, over 484 to 486 enchantments.
+
+**One roll of the minion row serves both armour and resistances**, as ruled.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the two sentences is that entry's and its rulings of 2026-10-08.
+
+### Tests
+
+Each wears the real row at the top of its range, and first asserts that the name it wears is a row of
+`EnchantmentsPositive.csv`.
+
+- `Cataclysm.Enchantments.TheNecrosisRowHandsItsWearerANumberOnNecrosisThatLowersMaximumHealth`: the wearer holds
+  exactly one number that lowers a carrier's maximum health, on Necrosis, of 2; and none when the item is taken
+  off.
+- `Cataclysm.Enchantments.TheMinionDefencesRowAnswersAQuarterForAnyMinion`: the stat, asked as the damage formula
+  asks it of a summoner, answers 25 with a minion's tag and with no tags; and nought for both when the item is
+  taken off.
+
+**Not tested here:** an enemy afflicted by a wearer of the real Necrosis row; a minion summoned by a wearer of
+the real minion row.
+
+---
+
 ## 2026-10-08 — An ailment can lower its carrier's maximum health, and a minion takes a share of its summoner's armour and resistances: one number hung on an ailment, `ailment_max_health_removed`, and one stat, `minion_defences_percent_of_yours`. Engine only; no row authored
 
 **Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
