@@ -1481,6 +1481,18 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bBlastFromTheDying = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::BlastFromTheDyingAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT STUNS EVERY ENEMY NEAR AN ENEMY THAT DIED. Ruled
+					// 2026-10-08. The value is the chance. STACK SECONDS IS HOW LONG THE
+					// STUN LASTS on this action, a new use of that column, read as every
+					// other reader of it does.
+					Action.bStunNearTheDying = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StunNearTheDyingAction,
+						ESearchCase::IgnoreCase);
+					if (Action.bStunNearTheDying)
+					{
+						Action.StackSeconds =
+							UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
+					}
 					// AND WHETHER IT STRIKES THE EVENT'S OTHER CHARACTER. Ruled 2026-10-07.
 					// The value is the hit's size, a percentage of attack damage.
 					Action.bStrikeTarget = Effect->Action.Equals(
