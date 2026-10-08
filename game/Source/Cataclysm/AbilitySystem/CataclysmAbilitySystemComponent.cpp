@@ -1120,6 +1120,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.bIsBleeding = UCataclysmDebuffs::IsBleeding(this);
 	State.DebuffsCarried = UCataclysmDebuffs::CountOn(this);
 
+	// AND WHETHER IT IS UNDER ANY DAMAGE OVER TIME AT ALL. Ruled 2026-10-07. The
+	// parent of the bleed tag, asked of the same tag list, so a burn, a poison
+	// or the character's own converted bleed answers yes. An invalid tag is a
+	// vocabulary that has lost the parent, and answers no.
+	const FGameplayTag AnyDamageOverTime = UCataclysmDebuffs::DamageOverTimeTag();
+	State.bIsUnderDamageOverTime = AnyDamageOverTime.IsValid()
+		&& HasMatchingGameplayTag(AnyDamageOverTime);
+
 	// AND WHETHER THIS CHARACTER'S ATTACKS CAN CRIPPLE OR WEAKEN AT ALL. Issue
 	// #1718. Spreading Hurt asks it: "+4% increased Area of Effect per point for
 	// attacks that Cripple or Weaken."
@@ -1216,28 +1224,21 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// owed into an energy shield a character does not have; that is not leech
 	// in any sense a player would mean. A pool that is FULL still counts while
 	// a payment is owed to it.
-	const auto HasPool = [this](ECataclysmLeechPool Pool)
-	{
-		switch (Pool)
-		{
-		case ECataclysmLeechPool::Health:
-			return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) > 0.0f;
-		case ECataclysmLeechPool::Mana:
-			return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute()) > 0.0f;
-		case ECataclysmLeechPool::EnergyShield:
-			return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) > 0.0f;
-		}
-		return false;
-	};
+	//
+	// `HasLeechPool` IS THAT RULE, a member since 2026-10-07 so that the clock
+	// of unbroken leeching below asks the same question.
 	uint32 PoolsSeen = 0;
 	for (const FCataclysmLeechPayment& Payment : LeechPayments)
 	{
-		if (Payment.Remaining > 0.0f && HasPool(Payment.Pool))
+		if (Payment.Remaining > 0.0f && HasLeechPool(Payment.Pool))
 		{
 			PoolsSeen |= 1u << static_cast<uint32>(Payment.Pool);
 		}
 	}
 	State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));
+
+	// AND HOW LONG THAT HAS GONE ON WITHOUT A BREAK. Ruled 2026-10-07.
+	State.SecondsLeeching = SecondsLeeching();
 
 	// AND THE PASSIVE POINTS SPENT, WHICH ONLY A PLAYER HAS. Issue #1686. A
 	// player's ability system is owned by its player state, which holds the
@@ -2546,6 +2547,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// payment promised by a hit before the death would resume paying out after
 	// the respawn.
 	LeechPayments.Reset();
+	NoteLeechPaymentsChanged();
 
 	// AND A POTION HEAL NOT YET PAID, for the same reason: `UCataclysmPotions::
 	// HealStep` skips a corpse, so a drink taken just before the death would
@@ -2881,6 +2883,65 @@ float UCataclysmAbilitySystemComponent::SecondsInCombat() const
 	}
 
 	return FMath::Max(0.0f, Now - CombatStartedAtSeconds);
+}
+
+bool UCataclysmAbilitySystemComponent::HasLeechPool(ECataclysmLeechPool LeechPool) const
+{
+	switch (LeechPool)
+	{
+	case ECataclysmLeechPool::Health:
+		return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) > 0.0f;
+	case ECataclysmLeechPool::Mana:
+		return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute()) > 0.0f;
+	case ECataclysmLeechPool::EnergyShield:
+		return GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) > 0.0f;
+	}
+	return false;
+}
+
+void UCataclysmAbilitySystemComponent::NoteLeechPaymentsChanged()
+{
+	// LEECHING IS A PAYMENT STILL OWED INTO A POOL THE CHARACTER HAS, the rule
+	// the count of pools being leeched into follows. Ruled 2026-10-07.
+	bool bLeeching = false;
+	for (const FCataclysmLeechPayment& Owed : LeechPayments)
+	{
+		if (Owed.Remaining > 0.0f && HasLeechPool(Owed.Pool))
+		{
+			bLeeching = true;
+			break;
+		}
+	}
+
+	if (!bLeeching)
+	{
+		// NOTHING OWED, SO THE CLOCK RETURNS TO NOUGHT and the next payment
+		// starts it again.
+		LeechingSinceSeconds = -1.0f;
+		return;
+	}
+
+	// STARTED ONCE AND LEFT ALONE WHILE ANYTHING IS OWED, so a second hit
+	// landing during a payout does not restart it. With no world there is no
+	// time to stamp, and the clock stays unstarted.
+	if (LeechingSinceSeconds < 0.0f)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			LeechingSinceSeconds = World->GetTimeSeconds();
+		}
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsLeeching() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LeechingSinceSeconds < 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LeechingSinceSeconds);
 }
 
 void UCataclysmAbilitySystemComponent::RefreshLiveMaximumHealth()
@@ -4130,8 +4191,7 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 	const TArray<FCataclysmPoolAction> Firing = PoolActions;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		if (Action.Event != Timed || Action.EverySeconds <= 0.0f
-			|| !PoolActionAllowed(Action, nullptr))
+		if (Action.Event != Timed || Action.EverySeconds <= 0.0f)
 		{
 			continue;
 		}
@@ -4143,6 +4203,19 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 		// ONCE FOR EVERY WHOLE PERIOD OF THIS COMBAT, N seconds in first.
 		const int32 Due = FMath::FloorToInt(InCombat / Action.EverySeconds);
 		int32& Given = TimedGrantsGiven.FindOrAdd(Key);
+
+		// A PERIOD THAT ENDS WHILE THE ROW IS REFUSED IS PASSED OVER, NOT OWED.
+		// Ruled 2026-10-07 with the first timed row to carry a condition, a
+		// drain that begins "after 10 seconds in combat". Until then a refused
+		// row was skipped before its periods were counted, so the ten periods
+		// of those ten seconds would all have been paid in the eleventh. No
+		// timed row carried a condition or required tags before that one,
+		// measured the same day, so no row that existed changes.
+		if (!PoolActionAllowed(Action, nullptr))
+		{
+			Given = FMath::Max(Given, Due);
+			continue;
+		}
 		while (Given < Due)
 		{
 			++Given;

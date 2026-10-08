@@ -1238,6 +1238,12 @@ public:
 	 * in first. Out of combat, or in a new combat, the count starts again. It
 	 * counts periods of the combat rather than steps, so it does not depend on
 	 * how often the step runs.
+	 *
+	 * A PERIOD THAT ENDS WHILE THE ROW'S CONDITION REFUSES IS NOT OWED LATER.
+	 * Ruled 2026-10-07 with the first timed row to carry a condition, "After 10
+	 * seconds in combat you begin losing 2%-4% of your maximum HP per second":
+	 * the ten periods of its first ten seconds are passed over, not paid
+	 * together in the eleventh.
 	 */
 	void StepTimedGrants();
 
@@ -3149,13 +3155,28 @@ public:
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
 		LeechPayments.Add(Payment);
+		NoteLeechPaymentsChanged();
 	}
 
 	/** Replace the list with what is still owed after a step. */
 	void SetLeechPayments(TArray<FCataclysmLeechPayment>&& Payments)
 	{
 		LeechPayments = MoveTemp(Payments);
+		NoteLeechPaymentsChanged();
 	}
+
+	/**
+	 * How long this character has been leeching without a break, in seconds, or
+	 * nought when it is not leeching or there is no world. Ruled 2026-10-07.
+	 *
+	 * "LEECHING" IS A PAYMENT STILL OWED INTO A POOL THE CHARACTER HAS, health,
+	 * mana or energy shield alike, which is what the count of pools being
+	 * leeched into already means. The clock starts when the list of payments
+	 * first holds one and is cleared when it holds none, so the next payment
+	 * starts from nought. A hit landing while a payment is still owed does not
+	 * restart it.
+	 */
+	float SecondsLeeching() const;
 
 	/**
 	 * What the last blow aimed at this character resolved to.
@@ -3577,6 +3598,23 @@ protected:
 	 * bookkeeping.
 	 */
 	TArray<FCataclysmLeechPayment> LeechPayments;
+
+	/**
+	 * When the unbroken leeching began, in world seconds, or -1 while no
+	 * payment is owed into a pool the character has. Ruled 2026-10-07. Written
+	 * only by `NoteLeechPaymentsChanged`. Not replicated, as the list is not.
+	 */
+	float LeechingSinceSeconds = -1.0f;
+
+	/** Whether this character has the pool: a maximum above nought. */
+	bool HasLeechPool(ECataclysmLeechPool LeechPool) const;
+
+	/**
+	 * Start or clear `LeechingSinceSeconds` after the list of payments changed.
+	 * Called by every writer of the list: a payment added, the list replaced
+	 * after a payout step, and the list emptied on a respawn.
+	 */
+	void NoteLeechPaymentsChanged();
 
 	/**
 	 * The four potion slots' charges, full at the start. Issue #806. NOT

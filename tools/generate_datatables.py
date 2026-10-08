@@ -3741,6 +3741,23 @@ CONDITIONS = {
     "in_combat": None,
     "out_of_combat": None,
 
+    # "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per
+    # second" is `in_combat_for_seconds` with 10. Ruled 2026-10-07. The reading
+    # `in_combat` tests, compared AT LEAST, as `stationary_for_seconds` compares
+    # the reading `while_stationary` tests. Out of combat it refuses whatever
+    # the value, and a new combat starts the count from nought.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "in_combat_for_seconds": (0.0, 60.0, "a number of seconds"),
+
+    # "Gain 50%-100% increased damage while under the effect of a DoT" is
+    # `while_under_damage_over_time`, and it takes no value. Ruled 2026-10-07.
+    # The parent of the tag `while_bleeding` asks for: any effect that
+    # `UCataclysmSkillEffects::ApplyDamageOverTime` laid on the character,
+    # whoever laid it, the character itself included. It asks only the
+    # wearer's own state, so every asker can judge it.
+    "while_under_damage_over_time": None,
+
     # "Debuffed enemies take 10%-20% increased damage from all sources" is
     # `target_carries_any_debuff`, and "Strike skills deal 20%-40% increased
     # damage against enemies affected by a DoT" is `target_carries_a_dot`. Issue
@@ -4420,6 +4437,17 @@ SCALES = {
     # energy shield, so nought to three. Not one for each payment, which every
     # hit starts and which has no bound.
     "leech_pools_in_flight": (0.0, 3.0, "a number of pools being leeched into"),
+
+    # "While leeching, reduce your max resistances by 1%-3% per second" is
+    # `seconds_leeching` with a step of 1. Ruled 2026-10-07: whole seconds of
+    # unbroken leeching, nought again when no payment is owed. The ruling caps
+    # the sentence at 10 seconds, a judged number the sentence does not state,
+    # and the row carries it as a Scale Max Steps of 10; the scale itself has
+    # no cap, so a row that states none is refused
+    # (`SCALES_THAT_NEED_A_CAP`).
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "seconds_leeching": (0.0, 60.0, "a number of seconds"),
 }
 
 
@@ -4487,6 +4515,15 @@ SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active"})
 
 #: The largest offset a row may state: the 230 point budget. Issue #1686.
 MAX_SCALE_OFFSET = 230
+
+#: Scales whose row must state a cap in Scale Max Steps. Ruled 2026-10-07.
+#: `seconds_leeching` counts for as long as the wearer goes on leeching, and
+#: its sentence, "While leeching, reduce your max resistances by 1%-3% per
+#: second", states no end. The ruling caps it at 10 seconds; the engine's
+#: scale holds no cap of its own, so a row written without one would be
+#: UNCAPPED. The row is refused instead. The Passive Effects sheet has no
+#: such column, so a row there naming one of these is refused outright.
+SCALES_THAT_NEED_A_CAP = frozenset({"seconds_leeching"})
 
 
 #: The value kinds a stat row may carry, on both sheets that write one.
@@ -4636,6 +4673,11 @@ def passive_effects(book) -> list[dict]:
         # #1593; one copy means the wording and the rules cannot drift apart.
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Passive Effects", index, node)
+        if scale in SCALES_THAT_NEED_A_CAP:
+            raise DataError(
+                f"Passive Effects row {index}: {node} scales by {scale!r}, which "
+                f"needs a cap in Scale Max Steps, and this sheet has no such "
+                f"column. The row would be uncapped.")
 
         # HOW FAR "NEAR" IS, FOR THE TWO NAMES THAT COUNT NEARBY ENEMIES.
         # Issue #1597. A condition carries one number and "three or more
@@ -6484,6 +6526,11 @@ def enchantment_effects(book) -> list[dict]:
                     f"{cap:g} steps. A cap is a whole number of steps from 1 "
                     f"to {MAX_SCALE_STEPS}; leave the column empty for none.")
             scale_max_steps = int(cap)
+        if scale in SCALES_THAT_NEED_A_CAP and scale_max_steps < 1:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} scales by {scale!r} "
+                f"and states no Scale Max Steps. That scale has no cap of its "
+                f"own, so the row would be uncapped. State the cap.")
 
         # A NEXT-USE ROW STATES HOW MANY CHARGES IT HOLDS. Issue #1833, phase
         # 2: one for a sentence stating no stacking, five for "stacking up to

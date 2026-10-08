@@ -17,6 +17,7 @@
 // For what a blow resolved to, which is how a test can tell an evaded blow
 // from one armour stopped. Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
 // For the weapon Buried Fire leaves standing in the ground, and for the
@@ -22566,6 +22567,672 @@ bool FCataclysmOverhealAbsorbRespawnTest::RunTest(const FString&)
 	TestEqual(TEXT("control: after the respawn, a heal through the top-up at full health is kept as an absorb, so "
 				   "the stat is still carried"),
 			  Abilities->TemporaryAbsorbHeld(), TenthAfter, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Two conditions and one scale, ruled 2026-10-07 under the owner's delegation:
+// `while_under_damage_over_time`, `in_combat_for_seconds` and
+// `seconds_leeching`. Engine only; no row is authored, so every row here is
+// made by hand in the shape `docs/DECISIONS.md` of that day gives.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two are within two
+// metres of each other, and nobody swings: every blow is `ApplyHit` by hand.
+// THE WORLD'S TIME IS WRITTEN BY HAND, half a second off every whole second;
+// nothing here waits on a timer or counts ticks.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDotCombatLeechTest
+{
+	using namespace CataclysmTemporaryAbsorbTest;
+
+	/** One modifier on one stat, on a base of nothing. Replaces whatever the fighter wore. */
+	void WearOne(FScopedFighter& Who, const TCHAR* Stat, const FCataclysmStatModifier& Modifier)
+	{
+		FCataclysmStatInputs OneLine;
+		OneLine.Base = 0.0f;
+		OneLine.Modifiers.Add(Modifier);
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(Stat), OneLine);
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/**
+	 * A drain of health on the clock, as the loader builds the existing "You lose 15% of your max hp every 5
+	 * seconds": the pool `health`, a negative percentage of the maximum, the timed event. With a wait above
+	 * nought it also carries `in_combat_for_seconds`, which is the new row's shape.
+	 */
+	FCataclysmPoolAction ADrainOnTheClock(float PercentOfMaximumHealth, float PeriodSeconds,
+										  float AfterSecondsInCombat)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+		Action.Pool = FName(TEXT("health"));
+		Action.Percent = -PercentOfMaximumHealth;
+		Action.Base = ECataclysmPoolActionBase::Maximum;
+		Action.EverySeconds = PeriodSeconds;
+		if (AfterSecondsInCombat > 0.0f)
+		{
+			Action.Condition = ECataclysmStatCondition::InCombatForSeconds;
+			Action.ConditionValue = AfterSecondsInCombat;
+		}
+		return Action;
+	}
+
+	/** One hit's worth of leech into this pool, owed over the designed three seconds. */
+	FCataclysmLeechPayment LeechOwedInto(ECataclysmLeechPool Into)
+	{
+		FCataclysmLeechPayment One;
+		One.Pool = Into;
+		One.Remaining = 30.0f;
+		One.SecondsLeft = UCataclysmLeech::PayoutSeconds;
+		return One;
+	}
+
+	/** "Max resistances by this much per second of leeching", capped at this many steps; nought is no cap. */
+	FCataclysmStatModifier AResistanceCapRow(float PerSecond, int32 CapSteps)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = -PerSecond;
+		Row.Scale = ECataclysmStatScale::PerSecondLeeching;
+		Row.ScaleStep = 1.0f;
+		Row.ScaleMaxSteps = CapSteps;
+		return Row;
+	}
+
+	float ResistanceCapHeldBy(const FScopedFighter& Who)
+	{
+		return UCataclysmDamageCalculation::ResistanceCapOf(Who.AbilitySystem);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechDamageTest,
+	"Cataclysm.DotCombatLeech.ARowUnderAnyDamageOverTimeRaisesABlowWhileOneIsCarriedLaidByAnotherOrByTheWearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gain 50%-100% increased damage while under the effect of a DoT", as `attack_damage` increased 50 under
+ * `while_under_damage_over_time`, read through a real blow (`ApplyHit`, the asker a hit uses).
+ *
+ * THE CONTROL is a fighter with no row: its blow is the plain blow, and it is set alight and crippled as the
+ * wearer is, so a burn or a cripple on an attacker is shown to change nothing by itself. The wearer deals the
+ * plain blow with nothing on it, half as much again while a burn another character laid runs, the plain blow
+ * once the burn is taken off, the plain blow under a cripple (a debuff that is not damage over time), and half
+ * as much again under a bleed it laid on itself.
+ *
+ * STANDING: the wearer at the origin, the target 3 m along X, the control 20 m along Y, the character who lays
+ * the burn 20 m along -Y.
+ */
+bool FCataclysmDotCombatLeechDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmDotCombatLeechTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(3 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter Burner(World, FVector(0, -20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(Burner, 0.0f, 0.0f);
+
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::Increased;
+	Row.Source = ECataclysmModifierSource::Enchantment;
+	Row.Value = 50.0f;
+	Row.Condition = ECataclysmStatCondition::WhileUnderDamageOverTime;
+	WearOne(Wearer, TEXT("attack_damage"), Row);
+
+	const FGameplayTag AnyDot = UCataclysmDebuffs::DamageOverTimeTag();
+	const auto Carries = [](const FScopedFighter& Who, const FGameplayTag& Tag)
+	{
+		return Tag.IsValid() && Who.AbilitySystem->HasMatchingGameplayTag(Tag);
+	};
+
+	// THE CONTROL: the plain blow, from a character with no row.
+	const float PlainBlow = TakeBlow(Plain, Target, 100.0f, Melee());
+	if (!TestTrue(TEXT("control: a blow from a character with no row hurts the target"), PlainBlow > 1.0f)
+		|| !TestFalse(TEXT("set-up: nobody carries damage over time yet"),
+					  Carries(Wearer, AnyDot) || Carries(Plain, AnyDot)))
+	{
+		return false;
+	}
+
+	// 1. NO DAMAGE OVER TIME ON THE WEARER.
+	TestEqual(TEXT("with no damage over time on the wearer, the row adds nothing"),
+			  TakeBlow(Wearer, Target, 100.0f, Melee()), PlainBlow, 0.01f);
+
+	// 2. A BURN ANOTHER CHARACTER LAID, on the wearer and on the control alike.
+	const bool bWearerAlight = UCataclysmSkillEffects::ApplyBurn(
+		Burner.Actor, Wearer.Actor, 100.0f, /*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+	const bool bPlainAlight = UCataclysmSkillEffects::ApplyBurn(
+		Burner.Actor, Plain.Actor, 100.0f, /*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+	if (!TestTrue(TEXT("set-up: the burn was applied to both and both carry damage over time"),
+				  bWearerAlight && bPlainAlight && Carries(Wearer, AnyDot) && Carries(Plain, AnyDot)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a burn on a character with no row leaves its blow as it was"),
+			  TakeBlow(Plain, Target, 100.0f, Melee()), PlainBlow, 0.01f);
+	TestEqual(TEXT("with a burn on the wearer, the blow is half as much again"),
+			  TakeBlow(Wearer, Target, 100.0f, Melee()), PlainBlow * 1.5f, 0.01f);
+
+	// 3. THE BURN TAKEN OFF: the increase goes with it.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Wearer.Actor, UCataclysmSkillEffects::BurnTag());
+	UCataclysmSkillEffects::RemoveEffectsGranting(Plain.Actor, UCataclysmSkillEffects::BurnTag());
+	if (!TestFalse(TEXT("set-up: with the burn taken off, neither carries damage over time"),
+				   Carries(Wearer, AnyDot) || Carries(Plain, AnyDot)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the burn taken off, the blow is the plain blow again"),
+			  TakeBlow(Wearer, Target, 100.0f, Melee()), PlainBlow, 0.01f);
+
+	// 4. A DEBUFF THAT IS NOT DAMAGE OVER TIME, on both. The wearer's blow is compared with the control's
+	// under the same debuff, so whatever a cripple does to an attacker by itself is in both figures.
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	UCataclysmSkillEffects::ApplyTagForDuration(Burner.Actor, Wearer.Actor, Cripple, 10.0f);
+	UCataclysmSkillEffects::ApplyTagForDuration(Burner.Actor, Plain.Actor, Cripple, 10.0f);
+	if (!TestTrue(TEXT("set-up: both carry the cripple, and neither carries damage over time"),
+				  Carries(Wearer, Cripple) && Carries(Plain, Cripple)
+					  && !Carries(Wearer, AnyDot) && !Carries(Plain, AnyDot)))
+	{
+		return false;
+	}
+	const float PlainCrippled = TakeBlow(Plain, Target, 100.0f, Melee());
+	TestEqual(TEXT("a debuff that is not damage over time does not hold the condition"),
+			  TakeBlow(Wearer, Target, 100.0f, Melee()), PlainCrippled, 0.01f);
+
+	// 5. A BLEED THE WEARER LAID ON ITSELF, with the cripple still on both.
+	const bool bSelfLaid = UCataclysmSkillEffects::ApplyDamageOverTime(
+		Wearer.Actor, Wearer.Actor, /*DamagePerTick=*/5.0f, /*DurationSeconds=*/4.0f,
+		UCataclysmDebuffs::BleedTag(), /*bScalesWithInstigator=*/false);
+	if (!TestTrue(TEXT("set-up: the wearer laid a bleed on itself and carries it"),
+				  bSelfLaid && Carries(Wearer, UCataclysmDebuffs::BleedTag())))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with a bleed the wearer laid on itself, the blow is half as much again"),
+			  TakeBlow(Wearer, Target, 100.0f, Melee()), PlainCrippled * 1.5f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechDrainTest,
+	"Cataclysm.DotCombatLeech.TheDrainBeginsTenSecondsIntoACombatTakesOneShareASecondAndStopsWhereTheOldDrainStops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second", as a timed drain of 3% of
+ * maximum health every second under `in_combat_for_seconds` 10, stepped by `StepTimedGrants` as the game steps it.
+ *
+ * FOUR CONTROLS. A fighter with no row, in the same fight, loses nothing. A fighter wearing the same row and
+ * never in combat loses nothing. A fighter wearing the existing drain's shape (15% every 5 seconds, no
+ * condition) loses its first share five and a half seconds in, so the clock runs for everyone and the condition
+ * is what holds the wearer's back; and it is where the wearer's drain is compared with the existing one's stop.
+ *
+ * THE WEARER loses nothing nine and a half seconds in; ONE share ten and a half seconds in, not the ten a
+ * skipped row would have been owed; four shares thirteen and a half seconds in. Combat lapses and nothing more
+ * is lost. A second combat loses nothing for nine and a half seconds and one share at ten and a half. With 200
+ * health left, both drains stop at 1.
+ *
+ * THE CLOCK IS READ HALF A SECOND OFF EVERY WHOLE SECOND. Every fighter in the fight is kept in combat by one
+ * `NoteHitDealt` a second, inside the three second lapse.
+ *
+ * STANDING: the wearer at the origin, the fighter with no row 20 m along Y, the one never in combat 20 m along
+ * -Y, the one wearing the existing drain 20 m along X.
+ */
+bool FCataclysmDotCombatLeechDrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmDotCombatLeechTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Bare(World, FVector(0, 20 * M, 0));
+	FScopedFighter Idle(World, FVector(0, -20 * M, 0));
+	FScopedFighter Old(World, FVector(20 * M, 0, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Bare, 0.0f, 0.0f);
+	Defences(Idle, 0.0f, 0.0f);
+	Defences(Old, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({ADrainOnTheClock(3.0f, 1.0f, 10.0f)});
+	Idle.AbilitySystem->SetPoolActions({ADrainOnTheClock(3.0f, 1.0f, 10.0f)});
+	Old.AbilitySystem->SetPoolActions({ADrainOnTheClock(15.0f, 5.0f, 0.0f)});
+
+	const float Share = Pool * 3.0f / 100.0f;
+	const float OldShare = Pool * 15.0f / 100.0f;
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	FScopedFighter* const Fighting[] = {&Wearer, &Bare, &Old};
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds = 50.0f;
+	Wearer.AbilitySystem->StepTimedGrants();
+	Idle.AbilitySystem->StepTimedGrants();
+	TestEqual(TEXT("fifty seconds out of combat take nothing from the wearer"), Lost(Wearer), 0.0f, 0.001f);
+
+	// A FIGHT: its first blow now, then one a second, read half a second after each.
+	float Began = 0.0f;
+	const auto BeginFight = [&]()
+	{
+		Began = World->TimeSeconds;
+		for (FScopedFighter* Each : Fighting)
+		{
+			Each->AbilitySystem->NoteHitDealt();
+		}
+		World->TimeSeconds += 0.5f;
+	};
+	const auto FightUntil = [&](float SecondsIn)
+	{
+		while (World->TimeSeconds < Began + SecondsIn - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			for (FScopedFighter* Each : Fighting)
+			{
+				Each->AbilitySystem->NoteHitDealt();
+				Each->AbilitySystem->StepTimedGrants();
+			}
+			Idle.AbilitySystem->StepTimedGrants();
+		}
+	};
+
+	BeginFight();
+	FightUntil(5.5f);
+	if (!TestEqual(TEXT("control: the existing drain's shape, with no condition, takes its first share five and a "
+						"half seconds in"),
+				   Lost(Old), OldShare, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("five and a half seconds in, the wearer has lost nothing"), Lost(Wearer), 0.0f, 0.001f);
+	FightUntil(9.5f);
+	TestEqual(TEXT("nine and a half seconds in, the wearer has still lost nothing"), Lost(Wearer), 0.0f, 0.001f);
+	FightUntil(10.5f);
+	TestEqual(TEXT("ten and a half seconds in, the wearer has lost one share, not one for each second so far"),
+			  Lost(Wearer), Share, 0.01f);
+	FightUntil(13.5f);
+	TestEqual(TEXT("thirteen and a half seconds in, four shares: one each second since the tenth"), Lost(Wearer),
+			  Share * 4.0f, 0.01f);
+	TestEqual(TEXT("control: a fighter with no row, in the same fight, has lost nothing"), Lost(Bare), 0.0f, 0.001f);
+	TestEqual(TEXT("control: the same row on a character never in combat has taken nothing"), Lost(Idle), 0.0f,
+			  0.001f);
+
+	// COMBAT LAPSES: four seconds with no blow, past the three second lapse.
+	World->TimeSeconds += 4.0f;
+	for (FScopedFighter* Each : Fighting)
+	{
+		Each->AbilitySystem->StepTimedGrants();
+	}
+	if (!TestTrue(TEXT("set-up: four seconds with no blow put the wearer out of combat"),
+				  Wearer.AbilitySystem->SecondsInCombat() < 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("out of combat again, nothing more is lost"), Lost(Wearer), Share * 4.0f, 0.01f);
+
+	// A SECOND COMBAT STARTS THE TEN SECONDS AGAIN.
+	BeginFight();
+	FightUntil(9.5f);
+	TestEqual(TEXT("nine and a half seconds into a second combat, nothing more is lost"), Lost(Wearer),
+			  Share * 4.0f, 0.01f);
+	FightUntil(10.5f);
+	TestEqual(TEXT("ten and a half seconds into it, one more share"), Lost(Wearer), Share * 5.0f, 0.01f);
+
+	// IT CANNOT KILL, AND STOPS WHERE THE EXISTING DRAIN STOPS. Both are left less health than one share of
+	// theirs; the wearer's next share is due a second on and the existing drain's at fifteen seconds in.
+	Wearer.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 200.0f);
+	Old.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 200.0f);
+	FightUntil(15.5f);
+	if (!TestTrue(TEXT("control: the existing drain took the 200 down, and stopped above nought"),
+				  Old.Health() < 200.0f && Old.Health() > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's drain stops at the health the existing drain stops at"), Wearer.Health(),
+			  Old.Health(), 0.001f);
+	TestTrue(TEXT("which is above nought: the drain does not kill"), Wearer.Health() > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechExistingDrainTest,
+	"Cataclysm.DotCombatLeech.TheExistingDrainOfFifteenPerCentEveryFiveSecondsTakesWhatItTookBeforeTheClockChanged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `StepTimedGrants` was changed on 2026-10-07: a period that ends while a row's condition refuses is passed
+ * over. This holds ONE EXISTING timed row, by name, to what it gave before the change:
+ * `Negative_You_lose_15_of_your_max_hp_every_5_seconds#1`, "You lose 15% of your max hp every 5 seconds".
+ *
+ * ITS CELLS in `game/Data/EnchantmentEffects.csv`, read 2026-10-07: Stat empty, ValueKind empty, ValueLow -15,
+ * ValueHigh -15, RequiredTags empty, Condition empty, Scale empty, Action `health`, ActionEvent
+ * `every_seconds`, FractionOf `maximum`, EverySeconds 5, every other cell nought or empty. The action here is
+ * built by hand in that shape; the row is not loaded, so the table and the item loader are not what is tested.
+ *
+ * BUILT BY HAND FROM THE CSV LINE AND NOT LOADED FROM THE TABLE, which the coordinating session accepted on
+ * 2026-10-07. So A CHANGE TO THAT ROW IN THE TABLE WOULD NOT BE SEEN BY THIS TEST: it would go on passing
+ * against the cells written above.
+ *
+ * EVERY FIGURE IS WORKED OUT FROM THE ROW: one share is 15% of maximum health, and one is due for each whole 5
+ * seconds of the current combat. So nothing out of combat; nothing four and a half seconds in; one share five
+ * and a half seconds in; still one at nine and a half; two at ten and a half; no more once combat lapses; in a
+ * second combat, no more at four and a half seconds and a third share at five and a half. The control is a
+ * fighter with no row in the same fights, who loses nothing.
+ *
+ * STANDING: the wearer at the origin, the control 20 m along Y.
+ */
+bool FCataclysmDotCombatLeechExistingDrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmDotCombatLeechTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Bare(World, FVector(0, 20 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Bare, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({ADrainOnTheClock(15.0f, 5.0f, /*AfterSecondsInCombat=*/0.0f)});
+
+	const float Share = Wearer.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * 15.0f / 100.0f;
+	if (!TestTrue(TEXT("set-up: 15% of the wearer's maximum health is a real amount"), Share > 1.0f))
+	{
+		return false;
+	}
+	const auto Lost = [](const FScopedFighter& Who) { return Pool - Who.Health(); };
+	FScopedFighter* const Fighting[] = {&Wearer, &Bare};
+
+	// OUT OF COMBAT, however long.
+	World->TimeSeconds = 50.0f;
+	Wearer.AbilitySystem->StepTimedGrants();
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: fifty seconds out of combat take nothing"),
+			  Lost(Wearer), 0.0f, 0.001f);
+
+	float Began = 0.0f;
+	const auto BeginFight = [&]()
+	{
+		Began = World->TimeSeconds;
+		for (FScopedFighter* Each : Fighting)
+		{
+			Each->AbilitySystem->NoteHitDealt();
+		}
+		World->TimeSeconds += 0.5f;
+	};
+	const auto FightUntil = [&](float SecondsIn)
+	{
+		while (World->TimeSeconds < Began + SecondsIn - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			for (FScopedFighter* Each : Fighting)
+			{
+				Each->AbilitySystem->NoteHitDealt();
+				Each->AbilitySystem->StepTimedGrants();
+			}
+		}
+	};
+
+	BeginFight();
+	FightUntil(4.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: four and a half seconds in, nothing yet"),
+			  Lost(Wearer), 0.0f, 0.001f);
+	FightUntil(5.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: five and a half seconds in, the first share"),
+			  Lost(Wearer), Share, 0.01f);
+	FightUntil(9.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: nine and a half seconds in, still one share"),
+			  Lost(Wearer), Share, 0.01f);
+	FightUntil(10.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: ten and a half seconds in, the second share"),
+			  Lost(Wearer), Share * 2.0f, 0.01f);
+
+	// COMBAT LAPSES: four seconds with no blow, past the three second lapse.
+	World->TimeSeconds += 4.0f;
+	for (FScopedFighter* Each : Fighting)
+	{
+		Each->AbilitySystem->StepTimedGrants();
+	}
+	if (!TestTrue(TEXT("set-up: four seconds with no blow put the wearer out of combat"),
+				  Wearer.AbilitySystem->SecondsInCombat() < 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: out of combat again, nothing more"),
+			  Lost(Wearer), Share * 2.0f, 0.01f);
+
+	// A SECOND COMBAT COUNTS ITS OWN PERIODS FROM NOUGHT.
+	BeginFight();
+	FightUntil(4.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: four and a half seconds into a second combat, "
+				   "nothing more"),
+			  Lost(Wearer), Share * 2.0f, 0.01f);
+	FightUntil(5.5f);
+	TestEqual(TEXT("You_lose_15_of_your_max_hp_every_5_seconds: five and a half seconds into it, a third share"),
+			  Lost(Wearer), Share * 3.0f, 0.01f);
+	TestEqual(TEXT("control: a fighter with no row, in the same fights, has lost nothing"), Lost(Bare), 0.0f,
+			  0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechScaleTest,
+	"Cataclysm.DotCombatLeech.TheResistanceCapFallsForEachWholeSecondOfUnbrokenLeechingUpToTheRowsCapAndReturnsWhenNothingIsOwed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "While leeching, reduce your max resistances by 1%-3% per second", as `resistance_cap` flat -2 for each
+ * `seconds_leeching`, capped at 10 steps by the row, read through `ResistanceCapOf`, which is what a blow and
+ * the character sheet ask.
+ *
+ * THREE CHARACTERS, each handed the same leech payments and paid out by the real `PayOutStep`: the wearer; one
+ * wearing the same row with no cap, which shows the cap is the row's and what the reading not taken would do;
+ * and the control with no row, whose cap every figure is read against.
+ *
+ * THE WEARER's cap is the control's with nothing owed; the control's half a second into a payment; 6 lower
+ * three and a half seconds in; 20 lower fifteen and a half seconds in, where the uncapped row is 30 lower.
+ * A payment a second keeps something owed throughout, so later hits are shown not to restart the count. Once
+ * everything is paid the cap is the control's again at the same moment. A payment into an energy shield the
+ * wearer does not have is not leeching. A new payment into health starts from nought.
+ *
+ * STANDING: the wearer at the origin, the one with no cap 20 m along X, the control 20 m along Y.
+ */
+bool FCataclysmDotCombatLeechScaleTest::RunTest(const FString&)
+{
+	using namespace CataclysmDotCombatLeechTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Uncapped(World, FVector(20 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter* const Everyone[] = {&Wearer, &Uncapped, &Plain};
+	for (FScopedFighter* Each : Everyone)
+	{
+		Defences(*Each, 0.0f, 0.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
+	}
+	WearOne(Wearer, UCataclysmDamageCalculation::ResistanceCapStat, AResistanceCapRow(2.0f, /*CapSteps=*/10));
+	WearOne(Uncapped, UCataclysmDamageCalculation::ResistanceCapStat, AResistanceCapRow(2.0f, /*CapSteps=*/0));
+
+	World->TimeSeconds = 100.0f;
+	const float PlainCap = ResistanceCapHeldBy(Plain);
+	if (!TestTrue(TEXT("control: a character with no row has a resistance cap with room to lose 30"),
+				  PlainCap >= 30.0f)
+		|| !TestTrue(TEXT("set-up: nobody has an energy shield, and everybody has health"),
+					 Wearer.Get(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()) <= 0.0f
+						 && Wearer.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) > 0.0f))
+	{
+		return false;
+	}
+	const auto Lowered = [PlainCap](const FScopedFighter& Who) { return PlainCap - ResistanceCapHeldBy(Who); };
+
+	// 1. NOTHING OWED.
+	TestEqual(TEXT("with no leech payment owed, the wearer's cap is the control's"), Lowered(Wearer), 0.0f, 0.001f);
+	TestEqual(TEXT("and no time is counted"), Wearer.AbilitySystem->SecondsLeeching(), 0.0f, 0.001f);
+
+	// 2. A PAYMENT INTO HEALTH NOW, and one more each second while the fight lasts, each step paid out as the
+	// game pays it. Read half a second after each whole second.
+	const float Began = World->TimeSeconds;
+	for (FScopedFighter* Each : Everyone)
+	{
+		Each->AbilitySystem->AddLeechPayment(LeechOwedInto(ECataclysmLeechPool::Health));
+	}
+	World->TimeSeconds += 0.5f;
+	const auto LeechUntil = [&](float SecondsIn)
+	{
+		while (World->TimeSeconds < Began + SecondsIn - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			for (FScopedFighter* Each : Everyone)
+			{
+				Each->AbilitySystem->AddLeechPayment(LeechOwedInto(ECataclysmLeechPool::Health));
+				UCataclysmLeech::PayOutStep(Each->Actor, 1.0f);
+			}
+		}
+	};
+	TestEqual(TEXT("half a second into a payment is no whole second: the cap is the control's"), Lowered(Wearer),
+			  0.0f, 0.001f);
+	LeechUntil(3.5f);
+	if (!TestFalse(TEXT("set-up: a payment is still owed three and a half seconds in"),
+				   Wearer.AbilitySystem->GetLeechPayments().IsEmpty()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("three and a half seconds of unbroken leeching lower the cap by three steps of 2"),
+			  Lowered(Wearer), 6.0f, 0.001f);
+	LeechUntil(15.5f);
+	TestEqual(TEXT("fifteen and a half seconds lower it by the row's cap of ten steps, 20, not by 30"),
+			  Lowered(Wearer), 20.0f, 0.001f);
+	TestEqual(TEXT("control: the same row with no cap lowers it by fifteen steps, 30"), Lowered(Uncapped), 30.0f,
+			  0.001f);
+	TestEqual(TEXT("control: a character with no row, leeching the same, keeps its cap"), Lowered(Plain), 0.0f,
+			  0.001f);
+
+	// 3. EVERYTHING PAID. One step longer than any payment has left, and no time passes.
+	for (FScopedFighter* Each : Everyone)
+	{
+		UCataclysmLeech::PayOutStep(Each->Actor, UCataclysmLeech::PayoutSeconds + 0.5f);
+	}
+	if (!TestTrue(TEXT("set-up: nothing is owed to the wearer any more"),
+				  Wearer.AbilitySystem->GetLeechPayments().IsEmpty()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with nothing owed, the cap is the control's again at once"), Lowered(Wearer), 0.0f, 0.001f);
+	TestEqual(TEXT("and so is the uncapped row's"), Lowered(Uncapped), 0.0f, 0.001f);
+
+	// 4. A PAYMENT INTO A POOL THE WEARER DOES NOT HAVE is not leeching, however long it is owed.
+	Wearer.AbilitySystem->AddLeechPayment(LeechOwedInto(ECataclysmLeechPool::EnergyShield));
+	World->TimeSeconds += 5.0f;
+	if (!TestFalse(TEXT("set-up: the payment into the energy shield is still on the list"),
+				   Wearer.AbilitySystem->GetLeechPayments().IsEmpty()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("five seconds owed into an energy shield the wearer does not have lower nothing"),
+			  Lowered(Wearer), 0.0f, 0.001f);
+
+	// 5. A NEW PAYMENT INTO HEALTH STARTS FROM NOUGHT, not from the fifteen seconds before.
+	Wearer.AbilitySystem->AddLeechPayment(LeechOwedInto(ECataclysmLeechPool::Health));
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("half a second into a new payment: nothing yet"), Lowered(Wearer), 0.0f, 0.001f);
+	World->TimeSeconds += 2.0f;
+	TestEqual(TEXT("two and a half seconds into it: two steps of 2"), Lowered(Wearer), 4.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotCombatLeechNamesTest,
+	"Cataclysm.DotCombatLeech.TheTwoConditionsAndTheScaleAreNamedAndEachRefusesACharacterThatCannotBeRead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The three names a sheet may write reach their enumerators, and each judges a hand-made state: the pipeline
+ * alone, with no character. A state nobody filled (the character sheet's) refuses both conditions and counts no
+ * step. `in_combat_for_seconds` compares AT LEAST: 9.99 seconds refuse a value of 10 and 10 meet it; out of
+ * combat (-1) refuses even a value of nought, where the control `in_combat` and this agree. The control for the
+ * scale is the same modifier with no scale, which is worth its plain value.
+ */
+bool FCataclysmDotCombatLeechNamesTest::RunTest(const FString&)
+{
+	ECataclysmStatCondition UnderDot = ECataclysmStatCondition::Always;
+	ECataclysmStatCondition ForSeconds = ECataclysmStatCondition::Always;
+	ECataclysmStatScale Leeching = ECataclysmStatScale::Fixed;
+	if (!TestTrue(TEXT("while_under_damage_over_time is a condition the engine reads"),
+				  UCataclysmStatPipeline::ConditionNamed(TEXT("while_under_damage_over_time"), UnderDot))
+		|| !TestTrue(TEXT("in_combat_for_seconds is a condition the engine reads"),
+					 UCataclysmStatPipeline::ConditionNamed(TEXT("in_combat_for_seconds"), ForSeconds))
+		|| !TestTrue(TEXT("seconds_leeching is a scale the engine reads"),
+					 UCataclysmStatPipeline::ScaleNamed(TEXT("seconds_leeching"), Leeching)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the first name is its enumerator"), UnderDot == ECataclysmStatCondition::WhileUnderDamageOverTime);
+	TestTrue(TEXT("the second name is its enumerator"), ForSeconds == ECataclysmStatCondition::InCombatForSeconds);
+	TestTrue(TEXT("the scale's name is its enumerator"), Leeching == ECataclysmStatScale::PerSecondLeeching);
+	TestFalse(TEXT("under damage over time names a state and takes no value"),
+			  UCataclysmStatPipeline::ConditionTakesAValue(UnderDot));
+	TestTrue(TEXT("in combat for seconds compares its value"), UCataclysmStatPipeline::ConditionTakesAValue(ForSeconds));
+
+	// A STATE NOBODY FILLED.
+	FCataclysmStatConditions Unread;
+	TestFalse(TEXT("an unread character is not under damage over time"),
+			  UCataclysmStatPipeline::ConditionHolds(UnderDot, 0.0f, Unread));
+	TestFalse(TEXT("an unread character has not been in combat for any time, a value of nought included"),
+			  UCataclysmStatPipeline::ConditionHolds(ForSeconds, 0.0f, Unread));
+
+	// UNDER DAMAGE OVER TIME reads its own field, and not the bleed's.
+	FCataclysmStatConditions Carrying;
+	Carrying.bIsUnderDamageOverTime = true;
+	TestTrue(TEXT("a character under damage over time holds the condition"),
+			 UCataclysmStatPipeline::ConditionHolds(UnderDot, 0.0f, Carrying));
+	FCataclysmStatConditions OnlyTheBleedField;
+	OnlyTheBleedField.bIsBleeding = true;
+	TestFalse(TEXT("the bleeding field alone does not hold it: the component fills both"),
+			  UCataclysmStatPipeline::ConditionHolds(UnderDot, 0.0f, OnlyTheBleedField));
+
+	// IN COMBAT FOR SECONDS, at least.
+	FCataclysmStatConditions Fighting;
+	Fighting.SecondsInCombat = 9.99f;
+	if (!TestTrue(TEXT("control: 9.99 seconds into a combat is in combat"),
+				  UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition::InCombat, 0.0f, Fighting)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("9.99 seconds do not meet a value of 10"),
+			  UCataclysmStatPipeline::ConditionHolds(ForSeconds, 10.0f, Fighting));
+	Fighting.SecondsInCombat = 10.0f;
+	TestTrue(TEXT("10 seconds meet a value of 10"), UCataclysmStatPipeline::ConditionHolds(ForSeconds, 10.0f, Fighting));
+	Fighting.SecondsInCombat = -1.0f;
+	TestFalse(TEXT("out of combat refuses a value of 10"),
+			  UCataclysmStatPipeline::ConditionHolds(ForSeconds, 10.0f, Fighting));
+
+	// THE SCALE: whole seconds, and the row's cap.
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::Flat;
+	Row.Value = -2.0f;
+	FCataclysmStatConditions LeechingFor;
+	LeechingFor.SecondsLeeching = 3.9f;
+	if (!TestEqual(TEXT("control: with no scale the modifier is worth its plain value"),
+				   UCataclysmStatPipeline::ScaledValue(Row, LeechingFor), -2.0f, 0.001f))
+	{
+		return false;
+	}
+	Row.Scale = ECataclysmStatScale::PerSecondLeeching;
+	Row.ScaleStep = 1.0f;
+	TestEqual(TEXT("3.9 seconds of leeching are three whole steps"),
+			  UCataclysmStatPipeline::ScaledValue(Row, LeechingFor), -6.0f, 0.001f);
+	TestEqual(TEXT("an unread character counts no step"), UCataclysmStatPipeline::ScaledValue(Row, Unread), 0.0f,
+			  0.001f);
+	LeechingFor.SecondsLeeching = 15.0f;
+	TestEqual(TEXT("with no cap on the row, fifteen seconds are fifteen steps"),
+			  UCataclysmStatPipeline::ScaledValue(Row, LeechingFor), -30.0f, 0.001f);
+	Row.ScaleMaxSteps = 10;
+	TestEqual(TEXT("with the row's cap of 10, fifteen seconds are ten steps"),
+			  UCataclysmStatPipeline::ScaledValue(Row, LeechingFor), -20.0f, 0.001f);
 	return true;
 }
 

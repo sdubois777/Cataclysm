@@ -118,8 +118,14 @@ INCREASE = re.compile(
 #: `minus` ADDED ON 2026-09-25, a labelled judgement recorded in
 #: docs/DECISIONS.md, for "Minus 2-4 to your max minion count", issue #1833.
 #: It widens the MEANING, as `drain` did: "minus 2" is 2 taken away.
+#:
+#: `losing` ADDED ON 2026-10-07, a labelled judgement recorded in
+#: docs/DECISIONS.md, for "After 10 seconds in combat you begin losing 2%-4%
+#: of your maximum HP per second". It widens a TENSE and not the meaning:
+#: `lose` was already here. Swept first: that sentence is the only one of the
+#: two enchantment tables that uses the word, and it had no row on that day.
 TAKING = re.compile(
-    r"\b(less|reduce|reduces|reduced|lose|slower|shorter|halved|slowed"
+    r"\b(less|reduce|reduces|reduced|lose|losing|slower|shorter|halved|slowed"
     r"|drain|drains|drained|ignore|ignores|minus)\b",
     re.IGNORECASE)
 
@@ -1643,6 +1649,22 @@ def test_a_sentence_that_drains_takes_something_away():
         "Dodging an attack costs 5%-10% of your class resource")
     assert not takes_something_away(
         "class_resource", "Dodging an attack blocks your class drainpipe")
+
+
+def test_a_sentence_that_says_losing_takes_something_away():
+    """The tense added on 2026-10-07, on made-up sentences for the reason the
+    test above gives. The last two assertions are the control: the word has
+    to be what admits the sentence, and it has to be the whole word."""
+    assert takes_something_away(
+        "", "After 10 seconds in combat you begin losing 2%-4% of your "
+            "maximum HP per second", "health")
+    assert takes_something_away("", "You lose 15% of your max hp every 5 seconds")
+    assert not takes_something_away(
+        "", "After 10 seconds in combat you begin paying 2%-4% of your "
+            "maximum HP per second", "health")
+    assert not takes_something_away(
+        "", "After 10 seconds in combat you begin closing 2%-4% of your "
+            "maximum HP per second", "health")
 
 
 def test_the_tables_state_the_measured_number_of_ranges(enchantments):

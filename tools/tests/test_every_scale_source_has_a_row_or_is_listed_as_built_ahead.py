@@ -113,7 +113,10 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: session. `docs/DECISIONS.md` of that day gives the three sentences they are
 #: for and the shape of each row. Each leaves with its rows.
 #: THE TWO LEFT with their three rows, issue #2284, and the list is empty again.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: ONE JOINED THE SAME DAY, `seconds_leeching`, for "While leeching,
+#: reduce your max resistances by 1%-3% per second", on the same terms. It leaves
+#: with its row.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"seconds_leeching"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

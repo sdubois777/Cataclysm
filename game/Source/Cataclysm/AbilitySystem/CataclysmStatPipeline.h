@@ -1559,6 +1559,43 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetStandsInYourZone
 		UMETA(DisplayName = "Target Stands In Your Zone"),
+
+	/**
+	 * The character is carrying a damage over time effect, of any kind and laid
+	 * by anybody, itself included. Ruled 2026-10-07 for "Gain 50%-100% increased
+	 * damage while under the effect of a DoT".
+	 *
+	 * WHAT MAKES IT TRUE IS A TAG UNDER `Keyword.DoT` ON THE CHARACTER, the
+	 * question `WhileBleeding` asks of one child of that parent, asked of the
+	 * parent. `UCataclysmSkillEffects::ApplyDamageOverTime` grants its effect's
+	 * tag to the target for as long as the effect runs, so a bleed, a burn, a
+	 * poison, a disease, a necrosis and a void splinter all answer yes, and so
+	 * does the bleed the Masochist's conversion lays on its own character.
+	 *
+	 * WHAT DOES NOT MAKE IT TRUE: damage that only ARRIVES marked as damage over
+	 * time. A ground zone's sweep and most floor hazards deal a blow on a clock
+	 * with `FCataclysmHitDelivery::bIsDamageOverTime` set, and leave no effect
+	 * and no tag on whoever stands in them. `docs/DECISIONS.md`, 2026-10-07,
+	 * lists that for the owner.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 * Read from `FCataclysmStatConditions::bIsUnderDamageOverTime`.
+	 */
+	WhileUnderDamageOverTime
+		UMETA(DisplayName = "While Under Damage Over Time"),
+
+	/**
+	 * The character's current combat has lasted at least `ConditionValue`
+	 * seconds. Ruled 2026-10-07 for "After 10 seconds in combat you begin losing
+	 * 2%-4% of your maximum HP per second", which is a value of 10.
+	 *
+	 * THE READING `InCombat` TESTS, COMPARED WITH A NUMBER, as
+	 * `StationaryForSeconds` compares the reading `WhileStationary` tests. AT
+	 * LEAST: ten seconds of combat meets a value of ten. Out of combat the
+	 * reading is negative and refuses, and a new combat starts it from nought.
+	 */
+	InCombatForSeconds
+		UMETA(DisplayName = "In Combat For Seconds"),
 };
 
 /**
@@ -2249,6 +2286,23 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerGadgetActive
 		UMETA(DisplayName = "Per Gadget Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` seconds the character has been leeching
+	 * without a break. Ruled 2026-10-07 for "While leeching, reduce your max
+	 * resistances by 1%-3% per second", a step of 1.
+	 *
+	 * "LEECHING" IS WHAT `PerLeechPoolInFlight` COUNTS, ASKED AS YES OR NO: a
+	 * payment still owed into a pool the character has, health, mana or energy
+	 * shield alike. The clock starts when the first such payment is owed and
+	 * returns to nought when none is; the next payment starts it from nought.
+	 *
+	 * THE SCALE HOLDS NO CAP OF ITS OWN. The ruling caps the sentence at 10
+	 * seconds, and its row states that in `ScaleMaxSteps`, the way every capped
+	 * scale does. Read from `FCataclysmStatConditions::SecondsLeeching`.
+	 */
+	PerSecondLeeching
+		UMETA(DisplayName = "Per Second Leeching"),
 };
 
 /**
@@ -2706,6 +2760,16 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bIsBleeding = false;
 
+	/**
+	 * Whether the character carries any tag under `Keyword.DoT`, the parent of
+	 * the bleed tag the reading above asks for. Ruled 2026-10-07. False is the
+	 * only "nothing" it needs, for the reason `bIsBleeding` gives. See
+	 * `ECataclysmStatCondition::WhileUnderDamageOverTime` for what does and does
+	 * not set it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsUnderDamageOverTime = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 DebuffsCarried = 0;
 
@@ -3063,6 +3127,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 LeechPoolsInFlight = 0;
+
+	/**
+	 * How long, in seconds, the character has had a leech payment owed into a
+	 * pool it has without a break, or nought when none is owed. Ruled
+	 * 2026-10-07. See `ECataclysmStatScale::PerSecondLeeching`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsLeeching = 0.0f;
 
 	/**
 	 * How many passive points the character has spent, or -1 for one with no
@@ -4483,7 +4555,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixty-sixth, which is the drift that put the passive tree eight
+	 * adds a sixty-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4492,7 +4564,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-NINE OF THE SIXTY-FIVE COMPARE NOTHING. They are the case labels
+	 * THIRTY OF THE SIXTY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

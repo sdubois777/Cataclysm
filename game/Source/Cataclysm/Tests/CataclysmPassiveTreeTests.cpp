@@ -1663,6 +1663,9 @@ namespace CataclysmPassiveConditionTest
 	bool ComparesNothing(const FString& Name)
 	{
 		return Name == TEXT("while_bleeding")
+			// RULED 2026-10-07: under any damage over time. A state, as the
+			// name above is, so no value.
+			|| Name == TEXT("while_under_damage_over_time")
 			|| Name == TEXT("class_resource_at_maximum")
 			|| Name == TEXT("hit_is_melee_attack")
 			|| Name == TEXT("hit_is_ranged_attack")

@@ -4679,3 +4679,147 @@ class TestRangesThatRollDown:
         """The wait sentence states one range, so only `1` names one."""
         with pytest.raises(gen.DataError, match="Rolls Down"):
             gen.ranges_rolling_down(cell, self.WAIT_WORDS, 7)
+
+
+class TestTheConditionsAndTheScaleOfTheSeventhOfOctober:
+    """`while_under_damage_over_time`, `in_combat_for_seconds` and
+    `seconds_leeching`, ruled 2026-10-07 and built ahead of their rows. Each
+    row here is the shape `docs/DECISIONS.md` of that day gives the session
+    that writes rows, on made-up enchantment sheets holding the real sentence.
+    """
+
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = ["Positives", "Type", "Weight", "Column 4", None,
+              "Negatives", "Type", "Weight", "Tags"]
+    DOT = "Gain 50%-100% increased damage while under the effect of a DoT"
+    DRAIN = ("After 10 seconds in combat you begin losing 2%-4% of your maximum "
+             "HP per second")
+    LEECH = "While leeching, reduce your max resistances by 1%-3% per second"
+
+    def out(self, tmp_path, side, words, columns):
+        values = {"Enchantment": gen.row_name(side, words[:48]), "Effect": words}
+        values.update(columns)
+        row = [values.get(column) for column in self.HEADER]
+        if side == "Positive":
+            sentences = [words, "Generic", 3, "Keyword.DoT.Generic", None,
+                         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"]
+        else:
+            sentences = ["Double your energy shield", "Generic", 1,
+                         "Stat.Defense.EnergyShield", None,
+                         words, "Generic", 3, "Stat.Defense.Life"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "seventh.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    DOT_ROW = {"Stat": "attack_damage", "Value Kind": "increased",
+               "Value Low": 50, "Value High": 100,
+               "Condition": "while_under_damage_over_time"}
+    DRAIN_ROW = {"Value Low": -2, "Value High": -4, "Action": "health",
+                 "Action Event": "every_seconds", "Fraction Of": "maximum",
+                 "Every Seconds": 1, "Condition": "in_combat_for_seconds",
+                 "Condition Value": 10}
+    LEECH_ROW = {"Stat": "resistance_cap", "Value Kind": "flat",
+                 "Value Low": -1, "Value High": -3,
+                 "Scale": "seconds_leeching", "Scale Step": 1,
+                 "Scale Max Steps": 10}
+
+    @pytest.mark.parametrize("stat", ["attack_damage", "spell_damage"])
+    def test_the_damage_row_is_carried_through_and_its_asker_can_judge_it(
+            self, tmp_path, stat):
+        out = self.out(tmp_path, "Positive", self.DOT, dict(self.DOT_ROW, Stat=stat))
+        assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Condition"],
+                out[0]["ConditionValue"]) == (
+            stat, "increased", 50.0, 100.0, "while_under_damage_over_time", 0.0)
+        # IT ASKS ONLY THE WEARER'S OWN STATE, which every asker hands over.
+        assert gen.what_a_condition_needs("while_under_damage_over_time") == ""
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_a_value_beside_the_damage_over_time_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            self.out(tmp_path, "Positive", self.DOT,
+                     dict(self.DOT_ROW, **{"Condition Value": 1}))
+
+    def test_the_drain_is_carried_through_on_the_clock_with_its_wait(self, tmp_path):
+        out = self.out(tmp_path, "Negative", self.DRAIN, self.DRAIN_ROW)
+        assert (out[0]["Stat"], out[0]["Action"], out[0]["ActionEvent"],
+                out[0]["FractionOf"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["EverySeconds"], out[0]["Condition"],
+                out[0]["ConditionValue"]) == (
+            "", "health", "every_seconds", "maximum", -2.0, -4.0, 1.0,
+            "in_combat_for_seconds", 10.0)
+        # AN ACTION ROW'S CONDITION IS JUDGED WHERE THE ACTION FIRES, so the
+        # check on stats that are asked for has nothing to say about it.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_drains_wait_must_be_stated_and_inside_a_minute(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Condition Value"):
+            self.out(tmp_path, "Negative", self.DRAIN,
+                     dict(self.DRAIN_ROW, **{"Condition Value": None}))
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, "Negative", self.DRAIN,
+                     dict(self.DRAIN_ROW, **{"Condition Value": 61}))
+
+    def test_the_leech_row_is_carried_through_with_its_cap_and_has_an_asker(
+            self, tmp_path):
+        out = self.out(tmp_path, "Negative", self.LEECH, self.LEECH_ROW)
+        assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Scale"], out[0]["ScaleStep"],
+                out[0]["ScaleMaxSteps"]) == (
+            "resistance_cap", "flat", -1.0, -3.0, "seconds_leeching", 1.0, 10)
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_leech_row_is_refused_without_a_cap_and_accepted_with_one(
+            self, tmp_path):
+        """Ruled 2026-10-07. The scale has no cap of its own, so a row that
+        states none would be uncapped, and is refused. The control is the
+        same row with its cap, which is carried through."""
+        out = self.out(tmp_path, "Negative", self.LEECH, self.LEECH_ROW)
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_leeching", 10)
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
+            self.out(tmp_path, "Negative", self.LEECH,
+                     dict(self.LEECH_ROW, **{"Scale Max Steps": None}))
+
+    def test_another_scale_still_needs_no_cap(self, tmp_path):
+        """The refusal is for the scales listed and no other: the kill
+        counter's row on the same stat states no cap and is carried through."""
+        assert gen.SCALES_THAT_NEED_A_CAP == {"seconds_leeching"}
+        row = dict(self.LEECH_ROW, **{"Scale": "character_kills",
+                                      "Scale Step": 100000,
+                                      "Scale Max Steps": None})
+        out = self.out(tmp_path, "Negative", self.LEECH, row)
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("character_kills", 0)
+
+    def test_the_leech_scale_is_refused_on_a_passive_row(self, tmp_path):
+        """The Passive Effects sheet has no cap column. The control is the
+        same row on a scale that needs none."""
+        passive = TestARowCountingNearbyEnemiesCarriesItsOwnRadius()
+        gen.passive_effects(passive.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "seconds_in_combat", 1, None]]))
+        with pytest.raises(gen.DataError, match="needs a cap in Scale Max Steps"):
+            gen.passive_effects(passive.book(tmp_path, [
+                ["A_node", "armor", "increased", 3,
+                 None, None, "seconds_leeching", 1, None]]))
+
+    def test_a_leech_step_of_nothing_or_past_a_minute_is_refused(self, tmp_path):
+        for step in (0, 61):
+            with pytest.raises(gen.DataError, match="scaling step"):
+                self.out(tmp_path, "Negative", self.LEECH,
+                         dict(self.LEECH_ROW, **{"Scale Step": step}))
+
+    def test_the_resistance_cap_takes_the_scale_and_would_not_take_a_condition(
+            self):
+        """Why sentence three is a scale. `resistance_cap` is asked for with
+        its scaled rows worked out; it is not among the stats listed as asked
+        for under a condition, so the same row written as a condition would be
+        refused. The control is the first line: the scaled row is not."""
+        scaled = [{"Name": "A#1", "Stat": "resistance_cap",
+                   "Scale": "seconds_leeching"}]
+        conditioned = [{"Name": "A#1", "Stat": "resistance_cap",
+                        "Condition": "while_under_damage_over_time"}]
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", scaled) == []
+        problems = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", conditioned)
+        assert len(problems) == 1 and "resistance_cap" in problems[0]
