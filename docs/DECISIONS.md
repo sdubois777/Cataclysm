@@ -55,6 +55,24 @@ are four times, and not twice, four times, eight times.
 **Not tested here:** a real swing of a trap under a worn row; the probe of the entry below measures a swing with
 the first row's shape made by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other six layers of the stack, on `development` 8c44c278. The build, the
+whole suite and the Python of record are in the table of the entry "The Spike Trap carries the tag `Type.Trap`"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 8b40633f | 284 tests performed, 278 succeeded, 6 failed, this layer's among them; 1 of the 10 failed assertions is this layer's |
+| The enchantment assets, regenerated with the editor | 1a56f340 | effect rows 543 to 546 |
+| Whole suite, every asset built | 6ba718d2 | 3325 tests performed, 3325 succeeded, 0 failed |
+
+**The test fails against assets without the tag and passes with them**: its set-up assertion "the spike trap
+carries Type.Trap" was false against the older minion types asset at the first of the three rows, so against
+those assets no row's figure was read. With every asset built the three ratios were 1.6, 1.4 and 3.0.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The generator's list and the wording check are covered by the Python of record.
+
 ---
 
 ## 2026-10-07 — `minion_damage` joins the stats a data row may scale, with the probe that measures its asker; no row authored here
