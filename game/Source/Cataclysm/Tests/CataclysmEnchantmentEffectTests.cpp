@@ -19790,4 +19790,170 @@ bool FCataclysmChargeShareRowsTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: no modifier on that scale is left on either stat"), Left, 0);
 	return true;
 }
+// THE FIRST-HIT AILMENTS ROW, CHRONOMANCER'S SIX-PIECE, AND THE FIRST-HIT STAGGER ROW'S TRIGGER COOLDOWN. Ruled
+// 2026-10-08; the two new rows are as the entry "One status name applies each of the five damage over time
+// ailments" states them. THE TWO NEW ROWS ARE READ OFF THEIR WEARER; that a first hit then leaves the five, and
+// that a death then stuns those near it, are that entry's tests, with the rows made by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstHitAilmentsRowTest,
+	"Cataclysm.Enchantments.TheFirstHitAilmentsRowHandsItsWearerOneStatusActionForAllFiveWithNoTriggerCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your first hit against each enemy applies all your active DoTs instantly".
+ * One row: `apply_status` on `first_hit_dealt`, 100, the status `All DoTs`,
+ * Trigger Cooldown 0. The real row WORN by a real player: it holds exactly one
+ * action on a first hit that names that status, at a chance of 100, and ITS
+ * TRIGGER COOLDOWN IS NOUGHT, which is what lets one swing reach every enemy
+ * it first strikes.
+ */
+bool FCataclysmFirstHitAilmentsRowTest::RunTest(const FString&)
+{
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Positive_Your_first_hit_against_each_enemy_applies_all_yo");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	CataclysmConsecutiveRowTest::FStriker Striker(RowName, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready()))
+	{
+		return false;
+	}
+	int32 Found = 0;
+	FCataclysmPoolAction Row;
+	for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+	{
+		if (Action.Event == FName(TEXT("first_hit_dealt"))
+			&& Action.StatusName.Equals(UCataclysmAbilitySystemComponent::AllDotsStatus, ESearchCase::IgnoreCase))
+		{
+			++Found;
+			Row = Action;
+		}
+	}
+	if (!TestEqual(TEXT("worn: one action on a first hit that names all five damage over time ailments. If none, "
+						"DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+			Found, 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it applies a status at a chance"), Row.ApplyStatus == ECataclysmApplyStatus::Chance);
+	TestEqual(TEXT("the chance is 100"), Row.Percent, 100.0f, 0.001f);
+	TestEqual(TEXT("its trigger cooldown is nought, so each enemy first struck by one swing is reached"),
+		Row.TriggerCooldownSeconds, 0.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChronomancerSixPieceRowTest,
+	"Cataclysm.Enchantments.ChronomancersSixPieceRowHandsItsWearerAStunNearTheDyingAtSixPiecesAndNothingAtFive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while affected
+ * by one of your debuffs, there is a 25% chance for a 'Time-Lock' to occur.
+ * This freezes all nearby enemies for 2 seconds". One row:
+ * `stun_near_the_dying` on `afflicted_death`, chance 25, Stack Seconds 2. The
+ * real set WORN: with six pieces the wearer holds exactly one such action, at
+ * 25 for 2 seconds; with five it holds none.
+ */
+bool FCataclysmChronomancerSixPieceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	const TCHAR* const RowName = TEXT("Positive_Chronomancer_s_Time_Lock_6_Piece_Bonus_When_a");
+	const UDataTable* Positive = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	for (const int32 Pieces : {5, 6})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, RowName, Pieces);
+		int32 Found = 0;
+		FCataclysmPoolAction Row;
+		for (const FCataclysmPoolAction& Action : Wearer.AbilitySystem->GetPoolActions())
+		{
+			if (Action.bStunNearTheDying)
+			{
+				++Found;
+				Row = Action;
+			}
+		}
+		if (Pieces < 6)
+		{
+			TestEqual(TEXT("five pieces: no stun near the dying is held"), Found, 0);
+			continue;
+		}
+		if (!TestEqual(TEXT("six pieces: one stun near the dying is held. If none, DT_EnchantmentEffects may be "
+							"older than the rows: run tools/generate_datatable_assets.py"),
+				Found, 1))
+		{
+			return false;
+		}
+		TestTrue(TEXT("it hangs on the death of an enemy the wearer afflicted"),
+			Row.Event == FName(TEXT("afflicted_death")));
+		TestEqual(TEXT("its chance is 25"), Row.Percent, 25.0f, 0.001f);
+		TestEqual(TEXT("it stuns for 2 seconds"), Row.StackSeconds, 2.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstHitStaggerEachEnemyTest,
+	"Cataclysm.Enchantments.TheFirstHitStaggerRowRollsForEachOfTwoEnemiesFirstStruckInTheSameInstant",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your first hit against each enemy has a 50%-100% chance to stagger them",
+ * a merged row whose Trigger Cooldown went from the default quarter of a
+ * second to nought on 2026-10-08, because the sentence says "each enemy". The
+ * real row WORN by a real player at the top of its roll, 100: its first blows
+ * on TWO creatures, dealt in the same instant with no clock run between them,
+ * stagger BOTH. Before the change the second, struck inside the quarter second,
+ * was not staggered and had then been struck.
+ */
+bool FCataclysmFirstHitStaggerEachEnemyTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	const TCHAR* const RowName = TEXT("Positive_Your_first_hit_against_each_enemy_has_a_50_100");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	CataclysmConsecutiveRowTest::FStriker Striker(RowName, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	const FGameplayTag Staggered = UCataclysmSkillEffects::StaggeredTag();
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the first blow on the first creature lands"),
+			Blow(Striker, Striker.First, false, false) > 0.0f)
+		|| !TestTrue(TEXT("set-up: and the first blow on the second, in the same instant, lands"),
+			Blow(Striker, Striker.Second, false, false) > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: the first creature struck is staggered"), Carries(Striker.First, Staggered));
+	TestTrue(TEXT("the second, first struck in the same instant, is staggered too. If not, "
+				  "DT_EnchantmentEffects may be older than the row's trigger cooldown: "
+				  "run tools/generate_datatable_assets.py"),
+		Carries(Striker.Second, Staggered));
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
