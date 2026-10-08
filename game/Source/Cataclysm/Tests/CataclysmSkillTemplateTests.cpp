@@ -26500,4 +26500,929 @@ bool FCataclysmBlowDelayBelowNoughtTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Two defences that are not on the defender's own sheet. Ruled 2026-10-08 under
+// the owner's delegation, for "Enemies with Necrosis have 1%-2% less maximum
+// health" and "Summoned minions inherit 10%-25% of your armor and resistances".
+// Engine only; no row is authored, so every row here is made by hand in the
+// shape `docs/DECISIONS.md` of that day gives.
+//
+// THE FIRST IS A TENTH NUMBER A ROW HANGS ON AN AILMENT,
+// `ailment_max_health_removed`. It is not read where a blow is worked out: the
+// carrier's maximum is written when the number is received, when another
+// applier's replaces it and when the ailment ends
+// (`UCataclysmAbilitySystemComponent::RewriteMaximumHealthForAilments`). A
+// CARRIER HERE HAS 1,000 MAXIMUM HEALTH, so 2% is 20 and every figure is exact
+// in a float. THE NECROSIS IS APPLIED BY HAND with
+// `UCataclysmSkillEffects::ApplyDamageOverTime`, ten seconds at a hundredth of
+// a point a tick, so its own ticks take a tenth of a point over its whole life
+// and nothing is read as a difference of two large figures.
+//
+// THE SECOND IS ONE STAT, `minion_defences_percent_of_yours`, asked of the
+// SUMMONER where `UCataclysmDamageCalculation::Resolve` takes a defender's
+// armour and its resistance. A BLOW IS A REAL ONE: `ApplyHit` from a fighter,
+// resolved by the minion's own attribute set. WHAT IT SHOULD TAKE IS NEVER
+// WORKED OUT FROM THE ARMOUR FORMULA HERE: it is the share a fighter holding a
+// quarter of the summoner's armour takes of what a fighter with none takes,
+// from the same blow, so the difficulty tier of the test world does not enter.
+// Every reading is a ratio against a control minion whose summoner has no row.
+//
+// WHERE THE ACTORS STAND is said at the top of each test; no two are within a
+// metre of each other and nobody swings. ONE TEST RUNS THE CLOCK, to 10.5
+// seconds, half a second past the moment the Necrosis ends.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDefenderStatsTest
+{
+	using namespace CataclysmHitCancelsTest;
+
+	/** What a carrier of the Necrosis holds: a maximum on which 2% and 5% are whole numbers. */
+	constexpr float CarrierHealth = 1000.0f;
+
+	/** What a minion and a fighter struck here hold, so that no blow kills and none is cut short by the health left. */
+	constexpr float SturdyHealth = 100000.0f;
+
+	/** The summoner's armour. A quarter of it is 800, which halves a blow at the first difficulty tier. */
+	constexpr float SummonerArmour = 3200.0f;
+
+	/** The share the hand-made row gives, the top of the sentence's range. */
+	constexpr float SharePercent = 25.0f;
+
+	/** An ailment's tag, asked as the game asks for it. Invalid before the table loads. */
+	FGameplayTag AilmentTag(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	FGameplayTag NecrosisTag() { return AilmentTag(TEXT("Keyword.DoT.Necrosis")); }
+
+	/** The row the sentence makes: this percentage of maximum health, hung on this ailment. */
+	FCataclysmPoolAction AMaxHealthRow(const FGameplayTag& Ailment, float Percent)
+	{
+		FCataclysmPoolAction Row;
+		Row.Rider = ECataclysmAilmentRider::MaxHealthRemoved;
+		Row.Ailment = Ailment;
+		Row.Percent = Percent;
+		return Row;
+	}
+
+	/** Wear that row for Necrosis and nothing else. */
+	void WearTheMaxHealthRow(FScopedFighter& Who, float Percent)
+	{
+		Who.AbilitySystem->SetPoolActions({AMaxHealthRow(NecrosisTag(), Percent)});
+	}
+
+	/** Give a fighter this maximum health and this much of it. The maximum first, because the clamp on health reads it. */
+	void GiveHealth(FScopedFighter& Who, float Maximum, float Health)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Maximum);
+		Who.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+	}
+
+	float MaxHealthOf(const FScopedFighter& Who)
+	{
+		return Who.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+
+	/**
+	 * `By` applies ten seconds of an ailment to `Whom`, as the game applies one.
+	 * At a hundredth of a point a tick unless told otherwise; an application
+	 * stating more than the one running replaces it, and one stating the same
+	 * only refreshes it. Not scaled by the applier, so its stats do not enter.
+	 */
+	bool Afflict(AActor* By, AActor* Whom, const FGameplayTag& Ailment, float DamageATick = 0.01f)
+	{
+		return UCataclysmSkillEffects::ApplyDamageOverTime(By, Whom, DamageATick, /*DurationSeconds=*/10.0f,
+			Ailment, /*bScalesWithInstigator=*/false);
+	}
+
+	/** The row the minion sentence makes: this percentage, flat, with no required tags. */
+	FCataclysmStatModifier AShareRow(float Percent)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Percent;
+		return Row;
+	}
+
+	/** Wear that row and nothing else. */
+	void WearTheShare(FScopedFighter& Who, float Percent = SharePercent)
+	{
+		WearOne(Who, UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat, AShareRow(Percent));
+	}
+
+	/**
+	 * A minion of this type for this summoner, standing here, with health
+	 * enough that no blow in these tests kills it. Null when the type row was
+	 * not found, because a minion without its row is a different creature.
+	 */
+	ACataclysmMinion* SturdyMinion(FScopedFighter& Summoner, const FVector& Where, const TCHAR* Type = TEXT("Imp"))
+	{
+		ACataclysmMinion* Made = ACataclysmMinion::Spawn(
+			Summoner.Actor, Where, /*Lifetime=*/60.0f, /*bBurns=*/false, Type);
+		UAbilitySystemComponent* System = Made ? UCataclysmTargeting::AbilitySystemOf(Made) : nullptr;
+		if (!System || Made->TypeName != FString(Type))
+		{
+			return nullptr;
+		}
+		Made->SetOwner(Summoner.Actor);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), SturdyHealth);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), SturdyHealth);
+		return Made;
+	}
+
+	/** A fighter with health enough that no blow here is cut short by what it has left. */
+	void MakeSturdy(FScopedFighter& Who)
+	{
+		GiveHealth(Who, SturdyHealth, SturdyHealth);
+	}
+
+	/**
+	 * What one blow of the thrower's weapon damage takes from this actor's
+	 * health, through the game's own hit path, with no critical strike. Of this
+	 * damage type, or untyped, which is a blow that meets armour and no typed
+	 * resistance.
+	 */
+	float TakenFrom(const FScopedFighter& From, AActor* To, FName DamageType = NAME_None)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 0.0f;
+		Delivery.DamageType = DamageType;
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From.Actor, To, 100.0f, FGameplayTagContainer(), Delivery, &Resolved);
+		return Resolved.DealtToHealth;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsNecrosisReceivedTest,
+	"Cataclysm.DefenderStats.ANecrosisWithTheRowLowersItsCarriersMaximumHealthAndItsHealthToIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies with Necrosis have 1%-2% less maximum health", with a row made by
+ * hand at 2. Ruled 2026-10-08, M9 and M10. An enemy at full health given the
+ * wearer's Necrosis has a maximum 2% lower and its health at that maximum. An
+ * enemy given the same Necrosis by a character with no such row is unchanged.
+ *
+ * STANDING: the wearer at the origin, the plain applier 3 m along X, the
+ * wearer's enemy 5 m along Y and the plain applier's enemy 8 m along Y.
+ */
+bool FCataclysmDefenderStatsNecrosisReceivedTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	if (!TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(3 * M, 0, 0));
+	FScopedFighter Enemy(World, FVector(0, 5 * M, 0));
+	FScopedFighter Control(World, FVector(0, 8 * M, 0));
+	GiveHealth(Enemy, CarrierHealth, CarrierHealth);
+	GiveHealth(Control, CarrierHealth, CarrierHealth);
+	WearTheMaxHealthRow(Wearer, 2.0f);
+
+	if (!TestTrue(TEXT("set-up: the character with no row gives its enemy a Necrosis"),
+			Afflict(Plain.Actor, Control.Actor, Necrosis))
+		|| !TestTrue(TEXT("set-up: and that enemy carries it"),
+			UCataclysmSkillEffects::HasTag(Control.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a Necrosis from a character with no row leaves the maximum where it was"),
+		MaxHealthOf(Control), CarrierHealth, 0.001f);
+	TestEqual(TEXT("control: and the health"), Control.Health(), CarrierHealth, 0.001f);
+
+	if (!TestTrue(TEXT("set-up: the wearer gives its enemy a Necrosis"), Afflict(Wearer.Actor, Enemy.Actor, Necrosis))
+		|| !TestTrue(TEXT("set-up: and that enemy carries it"), UCataclysmSkillEffects::HasTag(Enemy.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Necrosis from the wearer of the row at 2 leaves a maximum of 980, 2% under 1,000"),
+		MaxHealthOf(Enemy), 980.0f, 0.001f);
+	TestEqual(TEXT("and the enemy's health, which was full, is brought down to that maximum"),
+		Enemy.Health(), 980.0f, 0.001f);
+	TestEqual(TEXT("and the carrier reports 2% of its maximum held off it"),
+		Enemy.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 2.0f, 0.001f);
+	TestEqual(TEXT("control: the other enemy reports nothing held off it"),
+		Control.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsNecrosisHurtCarrierTest,
+	"Cataclysm.DefenderStats.AHurtCarriersHealthIsNotMovedAndItsMaximumIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M10's other half: on an enemy already below the lowered maximum the row
+ * changes only what a share of its health means. An enemy at 500 of 1,000 is
+ * left at 500, with a maximum of 980; one at 990 of 1,000, between the two
+ * maximums, is brought to 980.
+ *
+ * STANDING: the wearer at the origin, the enemy at half health 5 m along Y and
+ * the one at 990 8 m along Y.
+ */
+bool FCataclysmDefenderStatsNecrosisHurtCarrierTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	if (!TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Hurt(World, FVector(0, 5 * M, 0));
+	FScopedFighter Grazed(World, FVector(0, 8 * M, 0));
+	GiveHealth(Hurt, CarrierHealth, 500.0f);
+	GiveHealth(Grazed, CarrierHealth, 990.0f);
+	WearTheMaxHealthRow(Wearer, 2.0f);
+	if (!TestEqual(TEXT("set-up: the hurt enemy holds 500 before anything is applied"), Hurt.Health(), 500.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and the grazed one 990"), Grazed.Health(), 990.0f, 0.001f))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the wearer gives both a Necrosis"),
+			Afflict(Wearer.Actor, Hurt.Actor, Necrosis) && Afflict(Wearer.Actor, Grazed.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the hurt enemy's maximum is 980"), MaxHealthOf(Hurt), 980.0f, 0.001f);
+	TestEqual(TEXT("and its health is the 500 it had: nothing was taken from it"), Hurt.Health(), 500.0f, 0.001f);
+	TestEqual(TEXT("the grazed enemy's maximum is 980 too"), MaxHealthOf(Grazed), 980.0f, 0.001f);
+	TestEqual(TEXT("and its health, which stood above that, is brought down to it and no further"),
+		Grazed.Health(), 980.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsNecrosisEndedTest,
+	"Cataclysm.DefenderStats.WhenTheNecrosisEndsTheMaximumReturnsAndTheHealthIsNotGivenBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M9 and M10 at the ailment's end, by both routes. One enemy's Necrosis runs
+ * out after its ten seconds; another's is taken off it. Each has its maximum
+ * back at exactly the 1,000 it was, compared as equal and not within a
+ * tolerance, and each keeps the health the lowered maximum left it: 980 for
+ * the one whose Necrosis was removed before a tick, and between 979 and 980
+ * for the one whose ten ticks of a hundredth of a point also landed.
+ *
+ * THE CLOCK IS RUN TO 10.5 SECONDS, half a second past the end.
+ *
+ * STANDING: the wearer at the origin, the enemy whose Necrosis runs out 5 m
+ * along Y and the one it is taken off 8 m along Y.
+ */
+bool FCataclysmDefenderStatsNecrosisEndedTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	if (!TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Timed(World, FVector(0, 5 * M, 0));
+	FScopedFighter Cleared(World, FVector(0, 8 * M, 0));
+	GiveHealth(Timed, CarrierHealth, CarrierHealth);
+	GiveHealth(Cleared, CarrierHealth, CarrierHealth);
+	WearTheMaxHealthRow(Wearer, 2.0f);
+	if (!TestTrue(TEXT("set-up: the wearer gives both a Necrosis"),
+			Afflict(Wearer.Actor, Timed.Actor, Necrosis) && Afflict(Wearer.Actor, Cleared.Actor, Necrosis))
+		|| !TestEqual(TEXT("set-up: the first enemy's maximum was lowered to 980"), MaxHealthOf(Timed), 980.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and the second's"), MaxHealthOf(Cleared), 980.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// TAKEN OFF, before any tick.
+	if (!TestEqual(TEXT("set-up: one Necrosis is taken off the second enemy"),
+			UCataclysmSkillEffects::RemoveEffectsGranting(Cleared.Actor, Necrosis), 1)
+		|| !TestFalse(TEXT("set-up: and it no longer carries one"),
+			UCataclysmSkillEffects::HasTag(Cleared.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("removed: the maximum is exactly the 1,000 it was"), MaxHealthOf(Cleared) == CarrierHealth);
+	TestEqual(TEXT("removed: and the health is the 980 the lowered maximum left, not given back"),
+		Cleared.Health(), 980.0f, 0.001f);
+	TestEqual(TEXT("removed: and nothing is reported held off the maximum"),
+		Cleared.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 0.0f, 0.001f);
+
+	// RUN OUT, at ten seconds.
+	CataclysmTestWorld::RunClock(World, 10.5f);
+	if (!TestFalse(TEXT("set-up: after 10.5 seconds the first enemy's Necrosis has ended"),
+			UCataclysmSkillEffects::HasTag(Timed.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("by time: the maximum is exactly the 1,000 it was"), MaxHealthOf(Timed) == CarrierHealth);
+	TestTrue(TEXT("by time: the health is not given back; it is at most the 980 the lowered maximum left"),
+		Timed.Health() <= 980.0f);
+	TestTrue(TEXT("by time: and no less than that but for the tenth of a point its ticks took"),
+		Timed.Health() > 979.0f);
+	TestEqual(TEXT("by time: and nothing is reported held off the maximum"),
+		Timed.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsNecrosisReplacedTest,
+	"Cataclysm.DefenderStats.ASecondAppliersNumberReplacesTheFirstsAndTheTwoDoNotAdd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M11: one stack and one applier. The first wearer's row is 2 and the second's
+ * is 5. The second's Necrosis on an enemy carrying the first's leaves a maximum
+ * of 950, the unlowered 1,000 less 5%: not 931, which is 5% off the 980, and
+ * not 930, which is both. The first applying again puts it at 980, and the
+ * health the 5% took is not given back. The first then takes its row off and
+ * applies again, and the maximum is the 1,000 it was.
+ *
+ * STANDING: the first wearer at the origin, the second 3 m along X, the enemy
+ * 5 m along Y.
+ */
+bool FCataclysmDefenderStatsNecrosisReplacedTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	if (!TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter First(World, FVector::ZeroVector);
+	FScopedFighter Second(World, FVector(3 * M, 0, 0));
+	FScopedFighter Enemy(World, FVector(0, 5 * M, 0));
+	GiveHealth(Enemy, CarrierHealth, CarrierHealth);
+	WearTheMaxHealthRow(First, 2.0f);
+	WearTheMaxHealthRow(Second, 5.0f);
+
+	if (!TestTrue(TEXT("set-up: the first wearer gives the enemy a Necrosis"),
+			Afflict(First.Actor, Enemy.Actor, Necrosis))
+		|| !TestEqual(TEXT("set-up: and its maximum is 980"), MaxHealthOf(Enemy), 980.0f, 0.001f))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the second wearer applies its Necrosis to the same enemy"),
+			Afflict(Second.Actor, Enemy.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the second's 5 replaces the first's 2: the maximum is 950, the unlowered 1,000 less 5%"),
+		MaxHealthOf(Enemy), 950.0f, 0.001f);
+	TestEqual(TEXT("and the carrier reports 5 held off, not 7"),
+		Enemy.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 5.0f, 0.001f);
+	TestEqual(TEXT("and its health is brought down to the new maximum"), Enemy.Health(), 950.0f, 0.001f);
+
+	if (!TestTrue(TEXT("set-up: the first wearer applies its Necrosis again"),
+			Afflict(First.Actor, Enemy.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the first's 2 replaces the second's 5: the maximum is 980 again"),
+		MaxHealthOf(Enemy), 980.0f, 0.001f);
+	TestEqual(TEXT("and the health the 5% took is not given back"), Enemy.Health(), 950.0f, 0.001f);
+
+	// THE ROW TAKEN OFF: its wearer's next application takes its number down.
+	First.AbilitySystem->SetPoolActions({});
+	if (!TestTrue(TEXT("set-up: the first, its row taken off, applies its Necrosis again"),
+			Afflict(First.Actor, Enemy.Actor, Necrosis))
+		|| !TestTrue(TEXT("set-up: and the enemy still carries a Necrosis"),
+			UCataclysmSkillEffects::HasTag(Enemy.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("with its applier's row gone the maximum is exactly the 1,000 it was"),
+		MaxHealthOf(Enemy) == CarrierHealth);
+	TestEqual(TEXT("and the health is still not given back"), Enemy.Health(), 950.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsNecrosisRefreshedTest,
+	"Cataclysm.DefenderStats.ARefreshOfANecrosisAlreadyCarriedLowersNothingASecondTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The point the ruling left to be settled by test: a refresh does not lower
+ * health a second time. The enemy is healed to 970 after the first application,
+ * so that a maximum lowered a second time, to 960.4, would be seen in its
+ * health as well as in its maximum.
+ *
+ * BOTH WAYS THE GAME TAKES A SECOND APPLICATION. One stating the same damage as
+ * the one running only refreshes it. One stating more replaces it: the running
+ * effect is taken off and a new one put on, so the ailment's tag goes and comes
+ * back, and the maximum is returned and lowered again within the one call.
+ *
+ * STANDING: the wearer at the origin, the enemy 5 m along Y.
+ */
+bool FCataclysmDefenderStatsNecrosisRefreshedTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	if (!TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(0, 5 * M, 0));
+	GiveHealth(Enemy, CarrierHealth, CarrierHealth);
+	WearTheMaxHealthRow(Wearer, 2.0f);
+	if (!TestTrue(TEXT("set-up: the wearer gives the enemy a Necrosis"), Afflict(Wearer.Actor, Enemy.Actor, Necrosis))
+		|| !TestEqual(TEXT("set-up: its maximum is 980"), MaxHealthOf(Enemy), 980.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and its health was brought down to 980"), Enemy.Health(), 980.0f, 0.001f))
+	{
+		return false;
+	}
+	Enemy.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 970.0f);
+	if (!TestEqual(TEXT("set-up: the enemy is put at 970, under its lowered maximum"), Enemy.Health(), 970.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE SAME DAMAGE AGAIN: the running effect stands and is refreshed.
+	if (!TestTrue(TEXT("set-up: the wearer applies the same Necrosis again"),
+			Afflict(Wearer.Actor, Enemy.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a refresh leaves the maximum at 980; it is not lowered a second time to 960.4"),
+		MaxHealthOf(Enemy), 980.0f, 0.001f);
+	TestEqual(TEXT("and the health at the 970 it had"), Enemy.Health(), 970.0f, 0.001f);
+
+	// A STRONGER ONE: the running effect is replaced.
+	if (!TestTrue(TEXT("set-up: the wearer applies a stronger Necrosis, which replaces the one running"),
+			Afflict(Wearer.Actor, Enemy.Actor, Necrosis, /*DamageATick=*/0.02f))
+		|| !TestTrue(TEXT("set-up: and the enemy carries a Necrosis"),
+			UCataclysmSkillEffects::HasTag(Enemy.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a replacement leaves the maximum at 980 too"), MaxHealthOf(Enemy), 980.0f, 0.001f);
+	TestEqual(TEXT("and the health at the 970 it had: the maximum's return gave nothing back, and its lowering took nothing"),
+		Enemy.Health(), 970.0f, 0.001f);
+	TestEqual(TEXT("and the carrier still reports 2 held off"),
+		Enemy.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 2.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsNecrosisBossAndOtherAilmentTest,
+	"Cataclysm.DefenderStats.ABossIsLoweredLikeAnyEnemyAndAnotherAilmentDoesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M12: a boss is not exempt. A creature of the boss rung, whose own maximum is
+ * read back and not assumed because its rarity scales it, has 98% of that
+ * maximum under the wearer's Necrosis and its health at it.
+ *
+ * AND THE ROW NAMES ITS AILMENT. The same wearer's Burn on another enemy
+ * leaves that enemy's maximum where it was.
+ *
+ * STANDING: the wearer at the origin, the enemy that is burned 5 m along Y and
+ * the boss 12 m along Y.
+ */
+bool FCataclysmDefenderStatsNecrosisBossAndOtherAilmentTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	const FGameplayTag Burn = AilmentTag(TEXT("Keyword.DoT.Burn"));
+	if (!TestTrue(TEXT("set-up: the Necrosis and the Burn are tags this build knows"),
+			Necrosis.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Burned(World, FVector(0, 5 * M, 0));
+	GiveHealth(Burned, CarrierHealth, CarrierHealth);
+	WearTheMaxHealthRow(Wearer, 2.0f);
+
+	ACataclysmEnemyCharacter* Boss =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(0, 12 * M, 0), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a creature"), Boss))
+	{
+		return false;
+	}
+	Boss->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Boss->SetHealth(CarrierHealth);
+	const UCataclysmAbilitySystemComponent* BossSystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Boss));
+	if (!TestNotNull(TEXT("set-up: the creature has an ability system of ours"), BossSystem)
+		|| !TestTrue(TEXT("set-up: and it is a boss"), Boss->IsBoss()))
+	{
+		return false;
+	}
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float BossMaximum = BossSystem->GetNumericAttribute(MaxHealth);
+	if (!TestTrue(TEXT("set-up: the boss has a maximum health of its own"), BossMaximum > 1.0f)
+		|| !TestEqual(TEXT("set-up: and is at full health"), BossSystem->GetNumericAttribute(Health) / BossMaximum,
+			1.0f, 0.0001f))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the wearer gives the boss a Necrosis"), Afflict(Wearer.Actor, Boss, Necrosis))
+		|| !TestTrue(TEXT("set-up: and the boss carries it"), UCataclysmSkillEffects::HasTag(Boss, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a boss's maximum is 98% of what it was, as any enemy's is"),
+		BossSystem->GetNumericAttribute(MaxHealth) / BossMaximum, 0.98f, 0.0001f);
+	TestEqual(TEXT("and its health, which was full, is 98% of what it was"),
+		BossSystem->GetNumericAttribute(Health) / BossMaximum, 0.98f, 0.0001f);
+
+	// ANOTHER AILMENT, under the same wearer's row for Necrosis.
+	if (!TestTrue(TEXT("set-up: the wearer burns the other enemy"), Afflict(Wearer.Actor, Burned.Actor, Burn))
+		|| !TestTrue(TEXT("set-up: and that enemy carries the Burn"), UCataclysmSkillEffects::HasTag(Burned.Actor, Burn)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Burn from the wearer of a row for Necrosis leaves the maximum where it was"),
+		MaxHealthOf(Burned), CarrierHealth, 0.001f);
+	TestEqual(TEXT("and the health"), Burned.Health(), CarrierHealth, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsMinionArmourTest,
+	"Cataclysm.DefenderStats.AMinionTakesAQuarterOfItsSummonersArmour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Summoned minions inherit 10%-25% of your armor and resistances", with a row
+ * made by hand at 25. Ruled 2026-10-08, M13 and M14. Two summoners each hold
+ * 3,200 armour and one wears the row. From the same untyped blow the wearer's
+ * imp takes less than the other's, by the share a fighter holding 800 armour
+ * takes of what a fighter holding none takes. A third summoner wears the row
+ * and holds no armour, and its imp takes what the control's takes.
+ *
+ * STANDING: the attacker 20 m along X. The three summoners at the origin, 4 m
+ * and 8 m along Y, each with its imp 2 m along X from it. The two fighters
+ * struck for comparison 12 m and 15 m along Y.
+ */
+bool FCataclysmDefenderStatsMinionArmourTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayAttribute Armour = UCataclysmCombatAttributeSet::GetArmorAttribute();
+
+	FScopedFighter Attacker(World, FVector(20 * M, 0, 0));
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(0, 4 * M, 0));
+	FScopedFighter Unarmoured(World, FVector(0, 8 * M, 0));
+	FScopedFighter Quarter(World, FVector(0, 12 * M, 0));
+	FScopedFighter Bare(World, FVector(0, 15 * M, 0));
+	Plain.Set(Armour, SummonerArmour);
+	Wearer.Set(Armour, SummonerArmour);
+	WearTheShare(Wearer);
+	WearTheShare(Unarmoured);
+	Quarter.Set(Armour, SummonerArmour * SharePercent / 100.0f);
+	MakeSturdy(Quarter);
+	MakeSturdy(Bare);
+
+	ACataclysmMinion* PlainImp = SturdyMinion(Plain, FVector(2 * M, 0, 0));
+	ACataclysmMinion* WearerImp = SturdyMinion(Wearer, FVector(2 * M, 4 * M, 0));
+	ACataclysmMinion* UnarmouredImp = SturdyMinion(Unarmoured, FVector(2 * M, 8 * M, 0));
+	if (!TestTrue(TEXT("set-up: three imps from the Imp row. If none, DT_MinionTypes may be missing: run "
+					   "tools/generate_datatable_assets.py"),
+			PlainImp && WearerImp && UnarmouredImp))
+	{
+		return false;
+	}
+
+	const float PlainTook = TakenFrom(Attacker, PlainImp);
+	const float WearerTook = TakenFrom(Attacker, WearerImp);
+	const float UnarmouredTook = TakenFrom(Attacker, UnarmouredImp);
+	const float QuarterTook = TakenFrom(Attacker, Quarter.Actor);
+	const float BareTook = TakenFrom(Attacker, Bare.Actor);
+	if (!TestTrue(TEXT("control: the imp of a summoner with no row is hurt by the blow"), PlainTook > 1.0f)
+		|| !TestTrue(TEXT("set-up: a fighter with no armour is hurt by the blow"), BareTook > 1.0f)
+		|| !TestTrue(TEXT("set-up: and a fighter with 800 armour is hurt less"), QuarterTook < BareTook * 0.99f))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the imp of the summoner wearing the row takes less than the control"), WearerTook < PlainTook * 0.99f);
+	TestEqual(TEXT("by the share a defender with a quarter of the summoner's armour takes of an unarmoured one's"),
+		WearerTook / PlainTook, QuarterTook / BareTook, 0.001f);
+	TestEqual(TEXT("and with the summoner's armour at nought its imp takes what the control takes"),
+		UnarmouredTook / PlainTook, 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsMinionResistanceTest,
+	"Cataclysm.DefenderStats.AMinionTakesAShareOfItsSummonersCappedResistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M14, M15 and M17 for resistance. The same row at 25, and both summoners hold
+ * 90 Demonic resistance, which is over the cap of 70. From a Demonic blow the
+ * wearer's imp takes 82.5% of what the control's takes: a quarter of the capped
+ * 70 is 17.5. A quarter of the uncapped 90 would leave 77.5%. From a Pestilence
+ * blow, to which the summoner has no resistance, it takes what the control
+ * takes. And an attacker with 10 resistance penetration cuts the inherited
+ * 17.5 to 7.5, leaving 92.5%.
+ *
+ * STANDING: the attacker 20 m along X and the penetrating one 24 m along X. The
+ * two summoners at the origin and 4 m along Y, each with its imp 2 m along X.
+ */
+bool FCataclysmDefenderStatsMinionResistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayAttribute Demonic = UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	const FName DemonicType(TEXT("Demonic"));
+	const FName PestilenceType(TEXT("Pestilence"));
+
+	FScopedFighter Attacker(World, FVector(20 * M, 0, 0));
+	FScopedFighter Piercer(World, FVector(24 * M, 0, 0));
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(0, 4 * M, 0));
+	Plain.Set(Demonic, 90.0f);
+	Wearer.Set(Demonic, 90.0f);
+	WearTheShare(Wearer);
+	Piercer.Set(UCataclysmCombatAttributeSet::GetPenetrationAttribute(), 10.0f);
+	if (!TestEqual(TEXT("set-up: the wearing summoner's own cap is the 70 every character starts with"),
+			UCataclysmDamageCalculation::ResistanceCapOf(Wearer.AbilitySystem), UCataclysmDamageCalculation::ResistanceCap,
+			0.001f)
+		|| !TestEqual(TEXT("set-up: and the second attacker holds 10 resistance penetration"),
+			Piercer.Get(UCataclysmCombatAttributeSet::GetPenetrationAttribute()), 10.0f, 0.001f))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* PlainImp = SturdyMinion(Plain, FVector(2 * M, 0, 0));
+	ACataclysmMinion* WearerImp = SturdyMinion(Wearer, FVector(2 * M, 4 * M, 0));
+	if (!TestTrue(TEXT("set-up: two imps from the Imp row. If none, DT_MinionTypes may be missing: run "
+					   "tools/generate_datatable_assets.py"),
+			PlainImp && WearerImp))
+	{
+		return false;
+	}
+
+	const float PlainTook = TakenFrom(Attacker, PlainImp, DemonicType);
+	const float WearerTook = TakenFrom(Attacker, WearerImp, DemonicType);
+	if (!TestTrue(TEXT("control: the imp of a summoner with no row is hurt by the Demonic blow"), PlainTook > 1.0f))
+	{
+		return false;
+	}
+	const float Capped = UCataclysmDamageCalculation::ResistanceCap * SharePercent / 100.0f;
+	TestEqual(TEXT("the wearer's imp takes 82.5% of the control's: a quarter of the summoner's capped 70, not of its 90"),
+		WearerTook / PlainTook, 1.0f - Capped / 100.0f, 0.001f);
+
+	const float PlainTookOther = TakenFrom(Attacker, PlainImp, PestilenceType);
+	const float WearerTookOther = TakenFrom(Attacker, WearerImp, PestilenceType);
+	if (!TestTrue(TEXT("control: the imp of a summoner with no row is hurt by the Pestilence blow"), PlainTookOther > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("from a type the summoner has no resistance to, the wearer's imp takes what the control takes"),
+		WearerTookOther / PlainTookOther, 1.0f, 0.001f);
+
+	const float PlainTookPierced = TakenFrom(Piercer, PlainImp, DemonicType);
+	const float WearerTookPierced = TakenFrom(Piercer, WearerImp, DemonicType);
+	if (!TestTrue(TEXT("control: the imp of a summoner with no row is hurt by the penetrating blow"),
+			PlainTookPierced > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("10 resistance penetration cuts the inherited 17.5 to 7.5: the wearer's imp takes 92.5% of the control's"),
+		WearerTookPierced / PlainTookPierced, 1.0f - (Capped - 10.0f) / 100.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsMinionPenetrationMachineAndLostSummonerTest,
+	"Cataclysm.DefenderStats.PenetrationCutsTheInheritedArmourAMachineSharesItAndALostSummonerGivesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M16 and M17 for armour, and the summoner that is gone.
+ *
+ * PENETRATION. An attacker with 50 armour penetration strikes the wearer's imp
+ * and a fighter holding 800 armour of its own. The imp takes the same share of
+ * its control as the fighter does of an unarmoured one, and that share is
+ * larger than the one an attacker with no penetration leaves.
+ *
+ * A MACHINE. A bolt turret of the wearing summoner takes the same share of a
+ * control turret's as the imp takes of the control imp's.
+ *
+ * A SUMMONER THAT IS GONE. A second wearing summoner's imp takes the lowered
+ * share while its summoner lives, and what the control takes once its summoner
+ * is marked dead.
+ *
+ * STANDING: the attacker 20 m along X and the penetrating one 24 m along X.
+ * Three summoners at the origin, 4 m and 8 m along Y; each imp 2 m along X
+ * from its summoner and each turret 4 m along X. The two fighters struck for
+ * comparison 12 m and 15 m along Y.
+ */
+bool FCataclysmDefenderStatsMinionPenetrationMachineAndLostSummonerTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayAttribute Armour = UCataclysmCombatAttributeSet::GetArmorAttribute();
+
+	FScopedFighter Attacker(World, FVector(20 * M, 0, 0));
+	FScopedFighter Piercer(World, FVector(24 * M, 0, 0));
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(0, 4 * M, 0));
+	FScopedFighter Lost(World, FVector(0, 8 * M, 0));
+	FScopedFighter Quarter(World, FVector(0, 12 * M, 0));
+	FScopedFighter Bare(World, FVector(0, 15 * M, 0));
+	Piercer.Set(UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute(), 50.0f);
+	Plain.Set(Armour, SummonerArmour);
+	Wearer.Set(Armour, SummonerArmour);
+	Lost.Set(Armour, SummonerArmour);
+	WearTheShare(Wearer);
+	WearTheShare(Lost);
+	Quarter.Set(Armour, SummonerArmour * SharePercent / 100.0f);
+	MakeSturdy(Quarter);
+	MakeSturdy(Bare);
+
+	ACataclysmMinion* PlainImp = SturdyMinion(Plain, FVector(2 * M, 0, 0));
+	ACataclysmMinion* WearerImp = SturdyMinion(Wearer, FVector(2 * M, 4 * M, 0));
+	ACataclysmMinion* LostImp = SturdyMinion(Lost, FVector(2 * M, 8 * M, 0));
+	ACataclysmMinion* PlainTurret = SturdyMinion(Plain, FVector(4 * M, 0, 0), TEXT("BoltTurret"));
+	ACataclysmMinion* WearerTurret = SturdyMinion(Wearer, FVector(4 * M, 4 * M, 0), TEXT("BoltTurret"));
+	if (!TestTrue(TEXT("set-up: three imps and two bolt turrets from their rows. If none, DT_MinionTypes may be "
+					   "missing: run tools/generate_datatable_assets.py"),
+			PlainImp && WearerImp && LostImp && PlainTurret && WearerTurret)
+		|| !TestTrue(TEXT("set-up: a bolt turret is a machine and an imp is not"),
+			WearerTurret->bIsMachine && PlainTurret->bIsMachine && !WearerImp->bIsMachine)
+		|| !TestEqual(TEXT("set-up: the second attacker holds 50 armour penetration"),
+			Piercer.Get(UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute()), 50.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// WITH NO PENETRATION, for the share penetration is compared with.
+	const float PlainTook = TakenFrom(Attacker, PlainImp);
+	const float WearerTook = TakenFrom(Attacker, WearerImp);
+	if (!TestTrue(TEXT("control: the imp of a summoner with no row is hurt by the blow"), PlainTook > 1.0f)
+		|| !TestTrue(TEXT("set-up: with no penetration the wearer's imp takes less than the control"),
+			WearerTook < PlainTook * 0.99f))
+	{
+		return false;
+	}
+
+	// PENETRATION.
+	const float PlainTookPierced = TakenFrom(Piercer, PlainImp);
+	const float WearerTookPierced = TakenFrom(Piercer, WearerImp);
+	const float QuarterTookPierced = TakenFrom(Piercer, Quarter.Actor);
+	const float BareTookPierced = TakenFrom(Piercer, Bare.Actor);
+	if (!TestTrue(TEXT("control: the control imp and the unarmoured fighter are hurt by the penetrating blow"),
+			PlainTookPierced > 1.0f && BareTookPierced > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("against 50 armour penetration the wearer's imp takes the share a fighter with 800 armour of its own takes"),
+		WearerTookPierced / PlainTookPierced, QuarterTookPierced / BareTookPierced, 0.001f);
+	TestTrue(TEXT("and that share is larger than with no penetration: the inherited armour is cut as any armour is"),
+		WearerTookPierced / PlainTookPierced > WearerTook / PlainTook + 0.01f);
+
+	// A MACHINE.
+	const float PlainTurretTook = TakenFrom(Attacker, PlainTurret);
+	const float WearerTurretTook = TakenFrom(Attacker, WearerTurret);
+	if (!TestTrue(TEXT("control: the turret of a summoner with no row is hurt by the blow"), PlainTurretTook > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a machine takes the same share of its control as a creature does of its own"),
+		WearerTurretTook / PlainTurretTook, WearerTook / PlainTook, 0.001f);
+
+	// A SUMMONER THAT IS GONE.
+	const float LostTookBefore = TakenFrom(Attacker, LostImp);
+	if (!TestEqual(TEXT("set-up: while its summoner lives, the third imp takes the lowered share"),
+			LostTookBefore / PlainTook, WearerTook / PlainTook, 0.001f)
+		|| !TestTrue(TEXT("set-up: its summoner is marked dead"), UCataclysmSkillEffects::MarkDead(Lost.Actor))
+		|| !TestTrue(TEXT("set-up: and reads as dead"), UCataclysmSkillEffects::IsDead(Lost.Actor)))
+	{
+		return false;
+	}
+	const float LostTookAfter = TakenFrom(Attacker, LostImp);
+	TestEqual(TEXT("a minion whose summoner is gone takes what the control takes"),
+		LostTookAfter / PlainTook, 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDefenderStatsMinionReadAtTheBlowTest,
+	"Cataclysm.DefenderStats.ASummonerChangingItsArmourChangesItsMinionsNextBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * M13: read from the summoner at the blow and never copied onto the minion.
+ * The wearer's imp is summoned while its summoner holds no armour and takes
+ * what the control takes. The summoner then gains 3,200 armour and the same
+ * imp's next blow is the lowered one; it loses the armour and the next is the
+ * control's again. And the summoner taking its row off, with the armour back
+ * on, gives the imp nothing.
+ *
+ * STANDING: the attacker 20 m along X. The two summoners at the origin and 4 m
+ * along Y, each with its imp 2 m along X.
+ */
+bool FCataclysmDefenderStatsMinionReadAtTheBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayAttribute Armour = UCataclysmCombatAttributeSet::GetArmorAttribute();
+
+	FScopedFighter Attacker(World, FVector(20 * M, 0, 0));
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(0, 4 * M, 0));
+	WearTheShare(Wearer);
+	ACataclysmMinion* PlainImp = SturdyMinion(Plain, FVector(2 * M, 0, 0));
+	ACataclysmMinion* WearerImp = SturdyMinion(Wearer, FVector(2 * M, 4 * M, 0));
+	if (!TestTrue(TEXT("set-up: two imps from the Imp row. If none, DT_MinionTypes may be missing: run "
+					   "tools/generate_datatable_assets.py"),
+			PlainImp && WearerImp))
+	{
+		return false;
+	}
+
+	const float PlainTook = TakenFrom(Attacker, PlainImp);
+	if (!TestTrue(TEXT("control: the imp of a summoner with no row is hurt by the blow"), PlainTook > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("summoned while its summoner has no armour, the wearer's imp takes what the control takes"),
+		TakenFrom(Attacker, WearerImp) / PlainTook, 1.0f, 0.001f);
+
+	Wearer.Set(Armour, SummonerArmour);
+	const float Armoured = TakenFrom(Attacker, WearerImp);
+	TestTrue(TEXT("the summoner gains armour and the same imp's next blow takes less"), Armoured < PlainTook * 0.99f);
+
+	Wearer.Set(Armour, 0.0f);
+	TestEqual(TEXT("the summoner loses the armour and the imp's next blow is the control's again"),
+		TakenFrom(Attacker, WearerImp) / PlainTook, 1.0f, 0.001f);
+
+	Wearer.Set(Armour, SummonerArmour);
+	TestEqual(TEXT("set-up: with the armour back on, the imp takes the lowered blow again"),
+		TakenFrom(Attacker, WearerImp) / PlainTook, Armoured / PlainTook, 0.001f);
+	Wearer.AbilitySystem->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
+	TestEqual(TEXT("and with its summoner's row taken off, the armour still on, the imp takes what the control takes"),
+		TakenFrom(Attacker, WearerImp) / PlainTook, 1.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -1117,6 +1117,380 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — An ailment can lower its carrier's maximum health, and a minion takes a share of its summoner's armour and resistances: one number hung on an ailment, `ailment_max_health_removed`, and one stat, `minion_defences_percent_of_yours`. Engine only; no row authored
+
+**Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
+was run by the writing session. The C++ in this entry has never been compiled. The Python checks were run; their
+output is not recorded here. The two row shapes under "What the row needs" were passed through the generator in
+a temporary workbook, by the Python tests named there.
+
+**Said first, THE FINDING: every minion takes every blow with no armour and no resistance today, and the minion
+row is the first thing that gives a minion either.** A fact about the merged game, for the owner; it is not a
+fault this layer fixes for a minion without the row.
+
+- A minion holds one attribute set, the vital one (`ACataclysmMinion`'s constructor creates `VitalAttributes`
+  and no other).
+- `UCataclysmDamageCalculation::Resolve` read armour only inside `if (Combat)`, the branch for a defender that
+  holds a combat set, and resistance from one of two resistance sets in `ResistanceFor`. A minion holds none of
+  the three. Its evasion, block, damage reduction and damage taken steps are skipped for the same reason, and
+  this layer changes none of those.
+- With the row, a minion's armour is a share of its summoner's and so is its resistance to each damage type.
+  Without it, a minion is read exactly as before: nothing.
+
+**Said first, and on the owner's play-check list: another writer of an enemy's maximum health while it is
+lowered.** Some dungeon rules write a creature's maximum health while it can be carrying the Necrosis.
+
+- **For a rule that adds to what it reads** (Soul Harvest, Nothing Is Forgotten), what it added is kept exactly:
+  when the ailment ends the maximum is the unlowered figure plus what the rule added.
+- **For the rules that write from their own record** (Carrion Feast, Famished Beasts on a carrion feeder, a rung
+  change) **the lowering is lost from that moment, and the enemy is left above its right maximum by the 1% to 2%
+  that had been held off, until the ailment ends** and from then on, since nothing writes it again. Famished
+  Beasts on any other creature reads the maximum, takes off what it added and multiplies, so it sits between
+  the two: by reading, it is out by a share of that 1% to 2%.
+- **Not tested, and not made exact, because that needs a change to the dungeon code**, which this layer may not
+  touch. The amounts are by reasoning from the code read. Judgement 3 below has the arithmetic.
+
+**Said first, for the play-check: what M10 means in play.**
+
+- **On an enemy at full health the Necrosis row removes 1% to 2% of its health, once each time Necrosis is
+  applied afresh, and that health is not given back when the Necrosis ends.** "Afresh" is an application to an
+  enemy not carrying a Necrosis whose maximum is already lowered: the first one, and the next one after it has
+  ended.
+- **On a hurt enemy it changes only what "below N% health" means.** An enemy at half health keeps the health it
+  has; its maximum is 1% to 2% lower, so it reads as a slightly larger share of a slightly smaller whole.
+- **A REFRESH DOES NOT LOWER HEALTH A SECOND TIME.** Settled by reading and held by a test that has not been
+  run. Both ways the game takes a second application were read:
+  - One stating no more damage than the one running only refreshes it. The carrier is handed the same number
+    from the same applier, the figure in force is unchanged, and nothing is written.
+  - One stating more replaces it: the running effect is taken off and a new one is put on inside the one call,
+    so the ailment's tag goes and comes back. The maximum is returned and then lowered again to the same
+    figure. Returning a maximum raises no health, and health already at or under the lowered maximum is not
+    moved by lowering it again.
+  - **What a refresh can do, said so that it is not a surprise:** an enemy that was HEALED above the lowered
+    maximum is impossible, since health is held to the maximum; so there is nothing for a refresh to take.
+- **The health an enemy loses to the row is not damage.** Nothing announces a hit, no kill is credited, no
+  number floats, and nothing that fires on damage fires. An enemy cannot die of it: see "The bound".
+
+**Said first, for the play-check: what the minion row gives on a hard difficulty tier.** A difficulty tier's
+penalty is taken off a player's resistance, and on a tier where that puts the summoner's resistance to a damage
+type under nought, **the row gives that summoner's minions armour and NOTHING for that damage type.** A share of
+a figure under nought would be a weakness, so it is read as nought (judgement 9). A player whose resistance to
+a type is above nought after the penalty hands over a share of what is left, under its cap.
+
+**Said first: the Necrosis number is NOT read at one place.** The nine numbers before it are read where the
+thing they move is worked out (a blow, a heal, a speed) and stop counting when the reader finds the ailment's
+tag gone. A maximum is a stored figure that other things read all the time, so this one is WRITTEN, at three
+moments and only there:
+
+1. **When the number is received.** The ailment's tag arriving on a carrier that holds the number on record for
+   it (a fresh application); or `ReceiveAilmentRiders` for an ailment already carried (an applier with the row
+   applying over one without).
+2. **When it is replaced.** `ReceiveAilmentRiders`, for another applier's number, or for the same applier that
+   no longer wears the row.
+3. **When the ailment ends.** Its tag leaving the carrier: by time, by being removed, by a cleanse.
+
+### What it is for
+
+| Sentence | The row the mechanism makes possible |
+| :-- | :-- |
+| Enemies with Necrosis have 1%-2% less maximum health | Action `ailment_max_health_removed`, Ailment `Necrosis`, 1 to 2 |
+| Summoned minions inherit 10%-25% of your armor and resistances | `minion_defences_percent_of_yours`, flat, 10 to 25, no Required Tags |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+- **M9.** While an enemy carries the wearer's Necrosis its maximum health is lower by the row's percentage; when
+  the Necrosis ends, by time or by being removed, the maximum returns.
+- **M10.** Current health above the new maximum is brought down to it, and is NOT given back when the maximum
+  returns.
+- **M11.** One stack and one applier: two wearers do not add; the carrier keeps the last applier's number, as
+  the other numbers hung on an ailment do.
+- **M12.** Bosses are not exempt.
+- **M13.** A minion's share is read from the SUMMONER at the blow, not copied onto the minion: a change of the
+  summoner's gear reaches a minion already out. No attribute set is added to a minion.
+- **M14.** One roll serves both armour and resistances.
+- **M15.** The summoner's resistance is taken AFTER the summoner's own cap, then the percentage.
+- **M16.** Every minion, a machine included.
+- **M17.** The attacker's armour penetration and resistance penetration apply to the inherited figures as to any
+  defender's.
+
+**The coordinating session approved the writing session's judgements 1 to 16, below, as written, on
+2026-10-08, with three conditions**, each met in this entry:
+
+1. That another writer of an enemy's maximum health while it is lowered is said first and is on the owner's
+   play-check list (judgement 3).
+2. That the play-check part says a summoner whose resistance a difficulty tier has put under nought gives its
+   minions armour and nothing for that damage type (judgement 9).
+3. That the bound of 50, held on the sum over all ailments in the generator and the engine, is recorded as a
+   judged number on the owner's play-check list, with its reason (judgement 1).
+
+### How it is built
+
+**The Necrosis number.**
+
+- **`ECataclysmAilmentRider::MaxHealthRemoved`**, the tenth value, named `ailment_max_health_removed`
+  (`UCataclysmAbilitySystemComponent::AilmentMaxHealthRiderAction`, in `AilmentRiderNamed`). It is carried as
+  the others are: `ReceiveAilmentRiders` records it on the character struck, by ailment, with the ONE applier.
+- **`UCataclysmAbilitySystemComponent::RewriteMaximumHealthForAilments`** (private) sums the number over the
+  ailments the carrier holds now, holds the sum to the bound, and if it differs from the figure in force writes
+  the maximum health BASE: the unlowered maximum times (100 - the percentage) / 100. A call that finds the
+  figure unchanged writes nothing.
+- **It is called from three places.** The end of `ReceiveAilmentRiders`, on both of its paths. A gameplay tag
+  event on the ailment's tag, `OnMaxHealthRiderAilmentTagChanged`, registered once for each ailment the first
+  time such a number is received for it, for the tag coming and going. And
+  `ClearWhatDeathEnds`, after it empties the riders.
+- **Why a tag event and not the reader's check the other nine use.** Nothing in the game announced an ailment
+  ending: the nine are read with "does it carry the tag now". A stored maximum has no reader to ask that, so
+  the carrier watches the tag. The count the engine hands the event is what decides whether that ailment is
+  carried, and not a second question put to the component, so the answer does not depend on how far the engine
+  has got with its own count.
+- **This is the first number hung on an ailment to use a tag event.** The nine before it have no listener of
+  any kind. The one other listener of this kind in the component is the skill recharge's
+  (`OnSkillRechargeTagChanged`), which is registered the same way.
+- **What removes the listener: nothing, until the component itself goes, and that is what is wanted.** Read in
+  the engine (Unreal Engine 5.8, `GameplayEffectTypes.cpp` and `AbilitySystemComponent.cpp`):
+  - The listener is bound with `AddUObject` on the component to the component's OWN tag event. The event lives
+    in the component's `GameplayTagCountContainer`, in its `GameplayTagEventMap`. When a creature dies and is
+    destroyed, its component is destroyed and the map goes with it; nothing outside the component holds the
+    listener. A delegate bound with `AddUObject` holds its object weakly, so it cannot be called on a destroyed
+    one.
+  - The one thing that empties that map while the component lives is `FGameplayTagCountContainer::Reset`,
+    reached through `UAbilitySystemComponent::ResetTagMap`. By search on 2026-10-08, nothing in the engine's
+    plugin calls `ResetTagMap` and nothing in `game/Source` does.
+  - **`ClearWhatDeathEnds` and a respawn leave the listener registered and `MaxHealthRiderAilmentsWatched`
+    still holding the tag**, which is the right pair: the next Necrosis on that character is still listened
+    for.
+  - **A second listener for the same tag cannot be registered.** A tag is registered only when it is not in
+    `MaxHealthRiderAilmentsWatched`, it is added to that set in the same statement block, and nothing ever
+    takes a tag out of the set or a listener out of the map. The set and the listeners are made together and
+    both last exactly as long as the component.
+  - **The fault that could exist is the other one:** if some later code called `ResetTagMap`, the set would
+    still say "watched", no listener would be registered again, and a lowered maximum would never return.
+    Nothing does today. No test holds it.
+- **A fresh application lowers the maximum when the tag arrives, not when the number is recorded.**
+  `ApplyDamageOverTime` hands the riders over before it puts the effect on. If the effect were then not
+  applied, a maximum lowered at the hand-over would stay lowered with nothing to end it.
+- **The unlowered maximum is remembered** (`UnloweredMaximumHealth`), with the lowered base as the engine stored
+  it (`LoweredMaximumHealthWritten`). The return writes the remembered figure and not one worked out by
+  dividing, so it is exact.
+- **Health is brought down by code that already existed**: `UCataclysmVitalAttributeSet::PostAttributeChange`,
+  which lowers health to a lowered maximum by a write to its base and never raises it (issue #2190). This layer
+  writes no health.
+- **`AilmentMaxHealthRemovedPercentInForce()`** (public) answers the figure last written, for a test.
+- **`tools/generate_datatables.py`**: the name joins `AILMENT_RIDER_ACTIONS`; `AILMENT_MAX_HEALTH_ACTION` and
+  `MAX_AILMENT_MAX_HEALTH_REMOVED` hold its own bound. It may name any of the five ailments the other riders
+  may, and is refused without one.
+
+**The bound, a judged number on the owner's play-check list.** 50 was chosen by the writing session and is
+held on the SUM over every ailment a creature carries, in the generator for one row and in the engine for all
+of them together. The reason it is not the 100 the other nine have: at 100 a maximum would fall to the 1 the
+attribute set holds any maximum to, and the creature's health with it. The one sentence asks for 2.
+
+The other nine may state up to 100. This one may state above 0 and up to **50**, in the generator
+(`MAX_AILMENT_MAX_HEALTH_REMOVED`) and again in the engine (`MaxAilmentMaxHealthRemovedPercent`), which holds the
+sum over every ailment carried to it. A maximum lowered by half or less is never nought, and the attribute set
+holds any maximum at 1 or more, so **an enemy cannot die of the row**: health is brought down to a maximum that
+is above nought, and no further.
+
+**The minion stat.**
+
+- **`UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat`**, `minion_defences_percent_of_yours`. One
+  call, in `InheritedDefencesOf` in `CataclysmDamageCalculation.cpp`: for a defender whose avatar is an
+  `ACataclysmMinion` with a valid summoner that is not dead, the summoner's
+  `StatForSkill(<the stat>, <the minion's TypeTags>, 0)`, held to 0 to 100. Asked once in `Resolve` and used by
+  the two steps.
+- **Armour** (step 3). `InheritedArmour`: `DefenderStat(<summoner>, "armor", <the summoner's Armor attribute>,
+  <this blow>)`, which is the line the step uses for any defender, asked of the summoner; times the share. It
+  is added to the defender's own armour, which for a minion is nothing. The step is now entered for a defender
+  with a combat set OR with armour from its summoner. What the attacker ignores, what a critical strike ignores
+  and what has been removed from the defender then apply to the sum, and the armour formula after them.
+- **Resistance** (step 4). `InheritedResistance`: `ResistanceFor(<summoner>, <the blow's type>, <the tier>)`,
+  held under `ResistanceCapOf(<summoner>)`, floored at nought, times the share. It is added to
+  `ResistanceFor(<the minion>)` before `EffectiveResistanceUnderCap` applies the attacker's penetration and the
+  minion's own cap of 70.
+- **The name** is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, with a probe,
+  `ProbeMinionDefencesPercentOfYours`, and its one call is in the inventory of stat lookups.
+- **No change to `tools/generate_datatables.py` for it.** A flat row with no condition naming a stat with no
+  attribute is carried through.
+
+### Everything that reads an enemy's maximum health and now sees the lower figure
+
+Found by searching `game/Source/Cataclysm` outside `Tests` for `GetMaxHealthAttribute()` and `GetMaxHealth()` on
+2026-10-08 at `5bc18df7`: 125 lines in 28 files. **They were not each read.** The kinds below are the ones read;
+the rest are listed by file so that nobody takes this for a complete account.
+
+- **The clamp on health** (`UCataclysmVitalAttributeSet::PreAttributeChange`): a carrier cannot be healed above
+  the lowered maximum. The Reaper, which is held at its maximum, is held at the lowered one.
+- **`HealthPercentNow`** and the event `health_falls_below`, and **the target's health share** a condition asks
+  for (`target_health_below`, `State.TargetHealthPercent` in `WithTargetState`): the same health is a larger
+  share of a smaller maximum. This is the half of M10 that is meant.
+- **Void Splinter's floor for a boss** (`ShareOfHealthTick`, `ShareOfHealthRoomLeft`): "never below half its
+  maximum health" is half of the lowered maximum, so a boss carrying both can be taken 1% lower.
+- **Healing that is a share of maximum health**: the Medic modifier's pulse
+  (`CataclysmEnemyModifiers.cpp`), `UCataclysmRegeneration::TopUp`'s ceiling, an enemy healed by "On death all
+  nearby enemies are healed for 10%-20% of their maximum HP". Each gives 1% to 2% less. Necrosis also denies
+  its carrier healing, so most of these give a Necrosis carrier nothing already.
+- **What a death reports**: the slain enemy's maximum health carried by a kill event (for "Enemies you kill
+  explode and deal 5%-10% of their max HP"), and the dying creature's maximum in `CataclysmContagion.cpp` and
+  `CataclysmMinion.cpp`. A carrier that dies with Necrosis on it reports the lowered figure.
+- **The combat overlay** (`CataclysmCombatOverlay.cpp`, `OutMaxHealth`), which is what draws a health bar, and
+  the creature panel.
+- **A creature's own set-up** (`CataclysmEnemyCharacter.cpp`: its shield and its regeneration as a share of its
+  maximum). Read when the creature is set up, which is before it can carry anything, unless a rung change sets
+  it up again while it carries a Necrosis.
+- **Not each read:** `CataclysmDungeonGameMode.cpp` (49 lines; this layer may not touch it), the rest of
+  `CataclysmAbilitySystemComponent.cpp` (16) and `CataclysmVitalAttributeSet.cpp` (13), `CataclysmSkillEffects.cpp`
+  (6), and the other twenty-four files, which hold four or fewer each. Many of those read the PLAYER's maximum,
+  which no enemy's row reaches; which do was not counted.
+
+**What WRITES an enemy's maximum while it may be lowered, read in `CataclysmDungeonGameMode.cpp` and not
+changed.** Carrion Feast and Famished Beasts write a maximum from their own record of the creature's health;
+Soul Harvest and Nothing Is Forgotten read the maximum, add to it and write it back; a rung change writes it
+again. See the writing session's judgement 3 for what this layer does about them, and "Not covered by a test".
+
+### Judgements by the writing session
+
+1. **The bound is 50**, where the brief asked for one "as the other riders are bounded" and they are bounded at
+   100. At 100 the lowered maximum would be the 1 the attribute set holds a maximum to, and health would be
+   brought down to 1. Half keeps "cannot die of it" true by arithmetic and not by a clamp elsewhere. The one
+   sentence asks for 2.
+2. **The three moments are read as written under "Said first"**, with "received" for a fresh application placed
+   at the tag's arrival and not at the hand-over, for the reason given under "How it is built".
+3. **When something else has written the maximum while it was lowered, the difference it made is kept, as an
+   amount.** The unlowered maximum becomes the remembered figure plus (the base now less the lowered base this
+   layer wrote). That is exact for a rule that adds to what it reads (Soul Harvest, Nothing Is Forgotten). For a
+   rule that writes a figure from its own record (Carrion Feast), the lowering is lost from that moment until
+   the ailment ends, and at the end the creature is left above its right maximum by the amount this layer had
+   held off, 1% to 2% of what it was. **Neither can be made exact without changing the dungeon rules, which this
+   layer may not touch.** By reasoning; not tested.
+4. **The row is not limited to Necrosis.** Like the other carried numbers it may name any of the five ailments.
+   Two rows on two different ailments add, on a carrier holding both, up to the bound; two wearers of a row for
+   the same ailment never add (M11).
+5. **A player as the carrier is not handled.** `RefreshLiveMaximumHealth` writes a wearer's maximum from its
+   stat line and would overwrite the lowering. No enemy wears a row, so no player can be handed the number
+   today.
+6. **The stale record the other nine have, this one has too.** A carrier keeps a number after its ailment ends,
+   and it counts again if the same ailment comes back by a route that hands over no riders (one a character
+   puts on itself). `ReceiveAilmentRiders` clears it at any application by another character. Left as it is,
+   so the ten behave alike.
+7. **`ClearWhatDeathEnds` returns the maximum** when it empties the riders. A player's respawn; nothing reaches
+   it today for the reason in 5.
+8. **The share is held to 0 to 100.** No row asks for more than 25.
+9. **A summoner's resistance under nought is not inherited.** `ResistanceFor` takes the difficulty tier's
+   penalty off a player, so at a high tier a summoner with no resistance to a type reads below nought. A share
+   of that would make the row a weakness. The share is of the capped figure floored at nought.
+10. **The summoner's armour is read with the blow the minion is taking**, so a row of the summoner's about the
+    blow arriving ("your armor is doubled against melee attacks") is judged against that blow, and one about
+    the summoner's own state against the summoner's state. This is "as the formula would read it for the
+    summoner as defender of this blow".
+11. **Armour removed from the SUMMONER is not read**, and armour removed from the MINION is: the first is not
+    part of how the formula reads the stat, and the second is one of the things that "run as for any defender".
+12. **The summoner's keystone that forbids penetration is not inherited.** The sentence names armour and
+    resistances. A minion's own answer to that stat is asked, and is nothing.
+13. **A minion's own cap on the result is the 70 every character starts with.** With a share of 25 the
+    inherited resistance is at most 22.5, so the cap is not reached.
+14. **A tick of damage over time on a minion takes the share too.** It goes through the same two steps.
+15. **A thrall (a subjugated enemy) is not a minion here.** It is an enemy character and keeps its own combat
+    and resistance sets. The sentence says "summoned minions".
+16. **`RewriteMaximumHealthForAilments` is private and tested through the game's own application of an
+    ailment**, and one public reader of the figure in force was added for the tests.
+
+### Research
+
+**None was fetched for this layer.** The stat's shape follows the energy shield inheritance this game already
+has (`minion_energy_shield_percent_of_yours`, Shared Blood): a percentage of a figure of the summoner's, asked
+of the summoner. The ailment number follows the nine it already has: an action with no event, an Ailment and a
+percentage, carried by the character struck with its one applier.
+
+### Tests
+
+Unreal, in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group `Cataclysm.DefenderStats.`, which
+no other file uses. **None has been run.** A carrier of the Necrosis is a test fighter with 1,000 maximum
+health; a minion's blow is a real one, and what it should take is read off a fighter holding a quarter of the
+summoner's armour and never worked out from the armour formula.
+
+- `ANecrosisWithTheRowLowersItsCarriersMaximumHealthAndItsHealthToIt`. Maximum 980 and health 980 under a row of
+  2; an enemy given a Necrosis by a character with no row is unchanged.
+- `AHurtCarriersHealthIsNotMovedAndItsMaximumIs`. At 500 of 1,000: health 500, maximum 980. At 990: 980.
+- `WhenTheNecrosisEndsTheMaximumReturnsAndTheHealthIsNotGivenBack`. Removed, and run out at ten seconds: the
+  maximum is 1,000 compared as equal, and health stays at the 980 it was brought to.
+- `ASecondAppliersNumberReplacesTheFirstsAndTheTwoDoNotAdd`. 2 then 5 is a maximum of 950, not 931 and not 930;
+  2 again is 980 with health still 950; the row taken off and applied again is 1,000.
+- `ARefreshOfANecrosisAlreadyCarriedLowersNothingASecondTime`. The carrier is put at 970; the same Necrosis
+  again, and a stronger one that replaces it, each leave 980 and 970.
+- `ABossIsLoweredLikeAnyEnemyAndAnotherAilmentDoesNothing`. A creature of the boss rung has 98% of the maximum
+  read back from it; the wearer's Burn on another enemy changes nothing.
+- `AMinionTakesAQuarterOfItsSummonersArmour`. The share of its control the wearer's imp takes is the share a
+  fighter with 800 armour takes of an unarmoured one's; with the summoner's armour at nought it is the whole.
+- `AMinionTakesAShareOfItsSummonersCappedResistance`. A summoner at 90 under a cap of 70: its imp takes 82.5%;
+  a type the summoner has no resistance to, the whole; against 10 resistance penetration, 92.5%.
+- `PenetrationCutsTheInheritedArmourAMachineSharesItAndALostSummonerGivesNothing`. Against 50 armour
+  penetration the imp takes the share a fighter with 800 armour of its own takes; a bolt turret takes the share
+  an imp does; an imp whose summoner is marked dead takes what the control takes.
+- `ASummonerChangingItsArmourChangesItsMinionsNextBlow`. Armour gained, lost and gained again by the summoner
+  moves the same imp's next blow each time; the row taken off gives it nothing.
+
+And in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, `ProbeMinionDefencesPercentOfYours`, run
+by the existing `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**The merged test that a machine "holds no combat set, so it cannot evade" is unchanged** and nothing here gives
+a minion a combat set.
+
+Python: in `tools/tests/test_generate_datatables.py`, classes `TestAnAilmentThatLowersMaximumHealth` and
+`TestMinionsTakeAShareOfTheirSummonersDefences`; the rider's name in
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`; the stat's one call in
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`.
+
+### Not covered by a test
+
+- **Any real row.** None exists. Every row in a test is built by hand.
+- **The enemy's health bar**, and anything else drawn from the lowered maximum.
+- **Play with a real summon**: a player's minion skill, a player summoner whose ability system is on its player
+  state, and the difficulty tier's penalty on that summoner's resistance. Every summoner in a test is a test
+  fighter.
+- **A cleanse** ending the Necrosis. Removal and time are tested; a cleanse removes the effect by the same
+  engine route and is not run.
+- **A dungeon rule writing a creature's maximum while it is lowered** (judgement 3), and a rung change.
+- **A player as the carrier. It is not handled** (judgement 5): `RefreshLiveMaximumHealth` writes a wearer's
+  maximum from its stat line and would write over the lowering, and nothing here stops it. No enemy wears a
+  row, so no player can be handed the number today and there is nothing to test.
+  **An enemy given such a row later would need this built first.**
+- **The listener on the ailment's tag after a death or a respawn**, and that a second is never registered. By
+  reading; see "How it is built".
+- **A carrier that dies** with the Necrosis on it, and what its death reports.
+- **Two rows on two ailments** adding, and the engine's hold at 50.
+- **An application the target refuses** (`ailment_immunity`): no number is handed over, by reading.
+- **A spread copy** of a Necrosis: it is handed the applier's numbers as any application is, by reading.
+- **A summoner's row about the blow arriving** reaching its minion's armour (judgement 10), and a summoner's
+  resistance under nought (judgement 9).
+- **A critical strike's own armour penetration**, a piercing weapon and armour removed from a minion, each
+  against inherited armour.
+- **A tick of damage over time on a minion**, and a thrall.
+- **A row scoped by Required Tags to one kind of minion.** The designed row has none.
+- **Whether writing an attribute from inside the engine's tag event is safe at every moment a tag can move.**
+  The existing precedent in this component, the skill recharge, does its work from the same event.
+- **Not run in play.**
+
+### What the row needs, for the session that writes rows
+
+| Sentence | Row |
+| :-- | :-- |
+| Enemies with Necrosis have 1%-2% less maximum health | Action `ailment_max_health_removed`, Ailment `Necrosis`, Value Low 1, Value High 2; no Action Event, no Fraction Of, no Value Kind, no Scale, no Required Tags, no Condition, no Stat |
+| Summoned minions inherit 10%-25% of your armor and resistances | `minion_defences_percent_of_yours`, `flat`, Value Low 10, Value High 25, no Required Tags, no Condition, no Scale |
+
+**Each was dry run through `gen.enchantment_effects` in a temporary workbook holding the real sentence**, by the
+Python tests named above, and was carried through. No file in the repository was written.
+
+**`ailment_max_health_removed` is refused without an Ailment, and above 50.** The refusal above 50 was run on a
+made-up sentence stating 1%-51%, because the generator holds a row's figures to the ones its sentence states;
+the same made-up sentence under `ailment_armor_removed` is carried through, so the bound is this number's own.
+
+**`minion_defences_percent_of_yours` belongs on no list of flags**: its values are the two figures of its
+sentence. **It needs no entry in `CONDITIONED_STATS_WITH_AN_ASKER`** while its row states no condition. **That
+its row was carried through does not show the stat is listed**: the listing in `StatsWithNoAttribute()` is
+tested by name.
+
+---
+
 ## 2026-10-08 — "Point blank AOE skills have a 0.75-1.5 second cast delay before firing" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
