@@ -4,6 +4,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-07 — Two stats a worn row can state for a projectile skill: `projectile_bounces` adds to the bounces the skill states, and `projectile_pierce_all` makes it pierce every enemy on its line. Engine only; no row authored
 
+**Built and run on 2026-10-08 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
+
 **Not built and not run.** No Unreal build and no Unreal test was run by the writing session. One Python dry run
 was made and is described under "What the row needs". The Python suite, the lint and the conflict check were run
 before the commit; their figures are in the commit's report and not here.
@@ -344,9 +346,49 @@ determined: whether the checks that compare a row with its sentence (`test_encha
 accept "1-4 times" against a flat 1 to 4 and a flag of 1 against a sentence with no number; the flag list in that
 file may need `projectile_pierce_all` added when the row is written.
 
+### Run
+
+One window on 2026-10-08 for a stack of two, at `feat/ricochet-and-pierce-2` b709cbdc: the crowd control health
+ceiling, then the ricochet and pierce stats. Development was da3150bb. One attempt; nothing was corrected during
+it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3353 tests performed, 3353 succeeded, 0 failed`; `Declared: 3353 tests in the tree at b709cbdc; 3353 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 331.56s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**How the two layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the Python
+changes beyond the lists they add to, and the three probes in the stat-exemption tables beyond their set-up; their
+tests passed.
+
+**Guard proofs, at b709cbdc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| L5a | `CataclysmSkillTemplates.cpp`: the row's bounces are not added | `Cataclysm.ProjectileRange.ARowsRicochetsAreAddedToTheBouncesAProjectileSkillStates` | 1 performed, 1 failed, 8 failed assertions | 1 performed, 1 succeeded |
+| L5b | `CataclysmProjectile.cpp`: the blast also strikes the enemies the shot glanced off | `Cataclysm.ProjectileRange.AShotGivenBouncesByARowStrikesNoEnemyTwiceAndStillGoesOffOnce` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| L5c | `CataclysmSkillTemplates.cpp`: the pierce row is never read as set | `Cataclysm.ProjectileRange.ARowMakesAFlyingSpellPierceEveryEnemyOnItsLineAndLeavesAnAttackAlone` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+
+**No proof was run for the spell beam.** Its test passed in the whole suite.
+
+**A limit of these tests, not shown by the run.** Each test steps its shot by hand, a sixtieth of a second at a
+time, until the shot says it has finished or 600 steps have passed. No test checks which of the two ended the
+loop. 600 steps is 10 seconds, or 200 metres at the tests' speed of 20 metres a second, against ranges of 10 and
+12 metres; that the shots finished rests on that arithmetic, a judgement by the registering session.
+
+**Not run:** either row read from the effect table, since no row exists.
+
 ---
 
 ## 2026-10-07 — A character can carry a health ceiling above which it cannot apply crowd control to an enemy, stated by a new stat, `crowd_control_health_ceiling_reduction`. Engine only; no row authored
+
+**Built and run on 2026-10-08 by the registering session; the figures are under "Run" at the end of this entry.** The paragraph below and the rest of this entry were written before that run.
 
 **Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
 outcome of any Unreal run is recorded here. The Python checks that were run are named under "Tests", with what they
@@ -656,6 +698,37 @@ sentence also says 50. If the sentence's number is ever changed, the row's value
 must be added to `COMPLEMENT_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`.
 
 The rows change should add a test that wears the real row.
+
+### Run
+
+One window on 2026-10-08 for a stack of two, at `feat/ricochet-and-pierce-2` b709cbdc: the crowd control health
+ceiling, then the ricochet and pierce stats. Development was da3150bb. One attempt; nothing was corrected during
+it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3353 tests performed, 3353 succeeded, 0 failed`; `Declared: 3353 tests in the tree at b709cbdc; 3353 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 331.56s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**How the two layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the Python
+changes beyond the lists they add to, and the three probes in the stat-exemption tables beyond their set-up; their
+tests passed.
+
+**Guard proofs, at b709cbdc, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| L4a | `CataclysmSkillEffects.cpp`: a target exactly at the ceiling is refused too | `Cataclysm.CrowdControlCeiling.TheStatIsTheAppliersAndItReadsAboveNotAtAndTwoCopiesRefuseEveryLivingEnemy` | 1 performed, 1 failed, 2 failed assertions: "a creature at exactly 50% health is not above it and is stunned" and, after it, "and may no longer swing" | 1 performed, 1 succeeded |
+| L4b | `CataclysmSkillEffects.cpp`: the ceiling is asked whether or not the target is hostile | the same test | 1 performed, 1 failed, 2 failed assertions: "the same wearer, at full health itself, stuns itself" and, after it, "and may no longer swing" | 1 performed, 1 succeeded |
+| L4c | `CataclysmSkillEffects.cpp`: a reduction under 50 is ignored | `Cataclysm.CrowdControlCeiling.TheStaggersOwnCeilingStillWorksAloneAndAStaggerAfterAShovePassesBothCeilings` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+
+**Not run:** the row read from the effect table, since no row exists.
 
 ---
 
