@@ -19021,4 +19021,74 @@ bool FCataclysmFourOneSiteRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+// FOUR ROWS ON WHAT A MOVEMENT SKILL DOES. Ruled 2026-10-07; each row is as the entry "A worn row makes a
+// movement skill do four things" states it.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFourMovementRowsTest,
+	"Cataclysm.Enchantments.TheFourMovementSkillRowsEachHandTheirWearerTheStatAskedWithAMovementSkillsSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four real rows, each WORN at the top of its range. Each is one flat row
+ * requiring `Slot.Movement`. EVERY FIGURE IS A DIFFERENCE against the same
+ * wearer with the item taken off: asked with a movement skill's slot tag the
+ * stat is higher by the row's figure, and asked with a heavy attack's slot
+ * tag it is no higher. What a movement skill then does under each stat is the
+ * tests of the entry that built them.
+ */
+bool FCataclysmFourMovementRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		bool bBenefit;
+		const TCHAR* Stat;
+		float Figure;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Your_movement_abilities_pull_all_nearby_enemies"), true, TEXT("movement_pulls_nearby_on_arrival"), 1.0f},
+		{TEXT("Positive_Your_movement_ability_deals_50_100_of_your_wea"), true, TEXT("movement_path_damage_percent"), 100.0f},
+		{TEXT("Negative_Your_movement_abilities_now_move_you_in_a_random"), false, TEXT("movement_random_direction"), 1.0f},
+		{TEXT("Positive_Your_movement_abilities_cause_an_explosion_at_th"), true, TEXT("movement_explodes_at_both_ends"), 1.0f},
+	};
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	const FGameplayTagContainer Movement = CataclysmRepeatRowsTest::Tagged(TEXT("Slot.Movement"));
+	const FGameplayTagContainer Heavy = CataclysmRepeatRowsTest::Tagged(TEXT("Slot.Heavy"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the two slot tags exist"), Movement.Num() == 1 && Heavy.Num() == 1))
+	{
+		return false;
+	}
+	for (const FCase& Case : Cases)
+	{
+		// THE NAME WORN IS LOOKED UP IN ITS TABLE FIRST, so a name that is not a row fails here and says so.
+		if (!TestTrue(FString::Printf(TEXT("set-up: %s is a row of its table"), Case.Row),
+				(Case.bBenefit ? Positive : Negative)->GetRowMap().Contains(FName(Case.Row))))
+		{
+			return false;
+		}
+		FWorn Worn(Case.Row, Case.bBenefit);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(Case.Stat);
+		const float WornMovement = Worn.ASC()->StatForSkill(Stat, Movement, 0.0f);
+		const float WornHeavy = Worn.ASC()->StatForSkill(Stat, Heavy, 0.0f);
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, worn: asked with a movement skill's slot, %s is %.0f higher.%s"),
+					  Case.Row, Case.Stat, Case.Figure, CataclysmRepeatRowsTest::OlderAsset),
+			WornMovement - Worn.ASC()->StatForSkill(Stat, Movement, 0.0f), Case.Figure, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s, worn: asked with a heavy attack's slot, %s is no higher"),
+					  Case.Row, Case.Stat),
+			WornHeavy - Worn.ASC()->StatForSkill(Stat, Heavy, 0.0f), 0.0f, 0.01f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
