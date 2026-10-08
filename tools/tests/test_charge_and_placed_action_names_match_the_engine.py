@@ -72,6 +72,10 @@ CONSTANTS = {
     # AND THE REFLECT AND THE ARMOUR NOVA, since issue #1833 group E part 3.
     "ReflectBlockedAction": "reflect_blocked",
     "BlastFromTheDyingAction": "blast_from_the_dying",
+    # AND THE STUN NEAR A DYING ENEMY, AND THE STATUS THAT IS ALL FIVE DAMAGE
+    # OVER TIME AILMENTS, ruled 2026-10-08.
+    "StunNearTheDyingAction": "stun_near_the_dying",
+    "AllDotsStatus": "All DoTs",
     "SmiteNearbyByArmourAction": "smite_nearby_by_armor",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
@@ -213,6 +217,27 @@ def test_the_generator_accepts_exactly_the_reflect_name_the_engine_has() -> None
     """Issue #1833 group E part 3."""
     assert gen.REFLECT_BLOCKED_ACTION == engine_names()["ReflectBlockedAction"]
     assert gen.BLAST_FROM_THE_DYING_ACTION == engine_names()["BlastFromTheDyingAction"]
+
+
+def test_the_generator_accepts_exactly_the_stun_near_the_dying_name_the_engine_has() -> None:
+    """Ruled 2026-10-08."""
+    assert gen.STUN_NEAR_THE_DYING_ACTION == engine_names()["StunNearTheDyingAction"]
+
+
+def test_the_generator_spells_all_five_damage_over_time_ailments_as_the_engine_does() -> None:
+    """The owner, 2026-10-08. The one status name `apply_status` alone may
+    use; and the five it stands for are the generator's `AILMENTS`, which the
+    engine reads off `RandomDamageOverTimePool`."""
+    assert gen.ALL_DOTS_STATUS == engine_names()["AllDotsStatus"]
+    assert gen.ALL_DOTS_STATUS not in gen.APPLY_STATUSES
+    assert gen.ALL_DOTS_STATUS not in gen.APPLY_STATUSES_FOR_SECONDS
+    pool = re.search(
+        r"UCataclysmAilments::RandomDamageOverTimePool\(\)\s*\{(.*?)\n\}",
+        AILMENTS_SOURCE.read_text(encoding="utf-8"), re.DOTALL)
+    assert pool, "RandomDamageOverTimePool was not found in CataclysmAilments.cpp"
+    listed = re.search(r"for \(const TCHAR\* Name : \{(.*?)\}\)", pool.group(1), re.DOTALL)
+    assert listed, "the pool's list of names was not found"
+    assert tuple(re.findall(r'TEXT\("([A-Za-z ]+)"\)', listed.group(1))) == gen.AILMENTS
 
 
 def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() -> None:

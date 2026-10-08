@@ -946,6 +946,17 @@ public:
 	static const TCHAR* RandomDebuffStatus;
 
 	/**
+	 * A third status name that is not one ailment: EACH OF THE FIVE DAMAGE OVER
+	 * TIME AILMENTS, Bleed, Poison, Disease, Necrosis and Burn, applied in turn.
+	 * The owner, 2026-10-08, for "Your first hit against each enemy applies all
+	 * your active DoTs instantly". Not Void Splinter. The five are
+	 * `UCataclysmAilments::RandomDamageOverTimePool`, the one list of them the
+	 * engine holds. `ApplyStatusAction` alone may name it; the generator holds
+	 * the same name in `ALL_DOTS_STATUS` and refuses it on every other action.
+	 */
+	static const TCHAR* AllDotsStatus;
+
+	/**
 	 * The three actions that lay a status on THE WEARER. Ruled 2026-10-06. The first two are `ApplyStatusAction`
 	 * and `ApplyStatusSecondsAction` with the wearer as the character the status is laid on; the third applies it
 	 * once at the value's multiple of its ordinary size. `tools/generate_datatables.py` holds the same names in
@@ -1005,6 +1016,16 @@ public:
 	 * `BLAST_FROM_THE_DYING_ACTION`.
 	 */
 	static const TCHAR* BlastFromTheDyingAction;
+
+	/**
+	 * The action that stuns every enemy near an enemy that died carrying the
+	 * wearer's damage over time ailment. Ruled 2026-10-08, for "Chronomancer's
+	 * Time-Lock (6-Piece Bonus)". The row's value is the chance, rolled once
+	 * for the death, and its Stack Seconds is how long the stun lasts.
+	 * `tools/generate_datatables.py` holds the same name in
+	 * `STUN_NEAR_THE_DYING_ACTION`. See `UCataclysmContagion::StunNearTheDying`.
+	 */
+	static const TCHAR* StunNearTheDyingAction;
 
 	/**
 	 * The six ailment rider action names, one per `ECataclysmAilmentRider` but
@@ -3732,6 +3753,10 @@ protected:
 	 * for the blast of an enemy that a blast killed. It is not acted on at
 	 * depth two. It waits in `QueuedAfflictedDeaths` and is acted on after the
 	 * outer call has returned, at depth one again. Ruled 2026-10-07.
+	 *
+	 * KEPT FOR THE BLAST AND FOR NOTHING ELSE. Ruled 2026-10-08: the stun of
+	 * `StunNearTheDyingAction` hangs on the same event and is NOT kept, so an
+	 * afflicted enemy that dies to a row's own action stuns nobody.
 	 */
 	int32 PoolActionDepth = 0;
 
