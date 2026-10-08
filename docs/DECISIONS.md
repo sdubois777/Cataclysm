@@ -2,6 +2,55 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — Four rows are built on stats that are each read at one place: the shield that loses more, the slower leech, the heavy attack's half circle and the stagger that roots
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The rows the entry "Four stats, each read at one existing place" of 2026-10-07 left to the session holding the
+design workbook, each as that entry's table states it. Each stat and the place that asks for it were read in the
+merged code. No engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Your energy shield takes 30%-50% increased damage | `energy_shield_damage_taken` | flat | 30 to 50 | none |
+| 50% less tick rate for your leech effects | `leech_payout_rate` | more | -50 | none |
+| Your heavy attack hits all enemies in a 180 degree arc in front of you | `strike_arc_at_least_degrees` | flat | 180 | `Slot.Heavy` |
+| Enemies you stagger are also briefly rooted for 0.5-1.5 seconds | `stagger_root_seconds` | flat | 0.5 to 1.5 | none |
+
+EnchantmentEffects 554 to 558, over 467 to 471 enchantments.
+
+### THREE THINGS A READER OF THE ROWS SHOULD KNOW
+
+- **The shield row is `flat` although its sentence says "increased".** The stat has no base, and an increased
+  row on it would multiply nought. That entry says so; the row follows it.
+- **THE HEAVY ATTACK ROW CARRIES `Slot.Heavy`, AND MUST.** The stat is asked with the tags of the skill being
+  swung. Without the tag every strike the wearer makes would be widened to a half circle and lose its target
+  limit, a basic attack that is a strike included. The test below asks with a basic attack's slot tag for that
+  reason.
+- **A worn item at the top of the shield row's range carries 50**, the larger figure; the row is written 30 to 50.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the four sentences is that entry's.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheFourOneSiteRowsEachHandTheirWearerTheStatTheGameAsksFor`: each real row worn at the
+  top of its range. The test first asserts that each name it wears is a row of its table. Every figure is a
+  difference or a ratio against the same wearer with the item taken off: the shield stat is 50 higher; the leech
+  rate applied to 100 gives half of what it gave; the arc stat is 180 higher asked with a heavy attack's slot tag
+  and no higher asked with a basic attack's; the root stat is 1.5 higher.
+
+**Not tested here:** a blow on a worn row's wearer's shield, a leech payment under the worn row, a heavy strike
+under the worn row, or an enemy rooted by it. That entry tests each with the stat set by hand.
+
+---
+
 ## 2026-10-08 — Three sentences on damage over time, time in combat and leeching are built as four rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),
