@@ -1701,10 +1701,33 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// `Outcome` IS NOT CHANGED, so whoever struck leeches and is told of
 			// the whole blow; the blow happened in full, and the bond decides only
 			// whose health pays for it.
+			//
+			// THE WHOLE BLOW IS DIVIDED, BEFORE IT IS CUT TO THE HEALTH LEFT. Issue #2289. The project owner,
+			// 2026-10-08, asked "should a large enough blow kill a creature under Sacrificial Bond?": "yes". The
+			// rest is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+			// `Outcome.DealtToHealth` is the blow already cut to this creature's health and `Outcome.Overkill` is
+			// what was cut off, so the two add up to what reached the health step: `Whole`. Until this, the share
+			// was taken of the cut figure, which is never more than the health held, so no blow killed a bonded
+			// creature with an ally in reach. Now the creature keeps its share of the whole, and what reaches its
+			// health is the smaller of that and its health. It dies when its share of the whole blow is at least
+			// its remaining health.
+			//
+			// A BLOW UNDER ITS HEALTH HAS NO OVERKILL, so it is divided exactly as it was. A character with nobody
+			// to share with keeps the whole, and the smaller of the whole and its health is `Arriving` again, so
+			// nothing changes for it either. A tick of damage over time comes through this same branch.
+			//
+			// THE CONVERSION TO BLEEDING ABOVE IS NOUGHT FOR A CREATURE, as read: its window opens only for a
+			// character whose stat line carries `damage_to_bleeding_on_low_health`, a creature is never given a
+			// stat line, and the attribute behind it is on a set only the player's state holds. And it converts a
+			// blow whole or not at all, when `Arriving` is nought and nothing is shared. So `Whole` takes nothing
+			// off for it. A conversion of part of a blow, or one a creature could hold, would need a ruling on
+			// what `Whole` is.
 			TArray<AActor*> Sharing;
-			const float ToHealth = Arriving > 0.0f
-				? Arriving * UCataclysmEnemyModifiers::ShareOfDamageKept(GetOwningActor(), &Sharing)
+			const float Whole = Arriving + Outcome.Overkill;
+			const float KeptOfWhole = Arriving > 0.0f
+				? Whole * UCataclysmEnemyModifiers::ShareOfDamageKept(GetOwningActor(), &Sharing)
 				: Arriving;
+			const float ToHealth = Arriving > 0.0f ? FMath::Min(KeptOfWhole, GetHealth()) : Arriving;
 
 			// A BLOW THAT WOULD KILL A CREATURE IN AN UNHOLY SIGIL DOES NOT.
 			// Issue #1559. `PreAttributeChange` holds it at one health; this is
@@ -1792,9 +1815,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// not meet again: the blow was already resolved against this
 			// creature's. Dealt by this creature, which always has an ability
 			// system to send it from; who struck is carried by the record.
-			if (!Sharing.IsEmpty() && Arriving > ToHealth)
+			//
+			// OF THE WHOLE BLOW, LESS THE SHARE THE BONDED CREATURE KEPT, AND NOT LESS WHAT ITS HEALTH TOOK. Issue
+			// #2289, ruled 2026-10-08. So an ally can take more than the bonded creature had left: a blow of 1,000
+			// on a bonded creature with 100 health and one ally kills it and takes 500 from the ally. It follows
+			// from the row's own sentence. Paying the allies from the cut figure instead would give them nothing
+			// for a killing blow and half for a slightly smaller one.
+			//
+			// THE BONDED CREATURE MAY HAVE DIED ON THE WRITE ABOVE, which no blow could do before issue #2289. Its
+			// allies are still paid, and still from it, as read: `ReduceHealthDirectly` asks for the sender's
+			// ability system and not whether the sender lives, and a dead creature leaves the world on a timer and
+			// not at once.
+			if (!Sharing.IsEmpty() && Whole > KeptOfWhole)
 			{
-				const float EachShare = (Arriving - ToHealth) / static_cast<float>(Sharing.Num());
+				const float EachShare = (Whole - KeptOfWhole) / static_cast<float>(Sharing.Num());
 				const UCataclysmAbilitySystemComponent* Bonded =
 					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 				for (AActor* Ally : Sharing)

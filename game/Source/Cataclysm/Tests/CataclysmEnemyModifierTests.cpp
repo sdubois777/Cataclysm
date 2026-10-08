@@ -7,6 +7,8 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the bleed whose tick a bonded creature shares. Issue #2289.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -2742,6 +2744,400 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicNeitherChargesNorEatsTest,
 			 MedicsAlly.IsValid()
 				 && !UCataclysmSkillEffects::IsDead(MedicsAlly.Get()));
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// SACRIFICIAL BOND: A LARGE ENOUGH BLOW KILLS A BONDED CREATURE. Issue #2289.
+//
+// The project owner, 2026-10-08, asked "should a large enough blow kill a creature under Sacrificial Bond?":
+// "yes". Ruled by the coordinating session under the owner's delegation the same day, resting on that answer:
+// the whole blow is divided before it is cut to the health left; the creature dies when its share of the whole
+// blow is at least its remaining health; each ally takes the whole blow less the kept share, divided among the
+// allies.
+//
+// EVERY AMOUNT IS READ AGAINST A CONTROL: the same blow, or the same tick, on a creature that carries no bond and
+// has health to spare. No figure of what a blow takes is typed here. A bonded creature's health is then written
+// as a part of that measured figure, well away from the line on both sides: three quarters of it where the
+// creature must live, two fifths of it where it must die. The half it keeps is a half of the measured figure.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two are within two metres of each other. Nothing
+// here waits: every blow and every tick is made by hand.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmBondKillsTest
+{
+	using namespace CataclysmBondAndSigilTest;
+
+	/** Write a creature's health now. Every figure written here is under the 100,000 it was made with. */
+	void PutHealthAt(ACataclysmEnemyCharacter* Creature, float Health)
+	{
+		if (UAbilitySystemComponent* Own = Creature ? Creature->GetAbilitySystemComponent() : nullptr)
+		{
+			Own->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		}
+	}
+
+	/** Whether a creature has died: marked dead, or already gone from the world. */
+	bool HasDied(const ACataclysmEnemyCharacter* Creature)
+	{
+		return !IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature);
+	}
+
+	/** What the player's blow of 1,000 takes from a creature that carries no bond and has health to spare. */
+	float WholeBlowOn(ACataclysmPlayerCharacter* Player, ACataclysmEnemyCharacter* Control)
+	{
+		const float Before = HealthOf(Control);
+		UCataclysmSkillEffects::ApplyDirectDamage(Player, Control, 1000.0f, FCataclysmHitDelivery());
+		return Before - HealthOf(Control);
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondLargeBlowKillsTest,
+	"Cataclysm.EnemyModifiers.ABlowWhoseShareReachesABondedCreaturesHealthKillsIt")
+{
+	// STANDING: the player 50 m along Y. The bonded creature at the origin and its ally 2 m along X. The control,
+	// which carries no bond, 30 m the other way along X.
+	using namespace CataclysmBondKillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Ally = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a bonded creature"), Bonded)
+		|| !TestNotNull(TEXT("an ally"), Ally) || !TestNotNull(TEXT("a control"), Control))
+	{
+		return false;
+	}
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+	// THE WHOLE BLOW, MEASURED ON A CREATURE WITH NO BOND.
+	const float Whole = WholeBlowOn(Player, Control);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the blow takes health from a creature with no bond, and under half "
+									   "of what it holds (%.2f)"), Whole),
+				  Whole > 10.0f && Whole < 50000.0f)
+		|| !TestEqual(TEXT("set-up: the bond shares with the one ally"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: ITS HALF OF THE BLOW IS UNDER ITS HEALTH, SO IT LIVES AND LOSES HALF OF THE WHOLE BLOW. The blow
+	// is larger than the three quarters of it the creature holds. Before issue #2289 the blow was cut to that
+	// health first and the creature lost half of the cut figure, which is three eighths of the blow.
+	PutHealthAt(Bonded, Whole * 0.75f);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	TestFalse(TEXT("control: a blow whose half is under the bonded creature's health does not kill it"),
+			  HasDied(Bonded));
+	TestEqual(TEXT("control: and it loses half of the whole blow"),
+			  Whole * 0.75f - HealthOf(Bonded), Whole * 0.5f, 0.01f);
+
+	// THE CASE: THE SAME BLOW ON THE SAME PAIR, AND ITS HALF IS NOW MORE THAN THE HEALTH HELD.
+	PutHealthAt(Bonded, Whole * 0.4f);
+	if (!TestFalse(TEXT("set-up: the bonded creature stands before the killing blow"), HasDied(Bonded))
+		|| !TestEqual(TEXT("set-up: and still shares with its one ally"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	TestTrue(TEXT("a blow whose half is at least the bonded creature's health kills it"), HasDied(Bonded));
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondKillPaysAllyTest,
+	"Cataclysm.EnemyModifiers.AKillingBlowOnABondedCreatureTakesHalfTheWholeBlowFromItsAlly")
+{
+	// STANDING: the player 50 m along Y. The bonded creature at the origin and its ally 2 m along X. The control,
+	// which carries no bond, 30 m the other way along X.
+	using namespace CataclysmBondKillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Ally = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a bonded creature"), Bonded)
+		|| !TestNotNull(TEXT("an ally"), Ally) || !TestNotNull(TEXT("a control"), Control))
+	{
+		return false;
+	}
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+	// THE WHOLE BLOW, MEASURED ON A CREATURE WITH NO BOND, as the first test of the bond's blows measures it.
+	const float Whole = WholeBlowOn(Player, Control);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the blow takes health from a creature with no bond, and under half "
+									   "of what it holds (%.2f)"), Whole),
+				  Whole > 10.0f && Whole < 50000.0f)
+		|| !TestEqual(TEXT("set-up: the bond shares with the one ally"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE BONDED CREATURE HOLDS TWO FIFTHS OF THE BLOW, SO ITS HALF KILLS IT. The ally is paid the whole blow less
+	// that half, and not the health the bonded creature held less its half. Before issue #2289 the ally was paid
+	// half of the two fifths, one fifth of the blow.
+	PutHealthAt(Bonded, Whole * 0.4f);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	TestTrue(TEXT("the blow kills the bonded creature"), HasDied(Bonded));
+
+	const float AllyLost = 100000.0f - HealthOf(Ally);
+	TestEqual(TEXT("its ally loses half of the whole blow"), AllyLost, Whole * 0.5f, 0.01f);
+	TestTrue(TEXT("which is more than the bonded creature had left"), AllyLost > Whole * 0.4f + 0.01f);
+	TestFalse(TEXT("and the ally, with health to spare, still stands"), HasDied(Ally));
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondTwoBondedCountTest,
+	"Cataclysm.EnemyModifiers.TwoBondedCreaturesOfEqualHealthFallToTheFourthEqualBlowOnOne")
+{
+	// STANDING: the player 50 m along Y. The two bonded creatures at the origin and 2 m along X. The control, which
+	// carries no bond, 30 m the other way along X.
+	//
+	// THE COUNT, BY ARITHMETIC. Call what one blow takes W. Each of the two holds 1.75 W and each carries the bond.
+	// The one struck keeps half of every blow, W / 2, and the other is paid the other W / 2 as a direct reduction,
+	// which is not shared again. So both lose W / 2 a blow:
+	//     after blow 1 each holds 1.25 W; after blow 2, 0.75 W; after blow 3, 0.25 W.
+	//     Blow 3 is larger than the 0.75 W held and its half, 0.5 W, is under it, so the struck one lives.
+	//     Blow 4: its half, 0.5 W, is at least the 0.25 W held, so the struck one dies. The other is paid 0.5 W
+	//     against the 0.25 W it holds and dies of the same blow.
+	// The struck one dies on the first blow n with n x W / 2 at least 1.75 W, which is n = 4.
+	//
+	// BEFORE ISSUE #2289 NEITHER DIED. From blow 3 every blow was cut to the health held before it was halved, so
+	// each blow took half of what was left and the cap of ten blows below was reached.
+	using namespace CataclysmBondKillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Struck = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Other = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a bonded creature to strike"), Struck)
+		|| !TestNotNull(TEXT("a second bonded creature"), Other) || !TestNotNull(TEXT("a control"), Control))
+	{
+		return false;
+	}
+	Struck->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	Other->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+	const float Whole = WholeBlowOn(Player, Control);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the blow takes health from a creature with no bond, and under half "
+									   "of what it holds (%.2f)"), Whole),
+				  Whole > 10.0f && Whole < 50000.0f)
+		|| !TestEqual(TEXT("set-up: the struck creature shares with the other"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Struck), 0.5f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and the other with it"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Other), 0.5f, 0.001f))
+	{
+		return false;
+	}
+	PutHealthAt(Struck, Whole * 1.75f);
+	PutHealthAt(Other, Whole * 1.75f);
+
+	int32 Blows = 0;
+	float StruckAfterThree = -1.0f;
+	float OtherAfterThree = -1.0f;
+	while (Blows < 10 && !HasDied(Struck))
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Player, Struck, 1000.0f, FCataclysmHitDelivery());
+		++Blows;
+		if (Blows == 3)
+		{
+			StruckAfterThree = HealthOf(Struck);
+			OtherAfterThree = HealthOf(Other);
+		}
+	}
+
+	TestEqual(TEXT("the struck creature dies on the fourth equal blow"), Blows, 4);
+	TestTrue(TEXT("and it did die, rather than the count of blows running out"), HasDied(Struck));
+	TestEqual(TEXT("after three blows it held a quarter of one blow"), StruckAfterThree, Whole * 0.25f, 0.01f);
+	TestEqual(TEXT("and the other, paid the same shares, held the same"), OtherAfterThree, Whole * 0.25f, 0.01f);
+	TestTrue(TEXT("the other dies of the fourth blow as well"), HasDied(Other));
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondKillHeldBySigilTest,
+	"Cataclysm.EnemyModifiers.ABondedCreatureInAnUnholySigilIsLeftAtOneHealthByAKillingShare")
+{
+	// STANDING: the player 50 m along Y. The sigil's caster 11 m along X: outside the bond's 6 m, with the bonded
+	// creature at the origin inside its sigil's 12 m. The bonded creature's ally 2 m the other way along X, 13 m
+	// from the caster and outside the sigil. The control pair 40 m along -Y, outside the sigil: a bonded creature
+	// and its ally 2 m along X from it. The creature with no bond, which measures the blow, 30 m along -X.
+	using namespace CataclysmBondKillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Caster = Creature(World, FVector(1100.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Ally = Creature(World, FVector(-200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Outside = Creature(World, FVector(0.0f, -4000.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* OutsideAlly = Creature(World, FVector(200.0f, -4000.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a caster"), Caster)
+		|| !TestNotNull(TEXT("a bonded creature"), Bonded) || !TestNotNull(TEXT("an ally"), Ally)
+		|| !TestNotNull(TEXT("a bonded creature outside"), Outside)
+		|| !TestNotNull(TEXT("an ally outside"), OutsideAlly) || !TestNotNull(TEXT("a control"), Control))
+	{
+		return false;
+	}
+	LaySigil(Caster);
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	Outside->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	if (!TestTrue(TEXT("set-up: the bonded creature stands in the sigil"),
+				  UCataclysmEnemyModifiers::IsProtectedBySigil(Bonded))
+		|| !TestFalse(TEXT("set-up: its ally stands outside the sigil"),
+					  UCataclysmEnemyModifiers::IsProtectedBySigil(Ally))
+		|| !TestFalse(TEXT("set-up: the control pair's bonded creature stands outside the sigil"),
+					  UCataclysmEnemyModifiers::IsProtectedBySigil(Outside))
+		|| !TestEqual(TEXT("set-up: the bond shares with the one ally, and not with the caster"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and the control pair's bond shares with its one ally"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Outside), 0.5f, 0.001f))
+	{
+		return false;
+	}
+
+	const float Whole = WholeBlowOn(Player, Control);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the blow takes health from a creature with no bond, and under half "
+									   "of what it holds (%.2f)"), Whole),
+				  Whole > 10.0f && Whole < 50000.0f))
+	{
+		return false;
+	}
+
+	// BOTH BONDED CREATURES HOLD TWO FIFTHS OF THE BLOW, SO THE HALF EACH KEEPS IS MORE THAN IT HOLDS.
+	PutHealthAt(Bonded, Whole * 0.4f);
+	PutHealthAt(Outside, Whole * 0.4f);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Bonded, 1000.0f, FCataclysmHitDelivery());
+	TestFalse(TEXT("a blow whose half is at least its health does not kill a bonded creature in the sigil"),
+			  HasDied(Bonded));
+	TestEqual(TEXT("it is left at one health"), HealthOf(Bonded), 1.0f, 0.001f);
+	TestEqual(TEXT("and its stored base agrees"), BaseHealthOf(Bonded), 1.0f, 0.001f);
+	TestEqual(TEXT("its ally outside the sigil still loses half of the whole blow"),
+			  100000.0f - HealthOf(Ally), Whole * 0.5f, 0.01f);
+
+	// THE CONTROL: THE SAME BLOW ON THE SAME BONDED CREATURE OUTSIDE THE SIGIL KILLS.
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Outside, 1000.0f, FCataclysmHitDelivery());
+	TestTrue(TEXT("control: the same blow kills a bonded creature outside the sigil"), HasDied(Outside));
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmBondTickKillsTest,
+	"Cataclysm.EnemyModifiers.ATickWhoseShareReachesABondedCreaturesHealthKillsIt")
+{
+	// STANDING: the player 50 m along Y. The bonded creature at the origin and its ally 2 m along X. The control,
+	// which carries no bond, 30 m the other way along X.
+	//
+	// THE TICKS ARE RUN BY HAND, one at a time, with `ExecutePeriodicEffectsGrantingForTests`: a test world runs no
+	// timers. No time passes, so the bleed of four seconds is running for every tick here.
+	using namespace CataclysmBondKillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = Striker(World);
+	ACataclysmEnemyCharacter* Bonded = Creature(World, FVector::ZeroVector, 100000.0f);
+	ACataclysmEnemyCharacter* Ally = Creature(World, FVector(200.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Control = Creature(World, FVector(-3000.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a bonded creature"), Bonded)
+		|| !TestNotNull(TEXT("an ally"), Ally) || !TestNotNull(TEXT("a control"), Control))
+	{
+		return false;
+	}
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	UCataclysmAbilitySystemComponent* ControlSystem =
+		Cast<UCataclysmAbilitySystemComponent>(Control->GetAbilitySystemComponent());
+	UCataclysmAbilitySystemComponent* BondedSystem =
+		Cast<UCataclysmAbilitySystemComponent>(Bonded->GetAbilitySystemComponent());
+	if (!TestTrue(TEXT("set-up: the bleed's tag"), Bleed.IsValid())
+		|| !TestNotNull(TEXT("set-up: the control's ability system"), ControlSystem)
+		|| !TestNotNull(TEXT("set-up: the bonded creature's ability system"), BondedSystem))
+	{
+		return false;
+	}
+
+	// THE WHOLE TICK, MEASURED ON A CREATURE WITH NO BOND. A bleed of 1,000 a tick, not scaled by the player.
+	if (!TestTrue(TEXT("set-up: the bleed is applied to the control"),
+				  UCataclysmSkillEffects::ApplyDamageOverTime(Player, Control, /*DamagePerTick=*/1000.0f,
+															  /*DurationSeconds=*/4.0f, Bleed,
+															  /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	const float ControlBefore = HealthOf(Control);
+	const int32 ControlTicks = ControlSystem->ExecutePeriodicEffectsGrantingForTests(Bleed);
+	const float WholeTick = ControlBefore - HealthOf(Control);
+	if (!TestEqual(TEXT("set-up: one bleed ticked on the control"), ControlTicks, 1)
+		|| !TestTrue(FString::Printf(TEXT("set-up: the tick takes health from a creature with no bond, and under "
+										  "half of what it holds (%.2f)"), WholeTick),
+					 WholeTick > 10.0f && WholeTick < 50000.0f)
+		|| !TestEqual(TEXT("set-up: the bond shares with the one ally"),
+					  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f)
+		|| !TestTrue(TEXT("set-up: the same bleed is applied to the bonded creature"),
+					 UCataclysmSkillEffects::ApplyDamageOverTime(Player, Bonded, /*DamagePerTick=*/1000.0f,
+																 /*DurationSeconds=*/4.0f, Bleed,
+																 /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: THE TICK'S HALF IS UNDER THE HEALTH HELD, SO THE BONDED CREATURE LIVES AND LOSES HALF OF THE
+	// WHOLE TICK. Its health is written after the bleed is applied and read straight after the tick.
+	PutHealthAt(Bonded, WholeTick * 0.75f);
+	const float AllyBefore = HealthOf(Ally);
+	TestEqual(TEXT("set-up: one bleed ticked on the bonded creature"),
+			  BondedSystem->ExecutePeriodicEffectsGrantingForTests(Bleed), 1);
+	TestFalse(TEXT("control: a tick whose half is under the bonded creature's health does not kill it"),
+			  HasDied(Bonded));
+	TestEqual(TEXT("control: and it loses half of the whole tick"),
+			  WholeTick * 0.75f - HealthOf(Bonded), WholeTick * 0.5f, 0.01f);
+	TestEqual(TEXT("control: and its ally loses the other half"),
+			  AllyBefore - HealthOf(Ally), WholeTick * 0.5f, 0.01f);
+
+	// THE CASE: THE NEXT TICK OF THE SAME BLEED, AND ITS HALF IS NOW MORE THAN THE HEALTH HELD.
+	PutHealthAt(Bonded, WholeTick * 0.4f);
+	if (!TestFalse(TEXT("set-up: the bonded creature stands before the killing tick"), HasDied(Bonded)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the bleed ticked on the bonded creature again"),
+			  BondedSystem->ExecutePeriodicEffectsGrantingForTests(Bleed), 1);
+	TestTrue(TEXT("a tick whose half is at least the bonded creature's health kills it"), HasDied(Bonded));
+	TestEqual(TEXT("and its ally loses half of the whole tick again"),
+			  AllyBefore - HealthOf(Ally), WholeTick, 0.02f);
 	return true;
 }
 

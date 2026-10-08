@@ -404,11 +404,17 @@ struct CATACLYSM_API FCataclysmDamageResult
 	 * NOTHING IN THE CALCULATION READS IT. Leech, the floating number and everything else go on reading
 	 * `DealtToHealth`.
 	 *
+	 * ONE STEP OUTSIDE THE CALCULATION READS IT, since issue #2289: Sacrificial Bond's sharing in
+	 * `UCataclysmVitalAttributeSet` adds it to what reached health to have the whole blow again, and divides
+	 * that. It writes nothing here, so a bonded creature's kill records the whole blow less its health, not its
+	 * kept share less its health.
+	 *
 	 * IT IS NOT BY ITSELF A SIGN THAT THE BLOW KILLED. `UCataclysmVitalAttributeSet` empties it for a blow that
 	 * no longer empties health once its own steps have run (an immune, absorbing or reflecting wearer, a blow
 	 * saved at one point, a creature no damage reaches), but two later steps there leave `DealtToHealth` as it
-	 * is and still keep the creature alive: Sacrificial Bond's sharing and the Unholy Sigil. A reader that wants
-	 * the overkill of a KILL takes it from the blow the death followed.
+	 * is and still keep the creature alive: Sacrificial Bond's sharing, when the creature's share of the whole
+	 * blow is under its health, and the Unholy Sigil. A reader that wants the overkill of a KILL takes it from
+	 * the blow the death followed.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float Overkill = 0.0f;

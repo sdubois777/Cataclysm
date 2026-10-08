@@ -2,6 +2,274 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — A large enough blow kills a creature under Sacrificial Bond: the whole blow is divided before it is cut to the creature's remaining health
+
+**Not built and not run.** The writing session wrote the change, five tests, one restated test and this entry.
+It compiled nothing and ran no Unreal test. It ran the Python suite, the lint and the conflict check before the
+commit and nothing else. Every statement below about what the engine does is read from the code. No outcome of a
+build or of an Unreal run is recorded here.
+
+**Said first, for the owner's play-check: an ally can take more than the bonded creature had left.** A blow of
+1,000 on a bonded creature with 100 health and one ally kills it and takes 500 from the ally. It follows from the
+row's own sentence, "All damage taken is redirected and divided among nearby allies."
+
+**Said first: one consequence is not ruled, and the code was left as the brief gave it.** When a blow kills the
+bonded creature and an ally's share of the same blow kills the ally, the ally's death now carries the bonded
+creature's overkill figure. The ally's last blow is copied from the bonded creature's record
+(`CataclysmVitalAttributeSet.cpp` line 1839), and that record holds an overkill only for a lethal blow
+(`CataclysmCombatEvents.cpp` lines 176 to 182). Before this layer the bonded creature's blow was never lethal
+while it had an ally in reach, so the copy held nought; the entry of 2026-10-07 on the overkill explosion's
+second part says "A creature killed by damage shared through Sacrificial Bond explodes for nought", and that
+is no longer true in this one case. The death notice takes its overkill from that record
+(`CataclysmCombatEvents.cpp` line 272), and the explosion is sized from the notice
+(`CataclysmPlayerCharacter.cpp` line 1123). So for a player wearing "Enemies killed by you explode for the
+overkill amount", the ally's body would, as read, explode for the bonded creature's overkill as well as the
+bonded creature's own. Whether the row's `kill` event fires for the ally's death in that order was not
+traced. The writing session did not decide it. One line, `Blow.Overkill = 0.0f;` beside the copy, would keep
+the earlier behaviour. **It needs a ruling.** No test here reaches it.
+
+**Said first: a second assertion of the Lightforged Walls bond test changed, which the brief did not name.** The
+brief named one assertion of that test that this layer makes false. Reading the test whole found a second, its
+last line. Both are restated below, before and after.
+
+### The owner's answer
+
+The owner, 2026-10-08, asked "should a large enough blow kill a creature under Sacrificial Bond?": "yes".
+
+It answers issue #2289.
+
+### Rulings
+
+Each of these is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08,
+resting on that answer. The registering session, not the coordinating session, made every reading of the code
+the rulings name. The writing session read each site again before changing it.
+
+1. **The blow is divided before it is cut to remaining health.** `Whole` is what arrived plus the recorded
+   overkill (`Arriving + Outcome.Overkill`). The creature keeps `Whole` times its share (`ShareOfDamageKept`).
+   What reaches its health is the smaller of that kept share and its health. It dies when the kept share is at
+   least its remaining health. Each ally takes (`Whole` less the kept share) divided among the allies.
+2. **"Large enough" is: the creature's share of the whole blow is at least its remaining health.**
+3. **A blow under the creature's health behaves exactly as before.** Its overkill is nought.
+4. **`Outcome` is not changed.** The overkill explosion row still reads the whole overkill of a kill: for a
+   bonded creature a blow kills, that is the whole blow less its health, and not its kept share less its
+   health. Nothing was changed for it.
+5. **Neither option not taken is taken.** (a) "Any blow that would have killed without the bond kills": not
+   taken, because the bond would then protect nothing against a lethal blow. (b) Dividing the whole blow for
+   the creature but paying allies from the cut figure: not taken, because a killing blow would then give
+   allies nothing and a slightly smaller one half.
+6. **An ally can take more than the bonded creature had left.** It is the first thing said in this entry.
+
+### What it is for
+
+`Demonic_Sacrificial_Bond` in `game/Data/EnemyModifiers.csv`, Name "Sacrificial Bond": "All damage taken is
+redirected and divided among nearby allies."
+
+Until this layer a bonded creature with a living ally in reach could not be killed by a blow. The damage
+calculation cut every blow to the creature's remaining health, and the bond then took the creature's share of
+that cut figure, which is never as much as the health held. A blow of 1,000 on a creature with 100 health and
+one ally took 50, then 25, then 12.5.
+
+### What was read before writing
+
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`, `PostGameplayEffectExecute` (line 352),
+  from the call of `Resolve` (line 1101) to the end of the bond's payment (line 1847), whole.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp`, `Resolve`: its opening (lines 610 to
+  667) and its last lines (1128 to 1134). `CataclysmDamageCalculation.h`, the comment on `Overkill` (lines 394
+  to 420), whole.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.cpp`, whole to line 175.
+- `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.cpp`, `ShareOfDamageKept` (lines 685 to 750) and
+  `IsProtectedBySigil`. Not changed.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`: `ReduceHealthDirectly` (line 1003),
+  `ApplyHit` (line 660) and `ApplyDamageOverTime` (line 1756), the last two with their comment lines left out.
+- `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`, `HandleDeath` (line 172), with its comment
+  lines left out, and the part of `ApplyStartingAttributes` that sets health and the energy shield.
+- Every existing Sacrificial Bond test, whole: five in `CataclysmEnemyModifierTests.cpp` and one in
+  `CataclysmDungeonModifierEffectsTests.cpp`.
+- Issues #2289 and #2334, with #2334's two comments.
+
+Not read: the Blueprint defaults of any creature; `UCataclysmFervour::GainFromDamage`; the death path past
+`HandleDeath`'s first ninety lines; every listener of a death notice other than the overkill explosion's.
+
+### How it is built
+
+Two places in `PostGameplayEffectExecute`, both in the damage branch, and nothing else in the game's code.
+
+**The share** (`CataclysmVitalAttributeSet.cpp` lines 1726 to 1730). Before:
+`ToHealth = Arriving > 0 ? Arriving * ShareOfDamageKept(...) : Arriving`. Now `Whole = Arriving +
+Outcome.Overkill`, `KeptOfWhole = Arriving > 0 ? Whole * ShareOfDamageKept(...) : Arriving`, and `ToHealth =
+Arriving > 0 ? the smaller of KeptOfWhole and the health held : Arriving`.
+
+**The allies' payment** (lines 1829 to 1831). Before: paid when `Arriving > ToHealth`, each
+`(Arriving - ToHealth)` divided by the number sharing. Now: paid when `Whole > KeptOfWhole`, each
+`(Whole - KeptOfWhole)` divided by the number sharing.
+
+**Why `Whole` is the whole blow.** `Resolve` writes `DealtToHealth` as the smaller of the damage and the
+defender's health, and `Overkill` as the damage less that health, never below nought
+(`CataclysmDamageCalculation.cpp` lines 1128 to 1133). The two add up to what reached the health step. The
+vital set empties `Overkill` for a blow one of its own steps stopped emptying health (line 1325), before the
+bond's step, so `Whole` never holds the overkill of a blow that was saved, absorbed, reflected or stopped.
+
+**A character with no bond is unchanged, by arithmetic.** Its share is one, so it keeps `Whole`. Where the blow
+has no overkill, `Whole` is `Arriving` and `Arriving` is not more than its health. Where the blow has an
+overkill, `DealtToHealth` is exactly its health, so the smaller of `Whole` and its health is its health, which
+is `Arriving`. Either way `ToHealth` is what it was.
+
+**The Unholy Sigil's check holds as before.** `bWouldKill = ToHealth > 0 && ToHealth >= GetHealth()` (line 1735)
+reads the new figure. `ToHealth` is now the creature's health exactly when its kept share reaches it, so a
+bonded creature in a sigil is held at one health by such a blow. Its allies are still paid the whole blow less
+the kept share.
+
+**The other reader of `ToHealth`** between the two places is `UCataclysmFervour::GainFromDamage` (line 1800),
+which is handed the health actually lost, as before. `Arriving` has no other reader there.
+
+**The conversion to bleeding is nought for a creature, as read.** `TurnedIntoBleeding` (line 1681) comes from
+`UCataclysmDamageConversion::ConvertIfActive`, which answers nought unless the defender's conversion window is
+open. The window is opened only by `NoteHealthChanged`, and only when `RuleApplies` answers yes: the stat
+`damage_to_bleeding_on_low_health` above nought on the character's stat line, or failing a stat line the
+attribute of that name. A stat line is written in one place, `UCataclysmPlayerClassStats::ApplyTo`
+(`CataclysmPlayerClassStats.cpp` line 1749), which is called for a player's character and from the equipment
+component, and only `ACataclysmPlayerCharacter` creates an equipment component. The attribute is on
+`UCataclysmClassResourceAttributeSet`, which only `ACataclysmPlayerState` creates
+(`CataclysmPlayerState.cpp` line 45). The one row that sets the stat is the Masochist node
+`Masochist_basic_ll_b1` in `game/Data/PassiveEffects.csv`. So `Whole` takes nothing off for the conversion.
+The conversion also turns a blow whole or not at all, and then `Arriving` is nought and nothing is shared. A
+conversion of part of a blow, or one a creature could hold, would need a ruling on what `Whole` is.
+
+**The bonded creature may now die before its allies are paid.** Its health is written, and its death handled,
+before the payment. As read, the payment still happens and is still sent from it: `ReduceHealthDirectly` asks
+for the sender's ability system and not whether the sender lives, and a dead creature is removed on a timer
+and not at once. This order did not occur before this layer and is not run.
+
+**A tick of damage over time takes the same path.** The vital set sets `Hit.bIsDamageOverTime` from the
+effect's tags (line 425) and goes through the same branch. `Resolve` has two early returns before any code that
+asks whether the blow is a tick: no defender or a blow of no damage (line 619), and a defender with no health
+attributes (line 629). Neither asks whether the blow is a tick. The evasion step that follows is skipped for a
+tick. So a tick is divided as a hit is, and a tick whose share is at least the bonded creature's remaining
+health kills it.
+
+**Comments corrected.** The comment on `FCataclysmDamageResult::Overkill` now says that one step outside the
+calculation reads it, and that Sacrificial Bond's sharing keeps a creature alive only when its share of the
+whole blow is under its health. The comments at both changed places say what changed and why.
+
+### What an earlier entry says that this one replaces
+
+The entry of 2026-10-07 on the overkill explosion's first part says "Sacrificial Bond's sharing is applied to
+the figure already clamped to the enemy's remaining health, so a shared blow is never lethal and a lethal blow
+has nothing shared." From this layer a shared blow can be lethal. The entry on its second part says "A creature
+killed by damage shared through Sacrificial Bond explodes for nought"; see the second thing said first above.
+Neither entry is edited.
+
+### For the owner's play-check
+
+- A bonded creature beside an ally now dies to blows. With one ally it takes half of each blow, and dies when
+  half of a blow is at least what it has left.
+- The ally takes the other half of the whole blow, however little the bonded creature had left. A blow far
+  larger than the bonded creature's health therefore puts most of itself on the ally. With three allies each
+  takes a quarter.
+- Two bonded creatures of equal health standing together lose health together and die of the same blow. That
+  is by arithmetic and by one test, not by a run.
+- A bonded creature standing in an Unholy Sigil is still left at one health.
+- No number was judged in this layer. The bond's reach of 6 metres and its even division are unchanged.
+- The reading not taken for "large enough" is ruling 5(a): any blow that would have killed without the bond.
+
+### Judgements by the writing session
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The second Lightforged Walls assertion was restated**, on the reason the brief gave for the first: the
+   blow it sent now kills.
+2. **The Lightforged Walls test's compared blows are 30 before the creature's defences, sent with
+   `ApplyDirectDamage`**, where the test sent 100,000% of weapon damage with `ApplyHit`. The size of the
+   player's weapon damage is not known to the writing session, and a blow whose half is under 100 health has
+   to be small. The critical strike roll is pinned and the creature's block chance is written to nought,
+   because two blows are compared. The test's large blow across the closed barrier is kept as it was.
+3. **The ally of a bonded creature held by a sigil is asserted to lose half of the whole blow.** It follows
+   from ruling 1 as worded. The brief did not name it.
+4. **Two bonded creatures of equal health are asserted to die of the same blow.** It follows by arithmetic
+   from ruling 1. The brief asked only for the count on the one struck.
+5. **The overkill carried to an ally's death was left as the code gives it**, and is said first above.
+6. **No test is on the line itself.** A share exactly equal to the remaining health kills by the code's `>=`.
+   The tests put the creature's health at three quarters and at two fifths of the blow, away from the line,
+   because the two figures compared there come from different float sums.
+
+### Research
+
+No source was read. The brief did not say whether research applied. The shape of the row, an even division
+among nearby allies, was settled on 2026-09-30 and is not changed. This layer changes the order of two steps
+that already existed.
+
+### Tests
+
+Five new tests in `game/Source/Cataclysm/Tests/CataclysmEnemyModifierTests.cpp`, group
+`Cataclysm.EnemyModifiers`. In each, what a blow or a tick takes is measured on a creature with no bond, and a
+bonded creature's health is written as a part of that figure.
+
+1. `ABlowWhoseShareReachesABondedCreaturesHealthKillsIt`. Control: the pair with the bonded creature holding
+   three quarters of the blow; it lives and loses half of the whole blow. Case: the same pair with it holding
+   two fifths; it dies.
+2. `AKillingBlowOnABondedCreatureTakesHalfTheWholeBlowFromItsAlly`. The ally loses half of the whole blow,
+   which is more than the bonded creature held.
+3. `TwoBondedCreaturesOfEqualHealthFallToTheFourthEqualBlowOnOne`. Each holds 1.75 blows. The one struck dies
+   on the fourth blow; the arithmetic is in the test's comment. After three blows each holds a quarter of a
+   blow, and the other dies of the fourth as well.
+4. `ABondedCreatureInAnUnholySigilIsLeftAtOneHealthByAKillingShare`. Control: the same blow kills the same
+   bonded creature outside the sigil.
+5. `ATickWhoseShareReachesABondedCreaturesHealthKillsIt`. A bleed's tick, run by hand. Control: a tick whose
+   half is under the health held; the creature lives and loses half of the whole tick.
+
+**One existing test restated:**
+`Cataclysm.DungeonModifierEffects.LightforgedWallsSacrificialBondDoesNotReachAcrossAClosedBarrier`. It sent
+100,000% of weapon damage at a bonded creature of 100 health with its ally in reach and asserted that the blow
+did not kill. Under this layer that blow kills.
+
+- Before: `TestFalse(TEXT("bonded within one section, the blow does not kill"),
+  UCataclysmSkillEffects::IsDead(Near));`
+- After: `TestEqual(TEXT("bonded within one section, the blow takes half of what it takes with no ally in
+  reach"), NearHeld - SectionHealthOf(Near), Alone * 0.5f, 0.01f);` where `Alone` is what the same blow took
+  from the same creature with its ally across the closed barrier.
+- Before: `TestFalse(TEXT("and the blow does not kill it"), UCataclysmSkillEffects::IsDead(Again));`
+- After: `TestEqual(TEXT("and a blow whose half is under its health takes half of what it resolved to"),
+  AgainHeld - SectionHealthOf(Again), OpenBlow.DealtToHealth * 0.5f, 0.01f);`
+
+The test's other assertions are kept. Its assertion "bonded across a closed barrier, the blow kills" still
+holds, and no longer shows the barrier by itself, since the same blow now kills within one section too. The
+amounts above show the barrier.
+
+**Existing bond tests judged unaffected, by reading:**
+`SacrificialBondDividesAHitAmongTheAlliesPresent` lands no blow.
+`ABondedCreatureSharesALandedBlowEvenlyWithItsAlly` and
+`ABondedCreatureWithNoCreatureToShareWithKeepsTheWholeBlow` send blows of 1,000 at creatures holding 100,000.
+`ALethalBlowLeavesACreatureInAnUnholySigilAtOneHealth` has no bonded creature.
+`ABondsShareDoesNotKillAnAllyInAnUnholySigil` sends 100,000 at a bonded creature holding 100,000; its three
+assertions hold whether or not the bonded creature survives, and it survives unless the blow reaches health
+for 200,000 or more.
+
+### Not covered by a test
+
+- The overkill an ally's death carries when one blow kills both. Said first above.
+- A share exactly equal to the remaining health.
+- More than one ally with a killing blow.
+- A bonded creature that is a boss, and a share-of-health tick on one.
+- What the attacker leeches. As read it is unchanged: leech reads `DealtToHealth`, which is cut to the bonded
+  creature's health, so nothing is leeched for what the allies lose beyond it.
+- The order in which the bonded creature's death and its allies' payments are heard by a death listener.
+- Every figure in the five tests is against a blow of 1,000 before defences on a creature made by the tests'
+  own helper. No creature the game places is struck.
+
+### What this ends in issue #2334, and what remains
+
+It ends two of that issue's cases, once built and run: a bonded Corrupted Sentinel beside a creature that
+cannot be led away, and two bonded creatures that keep together. Any repeated blow now kills a bonded
+creature, because its share of each blow stays the same size while its health falls. The shrouded Sentinel
+case and the Necrotic Ground case remain.
+
+### What the row needs, for the session that writes rows
+
+Nothing. No row, stat, condition or scale was added, and nothing in `game/Data` or the workbook changes. No
+generator dry run applies.
+
+---
+
 ## 2026-10-08 — Lightforged Walls seals each section of a Halls floor behind a barrier of pillars until the creatures placed in it are slain, and the row is Built
 
 **Built and run, in the second of two windows.** This is layer 2 of the floor-sections stack. Layer 1 is the

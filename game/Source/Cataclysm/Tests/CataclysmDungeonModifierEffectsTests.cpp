@@ -47811,17 +47811,73 @@ bool FCataclysmWallsSectionsBondTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("across the closed barrier it keeps the whole blow"),
 			  UCataclysmEnemyModifiers::ShareOfDamageKept(Near), 1.0f, 0.001f);
 
-	// A BLOW, BONDED WITHIN ONE SECTION: AS TODAY, IT DOES NOT KILL (issue #2289 asks whether that is intended).
+	// A BLOW, BONDED WITHIN ONE SECTION, AGAINST THE SAME BLOW WITH THE ALLY OUT OF REACH. Issue #2289 was answered
+	// on 2026-10-08: a large enough blow kills a bonded creature. Until then this sent 100,000% of weapon damage
+	// and asserted that it did not kill; under the answer that blow kills. So the control is now an amount: a blow
+	// whose half is under the creature's health takes half of what the same blow takes with no ally in reach. The
+	// blow is 30 before the creature's defences, against the 100 it is wounded to. Each health is read before its
+	// blow, and not taken to be 100.
+	//
+	// NO BLOW HERE MAY BE A CRITICAL STRIKE, because two blows are compared. Pinned as the Void Parasite's damage
+	// test pins it: at the console's own priority, and put back afterwards.
+	IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+	if (!TestNotNull(TEXT("set-up: the critical roll can be pinned"), CritRoll))
+	{
+		return false;
+	}
+	const float CritRollBefore = CritRoll->GetFloat();
+	CritRoll->Set(100.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { CritRoll->Set(CritRollBefore, ECVF_SetByConsole); };
+
+	// NOR MAY ONE BE BLOCKED. `PlaceCreatureAtRung` leaves a creature no evasion; its block chance is written to
+	// nought here, as the bond's own tests write it.
+	if (UAbilitySystemComponent* NearSystem = Near->GetAbilitySystemComponent())
+	{
+		NearSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+
+	// WITH NO ALLY IN REACH: the closed barrier stands between the two, so the bonded creature keeps the whole blow.
+	Far->FloorSection = 1;
+	const float NearHeld = SectionHealthOf(Near);
+	FCataclysmDamageResult AloneBlow;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Near, 30.0f, FCataclysmHitDelivery(), &AloneBlow);
+	const float Alone = NearHeld - SectionHealthOf(Near);
+	if (!TestTrue(FString::Printf(TEXT("set-up: with no ally in reach the blow takes health, and under half of "
+									   "what is held (%.3f of %.3f)"), Alone, NearHeld),
+				  Alone > 1.0f && Alone < NearHeld * 0.5f)
+		|| !TestFalse(TEXT("set-up: and it was not evaded, blocked or a critical strike"),
+					  AloneBlow.bEvaded || AloneBlow.bBlocked || AloneBlow.bWasCritical))
+	{
+		return false;
+	}
+
+	// BONDED WITHIN ONE SECTION: the same blow on the same creature, its health put back first.
+	WoundCreatureTo(Near, NearHeld, 0.0f);
 	Far->FloorSection = 0;
-	UCataclysmSkillEffects::ApplyHit(Player.Character, Near, 100000.0f);
-	TestFalse(TEXT("bonded within one section, the blow does not kill"), UCataclysmSkillEffects::IsDead(Near));
+	FCataclysmDamageResult SharedBlow;
+	if (!TestEqual(TEXT("set-up: the creature holds what it held before the first blow"), SectionHealthOf(Near),
+				   NearHeld, 0.001f))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Near, 30.0f, FCataclysmHitDelivery(), &SharedBlow);
+	if (!TestEqual(TEXT("set-up: the two blows resolved to the same figure"), SharedBlow.DealtToHealth,
+				   AloneBlow.DealtToHealth, 0.001f)
+		|| !TestFalse(TEXT("set-up: and the second was not evaded, blocked or a critical strike"),
+					  SharedBlow.bEvaded || SharedBlow.bBlocked || SharedBlow.bWasCritical))
+	{
+		return false;
+	}
+	TestEqual(TEXT("bonded within one section, the blow takes half of what it takes with no ally in reach"),
+			  NearHeld - SectionHealthOf(Near), Alone * 0.5f, 0.01f);
 	TestTrue(TEXT("and the bonded creature lost some health"), SectionHealthOf(Near) < 100.0f);
 	if (!TestFalse(TEXT("set-up: the ally still stands"), UCataclysmSkillEffects::IsDead(Far)))
 	{
 		return false;
 	}
 
-	// THE SAME BLOW, BONDED ACROSS THE CLOSED BARRIER: IT KILLS.
+	// A LARGE BLOW, BONDED ACROSS THE CLOSED BARRIER: IT KILLS. Since issue #2289 was answered this blow kills within
+	// one section as well, so the amounts above, and not this, are what show the barrier.
 	Far->FloorSection = 1;
 	WoundCreatureTo(Near, 100.0f, 0.0f);
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Near, 100000.0f);
@@ -47845,8 +47901,23 @@ bool FCataclysmWallsSectionsBondTest::RunTest(const FString& Parameters)
 	WoundCreatureTo(Far, 100.0f, 0.0f);
 	TestEqual(TEXT("with the barrier open the bonded creature keeps half again"),
 			  UCataclysmEnemyModifiers::ShareOfDamageKept(Again), 0.5f, 0.001f);
-	UCataclysmSkillEffects::ApplyHit(Player.Character, Again, 100000.0f);
-	TestFalse(TEXT("and the blow does not kill it"), UCataclysmSkillEffects::IsDead(Again));
+	if (UAbilitySystemComponent* AgainSystem = Again->GetAbilitySystemComponent())
+	{
+		AgainSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+	const float AgainHeld = SectionHealthOf(Again);
+	FCataclysmDamageResult OpenBlow;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Again, 30.0f, FCataclysmHitDelivery(), &OpenBlow);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the blow resolved to something under half of what is held (%.3f of "
+									   "%.3f)"), OpenBlow.DealtToHealth, AgainHeld),
+				  OpenBlow.DealtToHealth > 1.0f && OpenBlow.DealtToHealth < AgainHeld * 0.5f)
+		|| !TestFalse(TEXT("set-up: and it was not evaded, blocked or a critical strike"),
+					  OpenBlow.bEvaded || OpenBlow.bBlocked || OpenBlow.bWasCritical))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a blow whose half is under its health takes half of what it resolved to"),
+			  AgainHeld - SectionHealthOf(Again), OpenBlow.DealtToHealth * 0.5f, 0.01f);
 	return true;
 }
 
