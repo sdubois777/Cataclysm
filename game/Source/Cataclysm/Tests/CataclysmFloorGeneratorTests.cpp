@@ -2053,4 +2053,68 @@ bool FCataclysmFloorSectionsNoNeedlessLineTest::RunTest(const FString& Parameter
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorSectionsWiderTest,
+	"Cataclysm.FloorSections.OnTwoHundredFurtherHallsPlansEveryAnswerObeysEveryRule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorSectionsWiderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorSectionsTest;
+
+	// TWO HUNDRED HALLS PLANS THAT ARE NOT THE TWENTY: dungeon seed 5000 + Index * 13 for Index 0 to 99, which is
+	// 5000 to 6287, each on floors 1 and 10. The twenty are dungeon seeds 1037 to 1370.
+	//
+	// THIS TEST CANNOT FAIL ON HOW MANY FLOORS HAVE SECTIONS. It exists to measure that, and to hold the rules on
+	// more plans than twenty. "Sections on every Halls floor" was measured on twenty floors only, and a floor gets
+	// none when part of its farthest tenth sits where no line parts it from the entrance. How often that happens is
+	// read from this test's log: one summary line, and one line for each plan with no sections so the floor can be
+	// looked at. What it asserts is that 200 plans were built, and that every answer with sections obeys every rule.
+	int32 Plans = 0;
+	int32 WithThree = 0;
+	int32 WithTwo = 0;
+	int32 WithNone = 0;
+	int32 AtTheLimit = 0;
+	double Slowest = 0.0;
+	for (int32 Index = 0; Index < 100; ++Index)
+	{
+		for (const int32 FloorNumber : {1, 10})
+		{
+			FCataclysmFloorRequest Request;
+			Request.DungeonSeed = 5000 + Index * 13;
+			Request.FloorNumber = FloorNumber;
+			Request.Layout = ECataclysmFloorLayout::Halls;
+			const FCataclysmFloorPlan Plan = FCataclysmFloorGenerator::Generate(Request);
+			if (!Plan.IsBuilt())
+			{
+				continue;
+			}
+			++Plans;
+
+			const double Began = FPlatformTime::Seconds();
+			const FCataclysmFloorSections Sections = FCataclysmFloorGenerator::FindSections(Plan);
+			Slowest = FMath::Max(Slowest, (FPlatformTime::Seconds() - Began) * 1000.0);
+			AtTheLimit += Sections.bReachedTheWalkLimit ? 1 : 0;
+
+			const int32 Count = Sections.SectionCount();
+			WithThree += (Count == 3) ? 1 : 0;
+			WithTwo += (Count == 2) ? 1 : 0;
+			if (Count == 0)
+			{
+				++WithNone;
+				UE_LOG(LogTemp, Display, TEXT("FLOORSECTIONS WIDER NONE seed=%d floor=%d walkable=%d walks=%d limit=%d"),
+					   Request.DungeonSeed, FloorNumber, Plan.FloorCount(), Sections.Walks,
+					   Sections.bReachedTheWalkLimit ? 1 : 0);
+				continue;
+			}
+			CheckEveryRule(*this, FString::Printf(TEXT("dungeon seed %d floor %d"), Request.DungeonSeed, FloorNumber),
+						   Plan, Plan, Sections);
+		}
+	}
+	UE_LOG(LogTemp, Display, TEXT("FLOORSECTIONS WIDER plans=%d three=%d two=%d none=%d slowest_ms=%.3f at_the_limit=%d"),
+		   Plans, WithThree, WithTwo, WithNone, Slowest, AtTheLimit);
+
+	TestEqual(TEXT("set-up: two hundred plans were built and asked about"), Plans, 200);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

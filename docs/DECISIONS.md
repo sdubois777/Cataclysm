@@ -48,7 +48,9 @@ either line alone is not expected to fail any test; breaking both is. See "Not c
 the floor by walking distance, wherever those cells are. If some of them are in a dead-end corner on the
 entrance's side of every line, no lines part the near part from them and the search finds no separation at all.
 One of the first version's hand-made plans did exactly this and was redrawn. Whether it is what happened on the
-three measured floors with two sections is not known to the writing session.
+three measured floors with two sections is not known to the writing session. **The share of floors with no
+sections is not yet known.** It is measured by the log of the test on 200 further plans, on that test's first run.
+What follows from the count is ruling 16.
 
 **Said first: this layer changes nothing a player can see.** It adds a search, two helpers and two arguments.
 Nothing calls the search or the helpers outside tests, and every existing caller of the two changed functions
@@ -203,6 +205,13 @@ argument that keeps creatures off cells.
    the layer's three. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
 14. **The closed-gate check asks both forms**, the same section numbers and each boundary alone, as it was built.
    Accepted. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+15. **The guard proof for "each boundary alone parts the entrance from the exit" is one proof with two edits in
+   the one file**, because the search holds that rule in two places and one edit alone changes nothing. A labelled
+   judgement by the coordinating session under the owner's delegation, 2026-10-08.
+16. **What follows from the count on 200 further plans.** If no sections occurs on more than one floor in twenty,
+   how the far part is chosen will be changed before layer 2. If it is at or under that, it is stated with its
+   measured share on the owner's play-check list. A labelled judgement by the coordinating session under the
+   owner's delegation, 2026-10-08.
 
 **The time, measured.** The arithmetic this entry first carried, about 70 microseconds an offer, was about nine
 times too high and is withdrawn. Measured by the registering session on 2026-10-08: the first search took 4.837
@@ -458,6 +467,15 @@ holds each boundary's recorded lines against its cells.
   boundary of more than one line, taking any one line away leaves cells that are not a boundary. Set-up: at least
   one such boundary was looked at, which the two-corridor plan gives. Control: an answer made by hand from two
   lines that each part the plan alone is counted twice. How many such boundaries the twenty plans hold is logged.
+- `OnTwoHundredFurtherHallsPlansEveryAnswerObeysEveryRule`: 200 Halls plans that are not the twenty: dungeon
+  seed 5000 + Index * 13 for Index 0 to 99, which is 5000 to 6287, each on floors 1 and 10. It asserts, as set-up,
+  that 200 plans were built, and that every answer with sections obeys every rule. It asserts no count of floors
+  with three, two or no sections, no time, and nothing about the limit of walks, so it cannot fail on how many
+  floors have sections. It logs one summary line, beginning `FLOORSECTIONS WIDER plans=`, with the floors with
+  three, with two and with none, the slowest floor and the floors that reached the limit; and one line for each
+  plan with no sections, beginning `FLOORSECTIONS WIDER NONE`, with its seed, floor, walkable cells and walks.
+  With it the layer declares 17 new Unreal tests, one more than before: 15 in `Cataclysm.FloorSections.` and 2 in
+  `Cataclysm.DungeonEnemies.`.
 - `AnObstacleIsAskedAboutWithAClosedBarriersCellsTreatedAsOpen`: with a barrier's cell rock in the plan, an
   obstacle that strands nothing is refused without the argument, which is the control, and allowed with it. An
   obstacle that strands a cell with the barrier open is refused. With nothing passed, and with an empty list, the
