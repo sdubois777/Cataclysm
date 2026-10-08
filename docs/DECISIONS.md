@@ -11,10 +11,12 @@ session: this layer's own groups in a short turn at df008d57, and the whole suit
 fa2ebece. The Run section at the end of this entry has every printed figure. The writing session ran nothing but
 the Python suite, the lint and the conflict check. The coordinating session ruled and ran nothing.
 
-**Said first: on the slowest of 200 measured Halls floors the search took 49.544 milliseconds, and it is not under
-50 on every run.** That figure is from the short turn: a Development build, inside a test, on an otherwise idle
-machine; 9 of the 200 floors reached the limit of 3,000 walks. In the first window's run of the whole suite the
-same test printed 51.231 milliseconds. No test asserts a time. The
+**Said first: on the slowest of 200 measured Halls floors the search took 49.544 milliseconds in one run and
+58.387 in another; it is not under 50 on every run.** The first figure is from the short turn: a Development
+build, inside a test, on an otherwise idle machine; 9 of the 200 floors reached the limit of 3,000 walks. In the
+first window's run of the whole suite the same test printed 51.231 milliseconds, and in a rerun of this layer's
+group alone at fa2ebece it printed 58.387. The same floors and the same code gave all three. No test asserts a
+time. The ruling that follows was made on the first two figures; the third was printed after it. The
 figure stands and the walk limit is not lowered, a labelled judgement by the coordinating session under the
 owner's delegation, 2026-10-08, with its reasons: the search runs once when a floor is built and not during play;
 the 50 millisecond line was the coordinating session's judged number and the owner has parked performance to move
@@ -567,12 +569,22 @@ two=18 none=4 slowest_ms=51.231 at_the_limit=9`.
 | Python, with continuous integration idle | `5879 passed, 8 skipped in 404.08s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
 | Ruff | `All checks passed!` |
 
-**NOT OBTAINED from the second window: its two log lines for the 20 and the 200 floors.** The registering session's
-runner did not keep the engine's log, and the guard proofs that followed wrote over it. So this run's slowest
-floor is not recorded here, and neither are the two counts layer 2's commit added to those lines (answers whose
-boundaries share a cell, and answers with a boundary that has no cell of its own). They are to be filled from a
-rerun of the group. **Those two counts are printed by this layer's test file, and the change that prints them is
-in layer 2's commit, not in this layer's.** A reader of this layer's pull request will not find them in it.
+**The second window's two log lines for the 20 and the 200 floors were not kept, and a rerun gave them.** The
+registering session's runner did not keep the engine's log, and the guard proofs that followed wrote over it. So
+the group `Cataclysm.FloorSections.` was run once more, alone, on the same binaries at fa2ebece, with the engine
+log copied the moment it ended: `Build: Succeeded - target already up to date, 0 actions, nothing compiled`, then
+`15 tests performed, 15 succeeded, 0 failed`. Its two lines:
+
+- `FLOORSECTIONS SUMMARY three sections on 17 of 20 | three or two on 20 of 20 | slowest floor 38.561 ms | floors
+  where the search stopped at its limit 1 | shared=8 no_own_cell=0`
+- `FLOORSECTIONS WIDER plans=200 three=178 two=18 none=4 slowest_ms=58.387 at_the_limit=9 shared=134
+  no_own_cell=0`
+
+`shared` is how many answers have a cell that two boundaries both hold: 8 of the 20 and 134 of the 200.
+`no_own_cell` is how many have a boundary with no cell that it alone holds: none of the 20 and none of the 200.
+**Those two counts are printed by this layer's test file, and the change that prints them is in layer 2's commit,
+not in this layer's.** A reader of this layer's pull request will not find them in it. What layer 2 does with a
+shared cell is in its entry.
 
 **Guard proofs, at fa2ebece, each with every anchor counted 1 and the source hash the same before and after, each
 PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
