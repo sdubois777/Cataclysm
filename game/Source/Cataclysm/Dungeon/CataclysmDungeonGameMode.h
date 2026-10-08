@@ -2106,6 +2106,20 @@ public:
 	TArray<FIntPoint> ClosedSectionBarrierCells() const;
 	bool AClosedBarrierStandsBetween(const ACataclysmEnemyCharacter* One, const ACataclysmEnemyCharacter* Other) const;
 
+	/**
+	 * The floor's plan with the cells of every section barrier still closed made walkable: the floor as it is on the
+	 * same seed without sections. A copy; the floor's own plan is not changed. Issues #1820 and #41. Ruled 2026-10-08.
+	 *
+	 * `FloorPopulationNow` IS THE ONE WAY THIS GAME MODE ASKS THE POPULATOR ANYTHING. The populator places only where
+	 * the entrance can be walked from, so asked about the plan as it stands on a floor with a sealed section it would
+	 * answer for the open sections alone. Asked through this it answers for the whole floor: when the floor's own
+	 * creatures are placed, with `NoCreatureOn` the cells of every boundary, and when a rule asks during play which
+	 * kinds the floor holds, with nothing barred. On a floor with no barrier closed it is the populator asked about
+	 * the plan, as before.
+	 */
+	FCataclysmFloorPlan PlanWithSectionBarriersOpen() const;
+	FCataclysmFloorPopulation FloorPopulationNow(const TSet<FIntPoint>& NoCreatureOn = TSet<FIntPoint>()) const;
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -4033,8 +4047,10 @@ private:
 	void OpenEverySectionBarrier();
 
 	/**
-	 * Called by `PopulateFloor` once the floor's own creatures stand and each has its section: closes the barrier of
-	 * every section that holds a creature, with pillars in the row's colour, raised at once.
+	 * Called by `PopulateFloor` BEFORE any rule chooses a cell for an object and before the creatures are placed:
+	 * every barrier is opened if it was closed and then closed, with pillars in the row's colour, raised at once. So
+	 * every picker reads a barrier's cells as Solid. Once the creatures stand, `StepTheSectionBarriers` is called at
+	 * once and opens the barrier of any section that holds none.
 	 */
 	void CloseTheSectionBarriers();
 
