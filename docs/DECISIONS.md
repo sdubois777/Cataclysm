@@ -4,14 +4,23 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — Lightforged Walls seals each section of a Halls floor behind a barrier of pillars until the creatures placed in it are slain, and the row is Built
 
-**Not built and not run.** Nothing in this entry was compiled and no Unreal test of it was run. The writing session
-ran the Python suite, the lint and the conflict check before each commit; their figures are in the commits' reports
-and not here. This is layer 2 of the floor-sections stack. Layer 1 is the entry below this one. The entry was
-written with the layer's first commit and corrected by its second, the same day, after the coordinating session
-ruled on the first report. The coordinating session ruled and ran nothing. Every build, run and measurement of
-layer 1 named here was made by the registering session.
+**Built and run, in the second of two windows.** This is layer 2 of the floor-sections stack. Layer 1 is the
+entry below this one. The entry was written with the layer's first commit and corrected by its second and third,
+the same day, after the coordinating session ruled on each report. The first window, at 2561ed00, built and
+failed three of this layer's tests; the second, at fa2ebece, passed with every registered figure as predicted.
+The Run section at the end of this entry has every printed figure. The coordinating session ruled and ran
+nothing. Every build, run and measurement named here was made by the registering session. The writing session
+ran the Python suite, the lint and the conflict check before each commit and nothing else.
 
-**Said first: the first window failed on this layer, and the cause given here is inferred.** The registering
+**Said first: three figures of the second window were lost, and one of them decides how often this row has
+sections.** The suite prints, for the 200 measured Halls floors, how many answers have boundaries that share a
+cell and how many have a boundary with no cell of its own; a floor of the second kind gets no sections under
+ruling 17. The registering session's runner did not keep the engine's log, and the guard proofs that followed
+wrote over it. So those two counts and that run's slowest floor are **NOT OBTAINED: the runner did not keep the
+engine log; to be filled from a rerun of the group**. Until they are, the share of Halls floors on which
+Lightforged Walls has sections is known only for layer 1's search (196 of 200) and not for the row as built.
+
+**Said first: the first window failed on this layer; the cause was inferred, and the second window showed it.** The registering
 session built and ran the layer at 2561ed00. It compiled. Of 3,388 tests performed, 3,385 succeeded and 3 failed,
 all three this layer's and all on one floor: dungeon seed 1, floor 2. No existing test failed. The five failed
 assertions:
@@ -23,15 +32,22 @@ assertions:
 - `LightforgedWallsAnOpenedBarrierStaysOpenAfterThePlayerDiesAndReturns`: "Expected 'and no pillar came back' to
   be 0, but it was 2."
 
-**The cause was inferred from those figures by the registering session and no log line shows it**: on that floor
-the two boundaries share one line of two cells. Layer 1's search closes the cells of both boundaries together and
-nothing requires them to be apart; a line in both stands directly between section 0 and section 2. Each barrier
-put a pillar on each of its cells, so the shared cells carried two, and opening barrier 0 made the shared cells
-walkable with barrier 1's pillars still on them. **On such a floor, in play, the player would have walked from
-the entrance's section into the stairs' section when the first barrier opened.** Whether the inference is right is
-shown, or shown wrong, by the set-up of a new test on that floor on its first run: it asserts the two boundaries
-share a cell and logs both, and its failure text says the inference was wrong and the fix fixes nothing seen. The
-layer's third commit holds rulings 16 to 21. It has not been built or run. The writing session ran nothing.
+**The cause was inferred from those figures by the registering session, and no log line of the first window
+shows it**: on that floor the two boundaries share one line of two cells. Layer 1's search closes the cells of
+both boundaries together and nothing requires them to be apart; a line in both stands directly between section 0
+and section 2. Each barrier put a pillar on each of its cells, so the shared cells carried two, and opening
+barrier 0 made the shared cells walkable with barrier 1's pillars still on them. **On such a floor, in play, the
+player would have walked from the entrance's section into the stairs' section when the first barrier opened.**
+
+**The second window showed it.** A new test on that floor asserts in its set-up that the two boundaries share a
+cell, and logs both. The set-up passed, and the lines it logged were:
+
+- "SHAREDCELLS dungeon seed 1 floor 2 boundary 0 holds 5 cells: (8,25) (9,25) (24,25) (25,25) (26,25)"
+- "SHAREDCELLS dungeon seed 1 floor 2 boundary 1 holds 4 cells: (17,13) (17,14) (8,25) (9,25)"
+
+The boundaries share (8,25) and (9,25). With the shared-cell rule taken out again by a guard proof, the same test
+printed that 279 cells of the stairs' section, and the exit, could be walked to from the entrance once the first
+barrier had opened. The layer's third commit holds rulings 16 to 21.
 
 **Said first: the order first ruled put objects inside pillars, and was corrected before any run.** The
 coordinating session's first order was: build the floor, place the shortcut gates, place the creatures with the
@@ -772,6 +788,65 @@ this layer changed; searched for.
 Nothing. `Celestial_Lightforged_Walls` is already a row of `game/Data/DungeonModifiers.csv` and its sentence is
 unchanged. This layer adds no stat, no condition and no scale. No dry run through the generator was made, because
 there is no row shape to pass.
+
+### Run
+
+Every build, run and measurement here was made by the registering session on 2026-10-08. Every figure is a line a
+run printed. Development was c17bda32 throughout. Both windows ran the stack of two: layer 1's search, then this
+layer.
+
+**The first window, at `feat/lightforged-sections` 2561ed00: stopped after the suite.** It built
+(`Build: Succeeded - 36 actions, 31 files compiled`). The whole Unreal suite printed `3388 tests performed, 3385
+succeeded, 3 failed`: the three tests and five assertions quoted at the top of this entry. Python printed `5879
+passed, 8 skipped`, JUnit `tests="5887"`, and ruff was clean. No guard proof was run. The coordinating session
+then ruled the shared-cell rule (rulings 16 to 21), and a third commit was written.
+
+**The second window, at `feat/lightforged-sections-2` fa2ebece.** One attempt; nothing was corrected during it.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 14 actions, 11 files compiled` |
+| Whole Unreal suite | `3389 tests performed, 3389 succeeded, 0 failed`; `Declared: 3389 tests in the tree at fa2ebece; 3389 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5879 passed, 8 skipped in 404.08s`; JUnit `tests="5887" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+| The 200 Halls floors: answers that share a cell | NOT OBTAINED: the runner did not keep the engine log; to be filled from a rerun of the group |
+| The 200 Halls floors: answers with a boundary that has no cell of its own | NOT OBTAINED: the runner did not keep the engine log; to be filled from a rerun of the group |
+| The 200 Halls floors: slowest floor in this run | NOT OBTAINED: the runner did not keep the engine log; to be filled from a rerun of the group |
+
+**Those three figures are printed by layer 1's test file, `CataclysmFloorGeneratorTests.cpp`, and the change that
+prints the two counts is in this layer's third commit.** Layer 1's own commits do not hold it.
+
+The three restated tests each search dungeon seeds 1 to 20 for a floor in three sections whose boundaries share
+no cell. All three passed, so such a floor is among those seeds. Which seed is not recorded, for the same reason
+the three figures are not.
+
+**How the layer was written and checked.** A second session wrote each of the three commits under a brief carrying
+the rulings. The registering session read each commit's game-code changes and every assertion of its tests before
+each window. Not read line by line by the registering session: the set-up of the rift, obstacle, area-split, bond
+and reach tests beyond their assertions and helpers; header comments; this entry beyond the parts searched or
+corrected.
+
+**Guard proofs, at fa2ebece, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| S2a | `CataclysmDungeonGameMode.cpp`: every barrier opens on the first section's creatures | `Cataclysm.DungeonModifierEffects.LightforgedWallsABarrierOpensWhenItsOwnSectionIsSlainAndThePanelFollows` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| S2c | `CataclysmFloorPlan.cpp`: an obstacle that splits an area behind closed barriers is allowed | `Cataclysm.DungeonModifierEffects.AnObstacleThatWouldSplitAnAreaBehindClosedBarriersIsRefused` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| S2d | `CataclysmDungeonGameMode.cpp`: opening a barrier frees every one of its cells, a cell another closed barrier holds included. This is the first window's fault put back, with one pillar a cell | `Cataclysm.DungeonModifierEffects.LightforgedWallsACellTwoBarriersHoldStaysClosedUntilBothHaveOpened` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+S2d's four, as printed: "Expected 'the cells both hold are still closed in the plan' to be 0, but it was 2.";
+"Expected 'and each carries exactly one pillar' to be 2, but it was 0."; "Expected 'no cell of the stairs' section
+can' to be 0, but it was 279."; "Expected 'and the exit is not reached' to be -1, but it was 63."
+
+**No proof was run for the rule that a floor carrying Shadowy Enemies gets no sections.** It keeps its test,
+`LightforgedWallsWithShadowyEnemiesHasNoBarrierAndSealsTheStairsAsBefore`, which passed. A proof was registered
+for it before the first window and gave its place to S2d, to keep three proofs a layer: a labelled judgement by
+the coordinating session under the owner's delegation, 2026-10-08, that the fault which stopped the first window
+is the one to prove. No proof was run either for the order of the close, for the bond's exclusion, for the drop
+of sections on a floor where a boundary has no cell of its own, or for the drop where a Warzone point lies on a
+boundary; no test reaches the last two.
 
 ---
 
