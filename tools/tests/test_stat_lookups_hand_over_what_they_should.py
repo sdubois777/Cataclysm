@@ -97,7 +97,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: is asked through `DefenderStat`, whose one call was already here.
 #: Four things a worn row makes a movement skill do added one more on
 #: 2026-10-07: one helper on the movement skill asks all four stats.
-CALL_SITES = 64
+#: The crowd control health ceiling added one more on 2026-10-07, asked of
+#: the applier where a stun, a knockdown, a fear or a displacement is applied.
+CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -443,6 +445,12 @@ INVENTORY = {
         "Plague Doctor's six-piece flag (ruled 2026-10-06), asked of the applier "
         'where a damage over time effect is applied, with the tag of the ailment '
         'applied; whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(CrowdControlHealthCeilingStat), FGameplayTagContainer(), 0.0f'):
+        'the crowd control health ceiling (ruled 2026-10-07), asked of the '
+        'applier before a stun, a knockdown, a fear or a displacement is '
+        "applied; the target's health is read off the target and is not a "
+        'condition of the stat, so no target is handed over',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Set Stance's flag, asked of the target of a knockback before it is "

@@ -313,6 +313,8 @@ const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
 	TEXT("stagger_health_ceiling_reduction");
 const TCHAR* UCataclysmSkillEffects::StaggerRootSecondsStat =
 	TEXT("stagger_root_seconds");
+const TCHAR* UCataclysmSkillEffects::CrowdControlHealthCeilingStat =
+	TEXT("crowd_control_health_ceiling_reduction");
 const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
 	TEXT("knockdown_seconds");
 const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
@@ -2811,9 +2813,27 @@ namespace
 	 * @param Offset  the full move, before the halving rule
 	 * @return whether the target was moved
 	 */
-	bool CataclysmDisplace(AActor* Target, const FVector& Offset)
+	bool CataclysmDisplace(AActor* Instigator, AActor* Target,
+						   const FVector& Offset)
 	{
 		if (!IsValid(Target) || Offset.IsNearlyZero())
+		{
+			return false;
+		}
+
+		// A HEALTH CEILING THE SHOVING CHARACTER CAN CARRY. Ruled 2026-10-07:
+		// "You cannot apply CC effects to enemies above 50% HP". See
+		// `UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling`.
+		//
+		// HERE RATHER THAN IN THE FOUR VERBS, for the reason the immunity
+		// check below gives, and beside it because the ruling is that this
+		// row covers exactly what that immunity covers.
+		//
+		// FIRST, so a refused shove spends none of the target's window, breaks
+		// no held swing, and returns false to a verb that then staggers
+		// nothing and notes no crowd control on the instigator.
+		if (UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling(
+				Instigator, Target))
 		{
 			return false;
 		}
@@ -3126,7 +3146,8 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 		}
 	}
 
-	if (!CataclysmDisplace(Target, Away.GetSafeNormal() * DistanceCm))
+	if (!CataclysmDisplace(Instigator, Target,
+						   Away.GetSafeNormal() * DistanceCm))
 	{
 		return false;
 	}
@@ -3156,7 +3177,8 @@ bool UCataclysmSkillEffects::ApplyPushAside(AActor* Instigator, AActor* Target,
 
 	// THE SAME DISPLACEMENT AND THE SAME STAGGER AS A KNOCKBACK, which is what
 	// ruling it displacement means. Only the direction differs.
-	if (!CataclysmDisplace(Target, Along.GetSafeNormal() * DistanceCm))
+	if (!CataclysmDisplace(Instigator, Target,
+						   Along.GetSafeNormal() * DistanceCm))
 	{
 		return false;
 	}
@@ -3195,7 +3217,7 @@ bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
 	const float Gap = Toward.Size();
 	const float Move = DistanceCm > 0.0f ? FMath::Min(DistanceCm, Gap) : Gap;
 
-	if (!CataclysmDisplace(Target, Toward.GetSafeNormal() * Move))
+	if (!CataclysmDisplace(Instigator, Target, Toward.GetSafeNormal() * Move))
 	{
 		return false;
 	}
@@ -3221,7 +3243,8 @@ bool UCataclysmSkillEffects::ApplyLaunch(AActor* Instigator, AActor* Target,
 	// into the air, so the direction is the world's up and not a line between two
 	// actors. The instigator is still required, so that a launch with no source
 	// is refused the same way every other displacement here is.
-	if (!CataclysmDisplace(Target, FVector(0.0f, 0.0f, DistanceCm)))
+	if (!CataclysmDisplace(Instigator, Target,
+						   FVector(0.0f, 0.0f, DistanceCm)))
 	{
 		return false;
 	}
@@ -3467,11 +3490,83 @@ float UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(
 	return FMath::Min(AfterCrowdControlResistance(Target, Distance), Distance);
 }
 
+bool UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling(
+	const AActor* Instigator, const AActor* Target)
+{
+	const UCataclysmAbilitySystemComponent* Applier =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Instigator));
+	if (!Applier)
+	{
+		return false;
+	}
+
+	// THE STAT IS A REDUCTION OF THE CEILING, so nought leaves it at 100 and
+	// nothing is above 100 per cent. THE FALLBACK IS NOUGHT: there is no
+	// gameplay attribute, and a character with no such row answers nought.
+	// NO TAGS: this is asked for a stun, a knockdown, a fear and a shove
+	// alike, and a row scoped to a skill's tags would never apply.
+	const float CeilingReduction = FMath::Clamp(
+		Applier->StatForSkill(FName(CrowdControlHealthCeilingStat),
+							  FGameplayTagContainer(), 0.0f),
+		0.0f, 100.0f);
+	if (CeilingReduction <= 0.0f)
+	{
+		return false;
+	}
+
+	// ONLY AN ENEMY. "You cannot apply CC effects to ENEMIES above 50% HP".
+	// `IsHostileTo` answers no for the instigator itself, for a target with
+	// no ability system and for a corpse, and none of those is refused here.
+	if (!UCataclysmTargeting::IsHostileTo(Target, Instigator))
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* Controlled =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	const FGameplayAttribute MaxHealthAttribute =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (!Controlled || !Controlled->HasAttributeSetForAttribute(MaxHealthAttribute))
+	{
+		// NO HEALTH TO COMPARE IS NOT A REFUSAL, for the reason `ApplyStagger`
+		// gives: refusing on an unknown would make the row stronger than it
+		// says.
+		return false;
+	}
+
+	const float CeilingMaxHealth = Controlled->GetNumericAttribute(MaxHealthAttribute);
+	if (CeilingMaxHealth <= 0.0f)
+	{
+		return false;
+	}
+
+	// ABOVE, NOT AT: a target at exactly the ceiling can be controlled.
+	const float HealthPercent = FMath::Clamp(
+		Controlled->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute())
+			/ CeilingMaxHealth * 100.0f,
+		0.0f, 100.0f);
+	return HealthPercent > 100.0f - CeilingReduction;
+}
+
 bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 									   float DurationSeconds, float DamageDealt,
 									   bool bStunIsDesigned)
 {
 	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A HEALTH CEILING THE STUNNING CHARACTER CAN CARRY. Ruled 2026-10-07:
+	// "You cannot apply CC effects to enemies above 50% HP". BEFORE EVERY
+	// OTHER RULE, and for a designed stun as much as an incidental one: the
+	// sentence is about who applies it, not about how hard the blow was. A
+	// refusal here tags nothing, opens no immunity window on the target and
+	// notes no crowd control on the instigator, which is the last line of
+	// this function.
+	if (CrowdControlRefusedByHealthCeiling(Instigator, Target))
 	{
 		return false;
 	}
@@ -3591,6 +3686,14 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 											bool bKnockdownIsDesigned)
 {
 	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A HEALTH CEILING THE CHARACTER KNOCKING DOWN CAN CARRY, as for a stun and
+	// asked first for the same reasons. Ruled 2026-10-07. A refusal leaves no
+	// stagger either: the stagger is the last thing this function applies.
+	if (CrowdControlRefusedByHealthCeiling(Instigator, Target))
 	{
 		return false;
 	}

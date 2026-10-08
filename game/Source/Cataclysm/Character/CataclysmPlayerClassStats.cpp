@@ -288,6 +288,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmRegeneration::TopUp finds a heal of health did not all fit.
 		// Ruled 2026-10-07. No gameplay attribute and no base.
 		TEXT("overheal_absorb_percent_of_maximum_health"),
+		// Percentage points off the health above which this character cannot
+		// apply crowd control to an enemy, read by
+		// UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling where a
+		// stun, a knockdown, a fear or a displacement is applied. Ruled
+		// 2026-10-07: "You cannot apply CC effects to enemies above 50% HP". A
+		// reduction, so nought refuses nothing. No gameplay attribute and no base.
+		TEXT("crowd_control_health_ceiling_reduction"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
