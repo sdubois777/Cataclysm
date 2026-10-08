@@ -579,3 +579,35 @@ int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Re
 	}
 	return Caught.Num();
 }
+
+int32 UCataclysmContagion::StunNearTheDying(AActor* Wearer, AActor* Dead, float Seconds)
+{
+	if (!Wearer || !Dead || Seconds <= 0.0f)
+	{
+		return 0;
+	}
+
+	// ASKED OF THE WEARER, WITH THE BODY AS THE CENTRE, as the blast is: the
+	// wearer's side decides who is an enemy, and need not stand near.
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Wearer->GetWorld(), Wearer, Dead->GetActorLocation(),
+		SpreadFromTheDyingMetres * CentimetresPerMetre);
+	Caught.Remove(Dead);
+
+	int32 Stunned = 0;
+	for (AActor* Target : Caught)
+	{
+		if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		// A DESIGNED STUN: no hit is dealt, so there is no damage to compare with
+		// a tenth of maximum health. Every other rule of the stun is asked.
+		if (UCataclysmSkillEffects::ApplyStun(Wearer, Target, Seconds,
+				/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true))
+		{
+			++Stunned;
+		}
+	}
+	return Stunned;
+}

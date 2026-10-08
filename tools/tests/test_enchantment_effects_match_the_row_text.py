@@ -1122,6 +1122,12 @@ PAIRS_WRITTEN_BACKWARDS = 8
 #: Each ranged pair a row can carry, as (first column, second column). The
 #: value pair is compared as the sentence shows it, which the test below works
 #: out; these three are compared as written.
+#:
+#: `StackSeconds` IS NOT ALWAYS A STACK'S TIME. Since 2026-10-08 it is also how
+#: long the stun of `stun_near_the_dying` lasts, on a row whose value is its
+#: chance: "a 25% chance ... freezes all nearby enemies for 2 seconds" is a
+#: value of 25 and Stack Seconds of 2. See `MAX_STACK_SECONDS` in the generator
+#: for everything the column holds.
 SECONDARY_PAIRS = (("ScaleStep", "ScaleStepHigh"),
                    ("StackSeconds", "StackSecondsHigh"),
                    ("ConditionValue", "ConditionValueHigh"))
