@@ -771,7 +771,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 570 SINCE THREE SENTENCES ON CHANNELLING, issue #1833, from 565.
 	//
 	// AND 572 SINCE TWO SENTENCES ON A HIT THAT CUTS A SKILL SHORT, issue #1833, from 570.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    572)
+	//
+	// AND 573 SINCE THE CAST DELAY ROW, issue #1833, from 572.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    573)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
