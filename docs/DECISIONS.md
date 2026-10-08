@@ -22,6 +22,19 @@ fault this layer fixes for a minion without the row.
 - With the row, a minion's armour is a share of its summoner's and so is its resistance to each damage type.
   Without it, a minion is read exactly as before: nothing.
 
+**Said first, and on the owner's play-check list: another writer of an enemy's maximum health while it is
+lowered.** Some dungeon rules write a creature's maximum health while it can be carrying the Necrosis.
+
+- **For a rule that adds to what it reads** (Soul Harvest, Nothing Is Forgotten), what it added is kept exactly:
+  when the ailment ends the maximum is the unlowered figure plus what the rule added.
+- **For the rules that write from their own record** (Carrion Feast, Famished Beasts on a carrion feeder, a rung
+  change) **the lowering is lost from that moment, and the enemy is left above its right maximum by the 1% to 2%
+  that had been held off, until the ailment ends** and from then on, since nothing writes it again. Famished
+  Beasts on any other creature reads the maximum, takes off what it added and multiplies, so it sits between
+  the two: by reading, it is out by a share of that 1% to 2%.
+- **Not tested, and not made exact, because that needs a change to the dungeon code**, which this layer may not
+  touch. The amounts are by reasoning from the code read. Judgement 3 below has the arithmetic.
+
 **Said first, for the play-check: what M10 means in play.**
 
 - **On an enemy at full health the Necrosis row removes 1% to 2% of its health, once each time Necrosis is
@@ -42,6 +55,12 @@ fault this layer fixes for a minion without the row.
     maximum is impossible, since health is held to the maximum; so there is nothing for a refresh to take.
 - **The health an enemy loses to the row is not damage.** Nothing announces a hit, no kill is credited, no
   number floats, and nothing that fires on damage fires. An enemy cannot die of it: see "The bound".
+
+**Said first, for the play-check: what the minion row gives on a hard difficulty tier.** A difficulty tier's
+penalty is taken off a player's resistance, and on a tier where that puts the summoner's resistance to a damage
+type under nought, **the row gives that summoner's minions armour and NOTHING for that damage type.** A share of
+a figure under nought would be a weakness, so it is read as nought (judgement 9). A player whose resistance to
+a type is above nought after the penalty hands over a share of what is left, under its cap.
 
 **Said first: the Necrosis number is NOT read at one place.** The nine numbers before it are read where the
 thing they move is worked out (a blow, a heal, a speed) and stop counting when the reader finds the ailment's
@@ -79,6 +98,16 @@ moments and only there:
 - **M17.** The attacker's armour penetration and resistance penetration apply to the inherited figures as to any
   defender's.
 
+**The coordinating session approved the writing session's judgements 1 to 16, below, as written, on
+2026-10-08, with three conditions**, each met in this entry:
+
+1. That another writer of an enemy's maximum health while it is lowered is said first and is on the owner's
+   play-check list (judgement 3).
+2. That the play-check part says a summoner whose resistance a difficulty tier has put under nought gives its
+   minions armour and nothing for that damage type (judgement 9).
+3. That the bound of 50, held on the sum over all ailments in the generator and the engine, is recorded as a
+   judged number on the owner's play-check list, with its reason (judgement 1).
+
 ### How it is built
 
 **The Necrosis number.**
@@ -99,6 +128,29 @@ moments and only there:
   the carrier watches the tag. The count the engine hands the event is what decides whether that ailment is
   carried, and not a second question put to the component, so the answer does not depend on how far the engine
   has got with its own count.
+- **This is the first number hung on an ailment to use a tag event.** The nine before it have no listener of
+  any kind. The one other listener of this kind in the component is the skill recharge's
+  (`OnSkillRechargeTagChanged`), which is registered the same way.
+- **What removes the listener: nothing, until the component itself goes, and that is what is wanted.** Read in
+  the engine (Unreal Engine 5.8, `GameplayEffectTypes.cpp` and `AbilitySystemComponent.cpp`):
+  - The listener is bound with `AddUObject` on the component to the component's OWN tag event. The event lives
+    in the component's `GameplayTagCountContainer`, in its `GameplayTagEventMap`. When a creature dies and is
+    destroyed, its component is destroyed and the map goes with it; nothing outside the component holds the
+    listener. A delegate bound with `AddUObject` holds its object weakly, so it cannot be called on a destroyed
+    one.
+  - The one thing that empties that map while the component lives is `FGameplayTagCountContainer::Reset`,
+    reached through `UAbilitySystemComponent::ResetTagMap`. By search on 2026-10-08, nothing in the engine's
+    plugin calls `ResetTagMap` and nothing in `game/Source` does.
+  - **`ClearWhatDeathEnds` and a respawn leave the listener registered and `MaxHealthRiderAilmentsWatched`
+    still holding the tag**, which is the right pair: the next Necrosis on that character is still listened
+    for.
+  - **A second listener for the same tag cannot be registered.** A tag is registered only when it is not in
+    `MaxHealthRiderAilmentsWatched`, it is added to that set in the same statement block, and nothing ever
+    takes a tag out of the set or a listener out of the map. The set and the listeners are made together and
+    both last exactly as long as the component.
+  - **The fault that could exist is the other one:** if some later code called `ResetTagMap`, the set would
+    still say "watched", no listener would be registered again, and a lowered maximum would never return.
+    Nothing does today. No test holds it.
 - **A fresh application lowers the maximum when the tag arrives, not when the number is recorded.**
   `ApplyDamageOverTime` hands the riders over before it puts the effect on. If the effect were then not
   applied, a maximum lowered at the hand-over would stay lowered with nothing to end it.
@@ -113,7 +165,12 @@ moments and only there:
   `MAX_AILMENT_MAX_HEALTH_REMOVED` hold its own bound. It may name any of the five ailments the other riders
   may, and is refused without one.
 
-**The bound.** The other nine may state up to 100. This one may state above 0 and up to **50**, in the generator
+**The bound, a judged number on the owner's play-check list.** 50 was chosen by the writing session and is
+held on the SUM over every ailment a creature carries, in the generator for one row and in the engine for all
+of them together. The reason it is not the 100 the other nine have: at 100 a maximum would fall to the 1 the
+attribute set holds any maximum to, and the creature's health with it. The one sentence asks for 2.
+
+The other nine may state up to 100. This one may state above 0 and up to **50**, in the generator
 (`MAX_AILMENT_MAX_HEALTH_REMOVED`) and again in the engine (`MaxAilmentMaxHealthRemovedPercent`), which holds the
 sum over every ailment carried to it. A maximum lowered by half or less is never nought, and the attribute set
 holds any maximum at 1 or more, so **an enemy cannot die of the row**: health is brought down to a maximum that
@@ -278,6 +335,12 @@ Python: in `tools/tests/test_generate_datatables.py`, classes `TestAnAilmentThat
 - **A cleanse** ending the Necrosis. Removal and time are tested; a cleanse removes the effect by the same
   engine route and is not run.
 - **A dungeon rule writing a creature's maximum while it is lowered** (judgement 3), and a rung change.
+- **A player as the carrier. It is not handled** (judgement 5): `RefreshLiveMaximumHealth` writes a wearer's
+  maximum from its stat line and would write over the lowering, and nothing here stops it. No enemy wears a
+  row, so no player can be handed the number today and there is nothing to test.
+  **An enemy given such a row later would need this built first.**
+- **The listener on the ailment's tag after a death or a respawn**, and that a second is never registered. By
+  reading; see "How it is built".
 - **A carrier that dies** with the Necrosis on it, and what its death reports.
 - **Two rows on two ailments** adding, and the engine's hold at 50.
 - **An application the target refuses** (`ailment_immunity`): no number is handed over, by reading.
