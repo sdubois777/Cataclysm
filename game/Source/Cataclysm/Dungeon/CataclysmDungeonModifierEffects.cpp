@@ -822,6 +822,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// using a skill near it. "Trigger certain traps" is not built, the game having no trap a player triggers; see
 		// the key. Issues #1820 and #41.
 		|| RowKey == FName(AngelicWardensKey)
+		// RULE OF CHAOS, BUILT 2026-10-08 AS THREE NAMED RULE CHANGES, ONE DRAWN A FLOOR, approved by the owner "for
+		// now". The row's sentence is wider than that; see `FCataclysmDungeonFloorRules::RuleOfChaosKey`. Issues
+		// #1820 and #41.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RuleOfChaosKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -1063,6 +1067,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(ObsidianSarcophagiKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 		FName(FCataclysmDungeonFloorRules::RealityTwisterKey),
+		FName(FCataclysmDungeonFloorRules::RuleOfChaosKey),
 	};
 }
 
@@ -1253,7 +1258,7 @@ float UCataclysmDungeonModifierEffects::MortalDecayPercentPerSecond(
 }
 
 FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-	const TArray<FName>& FloorModifiers, int32 FloorNumber)
+	const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange)
 {
 	FCataclysmPlayerFloorEffects Effects;
 
@@ -1284,6 +1289,24 @@ FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 	if (FloorModifiers.Contains(FName(DesperateMeasuresKey)))
 	{
 		Effects.ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent;
+	}
+
+	// AND RULE OF CHAOS' DRAWN CHANGE, WHEN IT IS ONE OF THE TWO THAT MOVE A STAT. Issues #1820 and #41. The third,
+	// the stairs that open by time, moves no stat and is the game mode's.
+	//
+	// SKILLS PAID IN HEALTH SETS DESPERATE MEASURES' LEVER, ONCE. The same field and the same figure, assigned and
+	// not added, so a floor carrying both rows holds one share; the flag beside it is what makes the share hold at
+	// any mana.
+	//
+	// LONGER COOLDOWNS IS WRITTEN ON ETERNAL CHORUS' FIELD, which the beat adds its own share to.
+	if (RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosSkillsPaidInHealth)
+	{
+		Effects.ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent;
+		Effects.ManaCostAsHealthAtAnyManaValue = 1.0f;
+	}
+	else if (RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns)
+	{
+		Effects.ChorusCooldownLongerPercent = RuleOfChaosCooldownLongerPercent;
 	}
 
 	// AND THE THREE ROWS ON POTIONS, THE SAME ON EVERY FLOOR. Issue #806. None
@@ -1520,10 +1543,22 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	// the lines above give: the stat is zero for every character until something
 	// writes it. `UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent` reads it
 	// and decides which casts it reaches.
-	DungeonModifierEffectsAddFlatWhile(
-		Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
-		Effects.ManaCostAsCurrentHealthPercent, ECataclysmStatCondition::ManaBelowPercent,
-		DesperateMeasuresManaBelowPercent);
+	//
+	// AND AT ANY MANA UNDER RULE OF CHAOS' CHANGE, WHICH WRITES THE SAME SHARE WITH NO CONDITION. One modifier
+	// either way, never both, so a floor carrying both rows is not charged twice.
+	if (Effects.ManaCostAsHealthAtAnyManaValue > 0.0f)
+	{
+		DungeonModifierEffectsAddFlat(
+			Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
+			Effects.ManaCostAsCurrentHealthPercent);
+	}
+	else
+	{
+		DungeonModifierEffectsAddFlatWhile(
+			Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
+			Effects.ManaCostAsCurrentHealthPercent, ECataclysmStatCondition::ManaBelowPercent,
+			DesperateMeasuresManaBelowPercent);
+	}
 
 	// AND THE THREE ROWS ON POTIONS, EACH A FLAT FIGURE ON A STAT WITH NO
 	// ATTRIBUTE. Issue #806. `UCataclysmPotions` asks each one when a potion is
@@ -2059,7 +2094,13 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 									Effects.PactMaxHealthLessPercent, Effects.PactCurseResistancePercent,
 									Effects.PactCurseSpeedLessPercent, Effects.PactHealingLessPercent));
 	}
-	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
+	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f && Effects.ManaCostAsHealthAtAnyManaValue > 0.0f)
+	{
+		// RULE OF CHAOS' CHANGE: THE SAME SHARE, AT ANY MANA. Issues #1820 and #41.
+		Clauses.Add(FString::Printf(TEXT("skills cost %.0f%% of current health instead of mana"),
+									Effects.ManaCostAsCurrentHealthPercent));
+	}
+	else if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
 			TEXT("below %.0f%% mana, skills cost %.0f%% of current health instead"),

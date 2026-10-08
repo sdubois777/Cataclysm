@@ -12,6 +12,9 @@ const TCHAR* FCataclysmDungeonFloorRules::UnstableDimensionsKey =
 const TCHAR* FCataclysmDungeonFloorRules::RealityTwisterKey =
 	TEXT("Chaos_Reality_Twister");
 
+const TCHAR* FCataclysmDungeonFloorRules::RuleOfChaosKey =
+	TEXT("Chaos_Rule_of_Chaos");
+
 namespace
 {
 	/**
@@ -165,7 +168,8 @@ int32 FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(int32 WaveSpawned)
 
 void FCataclysmDungeonFloorRules::ModifiersFor(
 	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber,
-	TArray<FName>& OutModifiers, float& OutScore, FName* OutTwistedIn, FName* OutEveryCreatureModifier)
+	TArray<FName>& OutModifiers, float& OutScore, FName* OutTwistedIn, FName* OutEveryCreatureModifier,
+	int32* OutRuleOfChaosChange)
 {
 	// RULE 1. An ordinary dungeon's floor carries the dungeon's own modifiers,
 	// and so does every floor of a dungeon whose pools were never filled.
@@ -178,6 +182,10 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 	if (OutEveryCreatureModifier)
 	{
 		*OutEveryCreatureModifier = NAME_None;
+	}
+	if (OutRuleOfChaosChange)
+	{
+		*OutRuleOfChaosChange = RuleOfChaosNoChange;
 	}
 
 	FRandomStream Stream =
@@ -242,6 +250,27 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 		}
 	}
 
+	// RULE 5. RULE OF CHAOS DRAWS ONE OF ITS THREE RULE CHANGES FOR THIS FLOOR. Issues #1820 and #41. The three were
+	// approved by the owner on 2026-10-08 "for now"; see `RuleOfChaosKey`.
+	// - FROM THE FLOOR'S FINAL LIST, after rules 2 and 4, so a Volatile floor that re-drew the row and a floor Reality
+	//   Twister added it to both draw a change, and a floor without the row draws none.
+	// - ON THE FLOOR'S OWN STREAM, as rule 4 draws, so the same dungeon seed and floor give the same change.
+	// - EVEN BETWEEN THE THREE: one whole number from 1 to `RuleOfChaosChanges`.
+	// - BEFORE RULE 3 AND WHETHER OR NOT THE CALLER ASKED FOR THE ANSWER, so the draw never depends on which pointers a
+	//   caller passed. Rule 3 draws only when its pointer is given; a draw placed after it would move with that.
+	//   ON A FLOOR CARRYING BOTH ROWS, rule 3's reality is therefore the stream's next draw after this one, and not
+	//   the draw it was before this rule existed.
+	// - NOT A DUNGEON ROW, so a dungeon whose pools were never filled still draws, as rule 3 does.
+	// - IT ADDS NOTHING TO THE SCORE: the row's own danger is already in it.
+	if (OutModifiers.Contains(FName(RuleOfChaosKey)))
+	{
+		const int32 ChangeDrawn = Stream.RandRange(1, RuleOfChaosChanges);
+		if (OutRuleOfChaosChange)
+		{
+			*OutRuleOfChaosChange = ChangeDrawn;
+		}
+	}
+
 	// RULE 3. "A new 'reality' is imposed, granting a new, random modifier to all enemies on the next floor." Corrected
 	// 2026-10-01, as ruled under the owner's delegation:
 	// - AN ENEMY MODIFIER, FROM THE GENERIC COLUMN ONLY: ten rows, all with behaviour, the same meaning on any creature.
@@ -281,7 +310,7 @@ FCataclysmFloorBrief FCataclysmDungeonFloorRules::BriefFor(
 	Brief.CarvedAsFloorNumber = CarvedAsFloorNumber(Dungeon, Floor);
 	Brief.SightRadiusMultiplier = SightRadiusMultiplierFor(Dungeon, Floor);
 	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore, &Brief.TwistedIn,
-				 &Brief.EveryCreatureModifier);
+				 &Brief.EveryCreatureModifier, &Brief.RuleOfChaosChange);
 
 	return Brief;
 }

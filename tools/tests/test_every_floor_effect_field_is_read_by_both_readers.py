@@ -100,8 +100,13 @@ def body_of(text: str, opening: str) -> str:
 #:
 #: `PactMagicFindAdded` IS A FLAT FIGURE FOR THE SAME REASON: a Pact of Greed adds magic find points for the next
 #: floor, applied by `DungeonModifierEffectsAddFlat`. Issues #1820 and #41.
+#:
+#: `ManaCostAsHealthAtAnyManaValue` IS A FLAG FOR `PotionsForbiddenValue`'S REASON: Rule of Chaos' change "skills are
+#: paid in health" writes 1 to it, and `StatModifiersFor` asks only whether it is above zero, to write
+#: `ManaCostAsCurrentHealthPercent` with no low-mana condition. Issues #1820 and #41.
 NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue", "RiftMagicFindAdded",
-                   "PotionsForbiddenValue", "BeaconMagicFindAdded", "PactMagicFindAdded"}
+                   "PotionsForbiddenValue", "BeaconMagicFindAdded", "PactMagicFindAdded",
+                   "ManaCostAsHealthAtAnyManaValue"}
 
 
 @pytest.fixture(scope="module")
