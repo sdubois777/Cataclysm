@@ -5,6 +5,11 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the stat line the root test gives its staggerers, and the seconds left on a pin. Ruled 2026-10-07.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "GameplayEffect.h"
+#include "GameplayTagContainer.h"
 // Following is asked through CommanderOf, and the thrall test subjugates.
 #include "AbilitySystem/CataclysmCommand.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -4123,6 +4128,184 @@ bool FCataclysmBruteCrippledWalksSlowerTest::RunTest(const FString&)
 	Brute.Actor->RefreshWalkSpeed();
 	TestEqual(TEXT("with the Cripple lifted it chases at its designed chase speed"),
 			  Movement->MaxWalkSpeed, Chase, 0.01f);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds"
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStaggerRootsTest,
+	"Cataclysm.OneSiteStats.AnEnemyStaggeredUnderTheRowStopsWalkingAndStillAttacksAndAnImmuneOneWalksOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `stagger_root_seconds` on the staggering character. Ruled 2026-10-07: rooted is that the enemy cannot move and
+ * can still attack and turn, and a creature immune to crowd control is not rooted.
+ *
+ * WHERE EACH STANDS. Four pairs, a hundred metres apart along Y, so no monster notices another pair's player.
+ * In each pair the monster is at X = 0 and its player ten metres along X: inside the notice radius of fifteen
+ * and outside the reach of two, so an unhindered monster chases. The pairs: the wearer's, whose player carries
+ * the stat at 1.5 seconds; the control's, whose player carries nothing; the immune one's, whose player carries
+ * the stat and whose monster has a crowd control resistance of 100; and the refused one's, whose player carries
+ * the stat and cannot stagger an enemy above half health, with its monster at full health.
+ *
+ * WHAT IS READ. What the monster's brain does on its next pass, which is the one place a pin is visible, as
+ * `APinnedEnemyStopsWalkingAndKeepsFighting` above says; the seconds left on the pin against the seconds left
+ * on the stagger; and the health a player loses to a monster brought within reach.
+ */
+bool FCataclysmStaggerRootsTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Monster(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	FScopedFighter Wearer(World, FVector(10 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+	FScopedFighter ControlMonster(World, FVector(0, 100 * M, 0), ECataclysmTeam::Monsters);
+	FScopedFighter Control(World, FVector(10 * M, 100 * M, 0), ECataclysmTeam::Players,
+						   /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+	FScopedFighter ImmuneMonster(World, FVector(0, 200 * M, 0), ECataclysmTeam::Monsters);
+	FScopedFighter ImmuneWearer(World, FVector(10 * M, 200 * M, 0), ECataclysmTeam::Players,
+								/*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+	FScopedFighter HealthyMonster(World, FVector(0, 300 * M, 0), ECataclysmTeam::Monsters);
+	FScopedFighter CeilingWearer(World, FVector(10 * M, 300 * M, 0), ECataclysmTeam::Players,
+								 /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	const float RootSeconds = 1.5f;
+	const auto FighterSystem = [](const FScopedFighter& Who)
+	{
+		return Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who.Actor));
+	};
+	const auto CarryTheRoot = [&FighterSystem, RootSeconds](const FScopedFighter& Who) -> bool
+	{
+		UCataclysmAbilitySystemComponent* System = FighterSystem(Who);
+		if (!System)
+		{
+			return false;
+		}
+		FCataclysmStatModifier Root;
+		Root.Bucket = ECataclysmStatBucket::Flat;
+		Root.Source = ECataclysmModifierSource::Enchantment;
+		Root.Value = RootSeconds;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmSkillEffects::StaggerRootSecondsStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Root};
+		System->SetStatInputs(MoveTemp(Inputs));
+		return true;
+	};
+	const auto SecondsLeftOf = [&FighterSystem](const FScopedFighter& Who, const FGameplayTag& Tag) -> float
+	{
+		float Longest = 0.0f;
+		if (const UCataclysmAbilitySystemComponent* System = FighterSystem(Who))
+		{
+			for (const float Seconds : System->GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag))))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+		}
+		return Longest;
+	};
+	const auto Does = [](const FScopedFighter& Who) -> int32
+	{
+		ACataclysmEnemyController* Brain = Who.Brain();
+		return Brain ? static_cast<int32>(Brain->Think()) : -1;
+	};
+	const int32 Chasing = static_cast<int32>(ECataclysmBrainAction::Chasing);
+	const int32 Pinned = static_cast<int32>(ECataclysmBrainAction::Pinned);
+	const int32 Attacking = static_cast<int32>(ECataclysmBrainAction::Attacking);
+
+	UCataclysmAbilitySystemComponent* ImmuneSystem = FighterSystem(ImmuneMonster);
+	UCataclysmAbilitySystemComponent* CeilingSystem = FighterSystem(CeilingWearer);
+	if (!TestTrue(TEXT("set-up: the three wearers take a stat line"),
+				  CarryTheRoot(Wearer) && CarryTheRoot(ImmuneWearer) && CarryTheRoot(CeilingWearer))
+		|| !TestNotNull(TEXT("set-up: the immune monster has an ability system"), ImmuneSystem)
+		|| !TestNotNull(TEXT("set-up: and so has the wearer with the ceiling"), CeilingSystem))
+	{
+		return false;
+	}
+	ImmuneSystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
+	// "You cannot stagger enemies above 50% HP", as `Cataclysm.StaggerGate` sets it.
+	CeilingSystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetStaggerHealthCeilingReductionAttribute(), 50.0f);
+
+	// EVERY MONSTER CHASES BEFORE ANYTHING IS DONE TO IT, or a monster standing still below would prove nothing.
+	if (!TestEqual(TEXT("set-up: the wearer's monster chases"), Does(Monster), Chasing)
+		|| !TestEqual(TEXT("set-up: the control's monster chases"), Does(ControlMonster), Chasing)
+		|| !TestEqual(TEXT("set-up: the immune monster chases"), Does(ImmuneMonster), Chasing)
+		|| !TestEqual(TEXT("set-up: the healthy monster chases"), Does(HealthyMonster), Chasing))
+	{
+		return false;
+	}
+
+	// THE CONTROL: a stagger from a character without the stat stops nothing.
+	const FGameplayTag PinnedTag = UCataclysmSkillEffects::PinnedTag();
+	const FGameplayTag StaggeredTag = UCataclysmSkillEffects::StaggeredTag();
+	if (!TestTrue(TEXT("set-up: the control staggers its monster"),
+				  UCataclysmSkillEffects::ApplyStagger(Control.Actor, ControlMonster.Actor)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a monster staggered without the row still chases"), Does(ControlMonster), Chasing);
+	TestEqual(TEXT("control: and carries no pin"), SecondsLeftOf(ControlMonster, PinnedTag), 0.0f, 0.001f);
+
+	// THE WEARER: the same stagger roots.
+	if (!TestTrue(TEXT("set-up: the wearer staggers its monster"),
+				  UCataclysmSkillEffects::ApplyStagger(Wearer.Actor, Monster.Actor)))
+	{
+		return false;
+	}
+	const float StaggerLeft = SecondsLeftOf(Monster, StaggeredTag);
+	TestEqual(TEXT("a monster staggered under the row stands where it is instead of chasing"),
+			  Does(Monster), Pinned);
+	if (TestTrue(TEXT("set-up: the stagger has seconds to run"), StaggerLeft > 0.0f))
+	{
+		TestEqual(TEXT("and its pin runs for the row's 1.5 seconds, one and a half times its one-second stagger"),
+				  SecondsLeftOf(Monster, PinnedTag),
+				  StaggerLeft * RootSeconds / UCataclysmSkillEffects::StaggerSeconds, 0.01f);
+	}
+
+	// AND IT STILL ATTACKS WHAT COMES WITHIN REACH, for what an unrooted monster's blow takes. Each player is
+	// brought to a metre and a half from its own monster, inside the reach of two. That is nearer than two
+	// metres on purpose: the reach is two.
+	Wearer.Actor->SetActorLocation(FVector(1.5f * M, 0, 0));
+	Control.Actor->SetActorLocation(FVector(1.5f * M, 100 * M, 0));
+	const float ControlBefore = Control.Health();
+	const float WearerBefore = Wearer.Health();
+	const int32 ControlDoes = Does(ControlMonster);
+	const int32 RootedDoes = Does(Monster);
+	const float ControlLost = ControlBefore - Control.Health();
+	if (TestTrue(TEXT("set-up: the control's monster attacks within reach and its blow takes health"),
+				 ControlDoes == Attacking && ControlLost > 0.0f))
+	{
+		TestEqual(TEXT("a rooted monster within reach attacks"), RootedDoes, Attacking);
+		TestEqual(TEXT("and its blow takes what the unrooted monster's took"),
+				  WearerBefore - Wearer.Health(), ControlLost, 0.01f);
+	}
+
+	// A CREATURE IMMUNE TO CROWD CONTROL IS STAGGERED AND NOT ROOTED.
+	if (TestTrue(TEXT("set-up: the stagger still lands on the immune monster, which no resistance refuses"),
+				 UCataclysmSkillEffects::ApplyStagger(ImmuneWearer.Actor, ImmuneMonster.Actor)))
+	{
+		TestEqual(TEXT("a monster immune to crowd control still chases"), Does(ImmuneMonster), Chasing);
+		TestEqual(TEXT("and carries no pin"), SecondsLeftOf(ImmuneMonster, PinnedTag), 0.0f, 0.001f);
+	}
+
+	// A STAGGER THAT WAS REFUSED ROOTS NOBODY.
+	TestFalse(TEXT("set-up: a wearer who cannot stagger above half health is refused a monster at full health"),
+			  UCataclysmSkillEffects::ApplyStagger(CeilingWearer.Actor, HealthyMonster.Actor));
+	TestEqual(TEXT("and that monster still chases"), Does(HealthyMonster), Chasing);
+	TestEqual(TEXT("and carries no pin"), SecondsLeftOf(HealthyMonster, PinnedTag), 0.0f, 0.001f);
 	return true;
 }
 

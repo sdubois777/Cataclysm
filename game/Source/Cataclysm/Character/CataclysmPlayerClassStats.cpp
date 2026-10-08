@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the per-cast Fervour stat name. Issue #1051.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the base of the leech pay-out rate. Ruled 2026-10-07.
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 // For the names of the three regeneration rates, shared with the code that asks
 // for them rather than spelled a second time here. Issue #1038.
@@ -475,6 +477,19 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("ailment_immunity"),
 		TEXT("bleed_damage_taken_from_energy_shield"),
 		TEXT("damage_over_time_taken_from_mana_first"),
+		// And four read at one site each. Ruled 2026-10-07. None has a
+		// gameplay attribute. The percent more an energy shield loses for
+		// each point it stops, read by UCataclysmDamageCalculation::Resolve;
+		// how fast a payment of leech arrives, read by
+		// UCataclysmLeech::PayoutSecondsFor and based at 100 by
+		// `EngineSuppliedBases`; the least width of a strike's arc, read by
+		// UCataclysmStrikeSkill::ArcAtLeastDegrees with the skill's tags;
+		// and the seconds a staggered enemy is rooted, read by
+		// UCataclysmSkillEffects::ApplyStagger.
+		TEXT("energy_shield_damage_taken"),
+		TEXT("leech_payout_rate"),
+		TEXT("strike_arc_at_least_degrees"),
+		TEXT("stagger_root_seconds"),
 		// Points of maximum health reserved, read by
 		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
 		// ceiling and the regeneration step's hold read. Issue #1833, health
@@ -1339,6 +1354,12 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// nought.
 			{FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat),
 			 UCataclysmAbilitySystemComponent::NormalClassResourceGeneration},
+
+			// AND HOW FAST A PAYMENT OF LEECH ARRIVES, at 100. Ruled 2026-10-07:
+			// its one row is a `more` of -50, so with no base the rate would be
+			// nought and every payment would be made at the slowest rate.
+			{FName(UCataclysmLeech::PayoutRateStat),
+			 UCataclysmLeech::NormalPayoutRate},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
 			// for normal. Issue #1033. The THIRD stat of this shape and it meets the
