@@ -18905,4 +18905,120 @@ bool FCataclysmResistanceCapWhileLeechingRowTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: no such modifier is left"), OnTheScale(nullptr), 0);
 	return true;
 }
+// FOUR ROWS ON STATS THAT ARE EACH READ AT ONE PLACE. Ruled 2026-10-07; each row is as the entry "Four stats,
+// each read at one existing place" states it.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFourOneSiteRowsTest,
+	"Cataclysm.Enchantments.TheFourOneSiteRowsEachHandTheirWearerTheStatTheGameAsksFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four real rows, each WORN at the top of its range, and each read as the
+ * game asks for it. EVERY FIGURE IS A DIFFERENCE OR A RATIO against the same
+ * wearer with the item taken off, so nothing the wearer's class gives is read.
+ *
+ * "Your energy shield takes 30%-50% increased damage": `energy_shield_damage_taken` is 50 higher.
+ * "50% less tick rate for your leech effects": `leech_payout_rate` applied to 100 gives half of what it gave.
+ * "Your heavy attack hits all enemies in a 180 degree arc in front of you": `strike_arc_at_least_degrees`
+ * is 180 higher asked with a heavy attack's slot tag and NO higher asked with a basic attack's.
+ * "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds": `stagger_root_seconds` is 1.5 higher.
+ */
+bool FCataclysmFourOneSiteRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const TCHAR* const ShieldRow = TEXT("Negative_Your_energy_shield_takes_30_50_increased_damag");
+	const TCHAR* const LeechRow = TEXT("Negative_50_less_tick_rate_for_your_leech_effects");
+	const TCHAR* const ArcRow = TEXT("Positive_Your_heavy_attack_hits_all_enemies_in_a_180_degr");
+	const TCHAR* const RootRow = TEXT("Positive_Enemies_you_stagger_are_also_briefly_rooted_for");
+	// THE NAMES WORN ARE LOOKED UP IN THE TABLES FIRST, so a name that is not a row fails here and says so.
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the shield row's name is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(ShieldRow)))
+		|| !TestTrue(TEXT("set-up: the leech row's name is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(LeechRow)))
+		|| !TestTrue(TEXT("set-up: the arc row's name is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(ArcRow)))
+		|| !TestTrue(TEXT("set-up: the root row's name is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(RootRow))))
+	{
+		return false;
+	}
+	const FGameplayTagContainer NoTags;
+	const FGameplayTagContainer Heavy = CataclysmRepeatRowsTest::Tagged(TEXT("Slot.Heavy"));
+	const FGameplayTagContainer Basic = CataclysmRepeatRowsTest::Tagged(TEXT("Slot.Basic"));
+	if (!TestTrue(TEXT("set-up: the two slot tags exist"), Heavy.Num() == 1 && Basic.Num() == 1))
+	{
+		return false;
+	}
+	const auto TakeOff = [](FWorn& Worn)
+	{
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	};
+	{
+		FWorn Worn(ShieldRow, false);
+		if (!TestNotNull(TEXT("a wearer in a world, for the shield row"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("energy_shield_damage_taken"));
+		const float WornReading = Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f);
+		TakeOff(Worn);
+		TestEqual(*(FString(TEXT("the shield row, worn: the stat is 50 above what it is taken off.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			WornReading - Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f), 50.0f, 0.01f);
+	}
+	{
+		FWorn Worn(LeechRow, false);
+		if (!TestNotNull(TEXT("a wearer in a world, for the leech row"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("leech_payout_rate"));
+		const float WornReading = Worn.ASC()->StatAppliedTo(Stat, NoTags, 100.0f);
+		TakeOff(Worn);
+		const float OffReading = Worn.ASC()->StatAppliedTo(Stat, NoTags, 100.0f);
+		if (TestTrue(TEXT("set-up: with the item taken off, the rate applied to 100 is above nought"), OffReading > 0.0f))
+		{
+			TestEqual(*(FString(TEXT("the leech row, worn: the rate applied to 100 is half of what it is taken off.")) +
+						CataclysmRepeatRowsTest::OlderAsset),
+				WornReading / OffReading, 0.5f, 0.001f);
+		}
+	}
+	{
+		FWorn Worn(ArcRow, true);
+		if (!TestNotNull(TEXT("a wearer in a world, for the arc row"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("strike_arc_at_least_degrees"));
+		const float WornHeavy = Worn.ASC()->StatForSkill(Stat, Heavy, 0.0f);
+		const float WornBasic = Worn.ASC()->StatForSkill(Stat, Basic, 0.0f);
+		TakeOff(Worn);
+		TestEqual(*(FString(TEXT("the arc row, worn: asked with a heavy attack's slot the stat is 180 higher.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			WornHeavy - Worn.ASC()->StatForSkill(Stat, Heavy, 0.0f), 180.0f, 0.01f);
+		TestEqual(TEXT("the arc row, worn: asked with a basic attack's slot the stat is no higher"),
+			WornBasic - Worn.ASC()->StatForSkill(Stat, Basic, 0.0f), 0.0f, 0.01f);
+	}
+	{
+		FWorn Worn(RootRow, true);
+		if (!TestNotNull(TEXT("a wearer in a world, for the root row"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Stat(TEXT("stagger_root_seconds"));
+		const float WornReading = Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f);
+		TakeOff(Worn);
+		TestEqual(*(FString(TEXT("the root row, worn: the stat is 1.5 above what it is taken off.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			WornReading - Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f), 1.5f, 0.01f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
