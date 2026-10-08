@@ -49,6 +49,25 @@ Every reading of the four sentences is that entry's.
 **Not tested here:** a blow on a worn row's wearer's shield, a leech payment under the worn row, a heavy strike
 under the worn row, or an enemy rooted by it. That entry tests each with the stat set by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the other three layers of the stack, on `development` 8a46f17f. The build, the
+whole suite and the Python of record are in the table of the entry of the same day on "Traps last 50%-100%
+longer before expiring" and were run with this layer in the stack. **The ids are the commits as they stood when
+each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 239a6647 | 290 tests performed, 284 succeeded, 6 failed, this layer's among them; 4 of the 17 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | e400a025 | effect rows 554 to 558 |
+| Whole suite, every asset built | 00b537ed | 3344 tests performed, 3344 succeeded, 0 failed |
+
+**The test fails against a table without its rows and passes with them**: the shield stat was no higher, the
+leech rate was what it was taken off, the arc stat asked with a heavy attack's slot was no higher, and the root
+stat was no higher. The reading asked with a basic attack's slot was no higher in both runs, as it must be.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The four stats were proved by the session that built them.
+
 ---
 
 ## 2026-10-08 — Three sentences on damage over time, time in combat and leeching are built as four rows
