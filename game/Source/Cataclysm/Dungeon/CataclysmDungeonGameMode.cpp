@@ -6213,6 +6213,20 @@ void ACataclysmDungeonGameMode::PlanTheSections(const FCataclysmFloorPlan& Plan)
 		UE_LOG(LogCataclysm, Log, TEXT("Sections: none on floor %d, a Warzone point lies on a boundary"), FloorNumber);
 		FloorSections = FCataclysmFloorSections();
 	}
+	// AND A BOUNDARY WITH NO CELL OF ITS OWN, every one of its cells held by another boundary too, could never be
+	// opened: a shared cell stays closed until both barriers have opened. Such a floor gets no sections either.
+	// Ruled 2026-10-08.
+	bool bABarrierHasNoCellOfItsOwn = false;
+	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
+	{
+		bABarrierHasNoCellOfItsOwn = bABarrierHasNoCellOfItsOwn || CellsOnlyBarrierHolds(Barrier).IsEmpty();
+	}
+	if (bABarrierHasNoCellOfItsOwn)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Sections: none on floor %d, a boundary has no cell of its own"), FloorNumber);
+		FloorSections = FCataclysmFloorSections();
+	}
+
 	SectionBarrierClosed.Init(false, FloorSections.Boundaries.Num());
 	SectionBarrierPillars.SetNum(FloorSections.Boundaries.Num());
 	UE_LOG(LogCataclysm, Log, TEXT("Sections: %d on floor %d, behind %d barrier(s)"), FloorSections.SectionCount(),
@@ -6223,12 +6237,52 @@ void ACataclysmDungeonGameMode::OpenEverySectionBarrier()
 {
 	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
 	{
-		if (SectionBarrierIsClosed(Barrier) && SectionBarrierPillars.IsValidIndex(Barrier))
+		OpenTheSectionBarrier(Barrier);
+	}
+}
+
+void ACataclysmDungeonGameMode::OpenTheSectionBarrier(int32 Barrier)
+{
+	if (!SectionBarrierIsClosed(Barrier) || !SectionBarrierPillars.IsValidIndex(Barrier)
+		|| !FloorSections.Boundaries.IsValidIndex(Barrier))
+	{
+		return;
+	}
+
+	// OPEN FROM HERE ON, so the question below, "does a barrier still closed hold this cell", does not count this one.
+	SectionBarrierClosed[Barrier] = false;
+
+	// A CELL ANOTHER BARRIER STILL CLOSED ALSO HOLDS STAYS SOLID, ruled 2026-10-08: two boundaries may share cells,
+	// and a shared line stands straight between the first section and the last. Its one pillar is handed to that
+	// barrier, which destroys it when it opens in its turn. Every other cell is freed.
+	TArray<FIntPoint> Freed;
+	for (const FIntPoint& Cell : FloorSections.Boundaries[Barrier])
+	{
+		int32 Keeper = INDEX_NONE;
+		for (int32 Other = 0; Other < FloorSections.Boundaries.Num() && Keeper == INDEX_NONE; ++Other)
 		{
-			UnblockCellsAndDestroyPillars(FloorSections.Boundaries[Barrier], SectionBarrierPillars[Barrier]);
-			SectionBarrierClosed[Barrier] = false;
+			if (SectionBarrierIsClosed(Other) && SectionBarrierPillars.IsValidIndex(Other)
+				&& FloorSections.Boundaries[Other].Contains(Cell))
+			{
+				Keeper = Other;
+			}
+		}
+		if (Keeper == INDEX_NONE)
+		{
+			Freed.Add(Cell);
+			continue;
+		}
+		for (int32 Index = SectionBarrierPillars[Barrier].Num() - 1; Index >= 0; --Index)
+		{
+			const ACataclysmFloorObstacle* Pillar = SectionBarrierPillars[Barrier][Index].Get();
+			if (Pillar && Pillar->CoveredCells().Contains(Cell))
+			{
+				SectionBarrierPillars[Keeper].Add(SectionBarrierPillars[Barrier][Index]);
+				SectionBarrierPillars[Barrier].RemoveAt(Index);
+			}
 		}
 	}
+	UnblockCellsAndDestroyPillars(Freed, SectionBarrierPillars[Barrier]);
 }
 
 void ACataclysmDungeonGameMode::CloseTheSectionBarriers()
@@ -6246,8 +6300,19 @@ void ACataclysmDungeonGameMode::CloseTheSectionBarriers()
 		{
 			continue;
 		}
-		BlockCellsWithPillars(FloorSections.Boundaries[Barrier], FName(Effects::LightforgedWallsKey),
-							  SectionBarrierPillars[Barrier]);
+
+		// ONE PILLAR A CELL. A cell an earlier barrier of this pass already closed is Solid and carries that barrier's
+		// pillar; this barrier holds it too and places nothing on it. Ruled 2026-10-08.
+		const TArray<FIntPoint> AlreadyClosed = ClosedSectionBarrierCells();
+		TArray<FIntPoint> NotYetClosed;
+		for (const FIntPoint& Cell : FloorSections.Boundaries[Barrier])
+		{
+			if (!AlreadyClosed.Contains(Cell))
+			{
+				NotYetClosed.Add(Cell);
+			}
+		}
+		BlockCellsWithPillars(NotYetClosed, FName(Effects::LightforgedWallsKey), SectionBarrierPillars[Barrier]);
 		SectionBarrierClosed[Barrier] = true;
 	}
 }
@@ -6262,8 +6327,7 @@ void ACataclysmDungeonGameMode::StepTheSectionBarriers()
 		if (SectionBarrierIsClosed(Barrier) && SectionBarrierPillars.IsValidIndex(Barrier)
 			&& StandingInSection(Barrier) == 0)
 		{
-			UnblockCellsAndDestroyPillars(FloorSections.Boundaries[Barrier], SectionBarrierPillars[Barrier]);
-			SectionBarrierClosed[Barrier] = false;
+			OpenTheSectionBarrier(Barrier);
 			bOpenedOne = true;
 			UE_LOG(LogCataclysm, Log, TEXT("Sections: barrier %d opened on floor %d"), Barrier, FloorNumber);
 		}
@@ -6306,12 +6370,39 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ClosedSectionBarrierCells() const
 	TArray<FIntPoint> Closed;
 	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
 	{
-		if (SectionBarrierIsClosed(Barrier))
+		if (!SectionBarrierIsClosed(Barrier))
 		{
-			Closed.Append(FloorSections.Boundaries[Barrier]);
+			continue;
+		}
+		for (const FIntPoint& Cell : FloorSections.Boundaries[Barrier])
+		{
+			// A CELL TWO CLOSED BARRIERS HOLD IS NAMED ONCE.
+			Closed.AddUnique(Cell);
 		}
 	}
 	return Closed;
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::CellsOnlyBarrierHolds(int32 Barrier) const
+{
+	TArray<FIntPoint> Own;
+	if (!FloorSections.Boundaries.IsValidIndex(Barrier))
+	{
+		return Own;
+	}
+	for (const FIntPoint& Cell : FloorSections.Boundaries[Barrier])
+	{
+		bool bAnotherHoldsIt = false;
+		for (int32 Other = 0; Other < FloorSections.Boundaries.Num(); ++Other)
+		{
+			bAnotherHoldsIt = bAnotherHoldsIt || (Other != Barrier && FloorSections.Boundaries[Other].Contains(Cell));
+		}
+		if (!bAnotherHoldsIt)
+		{
+			Own.Add(Cell);
+		}
+	}
+	return Own;
 }
 
 bool ACataclysmDungeonGameMode::AClosedBarrierStandsBetween(const ACataclysmEnemyCharacter* One,
