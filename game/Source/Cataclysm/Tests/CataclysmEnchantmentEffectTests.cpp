@@ -19091,4 +19091,47 @@ bool FCataclysmFourMovementRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+// THE CROWD CONTROL HEALTH CEILING ROW. Ruled 2026-10-07; the row is as the entry "A character can carry a health
+// ceiling above which it cannot apply crowd control to an enemy" states it.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlCeilingRowTest,
+	"Cataclysm.Enchantments.TheCrowdControlCeilingRowHandsItsWearerAReductionOfFiftyAskedWithNoTags",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You cannot apply CC effects to enemies above 50% HP". One row on
+ * `crowd_control_health_ceiling_reduction`, flat 50: 100 less the ceiling the
+ * sentence states. The real row WORN. The game asks for the stat with no
+ * tags; asked so, it is 50 above what it is with the item taken off. A
+ * DIFFERENCE, so nothing the wearer's class gives is read. What the ceiling
+ * then refuses is the tests of the entry that built it.
+ */
+bool FCataclysmCrowdControlCeilingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const RowName = TEXT("Negative_You_cannot_apply_CC_effects_to_enemies_above_50");
+	const UDataTable* Negative =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsNegative.csv"),
+					 Negative->GetRowMap().Contains(FName(RowName))))
+	{
+		return false;
+	}
+	FWorn Worn(RowName, false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Stat(TEXT("crowd_control_health_ceiling_reduction"));
+	const FGameplayTagContainer NoTags;
+	const float WornReading = Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f);
+	Worn.Wearer->Equipment->UnequipEverything();
+	Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+	TestEqual(*(FString(TEXT("worn: asked with no tags, the stat is 50 above what it is taken off.")) +
+				CataclysmRepeatRowsTest::OlderAsset),
+		WornReading - Worn.ASC()->StatForSkill(Stat, NoTags, 0.0f), 50.0f, 0.01f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
