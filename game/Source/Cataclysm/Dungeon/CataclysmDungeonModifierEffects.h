@@ -496,6 +496,18 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ManaCostAsCurrentHealthPercent = 0.0f;
 
+	/**
+	 * Above zero, `ManaCostAsCurrentHealthPercent` holds at any mana and not only while mana is low. Rule of Chaos'
+	 * change "skills are paid in health". Issues #1820 and #41. A flag written as a value, as `SkillsLockedValue` is.
+	 *
+	 * A FLAG ON THE ONE LEVER AND NOT A SECOND SHARE, so a floor carrying Desperate Measures and this change writes
+	 * ONE modifier worth one share. Two fields each writing a share would add on `mana_cost_as_current_health_percent`
+	 * while mana is low, and a cast would pay twice. `StatModifiersFor` writes the share without a condition when this
+	 * is set and under Desperate Measures' low-mana condition when it is not.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ManaCostAsHealthAtAnyManaValue = 0.0f;
+
 	/** Damage a Grim Totem the player embraced gives, more, for a time. Issues #1820 and #41. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float GrimEmbraceDamageMorePercent = 0.0f;
@@ -555,6 +567,11 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	 * long. Issues #1820 and #41.
 	 *
 	 * ON AND OFF AS THE PLAYER WALKS IN AND OUT OF EARSHOT, like `RecoveryLessPercent`.
+	 *
+	 * AND, SINCE 2026-10-08, WHAT RULE OF CHAOS' CHANGE TO SKILL BEHAVIOUR ADDS FOR THE WHOLE FLOOR:
+	 * `UCataclysmDungeonModifierEffects::PlayerEffectsFor` writes `RuleOfChaosCooldownLongerPercent` here once a floor,
+	 * and `ACataclysmDungeonGameMode::ApplyChangingFloorEffects` ADDS the chorus's share to it instead of assigning
+	 * over it. On a floor carrying both, within earshot the two add: one figure, one flat entry.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ChorusCooldownLongerPercent = 0.0f;
@@ -623,6 +640,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SkillsLockedValue <= 0.0f
 			&& SpellsLockedValue <= 0.0f
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
+			&& ManaCostAsHealthAtAnyManaValue <= 0.0f
 			&& GrimEmbraceDamageMorePercent <= 0.0f
 			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
 			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
@@ -5762,6 +5780,25 @@ public:
 	static constexpr float EternalChorusCooldownLongerPercent = 50.0f;
 	static constexpr float EternalChorusRegenLessPercent = 50.0f;
 
+	/**
+	 * Rule of Chaos' two figures of its own. Issues #1820 and #41. Both are labelled judgements by the coordinating
+	 * session under the owner's delegation, 2026-10-08, for the owner's play-check. Its third figure, the share of
+	 * current health a skill costs, is `DesperateMeasuresHealthPercent`: Desperate Measures' own.
+	 *
+	 * `RuleOfChaosCooldownLongerPercent`: how much longer every cooldown is under the change to skill behaviour. A flat
+	 * addition to `cooldown_lengthening`, whose 100 makes a cooldown twice as long: the existing lever doubled once.
+	 *
+	 * `RuleOfChaosStairsOpenAfterSeconds`: how long the stairs stay sealed under the change to the victory condition.
+	 * Long enough that a fast character waits and must survive, short enough not to stall a slow one. NOT derived
+	 * from any measured floor time.
+	 */
+	static constexpr float RuleOfChaosCooldownLongerPercent = 100.0f;
+	static constexpr float RuleOfChaosStairsOpenAfterSeconds = 60.0f;
+	static_assert(
+		RuleOfChaosCooldownLongerPercent > 0.0f && RuleOfChaosStairsOpenAfterSeconds > 0.0f,
+		"Rule of Chaos must lengthen cooldowns by something and seal the stairs for some time, or two of its three "
+		"changes do nothing.");
+
 	static_assert(EternalChorusRegenLessPercent == 50.0f, "The row says resource regeneration is halved.");
 	static_assert(EternalChorusApartCm >= 2.0f * EternalChorusEarshotCm,
 		"Two choruses far enough apart that their earshots do not overlap.");
@@ -7435,9 +7472,12 @@ public:
 	 *                       re-draws Starvation onto floor 9 starves the player
 	 *                       on floor 9 and not on floor 8
 	 * @param FloorNumber    counted from 1
+	 * @param RuleOfChaosChange the rule change Rule of Chaos drew for this floor, which is
+	 *                       `FCataclysmFloorBrief::RuleOfChaosChange`; nought, the default, is none. It is
+	 *                       believed as given: the brief holds a change only for a floor carrying the row
 	 */
 	static FCataclysmPlayerFloorEffects PlayerEffectsFor(
-		const TArray<FName>& FloorModifiers, int32 FloorNumber);
+		const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange = 0);
 
 	/**
 	 * The same effects as the stat pipeline's modifiers, keyed by stat name.

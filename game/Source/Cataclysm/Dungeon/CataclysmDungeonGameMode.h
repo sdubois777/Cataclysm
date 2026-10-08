@@ -2079,6 +2079,20 @@ public:
 	bool LightforgedWallsSealTheStairs() const;
 
 	/**
+	 * Rule of Chaos, for the panel, the stairs and tests: the rule change this floor drew, one of
+	 * `FCataclysmDungeonFloorRules::RuleOfChaos...`; whether its change "the stairs open by time" seals the stairs
+	 * right now; and the whole seconds left until they open, rounded up, nought once they are open. Issues #1820 and
+	 * #41.
+	 *
+	 * THE SEAL IS BY TIME ALONE: the floor's own clock, `SecondsOnThisFloor`, against
+	 * `UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds`, whatever has or has not been slain. Not on
+	 * a Horde floor, which has no stairs, and not on the last floor, whose way out no row seals.
+	 */
+	int32 RuleOfChaosChangeNow() const { return FloorBrief.RuleOfChaosChange; }
+	bool RuleOfChaosSealsTheStairs() const;
+	int32 RuleOfChaosStairsSecondsLeft() const;
+
+	/**
 	 * Lightforged Walls' sections, for the panel, the enemy modifiers and tests. Issues #1820 and #41. Ruled
 	 * 2026-10-08, each a labelled judgement by the coordinating session under the owner's delegation.
 	 *
@@ -4476,6 +4490,9 @@ private:
 
 	/** Lightforged Walls: the count of the standing the panel last showed. Issues #1820 and #41. */
 	int32 LightforgedWallsPanelCount = -1;
+
+	/** Rule of Chaos: the seconds left its panel line last showed, so the panel is drawn again once a second. */
+	int32 RuleOfChaosPanelSeconds = -1;
 
 	/**
 	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.

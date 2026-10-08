@@ -138,6 +138,13 @@ struct CATACLYSM_API FCataclysmFloorBrief
 	FName TwistedIn = NAME_None;
 
 	/**
+	 * The one rule change Rule of Chaos drew for this floor: one of `FCataclysmDungeonFloorRules::RuleOfChaos...`, or
+	 * `RuleOfChaosNoChange` on a floor not carrying the row. NOT a row and NOT in `Modifiers`: it is which of the row's
+	 * three changes is in force here. Drawn by `ModifiersFor`. Issues #1820 and #41.
+	 */
+	int32 RuleOfChaosChange = 0;
+
+	/**
 	 * Unstable Dimensions' new reality on this floor: the Generic enemy modifier every creature placed here is given, or
 	 * none -- on floor 1, on a floor not carrying the row, or when the enemy-modifier table will not load. NOT in
 	 * `Modifiers`, which are dungeon rows; this is a creature's. Ruled 2026-10-01; see `ModifiersFor`'s rule 3.
@@ -473,13 +480,15 @@ public:
 	 * @param OutScore       the sum of their danger scores
 	 * @param OutTwistedIn   when given, the row Reality Twister added, or none
 	 * @param OutEveryCreatureModifier when given, Unstable Dimensions' new reality, or none
+	 * @param OutRuleOfChaosChange when given, the rule change Rule of Chaos drew, or `RuleOfChaosNoChange`
 	 */
 	static void ModifiersFor(const FCataclysmDungeonIdentity& Dungeon,
 							 int32 FloorNumber,
 							 TArray<FName>& OutModifiers,
 							 float& OutScore,
 							 FName* OutTwistedIn = nullptr,
-							 FName* OutEveryCreatureModifier = nullptr);
+							 FName* OutEveryCreatureModifier = nullptr,
+							 int32* OutRuleOfChaosChange = nullptr);
 
 	// ----------------------------------------------------------------------
 
@@ -499,6 +508,41 @@ public:
 	 * Issues #1820 and #41. Decided by the owner on 2026-09-26; see `ModifiersFor`'s rule 4.
 	 */
 	static const TCHAR* RealityTwisterKey;
+
+	/**
+	 * The row key of the dungeon modifier whose floors each draw one rule change. Issues #1820 and #41.
+	 *
+	 * `Chaos_Rule_of_Chaos`: "The normal rules of the game are suspended within these dungeons. Gameplay mechanics and
+	 * systems become randomized or altered, challenging players to adapt on the fly. This could involve changes to
+	 * character attributes, skill behavior, or even unconventional victory conditions."
+	 *
+	 * THE SENTENCE IS WIDER THAN WHAT IS BUILT. What is built is three named changes, one drawn a floor, which the
+	 * owner approved on 2026-10-08 "for now": the list may be revisited. Each floor draws ONE of them, evenly, on the
+	 * floor's own stream, so the same dungeon seed and floor give the same change:
+	 *
+	 *   1. `RuleOfChaosSkillsPaidInHealth`, a change to character attributes: a skill costs no mana and costs
+	 *      `UCataclysmDungeonModifierEffects::DesperateMeasuresHealthPercent` of current health instead, at any mana.
+	 *   2. `RuleOfChaosKillsClearCooldowns`, a change to skill behaviour: every cooldown is
+	 *      `UCataclysmDungeonModifierEffects::RuleOfChaosCooldownLongerPercent` longer, and a kill by the player is
+	 *      to clear every cooldown. THE CLEARING IS NOT WRITTEN YET: see the entry of 2026-10-08 in
+	 *      `docs/DECISIONS.md`, which says why it was stopped for a ruling.
+	 *   3. `RuleOfChaosStairsOpenByTime`, an unconventional victory condition: the stairs are sealed when the floor
+	 *      begins and open `UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds` later, whatever has
+	 *      or has not been slain. See `ACataclysmDungeonGameMode::RuleOfChaosSealsTheStairs`.
+	 *
+	 * The three changes and every figure are labelled judgements by the coordinating session under the owner's
+	 * delegation, 2026-10-08.
+	 */
+	static const TCHAR* RuleOfChaosKey;
+
+	/** What `FCataclysmFloorBrief::RuleOfChaosChange` holds. Numbered from one so that nought is "none drawn". */
+	static constexpr int32 RuleOfChaosNoChange = 0;
+	static constexpr int32 RuleOfChaosSkillsPaidInHealth = 1;
+	static constexpr int32 RuleOfChaosKillsClearCooldowns = 2;
+	static constexpr int32 RuleOfChaosStairsOpenByTime = 3;
+
+	/** How many changes the draw chooses between. The draw is even between them. */
+	static constexpr int32 RuleOfChaosChanges = 3;
 
 	/**
 	 * Mixed into a floor's seed so a per-floor modifier draw is not taken from
