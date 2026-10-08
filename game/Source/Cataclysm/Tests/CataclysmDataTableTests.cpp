@@ -759,7 +759,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 550 SINCE THE ROW THAT MAKES TRAPS LAST LONGER, issue #1833, from 549.
 	//
 	// AND 554 SINCE THREE SENTENCES ON DAMAGE OVER TIME, TIME IN COMBAT AND LEECHING, issue #1833, from 550.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    554)
+	//
+	// AND 558 SINCE FOUR ROWS ON STATS READ AT ONE PLACE, issue #1833, from 554.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    558)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
