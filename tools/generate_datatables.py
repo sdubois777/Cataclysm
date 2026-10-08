@@ -3741,6 +3741,23 @@ CONDITIONS = {
     "in_combat": None,
     "out_of_combat": None,
 
+    # "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per
+    # second" is `in_combat_for_seconds` with 10. Ruled 2026-10-07. The reading
+    # `in_combat` tests, compared AT LEAST, as `stationary_for_seconds` compares
+    # the reading `while_stationary` tests. Out of combat it refuses whatever
+    # the value, and a new combat starts the count from nought.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "in_combat_for_seconds": (0.0, 60.0, "a number of seconds"),
+
+    # "Gain 50%-100% increased damage while under the effect of a DoT" is
+    # `while_under_damage_over_time`, and it takes no value. Ruled 2026-10-07.
+    # The parent of the tag `while_bleeding` asks for: any effect that
+    # `UCataclysmSkillEffects::ApplyDamageOverTime` laid on the character,
+    # whoever laid it, the character itself included. It asks only the
+    # wearer's own state, so every asker can judge it.
+    "while_under_damage_over_time": None,
+
     # "Debuffed enemies take 10%-20% increased damage from all sources" is
     # `target_carries_any_debuff`, and "Strike skills deal 20%-40% increased
     # damage against enemies affected by a DoT" is `target_carries_a_dot`. Issue
@@ -4420,6 +4437,16 @@ SCALES = {
     # energy shield, so nought to three. Not one for each payment, which every
     # hit starts and which has no bound.
     "leech_pools_in_flight": (0.0, 3.0, "a number of pools being leeched into"),
+
+    # "While leeching, reduce your max resistances by 1%-3% per second" is
+    # `seconds_leeching` with a step of 1. Ruled 2026-10-07: whole seconds of
+    # unbroken leeching, nought again when no payment is owed. The ruling caps
+    # the sentence at 10 seconds, a judged number the sentence does not state,
+    # and the row carries it as a Scale Max Steps of 10; the scale itself has
+    # no cap.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "seconds_leeching": (0.0, 60.0, "a number of seconds"),
 }
 
 

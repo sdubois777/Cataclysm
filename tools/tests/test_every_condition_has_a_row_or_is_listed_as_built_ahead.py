@@ -71,6 +71,14 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
+    # TWO JOINED ON 2026-10-07, ruled that day and built ahead of their rows
+    # while the design workbook is with another session: "Gain 50%-100%
+    # increased damage while under the effect of a DoT" and "After 10 seconds
+    # in combat you begin losing 2%-4% of your maximum HP per second".
+    # `docs/DECISIONS.md` of that day gives the shape of each row. Each leaves
+    # with its row.
+    "while_under_damage_over_time",
+    "in_combat_for_seconds",
     # `target_in_your_zone` JOINED AND LEFT ON 2026-10-06: the engine half of "You
     # deal 15%-30% increased damage to enemies standing in your persistent AOE
     # zones" landed first and its row the same day, issue #1833.

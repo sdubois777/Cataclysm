@@ -135,6 +135,8 @@ namespace
 										ECataclysmStatCondition::ClassResourcePointsAtLeast },
 		{ TEXT("energy_shield_above_zero"),     ECataclysmStatCondition::EnergyShieldAboveZero },
 		{ TEXT("mana_below"),                   ECataclysmStatCondition::ManaBelowPercent },
+		{ TEXT("while_under_damage_over_time"), ECataclysmStatCondition::WhileUnderDamageOverTime },
+		{ TEXT("in_combat_for_seconds"),        ECataclysmStatCondition::InCombatForSeconds },
 	};
 
 	struct FNamedStatScale
@@ -182,6 +184,7 @@ namespace
 		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
 		{ TEXT("cataclysm_bosses_defeated"), ECataclysmStatScale::PerUniqueCataclysmBossDefeated },
 		{ TEXT("leech_pools_in_flight"), ECataclysmStatScale::PerLeechPoolInFlight },
+		{ TEXT("seconds_leeching"),    ECataclysmStatScale::PerSecondLeeching },
 	};
 
 	/**
@@ -293,8 +296,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 	case ECataclysmStatCondition::TargetStandsInYourZone:
+	case ECataclysmStatCondition::WhileUnderDamageOverTime:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-nine says
+		// nothing for a number to be compared against. Each of the thirty says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -426,6 +430,10 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WhileBleeding:
 	case C::InCombat:
 	case C::OutOfCombat:
+	// AND THE TWO OF 2026-10-07. Any damage over time ends as bleeding does,
+	// with nothing written to the character; a combat's length is a clock.
+	case C::WhileUnderDamageOverTime:
+	case C::InCombatForSeconds:
 		return EOn::Time;
 
 	case C::WhileMoving:
@@ -691,6 +699,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// health percentage of zero is a corpse and an unknown one is the
 		// character sheet; there is no such pair here.
 		return State.bIsBleeding;
+
+	case ECataclysmStatCondition::WhileUnderDamageOverTime:
+		// NO THRESHOLD, SO `Value` IS NOT READ, and nothing to refuse as unknown,
+		// both for the reasons the case above gives. Ruled 2026-10-07. The field
+		// is the parent of the tag the case above asks for, read on the character
+		// itself; `TargetCarriesADot` below asks the same of the character struck.
+		return State.bIsUnderDamageOverTime;
 
 	case ECataclysmStatCondition::ClassResourceAtMaximum:
 		// NO THRESHOLD, SO `Value` IS NOT READ, the same as the predicate above.
@@ -1011,6 +1026,12 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::InCombat:
 		// Issue #1815. Negative is out of combat, or no character to read.
 		return State.SecondsInCombat >= 0.0f;
+
+	case ECataclysmStatCondition::InCombatForSeconds:
+		// AT LEAST THAT LONG IN THE CURRENT COMBAT, the comparison
+		// `StationaryForSeconds` makes. Ruled 2026-10-07. Negative is out of
+		// combat, or no character to read, and refuses whatever the value.
+		return State.SecondsInCombat >= 0.0f && State.SecondsInCombat >= Value;
 
 	case ECataclysmStatCondition::OutOfCombat:
 		// Issue #1815. Its own reading rather than `!InCombat`, so a lookup with
@@ -1612,6 +1633,12 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 
 	case ECataclysmStatScale::PerLeechPoolInFlight:
 		return StackedValue(Modifier, State.LeechPoolsInFlight);
+
+	// WHOLE SECONDS OF UNBROKEN LEECHING. Ruled 2026-10-07. Nought while no
+	// payment is owed, and for a caller with no character in hand. The cap the
+	// ruling gives is the row's `ScaleMaxSteps`, applied by `ScaledValue`.
+	case ECataclysmStatScale::PerSecondLeeching:
+		return StackedValue(Modifier, FMath::FloorToInt32(State.SecondsLeeching));
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{

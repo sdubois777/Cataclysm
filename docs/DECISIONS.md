@@ -2,6 +2,341 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Two conditions, `while_under_damage_over_time` and `in_combat_for_seconds`, and one scale, `seconds_leeching`, for three enchantment sentences that have no row. Engine and generator only; no row authored
+
+**Not built and not run.** No Unreal build was made and no Unreal test was run by the writing session. The C++
+in this entry has never been compiled. The Python checks were run; their output is not recorded here. Two dry
+runs were made by the writing session, in memory and in a temporary workbook only, and are described under
+"What the row needs".
+
+**Said first: a ground zone and most floor hazards do NOT count as "under the effect of a DoT".** The ruling
+says the condition is true for any damage over time effect on the wearer. In this code a damage over time
+EFFECT is a lasting effect that grants its target a tag under `Keyword.DoT`. A ground zone's sweep, and the
+dungeon rules that hurt on a clock, deal a separate blow each time and only mark that blow as damage over time.
+They leave no effect and no tag on the character. The condition reads the tag, so standing in burning ground
+does not hold it. Counting them would need a new record of the last such blow taken and a judged window after
+it, which no ruling gives. This is judgement 1 of the writing session, and it is on the play-check list.
+
+**Also said first: the clock that fires "every N seconds" rows was changed.** Until this entry a timed row whose
+condition refused was skipped before its periods were counted. The drain of this entry is the first timed row to
+carry a condition. Left as it was, its first ten periods would all have been paid together in the eleventh
+second: ten shares, 20% to 40% of maximum health, in one step. A period that ends while the row is refused is
+now passed over and never owed. No timed row carried a condition or required tags before this one (13 timed
+rows in `game/Data/EnchantmentEffects.csv`, read 2026-10-07), so no existing row changes. Judgement 3.
+
+**Also said first: the row for the drain needs a word the row-text check did not know.** The check that a
+negative value sits on words that take something away knew `lose` and not `losing`. It refused the drain's row
+in the dry run. `losing` was added, as a tense of a word already there. Judgement 7.
+
+**Also said first: the cap of 10 seconds on the leech sentence is not in the sentence.** It is a judged number.
+It is stated by the row, in `Scale Max Steps`, and not built into the scale. A row written without it has no cap.
+
+### Said first: where the code did not match what the writing session was told
+
+- **The existing drain already runs in combat only.** The brief described "a timed `health` pool action with a
+  negative value on `every_seconds`" and asked what is new for "in combat". `StepTimedGrants` counts whole
+  periods of the CURRENT COMBAT, returns at once out of combat, and starts every count again in a new combat
+  (ruled 2026-09-24). So "You lose 15% of your max hp every 5 seconds" already takes nothing out of combat. What
+  is new is only the wait of ten seconds.
+- **A row can already state a cap.** The brief asked whether a scale can state one. It can: the `Scale Max Steps`
+  column, `FCataclysmStatModifier::ScaleMaxSteps`, applied to every scale at once by
+  `UCataclysmStatPipeline::ScaledValue`. Nothing was built for the cap.
+- **The search text for the hold did not match.** The hold is split over two lines in this file. It is quoted
+  under "The hold of 2026-09-23, lifted".
+- **"Near line 1240" for the leech state was right, and the rule it follows mattered.** The count of pools being
+  leeched into counts only a pool the character HAS. The new clock follows the same rule; see judgement 4.
+
+### What was found in the code before writing
+
+Line numbers are as read at commit `8c44c278`, before this entry's change.
+
+- **How "bleeding" is known.** `UCataclysmDebuffs::IsBleeding` (`CataclysmDebuffs.cpp` 297 to 302) asks the
+  character's own tag list for `Keyword.DoT.Bleed`. `UCataclysmDebuffs::DamageOverTimeTag` (285 to 289) is the
+  parent, `Keyword.DoT`. `UCataclysmAbilitySystemComponent::CurrentConditions` fills `bIsBleeding` at
+  `CataclysmAbilitySystemComponent.cpp` 1120. The pipeline judges it at `CataclysmStatPipeline.cpp` 680 to 693,
+  lists it as taking no value at 267, and classes it as depending on time at 426.
+- **What puts a tag under `Keyword.DoT` on a character.** `UCataclysmSkillEffects::ApplyDamageOverTime`
+  (`CataclysmSkillEffects.cpp` 1752) builds a lasting effect, and `TagAndReplaceAnyExisting` (139 to 169) makes
+  it grant the effect's tag to the target while it runs. Its callers, each read: an ailment whose shape is damage
+  over time (`CataclysmAilments.cpp` 608 to 618); the bleed a hit lays from a bleed chance
+  (`CataclysmVitalAttributeSet.cpp` near 2172); a burn (`ApplyBurn`, `CataclysmSkillEffects.cpp` near 2633); a
+  spread copy (near 2485, and `CataclysmContagion.cpp` 78); the Masochist's conversion, which lays
+  `Keyword.DoT.Bleed` on its own character (`CataclysmDamageConversion.cpp` 147 to 154); and the spore poison a
+  floor rule lays through the ailment table (`CataclysmDungeonGameMode.cpp` near 18399).
+- **What does not.** A blow can be MARKED as damage over time: `FCataclysmHitDelivery::bIsDamageOverTime`, which
+  `CataclysmSkillEffects.cpp` 1272 to 1280 turns into a tag on the blow's own effect, not on the target. A ground
+  zone's sweep sets it (`CataclysmGroundZone.cpp` 448). So do eight places in `CataclysmDungeonGameMode.cpp`,
+  found by search and not each read in full.
+- **Which askers hand over the wearer's state.** `AttackDamageIncreasesForSkill`
+  (`CataclysmAbilitySystemComponent.cpp` 614 to 650) evaluates the `attack_damage` line with
+  `CurrentConditions`, and `UCataclysmSkillEffects::IncreasesForSkill` (`CataclysmSkillEffects.cpp` 455 to 478)
+  is how a hit reaches it. The generator lists `attack_damage` and `spell_damage` in
+  `CONDITIONED_STATS_WITH_AN_ASKER` (`tools/generate_datatables.py` near 7894) as asked for while a hit is
+  priced. A condition that asks only the wearer's own state is judged by every asker.
+- **The existing drain.** `Negative_You_lose_15_of_your_max_hp_every_5_seconds#1`, line 340 of
+  `game/Data/EnchantmentEffects.csv`: no stat, value -15, Action `health`, Action Event `every_seconds`, Fraction
+  Of `maximum`, Every Seconds 5. `ACataclysmCharacterBase` steps `StepTimedGrants` several times a second
+  (`CataclysmCharacterBase.cpp` 186). `StepTimedGrants` (`CataclysmAbilitySystemComponent.cpp` 4112 to 4196)
+  fires an action once for every whole period of the current combat. `ApplyPoolAction` (near 5546 to 5565) is
+  what keeps a drain from killing: "Health floors at one and every other pool at zero". It writes the pool and
+  nothing else: no hit, no on-damage effect, no combat stamp.
+- **How an action row judges a condition.** `PoolActionAllowed` (5214 to 5262) builds the wearer's state with
+  `CurrentConditions` and asks `UCataclysmStatPipeline::ConditionHolds`, at the moment the action would fire.
+  `CataclysmItem.cpp` 1543 to 1554 copies a row's Condition and Condition Value onto the action, and 1225 its
+  Every Seconds.
+- **What "in combat" is.** `NoteCombatEvent` (2849 to 2867) stamps a combat event; `SecondsInCombat` (2869 to
+  2884) answers how long the current combat has lasted, or -1 when the last event is more than
+  `CombatLapseSeconds`, 3, ago. An event is a blow this character dealt or a blow that reached it, evaded and
+  blocked ones included (`CataclysmVitalAttributeSet.cpp` 1921 to 1962). A new combat begins at the first event
+  after a lapse and counts from nought. The stamp where a blow is taken is not held back for a damage over time
+  tick, so by reading a tick keeps its carrier in combat; that was read and is not tested here.
+- **The combat precedents in the pipeline.** `in_combat` at `CataclysmStatPipeline.cpp` 1011 to 1013,
+  `stationary_for_seconds` at 994 to 997, the scale `seconds_in_combat` at 1455 to 1470.
+- **Leech.** `UCataclysmLeech::NoteHit` and `NoteRetaliation` (`CataclysmLeech.cpp` 44 to 180) add a payment
+  with `AddLeechPayment`; a payment is owed over `PayoutSeconds`, 3. `PayOutStep` (182 to 281) pays each step,
+  drops a payment whose balance or time is gone, and writes the list back with `SetLeechPayments`. A respawn
+  empties the list (`CataclysmAbilitySystemComponent.cpp` 2545 to 2548). Those three are the only writers of the
+  list. The count of pools being leeched into is filled at 1211 to 1240.
+- **The resistance cap.** `UCataclysmDamageCalculation::ResistanceCapOf` (`CataclysmDamageCalculation.cpp` 491
+  to 500) asks `StatAppliedTo` with 70 as the base, and `StatAppliedTo`
+  (`CataclysmAbilitySystemComponent.cpp` 474 to 491) evaluates with `CurrentConditions`, so the wearer's state is
+  handed over. It is asked where a blow's resistance is used (834) and by the character sheet
+  (`CataclysmCharacterSheetLayout.cpp` 444). The answer is held between 0 and the ceiling. `resistance_cap` is in
+  `STATS_WITH_AN_ASKER` and already has a scaled row, line 387 of `game/Data/EnchantmentEffects.csv`.
+
+### What it is for
+
+Three sentences, each verbatim with its Name. None has a row.
+
+- `Positive_Gain_50_100_increased_damage_while_under_the_e` in `game/Data/EnchantmentsPositive.csv`:
+  "Gain 50%-100% increased damage while under the effect of a DoT".
+- `Negative_After_10_seconds_in_combat_you_begin_losing_2_4` in `game/Data/EnchantmentsNegative.csv`:
+  "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second".
+- `Negative_While_leeching_reduce_your_max_resistances_by_1` in `game/Data/EnchantmentsNegative.csv`:
+  "While leeching, reduce your max resistances by 1%-3% per second".
+
+### The hold of 2026-09-23, lifted
+
+The entry of 2026-09-23, '"In combat" means a hit dealt or taken within the last 3 seconds, and a scaled value
+can be capped', lists four combat sentences it left out. One of them reads:
+
+> "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second": a drain, held out by the
+> coordinating session's ruling.
+
+**That hold is lifted**, by a labelled judgement by the coordinating session under the owner's delegation,
+2026-10-07. Why: it was the coordinating session's own hold, not the owner's. It was made before any drain row
+existed. A drain row has been built since, `Negative_You_lose_15_of_your_max_hp_every_5_seconds` in
+`game/Data/EnchantmentEffects.csv`, so the sentence can be built the way that row is.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **Sentence 1 is a new condition, true for ANY damage over time effect on the wearer, a self-laid one
+   included.** A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07.
+2. **Sentence 2 is built as the existing self-damage drawbacks are: a drain that cannot kill.** A labelled
+   judgement by the coordinating session under the owner's delegation, 2026-10-07. What is new is a condition,
+   "at least N seconds in combat".
+3. **Sentence 3 is a new scale that counts whole seconds of unbroken leeching, capped at 10.** A labelled
+   judgement by the coordinating session under the owner's delegation, 2026-10-07. The 10 is a judged number, so
+   the row takes 10% to 30% of maximum resistance at most. It returns to nought when no leech payment is owed.
+   The reading not taken is no cap: the loss would grow each second for as long as the wearer goes on leeching,
+   and the resistance cap would reach nought after 24 to 70 seconds.
+
+### How it is built
+
+- **`while_under_damage_over_time`**, enumerator `ECataclysmStatCondition::WhileUnderDamageOverTime`. It takes
+  no value. `CurrentConditions` fills a new field, `bIsUnderDamageOverTime`, by asking the character's tag list
+  for `Keyword.DoT`, beside the line that asks it for the bleed tag. A caller with no character in hand leaves it
+  false, which refuses. It is classed as depending on time, as bleeding is.
+- **`in_combat_for_seconds`**, enumerator `InCombatForSeconds`. It compares its value with the reading
+  `in_combat` tests, AT LEAST: ten seconds of combat meet a value of ten. Out of combat the reading is negative
+  and refuses whatever the value. The generator bounds the value at 0 to 60 seconds.
+- **The clock.** `StepTimedGrants` now counts a timed row's periods before it asks whether the row is allowed.
+  When the row is refused, the periods that have ended are marked as given. Nothing else in it changed.
+- **`seconds_leeching`**, enumerator `ECataclysmStatScale::PerSecondLeeching`. The ability system component
+  holds a stamp, `LeechingSinceSeconds`. A new function, `NoteLeechPaymentsChanged`, is called by all three
+  writers of the list of payments: a payment added, the list written back after a payout step, the list emptied
+  on a respawn. If no payment is still owed into a pool the character has, it clears the stamp. Otherwise, if
+  the stamp is clear, it sets it to the world's time. `SecondsLeeching` answers the time since the stamp, or
+  nought. The scale counts whole seconds of that, rounded down. The cap is the row's `ScaleMaxSteps`.
+- **One existing piece was moved, not changed.** The rule "a pool the character has is one whose maximum is
+  above nought" was a lambda inside `CurrentConditions`. It is now the member `HasLeechPool`, so the count of
+  pools and the new clock ask one copy.
+- **The generator** knows the two condition names and the scale name. Each is on the built-ahead list of its
+  kind in `tools/tests`, and leaves with its row.
+- **The counts in words** in `CataclysmStatPipeline.h` and `.cpp` moved with the code: thirty of the
+  sixty-seven conditions compare nothing.
+
+### What "leeching" is
+
+Proposed by the writing session and labelled as its judgement 4: **a leech payment still owed into a pool the
+character has, health, mana or energy shield alike.** It is the question the count of pools being leeched into
+asks, answered yes or no. Three consequences a player would meet:
+
+- A hit starts a payment owed over 3 seconds. So "leeching" lasts until 3 seconds after the last hit that
+  leeched, and a wearer who lands a leeching hit at least every 3 seconds never breaks the count.
+- A payment into a full pool is still owed. A wearer at full health who goes on hitting is still leeching.
+- A payment into a pool the wearer does not have does not count. A character with no energy shield and only
+  energy shield leech is not leeching.
+
+The reading not taken: health leech only. The sentence says "leeching" and names no pool.
+
+### For the owner's play-check
+
+What a player sees:
+
+- **Sentence 1.** While the wearer is bleeding, burning, poisoned, diseased, or carries a necrosis or a void
+  splinter, their attacks and spells deal 50% to 100% increased damage. It applies whoever laid the effect: an
+  enemy, a floor's spores, or the wearer's own Masochist conversion. It ends the moment the effect ends. It does
+  NOT apply for standing in a burning zone or a hazard that only hurts on a clock.
+- **Sentence 2.** Nothing for the first ten seconds of a fight. From the tenth second, 2% to 4% of maximum
+  health is lost each second, in one piece a second. It stops at 1 health and does not kill. It stops when the
+  wearer has neither dealt nor been reached by a blow for more than 3 seconds, and the next fight has its own
+  ten seconds first.
+- **Sentence 3.** While leeching, maximum resistances fall by 1% to 3% for each whole second, down to 10% to 30%
+  lower after ten seconds. They return at once when nothing is owed, about 3 seconds after the last leeching hit.
+
+Every judged number or rule, with the reading not taken:
+
+1. **The cap of 10 seconds on sentence 3** (ruling 3). Not taken: no cap.
+2. **"Leeching" is any of the three pools** (judgement 4). Not taken: health leech only.
+3. **The count is unbroken while a payment is owed**, so it survives gaps of up to 3 seconds between hits. Not
+   taken: the count restarts at every hit, which would never pass 3 and would make the row worth almost nothing.
+4. **Zones and clock hazards do not count for sentence 1** (judgement 1). Not taken: they count for some window
+   after each of their blows.
+5. **Sentence 1 raises attack and spell damage, not damage over time and not minions** (judgement 9). Not
+   taken: also `dot_damage`, which is judged once when an effect is applied and not again while it runs.
+6. **The drain begins at ten seconds, at least**: the first share is taken at the tenth second. Not taken:
+   strictly after, the first share at the eleventh.
+7. **The drain is one share each whole second**, not a smooth loss. Not taken: a share of a share each step.
+8. **The drain cannot kill** (ruling 2). Not taken: it can.
+9. **The ten seconds start again in every combat**, and a combat lapses after 3 seconds with no blow dealt or
+   taken (the existing rule of 2026-09-23). Not taken: time in combat adds up across a floor.
+10. **Ten seconds of the drain's periods are passed over, not owed** (judgement 3). Not taken: they are owed,
+    which takes 20% to 40% of maximum health in one step at the tenth second.
+
+### Judgements by the writing session
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **"Under the effect of a DoT" is a tag under `Keyword.DoT` on the wearer.** A judgement by the writing
+   session, for the coordinating session to confirm. It is what `while_bleeding` and `target_carries_a_dot`
+   already read. It leaves out zones and clock hazards, as said first. It also means a bare tag under
+   `Keyword.DoT` granted with no effect behind it would hold the condition; the skill code routes such tags to
+   `ApplyDamageOverTime` instead of granting them, so no path in play does that today.
+2. **`in_combat_for_seconds` compares at least.** A judgement by the writing session, for the coordinating
+   session to confirm. It follows `stationary_for_seconds`.
+3. **A period that ends while a timed row is refused is passed over.** A judgement by the writing session, for
+   the coordinating session to confirm. It changes `StepTimedGrants` for every timed row that carries a
+   condition or required tags. There were none before this entry.
+4. **"Leeching" is a payment still owed into a pool the character has, any of the three.** A judgement by the
+   writing session, for the coordinating session to confirm. See "What 'leeching' is".
+5. **The stamp is set and cleared where the list of payments is written, not where it is read.** A judgement by
+   the writing session, for the coordinating session to confirm. Two edges follow. Whether a pool is one the
+   character has is asked when the list changes, so a maximum that falls to nought between two changes is seen
+   at the next one, at most one payout step later. And a payment whose time has run out still counts until the
+   next payout step drops it.
+6. **The cap is the row's `Scale Max Steps`, and the scale has none.** A judgement by the writing session, for
+   the coordinating session to confirm. It is the existing way, which the brief asked for where one exists.
+7. **`losing` joins the words that take something away** in
+   `tools/tests/test_enchantment_effects_match_the_row_text.py`. A judgement by the writing session, for the
+   coordinating session to confirm. It widens a tense of `lose`, not the meaning. Swept first: the drain's
+   sentence is the only one in the two enchantment tables that uses the word.
+8. **`HasLeechPool` became a member.** A judgement by the writing session, for the coordinating session to
+   confirm. The count of pools reads as it did.
+9. **Sentence 1 is two rows, `attack_damage` and `spell_damage`.** A judgement by the writing session, for the
+   coordinating session to confirm. It is how the existing rows that say plain "increased damage" are written,
+   for example `Positive_Every_10_seconds_gain_a_stack_of_momentum_granti`.
+10. **The tests are in `CataclysmSkillTemplateTests.cpp`, in a new group, `Cataclysm.DotCombatLeech`.** A
+    judgement by the writing session, for the coordinating session to confirm. That file holds the fighters and
+    the hand-written clock the tests use.
+
+### Research
+
+These three add no new formula shape. Sentence 1 is an increased row under a condition, sentence 2 is the
+existing drain under a condition, and sentence 3 is a flat row on a count scale with the existing cap. **No
+source was read.**
+
+### Tests
+
+Four C++ automation tests, in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. None has been
+compiled or run. Every fighter is a bare test character with no class lines. The world's time is written by
+hand, half a second off each whole second.
+
+- `Cataclysm.DotCombatLeech.ARowUnderAnyDamageOverTimeRaisesABlowWhileOneIsCarriedLaidByAnotherOrByTheWearer`.
+  Through a real blow. The control is a fighter with no row, set alight and crippled as the wearer is. The
+  wearer deals the plain blow with nothing on it; half as much again under a burn another character laid; the
+  plain blow once the burn is taken off; the control's blow under a cripple; half as much again under a bleed
+  it laid on itself.
+- `Cataclysm.DotCombatLeech.TheDrainBeginsTenSecondsIntoACombatTakesOneShareASecondAndStopsWhereTheOldDrainStops`.
+  Through `StepTimedGrants`. Controls: no row and in the fight, loses nothing; the same row and never in combat,
+  loses nothing; the existing drain's shape with no condition, loses its first share at 5.5 seconds. The wearer
+  loses nothing at 9.5 seconds, ONE share at 10.5, four at 13.5, nothing more after a lapse, nothing for 9.5
+  seconds of a second combat and one more share at 10.5. Left 200 health, it stops at the health the existing
+  drain stops at, above nought.
+- `Cataclysm.DotCombatLeech.TheResistanceCapFallsForEachWholeSecondOfUnbrokenLeechingUpToTheRowsCapAndReturnsWhenNothingIsOwed`.
+  Through `ResistanceCapOf`, with payments added by `AddLeechPayment` and paid by the real `PayOutStep`.
+  Controls: no row, leeching the same; the same row with no cap. The wearer's cap is lower by nought with
+  nothing owed, nought at 0.5 seconds, 6 at 3.5, 20 at 15.5 where the uncapped row is 30 lower, nought at once
+  when everything is paid, nought for a payment into an energy shield it does not have, and 4 at 2.5 seconds
+  of a new payment.
+- `Cataclysm.DotCombatLeech.TheTwoConditionsAndTheScaleAreNamedAndEachRefusesACharacterThatCannotBeRead`. The
+  pipeline alone. The three names reach their enumerators. A state nobody filled refuses both conditions and
+  counts no step. 9.99 seconds refuse a value of 10 and 10 meet it.
+
+Python, in `tools/tests/test_generate_datatables.py`, class
+`TestTheConditionsAndTheScaleOfTheSeventhOfOctober`: each of the three row shapes is carried through; a value
+beside `while_under_damage_over_time` is refused; the drain's wait must be stated and inside a minute; a leech
+step of nothing or past a minute is refused; the scale has no cap of its own; `resistance_cap` takes the scale
+and would not take a condition. In `test_enchantment_effects_match_the_row_text.py`,
+`test_a_sentence_that_says_losing_takes_something_away`.
+
+### Not covered by a test
+
+- **A real row.** None is authored. The item loader copying a row's condition and period onto a timed action
+  was read (`CataclysmItem.cpp` 1543 to 1554 and 1225) and is not tested here.
+- **`spell_damage`.** The blow in the first test is an attack. The spell half was read in the generator's list
+  and not measured.
+- **The Masochist's own conversion.** The test lays a bleed on its wearer through the same function with the
+  same tag, without the conversion.
+- **The spore poison, and every zone and hazard.** What they do was read, not run.
+- **A respawn clearing the leech stamp.** The line was added beside the list's own reset and is not tested.
+- **A damage over time tick keeping its carrier in combat**, which decides whether a poisoned wearer who has
+  stopped fighting goes on being drained. Read, not tested.
+- **Two timed health rows with the same period.** `StepTimedGrants` keys a pool action by its pool and its
+  period, so a second timed health row with a period of 1 second would share this row's count. No such row
+  exists. The key is older than this entry and was not changed.
+- **The character sheet.** It asks `ResistanceCapOf`, so by reading it shows the lowered cap; not tested.
+- **A guard proof.** None was run. Three candidates were sent to the coordinating session.
+
+### What the row needs, for the session that writes rows
+
+**Two dry runs were made, and neither wrote a file in the repository.** The first passed each row through
+`gen.enchantment_effects` in a temporary workbook holding the real sentence, then through
+`refuse_a_scale_nothing_asks_for` and `refuse_a_condition_nothing_asks_for`. **All four rows were accepted**,
+and the generated Names matched the three Names above. The second added the four rows in memory to the rows of
+`game/Data/EnchantmentEffects.csv` and called the 26 row-text checks that take only the two tables. With the
+real rows alone, none failed. With the four rows, two failed: the check on words that take something away,
+which is the `losing` of judgement 7 and is now repaired; and the pinned count of rows, which the session that
+writes rows moves. The checks were not run again against a real row, because there is none.
+
+| Sentence | Row |
+| :-- | :-- |
+| "Gain 50%-100% increased damage while under the effect of a DoT" | Two rows. Stat `attack_damage`, Value Kind `increased`, Value Low 50, Value High 100, Condition `while_under_damage_over_time`, Condition Value empty. The same with Stat `spell_damage`. |
+| "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second" | One row. Stat empty, Value Low -2, Value High -4, Action `health`, Action Event `every_seconds`, Fraction Of `maximum`, Every Seconds 1, Condition `in_combat_for_seconds`, Condition Value 10. |
+| "While leeching, reduce your max resistances by 1%-3% per second" | One row. Stat `resistance_cap`, Value Kind `flat`, Value Low -1, Value High -3, Scale `seconds_leeching`, Scale Step 1, Scale Max Steps 10. |
+
+- A value beside `while_under_damage_over_time` is refused; leave Condition Value empty.
+- The 10 in `Scale Max Steps` is not a number the leech sentence states. No row-text check refused it in the dry
+  run. If the sentence is ever reworded to state the cap, the ruling's number is 10.
+- With the rows, each of the three names leaves its built-ahead list:
+  `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` for the two conditions and
+  `tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` for the scale, whose pinned
+  count of scales named by a row rises by one.
+- **Not determined:** whether the DataTable import, the Unreal test that pins the row count, or any check that
+  reads the built asset has more to say about these rows. None was run.
+
+---
+
 ## 2026-10-07 — "Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
