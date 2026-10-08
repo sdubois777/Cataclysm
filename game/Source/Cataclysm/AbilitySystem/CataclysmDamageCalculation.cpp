@@ -9,6 +9,11 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+// For the share of its summoner's armour and resistances a minion takes: who
+// the minion is, whose it is, and whether that character still lives.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Player/CataclysmGameMode.h"
 #include "AbilitySystemComponent.h"
@@ -27,6 +32,8 @@ const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
 const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
 	TEXT("block_negation_chance");
 const TCHAR* UCataclysmDamageCalculation::SpellAbsorbChanceStat = TEXT("spell_absorb_chance");
+const TCHAR* UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat =
+	TEXT("minion_defences_percent_of_yours");
 const TCHAR* UCataclysmDamageCalculation::MeleeReflectChanceStat = TEXT("melee_reflect_chance");
 
 /** Pin the two rolls a defender makes against an incoming spell or melee hit, for tests. Ruled 2026-10-06. */
@@ -267,6 +274,114 @@ namespace
 			Defender, DifficultyTier);
 
 		return Total;
+	}
+
+	/**
+	 * Whose defences a minion takes a share of, and how large a share. Ruled
+	 * 2026-10-08 under the owner's delegation: "Summoned minions inherit
+	 * 10%-25% of your armor and resistances".
+	 *
+	 * NOTHING FOR ANY DEFENDER BUT A MINION WITH A LIVING SUMMONER WHOSE ROWS
+	 * ANSWER ABOVE NOUGHT. `Summoner` is null and `Percent` nought for every
+	 * other, and both steps below then read exactly what they read before.
+	 *
+	 * ASKED OF THE SUMMONER, WITH THE MINION'S OWN TYPE TAGS, so a row scoped
+	 * to one kind of minion reaches that kind. Every minion: a machine holds
+	 * type tags as a creature does and is not told apart here.
+	 *
+	 * ASKED AT EACH BLOW. Nothing is written onto the minion, so a summoner
+	 * that changes its gear changes what its minions take from the next blow.
+	 *
+	 * HELD TO 0 TO 100. A share of the summoner's defences is at most the whole
+	 * of them; a judgement of the writing session, since no row asks for more.
+	 */
+	struct FInheritedDefences
+	{
+		const UAbilitySystemComponent* Summoner = nullptr;
+		float Percent = 0.0f;
+	};
+
+	FInheritedDefences InheritedDefencesOf(const UAbilitySystemComponent* Defender)
+	{
+		FInheritedDefences Inherited;
+		const ACataclysmMinion* Minion =
+			Defender ? Cast<const ACataclysmMinion>(Defender->GetAvatarActor()) : nullptr;
+		const AActor* Whose = Minion ? Minion->Summoner.Get() : nullptr;
+		if (!IsValid(Whose) || UCataclysmSkillEffects::IsDead(Whose))
+		{
+			return Inherited;
+		}
+
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Whose));
+		if (!Theirs)
+		{
+			return Inherited;
+		}
+
+		const float Percent = Theirs->StatForSkill(
+			FName(UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat),
+			Minion->TypeTags, 0.0f);
+		if (Percent > 0.0f)
+		{
+			Inherited.Summoner = Theirs;
+			Inherited.Percent = FMath::Min(Percent, 100.0f);
+		}
+		return Inherited;
+	}
+
+	/**
+	 * The armour a minion takes from its summoner for this blow: the summoner's
+	 * armour AS THIS FORMULA WOULD READ IT FOR THE SUMMONER AS DEFENDER OF THE
+	 * BLOW, times the share. So a row of the summoner's about the blow arriving,
+	 * "your armor is doubled against melee attacks", is judged against the blow
+	 * the minion is taking. Nought when nothing is inherited or the summoner
+	 * holds no combat set.
+	 *
+	 * BEFORE WHAT THE ATTACKER IGNORES AND WHAT HAS BEEN REMOVED. Those are
+	 * applied by the armour step to the minion's figure, as to any defender's;
+	 * armour removed from the SUMMONER is not read, because it is not part of
+	 * how the formula reads the stat.
+	 */
+	float InheritedArmour(const FInheritedDefences& Inherited, const FCataclysmIncomingHit& Hit)
+	{
+		const UCataclysmCombatAttributeSet* Theirs = Inherited.Summoner
+			? Inherited.Summoner->GetSet<UCataclysmCombatAttributeSet>()
+			: nullptr;
+		if (!Theirs)
+		{
+			return 0.0f;
+		}
+		return FMath::Max(0.0f, DefenderStat(Inherited.Summoner, TEXT("armor"),
+											 Theirs->GetArmor(), BlowOf(Hit)))
+			* Inherited.Percent / 100.0f;
+	}
+
+	/**
+	 * The resistance to this damage type a minion takes from its summoner: the
+	 * summoner's resistance to it AFTER THE SUMMONER'S OWN CAP, times the share.
+	 * A summoner at 90 under a cap of 70 hands over a share of 70.
+	 *
+	 * BEFORE PENETRATION. The attacker's penetration is applied by the
+	 * resistance step to the minion's figure, as to any defender's.
+	 *
+	 * NEVER BELOW NOUGHT, a judgement of the writing session: the sentence gives
+	 * minions a share of a defence, and a summoner whose resistance a difficulty
+	 * tier or a row has taken under nought hands over nothing rather than a
+	 * weakness.
+	 */
+	float InheritedResistance(const FInheritedDefences& Inherited, FName DamageType,
+							  int32 DifficultyTier)
+	{
+		if (!Inherited.Summoner)
+		{
+			return 0.0f;
+		}
+		const float Capped = FMath::Min(
+			ResistanceFor(Inherited.Summoner, DamageType, DifficultyTier),
+			UCataclysmDamageCalculation::ResistanceCapOf(Inherited.Summoner));
+		return FMath::Max(0.0f, Capped) * Inherited.Percent / 100.0f;
 	}
 }
 
@@ -754,8 +869,18 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		}
 	}
 
+	// WHAT A MINION TAKES OF ITS SUMMONER'S ARMOUR AND RESISTANCES, asked once
+	// for both steps below. Ruled 2026-10-08. Nothing for every defender that is
+	// not a minion whose summoner wears the row.
+	const FInheritedDefences Inherited = InheritedDefencesOf(Defender);
+	const float ArmourFromSummoner = InheritedArmour(Inherited, Hit);
+
 	// 3. Armor, after whatever share of it the attacker ignores.
-	if (Combat)
+	//
+	// AND FOR A MINION WITH ARMOUR FROM ITS SUMMONER, since 2026-10-08. A minion
+	// holds no combat set, so until then it never entered this step and took
+	// every blow with no armour at all.
+	if (Combat || ArmourFromSummoner > 0.0f)
 	{
 		// THE ATTACKER'S OWN STAT PLUS WHAT THE WEAPON IGNORES, clamped once at the
 		// end. Mirrors `Attacker.total_armor_ignored` in
@@ -781,9 +906,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		//
 		// ZERO FOR EVERY CHARACTER THAT HAS NOT BOUGHT IT, so the clamp below is
 		// unchanged for all of them.
+		// THE DEFENDER'S OWN, AND NOT ITS SUMMONER'S: a minion takes a share of
+		// armour and resistances, which is what the sentence names, and not the
+		// keystone.
 		const bool bArmorCannotBeIgnored =
 			DefenderStat(Defender, ArmorPenetrationSuppressedStat,
-						 Combat->GetArmorPenetrationSuppressed(), BlowOf(Hit))
+						 Combat ? Combat->GetArmorPenetrationSuppressed() : 0.0f, BlowOf(Hit))
 				> 0.0f;
 
 		const float Ignored = bArmorCannotBeIgnored
@@ -819,8 +947,15 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			Cast<UCataclysmAbilitySystemComponent>(Defender);
 		const float Removed = Rended ? Rended->ArmourRemovedPercentNow() : 0.0f;
 
+		// THE DEFENDER'S OWN ARMOUR, AND WHAT A MINION TAKES FROM ITS SUMMONER
+		// ADDED TO IT. A minion has none of its own today, so its armour is the
+		// inherited figure. What the attacker ignores and what has been removed
+		// from this defender apply to the sum, as to any defender's armour.
+		const float OwnArmor = Combat
+			? DefenderStat(Defender, TEXT("armor"), Combat->GetArmor(), BlowOf(Hit))
+			: 0.0f;
 		const float Armor =
-			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor(), BlowOf(Hit))
+			(OwnArmor + ArmourFromSummoner)
 			* (1.0f - Ignored / 100.0f)
 			* (1.0f - Removed / 100.0f);
 		const float BeforeArmour = Damage;
@@ -832,8 +967,14 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	//
 	// UNDER THE DEFENDER'S OWN CAP, which is 70 unless a row moves it. Issue
 	// #1833.
+	//
+	// AND WHAT A MINION TAKES FROM ITS SUMMONER ADDED BEFORE BOTH, since
+	// 2026-10-08: the summoner's resistance to this type after the summoner's own
+	// cap, times the share. The attacker's penetration and the minion's own cap
+	// then apply to it as to any defender's resistance.
 	const float Resist = EffectiveResistanceUnderCap(
-		ResistanceFor(Defender, Hit.DamageType, Tier),
+		ResistanceFor(Defender, Hit.DamageType, Tier)
+			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
 		Hit.ResistancePenetration, ResistanceCapOf(Defender));
 	Damage *= 1.0f - Resist / 100.0f;
 
