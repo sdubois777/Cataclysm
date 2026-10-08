@@ -1435,6 +1435,32 @@ private:
 	/** `movement_path_damage_percent`: one hit of the row's per cent to each of `Crossed` still alive. */
 	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed);
 
+	/**
+	 * `HitScaled`, for a charge's own blow, told how far the charge has gone.
+	 * Ruled 2026-10-08, for "Charge skills deal 30%-60% bonus damage
+	 * proportional to distance traveled".
+	 *
+	 * IT WRITES `BlowMetresCharged` AND `BlowChargeRangeMetres` FOR THE LENGTH
+	 * OF THE BLOW AND PUTS BACK WHAT THEY HELD, so `HitTargets` copies them
+	 * onto this blow's delivery and onto nothing dealt after it. The range is
+	 * `ScaledRangeCm()`, the range the skill used.
+	 *
+	 * CALLED FOR A MOVEMENT SKILL WHOSE MODE IS `Charge` AND FOR NO OTHER MODE:
+	 * by `ActivateAbility` for a charge that moves at once, with the distance
+	 * from where it began to where it arrived, and by `AdvanceOneStep` for a
+	 * charge that walks, with the walk so far. A leap, a blink, a return, a
+	 * trade and a flicker call `HitScaled` itself and their blows carry nothing.
+	 *
+	 * `HitWhatThePathCrossed` AND `ExplodeAtBothEnds` DO NOT COME THROUGH HERE.
+	 * They are hits a worn row gives, with deliveries of their own, and are
+	 * told no distance.
+	 *
+	 * @param ChargedCm  how far the charge has gone when this blow lands, along
+	 *        the ground, in centimetres
+	 */
+	void HitScaledAsACharge(const TArray<AActor*>& Targets,
+							const TArray<AActor*>& Consumed, float ChargedCm);
+
 	/** The same, for a charge that arrived at once: finds what the line from `From` to `To` crossed. */
 	void HitAlongThePath(const FVector& From, const FVector& To);
 
