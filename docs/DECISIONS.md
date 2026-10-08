@@ -245,23 +245,25 @@ Every judged number or rule, with the reading not taken:
 ### Judgements by the writing session
 
 Each is a judgement by the writing session. Judgements 1, 3, 6, 7 and 11 were confirmed or ruled by the
-coordinating session on 2026-10-07 and say so. The rest are for the coordinating session to confirm.
+coordinating session on 2026-10-07 and say so. The rest, and the refusal on the Passive Effects sheet in
+judgement 11, were confirmed by the coordinating session on 2026-10-08, each a labelled judgement by the
+coordinating session under the owner's delegation, 2026-10-08.
 
 1. **"Under the effect of a DoT" is a tag under `Keyword.DoT` on the wearer.** A judgement by the writing
    session, confirmed by the coordinating session on 2026-10-07: a tag, no stamp and no window. It is what `while_bleeding` and `target_carries_a_dot`
    already read. It leaves out zones and clock hazards, as said first. It also means a bare tag under
    `Keyword.DoT` granted with no effect behind it would hold the condition; the skill code routes such tags to
    `ApplyDamageOverTime` instead of granting them, so no path in play does that today.
-2. **`in_combat_for_seconds` compares at least.** A judgement by the writing session, for the coordinating
-   session to confirm. It follows `stationary_for_seconds`.
+2. **`in_combat_for_seconds` compares at least.** A judgement by the writing session, confirmed by the coordinating
+   session on 2026-10-08. It follows `stationary_for_seconds`.
 3. **A period that ends while a timed row is refused is passed over.** A judgement by the writing session,
    confirmed by the coordinating session on 2026-10-07. It changes `StepTimedGrants` for every timed row that carries a
    condition or required tags. There were none before this entry: 13 timed rows, 0 with either, counted as
    said first.
 4. **"Leeching" is a payment still owed into a pool the character has, any of the three.** A judgement by the
-   writing session, for the coordinating session to confirm. See "What 'leeching' is".
+   writing session, confirmed by the coordinating session on 2026-10-08. See "What 'leeching' is".
 5. **The stamp is set and cleared where the list of payments is written, not where it is read.** A judgement by
-   the writing session, for the coordinating session to confirm. Two edges follow. Whether a pool is one the
+   the writing session, confirmed by the coordinating session on 2026-10-08. Two edges follow. Whether a pool is one the
    character has is asked when the list changes, so a maximum that falls to nought between two changes is seen
    at the next one, at most one payout step later. And a payment whose time has run out still counts until the
    next payout step drops it.
@@ -271,20 +273,20 @@ coordinating session on 2026-10-07 and say so. The rest are for the coordinating
    `tools/tests/test_enchantment_effects_match_the_row_text.py`. A judgement by the writing session,
    confirmed by the coordinating session on 2026-10-07. It widens a tense of `lose`, not the meaning. Swept first: the drain's
    sentence is the only one in the two enchantment tables that uses the word.
-8. **`HasLeechPool` became a member.** A judgement by the writing session, for the coordinating session to
-   confirm. The count of pools reads as it did.
-9. **Sentence 1 is two rows, `attack_damage` and `spell_damage`.** A judgement by the writing session, for the
-   coordinating session to confirm. It is how the existing rows that say plain "increased damage" are written,
+8. **`HasLeechPool` became a member.** A judgement by the writing session, confirmed by the coordinating session on
+   2026-10-08. The count of pools reads as it did.
+9. **Sentence 1 is two rows, `attack_damage` and `spell_damage`.** A judgement by the writing session, confirmed by the coordinating session on 2026-10-08. It is how the existing rows that say plain "increased damage" are written,
    for example `Positive_Every_10_seconds_gain_a_stack_of_momentum_granti`.
 10. **The tests are in `CataclysmSkillTemplateTests.cpp`, in a new group, `Cataclysm.DotCombatLeech`.** A
-    judgement by the writing session, for the coordinating session to confirm. That file holds the fighters and
+    judgement by the writing session, confirmed by the coordinating session on 2026-10-08. That file holds the fighters and
     the hand-written clock the tests use.
 
 11. **The generator refuses a `seconds_leeching` row with no `Scale Max Steps`.** Ruled by the coordinating
     session on 2026-10-07, a labelled judgement by the coordinating session under the owner's delegation,
     to be built if it was a few lines. It was: a set, `SCALES_THAT_NEED_A_CAP`, and one refusal on each
     sheet. The writing session's own part: the Passive Effects sheet has no cap column, so the scale is
-    refused there outright rather than let through uncapped.
+    refused there outright rather than let through uncapped. That part was confirmed by the coordinating
+    session on 2026-10-08.
 
 ### Research
 
@@ -337,6 +339,10 @@ and would not take a condition. In `test_enchantment_effects_match_the_row_text.
 
 ### Not covered by a test
 
+- **The existing drain's row in the table.** The test that holds
+  `Negative_You_lose_15_of_your_max_hp_every_5_seconds` builds the row's shape by hand from its line in
+  `game/Data/EnchantmentEffects.csv` and does not load the table. Accepted by the coordinating session on
+  2026-10-08. A change to that row in the table would NOT be seen by this test.
 - **A real row.** None is authored. The item loader copying a row's condition and period onto a timed action
   was read (`CataclysmItem.cpp` 1543 to 1554 and 1225) and is not tested here.
 - **`spell_damage`.** The blow in the first test is an attack. The spell half was read in the generator's list
