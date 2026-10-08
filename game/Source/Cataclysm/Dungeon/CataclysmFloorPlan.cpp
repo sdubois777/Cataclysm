@@ -84,6 +84,72 @@ bool CataclysmFloorCanBlock(const FCataclysmFloorPlan& Plan, const TArray<FIntPo
 	return true;
 }
 
+int32 CataclysmFloorAreaCount(const FCataclysmFloorPlan& Plan)
+{
+	// ONE FLOOD FILL FOR EACH AREA, started at the first walkable cell not yet seen, row by row.
+	TArray<bool> Seen;
+	Seen.Init(false, Plan.Cells.Num());
+	TArray<int32> Queue;
+	Queue.Reserve(Plan.Cells.Num());
+
+	int32 Areas = 0;
+	for (int32 First = 0; First < Plan.Cells.Num(); ++First)
+	{
+		if (Seen[First] || Plan.Cells[First] != ECataclysmFloorCell::Floor)
+		{
+			continue;
+		}
+		++Areas;
+		Seen[First] = true;
+		Queue.Reset();
+		Queue.Add(First);
+		for (int32 Taken = 0; Taken < Queue.Num(); ++Taken)
+		{
+			const FIntPoint Standing = Plan.CellAt(Queue[Taken]);
+			for (const FIntPoint& Step : CataclysmFloorPlanSteps)
+			{
+				const int32 Beside = Plan.IndexOf(Standing + Step);
+				if (Beside != INDEX_NONE && !Seen[Beside] && Plan.Cells[Beside] == ECataclysmFloorCell::Floor)
+				{
+					Seen[Beside] = true;
+					Queue.Add(Beside);
+				}
+			}
+		}
+	}
+	return Areas;
+}
+
+bool CataclysmFloorClosingSplitsAnArea(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells)
+{
+	FCataclysmFloorPlan Shut = Plan;
+	for (const FIntPoint& Cell : Cells)
+	{
+		Shut.Fill(Cell);
+	}
+	return CataclysmFloorAreaCount(Shut) > CataclysmFloorAreaCount(Plan);
+}
+
+bool CataclysmFloorCanBlockBesideBarriers(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells,
+										  FIntPoint From, const TSet<FIntPoint>& Held,
+										  const TArray<FIntPoint>& ClosedBarriers)
+{
+	// NO BARRIER CLOSED: exactly the question asked before sections existed.
+	if (ClosedBarriers.IsEmpty())
+	{
+		return CataclysmFloorCanBlock(Plan, Cells, From, Held);
+	}
+
+	// (a) NOTHING STRANDED WITH THE BARRIERS TREATED AS OPEN.
+	if (!CataclysmFloorCanBlock(Plan, Cells, From, Held, ClosedBarriers))
+	{
+		return false;
+	}
+
+	// (b) AND NO AREA SPLIT WITH THE BARRIERS SHUT, which they are in `Plan`.
+	return !CataclysmFloorClosingSplitsAnArea(Plan, Cells);
+}
+
 TArray<int32> CataclysmFloorDistancesFrom(const FCataclysmFloorPlan& Plan, FIntPoint Start)
 {
 	TArray<int32> Distance;

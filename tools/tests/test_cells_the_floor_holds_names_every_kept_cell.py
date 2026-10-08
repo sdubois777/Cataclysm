@@ -33,6 +33,9 @@ HARMLESS = {
     "GatedShortcuts": "a shortcut's corridor is held from pillars and pits by CellsHeldOrWarned, which every obstacle "
                       "placement asks; it is not in CellsTheFloorHolds because a gate asks that when it closes, and "
                       "would then refuse its own cells",
+    "FloorSections": "ruled 2026-10-08: a closed section barrier's cells are Solid in the plan, which the placement "
+                     "rule refuses before it asks what is held, and an opened barrier's cells are ordinary floor, so "
+                     "they are not added to the cells the floor holds; nothing is placed from this list",
 }
 
 POSITION_FIELD = re.compile(r"\bFVector\s+\w*(Location|Where|At|Point|Middle)\b")

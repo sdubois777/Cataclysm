@@ -1335,6 +1335,22 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	FIntPoint PackMiddleCell = FIntPoint(-1, -1);
 
+	/**
+	 * The section of the floor this creature was placed in, or `INDEX_NONE`. Issues #1820 and #41. Ruled 2026-10-08.
+	 *
+	 * WRITTEN IN ONE PLACE: the loop of `ACataclysmDungeonGameMode::PopulateFloor` that puts down an ordinary floor's
+	 * own creatures, from the cell each was placed on. A Gatekeeper stands on the exit and so carries the last
+	 * section. A creature a rule adds later, a Horde wave's creature, and every creature on a floor with no sections
+	 * carries none. Section i's barrier opens when no creature carrying i still stands, and Sacrificial Bond does not
+	 * reach between two creatures whose sections a closed barrier parts. A creature with none holds no barrier and
+	 * is parted from nothing.
+	 *
+	 * NOT SAVED, for the reason `PackGroup` gives. Put back to none on a creature that leaves the floor's list as a
+	 * player's thrall, in `ClearFloorEnemies`, so the number never outlives the floor it was given on.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	int32 FloorSection = INDEX_NONE;
+
 	/** Whether this creature leads its group for Morale Break; it says "Leader" under its bar. Issues #1820 and #41. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsMoraleLeader = false;

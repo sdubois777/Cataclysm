@@ -18,6 +18,7 @@
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 
@@ -711,13 +712,24 @@ float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character, TArray<AAct
 	// lose nothing, which would halve the hit for free. A player's thrall or
 	// minion is never here: it is on the player's team, and the search asks for
 	// this creature's.
-	Allies.RemoveAll([](const AActor* Ally)
+	//
+	// AND NOT ONE BEHIND A CLOSED SECTION BARRIER. Issues #1820 and #41, ruled 2026-10-08. The search above has no wall
+	// test, so on a floor in sections it finds an ally through a barrier, and a bonded creature that cannot be
+	// reached would then share every blow with one that can. Left out when both creatures carry a section, the
+	// sections differ, and a barrier between them is closed. A creature with no section is treated as it always
+	// was, and so is every creature on a floor with no sections: the game mode is asked only when this creature
+	// carries a section, and is found by walking the level, as the player's revival finds it.
+	const ACataclysmDungeonGameMode* SectionsOf = Enemy->FloorSection != INDEX_NONE
+		? ACataclysmDungeonGameMode::InWorld(Enemy->GetWorld())
+		: nullptr;
+	Allies.RemoveAll([Enemy, SectionsOf](const AActor* Ally)
 	{
 		const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Ally);
 		return Creature == nullptr
 			|| Creature->IsA<ACataclysmFloorSourceCharacter>()
 			|| Creature->bCannotBeHurt
-			|| Creature->bShrouded;
+			|| Creature->bShrouded
+			|| (SectionsOf != nullptr && SectionsOf->AClosedBarrierStandsBetween(Enemy, Creature));
 	});
 
 	// NOBODY TO SHARE WITH MEANS IT KEEPS ALL OF IT, which is what makes the
