@@ -51,6 +51,30 @@ runs with the entry above this one, when the three scaled trap rows are in the b
 **Not tested here:** a scale other than `traps_active` on this stat; the three rows' own test, in the entry above,
 reads `gadgets_active` on it through the summoner's multiplier.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other six layers of the stack, on `development` 8c44c278. The build, the
+whole suite and the Python of record are in the table of the entry "The Spike Trap carries the tag `Type.Trap`"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Assets | a1e518a0 | none built: this layer changes no table |
+| Whole suite, every asset built | 6ba718d2 | 3325 tests performed, 3325 succeeded, 0 failed |
+
+**THE PROBE FIRST RAN IN THE WHOLE SUITE, with the three scaled rows of the layer above built into the assets**:
+it runs only for a stat a shipped row scales. **The risk stated before the window did not occur**: a Spike Trap
+and a Ballista each landed a blow on the probe's target.
+
+The guard proof, with `prove_cpp_guard` on `Cataclysm.StatExemption.` at 6ba718d2, restored to 13 tests performed,
+13 succeeded, 0 failed:
+
+| The break | With the break in | The tests that noticed, and the failed assertions |
+| :-- | :-- | :-- |
+| A minion's swing does not ask its summoner for `minion_damage` (`Own * 1.0f,` in place of the call of `UCataclysmCommand::SummonerMultiplierAgainst` in `CataclysmMinion.cpp`) | 13 performed, 2 failed | `EveryStatTheDataScalesIsAskedForThroughThePipeline` 1: the probe's ratio "to be 1.300000, but it was 1.000000"; `EveryStatWithNoAttributeIsActuallyRead` 1: "minion_damage raises a minion's blow" |
+
+The proof failed on the tests and the number of assertions stated before it ran.
+
 ---
 
 ## 2026-10-07 — "Traps deal 20%-40% increased damage" is written again, as one row on minion damage
