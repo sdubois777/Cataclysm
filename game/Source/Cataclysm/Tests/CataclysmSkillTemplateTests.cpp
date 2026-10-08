@@ -28300,7 +28300,7 @@ namespace CataclysmStatusActionsTest
 
 	bool StatusGone(const AActor* Who) { return !IsValid(Who) || UCataclysmSkillEffects::IsDead(Who); }
 
-	FGameplayTag StatusTag(const TCHAR* Name)
+	FGameplayTag StatusActionTag(const TCHAR* Name)
 	{
 		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
 	}
@@ -28308,7 +28308,7 @@ namespace CataclysmStatusActionsTest
 	bool StatusCarries(const AActor* Who, const TCHAR* TagName)
 	{
 		const UCataclysmAbilitySystemComponent* System = StatusSystemOf(Who);
-		const FGameplayTag Tag = StatusTag(TagName);
+		const FGameplayTag Tag = StatusActionTag(TagName);
 		return System && Tag.IsValid() && System->HasMatchingGameplayTag(Tag);
 	}
 
@@ -28326,10 +28326,10 @@ namespace CataclysmStatusActionsTest
 	/** Whether every one of the five tags, and Void Splinter's, is in the tag vocabulary. */
 	bool StatusTagsAreRegistered()
 	{
-		bool bAll = StatusTag(StatusVoidSplinterTag).IsValid() && StatusTag(StatusCrippleTag).IsValid();
+		bool bAll = StatusActionTag(StatusVoidSplinterTag).IsValid() && StatusActionTag(StatusCrippleTag).IsValid();
 		for (const TCHAR* Name : StatusFiveDotTags)
 		{
-			bAll = bAll && StatusTag(Name).IsValid();
+			bAll = bAll && StatusActionTag(Name).IsValid();
 		}
 		return bAll;
 	}
@@ -28374,7 +28374,7 @@ namespace CataclysmStatusActionsTest
 	bool StatusPoisons(AActor* By, AActor* On, float DamagePerTick = 1.0f)
 	{
 		return UCataclysmSkillEffects::ApplyDamageOverTime(By, On, DamagePerTick, 10.0f,
-			StatusTag(StatusPoisonTag), /*bScalesWithInstigator=*/false);
+			StatusActionTag(StatusPoisonTag), /*bScalesWithInstigator=*/false);
 	}
 
 	/** One flat modifier of `Stat` on a base of nothing, kept to `OnlyFor` when that is a tag. Replaces what was worn. */
@@ -28623,7 +28623,7 @@ bool FCataclysmStatusActionsImmuneToOneOfTheFiveTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const FGameplayTag Bleed = StatusTag(StatusFiveDotTags[0]);
+	const FGameplayTag Bleed = StatusActionTag(StatusFiveDotTags[0]);
 	StatusWearOneStat(StatusSystemOf(Immune), UCataclysmDamageCalculation::AilmentImmunityStat, 1.0f, Bleed);
 	if (!TestTrue(TEXT("set-up: the blow takes at least a tenth of each creature's maximum, and not the whole"),
 				  Blow >= StatusMaximumOf(Immune) * 0.1f && Blow < StatusMaximumOf(Immune)
