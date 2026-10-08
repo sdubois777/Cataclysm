@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the entry "A dodge names its attacker and says melee or ranged" of 2026-10-07 left to the session holding
+the design workbook. The action, the event and the tag were read in the merged code. No engine code and no
+generator code is changed here.
+
+| Sentence | Action | Event | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy | `strike_target` | `dodge` | 20 to 70 | `Type.Ranged` |
+
+EnchantmentEffects 546 to 547, over 460 to 461 enchantments.
+
+### TWO THINGS A READER OF THE ROW SHOULD KNOW
+
+- **The row requires `Type.Ranged`, and the enchantment's own tag list says `Type.Projectile`.** The `dodge` event
+  carries `Type.Ranged` or `Type.Melee` and no other tag, so a row requiring `Type.Projectile` would never act.
+  The enchantment's own tag list is left as it is; it is not what the row's Required Tags are matched against.
+- **The row has the generator's default trigger cooldown of a quarter of a second**, which the sentence does not
+  state. Two ranged attacks evaded within that time give one thrown attack.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is that entry's: that "ranged" is any attack that is not melee, spells included;
+that the thrown attack is a direct hit on that enemy and not a projectile; that it cannot be evaded and raises no
+dodge of its own; and that it is dealt with no skill tags, so a worn row scoped to attacks of one kind does not
+reach it.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheEvadedRangedAttackRowHandsItsWearerAStrikeOnADodgeScopedToRanged`: the real row worn
+  at its best roll. The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. The
+  wearer holds exactly one action of that kind on `dodge`, at 70, requiring `Type.Ranged` and nothing else, and
+  none when the item is taken off.
+
+**Not tested here:** a thrown attack from a worn row at a real evaded blow; that entry tests the action with the
+row made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other six layers of the stack, on `development` 8c44c278. The build, the
+whole suite and the Python of record are in the table of the entry "The Spike Trap carries the tag `Type.Trap`"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 8b40633f | 284 tests performed, 278 succeeded, 6 failed, this layer's among them; 3 of the 10 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | 8b43b6b6 | effect rows 546 to 547 |
+| Whole suite, every asset built | 6ba718d2 | 3325 tests performed, 3325 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: no action of the kind where one was
+expected, a share of -1 where 70 was expected, and no scope.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The action was proved by the session that built it.
+
+---
+
 ## 2026-10-07 — Three trap rows that scale by a count of traps or gadgets are built, and "doubles" joins the wording check
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (three rows of the Enchantment Effects sheet),
