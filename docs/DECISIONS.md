@@ -1117,6 +1117,54 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — "Point blank AOE skills have a 0.75-1.5 second cast delay before firing" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT NO TEST SHOWS
+
+- **"Point blank AOE skills" is not all of them.** Of the 34 skill rows tagged `Type.AOE.PointBlank`, the row
+  delays 9 today, all Demonic strikes that are not held. It does not delay 2 held strikes, 5 movement skills, 1
+  self buff, or 17 War rows that have no shape. The entry that built the stat names each and says how the count
+  was made.
+- **The attack clip and the burst at the caster play at the press, 0.75 to 1.5 seconds before the damage.** On
+  the owner's play-check list.
+- **Only the first blow of a use is delayed**, so a spin starts late and lasts as long as before. The cost and
+  the cooldown are paid at the press.
+- **The test here reads the stat's answer and delays no strike.** That a real strike then waits is tested in the
+  entry that built the stat, with the row made by hand.
+
+### WHAT WAS BUILT
+
+The row the entry "A cast delay on a skill's blow" of 2026-10-08 left to the session holding the design
+workbook, as that entry's table states it. No engine code and no generator code is changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Point blank AOE skills have a 0.75-1.5 second cast delay before firing | `blow_delay_seconds`, flat, 0.75 to 1.5, Required Tags `Type.AOE.PointBlank` |
+
+EnchantmentEffects 572 to 573, over 483 to 484 enchantments.
+
+**A worn item at the top of the row's range carries 1.5**, the longer wait: the sentence is a drawback.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is that entry's and its rulings of 2026-10-08.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheCastDelayRowAnswersItsSecondsForAPointBlankSkillAndForNoOther`: the test first
+  asserts that the name it wears is a row of `EnchantmentsNegative.csv`. The real row worn: the stat, asked as
+  the game asks it with a skill's tags, answers 1.5 for a point blank skill and nought for a melee skill without
+  that tag and for a skill with no tags; and nought for a point blank skill when the item is taken off.
+
+**Not tested here:** a strike used under the real row; Pyroclasm under this row and the channel rows together.
+
+---
+
 ## 2026-10-08 — A cast delay on a skill's blow: one stat, `blow_delay_seconds`, added to the wind-up a skill already has. The charge's damage by the share of its range moved is NOT built: no charge tells its blow how far the charge went. Engine only; no row authored
 
 **Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
