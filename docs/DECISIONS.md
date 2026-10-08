@@ -2,6 +2,46 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the entry "Healing that does not fit in health is kept as the temporary absorb" of 2026-10-07 left to the
+session holding the design workbook, as that entry's table states it. The stat was read in the merged code. No
+engine code and no generator code is changed here.
+
+| Sentence | Stat | Kind | Value |
+| :-- | :-- | :-- | :-- |
+| Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP | `overheal_absorb_percent_of_maximum_health` | flat | 10 to 20 |
+
+EnchantmentEffects 548 to 549, over 462 to 463 enchantments.
+
+### FOR THE OWNER: THE ENCHANTMENT CARRIES THE TAG `Stat.Defense.EnergyShield`, AND THE SHIELD IS NOT THE ENERGY SHIELD
+
+As for the shield every 12 seconds, in the entry below this one: the tag is left as it is, and whether it stays
+is the owner's.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is that entry's. One a reader of the row should have in hand: overheal is healing
+that does not fit in health, with the character's own health regeneration left out and leech and a row's restore
+counted.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheOverhealShieldRowRaisesTheShareOfMaximumHealthThatOverhealMayKeep`: the real row worn
+  at its best roll. The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. The stat
+  reads 20 above what it reads with the item taken off.
+
+**Not tested here:** overheal kept by the worn row in play; that entry tests it with the stat set by hand.
+
+---
+
 ## 2026-10-07 — "Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in damage" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
