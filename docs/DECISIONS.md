@@ -2,6 +2,49 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in damage" is built as a row
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT WAS BUILT
+
+The row the entry "A temporary absorb, separate from the energy shield and taken before it" of 2026-10-07 left to
+the session holding the design workbook, as that entry's table states it. The action was read in the merged code.
+No engine code and no generator code is changed here.
+
+| Sentence | Action | Event | Every Seconds | Value |
+| :-- | :-- | :-- | :-- | :-- |
+| Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in damage | `temporary_absorb` | `every_seconds` | 12 | 15 to 25 |
+
+EnchantmentEffects 547 to 548, over 461 to 462 enchantments.
+
+### FOR THE OWNER: THE ENCHANTMENT CARRIES THE TAG `Stat.Defense.EnergyShield`, AND THE SHIELD IS NOT THE ENERGY SHIELD
+
+The enchantment's own tag list holds `Stat.Defense.EnergyShield`. The shield the row grants is the temporary
+absorb, which is separate from the energy shield and taken before it. The tag is left as it is, as ruled
+2026-10-07 by the coordinating session; whether it stays is the owner's.
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the sentence is that entry's. Two a reader of the row should have in hand: the shield is a
+temporary absorb and not energy shield, and **the row's clock counts only in combat**, so no shield is gained
+every 12 seconds out of it.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheShieldEveryTwelveSecondsRowHandsItsWearerATimedTemporaryAbsorb`: the real row worn at
+  its best roll. The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`. The wearer
+  holds exactly one action of that kind on the timed event, every 12 seconds, at 25, and none when the item is
+  taken off.
+
+**Not tested here:** a shield granted by the worn row in play; that entry tests the action with the row made by
+hand.
+
+---
+
 ## 2026-10-07 — "When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy" is built as a row
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
