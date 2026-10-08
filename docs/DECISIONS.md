@@ -2,6 +2,81 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — "Traps deal 20%-40% increased damage" is written again, as one row on minion damage
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet removed, one written),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`. Issue
+[#2284](https://github.com/sdubois777/Cataclysm/issues/2284).
+
+### WHAT WAS WRONG WITH THE TWO ROWS IT HAD
+
+The sentence had two rows: `attack_damage` and `spell_damage`, each increased 20 to 40 with Required Tags
+`Type.Trap`. **Neither reached a trap.** A trap in this game is a summoned machine, the Spike Trap, and a
+machine's swing reads `attack_damage` only from a row that names `Type.Deployable`
+(`ACataclysmMinion`, the call of `StatNamingTagAppliedTo`). **And they changed no blow at all today**: a row
+scoped to `Type.Trap` on those stats is asked with a skill's tags when the wearer's own skill hits, and of the
+ten weapon skills that carry the tag none deals a hit of the wearer's own, as the entry "Two count scales,
+`traps_active` and `gadgets_active`" of the same day records. Both statements are by reading; neither was run.
+
+### WHAT WAS RULED, 2026-10-07, BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+**The sentence is one row on `minion_damage`, scoped to `Type.Trap`, and both old rows are removed.** A labelled
+judgement. It rests on the owner's decision of the same day that the Spike Trap carries the tag.
+
+| Sentence | Stat | Kind | Value | Required Tags |
+| :-- | :-- | :-- | :-- | :-- |
+| Traps deal 20%-40% increased damage | `minion_damage` | increased | 20 to 40 | `Type.Trap` |
+
+EnchantmentEffects 544 to 543, over 457 enchantments as before: two rows removed and one written on the same
+enchantment.
+
+### TWELVE WRONG DATES IN COMMENTS ARE CORRECTED HERE
+
+The comments beside the row-count pin in `tools/tests/test_enchantment_effects_match_the_row_text.py` for the
+layers written on 2026-10-07 (the pins at 520, 521, 522, 523, 535, 536, 537, 539, 540, 541, 543 and 544 rows)
+were stamped 2026-10-06 by the script that wrote them. They are corrected in this layer because it is the next
+to touch that file. Comment text only; ruled 2026-10-07 by the coordinating session.
+
+### CONSEQUENCES, STATED RATHER THAN CHANGED
+
+- **FOR THE OWNER'S PLAY-CHECK LIST: the row no longer reaches the wearer's own hit with a skill tagged
+  `Type.Trap`.** No such hit exists today, so nothing is lost today. When one of those ten skills is given a
+  shape and deals the wearer's own hit, the two old rows would have reached it and this one will not.
+- **A trap's swing asks its summoner's `minion_damage` with the trap's own tags**, so the row reaches the Spike
+  Trap and no other minion. It sums with the wearer's other increases to minion damage.
+- **An item saved with this enchantment keeps it**: the enchantment's name is unchanged; only its rows are.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTrapDamageRowRaisesWhatASpikeTrapDealsAndNotWhatABallistaDeals`: the real row worn at
+  its best roll. The test first asserts that the name it wears is a row of `EnchantmentsPositive.csv`, and that a
+  summoned Spike Trap carries `Type.Trap` and a summoned Ballista does not. The summoner's multiplier on minion
+  damage asked with the Spike Trap's tags is 1.4 times what it is asked with the Ballista's; with the item taken
+  off the two are equal, and the Ballista's is unchanged.
+
+**Not tested here:** a real swing of a trap under the row.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other six layers of the stack, on `development` 8c44c278. The build, the
+whole suite and the Python of record are in the table of the entry "The Spike Trap carries the tag `Type.Trap`"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 8b40633f | 284 tests performed, 278 succeeded, 6 failed, this layer's among them; 1 of the 10 failed assertions is this layer's |
+| The enchantment assets, regenerated with the editor | 434b45a5 | effect rows 544 to 543 |
+| Whole suite, every asset built | 6ba718d2 | 3325 tests performed, 3325 succeeded, 0 failed |
+
+**The test fails against assets without the tag and passes with them**: its set-up assertion "the spike trap
+carries Type.Trap" was false against the older minion types asset, so against those assets the row's own figure
+was not read. With every asset built the Spike Trap's multiplier was 1.4 times the Ballista's.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The swing's request for `minion_damage` is proved in the entry of the layer above this one.
+
+---
+
 ## 2026-10-07 — The Spike Trap carries the tag `Type.Trap`
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one cell of the Minion Types sheet), `game/Data/MinionTypes.csv` and

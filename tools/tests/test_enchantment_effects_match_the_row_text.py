@@ -720,30 +720,32 @@ BASE_PLUS_SINGLE_VALUES = {
 #: AND 519 OVER 432 SINCE SIX ROWS ON ZONES A SKILL LEAVES AND WHAT A ZONE DOES,
 #: issue #1833, 2026-10-06, from 513 over 426: six rows on six enchantments.
 #: AND 520 OVER 433 SINCE PLAGUE DOCTOR'S TEN-PIECE ROW,
-#: issue #1833, 2026-10-06, from 519 over 432: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 519 over 432: one row on one enchantment.
 #: AND 521 OVER 434 SINCE THE ROW THAT MAKES A KILLED ENEMY EXPLODE ON ITS KILLER,
-#: issue #1833, 2026-10-06, from 520 over 433: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 520 over 433: one row on one enchantment.
 #: AND 522 OVER 435 SINCE THE ROW THAT PASSES A BURN ON WHEN IT IS APPLIED,
-#: issue #1833, 2026-10-06, from 521 over 434: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 521 over 434: one row on one enchantment.
 #: AND 523 OVER 436 SINCE THE BLOCK VALUE ROW,
-#: issue #1833, 2026-10-06, from 522 over 435: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 522 over 435: one row on one enchantment.
 #: AND 535 OVER 448 SINCE TWELVE ROWS ON STATUSES AND DAMAGE OVER TIME ON THE WEARER,
-#: issue #1833, 2026-10-06, from 523 over 436: twelve rows on twelve enchantments.
+#: issue #1833, 2026-10-07, from 523 over 436: twelve rows on twelve enchantments.
 #: AND 536 OVER 449 SINCE THE BLEED LEECH ROW,
-#: issue #1833, 2026-10-06, from 535 over 448: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 535 over 448: one row on one enchantment.
 #: AND 537 OVER 450 SINCE STARVATION'S SIX-PIECE ROW,
-#: issue #1833, 2026-10-06, from 536 over 449: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 536 over 449: one row on one enchantment.
 #: AND 539 OVER 452 SINCE THE TWO ABSORBED-DAMAGE ROWS,
-#: issue #1833, 2026-10-06, from 537 over 450: two rows on two enchantments.
+#: issue #1833, 2026-10-07, from 537 over 450: two rows on two enchantments.
 #: AND 540 OVER 453 SINCE THE OVERKILL EXPLOSION ROW,
-#: issue #1833, 2026-10-06, from 539 over 452: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 539 over 452: one row on one enchantment.
 #: AND 541 OVER 454 SINCE THE REWORDED DURATION ROW,
-#: issue #1833, 2026-10-06, from 540 over 453: one row on one enchantment.
+#: issue #1833, 2026-10-07, from 540 over 453: one row on one enchantment.
 #: AND 543 OVER 456 SINCE THE TWO CLASS RESOURCE GENERATION ROWS,
-#: issue #1833, 2026-10-06, from 541 over 454: two rows on two enchantments.
+#: issue #1833, 2026-10-07, from 541 over 454: two rows on two enchantments.
 #: AND 544 OVER 457 SINCE THE ROW ON DAMAGE OVER TIME WHILE MOVING,
-#: issue #1833, 2026-10-06, from 543 over 456: one row on one enchantment.
-AUTHORED_ROWS = 544
+#: issue #1833, 2026-10-07, from 543 over 456: one row on one enchantment.
+#: AND 543 OVER 457 SINCE THE TRAP DAMAGE SENTENCE WAS WRITTEN AGAIN AS ONE ROW ON MINION DAMAGE,
+#: issue #1833, 2026-10-07, from 544 over 457: two rows removed and one written, on one enchantment.
+AUTHORED_ROWS = 543
 AUTHORED_ENCHANTMENTS = 457
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
