@@ -45,6 +45,31 @@ ceiling is the applier's and reads "above" and not "at", and what it does beside
 **Not tested here:** an enemy above half health refusing a stun, a knockdown, a fear or a shove from a worn
 row's wearer. That entry tests the ceiling with the stat set by hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the layer above this one, on `development` 6bc55438. **The ids are the commits
+as they stood when each step ran.** This table carries the steps the two layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of both layers, the first compile of their test code | c1088d11 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, at that build | c1088d11 | 292 tests performed, 290 succeeded, 2 failed, the two tests of the stack; 4 failed assertions, each the one stated before the run; 1 of them is this layer's |
+| The enchantment assets, regenerated with the editor | 70c7b24f | effect rows 562 to 563 |
+| Whole suite, every asset built | 2ac95e46 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3355 tests performed, 3355 succeeded, 0 failed. 40 skipped part of what they check |
+| Python of record, continuous integration idle | 2ac95e46 | 5879 passed, 8 skipped in 334.49s; the JUnit file: tests 5887, failures 0, errors 0, skipped 8 |
+| Lint | 2ac95e46 | All checks passed! |
+
+**Every step was as stated before it ran, and each was run once.**
+
+**The test fails against a table without its row and passes with it**: asked with no tags, the stat was no
+higher worn than taken off, where 50 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the
+entry that built the ceiling proved, read in its table: three guard proofs, L4a (a target exactly at the ceiling),
+L4b (the ceiling asked whether or not the target is hostile) and L4c (a reduction under 50), each failed with
+its break in and passed with it out. That entry also says "Not run: the row read from the effect table, since
+no row exists"; the test of this layer is that reading.
+
 ---
 
 ## 2026-10-07 — Two stats a worn row can state for a projectile skill: `projectile_bounces` adds to the bounces the skill states, and `projectile_pierce_all` makes it pierce every enemy on its line. Engine only; no row authored
