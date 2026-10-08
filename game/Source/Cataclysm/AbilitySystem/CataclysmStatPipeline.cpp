@@ -188,6 +188,7 @@ namespace
 		{ TEXT("cataclysm_bosses_defeated"), ECataclysmStatScale::PerUniqueCataclysmBossDefeated },
 		{ TEXT("leech_pools_in_flight"), ECataclysmStatScale::PerLeechPoolInFlight },
 		{ TEXT("seconds_leeching"),    ECataclysmStatScale::PerSecondLeeching },
+		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
 	};
 
 	/**
@@ -1308,6 +1309,10 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 	// answer's size at one step's worth times the cap is capping the steps, for
 	// every scale at once. One step is worth `Value`, except on the one scale
 	// whose value is a percentage of its reading, where it is `Value` / 100.
+	//
+	// EVERY SCALE BUT `ShareOfRangeMoved`, whose count is a fraction. It never
+	// reaches the cap below: `ValidateModifier` refuses a cap on it, and the
+	// data carries none, so the line under this returns what it answered.
 	if (Modifier.Scale == ECataclysmStatScale::Fixed || Modifier.ScaleMaxSteps <= 0)
 	{
 		return Uncapped;
@@ -1673,6 +1678,34 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerSecondLeeching:
 		return StackedValue(Modifier, FMath::FloorToInt32(State.SecondsLeeching));
 
+	case ECataclysmStatScale::ShareOfRangeMoved:
+	{
+		// THE ONE SCALE THAT ROUNDS NOTHING. Ruled 2026-10-08. `StackedValue`
+		// and every other case here count whole steps; "proportional to
+		// distance traveled" is a share, so half the range is half the value.
+		//
+		// NOUGHT WHEN EITHER FIGURE IS UNKNOWN. Both are negative for every
+		// blow that is not a charge's own, and for every lookup with no blow in
+		// hand, so this is also what keeps the bonus off a strike, a
+		// projectile, a tick, and the hits a worn row gives a movement skill.
+		// A range of nought would divide by it. A charge that has not moved
+		// has a share of nought by the arithmetic and needs no refusal.
+		if (State.MetresCharged < 0.0f || State.ChargeRangeMetres <= 0.0f
+			|| Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// CAPPED AT THE WHOLE RANGE, so a walk whose last step lands past the
+		// end of its range is worth the full figure and no more.
+		const float Share =
+			FMath::Min(1.0f, State.MetresCharged / State.ChargeRangeMetres);
+
+		// `ScaleStep` IS THE SHARE ONE `Value` IS WORTH. The data states 1, the
+		// whole range, and the generator refuses any other.
+		return Modifier.Value * Share / Modifier.ScaleStep;
+	}
+
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
 		// THE REFUSALS OF THE MAXIMUM MANA SCALE, AND A PERCENTAGE. Issue #1815.
@@ -1973,6 +2006,20 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return FString::Printf(
 			TEXT("a cap of %d steps on a value that does not scale. It caps "
 				 "nothing."),
+			Modifier.ScaleMaxSteps);
+	}
+
+	// AND ONE SCALE HAS NO WHOLE STEPS TO CAP. Ruled 2026-10-08.
+	// `ShareOfRangeMoved` counts a fraction of a charge's range and holds its
+	// own cap at the whole value, so a cap in steps would mean nothing, and
+	// `ScaledValue`'s cap is written for whole steps.
+	if (Modifier.Scale == ECataclysmStatScale::ShareOfRangeMoved
+		&& Modifier.ScaleMaxSteps > 0)
+	{
+		return FString::Printf(
+			TEXT("a cap of %d steps on share_of_range_moved. That scale counts "
+				 "a fraction of a charge's range and is capped at the whole "
+				 "value by itself."),
 			Modifier.ScaleMaxSteps);
 	}
 

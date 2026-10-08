@@ -27425,4 +27425,784 @@ bool FCataclysmDefenderStatsMinionReadAtTheBlowTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A charge's blow is told how far the charge went, and one scale reads it.
+// Ruled 2026-10-08 under the owner's delegation, for "Charge skills deal
+// 30%-60% bonus damage proportional to distance traveled". The scale
+// `share_of_range_moved` is worth its row's value times the metres charged over
+// the range the skill used, from 0 to 1: the one scale whose count is a
+// fraction. Engine only; no row is authored, so every row here is made by hand
+// in the shape `docs/DECISIONS.md` of that day gives: `attack_damage`,
+// `increased`, 60, requiring `Keyword.Charge`, with a step of 1.
+//
+// EVERY FIGURE IN A WORLD IS A RATIO AGAINST THE SAME BLOW OF A FIGHTER WITH NO
+// ROW, standing 40 m away along Y and doing exactly what the wearer does. Every
+// skill here states its own damage at 100 per cent, so no blow depends on the
+// slot it was put in.
+//
+// WHERE THE ACTORS STAND is said at the top of each test; no two are spawned
+// within a metre of each other. NOTHING HERE WAITS: a charge that moves at once
+// lands in the call that uses it, and a walked charge is moved by hand and
+// stepped with `AdvanceOneStep`, as the existing advance tests do, because a
+// test fighter has no movement component to carry it. No clock is run.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmChargeShareTest
+{
+	using namespace CataclysmBlowDelayTest;
+
+	/** The tags of a charge skill, and of the same skill without the keyword the row requires. */
+	const TCHAR* const ChargeTagCell = TEXT("Element.Demonic, Type.Melee, Keyword.Charge");
+	const TCHAR* const NoKeywordTagCell = TEXT("Element.Demonic, Type.Melee");
+
+	/** What the row's figure is at the skill's full range, in every test here. */
+	constexpr float AtFullRange = 60.0f;
+
+	/** How far apart two ratios may be and still be called the same. */
+	constexpr float RatioTolerance = 0.005f;
+
+	/** The tag the row requires, asked as the skill template asks for a tag. Invalid before the table loads. */
+	FGameplayTag ChargeKeyword()
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Keyword.Charge"), /*ErrorIfNotFound=*/false);
+	}
+
+	/** The row the sentence makes: increased by this much at the full range, on the scale, with a step of 1. */
+	FCataclysmStatModifier AChargeShareRow(bool bRequiresTheKeyword)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Increased;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = AtFullRange;
+		Row.Scale = ECataclysmStatScale::ShareOfRangeMoved;
+		Row.ScaleStep = 1.0f;
+		if (bRequiresTheKeyword)
+		{
+			Row.RequiredTags.AddTag(ChargeKeyword());
+		}
+		return Row;
+	}
+
+	/** Wear that row on attack damage and nothing else. */
+	void WearTheChargeShare(FScopedFighter& Who, bool bRequiresTheKeyword = true)
+	{
+		WearOne(Who, TEXT("attack_damage"), AChargeShareRow(bRequiresTheKeyword));
+	}
+
+	/** One more modifier on one more stat, on a base of nothing, in a set of stat lines being built by hand. */
+	void AlsoCarry(TMap<FName, FCataclysmStatInputs>& Stats, const TCHAR* Stat, const FCataclysmStatModifier& Row)
+	{
+		FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Row);
+	}
+
+	/** A flat row of this value with no tags, as a worn row that gives a movement skill something is built. */
+	FCataclysmStatModifier AFlatRow(float Value)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Value;
+		return Row;
+	}
+
+	/**
+	 * Wear the two rows that give a movement skill hits of their own: 75 per cent of weapon damage to everything on
+	 * a charge's path, and the explosions at both ends. With `bAndTheShare`, the share row as well, requiring the
+	 * keyword.
+	 */
+	void WearThePathAndTheExplosions(FScopedFighter& Who, bool bAndTheShare)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		AlsoCarry(Stats, UCataclysmMovementSkill::PathDamagePercentStat, AFlatRow(75.0f));
+		AlsoCarry(Stats, UCataclysmMovementSkill::ExplodesAtBothEndsStat, AFlatRow(1.0f));
+		if (bAndTheShare)
+		{
+			AlsoCarry(Stats, TEXT("attack_damage"), AChargeShareRow(/*bRequiresTheKeyword=*/true));
+		}
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A movement skill in this slot that states its own damage at 100 per cent of weapon damage. */
+	UCataclysmMovementSkill* GrantMove(FScopedFighter& Who, ECataclysmAbilitySlot Slot, const TCHAR* ParamText,
+									   const TCHAR* TagCell)
+	{
+		UCataclysmMovementSkill* Move =
+			GrantSkill<UCataclysmMovementSkill>(Who, Slot, ParamText, TEXT("Charge"), TagCell);
+		if (Move)
+		{
+			Move->DamagePercentOverride = 100.0f;
+		}
+		return Move;
+	}
+
+	/**
+	 * Put a walker this many centimetres along X from the world's origin, as the movement component would have
+	 * carried it, and let its walk notice. Every walker here begins at X = 0, so this is also how far it has walked.
+	 */
+	void WalkAndStep(FScopedFighter& Walker, UCataclysmMovementSkill* Walk, float AlongXCm)
+	{
+		FVector Where = Walker.Actor->GetActorLocation();
+		Where.X = AlongXCm;
+		Walker.Actor->SetActorLocation(Where);
+		Walk->AdvanceOneStep();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShareFromAStructTest,
+	"Cataclysm.SkillStats.TheShareOfRangeMovedIsAFractionOfTheRowsValueCappedAtTheWholeAndNoughtWhenEitherFigureIsUnknown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The scale by itself, from a conditions struct built by hand: the pipeline alone, with no character.
+ *
+ * A row of 60 on a range of 14 metres. Half the range is half the value; the whole range the whole value; more
+ * than the range still the whole value. A QUARTER OF THE RANGE IS A QUARTER OF THE VALUE, which is the line that
+ * says the count is a fraction: every other scale would round 0.25 of a step down to none. Nothing moved is
+ * nothing. A figure nobody filled is nothing, whichever of the two it is: a state nothing was read into, a known
+ * distance with no range, a range of nought, and a known range with no distance.
+ *
+ * THE CONTROL is the same modifier with no scale, which is worth its plain value.
+ *
+ * AND WHAT A ROW ON THE SCALE MAY NOT STATE: `ValidateModifier` passes the row as designed and refuses the same
+ * row with a cap in steps, and with an offset.
+ */
+bool FCataclysmChargeShareFromAStructTest::RunTest(const FString&)
+{
+	ECataclysmStatScale Named = ECataclysmStatScale::Fixed;
+	if (!TestTrue(TEXT("share_of_range_moved is a scale the engine reads"),
+				  UCataclysmStatPipeline::ScaleNamed(TEXT("share_of_range_moved"), Named)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the name is its enumerator"), Named == ECataclysmStatScale::ShareOfRangeMoved);
+
+	FCataclysmStatModifier Row;
+	Row.Bucket = ECataclysmStatBucket::Increased;
+	Row.Value = 60.0f;
+
+	FCataclysmStatConditions Charging;
+	Charging.MetresCharged = 7.0f;
+	Charging.ChargeRangeMetres = 14.0f;
+	if (!TestEqual(TEXT("control: with no scale the modifier is worth its plain value"),
+				   UCataclysmStatPipeline::ScaledValue(Row, Charging), 60.0f, 0.001f))
+	{
+		return false;
+	}
+
+	Row.Scale = ECataclysmStatScale::ShareOfRangeMoved;
+	Row.ScaleStep = 1.0f;
+	TestEqual(TEXT("7 metres of a 14 metre range is half the value"),
+			  UCataclysmStatPipeline::ScaledValue(Row, Charging), 30.0f, 0.001f);
+	Charging.MetresCharged = 14.0f;
+	TestEqual(TEXT("the whole range is the whole value"), UCataclysmStatPipeline::ScaledValue(Row, Charging), 60.0f,
+			  0.001f);
+	Charging.MetresCharged = 21.0f;
+	TestEqual(TEXT("more than the range is still the whole value and no more"),
+			  UCataclysmStatPipeline::ScaledValue(Row, Charging), 60.0f, 0.001f);
+	Charging.MetresCharged = 3.5f;
+	TestEqual(TEXT("a quarter of the range is a quarter of the value: the count is a fraction and nothing is rounded"),
+			  UCataclysmStatPipeline::ScaledValue(Row, Charging), 15.0f, 0.001f);
+	Charging.MetresCharged = 0.0f;
+	TestEqual(TEXT("a charge that has not moved is worth nothing"),
+			  UCataclysmStatPipeline::ScaledValue(Row, Charging), 0.0f, 0.001f);
+
+	// EITHER FIGURE UNKNOWN.
+	TestEqual(TEXT("a state nothing was read into is worth nothing"),
+			  UCataclysmStatPipeline::ScaledValue(Row, FCataclysmStatConditions()), 0.0f, 0.001f);
+	FCataclysmStatConditions NoRange;
+	NoRange.MetresCharged = 7.0f;
+	TestEqual(TEXT("7 metres charged with no range known is worth nothing"),
+			  UCataclysmStatPipeline::ScaledValue(Row, NoRange), 0.0f, 0.001f);
+	NoRange.ChargeRangeMetres = 0.0f;
+	TestEqual(TEXT("and with a range of nought is worth nothing"), UCataclysmStatPipeline::ScaledValue(Row, NoRange),
+			  0.0f, 0.001f);
+	FCataclysmStatConditions NoDistance;
+	NoDistance.ChargeRangeMetres = 14.0f;
+	TestEqual(TEXT("a range of 14 metres with no distance known is worth nothing"),
+			  UCataclysmStatPipeline::ScaledValue(Row, NoDistance), 0.0f, 0.001f);
+
+	// THE WALK BEFORE THE PRESS IS NOT WHAT IT READS.
+	FCataclysmStatConditions WalkedBeforeThePress;
+	WalkedBeforeThePress.MetresMovedBeforeBlow = 14.0f;
+	TestEqual(TEXT("14 metres walked BEFORE the press, with nothing charged, is worth nothing"),
+			  UCataclysmStatPipeline::ScaledValue(Row, WalkedBeforeThePress), 0.0f, 0.001f);
+
+	// WHAT A ROW ON THE SCALE MAY NOT STATE.
+	if (!TestTrue(TEXT("control: the row as designed is one the engine accepts"),
+				  UCataclysmStatPipeline::ValidateModifier(Row).IsEmpty()))
+	{
+		return false;
+	}
+	FCataclysmStatModifier Capped = Row;
+	Capped.ScaleMaxSteps = 1;
+	TestFalse(TEXT("a cap in steps on the scale is refused"),
+			  UCataclysmStatPipeline::ValidateModifier(Capped).IsEmpty());
+	FCataclysmStatModifier Offset = Row;
+	Offset.ScaleOffset = 1.0f;
+	TestFalse(TEXT("an offset on the scale is refused"), UCataclysmStatPipeline::ValidateModifier(Offset).IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShareAtOnceTest,
+	"Cataclysm.SkillStats.AChargeThatMovesAtOnceIsPaidForTheShareOfItsRangeItCoveredAndNothingAtNoughtMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling (b): a charge that moves at once counts from where it began to where it arrived.
+ *
+ * THREE PAIRS, each a wearer of the row and a fighter with no row doing the same thing 40 m away along Y.
+ *
+ * HALF THE RANGE. A charge of 12 m that travels to its target (`Requires=Target`), with the target 6 m along X.
+ * It arrives at the target, 6 m from where it began, and the wearer's blow is 1.3 times the control's: half of 60.
+ *
+ * THE WHOLE RANGE. A charge of 12 m that goes where it is pointed. With no player controller that is the full
+ * range along X, through a target standing 6 m along it. The wearer's blow is 1.6 times the control's.
+ *
+ * NOUGHT METRES, THE CONTROL. The first charge again, with its target 1.5 m directly ABOVE where the charger
+ * stands. The charge travels to its target's place along the ground, which is where it already is, so it covers
+ * no ground; the target is inside the 2.5 m its blow reaches. The wearer's blow is exactly the control's: the row
+ * gives nothing.
+ *
+ * STANDING: the pairs' chargers at Y = 0 and 40 m (half), 80 and 120 m (whole), 160 and 200 m (nought), each at
+ * X = 0. Each has one target: 6 m along X from it for the first two pairs, 1.5 m above it for the third. A charge
+ * reaches 2.5 m to each side of its line, so no charger reaches another's target.
+ */
+bool FCataclysmChargeShareAtOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeShareTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Keyword.Charge is a tag this build knows"), ChargeKeyword().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter HalfWearer(World, FVector(0, 0, 0));
+	FScopedFighter HalfWearerTarget(World, FVector(6 * M, 0, 0));
+	FScopedFighter HalfPlain(World, FVector(0, 40 * M, 0));
+	FScopedFighter HalfPlainTarget(World, FVector(6 * M, 40 * M, 0));
+	FScopedFighter WholeWearer(World, FVector(0, 80 * M, 0));
+	FScopedFighter WholeWearerTarget(World, FVector(6 * M, 80 * M, 0));
+	FScopedFighter WholePlain(World, FVector(0, 120 * M, 0));
+	FScopedFighter WholePlainTarget(World, FVector(6 * M, 120 * M, 0));
+	FScopedFighter NoughtWearer(World, FVector(0, 160 * M, 0));
+	FScopedFighter NoughtWearerTarget(World, FVector(0, 160 * M, 1.5f * M));
+	FScopedFighter NoughtPlain(World, FVector(0, 200 * M, 0));
+	FScopedFighter NoughtPlainTarget(World, FVector(0, 200 * M, 1.5f * M));
+	Defences(HalfWearerTarget, 0.0f, 0.0f);
+	Defences(HalfPlainTarget, 0.0f, 0.0f);
+	Defences(WholeWearerTarget, 0.0f, 0.0f);
+	Defences(WholePlainTarget, 0.0f, 0.0f);
+	Defences(NoughtWearerTarget, 0.0f, 0.0f);
+	Defences(NoughtPlainTarget, 0.0f, 0.0f);
+	WearTheChargeShare(HalfWearer);
+	WearTheChargeShare(WholeWearer);
+	WearTheChargeShare(NoughtWearer);
+
+	const TCHAR* const ToItsTarget = TEXT("Mode=Charge; Range=12; Radius=2.5; Requires=Target");
+	const TCHAR* const WhereItIsPointed = TEXT("Mode=Charge; Range=12; Radius=2.5");
+	UCataclysmMovementSkill* HalfWearerCharge =
+		GrantMove(HalfWearer, ECataclysmAbilitySlot::Movement, ToItsTarget, ChargeTagCell);
+	UCataclysmMovementSkill* HalfPlainCharge =
+		GrantMove(HalfPlain, ECataclysmAbilitySlot::Movement, ToItsTarget, ChargeTagCell);
+	UCataclysmMovementSkill* WholeWearerCharge =
+		GrantMove(WholeWearer, ECataclysmAbilitySlot::Movement, WhereItIsPointed, ChargeTagCell);
+	UCataclysmMovementSkill* WholePlainCharge =
+		GrantMove(WholePlain, ECataclysmAbilitySlot::Movement, WhereItIsPointed, ChargeTagCell);
+	UCataclysmMovementSkill* NoughtWearerCharge =
+		GrantMove(NoughtWearer, ECataclysmAbilitySlot::Movement, ToItsTarget, ChargeTagCell);
+	UCataclysmMovementSkill* NoughtPlainCharge =
+		GrantMove(NoughtPlain, ECataclysmAbilitySlot::Movement, ToItsTarget, ChargeTagCell);
+	if (!TestTrue(TEXT("set-up: all six fighters were granted their charge"),
+				  HalfWearerCharge && HalfPlainCharge && WholeWearerCharge && WholePlainCharge && NoughtWearerCharge
+					  && NoughtPlainCharge)
+		|| !TestTrue(TEXT("set-up: a charge carries the keyword the row requires"),
+					 HalfWearerCharge->SkillTags.HasTag(ChargeKeyword()))
+		|| !TestTrue(TEXT("set-up: all six charges are used"),
+					 Activate(HalfWearer, HalfWearerCharge) && Activate(HalfPlain, HalfPlainCharge)
+						 && Activate(WholeWearer, WholeWearerCharge) && Activate(WholePlain, WholePlainCharge)
+						 && Activate(NoughtWearer, NoughtWearerCharge) && Activate(NoughtPlain, NoughtPlainCharge)))
+	{
+		return false;
+	}
+
+	// HOW FAR EACH WENT, WHICH IS WHAT THE RATIOS BELOW ARE READ AGAINST.
+	if (!TestEqual(TEXT("set-up: the wearer's charge to its target arrived 6 m from where it began"),
+				   static_cast<float>(FVector::Dist2D(HalfWearerCharge->ArrivedAt, FVector(0, 0, 0))), 6 * M, 1.0f)
+		|| !TestEqual(TEXT("set-up: the wearer's pointed charge arrived 12 m from where it began, its whole range"),
+					  static_cast<float>(FVector::Dist2D(WholeWearerCharge->ArrivedAt, FVector(0, 80 * M, 0))),
+					  12 * M, 1.0f)
+		|| !TestEqual(TEXT("set-up: the wearer's charge to a target above it covered no ground"),
+					  static_cast<float>(FVector::Dist2D(NoughtWearerCharge->ArrivedAt, FVector(0, 160 * M, 0))),
+					  0.0f, 1.0f))
+	{
+		return false;
+	}
+
+	const float HalfPlainBlow = LostBy(HalfPlainTarget);
+	const float WholePlainBlow = LostBy(WholePlainTarget);
+	const float NoughtPlainBlow = LostBy(NoughtPlainTarget);
+	if (!TestTrue(TEXT("control: with no row, each of the three charges hurts its target"),
+				  HalfPlainBlow > 1.0f && WholePlainBlow > 1.0f && NoughtPlainBlow > 1.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a charge that covered half its range deals 1.3 times the blow with no row: half of 60"),
+			  LostBy(HalfWearerTarget) / HalfPlainBlow, 1.0f + (AtFullRange / 100.0f) * 0.5f, RatioTolerance);
+	TestEqual(TEXT("a charge that covered its whole range deals 1.6 times the blow with no row: all of 60"),
+			  LostBy(WholeWearerTarget) / WholePlainBlow, 1.0f + AtFullRange / 100.0f, RatioTolerance);
+	TestEqual(TEXT("control at nought metres: a charge that covered no ground deals the blow with no row"),
+			  LostBy(NoughtWearerTarget) / NoughtPlainBlow, 1.0f, RatioTolerance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShareWalkedTest,
+	"Cataclysm.SkillStats.AWalkedChargePaysEachBlowForTheWalkSoFarSoAnEnemyMetEarlyGetsLessThanOneMetLate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling (c): a charge that walks counts the walk SO FAR when each blow lands, not the whole walk, and no blow is
+ * held.
+ *
+ * A walked charge of 10 m, on a wearer of the row and on a fighter with no row 40 m away along Y. Each meets three
+ * enemies, and each is moved by hand and stepped, as the movement component and the step timer would do it.
+ *
+ * NOUGHT METRES, THE CONTROL. The first step is taken before the walker has moved. An enemy 1.5 m to its side is
+ * inside the 2 m its blow reaches and is struck with nothing walked: the wearer's blow is exactly the control's.
+ *
+ * MET EARLY. The walker is put 2.5 m along X and steps. An enemy 4 m along X is struck with 2.5 m of 10 walked:
+ * the wearer's blow is 1.15 times the control's, a quarter of 60.
+ *
+ * MET LATE. The walker is put 9 m along X and steps. An enemy 10.5 m along X is struck with 9 m of 10 walked: the
+ * wearer's blow is 1.54 times the control's, nine tenths of 60.
+ *
+ * STANDING: the wearer at the origin and the control at Y = 40 m. Each has an enemy 1.5 m along Y from it, one
+ * 4 m along X and one 10.5 m along X. A step reaches 2 m to each side of the ground it covered, so each enemy is
+ * met by one step and no walker reaches the other's.
+ */
+bool FCataclysmChargeShareWalkedTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeShareTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Keyword.Charge is a tag this build knows"), ChargeKeyword().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector(0, 0, 0));
+	FScopedFighter WearerBeside(World, FVector(0, 1.5f * M, 0));
+	FScopedFighter WearerEarly(World, FVector(4 * M, 0, 0));
+	FScopedFighter WearerLate(World, FVector(10.5f * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	FScopedFighter PlainBeside(World, FVector(0, 41.5f * M, 0));
+	FScopedFighter PlainEarly(World, FVector(4 * M, 40 * M, 0));
+	FScopedFighter PlainLate(World, FVector(10.5f * M, 40 * M, 0));
+	Defences(WearerBeside, 0.0f, 0.0f);
+	Defences(WearerEarly, 0.0f, 0.0f);
+	Defences(WearerLate, 0.0f, 0.0f);
+	Defences(PlainBeside, 0.0f, 0.0f);
+	Defences(PlainEarly, 0.0f, 0.0f);
+	Defences(PlainLate, 0.0f, 0.0f);
+	WearTheChargeShare(Wearer);
+
+	const TCHAR* const Walked = TEXT("Mode=Charge; Range=10; Radius=2; Duration=3");
+	UCataclysmMovementSkill* WearerWalk = GrantMove(Wearer, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	UCataclysmMovementSkill* PlainWalk = GrantMove(Plain, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	if (!TestTrue(TEXT("set-up: both walkers were granted the walked charge"), WearerWalk && PlainWalk)
+		|| !TestTrue(TEXT("set-up: both walks are used and both are running"),
+					 Activate(Wearer, WearerWalk) && Activate(Plain, PlainWalk) && WearerWalk->IsActive()
+						 && PlainWalk->IsActive())
+		|| !TestEqual(TEXT("set-up: beginning a walk strikes nobody"), LostBy(PlainBeside) + LostBy(WearerBeside),
+					  0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// NOUGHT METRES: a step before either walker has moved.
+	WalkAndStep(Wearer, WearerWalk, 0.0f);
+	WalkAndStep(Plain, PlainWalk, 0.0f);
+	const float PlainBesideBlow = LostBy(PlainBeside);
+	if (!TestTrue(TEXT("control: with no row, a step with nothing walked hurts the enemy beside the walker"),
+				  PlainBesideBlow > 1.0f)
+		|| !TestEqual(TEXT("set-up: the wearer has walked nothing at that step"), WearerWalk->WalkedCm, 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control at nought metres: an enemy struck with nothing walked takes the blow with no row"),
+			  LostBy(WearerBeside) / PlainBesideBlow, 1.0f, RatioTolerance);
+
+	// MET EARLY: 2.5 m of 10 walked.
+	WalkAndStep(Wearer, WearerWalk, 2.5f * M);
+	WalkAndStep(Plain, PlainWalk, 2.5f * M);
+	const float PlainEarlyBlow = LostBy(PlainEarly);
+	if (!TestTrue(TEXT("control: with no row, the step that reaches the early enemy hurts it"), PlainEarlyBlow > 1.0f)
+		|| !TestEqual(TEXT("set-up: the wearer has walked 2.5 m at that step"), WearerWalk->WalkedCm, 2.5f * M, 0.5f)
+		|| !TestEqual(TEXT("set-up: the late enemy has not been met yet"), LostBy(WearerLate) + LostBy(PlainLate),
+					  0.0f, 0.001f))
+	{
+		return false;
+	}
+	const float EarlyRatio = LostBy(WearerEarly) / PlainEarlyBlow;
+	TestEqual(TEXT("an enemy met 2.5 m into a 10 m walk takes 1.15 times the blow with no row: a quarter of 60"),
+			  EarlyRatio, 1.0f + (AtFullRange / 100.0f) * 0.25f, RatioTolerance);
+
+	// MET LATE: 9 m of 10 walked.
+	WalkAndStep(Wearer, WearerWalk, 9 * M);
+	WalkAndStep(Plain, PlainWalk, 9 * M);
+	const float PlainLateBlow = LostBy(PlainLate);
+	if (!TestTrue(TEXT("control: with no row, the step that reaches the late enemy hurts it"), PlainLateBlow > 1.0f)
+		|| !TestEqual(TEXT("set-up: the wearer has walked 9 m at that step"), WearerWalk->WalkedCm, 9 * M, 0.5f))
+	{
+		return false;
+	}
+	const float LateRatio = LostBy(WearerLate) / PlainLateBlow;
+	TestEqual(TEXT("an enemy met 9 m into a 10 m walk takes 1.54 times the blow with no row: nine tenths of 60"),
+			  LateRatio, 1.0f + (AtFullRange / 100.0f) * 0.9f, RatioTolerance);
+	TestTrue(TEXT("the enemy met early is hit for a smaller bonus than the one met late"),
+			 EarlyRatio < LateRatio - 0.1f);
+
+	// NO BLOW WAS HELD OR PAID AGAIN: each enemy was struck once, by the step that met it.
+	TestEqual(TEXT("the early enemy was not struck again by the later step"), LostBy(WearerEarly) / PlainEarlyBlow,
+			  EarlyRatio, 0.0001f);
+	TestEqual(TEXT("and the enemy beside the start was not struck again by either later step"),
+			  LostBy(WearerBeside) / PlainBesideBlow, 1.0f, RatioTolerance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShareNotAChargeTest,
+	"Cataclysm.SkillStats.ABlowThatIsNotAChargesReadsNoughtUnderTheSameRowWithoutItsTag",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A blow that is not a charge's own carries no distance, so the scale reads nought and the blow is unchanged, EVEN
+ * WHEN NOTHING ELSE STOPS THE ROW. The row here is the same row WITHOUT `Keyword.Charge` in its Required Tags, so
+ * it matches every skill the wearer uses and only the scale decides what it is worth.
+ *
+ * The wearer, and a fighter with no row 40 m away along Y, each do three things in turn:
+ *
+ * A STRIKE all round, reaching 3 m, on an enemy 2 m along X. The wearer's blow is exactly the control's.
+ *
+ * A LEAP of 8 m, which is a movement skill and NOT a charge. With no player controller it lands 8 m along X, and
+ * its blow reaches 2 m around where it lands: an enemy 9.5 m along X. It has covered its whole range, and the
+ * wearer's blow is still exactly the control's: the distance is filled for a charge and for no other mode.
+ *
+ * A CHARGE of 8 m from where the leap landed, THE CONTROL THAT THE ROW IS LIVE ON THIS WEARER. It goes its whole
+ * range along X through the same enemy, and the wearer's blow is 1.6 times the control's.
+ *
+ * STANDING: the wearer at the origin and the control at Y = 40 m; each with an enemy 2 m along X from it and
+ * another 9.5 m along X. The strike reaches 3 m, so it reaches the first and not the second. The leap lands 6 m
+ * from the first and 1.5 m from the second. The charge then runs from 8 m to 16 m along X, 1.5 m to each side,
+ * and the first enemy is 6 m behind where it begins.
+ */
+bool FCataclysmChargeShareNotAChargeTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeShareTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector(0, 0, 0));
+	FScopedFighter WearerNear(World, FVector(2 * M, 0, 0));
+	FScopedFighter WearerFar(World, FVector(9.5f * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	FScopedFighter PlainNear(World, FVector(2 * M, 40 * M, 0));
+	FScopedFighter PlainFar(World, FVector(9.5f * M, 40 * M, 0));
+	Defences(WearerNear, 0.0f, 0.0f);
+	Defences(WearerFar, 0.0f, 0.0f);
+	Defences(PlainNear, 0.0f, 0.0f);
+	Defences(PlainFar, 0.0f, 0.0f);
+	WearTheChargeShare(Wearer, /*bRequiresTheKeyword=*/false);
+
+	UCataclysmStrikeSkill* WearerStrike = GrantSkill<UCataclysmStrikeSkill>(
+		Wearer, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=360"), TEXT("Chop"), NoKeywordTagCell);
+	UCataclysmStrikeSkill* PlainStrike = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=360"), TEXT("Chop"), NoKeywordTagCell);
+	const TCHAR* const ALeap = TEXT("Mode=Leap; Range=8; Radius=2");
+	const TCHAR* const ACharge = TEXT("Mode=Charge; Range=8; Radius=1.5");
+	UCataclysmMovementSkill* WearerLeap = GrantMove(Wearer, ECataclysmAbilitySlot::Special, ALeap, NoKeywordTagCell);
+	UCataclysmMovementSkill* PlainLeap = GrantMove(Plain, ECataclysmAbilitySlot::Special, ALeap, NoKeywordTagCell);
+	UCataclysmMovementSkill* WearerCharge =
+		GrantMove(Wearer, ECataclysmAbilitySlot::Movement, ACharge, NoKeywordTagCell);
+	UCataclysmMovementSkill* PlainCharge =
+		GrantMove(Plain, ECataclysmAbilitySlot::Movement, ACharge, NoKeywordTagCell);
+	if (!TestTrue(TEXT("set-up: both fighters were granted the strike, the leap and the charge"),
+				  WearerStrike && PlainStrike && WearerLeap && PlainLeap && WearerCharge && PlainCharge))
+	{
+		return false;
+	}
+	WearerStrike->DamagePercentOverride = 100.0f;
+	PlainStrike->DamagePercentOverride = 100.0f;
+
+	// A STRIKE.
+	if (!TestTrue(TEXT("set-up: both strikes are used"),
+				  Activate(Wearer, WearerStrike) && Activate(Plain, PlainStrike)))
+	{
+		return false;
+	}
+	const float PlainStrikeBlow = LostBy(PlainNear);
+	if (!TestTrue(TEXT("control: with no row, the strike hurts the enemy 2 m away"), PlainStrikeBlow > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a strike under the row deals the blow with no row: it is not a charge and reads nought"),
+			  LostBy(WearerNear) / PlainStrikeBlow, 1.0f, RatioTolerance);
+
+	// A LEAP: a movement skill that covers its whole range and is not a charge.
+	if (!TestTrue(TEXT("set-up: both leaps are used"), Activate(Wearer, WearerLeap) && Activate(Plain, PlainLeap))
+		|| !TestEqual(TEXT("set-up: the wearer's leap landed 8 m from where it began, its whole range"),
+					  static_cast<float>(FVector::Dist2D(WearerLeap->ArrivedAt, FVector(0, 0, 0))), 8 * M, 1.0f))
+	{
+		return false;
+	}
+	const float PlainLeapBlow = LostBy(PlainFar);
+	if (!TestTrue(TEXT("control: with no row, the leap hurts the enemy near where it lands"), PlainLeapBlow > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a leap that covered its whole range deals the blow with no row: only a charge is told a distance"),
+			  LostBy(WearerFar) / PlainLeapBlow, 1.0f, RatioTolerance);
+
+	// A CHARGE, the control that the row is live on this wearer.
+	Refill(WearerFar);
+	Refill(PlainFar);
+	if (!TestTrue(TEXT("set-up: both charges are used"), Activate(Wearer, WearerCharge) && Activate(Plain, PlainCharge))
+		|| !TestEqual(TEXT("set-up: the wearer's charge arrived 8 m from where the leap landed, its whole range"),
+					  static_cast<float>(FVector::Dist2D(WearerCharge->ArrivedAt, WearerLeap->ArrivedAt)), 8 * M,
+					  1.0f))
+	{
+		return false;
+	}
+	const float PlainChargeBlow = LostBy(PlainFar);
+	if (!TestTrue(TEXT("control: with no row, the charge hurts the enemy on its path"), PlainChargeBlow > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: the same wearer's charge over its whole range deals 1.6 times the blow with no row"),
+			  LostBy(WearerFar) / PlainChargeBlow, 1.0f + AtFullRange / 100.0f, RatioTolerance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShareOvershootTest,
+	"Cataclysm.SkillStats.AChargeThatOvershootsItsRangeGetsTheWholeFigureAndNoMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The share is capped at 1 where a charge goes further than its range.
+ *
+ * A walked charge of 4 m, on a wearer of the row and on a fighter with no row 40 m away along Y, each moved by
+ * hand and stepped.
+ *
+ * INSIDE THE RANGE, THE CONTROL THAT THE SHARE IS BEING READ BELOW ITS CAP. The walker is put 2 m along X and
+ * steps. An enemy 3.5 m along X is struck with 2 m of 4 walked: the wearer's blow is 1.3 times the control's.
+ *
+ * PAST THE RANGE. The walker is put 6 m along X, one and a half times its range, and steps. An enemy 7.5 m along
+ * X is struck with 6 m of 4 walked: the wearer's blow is 1.6 times the control's, the whole of 60. A share that
+ * was not capped would make it 1.9.
+ *
+ * STANDING: the wearer at the origin and the control at Y = 40 m; each with an enemy 3.5 m along X from it and
+ * another 7.5 m along X. A step reaches 2 m to each side of the ground it covered.
+ */
+bool FCataclysmChargeShareOvershootTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeShareTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Keyword.Charge is a tag this build knows"), ChargeKeyword().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector(0, 0, 0));
+	FScopedFighter WearerInside(World, FVector(3.5f * M, 0, 0));
+	FScopedFighter WearerPast(World, FVector(7.5f * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	FScopedFighter PlainInside(World, FVector(3.5f * M, 40 * M, 0));
+	FScopedFighter PlainPast(World, FVector(7.5f * M, 40 * M, 0));
+	Defences(WearerInside, 0.0f, 0.0f);
+	Defences(WearerPast, 0.0f, 0.0f);
+	Defences(PlainInside, 0.0f, 0.0f);
+	Defences(PlainPast, 0.0f, 0.0f);
+	WearTheChargeShare(Wearer);
+
+	const TCHAR* const Walked = TEXT("Mode=Charge; Range=4; Radius=2; Duration=3");
+	UCataclysmMovementSkill* WearerWalk = GrantMove(Wearer, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	UCataclysmMovementSkill* PlainWalk = GrantMove(Plain, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	if (!TestTrue(TEXT("set-up: both walkers were granted the walked charge"), WearerWalk && PlainWalk)
+		|| !TestTrue(TEXT("set-up: both walks are used and both are running"),
+					 Activate(Wearer, WearerWalk) && Activate(Plain, PlainWalk) && WearerWalk->IsActive()
+						 && PlainWalk->IsActive()))
+	{
+		return false;
+	}
+
+	// INSIDE THE RANGE: 2 m of 4 walked.
+	WalkAndStep(Wearer, WearerWalk, 2 * M);
+	WalkAndStep(Plain, PlainWalk, 2 * M);
+	const float PlainInsideBlow = LostBy(PlainInside);
+	if (!TestTrue(TEXT("control: with no row, the step that reaches the first enemy hurts it"), PlainInsideBlow > 1.0f)
+		|| !TestEqual(TEXT("control: an enemy met 2 m into a 4 m walk takes 1.3 times the blow with no row"),
+					  LostBy(WearerInside) / PlainInsideBlow, 1.0f + (AtFullRange / 100.0f) * 0.5f, RatioTolerance))
+	{
+		return false;
+	}
+
+	// PAST THE RANGE: 6 m of 4 walked.
+	WalkAndStep(Wearer, WearerWalk, 6 * M);
+	WalkAndStep(Plain, PlainWalk, 6 * M);
+	const float PlainPastBlow = LostBy(PlainPast);
+	if (!TestTrue(TEXT("control: with no row, the step that reaches the second enemy hurts it"), PlainPastBlow > 1.0f)
+		|| !TestTrue(TEXT("set-up: the wearer has walked further than the 4 m its charge states"),
+					 WearerWalk->WalkedCm > 5.9f * M))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an enemy met 6 m into a 4 m walk takes 1.6 times the blow with no row: the whole figure, no more"),
+			  LostBy(WearerPast) / PlainPastBlow, 1.0f + AtFullRange / 100.0f, RatioTolerance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeSharePathAndExplosionsTest,
+	"Cataclysm.SkillStats.TheHitAlongTheChargesPathAndTheExplosionsAtBothEndsGetNothingFromTheShareRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruling (d): the two hits a worn row gives a movement skill carry no distance and get no bonus from the scale,
+ * though both are dealt with the charge's own tags and so match the row's Required Tags.
+ *
+ * THREE CHARGERS do the same thing 40 m apart along Y: one with no row; one wearing the row that hits everything
+ * on a charge's path for 75 per cent of weapon damage and the row that explodes at both ends; and one wearing
+ * those two AND the share row. A charge of 8 m goes its whole range along X.
+ *
+ * ON THE PATH, 4 m along X: the charge's own blow, and the path row's hit. It is 4 m from both ends, outside the
+ * 3 m of either explosion. The share row raises the charge's own blow by 60 per cent and the path hit by nothing,
+ * so what the third charger's enemy loses over the second's is 0.6 of the charge's own blow, which is what the
+ * first charger's enemy lost. Had the path hit taken the bonus too it would be more.
+ *
+ * BESIDE THE START, 2.8 m along Y from where the charge began: off the path, inside the first explosion and no
+ * other hit. It loses the same under the second charger and the third.
+ *
+ * THE SAME FOR A WALKED CHARGE, stepped by hand: three walkers of an 8 m walk, each put 4 m along X with an enemy
+ * 5 m along X. The step that meets it deals the walk's own blow, told 4 m of 8, and then the path row's hit. What
+ * the third walker's enemy loses over the second's is 0.3 of the walk's own blow.
+ *
+ * STANDING: the chargers at Y = 0, 40 and 80 m and the walkers at Y = 120, 160 and 200 m, each at X = 0. Each
+ * charger has an enemy 4 m along X and another 2.8 m along Y from it; each walker has an enemy 5 m along X.
+ */
+bool FCataclysmChargeSharePathAndExplosionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeShareTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestTrue(TEXT("set-up: Keyword.Charge is a tag this build knows"), ChargeKeyword().IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Plain(World, FVector(0, 0, 0));
+	FScopedFighter PlainOnPath(World, FVector(4 * M, 0, 0));
+	FScopedFighter PlainBeside(World, FVector(0, 2.8f * M, 0));
+	FScopedFighter Rows(World, FVector(0, 40 * M, 0));
+	FScopedFighter RowsOnPath(World, FVector(4 * M, 40 * M, 0));
+	FScopedFighter RowsBeside(World, FVector(0, 42.8f * M, 0));
+	FScopedFighter Share(World, FVector(0, 80 * M, 0));
+	FScopedFighter ShareOnPath(World, FVector(4 * M, 80 * M, 0));
+	FScopedFighter ShareBeside(World, FVector(0, 82.8f * M, 0));
+	Defences(PlainOnPath, 0.0f, 0.0f);
+	Defences(PlainBeside, 0.0f, 0.0f);
+	Defences(RowsOnPath, 0.0f, 0.0f);
+	Defences(RowsBeside, 0.0f, 0.0f);
+	Defences(ShareOnPath, 0.0f, 0.0f);
+	Defences(ShareBeside, 0.0f, 0.0f);
+	WearThePathAndTheExplosions(Rows, /*bAndTheShare=*/false);
+	WearThePathAndTheExplosions(Share, /*bAndTheShare=*/true);
+
+	const TCHAR* const AtOnce = TEXT("Mode=Charge; Range=8; Radius=1.5");
+	UCataclysmMovementSkill* PlainCharge = GrantMove(Plain, ECataclysmAbilitySlot::Movement, AtOnce, ChargeTagCell);
+	UCataclysmMovementSkill* RowsCharge = GrantMove(Rows, ECataclysmAbilitySlot::Movement, AtOnce, ChargeTagCell);
+	UCataclysmMovementSkill* ShareCharge = GrantMove(Share, ECataclysmAbilitySlot::Movement, AtOnce, ChargeTagCell);
+	if (!TestTrue(TEXT("set-up: all three chargers were granted the charge"), PlainCharge && RowsCharge && ShareCharge)
+		|| !TestTrue(TEXT("set-up: all three charges are used"),
+					 Activate(Plain, PlainCharge) && Activate(Rows, RowsCharge) && Activate(Share, ShareCharge)))
+	{
+		return false;
+	}
+
+	const float OwnBlow = LostBy(PlainOnPath);
+	const float PathHit = LostBy(RowsOnPath) - OwnBlow;
+	const float Explosion = LostBy(RowsBeside);
+	if (!TestTrue(TEXT("control: with no row, the charge's own blow hurts the enemy on its path"), OwnBlow > 1.0f)
+		|| !TestEqual(TEXT("control: with no row, the enemy beside the start loses nothing"), LostBy(PlainBeside),
+					  0.0f, 0.001f)
+		|| !TestTrue(TEXT("control: the path row adds a hit to the enemy on the path"), PathHit > 1.0f)
+		|| !TestTrue(TEXT("control: the explosion row hurts the enemy beside the start"), Explosion > 1.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("under the share row the enemy on the path loses 0.6 of the charge's OWN blow more, and no more: "
+				   "the hit along the path took nothing from the row"),
+			  (LostBy(ShareOnPath) - LostBy(RowsOnPath)) / OwnBlow, AtFullRange / 100.0f, RatioTolerance);
+	TestEqual(TEXT("under the share row the explosion at the start deals what it dealt without it"),
+			  LostBy(ShareBeside) / Explosion, 1.0f, RatioTolerance);
+
+	// A WALKED CHARGE, whose step deals its own blow and then the path row's hit.
+	FScopedFighter PlainWalker(World, FVector(0, 120 * M, 0));
+	FScopedFighter PlainMet(World, FVector(5 * M, 120 * M, 0));
+	FScopedFighter RowsWalker(World, FVector(0, 160 * M, 0));
+	FScopedFighter RowsMet(World, FVector(5 * M, 160 * M, 0));
+	FScopedFighter ShareWalker(World, FVector(0, 200 * M, 0));
+	FScopedFighter ShareMet(World, FVector(5 * M, 200 * M, 0));
+	Defences(PlainMet, 0.0f, 0.0f);
+	Defences(RowsMet, 0.0f, 0.0f);
+	Defences(ShareMet, 0.0f, 0.0f);
+	WearThePathAndTheExplosions(RowsWalker, /*bAndTheShare=*/false);
+	WearThePathAndTheExplosions(ShareWalker, /*bAndTheShare=*/true);
+
+	const TCHAR* const Walked = TEXT("Mode=Charge; Range=8; Radius=1.5; Duration=3");
+	UCataclysmMovementSkill* PlainWalk =
+		GrantMove(PlainWalker, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	UCataclysmMovementSkill* RowsWalk = GrantMove(RowsWalker, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	UCataclysmMovementSkill* ShareWalk =
+		GrantMove(ShareWalker, ECataclysmAbilitySlot::Movement, Walked, ChargeTagCell);
+	if (!TestTrue(TEXT("set-up: all three walkers were granted the walked charge"), PlainWalk && RowsWalk && ShareWalk)
+		|| !TestTrue(TEXT("set-up: all three walks are used"),
+					 Activate(PlainWalker, PlainWalk) && Activate(RowsWalker, RowsWalk)
+						 && Activate(ShareWalker, ShareWalk)))
+	{
+		return false;
+	}
+	WalkAndStep(PlainWalker, PlainWalk, 4 * M);
+	WalkAndStep(RowsWalker, RowsWalk, 4 * M);
+	WalkAndStep(ShareWalker, ShareWalk, 4 * M);
+
+	const float OwnStepBlow = LostBy(PlainMet);
+	if (!TestTrue(TEXT("control: with no row, the step's own blow hurts the enemy it meets"), OwnStepBlow > 1.0f)
+		|| !TestTrue(TEXT("control: the path row adds a hit to the enemy the step meets"),
+					 LostBy(RowsMet) - OwnStepBlow > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("4 m into an 8 m walk, the enemy loses 0.3 of the step's OWN blow more under the share row, and "
+				   "no more: the path row's hit, dealt straight after it, took nothing from the row"),
+			  (LostBy(ShareMet) - LostBy(RowsMet)) / OwnStepBlow, (AtFullRange / 100.0f) * 0.5f, RatioTolerance);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
