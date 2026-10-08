@@ -2450,6 +2450,319 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — A charge's blow is told how far the charge went, and one scale reads it: `share_of_range_moved`, the first scale whose count is a fraction. Engine and generator only; no row authored
+
+**Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
+was run by the writing session. The C++ in this entry has never been compiled. The Python checks were run; their
+output is not recorded here. The two row shapes under "What the row needs" were passed through the generator in
+a temporary workbook, by the Python test named there.
+
+**Said first, for the play-check: an enemy met early in a walked charge gets a small bonus and one met at the end
+the full one.** A walked charge strikes what it passes as it passes it, and each of those blows is told the walk
+SO FAR. On Inexorable's 14 metres under a row that rolled 60, an enemy struck when 2 metres have been walked
+takes about 9% increased damage and one struck at the end of the walk takes 60%. A step strikes what is within
+the skill's radius of the ground it covered, so an enemy is struck a little BEFORE the character reaches it,
+with that much less walked. No blow is held back until the walk ends.
+
+**Said first, for the play-check: the hit along a charge's path and the explosions at both ends, which worn rows
+give, get NO bonus from this row**, though a player wearing both may expect it. They are hits a row gives, with
+deliveries of their own, and are told no distance. Ruled (d), below.
+
+**Said first: the bonus has no distance per step.** The rolled figure is the bonus at the skill's FULL RANGE and
+falls in proportion below it, capped at the full figure. A 14 metre charge that travels 7 metres gets half. A
+longer range does not make the bonus larger; it makes the full figure harder to reach.
+
+**Said first, for the play-check: more skill range makes the full bonus harder to reach.** The share is of the
+range the skill USED, which is its stated range after the character's own increases to skill range. A character
+with more skill range charges further and needs more ground for the same share: the same 7 metres is half of a
+14 metre charge and less than half of a longer one. Judgement 7, below.
+
+**Said first: which skills are told a distance, by name.** Seven rows of `game/Data/WeaponSkills.csv` state
+`Mode=Charge`, and the blow of each is told how far it went. Six of them carry `Keyword.Charge` and are reached
+by the designed row:
+
+| Row | Skill | How it moves |
+| :-- | :-- | :-- |
+| `Demonic_Sword_Movement` | Flashpoint | at once |
+| `Demonic_Axe_Movement` | Emberhaul | at once |
+| `Demonic_Spear_Movement` | Nail Down | at once |
+| `Demonic_Whip_Movement` | Reel | at once |
+| `Demonic_Greatsword_Movement` | Inexorable | walks |
+| `Demonic_Fist_Movement` | Cinder Rush | walks |
+
+**The seventh is `War_Sword_Movement`, Lunge.** It states `Mode=Charge`, moves at once and is told a distance,
+and it is NOT reached by the designed row, because it carries no `Keyword.Charge` and the row requires it.
+
+**Said first: `MetresMovedBeforeBlow` is the distance walked BEFORE the press** and is not what this scale reads.
+It belongs to Headlong and to the condition `metres_moved_before_attack`, and no line that writes or reads it was
+changed. A scale on it would have paid a charge for walking up to the press and nothing for charging. The blow
+now carries two NEW figures beside it, `MetresCharged` and `ChargeRangeMetres`.
+
+**Said first, for the play-check: three of the six charge skills travel TO an enemy, so their bonus is set by how
+far away that enemy stood.** Flashpoint (Sword) darts to a burning enemy within 14 metres; Emberhaul (Axe) and
+Nail Down (Spear) haul to the first enemy within 12. Used on an enemy 3 metres away, Emberhaul has covered a
+quarter of its range and gets a quarter of the figure. A player who closes in before using one of them gets
+almost nothing from the row. Reel (Whip) goes where it is pointed, up to 12 metres, and is paid for the ground
+it covered.
+
+| Skill | Its range | The share at 3 metres | What a row that rolled 60 gives at 3 metres |
+| :-- | :-- | :-- | :-- |
+| Flashpoint | 14 metres | 3 of 14, about 21% | about 13% increased damage |
+| Emberhaul | 12 metres | 3 of 12, a quarter | 15% increased damage |
+| Nail Down | 12 metres | 3 of 12, a quarter | 15% increased damage |
+
+Each range is the stated one, for a character with no increase to skill range.
+
+**Said first: the `spell_damage` row of the sentence gives nothing to any charge skill in the game today.** A
+hit adds spell damage only when its skill carries the spell tag (`UCataclysmSkillEffects::ApplyHit`, the line
+that sets `Flat`), and all six skills that carry `Keyword.Charge` are tagged `Type.Melee` and not as spells. The
+row is built, carried through the generator and asked for with the charge's figures; it waits for a charge that
+is a spell.
+
+**Said first: on Inexorable the row multiplies the skill's own scaling, and both grow with the same distance.**
+`Demonic_Greatsword_Movement` states `MoreDamagePer=3; ScalingSource=Meter`, which multiplies the skill's own
+damage per cent by 1 + 0.03 for each metre walked (`UCataclysmSkillTemplate::ScaledDamagePercent`), before the
+blow is priced. The row is an increase on the character, summed with its other increases. At the end of 14
+metres that is 1.42 from the skill and, for a character with no other increase under a row that rolled 60, 1.6
+from the row: 2.27 times together. At 7 metres it is 1.21 and 1.3: 1.57 times. **Nothing of the skill's own
+scaling was changed.**
+
+**Said first: one existing entry of a Python inventory was changed, which the brief did not expect.** The spell
+damage lookup's call now passes two more arguments, so its key in `INVENTORY` of
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` changed with it. No call site was added and
+`CALL_SITES` did not move. No name was added to `StatsWithNoAttribute()`: a scale is not a stat.
+
+### What a charge tells its blow now
+
+The reading this layer was built on is "What a charge tells its blow today (M8)" in the entry "A cast delay on a
+skill's blow" of this day. **Each of its statements was checked against the code at `f3ca0b18` before anything
+was written, and each is true there:**
+
+- `Delivery.MetresMovedBeforeBlow = LastMetresMovedBeforeUse;` in `UCataclysmSkillTemplate::HitTargets` is the
+  one assignment of that delivery field outside the tests; `LastMetresMovedBeforeUse` is written in
+  `CommitAndBegin` from `MetresMovedSinceOwnAttack()`.
+- A charge that moves at once takes `Start`, moves with one swept `SetActorLocation`, writes `ArrivedAt` and
+  calls `HitScaled(Targets, Consumed)`; neither point was handed to a delivery.
+- `AdvanceOneStep` adds the ground covered to `WalkedCm` and calls the same `HitScaled`; `WalkedCm` had one
+  reader, `ScalingUnits`, for `ScalingSource=Meter`.
+- `HitWhatThePathCrossed` and `ExplodeAtBothEnds` call `ApplyHit` with deliveries they build themselves.
+
+**The count, run again on this base** by a script written for the purpose and not kept, over
+`game/Data/WeaponSkills.csv` at `f3ca0b18`: of its 403 rows, **7 state `Mode=Charge` and 6 carry
+`Keyword.Charge`**. The six are all movement skills stating `Mode=Charge`. Four move at once
+(`Demonic_Sword_Movement`, `Demonic_Axe_Movement`, `Demonic_Spear_Movement`, `Demonic_Whip_Movement`) and two
+walk, found by a `Duration` parameter of their own (`Demonic_Greatsword_Movement`, `Demonic_Fist_Movement`).
+**The seventh is `War_Sword_Movement`**, which states `Mode=Charge` and does not carry the keyword: its blow is
+told how far it went, and the designed row does not reach it. No row carries the keyword without the mode.
+
+### What it is for
+
+| Sentence | The rows the mechanism makes possible |
+| :-- | :-- |
+| Charge skills deal 30%-60% bonus damage proportional to distance traveled | `attack_damage` and `spell_damage`, each `increased`, 30 to 60, Required Tags `Keyword.Charge`, Scale `share_of_range_moved`, Scale Step 1 |
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+- **M5.** NO judged distance. The rolled figure is the bonus at the skill's FULL RANGE and falls in proportion
+  below it, capped at the full figure: a 14 metre charge that travels 7 metres gets half.
+- **M6.** "Bonus damage" is `increased`, summed with other increases.
+- **M7.** A scale whose count is a FRACTION is new; every scale before it counts whole steps. The generator and
+  the pipeline say so where scales are listed.
+- **(a)** A NEW field on `FCataclysmHitDelivery` carries the metres charged, and with it the range the skill
+  used. `MetresMovedBeforeBlow` is not touched: it is the distance walked before the press and belongs to
+  Headlong and to the condition `metres_moved_before_attack`.
+- **(b)** A charge that moves at once counts from where it began to where it arrived.
+- **(c)** A charge that walks counts the walk so far when the blow lands, not the whole walk. No blow is held.
+- **(d)** The two hits a worn row gives a movement skill (the hit along the path, `HitWhatThePathCrossed`; the
+  explosions at both ends, `ExplodeAtBothEnds`) carry nothing and get no bonus from the scale.
+- **The share is capped at 1** where a charge overshoots its stated range.
+
+**The coordinating session approved the writing session's judgements 1 to 14, below, as written, on
+2026-10-08, with these conditions**, each met in this entry: that it say first, by name, which skills are told a
+distance; that it give the arithmetic at 3 metres for the three skills that travel to an enemy; that it say
+first, for the play-check, what judgement 7 means for a character with more skill range; that it say under
+judgement 10 that the refusal was added by the writing session; and that the two things under "Not covered by a
+test" that rest on reading alone be stated there.
+
+### How it is built
+
+- **Two fields on the blow.** `FCataclysmHitDelivery::MetresCharged` and `ChargeRangeMetres`, both -1 for every
+  blow that is not a charge's own. `UCataclysmSkillTemplate::HitTargets` is the one place a skill fills a
+  delivery, and it copies them from two members of the skill, `BlowMetresCharged` and `BlowChargeRangeMetres`,
+  which are -1 at every moment but one.
+- **That moment is `UCataclysmMovementSkill::HitScaledAsACharge`.** It writes the two members, calls `HitScaled`,
+  and puts back what they held. `ActivateAbility` calls it for a movement skill whose mode is `Charge` and that
+  moves at once, with `FVector::Dist2D(Start, ArrivedAt)`; `AdvanceOneStep` calls it for a walk, with `WalkedCm`
+  as it stands after that step's ground is added. The range is `ScaledRangeCm()`, the stated range after the
+  character's increases to skill range. Every other mode still calls `HitScaled` itself.
+- **Carried to the lookups as `MetresMovedBeforeBlow` is: as parameters.** `UCataclysmSkillEffects::ApplyHit`
+  passes the two figures to the four lookups that already receive the blow's other facts (`IncreasesForSkill`,
+  `MoreForSkill`, `SpellDamageOf`, `ModifiedDamage`), and they pass them on through
+  `UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill`, `AttackDamageMoreForSkill`, `StatForSkill`
+  and `CurrentConditions`, which writes `FCataclysmStatConditions::MetresCharged` and `ChargeRangeMetres`. Each
+  is a new LAST parameter with a default of -1, so no other call in the game changes what it passes.
+- **One enumerator, `ECataclysmStatScale::ShareOfRangeMoved`,** named `share_of_range_moved` in
+  `NamedStatScales`. In `UncappedScaledValue` it is worth `Value` times the metres over the range, the share
+  capped at 1, divided by `ScaleStep`; nought when the metres are below nought, the range is nought or below,
+  or the step is. It does not call `StackedValue` and rounds nothing.
+- **`ValidateModifier` refuses a cap in steps on it.** An offset on it was refused already, by the check that
+  only two scales read one.
+- **The generator.** `share_of_range_moved` joins `SCALES` with a step of exactly 1. A new set,
+  `SCALES_THAT_COUNT_A_FRACTION`, names it; `Scale Max Steps` on a row of that scale is refused where the column
+  is read, and `Scale Offset` was refused already. `refuse_a_scale_nothing_asks_for` refuses the scale on any
+  stat but the two in `STATS_ASKED_WITH_A_CHARGES_DISTANCE`. `SCALES`' own comment and the enumeration's comment
+  each say that this one's count is a fraction and every other one's is whole.
+- **It is on the list of scales built ahead of their rows**
+  (`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`), and the pinned count there,
+  39, has not moved. It moves when a row names the scale.
+
+### Judgements by the writing session
+
+Each is the writing session's own and none is a ruling.
+
+1. **The distance is filled BY MODE, for a movement skill whose mode is `Charge`, and not for every movement
+   skill.** A leap, a blink, a return, a trade and a flicker are not charges: `HitAlongThePath` already says
+   "only a charge has a path", and the field is named for charging. The other reading, every movement skill,
+   would have paid a leap under a row written without its Required Tags. The row requires `Keyword.Charge`
+   either way. **What follows from it:** `War_Sword_Movement` is told a distance and carries no keyword.
+2. **Two plain figures and not one share.** The blow carries the metres and the range, as ruling (a) words it,
+   and the pipeline divides. A share worked out where the blow is dealt would have been one parameter in place
+   of two on eight signatures, and would have put the cap and the two refusals in the movement skill, out of
+   reach of a test that builds a conditions struct.
+3. **Parameters, not a shorter way.** The two figures are threaded through the same signatures
+   `MetresMovedBeforeBlow` is, as the brief asked. A figure left on the ability system for the length of a blow
+   would have been shorter and would have been a second place a blow's facts live.
+4. **All four of a hit's lookups receive them, though the two designed rows need two.** A `more` row on
+   `attack_damage`, or a runtime modifier, scaled by this would otherwise be accepted and dead.
+   **`crit_chance`, and every other stat, is NOT handed them**, and the generator refuses the scale there.
+5. **Along the ground.** A charge that moves at once is measured with `Dist2D`, as `WalkedCm` is, so a charge
+   down a slope is paid for its plan distance.
+6. **Where it arrived, not where it aimed.** The move is swept and `ArrivedAt` is read after it, so a charge
+   stopped by a wall is paid for the ground it covered.
+7. **The range is the range the skill USED.** `ScaledRangeCm()` includes the character's increases to skill
+   range, so a longer range needs more ground for the same share. For a charge that travels to an enemy it is
+   still the skill's range and not the distance to that enemy.
+8. **`Scale Step` is 1 and nothing else.** The generator's bounds for the scale are 1 to 1, as
+   `consecutive_hits`' are. The engine reads the step as the share of the range one value is worth, so the
+   meaning is stated, and no data can ask for another.
+9. **`Scale Max Steps` and `Scale Offset` are refused; neither was given a meaning.** A cap counts whole steps
+   and there are none, and the scale holds its own cap. No sentence leaves part of a charge uncounted.
+10. **The generator refuses the scale on a stat that is not asked for with the charge's figures.** **It was
+    added by the writing session and was not in the brief.** The refusal is in
+    `refuse_a_scale_nothing_asks_for`, for any stat but `attack_damage` and `spell_damage`
+    (`STATS_ASKED_WITH_A_CHARGES_DISTANCE`). **Why:** the charge's two figures travel on the blow and
+    `ApplyHit` hands them to the lookups of those two stats and to no other. `crit_chance`, and every other
+    stat on `STATS_WITH_AN_ASKER`, is asked for through the pipeline, so the older check passes a scaled row
+    on it, and the scale would have read nought there every time: a row accepted, built, imported and dead,
+    with no error anywhere.
+11. **The two members are put back to what they held, not to -1**, so a blow of the skill begun inside another
+    of its own blows could not leave the outer one telling its later targets nothing. No such case is known.
+12. **The two members do not outlive the blow.** `LastMetresMovedBeforeUse` beside them does, on purpose. A
+    figure that outlived the blow would have reached `HitTargets` calls made after it.
+13. **The Passive Effects sheet may name the scale.** Nothing was added to refuse it there; a node's modifier
+    reaches the same lookups.
+14. **The fire `IgniteAroundConsumed` lights after a charge's blow is a burn and not a blow**, and was left
+    alone. It prices its burn with `ModifiedDamage` and passes it no distance.
+
+### Research
+
+Fetched by the enchantment session on 2026-10-08 and quoted as it gave them; the fetch tool summarises with a
+small model, so the wording is close and not certified. Nothing was fetched by the writing session.
+
+- Path of Exile, Shield Charge, poedb.tw/us/Shield_Charge: "The further you travel, the more damage you deal, and
+  the greater your chance of stunning enemies."; "100% more Damage with Hits at Maximum Charge Distance".
+- Diablo 4, Charge, diablo4.wiki.fextralife.com/Charge: "Charge deals up to 22%[x] increased damage based on
+  distance traveled."
+- A search summary, **not a fetched page**, says Path of Exile 2's Shield Charge deals up to an additional 100%
+  more damage, based on the distance travelled.
+- **What it settles:** both games state the bonus as its maximum, reached at the skill's maximum distance. That
+  is M5.
+- **What it does not settle, and is this game's own:** what a walked charge pays an enemy it meets on the way,
+  ruling (c), and what the hits a worn row adds are paid, ruling (d).
+
+### Tests
+
+Unreal, in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group `Cataclysm.SkillStats.`. **None
+has been run.** Every figure in a world is a ratio against the same blow of a fighter with no row; every skill
+states its own damage at 100 per cent; a walked charge is moved by hand and stepped with `AdvanceOneStep`, and
+no clock is run.
+
+- `TheShareOfRangeMovedIsAFractionOfTheRowsValueCappedAtTheWholeAndNoughtWhenEitherFigureIsUnknown`. From a
+  conditions struct, a row of 60 on 14 metres: 7 metres is 30, 14 is 60, 21 is 60, 3.5 is 15, nought is nought;
+  a state nobody filled, a distance with no range, a range of nought and a range with no distance are each
+  nought; 14 metres walked BEFORE the press with nothing charged is nought. `ValidateModifier` passes the row
+  and refuses it with a cap, and with an offset.
+- `AChargeThatMovesAtOnceIsPaidForTheShareOfItsRangeItCoveredAndNothingAtNoughtMetres`. Ruling (b). A charge of
+  12 metres to a target 6 metres away deals 1.3 times the blow with no row; a charge of 12 metres over its whole
+  range deals 1.6 times; and, the control, a charge to a target 1.5 metres directly above the charger covers no
+  ground and deals exactly the blow with no row.
+- `AWalkedChargePaysEachBlowForTheWalkSoFarSoAnEnemyMetEarlyGetsLessThanOneMetLate`. Ruling (c). A walk of 10
+  metres: an enemy struck before the walker has moved takes the blow with no row (the control at nought metres),
+  one met 2.5 metres in takes 1.15 times, one met 9 metres in takes 1.54 times; the early bonus is the smaller,
+  and no enemy is struck twice.
+- `ABlowThatIsNotAChargesReadsNoughtUnderTheSameRowWithoutItsTag`. Under the row WITHOUT `Keyword.Charge` in its
+  Required Tags, a strike deals the blow with no row, and so does a leap that covered its whole range; the
+  control is the same wearer's charge, which deals 1.6 times.
+- `AChargeThatOvershootsItsRangeGetsTheWholeFigureAndNoMore`. A walk of 4 metres: an enemy met 2 metres in takes
+  1.3 times (the control that the share is read below its cap), and one met 6 metres in takes 1.6 times, not 1.9.
+- `TheHitAlongTheChargesPathAndTheExplosionsAtBothEndsGetNothingFromTheShareRow`. Ruling (d). Three chargers:
+  no row; the path row and the explosion row; those two and the share row. Under the share row the enemy on the
+  path loses 0.6 of the charge's OWN blow more and no more, and the explosion at the start deals what it dealt
+  without it. Then three walkers, stepped once 4 metres into 8: the enemy loses 0.3 of the step's own blow more.
+
+Python, in `tools/tests/test_generate_datatables.py`, class `TestAChargesDamageByTheShareOfItsRangeMoved`: both
+rows are carried through in one workbook; the scale is the one on the list of scales that count a fraction; a
+cap in steps is refused and the same row without it is carried; a cap is still carried on a scale of whole
+steps; an offset is refused; a step of 0, 0.5, 2 or 14 is refused; the scale on `crit_chance` is refused and on
+the two designed stats is not.
+
+### Not covered by a test
+
+- **A charge on real terrain.** Every test world is empty and flat. A slope, a step and a ledge are not run.
+- **A charge stopped by a wall.** Judgement 6 says it is paid for the ground it covered; no test world has a
+  wall, and a test fighter's collision stops against nothing.
+- **A walk carried by the movement component.** A test fighter has none, so every walker here is moved by hand.
+  That a real walk's steps add up to its range, and by how much its last step overshoots, is not measured.
+- **The `spell_damage` row in a world.** No charge is a spell. Its lookup is handed the figures by reading only.
+- **A `more` row and a runtime modifier on the scale**, judgement 4. Handed the figures by reading only.
+- **An increase to skill range on the character**, judgement 7.
+- **Flashpoint, Emberhaul, Nail Down and Reel by their own rows**, and Inexorable's own scaling under the row.
+  Every skill in a test is made by hand with no other parameter.
+- **`War_Sword_Movement`**, which is told a distance and carries no keyword.
+- **A charge that strikes nobody**, which deals no blow and is told nothing.
+- **Any real row.** None exists. Every row in a test is built by hand.
+- **The put-back of the two figures after a blow is covered by no test.** `HitScaledAsACharge` puts
+  `BlowMetresCharged` and `BlowChargeRangeMetres` back to what they held when the blow is over. Taking that out
+  changes nothing a test here can see: the hit along the path and the explosions build deliveries of their own,
+  and every later blow of a charge is a charge's blow.
+- **The nought-metres control for a charge that moves at once rests on a reading that was not run.** Its target
+  stands 1.5 metres directly ABOVE the charger. By reading, a charge that travels to its target goes to the
+  target's place along the ground at the charger's own height, so it covers no ground; a line of no length is
+  searched as a circle in plan; and the search's sphere of 2.5 metres reaches a body 1.5 metres up. If the
+  reading is wrong the test fails by name at its set-up, "covered no ground", or at its control, "each of the
+  three charges hurts its target".
+- **Not run in play.**
+
+### What the row needs, for the session that writes rows
+
+| Sentence | Row |
+| :-- | :-- |
+| Charge skills deal 30%-60% bonus damage proportional to distance traveled | `attack_damage`, `increased`, Value Low 30, Value High 60, Required Tags `Keyword.Charge`, Scale `share_of_range_moved`, Scale Step 1; no Condition, no Scale Max Steps, no Scale Offset |
+| the same sentence | `spell_damage`, `increased`, Value Low 30, Value High 60, Required Tags `Keyword.Charge`, Scale `share_of_range_moved`, Scale Step 1; no Condition, no Scale Max Steps, no Scale Offset |
+
+**Both were dry run together through `gen.enchantment_effects` in a temporary workbook holding the real
+sentence**, by the Python test named above, and were carried through; `refuse_a_scale_nothing_asks_for` and
+`refuse_a_condition_nothing_asks_for` had nothing to say of either. No file in the repository was written.
+
+**When the rows are written**, `share_of_range_moved` leaves `BUILT_AHEAD_OF_THEIR_ROWS` and
+`EXPECTED_NAMED_BY_A_ROW` goes from 39 to 40, in
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`.
+
+**`Scale Step` must be 1.** A step of 14, the metres of the longest charge, is refused: the scale has no distance
+per step. **The `spell_damage` row adds nothing to any charge skill today**, as said first.
+
+---
+
 ## 2026-10-08 — "Enemies with Necrosis have 1%-2% less maximum health" and "Summoned minions inherit 10%-25% of your armor and resistances" are built as rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
