@@ -24,6 +24,27 @@ deliveries of their own, and are told no distance. Ruled (d), below.
 falls in proportion below it, capped at the full figure. A 14 metre charge that travels 7 metres gets half. A
 longer range does not make the bonus larger; it makes the full figure harder to reach.
 
+**Said first, for the play-check: more skill range makes the full bonus harder to reach.** The share is of the
+range the skill USED, which is its stated range after the character's own increases to skill range. A character
+with more skill range charges further and needs more ground for the same share: the same 7 metres is half of a
+14 metre charge and less than half of a longer one. Judgement 7, below.
+
+**Said first: which skills are told a distance, by name.** Seven rows of `game/Data/WeaponSkills.csv` state
+`Mode=Charge`, and the blow of each is told how far it went. Six of them carry `Keyword.Charge` and are reached
+by the designed row:
+
+| Row | Skill | How it moves |
+| :-- | :-- | :-- |
+| `Demonic_Sword_Movement` | Flashpoint | at once |
+| `Demonic_Axe_Movement` | Emberhaul | at once |
+| `Demonic_Spear_Movement` | Nail Down | at once |
+| `Demonic_Whip_Movement` | Reel | at once |
+| `Demonic_Greatsword_Movement` | Inexorable | walks |
+| `Demonic_Fist_Movement` | Cinder Rush | walks |
+
+**The seventh is `War_Sword_Movement`, Lunge.** It states `Mode=Charge`, moves at once and is told a distance,
+and it is NOT reached by the designed row, because it carries no `Keyword.Charge` and the row requires it.
+
 **Said first: `MetresMovedBeforeBlow` is the distance walked BEFORE the press** and is not what this scale reads.
 It belongs to Headlong and to the condition `metres_moved_before_attack`, and no line that writes or reads it was
 changed. A scale on it would have paid a charge for walking up to the press and nothing for charging. The blow
@@ -35,6 +56,14 @@ Nail Down (Spear) haul to the first enemy within 12. Used on an enemy 3 metres a
 quarter of its range and gets a quarter of the figure. A player who closes in before using one of them gets
 almost nothing from the row. Reel (Whip) goes where it is pointed, up to 12 metres, and is paid for the ground
 it covered.
+
+| Skill | Its range | The share at 3 metres | What a row that rolled 60 gives at 3 metres |
+| :-- | :-- | :-- | :-- |
+| Flashpoint | 14 metres | 3 of 14, about 21% | about 13% increased damage |
+| Emberhaul | 12 metres | 3 of 12, a quarter | 15% increased damage |
+| Nail Down | 12 metres | 3 of 12, a quarter | 15% increased damage |
+
+Each range is the stated one, for a character with no increase to skill range.
 
 **Said first: the `spell_damage` row of the sentence gives nothing to any charge skill in the game today.** A
 hit adds spell damage only when its skill carries the spell tag (`UCataclysmSkillEffects::ApplyHit`, the line
@@ -100,6 +129,13 @@ told how far it went, and the designed row does not reach it. No row carries the
   explosions at both ends, `ExplodeAtBothEnds`) carry nothing and get no bonus from the scale.
 - **The share is capped at 1** where a charge overshoots its stated range.
 
+**The coordinating session approved the writing session's judgements 1 to 14, below, as written, on
+2026-10-08, with these conditions**, each met in this entry: that it say first, by name, which skills are told a
+distance; that it give the arithmetic at 3 metres for the three skills that travel to an enemy; that it say
+first, for the play-check, what judgement 7 means for a character with more skill range; that it say under
+judgement 10 that the refusal was added by the writing session; and that the two things under "Not covered by a
+test" that rest on reading alone be stated there.
+
 ### How it is built
 
 - **Two fields on the blow.** `FCataclysmHitDelivery::MetresCharged` and `ChargeRangeMetres`, both -1 for every
@@ -163,9 +199,14 @@ Each is the writing session's own and none is a ruling.
    meaning is stated, and no data can ask for another.
 9. **`Scale Max Steps` and `Scale Offset` are refused; neither was given a meaning.** A cap counts whole steps
    and there are none, and the scale holds its own cap. No sentence leaves part of a charge uncounted.
-10. **The generator refuses the scale on a stat that is not asked for with the charge's figures.** The brief did
-    not ask for this. `crit_chance` is asked for through the pipeline, so the older check passes a scaled row
-    on it, and the row would have read nought every time.
+10. **The generator refuses the scale on a stat that is not asked for with the charge's figures.** **It was
+    added by the writing session and was not in the brief.** The refusal is in
+    `refuse_a_scale_nothing_asks_for`, for any stat but `attack_damage` and `spell_damage`
+    (`STATS_ASKED_WITH_A_CHARGES_DISTANCE`). **Why:** the charge's two figures travel on the blow and
+    `ApplyHit` hands them to the lookups of those two stats and to no other. `crit_chance`, and every other
+    stat on `STATS_WITH_AN_ASKER`, is asked for through the pipeline, so the older check passes a scaled row
+    on it, and the scale would have read nought there every time: a row accepted, built, imported and dead,
+    with no error anywhere.
 11. **The two members are put back to what they held, not to -1**, so a blow of the skill begun inside another
     of its own blows could not leave the outer one telling its later targets nothing. No such case is known.
 12. **The two members do not outlive the blow.** `LastMetresMovedBeforeUse` beside them does, on purpose. A
@@ -242,6 +283,16 @@ the two designed stats is not.
 - **`War_Sword_Movement`**, which is told a distance and carries no keyword.
 - **A charge that strikes nobody**, which deals no blow and is told nothing.
 - **Any real row.** None exists. Every row in a test is built by hand.
+- **The put-back of the two figures after a blow is covered by no test.** `HitScaledAsACharge` puts
+  `BlowMetresCharged` and `BlowChargeRangeMetres` back to what they held when the blow is over. Taking that out
+  changes nothing a test here can see: the hit along the path and the explosions build deliveries of their own,
+  and every later blow of a charge is a charge's blow.
+- **The nought-metres control for a charge that moves at once rests on a reading that was not run.** Its target
+  stands 1.5 metres directly ABOVE the charger. By reading, a charge that travels to its target goes to the
+  target's place along the ground at the charger's own height, so it covers no ground; a line of no length is
+  searched as a circle in plan; and the search's sphere of 2.5 metres reaches a body 1.5 metres up. If the
+  reading is wrong the test fails by name at its set-up, "covered no ground", or at its control, "each of the
+  three charges hurts its target".
 - **Not run in play.**
 
 ### What the row needs, for the session that writes rows
