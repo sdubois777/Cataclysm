@@ -46,6 +46,27 @@ written, for the reason given.
 
 **Not tested here:** a Spike Trap placed by a skill in play outliving its stated duration.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the three layers above this one, on `development` 8a46f17f. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the four layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack, the first compile of its test code | 239a6647 | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any row of the stack, at that build | 239a6647 | 290 tests performed, 284 succeeded, 6 failed, the six tests of the stack; 17 failed assertions, each the one stated before the run; 1 of them is this layer's |
+| The enchantment assets, regenerated with the editor | 36906673 | effect rows 549 to 550 |
+| Whole suite, every asset built | 00b537ed | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3344 tests performed, 3344 succeeded, 0 failed. 40 skipped part of what they check |
+| Python of record, continuous integration idle | 00b537ed | 5879 passed, 8 skipped in 335.35s; the JUnit file: tests 5887, failures 0, errors 0, skipped 8 |
+| Lint | 00b537ed | All checks passed! |
+
+**Every step was as stated before it ran, and each was run once.**
+
+**The test fails against a table without its row and passes with it**: a Spike Trap's life span was 1.0 times a
+plain one's where 2.0 was expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** 
+
 ---
 
 ## 2026-10-07 — A worn row makes a movement skill do four things: pull nearby enemies to its user where it arrives, hit every enemy a charge's path crossed, go in a random direction, and explode where it began and where it arrived. Engine only; no row authored
