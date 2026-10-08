@@ -2,6 +2,428 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — A character knows it is channelling: two conditions, `while_channelling` and `channelling_for_under_seconds`, and one flag stat, `cannot_walk`, for three enchantment sentences that have no row, and a fault in the timed-row clock is fixed. Engine and generator only; no row authored
+
+**Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
+was run by the writing session. The C++ in this entry has never been compiled. The Python checks were run; their
+output is not recorded here. The five row shapes of this layer under "What the row needs" were each passed through the
+generator in a temporary workbook, by the Python tests named there.
+
+**Said first: whether the player can still step under the `cannot_walk` row HAS NO AUTOMATION TEST AND CANNOT
+HAVE ONE.** The step is refused in `ACataclysmPlayerController::PawnCannotWalk`, which runs on a player
+controller, and the automation tests run with no player controller at all. That function says so of itself
+("THIS HAS NO AUTOMATION COVERAGE AND CANNOT HAVE ANY"), and it is the same for Backswing today, whose "you
+cannot move while holding" is that function's fourth reason. What IS tested is the stat's answer under the
+condition, at the component and through the one function the controller calls,
+`UCataclysmSkillEffects::CannotWalkByARow`: nought before a channel, above nought during it, nought after it
+however it ended. **The step itself is on the owner's play-check list.**
+
+**Also said first, a ruling: "You cannot move while channeling any skill" moves no speed.** A labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-08, made after the writing session stopped on
+it. The sentence is a FIFTH REASON in `PawnCannotWalk`: one flag stat, `cannot_walk`, asked with no tags, above
+nought refuses the step. Its row is `cannot_walk`, flat 1, under `while_channelling`, beside the lock on the
+movement slot. **The options not taken:** writing a removed walking speed as nought, which is against the
+written reason of `ACataclysmPlayerCharacter::ApplyMovementSpeed` (`CataclysmPlayerCharacter.cpp` 822 to 838; it
+returns without writing a speed of nought or less, and its header says "a MaxWalkSpeed of zero is a character
+who cannot move with nothing on screen to say why" and "A designed root is a status effect and would stop
+movement through the movement mode rather than by setting a speed of zero"); and writing only the slot lock,
+which would leave the player walking. That refusal is left exactly as it is. The earlier wording of J4, "walking
+speed removed", is withdrawn.
+
+**Also said first: no row of this stack needs the walking speed to be worked out again at the edges of a
+channel, and that is built and kept all the same.** The component raises `OnChannellingChanged`, the player
+character listens and works its speed out again, and a test holds it with a hand-made `more` -50 row. Why it
+stays: a speed row under `while_channelling` is a legal row (a "more" reduction, for example), the generator
+accepts one, and without this it would hold a stale speed, because a conditioned row is never folded into the
+attribute the pawn otherwise listens to.
+
+**Also said first: all four sentences reach one built skill today, Pyroclasm, and a channel here is a fixed
+spin of 3 seconds.** Two rows of `game/Data/WeaponSkills.csv` carry `Type.Channel`: `Demonic_Greataxe_Ultimate`
+(Pyroclasm, Shape Strike, `Duration=3; Interval=0.5`, `FinalHitPercent=300`) and `War_Greataxe_Ultimate`
+(Annihilator), which has no Shape and is not built. No held-button skill is built. Nothing is done here for any
+War skill, trap or gadget.
+
+**Also said first, for the play-check, with its arithmetic: the drain is paid THREE OR FOUR times for one use,
+and the coordinating session's earlier arithmetic of "three times" is corrected by this.** J1 stands, by a
+second ruling of 2026-10-08: the channel begins when the skill is paid for, and so it is longer than the spin
+by the swing's wind-up. The state begins when the skill is paid for
+(`UCataclysmSkillTemplate::CommitAndBegin`). A Strike then waits for its attack clip to connect before its first
+swing (`WhenTheSwingConnects`), and only then starts the 3 second timer. So for a player the channel lasts 3
+seconds plus that wait; the wait is nought in every automation test and for a character with no clip. The drain
+is paid at each WHOLE SECOND OF THE COMBAT that falls inside the channel (J3), not at each second of the
+channel. A window of exactly 3 seconds holds exactly three whole seconds; a window of 3 seconds and a wait of w
+holds three, or four, and four is as likely as the wind-up is long in seconds (a wind-up of 0.3 seconds, four
+in about three uses of ten). At 8% to 15% a payment that is **24% to 45% of maximum health for three payments
+and 32% to 60% for four**. **Every automation test has a wind-up of nought and so shows three payments.** Out of combat it pays nothing, and combat lapses 3
+seconds after the last blow dealt or taken, so **a spin that strikes nobody and is struck by nobody stops
+paying part way through.** **It cannot kill**: `ApplyPoolAction` floors health at 1
+(`CataclysmAbilitySystemComponent.cpp` 5630 to 5635 at `c17bda32`, before this entry's change):
+
+```
+	// AND IT CANNOT KILL. Health floors at one and every other pool at zero. A
+	// percentage of what is currently held cannot reach zero by itself anyway,
+	// which is why the two bases are not the same question.
+	const float Floor = (Action.Pool == HealthPoolName) ? 1.0f : 0.0f;
+	const float Current = GetNumericAttribute(Held);
+	const float Change = FMath::Max(Floor, Current + Amount) - Current;
+```
+
+**Also said first, for the play-check: "the first 2 seconds" are counted from the press and so include the
+wind-up.** For the same reason, and by the same ruling. With a wait of w, the swings of the spin land w, w + 0.5, w + 1, w + 1.5 and w + 2 seconds into the
+channel, and so on. The first four are inside the window; the fifth is outside it for any wait above nought.
+With no wait at all the fifth lands on the 2 second mark, which J2 says is whole, and whether a timer's fifth
+firing reads as exactly 2.0 or a hair under it was not measured.
+
+**Also said first: forced movement by an enemy is not stopped by the two movement rows.** A knockback, a pull
+and every other forced movement are applied to the body by the blow that carries them and read neither the
+flag nor the lock. A pin does not stop them either.
+
+**Also said first: a fault in merged code is fixed, F1.** `StepTimedGrants` kept its count of periods already
+given under the row's next-use key, else its stack key, else the text `"<pool>@<period>"`. Two timed rows on
+one pool with one period and neither key therefore shared one count. By reading: the first in the list paid
+and brought the count up to date, and the second found nothing owed, every period; and a row refused by its
+condition marked each period passed, so the row after it never paid either. The merged row "After 10 seconds in
+combat you begin losing 2%-4% of your maximum HP per second" is `health` every 1 second, and the channel drain
+is too, so a character wearing both would have paid one of them. **What failed, in the test written first:** a
+fighter wearing a 3% and a 5% drain of health every second lost 3% a second and not 8%, so "two drains of one
+pool and period, worn together, take what the two take apart" fails; and a 3% drain listed after a drain that
+waits 3 seconds lost nothing at all. **What was changed:** the count is kept for each row, under
+`FCataclysmPoolAction::TriggerKey`, by a new `UCataclysmAbilitySystemComponent::TimedGrantKeyOf`. **The result
+of the pair search: none.** See "The pair search" below; there is no such pair in the tables today, so no
+character in play was affected, and the first pair arrives with the channel drain's row.
+
+**Also said first: a spin ended from outside goes on swinging.** Read while writing the tests and NOT changed,
+because nothing ends a spin from outside today and the layer that will is the next one ("Taking damage while
+channeling interrupts the channel immediately"). `UCataclysmStrikeSkill::EndAbility`
+(`CataclysmSkillTemplates.cpp` 1104 to 1158) clears its window timer and its hold timer, and not `RepeatTimer`
+or `FinishTimer`. Only `Finish` clears `RepeatTimer`. So after `CancelAbilityHandle` the ability has ended, the
+channelling state is cleared, and the body goes on swinging every half second until the 3 seconds are up and
+lands the closing blow. The tests here end spins from outside and assert the STATE, which is right; they do not
+assert that the swings stop, which they would not.
+
+### Said first: where the code did not match what the writing session was told
+
+- **`movement_speed` `removed` does not stop a player.** The writing session stopped on it and it was ruled.
+  Above.
+- **A stat with no gameplay attribute needs a probe, and the reader of `cannot_walk` runs on a player
+  controller.** `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails by name for a stat on
+  that list with no probe that observes its reader. So the fifth reason is a function of the actor,
+  `UCataclysmSkillEffects::CannotWalkByARow`, as the pin's is, and the probe observes that. Judgement 11.
+- **A channel is not 3 seconds for a player.** Above: it is 3 seconds and the wind-up.
+- **`development` had moved.** The brief gave line numbers at `448746f3`; the branch was made from `c17bda32`,
+  two rows later, with no game code changed between them.
+- **`Finish` on a Strike is private**, so a test cannot end a spin as its own timer does by calling it. The
+  tests that need the spin to finish run the world's clock and timers with `CataclysmTestWorld::RunClock`.
+- **The check on the header's count sentences could not read "seventieth".** Its table of tens stopped at
+  sixty. Judgement 8.
+
+### What was found in the code before writing
+
+Line numbers are as read at commit `c17bda32`, before this entry's change, unless a line says otherwise.
+
+- **Where a skill begins and ends.** Every designed skill begins through
+  `UCataclysmSkillTemplate::CommitAndBegin` (`CataclysmSkillTemplate.cpp` 155) and ends through
+  `UCataclysmSkillTemplate::EndAbility` (552). Three shapes override `EndAbility` (Strike, self buff, aura) and
+  each calls `Super::`. `CommitAndBegin` has two early returns, each after its own `EndAbility`: the commit
+  refused (174 to 179), and a free start that pays being unable to pay (183 to 188). Everything after them runs
+  for every use that begins.
+- **A skill's tags.** `SkillTags`, copied from its row by `UCataclysmWeaponSkills::StampOnto`.
+- **Abilities are one instance for each character** (`CataclysmGameplayAbility.cpp` 119,
+  `InstancedPerActor`), so the engine does not start a skill that is already running. Two DIFFERENT skills can
+  run together: no skill template sets a tag that blocks another.
+- **Free starts.** `bFreeRepeat` is set by Follow Through (`CataclysmFollowThrough.cpp` 158), which starts the
+  killing skill's own ability again once it has ended, and by `UCataclysmTriggeredSkill::Trigger`
+  (`CataclysmTriggeredSkill.cpp` 50), which grants a second ability for one use. A skill a ROW starts is never a
+  channel: `RepeatsFromARow` leaves out what `WildMagicLeavesOut` calls `ChannelledOrHeld`
+  (`CataclysmDungeonModifierEffects.cpp` 3063 to 3067). Follow Through has no such test; it refuses only a
+  movement skill.
+- **Nothing ends a skill at its user's death.** No code calls `CancelAllAbilities` or `CancelAbilities`.
+- **Where a condition's state is built.** `UCataclysmAbilitySystemComponent::CurrentConditions`
+  (`CataclysmAbilitySystemComponent.cpp` 815).
+- **The timed-row clock.** `StepTimedGrants` (4173), stepped from `ACataclysmCharacterBase`
+  (`CataclysmCharacterBase.cpp` 186). `PoolActionAllowed` (5288) judges a row's condition from
+  `CurrentConditions`.
+- **How a row's keys are made** (`Items/CataclysmItem.cpp`). `StackKey` only on the grant of a row scaled by
+  its own stacks or by hits in a row (1155). `NextUseKey` only on the four next-use actions (1296 to 1304), as
+  the enchantment and the action. `TriggerKey` on EVERY action read from a row: the stack key and the event for
+  a stack grant (1167), and the enchantment, the action and the event for every other (1335), with the comment
+  "Keyed by the enchantment, the action and the event, which no two rows share".
+- **Where a player's walking speed is worked out.** `ACataclysmPlayerCharacter::RefreshMovementSpeed`
+  (`CataclysmPlayerCharacter.cpp` 1308), called when the speed attribute, the health, the class resource or the
+  cripple tag changes, on every row event, and on the quarter-second step only for a character whose speed rows
+  `UCataclysmStatPipeline::WhatConditionDependsOn` classes as able to change with nothing announced.
+- **The lock.** `UCataclysmSkillTemplate::CanActivateAbility` (606) refuses a skill whose `skill_locked` is
+  above nought, asked with the skill's own tags through `StatForSkill`; the basic attack is exempt by name.
+
+### What it is for
+
+Four sentences of `game/Data/EnchantmentsNegative.csv`, each verbatim with its Name. None has a row. This
+entry builds what the first three need; the fourth is the next layer.
+
+- `Negative_Channel_skills_drain_8_15_of_your_maximum_HP_p`: "Channel skills drain 8%-15% of your maximum HP
+  per second while active".
+- `Negative_You_cannot_move_while_channeling_any_skill`: "You cannot move while channeling any skill".
+- `Negative_Channel_skills_deal_30_50_less_damage_during_t`: "Channel skills deal 30%-50% less damage during
+  the first 2 seconds of channeling".
+- `Negative_Taking_damage_while_channeling_interrupts_the_ch`: "Taking damage while channeling interrupts the
+  channel immediately". Not this entry.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08
+
+- **J1. Channelling is "a skill tagged `Type.Channel` is running", from its start to its end, whatever ended
+  it.** No held-button skill is built. All four sentences reach one built skill today, Pyroclasm; a channel
+  here is a fixed spin of 3 seconds. Nothing is done for `War_Greataxe_Ultimate`, any War skill, a trap or a
+  gadget.
+- **J2. "The first 2 seconds" is LESS THAN 2 seconds since the channel began.** The condition is
+  `channelling_for_under_seconds`. A swing at exactly 2.0 seconds is whole.
+- **J3. The drain uses the timed-row clock that exists**: whole seconds of the current combat, in combat only,
+  and a period that ends while the row is refused is passed over and not owed. No new clock.
+- **J4. "You cannot move" is two rows**: the flag `cannot_walk`, which refuses the player's own step, and the
+  movement slot locked, both while channelling. No speed is moved. Forced movement by an enemy is not stopped.
+  (As first given, the first row was "walking speed removed"; that wording is withdrawn. Said first.)
+- **J5. The state is kept on any character with this project's ability system component.**
+- **J6 / F1. A fault in merged code is fixed in this layer, test first.**
+
+### How it is built
+
+- **The state.** `UCataclysmAbilitySystemComponent` keeps `ChannelsRunning`, a count, and
+  `ChannellingSinceSeconds`, the world time the count went from nought to one, or -1. `NoteChannelBegan` and
+  `NoteChannelEnded` are the two notes; `IsChannelling` and `SecondsChannelling` (negative when it is not) are
+  the two readers. A note of an end with nothing counted does nothing.
+- **Where it is set and cleared: `UCataclysmSkillTemplate`, and nowhere else.** In `CommitAndBegin`, past both
+  commits, a skill whose `SkillTags` hold `Type.Channel` notes a beginning and sets
+  `bThisUseCountedAsChannel` on its own instance. In `EndAbility`, after the engine's own end, a use whose flag
+  is set and which is no longer active notes an end and clears the flag. The four ways a skill ends: its own
+  finish and a cancel from outside both call `EndAbility` and are tested; a commit that fails calls
+  `EndAbility` BEFORE the count, with the flag clear, and is tested as a refused press; the avatar being
+  destroyed, or the ability system being torn down, is NOT known to reach it. The writing session expects the
+  engine to cancel running abilities when it tears an ability system down, did not read the engine's source for
+  it, and did not test it. A player's ability system is on its player state and outlives its pawn, so a spin
+  whose pawn is destroyed runs on to its own timer and ends there.
+- **Where it is read: `CurrentConditions`, and nowhere else.** Two fields on `FCataclysmStatConditions`,
+  `bIsChannelling` and `SecondsChannelling`.
+- **The two conditions**, in `ECataclysmStatCondition`, `UCataclysmStatPipeline::ConditionHolds`,
+  `ConditionTakesAValue`, `WhatConditionDependsOn` and the name table, and in `CONDITIONS` in
+  `tools/generate_datatables.py`. `while_channelling` takes no value; `channelling_for_under_seconds` takes
+  seconds from 0 to 60 and holds when the character is channelling and has been for strictly less than the
+  value. The header's count sentences now read thirty-one of sixty-nine.
+- **How each of the askers judges them, and how that is known.** Each was read to the line where it builds
+  its state, and each builds it with `CurrentConditions`: `StatForSkill`
+  (`CataclysmAbilitySystemComponent.cpp` 412 to 445), `StatAppliedTo` (474 to 491) and `IncreasesForStat` (652
+  to 676); a hit's `attack_damage`, through `AttackDamageIncreasesForSkill` (614 to 650) and
+  `AttackDamageMoreForSkill` (755 to 813), reached from `UCataclysmSkillEffects::ApplyHit` with the skill's own
+  tags, which is where `UCataclysmSkillTemplate::HitTargets` sends a skill's blow; a hit's `spell_damage`,
+  through `SpellDamageOf` (`CataclysmSkillEffects.cpp` 400 to 444), which asks `StatForSkill`; a timed row,
+  through `PoolActionAllowed` (5288 to 5345); `skill_locked`, through `StatForSkill` in `CanActivateAbility`;
+  the player's walking speed, through `StatForSkill` in `RefreshMovementSpeed`; and `cannot_walk`, through
+  `StatForSkill` in `CannotWalkByARow`. Both conditions ask only
+  the wearer's own state, so none of them needs a blow or a target to judge either.
+- **The player's walking speed.** The component raises `OnChannellingChanged` when the count goes from nought
+  to one and when it returns to nought, after the state has changed. `ACataclysmPlayerCharacter` binds it in
+  `InitAbilityActorInfo`, beside the cripple tag, and works its speed out again. Nothing polls:
+  `while_channelling` has a class of its own in `ECataclysmConditionDependsOn`, `Channelling`, which the
+  quarter-second step leaves out as it leaves out health.
+- **The flag `cannot_walk`.** `UCataclysmSkillEffects::CannotWalkStat` is the one spelling of its name.
+  `UCataclysmSkillEffects::CannotWalkByARow` asks the actor's ability system for it through `StatForSkill` with
+  no tags and a fallback of nought, and answers whether it is above nought.
+  `ACataclysmPlayerController::PawnCannotWalk` calls that with its pawn, as it calls the pin's and the held
+  swing's functions. The stat has no gameplay attribute and no base. It was added to three lists, each for its
+  own reason: `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, without which the generator refuses the
+  stat and the stat refresh records no line for `StatForSkill` to find; `CONDITIONED_STATS_WITH_AN_ASKER` in
+  `tools/generate_datatables.py`, as asked with the wearer's own state, without which a row stating it under a
+  condition is refused; and the probe table `Probes()` in `CataclysmStatExemptionTests.cpp`, which the first
+  list requires. The new call is also recorded in
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. **It is NOT in `FLAG_STATS`** in
+  `tools/tests/test_enchantment_effects_match_the_row_text.py`: that file's
+  `test_every_flag_stat_is_still_used` refuses a flag no row grants, so the row layer adds it with the row.
+- **F1.** `TimedGrantKeyOf` answers the next-use key, else the stack key, as before; then the trigger key, which
+  is new; and last the pool and the period, for an action built by hand with none of the three.
+
+### The pair search
+
+Asked by script on 2026-10-08, at `c17bda32`, over every file in `game/Data`: every pair of rows with the same
+pool action on `every_seconds`, the same period, and neither a stack key nor a next-use key. Only
+`EnchantmentEffects.csv` has an `ActionEvent` column, and only `Items/CataclysmItem.cpp` builds a pool action;
+`PassiveEffects.csv` names `every_seconds` only inside five stat names. Of 565 rows, **15** are timed. Seven
+have a key of their own: five stack grants and two next-use grants. The other eight:
+
+| Row | Action | Every |
+| :-- | :-- | :-- |
+| `Positive_Every_15_seconds_regenerate_10_20_of_your_maxi#1` | `health` | 15 |
+| `Negative_You_lose_15_of_your_max_hp_every_5_seconds#1` | `health` | 5 |
+| `Negative_Every_10_seconds_you_lose_5_10_of_your_current#1` | `health` | 10 |
+| `Positive_Every_20_seconds_all_your_skill_cooldowns_are_in#1` | `cooldown_reset_all` | 20 |
+| `Positive_You_are_cleansed_every_5_seconds#1` | `cleanse` | 5 |
+| `Negative_Every_15_seconds_a_random_debuff_is_applied_to_y#1` | `apply_status_to_self` | 15 |
+| `Positive_Every_12_seconds_gain_a_shield_absorbing_15_25#1` | `temporary_absorb` | 12 |
+| `Negative_After_10_seconds_in_combat_you_begin_losing_2_4#1` | `health` | 1 |
+
+**No two share an action and a period: none.** Four move `health`, at 15, 5, 10 and 1 seconds. The channel
+drain's row will be `health` every 1 second, the same as the last, and one character can wear both.
+
+### Judgements by the writing session
+
+1. **A free start of a channelled skill counts as channelling.** The ruling is about a skill that is RUNNING. A
+   Follow Through repeat of Pyroclasm spins for its 3 seconds as a pressed one does, so it sets the state, pays
+   the drain and is slowed, though it is "not a use" for cost, cooldown and `skill_use`. A skill a row starts is
+   never a channel today, so this reaches Follow Through only.
+2. **A second channelled skill begun while one runs does not restart the clock.** "The first 2 seconds of
+   channeling" are the first of the channelling, and the state clears only when both have ended.
+3. **The state is cleared before the `skill_end` event is raised**, so a row acting on that event finds the
+   character no longer channelling.
+4. **The row's identity for F1 is `TriggerKey`.** It is the one key every action read from a row carries, it is
+   built from the row's own cells, so it is the same after an equipment refresh inside one combat, and its own
+   comment says no two rows share it. `StackKey` and `NextUseKey` are set on a few kinds of row only. **Two worn
+   copies of ONE enchantment still share one count**, since they are one row; that is what they did before.
+5. **The order of the keys is kept**: next-use, then stack, then trigger. A stack grant and a next-use grant
+   are therefore counted exactly as they were, and only a pool row's key changes.
+6. **`while_channelling` is classed apart from the conditions that depend on time**, as `Channelling`, because
+   both of its edges are announced. Classed with them, a player wearing a speed row under it would also be
+   asked again every quarter second, which the brief forbids. `channelling_for_under_seconds` IS classed with
+   them: its window closes with nothing announced.
+7. **The walking-speed test uses `more` -50**, a row no sentence of this stack writes, for the reason said
+   first.
+8. **The table of tens in `test_the_condition_count_sentences_agree_with_the_code.py` gained seventy, eighty
+   and ninety.** The sentence it reads had to say "a seventieth". No assertion was changed.
+9. **Nothing is cleared at death.** Nothing ends a skill at death today, so a character that dies part way
+   through a spin is channelling until the spin's own timer ends it. Clearing the count at death would leave a
+   running skill owing an end to a count already at nought.
+10. **The state is not replicated**, as the leech clock beside it is not. The conditions that read it are judged
+    where damage and pools are. **`PawnCannotWalk` runs on the owning player's machine**, so on a client that is
+    not the server the flag would read a state that machine was never told. Play is on one machine today; it
+    is said because the fifth reason is the first reader of the state on the input side.
+11. **The fifth reason is a function of the actor and has a probe.** `CannotWalkByARow` and `ProbeCannotWalk`,
+    for the reason given under "where the code did not match". The probe grants the stat and asserts that
+    function's answer changes. It does not show that a step is refused.
+12. **`cannot_walk` is asked with no tags.** A row that stated Required Tags on it would never apply. The
+    generator does not refuse such a row; nothing here writes one.
+
+### Research
+
+**Fetched by the enchantment session on 2026-10-08 and quoted here as it gave them. The fetch tool summarises
+with a small model, so the wording is close and not certified.**
+
+- Path of Exile, Cyclone, poedb.tw/us/Cyclone: "Channel this skill to move towards a targeted location while
+  spinning constantly attacking enemies in an area around you."; "(20—30)% less Movement Speed"; "Cost: (2—3)
+  Mana".
+- Path of Exile, Flameblast, poedb.tw/us/Flameblast: "Channels to build up a large explosion, which is released
+  when you stop using the skill."; "165% more Spell Damage for each stage".
+- Path of Exile, Infused Channelling Support, poedb.tw/us/Infused_Channelling_Support: "While Channelling a
+  Supported Skill, take 12% less Damage from Hits".
+- Diablo 4, Incinerate, diablo4.wiki.fextralife.com/Incinerate: "Incinerate's damage increases by 50%[x] every
+  second you channel it, up to 100%[x]."; mana cost "25 per second".
+- Diablo 4, Whirlwind, diablo4.wiki.fextralife.com/Whirlwind: "Fury Cost: 15 per second".
+- Torchlight Infinite, tlidb.com/en/Channeled: "Channeled Skills must be held down to be used."; "Channeled
+  stacks are lost when channeling is interrupted."
+- **Failed:** poe2wiki.net/wiki/Channelling returned a bot-protection page; poewiki.net was not fetched (a
+  search summary of it said channelling ends on release, an unpayable cost, a stun, a freeze, a silence or
+  death: a summary, not a quotation); Last Epoch: forum search results only, no page fetched.
+- **What it settles:** the shape. A state that lasts while the skill runs, with other things written as
+  conditions on it; a cost per second while it runs; damage that depends on time channelled.
+- **What is this game's own:** a fixed spin and not a held button; "cannot move"; interruption by any damage.
+
+### Tests
+
+Unreal, in `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group `Cataclysm.Channelling.`. None
+has been run.
+
+- `TheStateBeginsWithAChannelledSkillAndEndsWithItHoweverItEnds`. Real uses of a 3 second spin tagged
+  `Type.Channel`. A skill without the tag sets nothing. A second channelled skill begun while the first runs
+  does not restart the clock; the state clears when both have been ended from outside. A new use ends by its
+  own timer. Ends that arrive on skills already ended do not take the count below nought. A press the
+  character cannot pay for counts nothing.
+- `TheWindowAtTheStartOfAChannelIsUnderItsSecondsAndHalvesOnlyAChannelledSkillsEarlyBlows`. From a struct:
+  1.999 seconds holds a value of 2, exactly 2.0 does not, and not channelling holds nothing. In a world:
+  `attack_damage` `more` -50 requiring `Type.Channel` under the condition with 2 halves a spin's blows as it
+  begins and half a second in, leaves them whole two and a half seconds in, never touches a skill without the
+  tag used inside the window, and halves again in a second channel. Every figure is a ratio against a fighter
+  with no row.
+- `ADrainWhileChannellingTakesOneShareForEachWholeSecondOfTheCombatInsideTheChannelAndCannotKill`. A drain of
+  10% every second under `while_channelling`, stepped a quarter second at a time. A spin begun 2.375 seconds
+  into a fight takes three shares, nothing before and nothing after. Controls: no row; the row out of combat;
+  a fighter with a quarter of a share left, which is left at 1.
+- `APlayersWalkingSpeedIsWorkedOutAgainWhenChannellingBeginsAndWhenItEnds`. A real player character, with
+  `movement_speed` `more` -50 under `while_channelling`: half its speed the moment a spin is used, all of it
+  once the spin has ended by its own timer, half again on a second use, all of it the moment that use is ended
+  from outside; and no refresh was made on the step.
+- `AMovementSkillIsRefusedWhileChannellingAndAllowedAfterAndAHeavyAttackIsNeverRefused`. A real player
+  character, with `skill_locked` flat 1 requiring `Slot.Movement` under `while_channelling`, asked through
+  `CanActivateAbility`.
+- `TheCannotWalkStatAnswersAboveNoughtOnlyWhileItsWearerIsChannelling`. A real player character, with
+  `cannot_walk` flat 1 under `while_channelling`. The stat asked with no tags, and `CannotWalkByARow` on the
+  pawn: nought before a channel, above nought the moment a spin is used, nought the moment it is ended from
+  outside, above nought on a second use and nought once that has ended by its own timer. THE STAT'S ANSWER,
+  NOT THE STEP.
+- `TwoTimedRowsOnOnePoolAndPeriodEachPayEveryPeriodAndOneRefusedDoesNotStopTheOther`. F1. Two keyed drains of
+  health every second worn together take what the two take worn apart; a drain listed after one that waits 3
+  seconds takes what it takes alone, and both pay once the wait is over.
+
+Python, in `tools/tests/test_generate_datatables.py`, class
+`TestTheChannellingConditionsOfTheEighthOfOctober`: each of the five row shapes is carried through, the
+`cannot_walk` row and the lock row together on one enchantment; `cannot_walk` is a stat with no attribute that
+an asker can judge, and a made-up stat is not; a value beside `while_channelling` is refused;
+`channelling_for_under_seconds` without a value, or past a minute, is refused.
+
+And in `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`, `ProbeCannotWalk`, run by the existing
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a character carrying `cannot_walk` at 1 is
+forbidden to walk by `CannotWalkByARow` and one with no row is not.
+
+### Not covered by a test
+
+- **Any real row.** None exists. Every row in a test is built by hand.
+- **The step under `cannot_walk`.** Whether a player wearing the row can still walk. No automation test has a
+  player controller. Said first; on the play-check list.
+- **`cannot_walk` on anything but a player.** A creature does not walk through `PawnCannotWalk`, so the flag
+  does nothing to one.
+- **A wind-up before the spin.** Every test fighter swings at once. The player tests allow for one and assert
+  nothing about its length.
+- **`spell_damage` under the window.** Read, not tested: it is asked through `StatForSkill`.
+- **A swing on the 2 second mark of a real spin.** The boundary is tested from a struct only.
+- **That a spin ended from outside stops swinging.** It does not. Said first.
+- **A free start of a channelled skill**, by Follow Through. Judgement 1 was read from `CommitAndBegin` and is
+  not exercised.
+- **Death, a respawn and the ability system being torn down** while channelling.
+- **An equipment refresh inside one combat** keeping a timed row's count. The key was read as built from the
+  row's cells; no test wears a real item.
+- **The merged drain and the channel drain worn together from the table.** The test of F1 builds two drains by
+  hand.
+- **Forced movement while channelling.**
+- **A creature that channels.** J5 keeps the state on any character; every test character is a player or a
+  bare fighter.
+- **Not run in play.**
+
+### What the row needs, for the session that writes rows
+
+| Sentence | Row |
+| :-- | :-- |
+| Channel skills drain 8%-15% of your maximum HP per second while active | No stat. Value Low -8, Value High -15, Action `health`, Action Event `every_seconds`, Fraction Of `maximum`, Every Seconds 1, Condition `while_channelling` |
+| You cannot move while channeling any skill | `cannot_walk`, `flat`, Value 1, NO Required Tags, Condition `while_channelling` |
+| You cannot move while channeling any skill | `skill_locked`, `flat`, Value 1, Required Tags `Slot.Movement`, Condition `while_channelling` |
+| Channel skills deal 30%-50% less damage during the first 2 seconds of channeling | `attack_damage`, `more`, Value Low -30, Value High -50, Required Tags `Type.Channel`, Condition `channelling_for_under_seconds`, Condition Value 2 |
+| Channel skills deal 30%-50% less damage during the first 2 seconds of channeling | `spell_damage`, the same |
+| Taking damage while channeling interrupts the channel immediately | The next layer's. No row yet |
+
+**Six rows on four sentences: the five above and the next layer's.** **Each of the five was dry run through
+`gen.enchantment_effects` in a temporary workbook holding the real sentence**, by the Python tests named above, and was carried through; `refuse_a_condition_nothing_asks_for`
+has nothing to say about any of them. No file in the repository was written. `takes_something_away` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` was asked by hand about the drain's sentence with
+the action `health` and the damage sentence with `attack_damage`, and answered yes to both; the whole of that
+file's checks was not run against these rows, since they are not in the table.
+
+**`cannot_walk` is NOT in `FLAG_STATS` yet.** `test_every_flag_stat_is_still_used` refuses a flag no row
+grants, so the session that writes the row adds `cannot_walk` to `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` in the same change. Whether the row's value of 1
+is refused without it was not tried.
+
+**Both conditions are listed as built ahead of their rows** in
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, and each leaves that list with its
+rows.
+
+**When the drain's row is written, one character can wear it with "After 10 seconds in combat you begin losing
+2%-4% of your maximum HP per second".** Both are `health` every 1 second. F1 is what lets both pay.
+
+---
+
 ## 2026-10-08 — "Projectiles ricochet 1-4 times" and "Spells pierce through all enemies in their path" are built as rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
