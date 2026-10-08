@@ -43,6 +43,23 @@ every 12 seconds out of it.
 **Not tested here:** a shield granted by the worn row in play; that entry tests the action with the row made by
 hand.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the other six layers of the stack, on `development` 8c44c278. The build, the
+whole suite and the Python of record are in the table of the entry "The Spike Trap carries the tag `Type.Trap`"
+and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 8b40633f | 284 tests performed, 278 succeeded, 6 failed, this layer's among them; 3 of the 10 failed assertions are this layer's |
+| The enchantment assets, regenerated with the editor | b74b20cd | effect rows 547 to 548 |
+| Whole suite, every asset built | 6ba718d2 | 3325 tests performed, 3325 succeeded, 0 failed |
+
+**The test fails against a table without its row and passes with it**: no action of the kind where one was
+expected, a share of -1 where 25 was expected, and -1 seconds where 12 were expected.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The action was proved by the session that built it.
+
 ---
 
 ## 2026-10-07 — "When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy" is built as a row
