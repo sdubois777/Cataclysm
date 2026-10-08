@@ -18535,4 +18535,67 @@ bool FCataclysmStrikeOnARangedDodgeRowTest::RunTest(const FString&)
 	TestEqual(TEXT("taken off: no such action is left"), Left, 0);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldEveryTwelveSecondsRowTest,
+	"Cataclysm.Enchantments.TheShieldEveryTwelveSecondsRowHandsItsWearerATimedTemporaryAbsorb",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 12 seconds gain a shield absorbing 15%-25% of your maximum HP in
+ * damage". Issue #1833, ruled 2026-10-07: `temporary_absorb` on `every_seconds`,
+ * every 12 seconds, 15 to 25. The real row WORN at its best roll: its wearer
+ * holds exactly one action of that kind on the timed event, every 12 seconds,
+ * at 25, and none when the item is taken off. What a temporary absorb then
+ * does is the tests of the entry that built it.
+ */
+bool FCataclysmShieldEveryTwelveSecondsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const TCHAR* const TimedRow = TEXT("Positive_Every_12_seconds_gain_a_shield_absorbing_15_25");
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(TimedRow))))
+	{
+		return false;
+	}
+
+	{
+		FWorn Worn(TimedRow, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FName Timed(TEXT("every_seconds"));
+		int32 OfItsKind = 0;
+		float Share = -1.0f;
+		float Seconds = -1.0f;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			if (Action.bTemporaryAbsorb && Action.Event == Timed)
+			{
+				++OfItsKind;
+				Share = Action.Percent;
+				Seconds = Action.EverySeconds;
+			}
+		}
+		TestEqual(*(FString(TEXT("the timed row, worn: one action that grants a temporary absorb, on the timed event.")) +
+					CataclysmRepeatRowsTest::OlderAsset),
+			OfItsKind, 1);
+		TestEqual(TEXT("at its best roll, 25"), Share, 25.0f, 0.01f);
+		TestEqual(TEXT("every 12 seconds"), Seconds, 12.0f, 0.01f);
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		int32 Left = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			Left += Action.bTemporaryAbsorb ? 1 : 0;
+		}
+		TestEqual(TEXT("the timed row, taken off: no such action is left"), Left, 0);
+	}
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
