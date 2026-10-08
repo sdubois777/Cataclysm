@@ -68,6 +68,31 @@ now say the tag is taken off by hand.
 
 **Not tested here:** any row reaching a trap by the tag.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-07 in one window with the six layers above this one, on `development` 8c44c278. **The ids are the
+commits as they stood when each step ran.** This table carries the steps the seven layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the whole stack, the first compile of its test code | 8b40633f | Build: Succeeded - 33 actions, 30 files compiled |
+| Cataclysm.Enchantments. against the assets built before any layer of the stack, at that build | 8b40633f | 284 tests performed, 278 succeeded, 6 failed; 10 failed assertions, each the one stated before the run; 1 of them is this layer's |
+| The minion types asset, regenerated with the editor | 72c0e379 | `DT_MinionTypes` rebuilt; effect rows 544, unchanged |
+| Whole suite, every asset built | 6ba718d2 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3325 tests performed, 3325 succeeded, 0 failed. 40 skipped part of what they check |
+| Python of record, continuous integration idle | 6ba718d2 | 5866 passed, 8 skipped in 332.29s; the JUnit file: tests 5874, failures 0, errors 0, skipped 8 |
+| Lint | 6ba718d2 | All checks passed! |
+
+**Every step was as stated before it ran, and each was run once.**
+
+**The test fails against a minion types asset without the tag and passes with it**: "the spike trap carries
+Type.Trap" was false against the older asset.
+
+**THE TWO MERGED TESTS WHOSE CONTROLS WERE CHANGED PASSED IN BOTH RUNS**, against the older asset and in the
+whole suite with the Spike Trap tagged. The five assertions that would have failed without the correction were
+never run without it: that they would have failed is by reading.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.**
+
 ---
 
 ## 2026-10-07 — Healing that does not fit in health is kept as the temporary absorb, up to a percentage of maximum health stated by a new stat, `overheal_absorb_percent_of_maximum_health`. Engine only; no row authored
