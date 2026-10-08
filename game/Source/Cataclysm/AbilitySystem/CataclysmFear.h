@@ -59,7 +59,9 @@ public:
 	/**
 	 * Frighten `Target` away from `From` for `Seconds`.
 	 *
-	 * REFUSED, in this order, for: no time; a duration crowd-control resistance
+	 * REFUSED, in this order, for: no time; an enemy whose health is above the
+	 * instigator's ceiling, `UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling`;
+	 * a duration crowd-control resistance
 	 * takes to nothing; a target inside the immunity window stun and knockdown
 	 * share; one holding `State.FearImmune`; one running a skill immune to "Fear";
 	 * a boss. A fear that lands opens that same immunity window.

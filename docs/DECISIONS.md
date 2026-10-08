@@ -2,6 +2,285 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — A character can carry a health ceiling above which it cannot apply crowd control to an enemy, stated by a new stat, `crowd_control_health_ceiling_reduction`. Engine only; no row authored
+
+**Not built and not run.** The C++ in this entry has not been compiled, and no Unreal test in it has been run. No
+outcome of any Unreal run is recorded here. The Python checks that were run are named under "Tests", with what they
+printed left to the commit that carries this entry.
+
+**Said first: the stat holds 100 less the ceiling, not the ceiling.** The sentence says "above 50% HP" and the row
+states 50. Those are the same number only because 100 less 50 is 50. A sentence that said "above 30% HP" would be
+a row of 70. This is the shape `stagger_health_ceiling_reduction` and `healing_ceiling_reduction` already have.
+See judgement 1.
+
+**Said first: fear and the push aside are covered, and they were not in the proposal the writing session was
+given.** The ruling is that crowd control is what the code's crowd-control immunity covers. The code asks that
+immunity in four places, and seven functions pass through them. The proposal named five functions.
+
+**Said first: no player skill applies fear today.** The only caller of `UCataclysmFear::ApplyFear` outside a
+test is a dungeon modifier that frightens the player. The ceiling is asked there too, and the modifier's source
+does not carry the stat. So for fear this change has nothing to act on yet.
+
+**Said first: health is read after the skill's blow has landed.** A skill deals its damage and then applies its
+stun, knockback or knockdown. A blow that takes an enemy from 55% health to 45% therefore controls it.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **Seven functions, not five.** `ApplyPushAside` moves its target through the same displacement body as the
+   other three displacements, and that body asks the immunity. `UCataclysmFear::ApplyFear` asks the immunity
+   for "Fear". Both are covered here.
+2. **The stagger's block was not made into a shared helper.** The proposal was to turn the block in
+   `ApplyStagger` into a helper and call it from the appliers. The two differ: the stagger's reads a gameplay
+   attribute and applies the stagger when the target's health cannot be read; the new one has no attribute and
+   asks only about an enemy. `ApplyStagger` is unchanged, and the new question is a function of its own.
+3. **The header of `UCataclysmSkillTemplate::IsImmuneTo` names six effects, and the code asks for four.** The
+   header lists Stun, Knockdown, Slow, Displacement, Pin and Madness. No code calls `IsImmuneTo` with "Slow",
+   "Pin" or "Madness". It is called with "Fear", which the header does not list. The ruling says what the
+   immunity ALREADY covers, so this change follows the calls.
+4. **The generator needed no change.** A `flat` row supplies its own stat, and the generator reads the list of
+   stats with no attribute out of the C++ source. What did need a change in Python is the inventory of stat
+   lookups.
+
+### What was read before writing
+
+Line numbers are of the files as this change leaves them.
+
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp:989-1047`, `IsImmuneTo`. A running skill whose
+  row writes `Immune=CrowdControl` answers yes for every effect asked. Line 1039 is that comparison.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp:103-124`, `HasGrantedImmunityTo`.
+  The same answer for an immunity another character's aura granted. Line 119.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp:2814-2931`, the displacement body
+  `CataclysmDisplace`; `2959-3042`, `ApplyStagger` and its ceiling; `3072-3211`, the four displacements;
+  `3510-3638`, `ApplyStun`; `3640-3757`, `ApplyKnockdown`; `3759` onward, `ApplyPin`, which asks no immunity.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFear.cpp:26-85`, `ApplyFear`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp:3385-3393`,
+  `NoteCrowdControlApplied`, which raises the event `crowd_control`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`, `HitTargets`, `ApplyStunTo`,
+  `ApplyKnockbackTo` and `ApplyForcedMovementTo`: a skill deals its damage first and discards what the applying
+  function answers.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.cpp:110-161`, `MatchesAttitude` and `IsHostileTo`.
+- `tools/tests/test_enchantment_effects_match_the_row_text.py`, `COMPLEMENT_STATS`, for why a ceiling is stored
+  as a reduction.
+- `game/Data/EnchantmentsNegative.csv:55` for the sentence, and `game/Data/EnchantmentEffects.csv:94` for the
+  stagger's row, `stagger_health_ceiling_reduction`, `flat`, 50.
+
+### What it is for
+
+One sentence in `game/Data/EnchantmentsNegative.csv`, verbatim:
+
+"You cannot apply CC effects to enemies above 50% HP"
+
+Its Name is `Negative_You_cannot_apply_CC_effects_to_enemies_above_50`. No effect row exists and none is
+written here. This change builds what the row needs.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: "CC" is what
+   the code's crowd-control immunity already covers.**
+2. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: a refused
+   application raises none of the wearer's on-application rows.**
+3. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: the stat is the
+   applier's.** A creature applying crowd control to the player asks the creature's stats. A player's drawback
+   does not shield the player.
+4. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: a skill that
+   says it stuns still deals its damage when the stun is refused.**
+5. **A labelled judgement by the coordinating session under the owner's delegation, 2026-10-07: where the new
+   ceiling and the stagger's ceiling both apply, the stricter decides.**
+
+### What the immunity covers, and so what this covers
+
+`UCataclysmSkillTemplate::IsImmuneTo` is asked in four places. A row writing `Immune=CrowdControl` answers yes
+at each. Seven functions apply an effect through them.
+
+| Kind | Function that applies it | Line that asks the immunity | Line that asks the new ceiling |
+|---|---|---|---|
+| Stun | `UCataclysmSkillEffects::ApplyStun` | `CataclysmSkillEffects.cpp:3563`, "Stun" | `:3526` |
+| Knockdown | `UCataclysmSkillEffects::ApplyKnockdown` | `CataclysmSkillEffects.cpp:3698`, "Knockdown" | `:3653` |
+| Fear | `UCataclysmFear::ApplyFear` | `CataclysmFear.cpp:64`, "Fear" | `CataclysmFear.cpp:40` |
+| Knockback | `UCataclysmSkillEffects::ApplyKnockback` | `CataclysmSkillEffects.cpp:2854`, "Displacement", in the shared body | `:2833`, in the shared body |
+| Push aside | `UCataclysmSkillEffects::ApplyPushAside` | the same line | the same line |
+| Pull, and a drag, which is a pull | `UCataclysmSkillEffects::ApplyPull` | the same line | the same line |
+| Launch | `UCataclysmSkillEffects::ApplyLaunch` | the same line | the same line |
+
+The same four places are the only ones that ask `crowd_control_resistance`, the stat that is immunity at 100.
+So both forms of the immunity give the same list.
+
+Not covered, because nothing asks the immunity for them:
+
+- **Stagger.** `ApplyStagger` asks no immunity. It keeps its own ceiling.
+- **Pin.** `ApplyPin` asks no immunity.
+- **Slow.** The Cripple debuff asks no immunity.
+- **Madness.** It asks the shared window and the boss rule, and not `IsImmuneTo`.
+- **Freeze.** The game has no such state.
+- **A tether and two dungeon modifiers that move a character directly.** `CataclysmTether.cpp` and
+  `CataclysmDungeonGameMode.cpp` set a location without the displacement body. They ask neither the immunity
+  nor this.
+
+### How it is built
+
+- **The stat.** `crowd_control_health_ceiling_reduction`, `UCataclysmSkillEffects::CrowdControlHealthCeilingStat`.
+  No gameplay attribute and no base. Registered in `UCataclysmPlayerClassStats::StatsWithNoAttribute`.
+- **The question.** `UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling(Instigator, Target)`. It answers
+  true when all of these hold:
+  - the instigator has this game's ability system component;
+  - its stat, asked with no tags and a fallback of nought and held between 0 and 100, is above nought;
+  - `UCataclysmTargeting::IsHostileTo(Target, Instigator)` is true;
+  - the target's maximum health can be read and is above nought;
+  - the target's health, as a percentage of its maximum, is above 100 less the stat.
+- **The arithmetic.** Ceiling = 100 - stat. Refused when health% > ceiling. With the row's 50: refused above 50%,
+  allowed at exactly 50% and below.
+- **Where it is asked.** First in `ApplyStun`, `ApplyKnockdown` and `ApplyFear`, after the test for a duration
+  of nought. First in the displacement body, after the test for a valid target. The body now takes the
+  instigator, which its four callers hand it.
+- **What a refusal returns.** `false`, the same answer as an immune target. Nothing else is done.
+- **Why a refused application raises nothing on the wearer.** The only event an application raises on the
+  applier is `crowd_control`, in `NoteCrowdControlApplied`. It also starts the window the condition
+  `seconds_after_crowd_control` reads. It is called on the last line of each of the six functions in
+  `CataclysmSkillEffects.cpp` (`:3116`, `:3143`, `:3186`, `:3209`, `:3636`, `:3755`) and at
+  `CataclysmFear.cpp:82`. Every one is after the refusal. No other event is raised by applying crowd control:
+  the other events in the code are raised by blows, kills, skill uses and pools.
+- **What else a refusal leaves alone.** The target's displacement window is not spent. A held swing is not
+  broken. No stun-immunity window opens on the target. No stagger follows.
+- **A skill's damage.** `UCataclysmSkillTemplate::HitTargets` deals the blow and then calls `ApplyKnockbackTo`,
+  `ApplyStunTo` and `ApplyForcedMovementTo`. Those discard what the applying function answers. Nothing in the
+  damage reads the refusal. An incidental stun rolled on a landed blow is applied after the blow resolves, in
+  the same way.
+- **The stagger's ceiling.** Unchanged. A stagger applied by itself, by a ground zone or by a status row, asks
+  only `stagger_health_ceiling_reduction`. A stagger that follows a knockback, a push aside, a pull or a
+  knockdown is reached only if that landed. So it needs health% <= 100 - new stat, and then
+  health% <= 100 - stagger's stat. Together: health% <= 100 - the larger of the two. A wearer of both rows at 50
+  staggers nothing above 50%, as with either alone.
+
+### For the owner's play-check
+
+No row exists yet, so none of this can be seen in play until one is written.
+
+- A wearer's stun, knockdown, knockback, pull, launch or shoulder-through does nothing to an enemy above half
+  health. The enemy is not held, not moved and not staggered. The skill's damage lands as usual.
+- The same skill on an enemy at half health or below works as it always did.
+- A blow that takes an enemy below half health controls it in the same use.
+- Rows that say "applying a CC effect grants ..." do not fire for a refused application.
+- Enemies stun, knock down and shove the wearer exactly as before.
+- The wearer's minions control enemies exactly as before. See judgement 5.
+- A drawback that stuns its own wearer still stuns the wearer.
+- A boss cannot be stunned or knocked down at any health. That is unchanged.
+- **Judged number: 50.** It is the sentence's own. Read as: refused ABOVE 50% of maximum health; an enemy at
+  exactly 50% can be controlled. The reading not taken: refused at 50% and above.
+- **Judged: "HP" is health as a share of maximum health.** The energy shield is not counted. The reading not
+  taken: health and energy shield together. The stagger's ceiling reads health alone.
+- **Judged: two worn copies add to 100, and the wearer can control no living enemy.** The reading not taken:
+  two copies are the same as one.
+
+### Judgements by the writing session
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The stat is a reduction of the ceiling, base nought, and the row is `flat` 50.** A judgement by the writing
+   session, for the coordinating session to confirm. The brief described a stat holding the ceiling itself. That
+   stat would need nought to mean "no ceiling", and two worn copies would add in the flat bucket to 100 and
+   remove the drawback. `tools/tests/test_enchantment_effects_match_the_row_text.py` records that reasoning for
+   `healing_ceiling_reduction`. As a reduction, a wearer without the row is unchanged with no engine-supplied
+   base, the row states 50, and two copies are stricter. The cost: a future sentence with a number other than
+   50 states the complement, and its stat then joins `COMPLEMENT_STATS` in that test.
+2. **The stat's name,** `crowd_control_health_ceiling_reduction`. A judgement by the writing session, for the
+   coordinating session to confirm.
+3. **Only an enemy is refused.** A judgement by the writing session, for the coordinating session to confirm.
+   The sentence says "enemies". `IsHostileTo` is what `debuff_duration` already uses for "debuffs you apply to
+   enemies". It answers no for the wearer itself and for a corpse.
+4. **Above, not at.** A judgement by the writing session, for the coordinating session to confirm. The
+   stagger's ceiling reads the same way.
+5. **The stat is read off the actor that applies, with no pass to a summoner.** A judgement by the writing
+   session, for the coordinating session to confirm. A minion asks its own stats, so the wearer's minions are
+   not limited, also under the keystone Conduit. The stagger's ceiling is read the same way. The reading not
+   taken: `UCataclysmCombatEvents::AttackerOf`, which the `crowd_control` event uses.
+6. **Health is read when the effect is applied, after the blow.** A judgement by the writing session, for the
+   coordinating session to confirm. It follows from the order in the code. The reading not taken: health before
+   the blow, which would need the health carried from before the damage.
+7. **A target whose health cannot be read is not refused.** A judgement by the writing session, for the
+   coordinating session to confirm.
+8. **The stat is asked with no tags.** A judgement by the writing session, for the coordinating session to
+   confirm. A row with Required Tags would never apply.
+9. **The stat is held between 0 and 100.** A judgement by the writing session, for the coordinating session to
+   confirm. Three copies are the same as two.
+10. **The stagger's block was left as it is.** A judgement by the writing session, for the coordinating session
+    to confirm. See "where the code did not match", item 2.
+
+### Research
+
+This adds no new formula shape. It is a second health ceiling of the shape the stagger's already has. No source
+was read.
+
+### Tests
+
+Five Unreal automation tests, appended to `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group
+`Cataclysm.CrowdControlCeiling.`. None has been compiled or run. Each compares with an applier that does not carry
+the stat and with a target below the ceiling.
+
+- `EveryKindIsRefusedOnAnEnemyAboveHalfHealthAndLandsOnOneBelowIt`. All seven functions. A wearer and a plain
+  applier, each against a creature at 80% health and one at 40%. Each lands one blow first. The four blows take
+  the same. Only the wearer's healthy target is refused. A hold is read by whether the target may still swing
+  (`UCataclysmBasicAttack::MaySwing`); a displacement by the distance moved, against the plain applier's.
+- `ASkillThatStunsKnocksBackOrKnocksDownDealsItsDamageWhetherOrNotItsEffectIsRefused`. Three real strike
+  skills, used once in each of the four cases. The damage is the same in all four.
+- `ARefusedApplicationRaisesNoCrowdControlEventAndALandedOneRaisesIt`. All seven functions. A row that counts
+  the event `crowd_control` as a stack counts nought after a refused application and one after a landed one. The
+  control wears the counting row and no ceiling, and counts one on a healthy target.
+- `TheStaggersOwnCeilingStillWorksAloneAndAStaggerAfterAShovePassesBothCeilings`. The stagger's stat at 50 with
+  the new stat absent: the shove lands on a target at 80% health and no stagger follows. Then the stagger's at
+  50 and the new one at 30: nothing at 80%, the shove alone at 60%, both at 40%.
+- `TheStatIsTheAppliersAndItReadsAboveNotAtAndTwoCopiesRefuseEveryLivingEnemy`. A plain applier stuns a wearer
+  at full health. A wearer stuns itself. A creature at exactly 50% is stunned and one at 51% is not. At a
+  reduction of 100 a creature at 1% health is refused.
+
+One probe, `ProbeCrowdControlHealthCeiling`, in `CataclysmStatExemptionTests.cpp`: the test
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails by name for a stat on the list with no
+probe.
+
+Python: one entry in `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, for the one
+new call of `StatForSkill`, and its count of call sites moved from 64 to 65.
+
+### Not covered by a test
+
+- **A real skill that pulls, launches or frightens.** Those three are tested by calling the applying function.
+- **The shoulder-through.** `ApplyPushAside` is called by hand; no test walks a character into an enemy.
+- **An incidental stun rolled on a blow, and a stun from a status row.** Both call `ApplyStun`.
+- **A minion of a wearer.** Judgement 5 has no test.
+- **A target with an energy shield.**
+- **A target with no health attribute.** Judgement 7 has no test.
+- **A row conditioned or scaled.** The generator refuses one today; see below.
+- **The loader.** No test wears a real row, because none exists.
+
+### What the row needs, for the session that writes rows
+
+One row in the Enchantment Effects sheet, for `Negative_You_cannot_apply_CC_effects_to_enemies_above_50`:
+
+| Column | Value |
+|---|---|
+| Effect | the sentence, as the Enchantments sheet has it |
+| Stat | `crowd_control_health_ceiling_reduction` |
+| Value Kind | `flat` |
+| Value Low | 50 |
+| Value High | 50 |
+| Action, Action Event | empty. This is a stat row, not an action |
+| Required Tags | empty. The stat is asked with no tags, so a scoped row would never apply |
+| Condition, Scale | empty |
+
+A row of this shape was put through `gen.enchantment_effects` and `gen.validate_enchantment_effects` in a
+temporary workbook on 2026-10-07, with the sentence added to that workbook's Enchantments sheet. Both accepted
+it. The same row with a Condition was refused by the validator, because the stat is not in
+`CONDITIONED_STATS_WITH_AN_ASKER`; a conditioned row needs that entry and a conditioned probe first. That run
+did not touch the real workbook or `game/Data/`, and it does not show what the asset import does. It also does
+not show that the stat's name is right: the validator accepts a `flat` row on any stat name, because a flat row
+supplies its own stat.
+
+The row's 50 is 100 less the ceiling. The check that a row's value appears in its words passes because the
+sentence also says 50. If the sentence's number is ever changed, the row's value is the complement and the stat
+must be added to `COMPLEMENT_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`.
+
+The rows change should add a test that wears the real row.
+
+---
+
 ## 2026-10-08 — Four rows are built on what a movement skill does: pull on arrival, a hit along the path, a random direction, and an explosion at both ends
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (four rows of the Enchantment Effects sheet),

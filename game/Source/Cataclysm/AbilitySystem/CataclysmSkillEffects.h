@@ -2246,6 +2246,78 @@ public:
 	static const TCHAR* StaggerRootSecondsStat;
 
 	/**
+	 * `crowd_control_health_ceiling_reduction`: percentage points off the
+	 * health above which this character cannot apply crowd control to an
+	 * enemy. Ruled 2026-10-07 under the owner's delegation, for "You cannot
+	 * apply CC effects to enemies above 50% HP", which is a `flat` line of 50.
+	 *
+	 * A REDUCTION OF THE CEILING, the shape `StaggerHealthCeilingStat` and
+	 * `healing_ceiling_reduction` have, and for their reason. The ceiling is
+	 * 100 less the stat. At nought the ceiling is 100, nothing is above 100
+	 * per cent, and a character with no such row applies what it always
+	 * applied. A stat holding the ceiling itself would need nought to mean
+	 * "no ceiling", and two worn copies would add in the flat bucket to 100
+	 * and remove the drawback. As a reduction two copies add to 100, the
+	 * ceiling is nought, and no living enemy can be controlled at all.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE. It is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()` and is asked by
+	 * `CrowdControlRefusedByHealthCeiling` below, with no tags.
+	 */
+	static const TCHAR* CrowdControlHealthCeilingStat;
+
+	/**
+	 * Whether `Instigator` may not apply crowd control to `Target` because the
+	 * target's health is above the instigator's ceiling.
+	 *
+	 * WHAT COUNTS AS CROWD CONTROL HERE IS WHAT THE IMMUNITY COVERS IN CODE,
+	 * ruled 2026-10-07: the effects that ask
+	 * `UCataclysmSkillTemplate::IsImmuneTo`, which a row writing
+	 * `Immune=CrowdControl` answers for. There are four questions and seven
+	 * functions: `ApplyStun` ("Stun"), `ApplyKnockdown` ("Knockdown"),
+	 * `UCataclysmFear::ApplyFear` ("Fear"), and the displacement body
+	 * ("Displacement") that `ApplyKnockback`, `ApplyPushAside`, `ApplyPull`
+	 * and `ApplyLaunch` all move a target through. Each asks this before any
+	 * of its other rules.
+	 *
+	 * A STAGGER, A PIN, A SLOW AND MADNESS DO NOT ASK IT. `IsImmuneTo`'s own
+	 * header names Slow, Pin and Madness, but no code asks the immunity for
+	 * them, and the ruling follows the code. `ApplyStagger` keeps its own
+	 * ceiling, `StaggerHealthCeilingStat`. A stagger that follows a shove or
+	 * a knockdown is reached only when that landed, so it passes both
+	 * ceilings: the target's health is at or below 100 less the larger of
+	 * the two reductions.
+	 *
+	 * THE STAT IS THE INSTIGATOR'S OWN, read off the actor that was handed
+	 * in, as `ApplyStagger` reads its ceiling. A minion asks its own stats,
+	 * so a summoner's drawback does not stop a minion. A creature controlling
+	 * the player asks the creature's stats, so the player's drawback does not
+	 * shield the player.
+	 *
+	 * ONLY AGAINST AN ENEMY. The sentence says "enemies", and
+	 * `UCataclysmTargeting::IsHostileTo` is what answers, as it does for
+	 * `DebuffDurationStat`. It answers no for the instigator itself, so a
+	 * drawback that stuns its own wearer is not refused.
+	 *
+	 * ABOVE, NOT AT. A target at exactly the ceiling can be controlled.
+	 * HEALTH IS READ WHEN THE EFFECT IS APPLIED, which for a skill is after
+	 * its blow has landed: a blow that takes a target from above the ceiling
+	 * to below it controls that target.
+	 *
+	 * A TARGET WHOSE HEALTH CANNOT BE READ IS NOT REFUSED, for the reason
+	 * `ApplyStagger` gives: refusing on an unknown would make the row
+	 * stronger than it says.
+	 *
+	 * @return true when the application must be refused. Every caller then
+	 *         answers false, before it shortens, moves, tags or notes
+	 *         anything, so a refused application raises no `crowd_control`
+	 *         event on the instigator and spends none of the target's
+	 *         displacement window
+	 */
+	static bool CrowdControlRefusedByHealthCeiling(const AActor* Instigator,
+												   const AActor* Target);
+
+	/**
 	 * Seconds a skill this character lands knocks its target down for. #45.
 	 *
 	 * NO KEYWORD IN THE NAME. The row that grants it scopes itself with

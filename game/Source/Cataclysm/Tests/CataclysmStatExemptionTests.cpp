@@ -7092,6 +7092,52 @@ namespace CataclysmStatExemptionTest
 		Test.TestTrue(TEXT("movement_explodes_at_both_ends is read: under the flag it is hurt"), Carrying.Lost[0] > 1.0f);
 	}
 
+	/**
+	 * `crowd_control_health_ceiling_reduction`, read by
+	 * `UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling` where a stun, a knockdown, a fear or a
+	 * displacement is applied. Ruled 2026-10-07: "You cannot apply CC effects to enemies above 50% HP". Two
+	 * appliers, the second carrying the stat at a flat 50, each apply a designed stun to a target of their own
+	 * at full health. The plain applier's target is stunned; the other's is not, and that application answers
+	 * false. The carrying applier then stuns a third target at 40% health, so it is not refusing everything.
+	 *
+	 * STANDING: the plain applier at the origin and its target 2 m along X. The carrying applier 100 m along Y,
+	 * its healthy target 2 m along X from it and its hurt target 2 m the other way.
+	 */
+	void ProbeCrowdControlHealthCeiling(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger PlainApplier(World, FVector::ZeroVector);
+		FScopedSwinger PlainsTarget(World, FVector(2 * M, 0, 0));
+		FScopedSwinger Carrier(World, FVector(0, 100 * M, 0));
+		FScopedSwinger CarriersHealthy(World, FVector(2 * M, 100 * M, 0));
+		FScopedSwinger CarriersHurt(World, FVector(-2 * M, 100 * M, 0));
+		GrantFlat(Carrier.Actor, UCataclysmSkillEffects::CrowdControlHealthCeilingStat, 50.0f);
+		CarriersHurt.Set(Vital::GetHealthAttribute(), TargetHealthPool * 0.4f);
+
+		const bool bPlainApplied = UCataclysmSkillEffects::ApplyStun(
+			PlainApplier.Actor, PlainsTarget.Actor, /*DurationSeconds=*/1.5f, /*DamageDealt=*/0.0f,
+			/*bStunIsDesigned=*/true);
+		const bool bCarrierApplied = UCataclysmSkillEffects::ApplyStun(
+			Carrier.Actor, CarriersHealthy.Actor, /*DurationSeconds=*/1.5f, /*DamageDealt=*/0.0f,
+			/*bStunIsDesigned=*/true);
+		const bool bCarrierAppliedToHurt = UCataclysmSkillEffects::ApplyStun(
+			Carrier.Actor, CarriersHurt.Actor, /*DurationSeconds=*/1.5f, /*DamageDealt=*/0.0f,
+			/*bStunIsDesigned=*/true);
+		Test.TestTrue(TEXT("control: a plain applier stuns a target at full health"),
+					  bPlainApplied && UCataclysmSkillEffects::IsStunned(PlainsTarget.Actor));
+		Test.TestFalse(TEXT("and one carrying crowd_control_health_ceiling_reduction at 50 does not, so "
+							"CrowdControlRefusedByHealthCeiling really reads it"),
+					   bCarrierApplied || UCataclysmSkillEffects::IsStunned(CarriersHealthy.Actor));
+		Test.TestTrue(TEXT("and the same applier stuns a target at 40% health"),
+					  bCarrierAppliedToHurt && UCataclysmSkillEffects::IsStunned(CarriersHurt.Actor));
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7215,6 +7261,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("leech_payout_rate"), &ProbeLeechPayoutRate},
 			{TEXT("strike_arc_at_least_degrees"), &ProbeStrikeArcAtLeastDegrees},
 			{TEXT("stagger_root_seconds"), &ProbeStaggerRootSeconds},
+			{TEXT("crowd_control_health_ceiling_reduction"), &ProbeCrowdControlHealthCeiling},
 		};
 		return Made;
 	}

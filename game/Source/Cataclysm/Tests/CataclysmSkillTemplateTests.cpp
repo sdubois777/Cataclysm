@@ -12,6 +12,7 @@
 // For health owed and the share of a cost taken later. Issue #991.
 #include "AbilitySystem/CataclysmHealthDebt.h"
 // For the Fervour a cast itself grants. Issue #1051.
+#include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For what a blow resolved to, which is how a test can tell an evaded blow
@@ -23233,6 +23234,773 @@ bool FCataclysmDotCombatLeechNamesTest::RunTest(const FString&)
 	Row.ScaleMaxSteps = 10;
 	TestEqual(TEXT("with the row's cap of 10, fifteen seconds are ten steps"),
 			  UCataclysmStatPipeline::ScaledValue(Row, LeechingFor), -20.0f, 0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A HEALTH CEILING ON THE CROWD CONTROL A CHARACTER APPLIES. "You cannot apply
+// CC effects to enemies above 50% HP". Ruled 2026-10-07 under the owner's
+// delegation: crowd control is what the code's crowd-control immunity covers,
+// which is a stun, a knockdown, a fear and a displacement (knockback, push
+// aside, pull, launch). No row is authored yet, so every wearer here is given
+// the row's stat by hand, as the row will give it: a flat 50 on
+// `crowd_control_health_ceiling_reduction`.
+//
+// EVERY CASE HAS A CONTROL: an applier that does not carry the stat, and a
+// target below the ceiling. A hold is measured by whether the target may still
+// swing, which is what a stun, a knockdown and a fear take away; a
+// displacement by how far the target moved.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. No two living actors
+// are within two metres of each other. Nobody waits: every application is
+// called by hand or made by one use of a real skill.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmCrowdControlCeilingTest
+{
+	using namespace CataclysmAbsorbedStoredTest;
+
+	/** The row's own number: "above 50% HP". The stat is 100 less the ceiling, which is also 50. */
+	constexpr float CeilingRowValue = 50.0f;
+
+	/** A target above the ceiling and a target below it, as percentages of maximum health. */
+	constexpr float CeilingHealthyPercent = 80.0f;
+	constexpr float CeilingHurtPercent = 40.0f;
+
+	/** The maximum health of every creature here, so a blow of the applier's 100 is one per cent of it. */
+	constexpr float CeilingCreatureHealth = 10000.0f;
+
+	/** Wears the ceiling's stat at this value, on a base of nothing. Replaces whatever was worn. */
+	void WearTheCeiling(FScopedFighter& Who, float Reduction = CeilingRowValue)
+	{
+		Wear(Who, {{FName(UCataclysmSkillEffects::CrowdControlHealthCeilingStat), Reduction}});
+	}
+
+	UCataclysmAbilitySystemComponent* CeilingSystemOf(ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature
+			? Cast<UCataclysmAbilitySystemComponent>(Creature->GetAbilitySystemComponent())
+			: nullptr;
+	}
+
+	float CeilingHealthOf(ACataclysmEnemyCharacter* Creature)
+	{
+		const UCataclysmAbilitySystemComponent* System = CeilingSystemOf(Creature);
+		return System
+			? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+			: -1.0f;
+	}
+
+	/** A creature on the monsters' side, at this share of a maximum health of 10,000. Null when it has no system. */
+	ACataclysmEnemyCharacter* CeilingCreature(UWorld* World, const FVector& Where, float HealthPercent)
+	{
+		ACataclysmEnemyCharacter* Spawned =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (!Spawned)
+		{
+			return nullptr;
+		}
+		Spawned->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Spawned->SetHealth(CeilingCreatureHealth);
+		UCataclysmAbilitySystemComponent* System = CeilingSystemOf(Spawned);
+		if (!System)
+		{
+			Spawned->Destroy();
+			return nullptr;
+		}
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+										CeilingCreatureHealth * HealthPercent / 100.0f);
+		return Spawned;
+	}
+
+	/** Every kind of crowd control the ceiling covers: one per function that applies it. */
+	enum class ECeilingKind : uint8
+	{
+		Stun,
+		Knockdown,
+		Fear,
+		Knockback,
+		PushAside,
+		Pull,
+		Launch,
+	};
+
+	const TCHAR* CeilingKindName(ECeilingKind Kind)
+	{
+		switch (Kind)
+		{
+		case ECeilingKind::Stun: return TEXT("a stun");
+		case ECeilingKind::Knockdown: return TEXT("a knockdown");
+		case ECeilingKind::Fear: return TEXT("a fear");
+		case ECeilingKind::Knockback: return TEXT("a knockback");
+		case ECeilingKind::PushAside: return TEXT("a push aside");
+		case ECeilingKind::Pull: return TEXT("a pull");
+		case ECeilingKind::Launch: return TEXT("a launch");
+		}
+		return TEXT("an unknown kind");
+	}
+
+	/** Whether the kind moves its target. The other three hold it. */
+	bool CeilingKindMoves(ECeilingKind Kind)
+	{
+		return Kind == ECeilingKind::Knockback || Kind == ECeilingKind::PushAside
+			|| Kind == ECeilingKind::Pull || Kind == ECeilingKind::Launch;
+	}
+
+	/**
+	 * One application of the kind, through the function the game calls. The holds are designed, so the rule of a
+	 * tenth of maximum health is not what decides them.
+	 */
+	bool ApplyCeilingKind(ECeilingKind Kind, AActor* Applier, AActor* Target)
+	{
+		switch (Kind)
+		{
+		case ECeilingKind::Stun:
+			return UCataclysmSkillEffects::ApplyStun(Applier, Target, /*DurationSeconds=*/1.5f,
+													 /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+		case ECeilingKind::Knockdown:
+			return UCataclysmSkillEffects::ApplyKnockdown(Applier, Target, /*DurationSeconds=*/2.0f,
+														  /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+		case ECeilingKind::Fear:
+			return UCataclysmFear::ApplyFear(Applier, Target, /*Seconds=*/2.0f, Applier->GetActorLocation());
+		case ECeilingKind::Knockback:
+			return UCataclysmSkillEffects::ApplyKnockback(Applier, Target, /*DistanceCm=*/300.0f);
+		case ECeilingKind::PushAside:
+			return UCataclysmSkillEffects::ApplyPushAside(Applier, Target, FVector(0.0f, 1.0f, 0.0f),
+														  /*DistanceCm=*/150.0f);
+		case ECeilingKind::Pull:
+			return UCataclysmSkillEffects::ApplyPull(Applier, Target, /*DistanceCm=*/100.0f);
+		case ECeilingKind::Launch:
+			return UCataclysmSkillEffects::ApplyLaunch(Applier, Target, /*DistanceCm=*/300.0f);
+		}
+		return false;
+	}
+
+	/** What one case measured. */
+	struct FCeilingCase
+	{
+		/** Whether the applier and the target were made at all. */
+		bool bSetUp = false;
+		/** What the blow before the application took from the target's health. */
+		float Damage = 0.0f;
+		/** Whether the target might swing after the blow and before the application. */
+		bool bMightSwingBefore = false;
+		/** What the applying function answered. */
+		bool bApplied = false;
+		/** Whether the target may still swing afterwards. */
+		bool bMaySwingAfter = false;
+		/** How far the application moved the target, in centimetres. */
+		float MovedCm = 0.0f;
+		/** Seconds since the applier last applied crowd control; -1 when it never has. */
+		float WindowSeconds = -2.0f;
+	};
+
+	/**
+	 * One applier at (0, LaneY, 0), one creature four metres from it at (400, LaneY, 0). The applier lands one
+	 * blow of 100% of its attack damage, then applies the kind once. Both are destroyed before this returns.
+	 */
+	FCeilingCase RunCeilingCase(UWorld* World, ECeilingKind Kind, bool bWearsTheCeiling, float HealthPercent,
+								float LaneY)
+	{
+		FCeilingCase Out;
+		FScopedFighter Applier(World, FVector(0.0f, LaneY, 0.0f));
+		if (bWearsTheCeiling)
+		{
+			WearTheCeiling(Applier);
+		}
+		ACataclysmEnemyCharacter* Target = CeilingCreature(World, FVector(4 * M, LaneY, 0.0f), HealthPercent);
+		if (!Target)
+		{
+			return Out;
+		}
+		Out.bSetUp = true;
+
+		const float HealthBefore = CeilingHealthOf(Target);
+		UCataclysmSkillEffects::ApplyHit(Applier.Actor, Target, 100.0f);
+		Out.Damage = HealthBefore - CeilingHealthOf(Target);
+
+		Out.bMightSwingBefore = UCataclysmBasicAttack::MaySwing(Target);
+		const FVector WhereBefore = Target->GetActorLocation();
+		Out.bApplied = ApplyCeilingKind(Kind, Applier.Actor, Target);
+		Out.bMaySwingAfter = UCataclysmBasicAttack::MaySwing(Target);
+		Out.MovedCm = (Target->GetActorLocation() - WhereBefore).Size();
+		Out.WindowSeconds = Applier.AbilitySystem->SecondsSinceCrowdControlApplied();
+
+		Target->Destroy();
+		return Out;
+	}
+
+	/** A stack granted on `crowd_control`, for 5 seconds and up to 10, as the loader builds a stack row. */
+	FCataclysmPoolAction CeilingStackRow(FName Key)
+	{
+		FCataclysmPoolAction Grant;
+		Grant.Event = FName(TEXT("crowd_control"));
+		Grant.StackKey = Key;
+		Grant.StackSeconds = 5.0f;
+		Grant.StackCap = 10;
+		Grant.TriggerKey = Key;
+		return Grant;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlCeilingEveryKindTest,
+	"Cataclysm.CrowdControlCeiling.EveryKindIsRefusedOnAnEnemyAboveHalfHealthAndLandsOnOneBelowIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * For each of the seven functions that apply crowd control: a wearer of the ceiling and a plain applier, each
+ * against a creature at 80% health and one at 40%. Each first lands one blow, then applies the kind.
+ *
+ * THE WEARER ON THE HEALTHY TARGET IS THE ONLY CASE REFUSED. A held target may no longer swing; a refused one
+ * still may, as it might before. A moved target has moved as far as the plain applier's; a refused one has not
+ * moved. The blow before each application took the same from all four targets.
+ *
+ * STANDING: each case in a lane of its own, 20 m further along Y than the last. The applier at (0, Y, 0) and
+ * the creature 4 m from it at (400, Y, 0). Both are destroyed before the next case is made.
+ */
+bool FCataclysmCrowdControlCeilingEveryKindTest::RunTest(const FString&)
+{
+	using namespace CataclysmCrowdControlCeilingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// NO BLOW HERE IS A CRITICAL STRIKE, so four blows of one size can be compared.
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	const ECeilingKind Kinds[] = {
+		ECeilingKind::Stun, ECeilingKind::Knockdown, ECeilingKind::Fear, ECeilingKind::Knockback,
+		ECeilingKind::PushAside, ECeilingKind::Pull, ECeilingKind::Launch,
+	};
+
+	float LaneY = 0.0f;
+	for (const ECeilingKind Kind : Kinds)
+	{
+		const TCHAR* What = CeilingKindName(Kind);
+		const FCeilingCase WearerHealthy = RunCeilingCase(World, Kind, true, CeilingHealthyPercent, LaneY);
+		LaneY += 20 * M;
+		const FCeilingCase WearerHurt = RunCeilingCase(World, Kind, true, CeilingHurtPercent, LaneY);
+		LaneY += 20 * M;
+		const FCeilingCase PlainHealthy = RunCeilingCase(World, Kind, false, CeilingHealthyPercent, LaneY);
+		LaneY += 20 * M;
+		const FCeilingCase PlainHurt = RunCeilingCase(World, Kind, false, CeilingHurtPercent, LaneY);
+		LaneY += 20 * M;
+
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: all four appliers and targets were made"), What),
+					  WearerHealthy.bSetUp && WearerHurt.bSetUp && PlainHealthy.bSetUp && PlainHurt.bSetUp))
+		{
+			continue;
+		}
+
+		// THE BLOW. It is dealt before the application and is the same in all four cases.
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: the plain applier's blow on the healthy target took "
+											"health (%.3f)"), What, PlainHealthy.Damage),
+					  PlainHealthy.Damage > 0.0f))
+		{
+			continue;
+		}
+		TestEqual(*FString::Printf(TEXT("%s: the wearer's blow on the healthy target, which is then refused, "
+										"took what the plain applier's took"), What),
+				  WearerHealthy.Damage, PlainHealthy.Damage, 0.01f);
+		TestEqual(*FString::Printf(TEXT("%s: the wearer's blow on the hurt target took the same"), What),
+				  WearerHurt.Damage, PlainHealthy.Damage, 0.01f);
+		TestEqual(*FString::Printf(TEXT("%s: and the plain applier's blow on the hurt target took the same"), What),
+				  PlainHurt.Damage, PlainHealthy.Damage, 0.01f);
+
+		// WHAT THE APPLYING FUNCTION ANSWERED.
+		TestTrue(*FString::Printf(TEXT("%s: control: the plain applier lands it on the healthy target"), What),
+				 PlainHealthy.bApplied);
+		TestTrue(*FString::Printf(TEXT("%s: control: the plain applier lands it on the hurt target"), What),
+				 PlainHurt.bApplied);
+		TestTrue(*FString::Printf(TEXT("%s: the wearer lands it on the target at 40%% health"), What),
+				 WearerHurt.bApplied);
+		TestFalse(*FString::Printf(TEXT("%s: the wearer is refused on the target above half health"), What),
+				  WearerHealthy.bApplied);
+
+		// WHAT THE STATE DOES.
+		if (CeilingKindMoves(Kind))
+		{
+			if (!TestTrue(*FString::Printf(TEXT("%s: control: the plain applier moved the healthy target "
+												"(%.1f cm)"), What, PlainHealthy.MovedCm),
+						  PlainHealthy.MovedCm > 1.0f))
+			{
+				continue;
+			}
+			TestEqual(*FString::Printf(TEXT("%s: control: the plain applier moved the hurt target as far"), What),
+					  PlainHurt.MovedCm, PlainHealthy.MovedCm, 0.5f);
+			TestEqual(*FString::Printf(TEXT("%s: the wearer moved the hurt target as far as the plain applier "
+											"did"), What),
+					  WearerHurt.MovedCm, PlainHealthy.MovedCm, 0.5f);
+			TestEqual(*FString::Printf(TEXT("%s: the wearer did not move the healthy target"), What),
+					  WearerHealthy.MovedCm, 0.0f, 0.01f);
+		}
+		else
+		{
+			if (!TestTrue(*FString::Printf(TEXT("%s: set-up: every target might swing before the application"),
+										   What),
+						  WearerHealthy.bMightSwingBefore && WearerHurt.bMightSwingBefore
+							  && PlainHealthy.bMightSwingBefore && PlainHurt.bMightSwingBefore))
+			{
+				continue;
+			}
+			TestFalse(*FString::Printf(TEXT("%s: control: the plain applier's healthy target may no longer "
+											"swing"), What),
+					  PlainHealthy.bMaySwingAfter);
+			TestFalse(*FString::Printf(TEXT("%s: control: nor may the plain applier's hurt target"), What),
+					  PlainHurt.bMaySwingAfter);
+			TestFalse(*FString::Printf(TEXT("%s: nor may the wearer's hurt target"), What),
+					  WearerHurt.bMaySwingAfter);
+			TestTrue(*FString::Printf(TEXT("%s: the wearer's healthy target may still swing"), What),
+					 WearerHealthy.bMaySwingAfter);
+		}
+
+		// AND THE APPLIER'S OWN RECORD OF HAVING APPLIED CROWD CONTROL.
+		TestEqual(*FString::Printf(TEXT("%s: control: the plain applier applied crowd control now"), What),
+				  PlainHealthy.WindowSeconds, 0.0f, 0.001f);
+		TestEqual(*FString::Printf(TEXT("%s: the refused wearer has never applied crowd control"), What),
+				  WearerHealthy.WindowSeconds, -1.0f, 0.001f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlCeilingRealSkillTest,
+	"Cataclysm.CrowdControlCeiling.ASkillThatStunsKnocksBackOrKnocksDownDealsItsDamageWhetherOrNotItsEffectIsRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three real skills, each used once by a wearer and once by a plain caster, on a target at 80% health and on one
+ * at 40%: a strike that states a stun, a strike that states a knockback, and an Ultimate strike that states a
+ * knockdown. The cells are the ones `Cataclysm.Skills.*` already uses for each.
+ *
+ * THE SKILL'S DAMAGE IS THE SAME IN ALL FOUR CASES, and only the wearer's healthy target is left free: it may
+ * still swing, or it has not moved.
+ *
+ * STANDING: each case in a lane of its own, 100 m further along Y than the last, so a strike 20 m wide reaches
+ * nothing else. The caster at (0, Y, 0) and the target 2 m from it at (200, Y, 0). Both are destroyed when the
+ * case ends.
+ */
+bool FCataclysmCrowdControlCeilingRealSkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmCrowdControlCeilingTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FSkillRow
+	{
+		const TCHAR* What;
+		ECataclysmAbilitySlot Slot;
+		const TCHAR* Cell;
+		bool bMoves;
+	};
+	const FSkillRow Rows[] = {
+		{TEXT("a strike stating a stun"), ECataclysmAbilitySlot::Heavy,
+		 TEXT("Radius=6; Angle=360; Effect=Stun; StunSeconds=1.5"), false},
+		{TEXT("a strike stating a knockback"), ECataclysmAbilitySlot::Heavy,
+		 TEXT("Radius=20; Angle=360; Knockback=4"), true},
+		{TEXT("an Ultimate stating a knockdown"), ECataclysmAbilitySlot::Ultimate,
+		 TEXT("Radius=6; Angle=360; ForcedMovement=Knockdown; ForcedMovementDuration=2"), false},
+	};
+
+	struct FUse
+	{
+		bool bUsed = false;
+		float Damage = 0.0f;
+		bool bMaySwingAfter = false;
+		float MovedCm = 0.0f;
+	};
+
+	float LaneY = 0.0f;
+	for (const FSkillRow& Row : Rows)
+	{
+		const auto UseOnce = [&](bool bWearsTheCeiling, float HealthPercent) -> FUse
+		{
+			FUse Out;
+			FScopedFighter Caster(World, FVector(0.0f, LaneY, 0.0f));
+			FScopedFighter Target(World, FVector(2 * M, LaneY, 0.0f));
+			LaneY += 100 * M;
+
+			Caster.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 0.0f);
+			if (bWearsTheCeiling)
+			{
+				WearTheCeiling(Caster);
+			}
+			Target.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+					   Target.Get(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * HealthPercent / 100.0f);
+			if (Row.Slot == ECataclysmAbilitySlot::Ultimate)
+			{
+				Caster.GiveFervourForUltimates(1);
+			}
+
+			UCataclysmStrikeSkill* Skill =
+				GrantSkill<UCataclysmStrikeSkill>(Caster, Row.Slot, Row.Cell, TEXT("A Ceiling Strike"));
+			const float HealthBefore = Target.Health();
+			const FVector WhereBefore = Target.Actor->GetActorLocation();
+			Out.bUsed = Skill && Activate(Caster, Skill);
+			Out.Damage = HealthBefore - Target.Health();
+			Out.bMaySwingAfter = UCataclysmBasicAttack::MaySwing(Target.Actor);
+			Out.MovedCm = (Target.Actor->GetActorLocation() - WhereBefore).Size();
+			return Out;
+		};
+
+		const FUse WearerHealthy = UseOnce(true, CeilingHealthyPercent);
+		const FUse WearerHurt = UseOnce(true, CeilingHurtPercent);
+		const FUse PlainHealthy = UseOnce(false, CeilingHealthyPercent);
+		const FUse PlainHurt = UseOnce(false, CeilingHurtPercent);
+
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: all four uses activated"), Row.What),
+					  WearerHealthy.bUsed && WearerHurt.bUsed && PlainHealthy.bUsed && PlainHurt.bUsed)
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the plain caster's skill dealt damage (%.2f)"),
+										  Row.What, PlainHealthy.Damage),
+						 PlainHealthy.Damage > 0.0f))
+		{
+			continue;
+		}
+
+		TestEqual(*FString::Printf(TEXT("%s: the wearer's skill dealt its damage to the healthy target, whose "
+										"effect is refused"), Row.What),
+				  WearerHealthy.Damage, PlainHealthy.Damage, 0.01f);
+		TestEqual(*FString::Printf(TEXT("%s: and the same to the hurt target"), Row.What),
+				  WearerHurt.Damage, PlainHealthy.Damage, 0.01f);
+		TestEqual(*FString::Printf(TEXT("%s: control: the plain caster's skill dealt the same to the hurt "
+										"target"), Row.What),
+				  PlainHurt.Damage, PlainHealthy.Damage, 0.01f);
+
+		if (Row.bMoves)
+		{
+			if (!TestTrue(*FString::Printf(TEXT("%s: control: the plain caster moved the healthy target "
+												"(%.1f cm)"), Row.What, PlainHealthy.MovedCm),
+						  PlainHealthy.MovedCm > 1.0f))
+			{
+				continue;
+			}
+			TestEqual(*FString::Printf(TEXT("%s: control: and the hurt target as far"), Row.What),
+					  PlainHurt.MovedCm, PlainHealthy.MovedCm, 0.5f);
+			TestEqual(*FString::Printf(TEXT("%s: the wearer moved the hurt target as far"), Row.What),
+					  WearerHurt.MovedCm, PlainHealthy.MovedCm, 0.5f);
+			TestEqual(*FString::Printf(TEXT("%s: the wearer did not move the healthy target"), Row.What),
+					  WearerHealthy.MovedCm, 0.0f, 0.01f);
+		}
+		else
+		{
+			TestFalse(*FString::Printf(TEXT("%s: control: the plain caster's healthy target may no longer "
+											"swing"), Row.What),
+					  PlainHealthy.bMaySwingAfter);
+			TestFalse(*FString::Printf(TEXT("%s: control: nor may its hurt target"), Row.What),
+					  PlainHurt.bMaySwingAfter);
+			TestFalse(*FString::Printf(TEXT("%s: nor may the wearer's hurt target"), Row.What),
+					  WearerHurt.bMaySwingAfter);
+			TestTrue(*FString::Printf(TEXT("%s: the wearer's healthy target may still swing"), Row.What),
+					 WearerHealthy.bMaySwingAfter);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlCeilingEventTest,
+	"Cataclysm.CrowdControlCeiling.ARefusedApplicationRaisesNoCrowdControlEventAndALandedOneRaisesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `crowd_control` is the one event an application raises on the applier. A wearer who also wears a row that
+ * counts that event as a stack applies each kind twice: to a creature at 80% health, which is refused, and then
+ * to a creature at 40%, which lands. The count is nought after the first and one after the second, and the
+ * seconds since crowd control was applied read -1 and then 0.
+ *
+ * THE CONTROL wears the same counting row and no ceiling, and applies the kind to a creature at 80% health: its
+ * count is one. So the count is nought for the wearer because of the ceiling and not because the row is inert.
+ *
+ * STANDING: each kind in a lane of its own, 40 m further along Y than the last. The wearer at (0, Y, 0), its
+ * healthy target at (400, Y, 0) and its hurt target at (-400, Y, 0). The control at (0, Y + 2000, 0) and its
+ * target at (400, Y + 2000, 0).
+ */
+bool FCataclysmCrowdControlCeilingEventTest::RunTest(const FString&)
+{
+	using namespace CataclysmCrowdControlCeilingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FName Counted(TEXT("A_row:crowd_control_counted"));
+	const ECeilingKind Kinds[] = {
+		ECeilingKind::Stun, ECeilingKind::Knockdown, ECeilingKind::Fear, ECeilingKind::Knockback,
+		ECeilingKind::PushAside, ECeilingKind::Pull, ECeilingKind::Launch,
+	};
+
+	float LaneY = 0.0f;
+	for (const ECeilingKind Kind : Kinds)
+	{
+		const TCHAR* What = CeilingKindName(Kind);
+
+		FScopedFighter Wearer(World, FVector(0.0f, LaneY, 0.0f));
+		FScopedFighter Plain(World, FVector(0.0f, LaneY + 20 * M, 0.0f));
+		WearTheCeiling(Wearer);
+		Wearer.AbilitySystem->SetPoolActions({CeilingStackRow(Counted)});
+		Plain.AbilitySystem->SetPoolActions({CeilingStackRow(Counted)});
+
+		ACataclysmEnemyCharacter* Healthy = CeilingCreature(World, FVector(4 * M, LaneY, 0.0f), CeilingHealthyPercent);
+		ACataclysmEnemyCharacter* Hurt = CeilingCreature(World, FVector(-4 * M, LaneY, 0.0f), CeilingHurtPercent);
+		ACataclysmEnemyCharacter* PlainsTarget =
+			CeilingCreature(World, FVector(4 * M, LaneY + 20 * M, 0.0f), CeilingHealthyPercent);
+		LaneY += 40 * M;
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmEnemyCharacter* Each : {Healthy, Hurt, PlainsTarget})
+			{
+				if (Each)
+				{
+					Each->Destroy();
+				}
+			}
+		};
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: three targets"), What), Healthy && Hurt && PlainsTarget))
+		{
+			continue;
+		}
+
+		// THE CONTROL: the same counting row, no ceiling, a target above half health.
+		if (!TestTrue(*FString::Printf(TEXT("%s: control: the plain applier lands it on a target at 80%% "
+											"health"), What),
+					  ApplyCeilingKind(Kind, Plain.Actor, PlainsTarget)))
+		{
+			continue;
+		}
+		if (!TestEqual(*FString::Printf(TEXT("%s: control: and its row counted that application"), What),
+					   Plain.AbilitySystem->OwnStacksHeld(Counted), 1))
+		{
+			continue;
+		}
+
+		// REFUSED: nothing is counted and no window opens.
+		TestFalse(*FString::Printf(TEXT("%s: the wearer is refused on the target at 80%% health"), What),
+				  ApplyCeilingKind(Kind, Wearer.Actor, Healthy));
+		TestEqual(*FString::Printf(TEXT("%s: the wearer's row counted nothing for the refused application"), What),
+				  Wearer.AbilitySystem->OwnStacksHeld(Counted), 0);
+		TestEqual(*FString::Printf(TEXT("%s: and the wearer has never applied crowd control"), What),
+				  Wearer.AbilitySystem->SecondsSinceCrowdControlApplied(), -1.0f, 0.001f);
+
+		// LANDED: the same wearer, the same row, a target at 40% health.
+		TestTrue(*FString::Printf(TEXT("%s: the wearer lands it on the target at 40%% health"), What),
+				 ApplyCeilingKind(Kind, Wearer.Actor, Hurt));
+		TestEqual(*FString::Printf(TEXT("%s: and the wearer's row counted that one"), What),
+				  Wearer.AbilitySystem->OwnStacksHeld(Counted), 1);
+		TestEqual(*FString::Printf(TEXT("%s: and the wearer applied crowd control now"), What),
+				  Wearer.AbilitySystem->SecondsSinceCrowdControlApplied(), 0.0f, 0.001f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlCeilingStaggerTest,
+	"Cataclysm.CrowdControlCeiling.TheStaggersOwnCeilingStillWorksAloneAndAStaggerAfterAShovePassesBothCeilings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The stagger's own ceiling, `stagger_health_ceiling_reduction`, is untouched: an applier carrying it at 50 and
+ * NOT carrying the new stat still knocks a healthy target back, as far as a plain applier does, and leaves it
+ * unstaggered; a hurt target is knocked back and staggered.
+ *
+ * AND THE TWO TOGETHER. An applier with the stagger's reduction at 50 and the new reduction at 30 has ceilings
+ * of 50% and 70%. A stagger that follows a shove needs the target at or below 100 less the larger reduction:
+ * at 80% nothing happens, at 60% the shove lands and no stagger follows, at 40% both land.
+ *
+ * STAGGERED IS READ AS A STATE BECAUSE IT IS ONLY A STATE: it stops nothing, and other rows read it. Every
+ * distance is compared with the plain applier's.
+ *
+ * STANDING: each case in a lane of its own, 20 m further along Y than the last, the applier at (0, Y, 0) and
+ * the creature at (400, Y, 0).
+ */
+bool FCataclysmCrowdControlCeilingStaggerTest::RunTest(const FString&)
+{
+	using namespace CataclysmCrowdControlCeilingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FShove
+	{
+		bool bSetUp = false;
+		bool bApplied = false;
+		float MovedCm = 0.0f;
+		bool bStaggered = false;
+	};
+
+	float LaneY = 0.0f;
+	const auto ShoveOnce = [&](float StaggerReduction, float ControlReduction, float HealthPercent) -> FShove
+	{
+		FShove Out;
+		FScopedFighter Applier(World, FVector(0.0f, LaneY, 0.0f));
+		ACataclysmEnemyCharacter* Target = CeilingCreature(World, FVector(4 * M, LaneY, 0.0f), HealthPercent);
+		LaneY += 20 * M;
+		if (!Target)
+		{
+			return Out;
+		}
+		Out.bSetUp = true;
+		if (ControlReduction > 0.0f)
+		{
+			WearTheCeiling(Applier, ControlReduction);
+		}
+		Applier.Set(UCataclysmCombatAttributeSet::GetStaggerHealthCeilingReductionAttribute(), StaggerReduction);
+
+		const FVector WhereBefore = Target->GetActorLocation();
+		Out.bApplied = UCataclysmSkillEffects::ApplyKnockback(Applier.Actor, Target, /*DistanceCm=*/300.0f);
+		Out.MovedCm = (Target->GetActorLocation() - WhereBefore).Size();
+		Out.bStaggered = UCataclysmSkillEffects::IsStaggered(Target);
+		Target->Destroy();
+		return Out;
+	};
+
+	const FShove Plain = ShoveOnce(0.0f, 0.0f, 80.0f);
+	if (!TestTrue(TEXT("set-up: a plain applier and its target"), Plain.bSetUp)
+		|| !TestTrue(*FString::Printf(TEXT("control: a plain applier knocks a target at 80%% health back "
+										   "(%.1f cm)"), Plain.MovedCm),
+					 Plain.bApplied && Plain.MovedCm > 1.0f)
+		|| !TestTrue(TEXT("control: and leaves it staggered"), Plain.bStaggered))
+	{
+		return false;
+	}
+
+	// THE STAGGER'S OWN CEILING, WITH THE NEW STAT ABSENT.
+	const FShove StaggerOnlyHealthy = ShoveOnce(50.0f, 0.0f, 80.0f);
+	const FShove StaggerOnlyHurt = ShoveOnce(50.0f, 0.0f, 40.0f);
+	TestTrue(TEXT("the stagger's ceiling alone: the shove on a target at 80% health still lands"),
+			 StaggerOnlyHealthy.bApplied);
+	TestEqual(TEXT("the stagger's ceiling alone: and moves it as far as the plain applier's"),
+			  StaggerOnlyHealthy.MovedCm, Plain.MovedCm, 0.5f);
+	TestFalse(TEXT("the stagger's ceiling alone: but the target at 80% health is not staggered"),
+			  StaggerOnlyHealthy.bStaggered);
+	TestEqual(TEXT("the stagger's ceiling alone: a target at 40% health is moved as far"),
+			  StaggerOnlyHurt.MovedCm, Plain.MovedCm, 0.5f);
+	TestTrue(TEXT("the stagger's ceiling alone: and is staggered"), StaggerOnlyHurt.bStaggered);
+
+	// BOTH: the stagger's ceiling at 50% and the new one at 70%.
+	const FShove BothAt80 = ShoveOnce(50.0f, 30.0f, 80.0f);
+	const FShove BothAt60 = ShoveOnce(50.0f, 30.0f, 60.0f);
+	const FShove BothAt40 = ShoveOnce(50.0f, 30.0f, 40.0f);
+	TestFalse(TEXT("both: a target at 80% health, above both ceilings, is refused the shove"), BothAt80.bApplied);
+	TestEqual(TEXT("both: and is not moved"), BothAt80.MovedCm, 0.0f, 0.01f);
+	TestFalse(TEXT("both: and is not staggered"), BothAt80.bStaggered);
+	TestEqual(TEXT("both: a target at 60% health, under the new ceiling of 70%, is moved as far as the plain "
+				   "applier's"),
+			  BothAt60.MovedCm, Plain.MovedCm, 0.5f);
+	TestFalse(TEXT("both: but it is above the stagger's ceiling of 50% and is not staggered"), BothAt60.bStaggered);
+	TestEqual(TEXT("both: a target at 40% health, under both, is moved as far"),
+			  BothAt40.MovedCm, Plain.MovedCm, 0.5f);
+	TestTrue(TEXT("both: and is staggered"), BothAt40.bStaggered);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlCeilingWhoseStatTest,
+	"Cataclysm.CrowdControlCeiling.TheStatIsTheAppliersAndItReadsAboveNotAtAndTwoCopiesRefuseEveryLivingEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four smaller facts, each against a control, all with a designed stun.
+ *
+ * 1. THE STAT IS THE APPLIER'S. A plain applier stuns a wearer at full health exactly as it stuns a plain
+ *    character at full health: the wearer's drawback does not shield the wearer.
+ * 2. ONLY AN ENEMY. A wearer at full health who stuns itself, as a drawback row does, is stunned. The control is
+ *    the same wearer refused on a creature at full health.
+ * 3. ABOVE, NOT AT. A creature at exactly 50% health is stunned by a wearer; one at 51% is not.
+ * 4. TWO COPIES. At a reduction of 100 the ceiling is nought: a creature at 1% health is refused. The control
+ *    is a wearer of one copy, who stuns a creature at 1% health.
+ *
+ * STANDING: every actor on the X axis, 4 m from the next: appliers and wearers at X = 0, 4, 8, 12, 16 m and
+ * creatures at X = 20, 24, 28, 32, 36 m.
+ */
+bool FCataclysmCrowdControlCeilingWhoseStatTest::RunTest(const FString&)
+{
+	using namespace CataclysmCrowdControlCeilingTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const auto StunBy = [](AActor* By, AActor* Whom)
+	{
+		return UCataclysmSkillEffects::ApplyStun(By, Whom, /*DurationSeconds=*/1.5f, /*DamageDealt=*/0.0f,
+												 /*bStunIsDesigned=*/true);
+	};
+
+	// 1. THE STAT IS THE APPLIER'S.
+	FScopedFighter PlainApplier(World, FVector(0.0f, 0.0f, 0.0f));
+	FScopedFighter WearerStruck(World, FVector(4 * M, 0.0f, 0.0f));
+	FScopedFighter PlainStruck(World, FVector(8 * M, 0.0f, 0.0f));
+	WearTheCeiling(WearerStruck);
+	if (!TestTrue(TEXT("set-up: both may swing before they are stunned"),
+				  UCataclysmBasicAttack::MaySwing(WearerStruck.Actor)
+					  && UCataclysmBasicAttack::MaySwing(PlainStruck.Actor)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: a plain applier stuns a plain character at full health"),
+			 StunBy(PlainApplier.Actor, PlainStruck.Actor));
+	TestFalse(TEXT("control: who may no longer swing"), UCataclysmBasicAttack::MaySwing(PlainStruck.Actor));
+	TestTrue(TEXT("a plain applier stuns a wearer of the ceiling at full health just the same"),
+			 StunBy(PlainApplier.Actor, WearerStruck.Actor));
+	TestFalse(TEXT("and the wearer may no longer swing: its own drawback does not shield it"),
+			  UCataclysmBasicAttack::MaySwing(WearerStruck.Actor));
+
+	// 2. ONLY AN ENEMY.
+	FScopedFighter SelfStunner(World, FVector(12 * M, 0.0f, 0.0f));
+	WearTheCeiling(SelfStunner);
+	ACataclysmEnemyCharacter* FullHealth = CeilingCreature(World, FVector(20 * M, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* AtTheCeiling = CeilingCreature(World, FVector(24 * M, 0.0f, 0.0f), 50.0f);
+	ACataclysmEnemyCharacter* JustAbove = CeilingCreature(World, FVector(28 * M, 0.0f, 0.0f), 51.0f);
+	ACataclysmEnemyCharacter* NearlyDead = CeilingCreature(World, FVector(32 * M, 0.0f, 0.0f), 1.0f);
+	ACataclysmEnemyCharacter* NearlyDeadToo = CeilingCreature(World, FVector(36 * M, 0.0f, 0.0f), 1.0f);
+	if (!TestTrue(TEXT("set-up: five creatures"),
+				  FullHealth && AtTheCeiling && JustAbove && NearlyDead && NearlyDeadToo))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: the wearer is refused on an enemy at full health"),
+			  StunBy(SelfStunner.Actor, FullHealth));
+	TestTrue(TEXT("control: which may still swing"), UCataclysmBasicAttack::MaySwing(FullHealth));
+	TestTrue(TEXT("the same wearer, at full health itself, stuns itself"),
+			 StunBy(SelfStunner.Actor, SelfStunner.Actor));
+	TestFalse(TEXT("and may no longer swing"), UCataclysmBasicAttack::MaySwing(SelfStunner.Actor));
+
+	// 3. ABOVE, NOT AT.
+	FScopedFighter OneCopy(World, FVector(16 * M, 0.0f, 0.0f));
+	WearTheCeiling(OneCopy);
+	TestFalse(TEXT("a creature at 51% health is above the ceiling and is refused"),
+			  StunBy(OneCopy.Actor, JustAbove));
+	TestTrue(TEXT("and may still swing"), UCataclysmBasicAttack::MaySwing(JustAbove));
+	TestTrue(TEXT("a creature at exactly 50% health is not above it and is stunned"),
+			 StunBy(OneCopy.Actor, AtTheCeiling));
+	TestFalse(TEXT("and may no longer swing"), UCataclysmBasicAttack::MaySwing(AtTheCeiling));
+
+	// 4. TWO COPIES. The stun on `AtTheCeiling` above noted crowd control on `OneCopy` and nothing else, so
+	// `OneCopy` is still a fair control here.
+	TestTrue(TEXT("control: one copy stuns a creature at 1% health"), StunBy(OneCopy.Actor, NearlyDead));
+	TestFalse(TEXT("control: which may no longer swing"), UCataclysmBasicAttack::MaySwing(NearlyDead));
+	WearTheCeiling(OneCopy, 2.0f * CeilingRowValue);
+	TestFalse(TEXT("two copies add to 100, the ceiling is nought, and a creature at 1% health is refused"),
+			  StunBy(OneCopy.Actor, NearlyDeadToo));
+	TestTrue(TEXT("and may still swing"), UCataclysmBasicAttack::MaySwing(NearlyDeadToo));
+
 	return true;
 }
 

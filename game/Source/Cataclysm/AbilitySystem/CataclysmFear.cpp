@@ -32,7 +32,17 @@ bool UCataclysmFear::ApplyFear(AActor* Instigator, AActor* Target, float Seconds
 		return false;
 	}
 
-	// CROWD-CONTROL RESISTANCE FIRST, AS FOR A STUN: it shortens the fear in
+	// A HEALTH CEILING THE FRIGHTENING CHARACTER CAN CARRY, as for a stun and
+	// asked before every other rule. Ruled 2026-10-07: "You cannot apply CC
+	// effects to enemies above 50% HP", and fear asks the crowd-control
+	// immunity below, so the row covers it. A refusal sets no source, tags
+	// nothing, opens no window and notes no crowd control on the applier.
+	if (UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling(Instigator, Target))
+	{
+		return false;
+	}
+
+	// CROWD-CONTROL RESISTANCE NEXT, AS FOR A STUN: it shortens the fear in
 	// proportion, and at 100% or more there is nothing left to apply.
 	Seconds = UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(Target, Seconds);
 	if (Seconds <= 0.0f)
