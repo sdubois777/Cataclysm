@@ -112,7 +112,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: day and built ahead of their rows while the design workbook is with another
 #: session. `docs/DECISIONS.md` of that day gives the three sentences they are
 #: for and the shape of each row. Each leaves with its rows.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"traps_active", "gadgets_active"}
+#: THE TWO LEFT with their three rows, issue #2284, and the list is empty again.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -153,7 +154,10 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 36 WHEN `leech_pools_in_flight` ARRIVED WITH ITS ROW, 2026-10-07, for
 #: Starvation's six-piece bonus.
-EXPECTED_NAMED_BY_A_ROW = 36
+#:
+#: AND 38 WHEN `traps_active` AND `gadgets_active` GAINED THEIR THREE ROWS,
+#: issue #2284, 2026-10-07.
+EXPECTED_NAMED_BY_A_ROW = 38
 
 
 def scales_named_by_a_row() -> set[str]:

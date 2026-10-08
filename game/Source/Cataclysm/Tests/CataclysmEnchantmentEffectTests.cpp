@@ -18327,4 +18327,114 @@ bool FCataclysmTrapDamageRowTest::RunTest(const FString&)
 	TestEqual(TEXT("and the spike trap's is the ballista's"), MultiplierFor(Trap), MultiplierFor(Ballista), 0.001f);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapCountRowsTest,
+	"Cataclysm.Enchantments.TheThreeTrapRowsOnOtherTrapsAndGadgetsEachRaiseWhatASpikeTrapDealsByItsCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three rows on `minion_damage`, each requiring `Type.Trap`. Issue #2284, ruled
+ * 2026-10-07. Each real row is WORN at its best roll by a wearer that then
+ * commands three Spike Traps and two Ballistas from the built table, and the
+ * summoner's multiplier on minion damage is asked with a Spike Trap's tags and
+ * with a Ballista's, as each machine's swing asks it. A RATIO, never a figure:
+ *   "for each other trap": two other traps at 30, the trap's is 1.6 times;
+ *   "each active gadget": two gadgets at 20, 1.4 times;
+ *   "each gadget ... doubles": two gadgets, three times, since each adds 100
+ *   to one sum.
+ * A Ballista is no trap, so its own multiplier is what it is with the item
+ * taken off.
+ */
+bool FCataclysmTrapCountRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	struct FCase
+	{
+		const TCHAR* Row;
+		float TrapOverBallista;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Traps_deal_15_30_increased_damage_for_each_oth"), 1.6f},
+		{TEXT("Positive_Each_active_gadget_increases_trap_damage_by_10"), 1.4f},
+		{TEXT("Positive_Each_gadget_on_the_battlefield_doubles_the_damag"), 3.0f},
+	};
+	const FGameplayTag TrapTag = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	// EVERY NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so.
+	const UDataTable* Positive =
+		CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the trap tag is registered"), TrapTag.IsValid()))
+	{
+		return false;
+	}
+	for (const FCase& Case : Cases)
+	{
+		if (!TestTrue(FString::Printf(TEXT("set-up: %s is a row of EnchantmentsPositive.csv"), Case.Row),
+				Positive->GetRowMap().Contains(FName(Case.Row))))
+		{
+			return false;
+		}
+		FWorn Worn(Case.Row, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		// FIVE MACHINES, FOUR METRES APART, so no spawn is refused for standing in another.
+		TArray<ACataclysmMinion*> Machines;
+		const TCHAR* const Types[] = {TEXT("SpikeTrap"), TEXT("SpikeTrap"), TEXT("SpikeTrap"), TEXT("Ballista"),
+									  TEXT("Ballista")};
+		float Along = 0.0f;
+		bool bAllSpawned = true;
+		for (const TCHAR* Type : Types)
+		{
+			Along += 400.0f;
+			ACataclysmMinion* Made = ACataclysmMinion::Spawn(Worn.Wearer->Actor, FVector(Along, 0.0f, 0.0f),
+				/*Lifetime=*/60.0f, /*bBurns=*/false, Type);
+			bAllSpawned = bAllSpawned
+				&& TestNotNull(FString::Printf(TEXT("set-up: %s, the machine %.0f metres along"), Case.Row,
+								   Along / 100.0f), Made);
+			Machines.Add(Made);
+		}
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* Made : Machines)
+			{
+				if (IsValid(Made)) { Made->Destroy(); }
+			}
+		};
+		if (!bAllSpawned)
+		{
+			return false;
+		}
+		const ACataclysmMinion* Trap = Machines[0];
+		const ACataclysmMinion* Ballista = Machines[3];
+		const FCataclysmStatConditions State = Worn.ASC()->CurrentConditions();
+		if (!TestTrue(TEXT("set-up: the spike trap carries Type.Trap"), Trap->TypeTags.HasTagExact(TrapTag))
+			|| !TestEqual(TEXT("set-up: three traps are counted"), State.TrapsActive, 3)
+			|| !TestEqual(TEXT("set-up: two gadgets are counted"), State.GadgetsActive, 2))
+		{
+			return false;
+		}
+		const auto MultiplierFor = [&Worn](const ACataclysmMinion* Minion)
+		{
+			return UCataclysmCommand::SummonerMultiplierFor(Worn.Wearer->Actor, TEXT("minion_damage"),
+				Minion->TypeTags);
+		};
+		const float OfTheBallista = MultiplierFor(Ballista);
+		if (!TestTrue(TEXT("set-up: the ballista's multiplier is above nought"), OfTheBallista > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("%s, worn: the spike trap's multiplier over the ballista's is %.1f.%s"),
+					  Case.Row, Case.TrapOverBallista, CataclysmRepeatRowsTest::OlderAsset),
+			MultiplierFor(Trap) / OfTheBallista, Case.TrapOverBallista, 0.001f);
+
+		Worn.Wearer->Equipment->UnequipEverything();
+		Worn.Wearer->Equipment->RefreshAttributes(Worn.ASC());
+		TestEqual(FString::Printf(TEXT("%s, taken off: the ballista's multiplier is what it was"), Case.Row),
+			MultiplierFor(Ballista), OfTheBallista, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s, taken off: the spike trap's is the ballista's"), Case.Row),
+			MultiplierFor(Trap), MultiplierFor(Ballista), 0.001f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
