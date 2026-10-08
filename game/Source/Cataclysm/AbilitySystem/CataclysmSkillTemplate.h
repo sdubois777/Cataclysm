@@ -342,6 +342,27 @@ public:
 	bool bThisUseCountedAsChannel = false;
 
 	/**
+	 * Whether a hit landing on this skill's user would cut it short right now.
+	 * Ruled 2026-10-08, for `hit_taken_cancels_skills`: "Taking a hit interrupts
+	 * any skill currently being used".
+	 *
+	 * ASKED OF EVERY RUNNING SKILL BY ONE CALLER,
+	 * `UCataclysmAbilitySystemComponent::NoteHitTaken`, before it asks whether a
+	 * row of the character's reaches this skill's tags. It says nothing about
+	 * rows; a character with no such row is never interrupted whatever this
+	 * answers.
+	 *
+	 * HERE: WHILE THE SKILL IS RUNNING. A strike or a curse waiting for its swing
+	 * to connect, a spin between swings, a rack between throws, a walk under way,
+	 * a rift still spawning, a swing held back. Three classes answer otherwise,
+	 * each at its own override: a self buff in its duration and an aura that is
+	 * on are never interrupted, a strike whose weapon stands in the ground is not,
+	 * and a projectile skill whose one shot is already in the air has nothing
+	 * left to lose.
+	 */
+	virtual bool CanBeInterruptedByAHit() const { return IsActive(); }
+
+	/**
 	 * Whether a use of this skill delivers damage itself, through its own hits
 	 * or ground, and so spends next-use charges. Issue #1833, phase 2.
 	 *
