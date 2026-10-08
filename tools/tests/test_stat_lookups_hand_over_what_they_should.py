@@ -89,6 +89,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: stores, each asked where its store fills and where it is spent.
 #: The class resource generation rate added one more on 2026-10-07, asked by
 #: the one helper every gain of class resource goes through.
+#: Overheal becoming a temporary absorb added one more on 2026-10-07, the cap
+#: of what overheal may fill, asked where a heal of health did not all fit.
 CALL_SITES = 64
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -596,6 +598,12 @@ INVENTORY = {
         "the cap of the store of absorbed spell damage, asked of the wearer as "
         'it is stored and as the next attack spends it; a share of the hit, '
         'not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(OverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f'):
+        "the most the temporary absorb can hold from overheal (ruled "
+        "2026-10-07), asked of the healed character by NoteOverheal where a "
+        "heal of health did not all fit; a heal is not a skill and has no "
+        "target, so no tags and no state",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(RendPercentStat), FGameplayTagContainer(), 0.0f'):
         "Rendering Blows' share, asked of the striker as a count of landed "

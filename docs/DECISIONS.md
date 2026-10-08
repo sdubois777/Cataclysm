@@ -2,6 +2,318 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-07 — Healing that does not fit in health is kept as the temporary absorb, up to a percentage of maximum health stated by a new stat, `overheal_absorb_percent_of_maximum_health`. Engine only; no row authored
+
+**Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was
+written before that run. One Python dry run was made by the writing session and is described
+under "What the row needs".
+
+**Said first: health regeneration does NOT fill the absorb. Every other heal that goes through the ordinary top-up
+does, leech included.** Ruled 2026-10-07 by the coordinating session, a labelled judgement under the owner's
+delegation. It replaces that session's first default, "leech and regeneration included", which it gave before it
+was known that regeneration calls the top-up every step, at full health too. As first written under that default,
+a wearer standing at full health gained absorb at its regeneration rate until the cap, so out of a fight the
+absorb was simply full. The reason recorded: "overheal converts" is a heal the character received beyond what
+fitted; counting regeneration would make the row a second shield that refills by itself, which the sentence does
+not promise. The alternative not taken, regeneration counting, is on the play-check list.
+
+**Also said first: "overheal" is measured where the heal stops, and that is not always maximum health.** A heal
+stops at the character's healing ceiling. For most characters that is maximum health. For a character who "cannot
+be healed above 50% of maximum health", or whose health is partly reserved, it is lower, and everything a heal
+offers above that point counts as overheal. This is a judgement by the writing session; see judgement 1.
+
+**Also said first: two Fervour heals do not reach the top-up when health is already full.**
+`UCataclysmFervour::RestoreHealthOnKill` and `RestoreHealthOnKillAtNoCost` return before they heal when health is
+at its ceiling. So a kill at full health gives no absorb from them. A kill below full health does, for the part
+that does not fit. They were not rerouted.
+
+### Said first: where the code did not match what the writing session was told
+
+1. **The generator needed no change.** The brief expected generator bookkeeping for a new stat with no attribute.
+   A stat with no attribute and a base of nought needs none: the generator reads the engine's list,
+   `UCataclysmPlayerClassStats::StatsWithNoAttribute`, out of the C++ source, and a `flat` row supplies its own
+   stat. `class_resource_generation` changed the generator only because it has a base of 100, which goes in
+   `ENGINE_SUPPLIED_BASES`. This stat has no base. What did need a change in Python is the inventory of stat
+   lookups, `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, which lists every call of
+   `StatForSkill`.
+2. **`ApplyPoolAction` is not public.** A test cannot call it. The test of a row's restore sets a pool action
+   and raises its event, which is how the game reaches it.
+3. **Not every heal that passes through the top-up always reaches it.** The two Fervour heals above return early
+   at full health. Everything else in the table below that passes through the top-up always calls it.
+
+### What was found in the code before writing
+
+- **Where the overheal is known.** Only inside `UCataclysmRegeneration::TopUp` (`CataclysmRegeneration.cpp`). It
+  returns nothing, so no caller knows how much fitted. One caller, Living Pyre, reads health before and after to
+  find out.
+- **In which units.** Points of health. `TopUp` holds `Gain`, the amount offered, and computes
+  `Restored = min(Gain, Ceiling - Current)`. The overheal is `Gain` less `Restored`.
+- **Whether the heal is seen before it is clamped.** Yes. At the line where the helper is called, `Gain` has not
+  been clamped to the ceiling. It HAS already been changed by two things that change a heal's size:
+  `healing_received` (Reaper's Embrace's "10% more life from all sources") and `healing_received_reduction` with
+  the Disease rider. So the overheal is counted after those. A heal of 100 under a 50% reduction offers 50.
+- **Two early returns come before that line.** A character holding a swing whose row forbids healing is offered
+  nothing. A character whose healing is reduced by the full 100% is offered nothing. Neither leaves overheal.
+- **The ceiling is `HealthHealingCeiling`.** Maximum health, less the healing ceiling's reduction, and never above
+  what reservation leaves.
+- **How a stat that changes what a heal does is stated today.** `healing_received` is a stat with no attribute,
+  registered in `StatsWithNoAttribute`, read inside `TopUp`. `class_resource_generation` is a stat with no
+  attribute read by one helper on the ability system component at each gain. The caps of the two stores of
+  absorbed damage are stats with no attribute and no base, read with `StatForSkill(..., 0.0f)`. This layer
+  follows the last of those.
+- **The previous layer's amount.** `GrantTemporaryAbsorb` keeps the larger of what is held and the grant.
+  `AddTemporaryAbsorbUpTo(Amount, Cap)` adds, to no more than `Cap`, and never lowers. `ClearWhatDeathEnds`
+  empties it. All three are public.
+
+### What it is for
+
+One sentence in `game/Data/EnchantmentsPositive.csv`, verbatim:
+
+"Overheal converts to a temporary shield absorbing up to 10%-20% of your max HP"
+
+Its row name starts `Positive_Overheal_converts_to_a_temporary_shield_absorbin`. No effect row exists and none
+is written here. This change builds what the row needs.
+
+### The owner's decision, 2026-10-07
+
+The project owner, to the coordinating session, on whether the health-sized shield is the energy shield: "Yeah
+it's separate". So the shield of this sentence is the temporary absorb of the entry below, and is not the energy
+shield.
+
+### Rulings, each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-07
+
+1. **Judgement of the coordinating session: one amount.** The clock's grant and overheal fill the same temporary
+   absorb. Each source raises it to its own cap and never lowers it. Two cases follow:
+   - A character holding 25% of maximum health from the clock gains nothing from overheal capped at 20%.
+   - A character holding 20% from overheal is raised to 25% by the clock.
+2. **Judgement of the coordinating session: the sentence's rolled value, 10 to 20, is the most the absorb can
+   hold from overheal,** as a percentage of maximum health.
+3. **Judgement of the coordinating session: every heal that goes through the ordinary top-up counts, leech
+   included, EXCEPT the character's own health regeneration.** Heals that do not go through the top-up are not
+   rerouted and do not count. A respawn's refill must not count. (First given as "leech and regeneration
+   included"; replaced the same day, see the top of this entry.)
+4. **Judgement of the coordinating session: no duration.** "Temporary" is not a timer. The absorb lasts until
+   damage removes it or a respawn clears it, as the clocked grant does.
+5. **Judgement of the coordinating session: how the row is stated was left to the writing session,** the smallest
+   form that fits the existing data shapes. The proposal is under "What the row needs".
+
+### Every way health is raised, and whether this layer counts it
+
+Found by searching `game/Source` for callers of `TopUp` and for writes of the health attribute
+(`SetNumericAttributeBase`, `ApplyModToAttribute`, `SetHealth`), tests left out. The search is not a proof that
+nothing else raises health.
+
+"Counted" means: when the amount offered does not all fit, the part that does not fit is added to the temporary
+absorb of the character healed, if that character carries the stat.
+
+| Way health is raised | Function | Passes through `TopUp` | Counted |
+|---|---|---|---|
+| Health regeneration | `UCataclysmRegeneration::ApplyStep` | Yes | NO, by ruling. Known by the tag `Keyword.Regeneration` it carries |
+| Life leech | `UCataclysmLeech::PayOutStep` | Yes | Yes |
+| A potion's heal over time | `UCataclysmPotions::HealStep` | Yes | Yes |
+| A row's restore of the pool `health` | `UCataclysmAbilitySystemComponent::ApplyPoolAction` | Yes | Yes |
+| Living Pyre: health from a blow taken | `UCataclysmAuraSkill::NoteBlowTaken` | Yes | Yes |
+| Fervour spent for health on a kill | `UCataclysmFervour::RestoreHealthOnKill` | Only when health is below its ceiling; at the ceiling it returns first | Only below the ceiling |
+| Health on a kill at no cost | `UCataclysmFervour::RestoreHealthOnKillAtNoCost` | Only when health is below maximum; at maximum it returns first | Only below maximum |
+| A row that heals enemies near the wearer | `UCataclysmAbilitySystemComponent::ActOnNearby` | Yes, on the enemy healed | Yes for the enemy, which carries no such stat today |
+| A creature healing its allies | `UCataclysmEnemyModifiers::HealAlliesPulse` | Yes, on the creature healed | Yes for the creature, which carries no such stat today |
+| Leech Spores and Necrotic Ground, on creatures | `ACataclysmDungeonGameMode::StepLeechSpores`, `StepNecroticGround` | Yes, on the creature healed | Yes for the creature, which carries no such stat today |
+| A respawn's refill | `ACataclysmPlayerCharacter::Revive` | No. It writes the attribute | **No.** Ruling 3 |
+| The first fill of the pools when class stats are applied | `UCataclysmPlayerClassStats::ApplyTo` | No. It writes the attribute | No. It is not a heal: it fills a new character |
+| A taken thrall set to full health | `UCataclysmCommand::Subjugate` | No. It writes the attribute | No. Not rerouted. The thrall is a creature |
+| A creature healed by a sacrifice | `UCataclysmEnemyModifiers::TimedStep` | No. It writes the attribute | No. Not rerouted. A creature |
+| Health scaled when a feeder's maximum is raised | `ACataclysmDungeonGameMode::StrengthenTheFeeders`, `StrengthenTheEater` | No | No. The maximum moves and health moves with it. A creature |
+| A creature that cannot be hurt held at full health | `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` | No | No. Not a heal |
+| A minion or a second self given its health when made | `ACataclysmMinion::Spawn`, `UCataclysmSecondSelf::Step` | No | No. Not a heal |
+
+A restore of mana or of the energy shield also passes through `TopUp`. It is not a heal of health and is not
+counted, however far it overflows.
+
+### How it is built
+
+- **The stat.** `overheal_absorb_percent_of_maximum_health`,
+  `UCataclysmAbilitySystemComponent::OverhealAbsorbCapStat`. No gameplay attribute and no base. Registered in
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute`.
+- **The helper.** `UCataclysmAbilitySystemComponent::NoteOverheal(Overheal)`. It asks the stat with no tags and a
+  fallback of nought. At nought it does nothing. Otherwise it calls
+  `AddTemporaryAbsorbUpTo(Overheal, maximum health x stat / 100)`.
+- **The one call.** In `UCataclysmRegeneration::TopUp`, for the health pool only, directly before the return that
+  a full character leaves by. It passes `Gain` less what fits under the ceiling.
+- **Nothing else changed.** The previous layer's amount, its order before the energy shield, the bar segment and
+  the sheet note are as they were. The absorb from overheal is drawn and spent exactly as the clocked one.
+
+### For the owner's play-check
+
+No row exists yet, so none of this can be seen in play until one is written.
+
+- A wearer at full health who is healed gains a pale gold segment on the shield bar, as large as the healing that
+  did not fit. Further healing makes it larger, up to 10% to 20% of maximum health as rolled, and no further.
+- **Regeneration does not fill it.** Standing at full health with nothing healing the character, the segment does
+  not grow. The alternative not taken: regeneration counting, under which the segment would refill by itself
+  whenever health is full.
+- **Reserved health and a lowered healing ceiling.** Overheal is measured where healing stops, not at maximum
+  health. A character whose health is reserved, or whose healing is capped below maximum, keeps as absorb
+  everything a heal offers above that point.
+- **Leech fills it.** At full health, leech that would have been wasted becomes absorb.
+- **A potion fills it,** for the part of each step that does not fit.
+- A heal that fits wholly inside missing health gives no absorb.
+- Hits shrink the gold segment before the energy shield or health moves.
+- **Two sources, one amount, case one.** A character holding 25% of maximum health from the 12 second clock
+  gains nothing from overheal capped at 20%.
+- **Two sources, one amount, case two.** A character holding 20% from overheal is raised to 25% at the next
+  12 second mark.
+- There is no timer on it. Out of a fight it stays.
+- After a death and respawn the segment is gone, and the respawn's refill does not bring it back.
+- **To check: two worn copies add their caps.** The row is a `flat` line, and flat lines on one stat add. Two
+  items rolled at 15 and 20 give a cap of 35% of maximum health.
+- **To check: a character with a healing ceiling.** With "cannot be healed above 50% of maximum health", a
+  character at half health keeps every heal as absorb. With most of its health reserved, the same. See
+  judgement 1.
+- **To check: a Masochist's Fervour.** Healing that becomes absorb restores no health, so it removes no Fervour.
+  That is unchanged from today, where the same healing is wasted.
+
+### Judgements by the writing session
+
+Each was a judgement by the writing session, for the coordinating session to confirm. **All were confirmed on
+2026-10-07 as labelled judgements under the owner's delegation.** That health written directly is not counted was
+found by search and not by proof.
+
+1. **Overheal is what was offered less what fitted under the healing ceiling,** not what would pass maximum
+   health. A judgement by the writing session, for the coordinating session to confirm. The other reading counts
+   only healing above maximum health; a character with a lowered ceiling would then almost never gain absorb.
+   The reading built is the one the top-up already computes.
+2. **Overheal is counted after `healing_received` and after reduced healing.** A judgement by the writing
+   session, for the coordinating session to confirm. It is the amount that would have arrived, not the amount
+   the source stated.
+3. **A heal that is refused leaves no overheal.** A judgement by the writing session, for the coordinating
+   session to confirm. A held swing that forbids healing, and healing reduced by 100%, each offer nothing.
+4. **The cap is a percentage of the whole maximum health,** not of what reservation leaves. A judgement by the
+   writing session, for the coordinating session to confirm. The clock's grant is measured the same way.
+5. **The stat is asked with no tags.** A judgement by the writing session, for the coordinating session to
+   confirm. A heal is not a skill. A row with Required Tags would never apply.
+6. **Two worn copies add their caps.** A judgement by the writing session, for the coordinating session to
+   confirm. It is what a `flat` line does, and no code was added to stop it.
+7. **The two Fervour heals on a kill are left as they are.** A judgement by the writing session, for the
+   coordinating session to confirm. They give no absorb at full health because they return before the top-up.
+   Changing that would mean charging Fervour for a heal that restores nothing.
+8. **A creature would gain absorb too, if it ever carried the stat.** A judgement by the writing session, for the
+   coordinating session to confirm. The helper asks nothing about who is healed. No creature carries the stat.
+9. **The stat's name,** `overheal_absorb_percent_of_maximum_health`. A judgement by the writing session, for the
+   coordinating session to confirm.
+10. **No upper bound on the stat.** A judgement by the writing session, for the coordinating session to confirm.
+    The generator does not bound a stat row's value, and the engine does not clamp the cap.
+
+### Research
+
+No source was read. The five rulings fixed the shape: one amount, the value as a cap, which heals count, no
+duration, and one stat. What is specific to this game and could not be read off another: that this game's heals
+all stop at a ceiling that reservation and a keystone can lower, and that its regeneration runs at full health.
+
+### Tests
+
+Seven Unreal automation tests, appended to `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, group
+`Cataclysm.OverhealAbsorb.`. None has been compiled or run. Every amount is compared with a control.
+
+- `AHealLargerThanTheMissingHealthLeavesTheOverhealAsAnAbsorbOnTheWearerOnly`. A heal of 500 on characters
+  missing 300. The control gains 300 and holds nothing. The wearer gains the same and holds 200.
+- `AnOverhealLargerThanTheCapLeavesExactlyTheStatsShareOfMaximumHealth`. Ruling 2. At 20 the wearer holds a
+  fifth of maximum health; at 10, a tenth. The control holds nothing.
+- `ItAddsAcrossHealsUpToTheCapAndNoFurther`. Four heals of 700 at full health: 700, 1,400, the cap, the cap. A
+  heal after damage adds and does not refill to the cap.
+- `AHealThatFitsWhollyWithinMissingHealthGivesNoAbsorb`. Then the same wearer, at full health, keeps a heal.
+- `HoldingMoreThanTheCapFromAGrantAnOverhealChangesNothing`. Ruling 1, the first case, against a second wearer
+  that holds nothing and keeps the same heal. The second case is tested too.
+- `LeechAndARowsRestoreFillItAndRegenerationAndAnEnergyShieldRestoreDoNot`. Ruling 3. Leech through
+  `UCataclysmLeech::PayOutStep` and a row through a pool action and its event fill it. Regeneration through
+  `UCataclysmRegeneration::ApplyStep` does not: a control half empty shows the step restores health, and the
+  wearer at full health holds nothing after one step and after three; then the same wearer, still at full
+  health, is paid a leech of 300 and holds 300. An energy shield restore that overflows gives nothing.
+- `ARespawnsRefillGivesNoAbsorb`. A real player character is killed and revived. The control is the same wearer
+  healed through the top-up before the death and after the respawn.
+
+One probe, `ProbeOverhealAbsorb`, in `CataclysmStatExemptionTests.cpp`: the test
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails by name for a stat on the list with no
+probe.
+
+Python: one entry in `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, for the one
+new call of `StatForSkill`.
+
+### Not covered by a test
+
+- **A potion.** `UCataclysmPotions::HealStep` calls the same top-up; no test drinks one.
+- **The two Fervour heals on a kill, and Living Pyre.**
+- **A character with a healing ceiling or reserved health.** Judgement 1 has no test.
+- **`healing_received` and reduced healing.** Judgement 2 has no test.
+- **A held swing that forbids healing.** Judgement 3 has no test.
+- **Two worn copies.** Judgement 6 has no test.
+- **The loader.** No test wears a real row, because none exists.
+- **Regeneration on a real timer.** The test calls each step by hand.
+
+### What the row needs, for the session that writes rows
+
+One row in the Enchantment Effects sheet, for `Positive_Overheal_converts_to_a_temporary_shield_absorbin`:
+
+| Column | Value |
+|---|---|
+| Effect | the sentence, as the Enchantments sheet has it |
+| Stat | `overheal_absorb_percent_of_maximum_health` |
+| Value Kind | `flat` |
+| Value Low | 10 |
+| Value High | 20 |
+| Action, Action Event | empty. This is a stat row, not an action |
+| Required Tags | empty. The stat is asked with no tags, so a scoped row would never apply |
+
+A Condition may be stated; it is judged at each heal.
+
+A row of this shape was put through `gen.enchantment_effects` and `gen.validate_enchantment_effects` in a
+temporary workbook on 2026-10-07, with the sentence added to that workbook's Enchantments sheet. Both accepted
+it. That run did not touch the real workbook or `game/Data/`, and it does not show what the asset import does.
+
+The rows change should add a test that wears the real row. It should also ask whether the enchantment keeps the
+tag `Stat.Defense.EnergyShield`: `game/Data/EnchantmentsPositive.csv` gives it the tags `Type.Heal,
+Keyword.Shield, Stat.Defense.EnergyShield`, and the owner's decision is that this shield is not the energy
+shield.
+
+### Run
+
+One window on 2026-10-07 for a stack of four, at `feat/overheal-becomes-absorb` 78b4806d: the attacker on dodge with
+`strike_target`, the trap counts and the armour reading, the temporary absorb, and overheal, in that order.
+Development was f0295305. One attempt; nothing was corrected during it. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 33 actions, 30 files compiled` |
+| Whole Unreal suite | `3319 tests performed, 3319 succeeded, 0 failed`; `Declared: 3319 tests in the tree at 78b4806d; 3319 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5865 passed, 8 skipped in 352.47s`; JUnit `tests="5873" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+**This is the first whole-suite run of development f0295305's content with nothing failed.**
+
+**How the four layers were written and checked.** A second session wrote each under a brief carrying the rulings.
+The registering session read each one's game-code changes and every assertion of its tests before the window, and
+found none that would pass with its behaviour absent. Not read line by line by the registering session: the
+overlay's text and fraction functions for the absorb, the character sheet note's code, the trap layer's Python
+changes, and the overheal probe; their tests passed.
+
+**Guard proofs, at 78b4806d, each with one anchor counted and the source hash the same before and after, each PROVED:
+failed with the break in and passed with it out.** No break failed to compile. Each count of failed assertions is
+the one registered before the run.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| Oa | `CataclysmRegeneration.cpp`: nothing is offered as overheal | `Cataclysm.OverhealAbsorb.AHealLargerThanTheMissingHealthLeavesTheOverhealAsAnAbsorbOnTheWearerOnly` | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| Ob | `CataclysmAbilitySystemComponent.cpp`: the cap is twice the stat's share | `Cataclysm.OverhealAbsorb.AnOverhealLargerThanTheCapLeavesExactlyTheStatsShareOfMaximumHealth` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| Oc | `CataclysmRegeneration.cpp`: regeneration counts as overheal | `Cataclysm.OverhealAbsorb.LeechAndARowsRestoreFillItAndRegenerationAndAnEnergyShieldRestoreDoNot` | 1 performed, 1 failed, 3 failed assertions: the wearer held 50.000000 against nought after one step of regeneration and 150.000000 after three, and the leech control read 450.000000 against 300.000000 | 1 performed, 1 succeeded |
+
+**A reading the run settled.** The respawn test gives a real player the stat by hand and expects it still to hold
+after the respawn. Whether a respawn rebuilds a player's stat lines was not known before the run; the test passed
+as written.
+
+**Not run:** a potion, the two Fervour kill heals, a lowered healing ceiling or reserved health, two worn copies;
+the row read from the effect table, since no row exists.
+
+---
+
 ## 2026-10-07 — A temporary absorb, separate from the energy shield and taken before it, and a new action, `temporary_absorb`, that grants it on the clock that counts only in combat. Engine and generator only; no row authored
 
 **Built and run on 2026-10-07; the figures are under "Run" at the end of this entry.** The rest of this entry was

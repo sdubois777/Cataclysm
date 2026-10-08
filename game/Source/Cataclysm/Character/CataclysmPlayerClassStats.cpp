@@ -280,6 +280,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 2026-10-07.
 		TEXT("shield_absorbed_damage_added_to_next_attack_cap_percent"),
 		TEXT("spell_absorbed_damage_added_to_next_attack_cap_percent"),
+		// The most the temporary absorb can hold from overheal, as a percentage
+		// of maximum health, read by
+		// UCataclysmAbilitySystemComponent::NoteOverheal where
+		// UCataclysmRegeneration::TopUp finds a heal of health did not all fit.
+		// Ruled 2026-10-07. No gameplay attribute and no base.
+		TEXT("overheal_absorb_percent_of_maximum_health"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
