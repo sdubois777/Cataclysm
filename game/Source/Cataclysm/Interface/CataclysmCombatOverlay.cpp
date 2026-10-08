@@ -61,6 +61,7 @@ const TCHAR* UCataclysmCombatOverlay::HealthFillHex = TEXT("C0392B");
 const TCHAR* UCataclysmCombatOverlay::FollowerHealthFillHex = TEXT("3FA34D");
 const TCHAR* UCataclysmCombatOverlay::HealthReservedHex = TEXT("4A1712");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
+const TCHAR* UCataclysmCombatOverlay::TemporaryAbsorbFillHex = TEXT("E8D9A0");
 const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
 const TCHAR* UCataclysmCombatOverlay::FervourFillHex = TEXT("C7398D");
 const TCHAR* UCataclysmCombatOverlay::ReservedFervourHex = TEXT("5E1C43");
@@ -215,7 +216,12 @@ FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 	// ROUNDED, BUT NEVER ROUNDED AWAY. See FigureFor: any damage at all prints
 	// at least 1, because "0" already means the defence stopped the whole blow.
 	const int32 ToHealth = FigureFor(Outcome.DealtToHealth);
-	const int32 ToShield = FigureFor(Outcome.AbsorbedByShield);
+	// THE TEMPORARY ABSORB IS COUNTED WITH THE SHIELD'S FIGURE HERE AND NOWHERE
+	// ELSE. A judgement by the writing session: a damage number has one bracket
+	// for what was absorbed, and a blow the absorb took whole would otherwise
+	// print "0", which means the defences stopped it.
+	const int32 ToShield =
+		FigureFor(Outcome.AbsorbedByShield + Outcome.AbsorbedByTemporary);
 	const int32 ToMana = FigureFor(Outcome.AbsorbedByMana);
 
 	if (ToHealth > 0)
@@ -280,7 +286,8 @@ FLinearColor UCataclysmCombatOverlay::ColourFor(
 		return ColourFromHex(ReachedHealthHex);
 	}
 
-	if (Outcome.AbsorbedByShield > 0.0f || Outcome.AbsorbedByMana > 0.0f)
+	if (Outcome.AbsorbedByShield > 0.0f || Outcome.AbsorbedByMana > 0.0f
+		|| Outcome.AbsorbedByTemporary > 0.0f)
 	{
 		return ColourFromHex(AbsorbedHex);
 	}
@@ -296,7 +303,7 @@ bool UCataclysmCombatOverlay::ShowsCriticalStrike(
 	// cannot be drawn large and marked while its colour says nothing arrived.
 	return Outcome.bWasCritical
 		&& (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
-			|| Outcome.AbsorbedByMana > 0.0f);
+			|| Outcome.AbsorbedByMana > 0.0f || Outcome.AbsorbedByTemporary > 0.0f);
 }
 
 float UCataclysmCombatOverlay::ScaleFor(const FCataclysmIncomingHit& Hit,
@@ -825,6 +832,36 @@ float UCataclysmCombatOverlay::HealthReservedOf(const AActor* Actor)
 	const UCataclysmAbilitySystemComponent* Reserving =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
 	return Reserving ? Reserving->HealthReserved() : 0.0f;
+}
+
+float UCataclysmCombatOverlay::TemporaryAbsorbOf(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Absorbing =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	return Absorbing ? FMath::Max(0.0f, Absorbing->TemporaryAbsorbHeld()) : 0.0f;
+}
+
+float UCataclysmCombatOverlay::AbsorbSegmentFractionFor(float Absorb, float MaxShield)
+{
+	if (Absorb <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return Absorb / (FMath::Max(0.0f, MaxShield) + Absorb);
+}
+
+FString UCataclysmCombatOverlay::ShieldBarTextFor(float Shield, float MaxShield, float Absorb)
+{
+	if (Absorb <= 0.0f)
+	{
+		return PoolTextFor(Shield, MaxShield);
+	}
+
+	// NEVER ROUNDED AWAY, the rule `FigureFor` follows for a damage number.
+	const int32 AbsorbFigure = FigureFor(Absorb);
+	return MaxShield > 0.0f
+		? FString::Printf(TEXT("%s  +%d absorb"), *PoolTextFor(Shield, MaxShield), AbsorbFigure)
+		: FString::Printf(TEXT("%d absorb"), AbsorbFigure);
 }
 
 bool UCataclysmCombatOverlay::ShieldOf(const AActor* Actor, float& OutShield,

@@ -2468,6 +2468,11 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	StoredShieldAbsorbedDamage = 0.0f;
 	StoredSpellAbsorbedDamage = 0.0f;
 
+	// AND THE TEMPORARY ABSORB. Ruled 2026-10-07: it has no duration and lasts
+	// until damage removes it. A judgement by the writing session that a respawn
+	// empties it: it is temporary, and this function removes what is temporary.
+	TemporaryAbsorb = 0.0f;
+
 	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
 	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
 	// same ruling: every character, The Reckoning included. That keystone's debt
@@ -3676,6 +3681,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_ba
 const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction =
 	TEXT("explode_victim_for_overkill");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
+const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 
@@ -4262,6 +4268,30 @@ void UCataclysmAbilitySystemComponent::NoteSpellAbsorbedDamage(float WouldHaveDe
 		return;
 	}
 	StoredSpellAbsorbedDamage += WouldHaveDealt;
+}
+
+void UCataclysmAbilitySystemComponent::GrantTemporaryAbsorb(float Amount)
+{
+	// REFRESHED, NEVER ADDED. Ruled 2026-10-07. The larger of the two, so a
+	// grant never lowers what is held.
+	if (Amount > 0.0f)
+	{
+		TemporaryAbsorb = FMath::Max(TemporaryAbsorb, Amount);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::AddTemporaryAbsorbUpTo(float Amount, float Cap)
+{
+	if (Amount > 0.0f && Cap > 0.0f)
+	{
+		TemporaryAbsorb =
+			FMath::Max(TemporaryAbsorb, FMath::Min(TemporaryAbsorb + Amount, Cap));
+	}
+}
+
+void UCataclysmAbilitySystemComponent::SpendTemporaryAbsorb(float Taken)
+{
+	TemporaryAbsorb = FMath::Max(0.0f, TemporaryAbsorb - FMath::Max(0.0f, Taken));
 }
 
 float UCataclysmAbilitySystemComponent::SpendStoredAbsorbedDamage(float HitDamage)
@@ -5414,6 +5444,19 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
 	float EventAmount)
 {
+	// A TEMPORARY ABSORB IS NOT A POOL OF TWO ATTRIBUTES, so it is granted here,
+	// before the pair is asked for. The project owner, 2026-10-07: it is separate
+	// from the energy shield. The row's value is a percentage of MAXIMUM HEALTH,
+	// whatever its Fraction Of would say; the generator refuses a row that states
+	// one. See `GrantTemporaryAbsorb`.
+	if (Action.bTemporaryAbsorb)
+	{
+		GrantTemporaryAbsorb(
+			GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+				* Action.Percent / 100.0f);
+		return;
+	}
+
 	FGameplayAttribute Held;
 	FGameplayAttribute Maximum;
 	if (!PoolAttributesFor(Action.Pool, Held, Maximum))

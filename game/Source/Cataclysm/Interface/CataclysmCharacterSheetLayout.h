@@ -214,6 +214,13 @@ public:
 	static FString Percent(float Value);
 
 	/**
+	 * The note beside the energy shield's line while a temporary absorb is held, or empty. The project owner,
+	 * 2026-10-07: it is separate from the energy shield. A note and not a line of its own, for the reason health's
+	 * reserved note gives: the sheet's lines are the simulation's list.
+	 */
+	static FString TemporaryAbsorbNote(float Held);
+
+	/**
 	 * Whether this stat is read as a percentage.
 	 *
 	 * PER STAT AND NOT BY GUESSING FROM THE NAME. Which of the 46 are

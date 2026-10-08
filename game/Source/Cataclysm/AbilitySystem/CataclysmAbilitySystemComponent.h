@@ -1064,6 +1064,13 @@ public:
 	 */
 	static const TCHAR* StrikeTargetAction;
 
+	/**
+	 * The action that grants its wearer a temporary absorb, with the value as a percentage of the wearer's maximum
+	 * health. The project owner, 2026-10-07: it is separate from the energy shield. `tools/generate_datatables.py`
+	 * holds the same name as `TEMPORARY_ABSORB_ACTION`. See `FCataclysmPoolAction::bTemporaryAbsorb`.
+	 */
+	static const TCHAR* TemporaryAbsorbAction;
+
 	/** The share a backfire deals its user, in per cent: "dealing half damage to you". */
 	static constexpr float BackfireSharePercent = 50.0f;
 
@@ -1339,6 +1346,34 @@ public:
 	/** What each store holds now, for the line above the skill bar. */
 	float StoredShieldAbsorbedDamageNow() const { return StoredShieldAbsorbedDamage; }
 	float StoredSpellAbsorbedDamageNow() const { return StoredSpellAbsorbedDamage; }
+
+	/**
+	 * Give this character a TEMPORARY ABSORB of `Amount`: damage it takes before the mana, the energy shield and
+	 * health. The project owner, 2026-10-07: it is separate from the energy shield and is not the energy shield.
+	 *
+	 * A GRANT REFRESHES AND NEVER ADDS, ruled 2026-10-07: holding less than `Amount`, the character then holds
+	 * `Amount`. HOLDING AS MUCH OR MORE, NOTHING CHANGES, a judgement by the writing session: a grant never lowers
+	 * what is held.
+	 *
+	 * NO DURATION, ruled the same day. It lasts until damage removes it. `ClearWhatDeathEnds` empties it at the
+	 * respawn. Nothing regenerates it, nothing leeches into it, and it has no maximum of its own.
+	 *
+	 * A PLAIN NUMBER HERE AND NOT AN ATTRIBUTE, as the two stores of absorbed damage above are. It is not replicated.
+	 */
+	void GrantTemporaryAbsorb(float Amount);
+
+	/**
+	 * Add `Amount` to the temporary absorb, to no more than `Cap` in all, and never lowering what is held. For a
+	 * LATER layer that this change does not build: "Overheal converts to a temporary shield absorbing up to 10%-20%
+	 * of your max HP", whose cap is that share of maximum health. Nothing calls it yet outside a test.
+	 */
+	void AddTemporaryAbsorbUpTo(float Amount, float Cap);
+
+	/** Take `Taken` from the temporary absorb, to no less than nothing. Called where a resolved blow is written. */
+	void SpendTemporaryAbsorb(float Taken);
+
+	/** What the temporary absorb holds now. */
+	float TemporaryAbsorbHeld() const { return TemporaryAbsorb; }
 
 	/** The shield rate this character's last regeneration step gave it, per
 	 *  second, which Shared Blood's minions share. Issue #1515. */
@@ -3405,6 +3440,9 @@ protected:
 
 	/** What absorbed spells would have dealt, kept for the next attack. See `SpellAbsorbedAddedCapStat`. */
 	float StoredSpellAbsorbedDamage = 0.0f;
+
+	/** The temporary absorb, separate from the energy shield. See `GrantTemporaryAbsorb`. */
+	float TemporaryAbsorb = 0.0f;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;
