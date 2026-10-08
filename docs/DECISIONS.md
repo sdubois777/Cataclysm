@@ -1930,6 +1930,37 @@ sentence**, by the Python test named above, and were carried through; `refuse_a_
 **`Scale Step` must be 1.** A step of 14, the metres of the longest charge, is refused: the scale has no distance
 per step. **The `spell_damage` row adds nothing to any charge skill today**, as said first.
 
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. The build, the whole suite and the Python of record are in the table of the entry of the same day on the
+retirement of "Can’t use a basic attack" and were run with this layer in the stack. **The ids are the commits as they stood when each step ran.** It was the first time the C++ of this layer was
+compiled.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all seven layers, the first compile of this layer's code and tests | 58367e1f | Build: Succeeded - 34 actions, 31 files compiled |
+| Whole suite, every asset built | cee98975 | 3401 tests performed, 3401 succeeded, 0 failed |
+| Proof C1, a walked blow is told the whole range in place of the walk so far | cee98975 | PROVED: with the break in, 8 tests performed, 5 succeeded, 3 failed: `AWalkedChargePaysEachBlowForTheWalkSoFarSoAnEnemyMetEarlyGetsLessThanOneMetLate`, `AChargeThatOvershootsItsRangeGetsTheWholeFigureAndNoMore` and `TheHitAlongTheChargesPathAndTheExplosionsAtBothEndsGetNothingFromTheShareRow`, 7 failed assertions; restored, 8 of 8 |
+| Proof C2, a charge that moves at once is told its whole range | cee98975 | PROVED: 8 performed, 1 failed: `AChargeThatMovesAtOnceIsPaidForTheShareOfItsRangeItCoveredAndNothingAtNoughtMetres`, 2 failed assertions; restored, 8 of 8 |
+| Proof C3, the share is not capped at the whole | cee98975 | PROVED: 8 performed, 2 failed: `AChargeThatOvershootsItsRangeGetsTheWholeFigureAndNoMore` and `TheShareOfRangeMovedIsAFractionOfTheRowsValueCappedAtTheWholeAndNoughtWhenEitherFigureIsUnknown`, 2 failed assertions; restored, 8 of 8 |
+
+**What the run showed that the writing session could only read: the control at nought metres for a charge that
+moves at once holds.** A charge to a target 1.5 metres directly above the charger covered no ground, struck it,
+and dealt the blow with no row. **Still covered by no test**: the putting back of the two figures after a blow.
+
+**The three proofs were each as stated before they ran.** C1 was stated as the walked test, with at least 5
+failed assertions and other tests allowed to fail; it failed 5 in that test and 1 in each of the two others the
+writing session had named, every reading 1.6 where the walk so far gave less. C2 failed the half-range reading
+(1.6 where 1.3 was expected) and the control at nought metres (1.6 where 1.0). C3 failed "the whole figure, no
+more" (1.9) and "more than the range is still the whole value and no more" (90). The proof that the hit along
+the path is told no distance was not run, as ruled: its test covers it. For every proof the broken file's hash
+was the same after as before.
+
+**No proof was run for**: the distance being filled by mode; the range being the range the skill used; the hit
+along the path and the explosions carrying nothing; the generator's refusals. Each is tested and passed; none is
+proved.
+
 ---
 
 ## 2026-10-08 — "Enemies with Necrosis have 1%-2% less maximum health" and "Summoned minions inherit 10%-25% of your armor and resistances" are built as rows
