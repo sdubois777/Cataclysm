@@ -313,6 +313,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// cast delay before firing". Seconds, not a flag; a figure below nought
 		// adds nothing. No gameplay attribute and no base.
 		TEXT("blow_delay_seconds"),
+		// The share of this character's armour and resistances each of its
+		// minions takes, in percent, read from the summoner by
+		// UCataclysmDamageCalculation::Resolve at each blow a minion takes, with
+		// the minion's own type tags. Ruled 2026-10-08: "Summoned minions
+		// inherit 10%-25% of your armor and resistances". A percentage of two
+		// figures the summoner already has. No gameplay attribute and no base.
+		TEXT("minion_defences_percent_of_yours"),
 		// Shared Blood's share of the summoner's maximum energy shield that each
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
