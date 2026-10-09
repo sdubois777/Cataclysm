@@ -42,9 +42,11 @@ step is written, by `docs/Save_System_Design.md` section 5: a field added with a
 version bump. Once the game can load a save that exception is gone, and the same change would need a version
 and a step.
 
-**Said first: `docs/Save_System_Design.md` was not changed.** Its table "What raises each trigger today" still
-says nothing raises the change of floor; `ACataclysmDungeonGameMode::GoToFloor` has raised it since the stairs
-were built. That line was wrong before this layer and is left for the coordinating session.
+**Said first: one row of `docs/Save_System_Design.md` was changed, by ruling, after the layer was written.** Its
+table "What raises each trigger today" said nothing raises the change of floor;
+`ACataclysmDungeonGameMode::GoToFloor` has raised it since the stairs were built, so the row was wrong before
+this layer. The coordinating session ruled it corrected in this layer; the row now names the two callers of
+`SetFloor`. Nothing else in that document was changed.
 
 ### The owner's words
 
@@ -76,6 +78,25 @@ back where they were.
      the floor number is the same in the second case, with the early return changed only as far as that needs;
    - leaving or entering a dungeon stores the flag clear;
    - no loader is built while none exists; the fields are made ready for one.
+
+**Rulings on the layer as written**, each a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-09, made after it read the passages named:
+
+- The two fields sit on the floor's record. Approved.
+- Leaving a dungeon tells the save only when the dungeon is left from the dark floor. Approved. **What this layer
+  does not do:** it does not tell the save that nobody is in a dungeon. After a dungeon is left the record still
+  names that dungeon and its last floor, as it did before this layer.
+- The edit to the committed file `Run_v1.json`, and no version bump. Approved, on `docs/Save_System_Design.md`,
+  "Adding a field with a sensible default is not a version bump", and on the fixtures' README, which allows a
+  fixture to be edited to match a field added to its record until something loads a save.
+- One row of the table "What raises each trigger today" in `docs/Save_System_Design.md` is corrected in this
+  layer, and that row only. It said nothing calls `SetFloor` because nothing in the game has floors, which was
+  false before this layer. It now names the two callers, read from the code: `GoToFloor`, and
+  `LeaveEmpireDungeon` when the dungeon is left from the dark floor.
+- The three guard proofs below are registered as written, with predictions of 7, 3 and 6 failed assertions. All
+  three name the same test; that is accepted because the three breaks are in three different lines.
+- If the save writer turns out not to be writing in a test world, a change to the tests alone before the whole
+  suite is covered by this ruling, and is reported.
 
 ### What was read before writing
 
