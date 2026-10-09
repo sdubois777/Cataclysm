@@ -149,6 +149,13 @@ the readings they name. The writing session read the drop code of ruling 18 agai
     barrier's cell has no section and is never parted from a statue.
 20. **Not covered**: the hunt is not tested by a warden walking; the test asserts sight distance.
 21. **The three guard proofs are approved as candidates.**
+22. **`AngelicStatues` is named in the Python check's safe list and is not read by `CellsTheFloorHolds`**:
+    approved.
+23. **A statue is marked woken before its warden is spawned, so a failed spawn is not retried**: approved. If
+    the spawn fails, that statue's pillar is gone, no warden stands, and nothing tries again.
+24. **`PlaceAnAngelicStatueOn` is public so that a test can place a statue**: approved.
+25. **Tests remove a warden's enemy modifiers and recompute its figures before killing it**: approved. A warden
+    carrying an enemy modifier is therefore not killed in any test.
 
 ### What was read before writing
 
@@ -300,7 +307,7 @@ as an Elite does. The floor panel reads "angelic wardens: N statues standing, M 
 ### Judgements by the writing session
 
 Each is a judgement by the writing session, for the coordinating session to confirm. Those marked approved were
-approved by the ruling named. The others (5, 6, 8 and 9) are not named in a ruling.
+approved by the ruling named.
 
 1. **"M awake" counts the woken wardens that still stand.** Approved, ruling 19. A slain warden is not
    counted. The ruling gives the
@@ -318,16 +325,19 @@ approved by the ruling named. The others (5, 6, 8 and 9) are not named in a ruli
    has no statue. Approved, ruling 19. Its panel line then reads "0 statues standing, 0 awake". Not measured:
    how often a cell is
    refused.
-5. **`AngelicStatues` is not read by `CellsTheFloorHolds`.** It is named in the Python check's list of kept
+5. **`AngelicStatues` is not read by `CellsTheFloorHolds`.** Approved, ruling 22. It is named in the Python
+   check's list of kept
    cells that are safe unheld, with the reason: a standing statue's cell is Solid in the plan, which placement
    refuses before it asks what is held, and a woken statue's cell is ordinary floor.
 6. **A statue is marked woken before its warden is raised**, so a statue whose warden could not be spawned is
-   gone and does not try again. The Reaper is raised once in the same way.
+   gone and does not try again. Approved, ruling 23. The Reaper is raised once in the same way.
 7. **The player's skill is measured from where the player stood** (`Notice.Location`), not from where the
    skill was aimed. Approved, ruling 19. The ruling says "with the player within 12 metres".
-8. **`PlaceAnAngelicStatueOn` is public** so a test can place a statue on a cell it chose. The rule's own
+8. **`PlaceAnAngelicStatueOn` is public** so a test can place a statue on a cell it chose. Approved, ruling
+   24. The rule's own
    placement goes through it, so a test's statue is asked the same question.
-9. **A test puts a warden's modifier rows aside before it kills it**, after asserting what it drew. Thorns of
+9. **A test puts a warden's modifier rows aside before it kills it**, after asserting what it drew.
+   Approved, ruling 25. Thorns of
    Glass, Beguiling and Shielder each change what one blow does, and the draw is random.
 10. **On a Horde arena a later wave whose floor does not carry the row keeps the arena's statues.** Approved,
     ruling 19. They still wake, and that wave shows no panel line. Nothing was built to change it.
@@ -432,6 +442,10 @@ None was run. The three are approved as candidates (ruling 21). Each line is cou
 - A loaded save: the save writer was not read, so what a save restores of statues and wardens is not known.
 - The warden's drops, and that picking one up does not count toward Trick or Treat. Read from the code
   (ruling 18); no test drops or takes one.
+- A warden's spawn failing. The statue is marked woken first (ruling 23), so if the spawn fails, that statue's
+  pillar is gone, no warden stands, and nothing tries again. No test makes a spawn fail.
+- A warden killed while it carries an enemy modifier. Every test that kills a warden first removes its enemy
+  modifiers and recomputes its figures (ruling 25), so a warden carrying one is not killed in any test.
 - A charge, a blink, a knockback or a leap that ends on a statue's cell. That code was not read. A statue is
   the same actor as a Heaven's Quake pillar and a section barrier's pillar, so it stops what those stop.
 - Whether the navigation mesh under a woken statue's cell is walkable again before the warden first asks for
