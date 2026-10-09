@@ -4235,7 +4235,15 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 	}
 	const float Pinned = CVarCooldownResetRoll.GetValueOnAnyThread();
 	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-	if (Roll >= Action.Percent)
+	// A CHANCE OF 100 IS ALWAYS, compared rather than rolled, because
+	// `FRandRange` can return 100 itself and a roll equal to the chance fails.
+	// Four authored rows state no chance and are written as 100. Issue #2201.
+	// The same guard is on a use's outcome and on a held skill triggered, in
+	// `ActOnEvent`, and it is the one a repeated skill's roll has there.
+	//
+	// A CHANCE BELOW 100 IS AS IT WAS: a roll equal to it fails, so a chance of
+	// 40 succeeds on rolls from 0 up to but not 40.
+	if (Action.Percent < 100.0f && Roll >= Action.Percent)
 	{
 		return 0;
 	}
@@ -5414,7 +5422,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				const float Pinned = CVarUseOutcomeRoll.GetValueOnAnyThread();
 				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-				if (Roll < Action.Percent)
+				// A CHANCE OF 100 IS ALWAYS, compared rather than rolled, as a repeated skill's is above and for
+				// the reason given there. No authored row states 100 here yet. Issue #2201; see also
+				// `RollAndResetCooldowns`. A chance below 100 is as it was: a roll equal to it fails.
+				if (Action.Percent >= 100.0f || Roll < Action.Percent)
 				{
 					if (Action.bUseDealsNoDamage)
 					{
@@ -5466,7 +5477,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				const float Pinned = CVarTriggerHeldSkillRoll.GetValueOnAnyThread();
 				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-				if (Roll < Action.Percent)
+				// A CHANCE OF 100 IS ALWAYS, compared rather than rolled, as a repeated skill's is above and for
+				// the reason given there. No authored row states 100 here yet. Issue #2201; see also
+				// `RollAndResetCooldowns`. A chance below 100 is as it was: a roll equal to it fails.
+				if (Action.Percent >= 100.0f || Roll < Action.Percent)
 				{
 					PendingHeldTriggerUsedName = SkillInHandName;
 					PendingHeldTriggerAimPoint = SkillInHandAim;
