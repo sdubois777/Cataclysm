@@ -1117,6 +1117,82 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — "Can’t use a basic attack" is retired by the owner, and "Your HP regeneration continues at 50% effectiveness during combat" already was
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one Weight cell of the Enchantments sheet),
+`game/Data/EnchantmentsNegative.csv` and its asset. No row is written, no engine code and no generator code is
+changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+- **A retired sentence stays in the table and is never drawn.** Its Weight is 0, and the draw skips a row whose
+  draw weight is nought (`UCataclysmDropRoll::RollEnchantments`). An item that already carries it keeps it.
+- **Ten Unreal tests draw enchantments from the real tables with a fixed seed and assert properties of what came
+  out.** None asserts WHICH drawback a seed draws. Taking one row out of the draw changes what each of those
+  seeds draws, and reading cannot say whether a threshold tips; the window's run is what shows it. See the
+  window's run below.
+- **No other Weight was changed.** The owner's standing rule is that Weights are not changed; these two
+  sentences are the owner's own exception.
+
+### THE OWNER'S WORDS, 2026-10-08, as relayed by the coordinating session
+
+| Sentence | Asked | The owner |
+| :-- | :-- | :-- |
+| Your HP regeneration continues at 50% effectiveness during combat (benefit) | The design document says health regeneration runs at its full rate in combat, so the sentence's premise is gone: reword or retire? | "retire it" |
+| Can’t use a basic attack (drawback) | The skill lock exempts the basic attack by name, because a player with every slot refused and no basic attack cannot act: lift the exemption for this row, or retire? | "Retire it" |
+
+### WHAT WAS DONE
+
+- **"Your HP regeneration continues at 50% effectiveness during combat" was already at Weight 0** in the
+  workbook before this entry, so nothing was changed for it. This entry records the owner's decision.
+- **"Can’t use a basic attack": its Weight goes from 2 to 0.** One cell. The generator's `is_retired`
+  (`tools/generate_datatables.py`) reads an ordinary enchantment at weight 0 as retired, and
+  `tools/tests/test_enchantment_weight_row_counts.py` allows such a row through that same function.
+
+### THE COUNT OF SENTENCES WITHOUT A ROW, RESTATED
+
+Measured by script over `game/Data/` with this change in: 575 sentences; 483 have a row; **92 have none, and 3
+of the 92 are retired at weight 0**: "Your HP regeneration continues at 50% effectiveness during combat" and
+"Class points spent in your primary tree are 10%-20% more effective", which were at 0 before this entry, and
+"Can’t use a basic attack", retired here. A fourth sentence at weight 0, "100% of your block value is added to
+your retaliation damage", has a row.
+
+### Tests
+
+**No test was added.** The retired row is still named by eight Unreal tests as "a drawback with no effect";
+they place it on an item directly and do not draw it. The Python suite was run on a copy with the cell changed
+before this was authored and no check objected.
+
+**Not tested here:** that the sentence is never drawn. The draw's skip of a weight of nought is tested by the
+tests of the draw, on other rows.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window of seven layers, on top of the four layers of the first mechanism window, which sat
+on `development` c17bda32 and were not merged when this ran. **The ids are the commits as they stood when each step ran.** This table carries the steps the seven layers share.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of all seven layers, the first compile of the three mechanism layers and of every test in the stack | 58367e1f | Build: Succeeded - 34 actions, 31 files compiled |
+| Cataclysm.Enchantments. against the assets built before any change of the stack, at that build | 58367e1f | 301 tests performed, 297 succeeded, 4 failed, the four row tests of the stack; 8 failed assertions, each stated before the run |
+| The enchantment assets, regenerated with the editor, the drawbacks' table among them | e6e7ac52 | "Can’t use a basic attack" at weight 0; effect rows 572, unchanged |
+| Whole suite, every asset built | cee98975 | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3401 tests performed, 3401 succeeded, 0 failed. 40 skipped part of what they check; 3401 tests in the tree, 3401 performed, gap 0 |
+| Python of record, continuous integration idle | cee98975 | 5910 passed, 8 skipped in 401.15s; JUnit tests 5918, failures 0, errors 0, skipped 8 |
+| Lint | cee98975 | All checks passed! |
+
+**Every step was as stated before it ran, and each was run once.**
+
+**What reading could not settle, the run did: the ten tests that draw enchantments from the real tables with a
+fixed seed all passed with the row retired.** They were stated before the run as a prediction, with
+`EveryCompleteSetCanBeDrawnAndNotJustSome`, `SetsShareTheWeightOneBandRatherThanAddingAFifth` and
+`ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` named as the likeliest to fail if it was wrong. In the step
+against the older assets the retired row was still at weight 2, so the whole suite was the first run with it out
+of the draw.
+
+**This layer changes no engine code and no generator code, so it has no guard proof.**
+
+---
+
 ## 2026-10-08 — Two sentences on a hit that cuts a skill short are built as two rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
