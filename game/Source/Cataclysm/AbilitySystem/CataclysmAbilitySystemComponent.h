@@ -856,8 +856,10 @@ public:
 	 * cooldowns it names. Issue #1833, the cooldown reset action.
 	 *
 	 * THE ROLL IS 0 TO 100 AND A ROLL BELOW THE CHANCE SUCCEEDS, the rule the
-	 * cooldown skip already follows, so a chance of 100 always succeeds. The
-	 * console variable `Cataclysm.CooldownResetRoll` pins it for tests.
+	 * cooldown skip already follows. A CHANCE OF 100 ALWAYS SUCCEEDS BECAUSE IT
+	 * IS COMPARED AND NOT ROLLED, since issue #2201: the roll can be 100 itself,
+	 * and a roll equal to the chance fails. The console variable
+	 * `Cataclysm.CooldownResetRoll` pins it for tests.
 	 *
 	 * A cooldown is a duration effect granting its slot's `Cooldown.*` tag
 	 * (`UCataclysmGameplayAbility::ApplyCooldown`), so clearing one is removing
