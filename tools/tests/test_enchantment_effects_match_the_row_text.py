@@ -319,7 +319,11 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
     # own row's sentence uses, so each is needed by a row.
-    "cooldown_reset_all": {"reset": 100.0},
+    # AND "REFRESHED" IS 100 ON `cooldown_reset_all`, for Divine Retribution's
+    # ten-piece bonus, "all of your skills are instantly refreshed": the same
+    # reasoning, a sentence that refreshes and states no chance refreshes every
+    # time. Needed by that row and by no other.
+    "cooldown_reset_all": {"reset": 100.0, "refreshed": 100.0},
     "cooldown_reset_others": {"resets": 100.0},
     "cooldown_reset_special": {"reset": 100.0},
     "cooldown_reset_heavy": {"resets": 100.0},
@@ -806,8 +810,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 575 over 486: two rows on one enchantment.
 #: AND 579 OVER 489 SINCE THE FIRST-HIT AILMENTS ROW AND CHRONOMANCER'S SIX-PIECE,
 #: issue #1833, 2026-10-08, from 577 over 487: two rows on two enchantments.
-AUTHORED_ROWS = 579
-AUTHORED_ENCHANTMENTS = 489
+#: AND 580 OVER 490 SINCE DIVINE RETRIBUTION'S TEN-PIECE ROW,
+#: issue #1833, 2026-10-09, from 579 over 489: one row on one enchantment.
+AUTHORED_ROWS = 580
+AUTHORED_ENCHANTMENTS = 490
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

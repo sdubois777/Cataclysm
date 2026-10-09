@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — Divine Retribution's ten-piece bonus is reworded from 10 seconds to 5 and built as one row: a block refreshes every skill, at most once in five seconds
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one sentence of the Enchantments sheet and one row of the
+Enchantment Effects sheet), `game/Data/EnchantmentsPositive.csv`, `game/Data/EnchantmentEffects.csv` and their
+assets, `game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp` (one alias),
+`tools/tests/enchantment_row_names.txt` (one renamed row), one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts and
+one word), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS IS LESS THAN THE SENTENCE SAYS, IN THREE WAYS
+
+- **No stack is counted.** The sentence says a stack of 'Sanctified Power' is gained every 5 seconds and that a
+  block consumes all stacks. The row is the block and a wait: a block refreshes every skill, and no other block
+  does so for the next five seconds. Nothing in the game holds a count named Sanctified Power, and nothing a
+  player can read shows one.
+- **A block in the first five seconds refreshes.** By the sentence a wearer has no stack until five seconds have
+  passed. By the row the first block refreshes at once.
+- **The last sentence, "The bonus is permanent for the rest of the dungeon", is not built.** Nothing was ruled
+  on what it means, and the row does nothing for it.
+- **The reword renames the row**, because a row's name is made from the first 48 characters of its sentence and
+  "Every 10 se" became "Every 5 sec". A saved item that carries the old name is pointed at the new one by one
+  line of the alias table the save loader follows; the pin file beside the rename check holds the pair.
+- **The test wears the set and blocks real blows.** It does not use a skill; it reads each slot's cooldown.
+
+### WHAT THE OWNER SAID
+
+On 2026-10-08, asked what the ten-piece bonus should do when the game counts no stack: "Make it every 5
+seconds". On 2026-10-09, asked whether to leave the sentence at 10 or change it, with the coordinating session's
+recommendation to change it to 5: "your rec on all the open questions".
+
+**The new sentence, ruled verbatim by the coordinating session on 2026-10-09, changing one number of the
+workbook's cell and nothing else:**
+
+> Divine Retribution (10-Piece Bonus): Every 5 seconds, you gain a stack of 'Sanctified Power.' When you block
+> an attack, you consume all stacks of 'Sanctified Power' and all of your skills are instantly refreshed. The
+> bonus is permanent for the rest of the dungeon
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Divine Retribution (10-Piece Bonus): Every 5 seconds, you gain a stack of 'Sanctified Power.' ... | Action `cooldown_reset_all` on `block`, value 100, Trigger Cooldown 5 |
+
+EnchantmentEffects 579 to 580, over 489 to 490 enchantments. No engine code and no generator code is changed.
+
+**One word joins a check.** "refreshed" is 100 on `cooldown_reset_all` in `STATED_BY_WORD` of
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, beside "reset": the sentence states no chance, so
+it refreshes every time. Approved by the coordinating session on 2026-10-08. **This is a change to what a check
+accepts.**
+
+**A stated 100 does not fail its roll here.** The cooldown reset is compared and not rolled at 100, since the
+entry of 2026-10-08 "A row that states a chance of 100 never fails its roll".
+
+### Tests
+
+- `Cataclysm.Enchantments.DivineRetributionTenPiecesMakeABlockRefreshEverySkillOnceInFiveSeconds`: ten pieces
+  worn, every slot put on a thirty-second cooldown, the block roll pinned so every blow is blocked. A real
+  blocked blow leaves no slot waiting, the ultimate's among them. With the slots on cooldown again, a blocked
+  blow four seconds later refreshes nothing, and one six seconds after the first refreshes them all. With nine
+  pieces a blocked blow refreshes nothing.
+
+**Not tested here:** a skill used after the refresh; a block by a wearer whose skills are not on cooldown; the
+alias on a loaded save, which the alias table's own checks hold.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — An ailment chance of 100 never fails its roll, at the two rolls of a landed blow: the stun roll and the roll for every other ailment
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp` (two comparisons, their comments, and
