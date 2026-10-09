@@ -173,6 +173,28 @@ public:
 	static const TCHAR* CooldownLengtheningStat;
 
 	/**
+	 * The stat that makes a skill's cooldown RECOVER FASTER, whatever other cooldown reduction the character holds.
+	 * Issues #1820 and #41, ruled 2026-10-08 for the dungeon rule Fragmented Reality: "cooldowns recover 50% faster"
+	 * means a cooldown takes its length divided by 1.5, for a character with other reduction as for one with none.
+	 *
+	 * A THIRD STAT, NOT MORE `cooldown_reduction`. That stat's rows are added to each other before they divide, so 50
+	 * more of it divides a cooldown by 1.5 only for a character holding none. This one is a divisor of its own:
+	 *
+	 *     Final cooldown = Base x (1 + lengthening) / ((1 + reduction) x (1 + recovery))
+	 *
+	 * It is the `MoreMultiplier` of `UCataclysmCombatAttributeSet::FinalCooldown`, which nothing fed until this.
+	 *
+	 * ITS ROWS ARE FLAT AND ARE ADDED TO EACH OTHER. No class supplies a base, so the flat rows summed are the
+	 * percentage: two sources of 50 divide by 2, not by 2.25. A sum below nought divides by 1 and lengthens nothing;
+	 * lengthening is `CooldownLengtheningStat`'s job.
+	 *
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::CooldownAfterReduction`, with the skill's tags. A COOLDOWN
+	 * ALREADY RUNNING IS NOT CHANGED when this stat changes: a cooldown's length is worked out once, as it is
+	 * committed.
+	 */
+	static const TCHAR* CooldownRecoveryStat;
+
+	/**
 	 * The tag marking that this slot is waiting to be used again.
 	 *
 	 * Invalid for the Basic Attack and the Aura, which is correct rather than

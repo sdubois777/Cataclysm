@@ -195,3 +195,27 @@ def test_the_cooldown_lookup_asks_for_the_lengthening_and_floors_it(
     assert "CooldownLengthFactor(" in body, (
         "CooldownAfterReduction no longer applies the lengthening through "
         "CooldownLengthFactor, which is where it is floored at nought")
+
+
+def test_the_cooldown_lookup_asks_for_the_recovery_and_divides_by_it(
+        ability_code: str) -> None:
+    """A cooldown divides by a second figure, asked for here. Issues #1820 and #41.
+
+    BOTH HALVES OR NEITHER, as for the lengthening above. `cooldown_recovery`
+    is what the dungeon rule Fragmented Reality writes for "cooldowns recover
+    50% faster". Asking for it and not handing it to `FinalCooldown` would
+    change nothing; the third argument of that call is the only place it
+    divides. The floor keeps a negative sum from lengthening a cooldown by a
+    second route. The automation tests measure the numbers.
+    """
+    body = body_of(ability_code,
+                   "float UCataclysmGameplayAbility::CooldownAfterReduction(",
+                   "CataclysmGameplayAbility.cpp")
+    assert "CooldownRecoveryStat" in body, (
+        "CooldownAfterReduction no longer asks for cooldown_recovery, so the "
+        "dungeon rule Fragmented Reality's faster cooldowns change nothing")
+    call = " ".join(body[body.index("FinalCooldown("):].split())
+    call = call[:call.index(";")]
+    assert "FMath::Max(Recovery, 0.0f)" in call, (
+        "the figure asked for cooldown_recovery is no longer handed to "
+        "FinalCooldown floored at nought; the call now reads: " + call)

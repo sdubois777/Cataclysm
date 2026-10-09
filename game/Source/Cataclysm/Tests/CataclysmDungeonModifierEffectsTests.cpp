@@ -53191,4 +53191,1265 @@ bool FCataclysmDarkSaveEnteringTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Fragmented Reality. Issues #1820 and #41. `Chaos_Fragmented_Reality`: "Certain sections of the dungeon are
+// "Fragmented." When you enter one, your stats are randomly scrambled. For example, your power might be increased
+// but your defenses are halved, or your health is doubled but you can no longer use skills."
+//
+// Ruled 2026-10-08 by the coordinating session under the owner's delegation: on a Halls floor in sections one
+// section that does not hold the entrance is Fragmented; entering it draws one of four pairs, which holds until the
+// player leaves and is drawn again on each entry. On a floor with no sections the row does nothing.
+//
+// EVERY FLOOR IN SECTIONS IS FOUND BY A SEARCH OVER DUNGEON SEEDS, asserted as set-up, as the Lightforged Walls tests
+// find theirs. THE FLOOR'S CREATURES ARE CLEARED AWAY, so nothing hurts the player and every health figure is the
+// test's own. THE PLAYER IS A REAL CHARACTER WITH CLASS LINES, so every figure read from it is compared with a
+// control read from it in the same test, outside the section. THE PAIR IS FORCED by
+// `ForceFragmentedRealityPairForTests` in the four tests of one pair each and asserted as set-up; the seeded draw is
+// pinned by the figures test and followed on a real floor by the entries test.
+//
+// WHERE THE PLAYER STANDS IS SAID IN EACH TEST: on the middle of the entrance's cell, which is in section 0, or on
+// the middle of a free cell of the Fragmented section, never the exit's cell or one beside it. No creature stands.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the row whose one section scrambles the player's stats. Issues #1820, #41. */
+	const FName FragmentedRealityRow(UCataclysmDungeonModifierEffects::FragmentedRealityKey);
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString FragmentedRealityLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(FragmentedRealityRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** The section of the cell the player stands on now, or `INDEX_NONE`. */
+	int32 FragmentedSectionThePlayerIsIn(const ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		return Mode->FloorSectionsNow().SectionOf(
+			Plan, Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation()));
+	}
+
+	/** Stand the player on the middle of this cell, assert as set-up which section that cell is in, and beat once. */
+	bool FragmentedStandOn(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+						   FIntPoint Cell, int32 SectionWanted)
+	{
+		StandAt(Player, Mode->CurrentFloor->WorldOfCell(Cell));
+		if (!Test.TestEqual(FString::Printf(TEXT("set-up: the player stands on cell (%d, %d), which is in section %d"),
+											Cell.X, Cell.Y, SectionWanted),
+							FragmentedSectionThePlayerIsIn(Mode, Player), SectionWanted))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		return true;
+	}
+
+	/** The exit's cell and the eight around it, where the stairs are and no test stands the player. */
+	TArray<FIntPoint> FragmentedCellsByTheExit(const ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<FIntPoint> Cells;
+		const FIntPoint Exit = Mode->CurrentFloor->GetPlan().Exit;
+		for (int32 StepY = -1; StepY <= 1; ++StepY)
+		{
+			for (int32 StepX = -1; StepX <= 1; ++StepX)
+			{
+				Cells.Add(Exit + FIntPoint(StepX, StepY));
+			}
+		}
+		return Cells;
+	}
+
+	/**
+	 * Floor 2 of a Halls dungeon carrying only Fragmented Reality, on the first dungeon seed that gives it this many
+	 * sections, with its creatures cleared away. `ForcedPair` is the pair every entry draws, or `INDEX_NONE` for the
+	 * seeded draw. Answers a free cell of the Fragmented section, away from the exit, and the entrance's cell; and
+	 * asserts as set-up that a section is Fragmented, that the entrance is in section 0, and that no pair is in
+	 * force and no entry counted as the floor begins.
+	 */
+	bool AFragmentedFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Sections, int32 ForcedPair,
+						  FIntPoint& OutInside, FIntPoint& OutOutside)
+	{
+		const int32 NoPair = INDEX_NONE;
+		Mode->DungeonModifiers = {FragmentedRealityRow};
+		Mode->ForceFragmentedRealityPairForTests(ForcedPair);
+		if (!ASectionedFloor(Test, Mode, 2, Sections, Sections == 3 ? SectionFloorSeedsTried : TwoSectionFloorSeedsTried,
+							 /*bEveryBarrierClosed=*/false))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		OutOutside = Plan.Entrance;
+		OutInside = FIntPoint(-1, -1);
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: a section of the floor is Fragmented (%d)"), Fragmented),
+						   Fragmented != NoPair))
+		{
+			return false;
+		}
+		OutInside = AFreeCellOfSection(Mode, Fragmented, FragmentedCellsByTheExit(Mode));
+		return Test.TestTrue(TEXT("set-up: the Fragmented section has a free cell away from the exit"),
+							 OutInside != FIntPoint(-1, -1))
+			&& Test.TestEqual(TEXT("set-up: the entrance's cell is in section 0"),
+							  Mode->FloorSectionsNow().SectionOf(Plan, Plan.Entrance), 0)
+			&& Test.TestEqual(TEXT("set-up: no pair is in force as the floor begins"), Mode->FragmentedRealityPairNow(),
+							  NoPair)
+			&& Test.TestEqual(TEXT("set-up: and no entry is counted"), Mode->FragmentedRealityEntriesSoFar(), 0);
+	}
+
+	/**
+	 * What a stat of this base is worth under the dungeon-rule modifiers now held for the player on that stat: the
+	 * real stat pipeline, on a base the test chooses. A real player's resistances are nought and its attack damage
+	 * is its weapon's, so a More or a Less on them cannot be read as an amount from the player itself.
+	 *
+	 * A bare ability system on an actor with no place in the world, made and destroyed here.
+	 */
+	float FragmentedWorth(UWorld* World, const FPossessedPlayer& Player, const FName Stat, float Base)
+	{
+		AActor* Holder = World->SpawnActor<AActor>();
+		check(Holder);
+		UCataclysmAbilitySystemComponent* System = NewObject<UCataclysmAbilitySystemComponent>(Holder);
+		System->RegisterComponent();
+		System->InitAbilityActorInfo(Holder, Holder);
+
+		FCataclysmStatInputs Line;
+		Line.Base = Base;
+		if (const TArray<FCataclysmStatModifier>* Rules = Player.AbilitySystem->GetDungeonStatModifiers().Find(Stat))
+		{
+			Line.Modifiers = *Rules;
+		}
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.Add(Stat, Line);
+		System->SetStatInputs(MoveTemp(Inputs));
+		const float Worth = System->StatForSkill(Stat, FGameplayTagContainer(), Base);
+		Holder->Destroy();
+		return Worth;
+	}
+
+	/**
+	 * Give the player's stat line a flat cooldown reduction beside whatever it holds for the three cooldown stats,
+	 * and drop what it holds for every other stat. Enough for a skill's cooldown, which asks only those three; the
+	 * next refresh of the player's attributes puts the whole line back and takes this row off.
+	 */
+	void FragmentedGiveOtherReduction(const FPossessedPlayer& Player, float FlatPercent)
+	{
+		const TArray<FName> CooldownStats = {FName(TEXT("cooldown_reduction")),
+											 FName(UCataclysmSkillSlots::CooldownLengtheningStat),
+											 FName(UCataclysmSkillSlots::CooldownRecoveryStat)};
+		TMap<FName, FCataclysmStatInputs> Kept;
+		for (const FName& Stat : CooldownStats)
+		{
+			if (const FCataclysmStatInputs* Had = Player.AbilitySystem->GetStatInputs(Stat))
+			{
+				Kept.Add(Stat, *Had);
+			}
+		}
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = FlatPercent;
+		Kept.FindOrAdd(FName(TEXT("cooldown_reduction"))).Modifiers.Add(Row);
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Kept));
+	}
+
+	/** Whether this granted skill would activate now, by the question the engine asks before it spends anything. */
+	bool FragmentedMayActivate(const FPossessedPlayer& Player, const UCataclysmSkillTemplate* Skill)
+	{
+		return Skill != nullptr
+			&& Skill->CanActivateAbility(Skill->GetCurrentAbilitySpecHandle(),
+										 Player.AbilitySystem->AbilityActorInfo.Get());
+	}
+}
+
+// THE FIGURES, THE BUILT STATE, AND THE TWO SEEDED DRAWS WITH NO WORLD. The sequences were worked out by hand from
+// `FCataclysmFloorGenerator::SeedForFloor` and the two salts, so a change to either draw fails here. THE CONTROL for
+// each pair's fields and modifiers is the effects of no pair, which hold nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityFiguresTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityFiguresTheSeededDrawsAndTheRowIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	const int32 NoPair = INDEX_NONE;
+
+	TestEqual(TEXT("the key is the row's"), FString(Effects::FragmentedRealityKey),
+			  FString(TEXT("Chaos_Fragmented_Reality")));
+	TestTrue(TEXT("the row is among the rows with a rule"), Effects::KeysWithARule().Contains(FragmentedRealityRow));
+	TestEqual(TEXT("the row's state is Built"), static_cast<int32>(Effects::BuiltStateOf(FragmentedRealityRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	TestEqual(TEXT("four pairs"), Effects::FragmentedRealityPairs, 4);
+	TestEqual(TEXT("pair 1: 50% more damage"), Effects::FragmentedRealityDamageMorePercent, 50.0f);
+	TestEqual(TEXT("pair 1: armour and resistances 50% less"), Effects::FragmentedRealityDefencesLessPercent, 50.0f);
+	TestEqual(TEXT("pair 2: maximum health 100% more"), Effects::FragmentedRealityMaxHealthMorePercent, 100.0f);
+	TestEqual(TEXT("pair 3: 50% more movement speed"), Effects::FragmentedRealitySpeedMorePercent, 50.0f);
+	TestEqual(TEXT("pair 3: 30% less damage"), Effects::FragmentedRealityDamageLessPercent, 30.0f);
+	TestEqual(TEXT("pair 4: cooldowns recover 50% faster"), Effects::FragmentedRealityCooldownRecoveryMorePercent, 50.0f);
+	TestEqual(TEXT("pair 4: 30% less maximum health"), Effects::FragmentedRealityMaxHealthLessPercent, 30.0f);
+
+	// WHICH SECTION. None for a floor with no sections; the stairs' for two; and for three the figure of the seed.
+	TestEqual(TEXT("a floor with no sections has no Fragmented section"), Effects::FragmentedRealitySectionFor(0, 1234),
+			  NoPair);
+	TestEqual(TEXT("nor has a floor of one"), Effects::FragmentedRealitySectionFor(1, 1234), NoPair);
+	const TArray<int32> SectionsDrawn = {2, 2, 2, 1, 1, 2, 2, 2};
+	for (int32 Seed = 1; Seed <= SectionsDrawn.Num(); ++Seed)
+	{
+		TestEqual(FString::Printf(TEXT("with two sections and seed %d it is section 1, the stairs'"), Seed),
+				  Effects::FragmentedRealitySectionFor(2, Seed), 1);
+		TestEqual(FString::Printf(TEXT("with three sections and seed %d it is the section worked out by hand"), Seed),
+				  Effects::FragmentedRealitySectionFor(3, Seed), SectionsDrawn[Seed - 1]);
+		TestEqual(FString::Printf(TEXT("and seed %d asked again gives the same section"), Seed),
+				  Effects::FragmentedRealitySectionFor(3, Seed), Effects::FragmentedRealitySectionFor(3, Seed));
+	}
+
+	// WHICH PAIR. Eight entries on the floor of seed 1234, worked out by hand; three of the four pairs are among them.
+	const TArray<int32> PairsDrawn = {0, 3, 0, 0, 2, 2, 3, 1};
+	for (int32 Entry = 0; Entry < PairsDrawn.Num(); ++Entry)
+	{
+		TestEqual(FString::Printf(TEXT("entry %d on the floor of seed 1234 draws the pair worked out by hand"), Entry),
+				  Effects::FragmentedRealityPairFor(1234, Entry), PairsDrawn[Entry]);
+	}
+	TestEqual(TEXT("and the first entry on the floor of seed 77 draws another pair, worked out by hand"),
+			  Effects::FragmentedRealityPairFor(77, 0), 2);
+
+	// THE CONTROL: NO PAIR WRITES NOTHING AND GIVES NO MODIFIER.
+	FCataclysmPlayerFloorEffects Nothing;
+	Effects::WriteFragmentedRealityEffects(Nothing, NoPair);
+	TestTrue(TEXT("CONTROL: no pair leaves the effects empty"), Nothing.IsEmpty());
+	TestEqual(TEXT("CONTROL: and gives no modifier on any stat"), Effects::StatModifiersFor(Nothing).Num(), 0);
+	TestEqual(TEXT("CONTROL: and locks no skill"), Effects::FragmentedRealitySkillsLockedFor(NoPair), 0.0f);
+
+	const auto One =[this](const TMap<FName, TArray<FCataclysmStatModifier>>& All, const TCHAR* Stat,
+							ECataclysmStatBucket Bucket, float Value, const TCHAR* What)
+	{
+		const TArray<FCataclysmStatModifier> Found = ModifiersOn(All, Stat);
+		if (TestEqual(FString::Printf(TEXT("%s: one modifier on %s"), What, Stat), Found.Num(), 1))
+		{
+			TestTrue(FString::Printf(TEXT("%s: in the bucket meant on %s"), What, Stat), Found[0].Bucket == Bucket);
+			TestEqual(FString::Printf(TEXT("%s: worth the figure on %s"), What, Stat), Found[0].Value, Value, 0.001f);
+		}
+	};
+
+	// PAIR 1: 50% MORE ATTACK AND SPELL DAMAGE; ARMOUR AND ALL EIGHT RESISTANCES 50% LESS.
+	FCataclysmPlayerFloorEffects Power;
+	Effects::WriteFragmentedRealityEffects(Power, Effects::FragmentedRealityPowerForDefences);
+	const TMap<FName, TArray<FCataclysmStatModifier>> PowerRules = Effects::StatModifiersFor(Power);
+	One(PowerRules, TEXT("attack_damage"), ECataclysmStatBucket::More, 50.0f, TEXT("pair 1"));
+	One(PowerRules, TEXT("spell_damage"), ECataclysmStatBucket::More, 50.0f, TEXT("pair 1"));
+	One(PowerRules, TEXT("armor"), ECataclysmStatBucket::More, -50.0f, TEXT("pair 1"));
+	int32 ResistancesHalved = 0;
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		One(PowerRules, *Stat, ECataclysmStatBucket::More, -50.0f, TEXT("pair 1"));
+		++ResistancesHalved;
+	}
+	TestEqual(TEXT("pair 1: all eight resistances"), ResistancesHalved, 8);
+	TestEqual(TEXT("pair 1: and nothing else: two damage stats, armour and eight resistances"), PowerRules.Num(), 11);
+	TestEqual(TEXT("pair 1: no modifier on damage over time"), ModifiersOn(PowerRules, TEXT("dot_damage")).Num(), 0);
+	TestEqual(TEXT("pair 1: nor on minion damage"), ModifiersOn(PowerRules, TEXT("minion_damage")).Num(), 0);
+	TestEqual(TEXT("pair 1: locks no skill"),
+			  Effects::FragmentedRealitySkillsLockedFor(Effects::FragmentedRealityPowerForDefences), 0.0f);
+
+	// PAIR 2: MAXIMUM HEALTH 100% MORE; THE LOCK IS THE GAME MODE'S TO WRITE, FROM THIS FIGURE.
+	FCataclysmPlayerFloorEffects Health;
+	Effects::WriteFragmentedRealityEffects(Health, Effects::FragmentedRealityHealthForSkills);
+	const TMap<FName, TArray<FCataclysmStatModifier>> HealthRules = Effects::StatModifiersFor(Health);
+	One(HealthRules, TEXT("max_health"), ECataclysmStatBucket::More, 100.0f, TEXT("pair 2"));
+	TestEqual(TEXT("pair 2: and nothing else in the fields"), HealthRules.Num(), 1);
+	TestEqual(TEXT("pair 2: the lock's value is 1"),
+			  Effects::FragmentedRealitySkillsLockedFor(Effects::FragmentedRealityHealthForSkills), 1.0f);
+
+	// PAIR 3: 50% MORE MOVEMENT SPEED; 30% LESS ATTACK AND SPELL DAMAGE.
+	FCataclysmPlayerFloorEffects Speed;
+	Effects::WriteFragmentedRealityEffects(Speed, Effects::FragmentedRealitySpeedForDamage);
+	const TMap<FName, TArray<FCataclysmStatModifier>> SpeedRules = Effects::StatModifiersFor(Speed);
+	One(SpeedRules, TEXT("movement_speed"), ECataclysmStatBucket::More, 50.0f, TEXT("pair 3"));
+	One(SpeedRules, TEXT("attack_damage"), ECataclysmStatBucket::More, -30.0f, TEXT("pair 3"));
+	One(SpeedRules, TEXT("spell_damage"), ECataclysmStatBucket::More, -30.0f, TEXT("pair 3"));
+	TestEqual(TEXT("pair 3: and nothing else"), SpeedRules.Num(), 3);
+
+	// PAIR 4: A FLAT 50 ON cooldown_recovery; 30% LESS MAXIMUM HEALTH.
+	FCataclysmPlayerFloorEffects Cooldowns;
+	Effects::WriteFragmentedRealityEffects(Cooldowns, Effects::FragmentedRealityCooldownsForHealth);
+	const TMap<FName, TArray<FCataclysmStatModifier>> CooldownRules = Effects::StatModifiersFor(Cooldowns);
+	One(CooldownRules, TEXT("cooldown_recovery"), ECataclysmStatBucket::Flat, 50.0f, TEXT("pair 4"));
+	One(CooldownRules, TEXT("max_health"), ECataclysmStatBucket::More, -30.0f, TEXT("pair 4"));
+	TestEqual(TEXT("pair 4: and nothing else"), CooldownRules.Num(), 2);
+
+	// A PAIR THAT ENDED LEAVES NOTHING: pair 4 written over pair 1 holds pair 4's two figures only.
+	Effects::WriteFragmentedRealityEffects(Power, Effects::FragmentedRealityCooldownsForHealth);
+	TestEqual(TEXT("pair 4 written over pair 1 leaves pair 4's modifiers only"), Effects::StatModifiersFor(Power).Num(),
+			  2);
+	Effects::WriteFragmentedRealityEffects(Power, NoPair);
+	TestTrue(TEXT("and no pair written over that leaves the effects empty"), Power.IsEmpty());
+
+	// THE PANEL'S SIX LINES.
+	TestEqual(TEXT("the panel on a floor with no Fragmented section"),
+			  Effects::FragmentedRealityPanelLine(NoPair, NoPair),
+			  FString(TEXT("fragmented reality: this floor has no fragmented section")));
+	TestEqual(TEXT("the panel outside the section"), Effects::FragmentedRealityPanelLine(1, NoPair),
+			  FString(TEXT("fragmented reality: outside the fragmented section, nothing in force")));
+	TestEqual(TEXT("the panel inside under pair 1"),
+			  Effects::FragmentedRealityPanelLine(1, Effects::FragmentedRealityPowerForDefences),
+			  FString(TEXT("fragmented reality: inside, 50% more damage, armour and every resistance 50% less")));
+	TestEqual(TEXT("the panel inside under pair 2"),
+			  Effects::FragmentedRealityPanelLine(1, Effects::FragmentedRealityHealthForSkills),
+			  FString(TEXT("fragmented reality: inside, maximum health 100% more, skills locked, basic attack only")));
+	TestEqual(TEXT("the panel inside under pair 3"),
+			  Effects::FragmentedRealityPanelLine(2, Effects::FragmentedRealitySpeedForDamage),
+			  FString(TEXT("fragmented reality: inside, 50% more movement speed, 30% less damage")));
+	TestEqual(TEXT("the panel inside under pair 4"),
+			  Effects::FragmentedRealityPanelLine(2, Effects::FragmentedRealityCooldownsForHealth),
+			  FString(TEXT("fragmented reality: inside, cooldowns recover 50% faster, 30% less maximum health")));
+	return true;
+}
+
+// WHICH SECTION, ON REAL FLOORS. On four dungeon seeds whose floor 2 has three sections the Fragmented section is
+// never the entrance's, is the one the seeded rule names, and is the same when the floor is built again. With this
+// row alone the sections exist, no barrier stands, no pillar is raised and the floor places as many creatures as the
+// same floor without the row. With Lightforged Walls beside it the barriers stand. A floor of two sections fragments
+// the stairs' section. CONTROL: the same seed and floor without the row has no sections and no Fragmented section.
+//
+// WHERE EACH STANDS: the player at the entrance, where `GoToFloor` puts it; the floor's creatures where the floor
+// placed them. Nothing is moved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealitySectionTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityTheFragmentedSectionIsNeverTheEntrancesAndNoBarrierStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealitySectionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+
+	int32 FloorsOfThree = 0;
+	TSet<int32> SectionsSeen;
+	for (int32 Seed = 1; Seed <= SectionFloorSeedsTried && FloorsOfThree < 4; ++Seed)
+	{
+		Mode->DungeonModifiers = {FragmentedRealityRow};
+		Mode->DungeonSeed = Seed;
+		if (!Mode->GoToFloor(2) || Mode->FloorSectionsNow().SectionCount() != 3)
+		{
+			continue;
+		}
+		++FloorsOfThree;
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		const int32 PlanSeed = Plan.Seed;
+		const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+		const int32 EntranceSection = Mode->FloorSectionsNow().SectionOf(Plan, Plan.Entrance);
+		SectionsSeen.Add(Fragmented);
+		TestEqual(FString::Printf(TEXT("seed %d: set-up: the entrance is in section 0"), Seed), EntranceSection, 0);
+		TestTrue(FString::Printf(TEXT("seed %d: the Fragmented section (%d) is section 1 or 2"), Seed, Fragmented),
+				 Fragmented == 1 || Fragmented == 2);
+		TestTrue(FString::Printf(TEXT("seed %d: and is not the entrance's"), Seed), Fragmented != EntranceSection);
+		TestEqual(FString::Printf(TEXT("seed %d: it is the section the seeded rule names for the floor's seed"), Seed),
+				  Fragmented, Effects::FragmentedRealitySectionFor(3, PlanSeed));
+		TestEqual(FString::Printf(TEXT("seed %d: no barrier stands"), Seed), SectionBarriersStanding(Mode), 0);
+		TestEqual(FString::Printf(TEXT("seed %d: and no pillar is raised"), Seed), RaisedObstaclesInTheWorld(World), 0);
+		const FSectionCensus WithTheRow = CountTheSections(Mode);
+		TestTrue(FString::Printf(TEXT("seed %d: set-up: the floor placed creatures"), Seed), WithTheRow.Creatures > 0);
+		TestEqual(FString::Printf(TEXT("seed %d: no pair is in force at the entrance"), Seed),
+				  Mode->FragmentedRealityPairNow(), NoPair);
+
+		// THE SAME SEED AND FLOOR AGAIN.
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: set-up: the floor was built again"), Seed), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("seed %d: built again, the same section is Fragmented"), Seed),
+				  Mode->FragmentedRealitySectionNow(), Fragmented);
+
+		// WITH LIGHTFORGED WALLS BESIDE IT THE BARRIERS STAND, AND THE SAME SECTION IS FRAGMENTED.
+		Mode->DungeonModifiers = {FragmentedRealityRow, WallsRow};
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: set-up: the floor with both rows was reached"), Seed),
+					  Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		if (Mode->FloorSectionsNow().SectionCount() == 3)
+		{
+			TestTrue(FString::Printf(TEXT("seed %d: with Lightforged Walls too a barrier's pillars are raised"), Seed),
+					 RaisedObstaclesInTheWorld(World) > 0);
+			TestEqual(FString::Printf(TEXT("seed %d: and the same section is Fragmented"), Seed),
+					  Mode->FragmentedRealitySectionNow(), Fragmented);
+		}
+
+		// THE CONTROL: THE SAME SEED AND FLOOR WITHOUT EITHER ROW.
+		Mode->DungeonModifiers = {};
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: set-up: the floor without the row was reached"), Seed),
+					  Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: without the row the floor has no sections"), Seed),
+				  Mode->FloorSectionsNow().SectionCount(), 0);
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: and no Fragmented section"), Seed),
+				  Mode->FragmentedRealitySectionNow(), NoPair);
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: and no line on the panel"), Seed), FragmentedRealityLine(Mode),
+				  FString(TEXT("no line")));
+		TestEqual(FString::Printf(TEXT("seed %d: the row alone placed as many creatures as the floor without it"), Seed),
+				  WithTheRow.Creatures, CountTheSections(Mode).Creatures);
+	}
+	if (!TestEqual(FString::Printf(TEXT("set-up: four of dungeon seeds 1 to %d give floor 2 three sections"),
+								   SectionFloorSeedsTried),
+				   FloorsOfThree, 4))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("the four floors fragmented %d different section(s)"), SectionsSeen.Num()));
+
+	// A FLOOR OF TWO SECTIONS: THE STAIRS' SECTION.
+	Mode->DungeonModifiers = {FragmentedRealityRow};
+	if (!ASectionedFloor(*this, Mode, 2, 2, TwoSectionFloorSeedsTried, /*bEveryBarrierClosed=*/false))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& TwoPlan = Mode->CurrentFloor->GetPlan();
+	TestEqual(TEXT("two sections: set-up: the exit is in section 1"),
+			  Mode->FloorSectionsNow().SectionOf(TwoPlan, TwoPlan.Exit), 1);
+	TestEqual(TEXT("two sections: the Fragmented section is the stairs'"), Mode->FragmentedRealitySectionNow(), 1);
+	TestEqual(TEXT("two sections: no barrier stands"), SectionBarriersStanding(Mode), 0);
+	return true;
+}
+
+// A FLOOR WITH NO SECTIONS: THE ROW DOES NOTHING WHEREVER THE PLAYER STANDS. A Caverns floor, and a Halls floor
+// carrying Shadowy Enemies on a seed that has sections without that row. The pair is forced to the one that doubles
+// maximum health, so a pair wrongly drawn would show. CONTROL: the player's figures at the entrance of the same
+// floor, and the same Halls seed without Shadowy Enemies, which has a Fragmented section.
+//
+// WHERE THE PLAYER STANDS: at the entrance, then on three walkable cells at least 8 metres from it, never the
+// exit's; on the Shadowy floor, on the cell that was inside the Fragmented section without that row. No creature.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityNoSectionsTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityOnAFloorWithNoSectionsNothingChangesWhereverThePlayerStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityNoSectionsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->ForceFragmentedRealityPairForTests(Effects::FragmentedRealityHealthForSkills);
+
+	// CAVERNS.
+	Mode->DungeonModifiers = {FragmentedRealityRow};
+	Mode->Layout = ECataclysmFloorLayout::Caverns;
+	if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: it is Caverns"),
+					 Mode->CurrentFloor->GetPlan().Layout == ECataclysmFloorLayout::Caverns))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestEqual(TEXT("a Caverns floor has no sections"), Mode->FloorSectionsNow().SectionCount(), 0);
+	TestEqual(TEXT("and no Fragmented section"), Mode->FragmentedRealitySectionNow(), NoPair);
+	TestEqual(TEXT("the panel says so"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: this floor has no fragmented section")));
+	const float CavernsMaximum = Player.Read(Vital::GetMaxHealthAttribute());
+	const float CavernsSpeed = PlayerStat(Player, TEXT("movement_speed"));
+	const float CavernsArmour = PlayerStat(Player, TEXT("armor"));
+	if (!TestTrue(FString::Printf(TEXT("set-up: the player has maximum health to compare (%.1f)"), CavernsMaximum),
+				  CavernsMaximum > 1.0f))
+	{
+		return false;
+	}
+	const TArray<FVector> Places = RuleOfChaosFreePlaces(Mode, Player, 3);
+	if (!TestEqual(TEXT("set-up: three places to stand were found"), Places.Num(), 3))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Places.Num(); ++Index)
+	{
+		StandAt(Player, Places[Index]);
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("place %d: no pair is in force"), Index), Mode->FragmentedRealityPairNow(),
+				  NoPair);
+		TestEqual(FString::Printf(TEXT("place %d: no entry is counted"), Index), Mode->FragmentedRealityEntriesSoFar(),
+				  0);
+		TestEqual(FString::Printf(TEXT("place %d: maximum health is what it was at the entrance"), Index),
+				  Player.Read(Vital::GetMaxHealthAttribute()), CavernsMaximum, 0.01f);
+		TestEqual(FString::Printf(TEXT("place %d: movement speed is what it was"), Index),
+				  PlayerStat(Player, TEXT("movement_speed")), CavernsSpeed, 0.001f);
+		TestEqual(FString::Printf(TEXT("place %d: armour is what it was"), Index), PlayerStat(Player, TEXT("armor")),
+				  CavernsArmour, 0.001f);
+		TestFalse(FString::Printf(TEXT("place %d: no rule of the dungeon is on maximum health"), Index),
+				  DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")) != nullptr);
+	}
+
+	// HALLS WITH SHADOWY ENEMIES, ON A SEED THAT HAS A FRAGMENTED SECTION WITHOUT THAT ROW.
+	Mode->Layout = ECataclysmFloorLayout::Halls;
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealityHealthForSkills, Inside, Outside))
+	{
+		return false;
+	}
+	const int32 SeedFound = Mode->DungeonSeed;
+	if (!FragmentedStandOn(*this, Mode, Player, Inside, Mode->FragmentedRealitySectionNow()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: without Shadowy Enemies, standing on that cell draws the forced pair"),
+			  Mode->FragmentedRealityPairNow(), Effects::FragmentedRealityHealthForSkills);
+
+	Mode->DungeonModifiers = {FragmentedRealityRow, ShadowyRow};
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor with Shadowy Enemies was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestEqual(TEXT("with Shadowy Enemies the floor has no sections"), Mode->FloorSectionsNow().SectionCount(), 0);
+	TestEqual(TEXT("and no Fragmented section"), Mode->FragmentedRealitySectionNow(), NoPair);
+	TestEqual(TEXT("leaving the first floor ended its pair"), Mode->FragmentedRealityPairNow(), NoPair);
+	const float ShadowyMaximum = Player.Read(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("set-up: the cell that was inside is walkable on the same seed"),
+				  Mode->CurrentFloor->GetPlan().IsFloor(Inside)))
+	{
+		return false;
+	}
+	StandAt(Player, Mode->CurrentFloor->WorldOfCell(Inside));
+	Beat(Mode, 1);
+	TestEqual(TEXT("standing where the Fragmented section was, no pair is in force"), Mode->FragmentedRealityPairNow(),
+			  NoPair);
+	TestEqual(TEXT("and maximum health is what it was at this floor's entrance"),
+			  Player.Read(Vital::GetMaxHealthAttribute()), ShadowyMaximum, 0.01f);
+	TestEqual(TEXT("and the panel says the floor has no Fragmented section"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: this floor has no fragmented section")));
+	return true;
+}
+
+// PAIR 1: 50% MORE ATTACK AND SPELL DAMAGE; ARMOUR AND EVERY RESISTANCE HALVED. CONTROL: the same figures read outside
+// the section before entering and after leaving. Armour is read from the player, whose class gives it some.
+// Damage and resistances are read through `FragmentedWorth` on bases the test chooses: 100 for the two damage stats,
+// 40 for each resistance, and for one resistance also nought and minus 40.
+//
+// WHERE THE PLAYER STANDS: the entrance's cell (section 0), then a free cell of the Fragmented section, then the
+// entrance's cell again. No creature stands.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityPowerTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityPairOneGivesHalfAgainTheDamageAndHalvesArmourAndEveryResistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityPowerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!Mode || !AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealityPowerForDefences, Inside, Outside))
+	{
+		return false;
+	}
+	const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+	const FName Attack(TEXT("attack_damage"));
+	const FName Spell(TEXT("spell_damage"));
+	const FName OneResistance(*FirstResistanceStat());
+
+	// OUTSIDE: THE CONTROL.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	const float ArmourOutside = PlayerStat(Player, TEXT("armor"));
+	const float MaximumOutside = Player.Read(Vital::GetMaxHealthAttribute());
+	if (!TestEqual(TEXT("set-up: outside, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair)
+		|| !TestTrue(FString::Printf(TEXT("set-up: the player's class gives it armour to halve (%.2f)"), ArmourOutside),
+					 ArmourOutside > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: outside, attack damage of 100 is worth 100"), FragmentedWorth(World, Player, Attack, 100.0f),
+			  100.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: outside, spell damage of 100 is worth 100"), FragmentedWorth(World, Player, Spell, 100.0f),
+			  100.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: outside, a resistance of 40 is worth 40"),
+			  FragmentedWorth(World, Player, OneResistance, 40.0f), 40.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: outside, no rule of the dungeon is on the player's attack damage"),
+			  TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	// A BEAT INSIDE: BOTH HALVES.
+	if (!FragmentedStandOn(*this, Mode, Player, Inside, Fragmented)
+		|| !TestEqual(TEXT("set-up: inside, the forced pair 1 was drawn"), Mode->FragmentedRealityPairNow(),
+					  Effects::FragmentedRealityPowerForDefences))
+	{
+		return false;
+	}
+	TestEqual(TEXT("inside, attack damage of 100 is worth 150"), FragmentedWorth(World, Player, Attack, 100.0f), 150.0f,
+			  0.001f);
+	TestEqual(TEXT("inside, spell damage of 100 is worth 150"), FragmentedWorth(World, Player, Spell, 100.0f), 150.0f,
+			  0.001f);
+	TestEqual(TEXT("inside, the player's own stat line carries 50 more on attack damage"),
+			  TotemRuleOn(Player, TEXT("attack_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("and on spell damage"), TotemRuleOn(Player, TEXT("spell_damage")), 50.0f, 0.001f);
+	TestEqual(TEXT("inside, the player's armour is half what it was outside"), PlayerStat(Player, TEXT("armor")),
+			  0.5f * ArmourOutside, 0.01f);
+	int32 Resistances = 0;
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		TestEqual(FString::Printf(TEXT("inside, %s of 40 is worth 20"), *Stat.ToString()),
+				  FragmentedWorth(World, Player, Stat, 40.0f), 20.0f, 0.001f);
+		++Resistances;
+	}
+	TestEqual(TEXT("which was asked of all eight resistances"), Resistances, 8);
+	TestEqual(TEXT("inside, a resistance of nought stays nought"), FragmentedWorth(World, Player, OneResistance, 0.0f),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("inside, a resistance of minus 40 is worth minus 20: half the penalty"),
+			  FragmentedWorth(World, Player, OneResistance, -40.0f), -20.0f, 0.001f);
+	TestEqual(TEXT("inside, damage over time of 100 is still worth 100"),
+			  FragmentedWorth(World, Player, FName(TEXT("dot_damage")), 100.0f), 100.0f, 0.001f);
+	TestEqual(TEXT("inside, minion damage of 100 is still worth 100"),
+			  FragmentedWorth(World, Player, FName(TEXT("minion_damage")), 100.0f), 100.0f, 0.001f);
+	TestEqual(TEXT("inside, maximum health is what it was outside"), Player.Read(Vital::GetMaxHealthAttribute()),
+			  MaximumOutside, 0.01f);
+	TestEqual(TEXT("the panel names the pair"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: inside, 50% more damage, armour and every resistance 50% less")));
+
+	// A BEAT OUTSIDE: BOTH HALVES GONE.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("outside again, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("outside again, attack damage of 100 is worth 100"), FragmentedWorth(World, Player, Attack, 100.0f),
+			  100.0f, 0.001f);
+	TestEqual(TEXT("outside again, the player's stat line carries nothing on attack damage"),
+			  TotemRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("outside again, the player's armour is what it was"), PlayerStat(Player, TEXT("armor")),
+			  ArmourOutside, 0.01f);
+	TestEqual(TEXT("outside again, a resistance of 40 is worth 40"), FragmentedWorth(World, Player, OneResistance, 40.0f),
+			  40.0f, 0.001f);
+	TestEqual(TEXT("and the panel says nothing is in force"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: outside the fragmented section, nothing in force")));
+	return true;
+}
+
+// PAIR 2: MAXIMUM HEALTH DOUBLED AND CURRENT HEALTH KEEPS ITS FIGURE; ON LEAVING, HEALTH ABOVE THE OLD MAXIMUM IS HELD TO
+// IT; A SKILL REFUSES INSIDE AND THE BASIC ATTACK DOES NOT. CONTROL: the same player outside the section, before and
+// after: its maximum, and the same two skills, which both may activate there, and a use of the skill that takes its
+// mana.
+//
+// THE SKILL is a Movement skill granted as the Rule of Chaos tests grant one; THE BASIC ATTACK is a Strike skill in
+// the Basic slot, as `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill` grants one. Whether each may activate
+// is asked by `CanActivateAbility`, which spends nothing; the skill is also really used, inside and outside.
+//
+// WHERE THE PLAYER STANDS: the entrance's cell, a free cell of the Fragmented section, the entrance's cell again. The
+// one use that goes off is made at the entrance and may move the player 9 metres; nothing is read after it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityHealthTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityPairTwoDoublesMaximumHealthAndLocksSkillsButNotTheBasicAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityHealthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!Mode || !AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealityHealthForSkills, Inside, Outside))
+	{
+		return false;
+	}
+	const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	const FGameplayAbilitySpecHandle SwingHandle = Player.AbilitySystem->GiveAbilityInSlot(
+		UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::BasicAttack, /*Level=*/100, Player.Character);
+	FGameplayAbilitySpec* SwingSpec = Player.AbilitySystem->FindAbilitySpecFromHandle(SwingHandle);
+	UCataclysmStrikeSkill* Swing = SwingSpec ? Cast<UCataclysmStrikeSkill>(SwingSpec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a movement skill was granted to the player"), Step)
+		|| !TestNotNull(TEXT("set-up: a basic attack was granted to the player"), Swing))
+	{
+		return false;
+	}
+	Swing->SkillName = TEXT("Basic Attack");
+	Swing->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2.4; Angle=120; MaxTargets=1"));
+
+	// OUTSIDE: THE CONTROL. Health is filled to the maximum by the test.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	const float MaximumOutside = Player.Read(Vital::GetMaxHealthAttribute());
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), MaximumOutside);
+	if (!TestEqual(TEXT("set-up: outside, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair)
+		|| !TestTrue(FString::Printf(TEXT("set-up: the player has maximum health to double (%.1f)"), MaximumOutside),
+					 MaximumOutside > 1.0f)
+		|| !TestEqual(TEXT("set-up: the player's health is its maximum"), Player.Read(Vital::GetHealthAttribute()),
+					  MaximumOutside, 0.01f)
+		|| !TestTrue(TEXT("set-up: CONTROL: outside, the skill may activate"), FragmentedMayActivate(Player, Step))
+		|| !TestTrue(TEXT("set-up: CONTROL: outside, the basic attack may activate"),
+					 FragmentedMayActivate(Player, Swing)))
+	{
+		return false;
+	}
+
+	// A BEAT INSIDE.
+	if (!FragmentedStandOn(*this, Mode, Player, Inside, Fragmented)
+		|| !TestEqual(TEXT("set-up: inside, the forced pair 2 was drawn"), Mode->FragmentedRealityPairNow(),
+					  Effects::FragmentedRealityHealthForSkills))
+	{
+		return false;
+	}
+	TestEqual(TEXT("inside, maximum health is twice what it was outside"), Player.Read(Vital::GetMaxHealthAttribute()),
+			  2.0f * MaximumOutside, 0.01f);
+	TestEqual(TEXT("and current health keeps its figure"), Player.Read(Vital::GetHealthAttribute()), MaximumOutside,
+			  0.01f);
+	TestFalse(TEXT("inside, the skill may not activate"), FragmentedMayActivate(Player, Step));
+	TestTrue(TEXT("and the basic attack still may"), FragmentedMayActivate(Player, Swing));
+	const FRuleOfChaosUse Locked = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	TestFalse(TEXT("inside, a use of the skill does not go off"), Locked.bWentOff);
+	TestEqual(TEXT("and takes no mana"), Locked.ManaTaken, 0.0f, 0.01f);
+	TestEqual(TEXT("and starts no cooldown"), Locked.CooldownSeconds, 0.0f, 0.001f);
+	TestEqual(TEXT("the panel names the pair"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: inside, maximum health 100% more, skills locked, basic attack only")));
+
+	// HEALTH IS RAISED ABOVE THE OLD MAXIMUM, INSIDE, BY THE TEST.
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1.5f * MaximumOutside);
+	if (!TestEqual(TEXT("set-up: inside, health was raised to one and a half times the old maximum"),
+				   Player.Read(Vital::GetHealthAttribute()), 1.5f * MaximumOutside, 0.01f))
+	{
+		return false;
+	}
+
+	// A BEAT OUTSIDE.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("outside again, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("outside again, maximum health is what it was"), Player.Read(Vital::GetMaxHealthAttribute()),
+			  MaximumOutside, 0.01f);
+	TestEqual(TEXT("and health above it was held to it"), Player.Read(Vital::GetHealthAttribute()), MaximumOutside,
+			  0.01f);
+	TestTrue(TEXT("outside again, the skill may activate"), FragmentedMayActivate(Player, Step));
+	const float Cost = Step->ManaCostFor(Player.AbilitySystem);
+	const FRuleOfChaosUse Free = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	if (TestTrue(TEXT("CONTROL: outside again, a use of the skill goes off"), Free.bWentOff)
+		&& TestTrue(FString::Printf(TEXT("CONTROL: the skill costs mana (%.2f)"), Cost), Cost > 0.0f))
+	{
+		TestEqual(TEXT("CONTROL: and takes the skill's mana, which the use inside did not"), Free.ManaTaken, Cost, 0.01f);
+		TestTrue(FString::Printf(TEXT("CONTROL: and starts a cooldown (%.2f s)"), Free.CooldownSeconds),
+				 Free.CooldownSeconds > 0.0f);
+	}
+	return true;
+}
+
+// PAIR 3: 50% MORE MOVEMENT SPEED; 30% LESS ATTACK AND SPELL DAMAGE. CONTROL: the same figures outside, before and
+// after. Movement speed is read from the player, as the stat and as the walking speed of its movement component.
+//
+// WHERE THE PLAYER STANDS: the entrance's cell, a free cell of the Fragmented section, the entrance's cell again.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealitySpeedTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityPairThreeGivesHalfAgainTheMovementSpeedAndTakesThreeTenthsOfDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealitySpeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!Mode || !AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealitySpeedForDamage, Inside, Outside))
+	{
+		return false;
+	}
+	const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+	const FName Attack(TEXT("attack_damage"));
+	const FName Spell(TEXT("spell_damage"));
+	const UCharacterMovementComponent* Walking = Player.Character->GetCharacterMovement();
+	if (!TestNotNull(TEXT("set-up: the player has a movement component"), Walking))
+	{
+		return false;
+	}
+
+	// OUTSIDE: THE CONTROL.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	const float SpeedOutside = PlayerStat(Player, TEXT("movement_speed"));
+	const float WalkOutside = Walking->MaxWalkSpeed;
+	const float MaximumOutside = Player.Read(Vital::GetMaxHealthAttribute());
+	const float ArmourOutside = PlayerStat(Player, TEXT("armor"));
+	if (!TestEqual(TEXT("set-up: outside, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair)
+		|| !TestTrue(FString::Printf(TEXT("set-up: the player has movement speed to raise (%.2f)"), SpeedOutside),
+					 SpeedOutside > 0.1f)
+		|| !TestTrue(FString::Printf(TEXT("set-up: and walks at a speed above nought (%.1f cm/s)"), WalkOutside),
+					 WalkOutside > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: outside, attack damage of 100 is worth 100"), FragmentedWorth(World, Player, Attack, 100.0f),
+			  100.0f, 0.001f);
+
+	// A BEAT INSIDE: BOTH HALVES.
+	if (!FragmentedStandOn(*this, Mode, Player, Inside, Fragmented)
+		|| !TestEqual(TEXT("set-up: inside, the forced pair 3 was drawn"), Mode->FragmentedRealityPairNow(),
+					  Effects::FragmentedRealitySpeedForDamage))
+	{
+		return false;
+	}
+	TestEqual(TEXT("inside, movement speed is one and a half times what it was outside"),
+			  PlayerStat(Player, TEXT("movement_speed")), 1.5f * SpeedOutside, 0.001f);
+	TestEqual(TEXT("and the player walks one and a half times as fast"), Walking->MaxWalkSpeed, 1.5f * WalkOutside,
+			  0.1f);
+	TestEqual(TEXT("inside, attack damage of 100 is worth 70"), FragmentedWorth(World, Player, Attack, 100.0f), 70.0f,
+			  0.001f);
+	TestEqual(TEXT("inside, spell damage of 100 is worth 70"), FragmentedWorth(World, Player, Spell, 100.0f), 70.0f,
+			  0.001f);
+	TestEqual(TEXT("inside, the player's own stat line carries 30 less on attack damage"),
+			  TotemRuleOn(Player, TEXT("attack_damage")), -30.0f, 0.001f);
+	TestEqual(TEXT("inside, maximum health is what it was outside"), Player.Read(Vital::GetMaxHealthAttribute()),
+			  MaximumOutside, 0.01f);
+	TestEqual(TEXT("inside, armour is what it was outside"), PlayerStat(Player, TEXT("armor")), ArmourOutside, 0.01f);
+	TestEqual(TEXT("the panel names the pair"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: inside, 50% more movement speed, 30% less damage")));
+
+	// A BEAT OUTSIDE: BOTH HALVES GONE.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("outside again, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("outside again, movement speed is what it was"), PlayerStat(Player, TEXT("movement_speed")),
+			  SpeedOutside, 0.001f);
+	TestEqual(TEXT("and the player walks as fast as it did"), Walking->MaxWalkSpeed, WalkOutside, 0.1f);
+	TestEqual(TEXT("outside again, attack damage of 100 is worth 100"), FragmentedWorth(World, Player, Attack, 100.0f),
+			  100.0f, 0.001f);
+	return true;
+}
+
+// PAIR 4: COOLDOWNS RECOVER 50% FASTER; 30% LESS MAXIMUM HEALTH. Health above 70% of the maximum is held down on
+// entering and is not given back on leaving. The cooldown a skill commits inside is its outside length divided by
+// 1.5, for the player as it is AND for the player carrying a flat 100 of other cooldown reduction. CONTROL: the same
+// skill used by the same player outside the section, with and without that reduction.
+//
+// THE OTHER REDUCTION is put on the player's stat line by `FragmentedGiveOtherReduction` after the beat that wrote the
+// pair, because that beat rebuilds the line. Each use is followed by no beat, so the line a use reads is the one
+// written just before it.
+//
+// WHERE THE PLAYER STANDS: the entrance's cell, a free cell of the Fragmented section, the entrance's cell again. A
+// use that goes off may move the player 9 metres; the player is stood on a cell again before every beat.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityCooldownTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityPairFourDividesCooldownsByOneAndAHalfAndTakesThreeTenthsOfMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityCooldownTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!Mode || !AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealityCooldownsForHealth, Inside, Outside))
+	{
+		return false;
+	}
+	const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	if (!TestNotNull(TEXT("set-up: a movement skill was granted to the player"), Step))
+	{
+		return false;
+	}
+
+	// OUTSIDE: THE CONTROL. Health is filled to the maximum by the test.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	const float MaximumOutside = Player.Read(Vital::GetMaxHealthAttribute());
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), MaximumOutside);
+	const FRuleOfChaosUse UsedOutside = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	const float AskedOutside =
+		UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags);
+	FragmentedGiveOtherReduction(Player, 100.0f);
+	const FRuleOfChaosUse UsedOutsideReduced = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	const float AskedOutsideReduced =
+		UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags);
+	if (!TestEqual(TEXT("set-up: outside, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair)
+		|| !TestTrue(FString::Printf(TEXT("set-up: the player has maximum health to lower (%.1f)"), MaximumOutside),
+					 MaximumOutside > 1.0f)
+		|| !TestEqual(TEXT("set-up: the player's health is its maximum"), Player.Read(Vital::GetHealthAttribute()),
+					  MaximumOutside, 0.01f)
+		|| !TestTrue(TEXT("set-up: CONTROL: the use outside went off"), UsedOutside.bWentOff)
+		|| !TestTrue(FString::Printf(TEXT("set-up: CONTROL: and started a cooldown (%.2f s)"),
+									 UsedOutside.CooldownSeconds),
+					 UsedOutside.CooldownSeconds > 0.0f)
+		|| !TestTrue(TEXT("set-up: CONTROL: the use outside with other reduction went off"),
+					 UsedOutsideReduced.bWentOff)
+		|| !TestTrue(FString::Printf(TEXT("set-up: CONTROL: the other reduction shortens a cooldown (%.3f s against "
+										  "%.3f s)"),
+									 UsedOutsideReduced.CooldownSeconds, UsedOutside.CooldownSeconds),
+					 UsedOutsideReduced.CooldownSeconds > 0.0f
+						 && UsedOutsideReduced.CooldownSeconds < UsedOutside.CooldownSeconds - 0.01f)
+		|| !TestTrue(TEXT("set-up: CONTROL: and a 10 second cooldown asked for"),
+					 AskedOutsideReduced > 0.0f && AskedOutsideReduced < AskedOutside - 0.01f))
+	{
+		return false;
+	}
+
+	// A BEAT INSIDE: BOTH HALVES.
+	if (!FragmentedStandOn(*this, Mode, Player, Inside, Fragmented)
+		|| !TestEqual(TEXT("set-up: inside, the forced pair 4 was drawn"), Mode->FragmentedRealityPairNow(),
+					  Effects::FragmentedRealityCooldownsForHealth))
+	{
+		return false;
+	}
+	TestEqual(TEXT("inside, maximum health is seven tenths of what it was outside"),
+			  Player.Read(Vital::GetMaxHealthAttribute()), 0.7f * MaximumOutside, 0.01f);
+	TestEqual(TEXT("and health above it was held down to it"), Player.Read(Vital::GetHealthAttribute()),
+			  0.7f * MaximumOutside, 0.01f);
+	TestEqual(TEXT("the panel names the pair"), FragmentedRealityLine(Mode),
+			  FString(TEXT("fragmented reality: inside, cooldowns recover 50% faster, 30% less maximum health")));
+
+	const FRuleOfChaosUse UsedInside = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	const float AskedInside =
+		UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags);
+	FragmentedGiveOtherReduction(Player, 100.0f);
+	const FRuleOfChaosUse UsedInsideReduced = RuleOfChaosUseAtManaShare(Player, Step, 1.0f);
+	const float AskedInsideReduced =
+		UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags);
+	if (TestTrue(TEXT("set-up: the use inside went off"), UsedInside.bWentOff)
+		&& TestTrue(TEXT("set-up: the use inside with other reduction went off"), UsedInsideReduced.bWentOff))
+	{
+		TestEqual(TEXT("inside, the skill's cooldown is its outside length divided by 1.5"), UsedInside.CooldownSeconds,
+				  UsedOutside.CooldownSeconds / 1.5f, 0.01f);
+		TestEqual(TEXT("and with other reduction it is that wearer's outside length divided by 1.5"),
+				  UsedInsideReduced.CooldownSeconds, UsedOutsideReduced.CooldownSeconds / 1.5f, 0.01f);
+	}
+	TestEqual(TEXT("inside, a 10 second cooldown asked for is the outside answer divided by 1.5"), AskedInside,
+			  AskedOutside / 1.5f, 0.001f);
+	TestEqual(TEXT("and with other reduction it is that wearer's outside answer divided by 1.5"), AskedInsideReduced,
+			  AskedOutsideReduced / 1.5f, 0.001f);
+
+	// A BEAT OUTSIDE: BOTH HALVES GONE, AND THE HEALTH NOT GIVEN BACK.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("outside again, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("outside again, maximum health is what it was"), Player.Read(Vital::GetMaxHealthAttribute()),
+			  MaximumOutside, 0.01f);
+	TestEqual(TEXT("and the health held down on entering is not given back"), Player.Read(Vital::GetHealthAttribute()),
+			  0.7f * MaximumOutside, 0.01f);
+	TestEqual(TEXT("outside again, a 10 second cooldown asked for is what it was"),
+			  UCataclysmGameplayAbility::CooldownAfterReduction(Player.AbilitySystem, 10.0f, Step->SkillTags),
+			  AskedOutside, 0.001f);
+	return true;
+}
+
+// ENTERING AGAIN DRAWS AGAIN, AND THE PANEL FOLLOWS. Eight entries on one floor with the seeded draw: each draws the
+// pair `FragmentedRealityPairFor` names for the floor's seed and that entry, which the figures test pins by hand;
+// more than one pair is seen; the pair holds over a second beat inside; and leaving ends it. A boundary's cell is in
+// no section, so standing on one is outside. The same dungeon seed and floor built again draw the same first pair.
+// CONTROL: the panel and the pair outside the section, before the first entry and after each.
+//
+// WHERE THE PLAYER STANDS: the entrance's cell, a free cell of the Fragmented section, and once a cell of the first
+// boundary, which is walkable because no barrier stands.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityEntriesTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityEachEntryDrawsAgainByTheFloorsSeedAndThePanelNamesThePair",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityEntriesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!Mode || !AFragmentedFloor(*this, Mode, 3, /*ForcedPair=*/NoPair, Inside, Outside))
+	{
+		return false;
+	}
+	const int32 SeedFound = Mode->DungeonSeed;
+	const int32 Fragmented = Mode->FragmentedRealitySectionNow();
+	const int32 PlanSeed = Mode->CurrentFloor->GetPlan().Seed;
+	const int32 Entries = 8;
+	const TArray<FString> InsideLines = {
+		FString(TEXT("fragmented reality: inside, 50% more damage, armour and every resistance 50% less")),
+		FString(TEXT("fragmented reality: inside, maximum health 100% more, skills locked, basic attack only")),
+		FString(TEXT("fragmented reality: inside, 50% more movement speed, 30% less damage")),
+		FString(TEXT("fragmented reality: inside, cooldowns recover 50% faster, 30% less maximum health"))};
+	const FString OutsideLine(TEXT("fragmented reality: outside the fragmented section, nothing in force"));
+
+	TArray<int32> Named;
+	TSet<int32> DistinctNamed;
+	for (int32 Entry = 0; Entry < Entries; ++Entry)
+	{
+		Named.Add(Effects::FragmentedRealityPairFor(PlanSeed, Entry));
+		DistinctNamed.Add(Named.Last());
+	}
+	if (!TestTrue(FString::Printf(TEXT("set-up: the floor's seed %d names more than one pair over eight entries (%d)"),
+								  PlanSeed, DistinctNamed.Num()),
+				  DistinctNamed.Num() > 1))
+	{
+		return false;
+	}
+
+	// BEFORE THE FIRST ENTRY: THE CONTROL.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: before any entry no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("CONTROL: and the panel says nothing is in force"), FragmentedRealityLine(Mode), OutsideLine);
+
+	TSet<int32> Seen;
+	for (int32 Entry = 0; Entry < Entries; ++Entry)
+	{
+		if (!FragmentedStandOn(*this, Mode, Player, Inside, Fragmented))
+		{
+			return false;
+		}
+		const int32 Drawn = Mode->FragmentedRealityPairNow();
+		Seen.Add(Drawn);
+		if (!TestEqual(FString::Printf(TEXT("entry %d draws the pair the floor's seed names"), Entry), Drawn,
+					   Named[Entry])
+			|| !TestTrue(FString::Printf(TEXT("entry %d: the pair drawn is one of the four (%d)"), Entry, Drawn),
+						 InsideLines.IsValidIndex(Drawn)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("entry %d is counted"), Entry), Mode->FragmentedRealityEntriesSoFar(), Entry + 1);
+		TestEqual(FString::Printf(TEXT("entry %d: the panel names the pair in force"), Entry),
+				  FragmentedRealityLine(Mode), InsideLines[Drawn]);
+
+		// A SECOND BEAT INSIDE: THE DRAW HOLDS.
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("entry %d: a second beat inside keeps the pair"), Entry),
+				  Mode->FragmentedRealityPairNow(), Drawn);
+		TestEqual(FString::Printf(TEXT("entry %d: and counts no further entry"), Entry),
+				  Mode->FragmentedRealityEntriesSoFar(), Entry + 1);
+
+		// LEAVING ENDS IT. The fourth entry is left by way of a boundary's cell, which is in no section.
+		if (Entry == 3)
+		{
+			const FIntPoint OnTheBoundary = Mode->FloorSectionsNow().Boundaries[0][0];
+			if (!TestTrue(TEXT("set-up: with no barrier standing the boundary's cell is walkable"),
+						  Mode->CurrentFloor->GetPlan().IsFloor(OnTheBoundary))
+				|| !FragmentedStandOn(*this, Mode, Player, OnTheBoundary, NoPair))
+			{
+				return false;
+			}
+			TestEqual(TEXT("standing on a boundary's cell, no pair is in force"), Mode->FragmentedRealityPairNow(),
+					  NoPair);
+		}
+		if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("after entry %d, outside, no pair is in force"), Entry),
+				  Mode->FragmentedRealityPairNow(), NoPair);
+		TestEqual(FString::Printf(TEXT("after entry %d the panel says nothing is in force"), Entry),
+				  FragmentedRealityLine(Mode), OutsideLine);
+		TestEqual(FString::Printf(TEXT("after entry %d leaving counted no entry"), Entry),
+				  Mode->FragmentedRealityEntriesSoFar(), Entry + 1);
+	}
+	TestTrue(FString::Printf(TEXT("over eight entries more than one pair was seen (%d)"), Seen.Num()), Seen.Num() > 1);
+
+	// THE SAME DUNGEON SEED AND FLOOR, BUILT AGAIN: THE COUNT STARTS AGAIN AND THE FIRST ENTRY DRAWS THE SAME PAIR.
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor was built again"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("built again, no entry is counted"), Mode->FragmentedRealityEntriesSoFar(), 0);
+	TestEqual(TEXT("built again, the same section is Fragmented"), Mode->FragmentedRealitySectionNow(), Fragmented);
+	if (!FragmentedStandOn(*this, Mode, Player, Inside, Fragmented))
+	{
+		return false;
+	}
+	TestEqual(TEXT("built again, the first entry draws the pair the first entry drew before"),
+			  Mode->FragmentedRealityPairNow(), Named[0]);
+	return true;
+}
+
+// LEAVING THE FLOOR OR THE DUNGEON WHILE INSIDE REMOVES THE PAIR. The pair is forced to the one that doubles maximum
+// health. CONTROL: the player's maximum health outside the section on the first floor, and inside it, where it is
+// twice that.
+//
+// WHERE THE PLAYER STANDS: the entrance's cell, then a free cell of the Fragmented section; `GoToFloor` then stands
+// it at the next floor's entrance. The same again before leaving the dungeon, where the player is left where it is.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFragmentedRealityLeavingTest,
+	"Cataclysm.DungeonModifierEffects.FragmentedRealityLeavingTheFloorOrTheDungeonWhileInsideRemovesThePair",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFragmentedRealityLeavingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	const int32 NoPair = INDEX_NONE;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	FIntPoint Inside(-1, -1);
+	FIntPoint Outside(-1, -1);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->TotalFloors = 40;
+	if (!AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealityHealthForSkills, Inside, Outside))
+	{
+		return false;
+	}
+
+	// THE CONTROL, AND THEN INSIDE.
+	if (!FragmentedStandOn(*this, Mode, Player, Outside, 0))
+	{
+		return false;
+	}
+	const float MaximumOutside = Player.Read(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("set-up: the player has maximum health to double (%.1f)"), MaximumOutside),
+				  MaximumOutside > 1.0f)
+		|| !FragmentedStandOn(*this, Mode, Player, Inside, Mode->FragmentedRealitySectionNow())
+		|| !TestEqual(TEXT("set-up: inside, the forced pair was drawn"), Mode->FragmentedRealityPairNow(),
+					  Effects::FragmentedRealityHealthForSkills)
+		|| !TestEqual(TEXT("set-up: CONTROL: inside, maximum health is twice what it was outside"),
+					  Player.Read(Vital::GetMaxHealthAttribute()), 2.0f * MaximumOutside, 0.01f))
+	{
+		return false;
+	}
+
+	// THE NEXT FLOOR, TAKEN WHILE INSIDE.
+	if (!TestTrue(TEXT("set-up: floor 3 was reached while inside"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("on the next floor no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("and no entry is counted"), Mode->FragmentedRealityEntriesSoFar(), 0);
+	TestEqual(TEXT("and maximum health is what it was outside the section"),
+			  Player.Read(Vital::GetMaxHealthAttribute()), MaximumOutside, 0.01f);
+	TestFalse(TEXT("and no rule of the dungeon is on the player's maximum health"),
+			  DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")) != nullptr);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and a beat at the new entrance draws none"), Mode->FragmentedRealityPairNow(), NoPair);
+
+	// AND THE DUNGEON, LEFT WHILE INSIDE.
+	if (!AFragmentedFloor(*this, Mode, 3, Effects::FragmentedRealityHealthForSkills, Inside, Outside)
+		|| !FragmentedStandOn(*this, Mode, Player, Inside, Mode->FragmentedRealitySectionNow())
+		|| !TestEqual(TEXT("set-up: inside again, the forced pair was drawn"), Mode->FragmentedRealityPairNow(),
+					  Effects::FragmentedRealityHealthForSkills)
+		|| !TestEqual(TEXT("set-up: CONTROL: and maximum health is twice what it was outside"),
+					  Player.Read(Vital::GetMaxHealthAttribute()), 2.0f * MaximumOutside, 0.01f))
+	{
+		return false;
+	}
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving the dungeon, no pair is in force"), Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("and maximum health is what it was outside the section"),
+			  Player.Read(Vital::GetMaxHealthAttribute()), MaximumOutside, 0.01f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and a beat after leaving, with the player still standing where the section was, draws none"),
+			  Mode->FragmentedRealityPairNow(), NoPair);
+	TestEqual(TEXT("and maximum health stays what it was"), Player.Read(Vital::GetMaxHealthAttribute()),
+			  MaximumOutside, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
