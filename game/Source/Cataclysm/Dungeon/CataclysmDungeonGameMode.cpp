@@ -6719,12 +6719,17 @@ int32 ACataclysmDungeonGameMode::ThoseInTheDarkChasmZonesDrawn() const
 	return Drawn;
 }
 
-TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesApplied, int32& OutWalkable) const
+TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesApplied, int32& OutWalkable,
+																TArray<int32>* OutRefusedByRule) const
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
 	TArray<FIntPoint> Chosen;
 	OutWalkable = 0;
+	if (OutRefusedByRule)
+	{
+		OutRefusedByRule->Init(0, ChasmRuleCrossable);
+	}
 	if (!CurrentFloor || !CurrentFloor->IsBuilt())
 	{
 		return Chosen;
@@ -6756,7 +6761,15 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 	// boundary's, closed or open. `Crossing` is the plan with every chasm chosen so far closed; the floor's own plan
 	// is never changed.
 	const FVector EntranceAt = Floor.WorldOfCell(Plan.Entrance);
-	const TSet<FIntPoint> Held = CellsHeldOrWarned();
+	TSet<FIntPoint> Held = CellsHeldOrWarned();
+
+	// THE FLOOR'S OWN CHASM CELLS ARE NOT HELD AGAINST THIS DRAW. When the floor's chasms are chosen there are none
+	// yet and this does nothing. When a test asks for the draw again on a floor that has its chasms, they are held
+	// cells, by the list and by their marks, and would each be refused.
+	for (const FIntPoint& Own : ThoseInTheDarkChasmCells)
+	{
+		Held.Remove(Own);
+	}
 	TSet<FIntPoint> OnABarrier;
 	for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
 	{
@@ -6768,6 +6781,13 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 	{
 		return Cells.Contains(Cell + FIntPoint(1, 0)) || Cells.Contains(Cell + FIntPoint(-1, 0))
 			|| Cells.Contains(Cell + FIntPoint(0, 1)) || Cells.Contains(Cell + FIntPoint(0, -1));
+	};
+	const auto NoteRefusedBy = [OutRefusedByRule](int32 Rule)
+	{
+		if (OutRefusedByRule)
+		{
+			++(*OutRefusedByRule)[Rule - 1];
+		}
 	};
 
 	for (const FIntPoint& Cell : Candidates)
@@ -6783,6 +6803,7 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 			|| FVector::Dist2D(Floor.WorldOfCell(Cell), EntranceAt) < Effects::ThoseInTheDarkClearOfTheEntranceCm;
 		if (RulesApplied >= ChasmRuleEntranceAndStairs && bNearTheEntranceOrOnTheStairs)
 		{
+			NoteRefusedBy(ChasmRuleEntranceAndStairs);
 			continue;
 		}
 
@@ -6790,6 +6811,7 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 		const bool bHeldOrOnABarrier = Held.Contains(Cell) || OnABarrier.Contains(Cell);
 		if (RulesApplied >= ChasmRuleHeldAndBarriers && bHeldOrOnABarrier)
 		{
+			NoteRefusedBy(ChasmRuleHeldAndBarriers);
 			continue;
 		}
 
@@ -6797,6 +6819,7 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 		const bool bBesideAChosenChasm = IsBesideOneOf(Chosen, Cell);
 		if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)
 		{
+			NoteRefusedBy(ChasmRuleNoTwoSideBySide);
 			continue;
 		}
 
@@ -6807,6 +6830,7 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 		if (RulesApplied >= ChasmRuleCrossable
 			&& !CataclysmFloorCanBlockBesideBarriers(Crossing, Alone, Plan.Entrance, Held, ClosedBarriers))
 		{
+			NoteRefusedBy(ChasmRuleCrossable);
 			continue;
 		}
 
@@ -6814,6 +6838,27 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 		Crossing.Fill(Cell);
 	}
 	return Chosen;
+}
+
+ACataclysmDungeonGameMode::FThoseInTheDarkRuleCounts ACataclysmDungeonGameMode::ThoseInTheDarkCountsRuleByRule() const
+{
+	// FOR A TEST TO LOG, AND CALLED BY NOTHING IN PLAY. See the declaration for what the figures are and are not.
+	FThoseInTheDarkRuleCounts Counts;
+	int32 Walkable = 0;
+	TArray<int32> Refused;
+	Counts.AfterTheEntranceAndStairs = ChooseTheChasmCells(ChasmRuleEntranceAndStairs, Walkable).Num();
+	Counts.AfterHeldAndBarriers = ChooseTheChasmCells(ChasmRuleHeldAndBarriers, Walkable).Num();
+	Counts.AfterNoTwoSideBySide = ChooseTheChasmCells(ChasmRuleNoTwoSideBySide, Walkable).Num();
+	Counts.AfterTheCrossingQuestion = ChooseTheChasmCells(ChasmRuleCrossable, Walkable, &Refused).Num();
+	Counts.WalkableNow = Walkable;
+	if (Refused.Num() == ChasmRuleCrossable)
+	{
+		Counts.RefusedNearTheEntranceOrOnTheStairs = Refused[ChasmRuleEntranceAndStairs - 1];
+		Counts.RefusedHeldOrOnABarrier = Refused[ChasmRuleHeldAndBarriers - 1];
+		Counts.RefusedBesideAChasm = Refused[ChasmRuleNoTwoSideBySide - 1];
+		Counts.RefusedByTheCrossingQuestion = Refused[ChasmRuleCrossable - 1];
+	}
+	return Counts;
 }
 
 void ACataclysmDungeonGameMode::PlaceTheChasms()
@@ -6836,23 +6881,15 @@ void ACataclysmDungeonGameMode::PlaceTheChasms()
 		return;
 	}
 
-	// THE DRAW IS MADE FOUR TIMES, WITH ONE MORE RULE EACH TIME, so the count says what each rule cost. The first
-	// three are counted and thrown away; the fourth is the floor's chasms. Each draw shuffles the same cells on the
-	// same seed, so the four differ only by the rules.
+	// THE DRAW IS MADE ONCE, WITH EVERY RULE, ruled 2026-10-09. What each rule cost is not counted in play; a test
+	// asks `ThoseInTheDarkCountsRuleByRule` for that.
 	int32 Walkable = 0;
-	ThoseInTheDarkCount.AfterTheEntranceAndStairs = ChooseTheChasmCells(ChasmRuleEntranceAndStairs, Walkable).Num();
-	ThoseInTheDarkCount.AfterHeldAndBarriers = ChooseTheChasmCells(ChasmRuleHeldAndBarriers, Walkable).Num();
-	ThoseInTheDarkCount.AfterNoTwoSideBySide = ChooseTheChasmCells(ChasmRuleNoTwoSideBySide, Walkable).Num();
 	ThoseInTheDarkChasmCells = ChooseTheChasmCells(ChasmRuleCrossable, Walkable);
 	ThoseInTheDarkCount.Walkable = Walkable;
 	ThoseInTheDarkCount.Asked = Walkable / Effects::ThoseInTheDarkWalkableCellsPerChasm;
 	ThoseInTheDarkCount.Placed = ThoseInTheDarkChasmCells.Num();
-	UE_LOG(LogCataclysm, Log,
-		   TEXT("Those in the Dark: floor %d, %d walkable cells, %d chasms asked for; %d after the entrance and ")
-		   TEXT("stairs rule, %d after held and barrier cells, %d after no two side by side, %d placed"),
-		   FloorNumber, ThoseInTheDarkCount.Walkable, ThoseInTheDarkCount.Asked,
-		   ThoseInTheDarkCount.AfterTheEntranceAndStairs, ThoseInTheDarkCount.AfterHeldAndBarriers,
-		   ThoseInTheDarkCount.AfterNoTwoSideBySide, ThoseInTheDarkCount.Placed);
+	UE_LOG(LogCataclysm, Log, TEXT("Those in the Dark: floor %d, %d walkable cells, %d chasms asked for, %d placed"),
+		   FloorNumber, ThoseInTheDarkCount.Walkable, ThoseInTheDarkCount.Asked, ThoseInTheDarkCount.Placed);
 }
 
 void ACataclysmDungeonGameMode::ForgetTheChasms()
@@ -6899,13 +6936,27 @@ void ACataclysmDungeonGameMode::StepThoseInTheDark(ACataclysmPlayerCharacter* Pl
 		}
 	}
 
-	// THE FALL: THE CELL THE PLAYER STANDS ON IS A CHASM CELL. Asked here, on the beat, and nowhere else. Only the
-	// player is asked, so no creature, minion or follower falls. Once a floor.
-	const FIntPoint Standing = CurrentFloor->CellOfWorld(Player->GetActorLocation());
-	const bool bStandingOnAChasm = ThoseInTheDarkChasmCells.Contains(Standing);
-	if (bStandingOnAChasm && ThoseInTheDarkFallsNoted == 0)
+	// THE FALL: THE PLAYER STANDS WITHIN A CHASM'S RING. Ruled 2026-10-09: the place that falls is the place that is
+	// marked. The flat distance from the player to the middle of the nearest chasm's cell is at or within the mark's
+	// radius. So the corners of a chasm's cell, which lie outside the ring, are safe ground. No two chasms are side
+	// by side, so their middles are 5.6 metres or more apart and no place is within two rings. Asked here, on the
+	// beat, and nowhere else. Only the player is asked, so no creature, minion or follower falls. Once a floor.
+	const FVector PlayerAt = Player->GetActorLocation();
+	FIntPoint NearestChasm(-1, -1);
+	float NearestCm = TNumericLimits<float>::Max();
+	for (const FIntPoint& Chasm : ThoseInTheDarkChasmCells)
 	{
-		ThePlayerFellIntoAChasm(Player, Standing);
+		const float Cm = static_cast<float>(FVector::Dist2D(CurrentFloor->WorldOfCell(Chasm), PlayerAt));
+		if (Cm < NearestCm)
+		{
+			NearestCm = Cm;
+			NearestChasm = Chasm;
+		}
+	}
+	const bool bWithinAChasmsRing = NearestCm <= Effects::ThoseInTheDarkMarkRadiusCm;
+	if (bWithinAChasmsRing && ThoseInTheDarkFallsNoted == 0)
+	{
+		ThePlayerFellIntoAChasm(Player, NearestChasm);
 	}
 }
 
