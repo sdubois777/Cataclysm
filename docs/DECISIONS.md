@@ -4,9 +4,11 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-09 — Those in the Dark, layer 2 of 2: a fall leads to a dark floor of its own, whose stairs lead ten floors deeper or to the final floor, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer in one commit on top of layer 1's: the code, ten
-new Unreal tests, changes to four of layer 1's tests, and this entry. It compiled nothing and ran no Unreal
-test. It ran the Python tests in `tools/tests`, the lint and the conflict check before the commit, and nothing
+**Not built and not run.** The writing session wrote this layer in two commits on top of layer 1's two: the
+code, eleven new Unreal tests, changes to five of layer 1's twelve tests, and this entry. The second commit
+follows rulings 14 to 20 and layer 1's second commit, which made the ring and not the cell the place that
+falls; what it changed is under "The second commit". It compiled nothing and ran no Unreal
+test. It ran the Python tests in `tools/tests`, the lint and the conflict check before each commit, and nothing
 else. Every statement below about what the engine does is read from the code. No count, no share and no
 outcome of a test is known.
 
@@ -17,14 +19,21 @@ not: `EnterEmpireDungeon` fills Reality Twister's pool with every row that is no
 holds one more row in every dungeon entered from the empire map, and a floor carrying Reality Twister may draw
 a different row than it drew before this layer, and may draw this one. Four rows of the 117 still answer
 NotBuilt (a script's count from `game/Data/DungeonModifiers.csv` and the arms of `BuiltStateOf`). The same
-happened each time an earlier row became Built.
+happened each time an earlier row became Built. Accepted as ruling 14: with no fall made, that one draw is the
+only draw this layer changes.
 
-**Said first: "dark" is built, on a judgement of the writing session that needs a ruling.** The brief asked
+**Said first, for the owner's play-check: on the dark floor the camera is darkened and creatures farther than
+10 metres are hidden.** Accepted as ruling 15; it was first a judgement of the writing session. The brief asked
 for the smallest existing lever that makes the floor read as dark, or nothing. One exists: the vision system
 Fog of War and The Blackest Shadow use. On the dark floor the player's sight is 10 metres, Fog of War's
 figure. The camera is darkened and every creature farther than 10 metres from the player is hidden; its
 telegraphs and projectiles are still drawn. No creature is made stronger by it. This changes play and not
 only how the floor looks. The reading not taken is to build nothing.
+
+**Said first, listed for the owner and not fixed (ruling 18): a fall leaves the floor's tithe unpaid, and
+Forced Tithes' angels come on the dark floor.** `PlaceTheTitheAltar` reads an altar that was placed and
+neither paid nor refused as refused, and owes the angels on the next floor. A player who falls has not
+reached the altar at the exit.
 
 **Said first: Blood Debt has fewer floors to be paid on after a fall.** The debt is sized from the dungeon's
 whole depth: `BloodDebtOwed` is `BloodDebtOwedFor(ChooseTotalFloors())`, which is 30 kills a floor, at most
@@ -107,7 +116,7 @@ Each of these is a labelled judgement by the coordinating session under the owne
 1. **The flag.** One flag on the game mode, "on the dark floor", with the floor the player fell from kept
    beside it. Set only by a fall; cleared when the dark floor's stairs are taken and when the dungeon is left.
    The rule of this layer: every new behaviour is behind that flag, so a floor built without it is what it
-   was.
+   was. Ruling 14 excepts one draw.
 2. **The fall** is `GoToFloor(destination)` with the flag set. The destination is the floor fallen from plus
    10, or the dungeon's final floor when that is nearer. No walk time, and not counted in `FloorsDescended`.
 3. **The floor number on the dark floor is the destination's**, so every rule that scales by depth reads what
@@ -137,6 +146,43 @@ Each of these is a labelled judgement by the coordinating session under the owne
     along as on any floor change.
 13. **The row is Built** after this layer.
 
+Rulings 14 to 20 were made on the writing session's report of the first commit. Each is a labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-09.
+
+14. **The row answering Built adds one row to Reality Twister's pool with no fall made**, as each earlier row
+    that became Built did. Accepted. So the rule of this layer reads: with no fall made, nothing this layer
+    added changes a floor, a seed, a day charge or which floor is the last, and it changes one draw only,
+    Reality Twister's, by the one row its pool gained.
+15. **Dark is the existing vision system set to Fog of War's 10 metres on the dark floor.** Accepted: it is
+    the owner's "dark place" by the smallest existing lever. On the dark floor the camera is darkened and
+    creatures farther than 10 metres are hidden. One test must show the setting is on while the flag is set
+    and off on arrival. It is test 6, `ThoseInTheDarkOnTheDarkFloorThePanelCountsTheStandingAndThePlayerSeesTenMetres`:
+    "CONTROL: and the player's sight is unlimited" before the fall, "on the dark floor the player sees 10
+    metres" after a beat on the dark floor, and "CONTROL: and the player's sight is unlimited again" after a
+    beat on the floor arrived on.
+16. **How the dark floor is shown to be its own floor.** Accepted: the plan and the placed creatures are shown
+    to differ through the game mode, and the rows through the brief's draw asked with the salted identity;
+    three in four of at least four seeds for each. It is test 1.
+17. **The dark stairs' route is the first statement of `GoDownOneFloor`, and -1 is written to the three kept
+    floor numbers when the dark floor is left.** Accepted, both. Each of the three rules has a test by name
+    that arriving on the destination starts it as a new floor: test 7,
+    `ThoseInTheDarkArrivingFromTheDarkFloorTheFloorChoosesItsOwnPlaguebearer`; test 8,
+    `ThoseInTheDarkArrivingFromTheDarkFloorMoraleBreakStartsAgain`; test 9,
+    `ThoseInTheDarkArrivingFromTheDarkFloorFamishedBeastsCountsFromNought`.
+18. **Listed for the owner and not fixed: a fall leaves the tithe unpaid and Forced Tithes' angels come on the
+    dark floor.** Said first above.
+19. **The writing session's smaller judgements are approved, with one change: the floor panel carries a line
+    for the dark floor's own seal whenever the flag is set, whatever rows that floor drew**, so a player
+    always sees why the stairs are shut and how many creatures still stand. Built in the second commit, with
+    test 11.
+20. **The corrections stand as the writing session reported them.** `IsOnTheLastFloor` is called on fourteen
+    lines in eleven functions, not twelve. Blood Debt has eight fewer floors with creatures after a fall, not
+    nine: nine numbered floors are passed over and the dark floor is one more floor on which a kill counts.
+    The Pact of Temptation's buff on a floor is the pact taken on the floor before, so a player who fell
+    before reaching that altar has no buff on the dark floor. And arriving on the destination from the dark
+    floor is not one of the moments the game saves itself, because the save writer is told the same dungeon
+    and floor number it already holds.
+
 ### The three checks made before a line was written
 
 **A. That no existing test sets the flag by any route.** A script (`check_a.py` in the writing session's
@@ -163,7 +209,9 @@ by its number and is in "said first" above; the floor panel's own copy of the nu
 
 ### What was read before writing
 
-Read by the writing session, whole unless a range is given. Line numbers are of this commit.
+Read by the writing session, whole unless a range is given. Line numbers here and under "How it is built" are
+of this layer's first commit as it was first written, on layer 1's first commit. Layer 1's second commit and
+this layer's second move them.
 
 - `Dungeon/CataclysmDungeonGameMode.cpp`: `Tick` (1212); `StartPlay`; `ChooseSeed` (1334), `ChooseFloorNumber`,
   `ChooseTotalFloors`, `DungeonIdentity` (1432), `BuildFloor` (1453), `BringFollowersTo`, `PlaceAtEntrance`,
@@ -319,7 +367,8 @@ its first floor, so each rule's own test "the number differs" starts it again. S
 
 **The seal.** `TheDarkFloorSealsTheStairs()` is the flag, not a Horde floor, and `LightforgedWallsStanding() >
 0`: the count of `FloorEnemies` for which `IsOneOfTheFloorsOwnStanding` holds. `StairsSealedBy` adds the row's
-key last. The beat draws the panel again when that count moves.
+key last. The beat draws the panel again when that count moves. Since ruling 19 the panel lists the row on
+the dark floor whatever rows that floor drew; see "The second commit".
 
 **The rung.** In `PopulateFloor`'s loop over the population, straight after each creature is spawned and
 before its pack is noted, `RaiseForTheDarkFloor` (2286) sets the rung
@@ -388,7 +437,9 @@ Each judged number, with the reading not taken:
 
 ### The writing session's judgements
 
-Each is a judgement by the writing session, for the coordinating session to confirm.
+Each was a judgement by the writing session, for the coordinating session to confirm. The coordinating session
+ruled on 2026-10-09: judgements 1 and 2 are approved by ruling 17; judgement 6 by ruling 15; judgement 8 is
+changed by ruling 19; judgements 3, 4, 5, 7, 9, 10, 11 and 12 are approved by ruling 19.
 
 1. **The dark floor's route is taken at the top of `GoDownOneFloor`, not in `HandleStairsTaken`.** The ruling
    says the stairs do not go through `GoDownOneFloor`. As built they call it, and its first statement returns
@@ -415,8 +466,8 @@ Each is a judgement by the writing session, for the coordinating session to conf
    quarter second after the fall.
 8. **The panel line is one line for both things**: that the dark floor has no chasm, and the count of the
    standing. It is written whenever the flag is set. The panel shows a line only for a row the floor carries,
-   so on a Volatile dungeon whose dark floor did not draw this row the line is not shown and nothing says why
-   the stairs are sealed. Not handled.
+   so on a Volatile dungeon whose dark floor did not draw this row the line was not shown and nothing said why
+   the stairs were sealed. Changed by ruling 19: the line is now shown whatever rows the floor drew.
 9. **A fall whose dark floor cannot be built is undone**: the flag, the number and the brief go back, and the
    fall stays counted on the floor so it is not tried again each beat. What `BuildFloor` had already planned
    for the failed floor, its shortcuts and sections, is left as a failed descent by the stairs leaves it.
@@ -430,8 +481,9 @@ Each is a judgement by the writing session, for the coordinating session to conf
 
 ### Tests
 
-Ten new, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None
-was run. Every test reaches the dark floor by a fall: the player is stood on a chasm cell and one beat is
+Eleven new, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None
+was run. Every test reaches the dark floor by a fall: the player is stood on the middle of a chasm's cell,
+which is the middle of its ring, and one beat is
 stepped by hand. No test sets the flag another way, and no test waits on the world's clock.
 
 1. `ThoseInTheDarkTheDarkFloorIsItsOwnFloorAndAFloorBuiltWithoutAFallIsWhatItWas`. On up to eight of dungeon
@@ -468,8 +520,14 @@ stepped by hand. No test sets the flag another way, and no test waits on the wor
 9. `ThoseInTheDarkArrivingFromTheDarkFloorFamishedBeastsCountsFromNought`. Control: a drop eaten on floor 11,
    then floor 12 without a fall counts none.
 10. `ThoseInTheDarkLeavingTheDungeonEndsTheDarkFloor`.
+11. `ThoseInTheDarkTheDarkFloorsSealIsOnThePanelWhateverRowsTheFloorDrew`, added by the second commit for
+    ruling 19. The dungeon's rows are changed by the test between the floor fallen from and the dark floor,
+    so the dark floor's brief does not carry the row. The rows the panel lists are the floor's and then this
+    row; the panel's line for it carries the count standing, and "every creature slain" when none stands.
+    Controls: drawn from the floor's own rows alone the panel has no such line, and on the floor arrived on
+    the panel lists the floor's own rows and nothing else.
 
-Four of layer 1's tests changed:
+Five of layer 1's twelve tests changed; the fifth, the ring test, in the second commit:
 
 - `ThoseInTheDarkFiguresAndTheRowIsStillNotBuilt` is now `ThoseInTheDarkFiguresAndTheRowIsBuilt`: the row is
   in `KeysWithARule` and its state is Built.
@@ -495,7 +553,9 @@ Four of layer 1's tests changed:
   row's carry in the table above.
 - A dark floor that cannot be built, and a destination that cannot be built from the dark floor.
 - Entering a dungeon while on the dark floor.
-- An Elite dungeon's dark floor; a Volatile dungeon's dark floor that did not draw the row.
+- An Elite dungeon's dark floor. A dark floor that did not draw the row is tested since the second commit,
+  but by the test changing the dungeon's rows before the fall; no dungeon is made Volatile through the game
+  mode.
 - A rule that sets a chosen creature's rung after the floor is populated (Infernal Seals' bearers, Soul
   Chains' bearers, a Common raised to be the Plaguebearer) writes its own rung over the raised one.
 - That a creature beyond 10 metres is hidden on the dark floor: only the sight figure is read. Fog of War's
@@ -528,6 +588,86 @@ given here without the tabs they begin with: one tab for the first two, two tabs
    game mode keeps no floor fallen from", "the dark floor's stairs spent no day", "and are not counted as a
    descent", and then the set-up "one of dungeon seeds 1 to 20 gives floor 25 at least 1 chasms", because
    every floor built with the flag still set is a dark floor with no chasm. The test stops there.
+
+### The second commit
+
+**Not built and not run**, as the first. Written on the worktree's head after the registering session moved
+this layer's first commit onto layer 1's second commit.
+
+**What layer 1's second commit changed under this layer, read from its diff.** The place that falls is the
+ring and not the cell: `StepThoseInTheDark` falls when the flat distance from the player to the middle of the
+nearest chasm's cell is at or within `ThoseInTheDarkMarkRadiusCm`, 200 centimetres. `PlaceTheChasms` makes one
+draw, and the counts rule by rule come from `ThoseInTheDarkCountsRuleByRule`. Neither touches a line this
+layer wrote. No test of this layer reads the fields removed from `FThoseInTheDarkCount`.
+
+**Every fall this layer's tests make is still a fall, by reading.** The helper `FallIntoAChasm`, and the
+changed tests of layer 1, stand the player with `StandThePlayerOnCell`, which puts them on
+`WorldOfCell(chasm)`, the middle of the cell. That is the point the ring is measured from, so the distance is
+nought and nought is within 200. The controls that stand the player on the cell beside a chasm stand 400
+centimetres from its middle. No two chasms are side by side, so that cell's middle is 400 centimetres or more
+from every chasm's middle, and it does not fall.
+
+**Layer 1's twelve tests on this head.**
+
+| Layer 1's test | On this head |
+|---|---|
+| `ThoseInTheDarkFiguresAndTheRowIsBuilt` | Changed by this layer's first commit (the name and the row's state) |
+| `ThoseInTheDarkChasmsHoldEveryPlacementRuleAndWithoutTheRowThereIsNone` | One message reworded by the first commit; it asserts what it asserted, and that is still true: the player stays at the entrance |
+| `ThoseInTheDarkNoChasmIsOnABarriersCellAStatuesCellOrACellAnotherRuleHolds` | Unchanged and still true: no beat is stepped |
+| `ThoseInTheDarkTheSameSeedAndFloorGiveTheSameChasmsAndAnotherFloorGivesOthers` | Unchanged and still true: no beat is stepped |
+| `ThoseInTheDarkStandingOnAChasmIsAFallAndBesideItIsNotAndACreatureDoesNotFall` | Changed by the first commit; still true with the ring, as above |
+| `ThoseInTheDarkAFallHappensOnceAndTheDarkFloorHasNoChasmToFallInto` | Changed by the first commit; still true with the ring |
+| `ThoseInTheDarkAHordeArenaHasNoChasm` | Unchanged and still true: no beat is stepped |
+| `ThoseInTheDarkTheLastFloorHasNoChasm` | Unchanged and still true: no player and no beat |
+| `ThoseInTheDarkThePanelCountsTheChasmsAndOneVoidMarkStandsOverEachAndNoneElsewhere` | Unchanged and still true: the beats are stepped with the player at the entrance, 20 metres or more from every chasm |
+| `ThoseInTheDarkAnObstacleIsRefusedWhereTheOnlyWayPastWouldBeOverAChasm` | Unchanged and still true: no beat is stepped |
+| `ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged` | Unchanged and still true: no beat is stepped |
+| `ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround` | Changed by this commit, below |
+
+**The ring test, restated.** Its last assertion read the count of falls on the floor: "standing 190 cm from the
+middle for a beat is recorded as one fall", `ThoseInTheDarkFallsOnThisFloor()` equal to 1. On this head a fall
+replaces the floor and the dark floor begins with none recorded, so that count is nought and the assertion was
+false. It now asserts, after the beat at 190 centimetres: "standing 190 cm from the middle for a beat is a
+fall: the player is on the dark floor", "the dark floor carries the number ten deeper than floor 2" (12), "the
+game mode keeps floor 2 as the floor fallen from" and "and the dark floor has no chasm". Its two controls keep
+what they asserted, that no fall is recorded at 210 centimetres or in the cell's corner, and each gained one
+assertion that the player is not on the dark floor. One more was added before the beat at 190 centimetres:
+"and the player is not on the dark floor before the beat".
+
+**What was found about how the panel shows a line.** `RefreshFloorModifierPanel` handed the player controller
+the floor's rows, `FloorBrief.Modifiers`, and the map `LiveCountsForTheFloor` gives.
+`UCataclysmFloorModifierPanelLayout::LinesFor` makes one line for each row key it is handed and looks the
+count up by that key. A count whose key is not among the keys handed is never looked up, so no line was shown
+for it. And `ACataclysmPlayerController::ShowFloorModifiers` hides the panel when it is handed no row at all.
+So the first commit's line for the dark floor was shown only on a dark floor whose brief carried the row.
+
+**What was built for ruling 19.** `ACataclysmDungeonGameMode::RowsTheFloorPanelLists()` (public) is the
+floor's own rows in their order, and on the dark floor Those in the Dark after them when the floor did not
+draw it. `RefreshFloorModifierPanel` hands the panel that list in place of the floor's rows. With no fall made
+the list is the floor's rows and nothing else. `LiveCountsForTheFloor` already wrote the line whenever the
+flag is set. What a player sees on such a dark floor: one more line on the panel, "Those in the Dark" with the
+count in brackets after it, and under it the row's own description, which speaks of chasms though this floor
+has none. The panel's heading counts its lines, so it says one more modifier than the floor drew. Both are the
+writing session's judgements, for the coordinating session to confirm: the reading not taken is a line that is
+not a row's, which the panel has no way to draw.
+
+**Guard proofs.** The three above stand as proposed. For the first, the count of 19 to 35 depends on how many
+of the seeds fall, between four and eight, and is not known before a run.
+
+Layer 1's proof of the fall, derived again on this head. The line is in
+`Dungeon/CataclysmDungeonGameMode.cpp`, once, in `StepThoseInTheDark`, and begins with one tab:
+`const bool bWithinAChasmsRing = NearestCm <= Effects::ThoseInTheDarkMarkRadiusCm;` becomes
+`const bool bWithinAChasmsRing = NearestCm < 0.0f;`, so no place falls. The test is the ring test as restated.
+Predicted to fail, four: "standing 190 cm from the middle for a beat is a fall: the player is on the dark
+floor"; "the dark floor carries the number ten deeper than floor 2" (it stays 2); "the game mode keeps floor 2
+as the floor fallen from" (it is nought); "and the dark floor has no chasm" (the floor still has its chasms).
+Its controls and its set-up hold. Every other test of this layer that makes a fall would fail at its set-up
+with that break; the proof names one test.
+
+**Not covered by a test, added by this commit.** That the panel widget itself draws the line: the automation
+run has no widget, so the test reads the list the game mode hands the panel and the lines the layout makes
+from it. A dark floor of a dungeon that is Volatile through the game mode. A dark floor that drew no row at
+all, where before this commit the panel was hidden and is now shown with the one line.
 
 ### What the row needs, for the session that writes rows
 
