@@ -1679,6 +1679,22 @@ their comments), `CataclysmAbilitySystemComponent.h` (one comment), three new te
   the block negation roll in `CataclysmDamageCalculation.cpp`, which already has the guard, and the comment in
   `CataclysmGameplayAbility.cpp`, which is left as it is.
 
+### SAID FIRST: WHAT COULD GO WRONG IN A RUN, READ AND NOT CHANGED
+
+**Two test files pin `Cataclysm.CooldownResetRoll` at two different priorities, and the lower one can be
+refused.** `CataclysmCooldownResetTest::FPinnedRoll` in `CataclysmEnchantmentEffectTests.cpp`, which the merged
+reset tests and this layer's reset test use, sets the variable with `ECVF_SetByCode`. `FPinnedFloat` in
+`CataclysmTriggerTests.cpp` sets the same variable with `ECVF_SetByConsole`, for
+`Cataclysm.Triggers.AChanceThatDoesNotComeUpStartsNoTriggerCooldown`. The engine ignores a set at a lower
+priority than the one before it (`ConsoleManager.cpp` line 286 in Unreal Engine 5.8: "was ignored as it is
+lower priority than the previous"), and code is lower than console. So a reset test that ran after that trigger
+test in one process would have its pin refused and would roll for real.
+
+**This layer's reset test reads the variable back and fails in its set-up, by name, if that happens.** The
+merged reset tests have no such check and are NOT changed here, ruled 2026-10-08 by the coordinating session.
+The whole suite has passed with them, so the order has not caused a failure; which order one process runs the
+two groups in was not read.
+
 ### WHAT WAS WRONG
 
 A row action that has a chance draws `FMath::FRandRange(0.0f, 100.0f)` and succeeds when the roll is below the
