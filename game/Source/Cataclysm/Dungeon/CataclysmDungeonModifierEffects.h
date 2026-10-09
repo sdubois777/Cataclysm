@@ -1904,6 +1904,50 @@ public:
 	static const TCHAR* AngelicWardensKey;
 
 	/**
+	 * `Void_Those_in_the_Dark`: "The dungeon has chasms spread throughout leading to the abyss. If the player falls
+	 * into them, they fall down into the void realm where dangerous enemeis lurk. The player will have to fight their
+	 * way out in order to get back to the main dungeon and surviving will bring great rewards." Issues #1820 and #41.
+	 *
+	 * LAYER 1 OF 2, AND SAID FIRST: ONLY THE CHASMS AND THE FALL ARE BUILT HERE, AND A FALL DOES NOTHING YET. The game
+	 * mode records that the player fell and logs it. The dark floor a fall leads to is the next layer. THE ROW IS NOT
+	 * IN `BuiltStateOf` OR `KeysWithARule`: its state is NotBuilt, as it was before this layer.
+	 *
+	 * THE OWNER, 2026-10-08, first: "This one is more complicated. In my head it's like the player falls through the
+	 * void and winds up in a dark place full of more powerful enemies for a single floor. Getting through that floor
+	 * should get them 10 floors deeper and 10 days faster, or to the final floor of the dungeon. Whichever applies."
+	 *
+	 * THE OWNER, 2026-10-08, on the proposal: "I like the proposal for those in the dark, except I want it to
+	 * basically create a bunch of chasms that the player can fall into. The point is that players who just spam their
+	 * movement button to blaze through the floor are more likely to fall in, and be in danger. Also, the dungeon
+	 * modifiers should still apply."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08 AND 2026-10-09, each a labelled
+	 * judgement resting on the owner's words above. Every figure is a judged number for the owner's play-check:
+	 * - A CHASM IS ONE MARKED CELL THAT STAYS WALKABLE in the floor's plan. It is not an obstacle and blocks nothing.
+	 * - THE PLAYER FALLS IF THEY ARE STANDING IN IT, asked on the game mode's quarter-second beat: the cell the
+	 *   player stands on is a chasm cell. Nothing in any skill file. Walking onto one falls; a blink, leap or charge
+	 *   that ends on one falls; a player shoved onto one by an enemy falls; a charge that crosses one cell between
+	 *   two beats does not. A corner clipped for under a quarter second is not caught.
+	 * - CREATURES WALK ACROSS CHASMS AND DO NOT FALL. A player will see creatures walk over a hole. A minion or
+	 *   follower does not fall.
+	 * - HOW MANY: one for every `ThoseInTheDarkWalkableCellsPerChasm` walkable cells, rounded down.
+	 * - WHERE: none within `ThoseInTheDarkClearOfTheEntranceCm` of the entrance and never the stairs' cell; none on
+	 *   a cell another rule holds and none on a section barrier's cell, closed or open; no two side by side; and the
+	 *   floor can always be crossed without falling, which is the question obstacles are asked
+	 *   (`CataclysmFloorCanBlockBesideBarriers`) asked of each chasm as it is added with the chasms already chosen
+	 *   counted as closed. A cell that fails is skipped, so a floor may have fewer.
+	 * - THE DRAW IS SEEDED: a stream of its own made from the floor's seed, so the same dungeon seed and floor give
+	 *   the same chasms.
+	 * - NONE on the final floor, none on a Horde arena, and none while the player is on the dark floor.
+	 * - WHAT A PLAYER SEES: a floor-lasting ground zone over each chasm cell, drawn in the Void type's colours,
+	 *   dealing no damage, `ThoseInTheDarkMarkRadiusCm` in radius.
+	 * - THE PANEL: "those in the dark: N chasms".
+	 * - THE FALL IN THIS LAYER: `ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm` records it and logs it, once a
+	 *   floor.
+	 */
+	static const TCHAR* ThoseInTheDarkKey;
+
+	/**
 	 * `Celestial_Heaven_s_Quake`: "Radiant pillars crash through the ceiling, creating impassable terrain and forcing
 	 * reroutes mid-combat." Issues #1820 and #41.
 	 *
@@ -6446,6 +6490,27 @@ public:
 			&& AngelicWardensSkillWakesWithinCm > AngelicWardensWakeWithinCm,
 		"A floor with no statue, a statue nothing wakes, or a skill that reaches no further than walking up to it is "
 		"not the row.");
+
+	/**
+	 * Those in the Dark's figures, layer 1 of 2. Issues #1820 and #41. Each a judged number for the owner's
+	 * play-check.
+	 * - ONE CHASM FOR EVERY 25 WALKABLE CELLS, rounded down, ruled: a blind dash that lands on a random walkable
+	 *   cell lands on a chasm about 1 time in 25.
+	 * - NONE WITHIN 20 METRES OF THE ENTRANCE, ruled; measured flat from the middle of the entrance's cell to the
+	 *   middle of the chasm's. A cell is 4 metres, so 20 metres is five cells in a straight line.
+	 * - THE MARK'S RADIUS IS 2 METRES, half a cell, a judgement by the writing session: the drawn ring touches the
+	 *   four sides of the chasm's cell and reaches into no neighbour. The cell's four corners lie outside the ring,
+	 *   up to 83 centimetres beyond it, and standing there falls too. The reading not taken is 2.83 metres, half the
+	 *   cell's diagonal, which covers every place that falls and reaches 83 centimetres into each neighbouring cell.
+	 */
+	static constexpr int32 ThoseInTheDarkWalkableCellsPerChasm = 25;
+	static constexpr float ThoseInTheDarkClearOfTheEntranceCm = 2000.0f;
+	static constexpr float ThoseInTheDarkMarkRadiusCm = 200.0f;
+
+	static_assert(
+		ThoseInTheDarkWalkableCellsPerChasm > 1 && ThoseInTheDarkClearOfTheEntranceCm > 0.0f
+			&& ThoseInTheDarkMarkRadiusCm > 0.0f,
+		"A chasm on every walkable cell, a chasm where the player arrives, or a chasm with no mark is not the row.");
 
 	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
 	static constexpr int32 TheReaperRung = 0;

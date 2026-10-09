@@ -1822,6 +1822,13 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// Harbingers; their trails go with the wave's other rule zones. Issues #1820 and #41.
 	ForgetThePlagueHarbingers();
 
+	// AND THOSE IN THE DARK'S CHASMS ARE FORGOTTEN HERE, BEFORE ANYTHING BELOW CHOOSES A CELL: the last floor's chasm
+	// cells are held cells and are counted as closed when an obstacle is asked about, so they must be gone before
+	// this floor's objects are placed. A Horde arena has none to keep. This floor's are chosen below, after the
+	// arena's other objects. Not with the per-floor resets in `ApplyFloorRulesToPlayer`, which runs after this
+	// function and would forget the chasms just chosen. Issues #1820 and #41.
+	ForgetTheChasms();
+
 	// AND THE SECTIONS' BARRIERS CLOSE HERE, BEFORE ANY RULE BELOW CHOOSES A CELL FOR AN OBJECT, so every picker reads a
 	// barrier's cells as Solid and nothing is placed inside a pillar. Issues #1820 and #41. Ruled a second time on
 	// 2026-10-08: the order first ruled closed them after the creatures were placed, which left every object below
@@ -1968,6 +1975,12 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// every wave. Issues #1820 and #41.
 		ForgetTheAngelicStatues();
 		PlaceTheAngelicStatues();
+
+		// AND THOSE IN THE DARK'S CHASMS, AFTER EVERY OBJECT OF THE ARENA, THE STATUES INCLUDED, so every cell another
+		// rule holds is already held and no chasm is put on it, and a standing statue's cell is Solid and is not a
+		// candidate. Before the creatures below, which may stand on a chasm: creatures do not fall. Forgotten above,
+		// before the first object was placed. Issues #1820 and #41.
+		PlaceTheChasms();
 	}
 	else
 	{
@@ -6445,8 +6458,31 @@ bool ACataclysmDungeonGameMode::AnObstacleMayClose(const TArray<FIntPoint>& Cell
 {
 	// WITH NO BARRIER CLOSED THIS IS `CataclysmFloorCanBlock` AND NOTHING ELSE. With one closed, the function asked
 	// says what is added and why.
-	return CurrentFloor
-		&& CataclysmFloorCanBlockBesideBarriers(CurrentFloor->GetPlan(), Cells, From, Held, ClosedSectionBarrierCells());
+	if (!CurrentFloor)
+	{
+		return false;
+	}
+	if (ThoseInTheDarkChasmCells.IsEmpty())
+	{
+		return CataclysmFloorCanBlockBesideBarriers(CurrentFloor->GetPlan(), Cells, From, Held,
+													ClosedSectionBarrierCells());
+	}
+
+	// ON A FLOOR WITH CHASMS EVERY CHASM IS COUNTED AS CLOSED IN THIS QUESTION, so no obstacle raised later leaves a
+	// way that can only be walked over a chasm. A judgement by the writing session, resting on the ruling that the
+	// floor can always be crossed without falling. Only on this copy: a chasm stays walkable in the floor's plan.
+	// The chasm `From` stands on is left open, because the question refuses a `From` that is not walkable and would
+	// then refuse every obstacle while the player stands there. A chasm cell among `Cells` is refused, being Solid
+	// on the copy.
+	FCataclysmFloorPlan ChasmsClosed = CurrentFloor->GetPlan();
+	for (const FIntPoint& Chasm : ThoseInTheDarkChasmCells)
+	{
+		if (Chasm != From)
+		{
+			ChasmsClosed.Fill(Chasm);
+		}
+	}
+	return CataclysmFloorCanBlockBesideBarriers(ChasmsClosed, Cells, From, Held, ClosedSectionBarrierCells());
 }
 
 FCataclysmFloorPlan ACataclysmDungeonGameMode::PlanWithSectionBarriersOpen() const
@@ -6666,6 +6702,221 @@ void ACataclysmDungeonGameMode::StepAngelicWardens(ACataclysmPlayerCharacter* Pl
 		AngelicWardensPanelAwake = WardensAwake;
 		RefreshFloorModifierPanel();
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Those in the Dark, layer 1 of 2: chasm cells, and a fall that is recorded and does nothing else. Issues #1820 and
+// #41. Ruled 2026-10-08 and 2026-10-09. The next layer builds the dark floor a fall leads to.
+// ---------------------------------------------------------------------------
+
+int32 ACataclysmDungeonGameMode::ThoseInTheDarkChasmZonesDrawn() const
+{
+	int32 Drawn = 0;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Mark : ThoseInTheDarkChasmZones)
+	{
+		Drawn += Mark.IsValid() ? 1 : 0;
+	}
+	return Drawn;
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesApplied, int32& OutWalkable) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TArray<FIntPoint> Chosen;
+	OutWalkable = 0;
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return Chosen;
+	}
+	const ACataclysmDungeonFloor& Floor = *CurrentFloor;
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+
+	// EVERY WALKABLE CELL OF THE PLAN AS IT STANDS, ROW BY ROW, THEN SHUFFLED ON THE RULE'S OWN STREAM. The stream is
+	// made from the plan's seed as `PlanTheGatedShortcuts` makes its own, with this rule's salt, so the same dungeon
+	// seed and floor give the same order. Not the global random (`FloorSourceCells`, issue #2342). A closed section
+	// barrier's cell and a standing statue's cell are Solid in the plan and are not among them.
+	TArray<FIntPoint> Candidates;
+	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+	{
+		if (Plan.Cells[Index] == ECataclysmFloorCell::Floor)
+		{
+			Candidates.Add(Plan.CellAt(Index));
+		}
+	}
+	OutWalkable = Candidates.Num();
+	const int32 ChasmsAsked = OutWalkable / Effects::ThoseInTheDarkWalkableCellsPerChasm;
+	FRandomStream ChasmStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, ThoseInTheDarkSalt));
+	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
+	{
+		Candidates.Swap(Index, ChasmStream.RandRange(0, Index));
+	}
+
+	// WHAT THE RULES READ. The held cells are what every obstacle placement reads. The barriers' cells are every
+	// boundary's, closed or open. `Crossing` is the plan with every chasm chosen so far closed; the floor's own plan
+	// is never changed.
+	const FVector EntranceAt = Floor.WorldOfCell(Plan.Entrance);
+	const TSet<FIntPoint> Held = CellsHeldOrWarned();
+	TSet<FIntPoint> OnABarrier;
+	for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
+	{
+		OnABarrier.Append(Boundary);
+	}
+	const TArray<FIntPoint> ClosedBarriers = ClosedSectionBarrierCells();
+	FCataclysmFloorPlan Crossing = Plan;
+	const auto IsBesideOneOf = [](const TArray<FIntPoint>& Cells, FIntPoint Cell)
+	{
+		return Cells.Contains(Cell + FIntPoint(1, 0)) || Cells.Contains(Cell + FIntPoint(-1, 0))
+			|| Cells.Contains(Cell + FIntPoint(0, 1)) || Cells.Contains(Cell + FIntPoint(0, -1));
+	};
+
+	for (const FIntPoint& Cell : Candidates)
+	{
+		if (Chosen.Num() >= ChasmsAsked)
+		{
+			break;
+		}
+
+		// RULE 1: NOT WITHIN 20 METRES OF THE ENTRANCE, measured flat between the middles of the two cells, AND NEVER
+		// THE STAIRS' CELL.
+		const bool bNearTheEntranceOrOnTheStairs = Cell == Plan.Exit
+			|| FVector::Dist2D(Floor.WorldOfCell(Cell), EntranceAt) < Effects::ThoseInTheDarkClearOfTheEntranceCm;
+		if (RulesApplied >= ChasmRuleEntranceAndStairs && bNearTheEntranceOrOnTheStairs)
+		{
+			continue;
+		}
+
+		// RULE 2: NOT A CELL ANOTHER RULE HOLDS, AND NOT A SECTION BARRIER'S CELL, CLOSED OR OPEN.
+		const bool bHeldOrOnABarrier = Held.Contains(Cell) || OnABarrier.Contains(Cell);
+		if (RulesApplied >= ChasmRuleHeldAndBarriers && bHeldOrOnABarrier)
+		{
+			continue;
+		}
+
+		// RULE 3: NO TWO SIDE BY SIDE, the four neighbours, so each chasm is one cell and can be walked round.
+		const bool bBesideAChosenChasm = IsBesideOneOf(Chosen, Cell);
+		if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)
+		{
+			continue;
+		}
+
+		// RULE 4: THE FLOOR CAN STILL BE CROSSED WITHOUT FALLING. The question every obstacle is asked, of this one
+		// cell, from the entrance, on the plan with the chasms already chosen closed: with every section barrier
+		// treated as open no walkable cell is stranded, and with the barriers shut no area is split.
+		const TArray<FIntPoint> Alone = {Cell};
+		if (RulesApplied >= ChasmRuleCrossable
+			&& !CataclysmFloorCanBlockBesideBarriers(Crossing, Alone, Plan.Entrance, Held, ClosedBarriers))
+		{
+			continue;
+		}
+
+		Chosen.Add(Cell);
+		Crossing.Fill(Cell);
+	}
+	return Chosen;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheChasms()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::ThoseInTheDarkKey)))
+	{
+		return;
+	}
+
+	// NONE ON A HORDE ARENA, NONE ON THE LAST FLOOR, AND NONE ON THE DARK FLOOR, as ruled. The last floor is asked
+	// as every row that seals the stairs asks it.
+	if (FloorBrief.bWaveWalksIn || IsOnTheLastFloor() || ThePlayerIsOnTheDarkFloor())
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("Those in the Dark: no chasms on floor %d (%s)"), FloorNumber,
+			   FloorBrief.bWaveWalksIn ? TEXT("a Horde arena")
+			   : IsOnTheLastFloor() ? TEXT("the last floor") : TEXT("the dark floor"));
+		return;
+	}
+
+	// THE DRAW IS MADE FOUR TIMES, WITH ONE MORE RULE EACH TIME, so the count says what each rule cost. The first
+	// three are counted and thrown away; the fourth is the floor's chasms. Each draw shuffles the same cells on the
+	// same seed, so the four differ only by the rules.
+	int32 Walkable = 0;
+	ThoseInTheDarkCount.AfterTheEntranceAndStairs = ChooseTheChasmCells(ChasmRuleEntranceAndStairs, Walkable).Num();
+	ThoseInTheDarkCount.AfterHeldAndBarriers = ChooseTheChasmCells(ChasmRuleHeldAndBarriers, Walkable).Num();
+	ThoseInTheDarkCount.AfterNoTwoSideBySide = ChooseTheChasmCells(ChasmRuleNoTwoSideBySide, Walkable).Num();
+	ThoseInTheDarkChasmCells = ChooseTheChasmCells(ChasmRuleCrossable, Walkable);
+	ThoseInTheDarkCount.Walkable = Walkable;
+	ThoseInTheDarkCount.Asked = Walkable / Effects::ThoseInTheDarkWalkableCellsPerChasm;
+	ThoseInTheDarkCount.Placed = ThoseInTheDarkChasmCells.Num();
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Those in the Dark: floor %d, %d walkable cells, %d chasms asked for; %d after the entrance and ")
+		   TEXT("stairs rule, %d after held and barrier cells, %d after no two side by side, %d placed"),
+		   FloorNumber, ThoseInTheDarkCount.Walkable, ThoseInTheDarkCount.Asked,
+		   ThoseInTheDarkCount.AfterTheEntranceAndStairs, ThoseInTheDarkCount.AfterHeldAndBarriers,
+		   ThoseInTheDarkCount.AfterNoTwoSideBySide, ThoseInTheDarkCount.Placed);
+}
+
+void ACataclysmDungeonGameMode::ForgetTheChasms()
+{
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : ThoseInTheDarkChasmZones)
+	{
+		if (ACataclysmGroundZone* Mark = One.Get())
+		{
+			Mark->Destroy();
+		}
+	}
+	ThoseInTheDarkChasmZones.Reset();
+	ThoseInTheDarkChasmCells.Reset();
+	ThoseInTheDarkCount = FThoseInTheDarkCount();
+	ThoseInTheDarkFallsNoted = 0;
+}
+
+void ACataclysmDungeonGameMode::StepThoseInTheDark(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE MARK OVER EACH CHASM, MADE AGAIN WHENEVER ONE IS MISSING, as Shadowy Enemies' light zones are. A
+	// floor-lasting ground zone on the middle of the cell, drawn in the Void type's colours. It deals no damage and
+	// carries no effect, so its sweep asks nothing of anyone.
+	if (ThoseInTheDarkChasmZones.Num() != ThoseInTheDarkChasmCells.Num())
+	{
+		ThoseInTheDarkChasmZones.SetNum(ThoseInTheDarkChasmCells.Num());
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	for (int32 Index = 0; Index < ThoseInTheDarkChasmCells.Num(); ++Index)
+	{
+		if (!ThoseInTheDarkChasmZones[Index].IsValid() && Source)
+		{
+			const FVector Where = CurrentFloor->WorldOfCell(ThoseInTheDarkChasmCells[Index]);
+			ThoseInTheDarkChasmZones[Index] = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::ThoseInTheDarkMarkRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Void")));
+		}
+	}
+
+	// THE FALL: THE CELL THE PLAYER STANDS ON IS A CHASM CELL. Asked here, on the beat, and nowhere else. Only the
+	// player is asked, so no creature, minion or follower falls. Once a floor.
+	const FIntPoint Standing = CurrentFloor->CellOfWorld(Player->GetActorLocation());
+	const bool bStandingOnAChasm = ThoseInTheDarkChasmCells.Contains(Standing);
+	if (bStandingOnAChasm && ThoseInTheDarkFallsNoted == 0)
+	{
+		ThePlayerFellIntoAChasm(Player, Standing);
+	}
+}
+
+void ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm(ACataclysmPlayerCharacter* Player, FIntPoint Chasm)
+{
+	// LAYER 1 OF 2: THE FALL IS RECORDED AND LOGGED, AND NOTHING ELSE HAPPENS. THE NEXT LAYER REPLACES THIS BODY with
+	// the way to the dark floor.
+	++ThoseInTheDarkFallsNoted;
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Those in the Dark: %s fell into the chasm on cell (%d, %d) of floor %d; nothing follows in this layer"),
+		   *GetNameSafe(Player), Chasm.X, Chasm.Y, FloorNumber);
 }
 
 void ACataclysmDungeonGameMode::NoteSkillUseForAngelicWardens(const FCataclysmSkillUsedNotice& Notice)
@@ -7025,6 +7276,7 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 	Held.Append(WarzonePlannedPoints);
 	Held.Append(LocustShelterCells);
 	Held.Append(ShadowLightCells);
+	Held.Append(ThoseInTheDarkChasmCells);
 	if (VoidParasiteLightCell != FIntPoint(-1, -1))
 	{
 		Held.Add(VoidParasiteLightCell);
@@ -13285,6 +13537,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND ANGELIC WARDENS' STATUES: the floor still stands here, so each standing statue gives its cell back.
 	// Issues #1820 and #41.
 	ForgetTheAngelicStatues();
+	// AND THOSE IN THE DARK'S CHASMS AND THEIR MARKS END WITH THE DUNGEON. Issues #1820 and #41.
+	ForgetTheChasms();
 	ForgetTheTotems();
 	ForgetTheRelics();
 	ForgetTheBoxes();
@@ -13938,6 +14192,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bSectionBarriers = !FloorSections.Boundaries.IsEmpty();
 	// AND ANGELIC WARDENS, WHILE THIS ARENA HOLDS A STATUE, STANDING OR WOKEN. Issues #1820 and #41.
 	const bool bAngelicWardens = !AngelicStatues.IsEmpty();
+	// AND THOSE IN THE DARK, WHILE THIS FLOOR HAS A CHASM: its marks are kept drawn and the player's cell is asked.
+	// Issues #1820 and #41.
+	const bool bThoseInTheDark = !ThoseInTheDarkChasmCells.IsEmpty();
 	// AND RULE OF CHAOS' STAIRS THAT OPEN BY TIME, ONLY ON A BEAT WHERE THE SECONDS ITS PANEL LINE SHOWS HAVE MOVED.
 	// The seal itself is asked when the stairs are taken; this is the panel alone. Issues #1820 and #41.
 	const bool bRuleOfChaosStairs =
@@ -14118,7 +14375,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
 		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers && !bAngelicWardens
-		&& !bRuleOfChaosStairs)
+		&& !bRuleOfChaosStairs && !bThoseInTheDark)
 	{
 		return;
 	}
@@ -14361,6 +14618,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bAngelicWardens)
 	{
 		StepAngelicWardens(Player);
+	}
+
+	// AND THOSE IN THE DARK, WHICH DRAWS ITS CHASMS' MARKS AND ASKS WHETHER THE PLAYER STANDS ON A CHASM. Issues
+	// #1820 and #41.
+	if (bThoseInTheDark)
+	{
+		StepThoseInTheDark(Player);
 	}
 
 	// AND RULE OF CHAOS' PANEL LINE, WHICH COUNTS THE SECONDS UNTIL THE STAIRS OPEN. Drawn again when the whole seconds
@@ -18460,6 +18724,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(AngelicRow, FString::Printf(TEXT("angelic wardens: %d statues standing, %d awake"),
 												 AngelicStatueCellsStanding().Num(), AngelicWardensNow().Num()));
+	}
+
+	// AND THOSE IN THE DARK: how many chasms this floor has. Issues #1820 and #41.
+	const FName ThoseInTheDarkRow(Effects::ThoseInTheDarkKey);
+	if (FloorBrief.Modifiers.Contains(ThoseInTheDarkRow))
+	{
+		Counting.Add(ThoseInTheDarkRow,
+					 FString::Printf(TEXT("those in the dark: %d chasms"), ThoseInTheDarkChasmCells.Num()));
 	}
 
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.

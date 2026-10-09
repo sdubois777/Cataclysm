@@ -2182,6 +2182,38 @@ public:
 	bool PlaceAnAngelicStatueOn(FIntPoint Cell);
 	bool AClosedBarrierStandsBetweenSections(int32 One, int32 Other) const;
 
+	/**
+	 * Those in the Dark, layer 1 of 2, for the panel and tests. Issues #1820 and #41. Ruled 2026-10-08 and
+	 * 2026-10-09; see `UCataclysmDungeonModifierEffects::ThoseInTheDarkKey`.
+	 *
+	 * `ThoseInTheDarkChasmCellsNow` is this floor's chasm cells, in the order they were chosen. Each is walkable in
+	 * the plan. `ThoseInTheDarkChasmZonesDrawn` is how many of their marks stand now; the marks are made on the
+	 * beat, and made again there when one is lost. `ThoseInTheDarkFallsOnThisFloor` is how many falls this floor has
+	 * recorded, which is nought or one.
+	 *
+	 * `ThePlayerIsOnTheDarkFloor` ANSWERS FALSE IN THIS LAYER. THE NEXT LAYER MAKES IT TRUE ON THE DARK FLOOR A FALL
+	 * LEADS TO. It is asked where the chasms are placed, so the dark floor gets none.
+	 *
+	 * `FThoseInTheDarkCount` IS WHAT THE PLACEMENT COUNTED ON THIS FLOOR, kept so a test can log it: the walkable
+	 * cells when the chasms were chosen, the chasms asked for, and how many the draw places with the rules applied
+	 * one after another -- the entrance and stairs rule alone; then held and barrier cells as well; then no two
+	 * side by side as well; then the crossing question as well, which is what was placed.
+	 */
+	struct FThoseInTheDarkCount
+	{
+		int32 Walkable = 0;
+		int32 Asked = 0;
+		int32 AfterTheEntranceAndStairs = 0;
+		int32 AfterHeldAndBarriers = 0;
+		int32 AfterNoTwoSideBySide = 0;
+		int32 Placed = 0;
+	};
+	const TArray<FIntPoint>& ThoseInTheDarkChasmCellsNow() const { return ThoseInTheDarkChasmCells; }
+	int32 ThoseInTheDarkChasmZonesDrawn() const;
+	int32 ThoseInTheDarkFallsOnThisFloor() const { return ThoseInTheDarkFallsNoted; }
+	const FThoseInTheDarkCount& ThoseInTheDarkCountNow() const { return ThoseInTheDarkCount; }
+	bool ThePlayerIsOnTheDarkFloor() const { return false; }
+
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
 
@@ -4221,6 +4253,63 @@ private:
 
 	/** One statue woken: its pillar gone, its cell walkable, and its warden raised on that cell, or null. */
 	ACataclysmEnemyCharacter* WakeTheAngelicStatue(FAngelicStatue& One);
+
+	// ----------------------------------------------------------------------
+	// Those in the Dark, layer 1 of 2: the chasms and the fall. Issues #1820 and #41. Ruled 2026-10-08 and
+	// 2026-10-09.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * This floor's chasm cells. Each stays walkable in the plan. HELD (`CellsTheFloorHolds`), a judgement by the
+	 * writing session: nothing a rule places later is put on one, and no obstacle closes one.
+	 */
+	TArray<FIntPoint> ThoseInTheDarkChasmCells;
+
+	/** The mark over each chasm cell, by the cell's index. Made on the beat, and made again there when lost. */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> ThoseInTheDarkChasmZones;
+
+	/** What the placement counted on this floor. */
+	FThoseInTheDarkCount ThoseInTheDarkCount;
+
+	/** How many falls this floor has recorded: nought or one. */
+	int32 ThoseInTheDarkFallsNoted = 0;
+
+	/** Mixed with the floor's seed for the stream the chasms are drawn on, as `GatedShortcutSalt` is. */
+	static constexpr int32 ThoseInTheDarkSalt = 0x7D4B;
+
+	/** The placement's rules in the order they are applied. `ChooseTheChasmCells` applies the first so many. */
+	static constexpr int32 ChasmRuleEntranceAndStairs = 1;
+	static constexpr int32 ChasmRuleHeldAndBarriers = 2;
+	static constexpr int32 ChasmRuleNoTwoSideBySide = 3;
+	static constexpr int32 ChasmRuleCrossable = 4;
+
+	/**
+	 * The chasm cells the seeded draw gives this floor with the first `RulesApplied` rules applied. Every walkable
+	 * cell of the plan as it stands, row by row, shuffled on a stream made from the plan's seed and
+	 * `ThoseInTheDarkSalt`; then taken in that order until one for every
+	 * `ThoseInTheDarkWalkableCellsPerChasm` walkable cells is chosen or the cells run out. `OutWalkable` is how many
+	 * walkable cells there were. Changes nothing.
+	 */
+	TArray<FIntPoint> ChooseTheChasmCells(int32 RulesApplied, int32& OutWalkable) const;
+
+	/**
+	 * Those in the Dark: this floor's chasms chosen, where a new arena is populated, after every other object of the
+	 * arena is placed. None without the row, none on a Horde arena, none on the last floor, none on the dark floor.
+	 */
+	void PlaceTheChasms();
+
+	/** Those in the Dark: the chasms, their marks, the count and the recorded fall forgotten. */
+	void ForgetTheChasms();
+
+	/** Those in the Dark, on the beat: a lost mark is made again, and a player standing on a chasm cell falls. */
+	void StepThoseInTheDark(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * WHAT A FALL CALLS. IN THIS LAYER IT RECORDS THAT THE PLAYER FELL ON THIS FLOOR AND LOGS IT, AND NOTHING ELSE
+	 * HAPPENS. THE NEXT LAYER REPLACES THIS BODY with the way to the dark floor. The beat calls it once a floor,
+	 * with the player and the chasm cell they stood on.
+	 */
+	void ThePlayerFellIntoAChasm(class ACataclysmPlayerCharacter* Player, FIntPoint Chasm);
 
 	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
 	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
