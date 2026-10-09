@@ -51576,9 +51576,11 @@ bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
 }
 
 // T12. THE PLACE THAT FALLS IS THE PLACE THAT IS MARKED: THE RING, NOT THE CELL. Ruled 2026-10-09. Standing 190 cm,
-// flat, from the middle of a chasm's cell for a beat is recorded as a fall. CONTROLS, IN THE SAME TEST AND BEFORE IT,
-// BOTH ON THE CHASM'S OWN CELL: standing 210 cm from the middle along a diagonal, and standing in the cell's corner
-// 269 cm from the middle, each for two beats, record none.
+// flat, from the middle of a chasm's cell for a beat is a fall: the player is on the dark floor. CONTROLS, IN THE
+// SAME TEST AND BEFORE IT, BOTH ON THE CHASM'S OWN CELL: standing 210 cm from the middle along a diagonal, and
+// standing in the cell's corner 269 cm from the middle, each for two beats, record none and leave the player off
+// the dark floor. Until layer 2 the last assertion read one fall recorded on the floor; a fall now replaces the
+// floor, and the dark floor begins with none recorded.
 //
 // THE ARITHMETIC. A cell is 400 cm, so a point is on the chasm's cell while it is under 200 cm from the middle along
 // each axis. 148.5 cm along both axes is 210.0 cm from the middle. 190 cm along both is 268.7 cm from it. 190 cm
@@ -51652,6 +51654,7 @@ bool FCataclysmThoseInTheDarkRingTest::RunTest(const FString& Parameters)
 	Beat(Mode, 2);
 	TestEqual(TEXT("standing 210 cm from the middle, on the chasm's own cell, for two beats records no fall"),
 			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	TestFalse(TEXT("and leaves the player off the dark floor"), Mode->ThePlayerIsOnTheDarkFloor());
 
 	// THE SECOND CONTROL: THE CORNER OF THE CHASM'S CELL, TWO BEATS.
 	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 190.0f, 190.0f, 268.7f))
@@ -51661,17 +51664,22 @@ bool FCataclysmThoseInTheDarkRingTest::RunTest(const FString& Parameters)
 	Beat(Mode, 2);
 	TestEqual(TEXT("standing in the corner of the chasm's cell, 269 cm from the middle, for two beats records no fall"),
 			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	TestFalse(TEXT("and the corner leaves the player off the dark floor"), Mode->ThePlayerIsOnTheDarkFloor());
 
-	// INSIDE THE RING: NOTHING UNTIL THE BEAT, AND THEN ONE FALL.
+	// INSIDE THE RING: NOTHING UNTIL THE BEAT, AND THEN THE FALL.
 	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 190.0f, 0.0f, 190.0f))
 	{
 		return false;
 	}
 	TestEqual(TEXT("standing 190 cm from the middle records nothing before the beat"),
 			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	TestFalse(TEXT("and the player is not on the dark floor before the beat"), Mode->ThePlayerIsOnTheDarkFloor());
 	Beat(Mode, 1);
-	TestEqual(TEXT("standing 190 cm from the middle for a beat is recorded as one fall"),
-			  Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+	TestTrue(TEXT("standing 190 cm from the middle for a beat is a fall: the player is on the dark floor"),
+			 Mode->ThePlayerIsOnTheDarkFloor());
+	TestEqual(TEXT("the dark floor carries the number ten deeper than floor 2"), Mode->FloorNumber, 12);
+	TestEqual(TEXT("the game mode keeps floor 2 as the floor fallen from"), Mode->TheDarkFloorFellFromFloor(), 2);
+	TestEqual(TEXT("and the dark floor has no chasm"), Mode->ThoseInTheDarkChasmCellsNow().Num(), 0);
 	return true;
 }
 
@@ -51680,7 +51688,8 @@ bool FCataclysmThoseInTheDarkRingTest::RunTest(const FString& Parameters)
 // 2026-10-09.
 //
 // HOW EACH TEST REACHES THE DARK FLOOR: BY A FALL, AND BY NOTHING ELSE. The floor is built with the row, the player is
-// stood on the middle of the floor's first chasm cell, and one beat is stepped by hand. Only a fall sets the flag, and
+// stood on the middle of the floor's first chasm cell, which is the middle of that chasm's ring and nought
+// centimetres from it, and one beat is stepped by hand. Only a fall sets the flag, and
 // no test sets it another way. HOW EACH LEAVES IT: the dark floor's creatures are cleared away, which opens its seal,
 // and its stairs are taken by the call the stairs make.
 //
@@ -51908,6 +51917,9 @@ namespace CataclysmDungeonModifierEffectsTest
 }
 
 // D1. THE DARK FLOOR IS ITS OWN FLOOR, AND A FLOOR BUILT WITHOUT A FALL IS WHAT IT WAS BEFORE THIS LAYER.
+//
+// ONE DRAW IS EXCEPTED, ruled 2026-10-09, and is not what this test reads: the row now answers Built, so the pool
+// Reality Twister draws from holds one more row. No floor built here carries Reality Twister.
 //
 // On up to eight dungeon seeds whose floor 2 has a chasm, three floors of one number, 12, are compared: floor 12 built
 // without a fall, the dark floor a fall from floor 2 leads to, and floor 12 reached by the dark floor's stairs.
@@ -52814,6 +52826,133 @@ bool FCataclysmDarkFloorLeavingTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("floor 12 built after leaving has ordinary floor 12's plan seed"), Mode->CurrentFloor->GetPlan().Seed,
 			  OrdinaryPlanSeed);
 	TestEqual(TEXT("and the seed handed to it is the dungeon's own"), Mode->ChooseSeedForThisFloor(), Seed);
+	return true;
+}
+
+// D11. THE DARK FLOOR'S SEAL IS ON THE PANEL WHATEVER ROWS THAT FLOOR DREW. Ruled 2026-10-09, added by this layer's
+// second commit.
+//
+// THE PANEL DRAWS ONE LINE FOR EACH ROW KEY IT IS HANDED, and none for a count whose key it was not handed
+// (`UCataclysmFloorModifierPanelLayout::LinesFor`). So the game mode hands it Those in the Dark on the dark floor
+// even when the floor's brief does not carry the row (`RowsTheFloorPanelLists`).
+//
+// THE ROUTE TO A DARK FLOOR WHOSE BRIEF DOES NOT CARRY THE ROW: the floor fallen from is built with the row, so it
+// has chasms; then the test changes the dungeon's rows to Famished Beasts alone, as a Volatile dungeon's re-draw
+// would change them, and the player falls. The dark floor is built from the dungeon's rows as they then stand. No
+// dungeon is made Volatile.
+//
+// CONTROLS, IN THE SAME TEST: the panel's lines made from the dark floor's own rows alone hold no line for the row;
+// and on the floor the dark floor's stairs lead to, the rows the panel lists are the floor's own and nothing else.
+//
+// WHERE EACH STANDS: the player at the entrance, then on the middle of a chasm's cell for the fall. No creature is
+// placed.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The panel's line for this row among these lines, or null when there is none. */
+	const FCataclysmFloorModifierLine* DarkFloorLineFor(const TArray<FCataclysmFloorModifierLine>& Lines, FName Row)
+	{
+		return Lines.FindByPredicate([Row](const FCataclysmFloorModifierLine& One) { return One.RowKey == Row; });
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarkFloorPanelWhateverRowsTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheDarkFloorsSealIsOnThePanelWhateverRowsTheFloorDrew",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarkFloorPanelWhateverRowsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Layout = UCataclysmFloorModifierPanelLayout;
+
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!TestNotNull(TEXT("set-up: the dungeon modifier table loaded"), Table))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->TotalFloors = 40;
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, DarkFloorFallsFrom, 1, Seed))
+	{
+		return false;
+	}
+
+	// THE DUNGEON'S ROWS CHANGE BEFORE THE FALL, SO THE DARK FLOOR'S BRIEF DOES NOT CARRY THE ROW.
+	Mode->DungeonModifiers = {FamishedRow};
+	if (!FallIntoAChasm(*this, Mode, Player)
+		|| !TestFalse(TEXT("set-up: the dark floor's brief does not carry Those in the Dark"),
+					  Mode->FloorBrief.Modifiers.Contains(ThoseInTheDarkRow))
+		|| !TestTrue(TEXT("set-up: it carries Famished Beasts alone"),
+					 Mode->FloorBrief.Modifiers == TArray<FName>({FamishedRow})))
+	{
+		return false;
+	}
+	const int32 StandingOnTheDarkFloor = Mode->LightforgedWallsStanding();
+	if (!TestTrue(TEXT("set-up: the dark floor placed creatures that stand"), StandingOnTheDarkFloor > 0))
+	{
+		return false;
+	}
+	const FString WhileTheyStand = FString::Printf(
+		TEXT("those in the dark: the dark floor, no chasms, %d still standing"), StandingOnTheDarkFloor);
+
+	// THE CONTROL: THE PANEL'S LINES MADE FROM THE FLOOR'S OWN ROWS ALONE.
+	const TArray<FCataclysmFloorModifierLine> FromTheFloorsRows =
+		Layout::LinesFor(Mode->FloorBrief.Modifiers, Table, Mode->LiveCountsForTheFloor());
+	TestNull(TEXT("CONTROL: made from the dark floor's own rows alone, the panel has no line for Those in the Dark"),
+			 DarkFloorLineFor(FromTheFloorsRows, ThoseInTheDarkRow));
+
+	// WHAT THE GAME MODE HANDS THE PANEL.
+	TestTrue(TEXT("on the dark floor the panel lists the floor's rows and then Those in the Dark"),
+			 Mode->RowsTheFloorPanelLists() == TArray<FName>({FamishedRow, ThoseInTheDarkRow}));
+	const TArray<FCataclysmFloorModifierLine> Standing =
+		Layout::LinesFor(Mode->RowsTheFloorPanelLists(), Table, Mode->LiveCountsForTheFloor());
+	const FCataclysmFloorModifierLine* SealLine = DarkFloorLineFor(Standing, ThoseInTheDarkRow);
+	if (!TestNotNull(TEXT("the panel has a line for Those in the Dark though the floor did not draw the row"), SealLine))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the line counts the creatures still standing"), SealLine->LiveCount, WhileTheyStand);
+	TestEqual(TEXT("and reads as the row's name with that count"), Layout::NameLineFor(*SealLine),
+			  FString::Printf(TEXT("Those in the Dark (%s)"), *WhileTheyStand));
+	TestTrue(TEXT("and the dark floor's seal is what seals the stairs"),
+			 Mode->StairsSealedBy() == TArray<FName>({ThoseInTheDarkRow}));
+
+	// NONE STANDING.
+	Mode->ClearFloorEnemies();
+	const TArray<FCataclysmFloorModifierLine> Slain =
+		Layout::LinesFor(Mode->RowsTheFloorPanelLists(), Table, Mode->LiveCountsForTheFloor());
+	const FCataclysmFloorModifierLine* SlainLine = DarkFloorLineFor(Slain, ThoseInTheDarkRow);
+	if (!TestNotNull(TEXT("with none standing the panel still has the line"), SlainLine))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it says every creature is slain"), SlainLine->LiveCount,
+			  FString(TEXT("those in the dark: the dark floor, no chasms, every creature slain")));
+
+	// THE CONTROL: THE FLOOR THE DARK FLOOR'S STAIRS LEAD TO.
+	TakeTheStairs(*this, Mode);
+	if (!TestFalse(TEXT("set-up: the dark floor's stairs were taken"), Mode->ThePlayerIsOnTheDarkFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: off the dark floor the panel lists the floor's own rows and nothing else"),
+			 Mode->RowsTheFloorPanelLists() == Mode->FloorBrief.Modifiers);
+	TestFalse(TEXT("CONTROL: and Those in the Dark is not among them"),
+			  Mode->RowsTheFloorPanelLists().Contains(ThoseInTheDarkRow));
 	return true;
 }
 
