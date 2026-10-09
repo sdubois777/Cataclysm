@@ -1813,7 +1813,37 @@ their chance.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run 2026-10-09 in a window of its own, on `development` 993d4536, with all thirteen layers of the enchantment
+stack and the dungeon session's layers below it merged. **The ids are the commits as they stood when each step
+ran.** Each step was run once, and each figure was stated before the run.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build, the first compile of this layer's code and tests | 5b434eec | Build: Succeeded - 34 actions, 31 files compiled |
+| Cataclysm.Enchantments. at that build | 5b434eec | 307 tests performed, 307 succeeded, 0 failed |
+| Whole suite | 5b434eec | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3501 tests performed, 3501 succeeded, 0 failed. 40 skipped part of what they check; 3501 tests in the tree, 3501 performed, gap 0 |
+| Python of record, continuous integration idle | 5b434eec | 5943 passed, 8 skipped in 392.14s; JUnit tests 5951, failures 0, errors 0, skipped 8 |
+| Lint | 5b434eec | All checks passed! |
+| Proof R1, the guard for a stated 100 taken out of the cooldown reset | 5b434eec | PROVED: with the break in, 307 tests performed, 306 succeeded, 1 failed: `AResetRowStating100ResetsAtARollOf100AndARowBelow100StillFailsAtItsChance`, 1 failed assertion; restored, 307 of 307 |
+
+**Every step was as stated before it ran.** The group had been stated as 307, the 304 of the window before plus
+this layer's three. The whole suite had been stated as 3501: the 3498 the dungeon session's window printed on
+`development` 68d6d308 with the four tests of its last layer, plus three.
+
+**The three new tests each passed in the group and in the whole suite.** Until this run none had been compiled.
+
+**The proof was as stated.** The break put `if (Roll >= Action.Percent)` back in `RollAndResetCooldowns`. One
+test failed, on the one assertion named before the run: "a row stating 100, at a roll of 100: a kill clears
+special". Its set-up assertions and its three control assertions passed with the break in. None of the three
+merged tests that wear a row stating 100 with the roll unpinned failed in the broken half. The broken file's
+hash was the same after the proof as before it.
+
+**The refused pin did not happen in these runs.** The whole suite's log and the group's log hold no line saying
+a set of a console variable "was ignored", so the pin of `Cataclysm.CooldownResetRoll` at code priority was
+taken each time it was made. That is two runs and not a reading of the order the groups run in.
+
+**No proof was run for** a use's outcome or a held skill triggered. Each has a test that passed; neither is
+proved.
 
 ---
 
