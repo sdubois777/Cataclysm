@@ -89,6 +89,17 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * nothing more.
 	 */
 	TArray<FCataclysmDungeonModifier> EveryBuiltModifier;
+
+	/**
+	 * Whether the floor asked about is the dark floor a fall into a chasm leads to (`Void_Those_in_the_Dark`).
+	 * Issues #1820 and #41, ruled 2026-10-09.
+	 *
+	 * FALSE FOR EVERY FLOOR BUT THAT ONE. `ACataclysmDungeonGameMode::DungeonIdentity` sets it from the one flag a
+	 * fall sets, and nothing else does. READ ONLY BY `BossAtTheExit`, which answers no on the dark floor. The
+	 * dark floor's own draws come from `DungeonSeed`, which the game mode hands over already mixed with
+	 * `FCataclysmDungeonFloorRules::DarkFloorSalt` for that floor; this field mixes nothing.
+	 */
+	bool bTheDarkFloor = false;
 };
 
 /**
@@ -554,6 +565,22 @@ public:
 	 * a number that already decided the size of a room.
 	 */
 	static constexpr int32 ModifierSalt = 0x6D6F64;
+
+	/**
+	 * Mixed with the dungeon's seed for the dark floor a fall into a chasm leads to (`Void_Those_in_the_Dark`),
+	 * so that floor is its own floor and not a copy of the floor its number names. Issues #1820 and #41, ruled
+	 * 2026-10-09.
+	 *
+	 * THE DARK FLOOR CARRIES THE NUMBER OF THE FLOOR ITS STAIRS LEAD TO, and a floor is fixed by its dungeon seed
+	 * and its number: the carve, the creatures, the gated shortcuts, Scarcity's slot and this file's draw of the
+	 * floor's rows. So the seed is the one thing that can tell the two apart. `SeedOnTheDarkFloor` is the seed
+	 * the game mode hands to all of them while the player is on the dark floor, and to none of them otherwise.
+	 * The letters "dark".
+	 */
+	static constexpr int32 DarkFloorSalt = 0x6461726B;
+
+	/** The seed a dungeon of this seed gives its dark floor: `SeedForFloor(DungeonSeed, DarkFloorSalt)`. */
+	static int32 SeedOnTheDarkFloor(int32 DungeonSeed);
 
 	/**
 	 * How much of a wave may still be standing when the next one arrives.
