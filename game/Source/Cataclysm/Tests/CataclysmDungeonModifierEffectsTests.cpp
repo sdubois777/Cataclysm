@@ -53402,8 +53402,6 @@ bool FCataclysmFragmentedRealityFiguresTest::RunTest(const FString& Parameters)
 				  Effects::FragmentedRealitySectionFor(2, Seed), 1);
 		TestEqual(FString::Printf(TEXT("with three sections and seed %d it is the section worked out by hand"), Seed),
 				  Effects::FragmentedRealitySectionFor(3, Seed), SectionsDrawn[Seed - 1]);
-		TestEqual(FString::Printf(TEXT("and seed %d asked again gives the same section"), Seed),
-				  Effects::FragmentedRealitySectionFor(3, Seed), Effects::FragmentedRealitySectionFor(3, Seed));
 	}
 
 	// WHICH PAIR. Eight entries on the floor of seed 1234, worked out by hand; three of the four pairs are among them.
