@@ -2,6 +2,154 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — A player's walking speed is worked out from the stat line the same refresh stored, not from the one before (#2359)
+
+**Not built and not run.** The writing session wrote this layer on development 90b45b92: one test, one statement
+in `UCataclysmPlayerClassStats::ApplyTo`, and this entry. It compiled nothing and ran no Unreal test. It ran the
+Python tests in `tools/tests`, the lint and the conflict check before the commit, and nothing else. Every
+statement below about what the engine does is read from the code.
+
+**Said first: the fault is older than Fragmented Reality.** That layer's test was the first to read a player's
+walking speed under a dungeon rule, and it found the fault; it did not make it. The failed assertion is not
+changed by this layer.
+
+**Said first: how far it reached, by reading only.** Every change to a player's `movement_speed` stat line
+that goes through `ApplyTo`: equipment, the passive tree, an attribute point, a level, and every dungeon rule
+that writes movement speed. The stat changed at once and the walking speed was set from the line of the
+refresh before. No measurement was made of how often a player met it.
+
+**Said first: what corrected it in play before this layer.** The next time the walking speed was asked for any
+other reason: any change of the player's health, cripple starting or ending, channelling starting or ending, a
+change of the class resource or its maximum, an action event or the quarter-second step when the player holds
+a speed row that can change unannounced. So it showed when a player stood at steady health with none of those
+happening.
+
+**Said first: the other listeners found were listed and not changed.** The list is below. One of them, the
+handler of the class resource's maximum, asks the walking speed too and was late in the same way; the new
+statement runs after it and so corrects that as well. Nothing else was corrected.
+
+### The two printed lines
+
+From the whole-suite run of 2026-10-09, as the coordinating session gave them, for
+`Cataclysm.DungeonModifierEffects.FragmentedRealityPairThreeGivesHalfAgainTheMovementSpeedAndTakesThreeTenthsOfDamage`:
+
+- "Expected 'and the player walks one and a half times as fast' to be 690.000000, but it was 460.000000"
+- "Expected 'and the player walks as fast as it did' to be 460.000000, but it was 689.999939"
+
+The stat assertions beside them passed. This session did not make that run.
+
+### The ruling
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-09:
+
+1. The test first, with no dungeon rule: a movement speed row put on a real player's stat line through the
+   equipment refresh; in the same call's aftermath, with no beat and no health change, the stat rose and the
+   movement component's walking speed is the control multiplied by the same ratio; then the row removed and
+   both back. No absolute figure.
+2. Before the correction, every other listener that asks the pipeline when an attribute is written is searched
+   for and listed, each with whether it reads the stat line. Only movement speed is corrected.
+3. The correction is one statement in `ApplyTo` after `SetStatInputs`, which does nothing for anything that is
+   not a player character.
+4. One proof.
+
+### What was read before writing
+
+All in `game/Source/Cataclysm/`.
+
+- `Character/CataclysmPlayerClassStats.cpp`, `ApplyTo` (from line 1506): the attribute writes at lines 1656 and
+  1714, `SetStatInputs` at line 1774, and the comment under it that says of the Water to Blood flag that
+  asking before `SetStatInputs` "would read whatever the previous refresh left behind".
+- Who calls `ApplyTo`: `UCataclysmEquipmentComponent::RefreshAttributes` (`Items/CataclysmEquipmentComponent.cpp`)
+  and `ACataclysmPlayerCharacter::ApplyChosenClassStats`. Only the player character creates an equipment
+  component. Many tests call `ApplyTo` on a component of a bare actor, some with no actor information set.
+- `Character/CataclysmPlayerCharacter.cpp`: `InitAbilityActorInfo`, where the listeners are bound;
+  `OnMovementSpeedChanged`, `OnClassResourceChanged`, `HealthChanged`, and `RefreshMovementSpeed`, which is
+  public and asks `StatForSkill` for `movement_speed`.
+- `Character/CataclysmEnemyCharacter.cpp` and `Character/CataclysmCharacterBase.cpp`: neither binds a listener to
+  an attribute.
+- Each attribute set's `PreAttributeChange`, and `UCataclysmVitalAttributeSet`'s `PostAttributeChange`,
+  `PostAttributeBaseChange` and `NotifyHealthChanged`.
+- The engine's `UAbilitySystemComponent::GetAvatarActor`, which checks that the actor information is set, and
+  `GetAvatarActor_Direct`, which answers null when it is not.
+- `Tests/CataclysmPlayerMovementTests.cpp`, group `Cataclysm.Player.`, where the tests of the player's walking
+  speed are.
+
+### The listeners that run while `ApplyTo` writes attributes
+
+Each runs before the new stat line is stored when the write is one of the passes above line 1774.
+
+| Listener | What sets it off | Reads the stat line? | May be one refresh late? |
+|---|---|---|---|
+| `ACataclysmPlayerCharacter::OnMovementSpeedChanged` | The movement speed attribute written | Yes, through `RefreshMovementSpeed` | Yes. Corrected by this layer |
+| `ACataclysmPlayerCharacter::OnClassResourceChanged`, the walking speed it asks | The class resource's maximum written (`class_resource`) | Yes, through `RefreshMovementSpeed` | Yes. Corrected by this layer, because the new statement runs after it |
+| The same handler, the two windows it opens | The same write | No: it compares the attribute's old and new values | No |
+| `UCataclysmVitalAttributeSet::PostAttributeChange` | Maximum health written lower than health | No: it reads the two attributes and lowers health | No |
+| `UCataclysmVitalAttributeSet::PreAttributeChange` on health | Health lowered by the row above | No: it clamps to the maximum health attribute | No |
+| `NotifyHealthChanged`: `UCataclysmDamageConversion::NoteHealthChanged` and `UCataclysmLowHealthRelief::NoteHealthChanged` | Health lowered by the row above | Not through `StatForSkill`, as far as was read; neither was read to its end | Not known |
+| `NotifyHealthChanged`: `UCataclysmAbilitySystemComponent::NoteHealthForCrossing` | The same | It acts on the worn rows' actions, which the refresh stored before `ApplyTo`; whether an action then asks a stat was not followed | Not known. A worn action on "health falls below" may act on the line before |
+| `NotifyHealthChanged`: `ACataclysmPlayerCharacter::HealthChanged` | The same | Yes, through `RefreshMovementSpeed` | Yes for the walking speed, and corrected by this layer |
+| `UCataclysmClassResourceAttributeSet::PreAttributeChange` on the class resource held | The class resource held written | Yes: `MaximumClassResource` asks `StatForSkill` | No write of it was found in `ApplyTo`'s passes, so not by this route |
+| `UCataclysmVitalAttributeSet::PreAttributeChange` on the energy shield | The energy shield held written | Yes: `MaximumEnergyShieldAsked` | No: `ApplyTo` writes it only when filling the pools, after `SetStatInputs` |
+| The other sets' `PreAttributeChange` (combat, resistance, primary, all-resistance) | Any of their attributes written | No call of `StatForSkill` or of the stat inputs was found in them | No |
+| The enemy and the base character | Nothing: they bind no listener to an attribute, and `ApplyTo` is not called for them in play | | |
+
+### How it is built
+
+One statement in `ApplyTo`, directly after `SetStatInputs`: when the component's avatar is an
+`ACataclysmPlayerCharacter`, `RefreshMovementSpeed` is called on it. The avatar is read with
+`GetAvatarActor_Direct`, so a component with no actor information answers null; a bare actor, a creature or a
+minion fails the cast. `RefreshMovementSpeed` was already public and its access was not changed. The listener
+still runs on the attribute write, as before; the walking speed it sets from the line before is replaced a
+moment later in the same call.
+
+### For the owner's play-check
+
+A player who puts on or takes off boots with movement speed, spends a point that moves it, or walks into or
+out of a rule's slow or haste at steady health now changes walking speed at once. Before, the change came when
+health next moved, or at the next of the other events named above. Nothing is new to look at; no number was
+judged.
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The test's row is put in the place the ability system keeps a floor's modifiers,**
+   `SetDungeonStatModifiers`, and the equipment refresh is then called. It is one of the places the refresh
+   gathers from and survives it. No game mode and no rule is in the test. A worn item was the reading not
+   taken: it needs an item and an affix built, and reaches the same `ApplyTo`.
+2. **The test also tries a row of 40% less,** beside the ruled 50% more.
+3. **The statement is placed directly after `SetStatInputs`** and before the Water to Blood conversion, which
+   does not move the movement speed.
+4. **`GetAvatarActor_Direct` and not `GetAvatarActor`,** because the second fails a check on a component whose
+   actor information was never set, which tests build.
+
+### Tests
+
+One, not run: `Cataclysm.Player.WalkingSpeedFollowsAMovementSpeedRowInTheSameRefreshThatStoresIt`, in
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp`. A possessed player; the control is a refresh
+with no row. With 50% more: the stat is 1.5 times the control's, the walking speed is the control's multiplied
+by the stat's ratio, and health did not move. Row removed: both are the control's. With 40% less: the stat is
+0.6 times, and the walking speed follows by the ratio. Removed again: both are the control's, and health never
+moved. No existing test and no Python check was changed.
+
+### Not covered by a test
+
+- A worn item, a passive node, an attribute point or a level moving the speed. They reach the same `ApplyTo`.
+- The class resource's maximum being written, and the walking speed after it.
+- The listeners marked "not known" in the table.
+- Fragmented Reality's own test, which is on another branch.
+
+### Guard proofs proposed
+
+One, not run. `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, one line, counted once. Before:
+`Walker->RefreshMovementSpeed();` After: `(void)Walker;` Test:
+`Cataclysm.Player.WalkingSpeedFollowsAMovementSpeedRowInTheSameRefreshThatStoresIt`. Predicted: 4 assertions
+fail, the four that read the walking speed. Each refresh then sets it from the line before: with 50% more it
+stays the control's; with the row removed it is 1.5 times; with 40% less it is the control's; removed again it
+is 0.6 times. The stat and health assertions pass.
+
+---
+
 ## 2026-10-09 — "Each class point above the max reduces your max resistances by 2%-5%" is built as a row, and the max is 230
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),

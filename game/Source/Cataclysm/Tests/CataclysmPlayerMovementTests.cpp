@@ -27,6 +27,8 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Misc/ScopeExit.h"
 #include "HAL/IConsoleManager.h"
 #include "Player/CataclysmPlayerState.h"
@@ -2134,6 +2136,140 @@ bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
 	}
 	TestTrue(TEXT("the critical strike put the pinned Bleed on the creature it struck"),
 		Struck->HasMatchingGameplayTag(BleedTag));
+	return true;
+}
+
+// THE WALKING SPEED IS WORKED OUT FROM THE STAT LINE THE SAME REFRESH STORED. Issue #2359.
+//
+// `UCataclysmPlayerClassStats::ApplyTo` writes each attribute and only afterwards stores the character's stat line.
+// Writing the movement speed attribute tells the pawn to work its walking speed out again, and the pawn asks the
+// stat pipeline, which until this issue still held the line of the refresh before. So the walking speed was one
+// refresh late, and stayed so until something else asked again: a change of health, for one.
+//
+// A REAL PLAYER, POSSESSED, so it carries its class's line and its equipment component; NO DUNGEON RULE AND NO GAME
+// MODE. The row is a More on `movement_speed` put where the ability system keeps a floor's modifiers,
+// `SetDungeonStatModifiers`, which is one of the places `UCataclysmEquipmentComponent::RefreshAttributes` gathers
+// from and the one a test can write with one call. Each figure is read straight after the refresh that stored the
+// row, with nothing in between, and the player's health is read before and after to show nothing moved it.
+//
+// THE CONTROL is the same player after a refresh with no row, measured in this test: the player is a real
+// character with class lines, so no figure is compared with a number written here.
+//
+// WHERE IT STANDS: the player at the world's origin. Nothing else is in the world.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayerWalkingSpeedFollowsTheLineJustStored,
+	"Cataclysm.Player.WalkingSpeedFollowsAMovementSpeedRowInTheSameRefreshThatStoresIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerWalkingSpeedFollowsTheLineJustStored::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player state"), PlayerState)
+		|| !TestNotNull(TEXT("set-up: a controller"), Controller)
+		|| !TestNotNull(TEXT("set-up: a player character"), Character))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(PlayerState);
+	Controller->Possess(Character);
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+	const UCataclysmEquipmentComponent* Worn = Character->GetEquipment();
+	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	if (!TestNotNull(TEXT("set-up: the player's ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("set-up: the player's equipment"), Worn)
+		|| !TestNotNull(TEXT("set-up: the player's movement component"), Movement))
+	{
+		return false;
+	}
+
+	const FName SpeedStat(TEXT("movement_speed"));
+	const FGameplayAttribute SpeedAttribute = UCataclysmCombatAttributeSet::GetMovementSpeedAttribute();
+	const FGameplayAttribute HealthAttribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const auto AskedSpeed = [AbilitySystem, SpeedStat, SpeedAttribute]()
+	{
+		return AbilitySystem->StatForSkill(SpeedStat, FGameplayTagContainer(),
+										   AbilitySystem->GetNumericAttribute(SpeedAttribute));
+	};
+
+	// The row is the only thing the refresh is given: more or less movement speed, by this many per cent, or none.
+	const auto RefreshWith = [AbilitySystem, Worn, SpeedStat](float MorePercent)
+	{
+		TMap<FName, TArray<FCataclysmStatModifier>> Held;
+		if (!FMath::IsNearlyZero(MorePercent))
+		{
+			FCataclysmStatModifier Speeding;
+			Speeding.Bucket = ECataclysmStatBucket::More;
+			Speeding.Source = ECataclysmModifierSource::DungeonRule;
+			Speeding.Value = MorePercent;
+			Held.FindOrAdd(SpeedStat).Add(Speeding);
+		}
+		AbilitySystem->SetDungeonStatModifiers(MoveTemp(Held));
+		Worn->RefreshAttributes(AbilitySystem);
+	};
+
+	// THE CONTROL: A REFRESH WITH NO ROW.
+	RefreshWith(0.0f);
+	const float StatPlain = AskedSpeed();
+	const float WalkPlain = Movement->MaxWalkSpeed;
+	const float HealthPlain = AbilitySystem->GetNumericAttribute(HealthAttribute);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the player has movement speed to change (%.3f)"), StatPlain),
+				  StatPlain > 0.1f)
+		|| !TestTrue(FString::Printf(TEXT("set-up: and walks at a speed above nought (%.1f cm/s)"), WalkPlain),
+					 WalkPlain > 1.0f))
+	{
+		return false;
+	}
+
+	// A ROW OF 50% MORE, AND THE FIGURES READ STRAIGHT AFTER THE REFRESH THAT STORED IT.
+	RefreshWith(50.0f);
+	const float StatFaster = AskedSpeed();
+	if (!TestEqual(TEXT("with the row the movement speed stat is one and a half times the control"), StatFaster,
+				   1.5f * StatPlain, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the walking speed rose by the same ratio in the same refresh"), Movement->MaxWalkSpeed,
+			  WalkPlain * (StatFaster / StatPlain), 0.1f);
+	TestEqual(TEXT("with no change of health in between"), AbilitySystem->GetNumericAttribute(HealthAttribute),
+			  HealthPlain, 0.001f);
+
+	// THE ROW REMOVED.
+	RefreshWith(0.0f);
+	TestEqual(TEXT("with the row removed the stat is the control's"), AskedSpeed(), StatPlain, 0.001f);
+	TestEqual(TEXT("and the walking speed is the control's in the same refresh"), Movement->MaxWalkSpeed, WalkPlain,
+			  0.1f);
+
+	// A ROW OF 40% LESS, WHICH IS A SLOWING RULE'S SHAPE.
+	RefreshWith(-40.0f);
+	const float StatSlower = AskedSpeed();
+	if (!TestEqual(TEXT("with a row of 40% less the stat is six tenths of the control"), StatSlower, 0.6f * StatPlain,
+				   0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the walking speed fell by the same ratio in the same refresh"), Movement->MaxWalkSpeed,
+			  WalkPlain * (StatSlower / StatPlain), 0.1f);
+
+	// AND REMOVED AGAIN.
+	RefreshWith(0.0f);
+	TestEqual(TEXT("with that row removed the stat is the control's again"), AskedSpeed(), StatPlain, 0.001f);
+	TestEqual(TEXT("and the walking speed is the control's again in the same refresh"), Movement->MaxWalkSpeed,
+			  WalkPlain, 0.1f);
+	TestEqual(TEXT("and health never moved"), AbilitySystem->GetNumericAttribute(HealthAttribute), HealthPlain,
+			  0.001f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS
