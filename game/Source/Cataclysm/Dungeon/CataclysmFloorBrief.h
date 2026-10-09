@@ -523,9 +523,9 @@ public:
 	 *   1. `RuleOfChaosSkillsPaidInHealth`, a change to character attributes: a skill costs no mana and costs
 	 *      `UCataclysmDungeonModifierEffects::DesperateMeasuresHealthPercent` of current health instead, at any mana.
 	 *   2. `RuleOfChaosKillsClearCooldowns`, a change to skill behaviour: every cooldown is
-	 *      `UCataclysmDungeonModifierEffects::RuleOfChaosCooldownLongerPercent` longer, and a kill by the player is
-	 *      to clear every cooldown. THE CLEARING IS NOT WRITTEN YET: see the entry of 2026-10-08 in
-	 *      `docs/DECISIONS.md`, which says why it was stopped for a ruling.
+	 *      `UCataclysmDungeonModifierEffects::RuleOfChaosCooldownLongerPercent` longer, and each kill by the player
+	 *      clears every cooldown and returns every spent use. The clearing has NO ROLL, as ruled on 2026-10-08:
+	 *      see `ACataclysmDungeonGameMode::NoteDeathForRuleOfChaos`.
 	 *   3. `RuleOfChaosStairsOpenByTime`, an unconventional victory condition: the stairs are sealed when the floor
 	 *      begins and open `UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds` later, whatever has
 	 *      or has not been slain. See `ACataclysmDungeonGameMode::RuleOfChaosSealsTheStairs`.

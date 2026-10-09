@@ -1894,6 +1894,21 @@ private:
 	 */
 	void NoteDeathForBloodGates(const struct FCataclysmDeathNotice& Notice);
 
+	/**
+	 * Rule of Chaos, on every death, on a floor that drew its change to skill behaviour: a kill by the player clears
+	 * every cooldown of the player and returns every spent use. Issues #1820 and #41.
+	 *
+	 * "A KILL" IS WHAT BLOOD GATES COUNTS: the notice names the player as the killer, the creature pays for its death,
+	 * and it is not one a rule raised. A death to any other cause clears nothing.
+	 *
+	 * NO ROLL, ruled on 2026-10-08 under the owner's delegation. It calls
+	 * `UCataclysmAbilitySystemComponent::RefillSkillCharges` with every slot's cooldown tag and then
+	 * `RemoveActiveEffectsWithGrantedTags` with the same tags, in that order, so ending the cooldowns starts no
+	 * further recharge. NOT `RollAndResetCooldowns`, whose roll can refuse a percent of 100, and NOT
+	 * `ClearWhatDeathEnds`, which also ends every buff.
+	 */
+	void NoteDeathForRuleOfChaos(const struct FCataclysmDeathNotice& Notice);
+
 public:
 	/**
 	 * Divine Resurgence's state, for the floor panel and for tests. How many unmarked
@@ -2089,6 +2104,8 @@ public:
 	 * a Horde floor, which has no stairs, and not on the last floor, whose way out no row seals.
 	 */
 	int32 RuleOfChaosChangeNow() const { return FloorBrief.RuleOfChaosChange; }
+	/** And how many of the player's kills on this floor cleared the cooldowns, under its change to skill behaviour. */
+	int32 RuleOfChaosKillsCount() const { return RuleOfChaosKills; }
 	bool RuleOfChaosSealsTheStairs() const;
 	int32 RuleOfChaosStairsSecondsLeft() const;
 
@@ -4493,6 +4510,9 @@ private:
 
 	/** Rule of Chaos: the seconds left its panel line last showed, so the panel is drawn again once a second. */
 	int32 RuleOfChaosPanelSeconds = -1;
+
+	/** Rule of Chaos: the player's kills on this floor that cleared the cooldowns. Goes at the stairs. */
+	int32 RuleOfChaosKills = 0;
 
 	/**
 	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.
