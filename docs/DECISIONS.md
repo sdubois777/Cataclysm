@@ -4,7 +4,22 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-09 — Fragmented Reality: on a Halls floor in sections one section scrambles the player's stats while they stand in it, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer on development 993d4536: the code, one new stat
+**Said first: this layer's first window stopped on one failed test, and the fault it found is not in this layer.**
+On 2026-10-09 at `feat/fragmented-reality-2` a4f57c5a, on development 90b45b92, the registering session built the
+layer and ran the whole Unreal suite once. As printed: `Build: Succeeded - 34 actions, 31 files compiled`;
+`3510 tests performed, 3509 succeeded, 1 failed: FragmentedRealityPairThreeGivesHalfAgainTheMovementSpeedAndTakesThreeTenthsOfDamage`;
+Python `5944 passed, 8 skipped`, JUnit `tests="5952" failures="0" errors="0"`. The other eight tests of this
+layer passed and no existing test failed. No guard proof was run, because the suite did not pass. The failed
+test printed "Expected 'and the player walks one and a half times as fast' to be 690.000000, but it was
+460.000000" and, after the player left the section, "Expected 'and the player walks as fast as it did' to be
+460.000000, but it was 689.999939". The assertions beside them on the movement speed stat passed. So the stat
+changed at once and the walking speed followed one refresh late. That fault is older than this layer and is in
+the function that applies a character's stats; it is issue #2359 and is corrected in its own layer, the entry
+below this one, which this layer now sits on. The failed test is unchanged: a labelled judgement by the
+coordinating session under the owner's delegation, 2026-10-09. Outside this entry, this layer is what that window
+ran.
+
+**When the paragraph below was written the layer was not built and not run.** The writing session wrote this layer on development 993d4536: the code, one new stat
 with its probe, nine new Unreal tests, two Python checks changed, and this entry. It compiled nothing and ran no
 Unreal test. It ran the Python tests in `tools/tests`, the lint and the conflict check before the commit, and
 nothing else. Every statement below about what the engine does is read from the code.
