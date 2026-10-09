@@ -4,11 +4,12 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — Rule of Chaos draws one of three rule changes for each floor, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer in two commits: the first with the code, seven
+**Not built and not run.** The writing session wrote this layer in three commits: the first with the code, seven
 Unreal tests, one change to a Python check and this entry; the second, after the rulings numbered 7 to 14
 below, with the clearing of cooldowns on a kill, two more Unreal tests and this entry brought up to those
-rulings. It compiled nothing and ran no Unreal test. It ran the Python tests in `tools/tests`, the lint and the
-conflict check before each commit, and nothing else. Every statement below about what the engine does is read
+rulings; the third, after rulings 15 to 19, with this entry alone. It compiled nothing and ran no Unreal test.
+It ran the Python tests in `tools/tests` and the lint before each commit, the conflict check before the two
+that changed C++, and nothing else. Every statement below about what the engine does is read
 from the code. No outcome of a build or of an Unreal run is recorded here.
 
 **Said first: the row's sentence is wider than what is built.** The row speaks of mechanics and systems
@@ -62,6 +63,13 @@ unchanged: 50 within earshot and nothing outside.
 
 **Said first, for the play-check: the 60 seconds run while the player is dead and start again on each floor.**
 They are read from the floor's own clock (ruling 12).
+
+**Said first, for the play-check: not every kill clears.** A kill is counted as Blood Gates counts one (ruling
+15). Killing a woken Angelic Warden, the Reaper, the Unstable Portal's warden or a creature risen from the dead
+clears no cooldown: the first three are creatures a rule raised and the last does not pay for its death. A
+kill by the player's minion clears nothing unless the player holds the stat `minion_hits_count_as_yours`,
+which the Ritualist keystone Conduit gives. A kill by a tick of damage over time the player applied does clear
+(ruling 16).
 
 **Said first: no new count of seconds was added.** The writing session was told to add "a count of seconds on
 the game mode's beat". The game mode already keeps one for every floor: `FloorSecondsSincePlaced`, stepped by
@@ -147,6 +155,25 @@ the coordinating session under the owner's delegation, 2026-10-08.
 14. **The panel's wording is approved**, with the change to the second change's line under ruling 7; so are
     the writing session's other judgements listed below.
 
+Rulings 15 to 19 were made on the writing session's report of the second commit. Each is a labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-08. The registering session made the reading
+ruling 16 names; the writing session read the same code again and found the same.
+
+15. **The kill is counted as Blood Gates counts.** A creature that does not pay for its death, or that a rule
+    raised, clears nothing.
+16. **Who a death names as its killer decides it.** The notice's killer is the attacker of the victim's last
+    blow. A blow dealt by the player's minion names the minion, unless the summoner holds
+    `minion_hits_count_as_yours`; then it names the summoner. So a kill by the player's minion clears nothing
+    unless the player holds that stat, and with it the minion's kill clears. A kill by a tick of damage over
+    time the player applied names the player, and clears.
+17. **The count of kills that cleared is kept**, because tests read it. Tests T8 and T9 are its only readers.
+    Nothing shows it to the player.
+18. **The proofs, one for each change**: the any-mana flag (proof 1), the refill call (proof 4), and `<`
+    against `<=` on the 60 seconds (proof 3). The `+=` keeps its test and has no proof.
+19. **"Eternal Chorus alone is unchanged" is held by two existing tests**, accepted:
+    `EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration` and
+    `WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed`. No test is added.
+
 ### What was read before writing
 
 All in `game/Source/Cataclysm/` unless a path says otherwise. Line numbers are of the files as the second commit
@@ -208,6 +235,13 @@ leaves them.
   `UCataclysmEquipmentComponent::RefreshAttributes` appends them (`Items/CataclysmEquipmentComponent.cpp` line
   808). The body of `RefreshAttributes` was not read beyond that.
 
+- For the third commit, all whole: in `AbilitySystem/CataclysmCombatEvents.cpp` both `AttackerOf` (lines 66
+  and 104), `NoteBlow` from its start to where it writes the last blow (line 165), and `NoteDeath` to where it
+  reads it (line 256); `ACataclysmMinion::HitsCountAsTheSummoners` (`AbilitySystem/CataclysmMinion.cpp` line
+  320); and in `Tests/CataclysmCombatEventsTests.cpp` the body of the loop of `ADeathFromATickNamesTheAilment`
+  from line 1225 to line 1275. `UCataclysmSkillEffects::ApplyDamageOverTime` was not read, nor the Conduit
+  test.
+
 No source outside this project was read. The three changes are built on levers this game already has, and
 their shape was ruled, not proposed here.
 
@@ -247,7 +281,22 @@ creature is not in `CreaturesRaisedByARule`. For such a kill it gathers every sl
 (line 12887) and then `RemoveActiveEffectsWithGrantedTags` with them (line 12888), and counts the kill in
 `RuleOfChaosKills`. There is no roll and no console variable. The uses are returned first, so that ending a
 cooldown does not start the next recharge of a skill that holds more than one use. No buff is ended. The count
-is put back to nought where Blood Gates' is, in `ApplyFloorRulesToPlayer`; only a test and a log line read it.
+is put back to nought where Blood Gates' is, in `ApplyFloorRulesToPlayer`. Tests T8 and T9 are its only
+readers; the one other use is the Verbose log line in the function that counts it. Nothing shows it to the
+player.
+
+**Who a death names as its killer.** This layer writes none of it; it is what the kill's test rests on.
+`UCataclysmCombatEvents::NoteDeath` sets `Notice.Killer = Blow.Attacker.Get();`
+(`AbilitySystem/CataclysmCombatEvents.cpp` line 256), the attacker of the last blow on record that reached the
+victim's health. `NoteBlow` records that attacker from `AttackerOf` (lines 147 and 165). `AttackerOf` (line 66)
+answers the effect context's instigator, except when the blow was dealt by an `ACataclysmMinion`: then (line
+104) it answers the minion itself, unless `ACataclysmMinion::HitsCountAsTheSummoners` is true, when it answers
+the minion's summoner. That function (`AbilitySystem/CataclysmMinion.cpp` line 320) asks whether the
+summoner's stat `minion_hits_count_as_yours` is above nothing. A tick of damage over time goes through the
+same `NoteBlow` and is not dealt by a minion, so it names its effect's instigator; the existing test
+`Cataclysm.CombatEvents.ADeathFromATickNamesTheAilment` asserts "a %s death is credited to whoever applied it"
+(`Tests/CataclysmCombatEventsTests.cpp` line 1270). The existing test
+`Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner` is about the minion's case.
 
 **Change 3.** `ACataclysmDungeonGameMode::RuleOfChaosSealsTheStairs` is true while the brief's change is 3, the
 floor is not a Horde floor, it is not the last floor, and `FloorSecondsSincePlaced` is below
@@ -283,6 +332,11 @@ panel:
 - The stairs do not answer for 60 seconds and then they do, whatever stands. **60 seconds** is judged: long
   enough that a fast character waits and must survive, short enough not to stall a slow one. It is not derived
   from any measured floor time. The readings not taken: a time that grows with the floor's size or depth.
+- Not every kill clears. Killing a woken Angelic Warden, the Reaper, the Unstable Portal's warden or a creature
+  risen from the dead clears no cooldown. The reading not taken: any creature the player kills.
+- A kill by the player's minion clears nothing, unless the player holds Conduit's stat
+  `minion_hits_count_as_yours`; with it the minion's kill clears.
+- A kill by a tick of damage over time the player applied clears.
 - The 60 seconds go on running while the player is dead, and start again on each floor.
 - **One in three**: the draw is even. The reading not taken: weights.
 - On a Horde floor and on a dungeon's last floor, one draw in three, the third change, leaves Rule of Chaos
@@ -293,7 +347,7 @@ panel:
 
 Each is a judgement by the writing session, for the coordinating session to confirm. Rulings 7 to 14 above
 answer the first ten: judgement 1 is settled by ruling 7, judgement 9 is changed by it, and the rest are
-approved or accepted. Judgements 11 to 13 are of the second commit and are not yet ruled on.
+approved or accepted. Judgements 11 to 13 are of the second commit; rulings 15, 16 and 17 approve them, each as marked.
 
 1. **The clearing on a kill was stopped in the first commit and not worked round.** Ruling 7 then said how
    to write it, and the second commit writes it so.
@@ -319,14 +373,16 @@ approved or accepted. Judgements 11 to 13 are of the second commit and are not y
 9. **The panel line for change 2 said only "cooldowns 100% longer" in the first commit.** It now says
    "cooldowns 100% longer, a kill clears them".
 10. **The constant for change 2 is named `RuleOfChaosKillsClearCooldowns`**, for the change as approved.
-11. **"The way Blood Gates counts" is taken to include its two exclusions.** A creature that does not pay for
+11. **Approved by ruling 15. "The way Blood Gates counts" is taken to include its two exclusions.** A creature that does not pay for
     its death (the floor's dead brought back) and a creature a rule raised (the Unstable Portal's warden, a
     woken Angelic Warden, the Reaper) clear nothing when the player kills them. The reading not taken: any
     creature the player kills.
-12. **A kill by the player's minion clears nothing**, unless the notice names the player as the killer, which
-    `UCataclysmCombatEvents::NoteBlow` decides in one place, as Blood Gates' comment says. That function was
-    not read.
-13. **The count of kills that cleared is kept and shown nowhere.** A test and a log line read it. It is put
+12. **Approved by ruling 16. A kill by the player's minion clears nothing**, unless the notice names the
+    player as the killer, which `UCataclysmCombatEvents::NoteBlow` decides in one place, as Blood Gates'
+    comment says. That function was not read for the second commit and was read for the third; see How it is
+    built.
+13. **Approved by ruling 17. The count of kills that cleared is kept and shown nowhere.** Tests T8 and T9 are
+    its only readers, beside the Verbose log line in the function that counts it. It is put
     back to nought in `ApplyFloorRulesToPlayer`, beside Blood Gates' count.
 
 ### Tests
@@ -400,15 +456,20 @@ None was run. Each line is counted once in its file.
    cooling down after the player's kill, because ending the Movement cooldown with a use still spent starts
    its next recharge; and the skill holding every use again.
 
-The coordinating session approved proofs 1 to 3. At most three are run. If the fourth is run, the writing
-session would drop the second: the first, the fourth and the third are then one for each change, and the
-second's two assertions stay in T3.
+Ruling 18 approved three, one for each change: proof 1 (the any-mana flag), proof 4 (the refill call) and
+proof 3 (`<` against `<=` on the 60 seconds). Proof 2 is not run: the `+=` keeps its test, T3, and has no
+proof.
 
 ### Not covered by a test
 
 - The pinned roll. The clearing makes no roll, so no test pins `Cataclysm.CooldownResetRoll`.
-- A kill of a creature a rule raised, of a creature brought back from the dead, and a kill by the player's
-  minion, each on a floor that drew the second change.
+- A kill of a creature a rule raised and of a creature brought back from the dead, on a floor that drew the
+  second change.
+- A kill by the player's minion, with and without `minion_hits_count_as_yours`, and a kill by a tick of damage
+  over time the player applied. No test in this layer kills with a minion or with a tick. What each death
+  names as its killer is held by the two existing `Cataclysm.CombatEvents` tests named above; that such a
+  death then clears or does not is read from the code.
+- A tick of damage over time that the player's minion applied. Not read.
 - That a kill ends no buff. It is read from the code: the two calls name cooldown tags only.
 - A real use of a skill followed by a kill. T8 spends the uses and starts the cooldowns by the functions a
   use calls, not by using the skill.
