@@ -224,7 +224,8 @@ def test_the_empire_layer_claim_is_still_true() -> None:
 #:
 #: The empire layer itself, obviously, and its own tests. The dungeon runtime,
 #: because walking down a floor costs a day to begin with and that is the point
-#: of issue #1092.
+#: of issue #1092; since issue #41 the days a death costs are charged from the
+#: same file, in `EndTheDungeonForADeath`.
 #: The tests that drive either. And the file the console commands live in, where
 #: `Cataclysm.EmpireAdvance` is -- an odd home for them, but it is where every
 #: other console command in this project already is.
@@ -254,7 +255,7 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     whose dungeon run costs them forty days is playing the game. Whoever spends a
     day from somewhere new has to come here, which is the whole purpose of it.
     """
-    if "Only walking a dungeon and the" not in readme_text():
+    if "Only walking a dungeon, dying in one and the" not in readme_text():
         pytest.skip("The readme no longer says what may move the empire's day.")
 
     movers = [
@@ -265,8 +266,8 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     ]
 
     assert not movers, (
-        "game/README.md says only walking a dungeon and the console commands "
-        f"move the empire's day, but these files advance it: {', '.join(movers)}."
+        "game/README.md says only walking a dungeon, dying in one and the console "
+        f"commands move the empire's day, but these files advance it: {', '.join(movers)}."
         " Update that bullet in the 'What is not here yet' section."
     )
 
