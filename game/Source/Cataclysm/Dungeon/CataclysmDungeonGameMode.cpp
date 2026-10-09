@@ -13764,9 +13764,21 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND THOSE IN THE DARK'S CHASMS AND THEIR MARKS END WITH THE DUNGEON. Issues #1820 and #41.
 	ForgetTheChasms();
 	// AND THE DARK FLOOR ENDS WITH IT: a floor built after this is an ordinary one.
+	const bool bLeftFromTheDarkFloor = bOnTheDarkFloor;
 	bOnTheDarkFloor = false;
 	DarkFloorFellFrom = 0;
 	DarkFloorPanelStanding = -1;
+
+	// AND THE SAVE IS TOLD, so no record written after this says the player is on a dark floor. Only when the
+	// dungeon was left from one: at every other time this function tells the save nothing, as before.
+	if (bLeftFromTheDarkFloor)
+	{
+		UCataclysmSaveWriter* SaveWriter = UCataclysmSaveWriter::In(GetWorld());
+		if (SaveWriter && SaveWriter->IsWriting())
+		{
+			SaveWriter->SetFloor(DungeonName, FloorNumber, false, 0);
+		}
+	}
 	ForgetTheTotems();
 	ForgetTheRelics();
 	ForgetTheBoxes();
@@ -21537,7 +21549,11 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	{
 		if (Writer->IsWriting())
 		{
-			Writer->SetFloor(DungeonName, FloorNumber);
+			// AND WHETHER THIS IS THE DARK FLOOR A FALL LEADS TO, WITH THE FLOOR FALLEN FROM. The dark floor carries
+			// the number of the floor its stairs lead to, so the number alone cannot tell the two apart, and
+			// arriving from the dark floor changes the flag and not the number. False and nought unless a fall
+			// set them. Issues #1820 and #41.
+			Writer->SetFloor(DungeonName, FloorNumber, bOnTheDarkFloor, DarkFloorFellFrom);
 		}
 	}
 

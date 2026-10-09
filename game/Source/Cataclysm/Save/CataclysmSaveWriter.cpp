@@ -59,6 +59,10 @@ void UCataclysmSaveWriter::BeginRun(const FGuid& InRunId, const FGuid& InCharact
 	Dungeon = InDungeon;
 	Floor = InFloor;
 
+	// A RUN BEGINS ON NO DARK FLOOR. Issues #1820 and #41.
+	bOnTheDarkFloor = false;
+	DarkFloorFellFrom = 0;
+
 	// THE CLOCK STARTS FROM THE BEGINNING OF THE RUN rather than from whenever
 	// the subsystem was made, so the first write is one interval into play and
 	// not one interval after the level loaded.
@@ -71,17 +75,44 @@ void UCataclysmSaveWriter::BeginRun(const FGuid& InRunId, const FGuid& InCharact
 		*CharacterId.ToString(EGuidFormats::Digits));
 }
 
-void UCataclysmSaveWriter::SetFloor(FName InDungeon, int32 InFloor)
+void UCataclysmSaveWriter::SetFloor(FName InDungeon, int32 InFloor, bool bInOnTheDarkFloor,
+									int32 InDarkFloorFellFrom)
 {
-	if (Dungeon == InDungeon && Floor == InFloor)
+	// NOTHING TO WRITE WHEN NOTHING DIFFERS. The dungeon and the floor number, as before; and whether the floor is
+	// the dark floor a fall leads to, with the floor fallen from. The dark floor carries the number of the floor
+	// its stairs lead to, so the second pair is the only thing that differs when the player leaves it by its
+	// stairs. A caller that passes neither holds and passes "not the dark floor", and the second test is true.
+	const bool bSameFloor = Dungeon == InDungeon && Floor == InFloor;
+	const bool bSameDarkFloor = bOnTheDarkFloor == bInOnTheDarkFloor && DarkFloorFellFrom == InDarkFloorFellFrom;
+	if (bSameFloor && bSameDarkFloor)
 	{
 		return;
 	}
 
 	Dungeon = InDungeon;
 	Floor = InFloor;
+	bOnTheDarkFloor = bInOnTheDarkFloor;
+	DarkFloorFellFrom = InDarkFloorFellFrom;
+	++FloorChangesNotedCount;
 
 	NoteTrigger(ECataclysmSaveTrigger::ChangedFloor);
+}
+
+bool UCataclysmSaveWriter::FloorRecordNow(FCataclysmSavedFloor& OutFloor) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	OutFloor = FCataclysmSaveGather::FloorFrom(*World, Dungeon, Floor, CharacterId);
+
+	// AND WHETHER IT IS THE DARK FLOOR, WHICH THE WORLD CANNOT SAY AND THE FLOOR NUMBER CANNOT EITHER. The game
+	// mode told `SetFloor`; see `FCataclysmSavedFloor::bOnTheDarkFloor`.
+	OutFloor.bOnTheDarkFloor = bOnTheDarkFloor;
+	OutFloor.DarkFloorFellFrom = DarkFloorFellFrom;
+	return true;
 }
 
 FString UCataclysmSaveWriter::RunSlotName() const
@@ -165,7 +196,7 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 	LastRun->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
 	LastRun->RunId = RunId;
 	LastRun->Characters = { CharacterId };
-	LastRun->Floor = FCataclysmSaveGather::FloorFrom(*World, Dungeon, Floor, CharacterId);
+	FloorRecordNow(LastRun->Floor);
 
 	// AND THIS RUN'S KILLS, off the character playing it. Issue #1833.
 	if (const ACataclysmPlayerCharacter* Playing = FCataclysmSaveGather::CharacterIn(*World))

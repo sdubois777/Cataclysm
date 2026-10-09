@@ -10,6 +10,7 @@
 class UCataclysmCharacterSave;
 class UCataclysmSaveRecord;
 class UCataclysmRunSave;
+struct FCataclysmSavedFloor;
 
 /**
  * The thing that decides a save is due and writes it.
@@ -87,8 +88,30 @@ public:
 	 * `ACataclysmDungeonGameMode::GoToFloor` calls it when the player takes the
 	 * stairs down. It was written when the save system was built and nothing
 	 * called it until then, because nothing changed floors.
+	 *
+	 * AND WHETHER THAT FLOOR IS THE DARK FLOOR A FALL LEADS TO, with the floor fallen from. Issues #1820 and #41,
+	 * 2026-10-09. The dark floor carries the number of the floor its stairs lead to, so leaving it by its stairs
+	 * changes neither the dungeon nor the number. This returns without writing only when all four are what it
+	 * holds, so that change is written too. Both default to "not the dark floor", and a caller that passes
+	 * neither is answered exactly as before.
 	 */
-	void SetFloor(FName InDungeon, int32 InFloor);
+	void SetFloor(FName InDungeon, int32 InFloor, bool bInOnTheDarkFloor = false,
+				  int32 InDarkFloorFellFrom = 0);
+
+	/**
+	 * The floor as a run record written now would hold it: what `FCataclysmSaveGather::FloorFrom` reads off the
+	 * world, with the dark floor's two fields. `WriteTheRunRecord` fills the record's floor with this and nothing
+	 * else, so a test can read what a write stores without waiting for one: the run record is written at most
+	 * once a frame, and a test's whole body is one frame. False, and nothing filled, with no world.
+	 */
+	bool FloorRecordNow(FCataclysmSavedFloor& OutFloor) const;
+
+	/** Whether the writer holds the floor as the dark floor, and the floor fallen from. For a test. */
+	bool HoldsTheDarkFloor() const { return bOnTheDarkFloor; }
+	int32 HoldsTheFloorFallenFrom() const { return DarkFloorFellFrom; }
+
+	/** How many times `SetFloor` was told something it did not already hold, and so raised its trigger. */
+	int32 FloorChangesNoted() const { return FloorChangesNotedCount; }
 
 	//~ The clock, and health.
 
@@ -160,6 +183,11 @@ private:
 	FGuid CharacterId;
 	FName Dungeon;
 	int32 Floor = 0;
+
+	/** Whether the floor is the dark floor a fall leads to, and the floor fallen from. See `SetFloor`. */
+	bool bOnTheDarkFloor = false;
+	int32 DarkFloorFellFrom = 0;
+	int32 FloorChangesNotedCount = 0;
 
 	float SecondsSinceClockWrite = 0.0f;
 

@@ -223,6 +223,30 @@ struct CATACLYSM_API FCataclysmSavedFloor
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 Floor = 0;
 
+	/**
+	 * Whether the floor is the dark floor a fall into a chasm leads to (`Void_Those_in_the_Dark`). Issues #1820
+	 * and #41, 2026-10-09.
+	 *
+	 * WHY `Floor` ALONE CANNOT SAY. The dark floor carries the number of the floor its stairs lead to, ten
+	 * deeper than the floor fallen from or the dungeon's final floor. So `Floor` on the dark floor and `Floor`
+	 * on the floor it leads to are one number, and without this a record made on the dark floor would read back
+	 * as the ordinary floor of that number: the ten floors gained and the dark floor skipped.
+	 *
+	 * NOTHING READS IT BACK YET. Loading a save is not built (issue #753). Whoever builds it must put this and
+	 * `DarkFloorFellFrom` back on the dungeon game mode BEFORE the floor is built, because the dark floor is
+	 * built from the dungeon's seed mixed with a salt only while the game mode's flag is set.
+	 *
+	 * FALSE IS THE DEFAULT AND WHAT A FILE WITHOUT THE FIELD READS BACK AS, which is what it meant when that
+	 * file was written. A field added with a sensible default is not a schema version bump:
+	 * `docs/Save_System_Design.md` section 5.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bOnTheDarkFloor = false;
+
+	/** The number of the floor the player fell from to reach the dark floor. Nought when not on it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 DarkFloorFellFrom = 0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedCreature> Creatures;
 

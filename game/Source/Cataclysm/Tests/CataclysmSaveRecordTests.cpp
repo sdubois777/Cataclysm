@@ -1390,4 +1390,110 @@ bool FCataclysmSaveWritesWornGear::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * The committed run file says its floor is the dark floor, and which floor the player fell from.
+ *
+ * READ BACK ONE AT A TIME, for the reason `TheCommittedRunFileKeepsTheSurgeSchedule` gives: the completeness check
+ * loads the fixture, writes it back and compares, so two whole numbers written into one another agree with
+ * themselves and pass it. The floor's number is 6 and the floor fallen from is 5, so a swap of the two is seen
+ * here. Issues #1820 and #41, 2026-10-09.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRunFixtureKeepsTheDarkFloor,
+	"Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Text, UCataclysmRunSave::StaticClass(),
+										GetTransientPackage(), Result, Message));
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Run_v1.json would not load: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	TestTrue(TEXT("the file's floor is the dark floor"), Read->Floor.bOnTheDarkFloor);
+	TestEqual(TEXT("the floor fallen from"), Read->Floor.DarkFloorFellFrom, 5);
+	TestEqual(TEXT("the floor's own number, which is not the floor fallen from"), Read->Floor.Floor, 6);
+	return true;
+}
+
+/**
+ * A run file written before the dark floor's two fields existed still loads, and reads as not on the dark floor.
+ *
+ * THE SAME SHAPE AS `AFileWithoutThePartOfADayStillLoads`, and for its reason: the two fields were added without a
+ * schema version bump, on `docs/Save_System_Design.md` section 5, and no committed fixture can be missing a field
+ * its record writes. So this takes the fixture and removes the two lines. The fixture holds true and 5, so a file
+ * that read them from anywhere else than their defaults would be seen. Issues #1820 and #41, 2026-10-09.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRunFileWithoutTheDarkFloor,
+	"Cataclysm.SaveRecords.AFileWithoutTheDarkFloorStillLoadsAsNotOnIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	// THE CONTROL. If the lines were not there, removing them would do nothing and the assertions below would pass
+	// for the wrong reason. Either line ending, as the fixture may be checked out with either.
+	const FString Lines = TEXT("\t\t\"bOnTheDarkFloor\": true,\r\n\t\t\"DarkFloorFellFrom\": 5,\r\n");
+	const FString Alternate = TEXT("\t\t\"bOnTheDarkFloor\": true,\n\t\t\"DarkFloorFellFrom\": 5,\n");
+
+	FString Older = Text;
+	if (Older.Contains(Lines))
+	{
+		Older = Older.Replace(*Lines, TEXT(""));
+	}
+	else if (Older.Contains(Alternate))
+	{
+		Older = Older.Replace(*Alternate, TEXT(""));
+	}
+	else
+	{
+		AddError(TEXT("Run_v1.json no longer carries the two dark floor lines to remove, so this test would prove "
+					  "nothing. If a field was renamed, rename it here."));
+		return false;
+	}
+	if (!TestFalse(TEXT("set-up: the older shape really is missing both fields"),
+				   Older.Contains(TEXT("bOnTheDarkFloor")) || Older.Contains(TEXT("DarkFloorFellFrom"))))
+	{
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Older, UCataclysmRunSave::StaticClass(),
+										GetTransientPackage(), Result, Message));
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("a run file without the dark floor's fields would not load: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	TestFalse(TEXT("a file without the fields reads as not on the dark floor"), Read->Floor.bOnTheDarkFloor);
+	TestEqual(TEXT("and with no floor fallen from"), Read->Floor.DarkFloorFellFrom, 0);
+	TestEqual(TEXT("and it still reads its floor's number"), Read->Floor.Floor, 6);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
