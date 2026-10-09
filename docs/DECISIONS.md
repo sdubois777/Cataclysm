@@ -4,13 +4,15 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-09 — Those in the Dark, layer 1 of 2: a floor with the row has chasm cells, and standing on one is recorded as a fall that does nothing yet
 
-**Not built and not run.** The writing session wrote this layer in two commits: the first with the code, eleven
+**Built and run.** The writing session wrote this layer in two commits: the first with the code, eleven
 Unreal tests and this entry; the second, after the rulings numbered 11 to 16 below, with the fall measured from
 the ring and not the cell, the count of what each placement rule cost taken out of play, one more Unreal test,
 and this entry brought up to those rulings. It compiled nothing and ran no Unreal test. It ran the Python tests
-in `tools/tests`, the lint and the conflict check before each commit, and nothing else. Every statement below about what the engine does
-is read from the code. No count of chasms on any floor is known: the measurement test logs them when it is
-run.
+in `tools/tests`, the lint and the conflict check before each commit, and nothing else. The registering session
+then built and ran both layers in one window at 0fb188d1, which is layer 2's head, so this layer was never run
+on its own head bbbfa1d1; the Run section at the end of this entry has what the runs printed. Every statement
+below about what the engine does was read from the code when it was written. The count of chasms on twenty
+floors, which was not known then, is in the Run section.
 
 **Said first: this is layer 1 of 2, and a fall does nothing yet.** `Void_Those_in_the_Dark` reads: "The
 dungeon has chasms spread throughout leading to the abyss. If the player falls into them, they fall down into
@@ -292,8 +294,8 @@ cost, is changed by ruling 14.
 
 ### Tests
 
-Twelve, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None
-was run. The beat is stepped by hand; no test waits on the world's clock. Tests 5 and 6 stand the player on
+Twelve, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. They
+were run in the window on layer 2's head, five of them as layer 2 changed them; see Run. The beat is stepped by hand; no test waits on the world's clock. Tests 5 and 6 stand the player on
 the middle of a chasm's cell, which is the middle of its ring, so they read the same under ruling 13.
 
 1. `ThoseInTheDarkFiguresAndTheRowIsStillNotBuilt`: the 25, the 2000, the radius is half a cell, the key, the
@@ -370,9 +372,10 @@ control is a twelfth: on the same floor without the row, the game mode allows th
   difference and do not measure it.
 - The cost of the marks.
 
-### Guard proofs proposed, none run
+### Guard proofs proposed
 
-Two, for the registering session. Each line is in `Dungeon/CataclysmDungeonGameMode.cpp`, once.
+Two, for the registering session. Each line is in `Dungeon/CataclysmDungeonGameMode.cpp`, once. Both were run
+in the window, on layer 2's head, as D1 and D2; see Run.
 
 1. No two side by side. `if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)` becomes
    `if (RulesApplied > ChasmRuleCrossable && bBesideAChosenChasm)`. Test 11. Predicted to fail: "pairs of
@@ -397,6 +400,72 @@ measurement logs for each floor beside those counts, and totals in its summary l
 
 Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no change to the row. No
 dry run was made because no row is asked for.
+
+### Run
+
+One window on 2026-10-09 for both layers of Those in the Dark, at `feat/dark-floor` 0fb188d1, which is layer
+2's head, on `feat/chasms` bbbfa1d1, which is this layer's head, on development 4697f84b. **This layer was
+never run on its own head bbbfa1d1**: every build and run below is of the tree with layer 2 on top of it. One
+attempt; nothing was corrected during it. Every build, run and measurement here was made by the registering
+session. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 22 actions, 19 files compiled` |
+| Whole Unreal suite | `3460 tests performed, 3460 succeeded, 0 failed`; `Declared: 3460 tests in the tree at 0fb188d1; 3460 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5890 passed, 8 skipped in 374.54s (0:06:14)`; JUnit `errors="0" failures="0" skipped="8" tests="5898"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,460 Unreal tests (3,437 declared on development plus the 23 of the two layers by
+name: 12 of this layer, 11 of layer 2) and a JUnit count of 5,898. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled, with layer 2 on it. Its twelve tests
+passed, five of them as layer 2 changed them: on that head a fall leads to the dark floor, and the row is
+Built. So no test in the window asserted that a fall does nothing or that the row is NotBuilt, which is what
+this layer alone does. No existing test failed. The placement placed every chasm it was asked for on the twenty
+floors measured; the figures are below.
+
+**How the layer was written and checked.** A second session wrote both commits under a brief carrying the
+rulings. Before the window the registering session read all the game code of both commits apart from comments,
+every header line added, and every assertion of the twelve tests. Not read by the registering session: the
+comments, this entry, and the body of the test helper `AFloorWithChasms`.
+
+**Guard proofs, at 0fb188d1, both in `CataclysmDungeonGameMode.cpp`, each with one anchor counted 1 and the
+source hash the same before and after, each PROVED: failed with the break in and passed with it out.** No break
+failed to compile. They are proofs 1 and 2 of the list above, named D1 and D2 in the window. Both tests are in
+`Cataclysm.DungeonModifierEffects`.
+
+| Proof | The break | Test | Registered | With the break in | Restored |
+|---|---|---|---|---|---|
+| D1 | `if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)` becomes `if (RulesApplied > ChasmRuleCrossable && bBesideAChosenChasm)` | `ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged` | no count registered | 1 performed, 1 failed, 18 failed assertions | 1 performed, 1 succeeded |
+| D2 | `const bool bWithinAChasmsRing = NearestCm <= Effects::ThoseInTheDarkMarkRadiusCm;` becomes `NearestCm < 0.0f;` | `ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround` | 4 | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+D1, as printed, 18 lines of this form, one for each floor with a pair: "Expected 'seed 9 floor 1: pairs of
+chasms side by side' to be 0, but it was 2"; "Expected 'seed 8 floor 1: pairs of chasms side by side' to be 0,
+but it was 4".
+
+D2, as printed: "Expected 'standing 190 cm from the middle for a beat is a fall: the player is on the dark
+floor' to be true"; "Expected 'the dark floor carries the number ten deeper than floor 2' to be 12, but it was
+2"; "Expected 'the game mode keeps floor 2 as the floor fallen from' to be 2, but it was 0"; "Expected 'and the
+dark floor has no chasm' to be 0, but it was 37". These four are the ring test's assertions as layer 2 restated
+them, and four is the count layer 2's entry derived. Proof 2 in the list above predicted one assertion, "standing
+190 cm from the middle for a beat is recorded as one fall", for this layer's own head; that was not run.
+
+**The crossable check has its test and no proof.** By the registering session's choice, accepted by the
+coordinating session: a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09.
+The check refuses a chasm when closing it would cut off a walkable cell.
+
+**The counts of cells refused by each placement rule were added beyond the ruling**, in this layer's second
+commit, and approved by the coordinating session: a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-09. They are the figures "cells skipped" below.
+
+**The measurement**, this layer's test of twenty Halls floors, in the whole-suite run. Its summary line, as
+printed: "20 floors, 749 chasms asked for, 749 placed; 0 floors placed under half of what was asked for; the
+crossing question skipped 0 cells, on 0 of the floors". Every one of the twenty floors placed exactly what was
+asked. Walkable cells ran from 682 (seed 2 floor 10, 27 chasms) to 1,534 (seed 10 floor 10, 61 chasms). Cells
+skipped, floor by floor: for the entrance and stairs rule 0 to 3; held or barrier cells 0 to 2; beside a chasm 0
+to 5; for the crossing question 0 on every floor. So on these twenty floors the crossable check never refused a
+cell: its test shows it can, and this measurement shows it did not need to here.
 
 ---
 
