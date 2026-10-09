@@ -2,6 +2,473 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — Dying inside a dungeon of the empire ends the walk of it, resolves an ordinary dungeon at once and costs the lethality mode's days
+
+**Not built and not run.** The writing session wrote this layer in one commit on development 90b45b92: the code,
+thirteen new Unreal tests, one new Python check file, a change to one existing Python check, two places in
+`docs/Cataclysm_GDD_v2.md`, one bullet of `game/README.md`, and this entry. It compiled nothing and ran no Unreal
+test. It ran the Python tests in `tools/tests`, the lint and the conflict check before the commit, and nothing
+else. Every statement below about what the engine does is read from the code. Issue #41.
+
+**The playtest switch.** The console variable is `Cataclysm.DeathKeepsThePlayerInTheDungeon`. It is 0 by default,
+which is the designed behaviour described in this entry. Typed at the console as
+`Cataclysm.DeathKeepsThePlayerInTheDungeon 1`, a death inside a dungeon of the empire is what it was before this
+layer: the player stands back up at the floor's entrance with the dungeon still bound, nothing resolves and no
+day passes. `Cataclysm.DeathKeepsThePlayerInTheDungeon 0` puts the designed behaviour back. It is declared in
+`Dungeon/CataclysmDungeonGameMode.cpp` and read in one place, `ACataclysmDungeonGameMode::EndTheDungeonForADeath`.
+It is marked as a cheat variable, as the roll pins in that file are.
+
+**Said first: where the player is afterwards is not the capital.** `docs/Cataclysm_GDD_v2.md` says "Dying costs 5
+days (modified by difficulty setting) and respawns the player at the capital." The capital as a place is not
+built (issue #48). After a death the player is left as clearing the last floor leaves them: on the floor they
+died on, which still stands with whatever creatures were on it, at that floor's entrance, with no dungeon of the
+empire bound and that dungeon's modifiers no longer acting. The stairs of that floor then lead down through
+floors with no dungeon behind them and no bottom, and each costs the empire a whole day, which is what
+`SpendFloorTimeInTheEmpire` charges when a run exists and nothing is bound. That was already true after a
+dungeon was cleared. To walk a dungeon again the player types `Cataclysm.EnterDungeon`.
+
+**Said first: the dungeon is ended when the character stands back up, three seconds after the killing blow, and
+not at the blow.** This differs from the wording of the ruling, which has the player leave the dungeon and then
+stand back up after the delay. It is a judgement by the writing session, for the coordinating session to
+confirm; judgement 1 below has the reason and what to change to move it. Between the blow and standing up the
+dungeon is still bound and nothing has been charged. No day passes in real time, so the empire at the end of
+that delay is what it was at the start of it.
+
+**Said first: on Heretic a shallow dungeon resolves twice from one death, and that is accepted as it falls.** A
+Heretic death costs 15 days (`UCataclysmDayClock::DeathDayCostHeretic`). A dungeon's full timer is 10 days plus
+1.6 a floor (`ResolveBaseDays`, `ResolveFloorRatio`): 14.8 days at three floors, 16.4 at four. The death sets the
+timer to full and the 15 days then run against it, so a dungeon whose full timer is 15 days or fewer resolves a
+second time inside those days. Three things the code adds to the figures in the ruling:
+
+- A surge rolls each ordinary dungeon's timer 15% either way (`UCataclysmSurgeScheduler::ResolveJitter`), once,
+  when the dungeon is made, and the death refills to that rolled figure. So a three floor dungeon's timer is
+  between 12.58 and 17.02 days and is 15 or fewer on a little over half of the rolls; a four floor dungeon's is
+  between 13.94 and 18.86 and is 15 or fewer on about one roll in five; a five floor dungeon's is never below
+  15.3. These three shares are arithmetic on the constants, not measurements.
+- A surge does not make an ordinary dungeon shallower than 8 floors (`SpecFor`: 8 to 15 on an Outpost). The
+  shallow case is reached in play only on a city that bought the Explorer upgrade "Dungeons here have 5 fewer
+  floors, to a minimum of 1". `UCataclysmCityUpgradeMapping::Make` builds the upgrade from the row's first
+  tier, which takes 5 floors off, so an Outpost's dungeons are then 3 to 10 floors deep.
+- Standard's 5 days and Hardcore's 10 are fewer than any timer a dungeon of three floors or more can have
+  (12.58 days at the least), so with that tier of the upgrade the second resolve is Heretic's alone. The row's
+  later tiers take 10 and 15 floors off; a dungeon of one floor has a timer of 11.6 days that can roll as low as
+  9.86, under Hardcore's 10. Whether anything can buy a later tier was not read.
+
+**Said first: what this layer does not build.**
+
+- **Removing an ordinary dungeon after it hits its city. The owner has decided it and it is not built.** The
+  owner's words of 2026-10-08 are quoted below: "Ordinary dungeons will do their city/population damage, and then
+  despawn." An ordinary dungeon still stays on the map after it resolves, by its timer or by a death, with its
+  timer full again. It is a later piece of work. All of a death's resolve goes through one function of the
+  empire run, so that piece changes the empire layer and nothing in the game module.
+- The equipment a death costs in Hardcore and Heretic.
+- Anything on screen that says what the death cost. One log line says it.
+- Co-operative play, when one of several players dies. The game mode acts on any player character that stands
+  back up.
+- The capital as a place (issue #48).
+- The Cataclysm's own dungeon and the Last Stand: not touched, by ruling.
+- A Timed dungeon: see "How it is built".
+
+**Said first: no data row and no workbook was changed, and no row is asked for.**
+
+### The documents and the owner's words
+
+`docs/Cataclysm_GDD_v2.md`, section II, the lethality table: Standard "5 days", Hardcore "10 days", Heretic "15
+days".
+
+The same document, section II: "**Dying in an ordinary dungeon also resolves that dungeon,** at once, and its
+consequence lands on its city. The run still continues." And: "**A player comes back whole.**" And: "**The delay
+before standing back up is 3 seconds, and it is provisional.**" And: "**A death clears everything temporary on
+the character.** Every temporary buff, debuff and stack goes, including a stack built up through a passive node
+and the Masochist's health debt. What the passive tree and equipment grant keeps working, and so does anything
+that says it is permanent, unless it lasts only for the dungeon: a death ends the character's time in that
+dungeon, so an effect limited to it ends there."
+
+The same document, Dungeon Basics, before this layer: "Dying costs 5 days (modified by difficulty setting) and
+respawns the player at the capital." and "A Quest dungeon and a Dungeon City never resolve, so this does not
+reach them, and what dying in one does is undecided."
+
+Issue #41, the comment of 2026-09-10, the owner's words: "Yes, dying in a dungeon causes it to resolve,
+regardless of the remaining time you would have had. The logic is, the forces arrayed against you in that
+dungeon are inspired from your death and surge forth, attacking this city while you're busy reviving." The same
+comment, the coordinating session's words: "Building this ends the respawn-in-place the owner uses to playtest.
+Today a dead player stands back up where they died, which is how dungeons are currently tested again and again.
+A switch that keeps the player in the level for testing is worth building at the same time, so the change does
+not remove the way the game is tested."
+
+The owner, 2026-10-08: "resolve means what happens when a dungeon ticks down it's timer. Ordinary dungeons will
+do their city/population damage, and then despawn. Quest dungeons will do their city/population damage, and
+either refresh their timer and stay on that city, or potentially move to an adjacent city. Fallen city dungeons
+don't have a resolution timer as they're the enemies now."
+
+The owner, 2026-10-09, typed to the coordinating session, the whole of it: "your rec on all the open questions".
+The recommendation that accepted, in the coordinating session's words as briefed to the writing session: the
+playtest switch defaults to the designed behaviour; Quest dungeons cost their city nothing when their timer runs
+out, so `docs/Cataclysm_GDD_v2.md` stands as written on that, which supersedes the 2026-10-08 sentence on Quest
+dungeons; for a Quest dungeon and a Dungeon City a death means days charged, dungeon left, nothing resolved; and
+ordinary dungeons will be removed after they hit their city, as a later piece of work that this layer does not
+do.
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09, as briefed.
+
+| Where the player dies | The dungeon | Days | The player |
+|---|---|---|---|
+| An ordinary dungeon (`ECataclysmDungeonType::Basic`, the only kind whose `Resolves()` is true) | Resolves at once: its consequence lands on its city, through one new public function on the empire run. That function then sets the dungeon's resolve timer back to full, as after a timer resolve, so the days charged next cannot resolve it again from the old remainder. The dungeon stays on the map, as a dungeon whose timer ran out does today | 5, 10 or 15 by lethality, through the existing `DeathDayCostFor` | Leaves the dungeon as clearing the last floor leaves it, then stands back up whole after the existing delay |
+| A Quest dungeon | Nothing resolves; its city is not charged; its relocation clock is not touched by the death and runs on as the charged days pass | the same | the same |
+| A Dungeon City (`FallenCity`) | Nothing resolves | the same | the same |
+| The Cataclysm boss dungeon, the Last Stand | Not touched by this layer | | |
+| No empire dungeon bound | Today's behaviour: the player stands back up in the level | none | |
+
+1. The order in every charged case: resolve (ordinary only), leave, charge the days. The dungeon is looked up
+   again after resolving, because a resolve can fell its city and remove the dungeon.
+2. All of the resolve on death goes through one new public function on `UCataclysmEmpireRun`. The
+   `CataclysmEmpire` module must not depend on the `Cataclysm` module, so the call goes from the game mode into
+   the empire run.
+3. Where the player is afterwards is the state a cleared dungeon leaves. Said first above.
+4. The playtest switch is one console variable, read where the game mode decides what a death does. Its default
+   is the designed behaviour.
+5. Heretic in a shallow dungeon is accepted as it falls. Said first above.
+6. A Timed dungeon: this layer changes only what a death of the character does.
+7. The dark floor of Those in the Dark: a death there leaves the dungeon like any other.
+8. Dungeon-long state on the character ends with the death, as the design says; add only what is missing.
+9. What is not built is named. Said first above.
+10. The comment on the player's death handling is rewritten to say what a death now does.
+
+### What was read before writing
+
+Read by the writing session on 2026-10-09. Line numbers are those of development 90b45b92, before this layer.
+
+- `CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`, whole. `AdvanceDay` at lines 194 to 251 of the
+  source; `ResolveDungeon` at 396 to 469; `RelocateQuestDungeon` at 471 to 624; `CityFell` at 786 to 819;
+  `AddFallenCityDungeon` at 821 to 865; `ClearDungeon` at 895 to 1005; `RemoveDungeon` at 1007 to 1038.
+- `CataclysmEmpire/DayClock/CataclysmDayClock.h` and `.cpp`, whole. `DeathDayCostFor` at lines 21 to 29 of the
+  source, `SetResolveDays` at 51 to 79, `AdvanceDay` at 106 to 159.
+- `CataclysmEmpire/Empire/CataclysmDungeonKind.h`, whole. `CataclysmSurge.h`: `FCataclysmDungeonSpec` and the
+  start of `FCataclysmDungeon` at lines 60 to 130, `Resolves` at 376, `IntervalDays` at 440, `bSurgeOnCityFall`
+  at 469, `ResolveJitter` at 526, `FallenCityResolveDays` at 846, `QuestResolveDays` at 874, `LethalityRung` at
+  998. `CataclysmSurge.cpp`: `BiteScale` and `WalkDaysPerFloor` at 11 to 37, the floor ranges of `SpecFor` at 310
+  to 351, the walk cost and the timer's roll at 858 to 914. `CataclysmEmpireMap.cpp`: `Damage` at 450 to 491.
+- `Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: the console variables at 590 to 612 and 740 to 762, and a
+  search for the rest of them, which run to line 869; the death binding in
+  `StartPlay` at 1297 to 1331; `BringTheNextWaveIn` and `HandleStairsTaken` at 2588 to 2726;
+  `StepPlagueConvergence` at 3104 to 3136 and the Swarm of Locusts burn at 7962 to 7981;
+  `ApplyFloorRulesKeepingHealth` and `WriteTheMaximumHealthRulesBack` at 9903 to 9978;
+  `NoteDeathForChaosTouched` at 12474 to 12505; `GoDownOneFloor` to the end of `LeaveEmpireDungeon` at 13443 to
+  13821; `InWorld` at 19138 to 19149; the start of `ApplyFloorRulesToPlayer` at 20722 to 20782;
+  `ClearEmpireDungeon` and the start of `GoToFloor` at 21359 to 21399. The header at 225 to 358. The file is
+  21,592 lines; the rest was searched, not read.
+- `Cataclysm/Character/CataclysmPlayerCharacter.cpp`: `HandleDeath` and `Revive` at 1540 to 1875, the console
+  commands `Cataclysm.EnterDungeon` and `Cataclysm.LeaveDungeon` at 4170 to 4233. The header at 365 to 397.
+- `Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: the clamps at 262 to 320, `PostAttributeBaseChange`
+  at 322 to 350, `NotifyIfHealthReachedZero` at 2386 to 2440. `CataclysmAbilitySystemComponent.h`: the comment
+  on `ClearWhatDeathEnds`, the 75 lines above 2676. `CataclysmSkillEffects.h`: `ReduceHealthDirectly` at 952 to
+  965.
+- `Cataclysm/Save/CataclysmSaveTriggers.h`: the list of triggers.
+- Tests: `Tests/CataclysmDungeonCostsDaysTests.cpp`, whole. `Tests/CataclysmDeathTests.cpp` at 60 to 133 and 478
+  to 661. `Tests/CataclysmDungeonGameModeTests.cpp` at 330 to 445 and 1633 to 1742.
+  `CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp` at 1 to 60, 3094 to 3168 and its last 120 lines.
+  `Tests/CataclysmDungeonModifierEffectsTests.cpp`: the possessed player at 298 to 343, `ACurseDungeon` at 23245
+  to 23300, the death and return at 49372 to 49385, `AFloorWithChasms` at 50646 to 50676, `FallIntoAChasm` at
+  51726 to 51746, `ADarkFloorEmpireDungeon` at 51862 to 51920, the last test at 53139 to 53192.
+  `Tests/CataclysmTestWorld.h` at 281 to 309.
+- `tools/tests/test_game_readme_is_true.py` at 223 to 290, and `game/README.md` at 404 to 420.
+  `tools/prove_guard.py` at 405 to 440.
+- `docs/Cataclysm_GDD_v2.md` at 98 to 112, 400 to 500, 3996 to 4005 and 4078 to 4100. The first entry of this
+  file, for its form.
+- `game/Data/CityUpgrades.csv`, one row, read and not changed.
+- Issue #41 with its comments, fetched with `gh` on 2026-10-09; the comment of 2026-09-10 was read whole.
+
+Not read: the rest of the dungeon game mode; the save writer, gather and apply; the surge scheduler beyond the
+lines named; the empire map beyond `Damage`; `sim/`.
+
+**Whether the behaviour already existed.** It did not. At development 90b45b92 a search of `game/Source` finds
+`DeathDayCostFor` in the day clock, named in two other empire headers and one other empire source file, and in
+the day clock's tests, and nowhere in the game module; `ResolveDungeon` has one caller, the day advance; and
+`ACataclysmPlayerCharacter::HandleDeath` said in its own comment that no penalty was charged.
+
+**Two scans of the existing tests**, made before writing, by a script over every test file of both modules.
+
+- Scan 1, by the death: every test whose body calls `Revive`, `IsAwaitingRespawn` or `HandleDeath`, asks
+  `IsDead` of a player, or writes health to nought. 61 tests name a player's death. Separately, 24 tests bind an
+  empire dungeon, in their own body or through a helper that calls `EnterEmpireDungeon` or
+  `SetEmpireRunForTests`.
+- Scan 2, by what is asserted after standing back up: of the tests that call `Revive`, those that then read a
+  position, `FloorNumber` or health.
+- **No test is in both lists.** No existing test kills a player while an empire dungeon is bound, so no existing
+  test's assertions change under this layer and none was changed. The one test that has a dungeon game mode and
+  asserts where a revived player stands, `Cataclysm.DungeonMode.RevivingOnAGeneratedFloorStandsThePlayerAtItsEntrance`,
+  binds no empire dungeon and no run. The three rule tests that call `Revive`
+  (`ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor`,
+  `LightforgedWallsAnOpenedBarrierStaysOpenAfterThePlayerDiesAndReturns`,
+  `AngelicWardensEachStatueWakesOnceAndStaysWokenAfterThePlayerDiesAndReturns`) bind none either.
+- The scans read test text with patterns. A death dealt through a helper whose name holds none of the patterns
+  would not be found; the 24 tests that bind an empire dungeon were also searched for any lethal blow to a
+  player and for `IsDead`, and the one hit is a boss creature.
+
+**Facts in the brief that the code states differently.**
+
+- The brief says `ResolveDungeon` "did not remove the dungeon or touch its timer, so a dungeon could resolve
+  twice while days pass". `ResolveDungeon` does not touch the timer, but `UCataclysmDayClock::AdvanceDay` sets a
+  timer that ran out back to full before the run acts on it, so on the timer's path a dungeon resolves once for
+  each time its timer runs out. On the death's path nothing had refilled it, which is why the new function does.
+- The brief says the Heretic case is a dungeon "of three floors or fewer". With the 15% roll it is also some
+  dungeons of four floors, and not every dungeon of three. Said first above.
+
+**Research.** No shipped game was looked up and no source was read. The shape of the rule is the owner's ruling
+of 2026-09-10 and the rulings above; this layer adds no formula, affix or number of its own.
+
+### How it is built
+
+- **The empire run, `Empire/CataclysmEmpireRun.h` and `.cpp`.** Two new public functions.
+  `ResolveDungeonOnDeath(DungeonId)` answers a report in the shape a day's report has. For a dungeon that is not
+  there, or of a kind whose `Resolves()` is false, it does nothing. For an ordinary dungeon it calls the private
+  `ResolveDungeon`, the function a timer running out reaches, and then looks the dungeon's timer up and, if it is
+  still there, raises its count of resolves by one and sets the days left to the timer's full figure, which is
+  what the day clock does to a timer that ran out. No day passes. It does not tell the clock the player has left.
+  It never calls `ResolveDungeon` for a kind that does not resolve, because for a Quest dungeon that function
+  runs the relocation. `DeathDayCost()` answers `UCataclysmDayClock::DeathDayCostFor` of the rung `Begin` was
+  given, which is kept on the surge scheduler; a run that has not begun answers 5.
+- **The dungeon game mode, `Dungeon/CataclysmDungeonGameMode.h` and `.cpp`.** One new public function,
+  `EndTheDungeonForADeath()`, and the console variable. In order it: answers false when the switch is set;
+  answers false when there is no run or no dungeon bound; answers false when the bound dungeon is the
+  Cataclysm's own; calls `ResolveDungeonOnDeath`; calls `LeaveEmpireDungeon`; charges
+  `Run->AdvanceDays(Run->DeathDayCost())`; writes one log line; answers true. It does not read the dungeon after
+  the resolve except to look it up again for the log line.
+- **The player character, `Character/CataclysmPlayerCharacter.cpp`.** `Revive` calls `EndTheDungeonForADeath` on
+  the dungeon game mode in the world, found by `ACataclysmDungeonGameMode::InWorld`, only for a character that
+  is dead, and before it clears the dead mark. Everything `Revive` did before follows unchanged: the character is
+  stood at the entrance of the floor still standing, everything temporary is cleared, the vitals are refilled.
+  `HandleDeath` is not changed in what it does; its comment and the two comments in the header are rewritten.
+- **Days are whole days through `AdvanceDays`**, so a surge, a repair and a resolve that fall inside them happen
+  on their own days, and the part of a day a shortened walk had left on the clock is not touched.
+- **A dungeon bound by number that is no longer on the map.** A city that falls while the player is underground
+  absorbs the dungeon being walked, and the game mode stays bound to its number. A death there resolves nothing,
+  leaves and charges the days. Judgement 3 below.
+- **A Timed dungeon's clock is not built.** A search of both modules outside tests finds
+  `ECataclysmDungeonSubType::Timed` as a spawn weight, as a name, as the first value of three loops over the
+  sub-types, and as a weight of nought in the enemy score, and finds nothing named for a time limit. So nothing
+  counts a time limit down and nothing kills a character when one ends. This layer adds nothing for it.
+- **The dark floor of Those in the Dark.** `LeaveEmpireDungeon` already clears the dark floor and tells the save,
+  so a death there needed no code. One test covers it.
+- **Dungeon-long state on the character.** `LeaveEmpireDungeon` already ends what the dungeon game mode holds for
+  the dungeon and takes the floor's rules off the player, and it now runs at a death in an empire dungeon, before
+  the refill. Nothing was added. What `ClearWhatDeathEnds` clears is unchanged. The comment on that function
+  names issue #1795 for The Nihil's Embrace's resistance loss surviving a death. This layer does not change
+  that for a death with no empire dungeon bound or with the switch set. The issue itself was not read.
+- **The save.** `HandleDeath` still writes the save first, at the blow, before any of this. Nothing in this layer
+  raises a save trigger when the days are charged. Leaving from the dark floor tells the save, as before.
+
+### For the owner's play-check
+
+What a player sees, with the default switch, after typing `Cataclysm.EnterDungeon` and dying:
+
+1. The character falls and lies for 3 seconds, as before.
+2. It stands back up at the entrance of the floor it died on, with full health, shield and mana. The floor is
+   the same floor and its creatures are still there.
+3. The floor's modifier panel is gone and the dungeon's modifiers no longer act, because no dungeon is bound.
+4. `Cataclysm.ShowEmpire` shows the day 5 later in Standard, 10 in Hardcore, 15 in Heretic. If the dungeon was an
+   ordinary one, its city has lost one resolve's defence and population, the line of counts shows one more
+   resolve that cost a city, and the dungeon is still listed with its timer at full less the days charged. If the
+   resolve felled the city, the dungeon is gone and a Dungeon City stands there.
+5. The log has one line beginning "The death on day".
+
+With `Cataclysm.DeathKeepsThePlayerInTheDungeon 1` the character stands back up at the floor's entrance with the
+dungeon still bound and its modifiers still acting, and `Cataclysm.ShowEmpire` shows the same day and the same
+city figures as before the death.
+
+Every judged number, with the reading not taken:
+
+- **None is new.** The days are the design's 5, 10 and 15, already in `UCataclysmDayClock`. The delay is the
+  existing 3 seconds, which the design calls provisional. The timer's full figure is the dungeon's own.
+- **The days are charged when the character stands up, not at the blow.** Not taken: at the blow. Judgement 1.
+- **The switch has two values, 0 and anything else.** Not taken: a third value that charges the days and keeps
+  the player in the dungeon.
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The dungeon is ended in `Revive`, not in `HandleDeath`.** `HandleDeath` runs inside the blow that killed. A
+   blow can be dealt by a step of one of the dungeon game mode's own rules, which goes on reading its state after
+   the blow returns: `StepPlagueConvergence` deals its burn and then moves its clock on, and the Swarm of Locusts
+   step deals its burn while it holds the swarm. `LeaveEmpireDungeon` empties those rules' lists and counters. So
+   ended at the blow, a rule could find its own state emptied under it part way through a step. `Revive` runs
+   from a timer, outside every blow. `HandleDeath` already gives this reason for not cancelling a running
+   ability. What it costs: the resolve and the days land 3 seconds after the death, in which nothing in the
+   empire moves. Not taken: at the blow. To move it, the call in `Revive` goes to `HandleDeath` after the dead
+   mark is set, and the Python check `test_the_dungeon_is_ended_when_the_character_stands_back_up` is reversed;
+   no Unreal test asserts anything between the blow and standing up.
+2. **The call is made while the character is still marked dead.** After the mark is cleared the character has no
+   health until the refill, and `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` raises a death for any
+   character at no health that is not marked dead. Leaving a dungeon takes rules off the character; done after
+   the mark was cleared, a rule that wrote health on its way off would kill the character again.
+3. **A dungeon bound by number that is gone from the map still costs the days.** The ruling's last row is "no
+   empire dungeon bound". This case has a number bound and no dungeon behind it. The player died walking a
+   dungeon of the empire, so the walk ends and the days are paid; nothing can resolve. Not taken: treating it as
+   nothing bound, which would leave the game mode bound to a number for ever.
+4. **A death raises the dungeon's count of resolves on the clock**, as a timer resolve does. Not taken: leaving
+   the count alone. Nothing reads the count outside tests.
+5. **The switch is a cheat variable**, so it cannot be set in a shipped build to avoid the cost. Not taken: an
+   ordinary variable.
+6. **The days go through a new function on the run, `DeathDayCost`**, which reads the rung and asks
+   `DeathDayCostFor`. The brief allowed a getter for the rung; this answers the days instead, so the game mode
+   does not hold the rung. Not taken: a getter for the rung.
+7. **One log line at `Log`** says what the death cost. Not taken: nothing, which would leave no trace of the
+   charge, since nothing on screen shows it.
+8. **`game/README.md` was changed**, one bullet. It said dying "costs none here", which this layer makes false,
+   and a Python check reads that bullet. The brief did not name the file.
+9. **A new Python check file was added**, `tools/tests/test_a_death_ends_the_dungeon.py`. The brief asked for
+   none. It holds the order of the three steps, the switch's default, where the call sits in `Revive`, and that
+   the empire asks the kind before it resolves: facts about where a line sits, which the Unreal tests measure
+   only in part and which this session could not run.
+10. **The existing check `test_dying_still_costs_the_empire_no_days` was left as it is and now skips.** Its file
+    says a check there fires only while the readme claims something is absent, and the readme no longer does.
+    Not taken: deleting it, or turning it round; the new file holds the positive checks.
+11. **The tests place every dungeon by hand on an emptied run**, with damage and timers the test states. Not
+    taken: a dungeon of the run's own first wave, whose depth, damage, kind and timer are rolled.
+12. **The Quest dungeon and Dungeon City tests give those kinds damage they do not carry in the game**, on a
+    city that stands, so that a resolve reaching them by mistake would show.
+
+### Tests
+
+Thirteen new Unreal tests. None was run.
+
+In `Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`, group `Cataclysm.DungeonMode`, eight. In each the one
+character is the player, a possessed player character at the entrance of the floor being walked, with the
+floor's creatures cleared away. The player is killed by `UCataclysmSkillEffects::ReduceHealthDirectly`, as the
+dungeon rule tests kill one, and stood back up by calling `Revive`.
+
+1. `ADeathInAnEmpireDungeonCostsTheDaysOfItsLethalityMode`. For Standard, Hardcore and Heretic: the day moves by
+   5, 10 and 15. Control for each: the same run and dungeon, nobody dies, `Revive` is called on the living
+   player; no day passes and the dungeon is still being walked.
+2. `ADeathInAnOrdinaryDungeonResolvesItOnceAndItsTimerStartsAgainFromFull`. A timer of 40 days with 2 left. The
+   city loses one resolve's defence and one resolve's population, the run counts one resolve that cost a city,
+   the clock counts one resolve of the dungeon, the dungeon is still on the map, 5 days passed, and the timer
+   reads 35. Control: the same dungeon entered and left with no death takes nothing, resolves nothing, and keeps
+   its 2 days.
+3. `ADeathWhoseResolveFellsTheCityTouchesNoDungeonThatIsGone`. A city with 10 defence and two ordinary dungeons.
+   After the death: the city has fallen, one more city has fallen than before, one resolve cost a city, both
+   dungeons are off the map, no timer counts for the dungeon died in, the run's two lists agree, a Dungeon City
+   stands there, the game mode and the clock hold no dungeon, and 5 days passed. Control: before the death the
+   city and both dungeons stand.
+4. `ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing`. Each kind in a world of its own,
+   carrying 100 and 50 points of damage. Control for each: the same days with no death, by leaving and advancing
+   5 days. For both kinds: 5 days, no resolve that cost a city, every city's defence and population equal to the
+   control's, the timer equal to the control's, the player out of the dungeon. For the Quest dungeon also: the
+   timer ran out as many times as in the control and it stands on the control's city; the control's clock is
+   asserted to have run out on the third day and to read 23. A last control: an ordinary dungeon with the same
+   damage does take more than 100 defence at a death.
+5. `ADeathWithNoEmpireDungeonBoundStandsThePlayerBackUpInTheLevelAndCostsNothing`. A run with a dungeon nobody
+   entered. No day passes, nothing resolves, no city loses defence, that dungeon keeps its 40 days, the floor is
+   still floor 3, the player is at the entrance and not where it died, and its health is its maximum.
+6. `ThePlaytestSwitchKeepsADeadPlayerInTheDungeonAndWithoutItTheDeathEndsTheWalk`. With the switch set: no day,
+   the dungeon still bound, the clock still holding the player in it, no resolve, the city's defence and the
+   timer unchanged. Then the switch is put back and the same player dies again: 5 days, no dungeon bound, one
+   resolve, the city has lost more than 100 defence. Each half is the other's control. The set-up asserts the
+   variable exists and read 0 before the test set it.
+7. `AfterADeathThePlayerIsOutOfTheDungeonAsAClearedOneLeavesThemAndStandsUpWhole`. Control: a second world in
+   which the same dungeon is walked to floor 3 and cleared by `ClearEmpireDungeon`. After the death, each of
+   these equals what the clear left: the bound dungeon, the dungeon the clock holds, the depth the game mode
+   reads, the dungeon's modifier score (30 inside, by hand), the count of the floor's modifiers, whether it is
+   the last floor, and the floor number 3. The one difference is asserted: the dungeon is still on the map. The
+   player stands at the entrance and not where it died, has its maximum health having had none, and can walk.
+8. `OnHereticADeathInAThreeFloorDungeonResolvesItAtTheDeathAndAgainFromTheDaysCharged`. The set-up asserts 14.8,
+   16.4 and 15. Three floors: 15 days, two resolves that cost a city, the clock counts two, the city lost two
+   resolves' defence, the timer is full again. Control: four floors, one resolve, one resolve's defence, and 1.4
+   days left.
+
+In `Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`, one,
+with that file's own helpers:
+
+9. `ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor`. Control: on the dark floor before the
+   death, the player is on it, having fallen from floor 3, and the dungeon is bound. After: not on the dark
+   floor, no floor fallen from, no dungeon bound, 5 days, and the dungeon still on the map.
+
+In `CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`, group `Cataclysm.EmpireRun`, four, with no game mode and
+no world:
+
+10. `ADeathResolvesAnOrdinaryDungeonAtOnceAndSetsItsTimerBackToFull`. A timer of 30 with 2 left. One resolve's
+    defence and population off the city, one resolve counted, the report names the dungeon and the unchanged
+    day, the timer reads 30 and refills to 30, the clock counts one resolve, the clock still holds the player
+    inside. Then the clock is told the player left and 5 days pass: still one resolve, nothing more off the city,
+    the timer at 25. Control: the same dungeon with no death resolves once by its timer in those 5 days.
+11. `ADeathResolvesNothingInAQuestDungeonADungeonCityOrADungeonThatIsNotThere`. For a Quest dungeon, a Dungeon
+    City and the Cataclysm's own, each carrying damage: the report names nothing, no resolve, no city's defence
+    or population changed, the timer keeps its 3 days, no day passed, the dungeon stands where it stood. Then 5
+    days pass and the timer, the city and the count of run-outs equal those of a control run that made no call.
+    Also a number no dungeon has, and a run that has not begun. A last control: an ordinary dungeon with the same
+    damage is resolved.
+12. `ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind`. The city falls, the report names it
+    and both dungeons as absorbed, both are off the map, no timer is left for the one died in, the clock holds
+    nobody inside, the lists agree, a Dungeon City stands there, and the report says a surge fired when the
+    rule says a fall fires one.
+13. `TheDaysADeathCostsAreTheRunsLethalityModes`. 5, 10 and 15 for the three rungs, and 5 for a run that has not
+    begun.
+
+**Python, run by the writing session.** `tools/tests/test_a_death_ends_the_dungeon.py`, new, five checks, all
+passing. Each was proved with `tools/prove_guard.py`: with one line broken the named check failed, and with the
+line restored all five passed. The five breaks: the days charged before the dungeon is left; the switch's
+default set to 1; `Revive` clearing the dead mark before the call; the empire resolving without asking the kind;
+the design document's sentence put back to "undecided".
+
+**One existing Python check was changed**, `tools/tests/test_game_readme_is_true.py`,
+`test_only_walking_a_dungeon_and_the_console_move_the_empires_day`. Before, it ran while the readme held "Only
+walking a dungeon and the"; now it runs while the readme holds "Only walking a dungeon, dying in one and the".
+What it asserts is unchanged: no file outside the four allowed advances the empire's day. Its message was
+reworded to match. **One existing Python check now skips**: `test_dying_still_costs_the_empire_no_days`, in the
+same file, unchanged, because the readme no longer says dying costs the empire nothing. No existing Unreal test
+was changed.
+
+### Not covered by a test
+
+- Everything, until it is compiled and run.
+- The respawn timer firing: every test calls `Revive` by hand.
+- Anything between the killing blow and standing back up.
+- A death dealt by a rule's own step, which is the case judgement 1 is about.
+- A death in the Cataclysm's own dungeon: the empire function is tested for that kind; the game mode's early
+  return is not.
+- A death in a dungeon bound by number that is gone from the map, judgement 3.
+- The shallow case with a rolled timer, and a four floor dungeon whose roll is 15 days or fewer.
+- A surge or a city repair falling inside the days charged.
+- The log line.
+- The game's own run, found through the game instance. Every test hands the run over through the test seam.
+- More than one player.
+
+### Guard proofs proposed
+
+Three, for the registering session. None was run. Each line is counted once in
+`Dungeon/CataclysmDungeonGameMode.cpp`. The lines are given without the tabs they begin with.
+
+1. The resolve. Two tabs: `Run->ResolveDungeonOnDeath(DiedInDungeon);` becomes `FCataclysmDayReport();`. Test:
+   `Cataclysm.DungeonMode.ADeathWhoseResolveFellsTheCityTouchesNoDungeonThatIsGone`. Predicted to fail, seven:
+   "the death's resolve felled the city", "and it is the one city that fell", "one resolve cost a city", "the
+   dungeon the player died in is off the map", "and so is the other dungeon that stood on the city", "no timer
+   counts down for the dungeon that is gone", "a Dungeon City stands where the city fell".
+2. The days. One tab: `Run->AdvanceDays(DaysTheDeathCost);` becomes `Run->AdvanceDays(0);`. Test:
+   `Cataclysm.DungeonMode.ADeathInAnEmpireDungeonCostsTheDaysOfItsLethalityMode`. Predicted to fail, three: the
+   assertion "a death in the dungeon cost" for Standard, for Hardcore and for Heretic.
+3. The switch. One tab: `if (CVarDeathKeepsThePlayerInTheDungeon.GetValueOnAnyThread() != 0)` becomes
+   `if (CVarDeathKeepsThePlayerInTheDungeon.GetValueOnAnyThread() > 1)`. Test:
+   `Cataclysm.DungeonMode.ThePlaytestSwitchKeepsADeadPlayerInTheDungeonAndWithoutItTheDeathEndsTheWalk`.
+   Predicted to fail, six, all in the half with the switch set: "no day passed", "the dungeon is still being
+   walked", "and the clock still holds the player inside it", "no resolve cost a city", "the city kept its
+   defence", "the dungeon's timer still has its forty days". The second half is predicted to pass: the first
+   death has by then ended the walk and charged 5 days, the second death finds no dungeon bound, and the figures
+   that half asserts are the ones the first death left.
+
+Break 1 would also fail the Python check `test_a_death_resolves_then_leaves_then_charges` if the Python suite
+were run with the break in, which the project's rule against running the two together already forbids. Breaks 2
+and 3 change no line a Python check reads.
+
+### What the row needs, for the session that writes rows
+
+Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no row. No row was passed
+through the generator, because there is none.
+
+---
+
 ## 2026-10-09 — Those in the Dark, layer 3: the save's record of the floor says when it is the dark floor and which floor the player fell from
 
 **Built and run after it was written; the Run section at the end of this entry has what the runs printed.**

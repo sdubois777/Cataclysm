@@ -4000,7 +4000,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell**, which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
-  - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A Quest dungeon and a Dungeon City never resolve, so this does not reach them, and what dying in one does is undecided. Ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning.
+  - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A Quest dungeon and a Dungeon City never resolve, so this does not reach them: dying in one costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing for the death, and its timer is not touched by the death and runs on through the days paid. That much is a judgement made on 2026-10-09 under the project owner's delegation. The rest of this rule was ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning for both.
   - Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and retaken Dungeon Cities do not: a Quest dungeon is the win condition itself, and retaking your own city is recovery rather than progress. **Pursuing the win condition therefore never makes the final fight harder**, and a player who clears the map meets a deeper boss than one who beelines the objectives. Settled with the project owner on 2026-09-06.
   - **The Last Stand takes none of that growth.** When the Cataclysm reaches the capital the fight is built from its own bonuses alone — see the Last Stand section — because adding earned growth on top would punish a player twice for the same run. That fight is won once in 54 by deliberate design and the figure was chosen on purpose. Settled the same day.
 
@@ -4093,6 +4093,19 @@ refreshes to full and the dungeon **may move to an adjacent city** — adjacency
 section IX defines it, the rim's perimeter links included. It may only move onto a
 city a surge could have put a dungeon on: one that is exposed, has not fallen,
 and is not the Pillar. When no neighbour qualifies it stays where it is.
+
+  
+
+**The project owner spoke to this twice, and the second answer stands.** On
+2026-10-08, verbatim: "resolve means what happens when a dungeon ticks down it's
+timer. Ordinary dungeons will do their city/population damage, and then despawn.
+Quest dungeons will do their city/population damage, and either refresh their
+timer and stay on that city, or potentially move to an adjacent city. Fallen city
+dungeons don't have a resolution timer as they're the enemies now." On
+2026-10-09 the coordinating session recommended that a Quest dungeon cost its
+city nothing when its timer runs out, so that the paragraph above stands as
+written, and the owner accepted that with the words "your rec on all the open
+questions". For Quest dungeons the second supersedes the first.
 
   
 

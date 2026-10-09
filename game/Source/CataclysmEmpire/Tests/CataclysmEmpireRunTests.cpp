@@ -3437,4 +3437,493 @@ bool FCataclysmEmpireRunSiegeArrivalTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A death inside a dungeon -- issue #41
+// ---------------------------------------------------------------------------
+//
+// `ResolveDungeonOnDeath` and `DeathDayCost` on their own: a run, a map and a
+// clock, and no game mode, no world and no character. What the game does with
+// them is `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, tested in the
+// `Cataclysm` module's `CataclysmDungeonCostsDaysTests.cpp`.
+
+namespace CataclysmEmpireRunTest
+{
+	/** The first Outpost of the map that has not fallen, or `INDEX_NONE`. */
+	int32 FirstStandingOutpost(const UCataclysmEmpireRun& Run)
+	{
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.Tier == ECataclysmCityTier::Outpost && !City.bFallen)
+			{
+				return City.CityId;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/**
+	 * Gives a dungeon `PlaceDungeon` put down the points it takes when it
+	 * resolves, and writes how many days its timer has left.
+	 *
+	 * `PlaceDungeon` LEAVES THE DAMAGE AT NOUGHT, which the relocation tests it
+	 * was written for do not read. A death's resolve is measured by what the
+	 * city pays, so these tests give every kind some, the kinds that never
+	 * resolve included: if one of those were resolved by mistake it would show.
+	 */
+	void GiveDamageAndDaysLeft(UCataclysmEmpireRun& Run, int32 DungeonId,
+							   float DefencePoints, float PopulationPoints,
+							   float DaysLeft)
+	{
+		for (FCataclysmDungeon& Standing : Run.Dungeons)
+		{
+			if (Standing.DungeonId == DungeonId)
+			{
+				Standing.DefenceDamage = DefencePoints;
+				Standing.PopulationDamage = PopulationPoints;
+			}
+		}
+
+		for (FCataclysmDungeonTimer& Counting : Run.Clock->Timers)
+		{
+			if (Counting.DungeonId == DungeonId)
+			{
+				Counting.DaysUntilResolve = DaysLeft;
+			}
+		}
+	}
+
+	/** Every city's population, indexed by city identifier. */
+	TArray<float> PopulationSnapshot(const UCataclysmEmpireRun& Run)
+	{
+		TArray<float> Population;
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			Population.Add(City.Population);
+		}
+		return Population;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDeathResolvesTest,
+	"Cataclysm.EmpireRun.ADeathResolvesAnOrdinaryDungeonAtOnceAndSetsItsTimerBackToFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDeathResolvesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 DiedIn = 9001;
+
+	// A FULL TIMER OF THIRTY DAYS WITH TWO LEFT, on an ordinary dungeon that
+	// takes 100 points of defence and 40 of population before scaling.
+	const float FullTimer = 30.0f;
+	const float DaysLeft = 2.0f;
+
+	// -- THE CONTROL: no death, and five days pass -------------------------
+	//
+	// The two days run out and the timer resolves the dungeon. This is what the
+	// last check below is measured against: without it, "no second resolve in
+	// five days" would be true of a dungeon whose timer could not have run out.
+	{
+		UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+		const int32 CityId = FirstStandingOutpost(*Run);
+		if (!TestTrue(TEXT("set-up: the control's map has an Outpost"),
+					  CityId != INDEX_NONE))
+		{
+			return false;
+		}
+
+		PlaceDungeon(*Run, DiedIn, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
+					 FullTimer);
+		GiveDamageAndDaysLeft(*Run, DiedIn, 100.0f, 40.0f, DaysLeft);
+
+		Run->AdvanceDays(5);
+
+		TestEqual(TEXT("CONTROL: with no death the two days run out and the timer resolves it once"),
+				  Run->DungeonsDetonated, 1);
+	}
+
+	// -- THE DEATH --------------------------------------------------------
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	const int32 CityId = FirstStandingOutpost(*Run);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost"), CityId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	PlaceDungeon(*Run, DiedIn, ECataclysmDungeonType::Basic,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId), FullTimer);
+	GiveDamageAndDaysLeft(*Run, DiedIn, 100.0f, 40.0f, DaysLeft);
+
+	// THE PLAYER IS INSIDE IT, which is what the game mode tells the clock.
+	Run->Clock->EnterDungeon(DiedIn);
+
+	const FCataclysmDungeon* Placed = Run->FindDungeon(DiedIn);
+	const FCataclysmCity* City = Run->Map->Find(CityId);
+	if (!TestNotNull(TEXT("set-up: the dungeon is on the map"), Placed)
+		|| !TestNotNull(TEXT("set-up: and so is its city"), City))
+	{
+		return false;
+	}
+
+	// WHAT ONE RESOLVE TAKES, worked out the way `ResolveDungeon` does.
+	const float DefenceBite = Placed->DefenceDamage * Placed->BiteScale();
+	const float PopulationBite = Placed->PopulationDamage * Placed->BiteScale();
+
+	const float DefenceBefore = City->Defence;
+	const float PopulationBefore = City->Population;
+	const int32 DayBefore = Run->Day();
+
+	if (!TestTrue(TEXT("set-up: one resolve is a real amount the city can pay twice"),
+				  DefenceBite > 1.0f && PopulationBite > 1.0f
+					  && DefenceBefore > 2.0f * DefenceBite
+					  && PopulationBefore > 2.0f * PopulationBite)
+		|| !TestEqual(TEXT("set-up: before the death no resolve has cost a city"),
+					  Run->DungeonsDetonated, 0))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport Report = Run->ResolveDungeonOnDeath(DiedIn);
+
+	// THE CONSEQUENCE LANDED ON ITS CITY, ONCE.
+	TestEqual(TEXT("the city lost one resolve's worth of defence"),
+			  DefenceBefore - City->Defence, DefenceBite, 0.01f);
+	TestEqual(TEXT("and one resolve's worth of population"),
+			  PopulationBefore - City->Population, PopulationBite, 0.01f);
+	TestEqual(TEXT("one resolve has cost a city"), Run->DungeonsDetonated, 1);
+
+	// THE REPORT SAYS SO, AND NO DAY PASSED.
+	TestEqual(TEXT("the report names one dungeon as resolved"),
+			  Report.Resolved.Num(), 1);
+	TestTrue(TEXT("and it is this one"), Report.Resolved.Contains(DiedIn));
+	TestEqual(TEXT("no city fell"), Report.Fallen.Num(), 0);
+	TestEqual(TEXT("the report carries the day it already was"),
+			  Report.Day, DayBefore);
+	TestEqual(TEXT("and the run's day did not move"), Run->Day(), DayBefore);
+
+	// ITS TIMER IS FULL AGAIN AND IT STAYS ON THE MAP.
+	const FCataclysmDungeonTimer* Counting = Run->Clock->FindTimer(DiedIn);
+	if (!TestNotNull(TEXT("the dungeon still has its timer"), Counting))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the timer is back at its full thirty days"),
+			  Counting->DaysUntilResolve, FullTimer, 0.001f);
+	TestEqual(TEXT("and still refills to thirty"),
+			  Counting->ResolveDays, FullTimer, 0.001f);
+	TestEqual(TEXT("the clock counts one resolve of that dungeon"),
+			  Counting->TimesResolved, 1);
+	TestNotNull(TEXT("the dungeon is still on the map"), Run->FindDungeon(DiedIn));
+
+	// IT DID NOT LEAVE THE DUNGEON. That is the caller's step.
+	TestEqual(TEXT("the clock still holds the player inside it"),
+			  Run->Clock->CurrentDungeonId, DiedIn);
+
+	// AND THE OLD TWO DAYS CANNOT RESOLVE IT AGAIN. The caller leaves, and five
+	// days pass, as a Standard death charges.
+	Run->Clock->LeaveDungeon();
+	Run->AdvanceDays(5);
+
+	TestEqual(TEXT("five days later still only the one resolve has cost a city"),
+			  Run->DungeonsDetonated, 1);
+	TestEqual(TEXT("and the city has lost nothing more"),
+			  DefenceBefore - City->Defence, DefenceBite, 0.01f);
+	TestEqual(TEXT("the timer has run those five days from full"),
+			  Run->Clock->DaysUntilResolveFor(DiedIn), FullTimer - 5.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDeathSparesOtherKindsTest,
+	"Cataclysm.EmpireRun.ADeathResolvesNothingInAQuestDungeonADungeonCityOrADungeonThatIsNotThere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDeathSparesOtherKindsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 DiedIn = 9001;
+
+	// EACH KIND THAT DOES NOT RESOLVE, ON A STANDING CITY, CARRYING DAMAGE. A
+	// Quest dungeon, a Dungeon City and the Cataclysm's own dungeon carry none
+	// in the game; here each is given 100 and 40 so a mistaken resolve shows.
+	//
+	// THREE DAYS LEFT ON A TIMER OF TWENTY-FIVE, which is a Quest dungeon's
+	// relocation clock. Each kind is then run on for five days twice, once
+	// after the call and once without it, and the two must agree: the call
+	// moved no timer and drew nothing from the run's chance, so the move a
+	// Quest dungeon makes when its clock runs out comes out the same.
+	const ECataclysmDungeonType Kinds[3] = {
+		ECataclysmDungeonType::Quest,
+		ECataclysmDungeonType::FallenCity,
+		ECataclysmDungeonType::Cataclysm};
+	const TCHAR* const KindNames[3] = {
+		TEXT("Quest dungeon"), TEXT("Dungeon City"), TEXT("Cataclysm dungeon")};
+
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		const TCHAR* const Kind = KindNames[Index];
+
+		float TimerAfterTheDays[2] = {0.0f, 0.0f};
+		int32 CityAfterTheDays[2] = {INDEX_NONE, INDEX_NONE};
+		int32 ResolvesAfterTheDays[2] = {-1, -1};
+
+		for (int32 Pass = 0; Pass < 2; ++Pass)
+		{
+			const bool bThePlayerDied = Pass == 0;
+
+			UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+			const int32 CityId = FirstStandingOutpost(*Run);
+			if (!TestTrue(TEXT("set-up: the map has an Outpost"),
+						  CityId != INDEX_NONE))
+			{
+				return false;
+			}
+
+			PlaceDungeon(*Run, DiedIn, Kinds[Index], ECataclysmDungeonSubType::None,
+						 *Run->Map->Find(CityId), 25.0f);
+			GiveDamageAndDaysLeft(*Run, DiedIn, 100.0f, 40.0f, 3.0f);
+
+			if (bThePlayerDied)
+			{
+				const TArray<float> DefenceBefore = DefenceSnapshot(*Run);
+				const TArray<float> PopulationBefore = PopulationSnapshot(*Run);
+				const int32 DayBefore = Run->Day();
+
+				const FCataclysmDayReport Report = Run->ResolveDungeonOnDeath(DiedIn);
+
+				TestEqual(FString::Printf(TEXT("%s: the report names nothing as resolved"), Kind),
+						  Report.Resolved.Num(), 0);
+				TestEqual(FString::Printf(TEXT("%s: and nothing as moved"), Kind),
+						  Report.Relocated.Num(), 0);
+				TestEqual(FString::Printf(TEXT("%s: no resolve cost a city"), Kind),
+						  Run->DungeonsDetonated, 0);
+				TestTrue(FString::Printf(TEXT("%s: no city's defence changed"), Kind),
+						 DefenceSnapshot(*Run) == DefenceBefore);
+				TestTrue(FString::Printf(TEXT("%s: nor any city's population"), Kind),
+						 PopulationSnapshot(*Run) == PopulationBefore);
+				TestEqual(FString::Printf(TEXT("%s: its timer still has its three days"), Kind),
+						  Run->Clock->DaysUntilResolveFor(DiedIn), 3.0f, 0.001f);
+				TestEqual(FString::Printf(TEXT("%s: no day passed"), Kind),
+						  Run->Day(), DayBefore);
+
+				const FCataclysmDungeon* Still = Run->FindDungeon(DiedIn);
+				if (!TestNotNull(*FString::Printf(TEXT("%s: it is still on the map"), Kind),
+								 Still))
+				{
+					return false;
+				}
+				TestEqual(FString::Printf(TEXT("%s: on the city it was on"), Kind),
+						  Still->CityId, CityId);
+			}
+
+			Run->AdvanceDays(5);
+
+			const FCataclysmDungeon* Later = Run->FindDungeon(DiedIn);
+			const FCataclysmDungeonTimer* Counting = Run->Clock->FindTimer(DiedIn);
+			TimerAfterTheDays[Pass] = Run->Clock->DaysUntilResolveFor(DiedIn);
+			CityAfterTheDays[Pass] = Later ? Later->CityId : INDEX_NONE;
+			ResolvesAfterTheDays[Pass] = Counting ? Counting->TimesResolved : -1;
+		}
+
+		// THE CONTROL IS THE SECOND PASS, the same five days with no death.
+		TestEqual(FString::Printf(
+					  TEXT("CONTROL, %s: with no death its clock ran out on the third day and has run two since"),
+					  Kind),
+				  TimerAfterTheDays[1], 23.0f, 0.001f);
+		TestEqual(FString::Printf(
+					  TEXT("%s: five days after the death its timer is what the days alone make it"),
+					  Kind),
+				  TimerAfterTheDays[0], TimerAfterTheDays[1], 0.001f);
+		TestEqual(FString::Printf(
+					  TEXT("%s: it stands on the city the days alone leave it on"), Kind),
+				  CityAfterTheDays[0], CityAfterTheDays[1]);
+		TestEqual(FString::Printf(
+					  TEXT("%s: its timer has run out as often as the days alone make it"),
+					  Kind),
+				  ResolvesAfterTheDays[0], ResolvesAfterTheDays[1]);
+	}
+
+	// A DUNGEON THAT IS NOT THERE, AND A RUN THAT HAS NOT BEGUN. Neither is an
+	// error and neither does anything.
+	{
+		UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+		const TArray<float> DefenceBefore = DefenceSnapshot(*Run);
+
+		const FCataclysmDayReport Report = Run->ResolveDungeonOnDeath(DiedIn);
+
+		TestEqual(TEXT("no such dungeon: the report names nothing as resolved"),
+				  Report.Resolved.Num(), 0);
+		TestEqual(TEXT("no such dungeon: no resolve cost a city"),
+				  Run->DungeonsDetonated, 0);
+		TestTrue(TEXT("no such dungeon: no city's defence changed"),
+				 DefenceSnapshot(*Run) == DefenceBefore);
+
+		UCataclysmEmpireRun* NotBegun = NewObject<UCataclysmEmpireRun>();
+		const FCataclysmDayReport Nothing = NotBegun->ResolveDungeonOnDeath(DiedIn);
+		TestEqual(TEXT("a run that has not begun: the report names nothing as resolved"),
+				  Nothing.Resolved.Num(), 0);
+		TestEqual(TEXT("a run that has not begun: and carries no day"), Nothing.Day, 0);
+	}
+
+	// THE CONTROL THAT THE DAMAGE WAS REAL. The same dungeon as an ordinary one
+	// does cost its city, so the three kinds above were spared by their kind.
+	{
+		UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+		const int32 CityId = FirstStandingOutpost(*Run);
+		if (!TestTrue(TEXT("set-up: the control's map has an Outpost"),
+					  CityId != INDEX_NONE))
+		{
+			return false;
+		}
+
+		PlaceDungeon(*Run, DiedIn, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId), 25.0f);
+		GiveDamageAndDaysLeft(*Run, DiedIn, 100.0f, 40.0f, 3.0f);
+
+		const float DefenceBefore = Run->Map->Find(CityId)->Defence;
+		Run->ResolveDungeonOnDeath(DiedIn);
+
+		TestTrue(FString::Printf(
+					 TEXT("CONTROL: an ordinary dungeon carrying the same damage took %.1f defence"),
+					 DefenceBefore - Run->Map->Find(CityId)->Defence),
+				 DefenceBefore - Run->Map->Find(CityId)->Defence > 100.0f);
+		TestEqual(TEXT("CONTROL: and one resolve cost a city"),
+				  Run->DungeonsDetonated, 1);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDeathFellsTheCityTest,
+	"Cataclysm.EmpireRun.ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 DiedIn = 9001;
+	const int32 Beside = 9002;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	const int32 CityId = FirstStandingOutpost(*Run);
+	FCataclysmCity* Weakened =
+		CityId != INDEX_NONE ? Run->Map->FindMutable(CityId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the map has an Outpost"), Weakened))
+	{
+		return false;
+	}
+
+	// TEN POINTS OF DEFENCE LEFT, and two ordinary dungeons on the city that
+	// each take far more than ten. The player is inside the first.
+	Weakened->Defence = 10.0f;
+
+	PlaceDungeon(*Run, DiedIn, ECataclysmDungeonType::Basic,
+				 ECataclysmDungeonSubType::None, *Weakened, 30.0f);
+	PlaceDungeon(*Run, Beside, ECataclysmDungeonType::Basic,
+				 ECataclysmDungeonSubType::None, *Weakened, 30.0f);
+	GiveDamageAndDaysLeft(*Run, DiedIn, 100.0f, 40.0f, 30.0f);
+	GiveDamageAndDaysLeft(*Run, Beside, 100.0f, 40.0f, 30.0f);
+	Run->Clock->EnterDungeon(DiedIn);
+
+	const int32 FallenBefore = Run->Map->FallenCityCount();
+	const int32 DayBefore = Run->Day();
+
+	// THE CONTROL: before the death the city stands and so do both dungeons.
+	if (!TestFalse(TEXT("CONTROL: before the death the city has not fallen"),
+				   Weakened->bFallen)
+		|| !TestNotNull(TEXT("CONTROL: and the dungeon the player is in is on the map"),
+						Run->FindDungeon(DiedIn))
+		|| !TestNotNull(TEXT("CONTROL: and so is the one beside it"),
+						Run->FindDungeon(Beside)))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport Report = Run->ResolveDungeonOnDeath(DiedIn);
+
+	// THE CITY FELL TO THE RESOLVE.
+	TestTrue(TEXT("the city fell"), Run->Map->Find(CityId)->bFallen);
+	TestEqual(TEXT("and it is the one city that fell"),
+			  Run->Map->FallenCityCount(), FallenBefore + 1);
+	TestTrue(TEXT("the report names the city as fallen"),
+			 Report.Fallen.Contains(CityId));
+	TestEqual(TEXT("one resolve cost a city"), Run->DungeonsDetonated, 1);
+	TestEqual(TEXT("no day passed"), Run->Day(), DayBefore);
+
+	// AND TOOK BOTH DUNGEONS WITH IT.
+	TestTrue(TEXT("the report names the dungeon the player died in as absorbed"),
+			 Report.Absorbed.Contains(DiedIn));
+	TestTrue(TEXT("and the one beside it"), Report.Absorbed.Contains(Beside));
+	TestNull(TEXT("the dungeon the player died in is off the map"),
+			 Run->FindDungeon(DiedIn));
+	TestNull(TEXT("and so is the one beside it"), Run->FindDungeon(Beside));
+
+	// NOTHING WAS DONE TO THE DUNGEON THAT IS GONE. No timer was put back for
+	// it, the clock holds nobody inside it, and the two lists still agree.
+	TestNull(TEXT("no timer counts down for the dungeon that is gone"),
+			 Run->Clock->FindTimer(DiedIn));
+	TestEqual(TEXT("the clock holds nobody inside a dungeon"),
+			  Run->Clock->CurrentDungeonId, INDEX_NONE);
+
+	FString WhyNot;
+	const bool bListsAgree = UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+		Run->Dungeons, Run->Clock->Timers, WhyNot);
+	TestTrue(FString::Printf(
+				 TEXT("every dungeon still has one timer and every timer a dungeon: %s"),
+				 *WhyNot),
+			 bListsAgree);
+
+	// AND WHAT A CITY FALLING DOES STILL HAPPENED: it became a Dungeon City, and
+	// its fall fired a surge when the rule says a fall does.
+	bool bDungeonCityStands = false;
+	for (const FCataclysmDungeon& Standing : Run->Dungeons)
+	{
+		bDungeonCityStands = bDungeonCityStands
+			|| (Standing.Type == ECataclysmDungeonType::FallenCity
+				&& Standing.CityId == CityId);
+	}
+	TestTrue(TEXT("a Dungeon City stands where the city fell"), bDungeonCityStands);
+	TestTrue(TEXT("the report says a surge fired exactly when a city's fall fires one"),
+			 Report.bSurged == UCataclysmSurgeScheduler::bSurgeOnCityFall);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDeathDayCostTest,
+	"Cataclysm.EmpireRun.TheDaysADeathCostsAreTheRunsLethalityModes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDeathDayCostTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	// THE DESIGNED FIGURES, WRITTEN OUT: `docs/Cataclysm_GDD_v2.md` section II,
+	// 5 days in Standard, 10 in Hardcore, 15 in Heretic. Each run is the control
+	// for the other two: one answer for every rung would fail two of the three.
+	const int32 DesignedCost[3] = {5, 10, 15};
+	const TCHAR* const ModeName[3] =
+		{TEXT("Standard"), TEXT("Hardcore"), TEXT("Heretic")};
+
+	for (int32 Rung = 0; Rung < 3; ++Rung)
+	{
+		const UCataclysmEmpireRun* Run =
+			MakeRun(1, ECataclysmSurgeMode::Static, Rung);
+
+		TestEqual(FString::Printf(TEXT("a %s run charges %d days for a death"),
+								  ModeName[Rung], DesignedCost[Rung]),
+				  Run->DeathDayCost(), DesignedCost[Rung]);
+	}
+
+	// A RUN THAT HAS NOT BEGUN HAS NO MODE, and answers the gentlest.
+	const UCataclysmEmpireRun* NotBegun = NewObject<UCataclysmEmpireRun>();
+	TestEqual(TEXT("a run that has not begun answers Standard's 5"),
+			  NotBegun->DeathDayCost(), 5);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

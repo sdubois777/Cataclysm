@@ -1038,6 +1038,75 @@ bool UCataclysmEmpireRun::RemoveDungeon(int32 DungeonId)
 }
 
 // ---------------------------------------------------------------------------
+// A death inside a dungeon -- issue #41
+// ---------------------------------------------------------------------------
+
+FCataclysmDayReport UCataclysmEmpireRun::ResolveDungeonOnDeath(int32 DungeonId)
+{
+	FCataclysmDayReport Report;
+
+	if (Map == nullptr || Clock == nullptr || Surges == nullptr)
+	{
+		// `Begin` HAS NOT RUN. The same answer `AdvanceDay` gives, for its
+		// reason: an empty report is better than reading through a null map.
+		return Report;
+	}
+
+	// NO DAY PASSES HERE, so the report carries the day it already is. A city
+	// this fells lands its surge and its Dungeon City on that day, which is
+	// what `CityFell` reads off the report.
+	Report.Day = Clock->Day;
+
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	if (Dungeon == nullptr || !Dungeon->Resolves())
+	{
+		// NOT THERE, OR A KIND THAT DOES NOT RESOLVE. Nothing is touched, and
+		// `ResolveDungeon` is deliberately not called: for a Quest dungeon it
+		// runs the relocation, which belongs to the timer running out and draws
+		// from the run's chance. See the header.
+		return Report;
+	}
+
+	Report.Resolved.Add(DungeonId);
+
+	// THE SAME FUNCTION A TIMER RUNNING OUT REACHES, so the consequence, the
+	// count and a city falling are one rule and not two.
+	//
+	// `Dungeon` IS NOT READ AGAIN BELOW. A resolve can fell the city, and
+	// `CityFell` removes every dungeon standing on it from `Dungeons`, this one
+	// included, so the pointer may no longer point at anything.
+	ResolveDungeon(DungeonId, Report);
+
+	// AND ITS TIMER IS FULL AGAIN, exactly as `UCataclysmDayClock::AdvanceDay`
+	// leaves a timer that ran out. LOOKED UP NOW AND NOT BEFORE THE RESOLVE: a
+	// dungeon absorbed by its city falling has no timer left, and this then
+	// does nothing, which is the right answer for a dungeon that is gone.
+	FCataclysmDungeonTimer* Timer = Clock->Timers.FindByPredicate(
+		[DungeonId](const FCataclysmDungeonTimer& Candidate)
+		{
+			return Candidate.DungeonId == DungeonId;
+		});
+
+	if (Timer != nullptr)
+	{
+		++Timer->TimesResolved;
+		Timer->DaysUntilResolve = Timer->ResolveDays;
+	}
+
+	Report.bPillarExposed = Map->IsPillarExposed();
+
+	return Report;
+}
+
+int32 UCataclysmEmpireRun::DeathDayCost() const
+{
+	// STANDARD FOR A RUN THAT HAS NOT BEGUN, which is what `DeathDayCostFor`
+	// answers for any rung nobody chose.
+	return UCataclysmDayClock::DeathDayCostFor(
+		Surges != nullptr ? Surges->LethalityRung : 0);
+}
+
+// ---------------------------------------------------------------------------
 // City upgrades
 // ---------------------------------------------------------------------------
 

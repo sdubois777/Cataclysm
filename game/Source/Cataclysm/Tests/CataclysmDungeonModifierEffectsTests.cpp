@@ -53191,4 +53191,63 @@ bool FCataclysmDarkSaveEnteringTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A DEATH ON THE DARK FLOOR LEAVES THE DUNGEON AS ANY OTHER DEATH DOES. Issue #41.
+//
+// An empire dungeon thirty floors deep carrying Those in the Dark, in a Standard run. One character, the player,
+// who falls from floor 3 and stands where the fall's beat left them on the dark floor; the floor's own creatures
+// were cleared away before the fall. The player dies there and is stood back up by hand. CONTROL, IN THE SAME
+// TEST: before the death the player is on the dark floor, the game mode is walking the dungeon, and the day is
+// read.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarkFloorDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarkFloorDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	UCataclysmEmpireRun* Run = nullptr;
+	int32 DungeonId = INDEX_NONE;
+	ACataclysmDungeonGameMode* Mode = ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId);
+	int32 Seed = 0;
+	if (!Mode || !AFloorWithChasms(*this, Mode, Player, 3, 1, Seed) || !FallIntoAChasm(*this, Mode, Player))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("CONTROL: before the death the player is on the dark floor"), Mode->ThePlayerIsOnTheDarkFloor())
+		|| !TestEqual(TEXT("CONTROL: having fallen from floor 3"), Mode->TheDarkFloorFellFromFloor(), 3)
+		|| !TestEqual(TEXT("CONTROL: and the game mode is walking the dungeon"), Mode->EmpireDungeonId, DungeonId))
+	{
+		return false;
+	}
+	const int32 DayOnTheDarkFloor = Run->Day();
+
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Player.Character->Revive();
+	if (!TestFalse(TEXT("set-up: the player is back"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("after the death the player is not on the dark floor"), Mode->ThePlayerIsOnTheDarkFloor());
+	TestEqual(TEXT("and the game mode holds no floor fallen from"), Mode->TheDarkFloorFellFromFloor(), 0);
+	TestEqual(TEXT("the game mode is walking no dungeon"), Mode->EmpireDungeonId, INDEX_NONE);
+	TestEqual(TEXT("and the death cost the five days of a Standard run"), Run->Day() - DayOnTheDarkFloor, 5);
+	TestTrue(TEXT("the dungeon is still on the map"), DarkFloorDungeonStands(Run, DungeonId));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

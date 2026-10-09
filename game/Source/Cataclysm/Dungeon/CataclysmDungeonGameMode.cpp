@@ -21374,6 +21374,111 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	return bCleared;
 }
 
+/**
+ * The playtest switch for a death inside a dungeon of the empire. Issue #41.
+ *
+ * 0, THE DEFAULT, IS THE DESIGNED BEHAVIOUR: the death ends the walk, an
+ * ordinary dungeon resolves, and the lethality mode's days are charged.
+ *
+ * 1 IS WHAT A DEATH WAS BEFORE THAT WAS BUILT: the player stands back up at the
+ * floor's entrance with the dungeon still bound, nothing resolves and no day
+ * passes. The issue asked for it in these words: "Building this ends the
+ * respawn-in-place the owner uses to playtest ... A switch that keeps the
+ * player in the level for testing is worth building at the same time".
+ *
+ * `ECVF_Cheat`, LIKE THE ROLL PINS ABOVE, so it cannot be set in a shipped
+ * build to dodge the cost of dying.
+ */
+static TAutoConsoleVariable<int32> CVarDeathKeepsThePlayerInTheDungeon(
+	TEXT("Cataclysm.DeathKeepsThePlayerInTheDungeon"),
+	0,
+	TEXT("0, the default: a death inside a dungeon of the empire ends the walk, resolves an ordinary dungeon and ")
+	TEXT("costs the lethality mode's days. 1: the player stands back up in the level, nothing resolves, no day passes."),
+	ECVF_Cheat);
+
+bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
+{
+	// THE PLAYTEST SWITCH, READ HERE AND NOWHERE ELSE. See the variable above.
+	if (CVarDeathKeepsThePlayerInTheDungeon.GetValueOnAnyThread() != 0)
+	{
+		return false;
+	}
+
+	// NO EMPIRE DUNGEON BOUND MEANS NOTHING TO END. Pressing Play in `L_Dungeon`
+	// to look at a floor is this case, and so is every test with no run: the
+	// player stands back up in the level and no day passes, as before.
+	UCataclysmEmpireRun* Run = EmpireRun();
+	if (Run == nullptr || EmpireDungeonId == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 DiedInDungeon = EmpireDungeonId;
+	const FCataclysmDungeon* DungeonDiedIn = Run->FindDungeon(DiedInDungeon);
+
+	// THE CATACLYSM'S OWN DUNGEON IS NOT THIS LAYER'S, BY RULING. What a death
+	// in it does is left exactly as it was: the player stands back up in the
+	// level. Nothing puts such a dungeon on the map yet, and the Last Stand is
+	// issue #43.
+	if (DungeonDiedIn != nullptr
+		&& DungeonDiedIn->Type == ECataclysmDungeonType::Cataclysm)
+	{
+		return false;
+	}
+
+	// READ BEFORE THE RESOLVE, FOR THE LOG LINE BELOW. `DungeonDiedIn` is not
+	// read after it: a resolve can fell the city, which removes the dungeon.
+	//
+	// NULL IS A REAL CASE AND IS STILL CHARGED. A city that falls while the
+	// player is underground absorbs the dungeon being walked, and this game
+	// mode stays bound to its number. Nothing can resolve then; the walk still
+	// ends and the days are still paid.
+	const bool bItResolves = DungeonDiedIn != nullptr && DungeonDiedIn->Resolves();
+	const int32 DayOfTheDeath = Run->Day();
+
+	// 1. IT RESOLVES, IF IT IS THE KIND THAT DOES, WHILE THE PLAYER IS STILL
+	// INSIDE. Every part of that is the empire's: the consequence on the city,
+	// the timer set back to full, and doing nothing at all for a Quest dungeon
+	// or a Dungeon City.
+	const FCataclysmDayReport WhatTheDeathResolved =
+		Run->ResolveDungeonOnDeath(DiedInDungeon);
+
+	// 2. THE WALK ENDS, as clearing the last floor ends it, except that the
+	// dungeon is still on the map. Its timer counts again from here.
+	LeaveEmpireDungeon();
+
+	// 3. AND THE DAYS ARE PAID, whole days through the same call every other
+	// run of days goes through, so a surge, a repair and a resolve that fall
+	// inside them happen on their own days.
+	//
+	// THE DUNGEON'S OWN TIMER RUNS THROUGH THESE DAYS, full from step 1. On
+	// Heretic that is 15 days against a full timer of 10 plus 1.6 a floor, so a
+	// dungeon whose full timer is 15 days or fewer resolves once more inside
+	// them: three floors or fewer, 14.8 days at three, before the 15% either
+	// way a surge rolls onto a timer. Accepted as it falls, by ruling;
+	// `docs/DECISIONS.md` has the figures.
+	const int32 DaysTheDeathCost = Run->DeathDayCost();
+	Run->AdvanceDays(DaysTheDeathCost);
+
+	// AT `Log`, LIKE THE DEATH ITSELF AND FOR ITS REASON. Nothing on screen
+	// says what a death cost, so this line is the only place a person can read
+	// it.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("The death on day %d ended the walk of dungeon %d. %s Cities "
+				"it felled: %d. Days charged: %d, and it is now day %d. The "
+				"dungeon is %s."),
+		   DayOfTheDeath, DiedInDungeon,
+		   bItResolves
+			   ? TEXT("It resolved at once.")
+			   : TEXT("Nothing resolved: it is not a kind that resolves, or it was "
+					  "already off the map."),
+		   WhatTheDeathResolved.Fallen.Num(), DaysTheDeathCost, Run->Day(),
+		   Run->FindDungeon(DiedInDungeon) != nullptr
+			   ? TEXT("still on the map") : TEXT("no longer on the map"));
+
+	return true;
+}
+
 bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMove)
 {
 	FloorNumber = FMath::Max(1, NewFloorNumber);

@@ -377,16 +377,27 @@ public:
 	/**
 	 * Stop, and come back after `RespawnDelaySeconds`.
 	 *
-	 * WHAT THIS DOES AND DOES NOT DO. It marks the player dead, halts them, and
-	 * schedules `Revive`. It does NOT charge the death penalty, because the
-	 * penalty is measured in days off the empire clock and the running game has
-	 * no day clock to charge. See the note on `Revive`.
+	 * WHAT A DEATH IS, IN ORDER. Here, at the killing blow: the save is written,
+	 * the player is marked dead and halted, a worn row that acts on death fires,
+	 * and `Revive` is scheduled. In `Revive`, when the delay is over: a death
+	 * inside a dungeon of the empire ends the walk of that dungeon, resolves it
+	 * if it is an ordinary one and costs the lethality mode's days -- issue #41
+	 * -- and then the character stands back up whole.
+	 *
+	 * THE DAYS AND THE RESOLVE ARE NOT CHARGED HERE. The comment at the end of
+	 * this function says why they wait for `Revive`.
 	 */
 	virtual void HandleDeath() override;
 
 	/**
-	 * Undo the death: clear the mark, clear everything temporary on the
-	 * character, refill, and stand up at the player start. Issue #1535.
+	 * Undo the death: end the walk of the dungeon the character died in, clear
+	 * the mark, clear everything temporary on the character, refill, and stand
+	 * up. Issues #1535 and #41.
+	 *
+	 * WHERE IT STANDS UP IS NOT THE CAPITAL. The design says a death "respawns
+	 * the player at the capital", and the capital as a place is not built --
+	 * issue #48. It stands up at the entrance of the dungeon floor still
+	 * standing, or at the level's player start where there is no such floor.
 	 *
 	 * Public so a test can run it without waiting out a timer, and so the moment
 	 * of coming back is one function rather than a lambda inside the timer.
