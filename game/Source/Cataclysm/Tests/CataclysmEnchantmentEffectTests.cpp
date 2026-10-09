@@ -7548,6 +7548,107 @@ bool FCataclysmCooldownResetRangedKillTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAResetRowStating100Test,
+	"Cataclysm.Enchantments.AResetRowStating100ResetsAtARollOf100AndARowBelow100StillFailsAtItsChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row that states 100 never fails its roll. Issue #2201.
+ *
+ * "Your special ability cooldown is reset when you kill an enemy" states no
+ * chance and is written as 100. The engine's roll can be 100 itself, and a roll
+ * equal to the chance fails, so the row is compared and not rolled. With the
+ * roll pinned at 100 a kill clears the special slot.
+ *
+ * THE CONTROL, for a chance below 100, which is unchanged: "Blocking an attack
+ * has a 20%-40% chance to reset your heavy attack cooldown", worn at 40, does
+ * not reset at a roll of 100, does not at a roll of exactly 40, and does at 39.
+ */
+bool FCataclysmAResetRowStating100Test::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownResetTest;
+	FPinnedRoll Roll(0.0f);
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	{
+		FWorn Worn(TEXT("Positive_Your_special_ability_cooldown_is_reset_when_you"));
+		if (!TestNotNull(TEXT("set-up: a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		int32 ResetsOfSpecialStating100 = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			if (Action.CooldownReset == ECataclysmCooldownReset::Special && Action.Percent == 100.0f)
+			{
+				++ResetsOfSpecialStating100;
+			}
+		}
+		if (!TestEqual(TEXT("set-up: the wearer holds one reset of special that states 100"),
+				ResetsOfSpecialStating100, 1)
+			|| !TestTrue(TEXT("set-up: special starts waiting"), Worn.Waiting(ESlot::Special)))
+		{
+			return false;
+		}
+		// THE ROW ACTS AT ALL: at a roll of 0 a kill clears special. Then special is
+		// put on cooldown again for the roll this test is about.
+		Worn.ASC()->ActOnEvent(FName(TEXT("kill")));
+		if (!TestFalse(TEXT("set-up: at a roll of 0 a kill clears special"), Worn.Waiting(ESlot::Special)))
+		{
+			return false;
+		}
+		Worn.PutOnCooldown(ESlot::Special);
+		Roll.Set(100.0f);
+		if (!TestTrue(TEXT("set-up: special waits again"), Worn.Waiting(ESlot::Special))
+			|| !TestEqual(TEXT("set-up: the roll is pinned at 100"), Roll.Variable->GetFloat(), 100.0f))
+		{
+			return false;
+		}
+
+		Worn.ASC()->ActOnEvent(FName(TEXT("kill")));
+		TestFalse(TEXT("a row stating 100, at a roll of 100: a kill clears special"),
+			Worn.Waiting(ESlot::Special));
+		TestTrue(TEXT("and heavy still waits"), Worn.Waiting(ESlot::Heavy));
+	}
+	{
+		FWorn Worn(TEXT("Positive_Blocking_an_attack_has_a_20_40_chance_to_reset"));
+		if (!TestNotNull(TEXT("control set-up: a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		int32 ResetsOfHeavyAt40 = 0;
+		for (const FCataclysmPoolAction& Action : Worn.ASC()->GetPoolActions())
+		{
+			if (Action.CooldownReset == ECataclysmCooldownReset::Heavy
+				&& FMath::IsNearlyEqual(Action.Percent, 40.0f, 0.0001f))
+			{
+				++ResetsOfHeavyAt40;
+			}
+		}
+		if (!TestEqual(TEXT("control set-up: the wearer holds one reset of heavy at a chance of 40"),
+				ResetsOfHeavyAt40, 1)
+			|| !TestTrue(TEXT("control set-up: heavy starts waiting"), Worn.Waiting(ESlot::Heavy))
+			|| !TestEqual(TEXT("control set-up: the roll is still pinned at 100"),
+				Roll.Variable->GetFloat(), 100.0f))
+		{
+			return false;
+		}
+		Worn.ASC()->ActOnEvent(FName(TEXT("block")));
+		TestTrue(TEXT("a chance of 40, at a roll of 100: heavy still waits"), Worn.Waiting(ESlot::Heavy));
+		Roll.Set(40.0f);
+		Worn.ASC()->ActOnEvent(FName(TEXT("block")));
+		TestTrue(TEXT("a chance of 40, at a roll of exactly 40: heavy still waits"),
+			Worn.Waiting(ESlot::Heavy));
+		// AND THE CONTROL ROW ACTS AT ALL: one below its chance, it resets.
+		Roll.Set(39.0f);
+		Worn.ASC()->ActOnEvent(FName(TEXT("block")));
+		TestFalse(TEXT("a chance of 40, at a roll of 39: heavy is ready"), Worn.Waiting(ESlot::Heavy));
+	}
+	return true;
+}
+
 namespace CataclysmCooldownReduceTest
 {
 	/** The time left on one slot's cooldown, or 0 when it is not cooling down. */
@@ -14401,6 +14502,145 @@ bool FCataclysmHeldTriggerBothRowsTest::RunTest(const FString&)
 	return true;
 }
 
+// A ROW THAT STATES 100 NEVER FAILS ITS ROLL, at the two rolls of a use that no authored row states 100 on: a held
+// skill triggered, tested here, and a use's outcome, tested below beside its rows. Issue #2201. The actions are made
+// by hand and handed to a wearer that holds nothing else, and the use is handed to them with `ActOnSkillUse`, as the
+// player character hands it. Each test stops at what the rows recorded for the use.
+namespace CataclysmStatedHundredTest
+{
+	/** A wearer in its own world that holds no row. A test gives it its actions with `SetPoolActions`. */
+	struct FStatedChanceHolder
+	{
+		FStatedChanceHolder()
+		{
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (World)
+			{
+				Wearer = MakeUnique<CataclysmEnchantmentEffectTest::FWearer>(World);
+			}
+		}
+
+		~FStatedChanceHolder()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+	};
+
+	/** A row on `attack_use` that triggers a held skill with a cooldown, at this chance. */
+	FCataclysmPoolAction ATriggerRowStating(const TCHAR* Key, float Chance)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("attack_use"));
+		Action.Percent = Chance;
+		Action.bTriggerHeldSkill = true;
+		Action.TriggerKey = FName(Key);
+		return Action;
+	}
+
+	/** A row on `attack_use` that rolls for the use in hand to deal no damage, at this chance. */
+	FCataclysmPoolAction AUseRowStating(const TCHAR* Key, float Chance)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("attack_use"));
+		Action.Percent = Chance;
+		Action.bUseDealsNoDamage = true;
+		Action.TriggerKey = FName(Key);
+		return Action;
+	}
+
+	/** The name of the skill every use here is of. */
+	const TCHAR* const StatedHundredSkill = TEXT("Carom");
+
+	/** One paid use of a skill with a cooldown and no tags, handed to the wearer's rows. */
+	void OneUseOfASkill(UCataclysmAbilitySystemComponent* System)
+	{
+		const FGameplayTagContainer NoTags;
+		System->ActOnSkillUse(FName(StatedHundredSkill), &NoTags, FVector(900.0f, 300.0f, 0.0f),
+							  /*bBasicAttack=*/false, /*bHasCooldown=*/true);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmATriggerRowStating100Test,
+	"Cataclysm.Enchantments.ATriggerRowStating100TriggersAtARollOf100AndARowAt50StillFailsAtItsChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A made-up row that triggers a held skill and states 100 records its trigger
+ * with `Cataclysm.TriggerHeldSkillRoll` pinned at 100. THE CONTROL, for a chance
+ * below 100, which is unchanged: a row at 50 records nothing at a roll of 100,
+ * nothing at a roll of exactly 50, and its trigger at 49.9.
+ */
+bool FCataclysmATriggerRowStating100Test::RunTest(const FString&)
+{
+	using namespace CataclysmStatedHundredTest;
+	FStatedChanceHolder Holder;
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.TriggerHeldSkillRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* System = Holder.ASC();
+
+	System->SetPoolActions({ATriggerRowStating(TEXT("Test:stated100"), 100.0f)});
+	if (!TestTrue(TEXT("set-up: the wearer holds one trigger row that states 100"),
+			System->GetPoolActions().Num() == 1 && System->GetPoolActions()[0].bTriggerHeldSkill
+				&& System->GetPoolActions()[0].Percent == 100.0f))
+	{
+		return false;
+	}
+	// THE ROW REACHES ITS ROLL AT ALL: at a roll of 0 a use records a trigger.
+	OneUseOfASkill(System);
+	if (!TestEqual(TEXT("set-up: at a roll of 0 a use records a trigger"), System->PendingHeldTriggerUsedSkill(),
+			FName(StatedHundredSkill)))
+	{
+		return false;
+	}
+	Roll.Set(TEXT("100"));
+	if (!TestEqual(TEXT("set-up: the roll is pinned at 100"), Roll.Variable->GetFloat(), 100.0f))
+	{
+		return false;
+	}
+
+	// A NEW USE BEGINS WITH NOTHING PENDING, so what is read below is this use's.
+	OneUseOfASkill(System);
+	TestEqual(TEXT("a row stating 100, at a roll of 100: the use records a trigger"),
+		System->PendingHeldTriggerUsedSkill(), FName(StatedHundredSkill));
+	TestTrue(TEXT("and it is for a skill with a cooldown"), System->PendingHeldTriggerWantsACooldownSkill());
+
+	// THE CONTROL: A CHANCE BELOW 100 IS AS IT WAS.
+	System->SetPoolActions({ATriggerRowStating(TEXT("Test:stated50"), 50.0f)});
+	OneUseOfASkill(System);
+	TestTrue(TEXT("a chance of 50, at a roll of 100: nothing is recorded"),
+		System->PendingHeldTriggerUsedSkill().IsNone());
+	Roll.Set(TEXT("50"));
+	if (!TestEqual(TEXT("control set-up: the roll is pinned at 50"), Roll.Variable->GetFloat(), 50.0f))
+	{
+		return false;
+	}
+	OneUseOfASkill(System);
+	TestTrue(TEXT("a chance of 50, at a roll of exactly 50: nothing is recorded"),
+		System->PendingHeldTriggerUsedSkill().IsNone());
+	// AND THE CONTROL ROW REACHES ITS ROLL AT ALL: just below its chance, it records.
+	Roll.Set(TEXT("49.9"));
+	OneUseOfASkill(System);
+	TestEqual(TEXT("a chance of 50, at a roll of 49.9: the use records a trigger"),
+		System->PendingHeldTriggerUsedSkill(), FName(StatedHundredSkill));
+	return true;
+}
+
 // THE AUTHORED ROWS THAT REPEAT A SKILL. Mechanism B2, issue #1833. Each test wears the real row at the top of its
 // roll and hands its ability system the skill use the player character hands it (`ActOnSkillUse`), with the roll
 // pinned. What a recorded repeat then does is `CataclysmSkillRepeatTest`'s, above.
@@ -14990,6 +15230,72 @@ bool FCataclysmProjectilesExplodeRowTest::RunTest(const FString&)
 	Roll.Set(TEXT("35"));
 	Use(Worn.ASC(), Thrown, /*bBasicAttack=*/true, /*bHasCooldown=*/false);
 	TestFalse(TEXT("a roll of 35 leaves the projectile its damage"), Worn.ASC()->PendingUseNoDamage());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAUseRowStating100Test,
+	"Cataclysm.Enchantments.AUseRowStating100ComesUpAtARollOf100AndARowAt50StillFailsAtItsChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row that states 100 never fails its roll. Issue #2201. No authored row that
+ * rolls for a use's outcome states 100, so the row is made by hand: one that
+ * rolls for the use to deal no damage. With `Cataclysm.UseOutcomeRoll` pinned at
+ * 100 the use deals no damage. THE CONTROL, for a chance below 100, which is
+ * unchanged: a row at 50 leaves the use its damage at a roll of 100 and at a
+ * roll of exactly 50, and takes it at 49.9.
+ */
+bool FCataclysmAUseRowStating100Test::RunTest(const FString&)
+{
+	using namespace CataclysmStatedHundredTest;
+	FStatedChanceHolder Holder;
+	CataclysmHeldTriggerTest::FHeldTriggerPinned Roll(TEXT("Cataclysm.UseOutcomeRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC())
+		|| !TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* System = Holder.ASC();
+
+	System->SetPoolActions({AUseRowStating(TEXT("Test:stated100"), 100.0f)});
+	if (!TestTrue(TEXT("set-up: the wearer holds one no-damage row that states 100"),
+			System->GetPoolActions().Num() == 1 && System->GetPoolActions()[0].bUseDealsNoDamage
+				&& System->GetPoolActions()[0].Percent == 100.0f))
+	{
+		return false;
+	}
+	// THE ROW REACHES ITS ROLL AT ALL: at a roll of 0 the use deals no damage.
+	OneUseOfASkill(System);
+	if (!TestTrue(TEXT("set-up: at a roll of 0 the use deals no damage"), System->PendingUseNoDamage()))
+	{
+		return false;
+	}
+	Roll.Set(TEXT("100"));
+	if (!TestEqual(TEXT("set-up: the roll is pinned at 100"), Roll.Variable->GetFloat(), 100.0f))
+	{
+		return false;
+	}
+
+	// A NEW USE BEGINS WITH NOTHING PENDING, so what is read below is this use's.
+	OneUseOfASkill(System);
+	TestTrue(TEXT("a row stating 100, at a roll of 100: the use deals no damage"), System->PendingUseNoDamage());
+
+	// THE CONTROL: A CHANCE BELOW 100 IS AS IT WAS.
+	System->SetPoolActions({AUseRowStating(TEXT("Test:stated50"), 50.0f)});
+	OneUseOfASkill(System);
+	TestFalse(TEXT("a chance of 50, at a roll of 100: the use keeps its damage"), System->PendingUseNoDamage());
+	Roll.Set(TEXT("50"));
+	if (!TestEqual(TEXT("control set-up: the roll is pinned at 50"), Roll.Variable->GetFloat(), 50.0f))
+	{
+		return false;
+	}
+	OneUseOfASkill(System);
+	TestFalse(TEXT("a chance of 50, at a roll of exactly 50: the use keeps its damage"),
+		System->PendingUseNoDamage());
+	// AND THE CONTROL ROW REACHES ITS ROLL AT ALL: just below its chance, it comes up.
+	Roll.Set(TEXT("49.9"));
+	OneUseOfASkill(System);
+	TestTrue(TEXT("a chance of 50, at a roll of 49.9: the use deals no damage"), System->PendingUseNoDamage());
 	return true;
 }
 
