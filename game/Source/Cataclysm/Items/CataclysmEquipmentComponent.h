@@ -411,6 +411,51 @@ public:
 		UAbilitySystemComponent* AbilitySystem,
 		ECataclysmPoolFill PoolFill = ECataclysmPoolFill::LeaveAsTheyAre) const;
 
+	/**
+	 * How many class points the worn rows granted at the last
+	 * `RefreshAttributes`. Ruled 2026-10-09.
+	 *
+	 * WORKED OUT IN `RefreshAttributes` AND KEPT HERE, by
+	 * `UCataclysmPassivePoints::GrantedByWornRows` over what `GatherModifiers`
+	 * returned. `ACataclysmPlayerState::PassivePointsAvailable` adds it to the
+	 * points earned by level and by boss kills.
+	 *
+	 * WHY IT IS KEPT AND NOT WORKED OUT FOR EACH READER. The same refresh that
+	 * sets this figure is the one that leaves out the passive points it does
+	 * not pay for, so the figure a screen prints and the stat line the
+	 * character has are from one reading of the gear and cannot differ.
+	 * Gathering the worn rows again for each reader would also read the whole
+	 * enchantment effect table once for every node the tree screen draws.
+	 *
+	 * WHY IT IS ON THIS COMPONENT AND NOT ON THE PLAYER STATE. The player state
+	 * outlives the pawn and this component does not. A player state with no
+	 * pawn has no component to ask and reads nought, so a figure from gear on a
+	 * pawn that no longer exists cannot be read. NOUGHT BEFORE THE FIRST
+	 * REFRESH, for the same reason: nothing has been gathered yet.
+	 *
+	 * NOT A SAVED FIELD. It is worked out again from what is worn.
+	 */
+	int32 ClassPointsGranted() const { return ClassPointsGrantedAtLastRefresh; }
+
+	/**
+	 * Rows a test says are worn, added to what `GatherModifiers` returns.
+	 * EMPTY IN A RUNNING GAME, ALWAYS.
+	 *
+	 * WHY A TEST NEEDS IT. A stat built ahead of its row has no enchantment in
+	 * the real tables to wear, and `RefreshAttributes` reads the real tables.
+	 * The tests of 2026-10-09 for class points granted by gear have to put the
+	 * gear on, spend, and take it off again through the real refresh, because
+	 * `ACataclysmPlayerState::SpendPassivePoint` runs that refresh itself.
+	 * `UCataclysmPassiveTreeWidget::SetPlayerStateForTests` is a seam of the
+	 * same kind.
+	 *
+	 * SETTING IT ANNOUNCES NOTHING AND REFRESHES NOTHING; the test refreshes.
+	 */
+	void SetRowsWornForTests(TMap<FName, TArray<FCataclysmStatModifier>> Rows)
+	{
+		RowsWornForTests = MoveTemp(Rows);
+	}
+
 	/** Fires after anything changes what is worn, before attributes are written. */
 	DECLARE_MULTICAST_DELEGATE(FOnEquipmentChanged);
 	FOnEquipmentChanged EquipmentChanged;
@@ -475,6 +520,17 @@ private:
 
 	/** See `SetDisabledSlot`. Not a saved field. */
 	ECataclysmGearSlot DisabledSlot = ECataclysmGearSlot::Count;
+
+	/**
+	 * See `ClassPointsGranted`. Not a saved field.
+	 *
+	 * MUTABLE BECAUSE `RefreshAttributes` IS CONST and is what writes it. It is
+	 * a record of what that refresh read and changes nothing about what is worn.
+	 */
+	mutable int32 ClassPointsGrantedAtLastRefresh = 0;
+
+	/** See `SetRowsWornForTests`. Empty in a running game, always. */
+	TMap<FName, TArray<FCataclysmStatModifier>> RowsWornForTests;
 
 	/**
 	 * Puts the item in and reports what came out. Announces nothing.
