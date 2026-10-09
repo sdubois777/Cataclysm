@@ -4,13 +4,16 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-09 — Those in the Dark, layer 2 of 2: a fall leads to a dark floor of its own, whose stairs lead ten floors deeper or to the final floor, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer in two commits on top of layer 1's two: the
+**Built and run, but for the panel's text.** The writing session wrote this layer in two commits on top of layer 1's two, and a
+third after the window that changed the dark floor's panel text and the assertions that name it: the
 code, eleven new Unreal tests, changes to five of layer 1's twelve tests, and this entry. The second commit
 follows rulings 14 to 20 and layer 1's second commit, which made the ring and not the cell the place that
 falls; what it changed is under "The second commit". It compiled nothing and ran no Unreal
 test. It ran the Python tests in `tools/tests`, the lint and the conflict check before each commit, and nothing
-else. Every statement below about what the engine does is read from the code. No count, no share and no
-outcome of a test is known.
+else. The registering session then built and ran both layers in one window at 0fb188d1, the head the first two
+commits then had; the Run section at the end of this entry has what the runs printed, and says first what was
+changed after the window and so was not run. Every statement below about what the engine does was read from the
+code when it was written, and no count, share or outcome of a test was known then.
 
 **Said first: the row is Built by this layer, and that one change is not behind the flag.**
 `UCataclysmDungeonModifierEffects::BuiltStateOf` answers Built for `Void_Those_in_the_Dark` and the row is in
@@ -295,7 +298,7 @@ not seeded at all and is not touched. `FCataclysmDungeonIdentity::DungeonSeed` h
 `ModifiersFor`'s stream, so handing it the salted seed reaches nothing else.
 
 **How a floor built with the flag clear is known to be unchanged.** By reading each changed line with the
-flag false; nothing was run.
+flag false; nothing was run when this was written. In the window every existing test passed; see Run.
 
 - `ChooseSeedForThisFloor()` returns the value of one call of `ChooseSeed()` with its default argument, which
   is the call each of the three lines made before.
@@ -384,7 +387,8 @@ and the beat runs it on the dark floor. On the first beat after arrival the sigh
 was hidden is shown, by the code that does it after a Fog of War floor.
 
 **The panel.** On the dark floor the row's line is "those in the dark: the dark floor, no chasms, N still
-standing", or "those in the dark: the dark floor, no chasms, every creature slain". Elsewhere it is layer 1's
+standing", or "those in the dark: the dark floor, no chasms, every creature slain"; both were reworded after
+the window, see Run. Elsewhere it is layer 1's
 "those in the dark: N chasms".
 
 **Followers.** Read, as the brief reported: `GoToFloor` clears the last floor with
@@ -401,7 +405,8 @@ A script of the registering session found 412 automation tests that pass through
 which assert a floor number, a day charge or the last floor: 38 a floor number, 7 a floor only in a message, 5
 a day charge, 10 the last floor (`dark_floor_tests_51.md`). **None of the 51 was changed.** None is expected
 to change what it asserts, for the reason given under "How a floor built with the flag clear is known to be
-unchanged"; none was run. One of the 51 uses Reality Twister through the game mode,
+unchanged"; none was run when this was written, and all 51 passed in the window. One of the 51 uses Reality
+Twister through the game mode,
 `Cataclysm.FloorBrief.AFloorCarryingRealityTwisterNamesTheRowItAdded`, and it builds its pool by hand. A test
 outside the 51, `Cataclysm.FloorBrief.EnteringADungeonCarriesEveryBuiltRowForRealityTwister`, reads the pool
 `EnterEmpireDungeon` fills from the real table: it counts the rows that are not NotBuilt on both sides of its
@@ -481,8 +486,9 @@ changed by ruling 19; judgements 3, 4, 5, 7, 9, 10, 11 and 12 are approved by ru
 
 ### Tests
 
-Eleven new, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None
-was run. Every test reaches the dark floor by a fall: the player is stood on the middle of a chasm's cell,
+Eleven new, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. They
+were run in the window and passed; four assertions in tests 6 and 11 were changed after it and were not run;
+see Run. Every test reaches the dark floor by a fall: the player is stood on the middle of a chasm's cell,
 which is the middle of its ring, and one beat is
 stepped by hand. No test sets the flag another way, and no test waits on the world's clock.
 
@@ -564,11 +570,13 @@ Five of layer 1's twelve tests changed; the fifth, the ring test, in the second 
 - A save made on the dark floor, and dying there.
 - The Gatekeeper is counted in the population the floor would place, not among the creatures standing.
 - That the rest of the beat is skipped on the beat of a fall: nothing reads it.
-- That the 51 existing tests assert what they asserted: they were read about and not run.
+- That the 51 existing tests assert what they asserted was not read test by test; in the window all 51 passed.
+- The panel's two strings as they now stand, and the four assertions that name them: changed after the window.
 
-### Guard proofs proposed, none run
+### Guard proofs proposed
 
-Three, for the registering session. Each line is in `Dungeon/CataclysmDungeonGameMode.cpp`, once. The lines are
+Three, for the registering session. All three were run in the window, as D3, D4 and D5; see Run. Each line is
+in `Dungeon/CataclysmDungeonGameMode.cpp`, once. The lines are
 given here without the tabs they begin with: one tab for the first two, two tabs for the third.
 
 1. The salt. `return bOnTheDarkFloor ? FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(Seed) : Seed;` becomes
@@ -591,7 +599,8 @@ given here without the tabs they begin with: one tab for the first two, two tabs
 
 ### The second commit
 
-**Not built and not run**, as the first. Written on the worktree's head after the registering session moved
+Written without a build or a run, as the first was; both were then run in the window. Written on the worktree's
+head after the registering session moved
 this layer's first commit onto layer 1's second commit.
 
 **What layer 1's second commit changed under this layer, read from its diff.** The place that falls is the
@@ -673,6 +682,121 @@ all, where before this commit the panel was hidden and is now shown with the one
 
 Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no change to the row. No
 dry run was made because no row is asked for.
+
+### Run
+
+**Said first: the panel's text for the dark floor, and the test assertions that name it, were changed after
+the window and were not run in it.** This layer's third commit, "on the dark floor the panel's line says the
+stairs are sealed until its creatures are slain", was written after the window ran. It changed the two strings
+the game mode gives for the row while the player is on the dark floor, the comment above them, and the four
+places in two tests that name those strings: the panel test (test 6) and the whatever-rows test (test 11). So
+the two strings as they now stand, and those assertions, were not compiled and not run. What the window ran had
+the earlier strings. `git diff --stat` for that commit:
+
+```
+ game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp    | 10 ++++++----
+ .../Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp  | 11 +++++++----
+ 2 files changed, 13 insertions(+), 8 deletions(-)
+```
+
+**The ruling it follows**, a labelled judgement by the coordinating session under the owner's delegation,
+2026-10-09: on the dark floor the panel's line must say what is true there, that the dark floor's stairs are
+sealed until its creatures are slain, with the count. The line was "those in the dark: the dark floor, no
+chasms, N still standing" and is now "those in the dark: the dark floor, its stairs are sealed until its
+creatures are slain, N still standing". With none standing it was "those in the dark: the dark floor, no chasms,
+every creature slain" and is now "those in the dark: the dark floor, every creature slain, its stairs are open".
+Where this entry gives the earlier wording above, under "How it is built", "Tests" and "The second commit", it
+is the wording the window ran. One test message still says "the panel says the dark floor has no chasms and
+counts the standing"; it is a message and not the string, and was left as ruled.
+
+**Said first: the continuous integration runner compiled on this machine during the window.** A pull request
+(#2347) was opened during the window by a fault of the coordinating session's own script, so the runner
+compiled from 15:57:27Z to 16:06:09Z while the lock `void-zones-w14` was held. Times of the window's steps, UTC,
+from each step's log file creation and last-write times:
+
+| Step | Began | Ended | Overlap with the runner's compile |
+|---|---|---|---|
+| Build | 15:57:04 | 16:00:52 | all but its first 23 seconds |
+| Whole Unreal suite | 16:00:52 | 16:43:41 | its first 5 minutes 17 seconds |
+| Python suite and ruff | 16:43:42 | 16:49:57 | none |
+| D1 | 16:49:58 | 16:53:05 | none |
+| D2 | 16:53:05 | 16:55:30 | none |
+| D3 | 16:55:30 | 16:58:38 | none |
+| D4 | 16:58:38 | 17:01:46 | none |
+| D5 | 17:01:46 | 17:04:31 | none |
+
+**The build log kept only its summary line, so whether the build waited is not shown.** The build printed
+"Succeeded - 22 actions, 19 files compiled" with exit 0 and was not retried. The suite then found the target up
+to date, and its declared-against-performed check printed gap 0 at 0fb188d1. A suite run beside a compile breaks
+no run. All five proofs ran after 16:06:09Z. **The coordinating session ruled that the window stands and no rerun
+is needed**: a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09.
+
+One window on 2026-10-09 for both layers of Those in the Dark, at `feat/dark-floor` 0fb188d1, which was this
+layer's head then, on `feat/chasms` bbbfa1d1, on development 4697f84b. One attempt; nothing was corrected during
+it. Every build, run and measurement here was made by the registering session. Every figure is a line a run
+printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 22 actions, 19 files compiled` |
+| Whole Unreal suite | `3460 tests performed, 3460 succeeded, 0 failed`; `Declared: 3460 tests in the tree at 0fb188d1; 3460 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5890 passed, 8 skipped in 374.54s (0:06:14)`; JUnit `errors="0" failures="0" skipped="8" tests="5898"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,460 Unreal tests (3,437 declared on development plus the 23 of the two layers by
+name: 12 of layer 1, 11 of this layer) and a JUnit count of 5,898. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled. Its eleven tests passed. The five of
+layer 1's tests this layer changed passed. No existing test failed, so none of the 51 tests named under "The 51
+existing tests" failed: all 51 passed. The dark floor is its own floor on
+every seed the test tried; its line is below.
+
+**Two statements accepted by the coordinating session**, each a labelled judgement by the coordinating session
+under the owner's delegation, 2026-10-09. With no empire dungeon bound, chasms stand on every floor, because no
+floor is the last: accepted. And on a dark floor that did not draw the row, the panel lists one more row than
+the floor drew. That is so. What a player sees there: the panel's heading counts one more modifier than the
+floor drew; one more line reads "Those in the Dark" with the count in brackets after it; and under that line is
+the row's own description from the table, which speaks of chasms though that floor has none. The description
+was not removed: the panel draws every listed row's description, and leaving it out for one floor needs more
+than a change of text.
+
+**How the layer was written and checked.** A second session wrote the commits under a brief carrying the
+rulings. Before the window the registering session read all the game code of both commits the window ran apart
+from comments, every header line added, every assertion of the eleven tests, and every assertion this layer
+changed in layer 1's tests. Not read by the registering session: the comments and this entry.
+
+**Guard proofs, at 0fb188d1, all in `CataclysmDungeonGameMode.cpp`, each with one anchor counted 1 and the source
+hash the same before and after, each PROVED: failed with the break in and passed with it out.** No break failed
+to compile. They are proofs 1, 2 and 3 of the list above, named D3, D4 and D5 in the window. Each count of
+failed assertions is the one registered before the run, or within the range registered. The tests are in
+`Cataclysm.DungeonModifierEffects`.
+
+| Proof | The break | Test | Registered | With the break in | Restored |
+|---|---|---|---|---|---|
+| D3 | `return bOnTheDarkFloor ? FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(Seed) : Seed;` becomes `return bOnTheDarkFloor ? Seed : Seed;` | `ThoseInTheDarkTheDarkFloorIsItsOwnFloorAndAFloorBuiltWithoutAFallIsWhatItWas` | 19 to 35 | 1 performed, 1 failed, 35 failed assertions | 1 performed, 1 succeeded |
+| D4 | `return !bOnTheDarkFloor && Floors > 0 && ChooseFloorNumber() >= Floors;` loses `!bOnTheDarkFloor &&` | `ThoseInTheDarkTheDarkFloorIsNotTheLastFloorAndHasNoGatekeeperAndLeadsToTheFinalFloor` | 1 | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+| D5 | `return LeaveTheDarkFloor(PawnToMove);` becomes `(void)PawnToMove;` | `ThoseInTheDarkAFallGoesTenFloorsDeeperOrToTheFinalFloorAndSpendsNoDay` | 6 | 1 performed, 1 failed, 6 failed assertions | 1 performed, 1 succeeded |
+
+D3, as printed: four for each of eight seeds, for example "Expected 'dungeon seed 8: the identity the brief is
+asked with carries that seed' to be 1243985757, but it was 8"; and the three totals, for example "Expected 'the
+dark floor's plan differs from floor 12's on three in four seeds or more (0 of 8)' to be true".
+
+D4, as printed: "Expected 'the dark floor is not the last floor, though its number is the final floor's' to be
+false".
+
+D5, as printed: "Expected 'the dark floor's stairs lead to floor 13' to be 13, but it was 14"; "Expected 'and
+the player has left the dark floor' to be false"; "Expected 'off the dark floor the game mode keeps no floor
+fallen from' to be 0, but it was 3"; "Expected 'the dark floor's stairs spent no day' to be 3, but it was 4";
+"Expected 'and are not counted as a descent' to be 1, but it was 2"; "Expected 'set-up: one of dungeon seeds 1
+to 20 gives floor 25 at least 1 chasms' to be true".
+
+Layer 1's proof of the fall, derived again in "The second commit" above, was run as D2 and printed the four
+assertions predicted there; it is in layer 1's Run section. No proof was run for the seal, the rung, the
+Gatekeeper, the sight, the three number-keyed rules or the panel.
+
+**The dark floor against floor 12**, this layer's test 1, in the whole-suite run, as printed: "the dark floor
+against floor 12: 8 seeds fell; the plan differs on 8, the creatures placed on 8, the rows a Volatile dungeon
+draws on 8".
 
 ---
 
