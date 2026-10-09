@@ -4,6 +4,16 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-09 — Those in the Dark, layer 2 of 2: a fall leads to a dark floor of its own, whose stairs lead ten floors deeper or to the final floor, and the row is Built
 
+**Said first: on the dark floor the panel still shows the row's own description under the line that says the
+stairs are sealed, and that description speaks of chasms though the dark floor has none. On a dark floor that
+did not draw the row, the panel's heading also counts one more modifier than the floor drew.** Both are left as
+they are, with no further layer for them now: a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-09. Both are on the owner's play-check list below.
+
+**The panel's text was run after the window, in one run of one group.** The third commit's two strings, and a
+fourth commit that corrected one assertion label, were built and run once at 2c063da4 as the group
+`Cataclysm.DungeonModifierEffects.`. The Run section has the lines the run printed.
+
 **Built and run, but for the panel's text.** The writing session wrote this layer in two commits on top of layer 1's two, and a
 third after the window that changed the dark floor's panel text and the assertions that name it: the
 code, eleven new Unreal tests, changes to five of layer 1's twelve tests, and this entry. The second commit
@@ -416,6 +426,11 @@ Four of layer 1's eleven tests were changed, as the brief said they would be. Th
 
 ### For the owner's play-check
 
+**First, two things a player may call wrong, left as they are by ruling.** On the dark floor the panel shows,
+under the line that says the stairs are sealed until the floor's creatures are slain, the row's own description,
+which speaks of chasms though the dark floor has none. And on a dark floor that did not draw the row, the
+panel's heading counts one more modifier than the floor drew.
+
 What a player sees, from the code. Standing on a chasm's mark for up to a quarter second, the player is at the
 entrance of another floor. Nothing is drawn or played for the fall: the floor is replaced as it is when the
 stairs are taken. The floor number shown is ten higher, or the final floor's. The screen is darkened and
@@ -698,6 +713,24 @@ the earlier strings. `git diff --stat` for that commit:
  .../Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp  | 11 +++++++----
  2 files changed, 13 insertions(+), 8 deletions(-)
 ```
+
+**The group rerun, after the window, at 2c063da4 on development 0af36d9f.** Ruled by the coordinating session,
+a labelled judgement under the owner's delegation, 2026-10-09: one build of the top and one run of the group
+`Cataclysm.DungeonModifierEffects.`, no proofs. Before it a fourth commit changed one assertion label in the
+panel test from "the panel says the dark floor has no chasms and counts the standing" to "the panel says the
+stairs are sealed and counts the standing"; a label is a message and not the compared string. The registering
+session made the build and the run, holding the lock as void-zones-w15, while pull request #2348 stood open with
+its checks finished, by the coordinating session's arrangement. Times are UTC, as the run script printed them.
+
+| Step | Began | Ended | Printed |
+|---|---|---|---|
+| Build | 17:20:58 | 17:24:47 | `Build: Succeeded - 29 actions, 26 files compiled` |
+| The group | 17:24:47 | 17:40:48 | `Build: Succeeded - target already up to date, 0 actions, nothing compiled`; `659 tests performed, 659 succeeded, 0 failed` |
+
+No count was registered for the group. Nothing was predicted to fail and nothing failed. So the two strings as
+they now stand, and the assertions that name them, compiled and passed at 2c063da4. The whole Unreal suite, the
+Python suite and the guard proofs were not run again: they are the window's, at 0fb188d1 on development 4697f84b.
+The commit that adds this paragraph changes this entry alone, and the head that carries it was never run.
 
 **The ruling it follows**, a labelled judgement by the coordinating session under the owner's delegation,
 2026-10-09: on the dark floor the panel's line must say what is true there, that the dark floor's stairs are
