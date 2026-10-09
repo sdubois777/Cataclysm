@@ -536,6 +536,37 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float BannerResistancePercent = 0.0f;
 
 	/**
+	 * Fragmented Reality: what the pair in force gives and takes while the player stands in the floor's Fragmented
+	 * section. Issues #1820 and #41. Every one is nought outside the section and on a floor with no Fragmented
+	 * section. Written together from the one pair in force by
+	 * `UCataclysmDungeonModifierEffects::WriteFragmentedRealityEffects`, so at most two are above nought at once. The
+	 * skill lock of the pair that doubles maximum health is not here: it is on `SkillsLockedValue`, as the greatest
+	 * of the rules that lock every skill.
+	 *
+	 * THEIR OWN SEVEN FIELDS, for issue #1765's reason: other rules write the same stats on the same floor, and a
+	 * shared field would let whichever wrote second erase the first. Each is a More or a Less of its own on the
+	 * stat, multiplied beside the other rules' and not added to them.
+	 *
+	 * `FragmentedDamageMorePercent` and `FragmentedDamageLessPercent` are on attack damage and spell damage, as Void
+	 * Parasite's and the War Banner's are. `FragmentedDefencesLessPercent` is on armour and on each of the eight
+	 * resistances. `FragmentedCooldownRecoveryMorePercent` is a flat addition to `cooldown_recovery`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedDamageMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedDefencesLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedMaxHealthMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedDamageLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedCooldownRecoveryMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float FragmentedMaxHealthLessPercent = 0.0f;
+
+	/**
 	 * Pact of Temptation. Issues #1820 and #41. THE BUFF of the pact taken on the floor before, for this floor: damage
 	 * more (Wrath, Blood), attack and movement speed more (Haste), points on each resistance (the Bulwark) and magic
 	 * find added (Greed). THE CURSES of every pact taken in this dungeon, added: maximum health less (Wrath), points
@@ -645,6 +676,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& RelicDamageMorePercent <= 0.0f && RelicAttackSpeedMorePercent <= 0.0f
 			&& RelicSpeedMorePercent <= 0.0f && RelicResistancePercent <= 0.0f
 			&& BannerDamageMorePercent <= 0.0f && BannerResistancePercent <= 0.0f
+			&& FragmentedDamageMorePercent <= 0.0f && FragmentedDefencesLessPercent <= 0.0f
+			&& FragmentedMaxHealthMorePercent <= 0.0f && FragmentedSpeedMorePercent <= 0.0f
+			&& FragmentedDamageLessPercent <= 0.0f && FragmentedCooldownRecoveryMorePercent <= 0.0f
+			&& FragmentedMaxHealthLessPercent <= 0.0f
 			&& PactDamageMorePercent <= 0.0f && PactAttackSpeedMorePercent <= 0.0f && PactSpeedMorePercent <= 0.0f
 			&& PactResistancePercent <= 0.0f && PactMagicFindAdded <= 0.0f && PactMaxHealthLessPercent <= 0.0f
 			&& PactCurseResistancePercent <= 0.0f && PactCurseSpeedLessPercent <= 0.0f && PactHealingLessPercent <= 0.0f
@@ -1948,6 +1983,107 @@ public:
 	 *   fall and logged it and nothing else; since layer 2 it takes the player to the dark floor.
 	 */
 	static const TCHAR* ThoseInTheDarkKey;
+
+	/**
+	 * `Chaos_Fragmented_Reality`: "Certain sections of the dungeon are "Fragmented." When you enter one, your stats
+	 * are randomly scrambled. For example, your power might be increased but your defenses are halved, or your health
+	 * is doubled but you can no longer use skills." Issues #1820 and #41.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08, each a labelled judgement. Every
+	 * figure is a judged number for the owner's play-check:
+	 * - THE ROW DOES NOTHING ON A FLOOR WITH NO SECTIONS: Caverns, Arena, a Horde arena, a Halls floor the search
+	 *   could not divide, and a floor carrying Shadowy Enemies, which `ACataclysmDungeonGameMode::FloorGetsSections`
+	 *   refuses before sections are planned.
+	 * - ONE SECTION OF THE FLOOR IS FRAGMENTED, NEVER THE ENTRANCE'S. With two sections it is the stairs' section.
+	 *   With three it is one of the two that do not hold the entrance, drawn from the floor's seed mixed with
+	 *   `FragmentedRealitySectionSalt`, so the same dungeon seed and floor give the same section
+	 *   (`FragmentedRealitySectionFor`).
+	 * - SECTIONS ARE PLANNED WHEN EITHER THIS ROW OR LIGHTFORGED WALLS IS ON THE FLOOR. BARRIERS STAND ONLY WITH
+	 *   LIGHTFORGED WALLS. Nothing marks the Fragmented section on the floor; the panel's line is the only sign.
+	 * - ENTERING IT DRAWS ONE OF FOUR PAIRS. The draw holds while the player stays inside, ends on leaving and is
+	 *   made again on each entry. A boundary's cells are in no section, so a player standing on one is outside.
+	 *   Asked on the game mode's quarter-second beat, so a pair turns on or off up to a quarter second after the
+	 *   player crosses. THE DRAW IS SEEDED from the floor's seed, `FragmentedRealityPairSalt` and how many times the
+	 *   section has been entered on this floor (`FragmentedRealityPairFor`): a judgement by the writing session.
+	 *   Two entries in a row may draw the same pair.
+	 * - THE FOUR PAIRS, each a More or a Less in the damage formula's sense:
+	 *   `FragmentedRealityPowerForDefences`: `FragmentedRealityDamageMorePercent` more attack and spell damage;
+	 *   armour and each of the eight resistances `FragmentedRealityDefencesLessPercent` less. Damage over time
+	 *   and minion damage are not raised. A Less does nothing to an armour or resistance of nought and halves the
+	 *   penalty of a negative resistance.
+	 *   `FragmentedRealityHealthForSkills`: maximum health `FragmentedRealityMaxHealthMorePercent` more, which
+	 *   doubles it; every skill locked but the basic attack. Current health keeps its figure, and on leaving it is
+	 *   held to the old maximum. A skill already in use when the lock turns on is not cancelled: the lock is asked
+	 *   only when a skill is activated.
+	 *   `FragmentedRealitySpeedForDamage`: `FragmentedRealitySpeedMorePercent` more movement speed;
+	 *   `FragmentedRealityDamageLessPercent` less attack and spell damage.
+	 *   `FragmentedRealityCooldownsForHealth`: cooldowns recover `FragmentedRealityCooldownRecoveryMorePercent`
+	 *   faster, a cooldown taking its length divided by 1.5 whatever other reduction is held;
+	 *   `FragmentedRealityMaxHealthLessPercent` less maximum health. Current health is held to the lowered maximum
+	 *   and is not given back on leaving. A cooldown already running is not changed on entering or leaving.
+	 * - THE PANEL: `FragmentedRealityPanelLine`.
+	 */
+	static const TCHAR* FragmentedRealityKey;
+
+	/** Fragmented Reality's four pairs, numbered as `FragmentedRealityPairFor` answers. No pair is `INDEX_NONE`. */
+	static constexpr int32 FragmentedRealityPowerForDefences = 0;
+	static constexpr int32 FragmentedRealityHealthForSkills = 1;
+	static constexpr int32 FragmentedRealitySpeedForDamage = 2;
+	static constexpr int32 FragmentedRealityCooldownsForHealth = 3;
+	static constexpr int32 FragmentedRealityPairs = 4;
+
+	/** Fragmented Reality's figures, every one a judged number of 2026-10-08 for the owner's play-check. See the key. */
+	static constexpr float FragmentedRealityDamageMorePercent = 50.0f;
+	static constexpr float FragmentedRealityDefencesLessPercent = 50.0f;
+	static constexpr float FragmentedRealityMaxHealthMorePercent = 100.0f;
+	static constexpr float FragmentedRealityLockValue = 1.0f;
+	static constexpr float FragmentedRealitySpeedMorePercent = 50.0f;
+	static constexpr float FragmentedRealityDamageLessPercent = 30.0f;
+	static constexpr float FragmentedRealityCooldownRecoveryMorePercent = 50.0f;
+	static constexpr float FragmentedRealityMaxHealthLessPercent = 30.0f;
+
+	/** Mixed with the floor's seed for which section is Fragmented, and for which pair an entry draws. */
+	static constexpr int32 FragmentedRealitySectionSalt = 0x46A1;
+	static constexpr int32 FragmentedRealityPairSalt = 0x46A2;
+
+	static_assert(
+		FragmentedRealityPairs == 4 && FragmentedRealityCooldownsForHealth == FragmentedRealityPairs - 1
+			&& FragmentedRealityDamageMorePercent > 0.0f && FragmentedRealityDefencesLessPercent > 0.0f
+			&& FragmentedRealityDefencesLessPercent < 100.0f && FragmentedRealityMaxHealthMorePercent > 0.0f
+			&& FragmentedRealityLockValue > 0.0f && FragmentedRealitySpeedMorePercent > 0.0f
+			&& FragmentedRealityDamageLessPercent > 0.0f && FragmentedRealityDamageLessPercent < 100.0f
+			&& FragmentedRealityCooldownRecoveryMorePercent > 0.0f && FragmentedRealityMaxHealthLessPercent > 0.0f
+			&& FragmentedRealityMaxHealthLessPercent < 100.0f,
+		"A pair of Fragmented Reality that gives nothing, takes nothing or takes everything is not the row.");
+
+	/**
+	 * Which section of a floor of `SectionCount` sections is Fragmented, for the floor's seed: `INDEX_NONE` for
+	 * fewer than two sections, 1 for two, and for three or more one of the sections that do not hold the entrance,
+	 * by the floor's seed mixed with `FragmentedRealitySectionSalt`. Never 0. Draws nothing at random.
+	 */
+	static int32 FragmentedRealitySectionFor(int32 SectionCount, int32 FloorSeed);
+
+	/**
+	 * Which of the four pairs entry number `Entry` draws on the floor of this seed, the first entry being 0: the
+	 * floor's seed mixed with `FragmentedRealityPairSalt` and then with the entry. From 0 to
+	 * `FragmentedRealityPairs` - 1. Draws nothing at random, so a test can say which pair an entry draws.
+	 */
+	static int32 FragmentedRealityPairFor(int32 FloorSeed, int32 Entry);
+
+	/**
+	 * The seven Fragmented Reality fields of the player's floor effects for the pair in force: the two the pair
+	 * names at their figures and the rest nought, and all nought for `INDEX_NONE` or any number that is no pair.
+	 */
+	static void WriteFragmentedRealityEffects(FCataclysmPlayerFloorEffects& Into, int32 Pair);
+
+	/** What `skill_locked` on every skill should be for the pair in force: the lock's value under the pair that doubles maximum health, else nought. */
+	static float FragmentedRealitySkillsLockedFor(int32 Pair);
+
+	/**
+	 * The floor panel's line for the row: that the floor has no Fragmented section when `FragmentedSection` is
+	 * `INDEX_NONE`; else which pair is in force inside, or that nothing is in force outside when `Pair` is no pair.
+	 */
+	static FString FragmentedRealityPanelLine(int32 FragmentedSection, int32 Pair);
 
 	/**
 	 * `Celestial_Heaven_s_Quake`: "Radiant pillars crash through the ceiling, creating impassable terrain and forcing
