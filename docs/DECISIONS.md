@@ -173,7 +173,49 @@ not pinned.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run 2026-10-09 in one window of three layers on `development` 90b45b92: this fix to the ailment roll, the Divine
+Retribution row and the row on class points above the max. **The ids are the commits as they stood when each step
+ran.** Each step was run once, and each figure was stated before the run.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the three layers, the first compile of this layer's code and tests | 8483a91f | Build: Succeeded - 28 actions, 23 files compiled |
+| Whole suite, every asset built | 22cfa3bc | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3505 tests performed, 3505 succeeded, 0 failed. 40 skipped part of what they check; 3505 tests in the tree, 3505 performed, gap 0 |
+| Python of record, continuous integration idle | 22cfa3bc | 5943 passed, 8 skipped in 322.53s; JUnit tests 5951, failures 0, errors 0, skipped 8 |
+| Lint | 22cfa3bc | All checks passed! |
+| Proof A1, the guard for a chance at the cap taken out of the roll for every ailment but stun | 22cfa3bc | PROVED: with the break in, 13 tests performed, 12 succeeded, 1 failed: `AnAilmentChanceOf100AppliesAtARollOf100AndAChanceBelow100StillFailsAtItsChance`, 2 failed assertions; restored, 13 of 13 |
+
+**Every step was as stated before it ran.** The whole suite had been stated as 3505: the 3501 last measured on
+`development` 90b45b92, plus this layer's two tests and one for each of the two row layers.
+
+**The two new tests each passed in the whole suite.** Until this run neither had been compiled.
+
+**The proof was as stated.** The break put `if ((AilmentRoll() < Chance)` back at the roll for every ailment but
+stun. One test failed, on the two assertions named before the run: a chance of 100 at a roll of 100, and a
+chance of 150 cut to 100 at a roll of 100. Its set-up assertions, its three controls at a chance of 60 and its two
+assertions on the tenth rule passed with the break in, and so did the stun test, whose guard the break left. The
+broken file's hash was the same after the proof as before it.
+
+**No proof was run for the stun roll.** It has a test that passed; it is not proved.
+
+### WHAT WORN GEAR CAN REACH, READ AFTER THE LAYER WAS WRITTEN
+
+**Any ailment's chance can reach 100 from worn items alone, the stun's among them.** Read by the enchantment
+session on 2026-10-09, after the brief for this layer had said that no data row gives a stun chance, which was
+false. `game/Data/Affixes.csv` holds eleven affixes of the kind Ailment, one for each ailment, each allowed on
+Necklace, Relic, Ring and Weapon, with a top value of 15 (20 for disease, 25 for poison); "Chance to stun" is one
+of them. `UCataclysmItemModifiers` in `CataclysmItem.cpp` adds each worn item's affix as a flat modifier on that
+ailment's chance stat, doubled on a two-handed weapon, and the gear slot list has one necklace, one relic, eight
+rings and two weapons. Seven items at a top value of 15 sum to 105; a blunt weapon adds 10 more to the stun.
+`Application` and `StunApplication` cut any such total to exactly 100, which is the chance this layer no longer
+rolls. **So the fault reached further than the three passive rows the ruling counted.** Not read: whether an
+affix's value can exceed its top value, and how often such a set of items drops.
+
+**Two merged tests applied a chance of 100 with the roll unpinned and could fail on a drawn roll of exactly 100
+before this layer**: `Cataclysm.Passives.NeverLetsGoAlwaysCripplesAndAddsDamageAgainstCrippledEnemies` and
+`Cataclysm.PartialClauses.NeverLetsGoCripplesEveryEnemyARealRavagerHitsForAtLeastFourSeconds`. Found by a search
+of every test's text for a chance of 100 with no pin, not by reading each test. Neither is in the group the proof
+ran.
 
 ---
 
