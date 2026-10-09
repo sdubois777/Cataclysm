@@ -68,7 +68,27 @@ alias on a loaded save, which the alias table's own checks hold.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run 2026-10-09 in one window of three layers on `development` 90b45b92: this fix to the ailment roll, the Divine
+Retribution row and the row on class points above the max. **The ids are the commits as they stood when each step
+ran.** Each step was run once, and each figure was stated before the run.
+The build, the whole suite and the Python of record are in the table of the entry of the same day "An ailment chance
+of 100 never fails its roll" and were run with this layer in the stack.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before the two row layers | 8483a91f | 309 tests performed, 307 succeeded, 2 failed: this layer's test and the test of the layer above; this layer's test failed 2 assertions |
+| The enchantment assets, regenerated with the editor | 66316cd6 | effect rows 579 to 580; the sentence table's asset rebuilt for the reworded sentence |
+| Whole suite, every asset built | 22cfa3bc | 3505 tests performed, 3505 succeeded, 0 failed |
+| Python of record | 22cfa3bc | 5943 passed, 8 skipped; JUnit tests 5951, failures 0 |
+
+**The test fails against the older table and passes with the new one.** Against the older table the wearer of
+ten pieces held no row on a block: after a blocked blow five slots still waited, where the test expects none, and
+again at six seconds.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** The cooldown
+reset's guard at a stated 100 was proved in the entry of 2026-10-08 "A row that states a chance of 100 never fails
+its roll", read in its table: one proof, on the cooldown reset, failed with its break in and passed with it out.
+**The trigger cooldown of five seconds is tested here and not proved.**
 
 ---
 
