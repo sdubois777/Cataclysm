@@ -4,7 +4,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-09 — Those in the Dark, layer 3: the save's record of the floor says when it is the dark floor and which floor the player fell from
 
-**Not built and not run.** The writing session wrote this layer in one commit on development a928d2cf, where
+**Built and run after it was written; the Run section at the end of this entry has what the runs printed.**
+When the paragraph below was written the layer was not built and not run. The writing session wrote this layer in one commit on development a928d2cf, where
 both earlier layers are merged: the code, four new Unreal tests, one committed example save file changed with
 its README, and this entry. It compiled nothing and ran no Unreal test. It ran the Python tests in
 `tools/tests`, the lint and the conflict check before the commit, and nothing else. Every statement below about
@@ -257,6 +258,70 @@ the tabs they begin with: one tab for the first two, three tabs for the third.
 ### What the row needs, for the session that writes rows
 
 Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no change to the row.
+
+### Run
+
+One window on 2026-10-09 at `feat/dark-save-2` d4cd98a9, on development 68d6d308. One attempt; nothing was
+corrected during it. Every build, run and measurement here was made by the registering session, holding the lock
+as void-zones-w16. Every figure is a line a run printed. The lock was taken only after development's own two
+workflow runs at 68d6d308 had finished with success, no run was in progress, no build process was running and no
+pull request was open. Times are UTC, from each step's log file.
+
+| Step | Began | Printed |
+|---|---|---|
+| Build | 19:35:22 | `Build: Succeeded - 34 actions, 31 files compiled` |
+| Whole Unreal suite | 19:39:25 | `3498 tests performed, 3498 succeeded, 0 failed`; `Declared: 3498 tests in the tree at d4cd98a9; 3498 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | 20:17:46 | `5943 passed, 8 skipped in 413.18s (0:06:53)`; JUnit `errors="0" failures="0" skipped="8" tests="5951"` |
+| Ruff | | `All checks passed!` |
+| The three proofs | 20:24:41, ended 20:30:18 | below |
+
+Registered before the run: 3,498 Unreal tests (3,494 declared on development 68d6d308 plus the four of this layer
+by name) and a JUnit count of 5,951. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled. The save writer is writing in a test
+world: the set-up assertions that say so passed in both game mode tests, so no change to the tests was needed.
+The existing test `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` passed with the two fields
+in the committed file. No existing test failed.
+
+**What the run did not settle.** Everything said first in this entry about loading (issue #753) stands: no run
+shows a save made on the dark floor putting the player back on it. No test wrote a save file to disk.
+
+**How the layer was written and checked.** A second session wrote the first commit under a brief. Before the
+window the registering session read every line of the game code change apart from comments, the two lines added
+to the committed file, and every added line of the four tests, and derived each proof's count from the test's
+text. Not read by the registering session: comments, this entry beyond the parts it changed, the README
+paragraph, and the body of the existing test of the committed files. The second commit, by the registering
+session, corrected one row of `docs/Save_System_Design.md` and recorded the rulings.
+
+**Guard proofs, at d4cd98a9, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run. All three name the test
+`Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheSaveRecordsTheDarkFloorAndTheFloorFallenFrom`.
+
+| Proof | The break | Registered | With the break in | Restored |
+|---|---|---|---|---|
+| 1 | `CataclysmSaveWriter.cpp`: `if (bSameFloor && bSameDarkFloor)` becomes `if (bSameFloor)` | 7 | 1 performed, 1 failed, 7 failed assertions | 1 performed, 1 succeeded |
+| 2 | `CataclysmSaveWriter.cpp`: `OutFloor.bOnTheDarkFloor = bOnTheDarkFloor;` becomes `= false;` | 3 | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| 3 | `CataclysmDungeonGameMode.cpp`: `Writer->SetFloor(DungeonName, FloorNumber, bOnTheDarkFloor, DarkFloorFellFrom);` becomes `Writer->SetFloor(DungeonName, FloorNumber);` | 6 | 1 performed, 1 failed, 6 failed assertions | 1 performed, 1 succeeded |
+
+Proof 1, as printed: "Expected 'the dark floor's stairs are told to the save as one change, though the floor
+number is the same' to be 3, but it was 2"; "Expected 'and no longer says the dark floor' to be false";
+"Expected 'and holds no floor fallen from' to be 0, but it was 2"; "Expected 'leaving the dungeon from the dark
+floor is told to the save as one change' to be 5, but it was 4"; "Expected 'after leaving the dungeon the record
+does not say the dark floor' to be false"; "Expected 'and holds no floor fallen from' to be 0, but it was 2";
+"Expected 'and the writer holds no dark floor' to be false".
+
+Proof 2, as printed: "Expected 'after a fall the record says the dark floor' to be true"; "Expected 'read back,
+the record says the dark floor' to be true"; "Expected 'set-up: on the second dark floor the record says the
+dark floor' to be true".
+
+Proof 3, as printed: "Expected 'after a fall the record says the dark floor' to be true"; "Expected 'and holds
+floor 2 as the floor fallen from' to be 2, but it was 0"; "Expected 'read back, the record says the dark floor'
+to be true"; "Expected 'read back, it holds floor 2 as the floor fallen from' to be 2, but it was 0"; "Expected
+'the dark floor's stairs are told to the save as one change, though the floor number is the same' to be 3, but
+it was 2"; "Expected 'set-up: on the second dark floor the record says the dark floor' to be true".
+
+The commit that adds this section changes this entry alone, and the head that carries it was not run.
 
 ---
 
