@@ -117,6 +117,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_
 const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
 const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
 const TCHAR* UCataclysmDungeonModifierEffects::AngelicWardensKey = TEXT("Celestial_Angelic_Wardens");
+const TCHAR* UCataclysmDungeonModifierEffects::ThoseInTheDarkKey = TEXT("Void_Those_in_the_Dark");
 const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial_Heaven_s_Quake");
 const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
 const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");

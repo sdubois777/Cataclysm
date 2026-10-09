@@ -2,6 +2,508 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — Those in the Dark, layer 1 of 2: a floor with the row has chasm cells, and standing on one is recorded as a fall that does nothing yet
+
+**Built and run.** The writing session wrote this layer in two commits: the first with the code, eleven
+Unreal tests and this entry; the second, after the rulings numbered 11 to 16 below, with the fall measured from
+the ring and not the cell, the count of what each placement rule cost taken out of play, one more Unreal test,
+and this entry brought up to those rulings. It compiled nothing and ran no Unreal test. It ran the Python tests
+in `tools/tests`, the lint and the conflict check before each commit, and nothing else. The registering session
+then built and ran both layers in one window at 0fb188d1, which is layer 2's head, so this layer was never run
+on its own head bbbfa1d1; the Run section at the end of this entry has what the runs printed. Every statement
+below about what the engine does was read from the code when it was written. The count of chasms on twenty
+floors, which was not known then, is in the Run section.
+
+**Said first: the crossable check has a test and no proof, and the measured floors did not exercise it.** The
+check refuses a chasm when closing it would cut off a walkable cell. No guard proof was run for it. On all
+twenty floors measured in the window the crossing question refused 0 cells, so those floors did not exercise
+it. Its test asserts that the floor can be crossed on every floor it builds; no run has shown the check
+refusing a cell.
+
+**Said first: this is layer 1 of 2, and a fall does nothing yet.** `Void_Those_in_the_Dark` reads: "The
+dungeon has chasms spread throughout leading to the abyss. If the player falls into them, they fall down into
+the void realm where dangerous enemeis lurk. The player will have to fight their way out in order to get back
+to the main dungeon and surviving will bring great rewards." This layer builds the chasms and the test of
+whether the player stands within one's ring. When the player does, the game mode records it and writes a log
+line, once a floor. The player is not moved, hurt or changed. The void realm, its enemies, the way out and the rewards
+are the next layer, written by another session on top of this commit. The two layers go through one build
+window together and are never merged apart.
+
+**Said first: the row is not Built by this layer.** `UCataclysmDungeonModifierEffects::BuiltStateOf` answers
+NotBuilt for the row, as it did before, and the row is not in `KeysWithARule`. A test asserts both. A floor
+that carries the row does get chasms, because the game mode asks only whether the floor's list names the row.
+
+**Said first, for the owner's play-check: the place that falls is the place that is marked (ruling 13).** A
+player falls when standing within a chasm's ring: at or within 2 metres, flat, of the middle of the chasm's
+cell. The rest of the 4 metre cell, its corners, is safe ground, and nothing unmarked falls. Walking into the
+ring falls. A blink, leap or charge that ends in it falls. A player shoved into it by an enemy falls. A charge
+that crosses it between two beats does not. A clip of the ring for under a quarter second is not caught. The
+first commit of this layer asked whether the player's cell was a chasm cell, so the corners fell too; that is
+changed.
+
+**Said first: shared code changed (ruling 11).** `ACataclysmDungeonGameMode::AnObstacleMayClose` is asked by
+every obstacle: a Heaven's Quake pillar, a Cryptquake section, a gate that closes during play and an Angelic
+Wardens statue. On a floor that has chasms it now counts every chasm as closed, so a pillar is never allowed
+to leave a way that exists only over a chasm. Obstacles are refused more often on a floor with the row than
+on the same floor without it. On a floor with no chasm the question is exactly what it was: the function
+makes the same call with the same arguments as before this layer. The tests of both halves are named under
+"Tests".
+
+**Said first, for the owner's play-check, in the ruling's words.** Creatures walk across chasms and do not
+fall. A player will see creatures walk over a hole. A minion or follower does not fall.
+
+**Said first: what a save made now does.** Nothing of this rule is saved. Reported to the writing session by
+its brief and not read by it: loading a save is not built (issue #753).
+
+**Said first: the chasms a floor gets depend on two things besides its seed.** The placement refuses every
+held cell, as ruled, and the held cells (`CellsTheFloorHolds`) include the cell of every living pawn and of
+the stairs actor. When a floor is populated the player has not yet been moved to its entrance and the one
+stairs actor still stands where the last floor's exit was. Each of those two world positions falls on some
+cell of the new floor's plan, and that cell is refused a chasm. In play both positions follow from the same
+dungeon seed, because the floor before is made from it. A floor reached another way, or built twice in a
+test, can differ by those cells. The tests that compare two builds stand the player off the grid and build the
+floor once beforehand, and say so. Accepted as built and stated, ruling 12.
+
+**Said first: the cost of the marks, read from the code.** Each chasm has one ground zone actor. Its sweep is
+a timer once a second, and for a zone with no damage and no effect the sweep returns at its first test
+(`ACataclysmGroundZone::Sweep`, `AbilitySystem/CataclysmGroundZone.cpp` line 370), so it asks nothing of any
+creature. A floor-lasting zone also asks to be drawn again every 2.5 seconds (`FloorRedrawSeconds`), one
+drawing for a round zone. And `CellsTheFloorHolds` walks every ground zone in the world each time an obstacle
+is asked about. So a floor with forty chasms has forty more actors, forty more drawings every 2.5 seconds, and
+forty more zones in that walk. The brief reported "each zone sweeps every tick"; the code reads otherwise, as
+above. What a drawing costs was not measured here; the comment on `UCataclysmGroundEffect::HowManyAlong` says
+nothing has measured it and names issue #547.
+
+### The owner's words
+
+The owner, 2026-10-08, first: "This one is more complicated. In my head it's like the player falls through the
+void and winds up in a dark place full of more powerful enemies for a single floor. Getting through that floor
+should get them 10 floors deeper and 10 days faster, or to the final floor of the dungeon. Whichever applies."
+
+The owner, 2026-10-08, on the proposal: "I like the proposal for those in the dark, except I want it to
+basically create a bunch of chasms that the player can fall into. The point is that players who just spam their
+movement button to blaze through the floor are more likely to fall in, and be in danger. Also, the dungeon
+modifiers should still apply."
+
+### The rulings
+
+Each of these is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08 and
+2026-10-09, resting on the owner's words above. Every number is a judged number for the owner's play-check.
+
+1. A chasm is one marked cell that stays walkable in the floor's plan. It is not an obstacle and blocks
+   nothing.
+2. The player falls if they are standing in it: one check on the game mode's beat, that the cell the player
+   stands on is a chasm cell. Nothing in any skill file.
+3. Creatures walk across chasms and do not fall. A minion or follower does not fall.
+4. How many: one chasm for every 25 walkable cells, rounded down. The reason given: a blind dash that lands on
+   a random walkable cell lands on a chasm about 1 time in 25.
+5. Where: none within 20 metres of the entrance, and never the stairs' cell; none on a cell another rule
+   holds, and none on a section barrier's cell, closed or open; no two chasms side by side (the four
+   neighbours), so each is one cell and can be walked round; and the floor can always be crossed without
+   falling. That last is the question obstacles are asked, asked for each chasm as it is added with the chasms
+   already chosen counted as closed; a cell that fails is skipped. A chasm is not closed in the real plan,
+   only in the question.
+6. The draw is seeded, by its own draw on a stream made from the floor's seed, so the same dungeon seed and
+   floor give the same chasms. Not `FloorSourceCells`, which uses the global random (issue #2342), and not
+   `SeededSourceCells`, which keeps every chosen cell 20 metres from every other.
+7. None on the final floor, none on a Horde arena, and none when the game mode says the player is on the dark
+   floor. The question is added now as one const function that answers false in this layer.
+8. What a player sees: a floor-lasting ground zone over each chasm cell, drawn in the Void type's colours,
+   dealing no damage.
+9. The panel: one line, "those in the dark: N chasms".
+10. The fall in this layer: the beat calls one function, which marks that the player fell on this floor and
+    logs it, once a floor. Nothing else happens yet. The row's state stays NotBuilt.
+
+Rulings 11 to 16 were made on the first commit's report. Each is a labelled judgement by the coordinating
+session under the owner's delegation, 2026-10-09.
+
+11. Approved: `AnObstacleMayClose` counts every chasm as closed on a floor that has chasms; a pillar must not
+    leave a way that exists only over a chasm. Both halves must be tested: that such an obstacle is refused,
+    and that on a floor with no chasm the question is what it was.
+12. Accepted as built, and stated: in ordinary play the same seed and floor give the same chasms; a floor
+    reached another way, or built twice in a test, can differ by the cells under the player's old position and
+    under the old stairs. This narrows ruling 6 to what holds.
+13. Changed: the place that falls is the place that is marked. A player falls when standing within the ring:
+    200 cm, flat distance, of a chasm cell's centre (`ThoseInTheDarkMarkRadiusCm`), not anywhere on the 4
+    metre cell. The mark stays a ring of 2 metres. So the corners of a chasm's cell are safe ground and
+    nothing unmarked falls. The cell stays the unit of placement and of the crossing question. This replaces
+    the cell test of ruling 2.
+14. The writing session's smaller judgements are approved, with one change: the three extra passes of the
+    chasm draw that exist only to log what each placement rule cost do not run in play. `PlaceTheChasms` runs
+    one pass, with every rule. The per-rule counts are produced only where a test asks.
+15. The unguarded case, a closed cell that opens later with every neighbour a chasm, is stated under "Not
+    covered by a test". No change.
+16. The crossing question has its test and no guard proof. A proof that may prove nothing is not registered.
+
+### What was read before writing
+
+Read by the writing session, whole unless a range is given. Line numbers are of the layer's first commit,
+2d8dfd1e; the second commit moved the lines after `ChooseTheChasmCells` in the game mode's source.
+
+- `Dungeon/CataclysmFloorPlan.cpp` and `.h`, whole: `CataclysmFloorCanBlock` (line 51),
+  `CataclysmFloorAreaCount` (87), `CataclysmFloorClosingSplitsAnArea` (123),
+  `CataclysmFloorCanBlockBesideBarriers` (133), `CataclysmFloorDistancesFrom` (153).
+- `Dungeon/CataclysmDungeonGameMode.cpp`: `BuildFloor` (1441); `PopulateFloor` (1762) from its start to the
+  placing of the creatures and the choices made after them; `PlaceStairs` (2591); `FloorSourceCells` (3820);
+  `SeededSourceCells` (5930); `PlanTheGatedShortcuts` (5994); `PlanTheSections` (6203) and the functions that
+  open, close and step the section barriers after it; `AnObstacleMayClose` (6456);
+  `PlanWithSectionBarriersOpen`; the Angelic Wardens functions from `AngelicStatueCellsStanding` to
+  `NoteSkillUseForAngelicWardens`, `StepAngelicWardens` (6684) among them; `ThePlayersCell` (7189);
+  `CellsTheFloorHolds` (7197); `CellsHeldOrWarned` (7295); `ChooseObstacleCells`, `WarnOfAnObstacle` and the
+  start of `RaiseOrCancel`; `ForgetTheShadowLights`, `PlaceTheShadowLights` (10165) and `StepShadowyEnemies`
+  (10187) down to where it shrouds creatures; `IsOnTheLastFloor` (13316) and `IsTheFinalFloorForItsBoss`
+  (2683); the resets in `LeaveEmpireDungeon` (13455) around the Angelic Wardens line; in
+  `StepFloorRulesThatChange` (14038) the first flags, the flags from Plague Harbingers to Wings of the Host,
+  the early return, how the player is found, the steps from Leech Spores to Wings of the Host, and two
+  shorter stretches after them (Eternal Chorus to Pestilent Empowerment, the Vision system to Pandora's Box); in `LiveCountsForTheFloor` (17569) the lines from Lightforged Walls to
+  Anti-Magic Zones; in `GoToFloor` (21087) its first lines and the part from the sweep of the last floor's
+  actors to the placing of the stairs; in `Tick` (1212) only that each quarter second calls the beat.
+- `Dungeon/CataclysmDungeonGameMode.h`: the declarations and comments of the functions above, the Angelic
+  Wardens members, and the access line above each member this layer calls.
+- `AbilitySystem/CataclysmGroundZone.h` lines 1 to 200 and the three constants `TickSeconds` (1 second),
+  `FloorDrawSeconds` (3) and `FloorRedrawSeconds` (2.5); `CataclysmGroundZone.cpp`: `SpawnForTheFloor` (124),
+  `BeginPlay`, `TypeItIsDrawnAs`, `Redraw` and the start of `Sweep` (370).
+- `AbilitySystem/CataclysmGroundEffect.h` lines 1 to 110: a round zone is drawn as a ring whose edge is at the
+  zone's radius.
+- `Dungeon/CataclysmFloorHazardSource.h`, the class comment and the two declarations `ForFloor` and
+  `Existing`.
+- `Dungeon/CataclysmDungeonFloor.cpp`: `WorldOfCell` and `CellOfWorld`.
+- `Dungeon/CataclysmDungeonModifierEffects.cpp`: the Angelic Wardens lines of `BuiltStateOf` and
+  `KeysWithARule`; `.h`: the Angelic Wardens key comment and figures.
+- `Tests/CataclysmDungeonModifierEffectsTests.cpp`: `Beat`, `FPossessedPlayer`, `ACurseDungeon`,
+  `StandThePlayerAt`, `CellAtThePlayersHeight`, `PlaceCreatureAtRung`, the Angelic Wardens helpers and its
+  first three tests, the Rule of Chaos helpers `RuleOfChaosFreePlaces` and `RuleOfChaosPlacedWell`, the Rule of
+  Chaos test with Blood Gates, and the set-up of its test of the last floor.
+- `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py`, to its last test.
+- A search of `game/Source`, `tools` and `docs` for `Those_in_the_Dark`, `ThoseInTheDark` and `chasm` before
+  writing: the row in `game/Data/DungeonModifiers.csv` and nothing in the code or the tests.
+
+Not read: the rest of `GoToFloor`, of `StepFloorRulesThatChange` and of `PopulateFloor`; the body of
+`ACataclysmFloorHazardSource::ForFloor`; the body of `UCataclysmFloorContents::ClearTheFloor`; the body of
+`EnterEmpireDungeon`; `FCataclysmFloorGenerator::FindSections`; the populator; `CataclysmGroundEffect.cpp`.
+
+Reported to the writing session by its brief and marked so: that the zone header's "the zone is invisible"
+comment is stale (the code agrees: `BeginPlay` draws it); issue #2342 on `FloorSourceCells`; issue #753 on
+loading a save.
+
+**Research.** `CLAUDE.md` asks for how shipped games do a mechanic whose shape is new to this game. The brief
+did not ask for it for this layer, and no source was read. The shape of this layer was ruled before it was
+written.
+
+### How it is built
+
+- **The key and the figures** are in `Dungeon/CataclysmDungeonModifierEffects.h`: `ThoseInTheDarkKey`
+  ("Void_Those_in_the_Dark"), `ThoseInTheDarkWalkableCellsPerChasm` (25),
+  `ThoseInTheDarkClearOfTheEntranceCm` (2000) and `ThoseInTheDarkMarkRadiusCm` (200).
+- **The chasm cells are chosen in `PopulateFloor`**, by `PlaceTheChasms`, where a new arena's objects are
+  placed, after the Angelic Wardens statues, which were the last. So every object another rule placed is
+  already a held cell, a standing statue's cell is Solid, and every section barrier is closed and Solid. The
+  creatures are placed after, and may stand on a chasm. `ForgetTheChasms` is called earlier in the same
+  function, before the first object is placed, and in `LeaveEmpireDungeon`.
+- **The draw** is `ChooseTheChasmCells`. It lists every walkable cell of the plan row by row, shuffles the
+  list on a stream made by `FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, ThoseInTheDarkSalt)`, as
+  `PlanTheGatedShortcuts` makes its own with its own salt, and takes cells in that order until it has one for
+  every 25 walkable cells or the list ends. SO THE SAME SEED AND FLOOR GIVE THE SAME CHASMS IN ORDINARY PLAY,
+  AND NO WIDER THAN THAT (ruling 12): the draw also refuses the held cells, and two of those are the cells
+  under the player's old position and under the old stairs when the floor is populated. A floor reached
+  another way, or built twice in a test, can differ by those two cells. A cell is skipped when it is the stairs' cell or its middle is
+  under 20 metres, flat, from the middle of the entrance's cell; when `CellsHeldOrWarned` names it or it is a
+  cell of any section boundary; when one of its four neighbours is already chosen; or when
+  `CataclysmFloorCanBlockBesideBarriers` refuses it, asked from the entrance on a copy of the plan in which
+  the chasms already chosen are Solid. The floor's own plan is never changed.
+- **The count.** `PlaceTheChasms` makes the draw once, with every rule (ruling 14), and keeps three figures
+  (`FThoseInTheDarkCount`): the walkable cells, the number asked for and the number placed. It logs them.
+  What each rule cost is not counted in play. A test asks the public const function
+  `ThoseInTheDarkCountsRuleByRule` for it. That function makes the draw again four times on the floor as it
+  stands, with one more rule each time, and changes nothing. It answers how many chasms each of the four draws
+  places, and, for the draw with every rule, how many cells the draw came to and skipped for each rule. Read
+  the two kinds of figure differently: a count placed is capped at the number asked for, because a refused
+  cell is replaced by the next cell of the shuffle, so the counts placed differ only on a floor where the
+  cells run out; the cells skipped are what say whether a rule refused anything. The function leaves the
+  floor's own chasm cells out of the held cells. The other held cells are those of the floor as it stands when
+  asked, not as it stood when the chasms were chosen, so its last count placed may differ from the floor's.
+- **A chasm cell is a held cell**: `CellsTheFloorHolds` reads the list. And `AnObstacleMayClose` counts every
+  chasm as closed when an obstacle is asked about. Both are the writing session's judgements, below.
+- **The beat.** `StepFloorRulesThatChange` calls `StepThoseInTheDark` while the floor has a chasm. It makes
+  the mark of any chasm that has none: `ACataclysmGroundZone::SpawnForTheFloor`, owned by the floor's hazard
+  source, on the middle of the cell, 2 metres in radius, no damage, drawn as "Void". Then it measures the flat
+  distance from the player to the middle of the nearest chasm's cell (ruling 13). If that is at or within
+  `ThoseInTheDarkMarkRadiusCm` and no fall is recorded on this floor, it calls
+  `ThePlayerFellIntoAChasm(Player, Cell)` with that chasm's cell. No two chasms are side by side, so two
+  middles are 5.66 metres or more apart and no place is within two rings.
+- **The one place for the next layer.** `void ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm(class
+  ACataclysmPlayerCharacter* Player, FIntPoint Chasm)` adds one to the floor's count of falls and logs. The
+  next layer replaces its body. `bool ACataclysmDungeonGameMode::ThePlayerIsOnTheDarkFloor() const` answers
+  false; the next layer makes it true on the dark floor, and `PlaceTheChasms` already asks it.
+- **The panel.** `LiveCountsForTheFloor` adds "those in the dark: N chasms" on a floor that carries the row.
+
+### For the owner's play-check
+
+What a player sees, from the code: over each chasm cell a ring on the ground in the Void type's colours, 2
+metres in radius, centred on the middle of the cell. It is the same drawing every ground zone has: nothing
+marks the ring as a hole beyond the ground zone's own look. It deals no damage and does nothing to anyone
+standing in it. The floor under it is ordinary floor. The floor panel says "those in the dark: N chasms".
+Standing within the ring does nothing a player can see in this layer. Standing on the chasm's cell outside
+the ring, which is its four corners, does nothing in any layer.
+
+Each judged number, with the reading not taken:
+
+- **One chasm for every 25 walkable cells, rounded down** (ruled). Not taken: a count fixed for every floor,
+  or a share of the floor's whole grid.
+- **None within 20 metres of the entrance** (ruled), measured flat between the middles of the two cells, so
+  five cells in a straight line. Not taken: a distance walked along the floor.
+- **The mark's radius is 2 metres, half a cell, and the same 2 metres is where a player falls** (ruling 13).
+  The ring touches the four sides of the cell and reaches into no neighbour. The four corners of the cell lie
+  outside the ring, up to 83 centimetres beyond it, and are safe ground. Not taken: 2.83 metres, half the
+  cell's diagonal, which reaches 83 centimetres into each of the four neighbouring cells.
+- **A quarter second** is the beat, the game mode's own, not a number of this rule.
+
+### The writing session's judgements
+
+Each was a judgement by the writing session, for the coordinating session to confirm. ALL TEN ARE NOW RULED ON,
+2026-10-09: judgement 2 is approved (ruling 11); judgement 3 is accepted as built and stated (ruling 12);
+judgement 10 is changed (ruling 13); judgements 1 and 4 to 9 are approved (ruling 14). One thing the first
+commit did that was not listed here as a judgement, making the draw four times in play to count what each rule
+cost, is changed by ruling 14.
+
+1. **A chasm cell is a held cell.** `CellsTheFloorHolds` reads the list, so no object a rule places later
+   through the held cells is put on a chasm, and the Python check that every kept cell is held passes without
+   a new exception. The mark over the chasm is a ground zone and would hold the cell anyway once it is drawn.
+2. **An obstacle raised later is asked with every chasm counted as closed.** `AnObstacleMayClose` now makes a
+   copy of the plan with the chasm cells Solid and asks the same question of it. Without this a pillar raised
+   beside a chasm could leave a way that can only be walked over the chasm, and the ruling says the floor can
+   always be crossed without falling. On a floor with no chasm the function asks exactly what it asked
+   before. The chasm the asker stands on is left open in the copy, because the question refuses an asker
+   whose cell is not walkable. The cost: on a floor with the row, Heaven's Quake, Cryptquake, a closing gate
+   and a statue are refused more often than on the same floor without it. Not taken: leaving the obstacle
+   question as it was.
+3. **The held cells are read as they are, the player's and the stairs' old places included.** See the fifth
+   "said first". Not taken: leaving those two cells out of the held cells for this draw, which would make the
+   draw depend on the seed alone, at the price of a chasm that could land on a cell another rule holds when
+   that cell is also where the player or the old stairs happened to be.
+4. **"The final floor" is asked with `IsOnTheLastFloor`**, as every row that seals the stairs asks it: the
+   floor number has reached the bound empire dungeon's floor count. With no dungeon bound, which is pressing
+   Play in the editor, no floor is the last and every floor gets chasms. Not taken: `IsTheFinalFloorForItsBoss`,
+   which reads the game mode's own floor count.
+5. **"Walkable cells" are counted on the plan as it stands when the chasms are chosen.** A closed section
+   barrier's cells and a standing statue's cell are Solid then and are not counted. Not taken: the plan with
+   the barriers open.
+6. **The panel line is shown on every floor that carries the row**, and says "0 chasms" on a Horde arena and
+   on the last floor.
+7. **The marks are made on the beat and not when the cells are chosen**, as Shadowy Enemies' light zones are,
+   so a mark that is lost is made again by the same code. Between the floor beginning and the first beat, a
+   quarter second, no mark stands.
+8. **A fall is recorded once a floor even though nothing follows it**, so in this layer a player who has
+   stood within one chasm's ring can stand within every other with nothing recorded. The next layer decides what a fall does.
+9. **A floor populated again gets its chasms chosen again and its recorded fall forgotten.**
+10. **The mark's radius**, above. Changed by ruling 13: the radius stays, and the fall is measured from it.
+
+### Tests
+
+Twelve, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. They
+were run in the window on layer 2's head, five of them as layer 2 changed them; see Run. The beat is stepped by hand; no test waits on the world's clock. Tests 5 and 6 stand the player on
+the middle of a chasm's cell, which is the middle of its ring, so they read the same under ruling 13.
+
+**Said first, beside the crossable check's tests (tests 2, 3 and 11): the check has no proof, and on all twenty
+floors measured in the window the crossing question refused 0 cells, so those floors did not exercise it.**
+
+1. `ThoseInTheDarkFiguresAndTheRowIsStillNotBuilt`: the 25, the 2000, the radius is half a cell, the key, the
+   row is not in `KeysWithARule`, its state is NotBuilt.
+2. `ThoseInTheDarkChasmsHoldEveryPlacementRuleAndWithoutTheRowThereIsNone`: on a floor with the row, every
+   placement rule, computed in the test from the plan and the cells. Control: the same seed and floor without
+   the row has no chasm, no ground zone and no panel line, and its plan is the same cell for cell.
+3. `ThoseInTheDarkNoChasmIsOnABarriersCellAStatuesCellOrACellAnotherRuleHolds`: the same rules on a floor that
+   also carries Lightforged Walls and Angelic Wardens; and over twenty floors that also carry Shadowy Enemies,
+   no chasm is on a light zone's cell.
+4. `ThoseInTheDarkTheSameSeedAndFloorGiveTheSameChasmsAndAnotherFloorGivesOthers`: the same floor built twice
+   gives the same cells in the same order. Controls: another floor, and another seed, give other cells.
+5. `ThoseInTheDarkStandingOnAChasmIsAFallAndBesideItIsNotAndACreatureDoesNotFall`: a beat on a chasm cell
+   records one fall. Controls in the same test: two beats on the cell beside it record none, and a creature on
+   another chasm cell for two beats records none and keeps its health and its place.
+6. `ThoseInTheDarkAFallIsRecordedOnceAFloorAndAFloorBuiltAgainRecordsItsOwn`.
+7. `ThoseInTheDarkAHordeArenaHasNoChasm`. Control: an ordinary floor of the same game mode has chasms.
+8. `ThoseInTheDarkTheLastFloorHasNoChasm`. Control: floor 2 of the same three-floor dungeon has chasms.
+9. `ThoseInTheDarkThePanelCountsTheChasmsAndOneVoidMarkStandsOverEachAndNoneElsewhere`: the panel line; one
+   ground zone on the middle of each chasm cell and none elsewhere; no damage; drawn as Void; a destroyed mark
+   is made again on the next beat.
+10. `ThoseInTheDarkAnObstacleIsRefusedWhereTheOnlyWayPastWouldBeOverAChasm`: judgement 2. Control: the same
+    cell on the same floor without the row may be closed.
+11. `ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged`: dungeon seeds 1 to 10,
+    floors 1 and 10, reached through the game mode. For each it logs the walkable cells, the chasms asked for
+    and the chasms placed; then it clears the floor's creatures away, asks `ThoseInTheDarkCountsRuleByRule`,
+    and logs the chasms placed after each rule in turn and the cells skipped for each rule. One summary line,
+    which also says how many cells the crossing question skipped and on how many of the floors. It asserts the
+    placement rules on every one of the twenty and asserts no share placed.
+12. `ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround`: ruling 13. Standing 190 cm
+    from the middle of a chasm's cell for a beat records one fall. Controls in the same test, both on the
+    chasm's own cell: standing 210 cm from the middle along a diagonal, and standing in the cell's corner 269
+    cm from the middle, each for two beats, record none. Each stand's distance and cell are asserted as set-up.
+
+**The two halves of ruling 11.** That an obstacle is refused where the only way past would be over a chasm is
+test 10 above. That on a floor with no chasm the question is what it was is shown by the existing tests that
+pass through `AnObstacleMayClose` on floors with no chasm; none of them was changed and none was run here.
+Found by a search of the test file for the calls that reach the function (`WarnOfAnObstacle`,
+`PlaceAnAngelicStatueOn`, and the beat on a floor that carries Heaven's Quake, Cryptquake, The Labrynth or
+Angelic Wardens); their bodies were not all read whole:
+
+- `Cataclysm.DungeonModifierEffects.HeavensQuakeWarnsThenRaisesAPillarNearThePlayer`
+- `Cataclysm.DungeonModifierEffects.HeavensQuakeCancelsAPillarThePlayerStepsUnder`
+- `Cataclysm.DungeonModifierEffects.HeavensQuakeStopsAtSixPillarsAndNeverCutsTheFloor`
+- `Cataclysm.DungeonModifierEffects.CryptquakeCollapsesATwoByTwoSectionAndBringsThreeRaisedCreaturesBesideIt`
+- `Cataclysm.DungeonModifierEffects.CryptquakeStopsAtThreeSections`
+- `Cataclysm.DungeonModifierEffects.FloorObstacleRefusesEveryCellTheFloorStillHoldsAUseFor`
+- `Cataclysm.DungeonModifierEffects.GatedShortcutsAreCarvedAndClosedWhenAHallsFloorIsBuilt`
+- `Cataclysm.DungeonModifierEffects.TheLabrynthSwapsOneGateEveryTwentySeconds`
+- `Cataclysm.DungeonModifierEffects.TheLabrynthNeverClosesAGateSomeoneStandsOn`
+- `Cataclysm.DungeonModifierEffects.LightforgedWallsAnObstacleStillRisesBesideASealedSectionAndOneThatStrandsIsRefused`
+- `Cataclysm.DungeonModifierEffects.AngelicWardensStatuesStandAsPillarsWhenTheFloorBeginsAndNoCreatureIsMade`
+
+`Cataclysm.DungeonModifierEffects.FloorObstaclePlacementRefusesACellThatWouldCutTheFloor` is not among them:
+it calls `CataclysmFloorCanBlock` itself and does not pass through the game mode's function. Test 10's own
+control is a twelfth: on the same floor without the row, the game mode allows the obstacle.
+
+### Not covered by a test
+
+- That a blink, leap, charge or shove ends in a fall: the tests stand the player at a place and step the
+  beat. No skill is used and no enemy shoves.
+- Standing exactly 200 cm from the middle: the code falls at or within the radius, and the test stands at 190
+  and 210.
+- That a minion or a follower does not fall: only a floor creature is stood on a chasm. The code asks the
+  player's cell alone.
+- What the mark looks like: the automation run draws nothing.
+- No chasm on the dark floor: the question answers false in this layer, so the branch cannot be reached.
+- A chasm beside a cell that is Solid when the chasms are chosen and walkable later, which is a standing
+  statue's cell or a closed gate's. If every walkable neighbour of such a cell is a chasm, then once it opens
+  it can be reached only over a chasm, and from then on `AnObstacleMayClose` refuses every obstacle on that
+  floor. Not guarded against and not tested. Ruling 15: stated here, no change.
+- A rule that places an object during play without reading the held cells can put it on a chasm cell.
+- The player's cell and the old stairs' cell as held cells, the fifth "said first": the tests remove the
+  difference and do not measure it.
+- The cost of the marks.
+
+### Guard proofs proposed
+
+Two, for the registering session. Each line is in `Dungeon/CataclysmDungeonGameMode.cpp`, once. Both were run
+in the window, on layer 2's head, as D1 and D2; see Run.
+
+1. No two side by side. `if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)` becomes
+   `if (RulesApplied > ChasmRuleCrossable && bBesideAChosenChasm)`. Test 11. Predicted to fail: "pairs of
+   chasms side by side", on each of the twenty floors where the draw then puts two side by side. How many
+   floors is not known before a run.
+2. The fall's test. `const bool bWithinAChasmsRing = NearestCm <= Effects::ThoseInTheDarkMarkRadiusCm;` becomes
+   `const bool bWithinAChasmsRing = NearestCm < 0.0f;`. Test 12. Predicted to fail: one assertion, "standing
+   190 cm from the middle for a beat is recorded as one fall". The registering session derives this again on
+   the next layer's head, where a fall does more.
+
+**The crossing question has its test and no proof (ruling 16).** The first commit proposed one and said it
+might prove nothing: whether any of the twenty floors has chasms that would cut a cell off is not known before
+a run. A proof that may prove nothing is not registered. The tests assert the crossing question on every
+floor they build. Whether the check refused anything is shown floor by floor by the measurement's log, and
+this is said differently from the ruling's words because of what the code does: the ruling names "the count
+after no two side by side against the count placed", and those two counts are both capped at the number asked
+for, since a cell the check refuses is replaced by the next cell of the shuffle. They differ only on a floor
+where the cells run out. The figure that shows it is the cells skipped for the crossing question, which the
+measurement logs for each floor beside those counts, and totals in its summary line.
+
+### What the row needs, for the session that writes rows
+
+Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no change to the row. No
+dry run was made because no row is asked for.
+
+### Run
+
+**Said first: the continuous integration runner compiled on this machine during the window.** A pull request
+(#2347) was opened during the window by a fault of the coordinating session's own script, so the runner
+compiled from 15:57:27Z to 16:06:09Z while the lock `void-zones-w14` was held. Times of the window's steps, UTC,
+from each step's log file creation and last-write times:
+
+| Step | Began | Ended | Overlap with the runner's compile |
+|---|---|---|---|
+| Build | 15:57:04 | 16:00:52 | all but its first 23 seconds |
+| Whole Unreal suite | 16:00:52 | 16:43:41 | its first 5 minutes 17 seconds |
+| Python suite and ruff | 16:43:42 | 16:49:57 | none |
+| D1 | 16:49:58 | 16:53:05 | none |
+| D2 | 16:53:05 | 16:55:30 | none |
+| D3 | 16:55:30 | 16:58:38 | none |
+| D4 | 16:58:38 | 17:01:46 | none |
+| D5 | 17:01:46 | 17:04:31 | none |
+
+**The build log kept only its summary line, so whether the build waited is not shown.** The build printed
+"Succeeded - 22 actions, 19 files compiled" with exit 0 and was not retried. The suite then found the target up
+to date, and its declared-against-performed check printed gap 0 at 0fb188d1. A suite run beside a compile breaks
+no run. All five proofs ran after 16:06:09Z. **The coordinating session ruled that the window stands and no rerun
+is needed**: a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09.
+
+One window on 2026-10-09 for both layers of Those in the Dark, at `feat/dark-floor` 0fb188d1, which is layer
+2's head, on `feat/chasms` bbbfa1d1, which is this layer's head, on development 4697f84b. **This layer was
+never run on its own head bbbfa1d1**: every build and run below is of the tree with layer 2 on top of it. One
+attempt; nothing was corrected during it. Every build, run and measurement here was made by the registering
+session. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 22 actions, 19 files compiled` |
+| Whole Unreal suite | `3460 tests performed, 3460 succeeded, 0 failed`; `Declared: 3460 tests in the tree at 0fb188d1; 3460 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5890 passed, 8 skipped in 374.54s (0:06:14)`; JUnit `errors="0" failures="0" skipped="8" tests="5898"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,460 Unreal tests (3,437 declared on development plus the 23 of the two layers by
+name: 12 of this layer, 11 of layer 2) and a JUnit count of 5,898. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled, with layer 2 on it. Its twelve tests
+passed, five of them as layer 2 changed them: on that head a fall leads to the dark floor, and the row is
+Built. So no test in the window asserted that a fall does nothing or that the row is NotBuilt, which is what
+this layer alone does. No existing test failed. The placement placed every chasm it was asked for on the twenty
+floors measured; the figures are below.
+
+**How the layer was written and checked.** A second session wrote both commits under a brief carrying the
+rulings. Before the window the registering session read all the game code of both commits apart from comments,
+every header line added, and every assertion of the twelve tests. Not read by the registering session: the
+comments, this entry, and the body of the test helper `AFloorWithChasms`.
+
+**Guard proofs, at 0fb188d1, both in `CataclysmDungeonGameMode.cpp`, each with one anchor counted 1 and the
+source hash the same before and after, each PROVED: failed with the break in and passed with it out.** No break
+failed to compile. They are proofs 1 and 2 of the list above, named D1 and D2 in the window. Both tests are in
+`Cataclysm.DungeonModifierEffects`.
+
+| Proof | The break | Test | Registered | With the break in | Restored |
+|---|---|---|---|---|---|
+| D1 | `if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)` becomes `if (RulesApplied > ChasmRuleCrossable && bBesideAChosenChasm)` | `ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged` | no count registered | 1 performed, 1 failed, 18 failed assertions | 1 performed, 1 succeeded |
+| D2 | `const bool bWithinAChasmsRing = NearestCm <= Effects::ThoseInTheDarkMarkRadiusCm;` becomes `NearestCm < 0.0f;` | `ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround` | 4 | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+D1's count was not predicted: nothing was registered for it, and it printed 18 failed assertions. Accepted as a
+proof by the coordinating session: a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-09.
+
+D1, as printed, 18 lines of this form, one for each floor with a pair: "Expected 'seed 9 floor 1: pairs of
+chasms side by side' to be 0, but it was 2"; "Expected 'seed 8 floor 1: pairs of chasms side by side' to be 0,
+but it was 4".
+
+D2, as printed: "Expected 'standing 190 cm from the middle for a beat is a fall: the player is on the dark
+floor' to be true"; "Expected 'the dark floor carries the number ten deeper than floor 2' to be 12, but it was
+2"; "Expected 'the game mode keeps floor 2 as the floor fallen from' to be 2, but it was 0"; "Expected 'and the
+dark floor has no chasm' to be 0, but it was 37". These four are the ring test's assertions as layer 2 restated
+them, and four is the count layer 2's entry derived. Proof 2 in the list above predicted one assertion, "standing
+190 cm from the middle for a beat is recorded as one fall", for this layer's own head; that was not run.
+
+**The crossable check has its test and no proof.** By the registering session's choice, accepted by the
+coordinating session: a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09.
+The check refuses a chasm when closing it would cut off a walkable cell.
+
+**The counts of cells refused by each placement rule were added beyond the ruling**, in this layer's second
+commit, and approved by the coordinating session: a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-09. They are the figures "cells skipped" below.
+
+**The measurement**, this layer's test of twenty Halls floors, in the whole-suite run. Its summary line, as
+printed: "20 floors, 749 chasms asked for, 749 placed; 0 floors placed under half of what was asked for; the
+crossing question skipped 0 cells, on 0 of the floors". Every one of the twenty floors placed exactly what was
+asked. Walkable cells ran from 682 (seed 2 floor 10, 27 chasms) to 1,534 (seed 10 floor 10, 61 chasms). Cells
+skipped, floor by floor: for the entrance and stairs rule 0 to 3; held or barrier cells 0 to 2; beside a chasm 0
+to 5; for the crossing question 0 on every floor. So on these twenty floors the crossable check never refused a
+cell: its test shows it can, and this measurement shows it did not need to here.
+
+---
+
 ## 2026-10-08 — Rule of Chaos draws one of three rule changes for each floor, and the row is Built
 
 **Built and run.** The writing session wrote this layer in four commits: the first with the code, seven

@@ -50498,4 +50498,1160 @@ bool FCataclysmRuleOfChaosKillElsewhereTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Those in the Dark, layer 1 of 2: the chasms and the fall. Issues #1820 and #41. Ruled 2026-10-08 and 2026-10-09.
+//
+// NO TEST HERE RUNS A CREATURE'S BRAIN OR MOVES THE WORLD'S CLOCK. The game mode's beat is stepped by hand, a quarter
+// second at a time. A FALL DOES NOTHING IN THIS LAYER BUT BE RECORDED, so what is read is the game mode's count of
+// falls on the floor, compared with the same count for a player standing beside the chasm.
+//
+// WHERE EVERYTHING STANDS. `GoToFloor` leaves the player at the entrance, which is 20 metres or more from every
+// chasm. A test that stands the player elsewhere says where. One test places a creature: on the middle of a chasm
+// cell, which is at least 4 metres from the middle of every other cell.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ThoseInTheDarkRow(UCataclysmDungeonModifierEffects::ThoseInTheDarkKey);
+
+	/** How many dungeon seeds a Those in the Dark test tries for a floor that meets its set-up. */
+	constexpr int32 ThoseInTheDarkSeedsTried = 20;
+
+	/** What the floor panel says for Those in the Dark, or a plain answer when it says nothing. */
+	FString ThoseInTheDarkPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(ThoseInTheDarkRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** How many pairs of these cells share a side. */
+	int32 ThoseInTheDarkPairsSideBySide(const TArray<FIntPoint>& Cells)
+	{
+		int32 Pairs = 0;
+		for (int32 Index = 0; Index < Cells.Num(); ++Index)
+		{
+			for (int32 Other = Index + 1; Other < Cells.Num(); ++Other)
+			{
+				const FIntPoint Apart = Cells[Index] - Cells[Other];
+				Pairs += (FMath::Abs(Apart.X) + FMath::Abs(Apart.Y) == 1) ? 1 : 0;
+			}
+		}
+		return Pairs;
+	}
+
+	/** This plan with every one of these cells made solid. */
+	FCataclysmFloorPlan ThoseInTheDarkPlanWithClosed(const FCataclysmFloorPlan& Plan, const TArray<FIntPoint>& Cells)
+	{
+		FCataclysmFloorPlan Closed = Plan;
+		for (const FIntPoint& Cell : Cells)
+		{
+			Closed.Fill(Cell);
+		}
+		return Closed;
+	}
+
+	/** How many walkable cells of this plan cannot be walked to from its entrance. */
+	int32 ThoseInTheDarkCellsNotReached(const FCataclysmFloorPlan& Plan)
+	{
+		const TArray<int32> Reached = CataclysmFloorDistancesFrom(Plan, Plan.Entrance);
+		int32 NotReached = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			NotReached += (Plan.Cells[Index] == ECataclysmFloorCell::Floor && Reached[Index] == INDEX_NONE) ? 1 : 0;
+		}
+		return NotReached;
+	}
+
+	/**
+	 * Every rule the placement is ruled to hold, asserted of the floor the game mode stands on, each as a count of
+	 * the cells that break it. `Where` names the floor in each message. Computed here from the plan and the chasm
+	 * cells, not read from the placement's own count.
+	 */
+	bool ThoseInTheDarkRulesHold(FAutomationTestBase& Test, const ACataclysmDungeonGameMode* Mode, const FString& Where)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+
+		const ACataclysmDungeonFloor* Floor = Mode->CurrentFloor.Get();
+		if (!Test.TestNotNull(FString::Printf(TEXT("%s: set-up: the floor is built"), *Where), Floor))
+		{
+			return false;
+		}
+		const FCataclysmFloorPlan& Plan = Floor->GetPlan();
+		const TArray<FIntPoint>& Chasms = Mode->ThoseInTheDarkChasmCellsNow();
+		const FVector Entrance = Floor->EntranceWorld();
+
+		int32 NotWalkable = 0;
+		int32 NearTheEntrance = 0;
+		int32 OnTheStairs = 0;
+		int32 OnABarrier = 0;
+		for (const FIntPoint& Chasm : Chasms)
+		{
+			NotWalkable += Plan.IsFloor(Chasm) ? 0 : 1;
+			NearTheEntrance += FVector::Dist2D(Floor->WorldOfCell(Chasm), Entrance)
+				< Effects::ThoseInTheDarkClearOfTheEntranceCm - 0.5f ? 1 : 0;
+			OnTheStairs += (Chasm == Plan.Exit) ? 1 : 0;
+			for (const TArray<FIntPoint>& Boundary : Mode->FloorSectionsNow().Boundaries)
+			{
+				OnABarrier += Boundary.Contains(Chasm) ? 1 : 0;
+			}
+		}
+
+		// THE CROSSING QUESTION, ASKED TWICE AS THE PLACEMENT ASKS IT: with every section barrier open no walkable
+		// cell is cut off by the chasms, and with every section barrier shut the chasms split no area.
+		const FCataclysmFloorPlan Open = Mode->PlanWithSectionBarriersOpen();
+		const FCataclysmFloorPlan OpenAndClosed = ThoseInTheDarkPlanWithClosed(Open, Chasms);
+		TArray<FIntPoint> EveryBarrierCell;
+		for (const TArray<FIntPoint>& Boundary : Mode->FloorSectionsNow().Boundaries)
+		{
+			EveryBarrierCell.Append(Boundary);
+		}
+		const FCataclysmFloorPlan Shut = ThoseInTheDarkPlanWithClosed(Plan, EveryBarrierCell);
+		const FCataclysmFloorPlan ShutAndClosed = ThoseInTheDarkPlanWithClosed(Shut, Chasms);
+
+		bool bHold = true;
+		bHold &= Test.TestTrue(
+			FString::Printf(TEXT("%s: at most one chasm for every 25 walkable cells (%d chasms, %d walkable)"), *Where,
+							Chasms.Num(), Plan.FloorCount()),
+			Chasms.Num() <= Plan.FloorCount() / Effects::ThoseInTheDarkWalkableCellsPerChasm);
+		bHold &= Test.TestEqual(FString::Printf(TEXT("%s: chasm cells that are not walkable in the plan"), *Where),
+								NotWalkable, 0);
+		bHold &= Test.TestEqual(FString::Printf(TEXT("%s: chasm cells within 20 metres of the entrance"), *Where),
+								NearTheEntrance, 0);
+		bHold &= Test.TestEqual(FString::Printf(TEXT("%s: chasm cells on the stairs' cell"), *Where), OnTheStairs, 0);
+		bHold &= Test.TestEqual(FString::Printf(TEXT("%s: chasm cells on a section barrier's cell"), *Where),
+								OnABarrier, 0);
+		bHold &= Test.TestEqual(FString::Printf(TEXT("%s: pairs of chasms side by side"), *Where),
+								ThoseInTheDarkPairsSideBySide(Chasms), 0);
+		bHold &= Test.TestEqual(
+			FString::Printf(TEXT("%s: set-up: every walkable cell is reached from the entrance before any is closed"),
+							*Where),
+			ThoseInTheDarkCellsNotReached(Open), 0);
+		bHold &= Test.TestEqual(
+			FString::Printf(TEXT("%s: walkable cells not reached from the entrance with every chasm closed"), *Where),
+			ThoseInTheDarkCellsNotReached(OpenAndClosed), 0);
+		bHold &= Test.TestTrue(
+			FString::Printf(TEXT("%s: the stairs are reached with every chasm closed"), *Where),
+			CataclysmFloorDistancesFrom(OpenAndClosed, Plan.Entrance)[Plan.IndexOf(Plan.Exit)] != INDEX_NONE);
+		bHold &= Test.TestEqual(
+			FString::Printf(TEXT("%s: with every section barrier shut, closing every chasm leaves as many areas"), *Where),
+			CataclysmFloorAreaCount(ShutAndClosed), CataclysmFloorAreaCount(Shut));
+		return bHold;
+	}
+
+	/**
+	 * Carrying the rows the test set, goes to `Floor` on dungeon seeds 1, 2, ... until the floor has at least
+	 * `AtLeast` chasms, clears the floor's own creatures away, and says which seed. The player is left at the
+	 * entrance, and that is asserted: on the entrance's cell, which is not a chasm.
+	 */
+	bool AFloorWithChasms(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+						  int32 Floor, int32 AtLeast, int32& OutSeed)
+	{
+		OutSeed = 0;
+		for (int32 Seed = 1; Seed <= ThoseInTheDarkSeedsTried && OutSeed == 0; ++Seed)
+		{
+			Mode->DungeonSeed = Seed;
+			if (Mode->GoToFloor(Floor) && Mode->ThoseInTheDarkChasmCellsNow().Num() >= AtLeast)
+			{
+				OutSeed = Seed;
+			}
+		}
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: one of dungeon seeds 1 to %d gives floor %d at least %d chasms"),
+										   ThoseInTheDarkSeedsTried, Floor, AtLeast), OutSeed > 0))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		const FIntPoint PlayersCell = Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation());
+		Test.AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives floor %d %d chasms"), OutSeed, Floor,
+									 Mode->ThoseInTheDarkChasmCellsNow().Num()));
+		return Test.TestTrue(TEXT("set-up: the player stands on the entrance's cell"),
+							 PlayersCell == Mode->CurrentFloor->GetPlan().Entrance)
+			&& Test.TestFalse(TEXT("set-up: and that cell is not a chasm"),
+							  Mode->ThoseInTheDarkChasmCellsNow().Contains(PlayersCell));
+	}
+
+	/** Stands the player on the middle of a cell and asserts, as set-up, that this is the cell they are on. */
+	bool StandThePlayerOnCell(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+							  FIntPoint Cell, const TCHAR* What)
+	{
+		StandThePlayerAt(Player, Mode->CurrentFloor->WorldOfCell(Cell));
+		return Test.TestTrue(FString::Printf(TEXT("set-up: the player stands on %s"), What),
+							 Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation()) == Cell);
+	}
+
+	/**
+	 * A point far off every floor's grid, 2 kilometres from the world's middle each way. A test that builds a floor
+	 * twice and compares the chasms stands the player here first, both times: the cell the player is on when a floor
+	 * is populated is a held cell, and a held cell is refused a chasm. THE STAIRS OF THE FLOOR BEFORE ARE HELD THE
+	 * SAME WAY: the one stairs actor stands where the last floor's exit was until the new floor is populated. So
+	 * such a test also builds the same floor once before the builds it compares, which puts the stairs on this
+	 * floor's exit, a cell no chasm may take anyway.
+	 */
+	const FVector ThoseInTheDarkOffTheFloor(-200000.0, -200000.0, 0.0);
+
+	/** Stands the player off the floor, goes to `Floor`, and hands back a copy of its chasm cells. */
+	bool BuildForItsChasms(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+						   int32 Floor, TArray<FIntPoint>& OutChasms)
+	{
+		StandThePlayerAt(Player, ThoseInTheDarkOffTheFloor);
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		OutChasms = Mode->ThoseInTheDarkChasmCellsNow();
+		return Test.TestFalse(
+			TEXT("set-up: where the player stood while the floor was populated is no cell of its plan"),
+			Mode->CurrentFloor->GetPlan().Contains(Mode->CurrentFloor->CellOfWorld(ThoseInTheDarkOffTheFloor)));
+	}
+}
+
+// T1. THE FIGURES, AND THE ROW'S STATE IS WHAT IT WAS: NOT BUILT, AND NOT AMONG THE ROWS WITH A RULE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkFiguresAndTheRowIsStillNotBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("one chasm for every 25 walkable cells"), Effects::ThoseInTheDarkWalkableCellsPerChasm, 25);
+	TestEqual(TEXT("none within 20 metres of the entrance"), Effects::ThoseInTheDarkClearOfTheEntranceCm, 2000.0f);
+	TestEqual(TEXT("the mark's radius is half a cell"), Effects::ThoseInTheDarkMarkRadiusCm,
+			  FCataclysmFloorGenerator::CellSizeCm / 2.0f);
+	TestEqual(TEXT("the key is the row's"), FString(Effects::ThoseInTheDarkKey), FString(TEXT("Void_Those_in_the_Dark")));
+	TestFalse(TEXT("the row is not among the rows with a rule"), Effects::KeysWithARule().Contains(ThoseInTheDarkRow));
+	TestEqual(TEXT("the row's state is NotBuilt, as before this layer"),
+			  static_cast<int32>(Effects::BuiltStateOf(ThoseInTheDarkRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
+	return true;
+}
+
+// T2. ON A FLOOR WITH THE ROW EVERY PLACEMENT RULE HOLDS, AND A CHASM CLOSES NO CELL. CONTROL: THE SAME DUNGEON SEED
+// AND FLOOR WITHOUT THE ROW HAS NO CHASM AND NO ZONE.
+//
+// WHERE EACH STANDS: the player at the entrance; the floor's own creatures are cleared away.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkPlacementTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkChasmsHoldEveryPlacementRuleAndWithoutTheRowThereIsNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkPlacementTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed))
+	{
+		return false;
+	}
+	TestFalse(TEXT("in this layer the game mode says the player is not on the dark floor"),
+			  Mode->ThePlayerIsOnTheDarkFloor());
+
+	// COPIES, because the floor is built again below.
+	const FCataclysmFloorPlan With = Mode->CurrentFloor->GetPlan();
+	const TArray<FIntPoint> Chasms = Mode->ThoseInTheDarkChasmCellsNow();
+	const ACataclysmDungeonGameMode::FThoseInTheDarkCount Count = Mode->ThoseInTheDarkCountNow();
+	ThoseInTheDarkRulesHold(*this, Mode, TEXT("floor 2"));
+	TestEqual(TEXT("the placement counted the plan's walkable cells"), Count.Walkable, With.FloorCount());
+	TestEqual(TEXT("and asked for one chasm for every 25 of them, rounded down"), Count.Asked,
+			  With.FloorCount() / Effects::ThoseInTheDarkWalkableCellsPerChasm);
+	TestEqual(TEXT("and what it says it placed is the floor's chasms"), Count.Placed, Chasms.Num());
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("set-up: after a beat a mark stands over each chasm"), ZonesOnTheFloor(World), Chasms.Num()))
+	{
+		return false;
+	}
+
+	// THE CONTROL: THE SAME DUNGEON SEED AND FLOOR WITHOUT THE ROW.
+	Mode->DungeonModifiers = {};
+	Mode->DungeonSeed = Seed;
+	if (!TestTrue(TEXT("set-up: the same floor without the row was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	const FCataclysmFloorPlan& Without = Mode->CurrentFloor->GetPlan();
+	TestEqual(TEXT("without the row the floor has no chasm"), Mode->ThoseInTheDarkChasmCellsNow().Num(), 0);
+	TestEqual(TEXT("and no ground zone"), ZonesOnTheFloor(World), 0);
+	TestEqual(TEXT("and the placement counted nothing"), Mode->ThoseInTheDarkCountNow().Asked, 0);
+	TestEqual(TEXT("and the panel has no line for the row"), ThoseInTheDarkPanelLine(Mode), FString(TEXT("no line")));
+	TestTrue(TEXT("a chasm closes nothing: every cell of the plan is as it is without the row"),
+			 With.Cells == Without.Cells);
+	return true;
+}
+
+// T3. NO CHASM IS PUT ON A SECTION BARRIER'S CELL, A STATUE'S CELL OR A CELL ANOTHER RULE HOLDS.
+//
+// TWO PARTS. First a floor carrying Lightforged Walls and Angelic Wardens too, with at least one barrier, one statue
+// and one chasm: every placement rule holds there, the crossing question included with the barriers open and shut.
+// Then twenty floors carrying Shadowy Enemies too, whose light zones' cells are held cells chosen before the
+// chasms: no chasm is on one. Twenty and not one, because a single floor has three or four light cells among several
+// hundred walkable cells, and a placement that ignored held cells would miss them on most single floors.
+//
+// WHERE EACH STANDS: the player at the entrance; nothing is placed by the test.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkHeldTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkNoChasmIsOnABarriersCellAStatuesCellOrACellAnotherRuleHolds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkHeldTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// PART ONE: BARRIERS AND STATUES.
+	Mode->DungeonModifiers = {ThoseInTheDarkRow, WallsRow, AngelicWardensRow};
+	int32 SeedFound = 0;
+	for (int32 Seed = 1; Seed <= ThoseInTheDarkSeedsTried && SeedFound == 0; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (Mode->GoToFloor(2) && Mode->FloorSectionsNow().Boundaries.Num() > 0
+			&& Mode->AngelicStatueCellsStanding().Num() > 0 && Mode->ThoseInTheDarkChasmCellsNow().Num() > 0)
+		{
+			SeedFound = Seed;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a dungeon seed whose floor 2 has a barrier, a statue and a chasm"), SeedFound > 0))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives floor 2 %d barriers, %d statues and %d chasms"),
+							SeedFound, Mode->FloorSectionsNow().Boundaries.Num(),
+							Mode->AngelicStatueCellsStanding().Num(), Mode->ThoseInTheDarkChasmCellsNow().Num()));
+	ThoseInTheDarkRulesHold(*this, Mode, TEXT("with barriers and statues"));
+	int32 OnAStatue = 0;
+	for (const FIntPoint& Statue : Mode->AngelicStatueCellsStanding())
+	{
+		OnAStatue += Mode->ThoseInTheDarkChasmCellsNow().Contains(Statue) ? 1 : 0;
+	}
+	TestEqual(TEXT("chasm cells on a standing statue's cell"), OnAStatue, 0);
+
+	// PART TWO: CELLS ANOTHER RULE HOLDS, OVER TWENTY FLOORS.
+	Mode->DungeonModifiers = {ThoseInTheDarkRow, ShadowyRow};
+	int32 Lights = 0;
+	int32 Chasms = 0;
+	int32 OnALight = 0;
+	for (int32 Seed = 1; Seed <= ThoseInTheDarkSeedsTried; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("set-up: dungeon seed %d floor 2 was reached"), Seed), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		Chasms += Mode->ThoseInTheDarkChasmCellsNow().Num();
+		for (const FVector& Light : Mode->ShadowyEnemiesLightsNow())
+		{
+			++Lights;
+			OnALight += Mode->ThoseInTheDarkChasmCellsNow().Contains(Mode->CurrentFloor->CellOfWorld(Light)) ? 1 : 0;
+		}
+	}
+	AddInfo(FString::Printf(TEXT("set-up: twenty floors hold %d light zones and %d chasms"), Lights, Chasms));
+	if (!TestTrue(TEXT("set-up: the twenty floors hold light zones and chasms"), Lights > 0 && Chasms > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("over twenty floors, chasm cells on a light zone's cell"), OnALight, 0);
+	return true;
+}
+
+// T4. THE SAME DUNGEON SEED AND FLOOR GIVE THE SAME CHASM CELLS TWICE. CONTROLS: ANOTHER FLOOR OF THE SAME DUNGEON,
+// AND THE SAME FLOOR OF ANOTHER DUNGEON SEED, GIVE OTHER CELLS.
+//
+// WHERE EACH STANDS: the player is stood off the floor's grid before each floor is built, and says why at
+// `ThoseInTheDarkOffTheFloor`. `GoToFloor` then puts them at the entrance.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkSeededTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheSameSeedAndFloorGiveTheSameChasmsAndAnotherFloorGivesOthers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkSeededTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	Mode->DungeonSeed = 7;
+	TArray<FIntPoint> Before;
+	TArray<FIntPoint> First;
+	TArray<FIntPoint> Second;
+	TArray<FIntPoint> OtherFloor;
+	TArray<FIntPoint> OtherSeed;
+
+	// FLOOR 2 THREE TIMES RUNNING. The first build only puts the stairs on floor 2's exit; the second and third are
+	// compared, each populated with the player off the floor and the stairs on that exit.
+	if (!BuildForItsChasms(*this, Mode, Player, 2, Before)
+		|| !BuildForItsChasms(*this, Mode, Player, 2, First)
+		|| !TestTrue(TEXT("set-up: floor 2 of dungeon seed 7 has chasms"), First.Num() > 0)
+		|| !BuildForItsChasms(*this, Mode, Player, 2, Second)
+		|| !BuildForItsChasms(*this, Mode, Player, 3, OtherFloor))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 8;
+	if (!BuildForItsChasms(*this, Mode, Player, 2, OtherSeed))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the same seed and floor give the same number of chasms"), Second.Num(), First.Num());
+	TestTrue(TEXT("and the same cells in the same order"), Second == First);
+	TestTrue(TEXT("set-up: floor 3 of the same dungeon has chasms"), OtherFloor.Num() > 0);
+	TestTrue(TEXT("floor 3 of the same dungeon gives other cells"), OtherFloor != First);
+	TestTrue(TEXT("set-up: floor 2 of dungeon seed 8 has chasms"), OtherSeed.Num() > 0);
+	TestTrue(TEXT("floor 2 of another dungeon seed gives other cells"), OtherSeed != First);
+	return true;
+}
+
+// T5. STANDING ON A CHASM CELL FOR A BEAT IS RECORDED AS A FALL. CONTROLS, IN THE SAME TEST AND BEFORE IT: THE PLAYER
+// ON THE CELL BESIDE THE CHASM FOR TWO BEATS, AND A CREATURE ON ANOTHER CHASM CELL FOR TWO BEATS, RECORD NONE.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away. The player stands on the middle of a walkable cell
+// that shares a side with the chasm and is not a chasm, then on the middle of the chasm's cell. `Walker`, a Common
+// Imp, stands on the middle of another chasm's cell: 4 metres or more from both places the player stands, because
+// the three are three different cells and a cell is 4 metres.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkFallTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkStandingOnAChasmIsAFallAndBesideItIsNotAndACreatureDoesNotFall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkFallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 2, Seed))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const TArray<FIntPoint> Chasms = Mode->ThoseInTheDarkChasmCellsNow();
+
+	// A CHASM WITH A WALKABLE CELL BESIDE IT THAT IS NOT A CHASM AND NOT THE STAIRS' CELL, and another chasm.
+	FIntPoint Chasm(-1, -1);
+	FIntPoint Beside(-1, -1);
+	const FIntPoint Sides[4] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)};
+	for (int32 Index = 0; Index < Chasms.Num() && Chasm == FIntPoint(-1, -1); ++Index)
+	{
+		for (const FIntPoint& Side : Sides)
+		{
+			const FIntPoint Neighbour = Chasms[Index] + Side;
+			if (Plan.IsFloor(Neighbour) && !Chasms.Contains(Neighbour) && Neighbour != Plan.Exit
+				&& Chasm == FIntPoint(-1, -1))
+			{
+				Chasm = Chasms[Index];
+				Beside = Neighbour;
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a chasm with a walkable cell beside it that is not a chasm"), Chasm != FIntPoint(-1, -1)))
+	{
+		return false;
+	}
+	const FIntPoint OtherChasm = Chasms[0] == Chasm ? Chasms[1] : Chasms[0];
+	Beat(Mode, 1);
+	TestEqual(TEXT("at the entrance, after a beat, no fall is recorded"), Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// THE CONTROL: THE PLAYER ON THE CELL BESIDE THE CHASM, TWO BEATS.
+	if (!StandThePlayerOnCell(*this, Mode, Player, Beside, TEXT("the cell beside the chasm")))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("standing on the cell beside a chasm for two beats records no fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// THE SECOND CONTROL: A CREATURE ON ANOTHER CHASM'S CELL, TWO BEATS.
+	ACataclysmEnemyCharacter* Walker =
+		PlaceCreatureAtRung(World, Mode, CellAtThePlayersHeight(Mode, Player, OtherChasm), 0);
+	if (!RuleOfChaosPlacedWell(*this, Mode, Player, {Walker})
+		|| !TestTrue(TEXT("set-up: the creature stands on a chasm cell"),
+					 Mode->CurrentFloor->CellOfWorld(Walker->GetActorLocation()) == OtherChasm))
+	{
+		return false;
+	}
+	const float WalkersHealth = HealthOf(Walker);
+	const FVector WalkerAt = Walker->GetActorLocation();
+	Beat(Mode, 2);
+	TestEqual(TEXT("a creature standing on a chasm cell for two beats records no fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	TestTrue(TEXT("the creature is still on the floor and alive"),
+			 IsValid(Walker) && !UCataclysmSkillEffects::IsDead(Walker));
+	TestEqual(TEXT("its health is what it was before the two beats"), HealthOf(Walker), WalkersHealth, 0.001f);
+	TestEqual(TEXT("and it stands where it stood"), static_cast<float>(FVector::Dist(Walker->GetActorLocation(), WalkerAt)),
+			  0.0f, 0.01f);
+
+	// AND THE PLAYER ON THE CHASM'S CELL: NOTHING UNTIL THE BEAT, AND THEN ONE FALL.
+	if (!StandThePlayerOnCell(*this, Mode, Player, Chasm, TEXT("the chasm's cell"))
+		|| !TestTrue(TEXT("set-up: the creature is at least a metre from the player on the chasm"),
+					 FVector::Dist2D(Walker->GetActorLocation(), Player.Character->GetActorLocation()) >= 100.0f))
+	{
+		return false;
+	}
+	const FVector PlayerAt = Player.Character->GetActorLocation();
+	TestEqual(TEXT("standing on a chasm cell records nothing before the beat"), Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("standing on a chasm cell for a beat is recorded as one fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+	TestEqual(TEXT("the player is where they stood: nothing else happens in this layer"),
+			  static_cast<float>(FVector::Dist(Player.Character->GetActorLocation(), PlayerAt)), 0.0f, 0.01f);
+	TestTrue(TEXT("and the floor's chasms are the cells they were"), Mode->ThoseInTheDarkChasmCellsNow() == Chasms);
+	return true;
+}
+
+// T6. A FALL IS RECORDED ONCE A FLOOR. CONTROL: THE FLOOR BUILT AGAIN STARTS AT NOUGHT AND RECORDS ONE OF ITS OWN.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away. The player stands on the middle of one chasm's
+// cell, then of another's, then, on the floor built again, on the middle of one of that floor's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkOnceTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkAFallIsRecordedOnceAFloorAndAFloorBuiltAgainRecordsItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 2, Seed))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Chasms = Mode->ThoseInTheDarkChasmCellsNow();
+	TestEqual(TEXT("the floor begins with no fall recorded"), Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	if (!StandThePlayerOnCell(*this, Mode, Player, Chasms[0], TEXT("the first chasm's cell")))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the first beat on a chasm records one fall"), Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+	Beat(Mode, 3);
+	TestEqual(TEXT("three more beats on the same chasm record no second fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+	if (!StandThePlayerOnCell(*this, Mode, Player, Chasms[1], TEXT("another chasm's cell")))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("two beats on another chasm of the same floor record no second fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+
+	// THE CONTROL: THE FLOOR BUILT AGAIN.
+	if (!TestTrue(TEXT("set-up: the floor was built again"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: and has a chasm"), Mode->ThoseInTheDarkChasmCellsNow().Num() > 0))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("a floor built again begins with no fall recorded"), Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	const FIntPoint Again = Mode->ThoseInTheDarkChasmCellsNow()[0];
+	if (!StandThePlayerOnCell(*this, Mode, Player, Again, TEXT("a chasm's cell on the floor built again")))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("and a beat on one of its chasms records one fall"), Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+	return true;
+}
+
+// T7. NO CHASM ON A HORDE ARENA. CONTROL: THE SAME GAME MODE AND SEED ON AN ORDINARY FLOOR HAS CHASMS.
+//
+// WHERE EACH STANDS: the player at the entrance; nothing is placed by the test and no beat is stepped.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkHordeTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkAHordeArenaHasNoChasm",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST: AN ORDINARY FLOOR.
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed))
+	{
+		return false;
+	}
+	TestTrue(TEXT("an ordinary floor has chasms"), Mode->ThoseInTheDarkChasmCellsNow().Num() > 0);
+
+	// THE SAME SEED, A HORDE DUNGEON: FLOOR 1 IS A NEW ARENA, AND FLOOR 2 IS A WAVE INTO THE SAME ONE.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	for (int32 Wave = 1; Wave <= 2; ++Wave)
+	{
+		if (!TestTrue(FString::Printf(TEXT("set-up: Horde wave %d was reached"), Wave), Mode->GoToFloor(Wave))
+			|| !TestTrue(TEXT("set-up: the floor carries the row"),
+						 Mode->FloorBrief.Modifiers.Contains(ThoseInTheDarkRow)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("Horde wave %d has no chasm"), Wave), Mode->ThoseInTheDarkChasmCellsNow().Num(), 0);
+		TestEqual(FString::Printf(TEXT("Horde wave %d: the placement asked for none"), Wave),
+				  Mode->ThoseInTheDarkCountNow().Asked, 0);
+		TestEqual(FString::Printf(TEXT("Horde wave %d: the panel says none"), Wave), ThoseInTheDarkPanelLine(Mode),
+				  FString(TEXT("those in the dark: 0 chasms")));
+	}
+	return true;
+}
+
+// T8. NO CHASM ON THE DUNGEON'S LAST FLOOR. CONTROL: THE FLOOR BEFORE IT, IN THE SAME DUNGEON, HAS CHASMS.
+//
+// No player and no creature placed by the test. The dungeon is one of an empire run's, made three floors deep, as
+// the Rule of Chaos test of the last floor makes its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkLastFloorTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheLastFloorHasNoChasm",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	// NOT THE COW LEVEL, which the run treats apart; the first other dungeon.
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			Chosen = Index;
+		}
+	}
+	if (!TestTrue(TEXT("the run has an ordinary dungeon"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// THREE FLOORS, AN ORDINARY SUB-TYPE AND THIS ROW ALONE.
+	Run->Dungeons[Chosen].Floors = 3;
+	Run->Dungeons[Chosen].SubType = ECataclysmDungeonSubType::None;
+	Run->Dungeons[Chosen].Modifiers = {ThoseInTheDarkRow};
+	if (!TestTrue(TEXT("the dungeon was entered"), Mode->EnterEmpireDungeon(Run->Dungeons[Chosen].DungeonId)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: FLOOR 2 OF 3.
+	if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: floor 2 carries the row"), Mode->FloorBrief.Modifiers.Contains(ThoseInTheDarkRow)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("floor 2 of 3 is not the last"), Mode->IsOnTheLastFloor());
+	TestTrue(TEXT("and it has chasms"), Mode->ThoseInTheDarkChasmCellsNow().Num() > 0);
+
+	// THE LAST FLOOR.
+	if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3))
+		|| !TestTrue(TEXT("set-up: floor 3 carries the row"), Mode->FloorBrief.Modifiers.Contains(ThoseInTheDarkRow))
+		|| !TestTrue(TEXT("set-up: floor 3 of 3 is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the last floor has no chasm"), Mode->ThoseInTheDarkChasmCellsNow().Num(), 0);
+	TestEqual(TEXT("the placement asked for none"), Mode->ThoseInTheDarkCountNow().Asked, 0);
+	TestEqual(TEXT("and the panel says none"), ThoseInTheDarkPanelLine(Mode),
+			  FString(TEXT("those in the dark: 0 chasms")));
+	return true;
+}
+
+// T9. THE PANEL LINE, AND ONE MARK OVER EACH CHASM CELL AND NONE ELSEWHERE. A LOST MARK IS MADE AGAIN ON THE BEAT.
+//
+// WHERE EACH STANDS: the player at the entrance; the floor's own creatures are cleared away, and the floor carries
+// no other row, so every ground zone in the world is this rule's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkMarksTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkThePanelCountsTheChasmsAndOneVoidMarkStandsOverEachAndNoneElsewhere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkMarksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 2, Seed))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Chasms = Mode->ThoseInTheDarkChasmCellsNow();
+	TestEqual(TEXT("the panel counts the chasms"), ThoseInTheDarkPanelLine(Mode),
+			  FString::Printf(TEXT("those in the dark: %d chasms"), Chasms.Num()));
+	TestEqual(TEXT("before the first beat no mark stands"), ZonesOnTheFloor(World), 0);
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("after a beat the game mode counts one mark for each chasm"), Mode->ThoseInTheDarkChasmZonesDrawn(),
+			  Chasms.Num());
+	TestEqual(TEXT("and those are every ground zone in the world"), ZonesOnTheFloor(World), Chasms.Num());
+	TSet<FIntPoint> Marked;
+	int32 OffTheMiddle = 0;
+	int32 NotOnAChasm = 0;
+	int32 Damaging = 0;
+	int32 NotDrawnAsVoid = 0;
+	int32 NotHalfACell = 0;
+	int32 NotLastingTheFloor = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		const FIntPoint Cell = Mode->CurrentFloor->CellOfWorld(It->GetActorLocation());
+		Marked.Add(Cell);
+		NotOnAChasm += Chasms.Contains(Cell) ? 0 : 1;
+		OffTheMiddle += FVector::Dist2D(It->GetActorLocation(), Mode->CurrentFloor->WorldOfCell(Cell)) > 1.0f ? 1 : 0;
+		Damaging += It->DamagePerTick != 0.0f ? 1 : 0;
+		NotDrawnAsVoid += It->TypeItIsDrawnAs() != FName(TEXT("Void")) ? 1 : 0;
+		NotHalfACell += It->RadiusCm != Effects::ThoseInTheDarkMarkRadiusCm ? 1 : 0;
+		NotLastingTheFloor += It->bLastsTheFloor ? 0 : 1;
+	}
+	TestEqual(TEXT("marks that stand on a cell that is not a chasm"), NotOnAChasm, 0);
+	TestEqual(TEXT("the marks stand on as many different cells as there are chasms"), Marked.Num(), Chasms.Num());
+	TestEqual(TEXT("marks that are not on the middle of their cell"), OffTheMiddle, 0);
+	TestEqual(TEXT("marks that deal damage"), Damaging, 0);
+	TestEqual(TEXT("marks not drawn in the Void type's colours"), NotDrawnAsVoid, 0);
+	TestEqual(TEXT("marks whose radius is not half a cell"), NotHalfACell, 0);
+	TestEqual(TEXT("marks that do not last the floor"), NotLastingTheFloor, 0);
+	Beat(Mode, 2);
+	TestEqual(TEXT("two more beats make no second mark"), ZonesOnTheFloor(World), Chasms.Num());
+
+	// A LOST MARK IS MADE AGAIN ON THE NEXT BEAT.
+	ACataclysmGroundZone* Lost = AnyZone(World);
+	if (!TestNotNull(TEXT("set-up: a mark to destroy"), Lost))
+	{
+		return false;
+	}
+	Lost->Destroy();
+	TestEqual(TEXT("with one mark destroyed the game mode counts one fewer"), Mode->ThoseInTheDarkChasmZonesDrawn(),
+			  Chasms.Num() - 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("and the next beat makes it again"), Mode->ThoseInTheDarkChasmZonesDrawn(), Chasms.Num());
+	TestEqual(TEXT("so the world holds one mark for each chasm again"), ZonesOnTheFloor(World), Chasms.Num());
+	return true;
+}
+
+// T10. AN OBSTACLE THAT WOULD LEAVE NO WAY PAST BUT OVER A CHASM IS REFUSED. CONTROL: THE SAME CELL ON THE SAME FLOOR
+// WITHOUT THE ROW MAY BE CLOSED.
+//
+// The obstacle is an Angelic Wardens statue placed by `PlaceAnAngelicStatueOn`, the public function that asks the
+// question every obstacle is asked, from the entrance. The cell is searched for on the floor: walkable, not a chasm,
+// not held, one whose closing strands no cell on the plan as it is and does strand one on the plan with every chasm
+// closed. Both answers are worked out here from the plan and are set-up; what is asserted is what the game mode does.
+//
+// WHERE EACH STANDS: the player is stood off the floor's grid before each floor is built, and the floor is built once
+// before the three builds that matter, so those three have the same held cells; see `ThoseInTheDarkOffTheFloor`.
+// `GoToFloor` then puts the player at the entrance. The floor's own creatures are cleared
+// away each time.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkObstacleTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkAnObstacleIsRefusedWhereTheOnlyWayPastWouldBeOverAChasm",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkObstacleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	for (int32 Seed = 1; Seed <= ThoseInTheDarkSeedsTried; ++Seed)
+	{
+		// THE FLOOR ONCE WITHOUT THE ROW, which only puts the stairs on this floor's exit for the three builds below.
+		Mode->DungeonSeed = Seed;
+		Mode->DungeonModifiers = {};
+		TArray<FIntPoint> Before;
+		if (!BuildForItsChasms(*this, Mode, Player, 2, Before))
+		{
+			return false;
+		}
+
+		// THE FLOOR WITH THE ROW: EVERY CELL THE CHASMS MAKE AN OBSTACLE WRONG FOR.
+		Mode->DungeonModifiers = {ThoseInTheDarkRow};
+		TArray<FIntPoint> Chasms;
+		if (!BuildForItsChasms(*this, Mode, Player, 2, Chasms))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		TArray<FIntPoint> Wanted;
+		{
+			const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+			const FCataclysmFloorPlan ChasmsClosed = ThoseInTheDarkPlanWithClosed(Plan, Chasms);
+			const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+			for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+			{
+				const TArray<FIntPoint> Alone = {Plan.CellAt(Index)};
+				if (!Chasms.Contains(Alone[0]) && CataclysmFloorCanBlock(Plan, Alone, Plan.Entrance, Held)
+					&& !CataclysmFloorCanBlock(ChasmsClosed, Alone, Plan.Entrance, Held))
+				{
+					Wanted.Add(Alone[0]);
+				}
+			}
+		}
+		if (Wanted.IsEmpty())
+		{
+			continue;
+		}
+
+		// THE CONTROL: THE SAME FLOOR WITHOUT THE ROW, AND THE FIRST OF THOSE CELLS AN OBSTACLE MAY CLOSE THERE.
+		Mode->DungeonModifiers = {};
+		TArray<FIntPoint> NoChasms;
+		if (!BuildForItsChasms(*this, Mode, Player, 2, NoChasms)
+			|| !TestEqual(TEXT("set-up: without the row the floor has no chasm"), NoChasms.Num(), 0))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		FIntPoint Cell(-1, -1);
+		{
+			const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+			const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+			for (int32 Index = 0; Index < Wanted.Num() && Cell == FIntPoint(-1, -1); ++Index)
+			{
+				const TArray<FIntPoint> Alone = {Wanted[Index]};
+				if (CataclysmFloorCanBlock(Plan, Alone, Plan.Entrance, Held))
+				{
+					Cell = Wanted[Index];
+				}
+			}
+		}
+		if (Cell == FIntPoint(-1, -1))
+		{
+			continue;
+		}
+		AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d, floor 2, cell (%d, %d); %d chasms with the row"), Seed,
+								Cell.X, Cell.Y, Chasms.Num()));
+		TestTrue(TEXT("CONTROL: without the row an obstacle may close the cell"), Mode->PlaceAnAngelicStatueOn(Cell));
+		TestFalse(TEXT("CONTROL: and the cell is closed in the plan"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+
+		// THE FLOOR WITH THE ROW AGAIN, AND THE SAME OBSTACLE ON THE SAME CELL.
+		Mode->DungeonModifiers = {ThoseInTheDarkRow};
+		TArray<FIntPoint> Again;
+		if (!BuildForItsChasms(*this, Mode, Player, 2, Again)
+			|| !TestTrue(TEXT("set-up: the floor built again with the row has the same chasms"), Again == Chasms))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+		const TArray<FIntPoint> Alone = {Cell};
+		if (!TestTrue(TEXT("set-up: on the plan as it is, closing the cell alone strands nothing and is allowed"),
+					  CataclysmFloorCanBlock(Plan, Alone, Plan.Entrance, Held))
+			|| !TestFalse(TEXT("set-up: on the plan with every chasm closed, closing it strands a walkable cell"),
+						  CataclysmFloorCanBlock(ThoseInTheDarkPlanWithClosed(Plan, Again), Alone, Plan.Entrance, Held)))
+		{
+			return false;
+		}
+		TestFalse(TEXT("with chasms on the floor the same obstacle on the same cell is refused"),
+				  Mode->PlaceAnAngelicStatueOn(Cell));
+		TestTrue(TEXT("and the cell stays walkable"), Mode->CurrentFloor->GetPlan().IsFloor(Cell));
+		TestEqual(TEXT("and no statue stands"), Mode->AngelicStatueCellsStanding().Num(), 0);
+		return true;
+	}
+	AddError(FString::Printf(
+		TEXT("set-up: none of dungeon seeds 1 to %d gives floor 2 a cell that an obstacle may close without the row and "
+			 "that would leave a way only over a chasm with it"), ThoseInTheDarkSeedsTried));
+	return false;
+}
+
+// T11. THE MEASUREMENT: TWENTY HALLS FLOORS, WHAT EACH PLACEMENT RULE COST ON EACH, LOGGED. ONLY THE RULED RULES ARE
+// ASSERTED, ON EVERY ONE OF THE TWENTY; NO SHARE PLACED IS ASSERTED.
+//
+// The twenty are dungeon seeds 1 to 10, floors 1 and 10, the seeds and floors the floor-sections measurements of
+// 2026-10-08 used, reached through the game mode as the Angelic Wardens tests reach a floor, carrying this row alone.
+//
+// WHERE EACH STANDS: the player wherever `GoToFloor` left them; nothing is placed by the test and no beat is stepped.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkMeasurementTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->Layout = ECataclysmFloorLayout::Halls;
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+
+	int32 Floors = 0;
+	int32 Asked = 0;
+	int32 Placed = 0;
+	int32 UnderHalf = 0;
+	int32 SkippedForCrossing = 0;
+	int32 FloorsWithASkipForCrossing = 0;
+	const int32 FloorNumbers[2] = {1, 10};
+	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	{
+		for (const int32 Floor : FloorNumbers)
+		{
+			Mode->DungeonSeed = Seed;
+			const FString Where = FString::Printf(TEXT("seed %d floor %d"), Seed, Floor);
+			if (!TestTrue(FString::Printf(TEXT("%s: set-up: the floor was reached"), *Where), Mode->GoToFloor(Floor))
+				|| !TestTrue(FString::Printf(TEXT("%s: set-up: the floor is Halls"), *Where),
+							 Mode->CurrentFloor->GetPlan().Layout == ECataclysmFloorLayout::Halls))
+			{
+				return false;
+			}
+			const ACataclysmDungeonGameMode::FThoseInTheDarkCount Count = Mode->ThoseInTheDarkCountNow();
+			ThoseInTheDarkRulesHold(*this, Mode, Where);
+			TestEqual(FString::Printf(TEXT("%s: what the placement says it placed is the floor's chasms"), *Where),
+					  Count.Placed, Mode->ThoseInTheDarkChasmCellsNow().Num());
+
+			// WHAT EACH RULE COSTS IS ASKED FOR HERE AND NOT COUNTED IN PLAY, ruled 2026-10-09. The floor's own
+			// creatures are cleared away first, so they hold no cell the first draw was free to take.
+			Mode->ClearFloorEnemies();
+			const ACataclysmDungeonGameMode::FThoseInTheDarkRuleCounts Rules = Mode->ThoseInTheDarkCountsRuleByRule();
+			const FString Line = FString::Printf(
+				TEXT("Those in the Dark measurement: %s: %d walkable cells, %d chasms asked for, %d placed; the draw ")
+				TEXT("made again rule by rule places %d after the entrance and stairs rule, %d after held and barrier ")
+				TEXT("cells, %d after no two side by side, %d after the crossing question; with every rule it skipped ")
+				TEXT("%d cells for the entrance and stairs rule, %d held or barrier cells, %d beside a chasm, %d for ")
+				TEXT("the crossing question"),
+				*Where, Count.Walkable, Count.Asked, Count.Placed, Rules.AfterTheEntranceAndStairs,
+				Rules.AfterHeldAndBarriers, Rules.AfterNoTwoSideBySide, Rules.AfterTheCrossingQuestion,
+				Rules.RefusedNearTheEntranceOrOnTheStairs, Rules.RefusedHeldOrOnABarrier, Rules.RefusedBesideAChasm,
+				Rules.RefusedByTheCrossingQuestion);
+			UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+			AddInfo(Line);
+			++Floors;
+			Asked += Count.Asked;
+			Placed += Count.Placed;
+			UnderHalf += (Count.Placed * 2 < Count.Asked) ? 1 : 0;
+			SkippedForCrossing += Rules.RefusedByTheCrossingQuestion;
+			FloorsWithASkipForCrossing += Rules.RefusedByTheCrossingQuestion > 0 ? 1 : 0;
+		}
+	}
+	const FString Summary = FString::Printf(
+		TEXT("Those in the Dark measurement: %d floors, %d chasms asked for, %d placed; %d floors placed under half of ")
+		TEXT("what was asked for; the crossing question skipped %d cells, on %d of the floors"),
+		Floors, Asked, Placed, UnderHalf, SkippedForCrossing, FloorsWithASkipForCrossing);
+	UE_LOG(LogTemp, Display, TEXT("%s"), *Summary);
+	AddInfo(Summary);
+	TestEqual(TEXT("set-up: twenty floors were measured"), Floors, 20);
+	TestTrue(TEXT("set-up: the twenty floors asked for chasms"), Asked > 0);
+	return true;
+}
+
+// T12. THE PLACE THAT FALLS IS THE PLACE THAT IS MARKED: THE RING, NOT THE CELL. Ruled 2026-10-09. Standing 190 cm,
+// flat, from the middle of a chasm's cell for a beat is recorded as a fall. CONTROLS, IN THE SAME TEST AND BEFORE IT,
+// BOTH ON THE CHASM'S OWN CELL: standing 210 cm from the middle along a diagonal, and standing in the cell's corner
+// 269 cm from the middle, each for two beats, record none.
+//
+// THE ARITHMETIC. A cell is 400 cm, so a point is on the chasm's cell while it is under 200 cm from the middle along
+// each axis. 148.5 cm along both axes is 210.0 cm from the middle. 190 cm along both is 268.7 cm from it. 190 cm
+// along one axis is 190 cm from it. Each stand's distance and cell are asserted as set-up. The nearest another
+// chasm's middle can be is the diagonal neighbour's, 566 cm away, so none of the three places is within another ring.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away, and no creature is placed. The player stands at
+// the three places in turn.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * Stands the player this far along X and Y from the middle of a chasm's cell, and asserts as set-up how far,
+	 * flat, that is from the middle, and that the place is on the chasm's own cell.
+	 */
+	bool StandThePlayerFromTheChasmsMiddle(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+										   const FPossessedPlayer& Player, FIntPoint Chasm, float AlongX, float AlongY,
+										   float WantedCm)
+	{
+		const FVector Middle = Mode->CurrentFloor->WorldOfCell(Chasm);
+		StandThePlayerAt(Player, Middle + FVector(AlongX, AlongY, 0.0f));
+		const FVector At = Player.Character->GetActorLocation();
+		const bool bTheDistance = Test.TestEqual(
+			FString::Printf(TEXT("set-up: the player stands %.0f cm from the middle of the chasm's cell"), WantedCm),
+			static_cast<float>(FVector::Dist2D(At, Middle)), WantedCm, 1.0f);
+		const bool bTheCell = Test.TestTrue(
+			FString::Printf(TEXT("set-up: and %.0f cm from the middle is on the chasm's own cell"), WantedCm),
+			Mode->CurrentFloor->CellOfWorld(At) == Chasm);
+		return bTheDistance && bTheCell;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkRingTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkRingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed)
+		|| !TestEqual(TEXT("set-up: the ring is 200 cm in radius, half of a 400 cm cell"),
+					  Effects::ThoseInTheDarkMarkRadiusCm, FCataclysmFloorGenerator::CellSizeCm / 2.0f))
+	{
+		return false;
+	}
+	const FIntPoint Chasm = Mode->ThoseInTheDarkChasmCellsNow()[0];
+	Beat(Mode, 1);
+	TestEqual(TEXT("at the entrance, after a beat, no fall is recorded"), Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// THE CONTROL: JUST OUTSIDE THE RING, ON THE CHASM'S OWN CELL, TWO BEATS.
+	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 148.5f, 148.5f, 210.0f))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("standing 210 cm from the middle, on the chasm's own cell, for two beats records no fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// THE SECOND CONTROL: THE CORNER OF THE CHASM'S CELL, TWO BEATS.
+	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 190.0f, 190.0f, 268.7f))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("standing in the corner of the chasm's cell, 269 cm from the middle, for two beats records no fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// INSIDE THE RING: NOTHING UNTIL THE BEAT, AND THEN ONE FALL.
+	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 190.0f, 0.0f, 190.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("standing 190 cm from the middle records nothing before the beat"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("standing 190 cm from the middle for a beat is recorded as one fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
