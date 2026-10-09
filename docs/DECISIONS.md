@@ -4,14 +4,16 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — Rule of Chaos draws one of three rule changes for each floor, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer in four commits: the first with the code, seven
+**Built and run.** The writing session wrote this layer in four commits: the first with the code, seven
 Unreal tests, one change to a Python check and this entry; the second, after the rulings numbered 7 to 14
 below, with the clearing of cooldowns on a kill, two more Unreal tests and this entry brought up to those
 rulings; the third, after rulings 15 to 19, with this entry alone; the fourth, after rulings 20 and 21, with
 set-up assertions in three of the tests and this entry. It compiled nothing and ran no Unreal test.
 It ran the Python tests in `tools/tests` and the lint before each commit, the conflict check before the three
-that changed C++, and nothing else. Every statement below about what the engine does is read
-from the code. No outcome of a build or of an Unreal run is recorded here.
+that changed C++, and nothing else. The registering session then built and ran the layer in one
+window at 17d7c14a, and every figure came out as registered; the Run section at the end of this entry has
+each printed line. The coordinating session ruled and ran nothing. Statements below about what the engine
+does are read from the code unless the Run section gives a printed line for them.
 
 **Said first: the row's sentence is wider than what is built.** The row speaks of mechanics and systems
 "randomized or altered". What is built is three named rule changes, one drawn for each floor. The owner approved
@@ -475,7 +477,7 @@ new field, which does not end in `Percent`. The field is added to its `NOT_PERCE
 
 ### The guard proofs proposed
 
-None was run. Each line is counted once in its file.
+Proofs 1, 4 and 3 were run in the window; see Run. Each line is counted once in its file.
 
 1. `Dungeon/CataclysmDungeonModifierEffects.cpp`, `Effects.ManaCostAsHealthAtAnyManaValue = 1.0f;` changed to
    `= 0.0f;`. T2 should fail three assertions: no mana under the change; 5% of health under the change; the
@@ -528,6 +530,61 @@ proof.
 
 Nothing. The row is in `game/Data/DungeonModifiers.csv` already and this layer adds no stat, condition or
 scale. No dry run of the generator was made because no data row is written.
+
+### Run
+
+One window, begun on 2026-10-08 and ended after midnight, at `feat/rule-of-chaos-2` 17d7c14a, on development
+b084dd2d. One attempt; nothing was corrected during it. Every build, run and measurement here was made by the
+registering session. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 34 actions, 31 files compiled` |
+| Whole Unreal suite | `3435 tests performed, 3435 succeeded, 0 failed`; `Declared: 3435 tests in the tree at 17d7c14a; 3435 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5890 passed, 8 skipped in 329.33s`; JUnit `tests="5898" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,435 Unreal tests (3,426 on the merged Angelic Wardens tree, plus the nine of this
+layer by name) and a JUnit count of 5,898. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled. The three tests that grant the test
+player a skill passed, so a use goes off in that test world and the floor modifier that gives the skill a second
+use reaches its count of uses. The set-up assertions of ruling 20 passed in all three tests that place creatures:
+each stood at least a metre from the player and from the others, on a floor cell. No existing test failed, so none
+failed because the draw now comes before Unstable Dimensions' or because Reality Twister may add this row.
+
+**How the layer was written and checked.** A second session wrote all four commits under a brief carrying the
+rulings. Before the window the registering session read the game code of every commit in the source files apart
+from comments, the assertion and action lines of all nine tests, every line of the fourth commit's test change
+apart from comments, and the code that decides who a death names as its killer. Not read by the registering
+session: the headers, the bodies of the two helpers that grant and use a skill, and this entry beyond the parts
+it changed.
+
+**Guard proofs, at 17d7c14a, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run. They are proofs 1, 4 and 3 of the list above.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| 1 | `CataclysmDungeonModifierEffects.cpp`: `Effects.ManaCostAsHealthAtAnyManaValue = 1.0f;` becomes `= 0.0f;` | `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosASkillPaidInHealthTakesAShareOfCurrentHealthAndNoMana` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| 4 | `CataclysmDungeonGameMode.cpp`: `RefillSkillCharges(EveryCooldown);` becomes `RefillSkillCharges(FGameplayTagContainer());` | `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAKillByThePlayerClearsEveryCooldownAndReturnsSpentUses` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| 3 | `CataclysmDungeonGameMode.cpp`: `<` becomes `<=` on the 60 seconds | `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheStairsOpenAfterSixtySecondsWhateverIsSlain` | 1 performed, 1 failed, 5 failed assertions | 1 performed, 1 succeeded |
+
+Proof 1, as printed: "Expected 'under the change the use takes no mana' to be 0.000000, but it was 20.000000";
+"Expected 'and takes 5% of the health held, over what the control use took' to be 25.500000, but it was
+0.000000"; "Expected 'which is the share the change alone takes' to be 0.000000, but it was 0.050000".
+
+Proof 4, as printed: "Expected 'a kill by the player leaves no slot cooling down' to be 0, but it was 1.";
+"Expected 'and the skill holds every use again' to be 2, but it was 1."
+
+Proof 3, as printed: "Expected 'at 60 seconds the change no longer seals the stairs' to be false."; "Expected
+'and nothing seals them' to be 0, but it was 1."; "Expected 'the panel says they are open' to be "rule of chaos:
+the stairs are open", but it was "rule of chaos: the stairs open in 0 s"."; "Expected 'at 60 seconds the stairs
+lead down' to be 2, but it was 1."; "Expected 'and the next floor's clock starts again from nought' to be
+0.000000, but it was 60.000000".
+
+Proof 2 was not run: the `+=` keeps its test and has no proof (ruling 18). No proof was run for the draw, for the
+kill's test of who killed, or for the last floor.
 
 ---
 
