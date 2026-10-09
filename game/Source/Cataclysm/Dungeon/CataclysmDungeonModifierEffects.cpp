@@ -118,6 +118,7 @@ const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Cele
 const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
 const TCHAR* UCataclysmDungeonModifierEffects::AngelicWardensKey = TEXT("Celestial_Angelic_Wardens");
 const TCHAR* UCataclysmDungeonModifierEffects::ThoseInTheDarkKey = TEXT("Void_Those_in_the_Dark");
+const TCHAR* UCataclysmDungeonModifierEffects::FragmentedRealityKey = TEXT("Chaos_Fragmented_Reality");
 const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial_Heaven_s_Quake");
 const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
 const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");
@@ -830,6 +831,11 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// THOSE IN THE DARK, BUILT 2026-10-09 IN TWO LAYERS: chasms a player falls into, and the dark floor a fall leads
 		// to, ten floors deeper or the final floor. See the key and `ThoseInTheDarkFloorsDeeper`. Issues #1820, #41.
 		|| RowKey == FName(ThoseInTheDarkKey)
+		// FRAGMENTED REALITY, BUILT 2026-10-09 ON THE FLOOR'S SECTIONS: on a Halls floor in sections one section that
+		// does not hold the entrance is Fragmented, and entering it draws one of four pairs of stat changes that
+		// holds until the player leaves. On a floor with no sections the row does nothing; see the key. Issues #1820
+		// and #41.
+		|| RowKey == FName(FragmentedRealityKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -1073,6 +1079,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(FCataclysmDungeonFloorRules::RealityTwisterKey),
 		FName(FCataclysmDungeonFloorRules::RuleOfChaosKey),
 		FName(ThoseInTheDarkKey),
+		FName(FragmentedRealityKey),
 	};
 }
 
@@ -1746,6 +1753,32 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsFervourPerSecondStat,
 								  Effects.ChorusRegenLessPercent);
 
+	// AND FRAGMENTED REALITY'S PAIR, WHILE THE PLAYER STANDS IN THE FRAGMENTED SECTION, each from its own field. Issues
+	// #1820 and #41. Damage as Void Parasite's is taken, a More and a Less on attack damage and on spell damage;
+	// armour and each of the eight resistances a Less, a multiplier of the figure and not points off it, so nought
+	// stays nought and a negative resistance loses half its penalty; maximum health a More and a Less; movement
+	// speed a More; and a flat addition to `cooldown_recovery`, which is nought for every character until something
+	// writes it, taken from `UCataclysmSkillSlots::CooldownRecoveryStat`, the constant the one reader asks by.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.FragmentedDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.FragmentedDamageMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackDamageStat, Effects.FragmentedDamageLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsSpellDamageStat, Effects.FragmentedDamageLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsArmourStat, Effects.FragmentedDefencesLessPercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.FragmentedDefencesLessPercent);
+	}
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMaxHealthStat),
+										Effects.FragmentedMaxHealthMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat, Effects.FragmentedMaxHealthLessPercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.FragmentedSpeedMorePercent);
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmSkillSlots::CooldownRecoveryStat,
+								  Effects.FragmentedCooldownRecoveryMorePercent);
+
 	// AND MARCH OF PROGRESS, WHICH IS THE ONLY ENTRY IN THIS FUNCTION THAT RAISES A STAT
 	// THE PLAYER EARNED RATHER THAN LOWERING ONE THE FLOOR TOOK. Issues #1820 and #41.
 	// The Nihil's Embrace's reward is the nearest thing to it and is still a floor giving
@@ -2148,6 +2181,31 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("damage taken %.0f%% more, beyond the demonic guide's chain"),
 									Effects.GuideDamageTakenMorePercent));
+	}
+	// AND FRAGMENTED REALITY'S PAIR IN FORCE, one clause for each pair. The second pair's lock is said by the clause on
+	// `SkillsLockedValue` above. Issues #1820 and #41.
+	if (Effects.FragmentedDamageMorePercent > 0.0f || Effects.FragmentedDefencesLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and armour and every resistance %.0f%% less in a fragmented "
+										 "section"),
+									Effects.FragmentedDamageMorePercent, Effects.FragmentedDefencesLessPercent));
+	}
+	if (Effects.FragmentedMaxHealthMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum health %.0f%% more in a fragmented section"),
+									Effects.FragmentedMaxHealthMorePercent));
+	}
+	if (Effects.FragmentedSpeedMorePercent > 0.0f || Effects.FragmentedDamageLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% more and damage %.0f%% less in a fragmented section"),
+									Effects.FragmentedSpeedMorePercent, Effects.FragmentedDamageLessPercent));
+	}
+	if (Effects.FragmentedCooldownRecoveryMorePercent > 0.0f || Effects.FragmentedMaxHealthLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cooldowns recover %.0f%% faster and maximum health %.0f%% less in a fragmented "
+										 "section"),
+									Effects.FragmentedCooldownRecoveryMorePercent,
+									Effects.FragmentedMaxHealthLessPercent));
 	}
 	if (Effects.ArmourMorePercent > 0.0f)
 	{
@@ -2844,6 +2902,77 @@ bool UCataclysmDungeonModifierEffects::AntiMagicZoneIsDue(float SecondsSinceLast
 float UCataclysmDungeonModifierEffects::SpellsLockedWhile(bool bInsideAZone)
 {
 	return bInsideAZone ? AntiMagicZonesLockValue : 0.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::FragmentedRealitySectionFor(int32 SectionCount, int32 FloorSeed)
+{
+	// A FLOOR WITH NO SECTIONS HAS NO FRAGMENTED SECTION, and the row does nothing there.
+	if (SectionCount < 2)
+	{
+		return INDEX_NONE;
+	}
+
+	// NEVER SECTION 0, WHICH HOLDS THE ENTRANCE. With two sections that leaves section 1, the stairs'. With three it
+	// is section 1 or 2 by the floor's seed, mixed with a salt of its own so the answer is not the first figure of
+	// any other draw made from that seed. `SeedForFloor` never answers below nought, so the remainder does not.
+	const int32 NotTheEntrances = SectionCount - 1;
+	return 1 + FCataclysmFloorGenerator::SeedForFloor(FloorSeed, FragmentedRealitySectionSalt) % NotTheEntrances;
+}
+
+int32 UCataclysmDungeonModifierEffects::FragmentedRealityPairFor(int32 FloorSeed, int32 Entry)
+{
+	// THE FLOOR'S SEED, THE PAIR'S SALT, AND THEN THE ENTRY, so each entry on a floor has a figure of its own and the
+	// same dungeon seed, floor and entry always give the same pair.
+	const int32 OfTheFloor = FCataclysmFloorGenerator::SeedForFloor(FloorSeed, FragmentedRealityPairSalt);
+	return FCataclysmFloorGenerator::SeedForFloor(OfTheFloor, FMath::Max(Entry, 0)) % FragmentedRealityPairs;
+}
+
+void UCataclysmDungeonModifierEffects::WriteFragmentedRealityEffects(FCataclysmPlayerFloorEffects& Into, int32 Pair)
+{
+	// EVERY FIELD IS WRITTEN EVERY TIME, nought for each the pair does not name, so a pair that ended leaves nothing.
+	Into.FragmentedDamageMorePercent =
+		Pair == FragmentedRealityPowerForDefences ? FragmentedRealityDamageMorePercent : 0.0f;
+	Into.FragmentedDefencesLessPercent =
+		Pair == FragmentedRealityPowerForDefences ? FragmentedRealityDefencesLessPercent : 0.0f;
+	Into.FragmentedMaxHealthMorePercent =
+		Pair == FragmentedRealityHealthForSkills ? FragmentedRealityMaxHealthMorePercent : 0.0f;
+	Into.FragmentedSpeedMorePercent = Pair == FragmentedRealitySpeedForDamage ? FragmentedRealitySpeedMorePercent : 0.0f;
+	Into.FragmentedDamageLessPercent =
+		Pair == FragmentedRealitySpeedForDamage ? FragmentedRealityDamageLessPercent : 0.0f;
+	Into.FragmentedCooldownRecoveryMorePercent =
+		Pair == FragmentedRealityCooldownsForHealth ? FragmentedRealityCooldownRecoveryMorePercent : 0.0f;
+	Into.FragmentedMaxHealthLessPercent =
+		Pair == FragmentedRealityCooldownsForHealth ? FragmentedRealityMaxHealthLessPercent : 0.0f;
+}
+
+float UCataclysmDungeonModifierEffects::FragmentedRealitySkillsLockedFor(int32 Pair)
+{
+	return Pair == FragmentedRealityHealthForSkills ? FragmentedRealityLockValue : 0.0f;
+}
+
+FString UCataclysmDungeonModifierEffects::FragmentedRealityPanelLine(int32 FragmentedSection, int32 Pair)
+{
+	if (FragmentedSection == INDEX_NONE)
+	{
+		return FString(TEXT("fragmented reality: this floor has no fragmented section"));
+	}
+	switch (Pair)
+	{
+	case FragmentedRealityPowerForDefences:
+		return FString::Printf(TEXT("fragmented reality: inside, %.0f%% more damage, armour and every resistance %.0f%% less"),
+							   FragmentedRealityDamageMorePercent, FragmentedRealityDefencesLessPercent);
+	case FragmentedRealityHealthForSkills:
+		return FString::Printf(TEXT("fragmented reality: inside, maximum health %.0f%% more, skills locked, basic attack only"),
+							   FragmentedRealityMaxHealthMorePercent);
+	case FragmentedRealitySpeedForDamage:
+		return FString::Printf(TEXT("fragmented reality: inside, %.0f%% more movement speed, %.0f%% less damage"),
+							   FragmentedRealitySpeedMorePercent, FragmentedRealityDamageLessPercent);
+	case FragmentedRealityCooldownsForHealth:
+		return FString::Printf(TEXT("fragmented reality: inside, cooldowns recover %.0f%% faster, %.0f%% less maximum health"),
+							   FragmentedRealityCooldownRecoveryMorePercent, FragmentedRealityMaxHealthLessPercent);
+	default:
+		return FString(TEXT("fragmented reality: outside the fragmented section, nothing in force"));
+	}
 }
 
 bool UCataclysmDungeonModifierEffects::DivineResurgenceIsDue(int32 Fallen, int32 Placed)
