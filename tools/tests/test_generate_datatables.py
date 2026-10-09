@@ -5335,3 +5335,164 @@ class TestAChargesDamageByTheShareOfItsRangeMoved:
         assert len(problems) == 1
         assert "how far a charge had gone" in problems[0]
         assert "crit_chance" in problems[0]
+
+
+class TestAllDotsOnTheFirstHitAndTheStunNearTheDying:
+    """One status name that is each of the five damage over time ailments, and
+    a stun on every enemy near a dying, afflicted enemy with a chance and a
+    duration on one row. Ruled 2026-10-08, for "Your first hit against each
+    enemy applies all your active DoTs instantly" and "Chronomancer's Time-Lock
+    (6-Piece Bonus)". Both sentences are the real ones.
+
+    THE SET SENTENCE IS TYPED GENERIC HERE, as the Archon's Aegis sentence is in
+    `TestDamageImmunityAndTheShieldRecharge`: a set is written whole or not at
+    all, and this workbook holds one of its rows."""
+
+    DOTS_WORDS = "Your first hit against each enemy applies all your active DoTs instantly"
+    DOTS = gen.row_name("Positive", DOTS_WORDS[:48])
+    LOCK_WORDS = ("Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while "
+                  "affected by one of your debuffs, there is a 25% chance for a "
+                  "'Time-Lock' to occur. This freezes all nearby enemies for 2 seconds")
+    LOCK = gen.row_name("Positive", LOCK_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [DOTS_WORDS, "Generic", 2, "Scope.FirstHit, Keyword.DoT.Generic", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [LOCK_WORDS, "Generic", 7, "Type.Debuff, Keyword.CC", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "status_layer.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def dots(self, tmp_path, changes):
+        values = {"Enchantment": self.DOTS, "Effect": self.DOTS_WORDS,
+                  "Action": "apply_status", "Action Event": "first_hit_dealt",
+                  "Ailment": gen.ALL_DOTS_STATUS, "Value Low": 100,
+                  "Trigger Cooldown": 0}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def lock(self, tmp_path, changes):
+        values = {"Enchantment": self.LOCK, "Effect": self.LOCK_WORDS,
+                  "Action": "stun_near_the_dying", "Action Event": "afflicted_death",
+                  "Value Low": 25, "Stack Seconds": 2}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    # ---- the first-hit row
+
+    def test_the_first_hit_row_is_carried_through_with_no_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.dots(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["Ailment"],
+                out[0]["TriggerCooldown"], out[0]["StackSeconds"]) == (
+            "apply_status", "first_hit_dealt", 100.0, 100.0, "", "All DoTs", 0.0, 0.0)
+
+    def test_without_its_stated_nought_the_first_hit_row_would_wait_a_quarter_second(
+            self, tmp_path):
+        """Why the row states a Trigger Cooldown of 0: the sentence says "against
+        each enemy", and one swing first-strikes several."""
+        out = gen.enchantment_effects(self.dots(tmp_path, {"Trigger Cooldown": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_all_dots_is_refused_on_the_seconds_action(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which apply_status_seconds cannot"):
+            gen.enchantment_effects(self.dots(tmp_path, {
+                "Action": "apply_status_seconds", "Value Low": 2}))
+
+    @pytest.mark.parametrize("action, event", [
+        ("apply_status_to_self", "hit_taken"),
+        ("apply_status_to_self_seconds", "hit_taken"),
+        ("apply_status_to_self_sized", "dot_applied"),
+    ])
+    def test_all_dots_is_refused_on_every_action_that_lays_a_status_on_the_wearer(
+            self, tmp_path, action, event):
+        with pytest.raises(gen.DataError, match=f"which {action} cannot"):
+            gen.enchantment_effects(self.dots(tmp_path, {
+                "Action": action, "Action Event": event, "Value Low": 2,
+                "Trigger Cooldown": None}))
+
+    def test_all_dots_is_not_an_ailment_another_action_may_name(self, tmp_path):
+        with pytest.raises(gen.DataError, match="is not one the game has"):
+            gen.enchantment_effects(self.dots(tmp_path, {
+                "Action": "dot_remaining_target", "Action Event": "hit_dealt",
+                "Value Low": 20, "Trigger Cooldown": None}))
+
+    def test_the_five_are_the_ailments_and_void_splinter_is_not_one(self):
+        assert gen.AILMENTS == ("Bleed", "Poison", "Disease", "Necrosis", "Burn")
+        assert "Void Splinter" not in gen.AILMENTS
+        assert gen.ALL_DOTS_STATUS not in gen.APPLY_STATUSES
+
+    # ---- the Time-Lock row
+
+    def test_the_time_lock_row_is_carried_through_with_its_chance_and_its_seconds(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.lock(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["StackSeconds"],
+                out[0]["StackSecondsHigh"], out[0]["TriggerCooldown"],
+                out[0]["Ailment"]) == (
+            "stun_near_the_dying", "afflicted_death", 25.0, 25.0, "", 2.0, 0.0, 0.0, "")
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt", "nearby_death", None])
+    def test_the_stun_is_refused_on_any_event_but_the_afflicted_death(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="whoever afflicted the dead enemy"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Action Event": event}))
+
+    def test_the_stun_is_refused_without_its_seconds(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Stack Seconds"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Stack Seconds": None}))
+
+    def test_the_stun_is_refused_without_its_chance(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Value Low is empty"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Value Low": None}))
+
+    @pytest.mark.parametrize("chance", [0, -25, 120])
+    def test_a_chance_outside_nought_to_a_hundred_is_refused(self, tmp_path, chance):
+        with pytest.raises(gen.DataError, match="A chance is above 0 and up to 100"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Value Low": chance}))
+
+    def test_a_chance_of_a_hundred_is_allowed(self, tmp_path):
+        out = gen.enchantment_effects(self.lock(tmp_path, {"Value Low": 100}))
+        assert out[0]["ValueLow"] == 100.0
+
+    @pytest.mark.parametrize("seconds", [0, -2, 12])
+    def test_seconds_outside_what_a_status_may_last_are_refused(self, tmp_path, seconds):
+        with pytest.raises(gen.DataError, match="A stun lasts above 0 and up to 10"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Stack Seconds": seconds}))
+
+    def test_the_longest_a_stun_may_last_is_the_status_bound_and_not_the_stack_bound(
+            self, tmp_path):
+        assert gen.MAX_STATUS_SECONDS == 10.0 < gen.MAX_STACK_SECONDS
+        out = gen.enchantment_effects(self.lock(tmp_path, {"Stack Seconds": 10}))
+        assert out[0]["StackSeconds"] == 10.0
+
+    @pytest.mark.parametrize("column, written", [
+        ("Fraction Of", "maximum"), ("Value Kind", "more"), ("Scale", "own_stacks")])
+    def test_the_stun_with_a_column_it_does_not_read_is_refused(
+            self, tmp_path, column, written):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.lock(tmp_path, {column: written}))
+
+    def test_the_stun_naming_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="so it would be dropped"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Ailment": "Poison"}))
+
+    def test_the_stun_hangs_on_an_event_the_game_fires_that_no_hit_fires(self):
+        assert gen.STUN_NEAR_THE_DYING_EVENTS == ("afflicted_death",)
+        assert "afflicted_death" in gen.ACTION_ONLY_EVENTS
+        assert "afflicted_death" not in gen.HIT_FIRED_EVENTS
+        assert "afflicted_death" in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK
+
+    def test_a_stated_trigger_cooldown_is_kept_on_the_stun(self, tmp_path):
+        out = gen.enchantment_effects(self.lock(tmp_path, {"Trigger Cooldown": 10}))
+        assert out[0]["TriggerCooldown"] == 10.0
