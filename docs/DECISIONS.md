@@ -6,8 +6,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
 `game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
-`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
-`docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts
+and one phrase a check accepts), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
 ### SAID FIRST: THE ROW DOES NOTHING IN PLAY TODAY, AND IT HAS NO CAP OF ITS OWN
 
@@ -25,6 +26,25 @@ Decisions made outside the Google Drive documents, newest first.
   the row.
 - **The test puts the points in a node in no tree without asking whether they were earned.** It shows what the
   row does at each count; it does not show a character reaching that count.
+
+### SAID FIRST: A CHECK NOW ACCEPTS ONE PHRASE IT DID NOT
+
+**The check that every Scale Offset appears in its sentence did not find 230 in this one**, and it now accepts
+the phrase "above the max" for an offset of 230 and no other. The check is
+`tools/tests/test_enchantment_effects_match_the_row_text.py::test_every_scale_offset_appears_in_the_words`. With
+the row authored and the check as it was, the Python suite in a copy printed:
+
+> Negative_Each_class_point_above_the_max_reduces_your_max#1: 230 against 'Each class point above the max reduces
+> your max resistances by 2%-5%'
+
+**What changed, ruled 2026-10-09 by the coordinating session: a change to what a check accepts.** One line in
+`WORDS_THAT_STATE_AN_OFFSET`, `230.0: ("above the max",)`, beside the one phrase it held. The owner's sentence is
+not reworded. The file's control test, that the offset check names a row whose words do not state its offset,
+is unchanged and passes. **If the budget moves, that line and the row's Scale Offset move with it; nothing ties
+the two to the constant in the game but this sentence.**
+
+**The row was pushed once before this was found.** The session that authored it pushed the layer before it had
+read the result of its own rehearsal; the failing head was never opened as a pull request.
 
 ### WHERE 230 IS READ FROM
 
