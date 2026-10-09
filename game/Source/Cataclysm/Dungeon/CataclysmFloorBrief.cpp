@@ -77,6 +77,14 @@ ECataclysmFloorLayout FCataclysmDungeonFloorRules::LayoutFor(
 bool FCataclysmDungeonFloorRules::BossAtTheExit(
 	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber)
 {
+	// NO GATEKEEPER ON THE DARK FLOOR, WHATEVER ITS NUMBER AND WHATEVER THE SUB-TYPE. Issues #1820 and #41, ruled
+	// 2026-10-09. The dark floor carries the number of the floor its stairs lead to, which may be the dungeon's
+	// final floor; the boss stands on that floor and not on this one. The field is false for every other floor.
+	if (Dungeon.bTheDarkFloor)
+	{
+		return false;
+	}
+
 	if (Dungeon.SubType == ECataclysmDungeonSubType::Elite)
 	{
 		return true;
@@ -86,6 +94,11 @@ bool FCataclysmDungeonFloorRules::BossAtTheExit(
 	// what `ACataclysmDungeonGameMode::IsOnTheLastFloor` says about the same
 	// case: no floor count means no bottom, and descending goes on for ever.
 	return Dungeon.TotalFloors > 1 && FloorNumber >= Dungeon.TotalFloors;
+}
+
+int32 FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(int32 DungeonSeed)
+{
+	return FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, DarkFloorSalt);
 }
 
 bool FCataclysmDungeonFloorRules::OneWave(

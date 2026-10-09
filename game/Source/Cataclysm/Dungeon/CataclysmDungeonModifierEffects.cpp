@@ -827,6 +827,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// now". The row's sentence is wider than that; see `FCataclysmDungeonFloorRules::RuleOfChaosKey`. Issues
 		// #1820 and #41.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::RuleOfChaosKey)
+		// THOSE IN THE DARK, BUILT 2026-10-09 IN TWO LAYERS: chasms a player falls into, and the dark floor a fall leads
+		// to, ten floors deeper or the final floor. See the key and `ThoseInTheDarkFloorsDeeper`. Issues #1820, #41.
+		|| RowKey == FName(ThoseInTheDarkKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -1069,6 +1072,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 		FName(FCataclysmDungeonFloorRules::RealityTwisterKey),
 		FName(FCataclysmDungeonFloorRules::RuleOfChaosKey),
+		FName(ThoseInTheDarkKey),
 	};
 }
 
@@ -2648,6 +2652,23 @@ int32 UCataclysmDungeonModifierEffects::VolatileEvolutionRungAfter(int32 RarityS
 	const int32 From = FMath::Max(0, RarityStep);
 	return FMath::Min(From + VolatileEvolutionRungsGained,
 					  VolatileEvolutionHighestRung);
+}
+
+int32 UCataclysmDungeonModifierEffects::ThoseInTheDarkDestinationFloor(int32 FellFromFloor, int32 FinalFloor)
+{
+	const int32 From = FMath::Max(1, FellFromFloor);
+	const int32 Deeper = From + ThoseInTheDarkFloorsDeeper;
+
+	// THE FINAL FLOOR WHEN IT IS NEARER, and only when it is deeper than the floor fallen from: nought means no
+	// dungeon with a bottom is bound, and a fall never leads up.
+	return FinalFloor > From ? FMath::Min(Deeper, FinalFloor) : Deeper;
+}
+
+int32 UCataclysmDungeonModifierEffects::ThoseInTheDarkRungOnTheDarkFloor(int32 DrawnRung)
+{
+	// RAISED, HELD TO THE CEILING, AND NEVER LOWERED: a creature drawn at the ceiling or above keeps its rung.
+	const int32 Drawn = FMath::Max(0, DrawnRung);
+	return FMath::Max(Drawn, FMath::Min(Drawn + ThoseInTheDarkRungsRaised, ThoseInTheDarkHighestRung));
 }
 
 bool UCataclysmDungeonModifierEffects::RoyalGuardIsWounded(float Health,

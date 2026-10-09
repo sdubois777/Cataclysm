@@ -2,6 +2,540 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — Those in the Dark, layer 2 of 2: a fall leads to a dark floor of its own, whose stairs lead ten floors deeper or to the final floor, and the row is Built
+
+**Not built and not run.** The writing session wrote this layer in one commit on top of layer 1's: the code, ten
+new Unreal tests, changes to four of layer 1's tests, and this entry. It compiled nothing and ran no Unreal
+test. It ran the Python tests in `tools/tests`, the lint and the conflict check before the commit, and nothing
+else. Every statement below about what the engine does is read from the code. No count, no share and no
+outcome of a test is known.
+
+**Said first: the row is Built by this layer, and that one change is not behind the flag.**
+`UCataclysmDungeonModifierEffects::BuiltStateOf` answers Built for `Void_Those_in_the_Dark` and the row is in
+`KeysWithARule`, as ruled. Everything else this layer adds is behind one flag that only a fall sets. This is
+not: `EnterEmpireDungeon` fills Reality Twister's pool with every row that is not NotBuilt, so that pool now
+holds one more row in every dungeon entered from the empire map, and a floor carrying Reality Twister may draw
+a different row than it drew before this layer, and may draw this one. Four rows of the 117 still answer
+NotBuilt (a script's count from `game/Data/DungeonModifiers.csv` and the arms of `BuiltStateOf`). The same
+happened each time an earlier row became Built.
+
+**Said first: "dark" is built, on a judgement of the writing session that needs a ruling.** The brief asked
+for the smallest existing lever that makes the floor read as dark, or nothing. One exists: the vision system
+Fog of War and The Blackest Shadow use. On the dark floor the player's sight is 10 metres, Fog of War's
+figure. The camera is darkened and every creature farther than 10 metres from the player is hidden; its
+telegraphs and projectiles are still drawn. No creature is made stronger by it. This changes play and not
+only how the floor looks. The reading not taken is to build nothing.
+
+**Said first: Blood Debt has fewer floors to be paid on after a fall.** The debt is sized from the dungeon's
+whole depth: `BloodDebtOwed` is `BloodDebtOwedFor(ChooseTotalFloors())`, which is 30 kills a floor, at most
+300. A dungeon of 20 floors owes 300. A player who falls from floor 3 arrives on floor 13: floors 4 to 12,
+nine numbered floors, are passed over. The dark floor is one more floor, and a kill on it is counted when the
+dark floor carries the row (`NoteDeathForBloodDebt`). So the 300 are paid on twelve floors' creatures and the
+dark floor's, where a player who walked paid them on twenty floors'. The brief says nine fewer floors; the
+numbered floors are nine fewer and the floors with creatures are eight fewer. Listed for the owner; not
+handled.
+
+**Said first: the dark floor counts as a floor for everything carried between floors.** READ means the
+writing session read the code that does it; REPORTED means the brief said so and the writing session did not
+read that code.
+
+| What is carried | What the dark floor does to it | |
+|---|---|---|
+| Echoes of the Past | The dead of the floor fallen from are handed to the dark floor, and the dark floor's dead to the floor arrived on (`GoToFloor`, `EchoesFromLastFloor`) | READ |
+| Pestilent Empowerment's beacons left standing | Counted at the fall and again when the dark floor is left (`GoToFloor` calls `CountThePlagueBeaconsLeftStanding`; its body was not read) | READ, the call only |
+| March of Progress | The last Commander is forgotten and one more is chosen on the dark floor (`PopulateFloor`). Its damage reads the floor number, so it reads the destination's depth | READ for the Commander; REPORTED for the damage |
+| The Starvation Curse, Chaos Touched | One more stack each as the dark floor begins, if it carries the row, and one more on arrival (`GoToFloor`) | READ |
+| Starvation and Dehydration percent | Read the floor number, so the destination's depth | REPORTED |
+| Pact of Temptation | The pact taken on the floor before becomes this floor's buff (`PlaceThePactAltar`). A player who fell before reaching that floor's altar took none, so the dark floor has no buff; the dark floor has an altar of its own | READ |
+| Forced Tithes | An altar placed and neither paid nor refused owes the angels on the next floor (`PlaceTheTitheAltar`). A fall leaves the floor's altar unpaid, so the angels come on the dark floor. The dark floor has an altar of its own | READ |
+| Blood Debt | What is paid is kept; see above | READ |
+| Unstable Dimensions, Reality Twister, Rule of Chaos, Scarcity | Drawn per floor from the floor's seed. The dark floor draws its own, because its seed carries the salt | READ |
+| Counts that last the dungeon: Wasting Sickness, Infernal Beacons, Abyssal Rifts, Raw Sewage, the Commanders killed, Blood Price | Unchanged by a floor change (`ApplyFloorRulesToPlayer`, `LeaveEmpireDungeon`) | READ |
+| The Edict of Silence | Its clock and its silence continue across the fall and the arrival | READ |
+| Every per-floor reset | Runs at the fall and again on arrival: `ApplyFloorRulesToPlayer` is called by both floor changes | READ |
+| The Plaguebearer, Morale Break, Famished Beasts | Start again on the dark floor, whose number differs from the floor fallen from, and again on arrival; see ruling 7 | READ |
+
+What a player would call wrong in that table, listed and not fixed: **falling into a chasm counts as refusing
+the floor's tithe**, and the angels come on the dark floor. And Blood Debt, above.
+
+**Said first: what a save made on the dark floor does.** `GoToFloor` tells the save writer the dungeon's name
+and the floor number (`Writer->SetFloor(DungeonName, FloorNumber)`), and nothing of the flag. So a save made
+on the dark floor records the destination's number and cannot tell the dark floor from the destination. And
+`UCataclysmSaveWriter::SetFloor` returns at once when the name and number are what it holds, so arriving on
+the destination from the dark floor notes no change of floor and is not one of the moments the game saves
+itself. Reported by the brief and not read: loading a save is not built (issue #753); a later layer records
+the flag.
+
+**Said first: dying on the dark floor.** The player's respawn asks the dungeon game mode to place them at the
+entrance of the floor it stands on (`Character/CataclysmPlayerCharacter.cpp` line 1739; that line and its
+comment were read, the rest of the respawn was not). Nothing in this layer runs on a death, so the flag is
+unchanged and the player stands back up at the dark floor's entrance. Reported by the brief: the layer that
+makes dying end the dungeon is on hold for the owner.
+
+**Said first: the days.** No walk time is charged for the fall, for the floors passed over, for the dark
+floor, or for arriving. A day is charged in two places, `GoDownOneFloor` and `EnterEmpireDungeon`, through
+`SpendFloorTimeInTheEmpire`; a direct `GoToFloor` charges nothing, and the fall and the dark floor's stairs
+are both direct. That is 10 days saved at the starting rate of one day a floor, and less for a player who has
+bought the walk rate down. Neither `Floors` nor `WalkDays` on the dungeon is changed. This is the
+coordinating session's reading of the owner's "10 days faster".
+
+**Said first, for the owner's play-check.** The dark floor's stairs do nothing until every creature the floor
+placed is dead, and nothing on the stairs says why: the floor panel's line is the only sign. With sight at 10
+metres the last creature can be hard to find.
+
+### The owner's words
+
+`game/Data/DungeonModifiers.csv`, `Void_Those_in_the_Dark`, danger 20: "The dungeon has chasms spread
+throughout leading to the abyss. If the player falls into them, they fall down into the void realm where
+dangerous enemeis lurk. The player will have to fight their way out in order to get back to the main dungeon
+and surviving will bring great rewards."
+
+The owner, 2026-10-08, first: "This one is more complicated. In my head it's like the player falls through the
+void and winds up in a dark place full of more powerful enemies for a single floor. Getting through that floor
+should get them 10 floors deeper and 10 days faster, or to the final floor of the dungeon. Whichever applies."
+
+The owner, 2026-10-08, on the proposal: "I like the proposal for those in the dark, except I want it to
+basically create a bunch of chasms that the player can fall into. The point is that players who just spam their
+movement button to blaze through the floor are more likely to fall in, and be in danger. Also, the dungeon
+modifiers should still apply."
+
+### The rulings
+
+Each of these is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08 and
+2026-10-09, resting on the owner's words above. Every number is a judged number for the owner's play-check.
+
+1. **The flag.** One flag on the game mode, "on the dark floor", with the floor the player fell from kept
+   beside it. Set only by a fall; cleared when the dark floor's stairs are taken and when the dungeon is left.
+   The rule of this layer: every new behaviour is behind that flag, so a floor built without it is what it
+   was.
+2. **The fall** is `GoToFloor(destination)` with the flag set. The destination is the floor fallen from plus
+   10, or the dungeon's final floor when that is nearer. No walk time, and not counted in `FloorsDescended`.
+3. **The floor number on the dark floor is the destination's**, so every rule that scales by depth reads what
+   it will read on arrival and creatures are as strong as on arrival.
+4. **The dark floor is its own floor, not a copy of the destination.** A floor is fixed by the dungeon's seed
+   and the floor number, so while the flag is set a fixed salt is the one new input.
+5. **The dungeon's modifiers apply on the dark floor**: its rows are drawn for it as for any floor and every
+   per-floor rule runs on it. No chasms on it.
+6. **While the flag is set these answer no**: "is this the last floor", the Gatekeeper at the exit, and the
+   final-boss feed. So when the destination is the final floor, the dark floor has no Gatekeeper and its
+   stairs lead to the real final floor and do not clear the dungeon.
+7. **Three rules tell a new floor by its number**: the Plaguebearer, Morale Break and Famished Beasts.
+   Arriving on the destination from the dark floor must count as a new floor for each.
+8. **The dark floor's stairs are sealed until every creature the floor placed is slain**, and the dungeon's
+   own sealing rows hold as well. Counted as Lightforged Walls counts the floor's own standing creatures; a
+   creature a rule raised does not hold them. The reasons given: the row says the player "will have to fight
+   their way out"; the proposal the owner said they liked had this seal, and their two changes to it were the
+   chasms and the modifiers; and without it, falling in would be a way to skip ten floors by running to the
+   stairs.
+9. **The dark floor's stairs take their own route**: `GoToFloor(destination)` with the flag cleared, no walk
+   time, not counted in `FloorsDescended`.
+10. **More powerful enemies**: each creature the dark floor places is one rarity rung higher than it was
+    drawn, capped. And, as the owner's "more powerful enemies": creatures are already at the destination's
+    depth, and March of Progress adds one more Commander and its damage reads the destination's depth.
+11. **Dark**: the smallest existing lever, or nothing and say so.
+12. **Nothing on a Horde dungeon**: it has no chasm, so no fall. Followers and commanded minions are brought
+    along as on any floor change.
+13. **The row is Built** after this layer.
+
+### The three checks made before a line was written
+
+**A. That no existing test sets the flag by any route.** A script (`check_a.py` in the writing session's
+scratch folder) read the body of 2,911 automation tests in `Cataclysm/Tests` and `CataclysmEmpire/Tests`.
+Eleven name the row or layer 1's helpers: layer 1's eleven. Two of those stand the player on a chasm cell and
+step a beat: `...StandingOnAChasmIsAFall...` and `...AFallIsRecordedOnceAFloor...`. Both are changed below.
+One other test enters an empire dungeon and steps a beat,
+`Cataclysm.DungeonMode.AHordeDungeonsLastWaveIsClearedRatherThanThinnedToATenth`; it is a Horde dungeon with
+no player character. A floor can also get chasms when a dungeon drew the row from the real table; a search for
+tests that load the real table (`LoadPool`) found five, in `CataclysmFloorBriefTests.cpp` and
+`CataclysmDungeonModifierTableTests.cpp`, and neither file has a player character, and the beat steps nothing
+without one. What the script cannot see: a test that enters a dungeon through a helper, and anything outside
+those two folders.
+
+**B. The second search of ruling 7.** Searched `game/Source` for every `int32` member whose name ends in
+`Floor`, every assignment from `FloorNumber`, `FloorBrief.FloorNumber` or `ChooseFloorNumber()`, and every
+comparison with one of them. Found the same three and no fourth: `PlaguebearerFloor`, `MoraleBreakFloor`,
+`FamishedBeastsFloor`, with eleven comparisons between them (one inline in the header,
+`FamishedBeastsDropsEatenNow`). Found besides: `UCataclysmSaveWriter::SetFloor`, which also tells a new floor
+by its number and is in "said first" above; the floor panel's own copy of the number, which is display; and
+`UCataclysmEnemyScore`, which reads the number through `RunFloorNumber` and keeps nothing.
+
+**C. Every reader of the floor's seed and of `BriefFor`'s inputs.** In "How it is built", under the salt.
+
+### What was read before writing
+
+Read by the writing session, whole unless a range is given. Line numbers are of this commit.
+
+- `Dungeon/CataclysmDungeonGameMode.cpp`: `Tick` (1212); `StartPlay`; `ChooseSeed` (1334), `ChooseFloorNumber`,
+  `ChooseTotalFloors`, `DungeonIdentity` (1432), `BuildFloor` (1453), `BringFollowersTo`, `PlaceAtEntrance`,
+  `ApplyDesignedStats`, `ClearFloorEnemies`, `PopulateFloor` (1776), `SpawnPlacedCreature`,
+  `ShouldTheNextWaveArrive` from its middle, `BringTheNextWaveIn`, `PlaceStairs`, `HandleStairsTaken` (2668),
+  `IsTheFinalFloorForItsBoss` (2728), `StepVision` (2853) to the end of its loop, `IsOneOfTheFloorsOwnStanding`,
+  `LivingFloorEnemies`, `ChooseThePlaguebearer` and `StepPlaguebearer`, the Morale Break functions from
+  `MoraleLeadersNow` to the return of the escaped in `StepMoraleBreak`, layer 1's functions from
+  `ChooseTheChasmCells` to `ThePlayerFellIntoAChasm`, `BloodDebtOwed` and `NoteDeathForBloodDebt`,
+  `StepFamishedBeasts`, the first lines of `PlaceTheTitheAltar`, `PlaceTheDivineGate`, `PlaceThePactAltar` and
+  `ChooseTheSealBearers`, the functions from `LightforgedWallsStanding` to `EnterEmpireDungeon` (13519) and
+  `LeaveEmpireDungeon` (13628), which include `StairsSealedBy` (13320), `GoDownOneFloor` (13392),
+  `IsOnTheLastFloor` (13481) and `SpendFloorTimeInTheEmpire`; in `StepFloorRulesThatChange` (14215) the flags
+  from Ravenous Hoard to Rule of Chaos, the early return, how the player is found, the steps from Divine Wrath
+  to Funereal Procession and the last steps to the function's end; `ChooseTheScarceSlot` (15315);
+  `RefreshFloorModifierPanel`; in `LiveCountsForTheFloor` (17770) its first lines, the lines from the
+  Plaguebearer to Famished Beasts and from Lightforged Walls to Anti-Magic Zones, and its end;
+  `StepVolatileEvolution` to where it raises the rung; `ApplyFloorRulesToPlayer` (20641), whole;
+  `ClearEmpireDungeon`; `GoToFloor` (21296), whole.
+- `Dungeon/CataclysmFloorBrief.cpp`, whole; `CataclysmFloorBrief.h`: `FCataclysmDungeonIdentity`, the
+  declarations of `BriefFor` and `BossAtTheExit`, and `ModifierSalt`.
+- `Dungeon/CataclysmFloorGenerator.cpp`: `SeedForFloor` (1421) and the lines of `Generate` that make the
+  plan's seed.
+- `Dungeon/CataclysmDungeonModifierEffects.cpp`: `BuiltStateOf`, the end of `KeysWithARule`, `SightRadiusFor`,
+  `VolatileEvolutionRungAfter`, `BloodDebtOwedFor`, `ScarcityPick`'s stream; `.h`: the key comments of Those
+  in the Dark, Fog of War, The Blackest Shadow and Shadowy Enemies, and the Morale Break and Plaguebearer
+  figures.
+- `Character/CataclysmEnemyCharacter.cpp`: `SetRarityStep`; `.h`: the comments on `RarityStep` and
+  `DrawModifiersForRarity`.
+- `Save/CataclysmSaveWriter.cpp`: `SetFloor`. `Empire/CataclysmSurge.cpp`: `WalkDaysPerFloor`.
+  `Empire/CataclysmDungeonModifier.cpp`: `CountFor`. `Dungeon/CataclysmDungeonStairs.cpp`: `ArriveAt`.
+- `Tests/CataclysmDungeonModifierEffectsTests.cpp`: layer 1's helpers and eleven tests, whole; `Beat`,
+  `FPossessedPlayer`, `ACurseDungeon`, `PlaceCreatureAtRung`, `TakeTheStairs`, `ExitLockPlayerKills`,
+  `RuleOfChaosFreePlaces`, `RuleOfChaosPlacedWell`, `ADropAt`, two Lightforged Walls tests, the Rule of Chaos
+  test of the last floor, and one Famished Beasts test. `Tests/CataclysmFloorBriefTests.cpp`: its pool helpers
+  and the two Reality Twister tests that use the game mode.
+- `docs/DECISIONS.md`: layer 1's entry, whole.
+
+Not read: the rest of `StepFloorRulesThatChange`, `LiveCountsForTheFloor` and `StepMoraleBreak`;
+`CountThePlagueBeaconsLeftStanding`; `UCataclysmFloorContents::ClearTheFloor`; `FloorPopulationNow`'s
+populator; `UCataclysmEnemyScore`; `StepMarchOfProgress`; `PlayerEffectsFor`; `SetSightDarkness`; the rest of
+the player's respawn; `PlanTheGatedShortcuts` and `PlanTheSections`; `RaiseTheUnstablePortalsWarden`; the
+enemy rarity table.
+
+**Research.** `CLAUDE.md` asks for how shipped games do a mechanic whose shape is new to this game. The brief
+did not ask for it for this layer, and no source was read. The shape of this layer was ruled before it was
+written.
+
+### How it is built
+
+**The flag.** `ACataclysmDungeonGameMode::bOnTheDarkFloor` (private), read by the public
+`ThePlayerIsOnTheDarkFloor()`, which answered false in layer 1. `DarkFloorFellFrom` is beside it, read by
+`TheDarkFloorFellFromFloor()`. One line sets the flag from clear: in `ThePlayerFellIntoAChasm`. One more line
+writes true: in `LeaveTheDarkFloor`, to put the flag back when the floor the stairs lead to could not be
+built. It is cleared in `LeaveTheDarkFloor`, in `LeaveEmpireDungeon`, in `EnterEmpireDungeon` before it goes to
+floor 1 (the writing session's judgement 5), and in `ThePlayerFellIntoAChasm` when the dark floor could not be
+built.
+
+**`GoToFloor`, `BuildFloor`'s order, `ApplyFloorRulesToPlayer` and `HandleStairsTaken` are not changed.** The
+fall sets the flag and calls `GoToFloor` as it stands; what differs on the dark floor differs in the
+functions `GoToFloor` calls.
+
+**The salt, and check C.** `FCataclysmDungeonFloorRules::DarkFloorSalt` (`0x6461726B`, the letters "dark") and
+`SeedOnTheDarkFloor(DungeonSeed)`, which is `FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, DarkFloorSalt)`.
+The game mode's new `ChooseSeedForThisFloor()` asks `ChooseSeed()` once and hands it back unchanged, or mixed
+with the salt while the flag is set. Before this layer three lines of the game mode read the dungeon's seed
+for a floor, each by `ChooseSeed()`. All three now ask `ChooseSeedForThisFloor()`:
+
+| Reader | What the salt then reaches through it |
+|---|---|
+| `DungeonIdentity`, `Dungeon.DungeonSeed` (line 1438) | The brief's draw of the floor's rows: `ModifiersFor`'s one stream, so a Volatile re-draw, Reality Twister's row, Rule of Chaos' change and Unstable Dimensions' reality |
+| `BuildFloor`, `Request.DungeonSeed` (line 1495) | The generator's plan and `Plan.Seed`, and every stream made from `Plan.Seed`: the population (`FCataclysmFloorPopulator`), the gated shortcuts (`PlanTheGatedShortcuts`), Soul Chains' reward drops, Luxury Hoarders' pile, Pandora's Box's reward, and layer 1's chasm stream, which is not drawn on the dark floor |
+| `ChooseTheScarceSlot` (line 15342) | Scarcity's slot |
+
+Readers of a seed left without it, with why: `ChooseSeed` itself, which every other reader goes through, and
+`EnterEmpireDungeon`, which writes the dungeon's seed and does not read it. No other file reads the dungeon's
+seed or the plan's seed: a search of the three modules for `DungeonSeed`, `ChooseSeed`, `Plan.Seed`,
+`GetPlan().Seed`, `SeedForFloor` and `BriefFor` found only the lines above, the generator, the populator, the
+brief and `ScarcityPick`. A rule that draws on the global random, as `FloorSourceCells` does (issue #2342), is
+not seeded at all and is not touched. `FCataclysmDungeonIdentity::DungeonSeed` has one reader,
+`ModifiersFor`'s stream, so handing it the salted seed reaches nothing else.
+
+**How a floor built with the flag clear is known to be unchanged.** By reading each changed line with the
+flag false; nothing was run.
+
+- `ChooseSeedForThisFloor()` returns the value of one call of `ChooseSeed()` with its default argument, which
+  is the call each of the three lines made before.
+- `Dungeon.bTheDarkFloor` is false, so `BossAtTheExit`'s new first test is not taken and the function goes
+  on as before.
+- `IsOnTheLastFloor` and `IsTheFinalFloorForItsBoss` each gained `!bOnTheDarkFloor &&` in front of the
+  expression they returned.
+- `PopulateFloor`, `StepVision`, `GoDownOneFloor` and the beat's panel step each gained one `if` on the flag,
+  not taken.
+- `StairsSealedBy` asks `TheDarkFloorSealsTheStairs()`, whose first operand is the flag.
+- The beat's early return gained `&& !bTheDarkFloorNow`, a copy of the flag taken at the top of the beat; the
+  vision flag gained `|| bOnTheDarkFloor`; and after `StepThoseInTheDark` the beat returns only when the flag
+  differs from that copy, which is only when the player fell on this beat.
+- The panel's Those in the Dark line became `if (flag) ... else if (the old test)`.
+- `LeaveEmpireDungeon` and `EnterEmpireDungeon` write false, nought and -1 to members that already hold them.
+
+The one change with the flag clear is that the row is Built, said first above.
+
+**The fall.** `ThePlayerFellIntoAChasm` (6968) counts the fall on the floor first, so a fall whose dark floor
+could not be built is not tried again every beat. It does nothing on a Horde arena or on the dark floor. It
+reads the floor being walked, asks `ThoseInTheDarkDestinationFloor(floor, EmpireDungeonFloors())`, sets the
+flag, keeps the floor fallen from, and calls `GoToFloor(destination, Player)`. If that fails it clears the
+flag and puts back the floor number and the brief. No day is charged and `FloorsDescended` is not touched.
+
+**The beat ends at a fall.** `StepFloorRulesThatChange` reads every rule's flag from the floor's brief at its
+top and then steps each rule. A fall replaces the floor in the middle of that, so the beat returns straight
+after `StepThoseInTheDark` when the player fell. The steps before it had already run for the floor fallen
+from; the steps after it would have run on the dark floor by the old floor's flags. `Tick` then steps the
+player's followers and the floor's clear time, as it does after any beat.
+
+**The stairs' own route.** `GoDownOneFloor`'s first statement hands a dark floor to `LeaveTheDarkFloor` (7018)
+and returns its answer, so nothing else of `GoDownOneFloor` runs: not the last-floor test, not the number plus
+one, not the count of descents, not the day. `LeaveTheDarkFloor` clears the flag, tells the three rules of
+ruling 7 that a new floor begins, and calls `GoToFloor` with the number the dark floor already carries. See
+the writing session's judgements 1 and 2.
+
+**The Unstable Portal on the dark floor.** `HandleStairsTaken` is unchanged. It refuses while anything seals
+the stairs, the dark floor's seal included. Then, on a floor carrying Unstable Portal that is not the last,
+it rolls: the dark floor is not the last, so it rolls there as on any floor. A roll that takes the player
+down calls `GoDownOneFloor`, which is the dark floor's own route. A roll that returns the player puts them at
+the dark floor's entrance. A roll that raises a warden raises it on the dark floor; that warden is a creature
+a rule raised and does not hold the dark floor's seal.
+
+**What "no" does at each of the fourteen places that ask `IsOnTheLastFloor`.** The brief reported twelve; a
+search found fourteen lines in eleven functions.
+
+| Where | On the dark floor |
+|---|---|
+| `ShouldTheNextWaveArrive` (2581) | A Horde dungeon only; never reached on a dark floor |
+| `HandleStairsTaken` (2691) | The Unstable Portal rolls, above |
+| `PlaceTheChasms` (6887, 6891) | Asks the flag itself; no chasm |
+| `PlaceTheTitheAltar` (11435), `PlaceThePactAltar` (11804) | The dark floor has a tithe altar and a pact altar when it carries those rows |
+| `PlaceTheDivineGate` (11685) | The dark floor has a divine gate when it carries Sanctioned Passage, and that row seals its stairs |
+| `ChooseTheSealBearers` (13129) | Infernal Seals chooses bearers on the dark floor and seals its stairs |
+| `LightforgedWallsSealTheStairs` (13237), `InfernalSealsSealTheStairs` (13243), `RuleOfChaosSealsTheStairs` (13307), `BloodGatesSealTheStairs` (13361) | Each seals the dark floor's stairs as it seals any floor's but the last |
+| `GoDownOneFloor` (13407) | Not reached: the dark floor's route returns first |
+| `LiveCountsForTheFloor` (18914) | Rule of Chaos' panel line counts the seconds instead of saying the way out is not sealed |
+
+**No Gatekeeper.** `FCataclysmDungeonIdentity` gained `bTheDarkFloor`, set by `DungeonIdentity` from the flag.
+`FCataclysmDungeonFloorRules::BossAtTheExit` answers false first when it is set, whatever the sub-type, so an
+Elite dungeon's dark floor has no Gatekeeper either. `IsTheFinalFloorForItsBoss` answers false on the dark
+floor, so Nothing Is Forgotten's boss is not fed there. `BloodDebtCursedNow` reads the brief's boss flag, so
+Blood Debt's curse is not put on the player on the dark floor.
+
+**The three number-keyed rules.** The fall needs nothing: the dark floor's number differs from the floor
+fallen from. Leaving does: the dark floor and the floor it leads to carry one number. `LeaveTheDarkFloor`
+writes -1 to `PlaguebearerFloor`, `MoraleBreakFloor` and `FamishedBeastsFloor`, the value each holds before
+its first floor, so each rule's own test "the number differs" starts it again. See judgement 2.
+
+**The seal.** `TheDarkFloorSealsTheStairs()` is the flag, not a Horde floor, and `LightforgedWallsStanding() >
+0`: the count of `FloorEnemies` for which `IsOneOfTheFloorsOwnStanding` holds. `StairsSealedBy` adds the row's
+key last. The beat draws the panel again when that count moves.
+
+**The rung.** In `PopulateFloor`'s loop over the population, straight after each creature is spawned and
+before its pack is noted, `RaiseForTheDarkFloor` (2286) sets the rung
+`ThoseInTheDarkRungOnTheDarkFloor(drawn)` gives, draws the modifiers the new rung carries, and stands the
+creature on its cell again now its size is known. These are the calls Volatile Evolution makes when it raises
+a rung. The cap is Herald, rung 3: `ThoseInTheDarkHighestRung` is declared as `VolatileEvolutionHighestRung`,
+the ceiling Volatile Evolution, Royal Guard, Demon Prince, Epidemic, Blood-Forged Champions and the Unstable
+Portal's warden hold to, one rung under the first boss rung. A creature drawn at Herald or above keeps its
+rung. Only the population is raised: a creature a rule brings later is not.
+
+**Dark.** `StepVision` takes the shorter of the rows' sight and `ThoseInTheDarkSightCm` while the flag is set,
+and the beat runs it on the dark floor. On the first beat after arrival the sight is unlimited again and what
+was hidden is shown, by the code that does it after a Fog of War floor.
+
+**The panel.** On the dark floor the row's line is "those in the dark: the dark floor, no chasms, N still
+standing", or "those in the dark: the dark floor, no chasms, every creature slain". Elsewhere it is layer 1's
+"those in the dark: N chasms".
+
+**Followers.** Read, as the brief reported: `GoToFloor` clears the last floor with
+`ClearTheFloor(..., bCarryFollowers=true)` and then calls `BringFollowersTo`, for the fall and for the dark
+floor's stairs as for any floor change.
+
+**The figures** are in `Dungeon/CataclysmDungeonModifierEffects.h`: `ThoseInTheDarkFloorsDeeper` (10),
+`ThoseInTheDarkRungsRaised` (1), `ThoseInTheDarkHighestRung` (3, by name) and `ThoseInTheDarkSightCm` (1000,
+by name).
+
+### The 51 existing tests
+
+A script of the registering session found 412 automation tests that pass through the floor-change code, 51 of
+which assert a floor number, a day charge or the last floor: 38 a floor number, 7 a floor only in a message, 5
+a day charge, 10 the last floor (`dark_floor_tests_51.md`). **None of the 51 was changed.** None is expected
+to change what it asserts, for the reason given under "How a floor built with the flag clear is known to be
+unchanged"; none was run. One of the 51 uses Reality Twister through the game mode,
+`Cataclysm.FloorBrief.AFloorCarryingRealityTwisterNamesTheRowItAdded`, and it builds its pool by hand. A test
+outside the 51, `Cataclysm.FloorBrief.EnteringADungeonCarriesEveryBuiltRowForRealityTwister`, reads the pool
+`EnterEmpireDungeon` fills from the real table: it counts the rows that are not NotBuilt on both sides of its
+comparison, and it requires one row of the table to be NotBuilt, of which four remain.
+
+Four of layer 1's eleven tests were changed, as the brief said they would be. They are under "Tests".
+
+### For the owner's play-check
+
+What a player sees, from the code. Standing on a chasm's mark for up to a quarter second, the player is at the
+entrance of another floor. Nothing is drawn or played for the fall: the floor is replaced as it is when the
+stairs are taken. The floor number shown is ten higher, or the final floor's. The screen is darkened and
+creatures farther than 10 metres are not drawn. The floor has no chasm marks. Every creature is one rung rarer
+than the floor would have drawn it, so bigger and carrying one more modifier, up to Herald. The floor panel
+says how many of the floor's creatures still stand. The stairs do nothing until that is none. Taking them
+then puts the player at the entrance of the floor of that number, in ordinary light. No day passes for any
+of it.
+
+Each judged number, with the reading not taken:
+
+- **10 floors deeper** (ruled, the owner's figure). Not taken: none.
+- **Or the final floor when nearer** (ruled). The dark floor then carries the final floor's number and is not
+  the last floor. Not taken: ending the dungeon from the dark floor.
+- **With no dungeon bound, 10 deeper** (the writing session's judgement 3). Not taken: no fall at all when no
+  final floor is known.
+- **One rung higher, never above Herald** (ruled one rung; the cap is the writing session's judgement 4). Not
+  taken: a cap at the highest boss rung, which would let a floor rule make a boss out of a Herald.
+- **Sight of 10 metres** (the writing session's judgement 6). Not taken: The Blackest Shadow's 6 metres;
+  nothing.
+- **The seal counts what Lightforged Walls counts** (ruled). A creature that cannot be hurt, a creature a
+  rule raised, a player's thrall and a Morale Break creature that has escaped do not hold the stairs. Not
+  taken: `LivingFloorEnemies`, which also counts the escaped.
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The dark floor's route is taken at the top of `GoDownOneFloor`, not in `HandleStairsTaken`.** The ruling
+   says the stairs do not go through `GoDownOneFloor`. As built they call it, and its first statement returns
+   `LeaveTheDarkFloor`'s answer, so none of its own body runs. The reason: `GoDownOneFloor` is public and has
+   three callers besides the stairs' plain route (the Unstable Portal's roll, a Horde wave, and tests), and a
+   call that reached its body with the flag set would go to the number plus one, charge a day, and leave the
+   flag set on that floor. Not taken: a branch at each of the two calls in `HandleStairsTaken`.
+2. **The three rules are told by writing -1 to the number each keeps, not by comparing the flag at each of
+   their eleven comparisons.** The ruling says each "must also compare the flag". The effect ruled is met:
+   arriving from the dark floor is a new floor for each. Writing -1 is what `ForgetThePlaguebearer` and
+   `ForgetMoraleBreak` already write, and it is one place, not eleven. Not taken: a floor stamp made of the
+   number and the flag, compared at all eleven.
+3. **With no empire dungeon bound, a fall goes ten floors deeper.** `EmpireDungeonFloors()` is nought then,
+   and the stairs descend for ever. The brief named this as the smallest answer.
+4. **The cap on the rung is Herald**, as every other floor rule that raises a rung is capped; a creature
+   drawn at Herald or above is left as drawn. Only the floor's population is raised, not what a rule brings
+   later: a Morale Break creature that returns, a warden, a guard.
+5. **Entering a dungeon clears the flag.** The ruling names the stairs and leaving. `EnterEmpireDungeon` goes
+   to floor 1 and does not call `LeaveEmpireDungeon`, so a dungeon entered while the flag was set would have
+   begun on a dark floor 1.
+6. **Dark is the vision system at Fog of War's 10 metres.** Said first above. It hides creatures beyond 10
+   metres, which is more than making the floor look dark.
+7. **A fall ends the beat it happens on.** Said under "How it is built". The dark floor's rules first step a
+   quarter second after the fall.
+8. **The panel line is one line for both things**: that the dark floor has no chasm, and the count of the
+   standing. It is written whenever the flag is set. The panel shows a line only for a row the floor carries,
+   so on a Volatile dungeon whose dark floor did not draw this row the line is not shown and nothing says why
+   the stairs are sealed. Not handled.
+9. **A fall whose dark floor cannot be built is undone**: the flag, the number and the brief go back, and the
+   fall stays counted on the floor so it is not tried again each beat. What `BuildFloor` had already planned
+   for the failed floor, its shortcuts and sections, is left as a failed descent by the stairs leaves it.
+10. **A fall is counted on the floor before anything else, and the dark floor starts at nought.** Layer 1's
+    count of falls on a floor is kept, and is put back to nought with the chasms when the dark floor is
+    populated.
+11. **An Elite dungeon's dark floor has no Gatekeeper.** The ruling says the Gatekeeper at the exit answers no
+    while the flag is set; an Elite dungeon has one on every floor, and this is read as covering it.
+12. **"Great rewards"**: the row's last words are read as the ten floors and ten days, as the owner's words
+    say. No loot is added. Listed because the row is marked Built with those words in it.
+
+### Tests
+
+Ten new, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None
+was run. Every test reaches the dark floor by a fall: the player is stood on a chasm cell and one beat is
+stepped by hand. No test sets the flag another way, and no test waits on the world's clock.
+
+1. `ThoseInTheDarkTheDarkFloorIsItsOwnFloorAndAFloorBuiltWithoutAFallIsWhatItWas`. On up to eight of dungeon
+   seeds 1 to 20 whose floor 2 has a chasm: floor 12 built without a fall, the dark floor a fall from floor 2
+   leads to, and floor 12 reached by the dark floor's stairs. Control, on every seed: without a fall the seed
+   handed to the floor is the dungeon's own, the plan's seed is `SeedForFloor(seed, 12)` written out in the
+   test, the plan's cells, entrance and exit are what the generator gives asked directly with the dungeon's
+   seed, and the floor built twice has the same plan, the same creatures on the same cells and the same rows.
+   The dark floor: its plan and the creatures it placed must differ from floor 12's on at least three in four
+   of the seeds that fell, and at least four seeds must fall; a seed where one is equal is logged. Its rows:
+   see "not covered". And the floor arrived on equals floor 12 built without a fall.
+2. `ThoseInTheDarkAFallGoesTenFloorsDeeperOrToTheFinalFloorAndSpendsNoDay`. An empire dungeon of 30 floors.
+   Control first: an ordinary descent spends one day and is counted. A fall from floor 3 gives number 13, the
+   floor fallen from kept, no day, no descent counted, the player on the entrance cell. Its stairs lead to 13
+   with no day and no descent. A fall from floor 25 gives number 30.
+3. `ThoseInTheDarkTheDarkFloorIsNotTheLastFloorAndHasNoGatekeeperAndLeadsToTheFinalFloor`. A dungeon of 6
+   floors. Control first: floor 6 without a fall is the last, has a boss in its brief and a Gatekeeper in its
+   population. A fall from floor 3 gives number 6: not the last, no boss, no Gatekeeper, the dungeon stands.
+   Its stairs lead to floor 6, which is the last and has its Gatekeeper; the dungeon still stands and no day
+   passed. Control last: the final floor's own stairs clear the dungeon.
+4. `ThoseInTheDarkTheDarkFloorsStairsAreSealedUntilEveryCreatureItPlacedIsSlain`. Sealed with the floor's
+   population standing; sealed by one creature of the floor's own; open when the player has slain it with a
+   creature a rule raised still standing. Control: the floor arrived on, its creatures standing and the flag
+   clear, seals nothing. With Lightforged Walls on the dark floor both rows seal, and both release.
+5. `ThoseInTheDarkTheDarkFloorsCreaturesAreOneRungHigherAndNeverAboveHerald`. The pure function at six rungs.
+   With every kind pinned to Common: control, floor 12 without a fall holds no creature off Common; the dark
+   floor holds none off rung 1. Pinned to Herald, the dark floor holds none off Herald.
+6. `ThoseInTheDarkOnTheDarkFloorThePanelCountsTheStandingAndThePlayerSeesTenMetres`. Controls before the fall
+   and after the stairs: the panel counts chasms and sight is unlimited.
+7. `ThoseInTheDarkArrivingFromTheDarkFloorTheFloorChoosesItsOwnPlaguebearer`. Control: floor 12 without a
+   fall has one.
+8. `ThoseInTheDarkArrivingFromTheDarkFloorMoraleBreakStartsAgain`. Control: floor 12 without a fall, after a
+   beat, says no leader has fallen; the floor arrived on must say the same.
+9. `ThoseInTheDarkArrivingFromTheDarkFloorFamishedBeastsCountsFromNought`. Control: a drop eaten on floor 11,
+   then floor 12 without a fall counts none.
+10. `ThoseInTheDarkLeavingTheDungeonEndsTheDarkFloor`.
+
+Four of layer 1's tests changed:
+
+- `ThoseInTheDarkFiguresAndTheRowIsStillNotBuilt` is now `ThoseInTheDarkFiguresAndTheRowIsBuilt`: the row is
+  in `KeysWithARule` and its state is Built.
+- `ThoseInTheDarkChasmsHoldEveryPlacementRuleAndWithoutTheRowThereIsNone`: one message reworded; it asserts
+  what it asserted.
+- `ThoseInTheDarkStandingOnAChasmIsAFallAndBesideItIsNotAndACreatureDoesNotFall`: after the beat on the chasm
+  it asserted one fall recorded, the player where they stood and the chasms unchanged. It now asserts the
+  player is on the dark floor, the number is 12, the floor fallen from is 2, the player is on the entrance
+  cell and the dark floor has no chasm. Its two controls are unchanged.
+- `ThoseInTheDarkAFallIsRecordedOnceAFloorAndAFloorBuiltAgainRecordsItsOwn` is now
+  `ThoseInTheDarkAFallHappensOnceAndTheDarkFloorHasNoChasmToFallInto`. A second fall on one floor cannot be
+  made any more, the first having replaced the floor, so it asserts that three more beats leave the player on
+  the same dark floor, and that after the dungeon is left the same floor built again is fallen from again.
+
+### Not covered by a test
+
+- **That the dark floor's row list differs from the destination's, through the game mode.** On a dungeon whose
+  floors all carry the dungeon's own rows the two lists are the same list by rule, so the test cannot show a
+  difference there. It takes the game mode's own identity on the dark floor, which carries the salted seed,
+  and asks the brief with it as a Volatile dungeon drawing from twenty rows built by hand, against the same
+  identity with the dungeon's own seed. The game mode is not itself made Volatile.
+- The Unstable Portal's roll on the dark floor; Forced Tithes' angels after a fall; Blood Debt; any other
+  row's carry in the table above.
+- A dark floor that cannot be built, and a destination that cannot be built from the dark floor.
+- Entering a dungeon while on the dark floor.
+- An Elite dungeon's dark floor; a Volatile dungeon's dark floor that did not draw the row.
+- A rule that sets a chosen creature's rung after the floor is populated (Infernal Seals' bearers, Soul
+  Chains' bearers, a Common raised to be the Plaguebearer) writes its own rung over the raised one.
+- That a creature beyond 10 metres is hidden on the dark floor: only the sight figure is read. Fog of War's
+  own tests cover the hiding.
+- Followers and commanded minions through a fall.
+- A save made on the dark floor, and dying there.
+- The Gatekeeper is counted in the population the floor would place, not among the creatures standing.
+- That the rest of the beat is skipped on the beat of a fall: nothing reads it.
+- That the 51 existing tests assert what they asserted: they were read about and not run.
+
+### Guard proofs proposed, none run
+
+Three, for the registering session. Each line is in `Dungeon/CataclysmDungeonGameMode.cpp`, once. The lines are
+given here without the tabs they begin with: one tab for the first two, two tabs for the third.
+
+1. The salt. `return bOnTheDarkFloor ? FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(Seed) : Seed;` becomes
+   `return bOnTheDarkFloor ? Seed : Seed;`. Test 1. Predicted to fail, for each seed that fell: "on the dark
+   floor the seed handed to the floor is the dungeon's with the salt", "which is not the dungeon's own seed",
+   "the identity the brief is asked with carries that seed" and "the dark floor's plan seed is
+   SeedForFloor(the salted seed, 12)"; and at the end the three "on three in four seeds or more" assertions,
+   each at nought. Four for each seed that fell and three more; between four and eight seeds fall, so 19 to
+   35, and how many fall is not known before a run.
+2. "Is this the last floor." `return !bOnTheDarkFloor && Floors > 0 && ChooseFloorNumber() >= Floors;` becomes
+   `return Floors > 0 && ChooseFloorNumber() >= Floors;`. Test 3. Predicted to fail: one assertion, "the dark
+   floor is not the last floor, though its number is the final floor's". The stairs still take their own
+   route and the brief still has no boss, so nothing after it fails.
+3. The stairs' own route. `return LeaveTheDarkFloor(PawnToMove);` becomes `(void)PawnToMove;`, so a dark
+   floor's stairs go on into `GoDownOneFloor`'s own body. Test 2. Predicted to fail, six: "the dark floor's
+   stairs lead to floor 13" (it is 14), "and the player has left the dark floor", "off the dark floor the
+   game mode keeps no floor fallen from", "the dark floor's stairs spent no day", "and are not counted as a
+   descent", and then the set-up "one of dungeon seeds 1 to 20 gives floor 25 at least 1 chasms", because
+   every floor built with the flag still set is a dark floor with no chasm. The test stops there.
+
+### What the row needs, for the session that writes rows
+
+Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no change to the row. No
+dry run was made because no row is asked for.
+
+---
+
 ## 2026-10-09 — Those in the Dark, layer 1 of 2: a floor with the row has chasm cells, and standing on one is recorded as a fall that does nothing yet
 
 **Built and run.** The writing session wrote this layer in two commits: the first with the code, eleven

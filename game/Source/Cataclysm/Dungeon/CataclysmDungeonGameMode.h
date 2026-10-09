@@ -397,6 +397,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
 	int32 ChooseSeed(int64 Entropy = 0) const;
 
+	/**
+	 * The seed handed to everything that fixes the floor being built: the floor request, the brief's draw of the
+	 * floor's rows, and Scarcity's slot. Issues #1820 and #41, ruled 2026-10-09.
+	 *
+	 * `ChooseSeed()` UNCHANGED, EXCEPT ON THE DARK FLOOR, where it is that seed mixed with
+	 * `FCataclysmDungeonFloorRules::DarkFloorSalt`. The dark floor carries the number of the floor its stairs lead
+	 * to, so without the salt it would be a copy of that floor.
+	 */
+	int32 ChooseSeedForThisFloor() const;
+
 	/** The floor number that will actually be used, console variable included. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
 	int32 ChooseFloorNumber() const;
@@ -2221,8 +2231,11 @@ public:
 	 * beat, and made again there when one is lost. `ThoseInTheDarkFallsOnThisFloor` is how many falls this floor has
 	 * recorded, which is nought or one.
 	 *
-	 * `ThePlayerIsOnTheDarkFloor` ANSWERS FALSE IN THIS LAYER. THE NEXT LAYER MAKES IT TRUE ON THE DARK FLOOR A FALL
-	 * LEADS TO. It is asked where the chasms are placed, so the dark floor gets none.
+	 * `ThePlayerIsOnTheDarkFloor` IS THE ONE FLAG OF LAYER 2: true from a fall until the dark floor's stairs are
+	 * taken or the dungeon is left, and false at every other time. Only a fall sets it. It is asked where the
+	 * chasms are placed, so the dark floor gets none. `TheDarkFloorFellFromFloor` is the number of the floor the
+	 * player fell from, nought when not on the dark floor. `TheDarkFloorSealsTheStairs` is whether a creature the
+	 * dark floor placed still stands, which seals its stairs.
 	 *
 	 * `FThoseInTheDarkCount` IS WHAT THE PLACEMENT COUNTED ON THIS FLOOR, kept so a test can log it: the walkable
 	 * cells when the chasms were chosen, the chasms asked for, and how many the draw places with the rules applied
@@ -2239,7 +2252,9 @@ public:
 	int32 ThoseInTheDarkChasmZonesDrawn() const;
 	int32 ThoseInTheDarkFallsOnThisFloor() const { return ThoseInTheDarkFallsNoted; }
 	const FThoseInTheDarkCount& ThoseInTheDarkCountNow() const { return ThoseInTheDarkCount; }
-	bool ThePlayerIsOnTheDarkFloor() const { return false; }
+	bool ThePlayerIsOnTheDarkFloor() const { return bOnTheDarkFloor; }
+	int32 TheDarkFloorFellFromFloor() const { return DarkFloorFellFrom; }
+	bool TheDarkFloorSealsTheStairs() const;
 
 	/** Forget Morale Break's leaders, flights and the escaped. Public for the reason above. */
 	void ForgetMoraleBreak();
@@ -4301,6 +4316,19 @@ private:
 	/** How many falls this floor has recorded: nought or one. */
 	int32 ThoseInTheDarkFallsNoted = 0;
 
+	/**
+	 * LAYER 2'S ONE FLAG: the player is on the dark floor a fall leads to. ONLY `ThePlayerFellIntoAChasm` SETS IT.
+	 * Cleared by `LeaveTheDarkFloor`, `LeaveEmpireDungeon` and `EnterEmpireDungeon`. While it is clear, nothing
+	 * this layer added changes a floor, a seed, a draw, a day charge or which floor is the last.
+	 */
+	bool bOnTheDarkFloor = false;
+
+	/** The number of the floor the player fell from; nought when not on the dark floor. */
+	int32 DarkFloorFellFrom = 0;
+
+	/** The count of the standing the panel last showed on the dark floor, so it is drawn again when it moves. */
+	int32 DarkFloorPanelStanding = -1;
+
 	/** Mixed with the floor's seed for the stream the chasms are drawn on, as `GatedShortcutSalt` is. */
 	static constexpr int32 ThoseInTheDarkSalt = 0x7D4B;
 
@@ -4335,11 +4363,27 @@ private:
 	void StepThoseInTheDark(class ACataclysmPlayerCharacter* Player);
 
 	/**
-	 * WHAT A FALL CALLS. IN THIS LAYER IT RECORDS THAT THE PLAYER FELL ON THIS FLOOR AND LOGS IT, AND NOTHING ELSE
-	 * HAPPENS. THE NEXT LAYER REPLACES THIS BODY with the way to the dark floor. The beat calls it once a floor,
-	 * with the player and the chasm cell they stood on.
+	 * WHAT A FALL CALLS: THE WAY TO THE DARK FLOOR. The beat calls it once a floor, with the player and the chasm
+	 * cell they stood on. It sets the flag, keeps the floor fallen from, and goes to the dark floor by `GoToFloor`
+	 * with the number of the floor the dark floor's stairs lead to. No walk time is charged and no descent is
+	 * counted. Nothing on a Horde arena. If the dark floor cannot be built the flag is cleared again.
 	 */
 	void ThePlayerFellIntoAChasm(class ACataclysmPlayerCharacter* Player, FIntPoint Chasm);
+
+	/**
+	 * THE DARK FLOOR'S STAIRS: their own route, which `GoDownOneFloor` hands over to before anything else. Clears
+	 * the flag and goes by `GoToFloor` to the number the dark floor already carries, which is then built as the
+	 * ordinary floor of that number. No walk time is charged and no descent is counted. The three rules that tell
+	 * a new floor by its number are told it is a new floor. Answers whether the floor was built.
+	 */
+	bool LeaveTheDarkFloor(APawn* PawnToMove);
+
+	/**
+	 * One creature the dark floor's population placed, raised to the rung
+	 * `UCataclysmDungeonModifierEffects::ThoseInTheDarkRungOnTheDarkFloor` gives, with the modifiers the new rung
+	 * carries, and stood again on its cell now its size is known. Nothing for a creature already at the ceiling.
+	 */
+	void RaiseForTheDarkFloor(ACataclysmEnemyCharacter* Enemy, FIntPoint Cell);
 
 	/** Infernal Rain: a patch at this point, typed and burning once a second with the others; null if none came. */
 	class ACataclysmGroundZone* PlaceAnInfernalRainPatch(UWorld* World, const FVector& Where, float DamagePerSecond,
