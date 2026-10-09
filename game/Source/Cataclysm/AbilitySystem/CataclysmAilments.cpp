@@ -23,8 +23,13 @@
  * ailment would otherwise pass some of the time and fail the rest.
  *
  * -1, the default, rolls normally. 0 applies every ailment a blow carries any
- * chance of, because every chance above zero beats it. 100 applies none,
- * because the comparison is strictly less than and a chance is capped at 100.
+ * chance of, because every chance above zero beats it. 100 applies no ailment
+ * whose chance is below 100, because the comparison is strictly less than.
+ *
+ * A CHANCE OF 100 OR MORE IS NOT COMPARED WITH THE ROLL, so it applies whatever
+ * value is pinned here, 100 included. Issue #2201. Until then this comment said
+ * that 100 applies none, and a blow whose chance was 100 applied nothing at a
+ * roll of exactly 100.
  *
  * ONE ROLL PER AILMENT, and the pin sets every one of them. A blunt weapon's
  * own chance to stun is among them, since it joined the chance to stun from gear
@@ -36,7 +41,7 @@ static TAutoConsoleVariable<float> CVarAilmentRoll(
 	-1.0f,
 	TEXT("Pins the roll for every chance to apply an ailment, 0-100. -1 rolls "
 		 "normally. 0 applies every ailment a blow has any chance of; 100 applies "
-		 "none."),
+		 "only an ailment whose chance is 100 or more."),
 	ECVF_Default);
 
 /**
@@ -419,7 +424,14 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 			float Chance = 0.0f;
 			float Seconds = 0.0f;
 			UCataclysmDamageCalculation::StunApplication(Total, Chance, Seconds);
-			if (Chance > 0.0f && AilmentRoll() < Chance
+
+			// A CHANCE AT THE CAP IS NOT ROLLED, for the reason given at the
+			// roll for every other ailment below. Issue #2201. A chance of
+			// nought still applies nothing, and a chance below the cap is
+			// compared with the roll exactly as it was.
+			const bool bStunIsCertain =
+				Chance >= UCataclysmDamageCalculation::StunChanceCap;
+			if (Chance > 0.0f && (bStunIsCertain || AilmentRoll() < Chance)
 				&& UCataclysmSkillEffects::ApplyStun(Applier, Defender, Seconds,
 					DealtToHealth, /*bStunIsDesigned=*/false))
 			{
@@ -447,9 +459,18 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 			: NormalMagnitude;
 
 		Application(Total, Chance, Magnitude, MagnitudePercent);
+
+		// A CHANCE AT THE CAP IS NOT ROLLED. Issue #2201. The roll is drawn
+		// with `FMath::FRandRange(0.0f, 100.0f)`, which can return exactly 100,
+		// and 100 is not below 100, so a blow whose chance was 100 applied
+		// nothing on that one roll. `Application` cuts every total of 100 or
+		// more to exactly the cap, so this is every such blow and not only one
+		// whose rows sum to exactly 100. A chance below the cap is compared
+		// with the roll exactly as it was: a roll equal to the chance fails.
+		//
 		// THE SKILL WHOSE BLOW ROLLED IT goes on the ailment too, so that
 		// every tick of it names the skill. Issue #41, slice 4.
-		if (AilmentRoll() < Chance
+		if ((Chance >= ChanceCap || AilmentRoll() < Chance)
 			&& Apply(Applier, Defender, Kind, Magnitude,
 					 Spec.GetContext().GetAbilityInstance_NotReplicated()))
 		{
