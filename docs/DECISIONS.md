@@ -4,12 +4,13 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — Angelic Wardens places statues that wake into Abyssal Wardens when the player comes near one or uses a skill near it, and the row is Built
 
-**Not built and not run.** The writing session wrote the code, nine Unreal tests, two Python checks and this
-entry, in one commit. A second commit, of this entry only, added rulings 12 to 21 below, which the coordinating
-session made on the report of the first. The writing session compiled nothing and ran no Unreal test. It ran the
-Python tests in `tools/tests`, the lint and the conflict check before each commit, and nothing else. Every
-statement below about what the engine
-does is read from the code. No outcome of a build or of an Unreal run is recorded here.
+**Built and run.** The writing session wrote the code, nine Unreal tests, two Python checks and this entry, in
+one commit. A second commit and a third, of this entry only, added rulings 12 to 21 and 22 to 25 below, which
+the coordinating session made on the writing session's reports. The writing session compiled nothing and ran no
+Unreal test. The registering session then built and ran the layer in one window at 1f71cc65, and every figure
+came out as registered; the Run section at the end of this entry has each printed line. The coordinating session
+ruled and ran nothing. Statements below about what the engine does are read from the code unless the Run section
+gives a printed line for them.
 
 **Said first: the row's words "trigger certain traps" are not built.** The game has no trap a player triggers.
 Only the owner's two triggers are built: coming near a statue, and using a skill near one.
@@ -405,7 +406,7 @@ not built.
 
 ### The guard proofs proposed
 
-None was run. The three are approved as candidates (ruling 21). Each line is counted once in
+All three were run in the window; see Run. The three are approved as candidates (ruling 21). Each line is counted once in
 `CataclysmDungeonGameMode.cpp`.
 
 1. **The proximity distance.** Line 6658,
@@ -452,14 +453,75 @@ None was run. The three are approved as candidates (ruling 21). Each line is cou
   a path. The pillar's navigation modifier goes with the pillar; when the mesh is rebuilt was not read.
 - The warden's body against a player standing beside the pillar when it wakes. A player's centre can be about
   2 metres from the cell's centre plus the half-width of their own body; neither body's width was read.
-- **Not yet known:** whether an existing test's floor gains statues or wardens. The row is Built, so it joins
-  the rows Reality Twister may add to a floor (`DungeonEveryBuiltModifier`). The window's whole suite will
-  show it (ruling 14). No existing test was read for it and no test is changed for it.
+- Whether an existing test's floor gains statues or wardens now that the row is Built and Reality Twister may
+  add it (ruling 14): the window's whole suite passed with no existing test failing, so none failed for that
+  reason. No existing test was read for it and no test was changed for it.
 
 ### What the row needs, for the session that writes rows
 
 Nothing. The row is in `game/Data/DungeonModifiers.csv` already and this layer adds no stat, condition or
 scale. No dry run of the generator was made because no data row is written.
+
+### Run
+
+One window on 2026-10-08, at `feat/angelic-wardens` 1f71cc65, on development 37e86961. One attempt; nothing was
+corrected during it. Every build, run and measurement here was made by the registering session. Every figure is a
+line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 34 actions, 31 files compiled` |
+| Whole Unreal suite | `3414 tests performed, 3414 succeeded, 0 failed`; `Declared: 3414 tests in the tree at 1f71cc65; 3414 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5887 passed, 8 skipped in 413.00s`; JUnit `tests="5895" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,414 Unreal tests (3,405 on development by arithmetic, plus the nine of this layer by
+name) and a JUnit count of 5,895 (5,894 plus the one new Python test). Both printed as registered.
+
+**What the run settled that was only read before it.** A warden raised on the cell its pillar had just left
+stands on that cell: every test that asserts it passed. The two set-ups that search dungeon seeds 1 to 20 found
+what they needed: the shared set-up on dungeon seed 1, floor 2, with three statues, and the barrier test on
+dungeon seed 2 with a statue on cell (22, 9) across barrier 0. No existing test failed, so none failed because
+Reality Twister put statues or wardens on its floor.
+
+**Seen in the log and not ruled on: the statues' cells are not the same from one build of a floor to the next.**
+Six tests went to floor 2 of dungeon seed 1 through the shared set-up and logged the statue each chose to stand by,
+the first of the floor's three with room. They logged six different cells: (4, 39), (21, 26), (28, 3), (3, 23),
+(2, 15) and (18, 19). Five of the tests that use that set-up carry this row alone, so at least four of those cells
+come from the same seed, floor and row. So where the statues stand is not fixed by the dungeon seed.
+`FloorSourceCells` was not read for why.
+
+**How the layer was written and checked.** A second session wrote all three commits under a brief carrying the
+rulings. Before the window the registering session read every line of the game-mode code apart from comments, the
+test helpers, the figures test and the two trigger tests whole, and the assertion and action lines of the warden,
+hunt, barrier, panel and wakes-once tests. Not read by the registering session: the first test beyond its labels,
+the two headers and the effects source, the Python changes, and this entry beyond the parts it changed.
+
+**Guard proofs, at 1f71cc65, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run. All three breaks are in `CataclysmDungeonGameMode.cpp`.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| A1 | coming close wakes a statue from the skill's distance: `AngelicWardensWakeWithinCm` becomes `AngelicWardensSkillWakesWithinCm` in the beat's call | `Cataclysm.DungeonModifierEffects.AngelicWardensAStatueWakesWhenThePlayerComesWithinFiveMetresAndNotFromJustOutside` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| A2 | the basic attack wakes a statue as any skill does: the exclusion becomes `false` | `Cataclysm.DungeonModifierEffects.AngelicWardensASkillUsedWithinTwelveMetresWakesAStatueAndTheBasicAttackDoesNot` | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| A3 | a statue behind a closed barrier is woken from the other side: the parted test becomes `false` | `Cataclysm.DungeonModifierEffects.AngelicWardensAStatueBehindAClosedBarrierIsNotWokenFromTheOtherSideAndIsOnceItOpens` | 1 performed, 1 failed, 3 failed assertions, the third a set-up assertion where the test stops | 1 performed, 1 succeeded |
+
+A1, as printed: "Expected 'from 5.5 metres no statue wakes' to be 3, but it was 2."; "Expected 'and no warden is
+raised' to be 0, but it was 1."; "Expected 'its pillar still stands' to be 1, but it was 0."; "Expected 'at 4.5
+metres nothing wakes before the beat' to be 3, but it was 2."
+
+A2, as printed: "Expected 'the basic attack used 11.5 metres away wakes nothing' to be 3, but it was 2.";
+"Expected 'a skill someone else used eight metres away wakes nothing' to be 3, but it was 2."; "Expected
+'standing 11.5 metres away for two beats wakes nothing' to be 3, but it was 2."; "Expected 'so no warden is awake
+yet' to be 0, but it was 1."
+
+A3, as printed: "Expected 'across the closed barrier a skill used eight metres away does not wake the statue' to
+be true."; "Expected 'and its pillar still stands' to be 1, but it was 0."; "Expected 'set-up: the statue still
+stands, eight metres from the player, after that beat' to be true."
+
+No proof was run for the count of three, for the statues' placement, for the warden's rung or sight, or for a
+statue waking once only.
 
 ---
 
