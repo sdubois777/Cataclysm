@@ -14,6 +14,12 @@ on its own head bbbfa1d1; the Run section at the end of this entry has what the 
 below about what the engine does was read from the code when it was written. The count of chasms on twenty
 floors, which was not known then, is in the Run section.
 
+**Said first: the crossable check has a test and no proof, and the measured floors did not exercise it.** The
+check refuses a chasm when closing it would cut off a walkable cell. No guard proof was run for it. On all
+twenty floors measured in the window the crossing question refused 0 cells, so those floors did not exercise
+it. Its test asserts that the floor can be crossed on every floor it builds; no run has shown the check
+refusing a cell.
+
 **Said first: this is layer 1 of 2, and a fall does nothing yet.** `Void_Those_in_the_Dark` reads: "The
 dungeon has chasms spread throughout leading to the abyss. If the player falls into them, they fall down into
 the void realm where dangerous enemeis lurk. The player will have to fight their way out in order to get back
@@ -298,6 +304,9 @@ Twelve, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.Du
 were run in the window on layer 2's head, five of them as layer 2 changed them; see Run. The beat is stepped by hand; no test waits on the world's clock. Tests 5 and 6 stand the player on
 the middle of a chasm's cell, which is the middle of its ring, so they read the same under ruling 13.
 
+**Said first, beside the crossable check's tests (tests 2, 3 and 11): the check has no proof, and on all twenty
+floors measured in the window the crossing question refused 0 cells, so those floors did not exercise it.**
+
 1. `ThoseInTheDarkFiguresAndTheRowIsStillNotBuilt`: the 25, the 2000, the radius is half a cell, the key, the
    row is not in `KeysWithARule`, its state is NotBuilt.
 2. `ThoseInTheDarkChasmsHoldEveryPlacementRuleAndWithoutTheRowThereIsNone`: on a floor with the row, every
@@ -403,6 +412,28 @@ dry run was made because no row is asked for.
 
 ### Run
 
+**Said first: the continuous integration runner compiled on this machine during the window.** A pull request
+(#2347) was opened during the window by a fault of the coordinating session's own script, so the runner
+compiled from 15:57:27Z to 16:06:09Z while the lock `void-zones-w14` was held. Times of the window's steps, UTC,
+from each step's log file creation and last-write times:
+
+| Step | Began | Ended | Overlap with the runner's compile |
+|---|---|---|---|
+| Build | 15:57:04 | 16:00:52 | all but its first 23 seconds |
+| Whole Unreal suite | 16:00:52 | 16:43:41 | its first 5 minutes 17 seconds |
+| Python suite and ruff | 16:43:42 | 16:49:57 | none |
+| D1 | 16:49:58 | 16:53:05 | none |
+| D2 | 16:53:05 | 16:55:30 | none |
+| D3 | 16:55:30 | 16:58:38 | none |
+| D4 | 16:58:38 | 17:01:46 | none |
+| D5 | 17:01:46 | 17:04:31 | none |
+
+**The build log kept only its summary line, so whether the build waited is not shown.** The build printed
+"Succeeded - 22 actions, 19 files compiled" with exit 0 and was not retried. The suite then found the target up
+to date, and its declared-against-performed check printed gap 0 at 0fb188d1. A suite run beside a compile breaks
+no run. All five proofs ran after 16:06:09Z. **The coordinating session ruled that the window stands and no rerun
+is needed**: a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09.
+
 One window on 2026-10-09 for both layers of Those in the Dark, at `feat/dark-floor` 0fb188d1, which is layer
 2's head, on `feat/chasms` bbbfa1d1, which is this layer's head, on development 4697f84b. **This layer was
 never run on its own head bbbfa1d1**: every build and run below is of the tree with layer 2 on top of it. One
@@ -439,6 +470,10 @@ failed to compile. They are proofs 1 and 2 of the list above, named D1 and D2 in
 |---|---|---|---|---|---|
 | D1 | `if (RulesApplied >= ChasmRuleNoTwoSideBySide && bBesideAChosenChasm)` becomes `if (RulesApplied > ChasmRuleCrossable && bBesideAChosenChasm)` | `ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged` | no count registered | 1 performed, 1 failed, 18 failed assertions | 1 performed, 1 succeeded |
 | D2 | `const bool bWithinAChasmsRing = NearestCm <= Effects::ThoseInTheDarkMarkRadiusCm;` becomes `NearestCm < 0.0f;` | `ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround` | 4 | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+D1's count was not predicted: nothing was registered for it, and it printed 18 failed assertions. Accepted as a
+proof by the coordinating session: a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-09.
 
 D1, as printed, 18 lines of this form, one for each floor with a pair: "Expected 'seed 9 floor 1: pairs of
 chasms side by side' to be 0, but it was 2"; "Expected 'seed 8 floor 1: pairs of chasms side by side' to be 0,
