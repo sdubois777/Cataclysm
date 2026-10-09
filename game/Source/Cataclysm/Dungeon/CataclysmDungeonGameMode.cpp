@@ -1356,6 +1356,14 @@ int32 ACataclysmDungeonGameMode::ChooseSeed(int64 Entropy) const
 	return DungeonSeed;
 }
 
+int32 ACataclysmDungeonGameMode::ChooseSeedForThisFloor() const
+{
+	// `ChooseSeed()` ASKED ONCE, AS EACH OF THE THREE CALLERS ASKED IT BEFORE THIS FUNCTION EXISTED, and handed back
+	// unchanged unless the player is on the dark floor. Issues #1820 and #41, ruled 2026-10-09.
+	const int32 Seed = ChooseSeed();
+	return bOnTheDarkFloor ? FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(Seed) : Seed;
+}
+
 int32 ACataclysmDungeonGameMode::ChooseFloorNumber() const
 {
 	return FMath::Max(1, (GCataclysmDungeonFloorOverride > 0)
@@ -1424,7 +1432,11 @@ float ACataclysmDungeonGameMode::ChooseEnemyScale() const
 FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 {
 	FCataclysmDungeonIdentity Dungeon;
-	Dungeon.DungeonSeed = ChooseSeed();
+	// THE DARK FLOOR'S OWN SEED WHILE THE PLAYER IS ON IT, so the brief draws that floor's rows for it and not the
+	// rows of the floor its number names; the dungeon's seed at every other time. And whether it is the dark
+	// floor, which has no Gatekeeper at its exit. Issues #1820 and #41.
+	Dungeon.DungeonSeed = ChooseSeedForThisFloor();
+	Dungeon.bTheDarkFloor = bOnTheDarkFloor;
 	Dungeon.TotalFloors = ChooseTotalFloors();
 	Dungeon.SubType = ChooseSubType();
 	Dungeon.Layout = ChooseLayout();
@@ -1478,7 +1490,9 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	}
 
 	FCataclysmFloorRequest Request;
-	Request.DungeonSeed = ChooseSeed();
+	// THE DARK FLOOR'S OWN SEED WHILE THE PLAYER IS ON IT. The plan's seed is made from this and the floor number,
+	// and the population, the gated shortcuts and every stream a rule makes from the plan's seed follow it.
+	Request.DungeonSeed = ChooseSeedForThisFloor();
 
 	// THE BRIEF'S FLOOR NUMBER AND NOT `ChooseFloorNumber`. They are the same
 	// number for every dungeon but a Horde one, whose every floor is carved as
@@ -2052,6 +2066,13 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			if (ACataclysmEnemyCharacter* Enemy =
 					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
 			{
+				// ON THE DARK FLOOR EACH CREATURE THE FLOOR PLACES IS ONE RUNG HIGHER THAN IT WAS DRAWN, held to Herald.
+				// Here, as it is placed and before any rule below chooses among the floor's creatures by rung.
+				// Issues #1820 and #41, ruled 2026-10-09.
+				if (bOnTheDarkFloor)
+				{
+					RaiseForTheDarkFloor(Enemy, Placement.Cell);
+				}
 				NoteThePack(Enemy, Placement);
 
 				// AND THE SECTION OF THE CELL IT WAS PLACED ON, none on a floor with no sections. The one place a
@@ -2260,6 +2281,30 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 	Enemy->SightRadiusMultiplier = SightRadiusMultiplier;
 
 	return Enemy;
+}
+
+void ACataclysmDungeonGameMode::RaiseForTheDarkFloor(ACataclysmEnemyCharacter* Enemy, FIntPoint Cell)
+{
+	if (!IsValid(Enemy) || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	const int32 Rung = UCataclysmDungeonModifierEffects::ThoseInTheDarkRungOnTheDarkFloor(Enemy->RarityStep);
+	if (Rung <= Enemy->RarityStep)
+	{
+		return;
+	}
+
+	// THE TWO CALLS VOLATILE EVOLUTION MAKES WHEN IT RAISES A RUNG: the rung, which computes every figure afresh
+	// and fills both pools, and then the modifiers the new rung carries, which draws only the shortfall.
+	Enemy->SetRarityStep(Rung);
+	Enemy->DrawModifiersForRarity();
+
+	// AND STOOD AGAIN ON ITS CELL NOW ITS SIZE IS KNOWN, as `SpawnPlacedCreature` does after the rung it drew: a
+	// rarer creature is bigger, and a capsule grows from its middle.
+	Enemy->SetActorLocation(CurrentFloor->WorldOfCell(Cell)
+		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Enemy)));
 }
 
 void ACataclysmDungeonGameMode::ChooseTheFloorsMedic()
@@ -2683,7 +2728,9 @@ void ACataclysmDungeonGameMode::HandleStairsTaken()
 bool ACataclysmDungeonGameMode::IsTheFinalFloorForItsBoss() const
 {
 	const int32 Floors = ChooseTotalFloors();
-	return Floors > 1 && FloorBrief.FloorNumber >= Floors;
+
+	// NEVER THE DARK FLOOR, which may carry the final floor's number and has no boss. Issues #1820 and #41.
+	return !bOnTheDarkFloor && Floors > 1 && FloorBrief.FloorNumber >= Floors;
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
@@ -2815,6 +2862,15 @@ void ACataclysmDungeonGameMode::StepVision(ACataclysmPlayerCharacter* Player)
 
 	// THE SIGHT, FROM THE ROWS IN FORCE, and nothing else writes it.
 	PlayerSightRadius = Effects::SightRadiusFor(FloorBrief.Modifiers);
+
+	// AND THE DARK FLOOR A FALL LEADS TO IS DARK: Fog of War's sight, or a shorter one a row of the floor gives. A
+	// judgement by the writing session, 2026-10-09; see `ThoseInTheDarkSightCm`. Issues #1820 and #41.
+	if (bOnTheDarkFloor)
+	{
+		PlayerSightRadius = PlayerSightRadius > 0.0f
+			? FMath::Min(PlayerSightRadius, Effects::ThoseInTheDarkSightCm)
+			: Effects::ThoseInTheDarkSightCm;
+	}
 
 	// AND A SWARM OF LOCUSTS COVERING THE PLAYER WHILE IT TRAVELS, the row's "obscuring vision": the shorter of the two.
 	// A shelter does not lift it; a shelter stops the burn, and the player is still inside the swarm. Issues #1820 and
@@ -6705,8 +6761,8 @@ void ACataclysmDungeonGameMode::StepAngelicWardens(ACataclysmPlayerCharacter* Pl
 }
 
 // ---------------------------------------------------------------------------
-// Those in the Dark, layer 1 of 2: chasm cells, and a fall that is recorded and does nothing else. Issues #1820 and
-// #41. Ruled 2026-10-08 and 2026-10-09. The next layer builds the dark floor a fall leads to.
+// Those in the Dark: the chasm cells (layer 1 of 2) and the dark floor a fall leads to (layer 2 of 2). Issues #1820
+// and #41. Ruled 2026-10-08 and 2026-10-09.
 // ---------------------------------------------------------------------------
 
 int32 ACataclysmDungeonGameMode::ThoseInTheDarkChasmZonesDrawn() const
@@ -6962,12 +7018,108 @@ void ACataclysmDungeonGameMode::StepThoseInTheDark(ACataclysmPlayerCharacter* Pl
 
 void ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm(ACataclysmPlayerCharacter* Player, FIntPoint Chasm)
 {
-	// LAYER 1 OF 2: THE FALL IS RECORDED AND LOGGED, AND NOTHING ELSE HAPPENS. THE NEXT LAYER REPLACES THIS BODY with
-	// the way to the dark floor.
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONCE A FLOOR, COUNTED BEFORE ANYTHING ELSE, so a fall whose dark floor could not be built is not tried again
+	// on every beat. A dark floor that is built starts the count again with its chasms, in `PopulateFloor`.
 	++ThoseInTheDarkFallsNoted;
+
+	// NO FALL FROM A HORDE ARENA AND NONE FROM THE DARK FLOOR ITSELF. Neither has a chasm, so the beat never calls
+	// this on one; asked here as well so that nothing can set the flag there.
+	if (FloorBrief.bWaveWalksIn || bOnTheDarkFloor)
+	{
+		return;
+	}
+
+	// WHERE THE DARK FLOOR'S STAIRS WILL LEAD: ten floors deeper than the floor being walked, or the dungeon's
+	// final floor when that is nearer. With no empire dungeon bound there is no final floor and the count of
+	// floors asked is nought, so the answer is ten deeper: a judgement by the writing session.
+	const int32 FellFrom = ChooseFloorNumber();
+	const int32 Destination = Effects::ThoseInTheDarkDestinationFloor(FellFrom, EmpireDungeonFloors());
+
+	// THE FLAG FIRST, THEN THE ORDINARY FLOOR CHANGE TO THE DESTINATION'S NUMBER. `GoToFloor` is not changed by this
+	// layer: with the flag set, the seed it builds from is the dark floor's own, the floor is not the last, it
+	// has no Gatekeeper and no chasm, and its creatures are raised a rung. NO WALK TIME AND NO DESCENT COUNTED:
+	// `GoDownOneFloor` and `EnterEmpireDungeon` are the two places a day is charged, and this is neither.
+	bOnTheDarkFloor = true;
+	DarkFloorFellFrom = FellFrom;
+	DarkFloorPanelStanding = -1;
+	if (!GoToFloor(Destination, Player))
+	{
+		// THE DARK FLOOR COULD NOT BE BUILT. The flag, the number and the brief go back to the floor fallen from,
+		// which still stands with its creatures on it. What `BuildFloor` had planned for the floor that failed --
+		// its shortcuts and sections -- is left as a failed descent by the stairs leaves it.
+		bOnTheDarkFloor = false;
+		DarkFloorFellFrom = 0;
+		FloorNumber = FellFrom;
+		DungeonGameModeFollowFloorAtTheConsole(FloorNumber);
+		FloorBrief = FCataclysmDungeonFloorRules::BriefFor(DungeonIdentity(), ChooseFloorNumber());
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("Those in the Dark: %s fell into the chasm on cell (%d, %d) of floor %d and the dark floor could ")
+			   TEXT("not be built; the player stays on floor %d"),
+			   *GetNameSafe(Player), Chasm.X, Chasm.Y, FellFrom, FellFrom);
+		return;
+	}
 	UE_LOG(LogCataclysm, Log,
-		   TEXT("Those in the Dark: %s fell into the chasm on cell (%d, %d) of floor %d; nothing follows in this layer"),
-		   *GetNameSafe(Player), Chasm.X, Chasm.Y, FloorNumber);
+		   TEXT("Those in the Dark: %s fell into the chasm on cell (%d, %d) of floor %d and is on the dark floor, whose ")
+		   TEXT("stairs lead to floor %d"),
+		   *GetNameSafe(Player), Chasm.X, Chasm.Y, FellFrom, Destination);
+}
+
+bool ACataclysmDungeonGameMode::LeaveTheDarkFloor(APawn* PawnToMove)
+{
+	if (!bOnTheDarkFloor)
+	{
+		return false;
+	}
+
+	// THE DESTINATION IS THE NUMBER THE DARK FLOOR ALREADY CARRIES. Kept, with everything put back below, in case
+	// the floor cannot be built.
+	const int32 Destination = ChooseFloorNumber();
+	const int32 FellFrom = DarkFloorFellFrom;
+	const int32 PlaguebearerFloorWas = PlaguebearerFloor;
+	const int32 MoraleBreakFloorWas = MoraleBreakFloor;
+	const int32 FamishedBeastsFloorWas = FamishedBeastsFloor;
+
+	// THE FLAG IS CLEARED FIRST, so `GoToFloor` builds the ordinary floor of that number: the dungeon's own seed,
+	// the last floor and its Gatekeeper when it is the final floor, chasms when the floor has them.
+	bOnTheDarkFloor = false;
+	DarkFloorFellFrom = 0;
+
+	// AND THE THREE RULES THAT TELL A NEW FLOOR BY ITS NUMBER ARE TOLD THIS IS ONE. The Plaguebearer, Morale Break
+	// and Famished Beasts each keep the number of the floor their state belongs to and start again when the floor
+	// number differs. The dark floor and the floor it leads to carry one number, so each is given the number no
+	// floor has, which is what each holds before its first floor and after the dungeon is left.
+	PlaguebearerFloor = -1;
+	MoraleBreakFloor = -1;
+	FamishedBeastsFloor = -1;
+
+	// NO WALK TIME AND NO DESCENT COUNTED: this is not `GoDownOneFloor`, which is where both are done.
+	if (!GoToFloor(Destination, PawnToMove))
+	{
+		bOnTheDarkFloor = true;
+		DarkFloorFellFrom = FellFrom;
+		PlaguebearerFloor = PlaguebearerFloorWas;
+		MoraleBreakFloor = MoraleBreakFloorWas;
+		FamishedBeastsFloor = FamishedBeastsFloorWas;
+		FloorBrief = FCataclysmDungeonFloorRules::BriefFor(DungeonIdentity(), ChooseFloorNumber());
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("Those in the Dark: floor %d could not be built from the dark floor; the player stays on it"),
+			   Destination);
+		return false;
+	}
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Those in the Dark: the dark floor's stairs were taken to floor %d, from a fall on floor %d"),
+		   Destination, FellFrom);
+	return true;
+}
+
+bool ACataclysmDungeonGameMode::TheDarkFloorSealsTheStairs() const
+{
+	// UNTIL EVERY CREATURE THE DARK FLOOR PLACED IS SLAIN, counted as Lightforged Walls counts the floor's own
+	// standing: a creature a rule raised, one that cannot be hurt and a player's thrall do not hold them. Never
+	// on a Horde floor, which has no stairs. Issues #1820 and #41, ruled 2026-10-09.
+	return bOnTheDarkFloor && !FloorBrief.bWaveWalksIn && LightforgedWallsStanding() > 0;
 }
 
 void ACataclysmDungeonGameMode::NoteSkillUseForAngelicWardens(const FCataclysmSkillUsedNotice& Notice)
@@ -13243,6 +13395,10 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	{
 		Sealing.Add(FName(FCataclysmDungeonFloorRules::RuleOfChaosKey));
 	}
+	if (TheDarkFloorSealsTheStairs())
+	{
+		Sealing.Add(FName(Effects::ThoseInTheDarkKey));
+	}
 	return Sealing;
 }
 
@@ -13286,6 +13442,15 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodGates(
 
 bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 {
+	// THE DARK FLOOR'S STAIRS TAKE THEIR OWN ROUTE, AND NOTHING BELOW RUNS FOR THEM. Issues #1820 and #41, ruled
+	// 2026-10-09. Below, a floor is the number plus one and costs a day; the dark floor's stairs lead to the number
+	// it already carries and cost none. Asked before the last floor is, though the dark floor never is the last.
+	// False unless a fall set it.
+	if (bOnTheDarkFloor)
+	{
+		return LeaveTheDarkFloor(PawnToMove);
+	}
+
 	// A DUNGEON FROM THE EMPIRE MAP HAS A BOTTOM. Reaching it is beating the
 	// dungeon rather than finding another floor, and the stairs stop there.
 	// Nothing moves the player anywhere, because there is nowhere to go: the
@@ -13370,7 +13535,10 @@ bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
 
 	// NO DUNGEON MEANS NO BOTTOM, which is what keeps the stairs descending for
 	// ever in the sandbox.
-	return Floors > 0 && ChooseFloorNumber() >= Floors;
+	//
+	// AND NEVER THE DARK FLOOR A FALL LEADS TO, which carries the number of the floor its stairs lead to and may
+	// carry the final floor's. Its stairs lead to that floor and do not clear the dungeon. Issues #1820 and #41.
+	return !bOnTheDarkFloor && Floors > 0 && ChooseFloorNumber() >= Floors;
 }
 
 void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
@@ -13484,6 +13652,11 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// away -- so the new dungeon is beaten without a single floor being walked.
 	// Found by a test that walked four dungeons in a row and spent 16 days doing
 	// it.
+	//
+	// AND NOT ON A DARK FLOOR. A dungeon entered while the last one's dark floor was being walked begins at its own
+	// floor 1. Issues #1820 and #41.
+	bOnTheDarkFloor = false;
+	DarkFloorFellFrom = 0;
 	GoToFloor(1);
 
 	// AND ITS TIMER STOPS. The one dungeon the player is standing in does not
@@ -13590,6 +13763,10 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheAngelicStatues();
 	// AND THOSE IN THE DARK'S CHASMS AND THEIR MARKS END WITH THE DUNGEON. Issues #1820 and #41.
 	ForgetTheChasms();
+	// AND THE DARK FLOOR ENDS WITH IT: a floor built after this is an ordinary one.
+	bOnTheDarkFloor = false;
+	DarkFloorFellFrom = 0;
+	DarkFloorPanelStanding = -1;
 	ForgetTheTotems();
 	ForgetTheRelics();
 	ForgetTheBoxes();
@@ -14246,6 +14423,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND THOSE IN THE DARK, WHILE THIS FLOOR HAS A CHASM: its marks are kept drawn and the player's cell is asked.
 	// Issues #1820 and #41.
 	const bool bThoseInTheDark = !ThoseInTheDarkChasmCells.IsEmpty();
+	// AND THE DARK FLOOR A FALL LEADS TO, for its panel line's count of the standing. False unless a fall set it.
+	const bool bTheDarkFloorNow = bOnTheDarkFloor;
 	// AND RULE OF CHAOS' STAIRS THAT OPEN BY TIME, ONLY ON A BEAT WHERE THE SECONDS ITS PANEL LINE SHOWS HAVE MOVED.
 	// The seal itself is asked when the stairs are taken; this is the panel alone. Issues #1820 and #41.
 	const bool bRuleOfChaosStairs =
@@ -14339,7 +14518,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// shown and the camera lightened. Issues #1820 and #41.
 	const bool bVision = UCataclysmDungeonModifierEffects::SightRadiusFor(FloorBrief.Modifiers) > 0.0f
 		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::SwarmOfLocustsKey))
-		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0 || InvisibleStalkers.Num() > 0;
+		|| PlayerSightRadius > 0.0f || HiddenBySight.Num() > 0 || InvisibleStalkers.Num() > 0
+		|| bOnTheDarkFloor;
 	// AND SHADOWY ENEMIES, ON EVERY FLOOR CARRYING IT, AND ON THE FIRST FLOOR AFTER ONE WHILE A SHROUD IS HELD, so it is
 	// taken off. Issues #1820 and #41.
 	const bool bShadowyEnemies = FloorBrief.Modifiers.Contains(
@@ -14426,7 +14606,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
 		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers && !bAngelicWardens
-		&& !bRuleOfChaosStairs && !bThoseInTheDark)
+		&& !bRuleOfChaosStairs && !bThoseInTheDark && !bTheDarkFloorNow)
 	{
 		return;
 	}
@@ -14676,6 +14856,26 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bThoseInTheDark)
 	{
 		StepThoseInTheDark(Player);
+
+		// A FALL REPLACED THE FLOOR, AND THIS BEAT ENDS HERE. Every flag above was read from the floor the player
+		// fell from, and the steps below would act on the dark floor by them. The dark floor's first beat is the
+		// next one. A floor with a chasm is never the dark floor, so the two differ only when the player fell.
+		if (bOnTheDarkFloor != bTheDarkFloorNow)
+		{
+			return;
+		}
+	}
+
+	// AND THE DARK FLOOR'S COUNT OF THE STANDING, shown when it changed, as Lightforged Walls' count is. The seal
+	// itself is asked when the stairs are taken. Issues #1820 and #41.
+	if (bTheDarkFloorNow)
+	{
+		const int32 DarkFloorStandingNow = LightforgedWallsStanding();
+		if (DarkFloorStandingNow != DarkFloorPanelStanding)
+		{
+			DarkFloorPanelStanding = DarkFloorStandingNow;
+			RefreshFloorModifierPanel();
+		}
 	}
 
 	// AND RULE OF CHAOS' PANEL LINE, WHICH COUNTS THE SECONDS UNTIL THE STAIRS OPEN. Drawn again when the whole seconds
@@ -15189,7 +15389,8 @@ void ACataclysmDungeonGameMode::ChooseTheScarceSlot(
 		}
 	}
 
-	const int32 Pick = Effects::ScarcityPick(Worn.Num(), ChooseSeed(), FloorBrief.FloorNumber);
+	// THE DARK FLOOR DRAWS ITS OWN SLOT, as it draws its own rows: the seed is the floor's.
+	const int32 Pick = Effects::ScarcityPick(Worn.Num(), ChooseSeedForThisFloor(), FloorBrief.FloorNumber);
 	Equipment->SetDisabledSlot(Worn.IsValidIndex(Pick) ? Worn[Pick]
 													   : ECataclysmGearSlot::Count);
 }
@@ -18777,9 +18978,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 												 AngelicStatueCellsStanding().Num(), AngelicWardensNow().Num()));
 	}
 
-	// AND THOSE IN THE DARK: how many chasms this floor has. Issues #1820 and #41.
+	// AND THOSE IN THE DARK: how many chasms this floor has; and on the dark floor a fall leads to, that it has
+	// none and how many of the creatures it placed still stand before its stairs open. Issues #1820 and #41.
 	const FName ThoseInTheDarkRow(Effects::ThoseInTheDarkKey);
-	if (FloorBrief.Modifiers.Contains(ThoseInTheDarkRow))
+	if (bOnTheDarkFloor)
+	{
+		Counting.Add(ThoseInTheDarkRow, TheDarkFloorSealsTheStairs()
+			? FString::Printf(TEXT("those in the dark: the dark floor, no chasms, %d still standing"),
+							  LightforgedWallsStanding())
+			: FString(TEXT("those in the dark: the dark floor, no chasms, every creature slain")));
+	}
+	else if (FloorBrief.Modifiers.Contains(ThoseInTheDarkRow))
 	{
 		Counting.Add(ThoseInTheDarkRow,
 					 FString::Printf(TEXT("those in the dark: %d chasms"), ThoseInTheDarkChasmCells.Num()));
