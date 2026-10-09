@@ -27,7 +27,13 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 	// long on you" became "DoTs on you have 100%-300% more duration", so that
 	// its sentence states the range its row holds in the form every reader of
 	// a range already reads.
+	//
+	// AND ONE ON 2026-10-08, the owner's approved reword of Divine
+	// Retribution's ten-piece bonus, so that its sentence states the five
+	// seconds its row waits. The old sentence opened "Every 10 seconds".
 	static const TMap<FName, FName> Table = {
+		{TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_10_se"),
+		 TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec")},
 		{TEXT("Negative_DoTs_last_2x_4x_as_long_on_you"),
 		 TEXT("Negative_DoTs_on_you_have_100_300_more_duration")},
 		{TEXT("Negative_Nearby_enemies_gain_20_40_resistances"),

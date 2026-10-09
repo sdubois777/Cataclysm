@@ -20262,4 +20262,124 @@ bool FCataclysmFirstHitStaggerEachEnemyTest::RunTest(const FString&)
 		Carries(Striker.Second, Staggered));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDivineRetributionTenRowTest,
+	"Cataclysm.Enchantments.DivineRetributionTenPiecesMakeABlockRefreshEverySkillOnceInFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Divine Retribution (10-Piece Bonus): Every 5 seconds, you gain a stack of
+ * 'Sanctified Power.' When you block an attack, you consume all stacks of
+ * 'Sanctified Power' and all of your skills are instantly refreshed. The bonus
+ * is permanent for the rest of the dungeon".
+ * Issue #1833: `cooldown_reset_all` 100 on `block`,
+ * Trigger Cooldown 5, the owner's words of 2026-10-08: "Make it every 5
+ * seconds". Ten pieces: a real block clears every slot's cooldown, the
+ * ultimate's included; a block four seconds on clears nothing; one six seconds
+ * on clears them again. Nine pieces clear nothing. NO STACK IS COUNTED AND
+ * NOTHING IS KEPT FOR THE REST OF THE DUNGEON: the row is the block and the
+ * wait, and this test shows only those.
+ */
+bool FCataclysmDivineRetributionTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	using namespace CataclysmBlockRowTest;
+	using namespace CataclysmApplyStatusRowTest;
+	const TCHAR* Retribution = TEXT("Positive_Divine_Retribution_2_Piece_Bonus_Your_energy");
+	for (const int32 Pieces : {9, 10})
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+		FWearer Wearer(World);
+		WearSet(Wearer, Retribution, Pieces);
+		SetHealth(Wearer.AbilitySystem, 100000.0f, 100000.0f);
+		WriteLines(Wearer.AbilitySystem, {}, {{BlockChance, 100.0f}});
+		FWearer Attacker(World);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1000.0f);
+
+		// Every slot on a thirty-second cooldown, built as
+		// `UCataclysmGameplayAbility::ApplyCooldown` builds one. The test world
+		// runs no timers, so none runs out by itself.
+		const auto PutEverySlotOnCooldown = [&Wearer]()
+		{
+			for (const ECataclysmAbilitySlot Each : CataclysmAbilitySlots::All())
+			{
+				const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Each);
+				if (!Tag.IsValid() || Wearer.AbilitySystem->HasMatchingGameplayTag(Tag))
+				{
+					continue;
+				}
+				UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+					GetTransientPackage(),
+					MakeUniqueObjectName(GetTransientPackage(), UGameplayEffect::StaticClass(),
+										 FName(TEXT("TestCooldown"))));
+				Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+				Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(30.0f));
+				FInheritedTagContainer Granted;
+				Granted.Added.AddTag(Tag);
+				Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>()
+					.SetAndApplyTargetTagChanges(Granted);
+				Wearer.AbilitySystem->ApplyGameplayEffectToSelf(
+					Effect, 1.0f, Wearer.AbilitySystem->MakeEffectContext());
+			}
+		};
+		const auto SlotsWaiting = [&Wearer]()
+		{
+			int32 Waiting = 0;
+			for (const ECataclysmAbilitySlot Each : CataclysmAbilitySlots::All())
+			{
+				const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Each);
+				Waiting += Tag.IsValid() && Wearer.AbilitySystem->HasMatchingGameplayTag(Tag) ? 1 : 0;
+			}
+			return Waiting;
+		};
+		PutEverySlotOnCooldown();
+		const int32 Slots = SlotsWaiting();
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %d pieces: %d slots wait, the ultimate's among them"),
+				Pieces, Slots),
+				Slots > 1 && Wearer.AbilitySystem->HasMatchingGameplayTag(
+					UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Ultimate))))
+		{
+			return false;
+		}
+
+		bool bBlocked = false;
+		const float First = BlowOn(World, Wearer, Attacker, &bBlocked);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %d pieces: the first blow was blocked and landed %.1f"),
+				Pieces, First), bBlocked && First > 0.0f))
+		{
+			return false;
+		}
+		if (Pieces < 10)
+		{
+			TestEqual(TEXT("nine pieces: the block refreshed nothing"), SlotsWaiting(), Slots);
+			continue;
+		}
+		TestEqual(TEXT("ten pieces: the block refreshed every slot. If not, DT_EnchantmentEffects may be "
+					   "older than the rows: run tools/generate_datatable_assets.py"),
+			SlotsWaiting(), 0);
+
+		PutEverySlotOnCooldown();
+		World->TimeSeconds += 4.0f;
+		bBlocked = false;
+		BlowOn(World, Wearer, Attacker, &bBlocked);
+		TestTrue(TEXT("four seconds on, the blow is blocked"), bBlocked);
+		TestEqual(TEXT("and refreshes nothing: five seconds have not passed"), SlotsWaiting(), Slots);
+
+		World->TimeSeconds += 2.0f;
+		bBlocked = false;
+		BlowOn(World, Wearer, Attacker, &bBlocked);
+		TestTrue(TEXT("six seconds on, the blow is blocked"), bBlocked);
+		TestEqual(TEXT("and every slot is refreshed again"), SlotsWaiting(), 0);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
