@@ -48449,4 +48449,942 @@ bool FCataclysmWallsSharedCellsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Angelic Wardens. Issues #1820 and #41. Ruled 2026-10-08.
+//
+// NO TEST HERE RUNS A CREATURE'S BRAIN OR MOVES THE WORLD'S CLOCK. The game mode's beat is stepped by hand, a quarter
+// second at a time, and a skill use is announced as `CommitAndBegin` announces it. Distances are measured flat from
+// the middle of a statue's cell to where the test put the player.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName AngelicWardensRow(UCataclysmDungeonModifierEffects::AngelicWardensKey);
+
+	/** How many dungeon seeds an Angelic Wardens test tries for a floor that meets its set-up. */
+	constexpr int32 AngelicSeedsTried = 20;
+
+	/** Further than both triggers reach, with a metre to spare: a point this far from a statue cannot wake it. */
+	constexpr float AngelicClearOfOthersCm = 1300.0f;
+
+	/** The four distances a test stands the player at: inside and outside each trigger by half a metre. */
+	constexpr float AngelicInsideWalkCm = 450.0f;
+	constexpr float AngelicOutsideWalkCm = 550.0f;
+	constexpr float AngelicInsideSkillCm = 1150.0f;
+	constexpr float AngelicOutsideSkillCm = 1250.0f;
+
+	/** What the floor panel says for Angelic Wardens, or a plain answer when it says nothing. */
+	FString AngelicPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		// THE MAP IN A LOCAL, as `WallsPanelLine` keeps it: a pointer into the returned map itself would outlive it.
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(AngelicWardensRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** The line the row is ruled to show for these two counts. */
+	FString AngelicLineFor(int32 Standing, int32 Awake)
+	{
+		return FString::Printf(TEXT("angelic wardens: %d statues standing, %d awake"), Standing, Awake);
+	}
+
+	/** How far a point is from the middle of a cell, flat, in centimetres. */
+	float AngelicCmFromCell(const ACataclysmDungeonGameMode* Mode, FIntPoint Cell, const FVector& Point)
+	{
+		return FVector::Dist2D(Mode->CurrentFloor->WorldOfCell(Cell), Point);
+	}
+
+	/**
+	 * A point `Cm` from the middle of `Statue`, a metre above a walkable cell, and further than both triggers reach
+	 * from every other standing statue, so nothing a test does there can wake another one. Sixteen directions are
+	 * tried. False when none serves.
+	 */
+	bool APointFromTheStatue(const ACataclysmDungeonGameMode* Mode, FIntPoint Statue, float Cm, FVector& Out)
+	{
+		const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+		const FVector Middle = Mode->CurrentFloor->WorldOfCell(Statue);
+		const TArray<FIntPoint> Standing = Mode->AngelicStatueCellsStanding();
+		for (int32 Direction = 0; Direction < 16; ++Direction)
+		{
+			const float Angle = static_cast<float>(Direction) * UE_TWO_PI / 16.0f;
+			const FVector Point = Middle + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * Cm;
+			if (!Plan.IsFloor(Mode->CurrentFloor->CellOfWorld(Point)))
+			{
+				continue;
+			}
+			bool bClearOfOthers = true;
+			for (const FIntPoint& Other : Standing)
+			{
+				bClearOfOthers = bClearOfOthers
+					&& (Other == Statue || AngelicCmFromCell(Mode, Other, Point) > AngelicClearOfOthersCm);
+			}
+			if (bClearOfOthers)
+			{
+				Out = Point + FVector(0.0f, 0.0f, 100.0f);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** One statue the rule placed, and a place to stand at each of the four distances from it, and a fifth place. */
+	struct FAngelicStage
+	{
+		FIntPoint Statue = FIntPoint(-1, -1);
+		FVector InsideWalk = FVector::ZeroVector;
+		FVector OutsideWalk = FVector::ZeroVector;
+		FVector InsideSkill = FVector::ZeroVector;
+		FVector OutsideSkill = FVector::ZeroVector;
+		/** Eight metres from it, for a creature that is not the player. */
+		FVector AtEight = FVector::ZeroVector;
+	};
+
+	/**
+	 * Goes to `Floor` on dungeon seeds 1, 2, ... with the floor's own creatures cleared away and one beat stepped,
+	 * until one of the statues the rule placed has a place to stand at each of the four distances, and says which
+	 * seed. The game mode's rows are whatever the test set before calling. The player is left at the entrance, which
+	 * is twenty metres or more from every statue.
+	 */
+	bool AnAngelicStage(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Floor, FAngelicStage& Out)
+	{
+		for (int32 Seed = 1; Seed <= AngelicSeedsTried; ++Seed)
+		{
+			Mode->DungeonSeed = Seed;
+			if (!Mode->GoToFloor(Floor))
+			{
+				continue;
+			}
+			Mode->ClearFloorEnemies();
+			Beat(Mode, 1);
+			for (const FIntPoint& Statue : Mode->AngelicStatueCellsStanding())
+			{
+				FAngelicStage Stage;
+				Stage.Statue = Statue;
+				if (APointFromTheStatue(Mode, Statue, AngelicInsideWalkCm, Stage.InsideWalk)
+					&& APointFromTheStatue(Mode, Statue, AngelicOutsideWalkCm, Stage.OutsideWalk)
+					&& APointFromTheStatue(Mode, Statue, AngelicInsideSkillCm, Stage.InsideSkill)
+					&& APointFromTheStatue(Mode, Statue, AngelicOutsideSkillCm, Stage.OutsideSkill)
+					&& APointFromTheStatue(Mode, Statue, 800.0f, Stage.AtEight))
+				{
+					Out = Stage;
+					Test.AddInfo(FString::Printf(
+						TEXT("set-up: dungeon seed %d gives floor %d %d statues, and the one on cell (%d, %d) has room"),
+						Seed, Floor, Mode->AngelicStatueCellsStanding().Num(), Statue.X, Statue.Y));
+					return true;
+				}
+			}
+		}
+		Test.AddError(FString::Printf(
+			TEXT("set-up: none of dungeon seeds 1 to %d gives floor %d a statue with room to stand at all four distances"),
+			AngelicSeedsTried, Floor));
+		return false;
+	}
+
+	/** Stands the player at a point, at the height the floor put them, and asserts how far from the statue that is. */
+	bool StandThePlayerFromTheStatue(FAutomationTestBase& Test, const ACataclysmDungeonGameMode* Mode,
+									 const FPossessedPlayer& Player, const FVector& Point, FIntPoint Statue,
+									 float WantedCm)
+	{
+		StandThePlayerAt(Player, Point);
+		return Test.TestEqual(FString::Printf(TEXT("set-up: the player stands %.0f cm from the statue"), WantedCm),
+							  AngelicCmFromCell(Mode, Statue, Player.Character->GetActorLocation()), WantedCm, 1.0f);
+	}
+
+	/** The woken warden that stands on this cell, or null. */
+	ACataclysmEnemyCharacter* TheWardenOnCell(const ACataclysmDungeonGameMode* Mode, FIntPoint Cell)
+	{
+		for (ACataclysmEnemyCharacter* Warden : Mode->AngelicWardensNow())
+		{
+			if (Mode->CurrentFloor->CellOfWorld(Warden->GetActorLocation()) == Cell)
+			{
+				return Warden;
+			}
+		}
+		return nullptr;
+	}
+
+	/**
+	 * One certain blow of the player's on a woken warden. An Elite draws one enemy modifier at random, and Thorns of
+	 * Glass, Beguiling and Shielder each change what a blow does, so the rows are put aside first and its figures
+	 * computed again without them; the test that calls this has already read what it drew.
+	 */
+	bool SlayTheWarden(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Warden)
+	{
+		if (!Test.TestNotNull(TEXT("set-up: a warden to slay"), Warden))
+		{
+			return false;
+		}
+		Warden->ModifierRows.Reset();
+		Warden->ApplyStartingAttributes();
+		return SlayForTheSections(Test, Player, Warden);
+	}
+}
+
+// THE FIGURES AND THE ROW'S STATE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensFiguresTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensFiguresAndTheRowBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three statues a floor"), Effects::AngelicWardensStatuesPerFloor, 3);
+	TestEqual(TEXT("woken from five metres"), Effects::AngelicWardensWakeWithinCm, 500.0f);
+	TestEqual(TEXT("a skill wakes from twelve metres"), Effects::AngelicWardensSkillWakesWithinCm, 1200.0f);
+	TestEqual(TEXT("the Elite rung"), Effects::AngelicWardensRung, 1);
+	TestEqual(TEXT("the hunt is the Vengeful Wraiths' sight"), Effects::AngelicWardensSightMultiplier,
+			  Effects::VengefulWraithsSightMultiplier);
+	TestTrue(TEXT("the row has a rule"), Effects::KeysWithARule().Contains(AngelicWardensRow));
+	TestEqual(TEXT("built, on the owner's reading of what wakes a statue"),
+			  static_cast<int32>(Effects::BuiltStateOf(AngelicWardensRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	return true;
+}
+
+// T1. STATUES STAND AS PILLARS WHEN THE FLOOR BEGINS, AND NO CREATURE IS MADE. CONTROL: THE SAME SEED WITHOUT THE ROW.
+//
+// WHERE EACH STANDS: the player at the entrance; the floor's own creatures where the floor placed them.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensBeginTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensStatuesStandAsPillarsWhenTheFloorBeginsAndNoCreatureIsMade",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensBeginTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {AngelicWardensRow};
+	int32 SeedFound = 0;
+	for (int32 Seed = 1; Seed <= AngelicSeedsTried && SeedFound == 0; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (Mode->GoToFloor(2) && Mode->AngelicStatueCellsStanding().Num() > 0)
+		{
+			SeedFound = Seed;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a dungeon seed whose floor 2 holds a statue"), SeedFound > 0))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Statues = Mode->AngelicStatueCellsStanding();
+	AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives floor 2 %d statues"), SeedFound, Statues.Num()));
+	TestTrue(TEXT("at most three statues stand"), Statues.Num() <= Effects::AngelicWardensStatuesPerFloor);
+
+	// A COPY, because the floor is built again below.
+	const FCataclysmFloorPlan WithStatues = Mode->CurrentFloor->GetPlan();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	for (int32 Index = 0; Index < Statues.Num(); ++Index)
+	{
+		const FVector Where = Mode->CurrentFloor->WorldOfCell(Statues[Index]);
+		TestFalse(TEXT("a statue's cell is not walkable in the plan"), WithStatues.IsFloor(Statues[Index]));
+		TestEqual(TEXT("one raised pillar stands on it"), PillarsOn(World, Mode, Statues[Index]), 1);
+		TestTrue(TEXT("it is at least twenty metres from the entrance"),
+				 FVector::Dist2D(Where, Entrance) >= Effects::EternalChorusApartCm - 1.0f);
+		for (int32 Other = Index + 1; Other < Statues.Num(); ++Other)
+		{
+			TestTrue(TEXT("and at least twenty metres from every other statue"),
+					 AngelicCmFromCell(Mode, Statues[Other], Where) >= Effects::EternalChorusApartCm - 1.0f);
+		}
+	}
+	TestEqual(TEXT("the statues' pillars are the only obstacles in the world"), RaisedObstaclesInTheWorld(World),
+			  Statues.Num());
+
+	// NO CREATURE IS MADE.
+	int32 Creatures = 0;
+	int32 RaisedByARule = 0;
+	int32 OnAStatuesCell = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+	{
+		if (!IsValid(Creature))
+		{
+			continue;
+		}
+		++Creatures;
+		RaisedByARule += Creature->bRaisedByARule ? 1 : 0;
+		OnAStatuesCell += Statues.Contains(Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())) ? 1 : 0;
+	}
+	if (!TestTrue(TEXT("set-up: the floor placed its own creatures"), Creatures > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no warden is awake"), Mode->AngelicWardensNow().Num(), 0);
+	TestEqual(TEXT("no creature on the floor was raised by a rule"), RaisedByARule, 0);
+	TestEqual(TEXT("and none stands on a statue's cell"), OnAStatuesCell, 0);
+
+	// NONE SPLITS AN AREA, AND NONE STRANDS A CELL.
+	TestEqual(TEXT("the floor with its statues is one area"), CataclysmFloorAreaCount(WithStatues), 1);
+	const TArray<int32> Reached = CataclysmFloorDistancesFrom(WithStatues, WithStatues.Entrance);
+	int32 NotReached = 0;
+	for (int32 Index = 0; Index < WithStatues.Cells.Num(); ++Index)
+	{
+		NotReached += (WithStatues.Cells[Index] == ECataclysmFloorCell::Floor && Reached[Index] == INDEX_NONE) ? 1 : 0;
+	}
+	TestEqual(TEXT("and every walkable cell is reached from the entrance"), NotReached, 0);
+	TestEqual(TEXT("the panel counts the statues and no warden"), AngelicPanelLine(Mode),
+			  AngelicLineFor(Statues.Num(), 0));
+
+	// THE CONTROL: THE SAME DUNGEON SEED AND FLOOR WITHOUT THE ROW.
+	Mode->DungeonModifiers = {};
+	Mode->DungeonSeed = SeedFound;
+	if (!TestTrue(TEXT("set-up: the same floor without the row was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Without = Mode->CurrentFloor->GetPlan();
+	TestEqual(TEXT("without the row no statue stands"), Mode->AngelicStatueCellsStanding().Num(), 0);
+	TestEqual(TEXT("and no pillar"), RaisedObstaclesInTheWorld(World), 0);
+	for (const FIntPoint& Cell : Statues)
+	{
+		TestTrue(TEXT("a cell that held a statue is walkable"), Without.IsFloor(Cell));
+		TestTrue(TEXT("and is beside a wall"), ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Without, Cell));
+	}
+	TestEqual(TEXT("the same floor without statues is one area too"), CataclysmFloorAreaCount(Without), 1);
+	TestEqual(TEXT("and the panel has no line for the row"), AngelicPanelLine(Mode), FString(TEXT("no line")));
+	return true;
+}
+
+// T2. WALKING INSIDE FIVE METRES WAKES A STATUE. CONTROL: STANDING JUST OUTSIDE FIVE METRES DOES NOT.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away. The player stands 5.5 m from the statue's middle,
+// then 4.5 m from it. The warden is raised on the statue's cell, so 4.5 m from the player. Every other statue is
+// more than 13 m from both places.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensWalkTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensAStatueWakesWhenThePlayerComesWithinFiveMetresAndNotFromJustOutside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensWalkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {AngelicWardensRow};
+	FAngelicStage Stage;
+	if (!AnAngelicStage(*this, Mode, 2, Stage))
+	{
+		return false;
+	}
+	const int32 StandingBefore = Mode->AngelicStatueCellsStanding().Num();
+	const int32 CreaturesBefore = Mode->FloorEnemies.Num();
+
+	// THE CONTROL: JUST OUTSIDE FIVE METRES, TWO BEATS.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.OutsideWalk, Stage.Statue, AngelicOutsideWalkCm))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("from 5.5 metres no statue wakes"), Mode->AngelicStatueCellsStanding().Num(), StandingBefore);
+	TestEqual(TEXT("and no warden is raised"), Mode->AngelicWardensNow().Num(), 0);
+	TestEqual(TEXT("its pillar still stands"), PillarsOn(World, Mode, Stage.Statue), 1);
+
+	// INSIDE FIVE METRES: NOTHING UNTIL THE BEAT, AND THEN IT WAKES.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideWalk, Stage.Statue, AngelicInsideWalkCm))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 4.5 metres nothing wakes before the beat"), Mode->AngelicStatueCellsStanding().Num(),
+			  StandingBefore);
+	Beat(Mode, 1);
+	TestEqual(TEXT("at 4.5 metres one statue wakes on the beat"), Mode->AngelicStatueCellsStanding().Num(),
+			  StandingBefore - 1);
+	TestFalse(TEXT("and it is the statue the player came near"),
+			  Mode->AngelicStatueCellsStanding().Contains(Stage.Statue));
+	TestEqual(TEXT("one warden is awake"), Mode->AngelicWardensNow().Num(), 1);
+	TestNotNull(TEXT("and it stands on the statue's cell"), TheWardenOnCell(Mode, Stage.Statue));
+	TestEqual(TEXT("one creature joined the floor's creatures"), Mode->FloorEnemies.Num(), CreaturesBefore + 1);
+	return true;
+}
+
+// T3. A SKILL OTHER THAN THE BASIC ATTACK USED WITHIN TWELVE METRES WAKES A STATUE. CONTROLS: THE SAME SKILL USED
+// OUTSIDE TWELVE METRES, THE BASIC ATTACK WITHIN THEM, A CREATURE'S SKILL WITHIN THEM, AND STANDING THERE FOR TWO BEATS.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away. The player stands 12.5 m from the statue's middle,
+// then 11.5 m from it. `Someone`, a Common Imp, stands 8 m from the statue's middle, so 3.5 m or more from the player.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensSkillTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensASkillUsedWithinTwelveMetresWakesAStatueAndTheBasicAttackDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensSkillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {AngelicWardensRow};
+	FAngelicStage Stage;
+	if (!AnAngelicStage(*this, Mode, 2, Stage))
+	{
+		return false;
+	}
+	const int32 StandingBefore = Mode->AngelicStatueCellsStanding().Num();
+	const FString Skill(TEXT("A Skill Of The Players"));
+	const FVector Aim = Mode->CurrentFloor->WorldOfCell(Stage.Statue);
+
+	// CONTROL: THE SKILL USED OUTSIDE TWELVE METRES.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.OutsideSkill, Stage.Statue, AngelicOutsideSkillCm))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Skill, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("a skill used 12.5 metres away wakes nothing"), Mode->AngelicStatueCellsStanding().Num(),
+			  StandingBefore);
+
+	// CONTROL: THE BASIC ATTACK WITHIN TWELVE METRES.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideSkill, Stage.Statue, AngelicInsideSkillCm))
+	{
+		return false;
+	}
+	ThePlayerUses(Player, Skill, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestEqual(TEXT("the basic attack used 11.5 metres away wakes nothing"), Mode->AngelicStatueCellsStanding().Num(),
+			  StandingBefore);
+
+	// CONTROL: A CREATURE'S SKILL WITHIN TWELVE METRES.
+	ACataclysmEnemyCharacter* Someone = PlaceCreatureAtRung(World, Mode, Stage.AtEight, 0);
+	if (!TestNotNull(TEXT("set-up: a creature eight metres from the statue"), Someone)
+		|| !TestTrue(TEXT("set-up: and a metre or more from the player"),
+					 FVector::Dist2D(Someone->GetActorLocation(), Player.Character->GetActorLocation()) >= 100.0f))
+	{
+		return false;
+	}
+	const FGameplayTagContainer NoTags;
+	UCataclysmCombatEvents::NoteSkillUsed(Someone, Skill, NoTags, ECataclysmAbilitySlot::Heavy, &Aim);
+	TestEqual(TEXT("a skill someone else used eight metres away wakes nothing"),
+			  Mode->AngelicStatueCellsStanding().Num(), StandingBefore);
+
+	// CONTROL: STANDING THERE, WITH NO SKILL, FOR TWO BEATS. Twelve metres is the skill's reach and not the walk's.
+	Beat(Mode, 2);
+	TestEqual(TEXT("standing 11.5 metres away for two beats wakes nothing"), Mode->AngelicStatueCellsStanding().Num(),
+			  StandingBefore);
+	TestEqual(TEXT("so no warden is awake yet"), Mode->AngelicWardensNow().Num(), 0);
+
+	// THE SKILL, FROM THE SAME PLACE: IT WAKES AT ONCE, WITH NO BEAT.
+	ThePlayerUses(Player, Skill, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("the same skill in the Heavy slot used 11.5 metres away wakes one statue"),
+			  Mode->AngelicStatueCellsStanding().Num(), StandingBefore - 1);
+	TestFalse(TEXT("and it is the statue the skill was used near"),
+			  Mode->AngelicStatueCellsStanding().Contains(Stage.Statue));
+	TestNotNull(TEXT("its warden stands on the statue's cell"), TheWardenOnCell(Mode, Stage.Statue));
+	return true;
+}
+
+// T4. A WOKEN WARDEN IS AN ABYSSAL WARDEN AT THE ELITE RUNG, RAISED BY A RULE; IT DOES NOT HOLD SEALED STAIRS SHUT; AND
+// IT CAN BE KILLED. THE FLOOR CARRIES LIGHTFORGED WALLS, WHICH SEALS THE STAIRS WHILE A CREATURE THE FLOOR PLACED STANDS.
+//
+// `CreaturesRaisedByARule` IS PRIVATE, so membership is asserted through what reads it: the creature's own mark, and
+// `IsOneOfTheFloorsOwnStanding`, which answers false for a creature on that list. CONTROL: `Plain`, a creature not
+// raised by a rule, is one of the floor's own and seals the stairs.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away, which opens every section barrier on the next beat.
+// The player stands 12.5 m and then 4.5 m from the statue's middle. `Plain`, a Common Imp, stands on the entrance,
+// 20 m or more from the statue and 7.5 m or more from the player. The warden is raised on the statue's cell.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensWardenTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensAWokenWardenIsAnEliteAbyssalWardenThatSealsNoStairsAndCanBeKilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensWardenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {AngelicWardensRow, WallsRow};
+	FAngelicStage Stage;
+	if (!AnAngelicStage(*this, Mode, 2, Stage)
+		|| !TestNotNull(TEXT("set-up: the floor has stairs"), Mode->Stairs.Get())
+		|| !TestEqual(TEXT("set-up: no section barrier stands on the emptied floor"), SectionBarriersStanding(Mode), 0)
+		|| !TestTrue(TEXT("set-up: nothing seals the stairs of the emptied floor"), Mode->StairsSealedBy().IsEmpty()))
+	{
+		return false;
+	}
+
+	// THE CONTROL: A CREATURE THAT NO RULE RAISED SEALS THE STAIRS.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.OutsideSkill, Stage.Statue, AngelicOutsideSkillCm))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Plain =
+		PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a plain creature on the entrance"), Plain)
+		|| !TestTrue(TEXT("set-up: a metre or more from the player"),
+					 FVector::Dist2D(Plain->GetActorLocation(), Player.Character->GetActorLocation()) >= 100.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: the plain creature is one of the floor's own"), Mode->IsOneOfTheFloorsOwnStanding(Plain));
+	TestTrue(TEXT("control: and Lightforged Walls seals the stairs while it stands"),
+			 Mode->StairsSealedBy() == TArray<FName>({WallsRow}));
+
+	// THE STATUE WOKEN BY WALKING UP TO IT.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideWalk, Stage.Statue, AngelicInsideWalkCm))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* Warden = TheWardenOnCell(Mode, Stage.Statue);
+	if (!TestNotNull(TEXT("set-up: the statue woke and its warden stands on its cell"), Warden))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is an Abyssal Warden"), Warden->IsA<ACataclysmAbyssalWardenCharacter>());
+	TestEqual(TEXT("at the row's rung"), Warden->RarityStep, Effects::AngelicWardensRung);
+	TestEqual(TEXT("which is the Elite rung, step 1"), Warden->RarityStep, 1);
+	TestTrue(TEXT("among the floor's creatures"), Mode->FloorEnemies.Contains(Warden));
+	TestTrue(TEXT("marked as raised by a rule"), Warden->bRaisedByARule);
+	TestFalse(TEXT("so not one of the floor's own, though it stands"), Mode->IsOneOfTheFloorsOwnStanding(Warden));
+	TestFalse(TEXT("it can be hurt"), Warden->bCannotBeHurt);
+	TestTrue(TEXT("it pays for its death"), Warden->PaysForItsDeath());
+	TestEqual(TEXT("it carries no section"), Warden->FloorSection, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("it drew one enemy modifier, the count of its rung"), Warden->ModifierRows.Num(), 1);
+	for (const FName& Row : Warden->ModifierRows)
+	{
+		TestTrue(FString::Printf(TEXT("and %s is a Demonic or a Generic row"), *Row.ToString()),
+				 Row.ToString().StartsWith(TEXT("Demonic_")) || Row.ToString().StartsWith(TEXT("Generic_")));
+	}
+
+	// IT DOES NOT HOLD THE STAIRS: THE PLAIN CREATURE SLAIN, THE WARDEN STILL STANDING.
+	TestEqual(TEXT("the walls count the plain creature and not the warden"), Mode->LightforgedWallsStanding(), 1);
+	if (!SlayForTheSections(*this, Player, Plain))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("set-up: the warden still stands"), UCataclysmSkillEffects::IsDead(Warden));
+	TestEqual(TEXT("with the warden standing the walls count nothing"), Mode->LightforgedWallsStanding(), 0);
+	TestTrue(TEXT("and nothing seals the stairs"), Mode->StairsSealedBy().IsEmpty());
+
+	// AND IT CAN BE KILLED.
+	TestEqual(TEXT("one warden is awake"), Mode->AngelicWardensNow().Num(), 1);
+	if (!SlayTheWarden(*this, Player, Warden))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a slain warden is not awake"), Mode->AngelicWardensNow().Num(), 0);
+	return true;
+}
+
+// T5. THE HUNT. SAID FIRST: NO TEST HERE MAKES A WARDEN WALK. A creature comes for the player through its brain, on
+// the world's tick, and neither runs in these tests. WHAT IS ASSERTED INSTEAD is the distance the woken warden notices
+// the player from: further than the largest floor this game builds is from corner to corner, and further than this
+// floor is. CONTROL: its own sight without the row's multiplier does not reach the entrance from where it stands.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away; the player 4.5 m from the statue's middle; the warden
+// on the statue's cell.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensHuntTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensAWokenWardenNoticesThePlayerFromFurtherThanTheLargestFloorIsAcross",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensHuntTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {AngelicWardensRow};
+	FAngelicStage Stage;
+	if (!AnAngelicStage(*this, Mode, 2, Stage)
+		|| !StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideWalk, Stage.Statue, AngelicInsideWalkCm))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* Warden = TheWardenOnCell(Mode, Stage.Statue);
+	if (!TestNotNull(TEXT("set-up: the statue woke and its warden stands on its cell"), Warden))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const float LargestFloorAcross = static_cast<float>(FCataclysmFloorGenerator::MostFloorSide)
+		* FCataclysmFloorGenerator::CellSizeCm * FMath::Sqrt(2.0f);
+	const float ThisFloorAcross = FMath::Sqrt(static_cast<float>(Plan.Width * Plan.Width + Plan.Height * Plan.Height))
+		* FCataclysmFloorGenerator::CellSizeCm;
+	const float ToTheEntrance = FVector::Dist2D(Warden->GetActorLocation(), Mode->CurrentFloor->EntranceWorld());
+	TestEqual(TEXT("the warden was given the row's sight multiplier"), Warden->SightRadiusMultiplier,
+			  Effects::AngelicWardensSightMultiplier, 0.001f);
+	TestTrue(FString::Printf(TEXT("it notices from %.0f cm, further than the largest floor is across (%.0f cm)"),
+							 Warden->NoticesFromCm(), LargestFloorAcross),
+			 Warden->NoticesFromCm() >= LargestFloorAcross);
+	TestTrue(FString::Printf(TEXT("and further than this floor is across (%.0f cm)"), ThisFloorAcross),
+			 Warden->NoticesFromCm() >= ThisFloorAcross);
+	TestTrue(FString::Printf(TEXT("control: its own sight, %.0f cm, does not reach the entrance %.0f cm away"),
+							 Warden->SightRadiusCm(), ToTheEntrance),
+			 Warden->SightRadiusCm() < ToTheEntrance);
+	return true;
+}
+
+// T6. ACROSS A CLOSED BARRIER A SKILL DOES NOT WAKE A STATUE; WITH THE BARRIER OPEN THE SAME SKILL FROM THE SAME PLACE
+// DOES, AND SO DOES WALKING UP TO ONE.
+//
+// SAID FIRST: WALKING WITHIN FIVE METRES ACROSS A CLOSED BARRIER IS NOT TESTED, BECAUSE IN A STRAIGHT LINE IT CANNOT
+// HAPPEN. A barrier's cell is four metres across and a player cannot stand on it while it is closed, so the nearest a
+// player in the next section can stand to the middle of a statue's cell straight across the barrier is six metres.
+// Both triggers ask the barrier question in one function, `WakeTheAngelicStatuesNear`, and the skill, which reaches
+// twelve metres, is the trigger this test puts across the barrier.
+//
+// WHERE EACH STANDS: every placed creature where the floor placed it. `Through` is a cell of barrier 0 with a cell of
+// section 0 on one side and a cell of section 1 straight across. The statue is placed by hand on that cell of section
+// 1. The player stands on the middle of that cell of section 0, which the floor holds nothing on, so 8 m from the
+// statue's middle and 2 m or more from any creature. Later the player stands in the opened barrier's cell, 4.5 m from
+// the statue's middle. The first warden is destroyed before the second statue is placed on the same cell.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensBarrierTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensAStatueBehindAClosedBarrierIsNotWokenFromTheOtherSideAndIsOnceItOpens",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensBarrierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+	Mode->DungeonModifiers = {AngelicWardensRow, WallsRow};
+
+	// A FLOOR OF THREE SECTIONS WHOSE BOUNDARIES SHARE NO CELL, EVERY BARRIER CLOSED AND EVERY SECTION HOLDING A
+	// CREATURE, ON WHICH A CELL OF BARRIER 0 HAS A FREE CELL OF SECTION 0 ON ONE SIDE AND, STRAIGHT ACROSS, A CELL OF
+	// SECTION 1 THE RULE ALLOWS A STATUE ON. Dungeon seeds 1, 2, ... are tried, and the statue is placed by the first
+	// pair of cells that serves.
+	const FIntPoint Steps[4] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)};
+	FIntPoint Through(-1, -1);
+	FIntPoint StatueCell(-1, -1);
+	FIntPoint PlayersCell(-1, -1);
+	for (int32 Seed = 1; Seed <= SectionFloorSeedsTried && Through == FIntPoint(-1, -1); ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!Mode->GoToFloor(2) || Mode->FloorSectionsNow().SectionCount() != 3
+			|| BoundaryCellsShared(Mode->FloorSectionsNow()).Num() > 0 || SectionBarriersStanding(Mode) != 2
+			|| Mode->StandingInSection(0) == 0 || Mode->StandingInSection(1) == 0 || Mode->StandingInSection(2) == 0)
+		{
+			continue;
+		}
+		const FCataclysmFloorPlan& Tried = Mode->CurrentFloor->GetPlan();
+		const TSet<FIntPoint> Held = Mode->CellsTheFloorHolds();
+		for (const FIntPoint& Cell : Mode->FloorSectionsNow().Boundaries[0])
+		{
+			for (const FIntPoint& Step : Steps)
+			{
+				if (Through == FIntPoint(-1, -1) && Tried.IsFloor(Cell + Step) && Tried.IsFloor(Cell - Step)
+					&& Mode->FloorSectionsNow().SectionOf(Tried, Cell + Step) == 0
+					&& Mode->FloorSectionsNow().SectionOf(Tried, Cell - Step) == 1
+					&& !Held.Contains(Cell + Step) && Mode->PlaceAnAngelicStatueOn(Cell - Step))
+				{
+					Through = Cell;
+					PlayersCell = Cell + Step;
+					StatueCell = Cell - Step;
+					AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d, a statue on cell (%d, %d) across barrier 0"),
+											Seed, StatueCell.X, StatueCell.Y));
+				}
+			}
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a statue placed on a cell of section 1 straight across barrier 0 from a free cell of "
+					   "section 0"), Through != FIntPoint(-1, -1)))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FVector Up(0.0f, 0.0f, 100.0f);
+	const FVector Across = Mode->CurrentFloor->WorldOfCell(PlayersCell) + Up;
+	const FVector StatueMiddle = Mode->CurrentFloor->WorldOfCell(StatueCell);
+	const FString Skill(TEXT("A Skill Of The Players"));
+	TestTrue(TEXT("set-up: the statue stands"), Mode->AngelicStatueCellsStanding().Contains(StatueCell));
+	TestEqual(TEXT("set-up: one pillar on its cell"), PillarsOn(World, Mode, StatueCell), 1);
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Across, StatueCell, 800.0f)
+		|| !TestTrue(TEXT("set-up: barrier 0 is closed"), Mode->SectionBarrierIsClosed(0)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a closed barrier stands between section 1 and section 0"),
+			 Mode->AClosedBarrierStandsBetweenSections(1, 0));
+
+	// CLOSED: THE SKILL, EIGHT METRES AWAY AND INSIDE ITS TWELVE, DOES NOT WAKE IT.
+	ThePlayerUses(Player, Skill, ECataclysmAbilitySlot::Heavy, StatueMiddle);
+	TestTrue(TEXT("across the closed barrier a skill used eight metres away does not wake the statue"),
+			 Mode->AngelicStatueCellsStanding().Contains(StatueCell));
+	TestEqual(TEXT("and its pillar still stands"), PillarsOn(World, Mode, StatueCell), 1);
+
+	// THE BARRIER OPENS: SECTION 0'S CREATURES SLAIN. The player is eight metres away, beyond the walk's five.
+	if (!SlayTheSection(*this, Player, Mode, 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("set-up: barrier 0 opened"), Mode->SectionBarrierIsClosed(0))
+		|| !TestTrue(TEXT("set-up: the statue still stands, eight metres from the player, after that beat"),
+					 Mode->AngelicStatueCellsStanding().Contains(StatueCell)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no closed barrier stands between section 1 and section 0 now"),
+			  Mode->AClosedBarrierStandsBetweenSections(1, 0));
+
+	// OPEN: THE SAME SKILL FROM THE SAME PLACE WAKES IT.
+	ThePlayerUses(Player, Skill, ECataclysmAbilitySlot::Heavy, StatueMiddle);
+	TestFalse(TEXT("with the barrier open the same skill from the same place wakes the statue"),
+			  Mode->AngelicStatueCellsStanding().Contains(StatueCell));
+	ACataclysmEnemyCharacter* First = TheWardenOnCell(Mode, StatueCell);
+	if (!TestNotNull(TEXT("its warden stands on the statue's cell"), First))
+	{
+		return false;
+	}
+
+	// OPEN: AND WALKING UP TO ONE WAKES IT. The first warden is taken away and a second statue placed on its cell.
+	First->Destroy();
+	if (!TestTrue(TEXT("set-up: a second statue placed on the same cell"), Mode->PlaceAnAngelicStatueOn(StatueCell)))
+	{
+		return false;
+	}
+	const FVector TowardTheOpening = (Mode->CurrentFloor->WorldOfCell(Through) - StatueMiddle).GetSafeNormal2D();
+	const FVector InTheOpening = StatueMiddle + TowardTheOpening * AngelicInsideWalkCm + Up;
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, InTheOpening, StatueCell, AngelicInsideWalkCm)
+		|| !TestTrue(TEXT("set-up: the player stands in the opened barrier's cell"),
+					 Mode->CurrentFloor->CellOfWorld(InTheOpening) == Through)
+		|| !TestTrue(TEXT("set-up: which is walkable"), Plan.IsFloor(Through)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the second statue stands before the beat"),
+			 Mode->AngelicStatueCellsStanding().Contains(StatueCell));
+	Beat(Mode, 1);
+	TestFalse(TEXT("with the barrier open walking to 4.5 metres wakes the statue"),
+			  Mode->AngelicStatueCellsStanding().Contains(StatueCell));
+	TestNotNull(TEXT("and its warden stands on the statue's cell"), TheWardenOnCell(Mode, StatueCell));
+	return true;
+}
+
+// T7. THE PILLAR IS GONE AND ITS CELL WALKABLE AFTER WAKING, AND THE PANEL'S LINE BEFORE AND AFTER.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away; the player at the entrance, then 4.5 m from the
+// statue's middle; the warden on the statue's cell.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensPanelTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensAWokenStatuesPillarIsGoneItsCellIsWalkableAndThePanelFollows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {AngelicWardensRow};
+	FAngelicStage Stage;
+	if (!AnAngelicStage(*this, Mode, 2, Stage))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const int32 StandingBefore = Mode->AngelicStatueCellsStanding().Num();
+
+	// BEFORE.
+	TestFalse(TEXT("before waking the statue's cell is not walkable"), Plan.IsFloor(Stage.Statue));
+	TestEqual(TEXT("one pillar stands on it"), PillarsOn(World, Mode, Stage.Statue), 1);
+	TestEqual(TEXT("the pillars in the world are the statues"), RaisedObstaclesInTheWorld(World), StandingBefore);
+	TestEqual(TEXT("the panel before"), AngelicPanelLine(Mode), AngelicLineFor(StandingBefore, 0));
+
+	// WOKEN.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideWalk, Stage.Statue, AngelicInsideWalkCm))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* Warden = TheWardenOnCell(Mode, Stage.Statue);
+	if (!TestNotNull(TEXT("set-up: the statue woke and its warden stands on its cell"), Warden))
+	{
+		return false;
+	}
+	TestTrue(TEXT("after waking the statue's cell is walkable"), Plan.IsFloor(Stage.Statue));
+	TestEqual(TEXT("no pillar stands on it"), PillarsOn(World, Mode, Stage.Statue), 0);
+	TestEqual(TEXT("one pillar fewer stands in the world"), RaisedObstaclesInTheWorld(World), StandingBefore - 1);
+	TestEqual(TEXT("the panel after"), AngelicPanelLine(Mode), AngelicLineFor(StandingBefore - 1, 1));
+
+	// AND THE WARDEN SLAIN: IT IS NO LONGER COUNTED AWAKE, AND NO STATUE COMES BACK.
+	if (!SlayTheWarden(*this, Player, Warden))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel once the warden is slain"), AngelicPanelLine(Mode),
+			  AngelicLineFor(StandingBefore - 1, 0));
+	return true;
+}
+
+// T8. EACH STATUE WAKES ONCE: STAYING, LEAVING AND COMING BACK, A SKILL, AND THE PLAYER DYING AND RETURNING RAISE NO
+// SECOND WARDEN AND PUT NO STATUE BACK. CONTROL: the first approach, which raised one.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away; the player 4.5 m from the statue's middle, then
+// 12.5 m, then 4.5 m again; the warden on the statue's cell. Every other statue is more than 13 m from each place.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAngelicWardensOnceTest,
+	"Cataclysm.DungeonModifierEffects.AngelicWardensEachStatueWakesOnceAndStaysWokenAfterThePlayerDiesAndReturns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAngelicWardensOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {AngelicWardensRow};
+	FAngelicStage Stage;
+	if (!AnAngelicStage(*this, Mode, 2, Stage))
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const int32 StandingBefore = Mode->AngelicStatueCellsStanding().Num();
+	const int32 CreaturesBefore = Mode->FloorEnemies.Num();
+	const FString Skill(TEXT("A Skill Of The Players"));
+
+	// THE CONTROL: THE FIRST APPROACH RAISES ONE.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideWalk, Stage.Statue, AngelicInsideWalkCm))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* Warden = TheWardenOnCell(Mode, Stage.Statue);
+	if (!TestNotNull(TEXT("control: the first approach woke the statue and raised its warden"), Warden)
+		|| !TestEqual(TEXT("control: one creature joined the floor's creatures"), Mode->FloorEnemies.Num(),
+					  CreaturesBefore + 1))
+	{
+		return false;
+	}
+
+	// STAYING.
+	Beat(Mode, 4);
+	TestEqual(TEXT("four more beats within five metres raise no second warden"), Mode->FloorEnemies.Num(),
+			  CreaturesBefore + 1);
+
+	// LEAVING AND COMING BACK.
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.OutsideSkill, Stage.Statue, AngelicOutsideSkillCm))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!StandThePlayerFromTheStatue(*this, Mode, Player, Stage.InsideWalk, Stage.Statue, AngelicInsideWalkCm))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("a second approach raises no second warden"), Mode->FloorEnemies.Num(), CreaturesBefore + 1);
+
+	// A SKILL BESIDE WHERE IT STOOD.
+	ThePlayerUses(Player, Skill, ECataclysmAbilitySlot::Heavy, Mode->CurrentFloor->WorldOfCell(Stage.Statue));
+	TestEqual(TEXT("nor does a skill used beside where it stood"), Mode->FloorEnemies.Num(), CreaturesBefore + 1);
+	TestEqual(TEXT("one warden is awake"), Mode->AngelicWardensNow().Num(), 1);
+	TestEqual(TEXT("and every other statue still stands"), Mode->AngelicStatueCellsStanding().Num(), StandingBefore - 1);
+
+	// THE PLAYER DIES AND RETURNS.
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Player.Character->Revive();
+	if (!TestFalse(TEXT("set-up: the player is back"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestFalse(TEXT("set-up: the warden still stands"), UCataclysmSkillEffects::IsDead(Warden));
+	TestEqual(TEXT("after the player dies and returns the same warden is awake"), Mode->AngelicWardensNow().Num(), 1);
+	TestTrue(TEXT("on the cell it was raised on"), TheWardenOnCell(Mode, Stage.Statue) == Warden);
+	TestEqual(TEXT("no creature joined the floor's creatures"), Mode->FloorEnemies.Num(), CreaturesBefore + 1);
+	TestEqual(TEXT("no statue came back and none woke"), Mode->AngelicStatueCellsStanding().Num(), StandingBefore - 1);
+	TestTrue(TEXT("the woken statue's cell is still walkable"), Plan.IsFloor(Stage.Statue));
+	TestEqual(TEXT("and no pillar came back onto it"), PillarsOn(World, Mode, Stage.Statue), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
