@@ -1924,10 +1924,12 @@ public:
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08 AND 2026-10-09, each a labelled
 	 * judgement resting on the owner's words above. Every figure is a judged number for the owner's play-check:
 	 * - A CHASM IS ONE MARKED CELL THAT STAYS WALKABLE in the floor's plan. It is not an obstacle and blocks nothing.
-	 * - THE PLAYER FALLS IF THEY ARE STANDING IN IT, asked on the game mode's quarter-second beat: the cell the
-	 *   player stands on is a chasm cell. Nothing in any skill file. Walking onto one falls; a blink, leap or charge
-	 *   that ends on one falls; a player shoved onto one by an enemy falls; a charge that crosses one cell between
-	 *   two beats does not. A corner clipped for under a quarter second is not caught.
+	 * - THE PLAYER FALLS IF THEY ARE STANDING WITHIN ITS RING, asked on the game mode's quarter-second beat: the
+	 *   player is at or within `ThoseInTheDarkMarkRadiusCm`, flat, of the middle of a chasm's cell. Ruled
+	 *   2026-10-09: the place that falls is the place that is marked, so the corners of a chasm's cell are safe
+	 *   ground and nothing unmarked falls. Nothing in any skill file. Walking into the ring falls; a blink, leap or
+	 *   charge that ends in it falls; a player shoved into it by an enemy falls; a charge that crosses it between
+	 *   two beats does not. A clip of the ring for under a quarter second is not caught.
 	 * - CREATURES WALK ACROSS CHASMS AND DO NOT FALL. A player will see creatures walk over a hole. A minion or
 	 *   follower does not fall.
 	 * - HOW MANY: one for every `ThoseInTheDarkWalkableCellsPerChasm` walkable cells, rounded down.
@@ -6498,10 +6500,10 @@ public:
 	 *   cell lands on a chasm about 1 time in 25.
 	 * - NONE WITHIN 20 METRES OF THE ENTRANCE, ruled; measured flat from the middle of the entrance's cell to the
 	 *   middle of the chasm's. A cell is 4 metres, so 20 metres is five cells in a straight line.
-	 * - THE MARK'S RADIUS IS 2 METRES, half a cell, a judgement by the writing session: the drawn ring touches the
-	 *   four sides of the chasm's cell and reaches into no neighbour. The cell's four corners lie outside the ring,
-	 *   up to 83 centimetres beyond it, and standing there falls too. The reading not taken is 2.83 metres, half the
-	 *   cell's diagonal, which covers every place that falls and reaches 83 centimetres into each neighbouring cell.
+	 * - THE MARK'S RADIUS IS 2 METRES, half a cell, AND THE SAME 2 METRES IS WHERE A PLAYER FALLS, ruled
+	 *   2026-10-09: the drawn ring touches the four sides of the chasm's cell and reaches into no neighbour, and
+	 *   the cell's four corners, which lie outside the ring, are safe ground. The reading not taken is 2.83
+	 *   metres, half the cell's diagonal, which reaches 83 centimetres into each neighbouring cell.
 	 */
 	static constexpr int32 ThoseInTheDarkWalkableCellsPerChasm = 25;
 	static constexpr float ThoseInTheDarkClearOfTheEntranceCm = 2000.0f;

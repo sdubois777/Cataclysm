@@ -2183,6 +2183,36 @@ public:
 	bool AClosedBarrierStandsBetweenSections(int32 One, int32 Other) const;
 
 	/**
+	 * Those in the Dark: what each placement rule costs on the floor as it stands, FOR A TEST TO LOG. NOTHING IN
+	 * PLAY CALLS THIS, ruled 2026-10-09: `PlaceTheChasms` makes the draw once, with every rule.
+	 *
+	 * The draw is made again four times on the floor as it stands, with one more rule each time, and changes
+	 * nothing. The four `After` figures are how many chasms each of those draws places. THEY ARE CAPPED AT THE
+	 * NUMBER ASKED FOR: a cell a rule refuses is replaced by the next cell of the shuffle, so two of them differ
+	 * only on a floor where the cells run out. The four `Refused` figures are what say whether a rule refused
+	 * anything: in the draw with every rule, how many cells the draw came to and skipped for that rule before it
+	 * had the number asked for.
+	 *
+	 * NOT THE SAME HELD CELLS AS WHEN THE FLOOR'S CHASMS WERE CHOSEN. The floor's own chasm cells are left out of
+	 * the held cells here, so they can be chosen again. But the floor's creatures, placed after the chasms, hold
+	 * their cells now, the player stands at the entrance and the stairs on the exit. So `AfterTheCrossingQuestion`
+	 * may differ from what was placed.
+	 */
+	struct FThoseInTheDarkRuleCounts
+	{
+		int32 WalkableNow = 0;
+		int32 AfterTheEntranceAndStairs = 0;
+		int32 AfterHeldAndBarriers = 0;
+		int32 AfterNoTwoSideBySide = 0;
+		int32 AfterTheCrossingQuestion = 0;
+		int32 RefusedNearTheEntranceOrOnTheStairs = 0;
+		int32 RefusedHeldOrOnABarrier = 0;
+		int32 RefusedBesideAChasm = 0;
+		int32 RefusedByTheCrossingQuestion = 0;
+	};
+	FThoseInTheDarkRuleCounts ThoseInTheDarkCountsRuleByRule() const;
+
+	/**
 	 * Those in the Dark, layer 1 of 2, for the panel and tests. Issues #1820 and #41. Ruled 2026-10-08 and
 	 * 2026-10-09; see `UCataclysmDungeonModifierEffects::ThoseInTheDarkKey`.
 	 *
@@ -2196,16 +2226,13 @@ public:
 	 *
 	 * `FThoseInTheDarkCount` IS WHAT THE PLACEMENT COUNTED ON THIS FLOOR, kept so a test can log it: the walkable
 	 * cells when the chasms were chosen, the chasms asked for, and how many the draw places with the rules applied
-	 * one after another -- the entrance and stairs rule alone; then held and barrier cells as well; then no two
-	 * side by side as well; then the crossing question as well, which is what was placed.
+	 * all together, which is what was placed. What each rule cost is not counted in play, ruled 2026-10-09; a
+	 * test asks `ThoseInTheDarkCountsRuleByRule` for it.
 	 */
 	struct FThoseInTheDarkCount
 	{
 		int32 Walkable = 0;
 		int32 Asked = 0;
-		int32 AfterTheEntranceAndStairs = 0;
-		int32 AfterHeldAndBarriers = 0;
-		int32 AfterNoTwoSideBySide = 0;
 		int32 Placed = 0;
 	};
 	const TArray<FIntPoint>& ThoseInTheDarkChasmCellsNow() const { return ThoseInTheDarkChasmCells; }
@@ -4288,9 +4315,12 @@ private:
 	 * cell of the plan as it stands, row by row, shuffled on a stream made from the plan's seed and
 	 * `ThoseInTheDarkSalt`; then taken in that order until one for every
 	 * `ThoseInTheDarkWalkableCellsPerChasm` walkable cells is chosen or the cells run out. `OutWalkable` is how many
-	 * walkable cells there were. Changes nothing.
+	 * walkable cells there were. Changes nothing. The floor's own chasm cells are left out of the held cells, so a
+	 * draw made again after the chasms are placed may choose them again. `OutRefusedByRule`, when given, is set to
+	 * four counts, one a rule in the order above: the cells the draw came to and skipped for that rule.
 	 */
-	TArray<FIntPoint> ChooseTheChasmCells(int32 RulesApplied, int32& OutWalkable) const;
+	TArray<FIntPoint> ChooseTheChasmCells(int32 RulesApplied, int32& OutWalkable,
+										  TArray<int32>* OutRefusedByRule = nullptr) const;
 
 	/**
 	 * Those in the Dark: this floor's chasms chosen, where a new arena is populated, after every other object of the
@@ -4301,7 +4331,7 @@ private:
 	/** Those in the Dark: the chasms, their marks, the count and the recorded fall forgotten. */
 	void ForgetTheChasms();
 
-	/** Those in the Dark, on the beat: a lost mark is made again, and a player standing on a chasm cell falls. */
+	/** Those in the Dark, on the beat: a lost mark is made again, and a player standing within a chasm's ring falls. */
 	void StepThoseInTheDark(class ACataclysmPlayerCharacter* Player);
 
 	/**
