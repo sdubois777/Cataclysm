@@ -12839,6 +12839,80 @@ bool ACataclysmDungeonGameMode::InfernalSealsSealTheStairs() const
 		&& !FloorBrief.bWaveWalksIn && !IsOnTheLastFloor() && InfernalSealPieces < InfernalSealPiecesNeeded();
 }
 
+void ACataclysmDungeonGameMode::NoteDeathForRuleOfChaos(const FCataclysmDeathNotice& Notice)
+{
+	// ONLY ON A FLOOR THAT DREW THE CHANGE TO SKILL BEHAVIOUR. A floor that drew another change, and a floor without
+	// the row, clear nothing on a kill.
+	if (FloorBrief.RuleOfChaosChange != FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns)
+	{
+		return;
+	}
+
+	// "A KILL" AS BLOOD GATES COUNTS ONE, the same four tests in the same words: the killer on the notice is the
+	// player, the creature pays for its death, and it is not one a rule raised. See `NoteDeathForBloodGates`.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player
+		|| CreaturesRaisedByARule.Contains(Fallen))
+	{
+		return;
+	}
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent());
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY SLOT'S COOLDOWN TAG, asked of the one function that names them, as a respawn asks.
+	FGameplayTagContainer EveryCooldown;
+	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+	{
+		const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+		if (Cooldown.IsValid())
+		{
+			EveryCooldown.AddTag(Cooldown);
+		}
+	}
+	if (EveryCooldown.IsEmpty())
+	{
+		return;
+	}
+
+	// NO ROLL, ruled on 2026-10-08: the rule always clears. EVERY SPENT USE RETURNED FIRST, so that ending the
+	// cooldowns next starts no further recharge; then every cooldown ended. These are the two calls
+	// `UCataclysmAbilitySystemComponent::RollAndResetCooldowns` makes after its roll, made here without it.
+	AbilitySystem->RefillSkillCharges(EveryCooldown);
+	AbilitySystem->RemoveActiveEffectsWithGrantedTags(EveryCooldown);
+	++RuleOfChaosKills;
+	UE_LOG(LogCataclysm, Verbose, TEXT("Rule of Chaos: kill %d on floor %d cleared every cooldown."), RuleOfChaosKills,
+		   FloorNumber);
+}
+
+bool ACataclysmDungeonGameMode::RuleOfChaosSealsTheStairs() const
+{
+	// BY TIME AND BY NOTHING ELSE: sealed from the moment the floor is placed until its own clock reaches the figure.
+	// `FloorSecondsSincePlaced` is counted on the beat, with or without a player, and is put back to nought only when
+	// a floor is populated, so a player who dies and stands back up finds the count where the beat has taken it.
+	//
+	// NOT ON A HORDE FLOOR, WHICH HAS NO STAIRS, AND NOT ON THE LAST FLOOR, WHOSE WAY OUT IS NOT SEALED: the two tests
+	// `InfernalSealsSealTheStairs` and `LightforgedWallsSealTheStairs` make.
+	return FloorBrief.RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosStairsOpenByTime
+		&& !FloorBrief.bWaveWalksIn && !IsOnTheLastFloor()
+		&& FloorSecondsSincePlaced < UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds;
+}
+
+int32 ACataclysmDungeonGameMode::RuleOfChaosStairsSecondsLeft() const
+{
+	// WHOLE SECONDS, ROUNDED UP, so the line never says nought while the stairs are still sealed.
+	return RuleOfChaosSealsTheStairs()
+		? FMath::CeilToInt(UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds
+						   - FloorSecondsSincePlaced)
+		: 0;
+}
+
 TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -12861,6 +12935,10 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	if (LightforgedWallsSealTheStairs())
 	{
 		Sealing.Add(FName(Effects::LightforgedWallsKey));
+	}
+	if (RuleOfChaosSealsTheStairs())
+	{
+		Sealing.Add(FName(FCataclysmDungeonFloorRules::RuleOfChaosKey));
 	}
 	return Sealing;
 }
@@ -13285,7 +13363,7 @@ bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
 	// brief's number, which for a Horde dungeon is the wave.
 	return UCataclysmDungeonModifierEffects::ApplyToCharacter(
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber),
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange),
 		AbilitySystem, Equipment);
 }
 
@@ -13860,6 +13938,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bSectionBarriers = !FloorSections.Boundaries.IsEmpty();
 	// AND ANGELIC WARDENS, WHILE THIS ARENA HOLDS A STATUE, STANDING OR WOKEN. Issues #1820 and #41.
 	const bool bAngelicWardens = !AngelicStatues.IsEmpty();
+	// AND RULE OF CHAOS' STAIRS THAT OPEN BY TIME, ONLY ON A BEAT WHERE THE SECONDS ITS PANEL LINE SHOWS HAVE MOVED.
+	// The seal itself is asked when the stairs are taken; this is the panel alone. Issues #1820 and #41.
+	const bool bRuleOfChaosStairs =
+		FloorBrief.RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosStairsOpenByTime
+		&& RuleOfChaosStairsSecondsLeft() != RuleOfChaosPanelSeconds;
 	// AND WINGS OF THE HOST, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
@@ -14034,7 +14117,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bPactOfTemptation
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
-		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers && !bAngelicWardens)
+		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers && !bAngelicWardens
+		&& !bRuleOfChaosStairs)
 	{
 		return;
 	}
@@ -14277,6 +14361,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bAngelicWardens)
 	{
 		StepAngelicWardens(Player);
+	}
+
+	// AND RULE OF CHAOS' PANEL LINE, WHICH COUNTS THE SECONDS UNTIL THE STAIRS OPEN. Drawn again when the whole seconds
+	// left have moved, which is once a second and not four times. THE FLOOR'S CLOCK IS STEPPED AFTER THIS FUNCTION, in
+	// `NoteTheFloorsClearTime`, so the drawn line is one beat behind the clock; the seal is not, being asked when the
+	// stairs are taken. Issues #1820 and #41.
+	if (bRuleOfChaosStairs)
+	{
+		RuleOfChaosPanelSeconds = RuleOfChaosStairsSecondsLeft();
+		RefreshFloorModifierPanel();
 	}
 
 	// AND WINGS OF THE HOST, WHICH PLACES ZONES. Issues #1820 and #41.
@@ -15366,7 +15460,7 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// floor carrying Starvation and The Nihil's Embrace has to keep both.
 	FCataclysmPlayerFloorEffects Effects =
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber);
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange);
 
 	// AND EVERY BEAT-DRIVEN FIELD FROM THIS OBJECT, WHICH IS WHY THERE IS ONE
 	// APPLIER AND NOT ONE PER RULE. Issue #41, slice 5. The fields are read
@@ -15402,7 +15496,12 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.RecoveryLessPercent = WitheredGroundRecoveryLessApplied;
 
 	// AND WHAT ETERNAL CHORUS DOES WITHIN EARSHOT, in two fields of its own. Issues #1820 and #41.
-	Effects.ChorusCooldownLongerPercent = EternalChorusCooldownApplied;
+	//
+	// ADDED AND NOT ASSIGNED, SINCE 2026-10-08, because a per-floor rule now writes the first of them: Rule of Chaos'
+	// change to skill behaviour puts its share there in `PlayerEffectsFor`, and assigning would erase it on every
+	// floor that also carried a beat rule -- the fault the note on `RecoveryLessPercent` above describes. On a floor
+	// carrying both, within earshot the two shares add.
+	Effects.ChorusCooldownLongerPercent += EternalChorusCooldownApplied;
 	Effects.ChorusRegenLessPercent = EternalChorusRegenApplied;
 
 	// AND WHAT WASTING SICKNESS'S STACKS TAKE OFF BOTH MAXIMUMS. Issues #1786
@@ -15599,6 +15698,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
 	NoteDeathForBloodGates(Notice);
+	NoteDeathForRuleOfChaos(Notice);
 	NoteDeathForNothingIsForgotten(Notice);
 	NoteDeathForStarvationCurse(Notice);
 	NoteDeathForSoulHarvest(Notice);
@@ -18329,6 +18429,31 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								: FString(TEXT("lightforged walls: open")));
 	}
 
+	// AND RULE OF CHAOS: THE ONE RULE CHANGE THIS FLOOR DREW, BY WHAT IT DOES, and for the stairs that open by time
+	// the seconds left, because the stairs themselves show nothing. Issues #1820 and #41.
+	const FName ChaosRuleRow(FCataclysmDungeonFloorRules::RuleOfChaosKey);
+	if (FloorBrief.Modifiers.Contains(ChaosRuleRow))
+	{
+		const int32 ChaosChange = FloorBrief.RuleOfChaosChange;
+		Counting.Add(ChaosRuleRow,
+					 ChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosSkillsPaidInHealth
+						 ? FString::Printf(TEXT("rule of chaos: skills cost %.0f%% of current health and no mana"),
+										   Effects::DesperateMeasuresHealthPercent)
+						 : ChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns
+						 ? FString::Printf(TEXT("rule of chaos: cooldowns %.0f%% longer, a kill clears them"),
+										   Effects::RuleOfChaosCooldownLongerPercent)
+						 : ChaosChange != FCataclysmDungeonFloorRules::RuleOfChaosStairsOpenByTime
+						 ? FString(TEXT("rule of chaos: no rule change was drawn"))
+						 : FloorBrief.bWaveWalksIn
+						 ? FString(TEXT("rule of chaos: no stairs on a Horde floor"))
+						 : IsOnTheLastFloor()
+						 ? FString(TEXT("rule of chaos: the way out is not sealed"))
+						 : RuleOfChaosSealsTheStairs()
+						 ? FString::Printf(TEXT("rule of chaos: the stairs open in %d s"),
+										   RuleOfChaosStairsSecondsLeft())
+						 : FString(TEXT("rule of chaos: the stairs are open")));
+	}
+
 	// AND ANGELIC WARDENS: the statues not yet woken, and the woken wardens that still stand. Issues #1820 and #41.
 	const FName AngelicRow(Effects::AngelicWardensKey);
 	if (FloorBrief.Modifiers.Contains(AngelicRow))
@@ -20297,6 +20422,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// afresh. Issues #1820 and #41.
 		BloodGatesSlain = 0;
 
+		// AND RULE OF CHAOS FORGETS HOW MANY KILLS CLEARED THE COOLDOWNS: the count is this floor's. Issues #1820 and
+		// #41. Nothing reads it but a test and a log line, so where it is put back decides nothing in play.
+		RuleOfChaosKills = 0;
+
 		// AND UNSTABLE PORTAL FORGETS ITS ROLLS AND ITS WARDENS. Issues #1820 and #41.
 		UnstablePortalRolls = 0;
 		UnstablePortalLast = -1;
@@ -20654,7 +20783,7 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 
 	const FString OnThePlayer = UCataclysmDungeonModifierEffects::Describe(
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber));
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange));
 	const FString Tail = OnThePlayer.IsEmpty()
 		? FString()
 		: FString::Printf(TEXT(" On the player: %s."), *OnThePlayer);

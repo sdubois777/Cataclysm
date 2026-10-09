@@ -2,6 +2,592 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-08 — Rule of Chaos draws one of three rule changes for each floor, and the row is Built
+
+**Built and run.** The writing session wrote this layer in four commits: the first with the code, seven
+Unreal tests, one change to a Python check and this entry; the second, after the rulings numbered 7 to 14
+below, with the clearing of cooldowns on a kill, two more Unreal tests and this entry brought up to those
+rulings; the third, after rulings 15 to 19, with this entry alone; the fourth, after rulings 20 and 21, with
+set-up assertions in three of the tests and this entry. It compiled nothing and ran no Unreal test.
+It ran the Python tests in `tools/tests` and the lint before each commit, the conflict check before the three
+that changed C++, and nothing else. The registering session then built and ran the layer in one
+window at 17d7c14a, and every figure came out as registered; the Run section at the end of this entry has
+each printed line. The coordinating session ruled and ran nothing. Statements below about what the engine
+does are read from the code unless the Run section gives a printed line for them.
+
+**Said first: the row's sentence is wider than what is built.** The row speaks of mechanics and systems
+"randomized or altered". What is built is three named rule changes, one drawn for each floor. The owner approved
+those three "for now": the list may be revisited.
+
+**Said first: the kill's clearing does not go through the existing roll, and why.** The second change is "a
+kill clears every cooldown, and cooldowns run twice as long". The first ruling was to clear through
+`UCataclysmAbilitySystemComponent::RollAndResetCooldowns` with a percent of 100, and it said: "The rule must
+ALWAYS clear", and "If a pinned roll can refuse even 100 percent, stop and report; do not work round it
+silently." The writing session stopped that part in the first commit, because read from the code it can:
+
+- `RollAndResetCooldowns` (`AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 3973) refuses with
+  `if (Roll >= Action.Percent)` (line 3988). A roll of exactly 100 is not below a percent of 100.
+- The console variable `Cataclysm.CooldownResetRoll` (line 3937) pins the roll to any value from 0 to 100.
+  Pinned to 100, a percent of 100 is refused.
+- A roll that is not pinned can be 100 too. It is `FMath::FRandRange(0.0f, 100.0f)` (line 3987), and the
+  engine's `FRand()` is `(Rand() & RandMax) / (float)RandMax` (`GenericPlatformMath.h` line 616 of Unreal
+  Engine 5.8), which is 1 when `Rand()` returns its largest value. Where the C library's `RAND_MAX` is 32,767,
+  that is one roll in 32,768. The value of `RAND_MAX` on this toolchain was not read from its header.
+
+Ruling 7 below settled it: the kill clears directly, with no roll. That is what the second commit builds.
+
+**Said first: nothing was done here for the enchantment rows.** The same reading means an existing enchantment
+row that states 100 percent for a cooldown reset can be refused. That is a finding about merged code. The
+coordinating session has put it to another session. This layer changes nothing in `RollAndResetCooldowns` and
+nothing for any enchantment row.
+
+**Said first: what the last floor does under each of the three changes.** The layer follows the code (ruling
+8). Under the first change the last floor is as any other: skills cost health and no mana. Under the second it
+is as any other: cooldowns are twice as long and a kill clears them. Under the third nothing is in force: the
+last floor's way out is not sealed by time, as no row seals it. Taking the last floor's stairs clears the
+dungeon whatever still stands: `HandleStairsTaken` (`Dungeon/CataclysmDungeonGameMode.cpp` line 2610) calls
+`GoDownOneFloor` (line 12984), which on the last floor calls `ClearEmpireDungeon`, and the existing test
+`Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotSealed` takes them with a creature standing. The
+writing session had first been told "on the last floor the Gatekeeper must still be slain"; the code does not
+ask for the Gatekeeper, and that sentence is withdrawn as a requirement of this layer. This layer adds no
+Gatekeeper condition and changes nothing about the last floor.
+
+**Said first: a floor can draw the third change and have no change in force.** The third change is about the
+stairs. A Horde floor has no stairs and the last floor's way out is not sealed, so on those two a floor that
+drew it plays as a floor without the row. The panel says so. Nothing draws again. See the writing session's
+judgements.
+
+**Said first: the lever for longer cooldowns belongs to `Celestial_Eternal_Chorus`, and the two rows add.** The
+field `ChorusCooldownLongerPercent` was written only by Eternal Chorus, on the beat, by assignment. The second
+change writes its 100 on the same field once a floor, and the beat now adds the chorus's 50 to it (ruling 9).
+With both rows on a floor cooldowns are 150% longer within earshot of a chorus source and 100% longer outside
+it. The option not taken: the larger of the two, 100 within earshot. A floor carrying Eternal Chorus alone is
+unchanged: 50 within earshot and nothing outside.
+
+**Said first, for the play-check: the 60 seconds run while the player is dead and start again on each floor.**
+They are read from the floor's own clock (ruling 12).
+
+**Said first, for the play-check: not every kill clears.** A kill is counted as Blood Gates counts one (ruling
+15). Killing a woken Angelic Warden, the Reaper, the Unstable Portal's warden or a creature risen from the dead
+clears no cooldown: the first three are creatures a rule raised and the last does not pay for its death. A
+kill by the player's minion clears nothing unless the player holds the stat `minion_hits_count_as_yours`,
+which the Ritualist keystone Conduit gives. A kill by a tick of damage over time the player applied does clear
+(ruling 16).
+
+**Said first: no new count of seconds was added.** The writing session was told to add "a count of seconds on
+the game mode's beat". The game mode already keeps one for every floor: `FloorSecondsSincePlaced`, stepped by
+a quarter of a second on each beat in `NoteTheFloorsClearTime` (line 4352), put back to nought in
+`PopulateFloor` (line 1762), read through `SecondsOnThisFloor()`. The third change reads that count. See the
+writing session's judgements for what follows from it.
+
+**Said first: the row being Built moves two things that were there before.** Reality Twister may now add this
+row to a floor, because it draws from every row that does something. And on a floor carrying both this row and
+Unstable Dimensions, the new reality is the stream's next draw after this row's draw, so it is not the reality
+that floor drew before this layer.
+
+**Said first: these are the first tests in their file to use a skill.** No test in
+`Tests/CataclysmDungeonModifierEffectsTests.cpp` granted or used a skill before. Two of the nine grant a
+Movement skill to the test's real player and use it; a third grants one and spends its uses without using it. Whether a real player's use goes off in this file's test
+world is not known until a run. The grant is copied from `Tests/CataclysmDeathTests.cpp` line 891.
+
+### The row and the owner's words
+
+`game/Data/DungeonModifiers.csv`, `Chaos_Rule_of_Chaos`, danger 15: "The normal rules of the game are suspended
+within these dungeons. Gameplay mechanics and systems become randomized or altered, challenging players to adapt
+on the fly. This could involve changes to character attributes, skill behavior, or even unconventional victory
+conditions."
+
+Ruled earlier, the owner taking the coordinating session's recommendation: each floor draws one rule change
+from a list of three the owner approves.
+
+The owner, 2026-10-08, on the three proposed: "approve those three for now."
+
+It is part of issues #1820 and #41.
+
+### Rulings
+
+Each of these is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+The registering session, not the coordinating session, made every reading of the code the rulings name. Every
+figure is a judged number for the owner's play-check.
+
+1. **A change to character attributes: skills are paid in health.** On the floor a skill costs no mana and
+   costs a share of the player's current health instead. Built on `ManaCostAsCurrentHealthPercent` in
+   `FCataclysmPlayerFloorEffects`, which Desperate Measures already sets. The share is Desperate Measures' own
+   figure, `DesperateMeasuresHealthPercent`, 5. With Desperate Measures on the same floor the lever is set once
+   and not doubled.
+2. **A change to skill behaviour: a kill clears every cooldown, and cooldowns run twice as long.** Between
+   kills every cooldown is 100% longer, built on `ChorusCooldownLongerPercent`. The reason for 100: the
+   existing lever doubled once. Each creature the player kills clears the cooldowns of all the player's skills,
+   a skill with charges treated as a respawn treats it; "a kill" is a death whose notice names the player as
+   the killer, as Blood Gates counts. The respawn's own clearing, `ClearWhatDeathEnds`, is not to be used,
+   because it also clears every buff. How the clearing is made is ruling 7.
+3. **An unconventional victory condition: the stairs open by time and not by killing.** The stairs are sealed
+   when the floor begins and open 60 seconds later, whatever has or has not been slain. The reason for 60: long
+   enough that a fast character waits and must survive, short enough not to stall a slow one. It is not derived
+   from any measured floor time. One more entry in `StairsSealedBy`. With another sealing row on the floor both
+   seals hold. The panel's line shows the seconds left, because the stairs themselves show nothing. The count
+   restarts on a new floor and does not restart after the player dies and returns.
+4. **How a floor draws one.** One draw a floor from the floor's own seeded stream, as Reality Twister draws its
+   row, so the same dungeon seed and floor give the same change. The draw is even between the three. The panel
+   names the change drawn.
+5. **Left out on purpose.** Any change that locks skills, spells or the basic attack: a class that depends on
+   the locked kind could not kill anything, and with a stairs seal that is a floor that cannot be finished. Any
+   plain stat trade: those are Fragmented Reality's. Any change to what creatures carry: that is Unstable
+   Dimensions'.
+6. **The row is Built** (`BuiltStateOf` answers Built).
+
+Rulings 7 to 14 were made on the writing session's report of the first commit. Each is a labelled judgement by
+the coordinating session under the owner's delegation, 2026-10-08.
+
+7. **The kill clears directly, with no roll**: `RefillSkillCharges` with every slot's cooldown tag, then
+   `RemoveActiveEffectsWithGrantedTags` with the same tags. Not the existing roll function, not a changed
+   comparison, not a percent above 100. On a floor that drew the second change, each death whose notice names
+   the player as the killer clears every cooldown of the player and returns spent uses. The player's kills are
+   counted the way Blood Gates counts them. The panel's line for the second change says a kill clears them.
+8. **The layer follows the code on the last floor**: the third change does not seal the last floor, and "the
+   Gatekeeper must still be slain" is withdrawn as a requirement of this layer.
+9. **The two cooldown rules add.** With Eternal Chorus on the same floor, 150% longer within earshot and 100%
+   outside. The larger of the two is the option not taken.
+10. **The new field for "at any mana" is approved**: one modifier written, never two; 5% once with Desperate
+    Measures on the same floor.
+11. **A floor carrying both Rule of Chaos and Unstable Dimensions draws a different reality than before this
+    layer.** Accepted as a risk the whole suite will show. No existing test is changed for it.
+12. **The 60 seconds read the floor's existing clock.** They run while the player is dead and start again on
+    each floor.
+13. **On a Horde floor and on the last floor a floor that drew the third change has no change in force.**
+14. **The panel's wording is approved**, with the change to the second change's line under ruling 7; so are
+    the writing session's other judgements listed below.
+
+Rulings 15 to 19 were made on the writing session's report of the second commit. Each is a labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-08. The registering session made the reading
+ruling 16 names; the writing session read the same code again and found the same.
+
+15. **The kill is counted as Blood Gates counts.** A creature that does not pay for its death, or that a rule
+    raised, clears nothing.
+16. **Who a death names as its killer decides it.** The notice's killer is the attacker of the victim's last
+    blow. A blow dealt by the player's minion names the minion, unless the summoner holds
+    `minion_hits_count_as_yours`; then it names the summoner. So a kill by the player's minion clears nothing
+    unless the player holds that stat, and with it the minion's kill clears. A kill by a tick of damage over
+    time the player applied names the player, and clears.
+17. **The count of kills that cleared is kept**, because tests read it. Tests T8 and T9 are its only readers.
+    Nothing shows it to the player.
+18. **The proofs, one for each change**: the any-mana flag (proof 1), the refill call (proof 4), and `<`
+    against `<=` on the 60 seconds (proof 3). The `+=` keeps its test and has no proof.
+19. **"Eternal Chorus alone is unchanged" is held by two existing tests**, accepted:
+    `EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration` and
+    `WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed`. No test is added.
+
+Rulings 20 and 21 were made on the writing session's report of the third commit. Each is a labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-08.
+
+20. **The three tests that place creatures get set-up assertions**, before anything is asserted about them: T5,
+    T8 and T9. Each placed creature is at least a metre, flat distance, from the player; at least a metre from
+    every other creature the test placed; and on a floor cell of the current floor's plan. A creature spawned
+    onto the player is a known cause of a test passing or failing for the wrong reason. Where a fixed point
+    could be on the player or off the floor, the point is moved in the test, not the assertion.
+21. **The Verbose log line and the count of kills that cleared both stay**, and this entry's wording about the
+    count's readers is right: tests T8 and T9, and the one log line in the function that counts it.
+
+### What was read before writing
+
+All in `game/Source/Cataclysm/` unless a path says otherwise. Line numbers are of the files as the second commit
+leaves them.
+
+- `Dungeon/CataclysmFloorBrief.cpp`, whole, and `Dungeon/CataclysmFloorBrief.h` from line 380 to its end and
+  the identity and the brief's modifier fields. Reality Twister's draw is rule 4 of `ModifiersFor` (line 169):
+  one row from `EveryBuiltModifier` less the rows in force, on the stream
+  `CataclysmFloorBriefStreamFor(DungeonSeed, FloorNumber)` makes (line 29). The row drawn is appended to the
+  floor's list and kept in `FCataclysmFloorBrief::TwistedIn`. It is forgotten when `BuildFloor` writes a new
+  brief (`CataclysmDungeonGameMode.cpp` line 1464) and when leaving a dungeon puts an empty brief back.
+- `Dungeon/CataclysmDungeonModifierEffects.cpp`: `BuiltStateOf` and `KeysWithARule`, whole; `PlayerEffectsFor`
+  (line 1260), whole; in `StatModifiersFor` the lines for Desperate Measures, Eternal Chorus and the skill
+  locks, not the whole function; `ApplyToCharacter`; in `Describe` the clauses for the same two rows.
+  `Dungeon/CataclysmDungeonModifierEffects.h`: the fields of `FCataclysmPlayerFloorEffects` from line 180 to
+  `IsEmpty`, whole.
+- `Dungeon/CataclysmDungeonGameMode.cpp`: `Tick` (line 1212); `DungeonIdentity` and the opening of `BuildFloor`;
+  the opening of `PopulateFloor` to line 1999; `HandleStairsTaken` (line 2610), whole; `StepTheReaper`;
+  `NoteTheFloorsClearTime` (line 4352); `ApplyFloorRulesKeepingHealth`; `BloodGatesPlacedCount`,
+  `ChooseTheSealBearers`, `StepInfernalSeals`, `LightforgedWallsSealTheStairs`, `InfernalSealsSealTheStairs`,
+  `StairsSealedBy` (line 12916), `BloodGatesSealTheStairs`, `NoteDeathForBloodGates` (line 12957),
+  `GoDownOneFloor`, `IsOnTheLastFloor`, whole; `ApplyFloorRulesTo`; `StepFloorRulesThatChange` (line 13784)
+  from its start to the Angelic Wardens step; `ApplyChangingFloorEffects` (line 15450), whole;
+  `OnSomethingDied` (line 15666), whole; in `LiveCountsForTheFloor` the lines for Unstable Dimensions, Reality
+  Twister and the four sealing rows; `ApplyFloorRulesToPlayer` (line 20160) from its start through the Reaper's
+  reset and its last forty lines, not the middle; `GoToFloor` (line 20815), whole.
+  `SanctionedPassageSealsTheStairs` was not read.
+- `AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `RollAndResetCooldowns` (line 3973), whole;
+  `SkillChargesMaximum`, `SkillChargesSpent`, `SpendSkillCharge`, `OnSkillRechargeTagChanged` and
+  `RefillSkillCharges` (line 4158), whole; `ClearWhatDeathEnds` (line 2306) to its query.
+  `UCataclysmSkillSlots::CooldownTag` was read only where those functions call it.
+- `AbilitySystem/CataclysmGameplayAbility.cpp`: `ManaCostPaidAsHealthPercent` (line 319), `CostPool`,
+  `PoolCovers`, `CheckCost` from its Fervour test to its end, `ApplyCost` to the Fervour payment and its mana
+  payment, `CheckCooldown`, `CooldownAfterReduction` (line 650), whole.
+  `AbilitySystem/CataclysmSkillTemplate.cpp`: `PayHealthCost` (line 3222) to where the two costs are summed.
+- `Character/CataclysmPlayerCharacter.cpp`: `Revive` (line 1682) and the end of the death handler above it.
+- Tests: in `Tests/CataclysmDungeonModifierEffectsTests.cpp` the helpers `Beat`, `FPossessedPlayer`,
+  `ThePlayerKills`, `PlaceCreatureAtRung`, `DungeonRuleOn` and `ACurseDungeon`, the Desperate Measures floor
+  test, the five Blood Gates tests from line 21418 to line 21742 and the three Eternal Chorus tests, whole. In
+  `Tests/CataclysmSkillTemplateTests.cpp` the Desperate Measures helpers and its first three tests. In
+  `Tests/CataclysmFloorBriefTests.cpp` the Reality Twister panel and pool tests, whole, and the openings of
+  the tests at lines 1883, 1971 and 2131, which load the real table, as does the test at line 244 of
+  `Tests/CataclysmDungeonModifierTableTests.cpp`, also read at its opening. In `Tests/CataclysmDeathTests.cpp`
+  the helpers that grant and use a skill.
+- A search of `tools/tests` and of every Unreal test for `Rule_of_Chaos` and `RuleOfChaos` found nothing. No
+  test pinned this row as not built by name.
+- `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`, lines 60 to 140.
+
+- For the second commit: `RefillSkillCharges` is declared public in
+  `AbilitySystem/CataclysmAbilitySystemComponent.h` (line 1223; the class's `public:` is line 130 and its next
+  access line, `protected:`, is line 3254). `RemoveActiveEffectsWithGrantedTags` is the engine's
+  `UAbilitySystemComponent` member, called on this project's component by `RollAndResetCooldowns` (line 4069).
+  `CataclysmAbilitySlots::All` is declared in `AbilitySystem/CataclysmGameplayAbility.h` (line 51), which the
+  component's header includes. `UCataclysmSkillSlots::CooldownTag` is public and static in
+  `AbilitySystem/CataclysmSkillSlots.h` (line 183), which the game mode's source file includes at line 21. All
+  are in the `Cataclysm` module, the game mode's own. For the tests: `SkillChargesMaximum`, `SkillChargesHeld`
+  and `SpendSkillCharge` (the same header, lines 1192 to 1216), `ApplyCooldownEffect` (public and static,
+  `CataclysmGameplayAbility.h` line 197), `SetDungeonStatModifiers` and `GetDungeonStatModifiers`, and where
+  `UCataclysmEquipmentComponent::RefreshAttributes` appends them (`Items/CataclysmEquipmentComponent.cpp` line
+  808). The body of `RefreshAttributes` was not read beyond that.
+
+- For the third commit, all whole: in `AbilitySystem/CataclysmCombatEvents.cpp` both `AttackerOf` (lines 66
+  and 104), `NoteBlow` from its start to where it writes the last blow (line 165), and `NoteDeath` to where it
+  reads it (line 256); `ACataclysmMinion::HitsCountAsTheSummoners` (`AbilitySystem/CataclysmMinion.cpp` line
+  320); and in `Tests/CataclysmCombatEventsTests.cpp` the body of the loop of `ADeathFromATickNamesTheAilment`
+  from line 1225 to line 1275. `UCataclysmSkillEffects::ApplyDamageOverTime` was not read, nor the Conduit
+  test.
+
+No source outside this project was read. The three changes are built on levers this game already has, and
+their shape was ruled, not proposed here.
+
+### How it is built
+
+**The draw.** `FCataclysmDungeonFloorRules::RuleOfChaosKey` names the row. `ModifiersFor` gains rule 5 and one
+more answer, `OutRuleOfChaosChange`: on a floor whose final list carries the row it draws
+`Stream.RandRange(1, RuleOfChaosChanges)` on the floor's own stream and answers 1, 2 or 3; on any other floor
+it answers 0. It draws after rules 2 and 4, so a Volatile floor that re-drew the row and a floor Reality
+Twister added it to both draw. It draws before rule 3 and whether or not the caller asked for the answer, so
+the draw does not depend on which pointers a caller passed. It is not kept from a dungeon with empty pools. It
+adds no row and no danger. `BriefFor` keeps the answer in the new `FCataclysmFloorBrief::RuleOfChaosChange`,
+which is forgotten where `TwistedIn` is forgotten.
+
+**Change 1.** `PlayerEffectsFor` gains a third argument, the change drawn, 0 by default; the game mode's three
+calls pass the brief's. For change 1 it assigns `ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent`
+and sets a new flag field, `ManaCostAsHealthAtAnyManaValue`, to 1. `StatModifiersFor` writes the one modifier
+on `mana_cost_as_current_health_percent` with no condition when the flag is set, and under Desperate Measures'
+low-mana condition when it is not. It never writes both. The cast path is unchanged: it already pays the share
+in health and no mana whenever that stat is above nothing (`ManaCostPaidAsHealthPercent`, `ApplyCost`,
+`PayHealthCost`), and a cast paid in health is always affordable (`CheckCost`). As Desperate Measures', the
+share reaches only a use that would have cost mana: not the basic attack, and not a skill whose mana cost the
+character's own reductions removed. `Describe` says "skills cost 5% of current health instead of mana".
+
+**Change 2, the lengthening.** For change 2 `PlayerEffectsFor` assigns
+`ChorusCooldownLongerPercent = RuleOfChaosCooldownLongerPercent`, 100. `StatModifiersFor` already turns that
+field into one flat entry on `cooldown_lengthening`, and `CooldownAfterReduction` multiplies a cooldown by one
+plus a hundredth of that stat. `ApplyChangingFloorEffects` used to ASSIGN Eternal Chorus's share to the same
+field on the beat, which would have erased this change's share whenever any beat rule applied. It now ADDS the
+chorus's share (line 15504).
+
+**Change 2, the clearing.** `OnSomethingDied` (line 15666) calls the new `NoteDeathForRuleOfChaos` (line 12842)
+after `NoteDeathForBloodGates`. It returns at once unless the brief's change is 2. It then asks what Blood
+Gates asks: the victim is a creature that pays for its death, the notice's killer is the player's pawn, and the
+creature is not in `CreaturesRaisedByARule`. For such a kill it gathers every slot's cooldown tag from
+`CataclysmAbilitySlots::All` and `UCataclysmSkillSlots::CooldownTag`, calls `RefillSkillCharges` with them
+(line 12887) and then `RemoveActiveEffectsWithGrantedTags` with them (line 12888), and counts the kill in
+`RuleOfChaosKills`. There is no roll and no console variable. The uses are returned first, so that ending a
+cooldown does not start the next recharge of a skill that holds more than one use. No buff is ended. The count
+is put back to nought where Blood Gates' is, in `ApplyFloorRulesToPlayer`. Tests T8 and T9 are its only
+readers; the one other use is the Verbose log line in the function that counts it. Nothing shows it to the
+player.
+
+**Who a death names as its killer.** This layer writes none of it; it is what the kill's test rests on.
+`UCataclysmCombatEvents::NoteDeath` sets `Notice.Killer = Blow.Attacker.Get();`
+(`AbilitySystem/CataclysmCombatEvents.cpp` line 256), the attacker of the last blow on record that reached the
+victim's health. `NoteBlow` records that attacker from `AttackerOf` (lines 147 and 165). `AttackerOf` (line 66)
+answers the effect context's instigator, except when the blow was dealt by an `ACataclysmMinion`: then (line
+104) it answers the minion itself, unless `ACataclysmMinion::HitsCountAsTheSummoners` is true, when it answers
+the minion's summoner. That function (`AbilitySystem/CataclysmMinion.cpp` line 320) asks whether the
+summoner's stat `minion_hits_count_as_yours` is above nothing. A tick of damage over time goes through the
+same `NoteBlow` and is not dealt by a minion, so it names its effect's instigator; the existing test
+`Cataclysm.CombatEvents.ADeathFromATickNamesTheAilment` asserts "a %s death is credited to whoever applied it"
+(`Tests/CataclysmCombatEventsTests.cpp` line 1270). The existing test
+`Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner` is about the minion's case.
+
+**Change 3.** `ACataclysmDungeonGameMode::RuleOfChaosSealsTheStairs` is true while the brief's change is 3, the
+floor is not a Horde floor, it is not the last floor, and `FloorSecondsSincePlaced` is below
+`RuleOfChaosStairsOpenAfterSeconds`, 60. `StairsSealedBy` adds the row's key last when it is true, so
+`HandleStairsTaken` refuses and starts the stairs watching again; a player standing on them goes down on the
+first look after the time has passed. `RuleOfChaosStairsSecondsLeft` is the whole seconds left, rounded up.
+On the beat, `StepFloorRulesThatChange` draws the panel again when that figure has moved, which is once a
+second.
+
+**The panel.** `LiveCountsForTheFloor` gives the row one line: "rule of chaos: skills cost 5% of current health
+and no mana"; "rule of chaos: cooldowns 100% longer, a kill clears them"; or, for change 3, "rule of chaos: the stairs open in N s",
+"rule of chaos: the stairs are open", "rule of chaos: no stairs on a Horde floor" or "rule of chaos: the way out
+is not sealed".
+
+**What the code does when the player dies and returns.** `Revive` stands the player back up and builds no
+floor. `FloorSecondsSincePlaced` is counted on every beat with or without a living player and is put back only
+when a floor is populated. So the 60 seconds go on running while the player is dead and are not started again
+when the player returns.
+
+**The row is Built.** `BuiltStateOf` answers Built and `KeysWithARule` lists the key.
+
+### For the owner's play-check
+
+What a player sees on a floor of a dungeon carrying Rule of Chaos is one of three things, named on the floor
+panel:
+
+- Every skill that costs mana costs 5% of current health instead, at any mana. **5** is Desperate Measures'
+  own figure. The reading not taken: a figure of this row's own.
+- Every cooldown is twice as long, and each kill by the player ends every cooldown at once and returns every
+  spent use. **100% longer** is the existing lever doubled once. The reading not taken: Eternal Chorus's 50.
+  **Every kill, always**: there is no chance. The reading not taken: a chance to clear. With Eternal Chorus on
+  the floor too, **150% longer** within earshot of a chorus source; the reading not taken is 100.
+- The stairs do not answer for 60 seconds and then they do, whatever stands. **60 seconds** is judged: long
+  enough that a fast character waits and must survive, short enough not to stall a slow one. It is not derived
+  from any measured floor time. The readings not taken: a time that grows with the floor's size or depth.
+- Not every kill clears. Killing a woken Angelic Warden, the Reaper, the Unstable Portal's warden or a creature
+  risen from the dead clears no cooldown. The reading not taken: any creature the player kills.
+- A kill by the player's minion clears nothing, unless the player holds Conduit's stat
+  `minion_hits_count_as_yours`; with it the minion's kill clears.
+- A kill by a tick of damage over time the player applied clears.
+- The 60 seconds go on running while the player is dead, and start again on each floor.
+- **One in three**: the draw is even. The reading not taken: weights.
+- On a Horde floor and on a dungeon's last floor, one draw in three, the third change, leaves Rule of Chaos
+  with no effect at all on that floor. The reading not taken: on those floors draw between the other two.
+- The same floor of the same dungeon always shows the same one of the three.
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm. Rulings 7 to 14 above
+answer the first ten: judgement 1 is settled by ruling 7, judgement 9 is changed by it, and the rest are
+approved or accepted. Judgements 11 to 13 are of the second commit; rulings 15, 16 and 17 approve them, each as marked.
+
+1. **The clearing on a kill was stopped in the first commit and not worked round.** Ruling 7 then said how
+   to write it, and the second commit writes it so.
+2. **A flag field makes the health-cost lever hold at any mana.** The lever as Desperate Measures writes it
+   holds only below 10% of mana. The ruling said to build on that lever and set it once. A second share field
+   would have added to Desperate Measures' while mana is low. The flag keeps one modifier. With both rows on a
+   floor the cost holds at any mana, which is this row's wider condition.
+3. **Rule of Chaos and Eternal Chorus on one floor add: 150% longer within earshot.** Before this layer only
+   Eternal Chorus wrote the field, on the beat, by assignment, so two writers had no rule. A flat stat adds, so
+   the two shares add. The reading not taken: the larger of the two, 100.
+4. **The floor's existing clock is read; no second count was added.** What follows: the count runs with or
+   without a player; it runs while the player is dead; it starts again on every floor and every Horde wave;
+   and it is the clock the floor's clear time is taken from. At under four frames a second every count on the
+   beat runs slow (issue #1613, read from the comment in `Tick`), and here that makes the wait longer.
+5. **The third change does not seal a Horde floor or the last floor, and nothing is drawn in its place.** The
+   smallest option. The reading not taken: on those floors draw between the other two.
+6. **The draw is taken before Unstable Dimensions' draw.** The smallest option that makes the draw the same
+   for every caller. The cost is the one named above: on a floor with both rows the reality drawn changes.
+7. **The drawn panel line for change 3 is one beat behind the clock.** The beat's rules run before the floor's
+   clock is stepped. The seal itself is asked when the stairs are taken and is not behind.
+8. **The change is believed as given.** `PlayerEffectsFor` does not check that the list carries the row before
+   acting on the change it is handed. The brief holds a change only for a floor carrying the row.
+9. **The panel line for change 2 said only "cooldowns 100% longer" in the first commit.** It now says
+   "cooldowns 100% longer, a kill clears them".
+10. **The constant for change 2 is named `RuleOfChaosKillsClearCooldowns`**, for the change as approved.
+11. **Approved by ruling 15. "The way Blood Gates counts" is taken to include its two exclusions.** A creature that does not pay for
+    its death (the floor's dead brought back) and a creature a rule raised (the Unstable Portal's warden, a
+    woken Angelic Warden, the Reaper) clear nothing when the player kills them. The reading not taken: any
+    creature the player kills.
+12. **Approved by ruling 16. A kill by the player's minion clears nothing**, unless the notice names the
+    player as the killer, which `UCataclysmCombatEvents::NoteBlow` decides in one place, as Blood Gates'
+    comment says. That function was not read for the second commit and was read for the third; see How it is
+    built.
+13. **Approved by ruling 17. The count of kills that cleared is kept and shown nowhere.** Tests T8 and T9 are
+    its only readers, beside the Verbose log line in the function that counts it. It is put
+    back to nought in `ApplyFloorRulesToPlayer`, beside Blood Gates' count.
+
+### Tests
+
+Nine, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None was
+run. Every figure read from the player is a difference from the same floor number without the row, or a count
+set beside a control. Creatures are placed only in T5, T8 and T9, on walkable cells found near the player;
+see "Where the creatures stand" below. No test waits on world time: the floor's clock is stepped one beat
+at a time, and 59 seconds is 236 beats, 60 is 240.
+
+- **T1** `RuleOfChaosDrawsOneOfThreeRuleChangesForEachFloorAndThePanelNamesIt`. Thirty floors of a dungeon on
+  seed 1234: each draws 1, 2 or 3, draws the same when asked again, carries one row and danger 15; the same
+  floors without the row draw 0; all three appear. Then one floor for each change: the panel's line.
+  The writing session computed the thirty draws with a Python copy of the seed and stream arithmetic: 9, 10 and
+  11 of the three. That is a prediction and not a run.
+- **T2** `UnderRuleOfChaosASkillPaidInHealthTakesAShareOfCurrentHealthAndNoMana`. Four uses of one Movement
+  skill: under the change at full mana; on the same floor with no row; under Desperate Measures alone at 5% of
+  mana; under both rows at 5% of mana.
+- **T3** `UnderRuleOfChaosLongerCooldownsRunTwiceAsLongAndAChorusAddsToThem`. The skill's cooldown and a 10
+  second cooldown asked for, each against the same floor without the row; then with Eternal Chorus on the
+  floor, out of earshot, within it, and out again.
+- **T4** `UnderRuleOfChaosTheStairsOpenAfterSixtySecondsWhateverIsSlain`. An emptied floor: sealed at the start,
+  at 59 seconds and one beat before 60; open at 60; the panel's seconds; the next floor's clock at nought.
+- **T5** `UnderRuleOfChaosAndBloodGatesTheStairsNeedBothTheTimeAndTheKills`. Both rows seal at the start; after
+  60 seconds Blood Gates alone; after the player's kill, neither.
+- **T6** `UnderRuleOfChaosTheLastFloorsWayOutIsNotSealedByTime`. One floor of an empire dungeon, sealed while
+  the dungeon is deeper and not sealed once it is made the dungeon's bottom; taking the stairs clears the
+  dungeon.
+- **T7** `AFloorUnderRuleOfChaosHasOnlyTheOneRuleChangeItDrew`. What each change writes, with no world; then on
+  a floor for each change, the health-cost stat, the cooldown lengthening and the seal, each against the same
+  floor without the row.
+
+- **T8** `UnderRuleOfChaosAKillByThePlayerClearsEveryCooldownAndReturnsSpentUses`. A floor that drew the second
+  change. The player's skills are given one more use, written where the floor's own modifiers are held and
+  refreshed as the floor refreshes them, so the Movement skill holds two. Both uses are spent and every slot is
+  put on a 30 second cooldown. A creature kills one creature: every slot is still cooling down, no use is
+  back, no kill is counted. The player kills the other: no slot is cooling down, both uses are back, one kill
+  is counted.
+- **T9** `UnderRuleOfChaosAKillClearsNothingOnAFloorThatDrewAnotherChange`. A floor that drew the first change,
+  a floor that drew the third, and that floor number without the row: on each, every slot is put on cooldown,
+  the player kills a creature, and every slot is still cooling down and no kill is counted.
+
+Eternal Chorus alone, unchanged by this layer, is held by two tests that were there before and are not
+changed: `EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration` (one flat modifier of 50) and
+`WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed` (nothing out of earshot, 50 within, on a
+floor carrying that row alone, through the line this layer changed from `=` to `+=`). No test was added for
+it.
+
+**Where the creatures stand, changed with the fourth commit under ruling 20.** T5, T8 and T9 first placed
+their creatures at fixed world points: (400, 0, 0) and (800, 0, 0), and T8's other killer at (-600, 0, 0),
+where the existing helper `ACreatureKills` puts it. Read from the code, a floor is centred on its actor and
+which cells are walkable and where the entrance is depend on the seed, so a fixed point could be rock or the
+player's own place. The points were moved. Each creature is now placed at the centre of a walkable cell, at
+the height the player stands at, found by a new test helper, `RuleOfChaosFreePlaces`: the nearest cells to the
+player that are at least two cells, 8 metres, from the player and from each other, and not the exit's cell.
+T5 takes two places, T8 three, T9 one on each of its three floors. T8 no longer calls `ACreatureKills`, which
+places its killer at a fixed point and does not hand it back; it spawns the killer itself, as that helper
+does (an Imp with 100 health given 100 attack damage, not one of the floor's creatures), on the third place.
+
+A second new helper, `RuleOfChaosPlacedWell`, asserts as set-up, from where each creature is after the spawn:
+"set-up: the floor the creatures stand on is built"; "set-up: creature %d was placed"; "set-up: creature %d
+stands at least a metre from the player (%.0f cm)"; "set-up: creature %d stands on a floor cell of the plan";
+"set-up: creatures %d and %d stand at least a metre apart (%.0f cm)". Each test returns false when one fails.
+Before it, each asserts that the places were found: "set-up: the floor has two free places to stand a
+creature" (T5), "three" (T8), "set-up: case %d: the floor has a free place to stand a creature" (T9). T8 also
+asserts "set-up: the creature that kills hits for something" and "set-up: another creature's blow killed the
+first creature". The five labels these replace said only that a creature was placed.
+
+Not asserted: that a place is free of an object a rule put on the floor. The floors these tests build carry
+Rule of Chaos alone, or with Blood Gates, and neither places an object; that is read from the code, not
+checked by the tests.
+
+One assertion of T1 changed with the second commit: the panel's line for the second change, from "rule of
+chaos: cooldowns 100% longer" to "rule of chaos: cooldowns 100% longer, a kill clears them".
+
+One Python check changed. `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` failed on the
+new field, which does not end in `Percent`. The field is added to its `NOT_PERCENTAGES` with the reason.
+
+### The guard proofs proposed
+
+Proofs 1, 4 and 3 were run in the window; see Run. Each line is counted once in its file.
+
+1. `Dungeon/CataclysmDungeonModifierEffects.cpp`, `Effects.ManaCostAsHealthAtAnyManaValue = 1.0f;` changed to
+   `= 0.0f;`. T2 should fail three assertions: no mana under the change; 5% of health under the change; the
+   share the change alone takes. T7 should fail four.
+2. `Dungeon/CataclysmDungeonGameMode.cpp`, `Effects.ChorusCooldownLongerPercent += EternalChorusCooldownApplied;`
+   changed to `=`. T3 should fail two assertions: within earshot, and out of earshot again.
+3. `Dungeon/CataclysmDungeonGameMode.cpp`,
+   `&& FloorSecondsSincePlaced < UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds;` changed
+   to `<=`. T4 should fail its five assertions at 60 seconds. T5 should fail four.
+
+4. Proposed with the second commit. `Dungeon/CataclysmDungeonGameMode.cpp`,
+   `AbilitySystem->RefillSkillCharges(EveryCooldown);` changed to
+   `AbilitySystem->RefillSkillCharges(FGameplayTagContainer());`. T8 should fail two assertions: no slot
+   cooling down after the player's kill, because ending the Movement cooldown with a use still spent starts
+   its next recharge; and the skill holding every use again.
+
+Ruling 18 approved three, one for each change: proof 1 (the any-mana flag), proof 4 (the refill call) and
+proof 3 (`<` against `<=` on the 60 seconds). Proof 2 is not run: the `+=` keeps its test, T3, and has no
+proof.
+
+### Not covered by a test
+
+- The pinned roll. The clearing makes no roll, so no test pins `Cataclysm.CooldownResetRoll`.
+- A kill of a creature a rule raised and of a creature brought back from the dead, on a floor that drew the
+  second change.
+- A kill by the player's minion, with and without `minion_hits_count_as_yours`, and a kill by a tick of damage
+  over time the player applied. No test in this layer kills with a minion or with a tick. What each death
+  names as its killer is held by the two existing `Cataclysm.CombatEvents` tests named above; that such a
+  death then clears or does not is read from the code.
+- A tick of damage over time that the player's minion applied. Not read.
+- That a kill ends no buff. It is read from the code: the two calls name cooldown tags only.
+- A real use of a skill followed by a kill. T8 spends the uses and starts the cooldowns by the functions a
+  use calls, not by using the skill.
+- The player dying and returning during the 60 seconds. It is read from the code, above.
+- A Horde floor that drew the third change, and its panel line.
+- A floor that Reality Twister gives this row, and a Volatile floor that re-draws it.
+- A floor carrying this row and Unstable Dimensions, and the reality it then draws.
+- The panel being drawn again once a second. The tests read the line; they do not count the redraws.
+- The third change with Infernal Seals, Sanctioned Passage or Lightforged Walls on the floor. Blood Gates is
+  the one tested.
+- A skill whose mana cost was removed, an aura's upkeep and the basic attack under change 1. Desperate
+  Measures' tests in `Tests/CataclysmSkillTemplateTests.cpp` cover those for the conditional lever; none was
+  repeated for the lever without its condition.
+- Whether any existing test's floor now draws this row. The tests that load the real modifier table were read
+  at their openings: none was seen to take the stairs, use a skill or read a cooldown. That is a reading of
+  five tests' openings, not of every test that enters an empire dungeon.
+- How even the draw is over many seeds. One seed was computed.
+
+### What the row needs, for the session that writes rows
+
+Nothing. The row is in `game/Data/DungeonModifiers.csv` already and this layer adds no stat, condition or
+scale. No dry run of the generator was made because no data row is written.
+
+### Run
+
+One window, begun on 2026-10-08 and ended after midnight, at `feat/rule-of-chaos-2` 17d7c14a, on development
+b084dd2d. One attempt; nothing was corrected during it. Every build, run and measurement here was made by the
+registering session. Every figure is a line a run printed.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 34 actions, 31 files compiled` |
+| Whole Unreal suite | `3435 tests performed, 3435 succeeded, 0 failed`; `Declared: 3435 tests in the tree at 17d7c14a; 3435 performed, gap 0`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | `5890 passed, 8 skipped in 329.33s`; JUnit `tests="5898" failures="0" errors="0" skipped="8"` |
+| Ruff | `All checks passed!` |
+
+Registered before the run: 3,435 Unreal tests (3,426 on the merged Angelic Wardens tree, plus the nine of this
+layer by name) and a JUnit count of 5,898. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled. The three tests that grant the test
+player a skill passed, so a use goes off in that test world and the floor modifier that gives the skill a second
+use reaches its count of uses. The set-up assertions of ruling 20 passed in all three tests that place creatures:
+each stood at least a metre from the player and from the others, on a floor cell. No existing test failed, so none
+failed because the draw now comes before Unstable Dimensions' or because Reality Twister may add this row.
+
+**How the layer was written and checked.** A second session wrote all four commits under a brief carrying the
+rulings. Before the window the registering session read the game code of every commit in the source files apart
+from comments, the assertion and action lines of all nine tests, every line of the fourth commit's test change
+apart from comments, and the code that decides who a death names as its killer. Not read by the registering
+session: the headers, the bodies of the two helpers that grant and use a skill, and this entry beyond the parts
+it changed.
+
+**Guard proofs, at 17d7c14a, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered before the run. They are proofs 1, 4 and 3 of the list above.
+
+| Proof | The break | Test | With the break in | Restored |
+|---|---|---|---|---|
+| 1 | `CataclysmDungeonModifierEffects.cpp`: `Effects.ManaCostAsHealthAtAnyManaValue = 1.0f;` becomes `= 0.0f;` | `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosASkillPaidInHealthTakesAShareOfCurrentHealthAndNoMana` | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| 4 | `CataclysmDungeonGameMode.cpp`: `RefillSkillCharges(EveryCooldown);` becomes `RefillSkillCharges(FGameplayTagContainer());` | `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAKillByThePlayerClearsEveryCooldownAndReturnsSpentUses` | 1 performed, 1 failed, 2 failed assertions | 1 performed, 1 succeeded |
+| 3 | `CataclysmDungeonGameMode.cpp`: `<` becomes `<=` on the 60 seconds | `Cataclysm.DungeonModifierEffects.UnderRuleOfChaosTheStairsOpenAfterSixtySecondsWhateverIsSlain` | 1 performed, 1 failed, 5 failed assertions | 1 performed, 1 succeeded |
+
+Proof 1, as printed: "Expected 'under the change the use takes no mana' to be 0.000000, but it was 20.000000";
+"Expected 'and takes 5% of the health held, over what the control use took' to be 25.500000, but it was
+0.000000"; "Expected 'which is the share the change alone takes' to be 0.000000, but it was 0.050000".
+
+Proof 4, as printed: "Expected 'a kill by the player leaves no slot cooling down' to be 0, but it was 1.";
+"Expected 'and the skill holds every use again' to be 2, but it was 1."
+
+Proof 3, as printed: "Expected 'at 60 seconds the change no longer seals the stairs' to be false."; "Expected
+'and nothing seals them' to be 0, but it was 1."; "Expected 'the panel says they are open' to be "rule of chaos:
+the stairs are open", but it was "rule of chaos: the stairs open in 0 s"."; "Expected 'at 60 seconds the stairs
+lead down' to be 2, but it was 1."; "Expected 'and the next floor's clock starts again from nought' to be
+0.000000, but it was 60.000000".
+
+Proof 2 was not run: the `+=` keeps its test and has no proof (ruling 18). No proof was run for the draw, for the
+kill's test of who killed, or for the last floor.
+
+---
+
 ## 2026-10-08 — Angelic Wardens places statues that wake into Abyssal Wardens when the player comes near one or uses a skill near it, and the row is Built
 
 **Built and run.** The writing session wrote the code, nine Unreal tests, two Python checks and this entry, in

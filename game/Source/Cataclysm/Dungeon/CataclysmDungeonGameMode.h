@@ -1894,6 +1894,21 @@ private:
 	 */
 	void NoteDeathForBloodGates(const struct FCataclysmDeathNotice& Notice);
 
+	/**
+	 * Rule of Chaos, on every death, on a floor that drew its change to skill behaviour: a kill by the player clears
+	 * every cooldown of the player and returns every spent use. Issues #1820 and #41.
+	 *
+	 * "A KILL" IS WHAT BLOOD GATES COUNTS: the notice names the player as the killer, the creature pays for its death,
+	 * and it is not one a rule raised. A death to any other cause clears nothing.
+	 *
+	 * NO ROLL, ruled on 2026-10-08 under the owner's delegation. It calls
+	 * `UCataclysmAbilitySystemComponent::RefillSkillCharges` with every slot's cooldown tag and then
+	 * `RemoveActiveEffectsWithGrantedTags` with the same tags, in that order, so ending the cooldowns starts no
+	 * further recharge. NOT `RollAndResetCooldowns`, whose roll can refuse a percent of 100, and NOT
+	 * `ClearWhatDeathEnds`, which also ends every buff.
+	 */
+	void NoteDeathForRuleOfChaos(const struct FCataclysmDeathNotice& Notice);
+
 public:
 	/**
 	 * Divine Resurgence's state, for the floor panel and for tests. How many unmarked
@@ -2077,6 +2092,22 @@ public:
 	 */
 	int32 LightforgedWallsStanding() const;
 	bool LightforgedWallsSealTheStairs() const;
+
+	/**
+	 * Rule of Chaos, for the panel, the stairs and tests: the rule change this floor drew, one of
+	 * `FCataclysmDungeonFloorRules::RuleOfChaos...`; whether its change "the stairs open by time" seals the stairs
+	 * right now; and the whole seconds left until they open, rounded up, nought once they are open. Issues #1820 and
+	 * #41.
+	 *
+	 * THE SEAL IS BY TIME ALONE: the floor's own clock, `SecondsOnThisFloor`, against
+	 * `UCataclysmDungeonModifierEffects::RuleOfChaosStairsOpenAfterSeconds`, whatever has or has not been slain. Not on
+	 * a Horde floor, which has no stairs, and not on the last floor, whose way out no row seals.
+	 */
+	int32 RuleOfChaosChangeNow() const { return FloorBrief.RuleOfChaosChange; }
+	/** And how many of the player's kills on this floor cleared the cooldowns, under its change to skill behaviour. */
+	int32 RuleOfChaosKillsCount() const { return RuleOfChaosKills; }
+	bool RuleOfChaosSealsTheStairs() const;
+	int32 RuleOfChaosStairsSecondsLeft() const;
 
 	/**
 	 * Lightforged Walls' sections, for the panel, the enemy modifiers and tests. Issues #1820 and #41. Ruled
@@ -4476,6 +4507,12 @@ private:
 
 	/** Lightforged Walls: the count of the standing the panel last showed. Issues #1820 and #41. */
 	int32 LightforgedWallsPanelCount = -1;
+
+	/** Rule of Chaos: the seconds left its panel line last showed, so the panel is drawn again once a second. */
+	int32 RuleOfChaosPanelSeconds = -1;
+
+	/** Rule of Chaos: the player's kills on this floor that cleared the cooldowns. Goes at the stairs. */
+	int32 RuleOfChaosKills = 0;
 
 	/**
 	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.
