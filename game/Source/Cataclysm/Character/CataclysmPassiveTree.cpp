@@ -2,6 +2,8 @@
 
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmCharacterCreation.h"
+// For the budget of 230 that `DescribePoints` prints.
+#include "Character/CataclysmPassivePoints.h"
 // For the one table of condition and scale names both authored sources read
 // through, rather than a chain of comparisons kept in this file. Issue #1581.
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -467,6 +469,23 @@ FString UCataclysmPassiveTree::RefusalForSpending(
 							   *Node.ToString());
 	}
 
+	// MORE SPENT THAN EARNED IS REFUSED WITH ITS OWN SENTENCE. Ruled 2026-10-09
+	// (P3). The rule is the one below and needed no change: nothing may be
+	// spent while the total is at or above the points earned. What changed is
+	// that the total can now be ABOVE it, when gear that granted points has
+	// come off, and "all of them spent" would not tell a player why.
+	const int32 Idle = PointsAddingNothing(Allocation, PointsAvailable);
+	if (Idle > 0)
+	{
+		return FString::Printf(
+			TEXT("No passive points left. %d are spent and %d are earned, so %d "
+				 "spent point%s nothing: gear that granted points is no longer "
+				 "worn. Nothing can be spent until that gear is worn again or "
+				 "%d more are earned."),
+			Allocation.Total(), PointsAvailable, Idle,
+			Idle == 1 ? TEXT(" adds") : TEXT("s add"), Idle + 1);
+	}
+
 	if (Allocation.Total() >= PointsAvailable)
 	{
 		return FString::Printf(
@@ -662,6 +681,18 @@ FString UCataclysmPassiveTree::DescribeNode(
 	const int32 Held = Allocation.PointsIn(Node);
 	FString Line = FString::Printf(TEXT("%s    %d / %d"), *Row->NodeName, Held,
 								   Row->MaxPoints);
+
+	// AND HOW MANY OF THOSE ADD NOTHING, when more points are spent than earned
+	// and this node is one that gives some up. Ruled 2026-10-09 (P6). Straight
+	// after the count it qualifies, and before a capstone's option, which for a
+	// capstone marked here is an option granting nothing until the point counts
+	// again.
+	const int32 Idle = PointsAddingNothingIn(Allocation, PointsAvailable, Node);
+	if (Idle > 0)
+	{
+		Line += FString::Printf(TEXT("    %d of these add%s nothing"), Idle,
+								Idle == 1 ? TEXT("s") : TEXT(""));
+	}
 
 	if (Row->Kind == CapstoneKind)
 	{
@@ -1065,4 +1096,81 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmPassiveTree::ModifiersFor(
 	TMap<FName, TArray<FCataclysmStatModifier>> Out;
 	AccumulateInto(Out, Allocation, NodeTable, EffectTable, DamageTypes);
 	return Out;
+}
+
+// ---------------------------------------------------------------------------
+// More points spent than earned. Ruled 2026-10-09.
+// ---------------------------------------------------------------------------
+
+FCataclysmPassiveAllocation UCataclysmPassiveTree::ReducedToPointsEarned(
+	const FCataclysmPassiveAllocation& Allocation, int32 PointsEarned)
+{
+	FCataclysmPassiveAllocation Reduced = Allocation;
+
+	int32 Excess = PointsAddingNothing(Allocation, PointsEarned);
+
+	// FROM THE END OF THE ARRAY TOWARDS ITS START, which is from the last node
+	// first touched towards the first (P1). Walking backwards also makes
+	// removing the entry at `Index` safe: every entry still to be visited sits
+	// before it.
+	for (int32 Index = Reduced.Nodes.Num() - 1; Index >= 0 && Excess > 0; --Index)
+	{
+		FCataclysmSpentNode& Spent = Reduced.Nodes[Index];
+		if (Spent.Points <= 0)
+		{
+			// AN ENTRY HOLDING A CAPSTONE'S CHOICE AND NO POINT has nothing to
+			// give up. It grants nothing either way, so it is left as it is.
+			continue;
+		}
+
+		const int32 Taken = FMath::Min(Spent.Points, Excess);
+		Spent.Points -= Taken;
+		Excess -= Taken;
+
+		if (Spent.Points == 0)
+		{
+			// THE WHOLE ENTRY, its chosen option included (P4). This is the
+			// copy; the character's own allocation keeps both.
+			Reduced.Nodes.RemoveAt(Index);
+		}
+	}
+
+	return Reduced;
+}
+
+int32 UCataclysmPassiveTree::PointsAddingNothing(
+	const FCataclysmPassiveAllocation& Allocation, int32 PointsEarned)
+{
+	// A NEGATIVE FIGURE FOR POINTS EARNED IS READ AS NOUGHT, so the answer is
+	// never more than the allocation holds.
+	return FMath::Max(0, Allocation.Total() - FMath::Max(0, PointsEarned));
+}
+
+int32 UCataclysmPassiveTree::PointsAddingNothingIn(
+	const FCataclysmPassiveAllocation& Allocation, int32 PointsEarned, FName Node)
+{
+	return Allocation.PointsIn(Node)
+		- ReducedToPointsEarned(Allocation, PointsEarned).PointsIn(Node);
+}
+
+FString UCataclysmPassiveTree::DescribePoints(
+	const FCataclysmPassiveAllocation& Allocation, int32 PointsEarned)
+{
+	// THE BUDGET IS PART OF THE LINE. 230 is what every class tree is designed
+	// against and what a player is planning towards, and a bare "38 earned"
+	// says nothing about how far through that is.
+	FString Line = FString::Printf(
+		TEXT("Passive points    %d unspent of %d earned    the budget is %d"),
+		FMath::Max(0, PointsEarned - Allocation.Total()), PointsEarned,
+		UCataclysmPassivePoints::Budget);
+
+	const int32 Idle = PointsAddingNothing(Allocation, PointsEarned);
+	if (Idle > 0)
+	{
+		Line += FString::Printf(
+			TEXT("    %d spent point%s nothing: gear that granted points is no "
+				 "longer worn"),
+			Idle, Idle == 1 ? TEXT(" adds") : TEXT("s add"));
+	}
+	return Line;
 }

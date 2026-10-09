@@ -23,6 +23,8 @@
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
+// For the stat a worn row grants class points on, and its reader.
+#include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -7440,6 +7442,33 @@ namespace CataclysmStatExemptionTest
 					  GearedDemonic < GearedUntyped * 0.99f);
 	}
 
+	/**
+	 * `class_points_granted`, read by `UCataclysmPassivePoints::GrantedByWornRows` off the modifiers the worn rows
+	 * made, in `UCataclysmEquipmentComponent::RefreshAttributes`. Ruled 2026-10-09: "Gain 5-10 class points". Two
+	 * sets of worn modifiers, the second holding the stat at a flat 7: the plain one grants no point and the
+	 * carrying one grants 7.
+	 *
+	 * NO CHARACTER IS MADE, and that is the reader's own shape: it is handed the worn modifiers and asks no ability
+	 * system for anything. `Cataclysm.Passives.ClassPointsFromGear.` is where a real character wears the row.
+	 */
+	void ProbeClassPointsGranted(FAutomationTestBase& Test)
+	{
+		const TMap<FName, TArray<FCataclysmStatModifier>> Plain;
+
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 7.0f;
+		TMap<FName, TArray<FCataclysmStatModifier>> Carrier;
+		Carrier.FindOrAdd(FName(UCataclysmPassivePoints::GrantedByGearStat)).Add(Row);
+
+		Test.TestEqual(TEXT("control: worn modifiers with no such row grant no class point"),
+					   UCataclysmPassivePoints::GrantedByWornRows(Plain), 0);
+		Test.TestEqual(TEXT("and ones carrying class_points_granted at 7 grant 7, so GrantedByWornRows really "
+							"reads it"),
+					   UCataclysmPassivePoints::GrantedByWornRows(Carrier), 7);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7570,6 +7599,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("hit_taken_cancels_skills"), &ProbeHitTakenCancelsSkills},
 			{TEXT("blow_delay_seconds"), &ProbeBlowDelaySeconds},
 			{TEXT("minion_defences_percent_of_yours"), &ProbeMinionDefencesPercentOfYours},
+			{TEXT("class_points_granted"), &ProbeClassPointsGranted},
 		};
 		return Made;
 	}
