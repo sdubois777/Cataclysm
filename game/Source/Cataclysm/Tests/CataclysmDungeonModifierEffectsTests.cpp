@@ -51499,6 +51499,8 @@ bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
 	int32 Asked = 0;
 	int32 Placed = 0;
 	int32 UnderHalf = 0;
+	int32 SkippedForCrossing = 0;
+	int32 FloorsWithASkipForCrossing = 0;
 	const int32 FloorNumbers[2] = {1, 10};
 	for (int32 Seed = 1; Seed <= 10; ++Seed)
 	{
@@ -51516,28 +51518,139 @@ bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
 			ThoseInTheDarkRulesHold(*this, Mode, Where);
 			TestEqual(FString::Printf(TEXT("%s: what the placement says it placed is the floor's chasms"), *Where),
 					  Count.Placed, Mode->ThoseInTheDarkChasmCellsNow().Num());
+
+			// WHAT EACH RULE COSTS IS ASKED FOR HERE AND NOT COUNTED IN PLAY, ruled 2026-10-09. The floor's own
+			// creatures are cleared away first, so they hold no cell the first draw was free to take.
+			Mode->ClearFloorEnemies();
+			const ACataclysmDungeonGameMode::FThoseInTheDarkRuleCounts Rules = Mode->ThoseInTheDarkCountsRuleByRule();
 			const FString Line = FString::Printf(
-				TEXT("Those in the Dark measurement: %s: %d walkable cells, %d chasms asked for; placed %d after the ")
-				TEXT("entrance and stairs rule, %d after held and barrier cells, %d after no two side by side, %d ")
-				TEXT("after the crossing question"),
-				*Where, Count.Walkable, Count.Asked, Count.AfterTheEntranceAndStairs, Count.AfterHeldAndBarriers,
-				Count.AfterNoTwoSideBySide, Count.Placed);
+				TEXT("Those in the Dark measurement: %s: %d walkable cells, %d chasms asked for, %d placed; the draw ")
+				TEXT("made again rule by rule places %d after the entrance and stairs rule, %d after held and barrier ")
+				TEXT("cells, %d after no two side by side, %d after the crossing question; with every rule it skipped ")
+				TEXT("%d cells for the entrance and stairs rule, %d held or barrier cells, %d beside a chasm, %d for ")
+				TEXT("the crossing question"),
+				*Where, Count.Walkable, Count.Asked, Count.Placed, Rules.AfterTheEntranceAndStairs,
+				Rules.AfterHeldAndBarriers, Rules.AfterNoTwoSideBySide, Rules.AfterTheCrossingQuestion,
+				Rules.RefusedNearTheEntranceOrOnTheStairs, Rules.RefusedHeldOrOnABarrier, Rules.RefusedBesideAChasm,
+				Rules.RefusedByTheCrossingQuestion);
 			UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
 			AddInfo(Line);
 			++Floors;
 			Asked += Count.Asked;
 			Placed += Count.Placed;
 			UnderHalf += (Count.Placed * 2 < Count.Asked) ? 1 : 0;
+			SkippedForCrossing += Rules.RefusedByTheCrossingQuestion;
+			FloorsWithASkipForCrossing += Rules.RefusedByTheCrossingQuestion > 0 ? 1 : 0;
 		}
 	}
 	const FString Summary = FString::Printf(
 		TEXT("Those in the Dark measurement: %d floors, %d chasms asked for, %d placed; %d floors placed under half of ")
-		TEXT("what was asked for"),
-		Floors, Asked, Placed, UnderHalf);
+		TEXT("what was asked for; the crossing question skipped %d cells, on %d of the floors"),
+		Floors, Asked, Placed, UnderHalf, SkippedForCrossing, FloorsWithASkipForCrossing);
 	UE_LOG(LogTemp, Display, TEXT("%s"), *Summary);
 	AddInfo(Summary);
 	TestEqual(TEXT("set-up: twenty floors were measured"), Floors, 20);
 	TestTrue(TEXT("set-up: the twenty floors asked for chasms"), Asked > 0);
+	return true;
+}
+
+// T12. THE PLACE THAT FALLS IS THE PLACE THAT IS MARKED: THE RING, NOT THE CELL. Ruled 2026-10-09. Standing 190 cm,
+// flat, from the middle of a chasm's cell for a beat is recorded as a fall. CONTROLS, IN THE SAME TEST AND BEFORE IT,
+// BOTH ON THE CHASM'S OWN CELL: standing 210 cm from the middle along a diagonal, and standing in the cell's corner
+// 269 cm from the middle, each for two beats, record none.
+//
+// THE ARITHMETIC. A cell is 400 cm, so a point is on the chasm's cell while it is under 200 cm from the middle along
+// each axis. 148.5 cm along both axes is 210.0 cm from the middle. 190 cm along both is 268.7 cm from it. 190 cm
+// along one axis is 190 cm from it. Each stand's distance and cell are asserted as set-up. The nearest another
+// chasm's middle can be is the diagonal neighbour's, 566 cm away, so none of the three places is within another ring.
+//
+// WHERE EACH STANDS: the floor's own creatures are cleared away, and no creature is placed. The player stands at
+// the three places in turn.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * Stands the player this far along X and Y from the middle of a chasm's cell, and asserts as set-up how far,
+	 * flat, that is from the middle, and that the place is on the chasm's own cell.
+	 */
+	bool StandThePlayerFromTheChasmsMiddle(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+										   const FPossessedPlayer& Player, FIntPoint Chasm, float AlongX, float AlongY,
+										   float WantedCm)
+	{
+		const FVector Middle = Mode->CurrentFloor->WorldOfCell(Chasm);
+		StandThePlayerAt(Player, Middle + FVector(AlongX, AlongY, 0.0f));
+		const FVector At = Player.Character->GetActorLocation();
+		const bool bTheDistance = Test.TestEqual(
+			FString::Printf(TEXT("set-up: the player stands %.0f cm from the middle of the chasm's cell"), WantedCm),
+			static_cast<float>(FVector::Dist2D(At, Middle)), WantedCm, 1.0f);
+		const bool bTheCell = Test.TestTrue(
+			FString::Printf(TEXT("set-up: and %.0f cm from the middle is on the chasm's own cell"), WantedCm),
+			Mode->CurrentFloor->CellOfWorld(At) == Chasm);
+		return bTheDistance && bTheCell;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkRingTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkThePlaceThatFallsIsTheRingAndTheRestOfAChasmsCellIsSafeGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThoseInTheDarkRingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, 2, 1, Seed)
+		|| !TestEqual(TEXT("set-up: the ring is 200 cm in radius, half of a 400 cm cell"),
+					  Effects::ThoseInTheDarkMarkRadiusCm, FCataclysmFloorGenerator::CellSizeCm / 2.0f))
+	{
+		return false;
+	}
+	const FIntPoint Chasm = Mode->ThoseInTheDarkChasmCellsNow()[0];
+	Beat(Mode, 1);
+	TestEqual(TEXT("at the entrance, after a beat, no fall is recorded"), Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// THE CONTROL: JUST OUTSIDE THE RING, ON THE CHASM'S OWN CELL, TWO BEATS.
+	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 148.5f, 148.5f, 210.0f))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("standing 210 cm from the middle, on the chasm's own cell, for two beats records no fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// THE SECOND CONTROL: THE CORNER OF THE CHASM'S CELL, TWO BEATS.
+	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 190.0f, 190.0f, 268.7f))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestEqual(TEXT("standing in the corner of the chasm's cell, 269 cm from the middle, for two beats records no fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+
+	// INSIDE THE RING: NOTHING UNTIL THE BEAT, AND THEN ONE FALL.
+	if (!StandThePlayerFromTheChasmsMiddle(*this, Mode, Player, Chasm, 190.0f, 0.0f, 190.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("standing 190 cm from the middle records nothing before the beat"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 0);
+	Beat(Mode, 1);
+	TestEqual(TEXT("standing 190 cm from the middle for a beat is recorded as one fall"),
+			  Mode->ThoseInTheDarkFallsOnThisFloor(), 1);
 	return true;
 }
 
