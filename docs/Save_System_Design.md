@@ -403,7 +403,7 @@ threshold are tuning constants and only playing settles them.**
 | A fight starting | `ACataclysmEnemyController` the moment a creature notices somebody it could not see before |
 | A creature dying | `ACataclysmEnemyCharacter::HandleDeath` |
 | Health falling through the threshold | `UCataclysmSaveWriter::Tick`, sampling once a frame at half of maximum health. **Also a starting figure** |
-| Changing floor | **Nothing.** `UCataclysmSaveWriter::SetFloor` is the entry point and nothing calls it, because nothing in the game has floors |
+| Changing floor | `ACataclysmDungeonGameMode::GoToFloor` calls `UCataclysmSaveWriter::SetFloor`, while the writer is writing, with the dungeon's name, the floor number, whether the floor is the dark floor a fall leads to, and the floor fallen from. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls it as well when the dungeon is left from the dark floor. `SetFloor` raises the trigger when any of the four differs from what the writer holds |
 | An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot |
 | The character dying | `ACataclysmPlayerCharacter::HandleDeath`, **before the character is marked dead**, so the record holds it where it fell rather than a floor with nobody on it |
 
