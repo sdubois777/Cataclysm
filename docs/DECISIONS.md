@@ -531,6 +531,97 @@ statue waking once only.
 
 ---
 
+## 2026-10-08 — Two sentences on a hit that cuts a skill short are built as two rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, two new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (one stat joins the
+list of stats that are a yes or a no, and the row counts), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT NO TEST SHOWS
+
+- **"Taking damage" in the channel sentence is a LANDED HIT.** A burn, a bleed or any other damage over time does
+  not end a channel, and neither does a cost paid in health. An evaded blow does not interrupt; a blocked blow
+  and one the energy shield takes whole do.
+- **The channel row reaches one built skill today, Pyroclasm**, the Demonic greataxe's ultimate: it ends at the
+  first landed hit and its final hit is lost.
+- **Under "Taking a hit interrupts any skill currently being used" a skill cut short gives nothing back.** Its
+  cost stays paid and its cooldown stays running. A self buff in its duration, an aura that is on, a weapon
+  standing in the ground and a shot already in the air are left alone.
+- **The tests here read the stat's answer and do not throw a blow.** That a real blow ends a real skill is tested
+  in the entry that built the stat, with the row made by hand. **That a basic attack is cut short in its
+  wind-up IS shown by that entry's run of 2026-10-08**; this line first said it was not, on the wrong belief that
+  a worktree has none of the player's attack clips.
+
+### WHAT WAS BUILT
+
+The rows the entry "A landed hit cuts short the skill its wearer is using" of 2026-10-08 left to the session
+holding the design workbook, each as that entry's table states it. No engine code and no generator code is
+changed here.
+
+| Sentence | Row |
+| :-- | :-- |
+| Taking a hit interrupts any skill currently being used | `hit_taken_cancels_skills`, flat, 1, no Required Tags |
+| Taking damage while channeling interrupts the channel immediately | `hit_taken_cancels_skills`, flat, 1, Required Tags `Type.Channel` |
+
+EnchantmentEffects 570 to 572, over 481 to 483 enchantments.
+
+**With the rows, one list moves.** `hit_taken_cancels_skills` joins `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`: it is a yes or a no, neither sentence states a
+number, and that list refuses a flag no row uses, so it could not join before its rows.
+
+### TWO THINGS A READER OF THE ROWS SHOULD KNOW
+
+- **One stat serves both sentences.** The game asks it once for each running skill, with that skill's own tags.
+  The row with no Required Tags answers for every skill; the row requiring `Type.Channel` answers only for a
+  channelled one. The Required Tags cell is the whole difference between the two rows.
+- **A character wearing both loses nothing more than under the first alone.**
+
+### WHAT WAS READ RATHER THAN RULED AGAIN
+
+Every reading of the two sentences is that entry's and its rulings of 2026-10-08.
+
+### Tests
+
+Each wears the real row, and first asserts that the name it wears is a row of `EnchantmentsNegative.csv`.
+
+- `Cataclysm.Enchantments.TheHitInterruptsAnySkillRowAnswersForASkillOfAnyTags`: the stat, asked as the game asks
+  it, answers 1 for a melee skill, for a channelled skill and for a skill with no tags; and nought for the first
+  two when the item is taken off.
+- `Cataclysm.Enchantments.TheHitInterruptsTheChannelRowAnswersForAChannelledSkillAndForNoOther`: it answers 1 for
+  a channelled skill and nought for a melee skill and for a skill with no tags; and nought for a channelled skill
+  when the item is taken off.
+
+**Not tested here:** a blow thrown at a wearer of either real row; Pyroclasm used under the channel row. The
+entry that built the stat tests each with the row made by hand.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-08 in one window with the three layers below this one, on `development` c17bda32. The build, the
+whole suite and the Python of record are in the table of the entry of the same day "A character knows it is
+channelling" and were run with this layer in the stack. **The ids are the commits as they stood when each step
+ran.**
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Cataclysm.Enchantments. against the assets built before any row of the stack | 41e03c74 | 297 tests performed, 292 succeeded, 5 failed, this layer's two among them; 4 of the 13 failed assertions are this layer's: the row for any skill 3, the row for a channel 1 |
+| The enchantment assets, regenerated with the editor | c7aa4e58 | effect rows 570 to 572 |
+| Whole suite, every asset built | c7aa4e58 | 3379 tests performed, 3379 succeeded, 0 failed |
+
+**Each of the two tests fails against a table without its row and passes with it.** Without the rows the flag
+answered nought for a melee skill, for a channelled skill and for a skill with no tags under the first name
+worn, and nought for a channelled skill under the second.
+
+**This layer changes no engine code and no generator code, so it has no guard proof of its own.** What the entry
+that built the stat proved, read in its table: three guard proofs, each failed with its break in and passed with
+it out: an ended spin's two timers cleared by name, a spin asking whether its own first swing ended it, and a
+tick of damage over time refused. **That table says no proof was run for the guards on a rack and on a flicker,
+for what is and is not interruptible, for the wearer's own blow, for the cost and the cooldown being kept, or
+for the order of the cancel and the `hit_taken` event**; those are tested and not proved.
+
+---
+
 ## 2026-10-08 — A landed hit cuts short the skill its wearer is using: one flag stat, `hit_taken_cancels_skills`, for two enchantment sentences that have no row. Engine only; no row authored
 
 **Not built and not run, until the enchantment session's window.** No Unreal build was made and no Unreal test
