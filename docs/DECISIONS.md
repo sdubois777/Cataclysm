@@ -465,7 +465,8 @@ scale. No dry run of the generator was made because no data row is written.
 ### Run
 
 One window on 2026-10-08, at `feat/angelic-wardens` 1f71cc65, on development 37e86961. One attempt; nothing was
-corrected during it. Every build, run and measurement here was made by the registering session. Every figure is a
+corrected during it. One pull request, #2341, was open while it ran: the coordinating session had arranged that,
+its checks had finished, and it was not merged until the lock was released, so nothing else compiled. Every build, run and measurement here was made by the registering session. Every figure is a
 line a run printed.
 
 | Step | Printed |
@@ -484,12 +485,17 @@ what they needed: the shared set-up on dungeon seed 1, floor 2, with three statu
 dungeon seed 2 with a statue on cell (22, 9) across barrier 0. No existing test failed, so none failed because
 Reality Twister put statues or wardens on its floor.
 
-**Seen in the log and not ruled on: the statues' cells are not the same from one build of a floor to the next.**
+**Seen in the log, and ruled: the statues' cells are not the same from one build of a floor to the next; left as the
+shared picker gives it, and filed as issue #2342.** A labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-08.
 Six tests went to floor 2 of dungeon seed 1 through the shared set-up and logged the statue each chose to stand by,
 the first of the floor's three with room. They logged six different cells: (4, 39), (21, 26), (28, 3), (3, 23),
 (2, 15) and (18, 19). Five of the tests that use that set-up carry this row alone, so at least four of those cells
 come from the same seed, floor and row. So where the statues stand is not fixed by the dungeon seed.
-`FloorSourceCells` was not read for why.
+`FloorSourceCells` shuffles its candidate cells with `FMath::RandRange`, the engine's global random, and not with the
+floor's seeded stream; the registering session read that after the window. Every rule that places objects through
+that picker or its two wrappers is the same, Shadowy Enemies' light zones among them. Nothing was changed for it
+in this layer.
 
 **How the layer was written and checked.** A second session wrote all three commits under a brief carrying the
 rulings. Before the window the registering session read every line of the game-mode code apart from comments, the
