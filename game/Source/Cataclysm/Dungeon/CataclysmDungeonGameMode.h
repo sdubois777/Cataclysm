@@ -3738,8 +3738,19 @@ public:
 	 *
 	 * ONLY THE ROWS THE FLOOR CARRIES. A count for a row not in force would be a
 	 * number with nothing behind it, and there is no line to put it on.
+	 *
+	 * WITH ONE EXCEPTION, ruled 2026-10-09: on the dark floor a fall leads to, Those in the Dark's line is counted
+	 * whatever rows that floor drew, and `RowsTheFloorPanelLists` gives the panel the row to put it on.
 	 */
 	TMap<FName, FString> LiveCountsForTheFloor() const;
+
+	/**
+	 * The row keys the floor panel draws a line for: the floor's own rows in their order, and on the dark floor a
+	 * fall leads to, Those in the Dark after them when that floor did not draw it. Issues #1820 and #41, ruled
+	 * 2026-10-09: a player on the dark floor always sees why the stairs are shut and how many creatures still
+	 * stand. The floor's own rows and nothing else at every other time.
+	 */
+	TArray<FName> RowsTheFloorPanelLists() const;
 
 private:
 
@@ -4319,7 +4330,9 @@ private:
 	/**
 	 * LAYER 2'S ONE FLAG: the player is on the dark floor a fall leads to. ONLY `ThePlayerFellIntoAChasm` SETS IT.
 	 * Cleared by `LeaveTheDarkFloor`, `LeaveEmpireDungeon` and `EnterEmpireDungeon`. While it is clear, nothing
-	 * this layer added changes a floor, a seed, a draw, a day charge or which floor is the last.
+	 * this layer added changes a floor, a seed, a day charge or which floor is the last, and it changes one draw
+	 * only: the row now answers Built, so the pool Reality Twister draws from holds one more row, as it did when
+	 * each earlier row became Built.
 	 */
 	bool bOnTheDarkFloor = false;
 

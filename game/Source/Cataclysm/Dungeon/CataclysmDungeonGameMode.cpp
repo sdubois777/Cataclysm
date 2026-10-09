@@ -17814,8 +17814,24 @@ void ACataclysmDungeonGameMode::RefreshFloorModifierPanel()
 		return;
 	}
 
-	Cataclysm->ShowFloorModifiers(FloorBrief.Modifiers, FloorBrief.FloorNumber,
+	// THE ROWS THE PANEL LISTS AND NOT ONLY THE FLOOR'S OWN: on the dark floor a fall leads to, the row whose line
+	// carries the dark floor's seal is listed whatever rows that floor drew. Ruled 2026-10-09.
+	Cataclysm->ShowFloorModifiers(RowsTheFloorPanelLists(), FloorBrief.FloorNumber,
 								  LiveCountsForTheFloor());
+}
+
+TArray<FName> ACataclysmDungeonGameMode::RowsTheFloorPanelLists() const
+{
+	// THE FLOOR'S OWN ROWS, IN THEIR ORDER, AND NOTHING ELSE UNLESS THE PLAYER IS ON THE DARK FLOOR. There, Those in
+	// the Dark is added after them when the floor did not draw it, so the line that says the stairs are sealed and
+	// how many creatures still stand is always on the panel. The panel draws one line for each key it is handed
+	// and none for a count whose key it was not handed (`UCataclysmFloorModifierPanelLayout::LinesFor`).
+	TArray<FName> Listed = FloorBrief.Modifiers;
+	if (bOnTheDarkFloor)
+	{
+		Listed.AddUnique(FName(UCataclysmDungeonModifierEffects::ThoseInTheDarkKey));
+	}
+	return Listed;
 }
 
 TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
