@@ -16,6 +16,7 @@
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "Character/CataclysmPassivePoints.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "HAL/IConsoleManager.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
@@ -20380,6 +20381,99 @@ bool FCataclysmDivineRetributionTenRowTest::RunTest(const FString&)
 		TestTrue(TEXT("six seconds on, the blow is blocked"), bBlocked);
 		TestEqual(TEXT("and every slot is refreshed again"), SlotsWaiting(), 0);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsAboveTheMaxRowTest,
+	"Cataclysm.Enchantments.TheClassPointsAboveTheMaxRowLowersTheResistanceCapForEachPointSpentAbove230",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each class point above the max reduces your max resistances by 2%-5%".
+ * Issue #1833: `resistance_cap` flat, -2 to -5, on `class_points_spent` with a
+ * step of 1 and an offset of 230, the budget in `UCataclysmPassivePoints`.
+ * Ruled 2026-10-09: the points counted are points SPENT above 230. WORN, so the
+ * row is at -5 a point, as a worn drawback is at the far end of its range.
+ *
+ * THE POINTS SIT IN A NODE IN NO TREE, so they grant nothing of their own, and
+ * they are put there without asking whether the character has earned them:
+ * no character can spend above 230 in play today.
+ */
+bool FCataclysmClassPointsAboveTheMaxRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* ASC =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), ASC))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the character's own equipment"), Equipment))
+	{
+		return false;
+	}
+
+	const auto Spend = [&](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(FName(TEXT("Test_node_in_no_tree")), Points);
+		PlayerState->SetPassiveAllocation(Allocation, {});
+		Equipment->RefreshAttributes(ASC);
+	};
+	const auto Cap = [&]() { return UCataclysmDamageCalculation::ResistanceCapOf(ASC); };
+
+	// WITHOUT THE ROW, points above 230 leave the cap where it is.
+	Spend(240);
+	const float Unworn = Cap();
+	if (!TestEqual(TEXT("set-up: without the row the cap is the game's own at 240 points"),
+			Unworn, UCataclysmDamageCalculation::ResistanceCap, 0.001f))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, TEXT("Negative_Each_class_point_above_the_max_reduces_your_max")),
+					 Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(ASC);
+	if (!TestTrue(TEXT("set-up: the row put a modifier on the resistance cap. If not, DT_EnchantmentEffects "
+					   "may be older than the rows: run tools/generate_datatable_assets.py"),
+			CarriesAModifierOn(ASC, TEXT("resistance_cap"))))
+	{
+		return false;
+	}
+
+	Spend(UCataclysmPassivePoints::Budget);
+	TestEqual(TEXT("at 230 points spent the row takes nothing"), Cap(), Unworn, 0.001f);
+	Spend(UCataclysmPassivePoints::Budget + 1);
+	TestEqual(TEXT("one point above 230 takes 5 off the cap"), Unworn - Cap(), 5.0f, 0.001f);
+	Spend(UCataclysmPassivePoints::Budget + 10);
+	TestEqual(TEXT("ten points above 230 take 50 off the cap"), Unworn - Cap(), 50.0f, 0.001f);
+	Spend(UCataclysmPassivePoints::Budget + 18);
+	TestEqual(TEXT("eighteen points above 230 would take 90: the cap stops at nought, the floor the game has"),
+		Cap(), 0.0f, 0.001f);
+	Spend(100);
+	TestEqual(TEXT("at 100 points spent the row takes nothing"), Cap(), Unworn, 0.001f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS
