@@ -12839,6 +12839,58 @@ bool ACataclysmDungeonGameMode::InfernalSealsSealTheStairs() const
 		&& !FloorBrief.bWaveWalksIn && !IsOnTheLastFloor() && InfernalSealPieces < InfernalSealPiecesNeeded();
 }
 
+void ACataclysmDungeonGameMode::NoteDeathForRuleOfChaos(const FCataclysmDeathNotice& Notice)
+{
+	// ONLY ON A FLOOR THAT DREW THE CHANGE TO SKILL BEHAVIOUR. A floor that drew another change, and a floor without
+	// the row, clear nothing on a kill.
+	if (FloorBrief.RuleOfChaosChange != FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns)
+	{
+		return;
+	}
+
+	// "A KILL" AS BLOOD GATES COUNTS ONE, the same four tests in the same words: the killer on the notice is the
+	// player, the creature pays for its death, and it is not one a rule raised. See `NoteDeathForBloodGates`.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player
+		|| CreaturesRaisedByARule.Contains(Fallen))
+	{
+		return;
+	}
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent());
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY SLOT'S COOLDOWN TAG, asked of the one function that names them, as a respawn asks.
+	FGameplayTagContainer EveryCooldown;
+	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+	{
+		const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+		if (Cooldown.IsValid())
+		{
+			EveryCooldown.AddTag(Cooldown);
+		}
+	}
+	if (EveryCooldown.IsEmpty())
+	{
+		return;
+	}
+
+	// NO ROLL, ruled on 2026-10-08: the rule always clears. EVERY SPENT USE RETURNED FIRST, so that ending the
+	// cooldowns next starts no further recharge; then every cooldown ended. These are the two calls
+	// `UCataclysmAbilitySystemComponent::RollAndResetCooldowns` makes after its roll, made here without it.
+	AbilitySystem->RefillSkillCharges(EveryCooldown);
+	AbilitySystem->RemoveActiveEffectsWithGrantedTags(EveryCooldown);
+	++RuleOfChaosKills;
+	UE_LOG(LogCataclysm, Verbose, TEXT("Rule of Chaos: kill %d on floor %d cleared every cooldown."), RuleOfChaosKills,
+		   FloorNumber);
+}
+
 bool ACataclysmDungeonGameMode::RuleOfChaosSealsTheStairs() const
 {
 	// BY TIME AND BY NOTHING ELSE: sealed from the moment the floor is placed until its own clock reaches the figure.
@@ -15646,6 +15698,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
 	NoteDeathForBloodGates(Notice);
+	NoteDeathForRuleOfChaos(Notice);
 	NoteDeathForNothingIsForgotten(Notice);
 	NoteDeathForStarvationCurse(Notice);
 	NoteDeathForSoulHarvest(Notice);
@@ -18387,7 +18440,7 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 						 ? FString::Printf(TEXT("rule of chaos: skills cost %.0f%% of current health and no mana"),
 										   Effects::DesperateMeasuresHealthPercent)
 						 : ChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns
-						 ? FString::Printf(TEXT("rule of chaos: cooldowns %.0f%% longer"),
+						 ? FString::Printf(TEXT("rule of chaos: cooldowns %.0f%% longer, a kill clears them"),
 										   Effects::RuleOfChaosCooldownLongerPercent)
 						 : ChaosChange != FCataclysmDungeonFloorRules::RuleOfChaosStairsOpenByTime
 						 ? FString(TEXT("rule of chaos: no rule change was drawn"))
@@ -20368,6 +20421,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND BLOOD GATES FORGETS THE PLAYER'S KILLS: each floor's stairs are sealed
 		// afresh. Issues #1820 and #41.
 		BloodGatesSlain = 0;
+
+		// AND RULE OF CHAOS FORGETS HOW MANY KILLS CLEARED THE COOLDOWNS: the count is this floor's. Issues #1820 and
+		// #41. Nothing reads it but a test and a log line, so where it is put back decides nothing in play.
+		RuleOfChaosKills = 0;
 
 		// AND UNSTABLE PORTAL FORGETS ITS ROLLS AND ITS WARDENS. Issues #1820 and #41.
 		UnstablePortalRolls = 0;
