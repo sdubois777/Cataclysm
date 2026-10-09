@@ -1774,6 +1774,23 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		Cataclysm->SetStatInputs(MoveTemp(Inputs));
 	}
 
+	// AND A PLAYER'S WALKING SPEED IS WORKED OUT AGAIN, FROM THE LINE JUST STORED. Issue #2359.
+	//
+	// THE PASSES ABOVE WRITE THE MOVEMENT SPEED ATTRIBUTE BEFORE THE LINE IS STORED. That write tells the pawn
+	// (`ACataclysmPlayerCharacter::OnMovementSpeedChanged`), which asks the stat pipeline, and the component then
+	// still holds the line of the refresh before. So the walking speed was one refresh late: a player who put on
+	// boots, spent a point or walked into a rule's slow kept the old speed until health or something else moved.
+	// Asking once more here, after `SetStatInputs`, is the same answer the Water to Blood flag below was given.
+	//
+	// NOTHING FOR ANYTHING THAT IS NOT A PLAYER'S PAWN. The avatar is read directly, so a component whose actor
+	// information was never set -- many tests build one -- answers null and not a failed check; a bare actor, a
+	// creature or a minion fails the cast.
+	if (ACataclysmPlayerCharacter* Walker =
+			Cast<ACataclysmPlayerCharacter>(AbilitySystem->GetAvatarActor_Direct()))
+	{
+		Walker->RefreshMovementSpeed();
+	}
+
 	// AND A CHARACTER THAT TRADED ITS MANA POOL FOR HEALTH HAS THE TWO SWAPPED
 	// OVER. Issue #1067. The Masochist's Water to Blood: "You no longer have a
 	// mana pool. All maximum mana is converted into added maximum health."
