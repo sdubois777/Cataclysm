@@ -2,6 +2,296 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — Fragmented Reality: on a Halls floor in sections one section scrambles the player's stats while they stand in it, and the row is Built
+
+**Not built and not run.** The writing session wrote this layer on development 993d4536: the code, one new stat
+with its probe, nine new Unreal tests, two Python checks changed, and this entry. It compiled nothing and ran no
+Unreal test. It ran the Python tests in `tools/tests`, the lint and the conflict check before the commit, and
+nothing else. Every statement below about what the engine does is read from the code.
+
+**Said first: on a floor with no sections the row does nothing.** That is a Caverns floor, an Arena, a Horde
+arena, a Halls floor the search could not divide, a Halls floor on which a Warzone point was planned on a
+boundary's cell or a boundary has no cell of its own, and a Halls floor that carries Shadowy Enemies. The panel
+then says "fragmented reality: this floor has no fragmented section". The merged entry of 2026-10-08, "Lightforged
+Walls seals each section of a Halls floor behind a barrier of pillars until the creatures placed in it are
+slain, and the row is Built", records what was measured: "On 4 of 200 measured Halls floors the search finds no
+sections" and "Of the 200, 178 have three sections and 18 have two." So on about 196 of 200 Halls floors the row
+does something, and on every floor of another layout it does nothing. How many floors of a dungeon are Halls
+was not measured by this layer.
+
+**Said first: nothing on the floor marks the Fragmented section.** No zone, colour or line is drawn. A player
+learns they are inside from the floor panel's line and from their stats changing. No ruling asked for a mark
+and none was invented. It is on the owner's play-check list.
+
+**Said first: the row answering Built adds one row to Reality Twister's pool with no section entered.**
+`EnterEmpireDungeon` fills that pool with every row that is not NotBuilt, so it holds one more row in every
+dungeon entered from the empire map, and a floor carrying Reality Twister may draw a different row than before,
+as happened each time an earlier row became Built. No existing test was changed for it and none was run.
+
+**Said first: one new stat was added, `cooldown_recovery`, and it changes the one function every cooldown in the
+game goes through.** `UCataclysmGameplayAbility::CooldownAfterReduction` now asks for it and hands it to
+`UCataclysmCombatAttributeSet::FinalCooldown` as its third argument, which nothing fed before. With no row on
+the stat the third argument is 1 and every cooldown is what it was. The enchantment session works in the same
+files; the report lists them.
+
+**Said first: sections now exist on floors that carry this row and not Lightforged Walls.** On such a floor each
+creature the floor places carries a section number, and Those in the Dark places no chasm on a boundary's cell,
+though no barrier stands there. Nothing else reads a section without a closed barrier. The floor's creatures are
+the same as on that floor without the row: the populator is barred from boundary cells only where barriers
+stand.
+
+**Said first: two entries in a row may draw the same pair**, and a player who steps back and forth across a
+boundary draws a new pair on each entry. Both follow from ruling 4 as worded.
+
+### The row's words
+
+`game/Data/DungeonModifiers.csv`, `Chaos_Fragmented_Reality`, danger 20: "Certain sections of the dungeon are
+"Fragmented." When you enter one, your stats are randomly scrambled. For example, your power might be increased
+but your defenses are halved, or your health is doubled but you can no longer use skills."
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+
+1. One section of the floor is Fragmented, never the section the entrance is in. On a floor with two sections
+   it is the stairs' section. On a floor with three, which of the two non-entrance sections is a seeded draw,
+   so the same dungeon seed and floor give the same section.
+2. Sections are planned when either Lightforged Walls or Fragmented Reality is on the floor. Barriers stand
+   only with Lightforged Walls.
+3. On a floor with no sections the row does nothing.
+4. Entering the Fragmented section draws one of four pairs. The draw holds while the player stays inside, ends
+   on leaving, and is made again on each entry.
+5. The four pairs, each "more" or "less" in the damage formula's sense:
+   1. 50% more damage; armour and every one of the eight resistances halved (50% less). "Damage" is attack
+      damage and spell damage; damage over time and minion damage are not raised. "Halved" as a Less does
+      nothing to an armour or resistance of nought and halves the penalty of a negative resistance.
+   2. Maximum health doubled; skills locked, basic attack allowed.
+   3. 50% more movement speed; 30% less damage.
+   4. Cooldowns recover 50% faster; 30% less maximum health. "50% faster" means a cooldown takes its length
+      divided by 1.5, and it must hold for a wearer with other cooldown reduction.
+6. Maximum health lowered (pair 4): current health is held to the new maximum and is not given back on leaving.
+   Maximum health doubled (pair 2): current health keeps its figure, and on leaving it is held to the old
+   maximum.
+7. If the skill lock turning on cancels a cast part-way with its cost kept, stop and report; otherwise say what
+   happens to a skill in use when the lock turns on.
+8. The beat is 0.25 seconds, so the pair turns on or off up to a quarter second after the player crosses.
+9. The panel carries a line for the row: which pair is in force while the player is inside, and that none is
+   while outside.
+10. The row answers Built when this layer lands.
+
+### What was read before writing
+
+All in `game/Source/Cataclysm/`, line numbers as the files stand after this layer.
+
+- **Sections.** `Dungeon/CataclysmFloorGenerator.h`, `FCataclysmFloorSections` and `FindSections`: section 0
+  holds the entrance, the last section holds the exit, and a boundary's cell is in no section.
+  `Dungeon/CataclysmDungeonGameMode.cpp`: `FloorGetsSections` (line 6241), `PlanTheSections` (6282),
+  `CloseTheSectionBarriers` (6399), and every reader of `FloorSections` and of a creature's `FloorSection`.
+  **Which refusal Shadowy Enemies is:** it is made in `FloorGetsSections`, before sections are planned, so it
+  applies to planning and not only to barriers. Its stated reason is about clearing a sealed section.
+- **Rules that turn on and off by where the player stands.** `StepWarBanner` (11390) and `StepAntiMagicZones`
+  (17321): each compares what it wants with what it last applied, writes its own field on a change and calls
+  `ApplyChangingFloorEffects` (16082), which builds the whole of `FCataclysmPlayerFloorEffects` from the floor's
+  rows and every rule's applied state.
+- **More and Less.** `Dungeon/CataclysmDungeonModifierEffects.cpp`, `StatModifiersFor` (1344) and the helpers
+  above it: `DungeonModifierEffectsAddMultiplier` writes a More with a signed value and
+  `DungeonModifierEffectsAddLess` negates; Void Parasite and the War Banner write attack damage and spell
+  damage; Chaos Touched writes the eight resistances as multipliers; March of Progress writes `armor`.
+- **The skill lock.** `AbilitySystem/CataclysmSkillTemplate.cpp`, `CanActivateAbility` (710): the stat
+  `skill_locked` is asked when a skill is activated, and the basic attack's slot is not asked. Nothing in the
+  dungeon game mode cancels an ability, and nothing else in the game asks the stat but the skill bar. **So a
+  skill already in use when the lock turns on is not cancelled and keeps nothing it should not: it runs to its
+  end.** Ruling 7's stop does not apply.
+- **Maximum health.** `AbilitySystem/CataclysmVitalAttributeSet.cpp`, `PostAttributeChange` (183): health above a
+  maximum that fell is lowered to it; raising the maximum raises no health. `ApplyFloorRulesKeepingHealth`
+  (9943) and `WriteTheMaximumHealthRulesBack` (9978), with the Python check
+  `tools/tests/test_maximum_health_rules_are_written_before_the_floor_start.py`, which requires the step of
+  every rule that writes maximum health on the beat to be called there.
+- **Cooldowns.** `AbilitySystem/CataclysmGameplayAbility.cpp`, `CooldownAfterReduction` (650) and
+  `ApplyCooldown` (770); `AbilitySystem/CataclysmCombatAttributeSet.cpp`, `FinalCooldown` (387) and
+  `CooldownDivisor` (408). No stat fed `FinalCooldown`'s third argument; the two existing stats are
+  `cooldown_reduction`, whose rows add before they divide, and `cooldown_lengthening`, which only lengthens.
+  The local copy of `origin/development` was searched for `cooldown_recovery` and held nothing. **A cooldown
+  already running is not changed on entering or leaving:** its length is worked out once, in `ApplyCooldown`,
+  and applied as an effect of that length; a skill with charges keeps the length of its last use for the
+  recharges queued behind it (`UCataclysmAbilitySystemComponent::SpendSkillCharge`, line 4352).
+- **How a stat is added.** `cooldown_lengthening` end to end: `StatsWithNoAttribute` in
+  `Character/CataclysmPlayerClassStats.cpp`, its one asker, its probe in
+  `Tests/CataclysmStatExemptionTests.cpp`, and the inventory in
+  `tools/tests/test_stat_lookups_hand_over_what_they_should.py`. `tools/generate_datatables.py` reads the
+  exemption list out of the C++ and names `cooldown_lengthening` nowhere, so it was not changed.
+- **Built state.** `BuiltStateOf` (681) and `KeysWithARule` (951); `EnterEmpireDungeon`, which fills Reality
+  Twister's pool from `BuiltStateOf`.
+- **Tests.** In `Tests/CataclysmDungeonModifierEffectsTests.cpp`: the Lightforged Walls section helpers and
+  tests, the War Banner and Anti-Magic Zones tests, the Rule of Chaos helpers that grant and use a skill, and
+  `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill` in `Tests/CataclysmSkillTemplateTests.cpp`.
+
+**Research.** The mechanic and its four pairs are ruled; this layer proposes none. For the new stat's shape one
+page was fetched, `https://poedb.tw/us/Cooldown_Recovery_Rate`. It holds modifier text such as "15% increased
+Cooldown Recovery Rate" and no sentence or formula saying how that rate changes a cooldown. So no source was
+read that states the formula, and none is claimed. The shape, a divisor, is the code's existing one:
+`FinalCooldown` already took a more multiplier that divides, and this layer feeds it.
+
+### How it is built
+
+- **Which floors.** `FloorGetsSections` answers true when the floor carries Lightforged Walls or Fragmented
+  Reality, is Halls, is not a Horde arena and does not carry Shadowy Enemies. `SectionBarriersStandOnThisFloor`
+  is true only with Lightforged Walls: `CloseTheSectionBarriers` closes nothing without it, and `PopulateFloor`
+  bars the populator from boundary cells only with it.
+- **Which section.** `PlanTheSections` ends by asking
+  `UCataclysmDungeonModifierEffects::FragmentedRealitySectionFor(SectionCount, Plan.Seed)` on a floor carrying
+  the row: none for fewer than two sections, 1 for two, and for three `1 + SeedForFloor(Seed, 0x46A1) % 2`.
+  `ForgetTheSections` forgets it.
+- **The beat.** `StepFragmentedReality` asks whether the player's cell is in the Fragmented section. On the
+  beat the player is first found inside it draws `FragmentedRealityPairFor(Plan.Seed, Entries)`, which is
+  `SeedForFloor(SeedForFloor(Seed, 0x46A2), Entry) % 4`, and counts the entry. While inside the pair is kept.
+  Outside there is none. On a change it writes `FragmentedRealityPairApplied`, calls
+  `ApplyChangingFloorEffects` and draws the panel again.
+- **The fields.** Seven fields of their own on `FCataclysmPlayerFloorEffects`, written together by
+  `WriteFragmentedRealityEffects` from the pair in force. `StatModifiersFor` turns them into a More or a Less on
+  `attack_damage`, `spell_damage`, `armor`, the eight resistances, `max_health` and `movement_speed`, and a
+  flat 50 on `cooldown_recovery`. The lock of pair 2 is the greatest of three on `SkillsLockedValue`, beside
+  the Edict of Silence's and Insanity Bursts'.
+- **The stat.** `cooldown_recovery`, no attribute and no base. `CooldownAfterReduction` asks it with the
+  skill's tags and passes `1 + max(sum, 0) / 100` as `FinalCooldown`'s more multiplier:
+  Base x (1 + lengthening) / ((1 + reduction) x (1 + recovery)).
+- **The floor's start and end.** `WriteTheMaximumHealthRulesBack` calls the step on a floor carrying the row;
+  the player stands at the entrance then, so it finds them outside. `ApplyFloorRulesToPlayer` forgets the pair
+  and the count of entries on every floor change and when the dungeon is left.
+- **The panel.** `FragmentedRealityPanelLine`: no Fragmented section on this floor; outside, nothing in force;
+  or inside with the pair's two halves.
+
+### For the owner's play-check
+
+What a player sees: on most Halls floors carrying the row, nothing until they walk into one part of the floor
+that is not where they arrived. Then, within a quarter second, the floor panel's line changes to "fragmented
+reality: inside, ..." and two of their stats change. Walking out ends it within a quarter second. Walking in
+again draws again. Nothing on the ground shows where the part begins.
+
+| Number or reading | What it does | The reading not taken |
+|---|---|---|
+| One Fragmented section a floor | The row's "certain sections" is one | Two of three sections, or every section but the entrance's |
+| Never the entrance's section | A floor starts with no pair | Any section |
+| With three sections, a seeded draw of the two | The same dungeon seed and floor give the same section | Always the middle, or always the stairs' |
+| 50% more attack and spell damage | Pair 1 | Damage over time and minion damage raised too |
+| Armour and each resistance 50% less, as a Less | Pair 1. Nought stays nought; minus 40 becomes minus 20 | Points taken off, which would make a negative resistance worse |
+| Maximum health 100% more | Pair 2. Current health keeps its figure | Health raised with the maximum |
+| Skills locked, basic attack allowed | Pair 2. A skill in use is not cancelled | A cast cut short |
+| 50% more movement speed | Pair 3 | Attack speed too |
+| 30% less attack and spell damage | Pair 3 | 50% |
+| Cooldowns divided by 1.5 | Pair 4, whatever other reduction is held. A running cooldown is not changed | 50 added to cooldown reduction, which is less for a character already holding some |
+| 30% less maximum health | Pair 4. Health held to it and not given back on leaving | Health given back |
+| A quarter second | The beat on which entering and leaving are noticed | Noticed at once |
+| A boundary's cell is outside | The pair ends on the line between sections | The line counted as inside |
+| Each entry draws again | Stepping out and in changes the pair; the same pair may be drawn twice running | One pair a floor |
+| Shadowy Enemies leaves the floor without sections | The row does nothing there | Sections for this row all the same |
+| No mark on the floor | Only the panel says inside or outside | A drawn zone over the section |
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The draw of the pair is seeded** from the floor's seed, a salt of its own and the number of entries so far
+   on that floor, as the brief left to this session. The count starts again on every floor.
+2. **A floor carrying Shadowy Enemies gets no sections for this row either.** Ruling 3 says to read which
+   refusal it is: it is made before planning, so the row does nothing there. The reason written beside it is
+   about sealed sections, which this row has none of; allowing sections for this row alone under Shadowy
+   Enemies is the reading not taken.
+3. **The populator is barred from boundary cells only where barriers stand**, so the row alone does not change
+   which creatures a floor has. Ruling 2 says only that barriers stand only with Lightforged Walls.
+4. **The other readers of sections are left as they are** on a floor in sections for this row alone: creatures
+   carry section numbers, and Those in the Dark keeps its chasms off boundary cells.
+5. **The stat is named `cooldown_recovery`, its rows are flat and add to each other, and a sum below nought
+   divides by 1.** Two sources of 50 would divide by 2, not 2.25. Only this rule writes it today.
+6. **The step is called before the floor starts**, in `WriteTheMaximumHealthRulesBack`, because the Python check
+   requires every beat-written maximum-health rule there. It writes nothing at a floor's start.
+7. **A player standing on a boundary's cell is outside**, because such a cell is in no section.
+8. **The lock uses `SkillsLockedValue`**, the greatest of the rules that lock every skill, and has no field of
+   its own; the other seven figures have their own fields.
+9. **A test hook, `ForceFragmentedRealityPairForTests`,** makes every entry draw one pair. Nothing in play calls
+   it. The brief allowed a hook or a seed found by search.
+10. **The panel's six lines** are worded by this session.
+11. **Nothing marks the section on the floor.** Said first above.
+
+### Tests
+
+Nine, in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group
+`Cataclysm.DungeonModifierEffects.`, and one probe in `Tests/CataclysmStatExemptionTests.cpp`. None was run.
+
+- `FragmentedRealityFiguresTheSeededDrawsAndTheRowIsBuilt`: the figures, the key, Built; the section for seeds
+  1 to 8 and the pair for eight entries on seed 1234, both worked out by hand; each pair's fields and
+  modifiers against the control of no pair; the six panel lines.
+- `FragmentedRealityTheFragmentedSectionIsNeverTheEntrancesAndNoBarrierStands`: on four dungeon seeds, never the
+  entrance's section, the section the rule names, the same when built again; no barrier and no pillar; as many
+  creatures as without the row; barriers with Lightforged Walls beside it; two sections fragment the stairs'.
+  Control: the same seed without the row.
+- `FragmentedRealityOnAFloorWithNoSectionsNothingChangesWhereverThePlayerStands`: Caverns, and Halls with
+  Shadowy Enemies. Control: the entrance's figures, and the same seed without Shadowy Enemies.
+- `FragmentedRealityPairOneGivesHalfAgainTheDamageAndHalvesArmourAndEveryResistance`,
+  `FragmentedRealityPairTwoDoublesMaximumHealthAndLocksSkillsButNotTheBasicAttack`,
+  `FragmentedRealityPairThreeGivesHalfAgainTheMovementSpeedAndTakesThreeTenthsOfDamage`,
+  `FragmentedRealityPairFourDividesCooldownsByOneAndAHalfAndTakesThreeTenthsOfMaximumHealth`: each forces its
+  pair, reads the control outside, a beat inside, and a beat outside again.
+- `FragmentedRealityEachEntryDrawsAgainByTheFloorsSeedAndThePanelNamesThePair`: eight entries with the seeded
+  draw, the panel inside and outside, a boundary's cell, and the same floor built again.
+- `FragmentedRealityLeavingTheFloorOrTheDungeonWhileInsideRemovesThePair`.
+- The probe `ProbeCooldownRecovery`, run by `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+  four bare characters, with and without the stat and with and without 100 of `cooldown_reduction`.
+
+Python: `tools/tests/test_a_cooldown_is_asked_for_not_read.py` gained
+`test_the_cooldown_lookup_asks_for_the_recovery_and_divides_by_it`, and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` gained the new call in its inventory.
+
+### Not covered by a test
+
+- A skill in use when the lock turns on. It is read from the code, not tested.
+- A cooldown already running when pair 4 begins or ends. Read from the code, not tested.
+- The quarter second: the tests beat by hand.
+- Damage dealt. Pair 1 and pair 3 are read as the worth of a stat of 100 under the rule's modifiers, and as the
+  modifier on the player's own stat line; no blow is struck.
+- Resistances and damage on the player itself. A real player's resistances are nought, so the tests work the
+  rule's modifiers on a base they choose through the real stat pipeline.
+- The other reduction in the pair 4 test is a row put on the player's stat line by the test, not a worn item.
+- The basic attack swinging. The test asks `CanActivateAbility`, the function that holds the lock, and uses the
+  skill for real; it does not swing the basic attack.
+- This row with another rule that writes the same stat on the same floor.
+- A floor that Reality Twister gives this row, and a Volatile floor that re-draws it.
+- The dark floor a fall leads to, when it carries this row.
+- The reset of the applied pair on a floor change cannot be seen by a test on a floor that carries the row,
+  because the step called before the floor starts clears it too. The test of leaving the dungeon sees it.
+
+### Guard proofs proposed
+
+None was run. Each is one line, counted once in its file.
+
+1. `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp`. Before:
+   `BaseCooldown, Percent / 100.0f, 1.0f + FMath::Max(Recovery, 0.0f) / 100.0f);` After:
+   `BaseCooldown, Percent / 100.0f, 1.0f + 0.0f * FMath::Max(Recovery, 0.0f) / 100.0f);` Test:
+   `Cataclysm.DungeonModifierEffects.FragmentedRealityPairFourDividesCooldownsByOneAndAHalfAndTakesThreeTenthsOfMaximumHealth`.
+   Predicted: 4 assertions fail, the two committed cooldowns and the two asked for, inside, each reading its
+   outside figure. The health assertions pass. The stat's probe would fail too, in another group.
+2. `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`. Before:
+   `return 1 + FCataclysmFloorGenerator::SeedForFloor(FloorSeed, FragmentedRealitySectionSalt) % NotTheEntrances;`
+   After: the same line with `return 0 +`. Test:
+   `Cataclysm.DungeonModifierEffects.FragmentedRealityFiguresTheSeededDrawsAndTheRowIsBuilt`. Predicted: 16
+   assertions fail, two for each of seeds 1 to 8: with two sections the answer is 0 and not 1, and with three
+   it is one less than the figure worked out by hand.
+3. `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`. Before: `== FragmentedRealitySection;` After:
+   `== 0;` Test:
+   `Cataclysm.DungeonModifierEffects.FragmentedRealityTheFragmentedSectionIsNeverTheEntrancesAndNoBarrierStands`.
+   Predicted: 4 assertions fail, "no pair is in force at the entrance" on each of the four seeds, because the
+   step called before the floor starts then finds the player inside.
+
+### What the row needs, for the session that writes rows
+
+Nothing. The row is `Chaos_Fragmented_Reality` in `game/Data/DungeonModifiers.csv` and it was not edited. A
+dungeon rule is written in the engine and states no stat row, so no row was passed through the generator and
+no dry run was made. The stat `cooldown_recovery` could be stated by an enchantment or passive row as a flat
+figure; none is asked for. A scaled or conditioned row on it would be refused by the generator until the stat
+is added to its lists of stats with an asker, which this layer did not do.
+
+---
+
 ## 2026-10-09 — Those in the Dark, layer 3: the save's record of the floor says when it is the dark floor and which floor the player fell from
 
 **Built and run after it was written; the Run section at the end of this entry has what the runs printed.**

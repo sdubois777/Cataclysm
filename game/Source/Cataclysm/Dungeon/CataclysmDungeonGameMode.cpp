@@ -2020,10 +2020,17 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// be walked from, so on that copy it fills every section, and the cells of every boundary are barred to it, so
 	// no creature stands on a barrier's cell. On a floor with no sections nothing is closed and the set is empty:
 	// the populator is asked about the plan, as it always was.
+	//
+	// ONLY WHERE BARRIERS STAND. A floor in sections for Fragmented Reality alone closes nothing, so nothing is barred
+	// and its creatures are those of the same floor without the row. Ruled 2026-10-08: barriers stand only with
+	// Lightforged Walls.
 	TSet<FIntPoint> NoCreatureOn;
-	for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
+	if (SectionBarriersStandOnThisFloor())
 	{
-		NoCreatureOn.Append(Boundary);
+		for (const TArray<FIntPoint>& Boundary : FloorSections.Boundaries)
+		{
+			NoCreatureOn.Append(Boundary);
+		}
 	}
 	const FCataclysmFloorPopulation Population = FloorPopulationNow(NoCreatureOn);
 
@@ -6239,10 +6246,24 @@ bool ACataclysmDungeonGameMode::FloorGetsSections(const FCataclysmFloorPlan& Pla
 	// arena, and does not carry Shadowy Enemies. Under that row a creature takes no damage unless lit and still counts
 	// as standing, and its light zones are placed without regard to sections, so a character with no fire damage
 	// could be unable to clear a section. A second row that needs sections adds its key to the first line.
-	return FloorBrief.Modifiers.Contains(FName(Effects::LightforgedWallsKey))
+	//
+	// FRAGMENTED REALITY IS THE SECOND ROW, ruled 2026-10-08: sections are planned when either row is on the floor.
+	// The refusal under Shadowy Enemies is kept for both, because it is made here, before sections are planned;
+	// with Fragmented Reality alone on such a floor the row does nothing. Barriers stand only with Lightforged
+	// Walls: see `SectionBarriersStandOnThisFloor`.
+	return (FloorBrief.Modifiers.Contains(FName(Effects::LightforgedWallsKey))
+			|| FloorBrief.Modifiers.Contains(FName(Effects::FragmentedRealityKey)))
 		&& Plan.Layout == ECataclysmFloorLayout::Halls
 		&& !FloorBrief.bWaveWalksIn
 		&& !FloorBrief.Modifiers.Contains(FName(Effects::ShadowyEnemiesKey));
+}
+
+bool ACataclysmDungeonGameMode::SectionBarriersStandOnThisFloor() const
+{
+	// ONLY LIGHTFORGED WALLS CLOSES A BOUNDARY, ruled 2026-10-08. A floor in sections for Fragmented Reality alone has
+	// no barrier, and the populator is barred from no cell of it, so its creatures are those of the same floor
+	// without the row.
+	return FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::LightforgedWallsKey));
 }
 
 void ACataclysmDungeonGameMode::ForgetTheSections()
@@ -6254,6 +6275,8 @@ void ACataclysmDungeonGameMode::ForgetTheSections()
 	FloorSections = FCataclysmFloorSections();
 	LightforgedWallsPanelSection = INDEX_NONE;
 	LightforgedWallsPanelSectionCount = -1;
+	// AND NO SECTION OF A FLOOR THAT HAS NONE IS FRAGMENTED. Issues #1820 and #41.
+	FragmentedRealitySection = INDEX_NONE;
 }
 
 void ACataclysmDungeonGameMode::PlanTheSections(const FCataclysmFloorPlan& Plan)
@@ -6308,6 +6331,17 @@ void ACataclysmDungeonGameMode::PlanTheSections(const FCataclysmFloorPlan& Plan)
 	SectionBarrierPillars.SetNum(FloorSections.Boundaries.Num());
 	UE_LOG(LogCataclysm, Log, TEXT("Sections: %d on floor %d, behind %d barrier(s)"), FloorSections.SectionCount(),
 		   FloorNumber, FloorSections.Boundaries.Num());
+
+	// AND WHICH SECTION IS FRAGMENTED, on a floor carrying that row: never the entrance's, the stairs' when there are
+	// two, and one of the other two by the floor's seed when there are three. None when the floor has no sections.
+	// Decided here, once, so it is known before the player stands on the floor. Issues #1820 and #41.
+	if (FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::FragmentedRealityKey)))
+	{
+		FragmentedRealitySection = UCataclysmDungeonModifierEffects::FragmentedRealitySectionFor(
+			FloorSections.SectionCount(), Plan.Seed);
+		UE_LOG(LogCataclysm, Log, TEXT("Fragmented Reality: section %d of floor %d is Fragmented"),
+			   FragmentedRealitySection, FloorNumber);
+	}
 }
 
 void ACataclysmDungeonGameMode::OpenEverySectionBarrier()
@@ -6371,6 +6405,12 @@ void ACataclysmDungeonGameMode::CloseTheSectionBarriers()
 	// with no warning. The last section has no barrier of its own: the stairs are its seal. Which sections are
 	// empty is not known yet; `PopulateFloor` opens those once the creatures stand.
 	OpenEverySectionBarrier();
+
+	// AND NONE IS CLOSED ON A FLOOR IN SECTIONS FOR FRAGMENTED REALITY ALONE. Ruled 2026-10-08.
+	if (!SectionBarriersStandOnThisFloor())
+	{
+		return;
+	}
 	for (int32 Barrier = 0; Barrier < FloorSections.Boundaries.Num(); ++Barrier)
 	{
 		if (!SectionBarrierClosed.IsValidIndex(Barrier) || !SectionBarrierPillars.IsValidIndex(Barrier))
@@ -9976,6 +10016,13 @@ void ACataclysmDungeonGameMode::WriteTheMaximumHealthRulesBack()
 	{
 		StepPactOfTemptation(Player, AbilitySystem);
 	}
+	// AND FRAGMENTED REALITY, WHICH WRITES MAXIMUM HEALTH ON THE BEAT. The player stands at the entrance when a floor
+	// starts, and the entrance's section is never the Fragmented one, so this finds them outside and writes nothing:
+	// a floor starts with no pair in force. Issues #1820 and #41.
+	if (FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::FragmentedRealityKey)))
+	{
+		StepFragmentedReality(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepPlayersFollowers()
@@ -11292,6 +11339,52 @@ void ACataclysmDungeonGameMode::BringABannerWave()
 	}
 	UE_LOG(LogCataclysm, Log, TEXT("War Banner: a wave came on floor %d, %.0f s held"), FloorNumber,
 		   WarBannerHeldSeconds);
+}
+
+void ACataclysmDungeonGameMode::StepFragmentedReality(ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// INSIDE IS THE PLAYER'S CELL BEING IN THE FRAGMENTED SECTION, on a floor that carries the row. A boundary's cells
+	// are in no section, so a player standing on one is outside. Asked on the beat, so the pair turns on or off up
+	// to a quarter second after the player crosses.
+	const bool bInside = FragmentedRealitySection != INDEX_NONE && CurrentFloor != nullptr
+		&& FloorBrief.Modifiers.Contains(FName(Effects::FragmentedRealityKey))
+		&& FloorSections.SectionOf(CurrentFloor->GetPlan(), CurrentFloor->CellOfWorld(Player->GetActorLocation()))
+			== FragmentedRealitySection;
+
+	// THE DRAW IS MADE ON THE BEAT THE PLAYER IS FIRST FOUND INSIDE AND HOLDS WHILE THEY STAY. Leaving ends it, and the
+	// next entry draws again with the next entry's number, so the same dungeon seed, floor and entry give the same
+	// pair. A test may force the pair; the entry is counted either way.
+	int32 Wanted = INDEX_NONE;
+	if (bInside && FragmentedRealityPairApplied != INDEX_NONE)
+	{
+		Wanted = FragmentedRealityPairApplied;
+	}
+	else if (bInside)
+	{
+		Wanted = FragmentedRealityForcedPair != INDEX_NONE
+			? FragmentedRealityForcedPair
+			: Effects::FragmentedRealityPairFor(CurrentFloor->GetPlan().Seed, FragmentedRealityEntries);
+		++FragmentedRealityEntries;
+		UE_LOG(LogCataclysm, Log, TEXT("Fragmented Reality: entry %d on floor %d drew pair %d"),
+			   FragmentedRealityEntries, FloorNumber, Wanted);
+	}
+
+	// ONLY WHEN SOMETHING CHANGED, the guard every beat-driven rule here keeps: the apply rewrites the character's
+	// whole standing stat line. The panel's line names the pair, so it is drawn again with it.
+	if (Wanted == FragmentedRealityPairApplied)
+	{
+		return;
+	}
+	FragmentedRealityPairApplied = Wanted;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::StepWarBanner(ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -14437,6 +14530,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bThoseInTheDark = !ThoseInTheDarkChasmCells.IsEmpty();
 	// AND THE DARK FLOOR A FALL LEADS TO, for its panel line's count of the standing. False unless a fall set it.
 	const bool bTheDarkFloorNow = bOnTheDarkFloor;
+	// AND FRAGMENTED REALITY, ON EVERY FLOOR CARRYING IT, AND WHILE A PAIR IS ON THE CHARACTER. Issues #1820 and #41.
+	const bool bFragmentedReality =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::FragmentedRealityKey))
+		|| FragmentedRealityPairApplied != INDEX_NONE;
 	// AND RULE OF CHAOS' STAIRS THAT OPEN BY TIME, ONLY ON A BEAT WHERE THE SECONDS ITS PANEL LINE SHOWS HAVE MOVED.
 	// The seal itself is asked when the stairs are taken; this is the panel alone. Issues #1820 and #41.
 	const bool bRuleOfChaosStairs =
@@ -14618,7 +14715,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bBloodPrice
 		&& !bObsidianSarcophagi && !bShadowyEnemies && !bPlaguebearer && !bMoraleBreak && !bFamishedBeasts
 		&& !bInfernalSeals && !bSanctionedPassage && !bLightforgedWalls && !bSectionBarriers && !bAngelicWardens
-		&& !bRuleOfChaosStairs && !bThoseInTheDark && !bTheDarkFloorNow)
+		&& !bRuleOfChaosStairs && !bThoseInTheDark && !bTheDarkFloorNow && !bFragmentedReality)
 	{
 		return;
 	}
@@ -15095,6 +15192,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bWarBanner)
 	{
 		StepWarBanner(Player, AbilitySystem);
+	}
+
+	// AND FRAGMENTED REALITY, WHICH DRAWS A PAIR AS THE PLAYER ENTERS THE FRAGMENTED SECTION AND ENDS IT AS THEY LEAVE.
+	// Issues #1820 and #41.
+	if (bFragmentedReality)
+	{
+		StepFragmentedReality(Player, AbilitySystem);
 	}
 
 	// AND FORCED TITHES, WHICH BRINGS ANGELS OWED AND SHOWS WHICH PRICES CAN BE PAID. Issues #1820 and #41.
@@ -16145,6 +16249,9 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside. Issues #1820 and #41.
 	Effects.BannerDamageMorePercent = WarBannerDamageApplied;
 	Effects.BannerResistancePercent = WarBannerResistanceApplied;
+	// AND FRAGMENTED REALITY'S PAIR, as last written by its beat, on its own seven fields. Issues #1820 and #41. Read
+	// unconditionally like the rest: with no pair in force every one of them is nought.
+	UCataclysmDungeonModifierEffects::WriteFragmentedRealityEffects(Effects, FragmentedRealityPairApplied);
 	// AND PACT OF TEMPTATION'S BUFF AND CURSES, as last written by its beat. Issues #1820 and #41.
 	UCataclysmDungeonModifierEffects::WritePactEffects(Effects, PactBuffApplied, PactCursesApplied);
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
@@ -16166,7 +16273,12 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	//
 	// AND WHETHER AN INSANITY BURST HAS THEM LOCKED, ON THE SAME FIELD, because both lock every skill: the larger of
 	// the two, so neither rule's ending takes the other's lock off. Issues #1820 and #41.
-	Effects.SkillsLockedValue = FMath::Max(EdictOfSilenceLockApplied, InsanityBurstsLockApplied);
+	//
+	// AND WHETHER FRAGMENTED REALITY'S PAIR THAT DOUBLES MAXIMUM HEALTH HAS THEM LOCKED, ON THE SAME FIELD FOR THE SAME
+	// REASON: the greatest of the three. Issues #1820 and #41.
+	Effects.SkillsLockedValue = FMath::Max3(
+		EdictOfSilenceLockApplied, InsanityBurstsLockApplied,
+		UCataclysmDungeonModifierEffects::FragmentedRealitySkillsLockedFor(FragmentedRealityPairApplied));
 
 	// AND WHETHER AN ANTI-MAGIC ZONE HAS THE PLAYER'S SPELLS LOCKED. Issues #1820 and #41.
 	// Read unconditionally like the rest. ITS OWN FIELD AND NOT `SkillsLockedValue`: the
@@ -19024,6 +19136,15 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 					 FString::Printf(TEXT("those in the dark: %d chasms"), ThoseInTheDarkChasmCells.Num()));
 	}
 
+	// AND FRAGMENTED REALITY: which pair is in force while the player is inside the Fragmented section, that nothing
+	// is in force outside it, and that the floor has no such section when it has none. Issues #1820 and #41.
+	const FName FragmentedRow(Effects::FragmentedRealityKey);
+	if (FloorBrief.Modifiers.Contains(FragmentedRow))
+	{
+		Counting.Add(FragmentedRow,
+					 Effects::FragmentedRealityPanelLine(FragmentedRealitySection, FragmentedRealityPairApplied));
+	}
+
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.
 	const FName Rising(Effects::DeadRisingKey);
 	if (FloorBrief.Modifiers.Contains(Rising))
@@ -20879,6 +21000,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		WarBannerResistanceApplied = 0.0f;
 		WarBannerZone = nullptr;
 		WarBannerPanelKey = -1;
+
+		// AND FRAGMENTED REALITY'S PAIR ENDS WITH THE FLOOR, because the call above has already taken it off the
+		// character, and the next floor counts its entries from nought. THE FRAGMENTED SECTION IS NOT FORGOTTEN
+		// HERE: `GoToFloor` builds the floor, which decides it in `PlanTheSections`, and then runs this, so clearing
+		// it here would forget the section just decided. `ForgetTheSections` forgets it. Issues #1820 and #41.
+		FragmentedRealityPairApplied = INDEX_NONE;
+		FragmentedRealityEntries = 0;
 
 		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
 		// top of this function. Nothing else to clear: a cloud's drain is done the

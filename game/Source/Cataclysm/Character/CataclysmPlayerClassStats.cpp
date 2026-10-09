@@ -434,6 +434,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// route that honours a row scoped to a slot (issue #1981), and three of
 		// the five sentences it serves are scoped.
 		TEXT("cooldown_lengthening"),
+		// How much faster a cooldown recovers, as a divisor of its own beside the
+		// reduction, read by UCataclysmGameplayAbility::CooldownAfterReduction.
+		// Issues #1820 and #41, for the dungeon rule Fragmented Reality. No
+		// gameplay attribute and no base: its rows are asked with the skill's
+		// tags, as the lengthening's are.
+		TEXT("cooldown_recovery"),
 		// How far a character's resistance cap moves from 70, read by
 		// UCataclysmDamageCalculation::ResistanceCapOf. Issue #1833, the kill
 		// counter.
