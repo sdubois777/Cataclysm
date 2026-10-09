@@ -79,6 +79,29 @@ Each is a labelled judgement by the coordinating session under the owner's deleg
    while outside.
 10. The row answers Built when this layer lands.
 
+**Rulings on the layer as written**, each a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-09:
+
+- No mark on the floor for the Fragmented section: accepted as built, and kept first on the owner's play-check
+  list.
+- A floor carrying Shadowy Enemies gets no sections for this row: accepted as built. The reading not taken, that
+  such a floor could have sections for this row because the row seals nothing, stays recorded here.
+- The new stat `cooldown_recovery`, flat and summed, floored at nought, passed as the third argument of
+  `FinalCooldown`: approved. No research source was reached; the three attempts are named under "Research", and
+  that is enough for merge.
+- The six panel lines: approved as written. The lock having no field of its own: approved. Chasms kept off
+  boundary cells on a floor sectioned for this row: approved.
+- One assertion of the figures test compared a function's answer with itself and could not fail ("seed N asked
+  again gives the same section"). It is removed, in a second commit, by the registering session. The assertion
+  beside it, which compares the answer for each seed with a value written in the test, stays. The second guard
+  proof's predicted count does not change: neither of its two assertions a seed was the removed one.
+- If a test's set-up fails in the window for a reason of the test's own writing, a change to the tests alone
+  before the whole suite is covered by this ruling and is reported. If the walking-speed assertion fails because
+  movement speed is clamped, that is a finding about the game: it is reported first and the assertion is not
+  changed to hide it.
+- The three guard proofs below are registered as written, with predictions of 4, 16 and 4 failed assertions.
+- Reality Twister's pool gaining the row: accepted, as for every row that became Built.
+
 ### What was read before writing
 
 All in `game/Source/Cataclysm/`, line numbers as the files stand after this layer.
@@ -129,8 +152,10 @@ All in `game/Source/Cataclysm/`, line numbers as the files stand after this laye
 **Research.** The mechanic and its four pairs are ruled; this layer proposes none. For the new stat's shape one
 page was fetched, `https://poedb.tw/us/Cooldown_Recovery_Rate`. It holds modifier text such as "15% increased
 Cooldown Recovery Rate" and no sentence or formula saying how that rate changes a cooldown. So no source was
-read that states the formula, and none is claimed. The shape, a divisor, is the code's existing one:
-`FinalCooldown` already took a more multiplier that divides, and this layer feeds it.
+read that states the formula, and none is claimed. The coordinating session then tried two more: `poewiki.net`,
+which its bot protection refused, and one Maxroll page, which was not found. Three attempts, no source reached.
+The shape, a divisor, is a judgement resting on the game's existing one: `FinalCooldown` already took a more
+multiplier that divides, and this layer feeds it.
 
 ### How it is built
 
@@ -162,6 +187,9 @@ read that states the formula, and none is claimed. The shape, a divisor, is the 
   or inside with the pair's two halves.
 
 ### For the owner's play-check
+
+**First: nothing on the floor marks the Fragmented section.** The floor panel's line and the change in the player's
+stats are the only signs of where it is.
 
 What a player sees: on most Halls floors carrying the row, nothing until they walk into one part of the floor
 that is not where they arrived. Then, within a quarter second, the floor panel's line changes to "fragmented
