@@ -1908,9 +1908,9 @@ public:
 	 * into them, they fall down into the void realm where dangerous enemeis lurk. The player will have to fight their
 	 * way out in order to get back to the main dungeon and surviving will bring great rewards." Issues #1820 and #41.
 	 *
-	 * LAYER 1 OF 2, AND SAID FIRST: ONLY THE CHASMS AND THE FALL ARE BUILT HERE, AND A FALL DOES NOTHING YET. The game
-	 * mode records that the player fell and logs it. The dark floor a fall leads to is the next layer. THE ROW IS NOT
-	 * IN `BuiltStateOf` OR `KeysWithARule`: its state is NotBuilt, as it was before this layer.
+	 * BUILT IN TWO LAYERS, 2026-10-09. Layer 1 is the chasms and the test of whether the player stands on one. Layer
+	 * 2 is the dark floor a fall leads to; its rulings and figures are at `ThoseInTheDarkFloorsDeeper`. THE ROW IS
+	 * IN `BuiltStateOf` AND `KeysWithARule` SINCE LAYER 2: its state is Built.
 	 *
 	 * THE OWNER, 2026-10-08, first: "This one is more complicated. In my head it's like the player falls through the
 	 * void and winds up in a dark place full of more powerful enemies for a single floor. Getting through that floor
@@ -1944,8 +1944,8 @@ public:
 	 * - WHAT A PLAYER SEES: a floor-lasting ground zone over each chasm cell, drawn in the Void type's colours,
 	 *   dealing no damage, `ThoseInTheDarkMarkRadiusCm` in radius.
 	 * - THE PANEL: "those in the dark: N chasms".
-	 * - THE FALL IN THIS LAYER: `ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm` records it and logs it, once a
-	 *   floor.
+	 * - THE FALL: `ACataclysmDungeonGameMode::ThePlayerFellIntoAChasm`, once a floor. Until layer 2 it recorded the
+	 *   fall and logged it and nothing else; since layer 2 it takes the player to the dark floor.
 	 */
 	static const TCHAR* ThoseInTheDarkKey;
 
@@ -6513,6 +6513,55 @@ public:
 		ThoseInTheDarkWalkableCellsPerChasm > 1 && ThoseInTheDarkClearOfTheEntranceCm > 0.0f
 			&& ThoseInTheDarkMarkRadiusCm > 0.0f,
 		"A chasm on every walkable cell, a chasm where the player arrives, or a chasm with no mark is not the row.");
+
+	/**
+	 * Those in the Dark, layer 2 of 2: the dark floor a fall leads to. Issues #1820 and #41. The row and the owner's
+	 * two quotations are at `ThoseInTheDarkKey`.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08 AND 2026-10-09, each a labelled
+	 * judgement resting on the owner's words. Every figure is a judged number for the owner's play-check:
+	 * - ONE FLAG ON THE GAME MODE, "on the dark floor", with the floor fallen from kept beside it. Only a fall sets
+	 *   it. It is cleared when the dark floor's stairs are taken and when the dungeon is left.
+	 * - A FALL GOES TO THE DARK FLOOR, WHICH CARRIES THE NUMBER OF THE FLOOR ITS STAIRS LEAD TO: the floor fallen
+	 *   from plus `ThoseInTheDarkFloorsDeeper`, or the dungeon's final floor when that is nearer
+	 *   (`ThoseInTheDarkDestinationFloor`). So every rule that scales by depth reads on the dark floor what it will
+	 *   read on arrival. No walk time is charged for the fall, for the floors passed over or for arriving, and
+	 *   neither is counted as a descent.
+	 * - THE DARK FLOOR IS ITS OWN FLOOR, not a copy of the floor its number names: its seed is the dungeon's mixed
+	 *   with `FCataclysmDungeonFloorRules::DarkFloorSalt`.
+	 * - THE DUNGEON'S MODIFIERS APPLY ON IT: its rows are drawn for it as for any floor and every per-floor rule
+	 *   runs on it. It has no chasm.
+	 * - IT IS NOT THE LAST FLOOR AND HAS NO GATEKEEPER, even when its number is the final floor's. Its stairs lead
+	 *   to the floor of its number and do not clear the dungeon.
+	 * - ITS STAIRS ARE SEALED UNTIL EVERY CREATURE THE FLOOR PLACED IS SLAIN, counted as Lightforged Walls counts
+	 *   them (`ACataclysmDungeonGameMode::IsOneOfTheFloorsOwnStanding`): a creature a rule raised does not hold
+	 *   them. The dungeon's own sealing rows hold as well.
+	 * - MORE POWERFUL ENEMIES: each creature the dark floor places is `ThoseInTheDarkRungsRaised` rarity rung
+	 *   higher than it was drawn, never above `ThoseInTheDarkHighestRung`, Herald, the ceiling every floor rule
+	 *   that raises a rung holds to; a creature drawn at Herald or above keeps its rung
+	 *   (`ThoseInTheDarkRungOnTheDarkFloor`).
+	 * - DARK, a judgement by the writing session for the coordinating session to confirm: on the dark floor the
+	 *   player sees `ThoseInTheDarkSightCm`, Fog of War's distance, through the vision system. Creatures beyond it
+	 *   are hidden and the camera is darkened. No creature is made stronger by it.
+	 */
+	static constexpr int32 ThoseInTheDarkFloorsDeeper = 10;
+	static constexpr int32 ThoseInTheDarkRungsRaised = 1;
+	static constexpr int32 ThoseInTheDarkHighestRung = VolatileEvolutionHighestRung;
+	static constexpr float ThoseInTheDarkSightCm = FogOfWarSightCm;
+
+	static_assert(
+		ThoseInTheDarkFloorsDeeper > 0 && ThoseInTheDarkRungsRaised > 0 && ThoseInTheDarkSightCm > 0.0f,
+		"A fall that leads no deeper, creatures no rarer, or a dark floor with unlimited sight is not the ruling.");
+
+	/**
+	 * The number of the floor a fall from `FellFromFloor` leads to: `ThoseInTheDarkFloorsDeeper` deeper, or
+	 * `FinalFloor` when that is nearer. `FinalFloor` is nought when no dungeon with a bottom is bound, and then
+	 * the answer is `ThoseInTheDarkFloorsDeeper` deeper. Never shallower than the floor fallen from.
+	 */
+	static int32 ThoseInTheDarkDestinationFloor(int32 FellFromFloor, int32 FinalFloor);
+
+	/** The rung a creature drawn at `DrawnRung` stands at on the dark floor. See the figures above. */
+	static int32 ThoseInTheDarkRungOnTheDarkFloor(int32 DrawnRung);
 
 	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
 	static constexpr int32 TheReaperRung = 0;
