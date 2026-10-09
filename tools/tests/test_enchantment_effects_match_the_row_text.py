@@ -812,8 +812,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-08, from 577 over 487: two rows on two enchantments.
 #: AND 580 OVER 490 SINCE DIVINE RETRIBUTION'S TEN-PIECE ROW,
 #: issue #1833, 2026-10-09, from 579 over 489: one row on one enchantment.
-AUTHORED_ROWS = 580
-AUTHORED_ENCHANTMENTS = 490
+#: AND 581 OVER 491 SINCE THE ROW ON CLASS POINTS SPENT ABOVE THE MAX,
+#: issue #1833, 2026-10-09, from 580 over 490: one row on one enchantment.
+AUTHORED_ROWS = 581
+AUTHORED_ENCHANTMENTS = 491
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1308,8 +1310,17 @@ def test_the_single_target_rows_are_refused_without_their_words(effects, enchant
 #: other trap" leaves out the one trap that is striking, which is an offset of
 #: 1 on `traps_active`. No row carried one on that day; the scale was built
 #: ahead of its row.
+#:
+#: AND "ABOVE THE MAX" IS 230, ruled 2026-10-09 by the coordinating session, for
+#: "Each class point above the max reduces your max resistances by 2%-5%". The
+#: owner's word "the max" is the 230 of `UCataclysmPassivePoints::Budget` (100
+#: levels give 150, eight bosses give 80), accepted by the owner on 2026-10-09
+#: in the words "your rec on all the open questions". The phrase is accepted for
+#: an offset of 230 and no other. If the budget moves, this entry and the row's
+#: Scale Offset move with it.
 WORDS_THAT_STATE_AN_OFFSET: dict[float, tuple[str, ...]] = {
     1.0: ("each other",),
+    230.0: ("above the max",),
 }
 
 

@@ -2,6 +2,88 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — "Each class point above the max reduces your max resistances by 2%-5%" is built as a row, and the max is 230
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts
+and one phrase a check accepts), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: THE ROW DOES NOTHING IN PLAY TODAY, AND IT HAS NO CAP OF ITS OWN
+
+- **No character can spend above 230 today, so no wearer loses anything to this row.** A character earns 230
+  points and no more. The row begins to act when points granted by worn gear can be spent, which is ruled and
+  not built.
+- **The points counted are points SPENT above 230, not points earned above 230.** Ruled 2026-10-09 by the
+  coordinating session under the owner's delegation. It uses the count the game already keeps for the three
+  merged rows that read "class points spent".
+- **The row has no cap, and the resistance cap's own floor is nought.** At the far end of its roll the row takes
+  5 for each point; the cap is 70; fourteen points above 230 take it to nought, and
+  `UCataclysmDamageCalculation::ResistanceCapOf` holds it there (it clamps the cap to 0 to 90). A wearer at
+  nought has no resistance above nought counted on any blow, whatever its resistances are; a resistance already
+  below nought stays where it is. Ruled 2026-10-09: no cap on
+  the row.
+- **The test puts the points in a node in no tree without asking whether they were earned.** It shows what the
+  row does at each count; it does not show a character reaching that count.
+
+### SAID FIRST: A CHECK NOW ACCEPTS ONE PHRASE IT DID NOT
+
+**The check that every Scale Offset appears in its sentence did not find 230 in this one**, and it now accepts
+the phrase "above the max" for an offset of 230 and no other. The check is
+`tools/tests/test_enchantment_effects_match_the_row_text.py::test_every_scale_offset_appears_in_the_words`. With
+the row authored and the check as it was, the Python suite in a copy printed:
+
+> Negative_Each_class_point_above_the_max_reduces_your_max#1: 230 against 'Each class point above the max reduces
+> your max resistances by 2%-5%'
+
+**What changed, ruled 2026-10-09 by the coordinating session: a change to what a check accepts.** One line in
+`WORDS_THAT_STATE_AN_OFFSET`, `230.0: ("above the max",)`, beside the one phrase it held. The owner's sentence is
+not reworded. The file's control test, that the offset check names a row whose words do not state its offset,
+is unchanged and passes. **If the budget moves, that line and the row's Scale Offset move with it; nothing ties
+the two to the constant in the game but this sentence.**
+
+**The row was pushed once before this was found.** The session that authored it pushed the layer before it had
+read the result of its own rehearsal; the failing head was never opened as a pull request.
+
+### WHERE 230 IS READ FROM
+
+The owner, 2026-10-08: "There is a 'max'. It's the amount of points you can gain by getting to level 100 and
+completing all cataclysm bosses. I believe that number is 240? Not positive on that". The game's figure is 230,
+and on 2026-10-09 the owner accepted the coordinating session's recommendation to use it: "your rec on all the
+open questions".
+
+Read by the session that wrote this entry: `UCataclysmPassivePoints` in
+`game/Source/Cataclysm/Character/CataclysmPassivePoints.h` holds `Budget = 230`, one point for each level and
+five more on every tenth (`FromLevel`, 150 at level 100), and ten for the first defeat of each of eight unique
+bosses (`FromBossKills`, 80). `tools/tests/test_class_passive_trees.py` holds each class tree file to a point
+budget of 230. The test here reads the constant and does not restate it.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Each class point above the max reduces your max resistances by 2%-5% | `resistance_cap`, flat, -2 to -5, Scale `class_points_spent`, Scale Step 1, Scale Offset 230 |
+
+EnchantmentEffects 580 to 581, over 490 to 491 enchantments. No engine code and no generator code is changed:
+the stat has two merged rows, and the scale has five on three sentences, each with an offset.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheClassPointsAboveTheMaxRowLowersTheResistanceCapForEachPointSpentAbove230`: without
+  the row, 240 points spent leave the cap at the game's own. With the real row worn the wearer holds a modifier
+  on the cap; at 230 points spent the row takes nothing, at 231 it takes 5, at 240 it takes 50, at 248 the cap is
+  nought, and at 100 it takes nothing.
+
+**Not tested here:** a blow taken at a lowered cap, which the tests of the cap cover with the two merged rows; a
+roll of the row other than its far end.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — Divine Retribution's ten-piece bonus is reworded from 10 seconds to 5 and built as one row: a block refreshes every skill, at most once in five seconds
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (one sentence of the Enchantments sheet and one row of the
