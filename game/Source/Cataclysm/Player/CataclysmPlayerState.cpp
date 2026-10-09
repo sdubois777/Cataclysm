@@ -311,13 +311,45 @@ void ACataclysmPlayerState::ResetAttributePoints()
 
 int32 ACataclysmPlayerState::PassivePointsAvailable() const
 {
+	return PassivePointsEarnedWith(PassivePointsFromGear());
+}
+
+int32 ACataclysmPlayerState::PassivePointsEarnedWith(int32 PointsFromGear) const
+{
 	return UCataclysmPassivePoints::Available(GetCharacterLevel(),
-											  DefeatedCataclysmBosses.Num());
+											  DefeatedCataclysmBosses.Num())
+		+ FMath::Max(0, PointsFromGear);
+}
+
+int32 ACataclysmPlayerState::PassivePointsFromGear() const
+{
+	// ASKED OF THE PAWN'S EQUIPMENT COMPONENT, WHICH KEEPS WHAT ITS LAST
+	// REFRESH READ. Ruled 2026-10-09. `ClassPointsGranted` on that component
+	// says why the figure is kept there.
+	//
+	// NOUGHT WITH NO PAWN, and that is the point of asking the pawn: this
+	// player state outlives its pawn, and gear on a pawn that no longer exists
+	// grants nothing. Nought also before the pawn's first refresh.
+	const ACataclysmPlayerCharacter* Character =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	const UCataclysmEquipmentComponent* Equipment =
+		Character ? Character->GetEquipment() : nullptr;
+	return Equipment ? Equipment->ClassPointsGranted() : 0;
 }
 
 int32 ACataclysmPlayerState::PassivePointsUnspent() const
 {
-	return PassivePointsAvailable() - PassiveAllocation.Total();
+	// NEVER BELOW NOUGHT. Since 2026-10-09 more points can be spent than are
+	// earned, when gear that granted points has come off. Every reader of this
+	// prints it as points left to spend, and such a character has none.
+	// `PassivePointsAddingNothing` is the other half of the subtraction.
+	return FMath::Max(0, PassivePointsAvailable() - PassiveAllocation.Total());
+}
+
+int32 ACataclysmPlayerState::PassivePointsAddingNothing() const
+{
+	return UCataclysmPassiveTree::PointsAddingNothing(PassiveAllocation,
+													  PassivePointsAvailable());
 }
 
 bool ACataclysmPlayerState::RecordCataclysmBossDefeat(FName Boss)

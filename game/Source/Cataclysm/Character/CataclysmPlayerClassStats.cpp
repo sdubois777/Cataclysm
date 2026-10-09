@@ -413,6 +413,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside on every pulse. A
 		// flag. Issue #1833 group E part 4c.
 		TEXT("aura_shares_immunities_with_allies"),
+		// The class points a worn row grants, read by
+		// UCataclysmPassivePoints::GrantedByWornRows in
+		// UCataclysmEquipmentComponent::RefreshAttributes off the worn rows
+		// themselves, each row's value rounded down by itself. Ruled 2026-10-09:
+		// "Gain 5-10 class points". A count. No gameplay attribute and no base,
+		// and nothing asks for it through the stat pipeline.
+		TEXT("class_points_granted"),
 		// How far a Ritualist's minions draw nearby enemies off their summoner,
 		// and how many minions that takes. Both read by
 		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil

@@ -311,13 +311,58 @@ public:
 	 * ONE PER LEVEL, FIVE MORE EVERY TEN, AND TEN PER FIRST BOSS KILL, which is
 	 * `docs/Cataclysm_GDD_v2.md` section XII exactly.
 	 * `UCataclysmPassivePoints` does the arithmetic.
+	 *
+	 * AND WHAT THE WORN GEAR GRANTS, since 2026-10-09: `PassivePointsFromGear`
+	 * below. The term is added here so that every reader of the points earned
+	 * sees it. With gear the figure can be above the budget of 230.
+	 *
+	 * IT CAN FALL, WHICH IT COULD NOT BEFORE. Taking the gear off lowers it, and
+	 * the points already spent stay spent, so the allocation's total can be
+	 * above this figure. `PassivePointsAddingNothing` says by how much.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	int32 PassivePointsAvailable() const;
 
-	/** How many of those are not spent yet. */
+	/**
+	 * The points earned by level and by boss kills, plus this many from gear.
+	 *
+	 * THE ONE PLACE THE THREE ARE ADDED. `PassivePointsAvailable` calls it with
+	 * what the pawn's equipment component kept, and
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` calls it with the
+	 * figure it has just read, before anything else can ask for it.
+	 *
+	 * A FIGURE BELOW NOUGHT IS READ AS NOUGHT. Gear grants points or grants none.
+	 */
+	int32 PassivePointsEarnedWith(int32 PointsFromGear) const;
+
+	/**
+	 * How many class points the gear this character is wearing grants: what the
+	 * pawn's equipment component read at its last refresh
+	 * (`UCataclysmEquipmentComponent::ClassPointsGranted`). Ruled 2026-10-09.
+	 *
+	 * NOUGHT FOR A PLAYER STATE WITH NO PAWN, and nought before the pawn's first
+	 * refresh.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	int32 PassivePointsFromGear() const;
+
+	/**
+	 * How many of those are not spent yet. Never below nought: a character with
+	 * more spent than earned has none to spend.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	int32 PassivePointsUnspent() const;
+
+	/**
+	 * How many spent points add nothing because more are spent than earned.
+	 * Nought unless more are spent than earned, which happens when gear that
+	 * granted points comes off after they were spent. Ruled 2026-10-09.
+	 *
+	 * THE POINTS ARE STILL SPENT. `GetPassiveAllocation().Total()` counts them,
+	 * and so does every row scaled by class points spent.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	int32 PassivePointsAddingNothing() const;
 
 	/** The unique Cataclysm bosses this character has defeated at least once. */
 	const TArray<FName>& GetDefeatedCataclysmBosses() const { return DefeatedCataclysmBosses; }
