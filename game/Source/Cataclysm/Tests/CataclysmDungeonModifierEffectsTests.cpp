@@ -70,6 +70,9 @@
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPlan.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveStorage.h"
+#include "Save/CataclysmSaveWriter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
@@ -52956,6 +52959,235 @@ bool FCataclysmDarkFloorPanelWhateverRowsTest::RunTest(const FString& Parameters
 			 Mode->RowsTheFloorPanelLists() == Mode->FloorBrief.Modifiers);
 	TestFalse(TEXT("CONTROL: and Those in the Dark is not among them"),
 			  Mode->RowsTheFloorPanelLists().Contains(ThoseInTheDarkRow));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Those in the Dark, layer 3: the save's record of the dark floor. Issues #1820 and #41. 2026-10-09.
+//
+// WHAT THESE TESTS READ, AND WHY NOT THE RECORD LAST WRITTEN. The run record is written at most once a frame, and a
+// test's whole body is one frame, so after the first write of a test every later trigger is noted and writes
+// nothing. So the tests read `UCataclysmSaveWriter::FloorRecordNow`, which is what `WriteTheRunRecord` fills the
+// record's floor with and nothing else, and `FloorChangesNoted`, which counts each time `SetFloor` was told
+// something it did not hold and raised its trigger. NO TEST HERE FORCES A WRITE TO DISK.
+//
+// NOTHING IS LOADED: loading a save is not built (issue #753). The round trip is the record through the text a save
+// file holds and back, by `FCataclysmSaveStorage::ToJson` and `FromJson`, as the save record tests do it.
+//
+// WHERE EVERYTHING STANDS. The player at the entrance of each floor, then on the middle of a chasm's cell for a
+// fall. No creature is placed by a test, and no test waits on the world's clock.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The floor as a run record written now would hold it, asserted as set-up to have been filled. */
+	bool DarkSaveFloorNow(FAutomationTestBase& Test, const UCataclysmSaveWriter* Writer, const TCHAR* When,
+						  FCataclysmSavedFloor& OutFloor)
+	{
+		return Test.TestTrue(FString::Printf(TEXT("set-up: %s: the writer filled the floor's record"), When),
+							 Writer->FloorRecordNow(OutFloor));
+	}
+
+	/** The save writer of a world whose dungeon game mode has started play, asserted as set-up to be writing. */
+	UCataclysmSaveWriter* DarkSaveWriterIn(FAutomationTestBase& Test, UWorld* World)
+	{
+		UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+		if (!Test.TestNotNull(TEXT("set-up: the world has a save writer"), Writer)
+			|| !Test.TestTrue(TEXT("set-up: and it is writing, the game mode having begun a run"), Writer->IsWriting()))
+		{
+			return nullptr;
+		}
+		return Writer;
+	}
+}
+
+// S1. THE SAVE'S RECORD OF THE FLOOR SAYS WHEN THE PLAYER IS ON THE DARK FLOOR, AND FROM WHICH FLOOR THEY FELL; AND
+// THE FALL, THE DARK FLOOR'S STAIRS AND LEAVING THE DUNGEON ARE EACH TOLD TO THE SAVE AS A CHANGE.
+//
+// CONTROLS, IN THE SAME TEST. Before any fall the record says floor 2, not the dark floor, fallen from nought. The
+// floor the dark floor's stairs lead to, built a second time with nothing changed, is not told to the save as a
+// change: the early return still returns when nothing differs.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarkSaveRecordTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkTheSaveRecordsTheDarkFloorAndTheFloorFallenFrom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarkSaveRecordTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	UCataclysmSaveWriter* Writer = Mode ? DarkSaveWriterIn(*this, World) : nullptr;
+	if (!Writer)
+	{
+		return false;
+	}
+	Mode->TotalFloors = 40;
+	Mode->DungeonModifiers = {ThoseInTheDarkRow};
+	int32 Seed = 0;
+	if (!AFloorWithChasms(*this, Mode, Player, DarkFloorFallsFrom, 1, Seed))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO FALL MADE.
+	FCataclysmSavedFloor NoFall;
+	if (!DarkSaveFloorNow(*this, Writer, TEXT("before any fall"), NoFall))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: with no fall made the record holds floor 2"), NoFall.Floor, DarkFloorFallsFrom);
+	TestFalse(TEXT("CONTROL: and does not say the dark floor"), NoFall.bOnTheDarkFloor);
+	TestEqual(TEXT("CONTROL: and holds no floor fallen from"), NoFall.DarkFloorFellFrom, 0);
+
+	// THE FALL.
+	const int32 NotedBeforeTheFall = Writer->FloorChangesNoted();
+	FCataclysmSavedFloor Dark;
+	if (!FallIntoAChasm(*this, Mode, Player) || !DarkSaveFloorNow(*this, Writer, TEXT("on the dark floor"), Dark))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the fall is told to the save as one change of floor"), Writer->FloorChangesNoted(),
+			  NotedBeforeTheFall + 1);
+	TestEqual(TEXT("and the trigger it raised is the change of floor"), static_cast<int32>(Writer->LastTrigger()),
+			  static_cast<int32>(ECataclysmSaveTrigger::ChangedFloor));
+	TestTrue(TEXT("after a fall the record says the dark floor"), Dark.bOnTheDarkFloor);
+	TestEqual(TEXT("and holds the dark floor's number, 12"), Dark.Floor, DarkFloorLeadsTo);
+	TestEqual(TEXT("and holds floor 2 as the floor fallen from"), Dark.DarkFloorFellFrom, DarkFloorFallsFrom);
+	TestEqual(TEXT("and names the dungeon"), Dark.Dungeon, Mode->DungeonName);
+
+	// THE ROUND TRIP: THE RECORD THROUGH THE TEXT A SAVE FILE HOLDS, AND BACK.
+	UCataclysmRunSave* Written = NewObject<UCataclysmRunSave>();
+	Written->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+	Written->RunId = FGuid::NewGuid();
+	Written->Floor = Dark;
+	FString Json;
+	FString Error;
+	if (!TestTrue(TEXT("set-up: the run record converts to the text a save file holds"),
+				  FCataclysmSaveStorage::ToJson(Written, Json, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmRunSave* Back = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		Json, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("set-up: and that text reads back as a run record"), Back))
+	{
+		AddError(FString::Printf(TEXT("%s -- %s"), FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+	TestTrue(TEXT("read back, the record says the dark floor"), Back->Floor.bOnTheDarkFloor);
+	TestEqual(TEXT("read back, it holds floor 2 as the floor fallen from"), Back->Floor.DarkFloorFellFrom,
+			  DarkFloorFallsFrom);
+	TestEqual(TEXT("read back, it holds the dark floor's number, 12"), Back->Floor.Floor, DarkFloorLeadsTo);
+
+	// THE DARK FLOOR'S STAIRS: THE SAME NUMBER, AND STILL A CHANGE.
+	const int32 NotedBeforeTheStairs = Writer->FloorChangesNoted();
+	FCataclysmSavedFloor Arrived;
+	if (!LeaveTheDarkFloorByItsStairs(*this, Mode)
+		|| !DarkSaveFloorNow(*this, Writer, TEXT("on the floor arrived on"), Arrived))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the dark floor's stairs are told to the save as one change, though the floor number is the same"),
+			  Writer->FloorChangesNoted(), NotedBeforeTheStairs + 1);
+	TestEqual(TEXT("after the dark floor's stairs the record holds the same number, 12"), Arrived.Floor, DarkFloorLeadsTo);
+	TestFalse(TEXT("and no longer says the dark floor"), Arrived.bOnTheDarkFloor);
+	TestEqual(TEXT("and holds no floor fallen from"), Arrived.DarkFloorFellFrom, 0);
+
+	// THE CONTROL: THE SAME FLOOR AGAIN, NOTHING CHANGED.
+	const int32 NotedBeforeTheSameFloor = Writer->FloorChangesNoted();
+	if (!TestTrue(TEXT("CONTROL: set-up: floor 12 was built a second time"), Mode->GoToFloor(DarkFloorLeadsTo)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: the same floor with nothing changed is not told to the save as a change"),
+			  Writer->FloorChangesNoted(), NotedBeforeTheSameFloor);
+
+	// LEAVING THE DUNGEON FROM THE DARK FLOOR.
+	FCataclysmSavedFloor DarkAgain;
+	if (!AFloorWithChasms(*this, Mode, Player, DarkFloorFallsFrom, 1, Seed) || !FallIntoAChasm(*this, Mode, Player)
+		|| !DarkSaveFloorNow(*this, Writer, TEXT("on the second dark floor"), DarkAgain)
+		|| !TestTrue(TEXT("set-up: on the second dark floor the record says the dark floor"), DarkAgain.bOnTheDarkFloor))
+	{
+		return false;
+	}
+	const int32 NotedBeforeLeaving = Writer->FloorChangesNoted();
+	Mode->LeaveEmpireDungeon();
+	FCataclysmSavedFloor Left;
+	if (!DarkSaveFloorNow(*this, Writer, TEXT("after leaving the dungeon"), Left))
+	{
+		return false;
+	}
+	TestEqual(TEXT("leaving the dungeon from the dark floor is told to the save as one change"),
+			  Writer->FloorChangesNoted(), NotedBeforeLeaving + 1);
+	TestFalse(TEXT("after leaving the dungeon the record does not say the dark floor"), Left.bOnTheDarkFloor);
+	TestEqual(TEXT("and holds no floor fallen from"), Left.DarkFloorFellFrom, 0);
+	TestFalse(TEXT("and the writer holds no dark floor"), Writer->HoldsTheDarkFloor());
+	return true;
+}
+
+// S2. ENTERING A DUNGEON STORES THE SAVE CLEAR OF THE DARK FLOOR.
+//
+// An empire dungeon thirty floors deep. The player falls from floor 3, and the dungeon is then entered again from
+// the dark floor. CONTROL, IN THE SAME TEST: on the dark floor, before entering, the record says the dark floor and
+// floor 3 as the floor fallen from.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDarkSaveEnteringTest,
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDarkSaveEnteringTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	UCataclysmEmpireRun* Run = nullptr;
+	int32 DungeonId = INDEX_NONE;
+	ACataclysmDungeonGameMode* Mode = ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId);
+	UCataclysmSaveWriter* Writer = Mode ? DarkSaveWriterIn(*this, World) : nullptr;
+	if (!Writer)
+	{
+		return false;
+	}
+	int32 Seed = 0;
+	FCataclysmSavedFloor Dark;
+	if (!AFloorWithChasms(*this, Mode, Player, 3, 1, Seed) || !FallIntoAChasm(*this, Mode, Player)
+		|| !DarkSaveFloorNow(*this, Writer, TEXT("on the dark floor"), Dark))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: on the dark floor the record says the dark floor"), Dark.bOnTheDarkFloor);
+	TestEqual(TEXT("CONTROL: and holds the number 13"), Dark.Floor, 13);
+	TestEqual(TEXT("CONTROL: and holds floor 3 as the floor fallen from"), Dark.DarkFloorFellFrom, 3);
+
+	const int32 NotedBeforeEntering = Writer->FloorChangesNoted();
+	FCataclysmSavedFloor Entered;
+	if (!TestTrue(TEXT("set-up: the dungeon was entered again from the dark floor"), Mode->EnterEmpireDungeon(DungeonId))
+		|| !DarkSaveFloorNow(*this, Writer, TEXT("after entering"), Entered))
+	{
+		return false;
+	}
+	TestEqual(TEXT("entering is told to the save as one change of floor"), Writer->FloorChangesNoted(),
+			  NotedBeforeEntering + 1);
+	TestEqual(TEXT("after entering the record holds floor 1"), Entered.Floor, 1);
+	TestFalse(TEXT("and does not say the dark floor"), Entered.bOnTheDarkFloor);
+	TestEqual(TEXT("and holds no floor fallen from"), Entered.DarkFloorFellFrom, 0);
 	return true;
 }
 

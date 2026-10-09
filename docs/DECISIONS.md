@@ -2,6 +2,243 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — Those in the Dark, layer 3: the save's record of the floor says when it is the dark floor and which floor the player fell from
+
+**Not built and not run.** The writing session wrote this layer in one commit on development a928d2cf, where
+both earlier layers are merged: the code, four new Unreal tests, one committed example save file changed with
+its README, and this entry. It compiled nothing and ran no Unreal test. It ran the Python tests in
+`tools/tests`, the lint and the conflict check before the commit, and nothing else. Every statement below about
+what the engine does is read from the code.
+
+**Said first: nothing reads a save back, so nothing here shows a dark floor being restored.** Loading a save
+is not built (issue #753): the game mode begins a fresh run every session, and
+`FCataclysmSaveApply::FloorInto`, which puts a saved floor's creatures back, has test callers only. So this
+layer cannot show, and does not claim: that a save made on the dark floor brings the player back onto the
+dark floor; that the dark floor built again is the same floor, from the salted seed; or that the flag is put
+back before the floor is built. It builds no loader. What it builds is the record: the two fields are written,
+they survive the text a save file holds, and a file without them reads as not on the dark floor. Whoever builds
+loading must put both fields back on the dungeon game mode BEFORE the floor is built, because
+`ChooseSeedForThisFloor` mixes the salt in only while the game mode's flag is set; the field's comment in
+`Save/CataclysmSaveRecords.h` says so.
+
+**Said first: what was wrong before this layer.** Layer 2's entry said it: the save writer was told the
+dungeon's name and the floor number and nothing of the flag, and the dark floor carries the number of the floor
+its stairs lead to. So a record made on the dark floor read as the ordinary floor of that number, with the
+fall's ten floors gained and the dark floor skipped. And `UCataclysmSaveWriter::SetFloor` returned at once when
+the name and number were what it held, so arriving from the dark floor on the floor of the same number was not
+told to the save as a change.
+
+**Said first: no test here writes a file or reads one a write made.** The run record is written at most once a
+frame, and a test's whole body is one frame, so after a test's first write every later trigger is noted and
+writes nothing. The tests read `UCataclysmSaveWriter::FloorRecordNow`, which is the one thing
+`WriteTheRunRecord` fills the record's floor with, and a count of the changes `SetFloor` was told. That a
+trigger raised in a later frame reaches the disk is what the existing save writer tests cover, not these.
+
+**Said first: one committed example save file was edited.** `game/Tests/SaveFixtures/Run_v1.json` gained the
+two fields, under the exception its README states: nothing has ever loaded a save, so no such file exists on a
+player's disk. The existing test `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires
+it: a field the record writes that the fixture lacks fails it. The schema version stays 1 and no migration
+step is written, by `docs/Save_System_Design.md` section 5: a field added with a sensible default is not a
+version bump. Once the game can load a save that exception is gone, and the same change would need a version
+and a step.
+
+**Said first: `docs/Save_System_Design.md` was not changed.** Its table "What raises each trigger today" still
+says nothing raises the change of floor; `ACataclysmDungeonGameMode::GoToFloor` has raised it since the stairs
+were built. That line was wrong before this layer and is left for the coordinating session.
+
+### The owner's words
+
+`game/Data/DungeonModifiers.csv`, `Void_Those_in_the_Dark`, danger 20: "The dungeon has chasms spread
+throughout leading to the abyss. If the player falls into them, they fall down into the void realm where
+dangerous enemeis lurk. The player will have to fight their way out in order to get back to the main dungeon
+and surviving will bring great rewards."
+
+The owner, 2026-10-08, first: "This one is more complicated. In my head it's like the player falls through the
+void and winds up in a dark place full of more powerful enemies for a single floor. Getting through that floor
+should get them 10 floors deeper and 10 days faster, or to the final floor of the dungeon. Whichever applies."
+
+The owner, 2026-10-08, on the proposal: "I like the proposal for those in the dark, except I want it to
+basically create a bunch of chasms that the player can fall into. The point is that players who just spam their
+movement button to blaze through the floor are more likely to fall in, and be in danger. Also, the dungeon
+modifiers should still apply."
+
+The owner's words say nothing of the save. The save's own rule is the owner's of 2026-08-20, as
+`docs/Save_System_Design.md` section 6 records it: the game saves itself, and a player who is cut off must come
+back where they were.
+
+### The rulings
+
+1. **"Write layer 3, the save's record of the dark floor."** A labelled judgement by the coordinating session
+   under the owner's delegation, 2026-10-09. As briefed:
+   - the save's record of a dungeon in progress carries whether the player is on the dark floor and the floor
+     fallen from, added, versioned and tested as that record's other fields are;
+   - a save is written when the player falls and when the player leaves the dark floor by its stairs, though
+     the floor number is the same in the second case, with the early return changed only as far as that needs;
+   - leaving or entering a dungeon stores the flag clear;
+   - no loader is built while none exists; the fields are made ready for one.
+
+### What was read before writing
+
+Read by the writing session, whole unless a range is given.
+
+- `Save/CataclysmSaveWriter.cpp` and `.h`, whole. `Save/CataclysmSaveRecords.h`: `FCataclysmSavedFloor`, the
+  class comment and first fields of `UCataclysmRunSave`, the list of fields and versions.
+  `Save/CataclysmSaveGather.cpp`: `FloorFrom` to where it gathers creatures; `.h`: its class comment and the
+  comment on `FloorFrom`. `Save/CataclysmSaveApply.cpp`: the start of `FloorInto`; `.h`: its declarations.
+  `Save/CataclysmSaveStorage.h`: `ToJson` and `FromJson`. `Save/CataclysmSaveTriggers.cpp`:
+  `MustBeWrittenBeforeTheFrameEnds`.
+- `Player/CataclysmGameMode.cpp`: the end of `StartPlay` and `BeginSavingThisRun`.
+- `Dungeon/CataclysmDungeonGameMode.cpp`: the lines of `GoToFloor` that tell the save writer, and the lines of
+  `LeaveEmpireDungeon` that clear the dark floor. A search of `game/Source` for `SetFloor(` found one caller of
+  the writer's, in `GoToFloor`.
+- `docs/Save_System_Design.md`: the run record's list in section 4, section 6 from "What resuming restores" to
+  "What raises each trigger today", and the status line for section 6. A search of `docs/Cataclysm_GDD_v2.md`
+  for the save of a dungeon in progress found one line, that a fight resumes at the health it had; nothing
+  there decides what is recorded about a floor.
+- `game/Tests/SaveFixtures/README.md`, whole, and the floor of `Run_v1.json`.
+- `Tests/CataclysmSaveRecordTests.cpp`: the list of fixtures, the round trip test, the test of the surge
+  schedule and the test of a file without the part of a day. `Tests/CataclysmSaveWriterTests.cpp`: the first
+  test, the helper that forgets a writer's slots, and the comment on the frame counter in the once-a-frame
+  test. `Tests/CataclysmSaveFixtures.h`, its first half.
+- `tools/tests`: a search for the writer's and the record's names found
+  `test_when_a_save_is_written.py`, whose check of the one synchronous trigger was read;
+  `test_save_migrations_are_single_steps.py` and `test_the_game_saves_itself_constantly.py`, whose test names
+  were read. None pins the floor record's fields. All passed after the change.
+
+Not read: `CataclysmSavePartition`, `CataclysmSaveMigration`, the rest of `CataclysmSaveGather` and
+`CataclysmSaveApply`, `CataclysmSaveStorage.cpp`, the bodies of the three Python checks beyond the one named,
+the other save tests, and the completeness test's body: what it requires is read from the README.
+
+**Whether the behaviour already existed.** It did not. A search of `game/Source` for the flag's and the
+record's names found the flag on the game mode only.
+
+**Research.** No shipped game was looked up and no source was read: the layer adds two fields to an existing
+record by that record's own rules, and no formula, affix or mechanic.
+
+### How it is built
+
+- **The record.** `FCataclysmSavedFloor` gained `bOnTheDarkFloor` (false) and `DarkFloorFellFrom` (0), each
+  marked `SaveGame` as its other fields are. `UCataclysmRunSave::SchemaVersionNow` stays 1.
+- **The writer holds them beside the dungeon and the floor number.** `UCataclysmSaveWriter::SetFloor` takes two
+  more arguments, defaulted to "not the dark floor". `BeginRun` puts both back to clear.
+- **The early return.** `SetFloor` returned when the dungeon and the floor number were what it held. It now
+  returns when those and the two new values are all what it holds. A caller that passes neither new argument
+  holds and passes false and nought, so for it the test is what it was.
+- **What a write stores.** `UCataclysmSaveWriter::FloorRecordNow` is `FCataclysmSaveGather::FloorFrom`, as
+  before, with the two fields set from what the writer holds. `WriteTheRunRecord` fills the record's floor
+  with it. The gather is not changed: it reads the world, and the world cannot say which floor this is.
+- **What the game mode tells it.** `GoToFloor` passes its flag and the floor fallen from where it passed the
+  name and the number. So the fall, which goes by `GoToFloor` with the flag set, is told as the dark floor of
+  that number; the dark floor's stairs, which go by `GoToFloor` with the flag cleared, are told as the same
+  number and not the dark floor, which the early return no longer swallows; and entering a dungeon, which
+  clears the flag and goes to floor 1, is told clear. `LeaveEmpireDungeon` goes to no floor, so it tells the
+  writer itself, and only when the dungeon was left from the dark floor.
+- **When a save is written.** `SetFloor` raises the change-of-floor trigger whenever it does not return early,
+  as before. That trigger writes the run record and the character record, not before the frame ends. Every
+  later write, by the clock or a death or a kill, stores the same two fields until the writer is told again.
+
+**What a save made on the dark floor now holds, in its floor**: `Dungeon`, the dungeon's name; `Floor`, the
+dark floor's number, which is the number of the floor its stairs lead to; `bOnTheDarkFloor`, true;
+`DarkFloorFellFrom`, the number of the floor fallen from; and `Creatures`, `GroundItems` and `Characters` as
+on any floor. Read with the first two layers: the destination is the floor fallen from plus ten or the final
+floor, so `Floor` and `DarkFloorFellFrom` together say which.
+
+**With no fall made**, every call passes false and nought and the writer holds false and nought, so `SetFloor`
+returns and writes exactly when it did. The one change is that every run record now carries the two fields at
+their defaults.
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The two fields are on the floor's record and not on the run record beside it.** They describe the floor
+   being stood on, and the floor's record is what section 6 restores.
+2. **The floor's creatures on the dark floor are saved as on any floor**, with the rung each stands at. The
+   rung raised by the dark floor is the creature's own rung by then, and a creature is saved with its rung.
+3. **The writer is told, not asked.** The save writer does not read the dungeon game mode; the game mode tells
+   it, as it tells it the floor number. Not taken: the gather reading the flag off the game mode, which would
+   make the save module read the dungeon's rules.
+4. **`LeaveEmpireDungeon` tells the save only when the dungeon was left from the dark floor.** Before this
+   layer it told the save nothing, and after leaving the record still names the dungeon and the last floor
+   number. That is left as it was; only the flag is cleared in the record. Not taken: telling the save that
+   nobody is in a dungeon, which is a change to every dungeon left and was not asked for.
+5. **A test reads what a write would store, through one new public function**, and counts the changes told,
+   through one new counter. Not taken: forcing a write to disk in the test by raising the death trigger, which
+   is the one trigger written at once; a write forced into a slot another write may still be on its way to is
+   the fault the save writer's own tests record.
+6. **The fixture holds true and 5 on its floor 6.** Not the defaults, and not the floor's own number.
+7. **The dark floor's stairs failing, or the dark floor failing to build, tells the save nothing.** `GoToFloor`
+   returns before it reaches the writer, and the game mode puts its own flag back.
+
+### Tests
+
+Four new. None was run.
+
+In `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`, reaching the
+dark floor by a fall as layer 2's tests do:
+
+1. `ThoseInTheDarkTheSaveRecordsTheDarkFloorAndTheFloorFallenFrom`. Control: with no fall made the record holds
+   floor 2, not the dark floor, fallen from nought. After a fall: one change told, the trigger is the change
+   of floor, the record says the dark floor, the number 12, floor 2 as the floor fallen from, and the dungeon's
+   name. The round trip: that floor in a run record, through `FCataclysmSaveStorage::ToJson` and `FromJson`,
+   reads back the dark floor, floor 2 and the number 12. After the dark floor's stairs: one change told though
+   the number is the same, the record holds 12, not the dark floor, fallen from nought. Control: the same
+   floor built again is not told as a change. After a second fall and leaving the dungeon: one change told,
+   the record does not say the dark floor and holds no floor fallen from.
+2. `ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor`. An empire dungeon of 30 floors, a fall
+   from floor 3. Control: the record says the dark floor, 13 and 3. The dungeon entered again: one change
+   told, the record holds floor 1, not the dark floor, fallen from nought.
+
+In `Tests/CataclysmSaveRecordTests.cpp`, group `Cataclysm.SaveRecords`:
+
+3. `TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom`: the committed file reads back true, 5, and its
+   floor's own number 6.
+4. `AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`: the committed file with the two lines removed loads, and
+   reads false, nought, and its floor's number 6.
+
+No existing test and no Python check was changed. One existing test reads the changed fixture and is expected
+to pass because of the change: `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`.
+
+### Not covered by a test
+
+- Everything a loader would do: said first.
+- That a write reaches the disk after the fall or after the dark floor's stairs: said first.
+- That a later write by the clock, a kill or a death carries the two fields: they are set in the one function
+  every write of the run record goes through, and no test raises those triggers on the dark floor.
+- A dark floor or a destination that cannot be built.
+- The character record, which the same trigger writes and this layer does not touch.
+
+### Guard proofs proposed
+
+Three, for the registering session. None was run. Each line is counted once in its file. The test for all
+three is test 1, `ThoseInTheDarkTheSaveRecordsTheDarkFloorAndTheFloorFallenFrom`. The lines are given without
+the tabs they begin with: one tab for the first two, three tabs for the third.
+
+1. The early return. `Save/CataclysmSaveWriter.cpp`: `if (bSameFloor && bSameDarkFloor)` becomes
+   `if (bSameFloor)`. Predicted to fail, seven. At the dark floor's stairs the number is the same, so the
+   writer returns and keeps the dark floor: "the dark floor's stairs are told to the save as one change,
+   though the floor number is the same", "and no longer says the dark floor", "and holds no floor fallen
+   from". At leaving the dungeon, the same: "leaving the dungeon from the dark floor is told to the save as
+   one change", "after leaving the dungeon the record does not say the dark floor", "and holds no floor fallen
+   from", "and the writer holds no dark floor".
+2. What a write stores. `Save/CataclysmSaveWriter.cpp`: `OutFloor.bOnTheDarkFloor = bOnTheDarkFloor;` becomes
+   `OutFloor.bOnTheDarkFloor = false;`. Predicted to fail, three: "after a fall the record says the dark
+   floor", "read back, the record says the dark floor", and the set-up "on the second dark floor the record
+   says the dark floor", where the test stops.
+3. What the game mode tells the writer. `Dungeon/CataclysmDungeonGameMode.cpp`:
+   `Writer->SetFloor(DungeonName, FloorNumber, bOnTheDarkFloor, DarkFloorFellFrom);` becomes
+   `Writer->SetFloor(DungeonName, FloorNumber);`. Predicted to fail, six: "after a fall the record says the
+   dark floor", "and holds floor 2 as the floor fallen from", "read back, the record says the dark floor",
+   "read back, it holds floor 2 as the floor fallen from", "the dark floor's stairs are told to the save as one
+   change, though the floor number is the same", and the set-up "on the second dark floor the record says the
+   dark floor", where the test stops.
+
+### What the row needs, for the session that writes rows
+
+Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no change to the row.
+
+---
+
 ## 2026-10-09 — Those in the Dark, layer 2 of 2: a fall leads to a dark floor of its own, whose stairs lead ten floors deeper or to the final floor, and the row is Built
 
 **Said first: on the dark floor the panel still shows the row's own description under the line that says the
