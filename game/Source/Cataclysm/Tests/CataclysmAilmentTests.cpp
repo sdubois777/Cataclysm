@@ -449,6 +449,268 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentRollTest,
 	return true;
 }
 
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentChanceOf100Test,
+	"Cataclysm.Ailments.AnAilmentChanceOf100AppliesAtARollOf100AndAChanceBelow100StillFailsAtItsChance")
+{
+	using namespace CataclysmAilmentTest;
+
+	// WHAT IS UNDER TEST. Issue #2201. The roll is drawn from 0 to 100 and can be
+	// exactly 100, and the comparison is "the roll is below the chance", so a blow
+	// whose chance was 100 applied nothing on that one roll.
+	// `UCataclysmAilments::RollOnLandedBlow` now applies a chance at the cap
+	// without comparing it with the roll.
+	//
+	// TWO RULES DECIDE WHETHER A BLOW LEAVES AN AILMENT, and each assertion below
+	// says which one it shows. "The roll" is the comparison of the pinned roll
+	// with the chance. "The tenth rule" is the owner's rule of 2026-09-02 (issue
+	// #917): the blow must take at least a tenth of the target's maximum health.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FCataclysmAilmentKind* Bleed = KindOf(TEXT("Bleed"));
+	if (!TestNotNull(TEXT("Bleed is an ailment"), Bleed))
+	{
+		return false;
+	}
+
+	// A BLOW OF 1,000. Against 5,000 maximum health it takes a fifth, which is
+	// twice what the tenth rule asks. Against 20,000 it takes a twentieth, which
+	// is half of it.
+	const float Blow = 1000.0f;
+	const float SmallPool = 5000.0f;
+	const float DeepPool = 20000.0f;
+
+	// ONE BLOW FROM A FRESH ATTACKER AT A FRESH DEFENDER, with the roll pinned
+	// for that blow only. Says whether the variable read back the value pinned,
+	// what the blow took, and whether the defender bleeds after it.
+	struct FRolledBlow
+	{
+		bool bPinned = false;
+		bool bBleeds = false;
+		float Taken = 0.0f;
+	};
+	const auto Strike = [&](float Chance, float Roll, float MaxHealth)
+	{
+		FRolledBlow Out;
+		const CataclysmTestWorld::FScopedAilmentRoll Pinned(Roll);
+		Out.bPinned = Pinned.Variable != nullptr
+			&& FMath::IsNearlyEqual(Pinned.Variable->GetFloat(), Roll, 0.0001f);
+
+		const FScopedFighter Attacker(World);
+		Attacker.ArmFor(Blow);
+		Attacker.SetChance(*Bleed, Chance);
+
+		const FScopedFighter Defender(World, MaxHealth);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+
+		Out.Taken = MaxHealth - Defender.Health();
+		Out.bBleeds = Defender.Carries(Bleed->TagName);
+		return Out;
+	};
+
+	// THE SET-UP, ASSERTED BEFORE THE BEHAVIOUR. If the variable could not be
+	// pinned every blow below would roll for real, and if the bleed could never
+	// land every "does not apply" below would pass for that reason.
+	const FRolledBlow AtNought = Strike(60.0f, 0.0f, SmallPool);
+	if (!TestTrue(TEXT("set-up: Cataclysm.AilmentRoll is pinned and reads back 0"),
+				  AtNought.bPinned)
+		|| !TestTrue(FString::Printf(TEXT("set-up, the tenth rule: the blow takes "
+										  "over a tenth of maximum health, %.1f "
+										  "of %.0f"), AtNought.Taken, SmallPool),
+					 AtNought.Taken >= SmallPool / 10.0f)
+		|| !TestTrue(TEXT("set-up, the roll: a chance of 60 at a roll of 0 applies "
+						  "the bleed, so the bleed can land"),
+					 AtNought.bBleeds))
+	{
+		return false;
+	}
+
+	// A CHANCE OF EXACTLY 100 AT A ROLL OF 100. This is the assertion that fails
+	// without the guard, because 100 is not below 100.
+	const FRolledBlow Stated = Strike(100.0f, 100.0f, SmallPool);
+	if (!TestTrue(TEXT("set-up: Cataclysm.AilmentRoll is pinned and reads back 100"),
+				  Stated.bPinned))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("the tenth rule does not decide the next "
+								  "assertion: the blow takes over a tenth, %.1f "
+								  "of %.0f"), Stated.Taken, SmallPool),
+			 Stated.Taken >= SmallPool / 10.0f);
+	TestTrue(TEXT("the roll, a chance at the cap: a chance of 100 at a roll of 100 "
+				  "applies the bleed"),
+			 Stated.bBleeds);
+
+	// A CHANCE SUMMED ABOVE 100. `Application` cuts it to exactly 100 before the
+	// roll, so without the guard it failed at a roll of 100 as well.
+	const FRolledBlow Summed = Strike(150.0f, 100.0f, SmallPool);
+	TestTrue(TEXT("set-up: the roll reads back 100 for the chance of 150"),
+			 Summed.bPinned);
+	TestTrue(TEXT("the roll, a chance summed above the cap and cut to it: a chance "
+				  "of 150 at a roll of 100 applies the bleed"),
+			 Summed.bBleeds);
+
+	// A CHANCE BELOW 100 IS COMPARED WITH THE ROLL AS IT WAS. A roll equal to the
+	// chance fails, and so does every roll above it.
+	const FRolledBlow BelowAtTheTop = Strike(60.0f, 100.0f, SmallPool);
+	TestTrue(TEXT("set-up: the roll reads back 100 for the chance of 60"),
+			 BelowAtTheTop.bPinned);
+	TestFalse(TEXT("the roll, a chance below the cap: a chance of 60 at a roll of "
+				   "100 applies nothing"),
+			  BelowAtTheTop.bBleeds);
+
+	const FRolledBlow BelowAtItsChance = Strike(60.0f, 60.0f, SmallPool);
+	TestTrue(TEXT("set-up: the roll reads back 60"), BelowAtItsChance.bPinned);
+	TestFalse(TEXT("the roll, a chance below the cap: a chance of 60 at a roll of "
+				   "exactly 60 applies nothing"),
+			  BelowAtItsChance.bBleeds);
+
+	const FRolledBlow BelowUnderItsChance = Strike(60.0f, 59.9f, SmallPool);
+	TestTrue(TEXT("set-up: the roll reads back 59.9"), BelowUnderItsChance.bPinned);
+	TestTrue(TEXT("the roll, a chance below the cap: a chance of 60 at a roll of "
+				  "59.9 applies the bleed"),
+			 BelowUnderItsChance.bBleeds);
+
+	// AND THE OTHER RULE IS WHAT IT WAS. The same chance and the same roll, on a
+	// blow that takes under a tenth of maximum health, apply nothing. The guard
+	// is inside the roll and the tenth rule is asked before any roll.
+	const FRolledBlow Small = Strike(100.0f, 100.0f, DeepPool);
+	TestTrue(TEXT("set-up: the roll reads back 100 for the small blow"),
+			 Small.bPinned);
+	TestTrue(FString::Printf(TEXT("the tenth rule: the small blow lands and takes "
+								  "under a tenth, %.1f of %.0f"),
+							 Small.Taken, DeepPool),
+			 Small.Taken > 0.0f && Small.Taken < DeepPool / 10.0f);
+	TestFalse(TEXT("the tenth rule, unchanged: a chance of 100 at a roll of 100 on "
+				   "a blow that takes under a tenth applies nothing"),
+			  Small.bBleeds);
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmStunChanceOf100Test,
+	"Cataclysm.Ailments.AStunChanceOf100StunsAtARollOf100AndAChanceBelow100StillFailsAtItsChance")
+{
+	using namespace CataclysmAilmentTest;
+
+	// THE STUN ROLL, which is a comparison of its own in
+	// `UCataclysmAilments::RollOnLandedBlow` and has the same guard. Issue #2201.
+	//
+	// NONE OF `UCataclysmSkillEffects::ApplyStun`'S OWN RULES REFUSES THESE BLOWS,
+	// and the set-up assertion at a roll of 0 is what shows it. The attacker is a
+	// bare actor, so it holds no row that puts a health ceiling on its crowd
+	// control. The defender is a bare actor made for one blow, so it has no crowd
+	// control resistance, is in no window of immunity after an earlier stun, runs
+	// no skill that makes it immune and is not a boss. The blow takes a fifth of
+	// its maximum health and leaves it alive.
+	//
+	// THE ATTACKER HOLDS NO WEAPON, so a blunt weapon's own 10 is not added and
+	// the chance rolled is the chance set. The control at a roll of exactly 60
+	// shows that: with 10 added the chance would be 70 and that blow would stun.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FCataclysmAilmentKind* Stun = KindOf(TEXT("Stun"));
+	if (!TestNotNull(TEXT("Stun is an ailment"), Stun))
+	{
+		return false;
+	}
+
+	const float Blow = 1000.0f;
+	const float Pool = 5000.0f;
+
+	// ONE BLOW FROM A FRESH ATTACKER AT A FRESH DEFENDER, with the roll pinned
+	// for that blow only.
+	struct FRolledBlow
+	{
+		bool bPinned = false;
+		bool bStunned = false;
+		float Taken = 0.0f;
+	};
+	const auto Strike = [&](float Chance, float Roll)
+	{
+		FRolledBlow Out;
+		const CataclysmTestWorld::FScopedAilmentRoll Pinned(Roll);
+		Out.bPinned = Pinned.Variable != nullptr
+			&& FMath::IsNearlyEqual(Pinned.Variable->GetFloat(), Roll, 0.0001f);
+
+		const FScopedFighter Attacker(World);
+		Attacker.ArmFor(Blow);
+		Attacker.SetChance(*Stun, Chance);
+
+		const FScopedFighter Defender(World, Pool);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+
+		Out.Taken = Pool - Defender.Health();
+		Out.bStunned = Defender.Carries(Stun->TagName);
+		return Out;
+	};
+
+	// THE SET-UP, ASSERTED BEFORE THE BEHAVIOUR.
+	const FRolledBlow AtNought = Strike(60.0f, 0.0f);
+	if (!TestTrue(TEXT("set-up: Cataclysm.AilmentRoll is pinned and reads back 0"),
+				  AtNought.bPinned)
+		|| !TestTrue(FString::Printf(TEXT("set-up, the tenth rule: the blow takes "
+										  "over a tenth of maximum health, %.1f "
+										  "of %.0f"), AtNought.Taken, Pool),
+					 AtNought.Taken >= Pool / 10.0f && AtNought.Taken < Pool)
+		|| !TestTrue(TEXT("set-up, the stun's own rules: a chance of 60 at a roll "
+						  "of 0 stuns, so none of them refuses this target and "
+						  "this blow"),
+					 AtNought.bStunned))
+	{
+		return false;
+	}
+
+	// NO CHANCE IS STILL NO STUN, at the roll every chance above nought beats.
+	const FRolledBlow NoChance = Strike(0.0f, 0.0f);
+	TestTrue(TEXT("set-up: the roll reads back 0 for the blow with no chance"),
+			 NoChance.bPinned);
+	TestFalse(TEXT("the roll, no chance: a chance of nought at a roll of 0 does "
+				   "not stun"),
+			  NoChance.bStunned);
+
+	// A CHANCE OF EXACTLY 100 AT A ROLL OF 100, which did not stun without the
+	// guard.
+	const FRolledBlow Stated = Strike(100.0f, 100.0f);
+	if (!TestTrue(TEXT("set-up: Cataclysm.AilmentRoll is pinned and reads back 100"),
+				  Stated.bPinned))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the roll, a chance at the cap: a chance of 100 at a roll of 100 "
+				  "stuns"),
+			 Stated.bStunned);
+
+	// A CHANCE BELOW 100 IS COMPARED WITH THE ROLL AS IT WAS.
+	const FRolledBlow BelowAtTheTop = Strike(60.0f, 100.0f);
+	TestTrue(TEXT("set-up: the roll reads back 100 for the chance of 60"),
+			 BelowAtTheTop.bPinned);
+	TestFalse(TEXT("the roll, a chance below the cap: a chance of 60 at a roll of "
+				   "100 does not stun"),
+			  BelowAtTheTop.bStunned);
+
+	const FRolledBlow BelowAtItsChance = Strike(60.0f, 60.0f);
+	TestTrue(TEXT("set-up: the roll reads back 60"), BelowAtItsChance.bPinned);
+	TestFalse(TEXT("the roll, a chance below the cap: a chance of 60 at a roll of "
+				   "exactly 60 does not stun"),
+			  BelowAtItsChance.bStunned);
+
+	const FRolledBlow BelowUnderItsChance = Strike(60.0f, 59.9f);
+	TestTrue(TEXT("set-up: the roll reads back 59.9"), BelowUnderItsChance.bPinned);
+	TestTrue(TEXT("the roll, a chance below the cap: a chance of 60 at a roll of "
+				  "59.9 stuns"),
+			 BelowUnderItsChance.bStunned);
+	return true;
+}
+
 CATACLYSM_AILMENT_TEST(FCataclysmEachAilmentAppliesItsRowTest,
 	"Cataclysm.Ailments.EachAilmentAppliesWhatItsStatusRowSays")
 {
