@@ -49398,8 +49398,10 @@ bool FCataclysmAngelicWardensOnceTest::RunTest(const FString& Parameters)
 // WHAT IS BUILT IS NARROWER THAN THE SENTENCE: three named rule changes, one drawn a floor, approved by the owner on
 // 2026-10-08 "for now". Skills paid in health; cooldowns twice as long; the stairs open by time.
 //
-// NOT TESTED HERE BECAUSE IT IS NOT WRITTEN: a kill by the player clearing every cooldown. It was stopped for a
-// ruling; see the entry of 2026-10-08 in `docs/DECISIONS.md`.
+// A KILL BY THE PLAYER CLEARS EVERY COOLDOWN WITH NO ROLL, ruled on 2026-10-08 after the first commit of this
+// layer stopped for it. The two tests of it are the last two of this section. Each places its creatures at
+// (400, 0, 0) and (800, 0, 0), 4 metres apart, and the creature that kills for the control stands at
+// (-600, 0, 0), where the Blood Gates helper puts it.
 //
 // WHERE EVERYTHING STANDS. The player stands where the floor put it, at the entrance. No creature is placed except
 // in the Blood Gates test, which places two, 4 metres apart, at (400, 0, 0) and (800, 0, 0), as the Blood Gates
@@ -49608,7 +49610,7 @@ bool FCataclysmRuleOfChaosDrawTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("the panel names longer cooldowns"), RuleOfChaosPanelLine(Mode),
-			  FString(TEXT("rule of chaos: cooldowns 100% longer")));
+			  FString(TEXT("rule of chaos: cooldowns 100% longer, a kill clears them")));
 	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosStairsOpenByTime, Floor))
 	{
 		return false;
@@ -49719,7 +49721,7 @@ bool FCataclysmRuleOfChaosHealthCostTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// CHANGE 2, THE HALF THAT IS WRITTEN: EVERY COOLDOWN RUNS TWICE AS LONG AS ON THE SAME FLOOR WITHOUT THE ROW, AND
+// CHANGE 2, THE LENGTHENING: EVERY COOLDOWN RUNS TWICE AS LONG AS ON THE SAME FLOOR WITHOUT THE ROW, AND
 // WITHIN AN ETERNAL CHORUS'S EARSHOT THE CHORUS'S SHARE IS ADDED TO IT.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosCooldownTest,
 	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosLongerCooldownsRunTwiceAsLongAndAChorusAddsToThem",
@@ -50177,6 +50179,195 @@ bool FCataclysmRuleOfChaosOneAtATimeTest::RunTest(const FString& Parameters)
 				  LengtheningOver, Wanted == Rules::RuleOfChaosKillsClearCooldowns ? 100.0f : 0.0f, 0.001f);
 		TestTrue(FString::Printf(TEXT("change %d: the stairs are sealed by time only under the third change"), Wanted),
 				 bSealedUnder == (Wanted == Rules::RuleOfChaosStairsOpenByTime));
+	}
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** How many slots' cooldown tags the player holds now. */
+	int32 RuleOfChaosSlotsCoolingDown(const FPossessedPlayer& Player)
+	{
+		int32 Cooling = 0;
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+			Cooling += Cooldown.IsValid() && Player.AbilitySystem->HasMatchingGameplayTag(Cooldown) ? 1 : 0;
+		}
+		return Cooling;
+	}
+
+	/**
+	 * Put a 30 second cooldown on every slot that has a cooldown tag and is not cooling down already, and answer how
+	 * many slots are then cooling down. The world's time does not move, so none of them ends by itself.
+	 */
+	int32 RuleOfChaosPutEverySlotOnCooldown(const FPossessedPlayer& Player)
+	{
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+			if (Cooldown.IsValid() && !Player.AbilitySystem->HasMatchingGameplayTag(Cooldown))
+			{
+				UCataclysmGameplayAbility::ApplyCooldownEffect(Player.AbilitySystem, Cooldown, 30.0f);
+			}
+		}
+		return RuleOfChaosSlotsCoolingDown(Player);
+	}
+}
+
+// CHANGE 2, THE CLEARING: A KILL BY THE PLAYER LEAVES NO SLOT COOLING DOWN AND RETURNS EVERY SPENT USE OF A SKILL THAT
+// HOLDS TWO. A DEATH THE PLAYER DID NOT CAUSE, ON THE SAME FLOOR JUST BEFORE, CLEARS NOTHING: that is the control.
+// Two creatures, 4 metres apart, at (400, 0, 0) and (800, 0, 0); the creature that kills the first at (-600, 0, 0).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosKillClearsTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAKillByThePlayerClearsEveryCooldownAndReturnsSpentUses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosKillClearsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	int32 Floor = 0;
+	if (!GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosKillsClearCooldowns, Floor))
+	{
+		return false;
+	}
+	UCataclysmMovementSkill* Step = RuleOfChaosGrantStep(Player);
+	UCataclysmEquipmentComponent* Equipment = Player.Character->GetEquipment();
+	if (!TestNotNull(TEXT("a movement skill was granted to the player"), Step)
+		|| !TestNotNull(TEXT("the player has equipment to refresh its stat line with"), Equipment))
+	{
+		return false;
+	}
+
+	// ONE MORE USE OF EVERY SKILL, put where the floor's own modifiers are held and refreshed as the floor refreshes
+	// them, so the skill holds more than one use and "every spent use" is more than the one a cooldown's end returns.
+	const int32 UsesWithoutIt = Player.AbilitySystem->SkillChargesMaximum(Step->SkillTags);
+	TMap<FName, TArray<FCataclysmStatModifier>> OnTheFloor = Player.AbilitySystem->GetDungeonStatModifiers();
+	FCataclysmStatModifier OneMoreUse;
+	OneMoreUse.Bucket = ECataclysmStatBucket::Flat;
+	OneMoreUse.Source = ECataclysmModifierSource::DungeonRule;
+	OneMoreUse.Value = 1.0f;
+	OnTheFloor.FindOrAdd(FName(UCataclysmAbilitySystemComponent::SkillChargesBonusStat)).Add(OneMoreUse);
+	Player.AbilitySystem->SetDungeonStatModifiers(MoveTemp(OnTheFloor));
+	Equipment->RefreshAttributes(Player.AbilitySystem);
+	const int32 Uses = Player.AbilitySystem->SkillChargesMaximum(Step->SkillTags);
+	if (!TestEqual(TEXT("the skill holds one more use than it did"), Uses, UsesWithoutIt + 1)
+		|| !TestTrue(FString::Printf(TEXT("which is more than one use (%d)"), Uses), Uses > 1))
+	{
+		return false;
+	}
+
+	// EVERY USE SPENT, AND EVERY SLOT COOLING DOWN.
+	for (int32 Spent = 0; Spent < Uses; ++Spent)
+	{
+		Player.AbilitySystem->SpendSkillCharge(ECataclysmAbilitySlot::Movement, Step->SkillTags, 30.0f);
+	}
+	const int32 Cooling = RuleOfChaosPutEverySlotOnCooldown(Player);
+	if (!TestEqual(TEXT("every use of the skill is spent"),
+				   Player.AbilitySystem->SkillChargesHeld(ECataclysmAbilitySlot::Movement, Step->SkillTags), 0)
+		|| !TestTrue(FString::Printf(TEXT("more than one slot is cooling down (%d)"), Cooling), Cooling > 1))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Others = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Mine = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("the creature another creature will kill was placed"), Others)
+		|| !TestNotNull(TEXT("the creature the player will kill was placed"), Mine))
+	{
+		return false;
+	}
+
+	// THE CONTROL: A DEATH THE PLAYER DID NOT CAUSE.
+	if (!ACreatureKills(*this, World, Others))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a death the player did not cause leaves every slot cooling down"),
+			  RuleOfChaosSlotsCoolingDown(Player), Cooling);
+	TestEqual(TEXT("and returns no use"),
+			  Player.AbilitySystem->SkillChargesHeld(ECataclysmAbilitySlot::Movement, Step->SkillTags), 0);
+	TestEqual(TEXT("and is not counted as a kill that cleared"), Mode->RuleOfChaosKillsCount(), 0);
+
+	// AND THE PLAYER'S KILL.
+	if (!ThePlayerKills(*this, Player, Mine))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill by the player leaves no slot cooling down"), RuleOfChaosSlotsCoolingDown(Player), 0);
+	TestEqual(TEXT("and the skill holds every use again"),
+			  Player.AbilitySystem->SkillChargesHeld(ECataclysmAbilitySlot::Movement, Step->SkillTags), Uses);
+	TestEqual(TEXT("and is counted as one kill that cleared"), Mode->RuleOfChaosKillsCount(), 1);
+	return true;
+}
+
+// ON A FLOOR THAT DREW ANOTHER CHANGE, AND ON A FLOOR WITHOUT THE ROW, A KILL BY THE PLAYER CLEARS NOTHING. The test
+// above is the other side of this: the same set-up on a floor that drew the change to skill behaviour, cleared.
+// One creature a floor, at (400, 0, 0).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosKillElsewhereTest,
+	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAKillClearsNothingOnAFloorThatDrewAnotherChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleOfChaosKillElsewhereTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Rules = FCataclysmDungeonFloorRules;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THREE FLOORS IN TURN: one that drew skills paid in health, one that drew the stairs that open by time, and the
+	// last of those floor numbers again without the row.
+	int32 Floor = 0;
+	for (int32 Case = 0; Case < 3; ++Case)
+	{
+		const bool bReached = Case == 0
+			? GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosSkillsPaidInHealth, Floor)
+			: Case == 1
+			? GoToAFloorThatDrew(*this, Mode, {RuleOfChaosRow}, Rules::RuleOfChaosStairsOpenByTime, Floor)
+			: GoToThatFloorCarrying(*this, Mode, {}, Floor);
+		if (!bReached)
+		{
+			return false;
+		}
+		const int32 Cooling = RuleOfChaosPutEverySlotOnCooldown(Player);
+		ACataclysmEnemyCharacter* Mine = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+		if (!TestTrue(FString::Printf(TEXT("case %d: more than one slot is cooling down (%d)"), Case, Cooling),
+					  Cooling > 1)
+			|| !TestNotNull(FString::Printf(TEXT("case %d: the creature the player will kill was placed"), Case), Mine)
+			|| !ThePlayerKills(*this, Player, Mine))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("case %d: the player's kill leaves every slot cooling down"), Case),
+				  RuleOfChaosSlotsCoolingDown(Player), Cooling);
+		TestEqual(FString::Printf(TEXT("case %d: and no kill is counted as one that cleared"), Case),
+				  Mode->RuleOfChaosKillsCount(), 0);
 	}
 	return true;
 }
