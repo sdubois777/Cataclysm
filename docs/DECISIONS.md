@@ -4,11 +4,12 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-08 — Rule of Chaos draws one of three rule changes for each floor, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer in three commits: the first with the code, seven
+**Not built and not run.** The writing session wrote this layer in four commits: the first with the code, seven
 Unreal tests, one change to a Python check and this entry; the second, after the rulings numbered 7 to 14
 below, with the clearing of cooldowns on a kill, two more Unreal tests and this entry brought up to those
-rulings; the third, after rulings 15 to 19, with this entry alone. It compiled nothing and ran no Unreal test.
-It ran the Python tests in `tools/tests` and the lint before each commit, the conflict check before the two
+rulings; the third, after rulings 15 to 19, with this entry alone; the fourth, after rulings 20 and 21, with
+set-up assertions in three of the tests and this entry. It compiled nothing and ran no Unreal test.
+It ran the Python tests in `tools/tests` and the lint before each commit, the conflict check before the three
 that changed C++, and nothing else. Every statement below about what the engine does is read
 from the code. No outcome of a build or of an Unreal run is recorded here.
 
@@ -173,6 +174,17 @@ ruling 16 names; the writing session read the same code again and found the same
 19. **"Eternal Chorus alone is unchanged" is held by two existing tests**, accepted:
     `EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration` and
     `WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed`. No test is added.
+
+Rulings 20 and 21 were made on the writing session's report of the third commit. Each is a labelled judgement
+by the coordinating session under the owner's delegation, 2026-10-08.
+
+20. **The three tests that place creatures get set-up assertions**, before anything is asserted about them: T5,
+    T8 and T9. Each placed creature is at least a metre, flat distance, from the player; at least a metre from
+    every other creature the test placed; and on a floor cell of the current floor's plan. A creature spawned
+    onto the player is a known cause of a test passing or failing for the wrong reason. Where a fixed point
+    could be on the player or off the floor, the point is moved in the test, not the assertion.
+21. **The Verbose log line and the count of kills that cleared both stay**, and this entry's wording about the
+    count's readers is right: tests T8 and T9, and the one log line in the function that counts it.
 
 ### What was read before writing
 
@@ -389,8 +401,8 @@ approved or accepted. Judgements 11 to 13 are of the second commit; rulings 15, 
 
 Nine, in `Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`. None was
 run. Every figure read from the player is a difference from the same floor number without the row, or a count
-set beside a control. Creatures are placed only in T5, T8 and T9, at (400, 0, 0) and (800, 0, 0), 4 metres
-apart; T8's other killer stands at (-600, 0, 0). No test waits on world time: the floor's clock is stepped one beat
+set beside a control. Creatures are placed only in T5, T8 and T9, on walkable cells found near the player;
+see "Where the creatures stand" below. No test waits on world time: the floor's clock is stepped one beat
 at a time, and 59 seconds is 236 beats, 60 is 240.
 
 - **T1** `RuleOfChaosDrawsOneOfThreeRuleChangesForEachFloorAndThePanelNamesIt`. Thirty floors of a dungeon on
@@ -430,6 +442,30 @@ changed: `EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration` (one
 `WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed` (nothing out of earshot, 50 within, on a
 floor carrying that row alone, through the line this layer changed from `=` to `+=`). No test was added for
 it.
+
+**Where the creatures stand, changed with the fourth commit under ruling 20.** T5, T8 and T9 first placed
+their creatures at fixed world points: (400, 0, 0) and (800, 0, 0), and T8's other killer at (-600, 0, 0),
+where the existing helper `ACreatureKills` puts it. Read from the code, a floor is centred on its actor and
+which cells are walkable and where the entrance is depend on the seed, so a fixed point could be rock or the
+player's own place. The points were moved. Each creature is now placed at the centre of a walkable cell, at
+the height the player stands at, found by a new test helper, `RuleOfChaosFreePlaces`: the nearest cells to the
+player that are at least two cells, 8 metres, from the player and from each other, and not the exit's cell.
+T5 takes two places, T8 three, T9 one on each of its three floors. T8 no longer calls `ACreatureKills`, which
+places its killer at a fixed point and does not hand it back; it spawns the killer itself, as that helper
+does (an Imp with 100 health given 100 attack damage, not one of the floor's creatures), on the third place.
+
+A second new helper, `RuleOfChaosPlacedWell`, asserts as set-up, from where each creature is after the spawn:
+"set-up: the floor the creatures stand on is built"; "set-up: creature %d was placed"; "set-up: creature %d
+stands at least a metre from the player (%.0f cm)"; "set-up: creature %d stands on a floor cell of the plan";
+"set-up: creatures %d and %d stand at least a metre apart (%.0f cm)". Each test returns false when one fails.
+Before it, each asserts that the places were found: "set-up: the floor has two free places to stand a
+creature" (T5), "three" (T8), "set-up: case %d: the floor has a free place to stand a creature" (T9). T8 also
+asserts "set-up: the creature that kills hits for something" and "set-up: another creature's blow killed the
+first creature". The five labels these replace said only that a creature was placed.
+
+Not asserted: that a place is free of an object a rule put on the floor. The floors these tests build carry
+Rule of Chaos alone, or with Blood Gates, and neither places an object; that is read from the code, not
+checked by the tests.
 
 One assertion of T1 changed with the second commit: the panel's line for the second change, from "rule of
 chaos: cooldowns 100% longer" to "rule of chaos: cooldowns 100% longer, a kill clears them".

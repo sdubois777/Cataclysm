@@ -49399,13 +49399,15 @@ bool FCataclysmAngelicWardensOnceTest::RunTest(const FString& Parameters)
 // 2026-10-08 "for now". Skills paid in health; cooldowns twice as long; the stairs open by time.
 //
 // A KILL BY THE PLAYER CLEARS EVERY COOLDOWN WITH NO ROLL, ruled on 2026-10-08 after the first commit of this
-// layer stopped for it. The two tests of it are the last two of this section. Each places its creatures at
-// (400, 0, 0) and (800, 0, 0), 4 metres apart, and the creature that kills for the control stands at
-// (-600, 0, 0), where the Blood Gates helper puts it.
+// layer stopped for it. The two tests of it are the last two of this section.
 //
-// WHERE EVERYTHING STANDS. The player stands where the floor put it, at the entrance. No creature is placed except
-// in the Blood Gates test, which places two, 4 metres apart, at (400, 0, 0) and (800, 0, 0), as the Blood Gates
-// tests above place theirs. No test waits on world time: the floor's clock is stepped by hand, one beat at a time,
+// WHERE EVERYTHING STANDS. The player stands where the floor put it, at the entrance. Three tests place creatures:
+// the Blood Gates test and the two tests of the kill. NONE IS PLACED AT A FIXED WORLD POINT, ruled on 2026-10-08:
+// a fixed point may be rock, or the player's own place, on the floor a seed carves. Each creature is placed at
+// the centre of a walkable cell that `RuleOfChaosFreePlaces` finds: the nearest to the player that are at least
+// two cells, 8 metres, from the player and from each other, never the exit's cell. Each test then asserts, as
+// set-up, that every creature it placed stands at least a metre from the player and from every other, on a
+// floor cell of the plan. No test waits on world time: the floor's clock is stepped by hand, one beat at a time,
 // and a beat is a quarter of a second, so 59 seconds is 236 beats and 60 is 240.
 // ---------------------------------------------------------------------------
 
@@ -49475,6 +49477,106 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 		Mode->ClearFloorEnemies();
 		return true;
+	}
+
+	/**
+	 * Up to this many places to stand a creature: the centres of walkable cells, at the height the player stands at,
+	 * nearest the player first, each at least two cells (8 metres) from the player and from every place chosen
+	 * before it, and never the exit's cell, where the stairs are. Fewer when the floor has fewer.
+	 *
+	 * SEARCHED FOR ON THE FLOOR THE TEST BUILT, because a world point typed here may be rock or the player's own
+	 * place on that floor. The floors these tests build carry no object a rule placed, so a walkable cell is free.
+	 */
+	TArray<FVector> RuleOfChaosFreePlaces(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, int32 Wanted)
+	{
+		TArray<FVector> Places;
+		const ACataclysmDungeonFloor* Floor = Mode ? Mode->CurrentFloor.Get() : nullptr;
+		if (!Floor || !Player.Character)
+		{
+			return Places;
+		}
+		const FCataclysmFloorPlan& Plan = Floor->GetPlan();
+		const FVector PlayerAt = Player.Character->GetActorLocation();
+		const float Apart = 2.0f * FCataclysmFloorGenerator::CellSizeCm;
+
+		TArray<FIntPoint> Cells;
+		for (int32 Y = 0; Y < Plan.Height; ++Y)
+		{
+			for (int32 X = 0; X < Plan.Width; ++X)
+			{
+				const FIntPoint Cell(X, Y);
+				if (Plan.IsFloor(Cell) && Cell != Plan.Exit
+					&& FVector::Dist2D(Floor->WorldOfCell(Cell), PlayerAt) >= Apart)
+				{
+					Cells.Add(Cell);
+				}
+			}
+		}
+		Cells.StableSort([Floor, PlayerAt](const FIntPoint& A, const FIntPoint& B)
+		{
+			return FVector::Dist2D(Floor->WorldOfCell(A), PlayerAt) < FVector::Dist2D(Floor->WorldOfCell(B), PlayerAt);
+		});
+		for (const FIntPoint& Cell : Cells)
+		{
+			if (Places.Num() >= Wanted)
+			{
+				break;
+			}
+			const FVector Centre = Floor->WorldOfCell(Cell);
+			const FVector Where(Centre.X, Centre.Y, PlayerAt.Z);
+			bool bClear = true;
+			for (const FVector& Taken : Places)
+			{
+				bClear &= FVector::Dist2D(Taken, Where) >= Apart;
+			}
+			if (bClear)
+			{
+				Places.Add(Where);
+			}
+		}
+		return Places;
+	}
+
+	/**
+	 * Set-up, asserted before anything is asserted about the creatures: each one a test placed exists, stands at
+	 * least a metre (flat distance) from the player and from every other, and stands on a floor cell of the plan.
+	 * Read from where each creature IS, not from where it was asked to be: the spawn may move it.
+	 */
+	bool RuleOfChaosPlacedWell(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+							   const TArray<ACataclysmEnemyCharacter*>& Placed)
+	{
+		const ACataclysmDungeonFloor* Floor = Mode ? Mode->CurrentFloor.Get() : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: the floor the creatures stand on is built"), Floor))
+		{
+			return false;
+		}
+		const FVector PlayerAt = Player.Character->GetActorLocation();
+		bool bWell = true;
+		for (int32 Index = 0; Index < Placed.Num(); ++Index)
+		{
+			if (!Test.TestNotNull(FString::Printf(TEXT("set-up: creature %d was placed"), Index), Placed[Index]))
+			{
+				return false;
+			}
+			const FVector At = Placed[Index]->GetActorLocation();
+			const float FromThePlayer = FVector::Dist2D(At, PlayerAt);
+			bWell &= Test.TestTrue(
+				FString::Printf(TEXT("set-up: creature %d stands at least a metre from the player (%.0f cm)"), Index,
+								FromThePlayer),
+				FromThePlayer >= 100.0f);
+			bWell &= Test.TestTrue(
+				FString::Printf(TEXT("set-up: creature %d stands on a floor cell of the plan"), Index),
+				Floor->GetPlan().IsFloor(Floor->CellOfWorld(At)));
+			for (int32 Earlier = 0; Earlier < Index; ++Earlier)
+			{
+				const float Between = FVector::Dist2D(At, Placed[Earlier]->GetActorLocation());
+				bWell &= Test.TestTrue(
+					FString::Printf(TEXT("set-up: creatures %d and %d stand at least a metre apart (%.0f cm)"), Earlier,
+									Index, Between),
+					Between >= 100.0f);
+			}
+		}
+		return bWell;
 	}
 
 	/** A Movement skill on the player, which costs mana and has a cooldown, granted as the death tests grant one. */
@@ -49904,7 +50006,8 @@ bool FCataclysmRuleOfChaosStairsTest::RunTest(const FString& Parameters)
 }
 
 // CHANGE 3 WITH BLOOD GATES ALSO ON THE FLOOR: BOTH SEALS HOLD. AFTER 60 SECONDS THE STAIRS STAY SEALED UNTIL THE
-// PLAYER HAS SLAIN ENOUGH. Two creatures, 4 metres apart, at (400, 0, 0) and (800, 0, 0).
+// PLAYER HAS SLAIN ENOUGH. Two creatures, each on a walkable cell at least 8 metres from the player and from the
+// other, found by `RuleOfChaosFreePlaces` and asserted as set-up.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosWithBloodGatesTest,
 	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAndBloodGatesTheStairsNeedBothTheTimeAndTheKills",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -49934,10 +50037,14 @@ bool FCataclysmRuleOfChaosWithBloodGatesTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	ACataclysmEnemyCharacter* First = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
-	ACataclysmEnemyCharacter* Second = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
-	if (!TestNotNull(TEXT("the first creature was placed"), First)
-		|| !TestNotNull(TEXT("the second creature was placed"), Second))
+	const TArray<FVector> Places = RuleOfChaosFreePlaces(Mode, Player, 2);
+	if (!TestEqual(TEXT("set-up: the floor has two free places to stand a creature"), Places.Num(), 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = PlaceCreatureAtRung(World, Mode, Places[0], 0);
+	ACataclysmEnemyCharacter* Second = PlaceCreatureAtRung(World, Mode, Places[1], 0);
+	if (!RuleOfChaosPlacedWell(*this, Mode, Player, {First, Second}))
 	{
 		return false;
 	}
@@ -50217,7 +50324,10 @@ namespace CataclysmDungeonModifierEffectsTest
 
 // CHANGE 2, THE CLEARING: A KILL BY THE PLAYER LEAVES NO SLOT COOLING DOWN AND RETURNS EVERY SPENT USE OF A SKILL THAT
 // HOLDS TWO. A DEATH THE PLAYER DID NOT CAUSE, ON THE SAME FLOOR JUST BEFORE, CLEARS NOTHING: that is the control.
-// Two creatures, 4 metres apart, at (400, 0, 0) and (800, 0, 0); the creature that kills the first at (-600, 0, 0).
+// Two creatures and the creature that kills the first, each on a walkable cell at least 8 metres from the player
+// and from the others, found by `RuleOfChaosFreePlaces` and asserted as set-up. THE KILLER IS SPAWNED HERE AND NOT
+// BY `ACreatureKills`, which puts its own at a fixed world point and does not hand it back to be asserted on. It
+// is made as that helper makes one: an Imp with 100 health, given 100 attack damage, not one of the floor's.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosKillClearsTest,
 	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAKillByThePlayerClearsEveryCooldownAndReturnsSpentUses",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -50284,16 +50394,25 @@ bool FCataclysmRuleOfChaosKillClearsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	ACataclysmEnemyCharacter* Others = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
-	ACataclysmEnemyCharacter* Mine = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
-	if (!TestNotNull(TEXT("the creature another creature will kill was placed"), Others)
-		|| !TestNotNull(TEXT("the creature the player will kill was placed"), Mine))
+	const TArray<FVector> Places = RuleOfChaosFreePlaces(Mode, Player, 3);
+	if (!TestEqual(TEXT("set-up: the floor has three free places to stand a creature"), Places.Num(), 3))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Others = PlaceCreatureAtRung(World, Mode, Places[0], 0);
+	ACataclysmEnemyCharacter* Mine = PlaceCreatureAtRung(World, Mode, Places[1], 0);
+	ACataclysmEnemyCharacter* Slayer = SpawnImpWithHealth(World, Places[2], 100.0f);
+	if (!RuleOfChaosPlacedWell(*this, Mode, Player, {Others, Mine, Slayer})
+		|| !TestTrue(TEXT("set-up: the creature that kills hits for something"),
+					 GiveCreatureAttackDamage(Slayer, 100.0f) > 0.0f))
 	{
 		return false;
 	}
 
 	// THE CONTROL: A DEATH THE PLAYER DID NOT CAUSE.
-	if (!ACreatureKills(*this, World, Others))
+	UCataclysmSkillEffects::ApplyHit(Slayer, Others, 100000.0f);
+	if (!TestTrue(TEXT("set-up: another creature's blow killed the first creature"),
+				  UCataclysmSkillEffects::IsDead(Others)))
 	{
 		return false;
 	}
@@ -50317,7 +50436,8 @@ bool FCataclysmRuleOfChaosKillClearsTest::RunTest(const FString& Parameters)
 
 // ON A FLOOR THAT DREW ANOTHER CHANGE, AND ON A FLOOR WITHOUT THE ROW, A KILL BY THE PLAYER CLEARS NOTHING. The test
 // above is the other side of this: the same set-up on a floor that drew the change to skill behaviour, cleared.
-// One creature a floor, at (400, 0, 0).
+// One creature a floor, on a walkable cell at least 8 metres from the player, found by `RuleOfChaosFreePlaces` and
+// asserted as set-up.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleOfChaosKillElsewhereTest,
 	"Cataclysm.DungeonModifierEffects.UnderRuleOfChaosAKillClearsNothingOnAFloorThatDrewAnotherChange",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -50356,10 +50476,16 @@ bool FCataclysmRuleOfChaosKillElsewhereTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		const int32 Cooling = RuleOfChaosPutEverySlotOnCooldown(Player);
-		ACataclysmEnemyCharacter* Mine = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
-		if (!TestTrue(FString::Printf(TEXT("case %d: more than one slot is cooling down (%d)"), Case, Cooling),
-					  Cooling > 1)
-			|| !TestNotNull(FString::Printf(TEXT("case %d: the creature the player will kill was placed"), Case), Mine)
+		const TArray<FVector> Places = RuleOfChaosFreePlaces(Mode, Player, 1);
+		if (!TestEqual(FString::Printf(TEXT("set-up: case %d: the floor has a free place to stand a creature"), Case),
+					   Places.Num(), 1))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Mine = PlaceCreatureAtRung(World, Mode, Places[0], 0);
+		if (!RuleOfChaosPlacedWell(*this, Mode, Player, {Mine})
+			|| !TestTrue(FString::Printf(TEXT("case %d: more than one slot is cooling down (%d)"), Case, Cooling),
+						 Cooling > 1)
 			|| !ThePlayerKills(*this, Player, Mine))
 		{
 			return false;
