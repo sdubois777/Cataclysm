@@ -115,6 +115,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: 2026-10-08 and changed what one existing lookup hands over: the spell
 #: damage lookup now passes the metres charged and the range the skill used,
 #: the eleventh and twelfth arguments, so its key here changed with it.
+#: How much faster a cooldown recovers added one more on 2026-10-09, asked in
+#: `CooldownAfterReduction` with the skill's tags beside the reduction and the
+#: lengthening, for the dungeon rule Fragmented Reality.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -371,6 +374,12 @@ INVENTORY = {
         'how much longer the cooldown is, asked with the tags of the skill so '
         'a row scoped to a slot reaches only that slot; nought is the '
         'fallback because the stat has no attribute. Issue #1994.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UCataclysmSkillSlots::CooldownRecoveryStat), SkillTags, 0.0f'):
+        'how much faster the cooldown recovers (issues #1820 and #41, the '
+        'dungeon rule Fragmented Reality), asked with the tags of the skill '
+        'as the reduction and the lengthening beside it are; nought is the '
+        'fallback because the stat has no attribute, and there is no blow',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(), 0.0f'):
         'the chance a skill does not go on cooldown, asked of the '
