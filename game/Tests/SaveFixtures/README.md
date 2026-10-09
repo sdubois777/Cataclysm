@@ -220,6 +220,27 @@ both to add a field the record had gained:
   holds 4: false is the field's default, so a fixture holding only false could not
   show that the value survives a round trip rather than being re-defaulted on load.
 
+`Run_v1.json` was edited a thirteenth time on 2026-10-09, for issues #1820 and #41:
+
+- `bOnTheDarkFloor` and `DarkFloorFellFrom` on the floor, because the floor a fall
+  into a chasm leads to carries the number of the floor its stairs lead to, so the
+  floor number alone cannot say the player is on it. `docs/DECISIONS.md` has the
+  entry, "Those in the Dark, layer 3".
+
+  **They hold true and 5 rather than the defaults of false and 0**, for the reason
+  `Bosses` holds 4: a fixture carrying a field's default cannot show that the
+  value survives a round trip rather than being re-defaulted on load. Five is
+  not the floor's own number, 6, so one written into the other would be noticed,
+  and `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom`
+  reads them back one at a time.
+
+  **The fixture is test data rather than a reachable game state.** In play a
+  dark floor numbered 6 after a fall from floor 5 is a dungeon six floors deep.
+
+  That a file MISSING the two fields still loads, as not on the dark floor, is
+  covered by `Cataclysm.SaveRecords.AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`,
+  which takes this file and removes the two lines.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

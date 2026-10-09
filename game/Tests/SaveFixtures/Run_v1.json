@@ -93,6 +93,8 @@
 	"Floor": {
 		"Dungeon": "Hell_On_Earth",
 		"Floor": 6,
+		"bOnTheDarkFloor": true,
+		"DarkFloorFellFrom": 5,
 		"Creatures": [
 			{
 				"ArchetypeRow": "Brute",
