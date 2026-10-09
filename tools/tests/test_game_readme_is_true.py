@@ -247,8 +247,10 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     THE CLAIM HAS ALREADY NARROWED ONCE. It said only a console command moved the
     day, until walking a dungeon started costing one per floor for issue #1092 --
     which is exactly the change this guard existed to catch, and it caught it.
-    What is left is the two the design still owes: dying costs 5, 10 or 15 days
-    and costs none here, and the forge costs twelve and does not exist.
+    IT NARROWED AGAIN FOR ISSUE #41: dying inside a dungeon of the empire now
+    costs 5, 10 or 15 days, charged from the dungeon game mode, which was already
+    on the list below. What is left is the one the design still owes: the forge
+    costs twelve and does not exist.
 
     IT IS THE POINT AT WHICH THE EMPIRE STOPS BEING A DEMONSTRATION. A player who
     has to type a command to make time pass is looking at a diagram; a player
@@ -269,34 +271,6 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
         "game/README.md says only walking a dungeon, dying in one and the console "
         f"commands move the empire's day, but these files advance it: {', '.join(movers)}."
         " Update that bullet in the 'What is not here yet' section."
-    )
-
-
-def test_dying_still_costs_the_empire_no_days() -> None:
-    """The next thing that should move the day, and does not.
-
-    `UCataclysmDayClock::DeathDayCostFor` answers what a death costs in each
-    lethality mode -- 5 days, 10 or 15 -- and nothing outside the empire layer
-    and its tests asks it. A player who dies loses nothing but the walk back.
-
-    IT IS A SEPARATE GUARD FROM THE ONE ABOVE ON PURPOSE. That one watches who
-    SPENDS days; this watches whether the death cost has been wired up at all,
-    which is a different change and would be made by a different person.
-    """
-    if "dying costs 5, 10 or 15 days in the design and" not in readme_text():
-        pytest.skip("The readme no longer claims dying costs the empire nothing.")
-
-    users = [
-        name
-        for name in source_contains(r"DeathDayCostFor")
-        if not name.startswith("game/Source/CataclysmEmpire/")
-        and not name.startswith("game/Source/Cataclysm/Tests/")
-    ]
-
-    assert not users, (
-        "game/README.md says dying costs the empire no days, but these files ask "
-        f"what a death costs: {', '.join(users)}. Update that bullet in the "
-        "'What is not here yet' section."
     )
 
 

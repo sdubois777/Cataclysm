@@ -6,9 +6,11 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Not built and not run.** The writing session wrote this layer in one commit on development 90b45b92: the code,
 thirteen new Unreal tests, one new Python check file, a change to one existing Python check, two places in
-`docs/Cataclysm_GDD_v2.md`, one bullet of `game/README.md`, and this entry. It compiled nothing and ran no Unreal
-test. It ran the Python tests in `tools/tests`, the lint and the conflict check before the commit, and nothing
-else. Every statement below about what the engine does is read from the code. Issue #41.
+`docs/Cataclysm_GDD_v2.md`, one bullet of `game/README.md`, and this entry. A second commit, after the
+coordinating session ruled on the first, recorded those rulings here and deleted one existing Python check; it
+changed no game code and no Unreal test. The writing session compiled nothing and ran no Unreal test. It ran
+the Python tests in `tools/tests`, the lint and the conflict check before each commit, and nothing else. Every
+statement below about what the engine does is read from the code. Issue #41.
 
 **The playtest switch.** The console variable is `Cataclysm.DeathKeepsThePlayerInTheDungeon`. It is 0 by default,
 which is the designed behaviour described in this entry. Typed at the console as
@@ -16,7 +18,25 @@ which is the designed behaviour described in this entry. Typed at the console as
 layer: the player stands back up at the floor's entrance with the dungeon still bound, nothing resolves and no
 day passes. `Cataclysm.DeathKeepsThePlayerInTheDungeon 0` puts the designed behaviour back. It is declared in
 `Dungeon/CataclysmDungeonGameMode.cpp` and read in one place, `ACataclysmDungeonGameMode::EndTheDungeonForADeath`.
-It is marked as a cheat variable, as the roll pins in that file are.
+
+**Said first, with the switch: it is a cheat variable.** The exact command is
+`Cataclysm.DeathKeepsThePlayerInTheDungeon 1`. The variable is declared with the engine's flag `ECVF_Cheat`, as
+the roll pins in that file are. The engine's own words for that flag, in `IConsoleManager.h` of Unreal Engine
+5.8: "Console variables marked with this flag behave differently in a final release build. Then they are are
+hidden in the console and cannot be changed by the user." The same header's `IsEnabled` answers false for a
+cheat variable when `DISABLE_CHEAT_CVARS` is set, and `Build.h` sets that for a shipping build, and for a test
+build unless `ALLOW_CHEAT_CVARS_IN_TEST` is set. So in a shipping build the switch cannot be changed by the
+user; in the editor and in a development build it can. This is read from the two headers and was not tried.
+
+**Said first: the dungeon is ended when the character stands back up, 3 seconds after the killing blow, while
+it is still marked dead, and not at the blow. Kept, by ruling.** The reason: the killing blow is announced from
+inside whatever dealt it, and that can be a step of one of the dungeon game mode's own floor rules, which goes
+on reading its state after the blow returns; leaving a dungeon empties that state. Standing back up runs from
+a timer, outside every blow. The one cost: the resolve and the days land 3 seconds after the death. No day
+passes in real time, so the empire at the end of those 3 seconds is what it was at the start of them. Between
+the blow and standing up the dungeon is still bound and nothing has been charged. This differs from the wording
+of the first ruling's table, which has the player leave the dungeon and then stand back up after the delay;
+judgement 1 below has the lines read.
 
 **Said first: where the player is afterwards is not the capital.** `docs/Cataclysm_GDD_v2.md` says "Dying costs 5
 days (modified by difficulty setting) and respawns the player at the capital." The capital as a place is not
@@ -26,13 +46,6 @@ empire bound and that dungeon's modifiers no longer acting. The stairs of that f
 floors with no dungeon behind them and no bottom, and each costs the empire a whole day, which is what
 `SpendFloorTimeInTheEmpire` charges when a run exists and nothing is bound. That was already true after a
 dungeon was cleared. To walk a dungeon again the player types `Cataclysm.EnterDungeon`.
-
-**Said first: the dungeon is ended when the character stands back up, three seconds after the killing blow, and
-not at the blow.** This differs from the wording of the ruling, which has the player leave the dungeon and then
-stand back up after the delay. It is a judgement by the writing session, for the coordinating session to
-confirm; judgement 1 below has the reason and what to change to move it. Between the blow and standing up the
-dungeon is still bound and nothing has been charged. No day passes in real time, so the empire at the end of
-that delay is what it was at the start of it.
 
 **Said first: on Heretic a shallow dungeon resolves twice from one death, and that is accepted as it falls.** A
 Heretic death costs 15 days (`UCataclysmDayClock::DeathDayCostHeretic`). A dungeon's full timer is 10 days plus
@@ -52,7 +65,13 @@ second time inside those days. Three things the code adds to the figures in the 
 - Standard's 5 days and Hardcore's 10 are fewer than any timer a dungeon of three floors or more can have
   (12.58 days at the least), so with that tier of the upgrade the second resolve is Heretic's alone. The row's
   later tiers take 10 and 15 floors off; a dungeon of one floor has a timer of 11.6 days that can roll as low as
-  9.86, under Hardcore's 10. Whether anything can buy a later tier was not read.
+  9.86, under Hardcore's 10.
+- The later tiers cannot be bought in the game as built, read on 2026-10-09 after the ruling asked: the comment
+  on `FCataclysmCityUpgrade::Tier` in `Empire/CataclysmCityUpgrade.h` says "NOTHING RAISES IT",
+  `UCataclysmCityUpgradeMapping::Make` in `Data/CataclysmCityUpgradeMapping.cpp` sets tier 1 and the row's first
+  value, `UCataclysmEmpireRun::BuyCityUpgrade` sets tier 1 and refuses an upgrade the city already has, and a
+  search of both modules outside tests finds the row's second and third values declared in
+  `Data/CataclysmDataRows.h` and read nowhere; so the one floor case under Hardcore cannot arise today.
 
 **Said first: what this layer does not build.**
 
@@ -135,6 +154,34 @@ Each is a labelled judgement by the coordinating session under the owner's deleg
 8. Dungeon-long state on the character ends with the death, as the design says; add only what is missing.
 9. What is not built is named. Said first above.
 10. The comment on the player's death handling is rewritten to say what a death now does.
+
+### Rulings on the layer as written
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-09, made after
+it read the first commit.
+
+- A. Kept: the dungeon is ended when the character stands back up, 3 seconds after the blow, while it is still
+  marked dead. Said first above, with the reason and the one cost.
+- B, C. Noted as this entry states them: the Heretic figures with the timer's roll, and what the day clock does
+  to a timer that ran out. The writing session was asked to read whether the Explorer upgrade's later tiers can
+  be bought; the Heretic paragraph above says what it found. No code changed.
+- D. Kept: a dungeon bound by number but gone from the map ends the walk and charges the days, with nothing
+  resolved.
+- E. Kept: a death raises the clock's count of resolves for the dungeon.
+- F. Kept: the cheat flag. Said first above, in the engine's words.
+- G. The readme bullet and the new Python check file are accepted. The existing check
+  `test_dying_still_costs_the_empire_no_days` is deleted from `tools/tests/test_game_readme_is_true.py`: it
+  could now only skip, a check that can only skip checks nothing, and the new file holds the opposite claim.
+  The changed trigger text of `test_only_walking_a_dungeon_and_the_console_move_the_empires_day` is accepted.
+- H. Accepted as built: where the player is afterwards. It is first on the owner's play-check list below.
+- I. The literal 5, 10 and 15 in the tests are accepted; they are the design document's figures.
+- The three guard proofs below are registered as written, with predictions of 7, 3 and 6 failed assertions.
+- A change to the tests alone that corrects the new scene set-up, made before the whole suite is run, is
+  covered by this ruling and is reported.
+- If the Heretic test's comparison with 14.8 fails by floating-point error, that is a fault of the test. The
+  comparison already uses a tolerance, and the tolerance is 0.001.
+- The coordinating session read the two edits to the design document and the readme bullet itself and found
+  them as ruled.
 
 ### What was read before writing
 
@@ -262,6 +309,10 @@ of 2026-09-10 and the rulings above; this layer adds no formula, affix or number
 
 ### For the owner's play-check
 
+**First: after a death the player stands on the floor they died on, at its entrance, creatures still there, no
+dungeon bound; the stairs then go down with no bottom and each floor costs a whole day. That is the state a
+clear leaves today (issue #48).**
+
 What a player sees, with the default switch, after typing `Cataclysm.EnterDungeon` and dying:
 
 1. The character falls and lies for 3 seconds, as before.
@@ -323,9 +374,9 @@ Each is a judgement by the writing session, for the coordinating session to conf
    none. It holds the order of the three steps, the switch's default, where the call sits in `Revive`, and that
    the empire asks the kind before it resolves: facts about where a line sits, which the Unreal tests measure
    only in part and which this session could not run.
-10. **The existing check `test_dying_still_costs_the_empire_no_days` was left as it is and now skips.** Its file
-    says a check there fires only while the readme claims something is absent, and the readme no longer does.
-    Not taken: deleting it, or turning it round; the new file holds the positive checks.
+10. **The existing check `test_dying_still_costs_the_empire_no_days` was left as it was in the first commit,
+    where it could only skip.** Ruled otherwise, ruling G above: the second commit deleted it. Nothing else in
+    its file was used by it alone, so nothing else was removed.
 11. **The tests place every dungeon by hand on an emptied run**, with damage and timers the test states. Not
     taken: a dungeon of the run's own first wave, whose depth, damage, kind and timer are rolled.
 12. **The Quest dungeon and Dungeon City tests give those kinds damage they do not carry in the game**, on a
@@ -376,7 +427,8 @@ dungeon rule tests kill one, and stood back up by calling `Revive`.
    player stands at the entrance and not where it died, has its maximum health having had none, and can walk.
 8. `OnHereticADeathInAThreeFloorDungeonResolvesItAtTheDeathAndAgainFromTheDaysCharged`. The set-up asserts 14.8,
    16.4 and 15. Three floors: 15 days, two resolves that cost a city, the clock counts two, the city lost two
-   resolves' defence, the timer is full again. Control: four floors, one resolve, one resolve's defence, and 1.4
+   resolves' defence, the timer is full again at 14.8, compared with a tolerance of 0.001, as every timer in
+   these tests is. Control: four floors, one resolve, one resolve's defence, and 1.4
    days left.
 
 In `Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group `Cataclysm.DungeonModifierEffects`, one,
@@ -417,9 +469,14 @@ the design document's sentence put back to "undecided".
 `test_only_walking_a_dungeon_and_the_console_move_the_empires_day`. Before, it ran while the readme held "Only
 walking a dungeon and the"; now it runs while the readme holds "Only walking a dungeon, dying in one and the".
 What it asserts is unchanged: no file outside the four allowed advances the empire's day. Its message was
-reworded to match. **One existing Python check now skips**: `test_dying_still_costs_the_empire_no_days`, in the
-same file, unchanged, because the readme no longer says dying costs the empire nothing. No existing Unreal test
-was changed.
+reworded to match. **One existing Python check was deleted**, by ruling G:
+`test_dying_still_costs_the_empire_no_days`, in the same file. It asserted that no file outside the empire
+module and the tests names `DeathDayCostFor`, and it ran only while the readme said dying costs the empire
+nothing. The readme no longer says that, so it could only skip; a check that can only skip checks nothing, and
+`tools/tests/test_a_death_ends_the_dungeon.py` holds the opposite claim. A search of the repository for the
+check's name found it in that file and in this entry and nowhere else. The docstring of the check beside it,
+which said dying "costs none here", was corrected in the same commit; no assertion changed. No existing Unreal
+test was changed.
 
 ### Not covered by a test
 
@@ -436,9 +493,10 @@ was changed.
 - The game's own run, found through the game instance. Every test hands the run over through the test seam.
 - More than one player.
 
-### Guard proofs proposed
+### Guard proofs registered
 
-Three, for the registering session. None was run. Each line is counted once in
+Three, registered as written by the ruling above, with predictions of 7, 3 and 6. None was run. Each line is
+counted once in
 `Dungeon/CataclysmDungeonGameMode.cpp`. The lines are given without the tabs they begin with.
 
 1. The resolve. Two tabs: `Run->ResolveDungeonOnDeath(DiedInDungeon);` becomes `FCataclysmDayReport();`. Test:
