@@ -52530,7 +52530,7 @@ bool FCataclysmDarkFloorPanelTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("the dark floor has no chasm"), Mode->ThoseInTheDarkChasmCellsNow().Num(), 0);
-	TestEqual(TEXT("the panel says the dark floor has no chasms and counts the standing"), ThoseInTheDarkPanelLine(Mode),
+	TestEqual(TEXT("the panel says the stairs are sealed and counts the standing"), ThoseInTheDarkPanelLine(Mode),
 			  FString::Printf(TEXT("those in the dark: the dark floor, its stairs are sealed until its creatures are ")
 							  TEXT("slain, %d still standing"),
 							  StandingOnTheDarkFloor));
