@@ -18994,15 +18994,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 												 AngelicStatueCellsStanding().Num(), AngelicWardensNow().Num()));
 	}
 
-	// AND THOSE IN THE DARK: how many chasms this floor has; and on the dark floor a fall leads to, that it has
-	// none and how many of the creatures it placed still stand before its stairs open. Issues #1820 and #41.
+	// AND THOSE IN THE DARK: how many chasms this floor has; and on the dark floor a fall leads to, that its stairs
+	// are sealed until its creatures are slain, with how many still stand. Ruled 2026-10-09: the line says what is
+	// true on that floor. Issues #1820 and #41.
 	const FName ThoseInTheDarkRow(Effects::ThoseInTheDarkKey);
 	if (bOnTheDarkFloor)
 	{
 		Counting.Add(ThoseInTheDarkRow, TheDarkFloorSealsTheStairs()
-			? FString::Printf(TEXT("those in the dark: the dark floor, no chasms, %d still standing"),
+			? FString::Printf(TEXT("those in the dark: the dark floor, its stairs are sealed until its creatures are ")
+							  TEXT("slain, %d still standing"),
 							  LightforgedWallsStanding())
-			: FString(TEXT("those in the dark: the dark floor, no chasms, every creature slain")));
+			: FString(TEXT("those in the dark: the dark floor, every creature slain, its stairs are open")));
 	}
 	else if (FloorBrief.Modifiers.Contains(ThoseInTheDarkRow))
 	{
