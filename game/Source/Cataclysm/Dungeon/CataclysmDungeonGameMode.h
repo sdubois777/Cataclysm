@@ -2123,8 +2123,10 @@ public:
 	 * Lightforged Walls' sections, for the panel, the enemy modifiers and tests. Issues #1820 and #41. Ruled
 	 * 2026-10-08, each a labelled judgement by the coordinating session under the owner's delegation.
 	 *
-	 * `FloorGetsSections` IS THE ONE CONDITION: the floor carries Lightforged Walls, its plan is Halls, it is not a
-	 * Horde arena, and it does not carry Shadowy Enemies. On every other floor the row is the sealed stairs only.
+	 * `FloorGetsSections` IS THE ONE CONDITION: the floor carries Lightforged Walls or Fragmented Reality, its plan
+	 * is Halls, it is not a Horde arena, and it does not carry Shadowy Enemies. On every other floor Lightforged
+	 * Walls is the sealed stairs only and Fragmented Reality does nothing. BARRIERS STAND ONLY ON A FLOOR CARRYING
+	 * LIGHTFORGED WALLS: with Fragmented Reality alone the sections are planned and nothing is closed.
 	 * `FloorSectionsNow` is what the search found for this floor, with no boundaries when it found none or was not
 	 * asked. A BARRIER is the cells of one boundary closed with pillars: barrier i lies between sections i and i + 1,
 	 * and the last section has none, the stairs being its seal.
@@ -2191,6 +2193,27 @@ public:
 	TArray<ACataclysmEnemyCharacter*> AngelicWardensNow() const;
 	bool PlaceAnAngelicStatueOn(FIntPoint Cell);
 	bool AClosedBarrierStandsBetweenSections(int32 One, int32 Other) const;
+
+	/**
+	 * Fragmented Reality, for the panel and tests. Issues #1820 and #41. Ruled 2026-10-08, each a labelled judgement
+	 * by the coordinating session under the owner's delegation; see
+	 * `UCataclysmDungeonModifierEffects::FragmentedRealityKey`.
+	 *
+	 * `FragmentedRealitySectionNow` is the section of this floor that is Fragmented, decided when the floor's
+	 * sections are planned, or `INDEX_NONE` on a floor that does not carry the row or has no sections.
+	 * `FragmentedRealityPairNow` is the pair in force, one of
+	 * `UCataclysmDungeonModifierEffects::FragmentedReality...`, or `INDEX_NONE` while the player is outside the
+	 * section. `FragmentedRealityEntriesSoFar` is how many times the player has entered the section on this floor,
+	 * which is the number the next entry's draw is made with.
+	 *
+	 * `ForceFragmentedRealityPairForTests` IS FOR A TEST AND NOTHING IN PLAY CALLS IT: while it holds a pair, every
+	 * entry draws that pair and not the seeded one. `INDEX_NONE`, the default, leaves the seeded draw. It is not
+	 * cleared by a floor change.
+	 */
+	int32 FragmentedRealitySectionNow() const { return FragmentedRealitySection; }
+	int32 FragmentedRealityPairNow() const { return FragmentedRealityPairApplied; }
+	int32 FragmentedRealityEntriesSoFar() const { return FragmentedRealityEntries; }
+	void ForceFragmentedRealityPairForTests(int32 Pair) { FragmentedRealityForcedPair = Pair; }
 
 	/**
 	 * Those in the Dark: what each placement rule costs on the floor as it stands, FOR A TEST TO LOG. NOTHING IN
@@ -3290,6 +3313,12 @@ private:
 	void StepWarBanner(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Fragmented Reality, on the beat: whether the player stands in the Fragmented section, the draw made on the
+	 * beat they are first found inside, and the pair written on the player when it changed. Issues #1820 and #41.
+	 */
+	void StepFragmentedReality(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Forced Tithes, on every floor and every wave: angels owed if the last altar was left unpaid, the last altar
 	 * forgotten, and this floor's placed at the exit unless it is the dungeon's last. Issues #1820 and #41.
 	 */
@@ -4179,6 +4208,21 @@ private:
 	/** The section and its count that the panel last showed, beside `LightforgedWallsPanelCount`. */
 	int32 LightforgedWallsPanelSection = INDEX_NONE;
 	int32 LightforgedWallsPanelSectionCount = -1;
+
+	/**
+	 * Fragmented Reality: the section of this floor that is Fragmented; how many times the player has entered it on
+	 * this floor; the pair last written on the player, `INDEX_NONE` for none; and the pair a test forces. Issues
+	 * #1820 and #41. The section is decided by `PlanTheSections` and forgotten by `ForgetTheSections`; the entries
+	 * and the applied pair are forgotten with the floor's other applied state in `ApplyFloorRulesToPlayer`, which
+	 * runs after the floor is built.
+	 */
+	int32 FragmentedRealitySection = INDEX_NONE;
+	int32 FragmentedRealityEntries = 0;
+	int32 FragmentedRealityPairApplied = INDEX_NONE;
+	int32 FragmentedRealityForcedPair = INDEX_NONE;
+
+	/** Whether this floor's section barriers are closed when it begins: only on a floor carrying Lightforged Walls. */
+	bool SectionBarriersStandOnThisFloor() const;
 
 	/**
 	 * Called by `BuildFloor` after `PlanTheGatedShortcuts`: forgets the last floor's sections and barriers, and on a

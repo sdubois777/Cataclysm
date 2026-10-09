@@ -133,6 +133,8 @@ const TCHAR* UCataclysmSkillSlots::ManaCostStat = TEXT("mana_cost");
 const TCHAR* UCataclysmSkillSlots::CooldownLengtheningStat =
 	TEXT("cooldown_lengthening");
 
+const TCHAR* UCataclysmSkillSlots::CooldownRecoveryStat = TEXT("cooldown_recovery");
+
 const TCHAR* UCataclysmSkillSlots::LockedStat = TEXT("skill_locked");
 
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)

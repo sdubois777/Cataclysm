@@ -689,10 +689,20 @@ float UCataclysmGameplayAbility::CooldownAfterReduction(
 								  AbilitySystem->GetNumericAttribute(Reduction))
 		: AbilitySystem->GetNumericAttribute(Reduction);
 
+	// AND HOW MUCH FASTER IT RECOVERS, A DIVISOR OF ITS OWN. Issues #1820 and #41, ruled 2026-10-08 for the dungeon
+	// rule Fragmented Reality. `cooldown_recovery` is `FinalCooldown`'s more multiplier, which nothing fed until
+	// this: 50 divides the cooldown by 1.5 whatever the reduction above is, where 50 more reduction would divide by
+	// 1.5 only for a character holding none. Asked with the skill's tags, as the reduction is. The fallback is
+	// nought: the stat has no attribute. FLOORED AT NOUGHT, so a negative sum lengthens nothing.
+	const float Recovery = Cataclysm
+		? Cataclysm->StatForSkill(
+			  FName(UCataclysmSkillSlots::CooldownRecoveryStat), SkillTags, 0.0f)
+		: 0.0f;
+
 	// A PERCENTAGE BECOMES A FRACTION HERE. The stat holds 12 for a 12% affix
 	// and FinalCooldown wants 0.12, and this is the only place the two meet.
-	const float Reduced =
-		UCataclysmCombatAttributeSet::FinalCooldown(BaseCooldown, Percent / 100.0f);
+	const float Reduced = UCataclysmCombatAttributeSet::FinalCooldown(
+		BaseCooldown, Percent / 100.0f, 1.0f + FMath::Max(Recovery, 0.0f) / 100.0f);
 
 	// AND THEN IT IS LENGTHENED, BY A SEPARATE STAT. Issue #1994, ruled
 	// 2026-09-23: Base x (1 + lengthening) / divisor, two factors. Five drawback
