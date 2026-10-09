@@ -12,6 +12,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Player/CataclysmPlayerState.h"
 #include "GameFramework/Pawn.h"
@@ -621,6 +622,13 @@ UCataclysmEquipmentComponent::GatherModifiers(
 		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
 		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Actions);
 
+	// AND WHAT A TEST SAYS IS WORN. Empty in a running game, always, so this
+	// loop adds nothing there. See `SetRowsWornForTests`.
+	for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : RowsWornForTests)
+	{
+		Totals.FindOrAdd(Stat.Key).Append(Stat.Value);
+	}
+
 	return Totals;
 }
 
@@ -741,6 +749,20 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	}
 	TMap<FName, float> Bases = StatBasesFromWeapons();
 
+	// THE CLASS POINTS THE WORN ROWS GRANT, READ NOW AND KEPT. Ruled 2026-10-09.
+	//
+	// BEFORE THE PASSIVE TREE IS ADDED TO `Modifiers` BELOW, AND IT HAS TO BE.
+	// The points decide how much of the tree counts, so they are read from what
+	// the worn items grant and from nothing the tree grants. At this line
+	// `Modifiers` holds exactly what `GatherModifiers` returned: one modifier
+	// for each worn row, each with its own rolled value, which is what lets
+	// each row be rounded down by itself (P2).
+	//
+	// WRITTEN ON EVERY REFRESH, a refresh of a character with no player state
+	// included, so the figure is never left over from different gear.
+	ClassPointsGrantedAtLastRefresh =
+		UCataclysmPassivePoints::GrantedByWornRows(Modifiers);
+
 	// AND THE UNARMED BASE WHILE THE WEAPON STANDS IN THE GROUND. Issue #1166. Attack damage has no base otherwise:
 	// a weapon's damage is a flat line on its base, and `GatherModifiers` has just left the planted weapon's out.
 	// A BASE AND NOT A FLAT LINE, so everything worn elsewhere adds to it and scales it exactly as it did the weapon.
@@ -784,9 +806,31 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 				// THE DAMAGE TYPE DECIDES WHICH TREES COUNT. Points in a tree no
 				// equipped weapon reaches stay spent and add nothing, which is
 				// the project owner's decision of 2026-08-25.
+				//
+				// AND POINTS SPENT ABOVE THE POINTS EARNED ADD NOTHING EITHER,
+				// which is that rule's sibling. The owner, 2026-10-09, accepted
+				// that when gear that granted class points comes off, the points
+				// stay spent and add nothing. So the tree is accumulated from a
+				// COPY of the allocation with the excess left out, last node
+				// first touched first (`ReducedToPointsEarned`). The copy is a
+				// local and is written nowhere: the player state keeps every
+				// point and every capstone choice, and wearing the gear again
+				// counts all of them on the next refresh with no other act.
+				//
+				// THE POINTS EARNED ARE ASKED OF THE PLAYER STATE WITH THE FIGURE
+				// SET ABOVE HANDED TO IT, so the level's and the bosses' points
+				// are added up in one place. Not `PassivePointsAvailable()`:
+				// that reads the component of the pawn the player state holds,
+				// which is this one in play, and this line must not depend on
+				// that being so.
 				const TArray<FName> Carried = {State->GetChosenDamageType()};
+				const int32 PointsEarned = State->PassivePointsEarnedWith(
+					ClassPointsGrantedAtLastRefresh);
+				const FCataclysmPassiveAllocation Counted =
+					UCataclysmPassiveTree::ReducedToPointsEarned(
+						State->GetPassiveAllocation(), PointsEarned);
 				UCataclysmPassiveTree::AccumulateInto(
-					Modifiers, State->GetPassiveAllocation(),
+					Modifiers, Counted,
 					UCataclysmPassiveTree::LoadNodeTable(),
 					UCataclysmPassiveTree::LoadEffectTable(), Carried);
 			}

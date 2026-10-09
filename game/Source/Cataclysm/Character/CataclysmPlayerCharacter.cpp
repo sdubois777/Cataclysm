@@ -3461,6 +3461,22 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowPassives(
 					UCataclysmPassivePoints::FromBossKills(Bosses), Bosses,
 					Bosses == 1 ? TEXT("") : TEXT("s"));
 
+			// AND THE TWO FIGURES OF 2026-10-09, each printed only when it is
+			// not nought, so the output for a character with no such gear is
+			// the two lines it always was. The points worn gear grants are
+			// inside the "earned" figure above; the points adding nothing are
+			// inside the "spent" one.
+			if (const int32 FromGear = PlayerState->PassivePointsFromGear())
+			{
+				Ar.Logf(TEXT("  %d from the gear being worn."), FromGear);
+			}
+			if (const int32 Idle = PlayerState->PassivePointsAddingNothing())
+			{
+				Ar.Logf(TEXT("  %d spent point%s nothing: gear that granted "
+							 "points is no longer worn."),
+						Idle, Idle == 1 ? TEXT(" adds") : TEXT("s add"));
+			}
+
 			const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
 			if (!NodeTable)
 			{
