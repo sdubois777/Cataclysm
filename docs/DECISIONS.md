@@ -504,6 +504,149 @@ cell: its test shows it can, and this measurement shows it did not need to here.
 
 ---
 
+## 2026-10-08 — A row that states a chance of 100 never fails its roll, at the three row-action rolls that had no guard: the cooldown reset, a use's outcome, and a held skill or spell triggered
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (three comparisons and
+their comments), `CataclysmAbilitySystemComponent.h` (one comment), three new tests in
+`CataclysmEnchantmentEffectTests.cpp`. No row, no generator code and no asset is changed. Issue
+[#2201](https://github.com/sdubois777/Cataclysm/issues/2201), which stays open.
+
+### SAID FIRST: WHAT IS NOT SHOWN
+
+- **Nothing here was compiled or run by the session that wrote it.** The C++ and the three tests were written
+  by a second session that does not build Unreal. The enchantment session's build and run are recorded under
+  "THE WINDOW'S RUN" below, and until that section is filled in no test here has been seen to pass or to fail.
+- **The rate of one roll in 32,768 is arithmetic and not a measurement.** It is read from two engine lines and
+  one line of the Windows SDK, quoted below. Nobody counted rolls.
+- **No refusal was ever observed in play or in a test before this change.** The fault was found by reading.
+- **One guard proof is proposed, for the cooldown reset. No proof is proposed or run for a use's outcome or for
+  a held skill triggered**; those two are tested and not proved.
+- **The sites of #2201 outside the three were not read again for this entry**, except two that a search printed:
+  the block negation roll in `CataclysmDamageCalculation.cpp`, which already has the guard, and the comment in
+  `CataclysmGameplayAbility.cpp`, which is left as it is.
+
+### WHAT WAS WRONG
+
+A row action that has a chance draws `FMath::FRandRange(0.0f, 100.0f)` and succeeds when the roll is below the
+chance. In Unreal Engine 5.8 that roll can be exactly 100:
+
+- `GenericPlatformMath.h`, line 611: `FRand()` is documented "Returns a random float between 0 and 1,
+  inclusive" and returns `(Rand() & RandMax) / (float)RandMax`.
+- `UnrealMathUtility.h`, line 315: `FRandRange` is `InMin + (InMax - InMin) * FRand()`.
+- `stdlib.h` of the Windows SDK, line 348: `RAND_MAX` is `0x7fff`, so `FRand()` has 32,768 values and one of
+  them is 1.
+
+A row that states 100, compared strictly, therefore failed on that one roll. A sentence such as "Your special
+ability cooldown is reset when you kill an enemy" states no chance, is written as 100, and should act every
+time.
+
+**Three row-action rolls in `CataclysmAbilitySystemComponent.cpp` had no guard against it:**
+
+| Roll | Where | Before | Now |
+| :-- | :-- | :-- | :-- |
+| a cooldown reset | `RollAndResetCooldowns` | returns with nothing cleared when `Roll >= Action.Percent` | returns only when `Action.Percent < 100.0f && Roll >= Action.Percent` |
+| a use's outcome: no damage, increased damage, hits all nearby, hits its user | `ActOnEvent` | acts when `Roll < Action.Percent` | acts when `Action.Percent >= 100.0f \|\| Roll < Action.Percent` |
+| a held skill or spell triggered | `ActOnEvent` | acts when `Roll < Action.Percent` | acts when `Action.Percent >= 100.0f \|\| Roll < Action.Percent` |
+
+The guard is the one the other row-action rolls of that file already have. Six have it on this head: a status
+on the wearer on a timer, a status on the wearer on an event, a status on another, a repeated skill, a random
+damage over time, and the stun near the dying that the layer below this one added.
+
+`RollAndResetCooldowns` has two callers and both are covered by the one change: the timed step, which ignores
+what it returns, and `ActOnEvent`, which starts the row's trigger cooldown only when the roll succeeded.
+
+### HOW MANY ROWS IT REACHED
+
+Counted on this layer's base, from `game/Data/EnchantmentEffects.csv` (579 rows), by action name, taking a row
+whose Value Low or Value High is 100 or more:
+
+| Roll | Rows on it | Rows that state 100 |
+| :-- | :-- | :-- |
+| a cooldown reset (six action names) | 8 | **4** |
+| a use's outcome (seven action names) | 7 | 0 |
+| a held skill or spell triggered (two action names) | 2 | 0 |
+
+The four: "Using your ultimate ability resets all other skill cooldowns", "Your special ability cooldown is
+reset when you kill an enemy", "Every 20 seconds all your skill cooldowns are instantly reset" and "Hitting a
+staggered enemy resets your heavy attack cooldown". By the arithmetic above, about one reset in 32,768 did not
+happen for a wearer of one of them. The other two rolls are guarded for a row that does not exist yet.
+
+### THE OPTION NOT TAKEN
+
+**#2201 proposes one shared helper, used at every percentage roll, that is right at both ends**:
+`Chance >= 100 || (Chance > 0 && Roll < Chance)`. That was not built here. Ruled 2026-10-08 by the coordinating
+session, a labelled judgement: the smallest change is three lines in the form the file already uses, against a
+rewrite of every row-action roll site of this file to call a new function, with every one of those sites then
+needing its own check that it still acts as it did. The ruling counted eight sites, on `development` 37e86961;
+this head has nine, the three above and the six that have the guard.
+
+**#2201's wider proposal still stands for the sites this layer leaves.** Read from the issue body, at the lines
+it gives for `development` 946d1fb3; not read again here unless said:
+
+- `CataclysmDamageCalculation.cpp`: evasion, critical strike and block. The block negation roll the issue also
+  names is guarded on this head.
+- `CataclysmAilments.cpp`: `AilmentRoll() < Chance`, at the stun pool and at every other ailment.
+- `CataclysmGameplayAbility.cpp`: the cooldown skip, `Roll < Chance`. **Its comment, "a roll of 100 never
+  skips", is left as it is by this layer**, and so is the roll.
+- `CataclysmContagion.cpp`: two comparisons `Roll >= ChancePercent`.
+- `CataclysmVitalAttributeSet.cpp`: one `FRandRange(0, 100) < Chance`.
+- `CataclysmDungeonGameMode.cpp`: about 25 floor-rule roll functions whose callers' comparisons the issue says
+  are not yet read.
+- The other end of the helper, a chance of 0 at a roll of exactly 0, at every site.
+
+### A CHANCE BELOW 100 IS UNCHANGED, AT ITS EDGE AND EVERYWHERE
+
+In all three a roll EQUAL to the chance fails, before and now. A chance of 40 succeeds on rolls from 0 up to but
+not 40, which is 40 in 100 of the range, and a roll of exactly 0 succeeds for any chance above nought. Only a
+chance of 100 or more is compared and not rolled.
+
+**A chance of nought.** The reset returns before it rolls when `Action.Percent <= 0.0f`, as it did. The other
+two have no such line and can be reached by an action whose percent is nought: nothing where a worn row becomes
+an action refuses a value of nought. Such an action then never comes up, because the roll is never below
+nought. Neither is changed. No merged row on any of the three states nought or less (0 of 8, 0 of 7 and 0 of 2).
+
+### Tests
+
+Three, in `CataclysmEnchantmentEffectTests.cpp`, each with its roll pinned at 100. Each first asserts its
+set-up: the wearer exists, the variable can be pinned and reads back the value pinned, the row or action is
+held, and at a roll of 0 it acts.
+
+- `Cataclysm.Enchantments.AResetRowStating100ResetsAtARollOf100AndARowBelow100StillFailsAtItsChance`: the real
+  row "Your special ability cooldown is reset when you kill an enemy" worn, `Cataclysm.CooldownResetRoll` pinned
+  at 100: a kill clears the special slot and heavy still waits. The control: the real row "Blocking an attack
+  has a 20%-40% chance to reset your heavy attack cooldown", worn at 40, does not reset at a roll of 100, does
+  not at a roll of exactly 40, and does at 39.
+  **Without the guard one assertion fails: "a row stating 100, at a roll of 100: a kill clears special"**,
+  because `100 >= 100` returns before anything is cleared.
+- `Cataclysm.Enchantments.AUseRowStating100ComesUpAtARollOf100AndARowAt50StillFailsAtItsChance`: a made-up row
+  that rolls for the use to deal no damage, stating 100, `Cataclysm.UseOutcomeRoll` pinned at 100: the use
+  deals no damage. The control: the same row at 50 leaves the use its damage at a roll of 100 and at a roll of
+  exactly 50, and takes it at 49.9.
+  **Without the guard one assertion fails: "a row stating 100, at a roll of 100: the use deals no damage"**,
+  because `100 < 100` is false and nothing is recorded for the use.
+- `Cataclysm.Enchantments.ATriggerRowStating100TriggersAtARollOf100AndARowAt50StillFailsAtItsChance`: a made-up
+  row that triggers a held skill with a cooldown, stating 100, `Cataclysm.TriggerHeldSkillRoll` pinned at 100:
+  the use records a trigger, for a skill with a cooldown. The control: the same row at 50 records nothing at a
+  roll of 100 and at a roll of exactly 50, and records at 49.9.
+  **Without the guard two assertions fail: "a row stating 100, at a roll of 100: the use records a trigger" and
+  "and it is for a skill with a cooldown"**, because `100 < 100` is false and nothing is recorded for the use.
+
+**No merged test pins one of the three variables at 100 or above**, read by searching every test for each
+variable's name and every value it is set to. The highest values pinned are 41 for the reset, 35 for a use's
+outcome and 25 for a held trigger, each on a row or action below 100, so the guard changes what none of them
+shows.
+
+**Not tested here:** the spell half of the held trigger at 100; the other three outcomes of a use (increased
+damage, hits all nearby, hits its user) at 100; the timed caller of the reset with the roll pinned at 100; a
+chance above 100; what a use or a trigger then does, which the tests of those actions cover with rolls below
+their chance.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-08 — Rule of Chaos draws one of three rule changes for each floor, and the row is Built
 
 **Built and run.** The writing session wrote this layer in four commits: the first with the code, seven
