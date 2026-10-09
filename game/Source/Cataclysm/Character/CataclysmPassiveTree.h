@@ -473,4 +473,71 @@ public:
 		const FCataclysmPassiveAllocation& Allocation,
 		const UDataTable* NodeTable, const UDataTable* EffectTable,
 		const TArray<FName>& DamageTypes);
+
+	//~ More points spent than earned. Ruled 2026-10-09.
+
+	/**
+	 * The allocation with enough points left out that its total is at most
+	 * `PointsEarned`. A copy: the allocation handed in is not changed.
+	 *
+	 * WHEN THIS APPLIES. Worn gear can grant class points
+	 * (`UCataclysmPassivePoints::GrantedByWornRows`). When that gear comes off
+	 * the points it paid for stay spent, and the character has more spent than
+	 * earned. The owner, 2026-10-09, accepted that the points stay spent and add
+	 * nothing. This function says which points those are, and
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` hands its answer to
+	 * `AccumulateInto` in place of the real allocation.
+	 *
+	 * THE LAST NODE FIRST TOUCHED GIVES UP ITS POINTS FIRST (P1). Not the last
+	 * point spent: the game records no order of spending. `Nodes` is in the
+	 * order in which each node got its FIRST point, because
+	 * `FCataclysmPassiveAllocation::Add` appends an entry only for a node's
+	 * first point and raises the count of an entry that exists. The excess is
+	 * taken from the end of that array, node by node, each node giving up as
+	 * many of its points as the excess still needs.
+	 *
+	 * A NODE THAT GIVES UP EVERY POINT IS LEFT OUT OF THE COPY, and a capstone's
+	 * chosen option goes with its entry, so the copy grants nothing for it (P4).
+	 * The real allocation still holds the point and the choice.
+	 *
+	 * AN ALLOCATION WITH NO EXCESS COMES BACK UNCHANGED, entry for entry.
+	 *
+	 * NOTHING MAY WRITE THE ANSWER BACK onto a character (P5). The points stay
+	 * spent, and wearing the gear again gives everything back with no other act.
+	 *
+	 * IT DOES NOT ASK WHETHER WHAT IS LEFT IS STILL A LEGAL TREE. A node may keep
+	 * its points while the node that opened it has given up some of its own.
+	 * `AccumulateInto` does not ask that either: it grants for the points held.
+	 */
+	static FCataclysmPassiveAllocation ReducedToPointsEarned(
+		const FCataclysmPassiveAllocation& Allocation, int32 PointsEarned);
+
+	/** How many spent points add nothing: the total spent less the points
+	 *  earned, and never below nought. */
+	static int32 PointsAddingNothing(const FCataclysmPassiveAllocation& Allocation,
+									 int32 PointsEarned);
+
+	/**
+	 * How many of one node's points add nothing: what it holds less what
+	 * `ReducedToPointsEarned` leaves it. Nought for a node with no entry.
+	 *
+	 * WHAT THE SCREEN MARKS A NODE BY (P6). `DescribeNode` puts the count on the
+	 * node's line and `UCataclysmPassiveTreeWidget` puts it on the node's label.
+	 */
+	static int32 PointsAddingNothingIn(const FCataclysmPassiveAllocation& Allocation,
+									   int32 PointsEarned, FName Node);
+
+	/**
+	 * The line at the top of the passive tree screen: points unspent, points
+	 * earned and the budget; and, when more are spent than earned, how many
+	 * spent points add nothing and why (P6).
+	 *
+	 * HERE AND NOT IN THE WIDGET so that a test with no screen reads the same
+	 * words a player does. `UCataclysmPassiveTreeWidget::PointsText` calls it.
+	 *
+	 * UNSPENT IS NEVER PRINTED BELOW NOUGHT. An overspent character has nothing
+	 * to spend, and the second half of the line gives the figure.
+	 */
+	static FString DescribePoints(const FCataclysmPassiveAllocation& Allocation,
+								  int32 PointsEarned);
 };
