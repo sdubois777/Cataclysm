@@ -424,6 +424,809 @@ bool FCataclysmPassiveFirstBossOnlyTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
+// Class points granted by worn gear, and points spent above the points earned.
+// Ruled 2026-10-09.
+//
+// WHAT THESE GUARD. A worn row can grant class points on the stat
+// `class_points_granted`. Points spent with them stay spent when the gear comes
+// off, and the excess adds nothing: the tree is accumulated from a copy of the
+// allocation with the excess left out, LAST NODE FIRST TOUCHED first. Nothing is
+// taken out of the character's own allocation.
+//
+// NO ROW IN THE GAME'S DATA GRANTS THE STAT YET, so no test here wears a real
+// enchantment. The tests on a real character put the row on through
+// `UCataclysmEquipmentComponent::SetRowsWornForTests`, which adds a modifier to
+// what `GatherModifiers` returns; everything after that is the game's own code.
+// What they do not cover is the walk from a row of `EnchantmentEffects.csv` to
+// that modifier, which is `AccumulateEnchantmentsInto` and has tests of its own.
+//
+// ONE ACTOR IN EACH WORLD, so nothing here depends on where anything stands.
+//
+// A STAT LINE IS READ AS THE MODIFIERS THE PASSIVE TREE PUT ON ONE STAT, summed,
+// and never as the stat's finished value: a spawned player has a class line and
+// attributes of its own, and those are not this change's.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmClassPointsFromGearTest
+{
+	/** Four nodes of the real Masochist tree. The root opens the next two, and
+	 *  Pain Tolerance at six points opens the fourth. */
+	const FName Root(TEXT("Masochist_basic_spine_000"));
+	const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
+	const FName WillingFlesh(TEXT("Masochist_basic_spine_002"));
+	const FName Resonance(TEXT("Masochist_basic_spine_003"));
+
+	/** One worn row granting this many class points: flat, with no condition,
+	 *  no scale and no tag, which is the only shape the game counts. */
+	FCataclysmStatModifier GrantingRow(float Value)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Value;
+		return Row;
+	}
+
+	/** Worn modifiers holding these rows on `class_points_granted` and nothing else. */
+	TMap<FName, TArray<FCataclysmStatModifier>> WornRows(
+		const TArray<FCataclysmStatModifier>& Rows)
+	{
+		TMap<FName, TArray<FCataclysmStatModifier>> Worn;
+		if (Rows.Num() > 0)
+		{
+			Worn.Add(FName(UCataclysmPassivePoints::GrantedByGearStat), Rows);
+		}
+		return Worn;
+	}
+
+	/** A possessed Demonic player and the parts of it these tests read. */
+	struct FGearedPlayer
+	{
+		ACataclysmPlayerCharacter* Character = nullptr;
+		ACataclysmPlayerState* State = nullptr;
+		UCataclysmEquipmentComponent* Equipment = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+
+		bool IsComplete() const
+		{
+			return Character && State && Equipment && AbilitySystem;
+		}
+
+		/** Put these rows on, or none, and refresh as a change of gear does. */
+		void Wear(const TArray<FCataclysmStatModifier>& Rows) const
+		{
+			Equipment->SetRowsWornForTests(WornRows(Rows));
+			Equipment->RefreshAttributes(AbilitySystem);
+		}
+
+		/** The values of the modifiers the passive tree put on one stat, summed.
+		 *  Nought for a stat the stat line does not hold. */
+		float FromTheTreeOn(const TCHAR* Stat) const
+		{
+			const FCataclysmStatInputs* Inputs =
+				AbilitySystem->GetStatInputs(FName(Stat));
+			float Sum = 0.0f;
+			if (Inputs)
+			{
+				for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+				{
+					if (Modifier.Source == ECataclysmModifierSource::PassiveKeystone)
+					{
+						Sum += Modifier.Value;
+					}
+				}
+			}
+			return Sum;
+		}
+	};
+
+	/** That player at this level, Demonic so the Masochist tree is reachable,
+	 *  wearing nothing, refreshed once. */
+	FGearedPlayer SpawnAtLevel(UWorld* World, int32 Level)
+	{
+		FGearedPlayer Made;
+		Made.Character = CataclysmPassiveTest::SpawnPossessedPlayer(World);
+		if (!Made.Character)
+		{
+			return Made;
+		}
+		Made.State = Made.Character->GetPlayerState<ACataclysmPlayerState>();
+		Made.Equipment = Made.Character->GetEquipment();
+		Made.AbilitySystem = Made.State
+			? Made.State->GetCataclysmAbilitySystemComponent() : nullptr;
+		if (Made.IsComplete())
+		{
+			Made.State->SetCreationChoice(FName(TEXT("Greataxe")),
+										  FName(TEXT("Demonic")));
+			Made.State->SetLevelAndExperience(Level, 0);
+			Made.Equipment->RefreshAttributes(Made.AbilitySystem);
+		}
+		return Made;
+	}
+
+	/** What one real node grants per point on one stat, or -1 when the effect
+	 *  table has no such row. */
+	float PerPointOn(FName Node, const TCHAR* Stat)
+	{
+		for (const FCataclysmPassiveEffectRow* Effect :
+			 UCataclysmPassiveTree::EffectsFor(
+				 UCataclysmPassiveTree::LoadEffectTable(), Node))
+		{
+			if (Effect && Effect->Stat == Stat && Effect->Condition.IsEmpty()
+				&& Effect->Scale.IsEmpty() && Effect->MinPoints == 0)
+			{
+				return Effect->ValuePerPoint;
+			}
+		}
+		return -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsExcessFromTheEndTest,
+	"Cataclysm.Passives.ClassPointsFromGear.TheExcessIsTakenFromTheLastNodeFirstTouched",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `UCataclysmPassiveTree::ReducedToPointsEarned`, with no world and no table.
+ *
+ * Three nodes touched in the order A, B, C and holding 3, 5 and 2. A's third
+ * point is spent LAST, after C's, and A is still the first entry: the order is
+ * the order of first points. An excess is taken from C, then from B, then from
+ * A; no excess returns the same entries; an excess of everything returns none.
+ * A capstone at the end gives up its point and its option in the copy, and the
+ * allocation handed in keeps both.
+ */
+bool FCataclysmClassPointsExcessFromTheEndTest::RunTest(const FString&)
+{
+	const FName A(TEXT("Test_a"));
+	const FName B(TEXT("Test_b"));
+	const FName C(TEXT("Test_c"));
+
+	FCataclysmPassiveAllocation Spent;
+	Spent.Add(A, 2);
+	Spent.Add(B, 5);
+	Spent.Add(C, 2);
+	// THE LAST POINT SPENT GOES INTO THE FIRST NODE TOUCHED.
+	Spent.Add(A, 1);
+
+	if (!TestEqual(TEXT("set-up: three entries"), Spent.Nodes.Num(), 3)
+		|| !TestEqual(TEXT("set-up: ten points spent"), Spent.Total(), 10)
+		|| !TestEqual(TEXT("set-up: A is the first entry though its third point "
+						   "was the last point spent"), Spent.Nodes[0].Node, A)
+		|| !TestEqual(TEXT("set-up: A holds 3"), Spent.Nodes[0].Points, 3)
+		|| !TestEqual(TEXT("set-up: C is the last entry"), Spent.Nodes[2].Node, C))
+	{
+		return false;
+	}
+
+	using FTree = UCataclysmPassiveTree;
+
+	// NO EXCESS: THE SAME ENTRIES IN THE SAME ORDER.
+	for (const int32 Earned : {10, 11, 230})
+	{
+		const FCataclysmPassiveAllocation Same =
+			FTree::ReducedToPointsEarned(Spent, Earned);
+		TestEqual(*FString::Printf(TEXT("earned %d: three entries"), Earned),
+				  Same.Nodes.Num(), 3);
+		TestEqual(*FString::Printf(TEXT("earned %d: A keeps 3"), Earned),
+				  Same.PointsIn(A), 3);
+		TestEqual(*FString::Printf(TEXT("earned %d: B keeps 5"), Earned),
+				  Same.PointsIn(B), 5);
+		TestEqual(*FString::Printf(TEXT("earned %d: C keeps 2"), Earned),
+				  Same.PointsIn(C), 2);
+	}
+
+	// AN EXCESS OF ONE COMES OUT OF C, the last node first touched, and not out
+	// of A, which holds the last point spent.
+	const FCataclysmPassiveAllocation OneOff = FTree::ReducedToPointsEarned(Spent, 9);
+	TestEqual(TEXT("earned 9: the total is 9"), OneOff.Total(), 9);
+	TestEqual(TEXT("earned 9: C gives up one"), OneOff.PointsIn(C), 1);
+	TestEqual(TEXT("earned 9: B keeps 5"), OneOff.PointsIn(B), 5);
+	TestEqual(TEXT("earned 9: A keeps 3, though its third point was spent last"),
+			  OneOff.PointsIn(A), 3);
+
+	// AN EXCESS LARGER THAN C REACHES INTO B, and C has no entry in the copy.
+	const FCataclysmPassiveAllocation ThreeOff =
+		FTree::ReducedToPointsEarned(Spent, 7);
+	TestEqual(TEXT("earned 7: the total is 7"), ThreeOff.Total(), 7);
+	TestEqual(TEXT("earned 7: two entries are left"), ThreeOff.Nodes.Num(), 2);
+	TestEqual(TEXT("earned 7: C holds nothing"), ThreeOff.PointsIn(C), 0);
+	TestEqual(TEXT("earned 7: B gives up one"), ThreeOff.PointsIn(B), 4);
+	TestEqual(TEXT("earned 7: A keeps 3"), ThreeOff.PointsIn(A), 3);
+
+	// AN EXCESS OF EVERYTHING RETURNS NOTHING, and a figure below nought is read
+	// as nought.
+	TestEqual(TEXT("earned 0: no entry is left"),
+			  FTree::ReducedToPointsEarned(Spent, 0).Nodes.Num(), 0);
+	TestEqual(TEXT("earned -5: no entry is left"),
+			  FTree::ReducedToPointsEarned(Spent, -5).Nodes.Num(), 0);
+
+	// AND THE ALLOCATION HANDED IN IS AS IT WAS AFTER ALL OF THAT.
+	TestEqual(TEXT("the allocation handed in still holds ten points"),
+			  Spent.Total(), 10);
+	TestEqual(TEXT("in three entries"), Spent.Nodes.Num(), 3);
+
+	// A CAPSTONE AT THE END. Its entry holds a point and the option chosen.
+	const FName Capstone(TEXT("Test_capstone"));
+	FCataclysmPassiveAllocation WithCapstone;
+	WithCapstone.Add(A, 4);
+	WithCapstone.SetChosenOption(Capstone, 2);
+	WithCapstone.Add(Capstone, 1);
+	if (!TestEqual(TEXT("set-up: the capstone is the last entry"),
+				   WithCapstone.Nodes.Last().Node, Capstone)
+		|| !TestEqual(TEXT("set-up: it holds its point"),
+					  WithCapstone.PointsIn(Capstone), 1)
+		|| !TestEqual(TEXT("set-up: and option 2"),
+					  WithCapstone.ChosenOptionIn(Capstone), 2))
+	{
+		return false;
+	}
+
+	const FCataclysmPassiveAllocation NoCapstone =
+		FTree::ReducedToPointsEarned(WithCapstone, 4);
+	TestEqual(TEXT("in the copy the capstone holds no point"),
+			  NoCapstone.PointsIn(Capstone), 0);
+	TestEqual(TEXT("and no option, so the copy grants nothing for it"),
+			  NoCapstone.ChosenOptionIn(Capstone), 0);
+	TestEqual(TEXT("and has no entry at all"), NoCapstone.Nodes.Num(), 1);
+	TestEqual(TEXT("the node before it keeps its 4"), NoCapstone.PointsIn(A), 4);
+	TestEqual(TEXT("the real allocation still holds the capstone's point"),
+			  WithCapstone.PointsIn(Capstone), 1);
+	TestEqual(TEXT("and its choice of option 2"),
+			  WithCapstone.ChosenOptionIn(Capstone), 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsRowsRoundDownTest,
+	"Cataclysm.Passives.ClassPointsFromGear.EachWornRowIsRoundedDownByItselfAndAddedToThePointsEarned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character wearing a granting row of 7.9 has earned 7 more points; wearing
+ * rows of 7.9 and 3.9 it has earned 10 more, not the 11 their sum rounds down
+ * to. A row the game cannot count grants nothing. The figure is what the last
+ * refresh read, it is nought again when the rows come off, and a player state
+ * whose pawn is gone reads nought.
+ */
+bool FCataclysmClassPointsRowsRoundDownTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassPointsFromGearTest;
+
+	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+
+	const int32 Before = Player.State->PassivePointsAvailable();
+	if (!TestEqual(TEXT("set-up: a level 10 character with no boss kill and no "
+						"gear has earned the level's 15"),
+				   Before, UCataclysmPassivePoints::FromLevel(10))
+		|| !TestEqual(TEXT("set-up: and reads no point from gear"),
+					  Player.State->PassivePointsFromGear(), 0))
+	{
+		return false;
+	}
+
+	// THE READER BY ITSELF FIRST, on the worn modifiers and with no character.
+	TestEqual(TEXT("worn rows of 7.9 and 3.9 grant 10"),
+			  UCataclysmPassivePoints::GrantedByWornRows(
+				  WornRows({GrantingRow(7.9f), GrantingRow(3.9f)})), 10);
+	TestEqual(TEXT("and no worn row grants none"),
+			  UCataclysmPassivePoints::GrantedByWornRows(WornRows({})), 0);
+
+	Player.Wear({GrantingRow(7.9f)});
+	TestEqual(TEXT("one row of 7.9: 7 points from gear"),
+			  Player.State->PassivePointsFromGear(), 7);
+	TestEqual(TEXT("one row of 7.9: 7 more points earned"),
+			  Player.State->PassivePointsAvailable(), Before + 7);
+	TestEqual(TEXT("and nothing is spent, so every point earned is unspent"),
+			  Player.State->PassivePointsUnspent(), Before + 7);
+
+	Player.Wear({GrantingRow(7.9f), GrantingRow(3.9f)});
+	TestEqual(TEXT("rows of 7.9 and 3.9: 10 more points earned, not 11"),
+			  Player.State->PassivePointsAvailable(), Before + 10);
+
+	// ROWS THE GAME CANNOT COUNT, each beside a row of 5 that it can, so a
+	// reading of 5 says the other row was seen and left out.
+	FCataclysmStatModifier Increased = GrantingRow(9.0f);
+	Increased.Bucket = ECataclysmStatBucket::Increased;
+	FCataclysmStatModifier Conditioned = GrantingRow(9.0f);
+	Conditioned.Condition = ECataclysmStatCondition::HealthBelowPercent;
+	Conditioned.ConditionValue = 50.0f;
+	FCataclysmStatModifier Scaled = GrantingRow(9.0f);
+	Scaled.Scale = ECataclysmStatScale::PerClassPointSpent;
+	Scaled.ScaleStep = 10.0f;
+	const FCataclysmStatModifier BelowOne = GrantingRow(0.9f);
+	const FCataclysmStatModifier BelowNought = GrantingRow(-4.0f);
+	for (const FCataclysmStatModifier& Uncounted :
+		 {Increased, Conditioned, Scaled, BelowOne, BelowNought})
+	{
+		Player.Wear({GrantingRow(5.0f), Uncounted});
+		TestEqual(TEXT("a row that is not flat, or is conditioned, or is "
+					   "scaled, or is below 1, grants nothing beside a row of 5"),
+				  Player.State->PassivePointsAvailable(), Before + 5);
+	}
+
+	// THE FIGURE IS WHAT THE LAST REFRESH READ. Taking the rows off without a
+	// refresh leaves it; the refresh every change of gear runs puts it right.
+	Player.Wear({GrantingRow(7.9f)});
+	Player.Equipment->SetRowsWornForTests(
+		TMap<FName, TArray<FCataclysmStatModifier>>());
+	TestEqual(TEXT("before the refresh the figure is still the last refresh's"),
+			  Player.State->PassivePointsFromGear(), 7);
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and after it the rows that came off grant nothing"),
+			  Player.State->PassivePointsAvailable(), Before);
+
+	// A PLAYER STATE WITH NO PAWN READS NOUGHT, one that never had a pawn and
+	// one whose pawn was wearing a granting row when it was destroyed.
+	ACataclysmPlayerState* Alone = World->SpawnActor<ACataclysmPlayerState>();
+	if (TestNotNull(TEXT("a player state with no pawn"), Alone))
+	{
+		TestEqual(TEXT("a player state that never had a pawn reads no point "
+					   "from gear"), Alone->PassivePointsFromGear(), 0);
+	}
+
+	Player.Wear({GrantingRow(7.9f)});
+	if (!TestEqual(TEXT("set-up: the pawn wears a row of 7.9 again"),
+				   Player.State->PassivePointsAvailable(), Before + 7))
+	{
+		return false;
+	}
+	Player.Character->Destroy();
+	TestNull(TEXT("the player state holds no pawn once its pawn is destroyed"),
+			 Player.State->GetPawn());
+	TestEqual(TEXT("and reads no point from the gear that pawn wore"),
+			  Player.State->PassivePointsAvailable(), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsGearComesOffTest,
+	"Cataclysm.Passives.ClassPointsFromGear.PointsSpentWithGearStaySpentAndAddNothingWhileItIsOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Through the real refresh, on a real level 10 character with the real tables.
+ *
+ * It spends its 15 points in three Masochist nodes. A worn row of 7.9 grants 7
+ * more and it spends 6 of them in Willing Flesh, the last node first touched,
+ * through `SpendPassivePoint`. The row comes off: all 21 points are still
+ * spent, Willing Flesh's increase to health regeneration is off the stat line,
+ * Pain Tolerance's increase to maximum health is still on it, and the scale
+ * `class_points_spent` still reads 21. A smaller row of 3.9 puts three of the
+ * six back. The first row goes back on and all six count again with no other
+ * act.
+ */
+bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassPointsFromGearTest;
+
+	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+
+	// WHAT THE TWO NODES ARE AUTHORED AS, read from the table the game loads.
+	const float HealthPerPoint = PerPointOn(PainTolerance, TEXT("max_health"));
+	const float RegenPerPoint = PerPointOn(WillingFlesh, TEXT("health_regen"));
+	if (!TestTrue(TEXT("set-up: Pain Tolerance has an unconditioned row on "
+					   "max_health worth something a point"), HealthPerPoint > 0.0f)
+		|| !TestTrue(TEXT("set-up: Willing Flesh has an unconditioned row on "
+						  "health_regen worth something a point"),
+					 RegenPerPoint > 0.0f))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("set-up: a level 10 character has earned 15"),
+				   Player.State->PassivePointsAvailable(), 15)
+		|| !TestTrue(TEXT("set-up: and reaches the Masochist tree"),
+					 Player.State->ReachableTrees().Contains(TEXT("Masochist"))))
+	{
+		return false;
+	}
+
+	// THE LEVEL'S 15 POINTS: the root, Pain Tolerance in full, and two in the
+	// node Pain Tolerance opens.
+	FCataclysmPassiveAllocation Levels;
+	Levels.Add(Root, 1);
+	Levels.Add(PainTolerance, 12);
+	Levels.Add(Resonance, 2);
+	Player.State->SetPassiveAllocation(Levels, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	if (!TestEqual(TEXT("set-up: 15 points are spent"),
+				   Player.State->GetPassiveAllocation().Total(), 15)
+		|| !TestEqual(TEXT("set-up: none is unspent"),
+					  Player.State->PassivePointsUnspent(), 0)
+		|| !TestEqual(TEXT("set-up: Pain Tolerance's 12 points are on the stat "
+						   "line as its increase to maximum health"),
+					  Player.FromTheTreeOn(TEXT("max_health")),
+					  12.0f * HealthPerPoint, 0.001f)
+		|| !TestEqual(TEXT("set-up: and the tree puts nothing on health "
+						   "regeneration yet"),
+					  Player.FromTheTreeOn(TEXT("health_regen")), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	FString Reason;
+	TestFalse(TEXT("with every point spent, Willing Flesh is refused"),
+			  Player.State->SpendPassivePoint(WillingFlesh, Reason));
+	TestEqual(TEXT("in the words for a character with nothing left"), Reason,
+			  FString(TEXT("No passive points left. 15 earned and all of them "
+						   "spent.")));
+
+	// THE GEAR GOES ON AND ITS POINTS ARE SPENT, one at a time, as a player does.
+	Player.Wear({GrantingRow(7.9f)});
+	if (!TestEqual(TEXT("set-up: the row of 7.9 makes it 22 earned"),
+				   Player.State->PassivePointsAvailable(), 22))
+	{
+		return false;
+	}
+	for (int32 Point = 1; Point <= 6; ++Point)
+	{
+		Reason.Empty();
+		if (!TestTrue(*FString::Printf(TEXT("point %d of 6 goes into Willing "
+											"Flesh"), Point),
+					  Player.State->SpendPassivePoint(WillingFlesh, Reason)))
+		{
+			AddError(Reason);
+			return false;
+		}
+	}
+
+	const FCataclysmPassiveAllocation& Held = Player.State->GetPassiveAllocation();
+	if (!TestEqual(TEXT("set-up: 21 points are spent"), Held.Total(), 21)
+		|| !TestEqual(TEXT("set-up: Willing Flesh is the last node first touched"),
+					  Held.Nodes.Last().Node, WillingFlesh)
+		|| !TestEqual(TEXT("set-up: and holds 6"), Held.Nodes.Last().Points, 6))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the gear on, Willing Flesh's 6 points are on the stat "
+				   "line as its increase to health regeneration"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
+			  0.001f);
+	TestEqual(TEXT("and no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+
+	// THE GEAR COMES OFF.
+	Player.Wear({});
+	TestEqual(TEXT("gear off: 15 are earned again"),
+			  Player.State->PassivePointsAvailable(), 15);
+	TestEqual(TEXT("gear off: all 21 points are still spent"),
+			  Player.State->GetPassiveAllocation().Total(), 21);
+	TestEqual(TEXT("gear off: Willing Flesh still holds its 6 on the character"),
+			  Player.State->GetPassiveAllocation().PointsIn(WillingFlesh), 6);
+	TestEqual(TEXT("gear off: 6 spent points add nothing"),
+			  Player.State->PassivePointsAddingNothing(), 6);
+	TestEqual(TEXT("gear off: and none is unspent, not minus 6"),
+			  Player.State->PassivePointsUnspent(), 0);
+	TestEqual(TEXT("gear off: the stat line holds nothing of what Willing "
+				   "Flesh, the last node first touched, gave"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 0.0f, 0.001f);
+	TestEqual(TEXT("gear off: Pain Tolerance, touched earlier, is still on the "
+				   "stat line in full"),
+			  Player.FromTheTreeOn(TEXT("max_health")), 12.0f * HealthPerPoint,
+			  0.001f);
+	TestEqual(TEXT("gear off: class_points_spent still counts every point, the "
+				   "6 that add nothing included"),
+			  Player.AbilitySystem->CurrentConditions().ClassPointsSpent, 21);
+
+	// SPENDING IS REFUSED WHILE MORE IS SPENT THAN EARNED, in a sentence that
+	// says why. Resonance holds 2 of 12 and is open, so nothing else refuses it.
+	Reason.Empty();
+	TestFalse(TEXT("gear off: a point into Cataclysmic Resonance is refused"),
+			  Player.State->SpendPassivePoint(Resonance, Reason));
+	TestEqual(TEXT("gear off: and the refusal says how many are spent and "
+				   "earned, and why"), Reason,
+			  FString(TEXT("No passive points left. 21 are spent and 15 are "
+						   "earned, so 6 spent points add nothing: gear that "
+						   "granted points is no longer worn. Nothing can be "
+						   "spent until that gear is worn again or 7 more are "
+						   "earned.")));
+	TestEqual(TEXT("gear off: the refused point was not spent"),
+			  Player.State->GetPassiveAllocation().Total(), 21);
+
+	// A SMALLER ROW PUTS BACK AS MANY POINTS AS IT GRANTS: 3.9 is 3, so 18 are
+	// earned and three of Willing Flesh's six count.
+	Player.Wear({GrantingRow(3.9f)});
+	TestEqual(TEXT("a row of 3.9: 3 of Willing Flesh's 6 points are on the "
+				   "stat line"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 3.0f * RegenPerPoint,
+			  0.001f);
+	TestEqual(TEXT("a row of 3.9: 3 spent points add nothing"),
+			  Player.State->PassivePointsAddingNothing(), 3);
+
+	// THE FIRST ROW GOES BACK ON, AND NOTHING ELSE IS DONE.
+	Player.Wear({GrantingRow(7.9f)});
+	TestEqual(TEXT("gear back on: all 6 of Willing Flesh's points are on the "
+				   "stat line again"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
+			  0.001f);
+	TestEqual(TEXT("gear back on: Pain Tolerance is as it was"),
+			  Player.FromTheTreeOn(TEXT("max_health")), 12.0f * HealthPerPoint,
+			  0.001f);
+	TestEqual(TEXT("gear back on: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+	TestEqual(TEXT("gear back on: 21 are spent, as they were throughout"),
+			  Player.State->GetPassiveAllocation().Total(), 21);
+
+	// AND SPENDING IS ALLOWED AGAIN, for the one point of the seven not spent.
+	Reason.Empty();
+	if (!TestTrue(TEXT("gear back on: the 22nd point goes into Cataclysmic "
+					   "Resonance"),
+				  Player.State->SpendPassivePoint(Resonance, Reason)))
+	{
+		AddError(Reason);
+	}
+	TestEqual(TEXT("gear back on: which makes 22 spent"),
+			  Player.State->GetPassiveAllocation().Total(), 22);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsSpendingRefusedTest,
+	"Cataclysm.Passives.ClassPointsFromGear.SpendingIsRefusedWhileMoreIsSpentThanEarned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `UCataclysmPassiveTree::Spend` on the small tree this file builds. Eight
+ * points are spent. With 6 earned a ninth is refused in the sentence that says
+ * why, and nothing is spent; with 8 earned it is refused in the sentence that
+ * was there before; with 9 earned it is taken. The node asked for is open and
+ * not full, so the points are the only thing that can refuse it.
+ */
+bool FCataclysmClassPointsSpendingRefusedTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	const UDataTable* Nodes = MakeNodeTable(*this);
+	const UDataTable* Edges = MakeEdgeTable(*this);
+	if (!Nodes || !Edges)
+	{
+		return false;
+	}
+
+	// The root, Cruelty in full, and two of Confluence's three.
+	FCataclysmPassiveAllocation Spent;
+	Spent.Add(FName(TEXT("Ravager_root")), 1);
+	Spent.Add(FName(TEXT("Ravager_mid")), 5);
+	Spent.Add(FName(TEXT("Ravager_joined")), 2);
+	const FName Joined(TEXT("Ravager_joined"));
+
+	if (!TestEqual(TEXT("set-up: eight points are spent"), Spent.Total(), 8)
+		|| !TestEqual(TEXT("set-up: with points to spare, Confluence takes "
+						   "another, so nothing but the points can refuse it"),
+					  UCataclysmPassiveTree::RefusalForSpending(
+						  Nodes, Edges, Spent, Joined, 100), FString()))
+	{
+		return false;
+	}
+
+	FString Reason;
+	TestFalse(TEXT("8 spent and 6 earned: a ninth point is refused"),
+			  UCataclysmPassiveTree::Spend(Nodes, Edges, Spent, Joined, 6, Reason));
+	TestEqual(TEXT("in the sentence that says why"), Reason,
+			  FString(TEXT("No passive points left. 8 are spent and 6 are "
+						   "earned, so 2 spent points add nothing: gear that "
+						   "granted points is no longer worn. Nothing can be "
+						   "spent until that gear is worn again or 3 more are "
+						   "earned.")));
+	TestEqual(TEXT("and nothing was spent"), Spent.Total(), 8);
+
+	Reason.Empty();
+	TestFalse(TEXT("8 spent and 7 earned: refused"),
+			  UCataclysmPassiveTree::Spend(Nodes, Edges, Spent, Joined, 7, Reason));
+	TestEqual(TEXT("and one point is written as one point"), Reason,
+			  FString(TEXT("No passive points left. 8 are spent and 7 are "
+						   "earned, so 1 spent point adds nothing: gear that "
+						   "granted points is no longer worn. Nothing can be "
+						   "spent until that gear is worn again or 2 more are "
+						   "earned.")));
+
+	// THE CONTROL: SPENT EQUAL TO EARNED IS THE REFUSAL THAT WAS ALREADY THERE.
+	Reason.Empty();
+	TestFalse(TEXT("8 spent and 8 earned: refused"),
+			  UCataclysmPassiveTree::Spend(Nodes, Edges, Spent, Joined, 8, Reason));
+	TestEqual(TEXT("in the sentence for a character with nothing left"), Reason,
+			  FString(TEXT("No passive points left. 8 earned and all of them "
+						   "spent.")));
+
+	// AND WITH THE POINT EARNED AGAIN IT IS TAKEN.
+	Reason.Empty();
+	if (!TestTrue(TEXT("8 spent and 9 earned: the ninth point is taken"),
+				  UCataclysmPassiveTree::Spend(Nodes, Edges, Spent, Joined, 9,
+											   Reason)))
+	{
+		AddError(Reason);
+	}
+	TestEqual(TEXT("which makes nine spent"), Spent.Total(), 9);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsScreenSaysTest,
+	"Cataclysm.Passives.ClassPointsFromGear.TheScreenSaysWhichPointsAddNothingAndWhy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * What the tree screen says, from the functions it calls: how many points add
+ * nothing in total and in each node, the points line, a node's line, and on a
+ * real character the line the widget prints and the label and tool tip it puts
+ * on a node.
+ *
+ * WHAT IS NOT SEEN. That any of it is drawn: a headless test has no Widget
+ * Blueprint. The widget's button is one this test made, described by the
+ * function the screen's own panels run (`DescribeButtonForTests`).
+ */
+bool FCataclysmClassPointsScreenSaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmClassPointsFromGearTest;
+	using FTree = UCataclysmPassiveTree;
+
+	const UDataTable* Nodes = MakeNodeTable(*this);
+	const UDataTable* Edges = MakeEdgeTable(*this);
+	if (!Nodes || !Edges)
+	{
+		return false;
+	}
+
+	const FName TreeRoot(TEXT("Ravager_root"));
+	const FName Mid(TEXT("Ravager_mid"));
+	const FName Side(TEXT("Ravager_side"));
+
+	FCataclysmPassiveAllocation Spent;
+	Spent.Add(TreeRoot, 1);
+	Spent.Add(Mid, 5);
+	Spent.Add(Side, 2);
+	if (!TestEqual(TEXT("set-up: eight points in three nodes"), Spent.Total(), 8)
+		|| !TestEqual(TEXT("set-up: Sidepath is the last node first touched"),
+					  Spent.Nodes.Last().Node, Side))
+	{
+		return false;
+	}
+
+	// THE COUNTS, IN TOTAL AND FOR EACH NODE.
+	TestEqual(TEXT("8 earned: no point adds nothing"),
+			  FTree::PointsAddingNothing(Spent, 8), 0);
+	TestEqual(TEXT("8 earned: none in Sidepath"),
+			  FTree::PointsAddingNothingIn(Spent, 8, Side), 0);
+	TestEqual(TEXT("5 earned: 3 points add nothing"),
+			  FTree::PointsAddingNothing(Spent, 5), 3);
+	TestEqual(TEXT("5 earned: both of Sidepath's"),
+			  FTree::PointsAddingNothingIn(Spent, 5, Side), 2);
+	TestEqual(TEXT("5 earned: one of Cruelty's five"),
+			  FTree::PointsAddingNothingIn(Spent, 5, Mid), 1);
+	TestEqual(TEXT("5 earned: none of the root's"),
+			  FTree::PointsAddingNothingIn(Spent, 5, TreeRoot), 0);
+	TestEqual(TEXT("5 earned: none in a node with no entry"),
+			  FTree::PointsAddingNothingIn(Spent, 5, FName(TEXT("Ravager_low"))), 0);
+	TestEqual(TEXT("5 earned: the three nodes' counts are the total"),
+			  FTree::PointsAddingNothingIn(Spent, 5, TreeRoot)
+				  + FTree::PointsAddingNothingIn(Spent, 5, Mid)
+				  + FTree::PointsAddingNothingIn(Spent, 5, Side),
+			  FTree::PointsAddingNothing(Spent, 5));
+
+	// THE POINTS LINE.
+	TestEqual(TEXT("10 earned: the line is the one it always was"),
+			  FTree::DescribePoints(Spent, 10),
+			  FString(TEXT("Passive points    2 unspent of 10 earned    the "
+						   "budget is 230")));
+	TestEqual(TEXT("8 earned: nothing unspent and nothing more said"),
+			  FTree::DescribePoints(Spent, 8),
+			  FString(TEXT("Passive points    0 unspent of 8 earned    the "
+						   "budget is 230")));
+	TestEqual(TEXT("5 earned: the line says 3 points add nothing, and why"),
+			  FTree::DescribePoints(Spent, 5),
+			  FString(TEXT("Passive points    0 unspent of 5 earned    the "
+						   "budget is 230    3 spent points add nothing: gear "
+						   "that granted points is no longer worn")));
+	TestEqual(TEXT("7 earned: one point is written as one point"),
+			  FTree::DescribePoints(Spent, 7),
+			  FString(TEXT("Passive points    0 unspent of 7 earned    the "
+						   "budget is 230    1 spent point adds nothing: gear "
+						   "that granted points is no longer worn")));
+
+	// A NODE'S LINE. The count that adds nothing comes straight after the
+	// node's own count. The refusal that follows it on the line says "add
+	// nothing" for the whole character, so these look for "of these add".
+	TestTrue(TEXT("5 earned: Sidepath's line says both of its points add nothing"),
+			 FTree::DescribeNode(Nodes, Edges, Spent, Side, 5)
+				 .StartsWith(TEXT("Sidepath    2 / 2    2 of these add nothing")));
+	TestTrue(TEXT("5 earned: Cruelty's line says one of its five adds nothing"),
+			 FTree::DescribeNode(Nodes, Edges, Spent, Mid, 5)
+				 .StartsWith(TEXT("Cruelty    5 / 5    1 of these adds nothing")));
+	TestFalse(TEXT("5 earned: the root's line marks none of its points"),
+			  FTree::DescribeNode(Nodes, Edges, Spent, TreeRoot, 5)
+				  .Contains(TEXT("of these add")));
+	TestFalse(TEXT("8 earned: Sidepath's line marks none of its points"),
+			  FTree::DescribeNode(Nodes, Edges, Spent, Side, 8)
+				  .Contains(TEXT("of these add")));
+
+	// AND THE WIDGET, ON A REAL CHARACTER. A level 10 character has earned 15;
+	// an allocation of 21 is put on it unchecked, as a loaded one would be, so
+	// it has 6 more spent than earned with no gear in the test at all.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	APlayerController* Controller = Player.Character
+		? Cast<APlayerController>(Player.Character->GetController()) : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete())
+		|| !TestNotNull(TEXT("set-up: and its controller"), Controller))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Overspent;
+	Overspent.Add(Root, 1);
+	Overspent.Add(PainTolerance, 12);
+	Overspent.Add(Resonance, 2);
+	Overspent.Add(WillingFlesh, 6);
+	Player.State->SetPassiveAllocation(Overspent, TArray<FName>());
+	if (!TestEqual(TEXT("set-up: 15 earned"),
+				   Player.State->PassivePointsAvailable(), 15)
+		|| !TestEqual(TEXT("set-up: 21 spent"),
+					  Player.State->GetPassiveAllocation().Total(), 21))
+	{
+		return false;
+	}
+
+	// `NewObject` WITH THE CONTROLLER, as `TheScreenSpendsThroughTheCharacterAndNotIntoItself`
+	// makes it and for its reason.
+	UCataclysmPassiveTreeWidget* Screen =
+		NewObject<UCataclysmPassiveTreeWidget>(Controller);
+	if (!TestNotNull(TEXT("set-up: the screen was created"), Screen))
+	{
+		return false;
+	}
+	Screen->SetPlayerStateForTests(Player.State);
+
+	TestEqual(TEXT("the screen's points line says 6 points add nothing, and why"),
+			  Screen->PointsText().ToString(),
+			  FString(TEXT("Passive points    0 unspent of 15 earned    the "
+						   "budget is 230    6 spent points add nothing: gear "
+						   "that granted points is no longer worn")));
+
+	UCataclysmChoiceButton* Marked = NewObject<UCataclysmChoiceButton>();
+	Screen->DescribeButtonForTests(*Marked, WillingFlesh, false);
+	TestEqual(TEXT("the node that gives up its points says so in its tool tip"),
+			  Marked->GetToolTipText().ToString(),
+			  FString(TEXT("6 of the points in this node add nothing. More "
+						   "points are spent than earned, because gear that "
+						   "granted points is no longer worn. The points stay "
+						   "spent and count again when that gear is worn.")));
+	TestTrue(TEXT("and is still drawn as a node that holds points"),
+			 Marked->IsChosen());
+
+	UCataclysmChoiceButton* Unmarked = NewObject<UCataclysmChoiceButton>();
+	Screen->DescribeButtonForTests(*Unmarked, PainTolerance, false);
+	TestTrue(TEXT("a node touched earlier, which gives up nothing, has no tool tip"),
+			 Unmarked->GetToolTipText().IsEmpty());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Where a point may go
 // ---------------------------------------------------------------------------
 
