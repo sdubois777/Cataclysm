@@ -52531,7 +52531,8 @@ bool FCataclysmDarkFloorPanelTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("the dark floor has no chasm"), Mode->ThoseInTheDarkChasmCellsNow().Num(), 0);
 	TestEqual(TEXT("the panel says the dark floor has no chasms and counts the standing"), ThoseInTheDarkPanelLine(Mode),
-			  FString::Printf(TEXT("those in the dark: the dark floor, no chasms, %d still standing"),
+			  FString::Printf(TEXT("those in the dark: the dark floor, its stairs are sealed until its creatures are ")
+							  TEXT("slain, %d still standing"),
 							  StandingOnTheDarkFloor));
 	Beat(Mode, 1);
 	TestEqual(TEXT("after a beat no chasm's mark stands on the dark floor"), Mode->ThoseInTheDarkChasmZonesDrawn(), 0);
@@ -52540,7 +52541,7 @@ bool FCataclysmDarkFloorPanelTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the beat left the player on the dark floor"), Mode->ThePlayerIsOnTheDarkFloor());
 	Mode->ClearFloorEnemies();
 	TestEqual(TEXT("with every creature gone the panel says so"), ThoseInTheDarkPanelLine(Mode),
-			  FString(TEXT("those in the dark: the dark floor, no chasms, every creature slain")));
+			  FString(TEXT("those in the dark: the dark floor, every creature slain, its stairs are open")));
 
 	// THE CONTROL: THE FLOOR ARRIVED ON.
 	TakeTheStairs(*this, Mode);
@@ -52907,7 +52908,9 @@ bool FCataclysmDarkFloorPanelWhateverRowsTest::RunTest(const FString& Parameters
 		return false;
 	}
 	const FString WhileTheyStand = FString::Printf(
-		TEXT("those in the dark: the dark floor, no chasms, %d still standing"), StandingOnTheDarkFloor);
+		TEXT("those in the dark: the dark floor, its stairs are sealed until its creatures are slain, ")
+		TEXT("%d still standing"),
+		StandingOnTheDarkFloor);
 
 	// THE CONTROL: THE PANEL'S LINES MADE FROM THE FLOOR'S OWN ROWS ALONE.
 	const TArray<FCataclysmFloorModifierLine> FromTheFloorsRows =
@@ -52941,7 +52944,7 @@ bool FCataclysmDarkFloorPanelWhateverRowsTest::RunTest(const FString& Parameters
 		return false;
 	}
 	TestEqual(TEXT("and it says every creature is slain"), SlainLine->LiveCount,
-			  FString(TEXT("those in the dark: the dark floor, no chasms, every creature slain")));
+			  FString(TEXT("those in the dark: the dark floor, every creature slain, its stairs are open")));
 
 	// THE CONTROL: THE FLOOR THE DARK FLOOR'S STAIRS LEAD TO.
 	TakeTheStairs(*this, Mode);
