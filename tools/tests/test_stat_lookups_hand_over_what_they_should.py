@@ -118,6 +118,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: How much faster a cooldown recovers added one more on 2026-10-09, asked in
 #: `CooldownAfterReduction` with the skill's tags beside the reduction and the
 #: lengthening, for the dungeon rule Fragmented Reality.
+#: The flag by which the dungeon rule Suffering Aura takes no mana from its
+#: holder added one more on 2026-10-10, asked by the one helper the condition
+#: on that rule's mana loss calls.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -786,6 +789,13 @@ INVENTORY = {
         "the minion's own type tags; how large the share is does not depend "
         "on the blow, and the summoner's armour is then asked WITH the blow "
         "through DefenderStat",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(SufferingAuraManaDrainImmunityStat), FGameplayTagContainer(), 0.0f'):
+        "whether the dungeon rule Suffering Aura takes no mana from this "
+        "character (ruled 2026-10-09), asked by "
+        "ImmuneToSufferingAuraManaDrainByARow for the one condition on that "
+        "rule's mana loss; the drain is not a skill, so no tags, and there is "
+        "no blow",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
