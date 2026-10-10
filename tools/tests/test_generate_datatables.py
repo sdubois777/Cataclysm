@@ -5110,6 +5110,51 @@ class TestAHitCutsShortTheSkillInUse:
         assert "hit_taken_interrupts" not in gen.stats_with_no_attribute()
 
 
+class TestAFlagAgainstTheSufferingAurasManaDrain:
+    """`suffering_aura_mana_drain_immunity`, ruled 2026-10-09 and built ahead
+    of its row. One flag at a flat 1 with no tags and no condition: the
+    dungeon game mode asks whether it is above nought before the rule
+    Suffering Aura takes the player's mana.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the first half of Mana Weaver's six-piece bonus. The real row
+    is the enchantment session's to write, on the sheet and under the label a
+    set bonus has; this shows only that the generator carries a flat row on
+    this stat through, and that the name is on the engine's list.
+    """
+
+    WORDS = ("You gain an aura that makes you and nearby allies immune to all "
+             "mana-draining effects")
+    ROW = {"Stat": "suffering_aura_mana_drain_immunity", "Value Kind": "flat",
+           "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, words, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, words, rows)
+
+    def test_the_row_is_carried_through_with_no_tags_and_no_condition(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("suffering_aura_mana_drain_immunity", "flat", 1.0, 1.0, "", "",
+             "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert ("suffering_aura_mana_drain_immunity"
+                not in gen.CONDITIONED_STATS_WITH_AN_ASKER)
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none. The
+        control is a made-up name that is on no list."""
+        assert ("suffering_aura_mana_drain_immunity"
+                in gen.stats_with_no_attribute())
+        assert "mana_drain_immunity" not in gen.stats_with_no_attribute()
+
+
 class TestACastDelayOnASkillsBlow:
     """`blow_delay_seconds`, ruled 2026-10-08 and built ahead of its row. The
     row here is the shape `docs/DECISIONS.md` of that day gives the session
