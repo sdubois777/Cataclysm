@@ -4961,6 +4961,23 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	if (!bBasicAttack)
 	{
 		ActOnEvent(FName(TEXT("skill_use")), SkillTags);
+
+		// AND `healing_skill_use`, ONLY FOR A SKILL CARRYING A TAG UNDER `Stat.Recovery`. Ruled 2026-10-10, for
+		// "Using a healing skill grants 10%-20% increased damage for 5 seconds": see "The use of a healing skill
+		// raises an event of its own" in docs/DECISIONS.md. A row scaled by its own stacks is granted on every
+		// event of its name whatever tags it requires, so a row cannot ask `skill_use` for healing skills only; the
+		// event is what narrows the grant. Raised after `skill_use` has returned, so it is acted on at the same
+		// depth, and never for the basic attack, as `skill_use` is not. A use with no tags raises nothing.
+		//
+		// THE PARENT TAG IS ASKED FOR BY NAME. `CataclysmTags.ini` declares `Stat.Recovery.Leech` and
+		// `Stat.Recovery.Regen` and not `Stat.Recovery`; the engine registers every parent of a declared tag, and
+		// `HasTag` matches a held tag's parents, so either child answers true.
+		const FGameplayTag Recovery = FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Stat.Recovery")), /*ErrorIfNotFound=*/false);
+		if (SkillTags && SkillTags->HasTag(Recovery))
+		{
+			ActOnEvent(FName(TEXT("healing_skill_use")), SkillTags);
+		}
 	}
 	ActOnEvent(FName(TEXT("attack_use")), SkillTags);
 	SkillInHandName = NAME_None;
