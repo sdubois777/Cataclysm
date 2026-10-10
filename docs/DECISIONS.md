@@ -2,6 +2,65 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-10 — "Using a healing skill grants 10%-20% increased damage for 5 seconds" is built as two rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHO GETS NOTHING
+
+- **Using Living Pyre or Blood Pyre raises ALL of the wearer's damage for five seconds**, not only those two
+  skills' damage: the rows state no Required Tags. Those two are the game's healing skills, and both belong to
+  the Demonic Fist. A wearer who uses neither gets nothing from this enchantment.
+- **One stack at most.** Using a healing skill again inside the five seconds starts the five seconds again and
+  does not add a second increase.
+- **The basic attack does not grant it**, and neither does any other skill: the grant is made by the event
+  `healing_skill_use`, which only a paid use of a skill tagged under `Stat.Recovery` raises. That event, and why
+  it is an event of its own and not a tag on the row, is the entry "The use of a healing skill raises an event
+  of its own".
+- **Two rows, because "damage" is attack damage and spell damage**, as every merged row on that word is
+  written. Each holds its own stack; both are granted by the same use and run out together.
+- **The test hands the uses to the wearer's rows with the two skills' own tags; it runs no skill.**
+
+### WHAT THE OWNER SAID
+
+On 2026-10-08, asked which skills are healing skills: "Name the healing skills". The coordinating session named
+Living Pyre and Blood Pyre, and on 2026-10-09 the owner accepted its recommendations: "your rec on all the open
+questions".
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Using a healing skill grants 10%-20% increased damage for 5 seconds | Two rows: `attack_damage` and `spell_damage`, each increased, 10 to 20, Scale `own_stacks`, Scale Step 1, Scale Max Steps 1, Stack Seconds 5, Action Event `healing_skill_use` |
+
+EnchantmentEffects 585 to 587, over 495 to 496 enchantments. No engine code and no generator code is changed.
+
+**Judgements of the session that wrote the rows, each open to the coordinating session's correction:** one stack
+at most, because the sentence states one increase and no count; the five seconds start again at each use,
+which is how a row scaled by its own stacks is granted again while it is held; the tests here and in the
+event's entry assert it, and the window's run is what shows it.
+
+### Tests
+
+- `Cataclysm.Enchantments.TheHealingSkillUseRowRaisesAllDamageForFiveSecondsAfterAHealingSkillAndAfterNoOther`:
+  the real rows worn on a refreshed wearer, so every figure is a difference. The wearer holds a modifier on
+  attack damage and one on spell damage. A strike's use and a basic attack carrying Living Pyre's tags leave a
+  strike's increases as they were. After a use of Living Pyre a STRIKE's increases are 20% higher; a second use
+  leaves them at 20%; they are still 20% at 4.9 seconds and as before at 5.1. A use of Blood Pyre raises them
+  by 20% again.
+
+**Not tested here:** the spell damage row's figure, which is read only as a modifier held; a skill run for
+real; a roll of the rows other than their top.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-10 — "Healing skills restore 30%-60% more HP" and "Healing skills also restore 10%-20% of the healed amount as energy shield" are built as two rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
