@@ -438,36 +438,6 @@ public:
 	 */
 	int32 ClassPointsGranted() const { return ClassPointsGrantedAtLastRefresh; }
 
-	/**
-	 * Rows a test says are worn, added to what `GatherModifiers` returns.
-	 * EMPTY IN A RUNNING GAME, ALWAYS.
-	 *
-	 * WHY A TEST NEEDS IT. A stat built ahead of its row has no enchantment in
-	 * the real tables to wear, and `RefreshAttributes` reads the real tables.
-	 * The tests of 2026-10-09 for class points granted by gear have to put the
-	 * gear on, spend, and take it off again through the real refresh, because
-	 * `ACataclysmPlayerState::SpendPassivePoint` runs that refresh itself.
-	 * `UCataclysmPassiveTreeWidget::SetPlayerStateForTests` is a seam of the
-	 * same kind.
-	 *
-	 * SETTING IT ANNOUNCES NOTHING AND REFRESHES NOTHING; the test refreshes.
-	 *
-	 * @param OnTheItemIn  the slot whose item the test says carries the rows, or
-	 *        `ECataclysmGearSlot::Count` for rows tied to no item. Rows tied to
-	 *        a slot are added only while `GatherModifiers` reads that slot as
-	 *        holding something, so a slot switched off, a planted weapon and an
-	 *        empty slot leave them out as they would a real row.
-	 *
-	 * THE NEXT LAYER DELETES THIS SEAM, ruled 2026-10-09 (J1): it writes the two
-	 * real rows and the tests wear those.
-	 */
-	void SetRowsWornForTests(TMap<FName, TArray<FCataclysmStatModifier>> Rows,
-							 ECataclysmGearSlot OnTheItemIn = ECataclysmGearSlot::Count)
-	{
-		RowsWornForTests = MoveTemp(Rows);
-		RowsWornForTestsSlot = OnTheItemIn;
-	}
-
 	/** Fires after anything changes what is worn, before attributes are written. */
 	DECLARE_MULTICAST_DELEGATE(FOnEquipmentChanged);
 	FOnEquipmentChanged EquipmentChanged;
@@ -540,12 +510,6 @@ private:
 	 * a record of what that refresh read and changes nothing about what is worn.
 	 */
 	mutable int32 ClassPointsGrantedAtLastRefresh = 0;
-
-	/** See `SetRowsWornForTests`. Empty in a running game, always. */
-	TMap<FName, TArray<FCataclysmStatModifier>> RowsWornForTests;
-
-	/** See `SetRowsWornForTests`. `Count` means the rows are tied to no item. */
-	ECataclysmGearSlot RowsWornForTestsSlot = ECataclysmGearSlot::Count;
 
 	/**
 	 * What `GatherModifiers` does, with one choice: whether a weapon planted in
