@@ -579,3 +579,4 @@ Positive_Charge_skills_deal_30_60_bonus_damage_proporti#2,Positive_Charge_skills
 Positive_Your_first_hit_against_each_enemy_applies_all_yo#1,Positive_Your_first_hit_against_each_enemy_applies_all_yo,,,100.0,100.0,,,0.0,,0.0,apply_status,first_hit_dealt,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,All DoTs,0.0
 Positive_Chronomancer_s_Time_Lock_6_Piece_Bonus_When_a#1,Positive_Chronomancer_s_Time_Lock_6_Piece_Bonus_When_a,,,25.0,25.0,,,0.0,,0.0,stun_near_the_dying,afflicted_death,,0,2.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec#1,Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec,,,100.0,100.0,,,0.0,,0.0,cooldown_reset_all,block,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,5.0,0.0,,0.0
+Negative_Each_class_point_above_the_max_reduces_your_max#1,Negative_Each_class_point_above_the_max_reduces_your_max,resistance_cap,flat,-2.0,-5.0,,,0.0,class_points_spent,1.0,,,,0,0.0,230.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
