@@ -1959,6 +1959,71 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `cooldown_recovery` is read by `UCataclysmGameplayAbility::CooldownAfterReduction`. Issues #1820 and #41.
+	 *
+	 * FOUR CHARACTERS asked for the same four second cooldown: one with no row, one carrying a flat 50 of the stat,
+	 * one carrying a flat 100 of `cooldown_reduction`, and one carrying both. The stat divides by 1.5 beside
+	 * whatever the reduction divides by. Bare actors, as `ProbeCooldownLengthening` uses; none stands anywhere.
+	 */
+	void ProbeCooldownRecovery(FAutomationTestBase& Test)
+	{
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+										   /*bInformEngineOfWorld=*/false);
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Make = [World](float RecoveryPercent, float ReductionPercent)
+		{
+			AActor* Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			UCataclysmAbilitySystemComponent* System =
+				NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			System->RegisterComponent();
+			UCataclysmCombatAttributeSet* Combat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			System->AddAttributeSetSubobject(Combat);
+			System->InitAbilityActorInfo(Actor, Actor);
+
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			const auto Carry = [&Inputs](const TCHAR* Stat, float Value)
+			{
+				if (Value <= 0.0f)
+				{
+					return;
+				}
+				FCataclysmStatModifier Flat;
+				Flat.Bucket = ECataclysmStatBucket::Flat;
+				Flat.Source = ECataclysmModifierSource::Enchantment;
+				Flat.Value = Value;
+				FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+				Line.Base = 0.0f;
+				Line.Modifiers = {Flat};
+			};
+			Carry(UCataclysmSkillSlots::CooldownRecoveryStat, RecoveryPercent);
+			Carry(TEXT("cooldown_reduction"), ReductionPercent);
+			System->SetStatInputs(MoveTemp(Inputs));
+			return System;
+		};
+		UCataclysmAbilitySystemComponent* Plain = Make(0.0f, 0.0f);
+		UCataclysmAbilitySystemComponent* Faster = Make(50.0f, 0.0f);
+		UCataclysmAbilitySystemComponent* Reduced = Make(0.0f, 100.0f);
+		UCataclysmAbilitySystemComponent* Both = Make(50.0f, 100.0f);
+
+		const float PlainSeconds = UCataclysmGameplayAbility::CooldownAfterReduction(Plain, 4.0f);
+		const float ReducedSeconds = UCataclysmGameplayAbility::CooldownAfterReduction(Reduced, 4.0f);
+		Test.TestEqual(TEXT("a character with no row keeps a four second cooldown"), PlainSeconds, 4.0f, 0.001f);
+		Test.TestEqual(TEXT("set-up: one carrying 100 of cooldown_reduction waits two"), ReducedSeconds, 2.0f, 0.001f);
+		Test.TestEqual(TEXT("one carrying 50 of cooldown_recovery waits four divided by 1.5"),
+			UCataclysmGameplayAbility::CooldownAfterReduction(Faster, 4.0f), PlainSeconds / 1.5f, 0.001f);
+		Test.TestEqual(TEXT("and one carrying both waits the reduced two divided by 1.5, so the stat divides beside "
+							"the reduction and is not added to it"),
+			UCataclysmGameplayAbility::CooldownAfterReduction(Both, 4.0f), ReducedSeconds / 1.5f, 0.001f);
+	}
+
+	/**
 	 * `skill_charges_bonus` is read by
 	 * `UCataclysmAbilitySystemComponent::SkillChargesMaximum`. Issue #1833,
 	 * skill charges. Two characters, one carrying a flat row of 2: a skill
@@ -7511,6 +7576,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},
+			{TEXT("cooldown_recovery"), &ProbeCooldownRecovery},
 			{TEXT("resistance_cap"), &ProbeResistanceCap},
 			{TEXT("skill_charges_bonus"), &ProbeSkillCharges},
 			{TEXT("mana_cost_as_current_health_percent"),

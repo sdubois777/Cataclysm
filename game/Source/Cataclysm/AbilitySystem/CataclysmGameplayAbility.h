@@ -155,6 +155,11 @@ public:
 	 * name was kept because every caller and test asks it by this name, and it
 	 * is still the one place a cooldown's length is worked out.
 	 *
+	 * AND IT DIVIDES BY A SECOND FIGURE, since the dungeon rule Fragmented Reality. Issues #1820 and #41. The
+	 * stat `cooldown_recovery` is handed to FinalCooldown as its more multiplier:
+	 * Base x (1 + lengthening) / ((1 + reduction) x (1 + recovery)). See
+	 * `UCataclysmSkillSlots::CooldownRecoveryStat`.
+	 *
 	 * A PERCENTAGE HERE AND A FRACTION THERE. The `CooldownReduction` attribute
 	 * holds a percentage, because that is what an affix grants, and FinalCooldown
 	 * takes a fraction. This is where the two meet, and it is the only place
