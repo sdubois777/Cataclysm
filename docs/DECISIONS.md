@@ -525,6 +525,70 @@ and 3 change no line a Python check reads.
 Nothing. This layer changes no file under `game/Data` and no workbook, and asks for no row. No row was passed
 through the generator, because there is none.
 
+### Run
+
+One window on 2026-10-10 at `feat/death-ends-dungeon-2` 0b98700b, on development 6288d58e. One attempt; nothing
+was corrected during it, and no test-only correction to the new scene set-up was needed. Every build, run and
+measurement here was made by the registering session, holding the lock as void-zones-w19. Every figure is a line
+a run printed. The lock was taken only after development's own two workflow runs at 6288d58e had printed success,
+no run was in progress, no build process was running and no pull request was open. Times are UTC, from each
+step's log file.
+
+Moving the layer onto 6288d58e, which holds Fragmented Reality, had two conflicts, each where both layers add to
+the same place, and each resolved by keeping both: this file, where both add an entry at the top, and
+`CataclysmDungeonModifierEffectsTests.cpp`, where both add tests before the final `#endif`. The layer's change
+outside this file is the same before and after the move.
+
+During the window the owner asked for every session to pause. The registering session tried to stop the script
+that starts each step, leaving the running suite alone, and its permission system refused; it tried no other way.
+The owner then chose to let the window finish by itself (the owner's words, typed to the coordinating session:
+"alright, we'll go with A"). Nothing was stopped and no step was cut short.
+
+| Step | Began | Printed |
+|---|---|---|
+| Build | 19:17:53 | `Build: Succeeded - 42 actions, 37 files compiled` |
+| Whole Unreal suite | 19:19:31 | `3528 tests performed, 3528 succeeded, 0 failed`; `Declared: 3528 tests in the tree at 0b98700b; 3528 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | 20:09:38 | `5948 passed, 8 skipped in 437.34s (0:07:17)`; JUnit `errors="0" failures="0" skipped="8" tests="5956"` |
+| Ruff | | `All checks passed!` |
+| The three proofs | 20:16:57, ended 20:22:29 | below |
+
+Registered before the run: 3,528 Unreal tests (3,515 measured on development 6288d58e plus the thirteen of this
+layer by name) and a JUnit count of 5,956. Both printed as registered.
+
+**What the run settled that was only read before it.** The layer compiled. The scene every game mode test of
+this layer builds (a possessed real player, a game mode started by hand, a run with its opening dungeons emptied)
+worked unchanged. `LeaveEmpireDungeon` called for a character still marked dead did what the tests expect. The
+three-floor Heretic timer read 14.8 within the test's tolerance of 0.001. No existing test failed, so none of the
+61 existing tests that name a player's death failed, which is what the two scans predicted.
+
+**Guard proofs, at 0b98700b, all in `CataclysmDungeonGameMode.cpp`, each with one anchor counted 1 and the source
+hash the same before and after, each PROVED: failed with the break in and passed with it out.** No break failed
+to compile. Each count of failed assertions is the one registered.
+
+| Proof | The break | Test (`Cataclysm.DungeonMode.`) | Registered | With the break in | Restored |
+|---|---|---|---|---|---|
+| 1 | `Run->ResolveDungeonOnDeath(DiedInDungeon);` becomes `FCataclysmDayReport();` | `ADeathWhoseResolveFellsTheCityTouchesNoDungeonThatIsGone` | 7 | 1 performed, 1 failed, 7 failed assertions | 1 performed, 1 succeeded |
+| 2 | `Run->AdvanceDays(DaysTheDeathCost);` becomes `Run->AdvanceDays(0);` | `ADeathInAnEmpireDungeonCostsTheDaysOfItsLethalityMode` | 3 | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| 3 | `...GetValueOnAnyThread() != 0)` becomes `...GetValueOnAnyThread() > 1)` | `ThePlaytestSwitchKeepsADeadPlayerInTheDungeonAndWithoutItTheDeathEndsTheWalk` | 6 | 1 performed, 1 failed, 6 failed assertions | 1 performed, 1 succeeded |
+
+Proof 1, as printed: "Expected 'the death's resolve felled the city' to be true"; "Expected 'and it is the one
+city that fell' to be 1, but it was 0"; "Expected 'one resolve cost a city' to be 1, but it was 0"; "Expected
+'the dungeon the player died in is off the map' to be null"; "Expected 'and so is the other dungeon that stood on
+the city' to be null"; "Expected 'no timer counts down for the dungeon that is gone' to be -1.000000, but it was
+35.000000"; "Expected 'a Dungeon City stands where the city fell' to be true".
+
+Proof 2, as printed: "Expected 'Standard: a death in the dungeon cost 5 days' to be 5, but it was 0"; "Expected
+'Hardcore: a death in the dungeon cost 10 days' to be 10, but it was 0"; "Expected 'Heretic: a death in the
+dungeon cost 15 days' to be 15, but it was 0".
+
+Proof 3, as printed: "Expected 'switch set: no day passed' to be 2, but it was 7"; "Expected 'switch set: the
+dungeon is still being walked' to be 4, but it was -1"; "Expected 'switch set: and the clock still holds the
+player inside it' to be 4, but it was -1"; "Expected 'switch set: no resolve cost a city' to be 0, but it was 1";
+"Expected 'switch set: the city kept its defence' to be 1000.000000, but it was 826.086975"; "Expected 'switch
+set: the dungeon's timer still has its forty days' to be 40.000000, but it was 35.000000".
+
+The commit that adds this section changes this entry alone, and the head that carries it was not run.
+
 ---
 
 ## 2026-10-09 — Fragmented Reality: on a Halls floor in sections one section scrambles the player's stats while they stand in it, and the row is Built
