@@ -2,6 +2,60 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-10 — "Gain 5-10 class points" and "Gain 3-8 additional class points" are built as two rows, and the test seam of the layer below is deleted
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and
+`.cpp` (the test seam taken out), `CataclysmPassiveTreeTests.cpp` (the tests of the layer below, now wearing the
+real rows), `CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row
+counts), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT CHANGES FOR A ROW ALREADY MERGED
+
+- **A wearer of either row has more class points to spend, for as long as the item is worn.** The row's rolled
+  figure is rounded DOWN to whole points: a roll of 7.9 is 7 points. The two rows are different enchantments and
+  both count when both are worn; the same row on several pieces counts once, at the higher roll, as every
+  benefit does.
+- **When the item comes off, the points stay spent and the excess adds nothing**, taken from the last node
+  first touched, not from the last point spent. That is the layer below, "Worn gear can grant class points";
+  everything it says first holds for these rows. Nothing is refunded.
+- **With these rows a character can spend above 230 for the first time, so the merged drawback "Each class
+  point above the max reduces your max resistances by 2%-5%" begins to act.** At both rows' tops a character
+  can spend 248. That drawback counts every point spent above 230, the ones that add nothing included, so a
+  wearer who spent gear points above 230 and took the gear off still pays it for each of them.
+- **This layer changes game code, though it is a row layer: it deletes the test seam the layer below left.**
+  `UCataclysmEquipmentComponent::SetRowsWornForTests`, its two members and the lines of `GatherModifiers` that
+  read them are gone. Ruled 2026-10-09 by the coordinating session (J1): the seam existed only because no real
+  row granted the stat. No game code reads a made-up worn row after this layer.
+
+### WHAT THE OWNER SAID
+
+On 2026-10-09, accepting the coordinating session's recommendations, among them that when the granting item
+comes off the points stay spent and add nothing: "your rec on all the open questions".
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Gain 5-10 class points | `class_points_granted`, flat, 5 to 10 |
+| Gain 3-8 additional class points | `class_points_granted`, flat, 3 to 8 |
+
+EnchantmentEffects 581 to 583, over 491 to 493 enchantments. No generator code is changed: the stat, its bounds
+of 1 to 10 and the refusals of a row the game could not count are the layer below's.
+
+### Tests
+
+The tests of the layer below, in `Cataclysm.Passives.ClassPointsFromGear.`, are rewritten here to wear the two
+real rows on real items, and the seam they used is deleted. What each shows is unchanged and is listed in that
+layer's entry; what changed is how the rows reach the character, and it is said under "THE TESTS, REWRITTEN"
+below by the session that rewrote them.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — Dying inside a dungeon of the empire ends the walk of it, resolves an ordinary dungeon at once and costs the lethality mode's days
 
 **Not built and not run.** The writing session wrote this layer in one commit on development 90b45b92: the code,
