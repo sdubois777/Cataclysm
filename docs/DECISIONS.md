@@ -2,6 +2,223 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — An ailment chance of 100 never fails its roll, at the two rolls of a landed blow: the stun roll and the roll for every other ailment
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp` (two comparisons, their comments, and
+the comment and help text of `Cataclysm.AilmentRoll`), `game/Source/Cataclysm/Tests/CataclysmTestWorld.h` (one
+comment), two new tests in `CataclysmAilmentTests.cpp`. No row, no generator code and no asset is changed. Issue
+[#2201](https://github.com/sdubois777/Cataclysm/issues/2201), second layer; the issue stays open.
+
+### SAID FIRST: WHAT IS NOT SHOWN
+
+- **Nothing here was compiled or run by the session that wrote it.** The C++ and the two tests were written by a
+  second session that does not build Unreal. The enchantment session's build and run are recorded under "THE
+  WINDOW'S RUN" below, and until that section is filled in no test here has been seen to pass or to fail.
+- **The rate of one roll in 32,768 is arithmetic and not a measurement.** The two engine lines were read again
+  for this entry and are as the first layer's entry quotes them: `GenericPlatformMath.h` line 611, `FRand()`
+  "Returns a random float between 0 and 1, inclusive", and `UnrealMathUtility.h` line 315, `FRandRange` is
+  `InMin + (InMax - InMin) * FRand()`. The Windows SDK's `RAND_MAX` of `0x7fff` was not read again. Nobody
+  counted rolls.
+- **No refusal was ever observed in play or in a test.** The fault was found by reading.
+- **One guard proof is proposed, for the roll for every ailment but stun. No proof is proposed or run for the
+  stun roll**, ruled 2026-10-09; it is tested and not proved.
+- **Which sources of a blow's ailment chance were not read.** Read: `UCataclysmAilments::ChancesFor`, which asks
+  each chance through `StatForSkill` with the attribute as the fallback; the one caller,
+  `UCataclysmSkillEffects::ApplyHit`, which adds what it answers to the blow; and the data files
+  `PassiveEffects.csv`, `EnchantmentEffects.csv` and `Affixes.csv` for rows naming a chance. NOT read: how
+  `StatForSkill` sums a passive row, an option of a capstone and a class line; how an affix's chance is written
+  onto the attribute and how many worn pieces may carry one; whether any enemy is given a chance; whether any
+  skill's own row adds one. So the statement below that three rows state 100 is a count of rows, and the total
+  a character reaches in play was not worked out.
+
+### WHAT WAS WRONG
+
+`UCataclysmAilments::RollOnLandedBlow` rolls each ailment chance a landed blow carried. The roll is the pinned
+value of `Cataclysm.AilmentRoll` or `FMath::FRandRange(0.0f, 100.0f)`, and the ailment applied when the roll was
+below the chance. That roll can be exactly 100, and 100 is not below 100, so a blow whose chance was 100
+applied nothing on that one roll.
+
+**Two comparisons in that function had no guard against it:**
+
+| Roll | Before | Now |
+| :-- | :-- | :-- |
+| the stun roll | applies when `Chance > 0.0f && AilmentRoll() < Chance` | applies when `Chance > 0.0f && (Chance >= UCataclysmDamageCalculation::StunChanceCap \|\| AilmentRoll() < Chance)` |
+| the roll for every other ailment | applies when `AilmentRoll() < Chance` | applies when `Chance >= ChanceCap \|\| AilmentRoll() < Chance` |
+
+Both caps are 100. The order of the other conditions is kept: the tenth-of-maximum-health rule is still asked
+before any roll, a stun chance of nought still applies nothing, and `ApplyStun` and `Apply` are still called
+last and still refuse by their own rules. When the chance is at the cap no roll is drawn.
+
+**A total above 100 reached this without any row stating 100.** `UCataclysmAilments::Application` sets the
+chance rolled to `FMath::Min(Total, ChanceCap)` and `UCataclysmDamageCalculation::StunApplication` sets it to
+`FMath::Min(StunChanceCap, Chance)`, so every total of 100 or more is rolled at exactly 100. A blow carrying 250
+failed on a roll of exactly 100 as a blow carrying 100 did. One guard covers both.
+
+**Two statements said the opposite and are corrected.** The comment above `Cataclysm.AilmentRoll` and the
+variable's help text said that a roll pinned at 100 "applies none", and the comment on
+`CataclysmTestWorld::FScopedAilmentRoll` said the same. Each now says that 100 applies no ailment whose chance
+is below 100 and that a chance of 100 or more is not compared with the roll.
+
+### THE ROWS THAT STATE 100
+
+Counted on this layer's base, from `game/Data/PassiveEffects.csv` (325 rows), reading the column
+`ValuePerPoint`. Nine rows give an ailment chance: five `cripple_chance` and four `weaken_chance`. Three of the
+nine state 100; the other six state 2, 3 or 4 a point.
+
+| Row | Stat | Value | Requires | Node |
+| :-- | :-- | :-- | :-- | :-- |
+| `Ravager_keystone_c_kA#1` | `cripple_chance` | flat 100 | `Type.Melee` | the keystone "Attrition" |
+| `Ravager_keystone_c_kA#2` | `weaken_chance` | flat 100 | `Type.Melee` | the keystone "Attrition" |
+| `Ravager_capstone_25#5` | `cripple_chance` | flat 100 | nothing, option 2 | "The First Onslaught", option "Never Lets Go" |
+
+Attrition's sentence: "Your melee attacks always Cripple and always Weaken, with no chance roll." Never Lets
+Go's: "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% increased damage to Crippled
+enemies." Neither sentence states a chance. By the arithmetic above, about one such blow in 32,768 that took a
+tenth of its target's maximum health applied nothing.
+
+**The stun chance.** No row of `PassiveEffects.csv` and no row of `EnchantmentEffects.csv` (579 rows) names
+`stun_chance`. One row of `game/Data/Affixes.csv` gives one: `Ailment_Chance_to_stun`, "Chance to stun", top
+value 15, on a necklace, a relic, a ring and a weapon. A blunt weapon adds 10 to the same pool. Whether worn
+pieces can sum to 100 was not worked out; the merged test
+`Cataclysm.DamageType.AChanceToStunFromGearJoinsABluntWeaponsTen` sets 90 from gear by hand. The stun roll is
+guarded for that total whether or not gear can reach it today.
+
+`EnchantmentEffects.csv` names one ailment chance, `bleed_chance`, on the row "Can't inflict bleeding", whose
+kind is `removed`; it gives no chance.
+
+### WHAT IS LEFT OUT, AND WHY
+
+Ruled 2026-10-09 by the coordinating session, a labelled judgement:
+
+- **One layer for the ailment function in `CataclysmAilments.cpp` only, both of its rolls.**
+- **The reason:** three authored passive rows state 100 at the ailment roll today, and the keystone says
+  "always ... with no chance roll". Nothing authored can reach 100 at the two contagion comparisons or the
+  cooldown skip; the ruling gives the most they reach as 40, 8 and 16. Those three figures are the ruling's and
+  were not counted again by this layer. The cooldown skip is also in a file another session is changing.
+- **The two contagion comparisons in `CataclysmContagion.cpp` and the cooldown skip in
+  `CataclysmGameplayAbility.cpp` are not changed and stay listed on #2201.**
+
+**#2201 stays open.** After this layer it still lists, read from the issue body and its comment and not read
+again here: evasion, critical strike and block in `CataclysmDamageCalculation.cpp`; the cooldown skip in
+`CataclysmGameplayAbility.cpp`, with its comment "a roll of 100 never skips"; the two comparisons in
+`CataclysmContagion.cpp`; one `FRandRange(0, 100) < Chance` in `CataclysmVitalAttributeSet.cpp`; about 25
+floor-rule roll functions in `CataclysmDungeonGameMode.cpp` whose callers' comparisons the issue says are not
+yet read; the shared helper the issue proposes; and the other end of that helper, a chance of nought at a roll
+of exactly nought.
+
+### A CHANCE BELOW 100 IS UNCHANGED, AT ITS EDGE AND EVERYWHERE
+
+At both rolls a roll EQUAL to the chance fails, before and now. A chance of 60 applies on rolls from 0 up to
+but not 60, and a roll of exactly 0 applies for any chance above nought. Only a chance of 100 or more is
+compared with the cap and not rolled.
+
+**A chance of nought.** The roll for every other ailment is not reached, because the function goes on to the
+next ailment when the total is nought or less, as it did. The stun roll keeps `Chance > 0.0f` in front of the
+guard, so a total of nought applies nothing, as it did.
+
+### Tests
+
+Two, in `CataclysmAilmentTests.cpp`, beside `Cataclysm.Ailments.AChanceToBleedIsComparedWithTheRoll`. Each blow
+is 1,000 from a fresh bare attacker at a fresh bare defender, sent through `UCataclysmSkillEffects::ApplyHit`,
+with the roll pinned for that blow by `CataclysmTestWorld::FScopedAilmentRoll`, which sets the variable with
+`ECVF_SetByConsole`. Every other merged pin of this variable is made through that helper. Each test first
+asserts its set-up: after every pin the variable reads back the value pinned, the blow takes over a tenth of
+maximum health, and at a roll of 0 the ailment lands. Each assertion's text names the rule it shows: "the
+roll" for the comparison with the chance, and "the tenth rule" for the owner's rule of 2026-09-02 (#917).
+
+- `Cataclysm.Ailments.AnAilmentChanceOf100AppliesAtARollOf100AndAChanceBelow100StillFailsAtItsChance`, on
+  Bleed, against 5,000 maximum health, of which the blow takes a fifth:
+  - the roll: a chance of 100 at a roll of 100 applies the bleed;
+  - the roll: a chance of 150, summed above the cap and cut to it, applies the bleed at a roll of 100;
+  - the roll: a chance of 60 applies nothing at a roll of 100, nothing at a roll of exactly 60, and the bleed at
+    59.9;
+  - the tenth rule: a chance of 100 at a roll of 100 against 20,000 maximum health, of which the blow takes a
+    twentieth, applies nothing, and the blow did land.
+
+  **Without the guard two assertions fail**: "the roll, a chance at the cap: a chance of 100 at a roll of 100
+  applies the bleed" and "the roll, a chance summed above the cap and cut to it: a chance of 150 at a roll of
+  100 applies the bleed", because both are rolled at 100 and `100 < 100` is false.
+- `Cataclysm.Ailments.AStunChanceOf100StunsAtARollOf100AndAChanceBelow100StillFailsAtItsChance`, against 5,000
+  maximum health: a stun chance of 100 at a roll of 100 stuns; a chance of nought at a roll of 0 does not; a
+  chance of 60 does not at a roll of 100, does not at a roll of exactly 60, and does at 59.9. The attacker holds
+  no weapon, so a blunt weapon's 10 is not added; the control at exactly 60 would stun if it were. None of
+  `ApplyStun`'s own rules refuses these blows: the attacker holds no row that puts a health ceiling on its
+  crowd control, and the defender is made for one blow, has no crowd control resistance, is in no window after
+  an earlier stun, runs no skill and is not a boss. The set-up assertion at a roll of 0 shows it.
+  **Without the stun guard one assertion fails**: "the roll, a chance at the cap: a chance of 100 at a roll of
+  100 stuns".
+
+**No merged test pins `Cataclysm.AilmentRoll` at 100 or above**, read by searching every file under
+`game/Source` for the variable's name and for the helper's. Fifteen pins in four files:
+
+| File | Pinned at | Rolled against | Expects |
+| :-- | :-- | :-- | :-- |
+| `CataclysmAilmentTests.cpp` | 14.9, then 15 | bleed 15 | lands, then does not |
+| `CataclysmAilmentTests.cpp` | 0, six tests | 100 | lands, where no other rule refuses |
+| `CataclysmAilmentTests.cpp` | 99.9 | 250, cut to 100, five ailments | lands, at 2.5 times the magnitude |
+| `CataclysmCombatEventsTests.cpp` | 0 | bleed 100 | lands |
+| `CataclysmDamageTypeTests.cpp` | 99.9 | stun totals of 100, 10, 90 and 400 | 100 and 400 stun; 10 and 90 do not |
+| `CataclysmDamageTypeTests.cpp` | 0 | a blunt weapon's 10 | stuns |
+| `CataclysmPassiveTreeTests.cpp`, Attrition | 99.99 | cripple and weaken at 100 or more for a melee blow, none for a spell | melee lands, spell does not, a blow under a tenth does not |
+| `CataclysmPassiveTreeTests.cpp`, two more tests | 0 | Hobbling Blows' chance; Attrition's 100 | lands |
+
+The highest value pinned is 99.99, so the guard changes what none of them shows. No merged test pinned 100
+against a chance of 100 and expected it to land, so none was failing for this reason.
+`CataclysmMeleeBleedTests.cpp` names the variable in one comment and does not pin it.
+
+**Not tested here:** an ailment other than Bleed and Stun at a roll of 100; a stun total above 100 at a roll of
+100; a blunt weapon's 10 making up part of a total of 100 at a roll of 100; a real character holding one of the
+three rows with the roll pinned at 100, which the Attrition test covers at 99.99 only; a roll that is drawn and
+not pinned.
+
+### THE WINDOW'S RUN
+
+Run 2026-10-09 in one window of three layers on `development` 90b45b92: this fix to the ailment roll, the Divine
+Retribution row and the row on class points above the max. **The ids are the commits as they stood when each step
+ran.** Each step was run once, and each figure was stated before the run.
+
+| What | Where | As printed |
+| :-- | :-- | :-- |
+| Build of the three layers, the first compile of this layer's code and tests | 8483a91f | Build: Succeeded - 28 actions, 23 files compiled |
+| Whole suite, every asset built | 22cfa3bc | Build: Succeeded - target already up to date, 0 actions, nothing compiled; 3505 tests performed, 3505 succeeded, 0 failed. 40 skipped part of what they check; 3505 tests in the tree, 3505 performed, gap 0 |
+| Python of record, continuous integration idle | 22cfa3bc | 5943 passed, 8 skipped in 322.53s; JUnit tests 5951, failures 0, errors 0, skipped 8 |
+| Lint | 22cfa3bc | All checks passed! |
+| Proof A1, the guard for a chance at the cap taken out of the roll for every ailment but stun | 22cfa3bc | PROVED: with the break in, 13 tests performed, 12 succeeded, 1 failed: `AnAilmentChanceOf100AppliesAtARollOf100AndAChanceBelow100StillFailsAtItsChance`, 2 failed assertions; restored, 13 of 13 |
+
+**Every step was as stated before it ran.** The whole suite had been stated as 3505: the 3501 last measured on
+`development` 90b45b92, plus this layer's two tests and one for each of the two row layers.
+
+**The two new tests each passed in the whole suite.** Until this run neither had been compiled.
+
+**The proof was as stated.** The break put `if ((AilmentRoll() < Chance)` back at the roll for every ailment but
+stun. One test failed, on the two assertions named before the run: a chance of 100 at a roll of 100, and a
+chance of 150 cut to 100 at a roll of 100. Its set-up assertions, its three controls at a chance of 60 and its two
+assertions on the tenth rule passed with the break in, and so did the stun test, whose guard the break left. The
+broken file's hash was the same after the proof as before it.
+
+**No proof was run for the stun roll.** It has a test that passed; it is not proved.
+
+### WHAT WORN GEAR CAN REACH, READ AFTER THE LAYER WAS WRITTEN
+
+**Any ailment's chance can reach 100 from worn items alone, the stun's among them.** Read by the enchantment
+session on 2026-10-09, after the brief for this layer had said that no data row gives a stun chance, which was
+false. `game/Data/Affixes.csv` holds eleven affixes of the kind Ailment, one for each ailment, each allowed on
+Necklace, Relic, Ring and Weapon, with a top value of 15 (20 for disease, 25 for poison); "Chance to stun" is one
+of them. `UCataclysmItemModifiers` in `CataclysmItem.cpp` adds each worn item's affix as a flat modifier on that
+ailment's chance stat, doubled on a two-handed weapon, and the gear slot list has one necklace, one relic, eight
+rings and two weapons. Seven items at a top value of 15 sum to 105; a blunt weapon adds 10 more to the stun.
+`Application` and `StunApplication` cut any such total to exactly 100, which is the chance this layer no longer
+rolls. **So the fault reached further than the three passive rows the ruling counted.** Not read: whether an
+affix's value can exceed its top value, and how often such a set of items drops.
+
+**Two merged tests applied a chance of 100 with the roll unpinned and could fail on a drawn roll of exactly 100
+before this layer**: `Cataclysm.Passives.NeverLetsGoAlwaysCripplesAndAddsDamageAgainstCrippledEnemies` and
+`Cataclysm.PartialClauses.NeverLetsGoCripplesEveryEnemyARealRavagerHitsForAtLeastFourSeconds`. Found by a search
+of every test's text for a chance of 100 with no pin, not by reading each test. Neither is in the group the proof
+ran.
+
+---
+
 ## 2026-10-09 — Those in the Dark, layer 3: the save's record of the floor says when it is the dark floor and which floor the player fell from
 
 **Built and run after it was written; the Run section at the end of this entry has what the runs printed.**

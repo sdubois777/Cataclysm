@@ -166,8 +166,10 @@ namespace CataclysmTestWorld
 	 *
 	 * THE SAME SHAPE AS `FScopedCritRoll` ABOVE. 0 applies every ailment a blow
 	 * carries any chance of, because every chance above zero beats it; 100
-	 * applies none. A blunt weapon's own chance to stun is rolled against it too,
-	 * since it shares one pool with the chance to stun from gear.
+	 * applies no ailment whose chance is below 100, and a chance of 100 or more
+	 * is not compared with the roll at all (issue #2201). A blunt weapon's own
+	 * chance to stun is rolled against it too, since it shares one pool with the
+	 * chance to stun from gear.
 	 *
 	 * NOT SILENCED SUITE-WIDE, for the reason the cooldown skip roll is not: the
 	 * chances are zero for every character wearing no ailment affix, and no roll
