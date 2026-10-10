@@ -814,8 +814,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-09, from 579 over 489: one row on one enchantment.
 #: AND 581 OVER 491 SINCE THE ROW ON CLASS POINTS SPENT ABOVE THE MAX,
 #: issue #1833, 2026-10-09, from 580 over 490: one row on one enchantment.
-AUTHORED_ROWS = 581
-AUTHORED_ENCHANTMENTS = 491
+#: AND 583 OVER 493 SINCE THE TWO ROWS THAT GRANT CLASS POINTS,
+#: issue #1833, 2026-10-10, from 581 over 491: two rows on two enchantments.
+AUTHORED_ROWS = 583
+AUTHORED_ENCHANTMENTS = 493
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
