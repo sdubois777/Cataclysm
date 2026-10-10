@@ -54450,4 +54450,814 @@ bool FCataclysmFragmentedRealityLeavingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Chaos_Reality_Rifts' hidden chamber, the row's "access hidden areas". Issues #1820 and #41. Ruled 2026-10-08: a
+// chamber of three by three cells that no walk reaches, a rift the only way in; one drop roll as an Elite kill's; out
+// by the same rift, which has no rest.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** How many dungeon seeds a test tries for a floor 2 with a hidden chamber. About one floor in three has one. */
+	constexpr int32 ChamberFloorSeedsTried = 40;
+
+	/** The panel's line for Reality Rifts, or "no line". */
+	FString ChamberPanelLine(const ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Lines = Mode->LiveCountsForTheFloor();
+		const FString* Line = Lines.Find(RealityRow);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** How far the player stands from the middle of this cell, flat. */
+	float ChamberFlatFrom(const ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, FIntPoint Cell)
+	{
+		return FVector::Dist2D(Player.Character->GetActorLocation(), Mode->CurrentFloor->WorldOfCell(Cell));
+	}
+
+	/** The player moved to the middle of this cell, and the cell the floor then says it stands in asserted as set-up. */
+	bool ChamberStandOn(FAutomationTestBase& Test, const ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+						FIntPoint Cell, const TCHAR* What)
+	{
+		StandAt(Player, Mode->CurrentFloor->WorldOfCell(Cell));
+		const FIntPoint Now = Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation());
+		return Test.TestTrue(FString::Printf(TEXT("set-up: the player stands on %s, cell (%d, %d); the floor says (%d, %d)"),
+											 What, Cell.X, Cell.Y, Now.X, Now.Y),
+							 Now == Cell);
+	}
+
+	/**
+	 * Goes to floor 2 with Reality Rifts alone on dungeon seeds `FromSeed`, `FromSeed` + 1, ... until the floor has a
+	 * hidden chamber, clears the floor's creatures and beats once so every rift is drawn. Says which seed.
+	 */
+	bool ARealityChamberFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32& OutSeed,
+							  int32 FromSeed = 1)
+	{
+		for (int32 Seed = FromSeed; Seed <= ChamberFloorSeedsTried; ++Seed)
+		{
+			Mode->DungeonModifiers = {RealityRow};
+			Mode->DungeonSeed = Seed;
+			if (!Mode->GoToFloor(2) || !Mode->RealityChamberStands())
+			{
+				continue;
+			}
+			OutSeed = Seed;
+			Test.AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives floor 2 a hidden chamber"), Seed));
+			Mode->ClearFloorEnemies();
+			Beat(Mode, 1);
+			return true;
+		}
+		Test.AddError(FString::Printf(TEXT("set-up: none of dungeon seeds %d to %d gives floor 2 a hidden chamber"),
+									  FromSeed, ChamberFloorSeedsTried));
+		return false;
+	}
+
+	/** Into the chamber: stood on the rift's floor cell, one beat, and the arrival asserted as set-up. */
+	bool ChamberEnter(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		if (!ChamberStandOn(Test, Mode, Player, Mode->RealityChamberRiftCellNow(), TEXT("the chamber rift's floor cell")))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		return Test.TestTrue(TEXT("set-up: the rift carried the player into the chamber"),
+							 Mode->PlayerIsInTheRealityChamber());
+	}
+
+	/**
+	 * Out of the chamber with no wait: stood on the chamber's least cell, which is in neither end of the rift, one
+	 * beat; stood on the chamber's middle cell, where the rift's end is, one beat. Two beats, half a second.
+	 */
+	bool ChamberLeave(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player)
+	{
+		const FIntPoint Least = Mode->CurrentFloor->HiddenChamberCells()[0];
+		const FIntPoint Middle = Mode->RealityChamberArrivalCellNow();
+		if (!ChamberStandOn(Test, Mode, Player, Least, TEXT("the chamber's least cell")))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		if (!Test.TestTrue(TEXT("set-up: standing off the rift's end carries nobody"), Mode->PlayerIsInTheRealityChamber())
+			|| !ChamberStandOn(Test, Mode, Player, Middle, TEXT("the chamber's middle cell")))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		return true;
+	}
+
+	/** The names of every drop lying in the world that is not one of `NotThese`, sorted. */
+	TArray<FString> ChamberDropNames(UWorld* World, const TSet<const ACataclysmDroppedItem*>& NotThese)
+	{
+		TArray<FString> Names;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			if (IsValid(*It) && !NotThese.Contains(*It))
+			{
+				Names.Add(It->DisplayName);
+			}
+		}
+		Names.Sort();
+		return Names;
+	}
+}
+
+// THE FIGURES, WHICH FLOORS BY THE SEED, WHERE THE CHAMBER GOES, THE PANEL'S CLAUSE, AND THE ROW IS BUILT.
+//
+// THE SEEDED ANSWERS ARE WRITTEN HERE BY HAND. They were worked out outside the engine, by a copy of
+// `FCataclysmFloorGenerator::SeedForFloor` in Python, for floor seeds 1 to 12 and for the share over dungeon seeds 1 to
+// 100 and floors 1 to 10. If that copy is wrong these fail on the first run and say so.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberFiguresTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberFiguresTheSeededFloorsAndTheRowIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberFiguresTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three cells a side"), Effects::RealityChamberSide, 3);
+	TestEqual(TEXT("three empty columns between the plan and the chamber"), Effects::RealityChamberGapCells, 3);
+	TestEqual(TEXT("one floor in three"), Effects::RealityChamberOneFloorIn, 3);
+	TestEqual(TEXT("the reward is rolled at rung 1"), Effects::RealityChamberRewardRung, 1);
+	TestEqual(TEXT("which is the rung Soul Chains' gate pays at"), Effects::RealityChamberRewardRung,
+			  Effects::SoulChainsRewardRung);
+	TestEqual(TEXT("and is the Elite row of the enemy drop table"),
+			  UCataclysmDropSpawner::EnemyRarityForStep(UCataclysmDropRoll::LoadEnemyDropTable(),
+														Effects::RealityChamberRewardRung).ToString(),
+			  FString(TEXT("Elite")));
+	TestEqual(TEXT("CONTROL: rung 0 is the Common row, so the rung names a row"),
+			  UCataclysmDropSpawner::EnemyRarityForStep(UCataclysmDropRoll::LoadEnemyDropTable(), 0).ToString(),
+			  FString(TEXT("Common")));
+	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(RealityRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	TestEqual(TEXT("CONTROL: The Labrynth is still only partly built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::LabrynthKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+
+	// WHICH FLOORS, BY THE FLOOR'S SEED: seeds 1 to 12, worked out by hand.
+	// One for a chamber and nought for none.
+	const int32 ByHand[12] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1};
+	for (int32 Seed = 1; Seed <= 12; ++Seed)
+	{
+		TestEqual(FString::Printf(TEXT("floor seed %d: whether it has a chamber is the answer worked out by hand"), Seed),
+				  Effects::RealityChamberOnFloor(Seed) ? 1 : 0, ByHand[Seed - 1]);
+	}
+
+	// THE SHARE, OVER DUNGEON SEEDS 1 TO 100 AND FLOORS 1 TO 10, EACH FLOOR'S SEED MADE AS THE GENERATOR MAKES IT.
+	int32 WithAChamber = 0;
+	for (int32 DungeonSeed = 1; DungeonSeed <= 100; ++DungeonSeed)
+	{
+		for (int32 Floor = 1; Floor <= 10; ++Floor)
+		{
+			WithAChamber +=
+				Effects::RealityChamberOnFloor(FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, Floor)) ? 1 : 0;
+		}
+	}
+	AddInfo(FString::Printf(TEXT("of 1,000 floors, dungeon seeds 1 to 100 and floors 1 to 10, %d have a chamber by seed"),
+							WithAChamber));
+	TestEqual(TEXT("327 of those 1,000 floors have a chamber by seed, as worked out by hand"), WithAChamber, 327);
+
+	// THE REWARD'S STREAM IS SEEDED FROM THE FLOOR'S SEED AND A SALT OF ITS OWN.
+	TestEqual(TEXT("the reward's seed for floor seed 1234 is the figure worked out by hand"),
+			  Effects::RealityChamberRewardSeed(1234), 78672422);
+	TestTrue(TEXT("and is not the seed the choice of floors is made on"),
+			 Effects::RealityChamberRewardSeed(1234)
+				 != FCataclysmFloorGenerator::SeedForFloor(1234, Effects::RealityChamberSalt));
+
+	// WHERE IT GOES: three columns beyond the plan's last, half way down.
+	TestTrue(TEXT("on a plan 40 by 40 the chamber's least cell is (43, 18)"),
+			 Effects::RealityChamberOriginFor(40, 40) == FIntPoint(43, 18));
+	TestTrue(TEXT("on a plan 32 across and 48 down it is (35, 22)"),
+			 Effects::RealityChamberOriginFor(32, 48) == FIntPoint(35, 22));
+
+	// THE PANEL'S CLAUSE.
+	TestEqual(TEXT("no chamber adds nothing to the line"), Effects::RealityChamberPanelClause(false, false), FString());
+	TestEqual(TEXT("nor does a reward flag with no chamber"), Effects::RealityChamberPanelClause(false, true), FString());
+	TestEqual(TEXT("a chamber not yet entered"), Effects::RealityChamberPanelClause(true, false),
+			  FString(TEXT("; a hidden chamber waits")));
+	TestEqual(TEXT("a chamber whose reward was given"), Effects::RealityChamberPanelClause(true, true),
+			  FString(TEXT("; the hidden chamber's reward is given")));
+	return true;
+}
+
+// THE CHAMBER STANDS OFF THE PLAN, NO WALK REACHES IT, NO CREATURE IS PLACED IN IT, AND THE FLOOR IS THE FLOOR IT IS
+// WITHOUT THE ROW. On the first three of dungeon seeds 1 to 40 whose floor 2 has a chamber: its nine cells are off the
+// plan's grid; every cell touching one is not walkable; it has nine ground blocks and sixteen wall blocks of its own
+// and the floor's own counts are the plan's; its rift is on a walkable, held cell that is none of the five rifts'; the
+// creatures standing are the populator's own for the plan, in order. THE CONTROL is the same dungeon seed and floor
+// without the row: no chamber, the same plan cell for cell, the same creatures on the same cells in the same order.
+//
+// WHAT THIS CANNOT SHOW: that a floor without the row is what the same seed gave before this change. That needs
+// figures recorded from a run made before it, and none were.
+//
+// WHERE EACH STANDS: the player at the entrance, where `GoToFloor` puts it; the floor's creatures where the floor
+// placed them. Nothing is moved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberPlanTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberStandsOffThePlanAndTheFloorIsWhatItIsWithoutTheRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberPlanTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	MakeEveryKindCommon(Mode);
+
+	const FIntPoint Sides[4] = {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)};
+	int32 Looked = 0;
+	int32 SaidBySeed = 0;
+	int32 Stood = 0;
+	for (int32 Seed = 1; Seed <= ChamberFloorSeedsTried; ++Seed)
+	{
+		Mode->DungeonModifiers = {RealityRow};
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: set-up: floor 2 was reached"), Seed), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		const bool bBySeed = Effects::RealityChamberOnFloor(Mode->CurrentFloor->GetPlan().Seed);
+		SaidBySeed += bBySeed ? 1 : 0;
+		Stood += Mode->RealityChamberStands() ? 1 : 0;
+		TestTrue(FString::Printf(TEXT("seed %d: no chamber stands on a floor whose seed says none"), Seed),
+				 bBySeed || !Mode->RealityChamberStands());
+		TestEqual(FString::Printf(TEXT("seed %d: the floor has chamber cells exactly when a chamber stands"), Seed),
+				  Mode->CurrentFloor->HiddenChamberCells().Num(),
+				  Mode->RealityChamberStands() ? Effects::RealityChamberSide * Effects::RealityChamberSide : 0);
+		if (!Mode->RealityChamberStands() || Looked >= 3)
+		{
+			continue;
+		}
+		++Looked;
+
+		// THE PLAN IS COPIED, because the floor is built again below.
+		const FCataclysmFloorPlan WithPlan = Mode->CurrentFloor->GetPlan();
+		const TArray<FIntPoint> Chamber = Mode->CurrentFloor->HiddenChamberCells();
+		TestTrue(FString::Printf(TEXT("seed %d: the chamber's least cell is where the rule puts it"), Seed),
+				 Chamber[0] == Effects::RealityChamberOriginFor(WithPlan.Width, WithPlan.Height));
+
+		// OFF THE PLAN, AND NOTHING WALKABLE TOUCHES IT.
+		int32 OnTheGrid = 0;
+		int32 Walkable = 0;
+		int32 WalkableBeside = 0;
+		for (const FIntPoint& Cell : Chamber)
+		{
+			OnTheGrid += WithPlan.Contains(Cell) ? 1 : 0;
+			Walkable += WithPlan.IsFloor(Cell) ? 1 : 0;
+			for (const FIntPoint& Side : Sides)
+			{
+				WalkableBeside += (!Chamber.Contains(Cell + Side) && WithPlan.IsFloor(Cell + Side)) ? 1 : 0;
+			}
+		}
+		TestEqual(FString::Printf(TEXT("seed %d: no chamber cell is on the plan's grid"), Seed), OnTheGrid, 0);
+		TestEqual(FString::Printf(TEXT("seed %d: none is walkable in the plan"), Seed), Walkable, 0);
+		TestEqual(FString::Printf(TEXT("seed %d: and no cell touching one is walkable, so no walk reaches it"), Seed),
+				  WalkableBeside, 0);
+
+		// EVERY WALKABLE CELL OF THE PLAN IS STILL REACHED FROM THE ENTRANCE: the chamber is no pocket in the plan.
+		const TArray<int32> FromTheEntrance = CataclysmFloorDistancesFrom(WithPlan, WithPlan.Entrance);
+		int32 Reached = 0;
+		for (int32 Index = 0; Index < FromTheEntrance.Num(); ++Index)
+		{
+			Reached += FromTheEntrance[Index] != INDEX_NONE ? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("seed %d: every walkable cell of the plan is reached from the entrance"), Seed),
+				  Reached, WithPlan.FloorCount());
+
+		// ITS OWN BLOCKS, AND THE FLOOR'S COUNTS ARE THE PLAN'S.
+		TestEqual(FString::Printf(TEXT("seed %d: nine ground blocks of its own"), Seed),
+				  Mode->CurrentFloor->HiddenChamberGroundBlockCount(), 9);
+		TestEqual(FString::Printf(TEXT("seed %d: twelve walls and four corners of its own"), Seed),
+				  Mode->CurrentFloor->HiddenChamberWallBlockCount(), 16);
+		TestEqual(FString::Printf(TEXT("seed %d: the floor's ground blocks are the plan's walkable cells"), Seed),
+				  Mode->CurrentFloor->GroundBlockCount(), WithPlan.FloorCount());
+		TestEqual(FString::Printf(TEXT("seed %d: and its wall blocks are the plan's"), Seed),
+				  Mode->CurrentFloor->WallBlockCount(), ACataclysmDungeonFloor::WallPiecesFor(WithPlan));
+
+		// ITS RIFT: A WALKABLE, HELD CELL, NONE OF THE FIVE, AS FAR FROM THE ENTRANCE AND FROM EACH AS THEY ARE.
+		const FIntPoint RiftCell = Mode->RealityChamberRiftCellNow();
+		const FVector RiftAt = Mode->CurrentFloor->WorldOfCell(RiftCell);
+		TestEqual(FString::Printf(TEXT("seed %d: the floor still has its two pairs and its gift"), Seed),
+				  Mode->RealityRiftCellsNow().Num(), 2 * Effects::RealityRiftPairs + 1);
+		TestTrue(FString::Printf(TEXT("seed %d: the chamber's rift is on a walkable cell"), Seed), WithPlan.IsFloor(RiftCell));
+		TestFalse(FString::Printf(TEXT("seed %d: which is none of the five rifts' cells"), Seed),
+				  Mode->RealityRiftCellsNow().Contains(RiftCell));
+		TestTrue(FString::Printf(TEXT("seed %d: and is held from obstacles"), Seed),
+				 Mode->CellsTheFloorHolds().Contains(RiftCell));
+		TestTrue(FString::Printf(TEXT("seed %d: and is far enough from the entrance"), Seed),
+				 FVector::Dist2D(RiftAt, Mode->CurrentFloor->EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+		for (const FIntPoint& Other : Mode->RealityRiftCellsNow())
+		{
+			TestTrue(FString::Printf(TEXT("seed %d: and from each of the five"), Seed),
+					 FVector::Dist2D(RiftAt, Mode->CurrentFloor->WorldOfCell(Other)) >= Effects::EternalChorusApartCm - 1.0f);
+		}
+
+		// THE CREATURES STANDING ARE THE POPULATOR'S OWN FOR THE PLAN, IN ORDER, AND NONE IS IN THE CHAMBER.
+		const FCataclysmFloorPopulation Direct = FCataclysmFloorPopulator::Populate(
+			WithPlan, Mode->ChooseEnemyScale(), Mode->FloorBrief);
+		TArray<FIntPoint> WithCells;
+		TArray<UClass*> WithKinds;
+		int32 InTheChamber = 0;
+		int32 NotThePopulators = FMath::Abs(Mode->FloorEnemies.Num() - Direct.Enemies.Num());
+		for (int32 Index = 0; Index < Mode->FloorEnemies.Num(); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Creature = Mode->FloorEnemies[Index].Get();
+			const FIntPoint Cell = IsValid(Creature) ? Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())
+													 : FIntPoint(-1, -1);
+			WithCells.Add(Cell);
+			WithKinds.Add(IsValid(Creature) ? Creature->GetClass() : nullptr);
+			InTheChamber += Chamber.Contains(Cell) ? 1 : 0;
+			NotThePopulators += (Direct.Enemies.IsValidIndex(Index) && Direct.Enemies[Index].Cell != Cell) ? 1 : 0;
+		}
+		TestTrue(FString::Printf(TEXT("seed %d: set-up: the floor placed creatures (%d)"), Seed, WithCells.Num()),
+				 WithCells.Num() > 0);
+		TestEqual(FString::Printf(TEXT("seed %d: no creature stands in the chamber"), Seed), InTheChamber, 0);
+		TestEqual(FString::Printf(TEXT("seed %d: every creature stands on the populator's own placement for the plan"), Seed),
+				  NotThePopulators, 0);
+
+		// THE CONTROL: THE SAME DUNGEON SEED AND FLOOR WITHOUT THE ROW.
+		Mode->DungeonModifiers = {};
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: set-up: the floor without the row was reached"), Seed),
+					  Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		const FCataclysmFloorPlan& Without = Mode->CurrentFloor->GetPlan();
+		TestFalse(FString::Printf(TEXT("seed %d: CONTROL: without the row no chamber stands"), Seed),
+				  Mode->RealityChamberStands());
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: the floor has no chamber cell"), Seed),
+				  Mode->CurrentFloor->HiddenChamberCells().Num(), 0);
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: nor a chamber ground block"), Seed),
+				  Mode->CurrentFloor->HiddenChamberGroundBlockCount(), 0);
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: nor a chamber wall block"), Seed),
+				  Mode->CurrentFloor->HiddenChamberWallBlockCount(), 0);
+		TestTrue(FString::Printf(TEXT("seed %d: CONTROL: and no rift cell is kept"), Seed),
+				 Mode->RealityChamberRiftCellNow() == FIntPoint(-1, -1));
+		TestEqual(FString::Printf(TEXT("seed %d: CONTROL: and no line on the panel"), Seed), ChamberPanelLine(Mode),
+				  FString(TEXT("no line")));
+		TestTrue(FString::Printf(TEXT("seed %d: the plan with the chamber is cell for cell the plan without the row"), Seed),
+				 Without.Width == WithPlan.Width && Without.Height == WithPlan.Height && Without.Cells == WithPlan.Cells);
+		TestTrue(FString::Printf(TEXT("seed %d: with the same entrance and exit"), Seed),
+				 Without.Entrance == WithPlan.Entrance && Without.Exit == WithPlan.Exit);
+		TestEqual(FString::Printf(TEXT("seed %d: and the same ground blocks"), Seed), Mode->CurrentFloor->GroundBlockCount(),
+				  WithPlan.FloorCount());
+		int32 UnlikeCreatures = FMath::Abs(Mode->FloorEnemies.Num() - WithCells.Num());
+		for (int32 Index = 0; Index < FMath::Min(Mode->FloorEnemies.Num(), WithCells.Num()); ++Index)
+		{
+			const ACataclysmEnemyCharacter* Creature = Mode->FloorEnemies[Index].Get();
+			UnlikeCreatures += (!IsValid(Creature) || Creature->GetClass() != WithKinds[Index]
+								|| Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation()) != WithCells[Index])
+				? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("seed %d: the floor with the chamber has creature for creature what the floor "
+									   "without the row has, kind and cell, in order"), Seed),
+				  UnlikeCreatures, 0);
+	}
+	AddInfo(FString::Printf(TEXT("of dungeon seeds 1 to %d, floor 2: %d have a chamber by seed and a chamber stood on %d"),
+							ChamberFloorSeedsTried, SaidBySeed, Stood));
+	TestEqual(FString::Printf(TEXT("set-up: three of dungeon seeds 1 to %d gave floor 2 a chamber to look at"),
+							  ChamberFloorSeedsTried),
+			  Looked, 3);
+	return true;
+}
+
+// THE RIFT CARRIES THE PLAYER IN, THE REWARD IS ONE ELITE DROP ROLL MADE ONCE, AND THE SAME RIFT CARRIES THEM OUT AT
+// ONCE. The player's loot quantity is set to 600 so the roll is not empty: a drop count is drawn from a Poisson
+// distribution and at the baseline an Elite's roll is empty about one time in three. The roll's stream is seeded from
+// the floor's seed, so it is the same every run. THE CONTROL for the reward is an Elite kill's roll made by the test
+// on a stream of the same seed with the same magic find and loot quantity: as many drops, with the same names. THE
+// CONTROL for "no rest" is a pair of the floor's own rifts, which rests for 20 s after a crossing and carries nobody
+// meanwhile, while the chamber's rift carries in and out during that rest.
+//
+// WHERE EACH STANDS: the floor's creatures are cleared. The player is moved to the middle of a cell each time, and the
+// cell asserted as set-up: the entrance, the chamber rift's floor cell, the chamber's middle cell where it arrives,
+// the chamber's least cell (566 cm from the middle, outside the rift's 150 cm), and rifts 0 and 1 of the floor.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberCarryTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberCarryTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	int32 SeedUsed = 0;
+	if (!Mode || !ARealityChamberFloor(*this, Mode, SeedUsed))
+	{
+		return false;
+	}
+	const FIntPoint RiftCell = Mode->RealityChamberRiftCellNow();
+	const FIntPoint Middle = Mode->RealityChamberArrivalCellNow();
+	const FIntPoint EntranceCell = Mode->CurrentFloor->GetPlan().Entrance;
+	const int32 FloorSeed = Mode->CurrentFloor->GetPlan().Seed;
+
+	// BEFORE: SEVEN ZONES, THE FIVE RIFTS AND THE CHAMBER RIFT'S TWO ENDS; NO ROLL; THE PANEL SAYS A CHAMBER WAITS.
+	if (!TestEqual(TEXT("set-up: the floor has its two pairs and its gift"), Mode->RealityRiftCellsNow().Num(),
+				   2 * Effects::RealityRiftPairs + 1)
+		|| !TestEqual(TEXT("set-up: no drop lies in the world"), DropsInTheWorld(World), 0)
+		|| !TestFalse(TEXT("set-up: the player is not in the chamber"), Mode->PlayerIsInTheRealityChamber()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("seven zones drawn: five rifts and the two ends of the chamber's"), ZonesOnTheFloor(World), 7);
+	TestEqual(TEXT("no roll before the chamber is entered"), Mode->RealityChamberRewardRollsMade(), 0);
+	TestEqual(TEXT("the panel before"), ChamberPanelLine(Mode),
+			  FString(TEXT("reality rifts: rifts open; a gift rift waits; a hidden chamber waits")));
+
+	// THE PLAYER'S LOOT QUANTITY, SO THE ROLL IS NOT EMPTY, read back the way the roll reads it.
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetLootQuantityAttribute(), 600.0f);
+	float MagicFind = 0.0f;
+	float LootQuantity = 0.0f;
+	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+	if (!TestEqual(TEXT("set-up: the roll will read a loot quantity of 600"), LootQuantity, 600.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// INTO THE RIFT: CARRIED TO THE CHAMBER'S MIDDLE CELL, AND THE REWARD ROLLED ONCE.
+	if (!ChamberStandOn(*this, Mode, Player, RiftCell, TEXT("the chamber rift's floor cell")))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(FString::Printf(TEXT("carried to the chamber's middle cell (%.0f cm from it)"),
+							 ChamberFlatFrom(Mode, Player, Middle)),
+			 ChamberFlatFrom(Mode, Player, Middle) < 1.0f);
+	TestTrue(TEXT("and the player is in the chamber"), Mode->PlayerIsInTheRealityChamber());
+	TestEqual(TEXT("one roll was made"), Mode->RealityChamberRewardRollsMade(), 1);
+	TestTrue(TEXT("and the reward is given"), Mode->RealityChamberRewardGiven());
+	const int32 RewardDrops = DropsInTheWorld(World);
+	if (!TestTrue(FString::Printf(TEXT("set-up: at a loot quantity of 600 the roll left drops (%d)"), RewardDrops),
+				  RewardDrops > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the drops lying in the world are the ones the roll counted"), RewardDrops,
+			  Mode->RealityChamberRewardDropsSpawned());
+	int32 DropsOffTheChamber = 0;
+	TSet<const ACataclysmDroppedItem*> TheReward;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		TheReward.Add(*It);
+		DropsOffTheChamber +=
+			Mode->CurrentFloor->IsAHiddenChamberCell(Mode->CurrentFloor->CellOfWorld(It->GetActorLocation())) ? 0 : 1;
+	}
+	TestEqual(TEXT("and every one lies on a chamber cell"), DropsOffTheChamber, 0);
+	const TArray<FString> RewardNames = ChamberDropNames(World, TSet<const ACataclysmDroppedItem*>());
+	TestEqual(TEXT("the panel after: the pairs did not start their rest, and the reward is given"), ChamberPanelLine(Mode),
+			  FString(TEXT("reality rifts: rifts open; a gift rift waits; the hidden chamber's reward is given")));
+
+	// THE CONTROL: AN ELITE KILL'S ROLL ON A STREAM OF THE SAME SEED, AT THE ENTRANCE, WITH THE SAME TWO FIGURES.
+	FRandomStream ControlStream(Effects::RealityChamberRewardSeed(FloorSeed));
+	const int32 EliteStep = 1;
+	const int32 ControlDrops = UCataclysmDropSpawner::SpawnDropsFor(
+		World, EliteStep, MagicFind, LootQuantity, Mode->CurrentFloor->EntranceWorld(), ControlStream);
+	TestEqual(TEXT("CONTROL: an Elite kill's roll on the same seed leaves as many drops as the chamber's did"),
+			  ControlDrops, RewardDrops);
+	const TArray<FString> ControlNames = ChamberDropNames(World, TheReward);
+	TestEqual(TEXT("CONTROL: and as many lie in the world"), ControlNames.Num(), RewardNames.Num());
+	int32 NamesUnlike = FMath::Abs(ControlNames.Num() - RewardNames.Num());
+	for (int32 Index = 0; Index < FMath::Min(ControlNames.Num(), RewardNames.Num()); ++Index)
+	{
+		NamesUnlike += ControlNames[Index] != RewardNames[Index] ? 1 : 0;
+	}
+	TestEqual(TEXT("CONTROL: and they are the same drops by name"), NamesUnlike, 0);
+	const int32 DropsAfterTheControl = DropsInTheWorld(World);
+
+	// STANDING WHERE THE PLAYER ARRIVED: NOT CARRIED STRAIGHT BACK.
+	Beat(Mode, 1);
+	TestTrue(TEXT("a beat later, still standing on the rift's end, the player is still in the chamber"),
+			 Mode->PlayerIsInTheRealityChamber());
+
+	// OUT AT ONCE: OFF THE RIFT'S END AND BACK ONTO IT, TWO BEATS, WITH NO REST.
+	if (!ChamberLeave(*this, Mode, Player))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("carried out to the rift's floor cell three beats after arriving (%.0f cm from it)"),
+							 ChamberFlatFrom(Mode, Player, RiftCell)),
+			 ChamberFlatFrom(Mode, Player, RiftCell) < 1.0f);
+	TestFalse(TEXT("and the player is not in the chamber"), Mode->PlayerIsInTheRealityChamber());
+	Beat(Mode, 1);
+	TestTrue(TEXT("and standing there is not carried straight back in"), ChamberFlatFrom(Mode, Player, RiftCell) < 1.0f);
+
+	// IN AGAIN: NO SECOND REWARD.
+	if (!ChamberStandOn(*this, Mode, Player, EntranceCell, TEXT("the entrance")))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!ChamberEnter(*this, Mode, Player))
+	{
+		return false;
+	}
+	TestEqual(TEXT("entering again makes no second roll"), Mode->RealityChamberRewardRollsMade(), 1);
+	TestEqual(TEXT("and leaves no new drop in the world"), DropsInTheWorld(World), DropsAfterTheControl);
+	if (!ChamberLeave(*this, Mode, Player)
+		|| !TestFalse(TEXT("set-up: the player left the chamber again"), Mode->PlayerIsInTheRealityChamber()))
+	{
+		return false;
+	}
+
+	// THE PAIRS ARE WHAT THEY WERE: RIFT 0 CARRIES TO RIFT 1 AND EVERY PAIR RESTS FOR 20 S.
+	StandOnARift(Mode, Player, 0);
+	Beat(Mode, 1);
+	TestTrue(FString::Printf(TEXT("rift 0 carries to rift 1 (%.0f cm from it)"), FromARift(Mode, Player, 1)),
+			 FromARift(Mode, Player, 1) < 1.0f);
+	TestEqual(TEXT("the panel while the pairs rest"), ChamberPanelLine(Mode),
+			  FString(TEXT("reality rifts: rifts resting for 20 s; a gift rift waits; the hidden chamber's reward is given")));
+	Beat(Mode, 1);
+	TestTrue(TEXT("CONTROL: standing in rift 1 while the pairs rest carries nobody"), FromARift(Mode, Player, 1) < 1.0f);
+
+	// AND THE CHAMBER'S RIFT CARRIES IN AND OUT WHILE THE PAIRS REST.
+	if (!ChamberEnter(*this, Mode, Player) || !ChamberLeave(*this, Mode, Player))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("while the pairs rest the chamber's rift carried the player in and out (%.0f cm from "
+								  "its floor cell)"), ChamberFlatFrom(Mode, Player, RiftCell)),
+			 ChamberFlatFrom(Mode, Player, RiftCell) < 1.0f);
+	TestTrue(FString::Printf(TEXT("and the pairs are still resting (%s)"), *ChamberPanelLine(Mode)),
+			 ChamberPanelLine(Mode).StartsWith(TEXT("reality rifts: rifts resting for ")));
+	TestEqual(TEXT("and still one roll"), Mode->RealityChamberRewardRollsMade(), 1);
+	return true;
+}
+
+// A FLOOR WHOSE SEED SAYS NO CHAMBER IS WHAT IT WAS, AND A HORDE ARENA NEVER HAS ONE. On dungeon seed 1's floor 2,
+// which the four rift tests above also use: no chamber, five zones, the panel's line as it was before the chamber
+// existed, and a player stood where a chamber would be is carried nowhere and given nothing. On a Horde arena whose
+// seed says a chamber: none. THE CONTROL for the arena is the same dungeon seed as an ordinary dungeon, whose floor 1
+// has the same floor seed and has a chamber.
+//
+// WHERE EACH STANDS: the floor's creatures are cleared on the first floor. The player is at the entrance, then at the
+// point the chamber's middle cell would have, which is off the floor; nothing in a test world moves it from there.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberNoneTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberAFloorWithoutOneIsWhatItWasAndAHordeArenaHasNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberNoneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ARealityFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	if (!TestFalse(TEXT("set-up: this floor's seed says no chamber"), Effects::RealityChamberOnFloor(Plan.Seed)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("no chamber stands"), Mode->RealityChamberStands());
+	TestEqual(TEXT("the floor has no chamber cell"), Mode->CurrentFloor->HiddenChamberCells().Num(), 0);
+	TestEqual(TEXT("nor a chamber block"),
+			  Mode->CurrentFloor->HiddenChamberGroundBlockCount() + Mode->CurrentFloor->HiddenChamberWallBlockCount(), 0);
+	TestEqual(TEXT("five zones drawn, as before"), ZonesOnTheFloor(World), 5);
+	TestEqual(TEXT("the panel's line is what it was"), ChamberPanelLine(Mode),
+			  FString(TEXT("reality rifts: rifts open; a gift rift waits")));
+
+	// WHERE A CHAMBER'S MIDDLE CELL WOULD BE: NOTHING HAPPENS THERE.
+	const FIntPoint WouldBe = Effects::RealityChamberOriginFor(Plan.Width, Plan.Height)
+		+ FIntPoint(Effects::RealityChamberSide / 2, Effects::RealityChamberSide / 2);
+	if (!ChamberStandOn(*this, Mode, Player, WouldBe, TEXT("the cell a chamber's middle would be")))
+	{
+		return false;
+	}
+	Beat(Mode, 2);
+	TestTrue(TEXT("the player is carried nowhere"), ChamberFlatFrom(Mode, Player, WouldBe) < 1.0f);
+	TestFalse(TEXT("is not counted as in a chamber"), Mode->PlayerIsInTheRealityChamber());
+	TestEqual(TEXT("and no roll is made"), Mode->RealityChamberRewardRollsMade(), 0);
+	TestEqual(TEXT("and no drop lies in the world"), DropsInTheWorld(World), 0);
+
+	// THE CONTROL FIRST: AN ORDINARY DUNGEON WHOSE FLOOR 1 HAS A CHAMBER, searched for by dungeon seed.
+	int32 ArenaSeed = 0;
+	int32 OrdinaryFloorSeed = 0;
+	for (int32 Seed = 1; Seed <= ChamberFloorSeedsTried && ArenaSeed == 0; ++Seed)
+	{
+		Mode->DungeonModifiers = {RealityRow};
+		Mode->DungeonSeed = Seed;
+		if (Mode->GoToFloor(1) && Mode->RealityChamberStands())
+		{
+			ArenaSeed = Seed;
+			OrdinaryFloorSeed = Mode->CurrentFloor->GetPlan().Seed;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: CONTROL: some ordinary dungeon's floor 1 has a chamber"), ArenaSeed > 0))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("set-up: dungeon seed %d gives an ordinary floor 1 a hidden chamber"), ArenaSeed));
+
+	// THE SAME DUNGEON SEED AS A HORDE DUNGEON: ITS ARENA HAS THE SAME FLOOR SEED AND NO CHAMBER.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {RealityRow};
+	Mode->DungeonSeed = ArenaSeed;
+	if (!TestTrue(TEXT("set-up: the Horde dungeon's first wave was reached"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("set-up: it is a Horde arena, whose wave walks in"), Mode->FloorBrief.bWaveWalksIn)
+		|| !TestEqual(TEXT("set-up: the arena's seed is the ordinary floor's, which says a chamber"),
+					  Mode->CurrentFloor->GetPlan().Seed, OrdinaryFloorSeed)
+		|| !TestTrue(TEXT("set-up: and the seeded rule says a chamber for it"),
+					 Effects::RealityChamberOnFloor(Mode->CurrentFloor->GetPlan().Seed)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestFalse(TEXT("no chamber stands on a Horde arena"), Mode->RealityChamberStands());
+	TestEqual(TEXT("and the arena has no chamber cell"), Mode->CurrentFloor->HiddenChamberCells().Num(), 0);
+	TestEqual(TEXT("nor a chamber block"),
+			  Mode->CurrentFloor->HiddenChamberGroundBlockCount() + Mode->CurrentFloor->HiddenChamberWallBlockCount(), 0);
+	TestFalse(FString::Printf(TEXT("and the panel names no chamber (%s)"), *ChamberPanelLine(Mode)),
+			  ChamberPanelLine(Mode).Contains(TEXT("chamber")));
+	return true;
+}
+
+// A FLOOR CHANGE, A DEATH AND LEAVING THE DUNGEON EACH TAKE THE PLAYER OUT OF THE CHAMBER, AND A NEW FLOOR AND LEAVING
+// THE DUNGEON FORGET IT. THE CONTROL each time is the player standing in the chamber just before, asserted as set-up.
+// After a death the floor is the same floor, so its chamber and its reward's state are kept: only where the player
+// stands changes. That half asserts nothing about the reward, because another change, not on this base, ends the
+// dungeon on a death.
+//
+// WHERE EACH STANDS: the floor's creatures are cleared. The player is moved to the chamber rift's floor cell and is
+// carried to the chamber's middle cell; `GoToFloor`, `Revive` and `LeaveEmpireDungeon` each stand it at an entrance.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberForgetTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberAFloorChangeADeathAndLeavingTheDungeonTakeThePlayerOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberForgetTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	int32 SeedUsed = 0;
+	if (!Mode || !ARealityChamberFloor(*this, Mode, SeedUsed) || !ChamberEnter(*this, Mode, Player)
+		|| !TestEqual(TEXT("set-up: the reward was rolled on floor 2"), Mode->RealityChamberRewardRollsMade(), 1))
+	{
+		return false;
+	}
+
+	// THE NEXT FLOOR, TAKEN WHILE IN THE CHAMBER.
+	if (!TestTrue(TEXT("set-up: floor 3 was reached from inside the chamber"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("on the next floor the player is not in a chamber"), Mode->PlayerIsInTheRealityChamber());
+	TestTrue(FString::Printf(TEXT("and stands at its entrance (%.0f cm from it)"),
+							 ChamberFlatFrom(Mode, Player, Mode->CurrentFloor->GetPlan().Entrance)),
+			 ChamberFlatFrom(Mode, Player, Mode->CurrentFloor->GetPlan().Entrance) < 1.0f);
+	TestEqual(TEXT("and the last floor's roll is forgotten"), Mode->RealityChamberRewardRollsMade(), 0);
+	TestFalse(TEXT("and no reward is given on this floor yet"), Mode->RealityChamberRewardGiven());
+	TestTrue(TEXT("and a chamber stands on it only if its own seed says so"),
+			 !Mode->RealityChamberStands() || Effects::RealityChamberOnFloor(Mode->CurrentFloor->GetPlan().Seed));
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	TestFalse(TEXT("and a beat at the new entrance carries nobody"), Mode->PlayerIsInTheRealityChamber());
+
+	// A DEATH IN THE CHAMBER: THE PLAYER RETURNS AT THE ENTRANCE.
+	if (!ARealityChamberFloor(*this, Mode, SeedUsed, SeedUsed) || !ChamberEnter(*this, Mode, Player))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the player died in the chamber"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Player.Character->Revive();
+	if (!TestFalse(TEXT("set-up: the player is back"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("after a death the player is not in the chamber"), Mode->PlayerIsInTheRealityChamber());
+	Beat(Mode, 1);
+	TestFalse(TEXT("nor a beat later"), Mode->PlayerIsInTheRealityChamber());
+
+	// LEAVING THE DUNGEON FROM INSIDE THE CHAMBER.
+	if (!ARealityChamberFloor(*this, Mode, SeedUsed, SeedUsed) || !ChamberEnter(*this, Mode, Player)
+		|| !TestEqual(TEXT("set-up: the chamber has its nine ground blocks"),
+					  Mode->CurrentFloor->HiddenChamberGroundBlockCount(), 9)
+		|| !TestTrue(TEXT("set-up: and its reward was given"), Mode->RealityChamberRewardGiven()))
+	{
+		return false;
+	}
+	const FIntPoint EntranceCell = Mode->CurrentFloor->GetPlan().Entrance;
+	Mode->LeaveEmpireDungeon();
+	TestFalse(TEXT("leaving the dungeon, the player is not in the chamber"), Mode->PlayerIsInTheRealityChamber());
+	TestTrue(FString::Printf(TEXT("and stands at the floor's entrance (%.0f cm from it)"),
+							 ChamberFlatFrom(Mode, Player, EntranceCell)),
+			 ChamberFlatFrom(Mode, Player, EntranceCell) < 1.0f);
+	TestFalse(TEXT("and no chamber stands"), Mode->RealityChamberStands());
+	TestEqual(TEXT("and the floor has no chamber cell"), Mode->CurrentFloor->HiddenChamberCells().Num(), 0);
+	TestEqual(TEXT("nor a chamber block"),
+			  Mode->CurrentFloor->HiddenChamberGroundBlockCount() + Mode->CurrentFloor->HiddenChamberWallBlockCount(), 0);
+	TestTrue(TEXT("and no rift cell is kept"), Mode->RealityChamberRiftCellNow() == FIntPoint(-1, -1));
+	TestFalse(TEXT("and no reward is given"), Mode->RealityChamberRewardGiven());
+	TestEqual(TEXT("and no roll is counted"), Mode->RealityChamberRewardRollsMade(), 0);
+	Beat(Mode, 1);
+	TestTrue(TEXT("and a beat after leaving moves the player nowhere"),
+			 ChamberFlatFrom(Mode, Player, EntranceCell) < 1.0f);
+	return true;
+}
+
+// WHILE THE PLAYER STANDS IN THE CHAMBER AN OBSTACLE MAY STILL BE RAISED ON THE FLOOR, AND NONE IN THE CHAMBER OR ON
+// ITS RIFT. The obstacle question is asked from the player's cell and refuses everything when that cell is not
+// walkable; a chamber cell is off the plan, so the question is asked from the cell of the rift that carries the player
+// back. THE CONTROL is the refusals: the rift's own cell and a chamber cell are still refused, so the question has not
+// become yes to everything.
+//
+// WHERE EACH STANDS: the floor's creatures are cleared; the player in the chamber's middle cell. Each obstacle asked
+// for is one cell, and a warned obstacle is not raised in this test.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberObstacleTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberAnObstacleIsStillAllowedOnTheFloorWhileThePlayerIsInside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberObstacleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	int32 SeedUsed = 0;
+	if (!Mode || !ARealityChamberFloor(*this, Mode, SeedUsed) || !ChamberEnter(*this, Mode, Player))
+	{
+		return false;
+	}
+	const FIntPoint RiftCell = Mode->RealityChamberRiftCellNow();
+	const FIntPoint Middle = Mode->RealityChamberArrivalCellNow();
+
+	// THE CONTROL FIRST: THE RIFT'S CELL AND A CHAMBER CELL ARE REFUSED.
+	TestNull(TEXT("CONTROL: an obstacle on the chamber rift's floor cell is refused"),
+			 Mode->WarnOfAnObstacle({RiftCell}, ECataclysmObstacleKind::Pillar, HeavensQuakeRow));
+	TestNull(TEXT("CONTROL: an obstacle on a chamber cell is refused"),
+			 Mode->WarnOfAnObstacle({Middle}, ECataclysmObstacleKind::Pillar, HeavensQuakeRow));
+
+	// AND SOME WALKABLE CELL OF THE FLOOR IS ALLOWED, ASKED CELL BY CELL UNTIL ONE IS.
+	const FCataclysmFloorPlan Plan = Mode->CurrentFloor->GetPlan();
+	int32 Asked = 0;
+	ACataclysmFloorObstacle* Allowed = nullptr;
+	for (int32 Index = 0; Index < Plan.Cells.Num() && !Allowed; ++Index)
+	{
+		if (Plan.Cells[Index] != ECataclysmFloorCell::Floor)
+		{
+			continue;
+		}
+		++Asked;
+		Allowed = Mode->WarnOfAnObstacle({Plan.CellAt(Index)}, ECataclysmObstacleKind::Pillar, HeavensQuakeRow);
+	}
+	TestNotNull(FString::Printf(TEXT("with the player in the chamber an obstacle is allowed on a floor cell (%d asked)"),
+								Asked),
+				Allowed);
+	TestTrue(TEXT("and the player is still in the chamber"), Mode->PlayerIsInTheRealityChamber());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

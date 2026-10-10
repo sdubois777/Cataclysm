@@ -2,6 +2,311 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-10 — Reality Rifts: one floor in three carrying the row has a hidden chamber reached only by a rift of its own, holding one Elite drop roll, and the row is Built
+
+**Not built and not run.** The writing session wrote this layer on development 6288d58e: the code, six new Unreal
+tests, one Python check's wording, and this entry. It compiled nothing and ran no Unreal test. It ran the Python
+tests in `tools/tests`, the lint and the conflict check before the commit, and nothing else. Every statement below
+about what the engine does is read from the code. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+**Said first: the row answering Built adds nothing to Reality Twister's pool.** `EnterEmpireDungeon` fills that pool
+with every row that is not NotBuilt (`CataclysmDungeonGameMode.cpp` line 13942). Reality Rifts answered Partly
+before this layer, so it was already in the pool, and it still is. No draw changes.
+
+**Said first: the chamber is not in the floor's plan.** Its nine cells are off the plan's grid, three empty columns
+beyond the plan's last column. The brief asked where the cells go "in the plan"; this is the reading taken, and the
+reading not taken is a pocket of walkable cells inside the grid. Nothing that reads the plan can see a cell off
+the grid, so no existing floor, creature or rule is changed by the chamber being there. The price is in the next
+paragraph.
+
+**Said first: on a wide floor the chamber may lie outside the dungeon level's navigation bounds.** The level's
+bounds are sized for the widest floor, 48 cells, plus 800 cm (`tools/generate_dungeon_map.py` lines 52 to 59), so
+they reach 10,000 cm from the floor's middle. The chamber's far edge is at (half the plan's width + 6) cells from
+the middle: 8,800 cm on a floor 32 cells wide and 12,000 cm on a floor 48 wide. By that arithmetic the whole
+chamber is inside the bounds on a floor up to 38 cells wide and partly or wholly outside on a wider one. Outside
+them there is no navigation mesh: a short click to walk and a click on a drop too far to reach both ask for a
+path and get none (`CataclysmPlayerController.cpp` lines 1371 and 1414). Holding the button, which steers without
+a path (line 1305), and the keys still move the player. The reward is put 150 cm from where the player arrives so
+it can be picked up from that spot without walking. Nothing was measured in play, and the bounds were not
+changed, because that needs the map asset made again in the editor.
+
+**Said first: at the baseline the reward is empty about one time in three.** Ruling 2 is one drop roll as an Elite
+kill's. `game/Data/EnemyDrops.csv` gives an Elite 0.5 gear and 0.5 materials on average, each count drawn from a
+Poisson distribution, so with no loot quantity both counts are nought with chance e^-1, about 37%. The panel then
+still says the reward is given.
+
+**Said first: to leave, the player steps off the rift's end and back onto it.** The player arrives standing inside
+the rift's chamber end. The rift has no rest; it is armed again on the first beat the player stands in neither
+end, and carries on the next beat they stand in one. That is at least two beats, half a second. A rift that
+carried back with no step off would carry the player out on the beat after they arrived.
+
+**Said first: the salt that picks the floors was chosen so the four existing rift tests are untouched.** Those
+tests run on dungeon seed 1, floors 2 and 3, and count exactly five zones. Salts 0x52C1 to 0x52C3 each gave one of
+those floors a chamber; 0x52C4 is the first tried that gives neither. With it dungeon seed 1 has a chamber on
+floor 9 only, of floors 1 to 10.
+
+**Said first: the rift that leads to the chamber is placed on the global random, as the five rifts are.** Whether a
+floor has a chamber and where the chamber stands are seeded. Which floor cell its rift is on is not: it comes
+from the same picker as the other rifts (`FloorSourceCells`, issue #2342).
+
+### The row's words
+
+`game/Data/DungeonModifiers.csv`, `Chaos_Reality_Rifts`, danger 5: "The fabric of reality is unstable in Chaos Lord
+dungeons, leading to the creation of temporary portals or rifts. Players can use these rifts strategically to
+teleport, gain buffs, or access hidden areas."
+
+**Which clause is which code.** "Temporary portals or rifts" and "teleport": the two pairs, which rest for 20
+seconds after a crossing (`StepRealityRifts`, merged 2026-09-26). "Gain buffs": the gift rift (the same function).
+"Access hidden areas": the hidden chamber (`StepTheRealityChamber`, this layer). Every clause has code, so
+`BuiltStateOf` answers Built.
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-08.
+
+1. The hidden area is a chamber of 3 by 3 cells that no walk reaches. A rift is the only way in.
+2. Its reward is one drop roll, as an Elite kill's drop roll: the function an Elite creature's death uses, and no
+   table of its own.
+3. The player leaves by the same rift, and the rift has no rest on the way out: whatever rest or cooldown a rift
+   has after a use must not keep the player in the chamber.
+
+All three are met as written. None was changed.
+
+### What was read before writing
+
+All in `game/Source/Cataclysm/` unless a path says otherwise, line numbers as the files stand after this layer.
+
+- **The merged entry**, "2026-09-26 — Reality Rifts: two pairs of rifts carry the player from one to the other and
+  then rest for 20 seconds; a fifth rift gives 20% more damage for 20 seconds, once; hidden areas wait on layout
+  changes". Built: the pairs, the rest, the gift, the panel. Not built: "access hidden areas", because "a floor has
+  no hidden area to reach; that waits on layout changes". That is why the row was Partly.
+- **The rift code**, `Dungeon/CataclysmDungeonGameMode.cpp`. `PlaceTheRealityRifts` (9321) asks
+  `EternalChorusCells` for five cells; that is `FloorSourceCells` (3883), which takes every walkable cell at least
+  2,000 cm from the entrance, shuffles them all on the global random, and then keeps the first that are 2,000 cm
+  from every one kept, until it has the count asked for. `StepRealityRifts` (9371) draws a zone on each cell,
+  carries the player with an unswept `TeleportTo`, sets one rest of 20 seconds for every pair, and gives the
+  gift. `ApplyFloorRulesToPlayer` (21069) forgets the zones, the rest and the gift on every floor and wave; it
+  runs after `PopulateFloor` (1776), where the cells are chosen for a new arena. `LiveCountsForTheFloor` (18184)
+  writes the panel's line. `CellsTheFloorHolds` (7450) holds the rift cells from obstacles.
+- **The existing rift tests**, `Tests/CataclysmDungeonModifierEffectsTests.cpp`: the four of 2026-09-26, on dungeon
+  seed 1's floors 2 and 3, which count five zones and compare the panel's whole line; and three that carry the row
+  with others (`FloorObstacleRefusesEveryCellTheFloorStillHoldsAUseFor`,
+  `LightforgedWallsARealityRiftPastAClosedBarrierStillFindsTheStairsSealed`,
+  `LightforgedWallsNoRealityRiftIsDrawnOnABarriersCell`), which read the five rift cells and count no zone.
+- **The plan.** `Dungeon/CataclysmFloorPlan.h`: `IsFloor`, `Contains` and `IndexOf` answer false or none for a cell
+  off the grid. `Dungeon/CataclysmFloorPlan.cpp`, `CataclysmFloorCanBlock` (51): it refuses everything when the
+  cell it is asked from is not walkable, and refuses a set of cells that would leave any walkable cell of the plan
+  unreached. So a walkable pocket inside the grid that the entrance cannot reach would make that question refuse
+  every obstacle on the floor, `CataclysmMeasureFloor` would count its cells as unreachable, the populator and
+  every picker that reads walkable cells would see them, and Those in the Dark and the sections count walkable
+  cells. A chamber off the grid meets none of these.
+- **The floor actor**, `Dungeon/CataclysmDungeonFloor.cpp`: `Build` (167) makes one ground block for each walkable
+  cell, a wall on each side that is not walkable and a piece in each corner; `WorldOfCell` and `CellOfWorld` are
+  arithmetic and take a cell off the grid.
+- **Who asks where the player stands.** `ThePlayersCell` (7432), the cell every obstacle question is asked from
+  (`AnObstacleMayClose`, 6552). `WakeTheAngelicStatuesNear` and `StepFragmentedReality` ask the section of the
+  player's cell, which is none for a cell off the grid. `ConvergenceArrivalCells` is handed the player's cell.
+- **The Elite drop roll.** `Character/CataclysmEnemyCharacter.cpp` line 296: a creature's death calls
+  `UCataclysmDropSpawner::SpawnDropsFor` with its own rarity step, the player's magic find and loot quantity, and
+  where it died. `Items/CataclysmDroppedItem.cpp` (483) is that function. Soul Chains' gate already pays "one
+  drop roll ... through the same roll a kill of that rung gets" at rung 1
+  (`CataclysmDungeonGameMode.cpp` line 7373); the chamber calls it the same way. A drop is picked up by a click
+  within 300 cm (`UCataclysmDropPickup::PickupRangeCm`).
+- **A floor change, a death, leaving.** `GoToFloor` (21737) clears every dropped item of the last floor and stands
+  the player at the new entrance, except on a Horde arena's next wave. `ACataclysmPlayerCharacter::Revive`
+  (`Character/CataclysmPlayerCharacter.cpp` line 1694) calls `PlaceAtEntrance`. `LeaveEmpireDungeon` (13989) does
+  not move the player.
+- **The save**, `Save/CataclysmSaveGather.cpp`, `FloorFrom` (134): the living creatures a rule did not raise, every
+  dropped item with its location, and each living player's location, yaw and vitals.
+- **Built state.** `Dungeon/CataclysmDungeonModifierEffects.cpp`, `BuiltStateOf` (681).
+
+**Research.** No source was read. The shape of the hidden area is ruled: a chamber, a rift, one drop roll. What
+this layer adds of its own is that the rift is armed by stepping off it, and that is a judgement.
+
+### How it is built
+
+- **Which floors.** `FloorGetsARealityChamber`: the floor carries the row, is not a Horde arena, and
+  `UCataclysmDungeonModifierEffects::RealityChamberOnFloor(Plan.Seed)` says so, which is
+  `SeedForFloor(Seed, 0x52C4) % 3 == 0`.
+- **Its rift.** `PlaceTheRealityRifts` asks the picker for six cells in place of five on such a floor. The picker
+  shuffles before it reads the count, so the first five are the cells it would have answered for five, and nothing
+  more is drawn from the global random. The sixth is the chamber rift's floor cell. A floor on which the picker
+  finds fewer than six has no chamber.
+- **The chamber.** `ACataclysmDungeonFloor::BuildHiddenChamber` adds nine ground blocks, twelve walls and four corner
+  pieces in two components of the floor actor that are the chamber's own, at
+  `RealityChamberOriginFor(Width, Height)`: column `Width + 3`, row `(Height - 3) / 2`. It refuses to build if a
+  chamber cell or a cell touching one is on the plan's grid. `Build` clears it, so a new floor has none.
+- **The carry.** `StepTheRealityChamber`, called at the end of `StepRealityRifts`' work on the floor. It draws a
+  zone 150 cm across its radius at each end, in Void's colours. A player standing in one end, with the rift armed,
+  is carried to the other end by the unswept `TeleportTo` the pairs use, and the rift is disarmed. A beat with the
+  player in neither end arms it. The pairs' rest is neither read nor started.
+- **The reward.** On the first carry in, one call of `SpawnDropsFor` at rung 1 with the player's magic find and
+  loot quantity, on a stream seeded `SeedForFloor(Plan.Seed, 0x52C5)`, at a point 150 cm from the chamber's
+  middle. Once: `bRealityChamberRewardGiven` is set and is cleared only when a new arena is populated or the
+  dungeon is left.
+- **The obstacle questions.** `ThePlayersCell` answers the chamber rift's floor cell while the player stands on a
+  chamber cell. That cell is walkable and held. `CellsTheFloorHolds` holds it.
+- **Forgetting.** `PlaceTheRealityRifts` calls `ForgetTheRealityChamber` before it asks about the row, so every new
+  arena starts with none. `ApplyFloorRulesToPlayer` forgets the two zones, which went with the floor's other
+  zones. `LeaveEmpireDungeon` stands a player who is in the chamber at the entrance and then forgets the chamber
+  and removes its blocks.
+- **The panel.** The row's line gains "; a hidden chamber waits" or "; the hidden chamber's reward is given" on a
+  floor with a chamber. On a floor without one the line is what it was.
+- **Built.** `BuiltStateOf` answers Built for the row.
+
+**What differs on a floor with a chamber from the same floor before this layer.** The plan, the floor's own ground
+and wall blocks, the creatures and the five rifts' draw from the global random do not differ. What is added: 25
+blocks off the plan; two zones; one more held cell, so no pillar or pit is raised on the chamber rift's floor
+cell; and one clause on the panel's line. A floor without the row, and a floor with the row whose seed says no
+chamber, gain two empty components on the floor actor and nothing else.
+
+**The save.** A record written while the player stands in the chamber holds the player's location in the chamber
+and the reward's drops at their locations there. It holds nothing false, so no field was added. Loading a save is
+not built (issue #753). If it were, the floor built from the same seed would have the chamber in the same place,
+the player would stand in it and could leave by the rift, and the reward would be rolled a second time on the next
+entry, because the record holds creatures, dropped items and players and no rule's state.
+
+**The stairs' sealing rules** count the floor's own creatures. No creature is placed in the chamber, so they are
+not affected.
+
+### For the owner's play-check
+
+What a player sees: on about one floor in three that carries the row, a sixth rift in Void's colours, and the
+panel's line ends "a hidden chamber waits". Stepping into that rift puts them in a small walled room beside the
+floor, standing on a rift of the same colour, with the reward's drops lying 150 cm in front of them, if the roll
+left any. The panel then ends "the hidden chamber's reward is given". Stepping off the rift and back onto it puts
+them back on the floor where they went in. Going in again gives nothing more.
+
+| Number or reading | What it does | The reading not taken |
+|---|---|---|
+| One floor in three | Which floors carrying the row have a chamber, by the floor's seed | Every floor, or one in five |
+| Off the plan's grid, three columns out | Nothing that reads the plan sees the chamber | A pocket of walkable cells inside the grid |
+| Three empty columns, 1,200 cm | The gap between the floor's edge and the chamber | Two columns, which keeps more chambers inside the navigation bounds and stands nearer to creatures' area attacks |
+| A rift of its own, the sixth | The five rifts are what they were | The gift rift or a pair's rift leading there |
+| Drawn in Void's colours | It reads apart from the pairs and the gift | The row's own colour |
+| Armed by stepping off | Out in two beats, with no rest | A rest, or a key press to use the rift |
+| One Elite roll, rung 1 | Ruling 2. Empty about 37% of the time at the baseline | A roll that always leaves a drop |
+| Rolled on arrival, lying on the floor | The smallest thing an existing mechanism gives | A chest to open |
+| 150 cm from where the player arrives | The drops can be taken without walking | In a far corner of the chamber |
+| The roll is seeded from the floor's seed | The same dungeon seed and floor roll the same reward | Seeded from the moment, as a kill's is |
+| The panel says a chamber waits | The player is told to look for the sixth rift | Hidden until found |
+| The panel says nothing on a floor without one | Its line is what it was | "no hidden chamber" on those floors |
+| "The hidden chamber's reward is given" | Said once the roll is made, whether or not it left a drop, and whether or not the drops were picked up | "taken", once the drops are picked up |
+| Never on a Horde arena | A wave's end does not move the player | A chamber kept across the waves |
+| Allowed on the final floor, in sections, under Shadowy Enemies, on the dark floor | The chamber is off the plan and none of those rules can see it | Refused on any of them |
+
+### The writing session's judgements
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. **One floor in three**, by `SeedForFloor(floor's seed, 0x52C4) % 3 == 0`. The share was worked out outside the
+   engine by a copy of `SeedForFloor` in Python: 327 of 1,000 floors over dungeon seeds 1 to 100 and floors 1 to
+   10, and 71 of 200 over dungeon seeds 1 to 200 on floor 2. The first figure is asserted in a test; the test also
+   logs how many of dungeon seeds 1 to 40 had a chamber stand on floor 2.
+2. **The salt was chosen so dungeon seed 1's floors 2 and 3 have no chamber.** Said first above.
+3. **A rift of its own**, the picker's sixth cell, so the five rifts' cells and their draw are unchanged.
+4. **Off the plan's grid.** Said first above. The floor actor gained two components for it.
+5. **Three empty columns** between the plan and the chamber, and the chamber half way down the plan's height.
+6. **The reward is rolled when the player first arrives and lies on the chamber's floor**, 150 cm from the arrival
+   spot, which is `UCataclysmDropSpawner::DropInFrontCm`. Once a floor.
+7. **The roll's stream is seeded from the floor's seed**, as Soul Chains' gate seeds its own.
+8. **The rift is armed by a beat with the player in neither end**, and that is all it has in place of a rest.
+9. **Both ends are drawn in Void's colours.**
+10. **The panel shows the chamber from the start**, and says nothing about a chamber on a floor without one, so
+    the existing line and the tests that compare it are unchanged. "Given" is said when the roll is made.
+11. **No chamber on a Horde arena.** The arena is kept from wave to wave and a wave's end does not move the
+    player, so "the floor ending takes the player out" could not hold there.
+12. **A chamber may exist on the final floor**: the pairs already carry a player away from a fight on any floor.
+    **On a floor in sections**: the chamber is in no section, a player in it is in no section, and the rift
+    returns them to the cell they left, so no barrier is passed. **Under Shadowy Enemies and on the dark floor**:
+    nothing those rules read can see a cell off the plan.
+13. **While the player stands in the chamber, the obstacle questions are asked from the chamber rift's floor
+    cell.** Without that no pillar or pit could be raised anywhere on the floor meanwhile.
+14. **After a death the chamber and its reward's state are kept**, because on this base a death keeps the floor.
+    Only where the player stands changes, and `Revive` already does that.
+15. **The row answers Built.**
+16. **A floor too small for six cells 2,000 cm apart has no chamber**, though its seed says one.
+
+### Tests
+
+Six, in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group
+`Cataclysm.DungeonModifierEffects.`. None was run.
+
+- `RealityRiftsChamberFiguresTheSeededFloorsAndTheRowIsBuilt`: the figures; rung 1 is the Elite row of the drop
+  table and rung 0 the Common; Built, with The Labrynth still Partly as the control; the answer for floor seeds 1
+  to 12 and the share of 327 in 1,000, each against a figure written in the test; the reward's seed; where the
+  chamber goes on two plan sizes; the panel's clause.
+- `RealityRiftsChamberStandsOffThePlanAndTheFloorIsWhatItIsWithoutTheRow`: on the first three of dungeon seeds 1
+  to 40 whose floor 2 has a chamber, nine cells off the grid, nothing walkable touching them, every walkable cell
+  of the plan still reached from the entrance, 9 and 16 blocks of its own, the floor's own counts the plan's, the
+  rift on a walkable held cell that is none of the five, no creature in the chamber, every creature on the
+  populator's own placement. Control: the same seed without the row, cell for cell and creature for creature.
+- `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce`: seven zones; the carry in; one
+  roll; the drops counted and lying on chamber cells; the control roll, an Elite kill's on the same seed, as many
+  drops with the same names; not carried straight back; out in two beats; not carried straight back in; a second
+  entry rolls nothing; a pair still carries and rests, and during that rest the chamber's rift carries in and out.
+- `RealityRiftsChamberAFloorWithoutOneIsWhatItWasAndAHordeArenaHasNone`: dungeon seed 1's floor 2, five zones and
+  the old panel line; a player stood where a chamber would be; a Horde arena whose seed says a chamber. Control:
+  the same dungeon seed as an ordinary dungeon, whose floor 1 has the chamber.
+- `RealityRiftsChamberAFloorChangeADeathAndLeavingTheDungeonTakeThePlayerOut`: each from inside the chamber.
+- `RealityRiftsChamberAnObstacleIsStillAllowedOnTheFloorWhileThePlayerIsInside`. Control: the rift's cell and a
+  chamber cell are refused.
+
+Python: `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, the docstring of
+`test_reality_rifts_row_still_teleports_gives_buffs_and_names_hidden_areas` now says the phrase is built. Its
+assertion is unchanged. `tools/tests/test_cells_the_floor_holds_names_every_kept_cell.py` was not changed and
+finds the new kept cell held.
+
+### Not covered by a test
+
+- That a floor without the row is what the same seed gave before this layer. That needs figures from a run made
+  before it, and none were recorded. The test compares the floor with a chamber against the same floor without
+  the row.
+- Walking in the chamber, the navigation mesh there, and click-to-move there. The tests move the player by hand.
+- Picking the reward up.
+- A roll that leaves more than eighteen drops, whose circle would reach past the chamber's wall. At a loot
+  quantity of 600 the test asserts every drop lies on a chamber cell.
+- An empty roll. The test raises loot quantity so the roll is not empty.
+- A floor too small for six cells, and so a floor whose seed says a chamber and has none. The plan test logs how
+  many of forty there were.
+- The player's followers when the player is carried into the chamber. They are not carried.
+- Creatures near the chamber's wall: whether any attack reaches across 1,200 cm and two walls.
+- A death in the chamber under the layer that ends the dungeon on a death, which is not on this base. The test
+  asserts only that the player is not in the chamber after `Revive`.
+- A Volatile dungeon and Reality Twister giving the row to a floor, and the dark floor carrying it.
+- A save written while the player is in the chamber.
+- `PopulateFloor` called a second time on one floor while the player stands in the chamber, which removes the
+  chamber's blocks from under them. Nothing in play does that.
+
+### Guard proofs proposed
+
+None was run. Each is one line of `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, counted once.
+
+1. Before: `	bRealityChamberRiftArmed = false;` After: `	bRealityChamberRiftArmed = true;` Test:
+   `Cataclysm.DungeonModifierEffects.RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce`.
+   Predicted: 2 assertions fail, "a beat later, still standing on the rift's end, the player is still in the
+   chamber" and "and standing there is not carried straight back in". With the rift never disarmed a player
+   standing on an end is carried on every beat; every other step of the test moves the player off an end before
+   the next beat.
+2. Before: `	if (bAtTheFloorEnd && !bRealityChamberRewardGiven)` After: `	if (bAtTheFloorEnd)` Test: the same
+   one. Predicted: 3 assertions fail, "entering again makes no second roll", "and leaves no new drop in the world"
+   and "and still one roll", because each of the three entries then rolls.
+3. Before:
+   `	return (RealityChamberStands() && CurrentFloor->IsAHiddenChamberCell(StandsOn)) ? RealityChamberRiftCell : StandsOn;`
+   After: the same line ending `? StandsOn : StandsOn;` Test:
+   `Cataclysm.DungeonModifierEffects.RealityRiftsChamberAnObstacleIsStillAllowedOnTheFloorWhileThePlayerIsInside`.
+   Predicted: 1 assertion fails, "with the player in the chamber an obstacle is allowed on a floor cell", because
+   the question is then asked from a cell that is not walkable and refuses every cell. The two controls pass.
+
+### What the row needs, for the session that writes rows
+
+Nothing. The row is `Chaos_Reality_Rifts` in `game/Data/DungeonModifiers.csv` and it was not edited. A dungeon rule
+is written in the engine and states no stat row, so no row was passed through the generator and no dry run was
+made. No stat, condition or scale was added.
+
+---
+
 ## 2026-10-09 — Fragmented Reality: on a Halls floor in sections one section scrambles the player's stats while they stand in it, and the row is Built
 
 **Said first: this layer's first window stopped on one failed test, and the fault it found is not in this layer.**

@@ -127,6 +127,33 @@ public:
 	/** The cells `BlockCell` has closed since the floor was built. */
 	const TArray<FIntPoint>& BlockedCells() const { return Blocked; }
 
+	/**
+	 * Builds a hidden chamber beside the floor: `Side` by `Side` cells of ground, walled all round, whose least cell
+	 * is `Origin`. Issues #1820 and #41. It is Reality Rifts' "access hidden areas", ruled 2026-10-08.
+	 *
+	 * THE CHAMBER IS NOT IN THE PLAN. Its cells are off the plan's grid, so `FCataclysmFloorPlan::IsFloor` and
+	 * `Contains` answer false for every one of them, and nothing that reads the plan can see it: not the populator,
+	 * not a rule that chooses a cell, not the reachability questions, not the sections. `WorldOfCell` and
+	 * `CellOfWorld` are arithmetic and answer for a cell off the grid as they do for one on it.
+	 *
+	 * ITS BLOCKS ARE ITS OWN TWO COMPONENTS, so `GroundBlockCount` stays the plan's walkable cells and
+	 * `WallBlockCount` stays `WallPiecesFor`. They are built as `Build` builds a cell: one ground block a cell, a
+	 * wall on each side that is not another chamber cell, and a piece in each corner.
+	 *
+	 * @return false, with nothing built, when the floor is not built, `Side` is not positive, or a chamber cell or a
+	 *         cell touching one is on the plan's grid
+	 */
+	bool BuildHiddenChamber(FIntPoint Origin, int32 Side);
+
+	/** Removes the hidden chamber's blocks and forgets its cells. `Build` calls it, so a new floor begins with none. */
+	void ClearHiddenChamber();
+
+	/** The hidden chamber's cells, row by row from its least cell. Empty when the floor has none. */
+	const TArray<FIntPoint>& HiddenChamberCells() const { return ChamberCells; }
+
+	/** Whether this cell is one of the hidden chamber's. */
+	bool IsAHiddenChamberCell(FIntPoint Cell) const { return ChamberCells.Contains(Cell); }
+
 	/** Whether `Build` has run and produced ground to stand on. */
 	bool IsBuilt() const;
 
@@ -184,6 +211,20 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	TObjectPtr<UInstancedStaticMeshComponent> Walls;
 
+	/** The hidden chamber's ground: one block per chamber cell, and none on a floor without one. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	TObjectPtr<UInstancedStaticMeshComponent> ChamberGround;
+
+	/** The hidden chamber's walls: none on a floor without one. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	TObjectPtr<UInstancedStaticMeshComponent> ChamberWalls;
+
+	/** How many ground blocks the hidden chamber has. */
+	int32 HiddenChamberGroundBlockCount() const;
+
+	/** How many wall blocks the hidden chamber has. */
+	int32 HiddenChamberWallBlockCount() const;
+
 	/** How many ground blocks were placed. Equals the plan's walkable cells. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
 	int32 GroundBlockCount() const;
@@ -221,4 +262,7 @@ private:
 
 	/** See `BlockedCells`. Emptied by `Build`, with the plan it belonged to. */
 	TArray<FIntPoint> Blocked;
+
+	/** See `HiddenChamberCells`. Emptied by `Build` and by `ClearHiddenChamber`. */
+	TArray<FIntPoint> ChamberCells;
 };

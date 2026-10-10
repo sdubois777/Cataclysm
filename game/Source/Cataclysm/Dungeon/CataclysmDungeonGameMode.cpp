@@ -7434,7 +7434,17 @@ FIntPoint ACataclysmDungeonGameMode::ThePlayersCell() const
 	const UWorld* World = GetWorld();
 	const APlayerController* FirstController = World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* PlayersPawn = FirstController ? FirstController->GetPawn() : nullptr;
-	return (PlayersPawn && CurrentFloor) ? CurrentFloor->CellOfWorld(PlayersPawn->GetActorLocation()) : FIntPoint(-1, -1);
+	if (!PlayersPawn || !CurrentFloor)
+	{
+		return FIntPoint(-1, -1);
+	}
+	const FIntPoint StandsOn = CurrentFloor->CellOfWorld(PlayersPawn->GetActorLocation());
+
+	// IN REALITY RIFTS' HIDDEN CHAMBER THE PLAYER COUNTS AS STANDING ON THE CELL OF THE RIFT THAT CARRIES THEM BACK.
+	// A chamber cell is off the plan, and the obstacle question refuses everything asked from a cell that is not
+	// walkable, so without this no pillar or pit could be raised anywhere while the player stood in the chamber.
+	// The rift's cell is where they will next stand on the floor, and it is a held cell that no obstacle closes.
+	return (RealityChamberStands() && CurrentFloor->IsAHiddenChamberCell(StandsOn)) ? RealityChamberRiftCell : StandsOn;
 }
 
 TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
@@ -7507,6 +7517,10 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 		HoldWhere(Fall.Where);
 	}
 	Held.Append(RealityRiftCells);
+	if (RealityChamberRiftCell != FIntPoint(-1, -1))
+	{
+		Held.Add(RealityChamberRiftCell);
+	}
 	for (const FInfestedVein& Vein : InfestedVeins)
 	{
 		Held.Add(Vein.Cell);
@@ -9311,13 +9325,22 @@ void ACataclysmDungeonGameMode::PlaceTheRealityRifts()
 	RealityRiftCells.Reset();
 	RealityRiftZones.Reset();
 	bRealityGiftTaken = false;
+
+	// AND THE LAST ARENA'S HIDDEN CHAMBER, BEFORE THE ROW IS ASKED ABOUT, so a floor without the row has none.
+	ForgetTheRealityChamber();
 	if (!CurrentFloor || !CurrentFloor->IsBuilt() || !FloorBrief.Modifiers.Contains(FName(Effects::RealityRiftsKey)))
 	{
 		return;
 	}
 	// THE PAIRS AND THE GIFT WHERE ETERNAL CHORUS'S PICKER PUTS ITS SOURCES. A floor with too few cells far enough apart
 	// keeps whole pairs only, and the gift only when a cell is left for it.
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, 2 * Effects::RealityRiftPairs + 1);
+	//
+	// AND ONE CELL MORE ON A FLOOR THAT GETS A HIDDEN CHAMBER, for the rift that leads to it. The picker shuffles
+	// every candidate before it reads the count, so asking for one more draws nothing more from the global random,
+	// and the cells before the last are the ones it would have answered for the smaller count.
+	const int32 RiftsOfTheFloor = 2 * Effects::RealityRiftPairs + 1;
+	const bool bAChamber = FloorGetsARealityChamber(CurrentFloor->GetPlan());
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, RiftsOfTheFloor + (bAChamber ? 1 : 0));
 	const int32 Paired = FMath::Min(Cells.Num() / 2, Effects::RealityRiftPairs) * 2;
 	for (int32 Index = 0; Index < Paired; ++Index)
 	{
@@ -9326,6 +9349,20 @@ void ACataclysmDungeonGameMode::PlaceTheRealityRifts()
 	if (Cells.Num() > Paired)
 	{
 		RealityRiftCells.Add(Cells[Paired]);
+	}
+
+	// THE HIDDEN CHAMBER, ONLY WHEN THE PICKER HAD A CELL LEFT AFTER THE PAIRS AND THE GIFT: built off the plan's
+	// grid, and its rift on that last cell. A floor too small for six cells that far apart has no chamber.
+	if (bAChamber && Cells.Num() > RiftsOfTheFloor)
+	{
+		const FCataclysmFloorPlan& ChamberPlan = CurrentFloor->GetPlan();
+		if (CurrentFloor->BuildHiddenChamber(
+				Effects::RealityChamberOriginFor(ChamberPlan.Width, ChamberPlan.Height), Effects::RealityChamberSide))
+		{
+			RealityChamberRiftCell = Cells[RiftsOfTheFloor];
+			UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: a hidden chamber on floor %d, its rift on cell %s"),
+				   FloorNumber, *RealityChamberRiftCell.ToString());
+		}
 	}
 	UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: %d rift(s) on floor %d"), RealityRiftCells.Num(), FloorNumber);
 	RefreshFloorModifierPanel();
@@ -9400,6 +9437,11 @@ void ACataclysmDungeonGameMode::StepRealityRifts(
 				RealityRiftZones[Paired] = nullptr;
 			}
 		}
+
+		// AND THE HIDDEN CHAMBER'S RIFT, AFTER THE PAIRS AND THE GIFT. It reads where the player stands now, so a
+		// player a pair has just carried is asked about where they arrived. It neither reads nor starts the pairs'
+		// rest.
+		StepTheRealityChamber(Player);
 	}
 
 	// THE GIFT, WRITTEN WHEN IT CHANGED AND COUNTED DOWN ON THE BEAT.
@@ -9412,11 +9454,186 @@ void ACataclysmDungeonGameMode::StepRealityRifts(
 	RealityGiftLeft = FMath::Max(0.0f, RealityGiftLeft - SecondsBetweenWaveChecks);
 
 	const int32 Key = FMath::CeilToInt(RealityRiftRestLeft) * 1000 + FMath::CeilToInt(RealityGiftLeft) * 10
-		+ (bRealityGiftTaken ? 1 : 0);
+		+ (bRealityGiftTaken ? 1 : 0) + (RealityChamberStands() ? 2 : 0) + (bRealityChamberRewardGiven ? 4 : 0);
 	if (Key != RealityRiftPanelKey)
 	{
 		RealityRiftPanelKey = Key;
 		RefreshFloorModifierPanel();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Reality Rifts' hidden chamber, the row's "access hidden areas". Issues #1820 and #41. Ruled 2026-10-08: a chamber of
+// three by three cells that no walk reaches, a rift the only way in; one drop roll as an Elite kill's; out by the same
+// rift, which has no rest.
+// ---------------------------------------------------------------------------
+
+bool ACataclysmDungeonGameMode::FloorGetsARealityChamber(const FCataclysmFloorPlan& Plan) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONE CONDITION, IN ONE PLACE: the floor carries the row, is not a Horde arena, and its seed says so. A Horde arena
+	// is kept from wave to wave and a wave's end does not move the player, so "the floor ending takes the player out
+	// of the chamber" could not hold there. Every other floor may have one: the final floor, a floor in sections, a
+	// floor under Shadowy Enemies and the dark floor a fall leads to, because the chamber is off the plan and nothing
+	// those rules read can see it.
+	return FloorBrief.Modifiers.Contains(FName(Effects::RealityRiftsKey))
+		&& !FloorBrief.bWaveWalksIn
+		&& Effects::RealityChamberOnFloor(Plan.Seed);
+}
+
+bool ACataclysmDungeonGameMode::RealityChamberStands() const
+{
+	return CurrentFloor && RealityChamberRiftCell != FIntPoint(-1, -1)
+		&& !CurrentFloor->HiddenChamberCells().IsEmpty();
+}
+
+FIntPoint ACataclysmDungeonGameMode::RealityChamberArrivalCellNow() const
+{
+	if (!RealityChamberStands())
+	{
+		return FIntPoint(-1, -1);
+	}
+
+	// THE MIDDLE CELL. The floor lists the chamber's cells from its least cell.
+	const int32 ToTheMiddle = UCataclysmDungeonModifierEffects::RealityChamberSide / 2;
+	return CurrentFloor->HiddenChamberCells()[0] + FIntPoint(ToTheMiddle, ToTheMiddle);
+}
+
+FVector ACataclysmDungeonGameMode::RealityChamberRewardWorld() const
+{
+	if (!RealityChamberStands())
+	{
+		return FVector::ZeroVector;
+	}
+
+	// AS FAR FROM WHERE THE PLAYER ARRIVES AS AN ITEM THEY DROP LANDS IN FRONT OF THEM, 150 cm, which is half the
+	// pickup range: the drops can be taken from the spot the player arrives on, and their names are not drawn under
+	// the character.
+	return CurrentFloor->WorldOfCell(RealityChamberArrivalCellNow())
+		+ FVector(UCataclysmDropSpawner::DropInFrontCm, 0.0f, 0.0f);
+}
+
+bool ACataclysmDungeonGameMode::PlayerIsInTheRealityChamber() const
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* FirstController = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* PlayersPawn = FirstController ? FirstController->GetPawn() : nullptr;
+	return PlayersPawn && CurrentFloor
+		&& CurrentFloor->IsAHiddenChamberCell(CurrentFloor->CellOfWorld(PlayersPawn->GetActorLocation()));
+}
+
+void ACataclysmDungeonGameMode::ForgetTheRealityChamber()
+{
+	if (ACataclysmGroundZone* FloorEndZone = RealityChamberRiftZone.Get())
+	{
+		FloorEndZone->Destroy();
+	}
+	if (ACataclysmGroundZone* ChamberEndZone = RealityChamberInsideZone.Get())
+	{
+		ChamberEndZone->Destroy();
+	}
+	RealityChamberRiftZone = nullptr;
+	RealityChamberInsideZone = nullptr;
+	RealityChamberRiftCell = FIntPoint(-1, -1);
+	bRealityChamberRiftArmed = true;
+	bRealityChamberRewardGiven = false;
+	RealityChamberRewardRolls = 0;
+	RealityChamberRewardDrops = 0;
+	if (CurrentFloor)
+	{
+		CurrentFloor->ClearHiddenChamber();
+	}
+}
+
+bool ACataclysmDungeonGameMode::TakeThePlayerOutOfTheRealityChamber()
+{
+	if (!PlayerIsInTheRealityChamber())
+	{
+		return false;
+	}
+	const UWorld* World = GetWorld();
+	const APlayerController* FirstController = World ? World->GetFirstPlayerController() : nullptr;
+	return PlaceAtEntrance(FirstController ? FirstController->GetPawn() : nullptr);
+}
+
+void ACataclysmDungeonGameMode::StepTheRealityChamber(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !RealityChamberStands())
+	{
+		return;
+	}
+	const FVector FloorEnd = CurrentFloor->WorldOfCell(RealityChamberRiftCell);
+	const FVector ChamberEnd = CurrentFloor->WorldOfCell(RealityChamberArrivalCellNow());
+
+	// BOTH ENDS DRAWN WHEREVER ONE IS MISSING, in Void's colours, so the rift reads apart from the pairs, drawn in the
+	// row's, and from the gift, drawn in Celestial's. They do nothing themselves.
+	if (ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World))
+	{
+		if (!RealityChamberRiftZone.Get())
+		{
+			RealityChamberRiftZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, FloorEnd, FloorEnd, Effects::RealityRiftRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+				/*InDrawnAsType=*/FName(TEXT("Void")));
+		}
+		if (!RealityChamberInsideZone.Get())
+		{
+			RealityChamberInsideZone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, ChamberEnd, ChamberEnd, Effects::RealityRiftRadiusCm, 0.0f, /*bAffectsEveryone=*/false,
+				/*InDrawnAsType=*/FName(TEXT("Void")));
+		}
+	}
+
+	const FVector Feet = Player->GetActorLocation();
+	const ACataclysmGroundZone* FloorEndZone = RealityChamberRiftZone.Get();
+	const ACataclysmGroundZone* ChamberEndZone = RealityChamberInsideZone.Get();
+	const bool bAtTheFloorEnd = FloorEndZone && FloorEndZone->Covers(Feet);
+	const bool bAtTheChamberEnd = ChamberEndZone && ChamberEndZone->Covers(Feet);
+
+	// STANDING IN NEITHER END ARMS THE RIFT. This is all the rift has in place of a rest, ruled 2026-10-08: whatever
+	// rest a rift has after a use must not keep the player in the chamber. A player who steps off the end they
+	// arrived on and back onto it is carried on that beat, however soon after arriving.
+	if (!bAtTheFloorEnd && !bAtTheChamberEnd)
+	{
+		bRealityChamberRiftArmed = true;
+		return;
+	}
+	if (!bRealityChamberRiftArmed)
+	{
+		return;
+	}
+
+	// A STEP INTO EITHER END, THE RIFT ARMED: carried to the other end, unswept, as a pair carries. The pairs' rest is
+	// neither read nor started.
+	const FVector Arrive = (bAtTheFloorEnd ? ChamberEnd : FloorEnd)
+		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Player));
+	if (!Player->TeleportTo(Arrive, Player->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true))
+	{
+		return;
+	}
+	bRealityChamberRiftArmed = false;
+	UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: the player carried %s the hidden chamber on floor %d"),
+		   bAtTheFloorEnd ? TEXT("into") : TEXT("out of"), FloorNumber);
+
+	// THE REWARD, ON THE FIRST ARRIVAL AND NEVER AGAIN ON THIS FLOOR: one drop roll through the roll a kill of an Elite
+	// gets, with the player's own magic find and loot quantity, as Soul Chains' gate pays. Seeded from the floor's
+	// seed, so the same dungeon seed and floor roll the same.
+	if (bAtTheFloorEnd && !bRealityChamberRewardGiven)
+	{
+		float MagicFind = 0.0f;
+		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
+		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+		FRandomStream RewardStream(Effects::RealityChamberRewardSeed(CurrentFloor->GetPlan().Seed));
+		RealityChamberRewardDrops += UCataclysmDropSpawner::SpawnDropsFor(
+			World, Effects::RealityChamberRewardRung, MagicFind, LootQuantity, RealityChamberRewardWorld(),
+			RewardStream);
+		++RealityChamberRewardRolls;
+		bRealityChamberRewardGiven = true;
+		UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: the hidden chamber gave its reward on floor %d, %d drop(s)"),
+			   FloorNumber, RealityChamberRewardDrops);
 	}
 }
 
@@ -13819,6 +14036,12 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	PestilentBeaconsLeftStanding = 0;
 	ForgetThePortals();
 	ForgetTheHoards();
+
+	// AND REALITY RIFTS' HIDDEN CHAMBER ENDS WITH THE DUNGEON. A player standing in it is stood at the floor's
+	// entrance first, because the chamber's ground goes with it; then its rift, its reward's state and its blocks
+	// are forgotten. Issues #1820 and #41.
+	TakeThePlayerOutOfTheRealityChamber();
+	ForgetTheRealityChamber();
 
 	// AND THE BLOOD DEBT IS THE DUNGEON'S: leaving ends it, and the call below takes its blessing and curse off.
 	BloodDebtPaid = 0;
@@ -18335,7 +18558,10 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			? FString::Printf(TEXT("+%d%% damage for %d s"), FMath::RoundToInt(Effects::RealityGiftDamageMorePercent),
 							  FMath::CeilToInt(RealityGiftLeft))
 			: (bRealityGiftTaken ? FString(TEXT("the gift is spent")) : FString(TEXT("a gift rift waits")));
-		Counting.Add(Reality, FString::Printf(TEXT("reality rifts: %s; %s"), *RiftsState, *Gift));
+		// AND THE HIDDEN CHAMBER, ON A FLOOR THAT HAS ONE; on a floor without one the line is what it was.
+		Counting.Add(Reality, FString::Printf(
+			TEXT("reality rifts: %s; %s%s"), *RiftsState, *Gift,
+			*Effects::RealityChamberPanelClause(RealityChamberStands(), bRealityChamberRewardGiven)));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
@@ -21351,6 +21577,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		RealityGiftLeft = 0.0f;
 		RealityGiftApplied = 0.0f;
 		RealityRiftPanelKey = -1;
+
+		// AND THE HIDDEN CHAMBER'S TWO ZONES, FOR THE SAME REASON: they went with the others above and are drawn again
+		// on the next beat. Nothing else of the chamber is forgotten here: its rift's cell and its reward's state
+		// were set when this arena was populated, which is before this function runs.
+		RealityChamberRiftZone = nullptr;
+		RealityChamberInsideZone = nullptr;
 
 		// AND FUNEREAL PROCESSION, FOR THE SAME REASON: a procession crossing the last floor does not cross this one,
 		// and this floor's first sets out sixty seconds in. Issues #1820 and #41.

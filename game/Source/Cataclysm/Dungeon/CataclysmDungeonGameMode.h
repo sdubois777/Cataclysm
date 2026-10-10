@@ -2585,6 +2585,36 @@ public:
 	/** Reality Rifts, for tests: whether the gift rift has been used on this arena. */
 	bool RealityGiftTaken() const { return bRealityGiftTaken; }
 
+	/**
+	 * Reality Rifts' hidden chamber, for the panel and tests: whether this floor has a chamber and a rift that leads
+	 * to it. Issues #1820 and #41.
+	 */
+	bool RealityChamberStands() const;
+
+	/** The hidden chamber, for tests: the floor cell of the rift that leads to it, or (-1, -1) with no chamber. */
+	FIntPoint RealityChamberRiftCellNow() const { return RealityChamberRiftCell; }
+
+	/**
+	 * The hidden chamber, for tests: its middle cell, where the player arrives and where the rift's other end is
+	 * drawn, or (-1, -1) with no chamber.
+	 */
+	FIntPoint RealityChamberArrivalCellNow() const;
+
+	/** The hidden chamber, for tests: the point its reward's drops are scattered round. Zero with no chamber. */
+	FVector RealityChamberRewardWorld() const;
+
+	/** The hidden chamber: whether the first player's character stands on one of its cells. */
+	bool PlayerIsInTheRealityChamber() const;
+
+	/** The hidden chamber, for tests: whether its one drop roll has been made on this floor. */
+	bool RealityChamberRewardGiven() const { return bRealityChamberRewardGiven; }
+
+	/** The hidden chamber, for tests: how many drop rolls it has made on this floor. Never more than one. */
+	int32 RealityChamberRewardRollsMade() const { return RealityChamberRewardRolls; }
+
+	/** The hidden chamber, for tests: how many drops that roll put on its floor. */
+	int32 RealityChamberRewardDropsSpawned() const { return RealityChamberRewardDrops; }
+
 	/** Luxury Hoarders, for tests: where this floor's hoards lie. */
 	const TArray<FVector>& LuxuryHoardsNow() const { return LuxuryHoards; }
 
@@ -3029,6 +3059,24 @@ private:
 
 	/** Reality Rifts, on the beat: the rifts drawn, a step into one answered, and the gift written on the player. */
 	void StepRealityRifts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Reality Rifts' hidden chamber: whether a floor with this plan gets one. The floor carries the row, is not a
+	 * Horde arena, and its seed says so (`UCataclysmDungeonModifierEffects::RealityChamberOnFloor`).
+	 */
+	bool FloorGetsARealityChamber(const FCataclysmFloorPlan& Plan) const;
+
+	/**
+	 * The hidden chamber, on the beat, called by `StepRealityRifts`: both ends of its rift drawn, a step into either
+	 * end answered by carrying the player to the other, and the reward rolled on the first arrival.
+	 */
+	void StepTheRealityChamber(class ACataclysmPlayerCharacter* Player);
+
+	/** The hidden chamber forgotten: its rift, its reward's state and its blocks. A new arena and leaving the dungeon. */
+	void ForgetTheRealityChamber();
+
+	/** A player standing in the hidden chamber is stood at the floor's entrance. True when one was moved. */
+	bool TakeThePlayerOutOfTheRealityChamber();
 
 	/** Luxury Hoarders: this arena's hoards, their piles and guards, placed where a new arena is populated. */
 	void PlaceTheHoards();
@@ -4294,7 +4342,10 @@ private:
 	/** A warning whose second is over: raised, or cancelled when its cells are no longer allowed. */
 	void RaiseOrCancel(ACataclysmFloorObstacle* Obstacle);
 
-	/** The player's cell on this floor, or (-1, -1). */
+	/**
+	 * The player's cell on this floor, or (-1, -1). For a player standing in Reality Rifts' hidden chamber it is
+	 * the floor cell of the rift that carries them back, so the obstacle questions are asked from a walkable cell.
+	 */
 	FIntPoint ThePlayersCell() const;
 
 	// ----------------------------------------------------------------------
@@ -4960,6 +5011,24 @@ private:
 	float RealityGiftLeft = 0.0f;
 	float RealityGiftApplied = 0.0f;
 	int32 RealityRiftPanelKey = -1;
+
+	/**
+	 * Reality Rifts' hidden chamber: the floor cell of the rift that leads to it, the zones drawn at the rift's two
+	 * ends, whether the rift will carry, whether the reward's roll has been made, and how many rolls and drops that
+	 * was. The chamber's own cells are the floor's (`ACataclysmDungeonFloor::HiddenChamberCells`). Issues #1820 and
+	 * #41.
+	 *
+	 * `bRealityChamberRiftArmed` IS WHAT THE RIFT HAS INSTEAD OF A REST. A carry puts the player inside the rift's
+	 * other end, so it would carry them straight back on the next beat. It is disarmed by a carry and armed again on
+	 * the first beat the player stands in neither end.
+	 */
+	FIntPoint RealityChamberRiftCell = FIntPoint(-1, -1);
+	TWeakObjectPtr<class ACataclysmGroundZone> RealityChamberRiftZone;
+	TWeakObjectPtr<class ACataclysmGroundZone> RealityChamberInsideZone;
+	bool bRealityChamberRiftArmed = true;
+	bool bRealityChamberRewardGiven = false;
+	int32 RealityChamberRewardRolls = 0;
+	int32 RealityChamberRewardDrops = 0;
 
 	/** Luxury Hoarders: where the hoards lie, their guards, and how many drops the piles were laid with. */
 	TArray<FVector> LuxuryHoards;

@@ -836,6 +836,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// holds until the player leaves. On a floor with no sections the row does nothing; see the key. Issues #1820
 		// and #41.
 		|| RowKey == FName(FragmentedRealityKey)
+		// REALITY RIFTS, BUILT 2026-10-10 ON THE HIDDEN CHAMBER: one floor in three carrying the row has a chamber of
+		// three by three cells off the floor's plan, entered and left only by a rift of its own, holding one drop roll
+		// as an Elite kill's. The pairs and the gift were built on 2026-09-26; see the key. Issues #1820 and #41.
+		|| RowKey == FName(RealityRiftsKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -858,9 +862,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.
 		RowKey == FName(InsanityBurstsKey)
-		// REALITY RIFTS. The paired rifts carry the player and the gift rift gives its damage; "access hidden areas"
-		// does nothing, because nothing changes the floor's layout during play. Issues #1820 and #41.
-		|| RowKey == FName(RealityRiftsKey)
+		// REALITY RIFTS WAS HERE UNTIL 2026-10-10, for "access hidden areas"; it is built and answers above.
 		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
 		// THE LABRYNTH. Gated shortcuts open and close in turn, so cleared paths are blocked and others open; "rooms
 		// rearrange" does nothing, because the rooms do not move. Issues #1820 and #41.
@@ -2925,6 +2927,36 @@ int32 UCataclysmDungeonModifierEffects::FragmentedRealityPairFor(int32 FloorSeed
 	// same dungeon seed, floor and entry always give the same pair.
 	const int32 OfTheFloor = FCataclysmFloorGenerator::SeedForFloor(FloorSeed, FragmentedRealityPairSalt);
 	return FCataclysmFloorGenerator::SeedForFloor(OfTheFloor, FMath::Max(Entry, 0)) % FragmentedRealityPairs;
+}
+
+bool UCataclysmDungeonModifierEffects::RealityChamberOnFloor(int32 FloorSeed)
+{
+	// THE FLOOR'S SEED MIXED WITH THE CHAMBER'S OWN SALT, so the answer is not the first figure of any other draw made
+	// from that seed, and the same dungeon seed and floor always answer the same. `SeedForFloor` never answers below
+	// nought, so the remainder does not.
+	return FCataclysmFloorGenerator::SeedForFloor(FloorSeed, RealityChamberSalt) % RealityChamberOneFloorIn == 0;
+}
+
+int32 UCataclysmDungeonModifierEffects::RealityChamberRewardSeed(int32 FloorSeed)
+{
+	return FCataclysmFloorGenerator::SeedForFloor(FloorSeed, RealityChamberRewardSalt);
+}
+
+FIntPoint UCataclysmDungeonModifierEffects::RealityChamberOriginFor(int32 PlanWidth, int32 PlanHeight)
+{
+	// BEYOND THE PLAN'S LAST COLUMN, so every cell of the chamber and every cell touching one is off the grid whatever
+	// the plan's height; half way down, so it stands beside the floor's middle.
+	return FIntPoint(PlanWidth + RealityChamberGapCells, FMath::Max(0, (PlanHeight - RealityChamberSide) / 2));
+}
+
+FString UCataclysmDungeonModifierEffects::RealityChamberPanelClause(bool bStands, bool bRewardGiven)
+{
+	if (!bStands)
+	{
+		return FString();
+	}
+	return bRewardGiven ? FString(TEXT("; the hidden chamber's reward is given"))
+						: FString(TEXT("; a hidden chamber waits"));
 }
 
 void UCataclysmDungeonModifierEffects::WriteFragmentedRealityEffects(FCataclysmPlayerFloorEffects& Into, int32 Pair)
