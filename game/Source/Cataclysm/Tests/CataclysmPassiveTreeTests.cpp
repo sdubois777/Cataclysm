@@ -75,6 +75,9 @@
 #include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
+// For the loaded benefit table, which the two real class point rows are
+// checked against before a test wears them.
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 // For counting what is in the bag when a second two-handed weapon is handed
 // back. Ruled 2026-10-10 (J3).
@@ -438,12 +441,25 @@ bool FCataclysmPassiveFirstBossOnlyTest::RunTest(const FString&)
 // allocation with the excess left out, LAST NODE FIRST TOUCHED first. Nothing is
 // taken out of the character's own allocation.
 //
-// NO ROW IN THE GAME'S DATA GRANTS THE STAT YET, so no test here wears a real
-// enchantment. The tests on a real character put the row on through
-// `UCataclysmEquipmentComponent::SetRowsWornForTests`, which adds a modifier to
-// what `GatherModifiers` returns; everything after that is the game's own code.
-// What they do not cover is the walk from a row of `EnchantmentEffects.csv` to
-// that modifier, which is `AccumulateEnchantmentsInto` and has tests of its own.
+// THE TESTS ON A REAL CHARACTER WEAR THE TWO REAL ROWS, since 2026-10-10: "Gain
+// 5-10 class points" and "Gain 3-8 additional class points". Each is found in
+// the loaded effect table by its stat and its two figures, and checked to be a
+// row of the loaded benefit table, so no row name is typed here. An item is
+// made that carries the enchantment at a chosen roll and is put on through the
+// equipment component's own equip, which announces the change; the player
+// character's listener then runs the refresh, as it does in play. Until that
+// day these tests added made-up modifiers through a seam in the equipment
+// component, which is deleted.
+//
+// A REAL ROW IS ALWAYS WORTH A WHOLE NUMBER, so rounding down cannot be shown
+// through a real refresh. Both rows state whole figures, and
+// `UCataclysmItemValues::EnchantmentValue` gives a row only values at the
+// precision its two figures are written to: 5, 6, 7, 8, 9 or 10, each owning a
+// sixth of the roll. So a worn row is 7 where these tests once said 7.9, and 3
+// where they said 3.9, and every figure counted from them is as it was. ROUNDING
+// DOWN, AND THE ROWS THE GAME DOES NOT COUNT, are shown on the reader itself,
+// `UCataclysmPassivePoints::GrantedByWornRows`, with modifiers made by hand.
+// The generator refuses every such row, so none can be worn.
 //
 // ONE ACTOR IN EACH WORLD BUT ONE, so nothing else here depends on where
 // anything stands. The test that plants a weapon says where it stands.
@@ -473,8 +489,9 @@ namespace CataclysmClassPointsFromGearTest
 	const FName WillingFlesh(TEXT("Masochist_basic_spine_002"));
 	const FName Resonance(TEXT("Masochist_basic_spine_003"));
 
-	/** One worn row granting this many class points: flat, with no condition,
-	 *  no scale and no tag, which is the only shape the game counts. */
+	/** One modifier MADE BY HAND, as a worn row granting this many class points
+	 *  would make it: flat, with no condition, no scale and no tag. Handed only
+	 *  to `GrantedByWornRows` directly; no character wears it. */
 	FCataclysmStatModifier GrantingRow(float Value)
 	{
 		FCataclysmStatModifier Row;
@@ -496,6 +513,121 @@ namespace CataclysmClassPointsFromGearTest
 		return Worn;
 	}
 
+	/** One of the two real rows that grant class points, as the loaded tables
+	 *  hold it: the enchantment it belongs to and the two figures it states. */
+	struct FRealGrantingRow
+	{
+		FName Enchantment;
+		float Low = 0.0f;
+		float High = 0.0f;
+
+		bool IsFound() const { return !Enchantment.IsNone(); }
+	};
+
+	/**
+	 * The row of the loaded effect table on `class_points_granted` that states
+	 * these two figures, whose enchantment is a row of the loaded benefit
+	 * table. Not found, with no name, when either table lacks it.
+	 *
+	 * FOUND BY WHAT THE ROW SAYS AND NOT BY A TYPED NAME, so a renamed row is
+	 * still found and a row that is gone is reported as gone.
+	 */
+	FRealGrantingRow RealRowStating(float Low, float High)
+	{
+		FRealGrantingRow Found;
+		const UDataTable* Effects = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+		const UDataTable* Benefits = UCataclysmDropRoll::LoadPositiveEnchantmentTable();
+		if (!Effects || !Benefits)
+		{
+			return Found;
+		}
+		for (const TPair<FName, uint8*>& Each : Effects->GetRowMap())
+		{
+			const FCataclysmEnchantmentEffectRow* Effect =
+				reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Each.Value);
+			if (Effect && Effect->Stat == UCataclysmPassivePoints::GrantedByGearStat
+				&& FMath::IsNearlyEqual(Effect->ValueLow, Low)
+				&& FMath::IsNearlyEqual(Effect->ValueHigh, High)
+				&& Benefits->FindRow<FCataclysmEnchantmentRow>(
+					   FName(*Effect->Enchantment), TEXT("RealRowStating"),
+					   /*bWarnIfMissing=*/false))
+			{
+				Found.Enchantment = FName(*Effect->Enchantment);
+				Found.Low = Low;
+				Found.High = High;
+				return Found;
+			}
+		}
+		return Found;
+	}
+
+	/**
+	 * The roll at which a real row is worth this whole number of points: the
+	 * middle of that number's share of the roll.
+	 *
+	 * THE ARITHMETIC IS `UCataclysmItemValues::EnchantmentValue`'s. A row from 5
+	 * to 10 has six values and each owns a sixth of the roll, so 7 owns the
+	 * rolls from 2/6 up to 3/6 and its middle is 2.5/6.
+	 */
+	float RollWorth(const FRealGrantingRow& Row, int32 Points)
+	{
+		return (static_cast<float>(Points) - Row.Low + 0.5f)
+			/ (Row.High - Row.Low + 1.0f);
+	}
+
+	/** An item of this base carrying that real row as its one benefit, rolled
+	 *  to be worth this many points, with no drawback. */
+	FCataclysmItem ItemGranting(const TCHAR* Base, const FRealGrantingRow& Row,
+								int32 Points)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = Row.Enchantment;
+		Rolled.PositiveRoll = RollWorth(Row, Points);
+		Item.Enchantments.Add(Rolled);
+		Item.EnchantmentCount = 1;
+		return Item;
+	}
+
+	/**
+	 * The two real rows, each checked: found in both tables, and worth the
+	 * whole numbers these tests use at the rolls `RollWorth` gives. False means
+	 * the set-up did not hold and the test should stop.
+	 */
+	bool FindTheTwoRealRows(FAutomationTestBase& Test, FRealGrantingRow& OutFiveToTen,
+							FRealGrantingRow& OutThreeToEight)
+	{
+		OutFiveToTen = RealRowStating(5.0f, 10.0f);
+		OutThreeToEight = RealRowStating(3.0f, 8.0f);
+		if (!Test.TestTrue(TEXT("set-up: the loaded tables hold a row granting 5 "
+								"to 10 class points"), OutFiveToTen.IsFound())
+			|| !Test.TestTrue(TEXT("set-up: and a row granting 3 to 8"),
+							  OutThreeToEight.IsFound()))
+		{
+			Test.AddError(TEXT("If the rows are in game/Data/EnchantmentEffects.csv, "
+							   "DT_EnchantmentEffects is older than they are: run  "
+							   "python tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+
+		const auto Worth = [](const FRealGrantingRow& Row, int32 Points)
+		{
+			return UCataclysmItemValues::EnchantmentValue(
+				Row.Low, Row.High, RollWorth(Row, Points));
+		};
+		return Test.TestTrue(TEXT("set-up: they are two different enchantments"),
+							 OutFiveToTen.Enchantment != OutThreeToEight.Enchantment)
+			&& Test.TestEqual(TEXT("set-up: the 5 to 10 row can be rolled to 7"),
+							  Worth(OutFiveToTen, 7), 7.0f, 0.001f)
+			&& Test.TestEqual(TEXT("set-up: and to 9"), Worth(OutFiveToTen, 9), 9.0f,
+							  0.001f)
+			&& Test.TestEqual(TEXT("set-up: the 3 to 8 row can be rolled to 3"),
+							  Worth(OutThreeToEight, 3), 3.0f, 0.001f);
+	}
+
 	/** A possessed Demonic player and the parts of it these tests read. */
 	struct FGearedPlayer
 	{
@@ -509,11 +641,23 @@ namespace CataclysmClassPointsFromGearTest
 			return Character && State && Equipment && AbilitySystem;
 		}
 
-		/** Put these rows on, or none, and refresh as a change of gear does. */
-		void Wear(const TArray<FCataclysmStatModifier>& Rows) const
+		/**
+		 * Put an item on in one slot, through the equipment component's own
+		 * equip. That announces a change of gear and the player character's
+		 * listener runs the refresh; nothing here refreshes by hand.
+		 */
+		void PutOn(const FCataclysmItem& Item, ECataclysmGearSlot Slot) const
 		{
-			Equipment->SetRowsWornForTests(WornRows(Rows));
-			Equipment->RefreshAttributes(AbilitySystem);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			Equipment->EquipInto(Item, Slot, Removed, AlsoRemoved);
+		}
+
+		/** Take off what is in one slot, the same way. */
+		void TakeOff(ECataclysmGearSlot Slot) const
+		{
+			FCataclysmItem Removed;
+			Equipment->Unequip(Slot, Removed);
 		}
 
 		/** The values of the modifiers the passive tree put on one stat, summed.
@@ -700,11 +844,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsRowsRoundDownTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * A character wearing a granting row of 7.9 has earned 7 more points; wearing
- * rows of 7.9 and 3.9 it has earned 10 more, not the 11 their sum rounds down
- * to. A row the game cannot count grants nothing. The figure is what the last
- * refresh read, it is nought again when the rows come off, and a player state
- * whose pawn is gone reads nought.
+ * ON THE READER, WITH MODIFIERS MADE BY HAND: rows of 7.9 and 3.9 grant 10, not
+ * the 11 their sum rounds down to, and a row the game cannot count grants
+ * nothing beside a row of 5. No such row can be worn: a real row is always a
+ * whole number, and the generator refuses every shape the game does not count.
+ *
+ * ON A REAL CHARACTER WEARING THE TWO REAL ROWS: a ring carrying "Gain 5-10
+ * class points" rolled to 7 makes it 7 more points earned; a second ring
+ * carrying "Gain 3-8 additional class points" rolled to 3 makes it 10 more; a
+ * third ring carrying the first row again, rolled to 9, makes it 12 more,
+ * because the same benefit on two pieces counts once at the higher roll. The
+ * figure is what the last refresh read, it is nought again when the rings come
+ * off, and a player state whose pawn is gone reads nought.
  */
 bool FCataclysmClassPointsRowsRoundDownTest::RunTest(const FString&)
 {
@@ -714,8 +865,11 @@ bool FCataclysmClassPointsRowsRoundDownTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	FRealGrantingRow FiveToTen;
+	FRealGrantingRow ThreeToEight;
 	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
-				  Player.IsComplete()))
+				  Player.IsComplete())
+		|| !FindTheTwoRealRows(*this, FiveToTen, ThreeToEight))
 	{
 		return false;
 	}
@@ -730,27 +884,17 @@ bool FCataclysmClassPointsRowsRoundDownTest::RunTest(const FString&)
 		return false;
 	}
 
-	// THE READER BY ITSELF FIRST, on the worn modifiers and with no character.
+	// THE READER BY ITSELF FIRST, on modifiers made by hand and with no
+	// character. This is where rounding down is shown.
 	TestEqual(TEXT("worn rows of 7.9 and 3.9 grant 10"),
 			  UCataclysmPassivePoints::GrantedByWornRows(
 				  WornRows({GrantingRow(7.9f), GrantingRow(3.9f)})), 10);
 	TestEqual(TEXT("and no worn row grants none"),
 			  UCataclysmPassivePoints::GrantedByWornRows(WornRows({})), 0);
 
-	Player.Wear({GrantingRow(7.9f)});
-	TestEqual(TEXT("one row of 7.9: 7 points from gear"),
-			  Player.State->PassivePointsFromGear(), 7);
-	TestEqual(TEXT("one row of 7.9: 7 more points earned"),
-			  Player.State->PassivePointsAvailable(), Before + 7);
-	TestEqual(TEXT("and nothing is spent, so every point earned is unspent"),
-			  Player.State->PassivePointsUnspent(), Before + 7);
-
-	Player.Wear({GrantingRow(7.9f), GrantingRow(3.9f)});
-	TestEqual(TEXT("rows of 7.9 and 3.9: 10 more points earned, not 11"),
-			  Player.State->PassivePointsAvailable(), Before + 10);
-
 	// ROWS THE GAME CANNOT COUNT, each beside a row of 5 that it can, so a
-	// reading of 5 says the other row was seen and left out.
+	// reading of 5 says the other row was seen and left out. On the reader
+	// too: the generator refuses each of these, so none can be worn.
 	FCataclysmStatModifier Increased = GrantingRow(9.0f);
 	Increased.Bucket = ECataclysmStatBucket::Increased;
 	FCataclysmStatModifier Conditioned = GrantingRow(9.0f);
@@ -764,21 +908,65 @@ bool FCataclysmClassPointsRowsRoundDownTest::RunTest(const FString&)
 	for (const FCataclysmStatModifier& Uncounted :
 		 {Increased, Conditioned, Scaled, BelowOne, BelowNought})
 	{
-		Player.Wear({GrantingRow(5.0f), Uncounted});
 		TestEqual(TEXT("a row that is not flat, or is conditioned, or is "
 					   "scaled, or is below 1, grants nothing beside a row of 5"),
-				  Player.State->PassivePointsAvailable(), Before + 5);
+				  UCataclysmPassivePoints::GrantedByWornRows(
+					  WornRows({GrantingRow(5.0f), Uncounted})), 5);
 	}
 
-	// THE FIGURE IS WHAT THE LAST REFRESH READ. Taking the rows off without a
-	// refresh leaves it; the refresh every change of gear runs puts it right.
-	Player.Wear({GrantingRow(7.9f)});
-	Player.Equipment->SetRowsWornForTests(
-		TMap<FName, TArray<FCataclysmStatModifier>>());
+	// THE REAL ROWS, WORN. A ring carrying the 5 to 10 row, rolled to 7.
+	Player.PutOn(ItemGranting(TEXT("Ring_Band"), FiveToTen, 7),
+				 ECataclysmGearSlot::Ring1);
+	if (!TestFalse(TEXT("set-up: the first ring is on"),
+				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Ring1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the 5 to 10 row at 7: 7 points from gear"),
+			  Player.State->PassivePointsFromGear(), 7);
+	TestEqual(TEXT("the 5 to 10 row at 7: 7 more points earned"),
+			  Player.State->PassivePointsAvailable(), Before + 7);
+	TestEqual(TEXT("and nothing is spent, so every point earned is unspent"),
+			  Player.State->PassivePointsUnspent(), Before + 7);
+
+	// AND A SECOND RING CARRYING THE OTHER ROW, rolled to 3. Two different
+	// enchantments, so both count.
+	Player.PutOn(ItemGranting(TEXT("Ring_Band"), ThreeToEight, 3),
+				 ECataclysmGearSlot::Ring2);
+	TestEqual(TEXT("with the 3 to 8 row at 3 beside it: 10 more points earned"),
+			  Player.State->PassivePointsAvailable(), Before + 10);
+
+	// AND A THIRD RING CARRYING THE FIRST ROW AGAIN, rolled to 9. The same
+	// benefit on two pieces counts once, at the higher roll: 9 and 3, not 7
+	// and 9 and 3.
+	Player.PutOn(ItemGranting(TEXT("Ring_Band"), FiveToTen, 9),
+				 ECataclysmGearSlot::Ring3);
+	TestEqual(TEXT("the 5 to 10 row on two rings, at 7 and at 9, counts once at "
+				   "9: 12 more points earned, not 19"),
+			  Player.State->PassivePointsAvailable(), Before + 12);
+	Player.TakeOff(ECataclysmGearSlot::Ring3);
+	Player.TakeOff(ECataclysmGearSlot::Ring2);
+	if (!TestEqual(TEXT("set-up: with the second and third rings off it is 7 "
+						"more again"),
+				   Player.State->PassivePointsAvailable(), Before + 7))
+	{
+		return false;
+	}
+
+	// THE FIGURE IS WHAT THE LAST REFRESH READ. Switching the ring's slot off
+	// announces nothing and refreshes nothing, so the figure stays; the next
+	// refresh reads the slot as empty.
+	Player.Equipment->SetDisabledSlot(ECataclysmGearSlot::Ring1);
 	TestEqual(TEXT("before the refresh the figure is still the last refresh's"),
 			  Player.State->PassivePointsFromGear(), 7);
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("and after it the rows that came off grant nothing"),
+	TestEqual(TEXT("and after it the ring in the switched-off slot grants nothing"),
+			  Player.State->PassivePointsAvailable(), Before);
+	Player.Equipment->SetDisabledSlot(ECataclysmGearSlot::Count);
+
+	// AND THE RING TAKEN OFF GRANTS NOTHING.
+	Player.TakeOff(ECataclysmGearSlot::Ring1);
+	TestEqual(TEXT("with every ring off, the points earned are the level's"),
 			  Player.State->PassivePointsAvailable(), Before);
 
 	// A PLAYER STATE WITH NO PAWN READS NOUGHT, one that never had a pawn and
@@ -790,8 +978,9 @@ bool FCataclysmClassPointsRowsRoundDownTest::RunTest(const FString&)
 					   "from gear"), Alone->PassivePointsFromGear(), 0);
 	}
 
-	Player.Wear({GrantingRow(7.9f)});
-	if (!TestEqual(TEXT("set-up: the pawn wears a row of 7.9 again"),
+	Player.PutOn(ItemGranting(TEXT("Ring_Band"), FiveToTen, 7),
+				 ECataclysmGearSlot::Ring1);
+	if (!TestEqual(TEXT("set-up: the pawn wears the 5 to 10 row at 7 again"),
 				   Player.State->PassivePointsAvailable(), Before + 7))
 	{
 		return false;
@@ -812,14 +1001,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsGearComesOffTest,
 /**
  * Through the real refresh, on a real level 10 character with the real tables.
  *
- * It spends its 15 points in three Masochist nodes. A worn row of 7.9 grants 7
- * more and it spends 6 of them in Willing Flesh, the last node first touched,
- * through `SpendPassivePoint`. The row comes off: all 21 points are still
- * spent, Willing Flesh's increase to health regeneration is off the stat line,
- * Pain Tolerance's increase to maximum health is still on it, and the scale
- * `class_points_spent` still reads 21. A smaller row of 3.9 puts three of the
- * six back. The first row goes back on and all six count again with no other
- * act.
+ * It spends its 15 points in three Masochist nodes. A ring carrying the real
+ * row "Gain 5-10 class points", rolled to 7, grants 7 more and it spends 6 of
+ * them in Willing Flesh, the last node first touched, through
+ * `SpendPassivePoint`. The ring comes off: all 21 points are still spent,
+ * Willing Flesh's increase to health regeneration is off the stat line, Pain
+ * Tolerance's increase to maximum health is still on it, and the scale
+ * `class_points_spent` still reads 21. A ring carrying the other real row,
+ * "Gain 3-8 additional class points", rolled to 3, puts three of the six back.
+ * The first ring goes back on and all six count again with no other act.
+ *
+ * THE ROWS ARE 7 AND 3 WHERE THIS TEST ONCE WORE MADE-UP ROWS OF 7.9 AND 3.9. A
+ * real row is always a whole number, so every figure below is as it was: 22
+ * earned with the first ring, 18 with the second.
  */
 bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 {
@@ -829,11 +1023,17 @@ bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	FRealGrantingRow FiveToTen;
+	FRealGrantingRow ThreeToEight;
 	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
-				  Player.IsComplete()))
+				  Player.IsComplete())
+		|| !FindTheTwoRealRows(*this, FiveToTen, ThreeToEight))
 	{
 		return false;
 	}
+	const FCataclysmItem RingOfSeven = ItemGranting(TEXT("Ring_Band"), FiveToTen, 7);
+	const FCataclysmItem RingOfThree =
+		ItemGranting(TEXT("Ring_Band"), ThreeToEight, 3);
 
 	// WHAT THE TWO NODES ARE AUTHORED AS, read from the table the game loads.
 	const float HealthPerPoint = PerPointOn(PainTolerance, TEXT("max_health"));
@@ -890,9 +1090,11 @@ bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 						   "spent.")));
 
 	// THE GEAR GOES ON AND ITS POINTS ARE SPENT, one at a time, as a player does.
-	Player.Wear({GrantingRow(7.9f)});
-	if (!TestEqual(TEXT("set-up: the row of 7.9 makes it 22 earned"),
-				   Player.State->PassivePointsAvailable(), 22))
+	Player.PutOn(RingOfSeven, ECataclysmGearSlot::Ring1);
+	if (!TestFalse(TEXT("set-up: the ring is on"),
+				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Ring1))
+		|| !TestEqual(TEXT("set-up: the 5 to 10 row at 7 makes it 22 earned"),
+					  Player.State->PassivePointsAvailable(), 22))
 	{
 		return false;
 	}
@@ -924,7 +1126,7 @@ bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 			  Player.State->PassivePointsAddingNothing(), 0);
 
 	// THE GEAR COMES OFF.
-	Player.Wear({});
+	Player.TakeOff(ECataclysmGearSlot::Ring1);
 	TestEqual(TEXT("gear off: 15 are earned again"),
 			  Player.State->PassivePointsAvailable(), 15);
 	TestEqual(TEXT("gear off: all 21 points are still spent"),
@@ -961,18 +1163,18 @@ bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 	TestEqual(TEXT("gear off: the refused point was not spent"),
 			  Player.State->GetPassiveAllocation().Total(), 21);
 
-	// A SMALLER ROW PUTS BACK AS MANY POINTS AS IT GRANTS: 3.9 is 3, so 18 are
-	// earned and three of Willing Flesh's six count.
-	Player.Wear({GrantingRow(3.9f)});
-	TestEqual(TEXT("a row of 3.9: 3 of Willing Flesh's 6 points are on the "
+	// A SMALLER ROW PUTS BACK AS MANY POINTS AS IT GRANTS: the other real row
+	// at 3, so 18 are earned and three of Willing Flesh's six count.
+	Player.PutOn(RingOfThree, ECataclysmGearSlot::Ring1);
+	TestEqual(TEXT("the 3 to 8 row at 3: 3 of Willing Flesh's 6 points are on the "
 				   "stat line"),
 			  Player.FromTheTreeOn(TEXT("health_regen")), 3.0f * RegenPerPoint,
 			  0.001f);
-	TestEqual(TEXT("a row of 3.9: 3 spent points add nothing"),
+	TestEqual(TEXT("the 3 to 8 row at 3: 3 spent points add nothing"),
 			  Player.State->PassivePointsAddingNothing(), 3);
 
 	// THE FIRST ROW GOES BACK ON, AND NOTHING ELSE IS DONE.
-	Player.Wear({GrantingRow(7.9f)});
+	Player.PutOn(RingOfSeven, ECataclysmGearSlot::Ring1);
 	TestEqual(TEXT("gear back on: all 6 of Willing Flesh's points are on the "
 				   "stat line again"),
 			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
@@ -1098,15 +1300,16 @@ namespace CataclysmClassPointsFromGearTest
 	}
 
 	/**
-	 * A level 10 character holding a Greatsword in the first weapon slot, with a
-	 * row of 7.9 class points said to be ON THAT WEAPON, and 21 points spent: the
-	 * level's 15 handed over in three nodes, and 6 of the weapon's 7 spent in
-	 * Willing Flesh, the last node first touched, through `SpendPassivePoint`
-	 * with the weapon held. Every step is checked; false means the set-up did
-	 * not hold and the test should stop.
+	 * A level 10 character holding, in the first weapon slot, a Greatsword that
+	 * CARRIES the real row "Gain 5-10 class points" rolled to 7, and 21 points
+	 * spent: the level's 15 handed over in three nodes, and 6 of the weapon's 7
+	 * spent in Willing Flesh, the last node first touched, through
+	 * `SpendPassivePoint` with the weapon held. Every step is checked; false
+	 * means the set-up did not hold and the test should stop.
 	 *
-	 * THE ROW IS TIED TO THE SLOT, so the game leaves it out whenever it reads
-	 * that slot as holding nothing, as it would a real row on the weapon.
+	 * THE ROW IS ON THE WEAPON, so whatever the game does with that item it does
+	 * with the row. The row carries no slot tag, so the drop rules allow it on a
+	 * weapon as on any other item (`UCataclysmDropRoll::EnchantmentSuitsSlot`).
 	 *
 	 * @param OutRegenPerPoint  what Willing Flesh grants per point on health_regen
 	 */
@@ -1122,26 +1325,24 @@ namespace CataclysmClassPointsFromGearTest
 			return false;
 		}
 
-		FCataclysmItem Greatsword;
-		Greatsword.Base = FName(TEXT("Weapon_Greatsword"));
-		Greatsword.GearLevel = 10;
-		FCataclysmItem Removed;
-		FCataclysmItem AlsoRemoved;
-		Player.Equipment->EquipInto(Greatsword, ECataclysmGearSlot::Weapon1, Removed,
-									AlsoRemoved);
-		const FCataclysmItem* Held =
-			Player.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
-		if (!Test.TestTrue(TEXT("set-up: the Greatsword is in the first weapon slot"),
-						   Held && Held->Base == Greatsword.Base))
+		FRealGrantingRow FiveToTen;
+		FRealGrantingRow ThreeToEight;
+		if (!FindTheTwoRealRows(Test, FiveToTen, ThreeToEight))
 		{
 			return false;
 		}
 
-		Player.Equipment->SetRowsWornForTests(WornRows({GrantingRow(7.9f)}),
-											  ECataclysmGearSlot::Weapon1);
-		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-		if (!Test.TestEqual(TEXT("set-up: the weapon's row of 7.9 makes it 22 earned"),
-							Player.State->PassivePointsAvailable(), 22))
+		FCataclysmItem Greatsword =
+			ItemGranting(TEXT("Weapon_Greatsword"), FiveToTen, 7);
+		Greatsword.GearLevel = 10;
+		Player.PutOn(Greatsword, ECataclysmGearSlot::Weapon1);
+		const FCataclysmItem* Held =
+			Player.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+		if (!Test.TestTrue(TEXT("set-up: the Greatsword is in the first weapon slot"),
+						   Held && Held->Base == Greatsword.Base)
+			|| !Test.TestEqual(TEXT("set-up: the weapon's 5 to 10 row at 7 makes it "
+									"22 earned"),
+							   Player.State->PassivePointsAvailable(), 22))
 		{
 			return false;
 		}
@@ -1336,8 +1537,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsSecondWeaponHandedBackTest
  * has earned 200 points and has 201 spent: 200 in basic nodes of the real
  * Ravager tree, and the last in the real capstone `Ravager_capstone_200` with
  * its second option, Both Hands Full. The 201st point counts only because the
- * boots it wears are said to carry a row of 7.9 class points. It holds a
- * Greatsword and a Greataxe.
+ * boots it wears carry the real row "Gain 5-10 class points", rolled to 7. It
+ * holds a Greatsword and a Greataxe.
  *
  * THE 200 ARE HANDED OVER AND THE CAPSTONE IS TAKEN AS A PLAYER TAKES IT. Ruled
  * 2026-10-10. The level and the five bosses, handed in the same call, pay for
@@ -1368,9 +1569,12 @@ bool FCataclysmClassPointsSecondWeaponHandedBackTest::RunTest(const FString&)
 	FGearedPlayer Player = SpawnAtLevel(World, 100);
 	UCataclysmInventoryComponent* Bag =
 		Player.Character ? Player.Character->GetInventory() : nullptr;
+	FRealGrantingRow FiveToTen;
+	FRealGrantingRow ThreeToEight;
 	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
 				  Player.IsComplete())
-		|| !TestNotNull(TEXT("set-up: and a bag"), Bag))
+		|| !TestNotNull(TEXT("set-up: and a bag"), Bag)
+		|| !FindTheTwoRealRows(*this, FiveToTen, ThreeToEight))
 	{
 		return false;
 	}
@@ -1389,17 +1593,14 @@ bool FCataclysmClassPointsSecondWeaponHandedBackTest::RunTest(const FString&)
 
 	// THE GREATSWORD FIRST, over whatever weapon the character started with, so
 	// the character is never without a weapon. Without the option a two-handed
-	// weapon takes both hands. Then the boots with the row tied to them.
+	// weapon takes both hands. Then the boots that carry the real row.
 	Player.Equipment->EquipInto(Of(*Greatsword.ToString()), ECataclysmGearSlot::Weapon1,
 								Removed, AlsoRemoved);
-	Player.Equipment->EquipInto(Of(TEXT("Boots_Sabatons")), ECataclysmGearSlot::Boots,
-								Removed, AlsoRemoved);
-	Player.Equipment->SetRowsWornForTests(WornRows({GrantingRow(7.9f)}),
-										  ECataclysmGearSlot::Boots);
-	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	Player.Equipment->EquipInto(ItemGranting(TEXT("Boots_Sabatons"), FiveToTen, 7),
+								ECataclysmGearSlot::Boots, Removed, AlsoRemoved);
 	if (!TestFalse(TEXT("set-up: the boots are on"),
 				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Boots))
-		|| !TestEqual(TEXT("set-up: their row of 7.9 makes it 157 earned, the "
+		|| !TestEqual(TEXT("set-up: their 5 to 10 row at 7 makes it 157 earned, the "
 						   "level's 150 and the boots' 7"),
 					  Player.State->PassivePointsAvailable(), 157))
 	{
@@ -1726,11 +1927,12 @@ bool FCataclysmClassPointsScreenSaysTest::RunTest(const FString&)
 				  .Contains(TEXT("of these add")));
 
 	// AND THE WIDGET, ON A REAL CHARACTER. A level 10 character has earned 15.
-	// Its 15 are handed over, a worn row of 7.9 grants 7 more, 6 of them are
-	// spent in Willing Flesh through `SpendPassivePoint`, and the row comes off:
-	// it has 6 more spent than earned, made the way play makes them. Ruled
-	// 2026-10-10. This test once handed over all 21 with no gear; a handed
-	// allocation now counts as paid for, and the screen would have said nothing.
+	// Its 15 are handed over, a ring carrying the real row "Gain 5-10 class
+	// points" rolled to 7 grants 7 more, 6 of them are spent in Willing Flesh
+	// through `SpendPassivePoint`, and the ring comes off: it has 6 more spent
+	// than earned, made the way play makes them. Ruled 2026-10-10. This test
+	// once handed over all 21 with no gear; a handed allocation now counts as
+	// paid for, and the screen would have said nothing.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
@@ -1744,12 +1946,19 @@ bool FCataclysmClassPointsScreenSaysTest::RunTest(const FString&)
 		return false;
 	}
 
-	Player.Wear({GrantingRow(7.9f)});
+	FRealGrantingRow FiveToTen;
+	FRealGrantingRow ThreeToEight;
+	if (!FindTheTwoRealRows(*this, FiveToTen, ThreeToEight))
+	{
+		return false;
+	}
+	Player.PutOn(ItemGranting(TEXT("Ring_Band"), FiveToTen, 7),
+				 ECataclysmGearSlot::Ring1);
 	if (!SpendTheLevelsPointsAndSixOfTheGears(*this, Player))
 	{
 		return false;
 	}
-	Player.Wear({});
+	Player.TakeOff(ECataclysmGearSlot::Ring1);
 	if (!TestEqual(TEXT("set-up: 15 earned"),
 				   Player.State->PassivePointsAvailable(), 15)
 		|| !TestEqual(TEXT("set-up: 21 spent"),
@@ -1807,10 +2016,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsHandedAllocationTest,
  * the stat line. Without the record the excess of 10 would come out of the end
  * of the allocation and leave Pain Tolerance 4.
  *
- * THE RULE STILL ACTS ON POINTS SPENT AFTERWARDS. A worn row of 7.9 grants 7
- * more, and 6 are spent in Willing Flesh through `SpendPassivePoint`. The row
- * comes off: 15 are earned and 21 spent, the 6 add nothing, Willing Flesh is
- * off the stat line, and the 15 handed over are all still on it.
+ * THE RULE STILL ACTS ON POINTS SPENT AFTERWARDS. A ring carrying the real row
+ * "Gain 5-10 class points", rolled to 7, grants 7 more, and 6 are spent in
+ * Willing Flesh through `SpendPassivePoint`. The ring comes off: 15 are earned
+ * and 21 spent, the 6 add nothing, Willing Flesh is off the stat line, and the
+ * 15 handed over are all still on it.
  *
  * THE RECORD DESCRIBES ONE HAND-OVER. A second replaces it and is not added to
  * it; bosses handed in the same call pay for points as the level does; and a
@@ -1824,11 +2034,15 @@ bool FCataclysmClassPointsHandedAllocationTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FGearedPlayer Player = SpawnAtLevel(World, 5);
+	FRealGrantingRow FiveToTen;
+	FRealGrantingRow ThreeToEight;
 	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
-				  Player.IsComplete()))
+				  Player.IsComplete())
+		|| !FindTheTwoRealRows(*this, FiveToTen, ThreeToEight))
 	{
 		return false;
 	}
+	const FCataclysmItem RingOfSeven = ItemGranting(TEXT("Ring_Band"), FiveToTen, 7);
 
 	const float HealthPerPoint = PerPointOn(PainTolerance, TEXT("max_health"));
 	const float RegenPerPoint = PerPointOn(WillingFlesh, TEXT("health_regen"));
@@ -1886,9 +2100,11 @@ bool FCataclysmClassPointsHandedAllocationTest::RunTest(const FString&)
 						   "spent.")));
 
 	// THE GEAR GOES ON AND ITS POINTS ARE SPENT, one at a time, as a player does.
-	Player.Wear({GrantingRow(7.9f)});
-	if (!TestEqual(TEXT("set-up: the row of 7.9 makes it 22 earned"),
-				   Player.State->PassivePointsAvailable(), 22))
+	Player.PutOn(RingOfSeven, ECataclysmGearSlot::Ring1);
+	if (!TestFalse(TEXT("set-up: the ring is on"),
+				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Ring1))
+		|| !TestEqual(TEXT("set-up: the 5 to 10 row at 7 makes it 22 earned"),
+					  Player.State->PassivePointsAvailable(), 22))
 	{
 		return false;
 	}
@@ -1920,7 +2136,7 @@ bool FCataclysmClassPointsHandedAllocationTest::RunTest(const FString&)
 			  0.001f);
 
 	// THE GEAR COMES OFF, AND THE RULE ACTS AS IT DOES ON ANY OTHER CHARACTER.
-	Player.Wear({});
+	Player.TakeOff(ECataclysmGearSlot::Ring1);
 	TestEqual(TEXT("gear off: 15 are earned, the level's 5 and the 10 recorded"),
 			  Player.State->PassivePointsAvailable(), 15);
 	TestEqual(TEXT("gear off: all 21 points are still spent"),

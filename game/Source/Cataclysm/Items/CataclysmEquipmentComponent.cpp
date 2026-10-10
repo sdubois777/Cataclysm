@@ -633,23 +633,6 @@ UCataclysmEquipmentComponent::GatherModifiersReading(
 		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
 		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Actions);
 
-	// AND WHAT A TEST SAYS IS WORN. Empty in a running game, always, so this
-	// loop adds nothing there. See `SetRowsWornForTests`.
-	//
-	// ROWS A TEST SAID ARE ON THE ITEM IN ONE SLOT ARE ADDED ONLY WHILE THAT
-	// SLOT IS READ AS HOLDING SOMETHING, so they are left out with a slot that
-	// is switched off, with a planted weapon, and with an empty slot, as a real
-	// row on that item would be.
-	const int32 SeamSlot = static_cast<int32>(RowsWornForTestsSlot);
-	if (RowsWornForTestsSlot == ECataclysmGearSlot::Count
-		|| (Worn->IsValidIndex(SeamSlot) && !(*Worn)[SeamSlot].Base.IsNone()))
-	{
-		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : RowsWornForTests)
-		{
-			Totals.FindOrAdd(Stat.Key).Append(Stat.Value);
-		}
-	}
-
 	return Totals;
 }
 
