@@ -2,6 +2,257 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-09 — A row can make a healing skill restore more health and give a share of what it restored as energy shield; the healing skills are Living Pyre and Blood Pyre
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (two stat names, two
+functions, and the health part of the regeneration step), `CataclysmSkillTemplates.cpp` (the function in which
+Living Pyre returns health), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two names on the
+list of stats with no attribute), five new tests in `CataclysmSkillTemplateTests.cpp`, two probes in
+`CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py` (one check),
+`tools/tests/test_generate_datatables.py` and one new file,
+`tools/tests/test_the_healing_skills_are_the_two_tagged_under_recovery.py`. No data row, no skill row, no tag
+and no workbook cell is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: NOTHING HERE WAS COMPILED OR RUN IN UNREAL BY THE SESSION THAT WROTE IT
+
+**The C++ in this entry has not been through a compiler and none of its automation tests has been run.** The
+session that wrote it does not build Unreal. Every statement below about what the game does is a statement about
+what the code was written to do. The enchantment session builds it and records the run at the foot of this entry.
+
+### SAID FIRST: WHAT A PLAYER GETS, IN FIGURES
+
+The two sentences are "Healing skills restore 30%-60% more HP" and "Healing skills also restore 10%-20% of the
+healed amount as energy shield". No row is written yet, so no player gets anything from this layer until the
+enchantment session writes the two rows.
+
+- **Living Pyre returns 25% of each hit its holder takes. With the first row it returns 32.5% at a roll of 30
+  and 40% at a roll of 60.** A hit that takes 400 health returns 100 without the row and 130 to 160 with it.
+- **Blood Pyre doubles its thrower's health regeneration while the thrower stands in it. With the first row the
+  rate is 2.3 times the base at a roll of 30 and 2.6 times at a roll of 60.** Only the part the pyre adds is
+  multiplied. A thrower regenerating 10 a second regenerates 20 in the pyre without the row, and 23 to 26 with
+  it. The 10 it regenerates anywhere is not changed. Out of the pyre the row adds nothing.
+- **Blood Pyre gives nothing to a character with no health regeneration, with or without the row.** The pyre
+  multiplies a rate, and a rate of nought stays nought. This was true before this layer and is unchanged.
+- **The shield is a share of the health that ARRIVED, not of the health the skill offered.** "The healed amount"
+  is read as what the character was healed by. A heal cut by a reduction of healing received, by the healing
+  ceiling or by reserved health gives a smaller shield, and a heal on a character at full health gives none. A
+  share of what was offered would give shield to a character who was healed by nothing.
+- **Living Pyre with the second row:** a return of 100 health also gives 10 to 20 energy shield.
+- **Blood Pyre with the second row:** the share is of the EXTRA health only. A thrower regenerating 10 a second
+  gains 1 to 2 shield for each second it stands in its pyre below full health, and none out of it. The
+  regeneration step runs every quarter of a second, so the shield arrives in quarters of that.
+- **The shield goes into the ordinary energy shield and stops at its maximum.** A character with no energy
+  shield gets nothing from the second row.
+- **The same sentence on several worn pieces counts once**, at the higher roll. That is the rule every benefit
+  follows and this layer does not change it.
+
+### SAID FIRST: THE THIRD SENTENCE CANNOT BE WRITTEN AS THE ROW THAT WAS EXPECTED
+
+"Using a healing skill grants 10%-20% increased damage for 5 seconds" was expected to be writable on what
+exists as a timed stat on `skill_use`, scaled by `own_stacks`, with a Required Tag of `Stat.Recovery`. **Read
+on 2026-10-09 by the session that wrote this entry, it cannot. No matching rule was changed and nothing was
+built for it.**
+
+- **A parent tag does match its child, in both places a row's tags are judged.**
+  `UCataclysmStatPipeline::ModifierApplies` and `UCataclysmAbilitySystemComponent::PoolActionAllowed` both ask
+  `HasTag`, and the comment at each says a skill tagged `Type.AOE.PointBlank` satisfies a requirement of
+  `Type.AOE`. So a requirement of `Stat.Recovery` is met by a skill tagged `Stat.Recovery.Leech`.
+- **The generator does not refuse `Stat.Recovery` as a Required Tag.** `known_tags` adds every parent of a
+  declared tag, and `validate_enchantment_effects` refuses only a tag outside that set. No check refusing a
+  tag under `Stat.` was found. No merged row of `EnchantmentEffects.csv` requires a tag under `Stat.`.
+- **But on a row scaled by `own_stacks`, the Required Tags scope the STAT and not the GRANT.**
+  `UCataclysmItemModifiers::AccumulateEnchantmentsInto` in `CataclysmItem.cpp` builds the action that grants
+  the stack and copies the row's tags onto it only for the scale `consecutive_hits`. Its comment: "An own
+  stack's tags scope its stat and not its grant, the phase 1 judgement". The granting action therefore carries
+  no tags, and `PoolActionAllowed` lets it fire on every `skill_use`. The row's modifier keeps the tags, so the
+  increase is counted only when a skill tagged under `Stat.Recovery` asks for its damage.
+- **So that row would read: using ANY skill grants the stack, and for 5 seconds only Living Pyre and Blood Pyre
+  deal the increased damage.** The sentence says the opposite on both halves: only a healing skill grants it,
+  and the damage is the character's.
+- **The merged rows that show the same reading:** "When any of your gadgets is destroyed, all remaining gadgets
+  gain 30%-50% increased damage for 5 seconds" is two `own_stacks` rows requiring `Type.Deployable` on the
+  event `gadget_destroyed`. Their tag picks whose damage is raised, not which event grants. They are the only
+  `own_stacks` rows in `EnchantmentEffects.csv` that state Required Tags.
+
+### SAID FIRST: WHAT WAS NOT READ
+
+- **Not read:** `UCataclysmPlayerClassStats::ApplyTo`. That a stat on the list of stats with no attribute
+  passes through it without a warning was taken from the stats already on that list.
+- **Not read:** `UCataclysmStatPipeline::Evaluate` past the lines that refuse a More multiplier from a source
+  that may not grant one. That a `more` row of 50 on a figure of 100 answers 150 was taken from
+  `healing_received`, which is asked the same way.
+- **Not read:** `UCataclysmAbilitySystemComponent::NoteOverheal`, `UCataclysmFervour::RemoveForHealing` and the
+  energy shield's clamp in `UCataclysmVitalAttributeSet::PreAttributeChange`. Each is called by
+  `UCataclysmRegeneration::TopUp`, which this layer calls and does not change.
+- **Not read:** where a ground zone is given its owner. That the thrower is the owner was taken from
+  `ACataclysmGroundZone::RegenerationScaleFor` and from the existing test of the doubled regeneration.
+- **Not read:** the timer that calls the regeneration step. The quarter of a second is the constant
+  `UCataclysmRegeneration::StepSeconds`.
+
+### WHAT THE OWNER SAID
+
+The owner, 2026-10-08, asked which skills are healing skills: "Name the healing skills". The coordinating
+session named them, and on 2026-10-09 the owner accepted its recommendation with the words "your rec on all the
+open questions": the healing skills are Living Pyre and Blood Pyre. Subjugate is not one.
+
+### WHAT IS RULED, AND WHERE EACH RULING IS IN THE CODE
+
+Each of these was ruled on 2026-10-09 by the coordinating session under the owner's delegation, and each is a
+labelled judgement.
+
+| | Ruling | Where |
+| :-- | :-- | :-- |
+| H1 | A healing skill is a skill tagged under `Stat.Recovery`, and the skills so tagged are exactly Living Pyre and Blood Pyre. No tag is added and no skill row changes. | `tools/tests/test_the_healing_skills_are_the_two_tagged_under_recovery.py`. The game does not look for the tag: it reads the two stats at the two places those two skills pay their health, and the test holds the three sets equal |
+| H2 | "More" multiplies Living Pyre's returned health, and for Blood Pyre the extra regeneration its pyre gives and not the base. | `UCataclysmRegeneration::HealingSkillAmount`, called in `UCataclysmAuraSkill::NoteBlowTaken` on the amount handed to `TopUp`, and in `UCataclysmRegeneration::ApplyStep` on the extra rate |
+| H3 | "The healed amount" is those same two quantities, each time they are paid. | `UCataclysmRegeneration::GiveHealingSkillShield`, called in the same two functions with the health that arrived |
+| H4 | The shield is the ordinary energy shield, capped at its maximum. | `GiveHealingSkillShield` pays through `TopUp` into the energy shield attribute |
+| H5 | This layer authors no row. | The rows are the enchantment session's |
+
+### WHAT WAS BUILT
+
+**Two stats, neither with a gameplay attribute or a base.** Both are on
+`UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+
+| Stat | Kind | Read by |
+| :-- | :-- | :-- |
+| `healing_skill_health_restored` | `more` | `UCataclysmRegeneration::HealingSkillAmount` |
+| `healing_skill_health_as_energy_shield` | `flat`, a percentage | `UCataclysmRegeneration::GiveHealingSkillShield` |
+
+**`HealingSkillAmount` applies the first stat to an amount the caller hands it**, the way `TopUp` applies
+`healing_received` to the amount it is offered. The amount is the figure the rows apply to, so the stat needs
+no base and a character with no row is handed its amount back. The answer is never below nought.
+
+**`GiveHealingSkillShield` reads the second stat as a percentage of the health that arrived**, pays that much
+into the energy shield through `TopUp`, and answers what was added.
+
+**Each function is called at two places and nowhere else.** The Python test of H1 counts the calls.
+
+**Living Pyre**, in `UCataclysmAuraSkill::NoteBlowTaken`. The amount offered, 25% of what the blow dealt to
+health, goes through `HealingSkillAmount` before `TopUp` has it. Every rule the function's comment lists still
+applies, to the larger amount: the healing ceiling, reserved health, the reduction of healing received, the
+loss of Fervour. What arrived is read off health as before, and `GiveHealingSkillShield` is handed that. The
+function still answers the health returned; the shield is not in its answer or in `HealthReturned`.
+
+**Blood Pyre**, in `UCataclysmRegeneration::ApplyStep`. The health rate is now worked out in two parts: the
+rate the character has anywhere, and the extra, which is that rate times the pyre's scale less one. Only the
+extra goes through `HealingSkillAmount`. With a scale of 2 and 50% more the whole rate is
+`rate * (1 + (2 - 1) * 1.5)`. One `TopUp` pays both parts, tagged as regeneration as before. With no row the
+sum is the doubled rate the step always paid.
+
+**Whose stat is read.** The aura's holder for Living Pyre. For Blood Pyre the character the step is run for,
+who is the patch's owner: `ACataclysmGroundZone::RegenerationScaleFor` counts only patches that character left.
+A stranger standing in the patch is not scaled and is given nothing.
+
+**No tags are passed at either place, so a row on either stat carries no Required Tags.** Nothing else reads
+the stats, so there is nothing for a tag to choose between. A row requiring a tag would match at neither place
+and the generator refuses one.
+
+**The judgements of the session that wrote this, each labelled:**
+
+1. **The extra's part of what arrived is the same share as the extra was of what was offered.** One `TopUp`
+   pays the base and the extra together and health says only how much arrived in all. A thrower ten points
+   under full health who is offered 20, half of it extra, receives 10; 5 of that is counted as the pyre's, and
+   the shield is its share of 5. The other reading considered was "the base arrives first and the extra fills
+   what is left", which gives the pyre nothing in that step. Every rule `TopUp` applies treats the offer as one
+   amount, so none of them says which part it cut.
+2. **The shield is given whether or not the energy shield's recharge wait has run out, and giving it does not
+   restart the wait.** The wait is the time since the character last took damage, and only taking damage writes
+   it. Living Pyre returns health at the moment its holder is hit, so its shield always arrives inside the wait.
+   The wait is not changed.
+3. **"Your energy shield cannot recharge above 50% of its maximum" does not stop this shield.** That row's
+   ceiling was ruled to cover regeneration only, and this is not regeneration.
+4. **A shield filled by this gift does not raise the event "when your energy shield fully recharges".** The
+   regeneration step raises that event when its own refill of the shield reaches the maximum, and this gift is
+   paid before that refill is measured.
+5. **A health rate below nought has no extra.** `GainPerStep` already treats such a rate as none.
+6. **The bounds in the generator are the figures the two sentences state**, 30 to 60 and 10 to 20. A figure
+   outside them is refused.
+7. **A Condition or a Scale on either stat stays refused** by the two checks that already refuse them for a
+   stat on neither of their lists. Neither stat has a probe under a condition or a scale.
+
+**What follows from rules that were already there, and is not changed:**
+
+- A `healing_received` row multiplies the same heal a second time inside `TopUp`. Reaper's Embrace's 10% more
+  on a Living Pyre return with 60% more is 25% times 1.6 times 1.1.
+- A larger return removes more Fervour, at the Masochist's rate for healing.
+- Health Living Pyre offers beyond what fits is overheal, and the row that keeps overheal as a temporary absorb
+  keeps the larger amount. Blood Pyre's extra is regeneration and is never overheal.
+- A swing held with "you cannot be healed" refuses the shield as it refuses the heal, because `TopUp` refuses
+  every pool. Living Pyre is a Fist skill and that swing is a Greatsword's.
+
+**The generator.** `refuse_a_healing_skill_row_the_game_cannot_read` in `tools/generate_datatables.py`, run by
+the validation of the Enchantment Effects sheet, with `HEALING_SKILL_STATS` beside it. A row on either stat
+must have that stat's value kind, no Required Tags, and both figures inside the stat's bounds. A passive
+node's row is left alone: it states a value per point, which the bounds do not describe.
+
+**The shape of the two rows, for the session that writes them:**
+
+| Sentence | Row |
+| :-- | :-- |
+| Healing skills restore 30%-60% more HP | `healing_skill_health_restored`, more, 30 to 60, no Required Tags |
+| Healing skills also restore 10%-20% of the healed amount as energy shield | `healing_skill_health_as_energy_shield`, flat, 10 to 20, no Required Tags |
+
+### Tests
+
+Five automation tests under `Cataclysm.HealingSkills.`, and two probes. Every fighter is the plain test fighter
+of `CataclysmSkillTemplateTests.cpp`, with 100,000 maximum health and no stat line. A blow is `NoteBlowTaken`
+called with a figure and a second of regeneration is `ApplyStep` called once, as the existing tests of the two
+skills do it.
+
+- `ARowMakesTheLivingPyreReturnMoreAndEveryRuleOfAHealStillApplies`: with no row a blow dealing 400 returns 100.
+  With more 60 it returns 160; under a reduction of healing received of fifty, 80; ten points under a healing
+  ceiling of half, the 10 that fit. The pyre reports 350 returned over four blows.
+- `ARowGivesAShareOfTheHealthTheLivingPyreReturnedAsEnergyShield`: with no row a return gives no shield. With a
+  share of 20 a return of 100 gives 20; under a reduction of fifty the return is 50 and the shield 10; five
+  points under its maximum the shield stops at the maximum; at full health nothing is returned and no shield is
+  given; with more 50 as well the return is 150 and the shield 30.
+- `ARowMultipliesTheExtraRegenerationOfYourOwnBloodPyreAndNotTheBase`: a thrower regenerating 10 a second.
+  Before any pyre, 10. In its pyre with no row, 20. With more 50, in the pyre 25 and not 30; out of it 10; with
+  a regeneration of nought, nothing.
+- `ARowGivesAShareOfTheExtraHealthYourOwnBloodPyreRestoredAsEnergyShield`: the same thrower with a share of 20.
+  No pyre: 10 health and no shield. In the pyre: 20 health and 2 shield. At full health: nothing. Ten points
+  under full health: 10 health arrive and the shield rises by 1. Out of the pyre: no shield. With more 50 as
+  well: 25 health and 3 shield.
+- `BothRowsDoNothingInSomebodyElsesPyreNorOnGroundOrAnAuraThatRestoresNothing`: three fighters each wearing
+  both rows. A stranger in another fighter's Blood Pyre regenerates its base 10 and gets no shield. A fighter
+  on ground it left with a row that says nothing of regeneration does the same. Conflagration's holder takes a
+  blow, is returned nothing and gets no shield.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for each stat. Each observes
+  its reading function and not a skill.
+
+Python: `TestARowChangesWhatAHealingSkillRestores` in `tools/tests/test_generate_datatables.py`, eight tests of
+the two rows' shape and of each refusal with its control. And
+`tools/tests/test_the_healing_skills_are_the_two_tagged_under_recovery.py`, five tests: the rows of
+`game/Data/WeaponSkills.csv` tagged under `Stat.Recovery` are exactly Living Pyre and Blood Pyre;
+`HealthFromHitTaken` is stated by Living Pyre's row alone and `OwnGroundRegenPercent` by Blood Pyre's alone;
+each reading function is called once in each of the two places and nowhere else in the game's source outside
+its tests; and two controls on made-up rows and text showing each check can fail.
+
+**One Python guard proof was run, with `tools/prove_guard.py`, by the session that wrote this.** The break took
+the call of `GiveHealingSkillShield` out of `CataclysmSkillTemplates.cpp`. As printed:
+
+> PROVED: 1 failed, 4 passed in 0.08s | restored: 5 passed in 0.20s
+
+The test that failed with the break in:
+`test_the_healing_skills_are_the_two_tagged_under_recovery.py::test_the_two_stats_are_read_at_those_two_places_and_nowhere_else`.
+
+**No C++ guard proof was run.** Three are proposed in the report of the session that wrote this.
+
+**Not tested here:** a real enchantment row on either stat, since none is written; the walk from a row of
+`EnchantmentEffects.csv` to its modifier; a real blow from another character feeding Living Pyre with a row
+worn, which the existing test of a real blow covers without one; the regeneration timer, since every step here
+is called by hand; a healing ceiling or a reduction of healing received on Blood Pyre's step; reserved health
+on either skill; a `healing_received` row beside the first stat; two Blood Pyres under one thrower; the
+recharge wait, the recharge ceiling and the "fully recharges" event beside the shield, which judgements 2, 3
+and 4 state from reading and no test holds; a shield raised by a scaled row on the maximum energy shield;
+anything drawn on a screen.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — Worn gear can grant class points; when the gear comes off the points stay spent and the excess adds nothing, taken from the last node first touched
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPassivePoints.h` and `.cpp` (the stat's name and its one
