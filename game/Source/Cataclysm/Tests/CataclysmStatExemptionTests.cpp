@@ -6564,6 +6564,77 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `healing_skill_health_restored`, read by `UCataclysmRegeneration::HealingSkillAmount`. Ruled 2026-10-09:
+	 * "Healing skills restore 30%-60% more HP". An amount of 100 handed to that function for a plain character
+	 * comes back 100; for one holding the stat at a flat 50 it comes back 150.
+	 *
+	 * THE FUNCTION IS OBSERVED AND NOT A SKILL. `Cataclysm.HealingSkills.` is where Living Pyre and Blood
+	 * Pyre pay the result.
+	 */
+	void ProbeHealingSkillHealthRestored(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Answered = [World](bool bHeld)
+		{
+			FScopedFighter Healed(World, /*AttackDamage=*/0.0f);
+			if (bHeld)
+			{
+				GrantFlats(Healed.Actor,
+						   {{FName(UCataclysmRegeneration::HealingSkillHealthRestoredStat), 50.0f}});
+			}
+			return UCataclysmRegeneration::HealingSkillAmount(*Healed.AbilitySystem, 100.0f);
+		};
+
+		Test.TestEqual(TEXT("control: for a plain character an amount of 100 comes back 100"), Answered(false),
+					   100.0f, 0.01f);
+		Test.TestEqual(TEXT("and for one holding healing_skill_health_restored at a flat 50 it comes back 150, so "
+							"HealingSkillAmount really reads it"),
+					   Answered(true), 150.0f, 0.01f);
+	}
+
+	/**
+	 * `healing_skill_health_as_energy_shield`, read by `UCataclysmRegeneration::GiveHealingSkillShield`. Ruled
+	 * 2026-10-09: "Healing skills also restore 10%-20% of the healed amount as energy shield". A character with
+	 * an empty energy shield of 1,000 told that 200 health arrived gains no shield; one holding the stat at a
+	 * flat 20 gains 40.
+	 */
+	void ProbeHealingSkillHealthAsEnergyShield(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto ShieldAfter = [World](bool bHeld)
+		{
+			FScopedFighter Healed(World, /*AttackDamage=*/0.0f);
+			Healed.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+			Healed.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 0.0f);
+			if (bHeld)
+			{
+				GrantFlats(Healed.Actor,
+						   {{FName(UCataclysmRegeneration::HealingSkillHealthAsEnergyShieldStat), 20.0f}});
+			}
+			UCataclysmRegeneration::GiveHealingSkillShield(*Healed.AbilitySystem, 200.0f);
+			return Healed.AbilitySystem->GetNumericAttribute(Vital::GetEnergyShieldAttribute());
+		};
+
+		Test.TestEqual(TEXT("control: a plain character told that 200 health arrived gains no energy shield"),
+					   ShieldAfter(false), 0.0f, 0.01f);
+		Test.TestEqual(TEXT("and one holding healing_skill_health_as_energy_shield at a flat 20 gains 40, so "
+							"GiveHealingSkillShield really reads it"),
+					   ShieldAfter(true), 40.0f, 0.01f);
+	}
+
+	/**
 	 * `dot_application_refreshes_others`, read by `UCataclysmSkillEffects` where
 	 * a damage over time effect is applied. A poison of ten seconds, four seconds
 	 * in, has six left; when its applier then applies a bleed, it still has six,
@@ -7505,6 +7576,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_cost_paid_from_health"), &ProbeCostPaidFromHealth},
 			{TEXT("skill_cost_paid_from_health_when_short"), &ProbeCostPaidFromHealthWhenShort},
 			{TEXT("healing_received"), &ProbeHealingReceived},
+			{TEXT("healing_skill_health_restored"), &ProbeHealingSkillHealthRestored},
+			{TEXT("healing_skill_health_as_energy_shield"), &ProbeHealingSkillHealthAsEnergyShield},
 			{TEXT("dot_application_refreshes_others"), &ProbeDotApplicationRefreshesOthers},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
