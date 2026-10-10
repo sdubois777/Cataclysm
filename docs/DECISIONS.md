@@ -131,6 +131,23 @@ empire bound; that case is read and not run. The move had two conflicts, each wh
 place and each resolved by keeping both: this file, and the dungeon test file. Written by the registering
 session.
 
+**Rulings on the amended layer**, each a labelled judgement by the coordinating session under the owner's
+delegation, 2026-10-10:
+
+- The navigation finding stands as built for this layer, at about 59% of chamber floors by the generator's rule,
+  because keys and hold-to-steer work and the player needs only to step off the rift and back on. It is too
+  common to leave: issue #2366 is the next piece of work after this layer.
+- The extra drop by two attempts is accepted. Nobody read the material path's body for a way to fail.
+- **If both attempts land nothing the panel must not say "given".** Before this ruling it would have: the flag
+  is set when the roll is made. In a third commit, by the registering session, the panel's clause takes whether
+  anything landed, and with a reward rolled and nothing landed the line ends "; the hidden chamber held
+  nothing". The figures test asserts the three cases of that clause. No test makes both attempts land nothing
+  in the game mode, because nothing in the test world can make a material drop fail; that case is asserted on
+  the clause and read in the one call, not run through the chamber.
+- A test-only correction to the search for an empty-roll floor (a wider range of seeds or floors) is covered
+  and is reported.
+- The corrected statement about a death is accepted. The three guard proofs are unchanged.
+
 ### What was read before writing
 
 All in `game/Source/Cataclysm/` unless a path says otherwise, line numbers as the files stand after this layer.

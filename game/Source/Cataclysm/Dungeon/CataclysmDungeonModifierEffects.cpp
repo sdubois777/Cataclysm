@@ -2949,11 +2949,16 @@ FIntPoint UCataclysmDungeonModifierEffects::RealityChamberOriginFor(int32 PlanWi
 	return FIntPoint(PlanWidth + RealityChamberGapCells, FMath::Max(0, (PlanHeight - RealityChamberSide) / 2));
 }
 
-FString UCataclysmDungeonModifierEffects::RealityChamberPanelClause(bool bStands, bool bRewardGiven)
+FString UCataclysmDungeonModifierEffects::RealityChamberPanelClause(bool bStands, bool bRewardGiven,
+																   bool bAnythingLanded)
 {
 	if (!bStands)
 	{
 		return FString();
+	}
+	if (bRewardGiven && !bAnythingLanded)
+	{
+		return FString(TEXT("; the hidden chamber held nothing"));
 	}
 	return bRewardGiven ? FString(TEXT("; the hidden chamber's reward is given"))
 						: FString(TEXT("; a hidden chamber waits"));

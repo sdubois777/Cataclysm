@@ -6088,9 +6088,10 @@ public:
 
 	/**
 	 * What the hidden chamber adds to the end of the row's panel line: nothing on a floor without one, so that line
-	 * is what it was; that a chamber waits; or that its reward has been given.
+	 * is what it was; that a chamber waits; that its reward has been given; or, when the roll and the one extra drop
+	 * both landed nothing, that the chamber held nothing. Ruled 2026-10-10: the line must not say "given" then.
 	 */
-	static FString RealityChamberPanelClause(bool bStands, bool bRewardGiven);
+	static FString RealityChamberPanelClause(bool bStands, bool bRewardGiven, bool bAnythingLanded = true);
 
 	/**
 	 * Luxury Hoarders' figures, every one a play-test value. See the key. The pile's rung is Legendary's step in

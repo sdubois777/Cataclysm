@@ -54697,6 +54697,15 @@ bool FCataclysmRealityChamberFiguresTest::RunTest(const FString& Parameters)
 			  FString(TEXT("; a hidden chamber waits")));
 	TestEqual(TEXT("a chamber whose reward was given"), Effects::RealityChamberPanelClause(true, true),
 			  FString(TEXT("; the hidden chamber's reward is given")));
+	TestEqual(TEXT("a chamber whose roll and extra drop both landed nothing does not say given"),
+			  Effects::RealityChamberPanelClause(true, true, /*bAnythingLanded=*/false),
+			  FString(TEXT("; the hidden chamber held nothing")));
+	TestEqual(TEXT("CONTROL: with something landed the same call says given"),
+			  Effects::RealityChamberPanelClause(true, true, /*bAnythingLanded=*/true),
+			  FString(TEXT("; the hidden chamber's reward is given")));
+	TestEqual(TEXT("and a chamber not yet entered says it waits whatever that flag"),
+			  Effects::RealityChamberPanelClause(true, false, /*bAnythingLanded=*/false),
+			  FString(TEXT("; a hidden chamber waits")));
 	return true;
 }
 

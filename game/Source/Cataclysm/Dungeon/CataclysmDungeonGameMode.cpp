@@ -18589,7 +18589,8 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		// AND THE HIDDEN CHAMBER, ON A FLOOR THAT HAS ONE; on a floor without one the line is what it was.
 		Counting.Add(Reality, FString::Printf(
 			TEXT("reality rifts: %s; %s%s"), *RiftsState, *Gift,
-			*Effects::RealityChamberPanelClause(RealityChamberStands(), bRealityChamberRewardGiven)));
+			*Effects::RealityChamberPanelClause(RealityChamberStands(), bRealityChamberRewardGiven,
+											   RealityChamberRewardDrops > 0)));
 	}
 
 	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
