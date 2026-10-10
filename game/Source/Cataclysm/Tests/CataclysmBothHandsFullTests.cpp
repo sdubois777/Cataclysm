@@ -480,14 +480,29 @@ bool FCataclysmBothHandsFullReturnTest::RunTest(const FString&)
 	Equipment->UnequipEverything();
 	TestEqual(TEXT("nothing is held to begin with"), Equipment->NumEquipped(), 0);
 
-	// THE OPTION IS GIVEN JUST BEFORE EACH WEAPON GOES ON: putting one on
-	// refreshes the stat line from the character's own sources, which do not
-	// hold it yet.
+	// THE OPTION IS HELD FROM THE CHARACTER'S OWN SOURCES: the real capstone,
+	// with its second option taken and its point in. Until 2026-10-10 this test
+	// gave the option by hand just before each weapon went on, because putting
+	// a weapon on refreshes the stat line from the character's own sources.
+	// That stopped working when a change of gear began to hand a second
+	// two-handed weapon back (J3): the refresh after the second weapon went on
+	// found no option, and the weapon was handed back before the respec this
+	// test is about. The allocation is put on unchecked, as a loaded one is.
+	const FName BothHandsFullCapstone(TEXT("Ravager_capstone_200"));
+	State->SetCreationChoice(FName(TEXT("Greataxe")), FName(TEXT("Demonic")));
+	FCataclysmPassiveAllocation WithTheOption;
+	WithTheOption.SetChosenOption(BothHandsFullCapstone, 2);
+	WithTheOption.Add(BothHandsFullCapstone, 1);
+	State->SetPassiveAllocation(WithTheOption, TArray<FName>());
+	if (!TestTrue(TEXT("set-up: the capstone's second option gives the character "
+					   "the option"), Equipment->MayHoldTwoTwoHanded()))
+	{
+		return false;
+	}
+
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
-	Hold(System, true);
 	Equipment->EquipInto(Of(Greatsword), ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
-	Hold(System, true);
 	Equipment->EquipInto(Of(Greataxe), ECataclysmGearSlot::Weapon2, Removed, AlsoRemoved);
 	if (!TestEqual(TEXT("both are held before the respec"), Equipment->NumEquipped(), 2))
 	{
