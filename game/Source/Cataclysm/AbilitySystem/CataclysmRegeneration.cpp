@@ -22,6 +22,10 @@
 
 const TCHAR* UCataclysmRegeneration::HealthRegenStat = TEXT("health_regen");
 const TCHAR* UCataclysmRegeneration::HealingReceivedStat = TEXT("healing_received");
+const TCHAR* UCataclysmRegeneration::HealingSkillHealthRestoredStat =
+	TEXT("healing_skill_health_restored");
+const TCHAR* UCataclysmRegeneration::HealingSkillHealthAsEnergyShieldStat =
+	TEXT("healing_skill_health_as_energy_shield");
 const TCHAR* UCataclysmRegeneration::ManaRegenStat = TEXT("mana_regen");
 const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
 	TEXT("energy_shield_regen");
@@ -274,6 +278,62 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	}
 }
 
+float UCataclysmRegeneration::HealingSkillAmount(const UAbilitySystemComponent& AbilitySystem,
+												 float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THE AMOUNT IS THE FIGURE THE ROWS APPLY TO, as `TopUp` hands
+	// `HealingReceivedStat` the amount it was offered. So the stat needs no
+	// base, and a character with no row is handed its amount back.
+	//
+	// NO TAGS. Both callers are a healing skill paying its health, so nothing
+	// is left for a tag to choose between.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem);
+	if (!Asking)
+	{
+		return Amount;
+	}
+	return FMath::Max(0.0f, Asking->StatAppliedTo(FName(HealingSkillHealthRestoredStat),
+												  FGameplayTagContainer(), Amount));
+}
+
+float UCataclysmRegeneration::GiveHealingSkillShield(UAbilitySystemComponent& AbilitySystem,
+													 float HealthArrived)
+{
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem);
+	if (HealthArrived <= 0.0f || !Asking
+		|| !AbilitySystem.GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return 0.0f;
+	}
+
+	// A PERCENTAGE ON A BASE OF NOUGHT, so a character with no row answers
+	// nought and is given nothing. Never below nought: the row gives shield
+	// and takes none away.
+	const float Percent = FMath::Max(
+		0.0f, Asking->StatAppliedTo(FName(HealingSkillHealthAsEnergyShieldStat),
+									FGameplayTagContainer(), 0.0f));
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THROUGH `TopUp`, so the shield stops at the maximum its clamp and its bar
+	// use, and a character with no energy shield at all is given nothing. What
+	// was added is read off the shield, because `TopUp` does not return it.
+	const FGameplayAttribute Shield = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+	const float ShieldBefore = AbilitySystem.GetNumericAttribute(Shield);
+	TopUp(AbilitySystem, Shield, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
+		  HealthArrived * Percent / 100.0f);
+	return FMath::Max(0.0f, AbilitySystem.GetNumericAttribute(Shield) - ShieldBefore);
+}
+
 float UCataclysmRegeneration::GainPerStep(float RatePerSecond,
 										  float SecondsInStep)
 {
@@ -388,14 +448,62 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 	const float FromOwnGround =
 		ACataclysmGroundZone::RegenerationScaleFor(Character);
 
+	// THE RATE IN TWO PARTS: what the character regenerates anywhere, and the
+	// extra its own pyre adds. With a scale of 2 the extra is the rate once
+	// more, so the two parts add up to the doubled rate this step always paid.
+	// With a scale of 1, which is every character not standing in its own
+	// Blood Pyre, the extra is nought.
+	//
+	// A CHARACTER WITH NO HEALTH REGENERATION HAS NO EXTRA EITHER. The pyre
+	// multiplies a rate, and nought multiplied is nought. A rate below nought is
+	// treated as none, as `GainPerStep` treats it.
+	const float HealthRate =
+		RateOf(HealthRegenStat, UCataclysmVitalAttributeSet::GetHealthRegenAttribute());
+	const float ExtraRateFromOwnGround = FMath::Max(0.0f, HealthRate) * (FromOwnGround - 1.0f);
+
+	// AND A ROW MAY MAKE A HEALING SKILL RESTORE MORE. Ruled 2026-10-09:
+	// "Healing skills restore 30%-60% more HP", and Blood Pyre is a healing
+	// skill. THE EXTRA ONLY: what the pyre adds is the health the skill
+	// restores, and the character's base regeneration is not the skill's. With
+	// a scale of 2 and 50% more, the whole rate is `rate * (1 + (2 - 1) * 1.5)`.
+	// The stat is asked of this character, who is the patch's owner:
+	// `RegenerationScaleFor` counts only patches this character left.
+	const float ExtraRateWithRows = ExtraRateFromOwnGround > 0.0f
+		? HealingSkillAmount(*AbilitySystem, ExtraRateFromOwnGround)
+		: 0.0f;
+	const float BaseGain = GainPerStep(HealthRate, SecondsInStep);
+	const float ExtraGain = GainPerStep(ExtraRateWithRows, SecondsInStep);
+
+	const float HealthBeforeStep = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
 	TopUp(*AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(),
-		  GainPerStep(
-			  RateOf(HealthRegenStat,
-					 UCataclysmVitalAttributeSet::GetHealthRegenAttribute())
-				  * FromOwnGround,
-			  SecondsInStep),
+		  GainPerStep(HealthRate + ExtraRateWithRows, SecondsInStep),
 		  Regeneration);
+
+	// AND A SHARE OF THE HEALTH THE PYRE RESTORED ARRIVES AS ENERGY SHIELD.
+	// Ruled 2026-10-09: "Healing skills also restore 10%-20% of the healed
+	// amount as energy shield".
+	//
+	// OF WHAT ARRIVED, read off health, because `TopUp` does not return it. A
+	// character at full health gained nothing in this step and is given no
+	// shield.
+	//
+	// ONE `TopUp` PAID THE BASE AND THE EXTRA TOGETHER, so the extra's part of
+	// what arrived is worked out: the same share of what arrived as the extra
+	// was of what was offered. A labelled judgement of 2026-10-09. Every rule
+	// `TopUp` applies between the offer and the arrival treats the offer as one
+	// amount, so none of them says which part it cut.
+	if (ExtraGain > 0.0f)
+	{
+		const float HealthArrived = AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()) - HealthBeforeStep;
+		if (HealthArrived > 0.0f)
+		{
+			GiveHealingSkillShield(*AbilitySystem,
+								   HealthArrived * ExtraGain / (BaseGain + ExtraGain));
+		}
+	}
 
 	// THE MANA RATE IS KEPT, BECAUSE A KEYSTONE BELOW READS IT. Issue #1515.
 	// The Long Game puts half of it into the energy shield, and asking for it a
