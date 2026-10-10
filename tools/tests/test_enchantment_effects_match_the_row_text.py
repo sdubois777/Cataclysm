@@ -818,8 +818,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-10, from 581 over 491: two rows on two enchantments.
 #: AND 585 OVER 495 SINCE THE TWO HEALING-SKILL ROWS,
 #: issue #1833, 2026-10-10, from 583 over 493: two rows on two enchantments.
-AUTHORED_ROWS = 585
-AUTHORED_ENCHANTMENTS = 495
+#: AND 587 OVER 496 SINCE THE ROWS ON THE USE OF A HEALING SKILL,
+#: issue #1833, 2026-10-10, from 585 over 495: two rows on one enchantment.
+AUTHORED_ROWS = 587
+AUTHORED_ENCHANTMENTS = 496
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
