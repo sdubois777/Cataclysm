@@ -4812,11 +4812,18 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	// THE PYRE'S DAMAGE STILL RISES. `BlowsTaken` is counted above this, and the
 	// row ties its 8% per hit to the hits taken rather than to the health
 	// returned, so a reduction that cuts the healing does not cut the damage.
+	//
+	// AND A ROW MAY MAKE A HEALING SKILL RESTORE MORE. Ruled 2026-10-09:
+	// "Healing skills restore 30%-60% more HP", and Living Pyre is a healing
+	// skill. The amount offered is multiplied before `TopUp` has it, so every
+	// rule above still applies to the larger amount: 25% of a blow with 60%
+	// more is 40% of it. Asked of this aura's holder.
 	using Vitals = UCataclysmVitalAttributeSet;
 	const float Before = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
+	const float Returned = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
+	const float Offered = UCataclysmRegeneration::HealingSkillAmount(*AbilitySystem, Returned);
 	UCataclysmRegeneration::TopUp(*AbilitySystem, Vitals::GetHealthAttribute(),
-								  Vitals::GetMaxHealthAttribute(),
-								  DealtToHealth * Params.HealthFromHitTaken / 100.0f);
+								  Vitals::GetMaxHealthAttribute(), Offered);
 	const float Given = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute()) - Before;
 
 	if (Given <= 0.0f)
@@ -4825,6 +4832,15 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	}
 
 	HealthReturned += Given;
+
+	// AND A SHARE OF THE HEALTH RETURNED ARRIVES AS ENERGY SHIELD. Ruled
+	// 2026-10-09: "Healing skills also restore 10%-20% of the healed amount as
+	// energy shield". OF `Given`, THE HEALTH THAT ARRIVED, and not of `Offered`:
+	// a return cut by the healing ceiling or by a reduction gives a smaller
+	// shield, and the return above this line has already left when nothing
+	// arrived. The shield is not part of what this function answers, which
+	// stays the health returned.
+	UCataclysmRegeneration::GiveHealingSkillShield(*AbilitySystem, Given);
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("'%s' returned %.1f health from a blow that dealt %.1f, and is now "
