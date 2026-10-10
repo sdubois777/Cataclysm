@@ -46,6 +46,8 @@
 #include "AbilitySystem/CataclysmRetaliation.h"
 // For the nova a character at very low health releases. Issue #1050.
 #include "AbilitySystem/CataclysmNova.h"
+// For planting a weapon that grants class points. Ruled 2026-10-09 (J5a).
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For Summon Imp and the two stats Press-Ganged and Rekindled are read by.
@@ -440,7 +442,8 @@ bool FCataclysmPassiveFirstBossOnlyTest::RunTest(const FString&)
 // What they do not cover is the walk from a row of `EnchantmentEffects.csv` to
 // that modifier, which is `AccumulateEnchantmentsInto` and has tests of its own.
 //
-// ONE ACTOR IN EACH WORLD, so nothing here depends on where anything stands.
+// ONE ACTOR IN EACH WORLD BUT ONE, so nothing else here depends on where
+// anything stands. The test that plants a weapon says where it stands.
 //
 // A STAT LINE IS READ AS THE MODIFIERS THE PASSIVE TREE PUT ON ONE STAT, summed,
 // and never as the stat's finished value: a spawned player has a class line and
@@ -978,6 +981,214 @@ bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("gear back on: which makes 22 spent"),
 			  Player.State->GetPassiveAllocation().Total(), 22);
+
+	return true;
+}
+
+namespace CataclysmClassPointsFromGearTest
+{
+	/**
+	 * A level 10 character holding a Greatsword in the first weapon slot, with a
+	 * row of 7.9 class points said to be ON THAT WEAPON, and 21 points spent: the
+	 * level's 15 in three nodes and 6 of the weapon's 7 in Willing Flesh, the
+	 * last node first touched. Every step is checked; false means the set-up did
+	 * not hold and the test should stop.
+	 *
+	 * THE ROW IS TIED TO THE SLOT, so the game leaves it out whenever it reads
+	 * that slot as holding nothing, as it would a real row on the weapon.
+	 *
+	 * @param OutRegenPerPoint  what Willing Flesh grants per point on health_regen
+	 */
+	bool HoldAGrantingGreatswordWithItsPointsSpent(FAutomationTestBase& Test,
+												   const FGearedPlayer& Player,
+												   float& OutRegenPerPoint)
+	{
+		OutRegenPerPoint = PerPointOn(WillingFlesh, TEXT("health_regen"));
+		if (!Test.TestTrue(TEXT("set-up: Willing Flesh has an unconditioned row "
+								"on health_regen worth something a point"),
+						   OutRegenPerPoint > 0.0f))
+		{
+			return false;
+		}
+
+		FCataclysmItem Greatsword;
+		Greatsword.Base = FName(TEXT("Weapon_Greatsword"));
+		Greatsword.GearLevel = 10;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		Player.Equipment->EquipInto(Greatsword, ECataclysmGearSlot::Weapon1, Removed,
+									AlsoRemoved);
+		const FCataclysmItem* Held =
+			Player.Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+		if (!Test.TestTrue(TEXT("set-up: the Greatsword is in the first weapon slot"),
+						   Held && Held->Base == Greatsword.Base))
+		{
+			return false;
+		}
+
+		Player.Equipment->SetRowsWornForTests(WornRows({GrantingRow(7.9f)}),
+											  ECataclysmGearSlot::Weapon1);
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		if (!Test.TestEqual(TEXT("set-up: the weapon's row of 7.9 makes it 22 earned"),
+							Player.State->PassivePointsAvailable(), 22))
+		{
+			return false;
+		}
+
+		FCataclysmPassiveAllocation Spent;
+		Spent.Add(Root, 1);
+		Spent.Add(PainTolerance, 12);
+		Spent.Add(Resonance, 2);
+		Spent.Add(WillingFlesh, 6);
+		Player.State->SetPassiveAllocation(Spent, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+		return Test.TestEqual(TEXT("set-up: 21 points are spent"),
+							  Player.State->GetPassiveAllocation().Total(), 21)
+			&& Test.TestEqual(TEXT("set-up: no point adds nothing"),
+							  Player.State->PassivePointsAddingNothing(), 0)
+			&& Test.TestEqual(TEXT("set-up: Willing Flesh's 6 points are on the "
+								   "stat line"),
+							  Player.FromTheTreeOn(TEXT("health_regen")),
+							  6.0f * OutRegenPerPoint, 0.001f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsPlantedWeaponTest,
+	"Cataclysm.Passives.ClassPointsFromGear.AWeaponPlantedInTheGroundStillGrantsItsClassPoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-09 (J5a). A character whose weapon grants class points, with
+ * those points spent, plants the weapon in the ground. The weapon's attack
+ * damage is left out, as it is for every planted weapon, and its class points
+ * are not: no point adds nothing and the stat line keeps what the last node
+ * first touched gave. The same holds at a refresh while it stands and after it
+ * is destroyed.
+ *
+ * STANDING: the character at the origin, the weapon planted 3 m along X.
+ */
+bool FCataclysmClassPointsPlantedWeaponTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassPointsFromGearTest;
+
+	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	float RegenPerPoint = 0.0f;
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete())
+		|| !HoldAGrantingGreatswordWithItsPointsSpent(*this, Player, RegenPerPoint))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	const float Armed = Player.AbilitySystem->GetNumericAttribute(Damage);
+
+	// PLANTED. Nothing here refreshes the stats by hand: the weapon going into
+	// the ground does.
+	ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::Plant(
+		Player.Character, FVector(300.0f, 0.0f, 0.0f), TEXT("Greatsword"), nullptr,
+		0.0f);
+	if (!TestNotNull(TEXT("set-up: the weapon stands in the ground"), Sword)
+		|| !TestTrue(TEXT("set-up: and the character fights unarmed"),
+					 ACataclysmPlantedWeapon::LeavesUnarmed(Player.Character))
+		|| !TestTrue(TEXT("set-up: the planted weapon's attack damage is left "
+						  "out, so the stat line is one made without the weapon"),
+					 Player.AbilitySystem->GetNumericAttribute(Damage) < Armed))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("planted: the weapon still grants its 7 class points"),
+			  Player.State->PassivePointsFromGear(), 7);
+	TestEqual(TEXT("planted: 22 are earned, as before"),
+			  Player.State->PassivePointsAvailable(), 22);
+	TestEqual(TEXT("planted: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+	TestEqual(TEXT("planted: the stat line keeps what Willing Flesh, the last "
+				   "node first touched, gave"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
+			  0.001f);
+
+	// ANY OTHER REFRESH WHILE IT STANDS FINDS THE SAME.
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("a refresh while it stands: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+	TestTrue(TEXT("a refresh while it stands: the weapon's attack damage is "
+				  "still left out"),
+			 Player.AbilitySystem->GetNumericAttribute(Damage) < Armed);
+
+	Sword->Destroy();
+	TestEqual(TEXT("out of the ground: 22 are earned"),
+			  Player.State->PassivePointsAvailable(), 22);
+	TestEqual(TEXT("out of the ground: the weapon's attack damage is back"),
+			  Player.AbilitySystem->GetNumericAttribute(Damage), Armed, 0.05f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsSlotSwitchedOffTest,
+	"Cataclysm.Passives.ClassPointsFromGear.ASlotAFloorRuleSwitchedOffGrantsNoClassPoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-09 (J5b): as built. The same character and weapon as the test
+ * above. The slot the weapon is in is switched off, as `Famine_Scarcity` does
+ * when a floor begins: the weapon grants no class point, 6 spent points add
+ * nothing, and what the last node first touched gave is off the stat line. THE
+ * CONTROL is a different slot switched off, which changes nothing. Switching
+ * no slot off puts everything back.
+ */
+bool FCataclysmClassPointsSlotSwitchedOffTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassPointsFromGearTest;
+
+	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	float RegenPerPoint = 0.0f;
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete())
+		|| !HoldAGrantingGreatswordWithItsPointsSpent(*this, Player, RegenPerPoint))
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST: ANOTHER SLOT OFF.
+	Player.Equipment->SetDisabledSlot(ECataclysmGearSlot::Boots);
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("the boots slot off: the weapon still grants its points"),
+			  Player.State->PassivePointsAvailable(), 22);
+	TestEqual(TEXT("the boots slot off: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+
+	Player.Equipment->SetDisabledSlot(ECataclysmGearSlot::Weapon1);
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("the weapon's slot off: it grants no class point"),
+			  Player.State->PassivePointsFromGear(), 0);
+	TestEqual(TEXT("the weapon's slot off: 15 are earned"),
+			  Player.State->PassivePointsAvailable(), 15);
+	TestEqual(TEXT("the weapon's slot off: all 21 points are still spent"),
+			  Player.State->GetPassiveAllocation().Total(), 21);
+	TestEqual(TEXT("the weapon's slot off: 6 spent points add nothing"),
+			  Player.State->PassivePointsAddingNothing(), 6);
+	TestEqual(TEXT("the weapon's slot off: the stat line holds nothing of what "
+				   "Willing Flesh gave"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 0.0f, 0.001f);
+
+	Player.Equipment->SetDisabledSlot(ECataclysmGearSlot::Count);
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("no slot off: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+	TestEqual(TEXT("no slot off: Willing Flesh's 6 points are on the stat line "
+				   "again"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
+			  0.001f);
 
 	return true;
 }

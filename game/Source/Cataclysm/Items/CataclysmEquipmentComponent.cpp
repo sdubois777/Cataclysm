@@ -547,6 +547,13 @@ TMap<FName, TArray<FCataclysmStatModifier>>
 UCataclysmEquipmentComponent::GatherModifiers(
 	TArray<FCataclysmPoolAction>* Actions) const
 {
+	return GatherModifiersReading(Actions, /*bPlantedWeaponIsRead=*/false);
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>>
+UCataclysmEquipmentComponent::GatherModifiersReading(
+	TArray<FCataclysmPoolAction>* Actions, bool bPlantedWeaponIsRead) const
+{
 	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
 
 	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
@@ -586,7 +593,11 @@ UCataclysmEquipmentComponent::GatherModifiers(
 	// THE ITEM STAYS WORN. Its base swing rate and the critical strike base a held weapon gives are not lines on the
 	// weapon and are read elsewhere (`StatBasesFromWeapons`), so both stay; and its skills stay, which is what lets
 	// the second press pull it free.
-	if (ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
+	//
+	// `bPlantedWeaponIsRead` SKIPS THIS BLOCK AND NOTHING ELSE. Ruled 2026-10-09 (J5a): a planted weapon still grants
+	// its class points. `RefreshAttributes` asks for that second reading while a weapon is planted and takes the class
+	// points from it and nothing more. A slot a floor rule switched off is read as empty in both readings.
+	if (!bPlantedWeaponIsRead && ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
 	{
 		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
 		{
@@ -624,9 +635,19 @@ UCataclysmEquipmentComponent::GatherModifiers(
 
 	// AND WHAT A TEST SAYS IS WORN. Empty in a running game, always, so this
 	// loop adds nothing there. See `SetRowsWornForTests`.
-	for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : RowsWornForTests)
+	//
+	// ROWS A TEST SAID ARE ON THE ITEM IN ONE SLOT ARE ADDED ONLY WHILE THAT
+	// SLOT IS READ AS HOLDING SOMETHING, so they are left out with a slot that
+	// is switched off, with a planted weapon, and with an empty slot, as a real
+	// row on that item would be.
+	const int32 SeamSlot = static_cast<int32>(RowsWornForTestsSlot);
+	if (RowsWornForTestsSlot == ECataclysmGearSlot::Count
+		|| (Worn->IsValidIndex(SeamSlot) && !(*Worn)[SeamSlot].Base.IsNone()))
 	{
-		Totals.FindOrAdd(Stat.Key).Append(Stat.Value);
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : RowsWornForTests)
+		{
+			Totals.FindOrAdd(Stat.Key).Append(Stat.Value);
+		}
 	}
 
 	return Totals;
@@ -760,8 +781,23 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	//
 	// WRITTEN ON EVERY REFRESH, a refresh of a character with no player state
 	// included, so the figure is never left over from different gear.
+	//
+	// A WEAPON PLANTED IN THE GROUND BY A SKILL STILL GRANTS ITS CLASS POINTS.
+	// Ruled 2026-10-09 (J5a), so that using a skill never leaves a character
+	// with more points spent than earned. `Modifiers` leaves the planted weapon
+	// out, so while one is planted the worn rows are gathered a second time
+	// with it read, and ONLY THE CLASS POINTS are taken from that second
+	// reading. Every other stat on the planted weapon stays left out, because
+	// `Modifiers` is still what the stat line is made from. The second reading
+	// is handed no list of actions, so no row's action is recorded twice.
+	//
+	// A SLOT A FLOOR RULE SWITCHED OFF GRANTS NO CLASS POINTS (J5b). Both
+	// readings leave it out.
 	ClassPointsGrantedAtLastRefresh =
-		UCataclysmPassivePoints::GrantedByWornRows(Modifiers);
+		ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner())
+			? UCataclysmPassivePoints::GrantedByWornRows(
+				  GatherModifiersReading(nullptr, /*bPlantedWeaponIsRead=*/true))
+			: UCataclysmPassivePoints::GrantedByWornRows(Modifiers);
 
 	// AND THE UNARMED BASE WHILE THE WEAPON STANDS IN THE GROUND. Issue #1166. Attack damage has no base otherwise:
 	// a weapon's damage is a flat line on its base, and `GatherModifiers` has just left the planted weapon's out.
