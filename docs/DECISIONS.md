@@ -12,10 +12,13 @@ counts), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm
 
 ### SAID FIRST: WHAT A PLAYER GETS, AND WHAT CHANGES FOR A ROW ALREADY MERGED
 
-- **A wearer of either row has more class points to spend, for as long as the item is worn.** The row's rolled
-  figure is rounded DOWN to whole points: a roll of 7.9 is 7 points. The two rows are different enchantments and
-  both count when both are worn; the same row on several pieces counts once, at the higher roll, as every
-  benefit does.
+- **A wearer of either row has more class points to spend, for as long as the item is worn.** A worn row is
+  always worth a whole number of points: an enchantment's rolled value is cut to the precision its two figures
+  are written to, so "5-10" is worth 5, 6, 7, 8, 9 or 10 and never 7.9. **So the rule ruled for the layer
+  below, that a rolled fraction rounds down, decides nothing in play today**; it would decide something only
+  for a row written with a figure that is not whole, and no such row exists. The two rows are different
+  enchantments and both count when both are worn; the same row on several pieces counts once, at the higher
+  roll, as every benefit does.
 - **When the item comes off, the points stay spent and the excess adds nothing**, taken from the last node
   first touched, not from the last point spent. That is the layer below, "Worn gear can grant class points";
   everything it says first holds for these rows. Nothing is refunded.
