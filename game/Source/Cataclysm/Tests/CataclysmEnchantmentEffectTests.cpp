@@ -6732,6 +6732,616 @@ bool FCataclysmSkillUseArmourOnceRowTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// THE `healing_skill_use` EVENT. Ruled 2026-10-10, for "Using a healing skill grants 10%-20% increased damage for
+// 5 seconds": see "The use of a healing skill raises an event of its own" in docs/DECISIONS.md.
+//
+// `UCataclysmAbilitySystemComponent::ActOnSkillUse` raises it after `skill_use`, only for a skill carrying a tag
+// under `Stat.Recovery`. NO ROW IS AUTHORED ON IT YET, so the row here is made up: `attack_damage`, increased, 20,
+// scaled by its own stacks, granted on `healing_skill_use`, one stack at most, five seconds, no Required Tags. It
+// goes through `UCataclysmItemModifiers::AccumulateEnchantmentsInto`, so its grant is the action that function
+// makes for any own-stack row, and both halves are then handed to a wearer that holds nothing else. Each use is
+// handed to the rows with `ActOnSkillUse`, as the player character hands it.
+//
+// WHAT EACH USE RAISED IS HEARD ON THE COMPONENT'S OWN `OnActionEvent`, which `ActOnEvent` announces before any
+// row acts, so an event with no row on it is still heard.
+namespace CataclysmHealingSkillUseTest
+{
+	const TCHAR* const HealingUseEventName = TEXT("healing_skill_use");
+	const TCHAR* const SkillUseEventName = TEXT("skill_use");
+	const TCHAR* const AttackUseEventName = TEXT("attack_use");
+
+	/** The Tags cells of the two healing skills, as `game/Data/WeaponSkills.csv` states them on 2026-10-10. */
+	const TCHAR* const LivingPyreTagCell = TEXT("Item.Weapon.Fist, Element.Demonic, Type.AOE.Aura, Keyword.DoT.Burn, "
+												"Stat.Recovery.Leech, Trigger.OnHit, Slot.Ultimate");
+	const TCHAR* const BloodPyreTagCell = TEXT("Item.Weapon.Fist, Element.Demonic, Type.Projectile, "
+											   "Type.AOE.Persistent, Keyword.DoT.Burn, Stat.Resource.HP, "
+											   "Stat.Recovery.Regen, Type.Ranged, Slot.Special");
+
+	/** The tags of a skill that is not a healing skill: a melee strike in the Heavy slot. */
+	const TCHAR* const PlainStrikeTagCell = TEXT("Type.Strike, Type.Melee, Slot.Heavy");
+
+	/** The stat the made-up row changes, and how long its stack lasts. */
+	const TCHAR* const MadeUpRowStat = TEXT("attack_damage");
+	constexpr float MadeUpRowSeconds = 5.0f;
+
+	/** A wearer in its own world that holds no row, with every event raised on it written down in order. */
+	struct FUseHolder
+	{
+		FUseHolder()
+		{
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (World)
+			{
+				Wearer = MakeUnique<CataclysmEnchantmentEffectTest::FWearer>(World);
+				Listening = Wearer->AbilitySystem->OnActionEvent.AddLambda(
+					[this](FName Raised) { Heard.Add(Raised); });
+			}
+		}
+
+		~FUseHolder()
+		{
+			if (Wearer)
+			{
+				Wearer->AbilitySystem->OnActionEvent.Remove(Listening);
+			}
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		/** One paid use handed to the rows. Answers the events that use raised, in the order they were raised. */
+		TArray<FName> Use(const FGameplayTagContainer* Tags, bool bBasicAttack = false)
+		{
+			Heard.Reset();
+			ASC()->ActOnSkillUse(FName(TEXT("Carom")), Tags, FVector(900.0f, 300.0f, 0.0f), bBasicAttack);
+			return Heard;
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+		TArray<FName> Heard;
+		FDelegateHandle Listening;
+	};
+
+	/** How many times one event is in a list of events heard. */
+	int32 TimesRaised(const TArray<FName>& Heard, const TCHAR* Event)
+	{
+		int32 Times = 0;
+		for (const FName& Raised : Heard)
+		{
+			Times += Raised == FName(Event) ? 1 : 0;
+		}
+		return Times;
+	}
+
+	/** A list of events heard as one line of text, for an assertion that states the whole list and its order. */
+	FString EventsAsText(const TArray<FName>& Heard)
+	{
+		TArray<FString> Names;
+		for (const FName& Raised : Heard)
+		{
+			Names.Add(Raised.ToString());
+		}
+		return FString::Join(Names, TEXT(", "));
+	}
+
+	/** An action made by hand that grants one stack under this key on this event, up to ten, for a minute. */
+	FCataclysmPoolAction AStackGrantedOn(const TCHAR* Event, const TCHAR* Key)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(Event);
+		Action.StackKey = FName(Key);
+		Action.StackSeconds = 60.0f;
+		Action.StackCap = 10;
+		return Action;
+	}
+
+	/**
+	 * Gives the holder the made-up row and any actions made by hand beside it, and answers the row's stack key.
+	 * None, with a failed set-up assertion, when the row did not become the modifier and the grant it should.
+	 */
+	FName WearTheMadeUpRow(FAutomationTestBase& Test, FUseHolder& Holder,
+						   const TArray<FCataclysmPoolAction>& Beside = TArray<FCataclysmPoolAction>())
+	{
+		UDataTable* Positive = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsPositive.csv"));
+		UDataTable* Negative = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsNegative.csv"));
+		// THE ROW NAMES A REAL ENCHANTMENT, because the accumulator asks the real tables whether that name belongs
+		// to a set. Only the effect row is made up. Scale Max Steps is 1 and Stack Seconds is 5.
+		UDataTable* Effects = CataclysmEnchantmentEffectTest::EffectTableFrom(
+			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment,DamageShare\n"))
+			+ FString::Printf(
+				TEXT("%s#1,%s,attack_damage,increased,20,20,,,0,own_stacks,1,,healing_skill_use,,1,5,0,0,0,0,0,,0,0,0,0,,0\n"),
+				CataclysmEnchantmentEffectTest::ShieldBenefit, CataclysmEnchantmentEffectTest::ShieldBenefit));
+		if (!Test.TestNotNull(TEXT("set-up: the positive enchantments"), Positive)
+			|| !Test.TestNotNull(TEXT("set-up: the negative enchantments"), Negative)
+			|| !Test.TestNotNull(TEXT("set-up: an effect table holding the made-up row"), Effects))
+		{
+			return NAME_None;
+		}
+
+		const TArray<FCataclysmItem> Worn = {CataclysmEnchantmentEffectTest::Carrying(
+			TEXT("Head_Helm"), CataclysmEnchantmentEffectTest::ShieldBenefit,
+			CataclysmEnchantmentEffectTest::DrawbackWithNoEffect)};
+		TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+		TArray<FCataclysmPoolAction> Actions;
+		UCataclysmItemModifiers::AccumulateEnchantmentsInto(Totals, Worn, Effects, Positive, Negative, &Actions);
+
+		const TArray<FCataclysmStatModifier>* Made = Totals.Find(FName(MadeUpRowStat));
+		if (!Test.TestTrue(TEXT("set-up: the made-up row became one attack damage modifier and one action"),
+				Made && Made->Num() == 1 && Totals.Num() == 1 && Actions.Num() == 1))
+		{
+			return NAME_None;
+		}
+		const FCataclysmStatModifier Modifier = (*Made)[0];
+		const FCataclysmPoolAction Grant = Actions[0];
+		if (!Test.TestTrue(TEXT("set-up: the modifier is an increase scaled by the row's own stacks, under a key, "
+								"and requires no tag"),
+				Modifier.Bucket == ECataclysmStatBucket::Increased
+					&& Modifier.Scale == ECataclysmStatScale::PerOwnStack && !Modifier.StackKey.IsNone()
+					&& Modifier.RequiredTags.IsEmpty())
+			|| !Test.TestTrue(TEXT("set-up: the action grants on healing_skill_use under the same key, one stack at "
+								   "most, for five seconds, and requires no tag"),
+				Grant.Event == FName(HealingUseEventName) && Grant.StackKey == Modifier.StackKey
+					&& Grant.StackCap == 1 && FMath::IsNearlyEqual(Grant.StackSeconds, MadeUpRowSeconds)
+					&& Grant.RequiredTags.IsEmpty()))
+		{
+			return NAME_None;
+		}
+
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Line = Lines.Add(FName(MadeUpRowStat));
+		Line.Modifiers = {Modifier};
+		Holder.ASC()->SetStatInputs(MoveTemp(Lines));
+		Actions.Append(Beside);
+		Holder.ASC()->SetPoolActions(MoveTemp(Actions));
+		return Grant.StackKey;
+	}
+
+	/** The wearer's attack damage on a figure of 1000, asked for a skill carrying these tags. */
+	float DamageOn1000(const FUseHolder& Holder, const FGameplayTagContainer& Tags)
+	{
+		return Holder.ASC()->StatAppliedTo(FName(MadeUpRowStat), Tags, 1000.0f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseGrantsTest,
+	"Cataclysm.HealingSkillUse.AUseOfASkillTaggedUnderRecoveryRaisesTheEventOnceAndGrantsTheStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A use of a skill carrying Living Pyre's tags, one of which is `Stat.Recovery.Leech`, raises `healing_skill_use`
+ * once and the made-up row's stack is held. So does a use of a skill carrying Blood Pyre's tags, one of which is
+ * `Stat.Recovery.Regen`. The stack is let run out between the two, so the second grant is the second use's.
+ *
+ * THE SET-UP ASSERTS THE PARENT TAG IS VALID. `CataclysmTags.ini` declares the two children and not
+ * `Stat.Recovery` itself, and `ActOnSkillUse` asks for the parent by name.
+ */
+bool FCataclysmHealingSkillUseGrantsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillUseTest;
+	FUseHolder Holder;
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC()))
+	{
+		return false;
+	}
+	const FName Key = WearTheMadeUpRow(*this, Holder);
+	if (Key.IsNone())
+	{
+		return false;
+	}
+
+	const FGameplayTag Recovery = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Stat.Recovery")), /*ErrorIfNotFound=*/false);
+	const FGameplayTag Leech = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Stat.Recovery.Leech")), /*ErrorIfNotFound=*/false);
+	const FGameplayTag Regen = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Stat.Recovery.Regen")), /*ErrorIfNotFound=*/false);
+	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
+	const FGameplayTagContainer BloodPyre = UCataclysmSkillShapes::TagsFromCell(BloodPyreTagCell);
+	if (!TestTrue(TEXT("set-up: Stat.Recovery is a valid tag, though only its two children are declared"),
+			Recovery.IsValid())
+		|| !TestTrue(TEXT("set-up: Living Pyre's seven tags are registered, with Stat.Recovery.Leech and not Regen"),
+			LivingPyre.Num() == 7 && Leech.IsValid() && LivingPyre.HasTagExact(Leech) && !LivingPyre.HasTag(Regen))
+		|| !TestTrue(TEXT("set-up: Blood Pyre's nine tags are registered, with Stat.Recovery.Regen and not Leech"),
+			BloodPyre.Num() == 9 && Regen.IsValid() && BloodPyre.HasTagExact(Regen) && !BloodPyre.HasTag(Leech))
+		|| !TestEqual(TEXT("set-up: no stack is held before any use"), Holder.ASC()->OwnStacksHeld(Key), 0))
+	{
+		return false;
+	}
+
+	const TArray<FName> ForLeech = Holder.Use(&LivingPyre);
+	TestEqual(TEXT("a use of a skill tagged Stat.Recovery.Leech raises healing_skill_use once"),
+		TimesRaised(ForLeech, HealingUseEventName), 1);
+	TestEqual(TEXT("and the row's stack is held"), Holder.ASC()->OwnStacksHeld(Key), 1);
+
+	Holder.World->TimeSeconds += MadeUpRowSeconds + 0.1f;
+	if (!TestEqual(TEXT("set-up: the stack has run out before the second skill is used"),
+			Holder.ASC()->OwnStacksHeld(Key), 0))
+	{
+		return false;
+	}
+
+	const TArray<FName> ForRegen = Holder.Use(&BloodPyre);
+	TestEqual(TEXT("a use of a skill tagged Stat.Recovery.Regen raises healing_skill_use once"),
+		TimesRaised(ForRegen, HealingUseEventName), 1);
+	TestEqual(TEXT("and the row's stack is held again"), Holder.ASC()->OwnStacksHeld(Key), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseOtherUsesTest,
+	"Cataclysm.HealingSkillUse.AUseOfAnyOtherSkillAUseWithNoTagsAndTheBasicAttackRaiseNothingAndGrantNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four uses that are not the use of a healing skill. None raises `healing_skill_use` and none grants the made-up
+ * row's stack: a skill with other tags, a skill with an empty set of tags, a use handed over with a null tag
+ * pointer, and the basic attack even when it is handed Living Pyre's tags.
+ *
+ * THE CONTROL COMES FIRST: the same wearer and row are granted the stack by a use of Living Pyre, and the stack is
+ * let run out. EACH OF THE FOUR HAS ITS OWN CONTROL TOO: the event the use does raise is heard, so the use reached
+ * the rows.
+ */
+bool FCataclysmHealingSkillUseOtherUsesTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillUseTest;
+	FUseHolder Holder;
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC()))
+	{
+		return false;
+	}
+	const FName Key = WearTheMadeUpRow(*this, Holder);
+	if (Key.IsNone())
+	{
+		return false;
+	}
+
+	const FGameplayTag Recovery = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Stat.Recovery")), /*ErrorIfNotFound=*/false);
+	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
+	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(PlainStrikeTagCell);
+	const FGameplayTagContainer Empty;
+	if (!TestTrue(TEXT("set-up: Stat.Recovery is a valid tag, Living Pyre's tags hold one under it"),
+			Recovery.IsValid() && LivingPyre.HasTag(Recovery))
+		|| !TestTrue(TEXT("set-up: the strike's three tags are registered and none is under Stat.Recovery"),
+			Strike.Num() == 3 && !Strike.HasTag(Recovery)))
+	{
+		return false;
+	}
+	Holder.Use(&LivingPyre);
+	if (!TestEqual(TEXT("control: a use of Living Pyre grants this wearer the stack"),
+			Holder.ASC()->OwnStacksHeld(Key), 1))
+	{
+		return false;
+	}
+	Holder.World->TimeSeconds += MadeUpRowSeconds + 0.1f;
+	if (!TestEqual(TEXT("set-up: that stack has run out"), Holder.ASC()->OwnStacksHeld(Key), 0))
+	{
+		return false;
+	}
+
+	// A SKILL WITH OTHER TAGS.
+	const TArray<FName> ForStrike = Holder.Use(&Strike);
+	TestEqual(TEXT("control: the strike's use raised skill_use"), TimesRaised(ForStrike, SkillUseEventName), 1);
+	TestEqual(TEXT("a use of a skill with other tags does not raise healing_skill_use"),
+		TimesRaised(ForStrike, HealingUseEventName), 0);
+	TestEqual(TEXT("a use of a skill with other tags grants no stack"), Holder.ASC()->OwnStacksHeld(Key), 0);
+
+	// FIVE SECONDS PASS BETWEEN THE CASES, so a stack one case granted by mistake cannot be read as the next
+	// case's.
+	Holder.World->TimeSeconds += MadeUpRowSeconds + 0.1f;
+
+	// A SKILL WITH AN EMPTY SET OF TAGS, which is a pointer to a container and not a null pointer.
+	const TArray<FName> ForEmpty = Holder.Use(&Empty);
+	TestEqual(TEXT("control: the use with an empty set of tags raised skill_use"),
+		TimesRaised(ForEmpty, SkillUseEventName), 1);
+	TestEqual(TEXT("a use of a skill with an empty set of tags does not raise healing_skill_use"),
+		TimesRaised(ForEmpty, HealingUseEventName), 0);
+	TestEqual(TEXT("a use of a skill with an empty set of tags grants no stack"),
+		Holder.ASC()->OwnStacksHeld(Key), 0);
+	Holder.World->TimeSeconds += MadeUpRowSeconds + 0.1f;
+
+	// A NULL TAG POINTER.
+	const TArray<FName> ForNull = Holder.Use(nullptr);
+	TestEqual(TEXT("control: the use with a null tag pointer raised skill_use"),
+		TimesRaised(ForNull, SkillUseEventName), 1);
+	TestEqual(TEXT("a use with a null tag pointer does not raise healing_skill_use"),
+		TimesRaised(ForNull, HealingUseEventName), 0);
+	TestEqual(TEXT("a use with a null tag pointer grants no stack"), Holder.ASC()->OwnStacksHeld(Key), 0);
+	Holder.World->TimeSeconds += MadeUpRowSeconds + 0.1f;
+
+	// THE BASIC ATTACK, HANDED LIVING PYRE'S TAGS. No basic attack carries them; this holds the rule that the
+	// event follows `skill_use` and is not raised for the basic attack whatever its tags are.
+	const TArray<FName> ForBasic = Holder.Use(&LivingPyre, /*bBasicAttack=*/true);
+	TestEqual(TEXT("control: the basic attack raised attack_use"), TimesRaised(ForBasic, AttackUseEventName), 1);
+	TestEqual(TEXT("the basic attack does not raise healing_skill_use, even with Living Pyre's tags"),
+		TimesRaised(ForBasic, HealingUseEventName), 0);
+	TestEqual(TEXT("the basic attack grants no stack"), Holder.ASC()->OwnStacksHeld(Key), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseDamageTest,
+	"Cataclysm.HealingSkillUse.TheStackRaisesTheDamageOfASkillThatIsNotAHealingSkillForFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * While the made-up row's stack is held, attack damage asked for a melee strike is 1200 on a figure of 1000, and
+ * so is attack damage asked with no tags and attack damage asked for Living Pyre itself: the row requires no tag,
+ * so its stat is not scoped. A second use inside the five seconds leaves it at 1200, because the row holds one
+ * stack at most. 4.9 seconds after the last use it is still 1200, and 5.1 seconds after it is 1000.
+ *
+ * THE WEARER'S ATTACK DAMAGE LINE HOLDS THE MADE-UP ROW'S MODIFIER AND NOTHING ELSE, so the figures are exact.
+ * Time is moved by adding to the world's own clock, as the tests of the other own-stack rows move it.
+ */
+bool FCataclysmHealingSkillUseDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillUseTest;
+	FUseHolder Holder;
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC()))
+	{
+		return false;
+	}
+	const FName Key = WearTheMadeUpRow(*this, Holder);
+	if (Key.IsNone())
+	{
+		return false;
+	}
+
+	const FGameplayTag Recovery = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Stat.Recovery")), /*ErrorIfNotFound=*/false);
+	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
+	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(PlainStrikeTagCell);
+	const FGameplayTagContainer NoTags;
+	if (!TestTrue(TEXT("set-up: Living Pyre's tags hold one under Stat.Recovery and the strike's three do not"),
+			Recovery.IsValid() && LivingPyre.HasTag(Recovery) && Strike.Num() == 3 && !Strike.HasTag(Recovery))
+		|| !TestEqual(TEXT("set-up: with no stack, the strike's damage on 1000 is 1000"),
+			DamageOn1000(Holder, Strike), 1000.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: with no stack, Living Pyre's damage on 1000 is 1000"),
+			DamageOn1000(Holder, LivingPyre), 1000.0f, 0.01f))
+	{
+		return false;
+	}
+
+	Holder.Use(&LivingPyre);
+	if (!TestEqual(TEXT("set-up: a use of Living Pyre grants the stack"), Holder.ASC()->OwnStacksHeld(Key), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the stack held, a skill that is not a healing skill deals 20% increased damage"),
+		DamageOn1000(Holder, Strike), 1200.0f, 0.01f);
+	TestEqual(TEXT("and so does damage asked with no tags"), DamageOn1000(Holder, NoTags), 1200.0f, 0.01f);
+	TestEqual(TEXT("and so does Living Pyre's own"), DamageOn1000(Holder, LivingPyre), 1200.0f, 0.01f);
+
+	Holder.Use(&LivingPyre);
+	TestEqual(TEXT("a second use holds one stack at most"), Holder.ASC()->OwnStacksHeld(Key), 1);
+	TestEqual(TEXT("so the strike's damage is still 20% increased and not 40%"),
+		DamageOn1000(Holder, Strike), 1200.0f, 0.01f);
+
+	Holder.World->TimeSeconds += MadeUpRowSeconds - 0.1f;
+	TestEqual(TEXT("4.9 seconds after the last use: still 20% increased"),
+		DamageOn1000(Holder, Strike), 1200.0f, 0.01f);
+	Holder.World->TimeSeconds += 0.2f;
+	TestEqual(TEXT("5.1 seconds after the last use: the strike's damage is 1000 again"),
+		DamageOn1000(Holder, Strike), 1000.0f, 0.01f);
+	TestEqual(TEXT("and no stack is held"), Holder.ASC()->OwnStacksHeld(Key), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseGadgetRowsTest,
+	"Cataclysm.HealingSkillUse.TheGadgetRowsAreStillGrantedByAnyGadgetDestroyedAndRaiseOnlyADeployablesDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The phase 1 judgement is not changed by this layer: on a row scaled by its own stacks, the Required Tags scope
+ * the stat and never the grant. Held here on the only authored own-stack rows that state Required Tags, the two
+ * rows of "When any of your gadgets is destroyed, all remaining gadgets gain 30%-50% increased damage for 5
+ * seconds", WORN.
+ *
+ * A `gadget_destroyed` event grants both rows' stacks; attack damage asked for a skill tagged `Type.Deployable`
+ * rises by the rolled 30% to 50%, and attack damage asked for a melee strike does not. After the stacks run out, a
+ * `gadget_destroyed` event carrying NO tags grants them again: the grant does not read the row's tag. And a use
+ * of Living Pyre grants neither, because the rows are on `gadget_destroyed`.
+ *
+ * A real trap killed by a real blow is `AKilledGadgetGivesTheWearersGadgetsItsRolledDamageForFiveSeconds`; here the
+ * event is raised with `NoteGadgetDestroyed`, the function a gadget's death calls.
+ */
+bool FCataclysmHealingSkillUseGadgetRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillUseTest;
+	CataclysmRowsOnlyTest::FWorn Worn(TEXT("Positive_When_any_of_your_gadgets_is_destroyed_all_remai"), true);
+	UCataclysmAbilitySystemComponent* System = Worn.ASC();
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), System))
+	{
+		return false;
+	}
+
+	const FGameplayTag Deployable = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	const FGameplayTagContainer Gadget(Deployable);
+	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(PlainStrikeTagCell);
+	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
+	const FGameplayTagContainer NoTags;
+	if (!TestTrue(TEXT("set-up: the deployable tag exists and the strike's three tags do not hold it"),
+			Deployable.IsValid() && Strike.Num() == 3 && !Strike.HasTag(Deployable)))
+	{
+		return false;
+	}
+
+	// THE TWO ROWS AS WORN: two grants on `gadget_destroyed`, neither requiring a tag, and on the attack damage
+	// line one modifier scaled by its own stacks that requires `Type.Deployable`.
+	TArray<FName> Keys;
+	bool bAGrantRequiresATag = false;
+	for (const FCataclysmPoolAction& Action : System->GetPoolActions())
+	{
+		if (Action.Event == FName(TEXT("gadget_destroyed")) && !Action.StackKey.IsNone())
+		{
+			Keys.AddUnique(Action.StackKey);
+			bAGrantRequiresATag = bAGrantRequiresATag || !Action.RequiredTags.IsEmpty();
+		}
+	}
+	const FName Attack(TEXT("attack_damage"));
+	int32 ScopedStackModifiers = 0;
+	if (const FCataclysmStatInputs* Line = System->GetStatInputs(Attack))
+	{
+		for (const FCataclysmStatModifier& Modifier : Line->Modifiers)
+		{
+			ScopedStackModifiers += Modifier.Scale == ECataclysmStatScale::PerOwnStack
+				&& Modifier.RequiredTags.HasTagExact(Deployable) && Keys.Contains(Modifier.StackKey) ? 1 : 0;
+		}
+	}
+	if (!TestEqual(TEXT("set-up: the worn rows made two stack grants on gadget_destroyed, under two keys."
+						" If none, DT_EnchantmentEffects may be older than the rows"), Keys.Num(), 2)
+		|| !TestFalse(TEXT("set-up: neither grant requires a tag"), bAGrantRequiresATag)
+		|| !TestEqual(TEXT("set-up: the attack damage line holds one of the two rows' modifiers, requiring "
+						   "Type.Deployable"), ScopedStackModifiers, 1)
+		|| !TestTrue(TEXT("set-up: no stack is held before any event"),
+			System->OwnStacksHeld(Keys[0]) == 0 && System->OwnStacksHeld(Keys[1]) == 0))
+	{
+		return false;
+	}
+	const float GadgetBefore = System->IncreasesForStat(Attack, Gadget);
+	const float StrikeBefore = System->IncreasesForStat(Attack, Strike);
+
+	// A GADGET DESTROYED, with the gadget's tag on the event as a gadget's death passes it.
+	System->NoteGadgetDestroyed(/*Gadget=*/nullptr, Gadget);
+	TestTrue(TEXT("a gadget destroyed grants both rows' stacks"),
+		System->OwnStacksHeld(Keys[0]) == 1 && System->OwnStacksHeld(Keys[1]) == 1);
+	const float Gained = System->IncreasesForStat(Attack, Gadget) - GadgetBefore;
+	TestTrue(*FString::Printf(TEXT("a deployable's damage rose by the rolled 30%% to 50%%: %.3f"), Gained),
+		Gained >= 0.30f - 0.0001f && Gained <= 0.50f + 0.0001f);
+	TestEqual(TEXT("and the damage of a skill without Type.Deployable did not rise"),
+		System->IncreasesForStat(Attack, Strike), StrikeBefore, 0.0001f);
+
+	Worn.World->TimeSeconds += 5.1f;
+	if (!TestTrue(TEXT("set-up: both stacks have run out after 5.1 seconds"),
+			System->OwnStacksHeld(Keys[0]) == 0 && System->OwnStacksHeld(Keys[1]) == 0)
+		|| !TestEqual(TEXT("set-up: and a deployable's damage is what it was"),
+			System->IncreasesForStat(Attack, Gadget), GadgetBefore, 0.0001f))
+	{
+		return false;
+	}
+
+	// THE SAME EVENT CARRYING NO TAGS STILL GRANTS. The rows' tag is not read when the stack is granted.
+	System->NoteGadgetDestroyed(/*Gadget=*/nullptr, NoTags);
+	TestTrue(TEXT("a gadget_destroyed event with no tags grants both rows' stacks all the same"),
+		System->OwnStacksHeld(Keys[0]) == 1 && System->OwnStacksHeld(Keys[1]) == 1);
+	TestEqual(TEXT("and again only a deployable's damage rose: by the same amount"),
+		System->IncreasesForStat(Attack, Gadget) - GadgetBefore, Gained, 0.0001f);
+	TestEqual(TEXT("and again the strike's did not"),
+		System->IncreasesForStat(Attack, Strike), StrikeBefore, 0.0001f);
+
+	Worn.World->TimeSeconds += 5.1f;
+	if (!TestTrue(TEXT("set-up: both stacks have run out again"),
+			System->OwnStacksHeld(Keys[0]) == 0 && System->OwnStacksHeld(Keys[1]) == 0))
+	{
+		return false;
+	}
+
+	// AND THE USE OF A HEALING SKILL GRANTS NEITHER.
+	System->ActOnSkillUse(FName(TEXT("Carom")), &LivingPyre, FVector(900.0f, 300.0f, 0.0f));
+	TestTrue(TEXT("a use of Living Pyre grants neither gadget row's stack"),
+		System->OwnStacksHeld(Keys[0]) == 0 && System->OwnStacksHeld(Keys[1]) == 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseOtherEventsTest,
+	"Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `skill_use` and `attack_use` are raised as they were, for a healing skill and for any other. Beside the made-up
+ * row the wearer holds two actions made by hand, one granting a stack on each of those events, up to ten, so each
+ * count below is the number of times that event has been acted on.
+ *
+ * FOR A HEALING SKILL THE WHOLE LIST IS STATED, IN ORDER: `skill_use`, then `healing_skill_use`, then
+ * `attack_use`. For the other uses only `skill_use` and `attack_use` are counted here; that they raise no
+ * `healing_skill_use` is the test above this one.
+ */
+bool FCataclysmHealingSkillUseOtherEventsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillUseTest;
+	FUseHolder Holder;
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC()))
+	{
+		return false;
+	}
+	const TCHAR* const OnSkillUse = TEXT("Test:on_skill_use");
+	const TCHAR* const OnAttackUse = TEXT("Test:on_attack_use");
+	const FName Key = WearTheMadeUpRow(*this, Holder,
+		{AStackGrantedOn(SkillUseEventName, OnSkillUse), AStackGrantedOn(AttackUseEventName, OnAttackUse)});
+	if (Key.IsNone())
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* System = Holder.ASC();
+	const auto Counts = [System, OnSkillUse, OnAttackUse, Key]()
+	{
+		return FString::Printf(TEXT("skill_use %d, attack_use %d, healing_skill_use %d"),
+			System->OwnStacksHeld(FName(OnSkillUse)), System->OwnStacksHeld(FName(OnAttackUse)),
+			System->OwnStacksHeld(Key));
+	};
+
+	const FGameplayTag Recovery = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Stat.Recovery")), /*ErrorIfNotFound=*/false);
+	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
+	const FGameplayTagContainer BloodPyre = UCataclysmSkillShapes::TagsFromCell(BloodPyreTagCell);
+	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(PlainStrikeTagCell);
+	if (!TestTrue(TEXT("set-up: both healing skills' tags hold one under Stat.Recovery and the strike's do not"),
+			Recovery.IsValid() && LivingPyre.HasTag(Recovery) && BloodPyre.HasTag(Recovery)
+				&& Strike.Num() == 3 && !Strike.HasTag(Recovery))
+		|| !TestEqual(TEXT("set-up: the wearer holds the made-up row's grant and the two made by hand"),
+			System->GetPoolActions().Num(), 3)
+		|| !TestEqual(TEXT("set-up: nothing is held before any use"), Counts(),
+			FString(TEXT("skill_use 0, attack_use 0, healing_skill_use 0"))))
+	{
+		return false;
+	}
+
+	// A HEALING SKILL: THE WHOLE LIST, IN ORDER.
+	TestEqual(TEXT("Living Pyre's use raises skill_use, then healing_skill_use, then attack_use, and nothing else"),
+		EventsAsText(Holder.Use(&LivingPyre)), FString(TEXT("skill_use, healing_skill_use, attack_use")));
+	TestEqual(TEXT("and a row on each of the three grants once"), Counts(),
+		FString(TEXT("skill_use 1, attack_use 1, healing_skill_use 1")));
+	TestEqual(TEXT("Blood Pyre's use raises the same three in the same order"),
+		EventsAsText(Holder.Use(&BloodPyre)), FString(TEXT("skill_use, healing_skill_use, attack_use")));
+	TestEqual(TEXT("and the made-up row still holds its one stack at most"), Counts(),
+		FString(TEXT("skill_use 2, attack_use 2, healing_skill_use 1")));
+
+	// A SKILL THAT IS NOT A HEALING SKILL. The made-up row's count is not read here: it already holds its one
+	// stack, and whether this use raises `healing_skill_use` is the test above this one.
+	const TArray<FName> ForStrike = Holder.Use(&Strike);
+	TestTrue(TEXT("a strike's use raises skill_use once and attack_use once"),
+		TimesRaised(ForStrike, SkillUseEventName) == 1 && TimesRaised(ForStrike, AttackUseEventName) == 1);
+	TestTrue(TEXT("and skill_use before attack_use"),
+		ForStrike.IndexOfByKey(FName(SkillUseEventName)) < ForStrike.IndexOfByKey(FName(AttackUseEventName)));
+	TestEqual(TEXT("and a row on each grants once more"), Counts(),
+		FString(TEXT("skill_use 3, attack_use 3, healing_skill_use 1")));
+
+	// THE BASIC ATTACK RAISES `attack_use` ALONE, as ruled 2026-09-14 and 2026-10-06.
+	TestEqual(TEXT("the basic attack raises attack_use and nothing else"),
+		EventsAsText(Holder.Use(&Strike, /*bBasicAttack=*/true)), FString(TEXT("attack_use")));
+	TestEqual(TEXT("and only the row on attack_use grants"), Counts(),
+		FString(TEXT("skill_use 3, attack_use 4, healing_skill_use 1")));
+
+	// A USE WITH A NULL TAG POINTER RAISES BOTH, AS BEFORE.
+	TestEqual(TEXT("a use with a null tag pointer raises skill_use and then attack_use, and nothing else"),
+		EventsAsText(Holder.Use(nullptr)), FString(TEXT("skill_use, attack_use")));
+	TestEqual(TEXT("and a row on each grants"), Counts(),
+		FString(TEXT("skill_use 4, attack_use 5, healing_skill_use 1")));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourDecayRowTest,
 	"Cataclysm.Enchantments.TheFervourDecayRowDoublesTheDecayANodeSupplies",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
