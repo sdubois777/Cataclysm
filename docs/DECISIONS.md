@@ -597,19 +597,125 @@ The commit that adds this section changes this entry alone, and the head that ca
 reader), `CataclysmPassiveTree.h` and `.cpp` (four functions, one refusal sentence, one addition to a node's
 line), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (the figure kept at each refresh,
 the reduced allocation handed to the tree, one seam for tests), `game/Source/Cataclysm/Player/CataclysmPlayerState.h`
-and `.cpp` (the points earned gain a term; three functions), `CataclysmPassiveTreeWidget.cpp` (the points line,
-a node's label and tool tip), `CataclysmPlayerCharacter.cpp` (two lines of `Cataclysm.ShowPassives`, and the
-hand-back of a second two-handed weapon on a change of gear), `CataclysmBothHandsFullTests.cpp` (one test's set-up),
-`CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute), eight new tests in
-`CataclysmPassiveTreeTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py`
-(one check) and `tools/tests/test_generate_datatables.py`. No data row, no workbook cell and no saved field is
-changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+and `.cpp` (the points earned gain two terms; four functions and one replicated field),
+`CataclysmPassiveTreeWidget.cpp` (the points line, a node's label and tool tip), `CataclysmPlayerCharacter.cpp`
+(three lines of `Cataclysm.ShowPassives`, and the hand-back of a second two-handed weapon on a change of gear),
+`CataclysmBothHandsFullTests.cpp` (one test's set-up), `CataclysmPlayerClassStats.cpp` (one name on the list of
+stats with no attribute), nine new tests in `CataclysmPassiveTreeTests.cpp`, one probe in
+`CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py` (one check) and
+`tools/tests/test_generate_datatables.py`. No data row, no workbook cell and no saved field is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
-### SAID FIRST: NOTHING HERE WAS COMPILED OR RUN IN UNREAL BY THE SESSION THAT WROTE IT
+### SAID FIRST: THE FIRST BUILD-AND-TEST WINDOW FAILED 24 MERGED TESTS, AND WHAT WAS CHANGED FOR THEM (2026-10-10)
 
-**The C++ in this entry has not been through a compiler and none of its automation tests has been run.** The
-session that wrote it does not build Unreal. Every statement below about what the game does is a statement about
-what the code was written to do. The enchantment session builds it and records the run at the foot of this entry.
+**What the first window printed.** "3536 tests performed, 3512 succeeded, 24 failed". All 24 are merged tests,
+none of them this layer's: 12 in `Cataclysm.DemonicRows`, 7 in `Cataclysm.Passives`, 2 in
+`Cataclysm.MasochistVowRows`, and 1 each in `Cataclysm.MasochistStackRows`, `Cataclysm.PartialClauses` and
+`Cataclysm.DefenderBody`.
+
+**The cause.** Each of the 24 hands a filled passive tree to `ACataclysmPlayerState::SetPassiveAllocation` on a
+level 20 test character. A level 20 character with no boss kill has earned 30 points. The allocations hold more
+than 30. This layer made points spent above the points earned add nothing, taken from the last node first
+touched, so the refresh left out the late nodes of each handed allocation, and those are the nodes the tests
+read. `SetPassiveAllocation` checks nothing it is handed, and no line of game code calls it: its callers are
+automation tests.
+
+**The ruling, by the coordinating session on 2026-10-10, in its five points:**
+
+> 1. `SetPassiveAllocation` records ONE figure on the player state: the points of the handed allocation that the
+>    character's level and bosses do not pay for, WITHOUT counting gear: points spent in the handed allocation
+>    minus `UCataclysmPassivePoints::Available(level, bosses handed in the same call)`, floored at nought.
+>    `PassivePointsEarnedWith` adds it. Name it for what it is (points an allocation was handed with), never as a
+>    test switch. `ResetPassivePoints` clears it. A later call of `SetPassiveAllocation` replaces it.
+> 2. It does NOT turn the rule off. Points spent afterwards through `SpendPassivePoint` with granting gear worn,
+>    and the gear then taken off, are reduced exactly as before. ONE NEW TEST shows that on a character whose
+>    tree was first handed over above its level.
+> 3. This layer's own tests of the reduction must make their excess the way play does: spend through
+>    `SpendPassivePoint` / `ChoosePassiveOption` with the granting gear worn, then take the gear off. NO test of
+>    the reduction may rest on a hand-set allocation that exceeds level and bosses.
+> 4. The 24 failed tests and every other merged call site are NOT edited.
+> 5. `Cataclysm.PlayerLevel` lowered by hand after spending: left as the rule acting.
+
+**What was built for it.** One replicated whole number on the player state, read through
+`ACataclysmPlayerState::PassivePointsAnAllocationWasHandedWith`. `SetPassiveAllocation` writes it on every call:
+the total of the allocation it was handed, less `UCataclysmPassivePoints::Available` of the character's level
+at that moment and the number of bosses handed in that call, and never below nought. Gear is not counted.
+`PassivePointsEarnedWith`, the one place the points earned are added up, adds it. `ResetPassivePoints` sets it
+to nought. Nothing else writes it. It is nought on every character `SetPassiveAllocation` was never called on,
+which is every character in play.
+
+**It is a fixed number and it does not turn the rule off.** It pays for as many points as it holds and no more.
+A character handed 15 points at level 5 has 10 recorded and 15 earned. If it then wears gear granting 7, spends
+6 through `SpendPassivePoint` and takes the gear off, it has 21 spent and 15 earned, and the 6 add nothing,
+taken from the last node first touched, as on any other character. The figure is not lowered when the character
+later gains a level or a first boss kill: those points are added on top of it.
+
+**The 24 failed tests and every other merged call site are unchanged.** Counted on 2026-10-10 at this layer's
+head: 108 lines in three test files call `SetPassiveAllocation` (105 in `CataclysmPassiveTreeTests.cpp`, 2 in
+`CataclysmEnchantmentEffectTests.cpp`, 1 in `CataclysmBothHandsFullTests.cpp`). The only ones changed, removed
+or added are in this layer's own group, `Cataclysm.Passives.ClassPointsFromGear.`. The merged test changed by
+the earlier ruling, `Cataclysm.BothHandsFull.LosingTheOptionReturnsTheSecondToTheBagOrTheFloor`, is as this
+layer already had it: it hands over one point, which a character of any level has earned.
+
+**Four of this layer's tests were rewritten, at three calls of `SetPassiveAllocation`, and one test was added**
+(ruling points 2 and 3). Each of the three calls handed over an allocation above the level to make an excess,
+and with the ruling built that makes none.
+
+- `AWeaponPlantedInTheGroundStillGrantsItsClassPoints` and `ASlotAFloorRuleSwitchedOffGrantsNoClassPoints`
+  share one set-up, which handed over 21 points at level 10. It now hands over the level's 15 and spends the
+  weapon's 6 through `SpendPassivePoint` with the weapon held. Both tests changed through that set-up.
+- `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` handed over 16 points at level 10,
+  the sixteenth in the capstone. It is now a level 100 character with five first boss kills, which has earned
+  200. It is handed 200 points in basic nodes of the Ravager tree, and takes the capstone through
+  `ChoosePassiveOption` with the granting boots on. The level is 100 because that function refuses
+  `Ravager_capstone_200` below 200 points spent in its tree.
+- `TheScreenSaysWhichPointsAddNothingAndWhy` handed over 21 points at level 10 with no gear. Its real character
+  now is handed the level's 15, wears the gear, spends 6 through `SpendPassivePoint`, and takes the gear off.
+- `PointsSpentWithGearStaySpentAndAddNothingWhileItIsOff` is unchanged. It hands over 15 points at level 10,
+  which the level pays for, and already spent its gear points through `SpendPassivePoint`.
+- Added: `AnAllocationHandedOverAboveTheLevelIsPaidForAndPointsSpentAfterItAreStillReduced`. It is described
+  under Tests below.
+
+**A save must record the figure, and this change does not add it to the save record.** Nothing restores a save
+today (issue [#753](https://github.com/sdubois777/Cataclysm/issues/753)). A restore must not hand a saved
+allocation to `SetPassiveAllocation` as that function stands, because points bought with points from gear would
+then be restored as paid for, and would go on counting after the gear came off. A restore must put back the
+level, the bosses and the recorded figure. "THE ORDER A SAVE LOADER MUST KEEP" below is corrected to say so.
+
+**What each reader of the points earned shows for an allocation handed over above the level.** The figure
+raises `PassivePointsAvailable`, so every reader counts the handed points as earned.
+
+| Reader | What it shows |
+| :-- | :-- |
+| The tree screen's points line (`UCataclysmPassiveTreeWidget::PointsText`) | "0 unspent of N earned", where N is the level's and bosses' points plus the figure. No words about points adding nothing. |
+| A node's label and tool tip on the tree screen | No mark. No node gives up a point. |
+| `Cataclysm.ShowPassives` | "N earned" with the figure inside N. The line of sources that follows prints the level's and the bosses' points only, so a third line was added, printed only when the figure is not nought: "N counted as earned because an allocation was handed over with N more points than the level and boss kills had earned." |
+| `Cataclysm.SpendPassivePoint` | Refused in the sentence that was already there: "No passive points left. N earned and all of them spent." |
+| `Cataclysm.ResetPassivePoints` | "N to spend", where N no longer holds the figure: the respec set it to nought. |
+| `Cataclysm.DefeatCataclysmBoss` | "N left to spend": the boss's 10 points are added on top of the figure. |
+| `PassivePointsUnspent`, `PassivePointsAddingNothing` | Nought and nought, straight after the hand-over. |
+| The save record (`CataclysmSaveGather.cpp`) | The allocation and the bosses, as before. The figure is not recorded. |
+
+**`Cataclysm.PlayerLevel` lowered by hand after spending is left as the rule acting** (ruling point 5). On a
+character whose level that console variable still decides, lowering it lowers the points earned. If more points
+are then spent than earned, the excess adds nothing, taken from the last node first touched, and the stat line
+loses what those nodes gave. The sign is the points line of the tree screen, which says how many spent points
+add nothing: "N spent points add nothing: gear that granted points is no longer worn". The line gives gear as
+the reason though the cause here is the level. Raising the variable again counts every point again. The same
+holds for a character handed an allocation and then lowered: the figure was worked out at the level it had when
+the allocation was handed over, and it is not worked out again.
+
+**NOT COMPILED AND NOT RUN.** The session that made this change does not build Unreal. No line of it has been
+through a compiler, and neither the rewritten tests, the new test nor the 24 have been run against it. That the
+24 pass with it is what the code was written to do and is not a measurement.
+
+### SAID FIRST: WHAT WAS COMPILED AND RUN, AND WHAT WAS NOT
+
+**The C++ of 2026-10-09 in this entry was compiled and its tests were run once, in the first window described
+above, and 24 merged tests failed.** The session that wrote it does not build Unreal. **The change of
+2026-10-10 that answers those failures has not been through a compiler and none of its tests has been run.**
+Every statement in this entry about what the game does with that change is a statement about what the code was
+written to do. The enchantment session builds it and records the run at the foot of this entry.
 
 ### SAID FIRST: GAME CODE HOLDS A SEAM FOR TESTS, AND THE NEXT LAYER REMOVES IT
 
@@ -651,7 +757,7 @@ allocation and the points earned and holds it at nought the same way.
 
 **In tests** it is read in `CataclysmPassiveTreeTests.cpp` by
 `TheScreenSpendsThroughTheCharacterAndNotIntoItself`, by one test that reads it once as a starting figure, and
-by two of this layer's tests. No test of the merged ones reads it on a character with more spent than earned.
+by three of this layer's tests. No test of the merged ones reads it on a character with more spent than earned.
 
 ### SAID FIRST: "LAST NODE FIRST TOUCHED", NOT "LAST POINT SPENT"
 
@@ -786,7 +892,8 @@ both readings.
 
 **Where the figure is kept.** On the pawn's equipment component, written at every refresh
 (`ClassPointsGranted`). `ACataclysmPlayerState::PassivePointsAvailable` adds it to the points earned by level
-and by boss kills, so every reader of the points earned sees it. It is kept, and not worked out for each
+and by boss kills, and since 2026-10-10 to the points an allocation was handed with, so every reader of the
+points earned sees it. It is kept, and not worked out for each
 reader, so that the figure a screen prints and the stat line the character has come from one reading of the
 gear. It is on the component and not on the player state because the player state outlives the pawn: a player
 state with no pawn has no component to ask and reads nought. It is nought before a pawn's first refresh. Every
@@ -838,12 +945,22 @@ This layer does not change that.
 back on the character and refreshed.** A saved character wearing gear that grants points has, rightly, more
 points spent than its level and its boss kills earn. Read before the gear is on, that allocation looks
 overspent. Nothing in this layer removes a point for it, and a loader must not either: a loader that trimmed or
-refused an allocation at that moment would take away points the character had earned. Putting the allocation on
-first is safe, because the refresh that follows the gear counts every point again.
+refused an allocation at that moment would take away points the character had earned.
+
+**Corrected 2026-10-10: a loader must not put the allocation on through `SetPassiveAllocation` as that function
+stands.** This section said that putting the allocation on first is safe. With the ruling of 2026-10-10 it is
+not, if it is done through that function. `SetPassiveAllocation` records every point above the level and the
+bosses as paid for, without counting gear. A saved allocation holding points bought with points from gear would
+come back with those points recorded as paid for, and they would go on counting after the gear came off. A
+loader must restore the level, the bosses and the figure as it was recorded
+(`PassivePointsAnAllocationWasHandedWith`, nought on every character in play), and put the allocation on
+without working the figure out again. The save record does not hold the figure yet, and no function restores it
+yet. Both are the loader's to add.
 
 ### Tests
 
-Eight automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one probe.
+Nine automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one probe. The ninth, and the
+set-up of four of the others, are of 2026-10-10 and have not been compiled or run.
 
 - `TheExcessIsTakenFromTheLastNodeFirstTouched`: the reduced allocation with no world. Three nodes holding 3, 5
   and 2, where the first node's third point is the last point spent. No excess returns the same entries; an
@@ -865,24 +982,36 @@ Eight automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one 
   already there, taken at 9.
 - `TheScreenSaysWhichPointsAddNothingAndWhy`: the counts in total and for each node, the points line at four
   figures, a node's line; and on a real character the widget's points line and the tool tip it puts on a node
-  that gives up points and on one that does not.
+  that gives up points and on one that does not. That character is level 10, is handed the level's 15 points,
+  wears a row of 7.9, spends 6 in Willing Flesh through `SpendPassivePoint`, and takes the row off.
 - `AWeaponPlantedInTheGroundStillGrantsItsClassPoints` (J5a): a level 10 character holds a Greatsword that a
-  row of 7.9 is tied to, with 21 points spent. The weapon is planted. Its attack damage is left out of the stat
+  row of 7.9 is tied to, with 21 points spent: the level's 15 handed over, and 6 spent in Willing Flesh through
+  `SpendPassivePoint` with the weapon held. The weapon is planted. Its attack damage is left out of the stat
   line; its 7 class points are still granted, no point adds nothing, and Willing Flesh's modifier is still on
   the stat line. The same at a refresh while it stands. Destroyed, the attack damage is back.
 - `ASlotAFloorRuleSwitchedOffGrantsNoClassPoints` (J5b): the same character and weapon. With the boots slot
   switched off nothing changes. With the weapon's slot switched off the weapon grants no point, 15 are earned,
   21 are still spent, 6 add nothing and Willing Flesh's modifier is off the stat line. With no slot off it is
   all back. This is the test that shows J5b; no earlier test switched a slot off under a granting item.
-- `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` (J3): a level 10 character with
-  16 points spent, the last in the real capstone with Both Hands Full, which counts only because its boots are
-  said to carry a row of 7.9. It holds a Greatsword and a Greataxe. The control comes first: a ring goes on,
+- `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` (J3): a level 100 character with
+  five first boss kills, which has earned 200. It is handed 200 points in basic nodes of the Ravager tree, and
+  with its boots on, which are said to carry a row of 7.9, it takes the real capstone with Both Hands Full
+  through `ChoosePassiveOption`. That 201st point counts only because of the boots. It holds a Greatsword and a
+  Greataxe. The control comes first: a ring goes on,
   and nothing is handed back. The boots come off by one call: the Greataxe is in the bag, the Greatsword is
   held, the option is off the stat line, the capstone keeps its choice. The bag case only. THE ABILITIES ARE
   COUNTED: that change granted as many as the boots going on again, which hands nothing back. The count is the
   rise in the number the engine grants abilities under, read off the handles the character holds; the number of
   abilities held cannot show a second filling, because a filling takes every one back first. It is in this
   group and not beside the hand-back's own tests because it needs this layer's gear and its points.
+- `AnAllocationHandedOverAboveTheLevelIsPaidForAndPointsSpentAfterItAreStillReduced` (2026-10-10): through the
+  real refresh on a level 5 character, which has earned 5. It is handed 15 points in three Masochist nodes: 10
+  are recorded, 15 are earned, no point adds nothing, and all 12 of Pain Tolerance's points are on the stat
+  line. A row of 7.9 goes on and 6 points are spent in Willing Flesh through `SpendPassivePoint`. The row comes
+  off: 15 are earned, 21 are spent, 6 add nothing, Willing Flesh's modifier is off the stat line, Pain
+  Tolerance's is on it in full, and a spend is refused in the sentence for an overspent character. A second
+  hand-over of 13 points makes the record 8. The same 13 handed over with one boss makes it nought, with 15
+  earned. A respec after a hand-over makes it nought, with the level's 5 earned and unspent.
 - `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for `class_points_granted`.
 
 Python: `TestAWornRowGrantsClassPoints` in `tools/tests/test_generate_datatables.py`, six tests of the rows'
@@ -890,14 +1019,15 @@ shape and of each refusal with its control.
 
 **Not tested here:** a real enchantment row granting the stat, since none is written; the walk from a row of
 `EnchantmentEffects.csv` to its modifier, which `AccumulateEnchantmentsInto` has tests of its own for;
-`ChoosePassiveOption` while overspent; a capstone as the last node first touched on a real character; the
-label on a node's button, which the button has no function to read back, only its tool tip; the two lines
-`Cataclysm.ShowPassives` gained; a weapon planted by a real skill, since the test plants it directly; a slot
+`ChoosePassiveOption` while overspent; the label on a node's button, which the button has no function to read
+back, only its tool tip; the three lines `Cataclysm.ShowPassives` gained; that the figure of 2026-10-10 reaches
+a client, since no test has one; a weapon planted by a real skill, since the test plants it directly; a slot
 switched off by the floor rule itself, since the test switches it off directly; a planted weapon in a
 switched-off slot; a second two-handed weapon handed back to the floor on a change of gear, or refused by the
 floor; anything drawn on a screen.
 
-**No guard proof was run.** Three are proposed in the report of the session that wrote this.
+**No guard proof was run.** Three were proposed in the report of the session that wrote this, and the report of
+the session that made the change of 2026-10-10 restates them and proposes two more.
 
 ### THE WINDOW'S RUN
 
