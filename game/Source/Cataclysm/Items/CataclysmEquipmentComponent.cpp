@@ -12,6 +12,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Player/CataclysmPlayerState.h"
 #include "GameFramework/Pawn.h"
@@ -546,6 +547,13 @@ TMap<FName, TArray<FCataclysmStatModifier>>
 UCataclysmEquipmentComponent::GatherModifiers(
 	TArray<FCataclysmPoolAction>* Actions) const
 {
+	return GatherModifiersReading(Actions, /*bPlantedWeaponIsRead=*/false);
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>>
+UCataclysmEquipmentComponent::GatherModifiersReading(
+	TArray<FCataclysmPoolAction>* Actions, bool bPlantedWeaponIsRead) const
+{
 	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
 
 	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
@@ -585,7 +593,11 @@ UCataclysmEquipmentComponent::GatherModifiers(
 	// THE ITEM STAYS WORN. Its base swing rate and the critical strike base a held weapon gives are not lines on the
 	// weapon and are read elsewhere (`StatBasesFromWeapons`), so both stay; and its skills stay, which is what lets
 	// the second press pull it free.
-	if (ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
+	//
+	// `bPlantedWeaponIsRead` SKIPS THIS BLOCK AND NOTHING ELSE. Ruled 2026-10-09 (J5a): a planted weapon still grants
+	// its class points. `RefreshAttributes` asks for that second reading while a weapon is planted and takes the class
+	// points from it and nothing more. A slot a floor rule switched off is read as empty in both readings.
+	if (!bPlantedWeaponIsRead && ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
 	{
 		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
 		{
@@ -620,6 +632,23 @@ UCataclysmEquipmentComponent::GatherModifiers(
 		Totals, *Worn, UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
 		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
 		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Actions);
+
+	// AND WHAT A TEST SAYS IS WORN. Empty in a running game, always, so this
+	// loop adds nothing there. See `SetRowsWornForTests`.
+	//
+	// ROWS A TEST SAID ARE ON THE ITEM IN ONE SLOT ARE ADDED ONLY WHILE THAT
+	// SLOT IS READ AS HOLDING SOMETHING, so they are left out with a slot that
+	// is switched off, with a planted weapon, and with an empty slot, as a real
+	// row on that item would be.
+	const int32 SeamSlot = static_cast<int32>(RowsWornForTestsSlot);
+	if (RowsWornForTestsSlot == ECataclysmGearSlot::Count
+		|| (Worn->IsValidIndex(SeamSlot) && !(*Worn)[SeamSlot].Base.IsNone()))
+	{
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : RowsWornForTests)
+		{
+			Totals.FindOrAdd(Stat.Key).Append(Stat.Value);
+		}
+	}
 
 	return Totals;
 }
@@ -741,6 +770,35 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	}
 	TMap<FName, float> Bases = StatBasesFromWeapons();
 
+	// THE CLASS POINTS THE WORN ROWS GRANT, READ NOW AND KEPT. Ruled 2026-10-09.
+	//
+	// BEFORE THE PASSIVE TREE IS ADDED TO `Modifiers` BELOW, AND IT HAS TO BE.
+	// The points decide how much of the tree counts, so they are read from what
+	// the worn items grant and from nothing the tree grants. At this line
+	// `Modifiers` holds exactly what `GatherModifiers` returned: one modifier
+	// for each worn row, each with its own rolled value, which is what lets
+	// each row be rounded down by itself (P2).
+	//
+	// WRITTEN ON EVERY REFRESH, a refresh of a character with no player state
+	// included, so the figure is never left over from different gear.
+	//
+	// A WEAPON PLANTED IN THE GROUND BY A SKILL STILL GRANTS ITS CLASS POINTS.
+	// Ruled 2026-10-09 (J5a), so that using a skill never leaves a character
+	// with more points spent than earned. `Modifiers` leaves the planted weapon
+	// out, so while one is planted the worn rows are gathered a second time
+	// with it read, and ONLY THE CLASS POINTS are taken from that second
+	// reading. Every other stat on the planted weapon stays left out, because
+	// `Modifiers` is still what the stat line is made from. The second reading
+	// is handed no list of actions, so no row's action is recorded twice.
+	//
+	// A SLOT A FLOOR RULE SWITCHED OFF GRANTS NO CLASS POINTS (J5b). Both
+	// readings leave it out.
+	ClassPointsGrantedAtLastRefresh =
+		ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner())
+			? UCataclysmPassivePoints::GrantedByWornRows(
+				  GatherModifiersReading(nullptr, /*bPlantedWeaponIsRead=*/true))
+			: UCataclysmPassivePoints::GrantedByWornRows(Modifiers);
+
 	// AND THE UNARMED BASE WHILE THE WEAPON STANDS IN THE GROUND. Issue #1166. Attack damage has no base otherwise:
 	// a weapon's damage is a flat line on its base, and `GatherModifiers` has just left the planted weapon's out.
 	// A BASE AND NOT A FLAT LINE, so everything worn elsewhere adds to it and scales it exactly as it did the weapon.
@@ -784,9 +842,31 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 				// THE DAMAGE TYPE DECIDES WHICH TREES COUNT. Points in a tree no
 				// equipped weapon reaches stay spent and add nothing, which is
 				// the project owner's decision of 2026-08-25.
+				//
+				// AND POINTS SPENT ABOVE THE POINTS EARNED ADD NOTHING EITHER,
+				// which is that rule's sibling. The owner, 2026-10-09, accepted
+				// that when gear that granted class points comes off, the points
+				// stay spent and add nothing. So the tree is accumulated from a
+				// COPY of the allocation with the excess left out, last node
+				// first touched first (`ReducedToPointsEarned`). The copy is a
+				// local and is written nowhere: the player state keeps every
+				// point and every capstone choice, and wearing the gear again
+				// counts all of them on the next refresh with no other act.
+				//
+				// THE POINTS EARNED ARE ASKED OF THE PLAYER STATE WITH THE FIGURE
+				// SET ABOVE HANDED TO IT, so the level's and the bosses' points
+				// are added up in one place. Not `PassivePointsAvailable()`:
+				// that reads the component of the pawn the player state holds,
+				// which is this one in play, and this line must not depend on
+				// that being so.
 				const TArray<FName> Carried = {State->GetChosenDamageType()};
+				const int32 PointsEarned = State->PassivePointsEarnedWith(
+					ClassPointsGrantedAtLastRefresh);
+				const FCataclysmPassiveAllocation Counted =
+					UCataclysmPassiveTree::ReducedToPointsEarned(
+						State->GetPassiveAllocation(), PointsEarned);
 				UCataclysmPassiveTree::AccumulateInto(
-					Modifiers, State->GetPassiveAllocation(),
+					Modifiers, Counted,
 					UCataclysmPassiveTree::LoadNodeTable(),
 					UCataclysmPassiveTree::LoadEffectTable(), Carried);
 			}

@@ -194,15 +194,13 @@ FText UCataclysmPassiveTreeWidget::PointsText() const
 		return FText::GetEmpty();
 	}
 
-	const int32 Earned = Player->PassivePointsAvailable();
-	const int32 Unspent = Player->PassivePointsUnspent();
-
-	// THE BUDGET IS PART OF THE LINE. 230 is what every class tree is designed
-	// against and what a player is planning towards, and a bare "38 earned"
-	// says nothing about how far through that is.
-	return FText::FromString(FString::Printf(
-		TEXT("Passive points    %d unspent of %d earned    the budget is %d"),
-		Unspent, Earned, UCataclysmPassivePoints::Budget));
+	// THE WORDS ARE `UCataclysmPassiveTree::DescribePoints`, since 2026-10-09,
+	// so that a test with no screen reads the line a player does. It prints the
+	// points unspent, the points earned and the budget as this function did,
+	// and adds how many spent points add nothing, and why, when more are spent
+	// than earned.
+	return FText::FromString(UCataclysmPassiveTree::DescribePoints(
+		Player->GetPassiveAllocation(), Player->PassivePointsAvailable()));
 }
 
 FText UCataclysmPassiveTreeWidget::TreeText() const
@@ -728,9 +726,21 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 	// THE NAME AND THE COUNT, AND NOT THE REFUSAL. A node on the graph is about
 	// 150 pixels wide and the refusal is a sentence; the sentence goes under the
 	// tree instead, where there is room for it, when the node is clicked.
-	const FString Label = FString::Printf(TEXT("%s  %d/%d"), *Row->NodeName,
-										  Allocation.PointsIn(Node),
-										  Row->MaxPoints);
+	FString Label = FString::Printf(TEXT("%s  %d/%d"), *Row->NodeName,
+									Allocation.PointsIn(Node),
+									Row->MaxPoints);
+
+	// AND A NODE WHOSE POINTS ADD NOTHING IS MARKED WITH HOW MANY. Ruled
+	// 2026-10-09 (P6). More points are spent than earned, and this node is one
+	// that gives some up. The count goes on the label, and the reason goes on
+	// the tool tip below, where there is room for a sentence.
+	const int32 Idle =
+		UCataclysmPassiveTree::PointsAddingNothingIn(Allocation, Points, Node);
+	if (Idle > 0)
+	{
+		Label += FString::Printf(TEXT("  (%d add%s nothing)"), Idle,
+								 Idle == 1 ? TEXT("s") : TEXT(""));
+	}
 
 	// AND A CAPSTONE THAT HAS OPENED IS CLICKABLE THOUGH IT CANNOT TAKE A POINT.
 	// Issue #1064. Until then this asked only whether a point could go in, and
@@ -750,7 +760,20 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 
 	Button.SetChoice(Node, FText::FromString(Label),
 					 Allocation.PointsIn(Node) > 0, bCanTake);
-	Button.SetToolTipText(FText::FromString(NotYourClass));
+
+	// THE CLASS REFUSAL FIRST, AS IT WAS. A node marked above says why here when
+	// no class refusal is being shown.
+	FString ToolTip = NotYourClass;
+	if (ToolTip.IsEmpty() && Idle > 0)
+	{
+		ToolTip = FString::Printf(
+			TEXT("%d of the points in this node add%s nothing. More points are "
+				 "spent than earned, because gear that granted points is no "
+				 "longer worn. The points stay spent and count again when that "
+				 "gear is worn."),
+			Idle, Idle == 1 ? TEXT("s") : TEXT(""));
+	}
+	Button.SetToolTipText(FText::FromString(ToolTip));
 }
 
 void UCataclysmPassiveTreeWidget::DescribeTreeButton(

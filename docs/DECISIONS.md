@@ -591,6 +591,320 @@ The commit that adds this section changes this entry alone, and the head that ca
 
 ---
 
+## 2026-10-09 — Worn gear can grant class points; when the gear comes off the points stay spent and the excess adds nothing, taken from the last node first touched
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPassivePoints.h` and `.cpp` (the stat's name and its one
+reader), `CataclysmPassiveTree.h` and `.cpp` (four functions, one refusal sentence, one addition to a node's
+line), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (the figure kept at each refresh,
+the reduced allocation handed to the tree, one seam for tests), `game/Source/Cataclysm/Player/CataclysmPlayerState.h`
+and `.cpp` (the points earned gain a term; three functions), `CataclysmPassiveTreeWidget.cpp` (the points line,
+a node's label and tool tip), `CataclysmPlayerCharacter.cpp` (two lines of `Cataclysm.ShowPassives`, and the
+hand-back of a second two-handed weapon on a change of gear), `CataclysmBothHandsFullTests.cpp` (one test's set-up),
+`CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute), eight new tests in
+`CataclysmPassiveTreeTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py`
+(one check) and `tools/tests/test_generate_datatables.py`. No data row, no workbook cell and no saved field is
+changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: NOTHING HERE WAS COMPILED OR RUN IN UNREAL BY THE SESSION THAT WROTE IT
+
+**The C++ in this entry has not been through a compiler and none of its automation tests has been run.** The
+session that wrote it does not build Unreal. Every statement below about what the game does is a statement about
+what the code was written to do. The enchantment session builds it and records the run at the foot of this entry.
+
+### SAID FIRST: GAME CODE HOLDS A SEAM FOR TESTS, AND THE NEXT LAYER REMOVES IT
+
+**`UCataclysmEquipmentComponent::SetRowsWornForTests` is in the game's own code and exists only for tests.** It
+stores modifiers, and optionally the slot of the item a test says carries them, in two members of the
+component (`RowsWornForTests`, `RowsWornForTestsSlot`). They are read in one place:
+`UCataclysmEquipmentComponent::GatherModifiersReading`, which `GatherModifiers` calls, adds them to what the
+worn items grant. Nothing in a running game calls the setter, so the members are empty there and that code adds
+nothing.
+
+**Why it is here.** No row in the game's data grants `class_points_granted` yet, and the tests have to put the
+gear on, spend, and take it off through the real refresh.
+
+**Ruled 2026-10-09 by the coordinating session (J1): the seam stays in this layer, and the next layer removes
+it.** That layer writes the two real rows, rewrites these tests to wear them, and deletes the setter and both
+members.
+
+### SAID FIRST: A MERGED FUNCTION'S RESULT CHANGES, IN A STATE THAT COULD NOT HAPPEN BEFORE
+
+**`ACataclysmPlayerState::PassivePointsUnspent` never answers below nought now.** It answered the points earned
+less the points spent. Before this layer the points earned could not fall below the points spent, so the
+answer was never negative. With gear off it would be. It now answers nought there, and
+`ACataclysmPlayerState::PassivePointsAddingNothing`, which is new, answers the excess. Ruled 2026-10-09 by the
+coordinating session (J2): accepted. For a character with no more spent than earned the answer is what it was.
+
+**Its readers in game code, all in `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, each of
+which prints it as points left to spend:**
+
+| Console command | What it prints with the figure |
+| :-- | :-- |
+| `Cataclysm.ShowPassives` | "Passive points: N earned, N spent, N left." |
+| `Cataclysm.SpendPassivePoint` | "N left." after the node's line |
+| `Cataclysm.ResetPassivePoints` | "N to spend." |
+| `Cataclysm.DefeatCataclysmBoss` | "N left to spend." |
+
+**One reader was removed by this layer.** `UCataclysmPassiveTreeWidget::PointsText` called it for the points
+line; that line is now `UCataclysmPassiveTree::DescribePoints`, which works the unspent figure out from the
+allocation and the points earned and holds it at nought the same way.
+
+**In tests** it is read in `CataclysmPassiveTreeTests.cpp` by
+`TheScreenSpendsThroughTheCharacterAndNotIntoItself`, by one test that reads it once as a starting figure, and
+by two of this layer's tests. No test of the merged ones reads it on a character with more spent than earned.
+
+### SAID FIRST: "LAST NODE FIRST TOUCHED", NOT "LAST POINT SPENT"
+
+- **The points that add nothing are taken from the last node first touched.** The game records no order of
+  spending. A character's allocation is a list of nodes, and a node joins the end of the list when it gets its
+  FIRST point; a later point into a node already on the list raises that node's count and moves nothing. While a
+  character has more points spent than earned, the excess is taken from the end of that list, node by node, each
+  node giving up as many of its points as the excess still needs.
+- **What a player would notice of the difference.** A player touches node A early, then several other nodes,
+  then puts on gear that grants 6 points and spends all 6 in node A. When the gear comes off, node A keeps all
+  of its points. The 6 points that stop counting come out of whichever node the player touched for the first
+  time most recently, and those may be points spent long before the gear was worn. The points bought with the
+  gear are not the points that stop.
+- **The points stay counted as spent by every row that counts points spent.** `class_points_spent` reads the
+  allocation's total, the points that add nothing included, and this layer does not change that line. Every row
+  on that scale counts them, "Each class point above the max reduces your max resistances by 2%-5%" among them.
+  A wearer who spent gear points above 230 and took the gear off still pays that row for every one of them.
+- **A capstone whose point adds nothing grants nothing and keeps its choice.** The choice stays on the
+  character and cannot be made again. When the point counts again the same option is the one granted.
+- **Nothing is refunded and nothing is undone.** No point leaves the allocation. Wearing the gear again counts
+  every point again at the next refresh, with no other act by the player.
+- **A weapon planted in the ground by a skill still grants its class points.** Ruled 2026-10-09 by the
+  coordinating session (J5a), so that using a skill never leaves a character with more points spent than earned.
+  Everything else on a planted weapon is left out of the character's stats, as it has been since 2026-10-05; the
+  class points are the one thing read from it. While a weapon is planted the refresh reads the worn rows a
+  second time with the planted weapon counted, and takes the class points from that reading and nothing else.
+- **A slot switched off by the `Famine_Scarcity` floor rule grants no class points.** Ruled 2026-10-09 by the
+  coordinating session (J5b): as built, because that rule is meant to take an item's benefits away. On such a
+  floor a character whose switched-off item granted points it has spent has points that add nothing until the
+  floor ends, taken from the last node first touched. A planted weapon in a switched-off slot grants none either.
+- **The same benefit on several pieces grants its points once**, at the higher roll. That is the rule every
+  benefit follows and this layer does not change it.
+
+### SAID FIRST: ONE CHANGE OF GEAR CAN NOW HAND A WEAPON BACK, AND THEN REFRESHES THE STATS TWICE
+
+**A second two-handed weapon is handed back in the same change of gear that takes the option away.** The option
+to hold two (`two_handed_weapon_in_each_hand`, Both Hands Full) can be granted by a passive point, and since
+this layer that point may count only because worn gear grants class points. Taking that gear off takes the
+option off the stat line. Ruled 2026-10-10 by the coordinating session (J3):
+`ACataclysmPlayerCharacter::OnEquipmentChanged`, after `RefreshAttributes`, calls
+`UCataclysmWearing::ReturnSecondTwoHandedWeapon`, and if that took a weapon off it returns there. Before this
+the hand-back ran only from `ACataclysmPlayerState::RefreshCharacterStats`, which a change to the allocation
+calls, so the weapon stayed in the hand until the next change to the allocation. That caller is unchanged.
+
+- **Such a change of gear runs the stat refresh twice, and the first is needed.** The first refresh is what
+  shows the option is gone: the hand-back asks the stat line for it. Taking the weapon off then announces a
+  second change of gear, and `OnEquipmentChanged` runs a second time inside the first, for the gear as it now
+  is. A change of gear that hands nothing back refreshes once, as before.
+- **The outer call returns early because the inner call has done the rest.** Read on 2026-10-10:
+  `OnEquipmentChanged` does three things and no others. It refreshes the stat line, fills the ability slots from
+  the worn weapon (`FillAbilitySlotsFromWornWeapon`) and draws the hands (`RefreshWeaponMeshes`). The inner call
+  does all three for the gear as it now is, and its own hand-back finds one weapon and does nothing. So the
+  outer call has nothing left to do, and the ability slots are filled once. Without the early return they would
+  be emptied and filled twice for one change of gear, which is the fault issue #1214 records for a swap.
+- **Which answers count as a weapon taken off.** `ReturnSecondTwoHandedWeapon` answers an
+  `ECataclysmWearResult`. `TakenOff` (to the bag) and `Dropped` (to the floor, when the bag is full) return
+  early. `NothingWorn`, `NothingToWorkWith` and `TheFloorRefusedIt` mean no weapon moved and nothing was
+  announced, and the call goes on. With a full bag and a floor that refuses the weapon, it stays held.
+- **`EquipmentChanged` has one listener in game code.** Every place the delegate is bound in `game/Source` was
+  searched for on 2026-10-10. It is a plain multicast delegate, not one a Blueprint can bind
+  (`DECLARE_MULTICAST_DELEGATE`, no `BlueprintAssignable`). The one bind in game code is
+  `CataclysmPlayerCharacter.cpp`, `EquipmentChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnEquipmentChanged)`
+  in `BeginPlay`. Three tests in `CataclysmEquipmentTests.cpp` bind a counting lambda to a component of their
+  own; none of them holds two two-handed weapons. The early return is in the listener and not in the
+  broadcast, so any other listener would still be told of both changes.
+- **A character with no player character behind it is not served.** The hand-back on a change of gear is in
+  the player character's listener. A plain actor wearing equipment has no listener and nothing hands its weapon
+  back; no such actor loses the option to gear in play.
+- **A merged test's set-up had to change.** `Cataclysm.BothHandsFull.LosingTheOptionReturnsTheSecondToTheBagOrTheFloor`
+  gave the option by hand just before each weapon went on a real player. The refresh after the second weapon
+  went on wiped the hand-given option, and with this change that refresh hands the weapon straight back, before
+  the respec the test is about. The test now gives the option through the real capstone
+  (`Ravager_capstone_200`, second option, one point) on an allocation put on unchecked. What it asserts after
+  the respec is unchanged.
+
+### SAID FIRST: WHAT WAS NOT READ, AND ONE THING LEFT AS BUILT
+
+- **Not read:** all of `UCataclysmPlayerClassStats::ApplyTo`. The part that records a stat's base and modifiers
+  was read; that a stat on the list of stats with no attribute passes through the rest of it without a warning
+  was taken from the stats already on that list.
+- **Not read:** the save writer, the save records and `CataclysmSaveGather.cpp` past the one line that copies
+  the allocation into a record. This layer changes none of them.
+- **Left as built, ruled 2026-10-09 (J4): a capstone's threshold counts every point spent in its tree, the ones
+  that add nothing included.** A capstone opened with gear points stays open while the gear is off. Its own point
+  may be one that adds nothing.
+
+### WHAT THE OWNER SAID
+
+The owner, 2026-10-09, accepting the coordinating session's recommendations: "your rec on all the open
+questions". The recommendation accepted for this layer: when the granting item comes off, the points stay spent
+and add nothing.
+
+### WHAT IS RULED, AND WHERE EACH RULING IS IN THE CODE
+
+Each of these was ruled on 2026-10-09 by the coordinating session under the owner's delegation, and each is a
+labelled judgement.
+
+| | Ruling | Where |
+| :-- | :-- | :-- |
+| P1 | The excess is taken from the last node first touched: from the end of `FCataclysmPassiveAllocation::Nodes`, node by node. | `UCataclysmPassiveTree::ReducedToPointsEarned`, called in `UCataclysmEquipmentComponent::RefreshAttributes` |
+| P2 | A rolled fraction rounds down to whole points, for each granting row by itself. | `UCataclysmPassivePoints::GrantedByWornRows` |
+| P3 | Spending is refused while overspent, and whenever a spend would take spent above earned. | `UCataclysmPassiveTree::RefusalForSpending`; the rule was already there and the sentence for an overspent character is new |
+| P4 | A capstone whose point adds nothing grants nothing and keeps its choice. | `ReducedToPointsEarned` leaves the whole entry out of the copy; the character's allocation is not written |
+| P5 | No refund, no undo, no change to the saved struct. | `FCataclysmPassiveAllocation` and `FCataclysmSpentNode` are unchanged; the reduced copy is a local in `RefreshAttributes` |
+| P6 | The tree screen says which points add nothing and why. | `UCataclysmPassiveTree::DescribePoints`, `DescribeNode`, `PointsAddingNothingIn`; `UCataclysmPassiveTreeWidget::PointsText` and `DescribeNodeButton` |
+| P7 | This layer authors no row. | The two rows are the enchantment session's |
+
+### WHAT WAS BUILT
+
+**A stat, `class_points_granted`, flat, with no gameplay attribute and no base.** It is on
+`UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Nothing asks for it through the stat pipeline.
+
+**One reader, which reads the worn rows themselves.** `UCataclysmEquipmentComponent::GatherModifiers` returns
+one modifier for each worn row, each with that row's own rolled value. `GrantedByWornRows` rounds each one down
+and adds them. It reads a row's value and judges nothing else, so it counts a row only when the row is flat and
+carries no condition, no second condition, no scale and no required tag, and only at a value of 1 or more. A
+row of any other shape grants no point; the generator refuses to write one.
+
+**The order inside one refresh.** `RefreshAttributes` gathers what the worn items grant, reads the class
+points from that, keeps the figure, and only then adds the passive tree, from the reduced copy of the
+allocation. A passive node cannot change what the worn rows grant: `GatherModifiers` is a function of the
+slots, the slot a floor rule switched off and the planted weapon, and reads no allocation. A node's own row on
+`class_points_granted` would be added after the points are read and would never be counted; the generator
+refuses it.
+
+**While a weapon is planted the class points come from a second reading.** `GatherModifiers` leaves a planted
+weapon out, and the stat line is made from that. `GatherModifiersReading`, which is private and is what
+`GatherModifiers` now calls, takes one choice: whether the planted weapon is read as worn. `RefreshAttributes`
+asks for the second reading only while `ACataclysmPlantedWeapon::LeavesUnarmed` is true, hands it no list of
+actions, and reads the class points from it and nothing else. A slot a floor rule switched off is left out of
+both readings.
+
+**Where the figure is kept.** On the pawn's equipment component, written at every refresh
+(`ClassPointsGranted`). `ACataclysmPlayerState::PassivePointsAvailable` adds it to the points earned by level
+and by boss kills, so every reader of the points earned sees it. It is kept, and not worked out for each
+reader, so that the figure a screen prints and the stat line the character has come from one reading of the
+gear. It is on the component and not on the player state because the player state outlives the pawn: a player
+state with no pawn has no component to ask and reads nought. It is nought before a pawn's first refresh. Every
+change of what is worn announces itself and `OnEquipmentChanged` runs the refresh.
+
+**The points earned can now be above 230, and can fall.** `PassivePointsUnspent` is never below nought.
+`PassivePointsAddingNothing` is the excess.
+
+**What a player reads.**
+
+| Where | Words |
+| :-- | :-- |
+| A spend refused while overspent | No passive points left. 21 are spent and 15 are earned, so 6 spent points add nothing: gear that granted points is no longer worn. Nothing can be spent until that gear is worn again or 7 more are earned. |
+| The points line of the tree screen | Passive points    0 unspent of 15 earned    the budget is 230    6 spent points add nothing: gear that granted points is no longer worn |
+| A node's line | Willing Flesh    6 / 6    6 of these add nothing |
+| A node's label on the tree | Willing Flesh  6/6  (6 add nothing) |
+| That node's tool tip | 6 of the points in this node add nothing. More points are spent than earned, because gear that granted points is no longer worn. The points stay spent and count again when that gear is worn. |
+
+**The sentences give gear as the reason, and there is one other way to be overspent.** Lowering the console
+variable `Cataclysm.PlayerLevel` on a character whose level it still decides lowers the points earned. A
+character overspent that way reads the same words.
+
+**The generator.** `refuse_a_class_point_row_the_game_cannot_count` in `tools/generate_datatables.py`, run by
+the validation of both effect sheets. On the Enchantment Effects sheet a row on the stat must be flat, with no
+Required Tags, no Condition, no second Condition and no Scale, and its two figures must each be from 1 to 10. On
+the Passive Effects sheet a row on the stat is refused. **The bounds are a judgement of the session that wrote
+this:** 1 because the game rounds down, so a lower figure is a row that can roll no point; 10 because it is the
+largest figure either sentence states. The figures need not be whole.
+
+**The shape of the two rows, for the session that writes them:**
+
+| Sentence | Row |
+| :-- | :-- |
+| Gain 5-10 class points | `class_points_granted`, flat, 5 to 10 |
+| Gain 3-8 additional class points | `class_points_granted`, flat, 3 to 8 |
+
+**One seam for tests**, said first above. `UCataclysmEquipmentComponent::SetRowsWornForTests` adds modifiers to
+what `GatherModifiers` returns. A test may tie them to the item in one slot, and they are then added only while
+that slot is read as holding something, so a slot switched off, a planted weapon and an empty slot leave them
+out as they would a real row on that item.
+
+### THE ORDER A SAVE LOADER MUST KEEP
+
+**No game code puts a saved allocation back on a character today** (issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753)); `SetPassiveAllocation` is called from tests only.
+This layer does not change that.
+
+**When a loader is written, it must not judge an allocation against the points earned before the worn gear is
+back on the character and refreshed.** A saved character wearing gear that grants points has, rightly, more
+points spent than its level and its boss kills earn. Read before the gear is on, that allocation looks
+overspent. Nothing in this layer removes a point for it, and a loader must not either: a loader that trimmed or
+refused an allocation at that moment would take away points the character had earned. Putting the allocation on
+first is safe, because the refresh that follows the gear counts every point again.
+
+### Tests
+
+Eight automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one probe.
+
+- `TheExcessIsTakenFromTheLastNodeFirstTouched`: the reduced allocation with no world. Three nodes holding 3, 5
+  and 2, where the first node's third point is the last point spent. No excess returns the same entries; an
+  excess of one comes out of the third node and not the first; an excess of three reaches into the second and
+  the third has no entry; an excess of everything returns none. A capstone at the end gives up its point and its
+  option in the copy, and the allocation handed in keeps both.
+- `EachWornRowIsRoundedDownByItselfAndAddedToThePointsEarned`: a level 10 character wearing a row of 7.9 has
+  earned 7 more; wearing 7.9 and 3.9 it has earned 10 more. A row that is not flat, or is conditioned, or is
+  scaled, or is below 1, grants nothing beside a row of 5. The figure is the last refresh's until the next one. A
+  player state that never had a pawn reads nought, and so does one whose pawn was destroyed wearing the row.
+- `PointsSpentWithGearStaySpentAndAddNothingWhileItIsOff`: through the real refresh with the real Masochist
+  tree. Fifteen points spent in three nodes; a row of 7.9 worn; six points spent in Willing Flesh through
+  `SpendPassivePoint`. The row comes off: 21 points are still spent, Willing Flesh's modifier is off the stat
+  line, Pain Tolerance's is on it in full, `class_points_spent` reads 21, a spend is refused in the sentence
+  above. A row of 3.9 puts three of the six back. The first row goes back on: all six count, and the one point
+  left can be spent.
+- `SpendingIsRefusedWhileMoreIsSpentThanEarned`: `UCataclysmPassiveTree::Spend` on the small tree the test file
+  builds. Eight spent: refused at 6 earned and at 7 in the new sentence, refused at 8 in the sentence that was
+  already there, taken at 9.
+- `TheScreenSaysWhichPointsAddNothingAndWhy`: the counts in total and for each node, the points line at four
+  figures, a node's line; and on a real character the widget's points line and the tool tip it puts on a node
+  that gives up points and on one that does not.
+- `AWeaponPlantedInTheGroundStillGrantsItsClassPoints` (J5a): a level 10 character holds a Greatsword that a
+  row of 7.9 is tied to, with 21 points spent. The weapon is planted. Its attack damage is left out of the stat
+  line; its 7 class points are still granted, no point adds nothing, and Willing Flesh's modifier is still on
+  the stat line. The same at a refresh while it stands. Destroyed, the attack damage is back.
+- `ASlotAFloorRuleSwitchedOffGrantsNoClassPoints` (J5b): the same character and weapon. With the boots slot
+  switched off nothing changes. With the weapon's slot switched off the weapon grants no point, 15 are earned,
+  21 are still spent, 6 add nothing and Willing Flesh's modifier is off the stat line. With no slot off it is
+  all back. This is the test that shows J5b; no earlier test switched a slot off under a granting item.
+- `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` (J3): a level 10 character with
+  16 points spent, the last in the real capstone with Both Hands Full, which counts only because its boots are
+  said to carry a row of 7.9. It holds a Greatsword and a Greataxe. The control comes first: a ring goes on,
+  and nothing is handed back. The boots come off by one call: the Greataxe is in the bag, the Greatsword is
+  held, the option is off the stat line, the capstone keeps its choice. The bag case only. THE ABILITIES ARE
+  COUNTED: that change granted as many as the boots going on again, which hands nothing back. The count is the
+  rise in the number the engine grants abilities under, read off the handles the character holds; the number of
+  abilities held cannot show a second filling, because a filling takes every one back first. It is in this
+  group and not beside the hand-back's own tests because it needs this layer's gear and its points.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for `class_points_granted`.
+
+Python: `TestAWornRowGrantsClassPoints` in `tools/tests/test_generate_datatables.py`, six tests of the rows'
+shape and of each refusal with its control.
+
+**Not tested here:** a real enchantment row granting the stat, since none is written; the walk from a row of
+`EnchantmentEffects.csv` to its modifier, which `AccumulateEnchantmentsInto` has tests of its own for;
+`ChoosePassiveOption` while overspent; a capstone as the last node first touched on a real character; the
+label on a node's button, which the button has no function to read back, only its tool tip; the two lines
+`Cataclysm.ShowPassives` gained; a weapon planted by a real skill, since the test plants it directly; a slot
+switched off by the floor rule itself, since the test switches it off directly; a planted weapon in a
+switched-off slot; a second two-handed weapon handed back to the floor on a change of gear, or refused by the
+floor; anything drawn on a screen.
+
+**No guard proof was run.** Three are proposed in the report of the session that wrote this.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — Fragmented Reality: on a Halls floor in sections one section scrambles the player's stats while they stand in it, and the row is Built
 
 **Said first: this layer's first window stopped on one failed test, and the fault it found is not in this layer.**

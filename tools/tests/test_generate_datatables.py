@@ -5217,6 +5217,129 @@ class TestMinionsTakeAShareOfTheirSummonersDefences:
         assert "minion_armor_percent_of_yours" not in gen.stats_with_no_attribute()
 
 
+class TestAWornRowGrantsClassPoints:
+    """`class_points_granted`, ruled 2026-10-09 and built ahead of its rows.
+    The rows here are the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentences. One flat row for each sentence, rolled between the sentence's
+    two figures, with no Required Tags, no Condition and no Scale.
+
+    THE GAME ROUNDS EACH ROW DOWN BY ITSELF, so the figures here need not be
+    whole and the generator does not ask that they are. What it does refuse is
+    every shape the game's one reader cannot count: the reader reads the row's
+    value and judges nothing else.
+    """
+
+    FIRST = "Gain 5-10 class points"
+    SECOND = "Gain 3-8 additional class points"
+    HEADER = TestEnchantmentEffects.HEADER
+    ROW = {"Stat": "class_points_granted", "Value Kind": "flat"}
+
+    def out(self, tmp_path, words, low, high):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words, "Value Low": low, "Value High": high}
+        values.update(self.ROW)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [
+            ["Positives", "Type", "Weight", "Column 4", None,
+             "Negatives", "Type", "Weight", "Tags"],
+            [words, "Generic", 2, "Stat.Offense.Global", None,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "class_points.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_class_point_row_the_game_cannot_count(
+            "EnchantmentEffects", rows)
+
+    def test_each_sentences_row_is_carried_through_flat_and_is_not_refused(
+            self, tmp_path):
+        for words, low, high in ((self.FIRST, 5, 10), (self.SECOND, 3, 8)):
+            out = self.out(tmp_path, words, low, high)
+            assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                     row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                     row["Scale"], row["Action"]) for row in out] == [
+                ("class_points_granted", "flat", float(low), float(high), "",
+                 "", "", "")]
+            assert self.refusals(out) == []
+            # NO CONDITION AND NO SCALE, so neither of those checks has
+            # anything to say, and the stat needs no entry on their lists.
+            assert gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+            assert gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+        assert "class_points_granted" not in gen.CONDITIONED_STATS_WITH_AN_ASKER
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """What lets the rows above name it: a count of points holds no
+        gameplay attribute, so the name is on the engine's list of stats that
+        need none. TESTED BY NAME. The control is a made-up name on no list."""
+        assert gen.CLASS_POINTS_GRANTED_STAT == "class_points_granted"
+        assert gen.CLASS_POINTS_GRANTED_STAT in gen.stats_with_no_attribute()
+        assert "class_points_gained" not in gen.stats_with_no_attribute()
+
+    def test_every_shape_the_game_cannot_count_is_refused(self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line: the row unchanged is
+        not refused."""
+        good = self.out(tmp_path, self.FIRST, 5, 10)[0]
+        assert self.refusals([good]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"Condition": "health_below"}, "under a condition"),
+                ({"Condition2": "health_below"}, "under a second condition"),
+                ({"Scale": "class_points_spent"}, "under a scale"),
+                ({"ValueLow": 0.5}, "states 0.5 class points"),
+                ({"ValueHigh": 11.0}, "states 11 class points")):
+            problems = self.refusals([dict(good, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert "class_points_granted" in problems[0] or "class points" in problems[0]
+
+    def test_a_figure_that_is_not_whole_is_not_refused(self, tmp_path):
+        """The game rounds a row down, so 5.5 to 9.5 is a legal pair of
+        figures here. The bounds are 1 and 10, each allowed."""
+        good = self.out(tmp_path, self.FIRST, 5, 10)[0]
+        assert self.refusals([dict(good, ValueLow=5.5, ValueHigh=9.5)]) == []
+        assert self.refusals([dict(good, ValueLow=1.0, ValueHigh=10.0)]) == []
+        assert (gen.MIN_CLASS_POINTS_GRANTED_BY_A_ROW,
+                gen.MAX_CLASS_POINTS_GRANTED_BY_A_ROW) == (1.0, 10.0)
+
+    def test_a_passive_node_may_not_grant_it_and_another_stat_is_left_alone(
+            self):
+        """The game reads class points from worn rows before the passive tree
+        is added, so a node's row on the stat is never read. The control is
+        the same node row on another stat, which this check says nothing
+        about."""
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": "class_points_granted", "ValueKind": "flat",
+                    "ValuePerPoint": 1.0}
+        problems = gen.refuse_a_class_point_row_the_game_cannot_count(
+            "PassiveEffects", [node_row])
+        assert len(problems) == 1
+        assert "a passive node grants" in problems[0]
+        assert gen.refuse_a_class_point_row_the_game_cannot_count(
+            "PassiveEffects", [dict(node_row, Stat="max_health")]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the same row
+        made an increase is refused there, in this check's words."""
+        good = self.out(tmp_path, self.FIRST, 5, 10)[0]
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [good]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good, ValueKind="increased")]}, set())
+        assert any("value kind 'increased'" in problem
+                   and "class_points_granted" in problem
+                   for problem in problems), problems
+
+
 class TestAChargesDamageByTheShareOfItsRangeMoved:
     """`share_of_range_moved`, ruled 2026-10-08 and built ahead of its rows.
     The rows here are the shape `docs/DECISIONS.md` of that day gives the
