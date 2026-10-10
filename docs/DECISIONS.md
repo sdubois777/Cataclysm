@@ -119,6 +119,18 @@ Each is a labelled judgement by the coordinating session under the owner's deleg
 10. The three guard proofs are registered. Proof 1 is registered as: the named test fails, with the two named
     assertions among its failures; a higher count in that one test is not a stop.
 
+**The base changed after this entry was written, and two of its statements changed with it.** The layer was
+written on development 6288d58e and now sits on 06d81f8a, which holds "dying ends the dungeon" (issue #41). Where
+this entry says "this base" keeps the floor after a death (judgement 14, and the line under "Not covered by a
+test"), that is now true only when no dungeon of the empire is bound, or with the playtest switch
+`Cataclysm.DeathKeepsThePlayerInTheDungeon` set to 1: there the player stands back up at the floor's entrance and
+the chamber and its reward's state are kept. Inside a dungeon of the empire a death now leaves the dungeon when
+the character stands back up, and leaving takes the player out of the chamber and forgets it, by the same code
+this layer's leaving test covers. No test of this layer kills the player inside a chamber with a dungeon of the
+empire bound; that case is read and not run. The move had two conflicts, each where both layers add to the same
+place and each resolved by keeping both: this file, and the dungeon test file. Written by the registering
+session.
+
 ### What was read before writing
 
 All in `game/Source/Cataclysm/` unless a path says otherwise, line numbers as the files stand after this layer.
