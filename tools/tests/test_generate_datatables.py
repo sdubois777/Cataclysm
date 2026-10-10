@@ -5340,6 +5340,170 @@ class TestAWornRowGrantsClassPoints:
                    for problem in problems), problems
 
 
+class TestARowChangesWhatAHealingSkillRestores:
+    """`healing_skill_health_restored` and
+    `healing_skill_health_as_energy_shield`, ruled 2026-10-09 and built ahead
+    of their rows. The rows here are the shape `docs/DECISIONS.md` of that day
+    gives the session that writes rows, on a made-up enchantment sheet holding
+    the real sentences. One row for each sentence, rolled between the
+    sentence's two figures, with no Required Tags, no Condition and no Scale.
+
+    THE GAME ASKS FOR BOTH STATS WITH NO TAGS, where Living Pyre and Blood Pyre
+    pay their health, so a row requiring a tag would match nowhere and is
+    refused. Each stat has one value kind and the bounds its sentence states.
+    """
+
+    MORE = "Healing skills restore 30%-60% more HP"
+    SHIELD = ("Healing skills also restore 10%-20% of the healed amount as "
+              "energy shield")
+    HEADER = TestEnchantmentEffects.HEADER
+    MORE_ROW = {"Stat": "healing_skill_health_restored", "Value Kind": "more",
+                "Value Low": 30, "Value High": 60}
+    SHIELD_ROW = {"Stat": "healing_skill_health_as_energy_shield",
+                  "Value Kind": "flat", "Value Low": 10, "Value High": 20}
+
+    def out(self, tmp_path, words, columns):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words}
+        values.update(columns)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [
+            ["Positives", "Type", "Weight", "Column 4", None,
+             "Negatives", "Type", "Weight", "Tags"],
+            [words, "Generic", 3, "Stat.Defense.Life", None,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "healing_skills.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_healing_skill_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_each_sentences_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        for words, columns, expected in (
+                (self.MORE, self.MORE_ROW,
+                 ("healing_skill_health_restored", "more", 30.0, 60.0)),
+                (self.SHIELD, self.SHIELD_ROW,
+                 ("healing_skill_health_as_energy_shield", "flat", 10.0,
+                  20.0))):
+            out = self.out(tmp_path, words, columns)
+            assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                     row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                     row["Scale"], row["Action"]) for row in out] == [
+                (*expected, "", "", "", "")]
+            assert self.refusals(out) == []
+            # NO CONDITION AND NO SCALE, so neither of those checks has
+            # anything to say.
+            assert gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+            assert gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+
+    def test_both_stats_are_ones_with_no_attribute(self):
+        """What lets the rows above name them: neither holds a gameplay
+        attribute, so both names are on the engine's list of stats that need
+        none. TESTED BY NAME. The control is a made-up name on no list."""
+        assert set(gen.HEALING_SKILL_STATS) == {
+            "healing_skill_health_restored",
+            "healing_skill_health_as_energy_shield"}
+        for stat in gen.HEALING_SKILL_STATS:
+            assert stat in gen.stats_with_no_attribute()
+        assert "healing_skill_health_given" not in gen.stats_with_no_attribute()
+
+    def test_the_kind_and_the_bounds_are_the_ones_each_sentence_states(self):
+        assert gen.HEALING_SKILL_STATS == {
+            "healing_skill_health_restored": ("more", 30.0, 60.0),
+            "healing_skill_health_as_energy_shield": ("flat", 10.0, 20.0)}
+
+    def test_every_shape_the_reader_gives_another_meaning_is_refused(
+            self, tmp_path):
+        """One change to a carried row at a time, each refused once and by
+        its own sentence. The control is the first line of each half: the row
+        unchanged is not refused."""
+        more = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert self.refusals([more]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "flat"}, "value kind 'flat'"),
+                ({"RequiredTags": "Stat.Recovery"}, "under a required tag"),
+                ({"ValueLow": 29.0}, "states 29 on"),
+                ({"ValueHigh": 61.0}, "states 61 on")):
+            problems = self.refusals([dict(more, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert "healing_skill_health_restored" in problems[0]
+
+        shield = self.out(tmp_path, self.SHIELD, self.SHIELD_ROW)[0]
+        assert self.refusals([shield]) == []
+        for change, said in (
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Stat.Recovery"}, "under a required tag"),
+                ({"ValueLow": 9.0}, "states 9 on"),
+                ({"ValueHigh": 21.0}, "states 21 on")):
+            problems = self.refusals([dict(shield, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert "healing_skill_health_as_energy_shield" in problems[0]
+
+    def test_a_figure_inside_the_bounds_is_not_refused(self, tmp_path):
+        """A row may state a narrower pair than its sentence's, and each
+        bound itself is allowed."""
+        more = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert self.refusals([dict(more, ValueLow=40.0, ValueHigh=50.0)]) == []
+        assert self.refusals([dict(more, ValueLow=30.0, ValueHigh=60.0)]) == []
+
+    def test_a_condition_or_a_scale_on_either_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """Neither stat is on the list of stats asked for under a condition
+        or the list asked for under a scale, so the two checks that read
+        those lists refuse such a row. The control is the row unchanged."""
+        more = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [more]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [more]) == []
+        for stat in gen.HEALING_SKILL_STATS:
+            row = dict(more, Stat=stat)
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="health_below")])
+            assert len(conditioned) == 1 and stat in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+            assert len(scaled) == 1 and stat in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        """The check reads enchantment rows. A passive node's row states a
+        value per point, which the bounds do not describe; and a row on
+        another stat is not this check's to judge."""
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": "healing_skill_health_restored",
+                    "ValueKind": "increased", "ValuePerPoint": 1.0}
+        assert gen.refuse_a_healing_skill_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "healing_received",
+                               "ValueKind": "increased", "ValueLow": 1.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the same row
+        made an increase is refused there, in this check's words."""
+        good = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [good]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good, ValueKind="increased")]}, set())
+        assert any("value kind 'increased'" in problem
+                   and "healing_skill_health_restored" in problem
+                   for problem in problems), problems
+
+
 class TestAChargesDamageByTheShareOfItsRangeMoved:
     """`share_of_range_moved`, ruled 2026-10-08 and built ahead of its rows.
     The rows here are the shape `docs/DECISIONS.md` of that day gives the
