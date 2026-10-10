@@ -29951,4 +29951,80 @@ bool FCataclysmHealingSkillControlsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillShieldInsideTheWaitTest,
+	"Cataclysm.HealingSkills.TheShieldShareIsGivenInsideTheEnergyShieldsRechargeWait",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-09: the shield share is given inside the energy shield's recharge wait as well as outside it.
+ *
+ * `healing_skill_health_as_energy_shield`, flat 20, on Living Pyre's holder, whose energy shield holds up to 1,000
+ * and regenerates 100 a second once the wait has run out.
+ *
+ * WHAT "INSIDE THE WAIT" IS HERE. The wait is the seconds since the character last took damage, and the
+ * regeneration step is handed that figure as an argument. A plain test fighter keeps no such clock, so the test
+ * hands the step nought seconds, which is "damaged this instant". The gift itself is handed no such figure and
+ * reads no clock; that is the thing shown.
+ *
+ * THE CONTROLS: a second of regeneration at nought seconds since damage adds no shield, so the shield does not
+ * recharge by itself inside the wait; and, read last, a second at 100 seconds since damage adds 100, so the
+ * shield would have recharged outside it.
+ * BETWEEN THEM a blow dealing 400 returns 100 health and the shield rises by 20, and another second inside the
+ * wait leaves it at 20.
+ *
+ * STANDING: one fighter at the origin and nobody else.
+ */
+bool FCataclysmHealingSkillShieldInsideTheWaitTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	Holder.Set(Vital::GetHealthRegenAttribute(), 0.0f);
+	SetHealingHealth(Holder, 50000.0f);
+	GiveHealingShieldPool(Holder, /*Maximum=*/1000.0f, /*Held=*/0.0f);
+	Holder.Set(Vital::GetEnergyShieldRegenAttribute(), 100.0f);
+	WearHealingSkillRows(Holder, /*MorePercent=*/0.0f, /*ShieldPercent=*/20.0f);
+	UCataclysmAuraSkill* Pyre = LightHealingLivingPyre(Holder);
+	if (!TestNotNull(TEXT("set-up: Living Pyre is granted and lit"), Pyre)
+		|| !TestEqual(TEXT("set-up: its holder holds an empty energy shield"), HealingShieldHeldBy(Holder), 0.0f,
+					  0.001f)
+		|| !TestFalse(TEXT("set-up: nought seconds since damage is inside the recharge wait"),
+					  UCataclysmRegeneration::ShieldMayRefill(0.0f)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: INSIDE THE WAIT THE SHIELD DOES NOT RECHARGE BY ITSELF.
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/0.0f);
+	if (!TestEqual(TEXT("control: a second of regeneration inside the wait adds no energy shield"),
+				   HealingShieldHeldBy(Holder), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE GIFT, INSIDE THE WAIT.
+	const float Given = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	if (!TestEqual(TEXT("set-up: a blow dealing 400 returns 100 health"), Given, 100.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("inside the wait, the shield still rises by 20, which is 20% of the 100 that arrived"),
+			  HealingShieldHeldBy(Holder), 20.0f, 0.01f);
+
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/0.0f);
+	TestEqual(TEXT("and another second inside the wait leaves it at 20: the gift did not start a recharge"),
+			  HealingShieldHeldBy(Holder), 20.0f, 0.01f);
+
+	// THE CONTROL, READ LAST: OUTSIDE THE WAIT THE SHIELD DOES RECHARGE.
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f, /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("control, read last: a second outside the wait adds the shield's own 100, so the shield "
+				   "regenerates and only the wait held it"),
+			  HealingShieldHeldBy(Holder), 120.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

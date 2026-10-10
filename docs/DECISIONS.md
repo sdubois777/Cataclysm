@@ -46,6 +46,26 @@ enchantment session writes the two rows.
 - **The same sentence on several worn pieces counts once**, at the higher roll. That is the rule every benefit
   follows and this layer does not change it.
 
+### SAID FIRST: THE SHIELD DOES NOT WAIT FOR THE RECHARGE, AND FILLING IT THIS WAY IS NOT A RECHARGE
+
+Each of these was ruled on 2026-10-09 by the coordinating session under the owner's delegation, after reading
+this layer, and each is a labelled judgement.
+
+- **The shield share is given inside the energy shield's recharge wait as well as outside it.** The wait is the
+  three seconds after the character last took damage. Living Pyre returns health at the moment its holder is
+  hit, so its shield share always arrives inside the wait. Accepted as built.
+- **The row "Your energy shield cannot recharge above 50% of its maximum" does not stop this shield.** That
+  ceiling covers regeneration only. Accepted as built.
+- **Giving the shield does not restart the wait.** Only taking damage writes the time the wait is counted from.
+  Accepted as built.
+- **A shield filled by this gift does not raise the event "when your energy shield fully recharges".** The
+  regeneration step raises that event when its own refill reaches the maximum, and this gift is paid before
+  that refill is measured. A wearer of "When your energy shield fully recharges, release a nova dealing
+  50%-100% weapon damage to nearby enemies" gets no nova from a shield that Living Pyre or Blood Pyre filled.
+  Left as built.
+
+One test holds the first of the four. Nothing tests the other three; they are stated from reading the code.
+
 ### SAID FIRST: THE THIRD SENTENCE CANNOT BE WRITTEN AS THE ROW THAT WAS EXPECTED
 
 "Using a healing skill grants 10%-20% increased damage for 5 seconds" was expected to be writable on what
@@ -73,6 +93,10 @@ built for it.**
   gain 30%-50% increased damage for 5 seconds" is two `own_stacks` rows requiring `Type.Deployable` on the
   event `gadget_destroyed`. Their tag picks whose damage is raised, not which event grants. They are the only
   `own_stacks` rows in `EnchantmentEffects.csv` that state Required Tags.
+- **Ruled 2026-10-09 by the coordinating session under the owner's delegation: the third sentence is built as a
+  small mechanism layer of its own, after this one.** The grant is scoped by the tags of the skill used and the
+  stat is left unscoped, for rows that state a new cell only. The two gadget rows keep the first reading. That
+  layer is not part of this entry.
 
 ### SAID FIRST: WHAT WAS NOT READ
 
@@ -147,7 +171,9 @@ A stranger standing in the patch is not scaled and is given nothing.
 the stats, so there is nothing for a tag to choose between. A row requiring a tag would match at neither place
 and the generator refuses one.
 
-**The judgements of the session that wrote this, each labelled:**
+**The judgements of the session that wrote this, each labelled.** The first four were read by the coordinating
+session and ruled on 2026-10-09 under the owner's delegation: 1 is ruled as built, 2 and 3 are accepted, and 4
+is left as built. They are said first in this entry.
 
 1. **The extra's part of what arrived is the same share as the extra was of what was offered.** One `TopUp`
    pays the base and the extra together and health says only how much arrived in all. A thrower ten points
@@ -194,7 +220,7 @@ node's row is left alone: it states a value per point, which the bounds do not d
 
 ### Tests
 
-Five automation tests under `Cataclysm.HealingSkills.`, and two probes. Every fighter is the plain test fighter
+Six automation tests under `Cataclysm.HealingSkills.`, and two probes. Every fighter is the plain test fighter
 of `CataclysmSkillTemplateTests.cpp`, with 100,000 maximum health and no stat line. A blow is `NoteBlowTaken`
 called with a figure and a second of regeneration is `ApplyStep` called once, as the existing tests of the two
 skills do it.
@@ -217,6 +243,12 @@ skills do it.
   both rows. A stranger in another fighter's Blood Pyre regenerates its base 10 and gets no shield. A fighter
   on ground it left with a row that says nothing of regeneration does the same. Conflagration's holder takes a
   blow, is returned nothing and gets no shield.
+- `TheShieldShareIsGivenInsideTheEnergyShieldsRechargeWait`: Living Pyre's holder with a share of 20 and an
+  energy shield that regenerates 100 a second. A second of regeneration at nought seconds since damage adds no
+  shield. A blow returning 100 health then gives 20 shield, and another second at nought seconds leaves it at
+  20. A second at 100 seconds since damage adds 100. **The plain test fighter keeps no clock of its last
+  damage**, so "inside the wait" is the figure handed to the regeneration step; the gift is handed no such
+  figure. A real character taking a real blow inside its own wait is not tested.
 - `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for each stat. Each observes
   its reading function and not a skill.
 
@@ -243,8 +275,9 @@ The test that failed with the break in:
 worn, which the existing test of a real blow covers without one; the regeneration timer, since every step here
 is called by hand; a healing ceiling or a reduction of healing received on Blood Pyre's step; reserved health
 on either skill; a `healing_received` row beside the first stat; two Blood Pyres under one thrower; the
-recharge wait, the recharge ceiling and the "fully recharges" event beside the shield, which judgements 2, 3
-and 4 state from reading and no test holds; a shield raised by a scaled row on the maximum energy shield;
+recharge ceiling and the "fully recharges" event beside the shield, and that the gift does not restart the
+recharge wait, which judgements 2, 3 and 4 state from reading and no test holds; Blood Pyre's shield share
+inside the recharge wait; a shield raised by a scaled row on the maximum energy shield;
 anything drawn on a screen.
 
 ### THE WINDOW'S RUN
