@@ -153,6 +153,139 @@ as ruled, and says why.
 
 ---
 
+## 2026-10-10 — A row can make its wearer immune to the Suffering Aura's mana drain: a flag stat and one condition, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (the stat's name and the
+one function that asks it), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list
+of stats with no attribute), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (one condition, in
+`StepSufferingAura`), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), a new test file
+`game/Source/Cataclysm/Tests/CataclysmSufferingAuraImmunityTests.cpp` (three tests),
+`tools/tests/test_generate_datatables.py` (one class of two tests),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
+  engine does is read from the code. The enchantment session takes the layer through the build and records its
+  run in the last section.
+- **No row is authored, so a player sees no change.** No character holds the flag until the enchantment session
+  writes Mana Weaver's row.
+- **The immunity is to ONE rule's drain, and the sentence says "all mana-draining effects".** The flag stops the
+  mana loss of the dungeon rule Suffering Aura and nothing else. A skill's cost, an aura's upkeep and every
+  other loss of mana are paid as before; none of them reads the flag. Ruling W1 below.
+- **The immunity is the wearer's only, and the sentence says "you and nearby allies".** No ally of the player
+  has mana that this rule drains. Read by the session that wrote this entry:
+  `ACataclysmDungeonGameMode::StepSufferingAura` has one caller, `StepFloorRulesThatChange`, which passes it the
+  pawn of the world's first player controller, cast to `ACataclysmPlayerCharacter`, and that character's ability
+  system. The function takes health and mana from that one ability system. No minion, no thrall and no other
+  character is ever passed to it. Ruling W2 below.
+- **The rule's health loss is untouched.** The sentence says mana. A holder of the flag on a floor carrying the
+  rule loses the same health every beat as a player without it, and can die of it.
+- **One line was written in a file of the dungeon session, by the ruling W3.** In
+  `Dungeon/CataclysmDungeonGameMode.cpp`, in `StepSufferingAura` and nowhere else: the line
+  `if (ManaLoss > 0.0f)` became
+  `if (ManaLoss > 0.0f && !UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(Player))`, with three
+  lines of comment above it. Nothing else in that file, in `CataclysmDungeonModifierEffects.*` or in
+  `CataclysmDungeonModifierEffectsTests.cpp` is changed.
+- **The read is a call of one function and not a stat lookup written out in the game mode.** The lookup itself
+  is in `UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow`, as `cannot_walk`'s is in
+  `CannotWalkByARow`. A judgement of the writing session: it keeps the dungeon file's change to one condition
+  and gives the stat exemption probe a function to observe without a dungeon.
+- **The generator is not changed, and the name is on no Python list of flags.** `tools/generate_datatables.py`
+  reads the stats with no attribute out of the C++ list, so it knows the name already; a flat row with no
+  condition needs nothing more, which is how `hit_taken_cancels_skills` was built on 2026-10-08. `FLAG_STATS`
+  is in `tools/tests/test_enchantment_effects_match_the_row_text.py`, and its check
+  `test_every_flag_stat_is_still_used` refuses a name no row grants. **The session that writes the row adds
+  `suffering_aura_mana_drain_immunity` to `FLAG_STATS` with the row.**
+- **The tests write the flag by hand after the floor is built, and that write replaces the player's whole stat
+  line.** Building a floor refreshes the player's stats, and a refresh writes the stat line wholesale; so does
+  the test's own write. A player holding the hand-written flag therefore holds no other recorded line. The rule
+  reads maximum health and maximum mana off the gameplay attributes, which that write does not move. No test
+  here shows the flag arriving from a worn row through a refresh.
+
+**What was not read:** how a set bonus's row is counted by pieces worn and turned into a line of the stat line;
+what `ACataclysmDungeonGameMode::Tick` does on a beat other than calling `StepFloorRulesThatChange`, and the
+body of `BuildFloor`; what the vital attribute set does when the health attribute changes; the code that pays an
+aura's upkeep; whether a minion or a thrall has a mana pool at all, which does not matter to this rule because
+it is never given one.
+
+### WHAT THE OWNER SAID
+
+The sentence: "Mana Weaver (6-Piece Bonus): You gain an aura that makes you and nearby allies immune to all
+mana-draining effects. Additionally, every 5 seconds, you gain a stack of "Mana Surge" for every 100 maximum
+mana. Each stack increases your spell damage by 1% for 5 seconds".
+
+The owner, 2026-10-08, on this sentence: "Not sure what the issue is here. Need more info". On 2026-10-09 the
+owner accepted the coordinating session's recommendations, among them to build both halves with the immunity
+covering the Suffering Aura's drain only: "your rec on all the open questions".
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-09 by the coordinating session under the owner's delegation, and each is a labelled
+judgement.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| W1 | The immunity covers the mana drain of the dungeon rule Suffering Aura and nothing else: not an aura's upkeep, not a skill's cost, not any other loss of mana. | The flag `suffering_aura_mana_drain_immunity` has one reader, `UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow`, and that function has one caller in play, the condition in `StepSufferingAura`. |
+| W2 | The immunity is the wearer's only. | The condition asks the player the rule is stepping. The rule steps nobody else; see "Said first". Nothing is shared with an ally and no radius is read. |
+| W3 | One read of a flag stat may be written in `ACataclysmDungeonGameMode::StepSufferingAura`: that one function only, one condition on the mana loss only, and the rule's health loss is not touched. | The condition quoted under "Said first". The call of `UCataclysmSkillEffects::ReduceHealthDirectly` above it is as it was. |
+| W4 | This layer authors no row. The second half of the sentence, Mana Surge, is one plain row on what exists, written by the enchantment session, and needs no code. | No file under `game/Data` and no sheet of the workbook is changed. |
+
+### WHAT WAS BUILT
+
+- **The stat.** `suffering_aura_mana_drain_immunity`, a flag: a row sets it at a flat 1 and the code reads it as
+  above nought. No gameplay attribute and no base. It is on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, after `hit_taken_cancels_skills`, so a refresh records
+  a row's line for it. Its name in code is `UCataclysmSkillEffects::SufferingAuraManaDrainImmunityStat`.
+- **The one function that asks it.** `UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(const
+  AActor*)`, declared after `CannotWalkByARow` and written as that function is: the actor's ability system,
+  `StatForSkill` with the stat's name, no tags and a fallback of nought, and whether the answer is above nought.
+  False for an actor with no ability system of this project's.
+- **The one condition.** In `StepSufferingAura`, the mana loss is taken only when it is above nought and the
+  player is not immune by a row.
+- **The row the enchantment session is to write** is one line on this stat: value kind `flat`, 1 to 1, no
+  required tags, no condition.
+
+### Tests
+
+Three new Unreal tests in `CataclysmSufferingAuraImmunityTests.cpp`, a file of the enchantment side. They step
+the rule as the dungeon session's tests of it do, through what is public on the game mode (`DungeonModifiers`,
+`FloorNumber`, `BuildFloor()`, `FloorBrief`, `Tick()`); `StepSufferingAura` is private and is not called. Each
+asserts its set-up first, and every figure is a difference of two readings.
+
+- `Cataclysm.SufferingAuraImmunity.AHolderOfTheFlagKeepsItsManaAndStillLosesTheRulesShareOfHealth`: on a floor
+  carrying the rule, the control is read first: with no flag one beat takes the rule's share of maximum health
+  and of maximum mana. With the flag written, the next beat takes no mana, takes the rule's share of maximum
+  health, and that health is what the beat with no flag took.
+- `Cataclysm.SufferingAuraImmunity.OnceTheFlagIsRemovedTheNextBeatTakesManaAgain`: with the flag written a beat
+  takes no mana, checked as set-up. With the flag removed the next beat takes the rule's share of maximum mana,
+  and the health lost is the same on both beats.
+- `Cataclysm.SufferingAuraImmunity.AHolderOfTheFlagStillPaysASkillsManaCost`: two casters, the second holding
+  the flag, each use the same strike that states a cost of 40 mana. Both pay what the skill says it costs. A
+  skill's cost was chosen over an aura's upkeep because it is the cheaper of the two to reach.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeSufferingAuraManaDrainImmunity`, two characters, the second carrying the stat at a flat 1; the function
+answers no for the first and yes for the second.
+
+Python: `TestAFlagAgainstTheSufferingAurasManaDrain` in `tools/tests/test_generate_datatables.py`, two tests: a
+flat row of 1 on the stat is carried through by the generator on a made-up sheet, and the name is on the
+engine's list of stats with no attribute while a made-up name is not. The inventory of `StatForSkill` call
+sites in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains the one new call.
+
+**Not tested here:** the flag arriving from a worn row through a refresh, because no row exists; six pieces of
+Mana Weaver worn; an aura's upkeep paid with the flag held; a holder of the flag dying of the rule's health
+loss; a floor carrying Suffering Aura together with another rule; a beat longer or shorter than a quarter of a
+second; a second player, which the game does not have.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-10 — Reality Rifts: one floor in three carrying the row has a hidden chamber reached only by a rift of its own, holding one Elite drop roll, and the row is Built
 
 **Not built and not run.** The writing session wrote this layer on development 6288d58e in two commits: the code,
