@@ -6,6 +6,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmPassivePoints.generated.h"
 
+struct FCataclysmStatModifier;
+
 /**
  * How many passive points a character has, and where they came from.
  *
@@ -97,4 +99,37 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	static int32 Available(int32 Level, int32 UniqueBossesDefeated);
+
+	/**
+	 * `class_points_granted`: the stat a worn row grants class points on.
+	 * Ruled 2026-10-09, for "Gain 5-10 class points" and "Gain 3-8 additional
+	 * class points".
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE, so the name is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. NOTHING ASKS FOR IT
+	 * THROUGH THE STAT PIPELINE. `GrantedByWornRows` below reads the rows
+	 * themselves, because the ruling rounds each row down by itself and the
+	 * pipeline hands back one sum.
+	 */
+	static const TCHAR* GrantedByGearStat;
+
+	/**
+	 * How many class points the worn rows grant: each row's value rounded DOWN
+	 * to a whole number, and the whole numbers added. Ruled 2026-10-09 (P2).
+	 *
+	 * NOT A FOURTH TERM OF `Available` ABOVE, which is a function of the level
+	 * and the boss kills and is what the stated budget of 230 is checked
+	 * against. These points are on top of that budget.
+	 * `ACataclysmPlayerState::PassivePointsAvailable` adds the two.
+	 *
+	 * ONLY A FLAT ROW WITH NO CONDITION, NO SCALE AND NO REQUIRED TAG IS
+	 * COUNTED, and only at a value of 1 or more. The .cpp says why.
+	 *
+	 * @param WornModifiers  what `UCataclysmEquipmentComponent::GatherModifiers`
+	 *        returned: one modifier for each worn row, keyed by stat. Read
+	 *        before the passive tree's modifiers are added to the same map, so
+	 *        a passive node cannot grant points to itself.
+	 */
+	static int32 GrantedByWornRows(
+		const TMap<FName, TArray<FCataclysmStatModifier>>& WornModifiers);
 };
