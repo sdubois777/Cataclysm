@@ -120,7 +120,9 @@ public:
 	 * NOT A FOURTH TERM OF `Available` ABOVE, which is a function of the level
 	 * and the boss kills and is what the stated budget of 230 is checked
 	 * against. These points are on top of that budget.
-	 * `ACataclysmPlayerState::PassivePointsAvailable` adds the two.
+	 * `ACataclysmPlayerState::PassivePointsAvailable` adds the two, and the
+	 * points an allocation was handed with
+	 * (`ACataclysmPlayerState::PassivePointsAnAllocationWasHandedWith`).
 	 *
 	 * ONLY A FLAT ROW WITH NO CONDITION, NO SCALE AND NO REQUIRED TAG IS
 	 * COUNTED, and only at a value of 1 or more. The .cpp says why.

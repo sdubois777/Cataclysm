@@ -3564,6 +3564,19 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowPassives(
 						Idle, Idle == 1 ? TEXT(" adds") : TEXT("s add"));
 			}
 
+			// AND THE FIGURE OF 2026-10-10, printed only when it is not nought.
+			// It is inside the "earned" figure above, so without this line the
+			// sources printed would not add up to it. Nothing in the game calls
+			// `SetPassiveAllocation`, so in play it is nought and nothing prints.
+			if (const int32 Handed =
+					PlayerState->PassivePointsAnAllocationWasHandedWith())
+			{
+				Ar.Logf(TEXT("  %d counted as earned because an allocation was "
+							 "handed over with %d more point%s than the level and "
+							 "boss kills had earned."),
+						Handed, Handed, Handed == 1 ? TEXT("") : TEXT("s"));
+			}
+
 			const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
 			if (!NodeTable)
 			{

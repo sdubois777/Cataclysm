@@ -418,7 +418,8 @@ public:
 	 * WORKED OUT IN `RefreshAttributes` AND KEPT HERE, by
 	 * `UCataclysmPassivePoints::GrantedByWornRows` over what `GatherModifiers`
 	 * returned. `ACataclysmPlayerState::PassivePointsAvailable` adds it to the
-	 * points earned by level and by boss kills.
+	 * points earned by level and by boss kills, and to the points an allocation
+	 * was handed with.
 	 *
 	 * WHY IT IS KEPT AND NOT WORKED OUT FOR EACH READER. The same refresh that
 	 * sets this figure is the one that leaves out the passive points it does

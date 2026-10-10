@@ -853,9 +853,17 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 				// point and every capstone choice, and wearing the gear again
 				// counts all of them on the next refresh with no other act.
 				//
+				// AN ALLOCATION PUT ON BY `SetPassiveAllocation` IS NOT REDUCED
+				// FOR BEING ABOVE THE LEVEL. Ruled 2026-10-10. That function
+				// records the points of the handed allocation the level and the
+				// bosses did not pay for, and the figure asked for below
+				// includes them. Points spent after it with points from gear
+				// are reduced as the paragraph above says.
+				//
 				// THE POINTS EARNED ARE ASKED OF THE PLAYER STATE WITH THE FIGURE
-				// SET ABOVE HANDED TO IT, so the level's and the bosses' points
-				// are added up in one place. Not `PassivePointsAvailable()`:
+				// SET ABOVE HANDED TO IT, so the level's and the bosses' points,
+				// and the points an allocation was handed with, are added up in
+				// one place. Not `PassivePointsAvailable()`:
 				// that reads the component of the pawn the player state holds,
 				// which is this one in play, and this line must not depend on
 				// that being so.

@@ -451,6 +451,17 @@ bool FCataclysmPassiveFirstBossOnlyTest::RunTest(const FString&)
 // A STAT LINE IS READ AS THE MODIFIERS THE PASSIVE TREE PUT ON ONE STAT, summed,
 // and never as the stat's finished value: a spawned player has a class line and
 // attributes of its own, and those are not this change's.
+//
+// NO TEST OF THE REDUCTION HANDS OVER AN ALLOCATION ABOVE THE LEVEL. Ruled
+// 2026-10-10. `ACataclysmPlayerState::SetPassiveAllocation` counts every point
+// it is handed as paid for: it records the points the level and the bosses do
+// not pay for, and those are added to the points earned. An excess made by
+// handing over a large allocation is therefore never reduced. Every excess in
+// these tests is made the way play makes it: the points the level and bosses
+// pay for are handed over, the granting gear goes on, the points it grants are
+// spent through `SpendPassivePoint` or `ChoosePassiveOption`, and the gear
+// comes off. ONE TEST hands an allocation over above the level on purpose,
+// and it is the test of that record.
 // ---------------------------------------------------------------------------
 
 namespace CataclysmClassPointsFromGearTest
@@ -991,10 +1002,107 @@ bool FCataclysmClassPointsGearComesOffTest::RunTest(const FString&)
 namespace CataclysmClassPointsFromGearTest
 {
 	/**
+	 * On a level 10 character that already wears gear granting 7 class points,
+	 * so that 22 are earned: 21 points spent, as play spends them.
+	 *
+	 * THE LEVEL'S 15 ARE HANDED OVER in three nodes, which the level pays for,
+	 * so `SetPassiveAllocation` records nothing. THE GEAR'S ARE SPENT THROUGH
+	 * `SpendPassivePoint`, 6 of the 7, one at a time, in Willing Flesh, which
+	 * becomes the last node first touched. Ruled 2026-10-10: an excess must be
+	 * made this way, because a handed allocation counts as paid for.
+	 *
+	 * Every step is checked; false means the set-up did not hold and the test
+	 * should stop.
+	 */
+	bool SpendTheLevelsPointsAndSixOfTheGears(FAutomationTestBase& Test,
+											  const FGearedPlayer& Player)
+	{
+		if (!Test.TestEqual(TEXT("set-up: 22 are earned, the level's 15 and the "
+								 "gear's 7"),
+							Player.State->PassivePointsAvailable(), 22))
+		{
+			return false;
+		}
+
+		FCataclysmPassiveAllocation Levels;
+		Levels.Add(Root, 1);
+		Levels.Add(PainTolerance, 12);
+		Levels.Add(Resonance, 2);
+		Player.State->SetPassiveAllocation(Levels, TArray<FName>());
+		if (!Test.TestEqual(TEXT("set-up: the level pays for all 15 points handed "
+								 "over, so none is recorded as handed above it"),
+							Player.State->PassivePointsAnAllocationWasHandedWith(), 0)
+			|| !Test.TestEqual(TEXT("set-up: 22 are still earned"),
+							   Player.State->PassivePointsAvailable(), 22))
+		{
+			return false;
+		}
+
+		for (int32 Point = 1; Point <= 6; ++Point)
+		{
+			FString Reason;
+			if (!Test.TestTrue(*FString::Printf(TEXT("set-up: point %d of 6 goes "
+													 "into Willing Flesh"), Point),
+							   Player.State->SpendPassivePoint(WillingFlesh, Reason)))
+			{
+				Test.AddError(Reason);
+				return false;
+			}
+		}
+
+		const FCataclysmPassiveAllocation& Held = Player.State->GetPassiveAllocation();
+		return Test.TestEqual(TEXT("set-up: 21 points are spent"), Held.Total(), 21)
+			&& Test.TestEqual(TEXT("set-up: Willing Flesh is the last node first "
+								   "touched"), Held.Nodes.Last().Node, WillingFlesh)
+			&& Test.TestEqual(TEXT("set-up: and holds 6"), Held.Nodes.Last().Points, 6)
+			&& Test.TestEqual(TEXT("set-up: no point adds nothing"),
+							  Player.State->PassivePointsAddingNothing(), 0);
+	}
+
+	/**
+	 * This many points in basic nodes of the real Ravager tree, each node taken
+	 * to its own maximum in the order the node table holds them. Basic nodes
+	 * only: no keystone and no capstone. False when the tree's basic nodes do
+	 * not hold that many.
+	 *
+	 * WHAT IT IS FOR. `Ravager_capstone_200` opens at 200 points spent in its
+	 * tree, and the test below takes it through `ChoosePassiveOption`, which
+	 * asks that.
+	 */
+	bool FillRavagerBasicNodes(const UDataTable* NodeTable, int32 Points,
+							   FCataclysmPassiveAllocation& Out)
+	{
+		if (!NodeTable)
+		{
+			return false;
+		}
+		int32 Placed = 0;
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (Placed >= Points)
+			{
+				break;
+			}
+			const FCataclysmPassiveNodeRow* Row =
+				reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+			if (!Row || Row->Tree != TEXT("Ravager") || Row->Kind != TEXT("basic")
+				|| Row->MaxPoints <= 0)
+			{
+				continue;
+			}
+			const int32 Take = FMath::Min(Row->MaxPoints, Points - Placed);
+			Out.Add(Pair.Key, Take);
+			Placed += Take;
+		}
+		return Placed == Points;
+	}
+
+	/**
 	 * A level 10 character holding a Greatsword in the first weapon slot, with a
 	 * row of 7.9 class points said to be ON THAT WEAPON, and 21 points spent: the
-	 * level's 15 in three nodes and 6 of the weapon's 7 in Willing Flesh, the
-	 * last node first touched. Every step is checked; false means the set-up did
+	 * level's 15 handed over in three nodes, and 6 of the weapon's 7 spent in
+	 * Willing Flesh, the last node first touched, through `SpendPassivePoint`
+	 * with the weapon held. Every step is checked; false means the set-up did
 	 * not hold and the test should stop.
 	 *
 	 * THE ROW IS TIED TO THE SLOT, so the game leaves it out whenever it reads
@@ -1038,18 +1146,7 @@ namespace CataclysmClassPointsFromGearTest
 			return false;
 		}
 
-		FCataclysmPassiveAllocation Spent;
-		Spent.Add(Root, 1);
-		Spent.Add(PainTolerance, 12);
-		Spent.Add(Resonance, 2);
-		Spent.Add(WillingFlesh, 6);
-		Player.State->SetPassiveAllocation(Spent, TArray<FName>());
-		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-
-		return Test.TestEqual(TEXT("set-up: 21 points are spent"),
-							  Player.State->GetPassiveAllocation().Total(), 21)
-			&& Test.TestEqual(TEXT("set-up: no point adds nothing"),
-							  Player.State->PassivePointsAddingNothing(), 0)
+		return SpendTheLevelsPointsAndSixOfTheGears(Test, Player)
 			&& Test.TestEqual(TEXT("set-up: Willing Flesh's 6 points are on the "
 								   "stat line"),
 							  Player.FromTheTreeOn(TEXT("health_regen")),
@@ -1235,11 +1332,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsSecondWeaponHandedBackTest
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Ruled 2026-10-10 (J3). A level 10 character has earned 15 points and has 16
- * spent: 15 in a node in no tree, which grants nothing, and the last in the
- * real capstone `Ravager_capstone_200` with its second option, Both Hands Full.
- * The sixteenth point counts only because the boots it wears are said to carry
- * a row of 7.9 class points. It holds a Greatsword and a Greataxe.
+ * Ruled 2026-10-10 (J3). A level 100 character that has defeated five bosses
+ * has earned 200 points and has 201 spent: 200 in basic nodes of the real
+ * Ravager tree, and the last in the real capstone `Ravager_capstone_200` with
+ * its second option, Both Hands Full. The 201st point counts only because the
+ * boots it wears are said to carry a row of 7.9 class points. It holds a
+ * Greatsword and a Greataxe.
+ *
+ * THE 200 ARE HANDED OVER AND THE CAPSTONE IS TAKEN AS A PLAYER TAKES IT. Ruled
+ * 2026-10-10. The level and the five bosses, handed in the same call, pay for
+ * all 200, so `SetPassiveAllocation` records nothing. The capstone's point is
+ * spent through `ChoosePassiveOption` with the boots on, which is why the
+ * character is level 100: that function refuses the capstone below 200 points
+ * spent in its tree. This test once handed over 16 points at level 10, one
+ * above the level; a handed allocation now counts as paid for, and the boots
+ * coming off would have changed nothing.
  *
  * THE CONTROL COMES FIRST: with the boots on, putting a ring on hands nothing
  * back. Then the boots come off, by one call. When that call returns, the
@@ -1258,7 +1365,7 @@ bool FCataclysmClassPointsSecondWeaponHandedBackTest::RunTest(const FString&)
 	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	FGearedPlayer Player = SpawnAtLevel(World, 100);
 	UCataclysmInventoryComponent* Bag =
 		Player.Character ? Player.Character->GetInventory() : nullptr;
 	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
@@ -1292,21 +1399,60 @@ bool FCataclysmClassPointsSecondWeaponHandedBackTest::RunTest(const FString&)
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 	if (!TestFalse(TEXT("set-up: the boots are on"),
 				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Boots))
-		|| !TestEqual(TEXT("set-up: their row of 7.9 makes it 22 earned"),
-					  Player.State->PassivePointsAvailable(), 22))
+		|| !TestEqual(TEXT("set-up: their row of 7.9 makes it 157 earned, the "
+						   "level's 150 and the boots' 7"),
+					  Player.State->PassivePointsAvailable(), 157))
 	{
 		return false;
 	}
 
-	// SIXTEEN POINTS, THE LAST OF THEM THE CAPSTONE'S. Put on unchecked, as a
-	// loaded allocation is.
-	FCataclysmPassiveAllocation Spent;
-	Spent.Add(FName(TEXT("Test_node_in_no_tree")), 15);
-	Spent.SetChosenOption(Capstone, 2);
-	Spent.Add(Capstone, 1);
-	Player.State->SetPassiveAllocation(Spent, TArray<FName>());
-	if (!TestEqual(TEXT("set-up: 16 points are spent"),
-				   Player.State->GetPassiveAllocation().Total(), 16)
+	// TWO HUNDRED POINTS IN THE RAVAGER TREE, HANDED OVER WITH FIVE BOSSES. A
+	// level 100 character with five first boss kills has earned 200, so the
+	// level and the bosses pay for every point handed over and nothing is
+	// recorded as handed above them.
+	FCataclysmPassiveAllocation Paid;
+	if (!TestTrue(TEXT("set-up: the Ravager tree's basic nodes hold 200 points"),
+				  FillRavagerBasicNodes(UCataclysmPassiveTree::LoadNodeTable(), 200,
+										Paid)))
+	{
+		AddError(TEXT("If the node table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+	TArray<FName> FiveBosses;
+	for (int32 Boss = 1; Boss <= 5; ++Boss)
+	{
+		FiveBosses.Add(FName(*FString::Printf(TEXT("Test_boss_%d"), Boss)));
+	}
+	Player.State->SetPassiveAllocation(Paid, FiveBosses);
+	if (!TestEqual(TEXT("set-up: 200 points are spent"),
+				   Player.State->GetPassiveAllocation().Total(), 200)
+		|| !TestEqual(TEXT("set-up: the level and the five bosses pay for all of "
+						   "them, so none is recorded as handed above them"),
+					  Player.State->PassivePointsAnAllocationWasHandedWith(), 0)
+		|| !TestEqual(TEXT("set-up: 207 are earned, 200 and the boots' 7"),
+					  Player.State->PassivePointsAvailable(), 207)
+		|| !TestFalse(TEXT("set-up: before the capstone is taken the stat line "
+						   "does not hold Both Hands Full"),
+					  Player.Equipment->MayHoldTwoTwoHanded()))
+	{
+		return false;
+	}
+
+	// THE 201ST POINT, THE CAPSTONE'S, SPENT AS A PLAYER SPENDS IT: the option
+	// is chosen and the point goes in with it, with the boots on.
+	FString Refusal;
+	if (!TestTrue(TEXT("set-up: Both Hands Full is chosen and the capstone taken"),
+				  Player.State->ChoosePassiveOption(Capstone, 2, Refusal)))
+	{
+		AddError(Refusal);
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: 201 points are spent"),
+				   Player.State->GetPassiveAllocation().Total(), 201)
+		|| !TestEqual(TEXT("set-up: the capstone holds option 2"),
+					  Player.State->GetPassiveAllocation().ChosenOptionIn(Capstone), 2)
 		|| !TestEqual(TEXT("set-up: the capstone is the last node first touched"),
 					  Player.State->GetPassiveAllocation().Nodes.Last().Node, Capstone)
 		|| !TestEqual(TEXT("set-up: no point adds nothing"),
@@ -1358,10 +1504,10 @@ bool FCataclysmClassPointsSecondWeaponHandedBackTest::RunTest(const FString&)
 	}
 	const int32 GrantsAfterHandBack = HighestGrantNumber(Player.AbilitySystem);
 
-	TestEqual(TEXT("boots off: 15 are earned"),
-			  Player.State->PassivePointsAvailable(), 15);
-	TestEqual(TEXT("boots off: all 16 points are still spent"),
-			  Player.State->GetPassiveAllocation().Total(), 16);
+	TestEqual(TEXT("boots off: 200 are earned"),
+			  Player.State->PassivePointsAvailable(), 200);
+	TestEqual(TEXT("boots off: all 201 points are still spent"),
+			  Player.State->GetPassiveAllocation().Total(), 201);
 	TestEqual(TEXT("boots off: the capstone's point adds nothing"),
 			  Player.State->PassivePointsAddingNothing(), 1);
 	TestEqual(TEXT("boots off: and the capstone keeps its choice"),
@@ -1579,9 +1725,12 @@ bool FCataclysmClassPointsScreenSaysTest::RunTest(const FString&)
 			  FTree::DescribeNode(Nodes, Edges, Spent, Side, 8)
 				  .Contains(TEXT("of these add")));
 
-	// AND THE WIDGET, ON A REAL CHARACTER. A level 10 character has earned 15;
-	// an allocation of 21 is put on it unchecked, as a loaded one would be, so
-	// it has 6 more spent than earned with no gear in the test at all.
+	// AND THE WIDGET, ON A REAL CHARACTER. A level 10 character has earned 15.
+	// Its 15 are handed over, a worn row of 7.9 grants 7 more, 6 of them are
+	// spent in Willing Flesh through `SpendPassivePoint`, and the row comes off:
+	// it has 6 more spent than earned, made the way play makes them. Ruled
+	// 2026-10-10. This test once handed over all 21 with no gear; a handed
+	// allocation now counts as paid for, and the screen would have said nothing.
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
@@ -1595,12 +1744,12 @@ bool FCataclysmClassPointsScreenSaysTest::RunTest(const FString&)
 		return false;
 	}
 
-	FCataclysmPassiveAllocation Overspent;
-	Overspent.Add(Root, 1);
-	Overspent.Add(PainTolerance, 12);
-	Overspent.Add(Resonance, 2);
-	Overspent.Add(WillingFlesh, 6);
-	Player.State->SetPassiveAllocation(Overspent, TArray<FName>());
+	Player.Wear({GrantingRow(7.9f)});
+	if (!SpendTheLevelsPointsAndSixOfTheGears(*this, Player))
+	{
+		return false;
+	}
+	Player.Wear({});
 	if (!TestEqual(TEXT("set-up: 15 earned"),
 				   Player.State->PassivePointsAvailable(), 15)
 		|| !TestEqual(TEXT("set-up: 21 spent"),
@@ -1640,6 +1789,205 @@ bool FCataclysmClassPointsScreenSaysTest::RunTest(const FString&)
 	Screen->DescribeButtonForTests(*Unmarked, PainTolerance, false);
 	TestTrue(TEXT("a node touched earlier, which gives up nothing, has no tool tip"),
 			 Unmarked->GetToolTipText().IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsHandedAllocationTest,
+	"Cataclysm.Passives.ClassPointsFromGear.AnAllocationHandedOverAboveTheLevelIsPaidForAndPointsSpentAfterItAreStillReduced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-10. Through the real refresh, on a real level 5 character,
+ * which has earned 5 points.
+ *
+ * HANDED OVER ABOVE THE LEVEL. `SetPassiveAllocation` is handed 15 points in
+ * three Masochist nodes. The 10 the level does not pay for are recorded, 15 are
+ * earned, no point adds nothing, and all 12 of Pain Tolerance's points are on
+ * the stat line. Without the record the excess of 10 would come out of the end
+ * of the allocation and leave Pain Tolerance 4.
+ *
+ * THE RULE STILL ACTS ON POINTS SPENT AFTERWARDS. A worn row of 7.9 grants 7
+ * more, and 6 are spent in Willing Flesh through `SpendPassivePoint`. The row
+ * comes off: 15 are earned and 21 spent, the 6 add nothing, Willing Flesh is
+ * off the stat line, and the 15 handed over are all still on it.
+ *
+ * THE RECORD DESCRIBES ONE HAND-OVER. A second replaces it and is not added to
+ * it; bosses handed in the same call pay for points as the level does; and a
+ * respec sets it to nought.
+ */
+bool FCataclysmClassPointsHandedAllocationTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassPointsFromGearTest;
+
+	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 5);
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+
+	const float HealthPerPoint = PerPointOn(PainTolerance, TEXT("max_health"));
+	const float RegenPerPoint = PerPointOn(WillingFlesh, TEXT("health_regen"));
+	if (!TestTrue(TEXT("set-up: Pain Tolerance has an unconditioned row on "
+					   "max_health worth something a point"), HealthPerPoint > 0.0f)
+		|| !TestTrue(TEXT("set-up: Willing Flesh has an unconditioned row on "
+						  "health_regen worth something a point"),
+					 RegenPerPoint > 0.0f))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("set-up: a level 5 character has earned 5"),
+				   Player.State->PassivePointsAvailable(), 5)
+		|| !TestEqual(TEXT("set-up: and no allocation has been handed to it"),
+					  Player.State->PassivePointsAnAllocationWasHandedWith(), 0)
+		|| !TestTrue(TEXT("set-up: and reaches the Masochist tree"),
+					 Player.State->ReachableTrees().Contains(TEXT("Masochist"))))
+	{
+		return false;
+	}
+
+	// FIFTEEN POINTS HANDED TO A CHARACTER THAT HAS EARNED FIVE.
+	FCataclysmPassiveAllocation Handed;
+	Handed.Add(Root, 1);
+	Handed.Add(PainTolerance, 12);
+	Handed.Add(Resonance, 2);
+	Player.State->SetPassiveAllocation(Handed, TArray<FName>());
+
+	TestEqual(TEXT("handed over: the 10 points the level does not pay for are "
+				   "recorded"),
+			  Player.State->PassivePointsAnAllocationWasHandedWith(), 10);
+	TestEqual(TEXT("handed over: 15 are earned, the level's 5 and those 10"),
+			  Player.State->PassivePointsAvailable(), 15);
+	TestEqual(TEXT("handed over: 15 are spent"),
+			  Player.State->GetPassiveAllocation().Total(), 15);
+	TestEqual(TEXT("handed over: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+	TestEqual(TEXT("handed over: none is unspent"),
+			  Player.State->PassivePointsUnspent(), 0);
+	TestEqual(TEXT("handed over: all 12 of Pain Tolerance's points are on the "
+				   "stat line, not the 4 the level's 5 points would leave it"),
+			  Player.FromTheTreeOn(TEXT("max_health")), 12.0f * HealthPerPoint,
+			  0.001f);
+
+	FString Reason;
+	TestFalse(TEXT("handed over: with nothing unspent, Willing Flesh is refused"),
+			  Player.State->SpendPassivePoint(WillingFlesh, Reason));
+	TestEqual(TEXT("handed over: in the words for a character with nothing left"),
+			  Reason,
+			  FString(TEXT("No passive points left. 15 earned and all of them "
+						   "spent.")));
+
+	// THE GEAR GOES ON AND ITS POINTS ARE SPENT, one at a time, as a player does.
+	Player.Wear({GrantingRow(7.9f)});
+	if (!TestEqual(TEXT("set-up: the row of 7.9 makes it 22 earned"),
+				   Player.State->PassivePointsAvailable(), 22))
+	{
+		return false;
+	}
+	TestEqual(TEXT("gear on: the record of the hand-over is still 10"),
+			  Player.State->PassivePointsAnAllocationWasHandedWith(), 10);
+	for (int32 Point = 1; Point <= 6; ++Point)
+	{
+		Reason.Empty();
+		if (!TestTrue(*FString::Printf(TEXT("set-up: point %d of 6 goes into "
+											"Willing Flesh"), Point),
+					  Player.State->SpendPassivePoint(WillingFlesh, Reason)))
+		{
+			AddError(Reason);
+			return false;
+		}
+	}
+	if (!TestEqual(TEXT("set-up: 21 points are spent"),
+				   Player.State->GetPassiveAllocation().Total(), 21)
+		|| !TestEqual(TEXT("set-up: Willing Flesh is the last node first touched"),
+					  Player.State->GetPassiveAllocation().Nodes.Last().Node,
+					  WillingFlesh))
+	{
+		return false;
+	}
+	TestEqual(TEXT("gear on: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+	TestEqual(TEXT("gear on: Willing Flesh's 6 points are on the stat line"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
+			  0.001f);
+
+	// THE GEAR COMES OFF, AND THE RULE ACTS AS IT DOES ON ANY OTHER CHARACTER.
+	Player.Wear({});
+	TestEqual(TEXT("gear off: 15 are earned, the level's 5 and the 10 recorded"),
+			  Player.State->PassivePointsAvailable(), 15);
+	TestEqual(TEXT("gear off: all 21 points are still spent"),
+			  Player.State->GetPassiveAllocation().Total(), 21);
+	TestEqual(TEXT("gear off: the 6 points spent with the gear add nothing"),
+			  Player.State->PassivePointsAddingNothing(), 6);
+	TestEqual(TEXT("gear off: the stat line holds nothing of what Willing Flesh "
+				   "gave"),
+			  Player.FromTheTreeOn(TEXT("health_regen")), 0.0f, 0.001f);
+	TestEqual(TEXT("gear off: the 12 points of Pain Tolerance that were handed "
+				   "over are still on the stat line in full"),
+			  Player.FromTheTreeOn(TEXT("max_health")), 12.0f * HealthPerPoint,
+			  0.001f);
+	Reason.Empty();
+	TestFalse(TEXT("gear off: a point into Cataclysmic Resonance is refused"),
+			  Player.State->SpendPassivePoint(Resonance, Reason));
+	TestEqual(TEXT("gear off: and the refusal counts the 10 recorded points as "
+				   "earned"), Reason,
+			  FString(TEXT("No passive points left. 21 are spent and 15 are "
+						   "earned, so 6 spent points add nothing: gear that "
+						   "granted points is no longer worn. Nothing can be "
+						   "spent until that gear is worn again or 7 more are "
+						   "earned.")));
+
+	// A SECOND HAND-OVER REPLACES THE RECORD. Thirteen points at level 5 is 8
+	// above the level: not the first hand-over's 10, and not the two added.
+	FCataclysmPassiveAllocation Smaller;
+	Smaller.Add(Root, 1);
+	Smaller.Add(PainTolerance, 12);
+	Player.State->SetPassiveAllocation(Smaller, TArray<FName>());
+	TestEqual(TEXT("a second hand-over: the record is that allocation's 8"),
+			  Player.State->PassivePointsAnAllocationWasHandedWith(), 8);
+	TestEqual(TEXT("a second hand-over: 13 are earned"),
+			  Player.State->PassivePointsAvailable(), 13);
+	TestEqual(TEXT("a second hand-over: no point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 0);
+
+	// BOSSES HANDED IN THE SAME CALL PAY FOR POINTS AS THE LEVEL DOES. Level 5
+	// and one first boss kill is 15 earned, which pays for all 13.
+	TArray<FName> OneBoss;
+	OneBoss.Add(FName(TEXT("Test_boss")));
+	Player.State->SetPassiveAllocation(Smaller, OneBoss);
+	TestEqual(TEXT("handed over with one boss: the level and the boss pay for "
+				   "all 13, so nothing is recorded"),
+			  Player.State->PassivePointsAnAllocationWasHandedWith(), 0);
+	TestEqual(TEXT("handed over with one boss: 15 are earned"),
+			  Player.State->PassivePointsAvailable(), 15);
+	TestEqual(TEXT("handed over with one boss: 2 are unspent"),
+			  Player.State->PassivePointsUnspent(), 2);
+
+	// AND A RESPEC SETS THE RECORD TO NOUGHT. The first allocation again, with
+	// no boss, so the record is 10 before the respec.
+	Player.State->SetPassiveAllocation(Handed, TArray<FName>());
+	if (!TestEqual(TEXT("set-up: handed over again, the record is 10"),
+				   Player.State->PassivePointsAnAllocationWasHandedWith(), 10))
+	{
+		return false;
+	}
+	Player.State->ResetPassivePoints();
+	TestEqual(TEXT("respec: nothing is spent"),
+			  Player.State->GetPassiveAllocation().Total(), 0);
+	TestEqual(TEXT("respec: the record is nought"),
+			  Player.State->PassivePointsAnAllocationWasHandedWith(), 0);
+	TestEqual(TEXT("respec: the level's 5 are earned, and no more"),
+			  Player.State->PassivePointsAvailable(), 5);
+	TestEqual(TEXT("respec: and all 5 are unspent"),
+			  Player.State->PassivePointsUnspent(), 5);
 
 	return true;
 }

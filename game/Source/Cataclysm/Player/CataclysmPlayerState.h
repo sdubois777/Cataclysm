@@ -319,14 +319,20 @@ public:
 	 * IT CAN FALL, WHICH IT COULD NOT BEFORE. Taking the gear off lowers it, and
 	 * the points already spent stay spent, so the allocation's total can be
 	 * above this figure. `PassivePointsAddingNothing` says by how much.
+	 *
+	 * AND THE POINTS AN ALLOCATION WAS HANDED WITH, since 2026-10-10:
+	 * `PassivePointsAnAllocationWasHandedWith` below. Nought on every character
+	 * `SetPassiveAllocation` was never called on, and nothing in the game calls
+	 * it.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	int32 PassivePointsAvailable() const;
 
 	/**
-	 * The points earned by level and by boss kills, plus this many from gear.
+	 * The points earned by level and by boss kills, plus the points an
+	 * allocation was handed with, plus this many from gear.
 	 *
-	 * THE ONE PLACE THE THREE ARE ADDED. `PassivePointsAvailable` calls it with
+	 * THE ONE PLACE THE FOUR ARE ADDED. `PassivePointsAvailable` calls it with
 	 * what the pawn's equipment component kept, and
 	 * `UCataclysmEquipmentComponent::RefreshAttributes` calls it with the
 	 * figure it has just read, before anything else can ask for it.
@@ -334,6 +340,39 @@ public:
 	 * A FIGURE BELOW NOUGHT IS READ AS NOUGHT. Gear grants points or grants none.
 	 */
 	int32 PassivePointsEarnedWith(int32 PointsFromGear) const;
+
+	/**
+	 * How many points of the allocation last handed to `SetPassiveAllocation`
+	 * the character's level and boss kills did not pay for. Ruled 2026-10-10.
+	 *
+	 * WHAT IT IS. `SetPassiveAllocation` puts an allocation on a character
+	 * without checking it, so the allocation can hold more points than the level
+	 * and the bosses handed in the same call have earned. This is that
+	 * difference, worked out once in that call and WITHOUT COUNTING GEAR:
+	 * the points in the handed allocation, less
+	 * `UCataclysmPassivePoints::Available` of the level and those bosses,
+	 * and never below nought. `PassivePointsEarnedWith` adds it, so a handed
+	 * allocation counts as paid for and every point of it is on the stat line.
+	 *
+	 * IT DOES NOT TURN THE RULE OFF. It is a fixed number, set when the
+	 * allocation is handed over. Points spent afterwards with points that worn
+	 * gear grants are above the points earned once that gear comes off, and they
+	 * add nothing, exactly as on a character this is nought for.
+	 *
+	 * NOUGHT UNTIL `SetPassiveAllocation` IS CALLED. A later call replaces it,
+	 * and `ResetPassivePoints` sets it back to nought.
+	 *
+	 * IT IS NOT IN THE SAVE RECORD. Nothing restores a save today (issue #753).
+	 * A restore must not hand a saved allocation to `SetPassiveAllocation` as
+	 * that function stands: points bought with points from gear would come back
+	 * counted as paid for. It has to restore the level, the bosses and this
+	 * figure as it was recorded.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	int32 PassivePointsAnAllocationWasHandedWith() const
+	{
+		return PointsAnAllocationWasHandedWith;
+	}
 
 	/**
 	 * How many class points the gear this character is wearing grants: what the
@@ -357,6 +396,10 @@ public:
 	 * How many spent points add nothing because more are spent than earned.
 	 * Nought unless more are spent than earned, which happens when gear that
 	 * granted points comes off after they were spent. Ruled 2026-10-09.
+	 *
+	 * NOUGHT STRAIGHT AFTER `SetPassiveAllocation`, whatever it was handed: the
+	 * points an allocation was handed with are in the points earned. Ruled
+	 * 2026-10-10.
 	 *
 	 * THE POINTS ARE STILL SPENT. `GetPassiveAllocation().Total()` counts them,
 	 * and so does every row scaled by class points spent.
@@ -439,16 +482,34 @@ public:
 	 * WHAT THE TRAINER SELLS, at a cost in days that nothing charges yet. The
 	 * design gives the whole tree back rather than one node, which is why this
 	 * takes no argument.
+	 *
+	 * THE POINTS AN ALLOCATION WAS HANDED WITH GO TOO. That figure pays for
+	 * points of one handed allocation, and this empties it. Afterwards the
+	 * character can spend what its level, its bosses and its worn gear give.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
 	void ResetPassivePoints();
 
 	/**
-	 * Put a saved allocation back, without checking it.
+	 * Put an allocation and a list of defeated bosses on the character, without
+	 * checking either.
 	 *
-	 * NOT VALIDATED, for the reason `SetCreationChoice` is not: a save record
-	 * holds whatever was last written to it, and refusing it would load a
-	 * character with an empty tree, which is a different character.
+	 * NOT VALIDATED, for the reason `SetCreationChoice` is not: refusing a
+	 * recorded allocation would leave a character with an empty tree, which is a
+	 * different character.
+	 *
+	 * THE WHOLE HANDED ALLOCATION COUNTS AS PAID FOR. Ruled 2026-10-10. Since
+	 * 2026-10-09 points spent above the points earned add nothing, and this
+	 * function can be handed more points than the level and `Bosses` have
+	 * earned. So it records by how many the handed allocation exceeds them
+	 * (`PassivePointsAnAllocationWasHandedWith`), and that figure is added to
+	 * the points earned. Gear is not counted when the figure is worked out. The
+	 * level read is the character's level when this is called.
+	 *
+	 * NOTHING IN THE GAME CALLS IT. Its callers are automation tests. Nothing
+	 * restores a save (issue #753), and a restore must not call this with a
+	 * saved allocation as it stands: see
+	 * `PassivePointsAnAllocationWasHandedWith`.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
 	void SetPassiveAllocation(const FCataclysmPassiveAllocation& Allocation,
@@ -565,6 +626,16 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Passives")
 	TArray<FName> DefeatedCataclysmBosses;
+
+	/**
+	 * See `PassivePointsAnAllocationWasHandedWith`. Written by
+	 * `SetPassiveAllocation` and `ResetPassivePoints` and by nothing else.
+	 *
+	 * REPLICATED, because it is a term of the points earned, and the client's
+	 * tree screen prints the points earned beside the allocation above.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Passives")
+	int32 PointsAnAllocationWasHandedWith = 0;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;
