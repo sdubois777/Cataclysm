@@ -109,6 +109,29 @@ ACataclysmDungeonFloor::ACataclysmDungeonFloor()
 		Ground->SetStaticMesh(BlockMesh.Object);
 		Walls->SetStaticMesh(BlockMesh.Object);
 	}
+
+	// THE HIDDEN CHAMBER'S OWN TWO COMPONENTS, EMPTY ON EVERY FLOOR THAT HAS NO CHAMBER. Issues #1820 and #41. Their
+	// own, so the counts of the two above stay the plan's. Set up exactly as those two are, for the reasons given
+	// above: movable, blocking, and seen by the navigation system.
+	ChamberGround = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("ChamberGround"));
+	ChamberGround->SetupAttachment(Root);
+	ChamberGround->SetMobility(EComponentMobility::Movable);
+	ChamberGround->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	ChamberGround->SetCollisionProfileName(TEXT("BlockAll"));
+	ChamberGround->SetCanEverAffectNavigation(true);
+
+	ChamberWalls = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("ChamberWalls"));
+	ChamberWalls->SetupAttachment(Root);
+	ChamberWalls->SetMobility(EComponentMobility::Movable);
+	ChamberWalls->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	ChamberWalls->SetCollisionProfileName(TEXT("BlockAll"));
+	ChamberWalls->SetCanEverAffectNavigation(true);
+
+	if (BlockMesh.Succeeded())
+	{
+		ChamberGround->SetStaticMesh(BlockMesh.Object);
+		ChamberWalls->SetStaticMesh(BlockMesh.Object);
+	}
 }
 
 int32 ACataclysmDungeonFloor::WallPiecesFor(const FCataclysmFloorPlan& InPlan)
@@ -145,6 +168,9 @@ bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 {
 	Plan = InPlan;
 	Blocked.Reset();
+
+	// AND THE LAST FLOOR'S HIDDEN CHAMBER GOES WITH IT. A floor has none until one is asked for. Issues #1820 and #41.
+	ClearHiddenChamber();
 
 	if (Ground)
 	{
@@ -257,6 +283,118 @@ void ACataclysmDungeonFloor::UnblockCell(FIntPoint Cell)
 	{
 		Plan.Carve(Cell);
 	}
+}
+
+bool ACataclysmDungeonFloor::BuildHiddenChamber(FIntPoint Origin, int32 Side)
+{
+	ClearHiddenChamber();
+	if (!IsBuilt() || !ChamberGround || !ChamberWalls || Side <= 0)
+	{
+		return false;
+	}
+
+	// OFF THE PLAN'S GRID, AND SO IS EVERY CELL TOUCHING IT, so no chamber wall stands in a cell the plan knows and no
+	// question asked of the plan can answer for a chamber cell.
+	for (int32 Y = -1; Y <= Side; ++Y)
+	{
+		for (int32 X = -1; X <= Side; ++X)
+		{
+			if (Plan.Contains(Origin + FIntPoint(X, Y)))
+			{
+				return false;
+			}
+		}
+	}
+	for (int32 Y = 0; Y < Side; ++Y)
+	{
+		for (int32 X = 0; X < Side; ++X)
+		{
+			ChamberCells.Add(Origin + FIntPoint(X, Y));
+		}
+	}
+
+	// THE BLOCKS `Build` MAKES FOR A CELL, asking "is it another chamber cell" where `Build` asks "is it floor".
+	const float CellSize = DungeonFloorCellSize();
+	const float BlockScale = CellSize / DungeonFloorUnitCubeSizeCm;
+	const float ThickScale = WallThicknessCm / DungeonFloorUnitCubeSizeCm;
+	const float TallScale = WallHeightCm / DungeonFloorUnitCubeSizeCm;
+	const FVector GroundScale(BlockScale, BlockScale, GroundThicknessCm / DungeonFloorUnitCubeSizeCm);
+	const float OutTo = CellSize * 0.5f + WallThicknessCm * 0.5f;
+	const FVector Up(0.0f, 0.0f, WallHeightCm * 0.5f);
+
+	for (const FIntPoint& Here : ChamberCells)
+	{
+		const FVector Middle = WorldOfCell(Here) - GetActorLocation();
+
+		ChamberGround->AddInstance(FTransform(FRotator::ZeroRotator,
+			Middle - FVector(0.0f, 0.0f, GroundThicknessCm * 0.5f), GroundScale));
+
+		for (const FIntPoint& Step : DungeonFloorSteps)
+		{
+			if (ChamberCells.Contains(Here + Step))
+			{
+				continue;
+			}
+
+			const FVector Out(Step.X * OutTo, Step.Y * OutTo, 0.0f);
+			const FVector Scale = (Step.X != 0)
+				? FVector(ThickScale, BlockScale, TallScale)
+				: FVector(BlockScale, ThickScale, TallScale);
+
+			ChamberWalls->AddInstance(FTransform(FRotator::ZeroRotator, Middle + Out + Up, Scale));
+		}
+
+		for (const FIntPoint& Corner : DungeonFloorCorners)
+		{
+			if (ChamberCells.Contains(Here + FIntPoint(Corner.X, 0))
+				|| ChamberCells.Contains(Here + FIntPoint(0, Corner.Y)))
+			{
+				continue;
+			}
+
+			const FVector Out(Corner.X * OutTo, Corner.Y * OutTo, 0.0f);
+			ChamberWalls->AddInstance(FTransform(FRotator::ZeroRotator,
+				Middle + Out + Up, FVector(ThickScale, ThickScale, TallScale)));
+		}
+	}
+
+	// AND THE NAVIGATION SYSTEM IS TOLD, as `Build` tells it, because instances added to a registered component are
+	// not noticed.
+	FNavigationSystem::UpdateComponentData(*ChamberGround);
+	FNavigationSystem::UpdateComponentData(*ChamberWalls);
+	return true;
+}
+
+void ACataclysmDungeonFloor::ClearHiddenChamber()
+{
+	ChamberCells.Reset();
+
+	// NOTHING IS TOUCHED ON A FLOOR THAT HAD NONE, which is every floor but a few: no instance is cleared and the
+	// navigation system is told nothing.
+	if (HiddenChamberGroundBlockCount() <= 0 && HiddenChamberWallBlockCount() <= 0)
+	{
+		return;
+	}
+	if (ChamberGround)
+	{
+		ChamberGround->ClearInstances();
+		FNavigationSystem::UpdateComponentData(*ChamberGround);
+	}
+	if (ChamberWalls)
+	{
+		ChamberWalls->ClearInstances();
+		FNavigationSystem::UpdateComponentData(*ChamberWalls);
+	}
+}
+
+int32 ACataclysmDungeonFloor::HiddenChamberGroundBlockCount() const
+{
+	return ChamberGround ? ChamberGround->GetInstanceCount() : 0;
+}
+
+int32 ACataclysmDungeonFloor::HiddenChamberWallBlockCount() const
+{
+	return ChamberWalls ? ChamberWalls->GetInstanceCount() : 0;
 }
 
 bool ACataclysmDungeonFloor::IsBuilt() const

@@ -2744,13 +2744,16 @@ public:
 	 * "The fabric of reality is unstable in Chaos Lord dungeons, leading to the creation of temporary portals or rifts.
 	 * Players can use these rifts strategically to teleport, gain buffs, or access hidden areas."
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25, AND PARTLY BUILT. The row states no
-	 * figure; every figure here is a play-test value:
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25 AND 2026-10-08, AND BUILT SINCE
+	 * 2026-10-10. The row states no figure; every figure here is a play-test value:
 	 * - `RealityRiftPairs` PAIRS A FLOOR: stepping into one rift carries the player to the other of its pair; then the
 	 *   rifts rest for `RealityRiftRestSeconds`.
 	 * - ONE GIFT RIFT A FLOOR: stepping into it gives `RealityGiftDamageMorePercent` more damage for
 	 *   `RealityGiftSeconds`.
-	 * - "ACCESS HIDDEN AREAS" IS NOT BUILT: it waits on changing the floor's layout during play.
+	 * - "ACCESS HIDDEN AREAS" IS A HIDDEN CHAMBER, on one floor in `RealityChamberOneFloorIn` carrying the row and
+	 *   never on a Horde arena: `RealityChamberSide` by `RealityChamberSide` cells that no walk reaches, off the
+	 *   floor's plan, entered and left only by a rift of its own that never rests, and holding one drop roll as an
+	 *   Elite kill's. See `RealityChamberSide` and `ACataclysmDungeonGameMode::StepTheRealityChamber`.
 	 */
 	static const TCHAR* RealityRiftsKey;
 
@@ -6050,6 +6053,44 @@ public:
 	static constexpr float RealityRiftRestSeconds = 20.0f;
 	static constexpr float RealityGiftDamageMorePercent = 20.0f;
 	static constexpr float RealityGiftSeconds = 20.0f;
+
+	/**
+	 * Reality Rifts' hidden chamber, the row's "access hidden areas". Issues #1820 and #41.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-08: the hidden area is a chamber of
+	 * `RealityChamberSide` by `RealityChamberSide` cells that no walk reaches, and a rift is the only way in; its
+	 * reward is one drop roll, as an Elite kill's drop roll, which is `RealityChamberRewardRung`, the rung Soul
+	 * Chains' gate pays at; the player leaves by the same rift, and that rift has no rest.
+	 *
+	 * JUDGEMENTS OF THE WRITING SESSION, every figure a play-test value: one floor in `RealityChamberOneFloorIn`
+	 * carrying the row has a chamber, by the floor's seed mixed with `RealityChamberSalt`; the chamber stands off the
+	 * plan's grid with `RealityChamberGapCells` empty columns between the plan's last column and its first; and the
+	 * reward's roll is made on a stream seeded from the floor's seed mixed with `RealityChamberRewardSalt`.
+	 */
+	static constexpr int32 RealityChamberSide = 3;
+	static constexpr int32 RealityChamberGapCells = 3;
+	static constexpr int32 RealityChamberOneFloorIn = 3;
+	static constexpr int32 RealityChamberRewardRung = 1;
+	static constexpr int32 RealityChamberSalt = 0x52C4;
+	static constexpr int32 RealityChamberRewardSalt = 0x52C5;
+
+	/** Whether a floor of this seed that carries Reality Rifts has a hidden chamber. The same seed, the same answer. */
+	static bool RealityChamberOnFloor(int32 FloorSeed);
+
+	/** The seed of the stream the hidden chamber's one drop roll is made on, for a floor of this seed. */
+	static int32 RealityChamberRewardSeed(int32 FloorSeed);
+
+	/**
+	 * The hidden chamber's least cell for a plan this many cells across and down: `RealityChamberGapCells` columns
+	 * beyond the plan's last column, and half way down. Every cell of the chamber is off the plan's grid.
+	 */
+	static FIntPoint RealityChamberOriginFor(int32 PlanWidth, int32 PlanHeight);
+
+	/**
+	 * What the hidden chamber adds to the end of the row's panel line: nothing on a floor without one, so that line
+	 * is what it was; that a chamber waits; or that its reward has been given.
+	 */
+	static FString RealityChamberPanelClause(bool bStands, bool bRewardGiven);
 
 	/**
 	 * Luxury Hoarders' figures, every one a play-test value. See the key. The pile's rung is Legendary's step in
