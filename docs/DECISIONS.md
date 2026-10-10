@@ -472,6 +472,116 @@ The commit that adds this section changes this entry alone, and the head that ca
 
 ---
 
+## 2026-10-10 — "Gain 5-10 class points" and "Gain 3-8 additional class points" are built as two rows, and the test seam of the layer below is deleted
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and
+`.cpp` (the test seam taken out), `CataclysmPassiveTreeTests.cpp` (the tests of the layer below, now wearing the
+real rows), `CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row
+counts), `docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHAT CHANGES FOR A ROW ALREADY MERGED
+
+- **A wearer of either row has more class points to spend, for as long as the item is worn.** A worn row is
+  always worth a whole number of points: an enchantment's rolled value is cut to the precision its two figures
+  are written to, so "5-10" is worth 5, 6, 7, 8, 9 or 10 and never 7.9. **So the rule ruled for the layer
+  below, that a rolled fraction rounds down, decides nothing in play today**; it would decide something only
+  for a row written with a figure that is not whole, and no such row exists. The two rows are different
+  enchantments and both count when both are worn; the same row on several pieces counts once, at the higher
+  roll, as every benefit does.
+- **When the item comes off, the points stay spent and the excess adds nothing**, taken from the last node
+  first touched, not from the last point spent. That is the layer below, "Worn gear can grant class points";
+  everything it says first holds for these rows. Nothing is refunded.
+- **With these rows a character can spend above 230 for the first time, so the merged drawback "Each class
+  point above the max reduces your max resistances by 2%-5%" begins to act.** At both rows' tops a character
+  can spend 248. That drawback counts every point spent above 230, the ones that add nothing included, so a
+  wearer who spent gear points above 230 and took the gear off still pays it for each of them.
+- **This layer changes game code, though it is a row layer: it deletes the test seam the layer below left.**
+  `UCataclysmEquipmentComponent::SetRowsWornForTests`, its two members and the lines of `GatherModifiers` that
+  read them are gone. Ruled 2026-10-09 by the coordinating session (J1): the seam existed only because no real
+  row granted the stat. No game code reads a made-up worn row after this layer.
+
+### WHAT THE OWNER SAID
+
+On 2026-10-09, accepting the coordinating session's recommendations, among them that when the granting item
+comes off the points stay spent and add nothing: "your rec on all the open questions".
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Gain 5-10 class points | `class_points_granted`, flat, 5 to 10 |
+| Gain 3-8 additional class points | `class_points_granted`, flat, 3 to 8 |
+
+EnchantmentEffects 581 to 583, over 491 to 493 enchantments. No generator code is changed: the stat, its bounds
+of 1 to 10 and the refusals of a row the game could not count are the layer below's.
+
+### Tests
+
+The tests of the layer below, in `Cataclysm.Passives.ClassPointsFromGear.`, are rewritten here to wear the two
+real rows on real items, and the seam they used is deleted. What each shows is unchanged and is listed in that
+layer's entry; what changed is how the rows reach the character, and it is said under "THE TESTS, REWRITTEN"
+below by the session that rewrote them.
+
+### THE TESTS, REWRITTEN
+
+**Written by the session that rewrote them, which does not build Unreal: none of this has been compiled or
+run by it.**
+
+**The seam is gone.** Deleted from `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp`: the
+function `SetRowsWornForTests`, the members `RowsWornForTests` and `RowsWornForTestsSlot`, and the block at the
+end of `GatherModifiersReading` that added them to what the worn items grant. A search of `game/Source` for
+those three names finds nothing, in game code or in tests.
+
+**How a real row reaches a character in these tests.** Each of the two rows is found in the loaded effect
+table by its stat and its two figures, and its enchantment is checked to be a row of the loaded benefit table;
+no row name is typed in a test. An item is made carrying that enchantment as its one benefit, with no drawback,
+at a roll the test chooses, and is put on with `UCataclysmEquipmentComponent::EquipInto`. That announces a
+change of gear and the player character's own listener runs the refresh. No test refreshes by hand after
+putting an item on or taking one off.
+
+**A REAL ROW IS ALWAYS WORTH A WHOLE NUMBER, SO ROUNDING DOWN IS NOT SHOWN THROUGH A REAL REFRESH.**
+`UCataclysmItemValues::EnchantmentValue` gives a row only values at the precision its two figures are written
+to. Both rows state whole figures, so "Gain 5-10 class points" is worth 5, 6, 7, 8, 9 or 10, each owning a
+sixth of the roll, and never 7.9. The tests of the layer below wore made-up rows of 7.9 and 3.9; here the worn
+rows are 7 and 3, and every figure counted from them is as it was. Rounding down is shown where it was already
+shown without a character: on the reader, `UCataclysmPassivePoints::GrantedByWornRows`, with modifiers made by
+hand, where 7.9 and 3.9 grant 10. Those hand-made modifiers are handed to that function directly and are not a
+seam. **If a row is ever written with a figure that is not whole, the rounding becomes reachable in play and
+no test here wears such a row.**
+
+**The rows the game does not count are shown on the reader only.** A row that is not flat, or is conditioned,
+or is scaled, or is below 1, or is below nought, cannot be worn as a real row, because the generator refuses to
+write one. Those five assertions were made through a real refresh with the seam; they are now made on
+`GrantedByWornRows` with hand-made modifiers, each beside a row of 5. **Through a real refresh only the two real
+rows are shown.**
+
+**Both rows may be drawn on any slot.** Neither carries a slot tag, and
+`UCataclysmDropRoll::EnchantmentSuitsSlot` lets a row with none appear anywhere. So the Greatsword, the boots
+and the rings these tests use are items the drop rules could make.
+
+Test by test, in `Cataclysm.Passives.ClassPointsFromGear.`:
+
+| Test | What is worn now | Figures asserted |
+| :-- | :-- | :-- |
+| `TheExcessIsTakenFromTheLastNodeFirstTouched` | Nothing; it has no character. Unchanged. | Unchanged. |
+| `EachWornRowIsRoundedDownByItselfAndAddedToThePointsEarned` | On the reader, by hand: 7.9 and 3.9 grant 10; five rows the game does not count grant nothing beside a row of 5. On a level 10 character: a ring with the 5 to 10 row at 7; a second ring with the 3 to 8 row at 3; a third ring with the 5 to 10 row at 9. | 7 more earned; 10 more with both rows; NEW: 12 more with the 5 to 10 row on two rings at 7 and 9, which counts once at 9. The figure is the last refresh's when the ring's slot is switched off with no refresh (it was: when the seam was emptied with no refresh). Nought with the rings off, for a player state with no pawn, and for one whose pawn was destroyed. |
+| `PointsSpentWithGearStaySpentAndAddNothingWhileItIsOff` | A ring with the 5 to 10 row at 7; taken off; a ring with the 3 to 8 row at 3; then the first ring over it. | Unchanged: 22 earned, 21 spent, 6 add nothing with the ring off, 3 with the smaller ring, none with the first ring back, the 22nd point spent. |
+| `AWeaponPlantedInTheGroundStillGrantsItsClassPoints` | A Greatsword carrying the 5 to 10 row at 7, in the first weapon slot, then planted. | Unchanged: 7 from gear and 22 earned while planted, no point adding nothing. |
+| `ASlotAFloorRuleSwitchedOffGrantsNoClassPoints` | The same Greatsword; the boots slot switched off as the control, then the weapon's slot. | Unchanged: 22 with the boots slot off; nought from gear, 15 earned and 6 adding nothing with the weapon's slot off. |
+| `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` | Boots carrying the 5 to 10 row at 7, with a plain Greatsword and Greataxe and a plain ring for the control. | Unchanged: 22 earned, 16 spent, 1 adding nothing with the boots off, the Greataxe in the bag, one filling of the ability slots. |
+| `SpendingIsRefusedWhileMoreIsSpentThanEarned` | Nothing; it has no character. Unchanged. | Unchanged. |
+| `TheScreenSaysWhichPointsAddNothingAndWhy` | Nothing: its character has 21 spent of 15 earned by an allocation put on unchecked, and never used the seam. Unchanged. | Unchanged. |
+
+**Not tested here:** either row at any roll but the ones above; the 3 to 8 row on a planted weapon or in a
+switched-off slot; an item carrying both rows at once; an item that also carries a drawback.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — Dying inside a dungeon of the empire ends the walk of it, resolves an ordinary dungeon at once and costs the lethality mode's days
 
 **Not built and not run.** The writing session wrote this layer in one commit on development 90b45b92: the code,
