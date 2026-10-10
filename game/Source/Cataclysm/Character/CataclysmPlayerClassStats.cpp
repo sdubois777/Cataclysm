@@ -257,6 +257,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// by UCataclysmRegeneration::TopUp as its own multiplier. Ruled
 		// 2026-10-06: Reaper's Embrace's first bonus.
 		TEXT("healing_received"),
+		// What a row does to the health a healing skill restores, and the
+		// percentage of that health also given as energy shield. Read by
+		// UCataclysmRegeneration::HealingSkillAmount and GiveHealingSkillShield,
+		// which UCataclysmAuraSkill::NoteBlowTaken calls for Living Pyre and
+		// UCataclysmRegeneration::ApplyStep calls for Blood Pyre. Ruled
+		// 2026-10-09. Neither has a gameplay attribute or a base.
+		TEXT("healing_skill_health_restored"),
+		TEXT("healing_skill_health_as_energy_shield"),
 		// Above nought, applying a damage over time effect refreshes the
 		// applier's others on that target, read by UCataclysmSkillEffects where
 		// one is applied. Ruled 2026-10-06: Plague Doctor's six-piece bonus.
