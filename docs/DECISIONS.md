@@ -148,6 +148,49 @@ fail, the four that read the walking speed. Each refresh then sets it from the l
 stays the control's; with the row removed it is 1.5 times; with 40% less it is the control's; removed again it
 is 0.6 times. The stat and health assertions pass.
 
+### Run
+
+One window on 2026-10-10 for two layers together: the walking-speed correction at `feat/walk-speed-order-2`
+030db491 and Fragmented Reality on it at `feat/fragmented-reality-4` 5fd76c7e, on development d7342c80. The build
+and every run were made at 5fd76c7e, the upper head, by the registering session, holding the lock as
+void-zones-w18. One attempt; nothing was corrected during it. Every figure is a line a run printed. The lock was
+taken only after development's own two workflow runs at d7342c80 had printed success, no run was in progress, no
+build process was running and no pull request was open. Times are UTC, from each step's log file.
+
+| Step | Began | Printed |
+|---|---|---|
+| Build | 17:28:29 | `Build: Succeeded - 29 actions, 24 files compiled` |
+| Whole Unreal suite | 17:29:35 | `3515 tests performed, 3515 succeeded, 0 failed`; `Declared: 3515 tests in the tree at 5fd76c7e; 3515 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | 18:26:53 | `5944 passed, 8 skipped in 429.36s (0:07:09)`; JUnit `errors="0" failures="0" skipped="8" tests="5952"` |
+| Ruff | | `All checks passed!` |
+| The four proofs | 18:34:05, ended 18:40:32 | below |
+
+Registered before the run: 3,515 Unreal tests (3,505 measured on development d7342c80, one of the walking-speed
+layer and nine of Fragmented Reality, by name) and a JUnit count of 5,952. Both printed as registered. No existing
+test failed.
+
+**What the run settled that was only read before it.** The layer compiled. The new test's set-up, a real player
+possessed in the player movement test file, worked without a change. The test passed, and the Fragmented Reality
+test that found the fault, unchanged, passed on top of this layer.
+
+**The guard proof, at 5fd76c7e, with one anchor counted 1 and the source hash the same before and after, PROVED:
+failed with the break in and passed with it out.** The count of failed assertions is the one registered.
+
+| The break | Test | Registered | With the break in | Restored |
+|---|---|---|---|---|
+| `CataclysmPlayerClassStats.cpp`: `Walker->RefreshMovementSpeed();` becomes `(void)Walker;` | `Cataclysm.Player.WalkingSpeedFollowsAMovementSpeedRowInTheSameRefreshThatStoresIt` | 4 | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+As printed with the break in: "Expected 'and the walking speed rose by the same ratio in the same refresh' to be
+690.000000, but it was 460.000000"; "Expected 'and the walking speed is the control's in the same refresh' to be
+460.000000, but it was 689.999939"; "Expected 'and the walking speed fell by the same ratio in the same refresh'
+to be 276.000000, but it was 460.000000"; "Expected 'and the walking speed is the control's again in the same
+refresh' to be 460.000000, but it was 276.000000". Each is the speed of the stat line before, which is the fault
+of issue #2359 shown by a test of its own.
+
+**Not settled by this run.** The three listeners the list above marks "not known" are still unread; they are
+recorded in a comment on issue #2359. The commit that adds this section changes this entry alone, and the head
+that carries it was not run.
+
 ---
 
 ## 2026-10-09 — "Each class point above the max reduces your max resistances by 2%-5%" is built as a row, and the max is 230
