@@ -309,7 +309,11 @@ public:
 	 *
 	 * ITS TIMER STARTS AGAIN and the dungeon stays on the map. That is what
 	 * leaving unfinished means, and there is nowhere to leave TO yet -- the
-	 * capital hub is issue #48 -- so nothing calls this in play.
+	 * capital hub is issue #48. IN PLAY IT HAS TWO CALLERS: `ClearEmpireDungeon`,
+	 * after the dungeon is beaten, and since issue #41
+	 * `EndTheDungeonForADeath`, when the player's character dies in it. This
+	 * said "nothing calls this in play", which the first of those had already
+	 * made untrue.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	void LeaveEmpireDungeon();
@@ -324,6 +328,70 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	bool ClearEmpireDungeon();
+
+	/**
+	 * What the death of the player's character does to the dungeon being
+	 * walked. Issue #41.
+	 *
+	 * THE PROJECT OWNER'S RULING OF 2026-09-10, verbatim: "Yes, dying in a
+	 * dungeon causes it to resolve, regardless of the remaining time you would
+	 * have had. The logic is, the forces arrayed against you in that dungeon are
+	 * inspired from your death and surge forth, attacking this city while you're
+	 * busy reviving." `docs/Cataclysm_GDD_v2.md`, Dungeon Basics, has the rule
+	 * and the days: 5 in Standard, 10 in Hardcore, 15 in Heretic.
+	 *
+	 * WHAT IT DOES, BY WHERE THE PLAYER DIED. Each row below the first is a
+	 * labelled judgement by the coordinating session under the owner's
+	 * delegation, 2026-10-09; `docs/DECISIONS.md` has them.
+	 *
+	 *   an ordinary dungeon   it resolves at once, the walk ends, the days are
+	 *                         charged
+	 *   a Quest dungeon       nothing resolves and its city pays nothing, the
+	 *                         walk ends, the days are charged. Its relocation
+	 *                         clock is not touched by the death and runs on as
+	 *                         the days pass
+	 *   a Dungeon City        nothing resolves, the walk ends, the days are
+	 *                         charged
+	 *   the Cataclysm's own   nothing, and false: not touched by this layer
+	 *   no dungeon bound      nothing, and false: the player stands back up in
+	 *                         the level, as before this was built
+	 *
+	 * IN THAT ORDER, AND THE ORDER MATTERS: resolve, leave, charge.
+	 *
+	 *   - Resolved while still inside, through the one function the empire has
+	 *     for it, `UCataclysmEmpireRun::ResolveDungeonOnDeath`, which also sets
+	 *     the dungeon's timer back to full.
+	 *   - Left second, by `LeaveEmpireDungeon`, which is what clearing the last
+	 *     floor calls, so its timer counts again and everything the dungeon had
+	 *     put on the player and on this game mode ends.
+	 *   - Charged last, so the days pass with the player out of the dungeon and
+	 *     its refilled timer counting down through them like every other.
+	 *
+	 * **WHERE THE PLAYER IS AFTERWARDS IS NOT THE CAPITAL.** The design says a
+	 * death "respawns the player at the capital", and the capital as a place is
+	 * not built -- issue #48. The player is left as clearing the last floor
+	 * leaves them: on the floor they were on, which still stands, with no
+	 * dungeon bound. `ACataclysmPlayerCharacter::Revive` then stands them at
+	 * that floor's entrance.
+	 *
+	 * THE PLAYTEST SWITCH. The console variable
+	 * `Cataclysm.DeathKeepsThePlayerInTheDungeon` is 0 by default, which is
+	 * everything above. Set to 1 -- typed at the console as
+	 * `Cataclysm.DeathKeepsThePlayerInTheDungeon 1` -- this does nothing and
+	 * answers false, so a death inside an empire dungeon is what it was before:
+	 * the player stands back up in the level, nothing resolves, no day passes.
+	 *
+	 * CALLED WHEN THE CHARACTER STANDS BACK UP, NOT AT THE KILLING BLOW.
+	 * `ACataclysmPlayerCharacter::Revive` is the one caller, and its comment
+	 * says why: leaving a dungeon empties this game mode's rules, and a death
+	 * is announced from inside the blow that caused it, which may be one of
+	 * those rules' own steps.
+	 *
+	 * IT DOES NOT ASK WHETHER ANYBODY DIED. The caller does.
+	 *
+	 * @return whether the death ended the walk. False changed nothing at all.
+	 */
+	bool EndTheDungeonForADeath();
 
 	/**
 	 * How deep the dungeon being walked is, or 0 when none is bound.

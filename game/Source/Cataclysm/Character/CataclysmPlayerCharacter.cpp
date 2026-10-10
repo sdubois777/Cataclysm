@@ -1674,15 +1674,35 @@ void ACataclysmPlayerCharacter::HandleDeath()
 	// not a run ending", and "A player can delete a character, and that is the
 	// only thing that removes one. Nothing that happens in play does."
 	//
-	// WHAT IS DELIBERATELY NOT CHARGED HERE. The designed penalty is 5 days in
-	// Standard, 10 in Hardcore and 15 in Heretic, plus a per-piece equipment drop
-	// chance, plus a respawn at the capital. None of it can be applied: the
-	// running game has no day clock, no lethality mode, no equipped inventory and
-	// no capital. Issue #41 builds the layer that would carry all four, and the
-	// 2026-09-10 ruling "Dying in an ordinary dungeon resolves it at once"
-	// (docs/DECISIONS.md) put a death resolving its dungeon there too. Standing
-	// the player back up where the level starts them is the whole of the rule
-	// that this game currently has the machinery for.
+	// WHAT A DEATH COSTS IS NOT CHARGED HERE. IT IS CHARGED WHEN THE CHARACTER
+	// STANDS BACK UP, in `Revive`, which the timer below calls. Issue #41.
+	// Inside a dungeon of the empire a death ends the walk of that dungeon,
+	// resolves it at once if it is an ordinary one -- the 2026-09-10 ruling
+	// "Dying in an ordinary dungeon resolves it at once" (docs/DECISIONS.md) --
+	// and costs 5 days in Standard, 10 in Hardcore and 15 in Heretic.
+	// `ACataclysmDungeonGameMode::EndTheDungeonForADeath` does all three and
+	// its comment carries the rulings for each kind of dungeon.
+	//
+	// NOT HERE, BECAUSE THIS RUNS INSIDE THE BLOW THAT KILLED. Ending the walk
+	// empties the dungeon game mode's floor rules, and the killing blow may have
+	// been dealt by one of those rules part way through its own step, which
+	// goes on reading its own state after the blow returns. It is the reason
+	// given above for not cancelling an ability from here. `Revive` runs from a
+	// timer, outside every blow.
+	//
+	// SO FOR `RespawnDelaySeconds` THE DUNGEON IS STILL BOUND AND NOTHING HAS
+	// BEEN CHARGED. No day passes in real time, so the empire is the same at
+	// the end of that delay as at the start of it.
+	//
+	// WITH NO DUNGEON OF THE EMPIRE BOUND, OR WITH THE PLAYTEST SWITCH
+	// `Cataclysm.DeathKeepsThePlayerInTheDungeon` SET TO 1, NOTHING IS CHARGED
+	// AT ALL: the player stands back up where the floor starts them, which is
+	// the whole of what a death did before issue #41.
+	//
+	// WHAT IS STILL NOT BUILT: the equipment a death costs in Hardcore and
+	// Heretic, anything on screen that says what the death cost, a capital to
+	// come back to (issue #48), and what a death does when several players
+	// share a dungeon.
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().SetTimer(
@@ -1696,6 +1716,42 @@ void ACataclysmPlayerCharacter::Revive()
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RespawnTimer);
+	}
+
+	// A DEATH INSIDE A DUNGEON OF THE EMPIRE ENDS THE WALK OF IT, AND THIS IS
+	// WHERE. Issue #41. An ordinary dungeon resolves at once, the dungeon is
+	// left as clearing its last floor leaves it, and the lethality mode's days
+	// are charged. `ACataclysmDungeonGameMode::EndTheDungeonForADeath` does all
+	// of it, decides whether any of it applies, and reads the playtest switch
+	// `Cataclysm.DeathKeepsThePlayerInTheDungeon`.
+	//
+	// HERE AND NOT IN `HandleDeath`, which runs inside the blow that killed.
+	// The comment at the end of that function has the reason.
+	//
+	// WHILE THE CHARACTER IS STILL MARKED DEAD, WHICH IS WHY IT IS ABOVE
+	// `ClearDead`. Leaving a dungeon takes its rules off the character, and
+	// the character's health is nought until the refill further down. A write
+	// to health at nought raises a death for any character not marked dead --
+	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` -- so one line
+	// lower, a rule that wrote health on its way off could kill the character
+	// a second time as it stood up.
+	//
+	// ONLY FOR A CHARACTER THAT IS DEAD, which is the refusal `ClearDead` makes
+	// below. Run on the living this would end a dungeon nobody died in.
+	//
+	// BEFORE THE PLACING AND BEFORE THE REFILL. The placing below still finds
+	// the floor, which leaving a dungeon does not take down. The refill reads
+	// the maximums, and a floor rule that had lowered one is off by then.
+	//
+	// THE SAME LOOKUP THE PLACING BELOW MAKES, for the reason given there: a
+	// test world has no authority game mode to ask.
+	if (IsAwaitingRespawn())
+	{
+		if (ACataclysmDungeonGameMode* DungeonDiedIn =
+				ACataclysmDungeonGameMode::InWorld(GetWorld()))
+		{
+			DungeonDiedIn->EndTheDungeonForADeath();
+		}
 	}
 
 	if (!UCataclysmSkillEffects::ClearDead(this))

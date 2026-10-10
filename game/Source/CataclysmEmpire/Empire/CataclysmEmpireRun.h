@@ -828,6 +828,83 @@ public:
 	bool ClearDungeon(int32 DungeonId);
 
 	// ----------------------------------------------------------------------
+	// A death inside a dungeon -- issue #41
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The player died inside this dungeon: if it is the kind that resolves, it
+	 * resolves now, and its timer is set back to full.
+	 *
+	 * THE PROJECT OWNER RULED IT ON 2026-09-10, verbatim: "Yes, dying in a
+	 * dungeon causes it to resolve, regardless of the remaining time you would
+	 * have had. The logic is, the forces arrayed against you in that dungeon are
+	 * inspired from your death and surge forth, attacking this city while you're
+	 * busy reviving." `docs/Cataclysm_GDD_v2.md`, Dungeon Basics, states it.
+	 *
+	 * **THE ONE PLACE A DEATH RESOLVES A DUNGEON**, and public for that reason.
+	 * `ACataclysmDungeonGameMode::EndTheDungeonForADeath` is the caller: this
+	 * module must not depend on the `Cataclysm` module, so the call comes from
+	 * the game mode into here. The owner has also decided that an ordinary
+	 * dungeon is removed after it hits its city -- on 2026-10-08, verbatim
+	 * "Ordinary dungeons will do their city/population damage, and then
+	 * despawn." THAT IS NOT BUILT HERE OR ANYWHERE. Whoever builds it changes
+	 * the empire layer's two resolve paths, this one and the timer's, and
+	 * nothing in the game module.
+	 *
+	 * WHAT IT DOES FOR AN ORDINARY DUNGEON, the only kind whose
+	 * `FCataclysmDungeon::Resolves` answers true:
+	 *
+	 *   1. Its consequence lands on its city through `ResolveDungeon`, the same
+	 *      function a timer running out reaches, so the points, the count in
+	 *      `DungeonsDetonated`, and a city falling are all exactly what they are
+	 *      there.
+	 *   2. Its timer is set back to full and its count of resolves is raised by
+	 *      one, which is what `UCataclysmDayClock::AdvanceDay` does to a timer
+	 *      that ran out. Without it the days a death costs would be counted
+	 *      against whatever the timer had left, and a dungeon with two days
+	 *      left would resolve a second time two days into them.
+	 *
+	 * IT STAYS ON THE MAP, as a dungeon whose timer ran out does today.
+	 *
+	 * WHAT IT DOES FOR EVERY OTHER KIND: NOTHING AT ALL. A Quest dungeon, a
+	 * Dungeon City and the Cataclysm's own dungeon do not resolve, so no city is
+	 * touched, no timer is moved and nothing is drawn from the run's chance.
+	 * **IT DOES NOT CALL `ResolveDungeon` FOR THEM, AND THAT IS DELIBERATE**:
+	 * for a Quest dungeon that function runs the relocation, which belongs to
+	 * its timer running out and not to a death.
+	 *
+	 * NO DAY PASSES. The days a death costs are charged by the caller, after it
+	 * has left the dungeon, through `AdvanceDays` and `DeathDayCost` below.
+	 *
+	 * IT DOES NOT TELL THE CLOCK THE PLAYER HAS LEFT. The caller does. The one
+	 * exception is a resolve that fells the city: every dungeon standing on it
+	 * is absorbed, this one included, and `RemoveDungeon` then clears the
+	 * clock's record of which dungeon is being stood in.
+	 *
+	 * @return what happened, in the shape a day's report has. `Day` is the
+	 *         clock's day, which did not move. `Resolved` holds this dungeon when
+	 *         it resolved and is empty otherwise. `Fallen`, `Absorbed`, `Spawned`
+	 *         and `bSurged` are filled when the resolve felled the city. Empty
+	 *         when the run has not begun or no dungeon has that number.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	FCataclysmDayReport ResolveDungeonOnDeath(int32 DungeonId);
+
+	/**
+	 * How many days a death costs in this run: 5 Standard, 10 Hardcore, 15
+	 * Heretic.
+	 *
+	 * `UCataclysmDayClock::DeathDayCostFor` OF THE RUNG `Begin` WAS GIVEN, which
+	 * is kept on `UCataclysmSurgeScheduler::LethalityRung`. A run that has not
+	 * begun answers Standard's 5, for the reason that function gives for a rung
+	 * nobody chose.
+	 *
+	 * IT ANSWERS AND DOES NOT CHARGE. `AdvanceDays` is what spends them.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DeathDayCost() const;
+
+	// ----------------------------------------------------------------------
 	// City upgrades
 	// ----------------------------------------------------------------------
 
@@ -929,6 +1006,13 @@ private:
 	 * the timer back to full by the time this is called, so refreshing is doing
 	 * nothing; what is not nothing is the move, which is
 	 * `RelocateQuestDungeon` below.
+	 *
+	 * IT HAS TWO CALLERS SINCE ISSUE #41. `AdvanceDay`, for every timer that ran
+	 * out, which is what the paragraph above describes. And
+	 * `ResolveDungeonOnDeath`, for an ordinary dungeon the player died in: there
+	 * the clock has NOT refilled the timer, and that function refills it after
+	 * this returns. It never calls this for a kind that does not detonate, so
+	 * a death does not relocate a Quest dungeon.
 	 */
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 

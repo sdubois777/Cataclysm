@@ -4,9 +4,19 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -748,6 +758,1355 @@ bool FCataclysmDungeonCarriesItsSubTypeTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("and a dungeon that is not a Cow Level costs one a floor"),
 			  Plain.Run->Day() - PlainDayBefore, PlainFloors);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Dying ends the dungeon. Issue #41
+// ---------------------------------------------------------------------------
+
+/**
+ * Tests for what a death of the player's character does to the dungeon of the
+ * empire being walked.
+ *
+ * WHERE EVERYBODY STANDS, IN EVERY TEST BELOW. One character: the player, a
+ * possessed player character, stood at the entrance of the floor being walked
+ * by `PlaceAtEntrance`. The floor's own creatures are cleared away first, so
+ * nothing else stands on the floor and no two characters share a spot.
+ *
+ * THE PLAYER IS A REAL ONE, a level 20 Ravager with its class lines, so no test
+ * here asserts a figure of its own: health is compared with its own maximum.
+ *
+ * NOTHING HERE WAITS. A death is dealt by `ReduceHealthDirectly`, which no
+ * roll touches, and the character is stood back up by calling `Revive`, because
+ * a timer never fires in a test world.
+ *
+ * EVERY DUNGEON IS PUT ON THE MAP BY HAND, on a run whose opening wave has been
+ * cleared away, so the only thing that can cost a city anything is the dungeon
+ * the test placed, and its damage and its timer are the figures the test gave.
+ *
+ * NO TEST ASSERTS WHAT HAS HAPPENED BETWEEN THE DEATH AND STANDING BACK UP. The
+ * dungeon is ended by `Revive`; each test reads the empire after it.
+ */
+namespace CataclysmDeathEndsDungeonTest
+{
+	/** The playtest switch, by the name a person types at the console. */
+	const TCHAR* const PlaytestSwitchName =
+		TEXT("Cataclysm.DeathKeepsThePlayerInTheDungeon");
+
+	/**
+	 * Sets the playtest switch for as long as it is in scope, and puts it back.
+	 *
+	 * AT THE CONSOLE'S OWN PRIORITY, for the reason `FScopedConsoleInt` in
+	 * `CataclysmDungeonGameModeTests.cpp` gives. A copy named for this file,
+	 * because that one lives in another file's namespace.
+	 */
+	struct FScopedDeathSwitch
+	{
+		explicit FScopedDeathSwitch(int32 Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(PlaytestSwitchName);
+			if (Variable)
+			{
+				Before = Variable->GetInt();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedDeathSwitch()
+		{
+			if (Variable)
+			{
+				Variable->Set(Before, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		int32 Before = 0;
+	};
+
+	/** A world, a possessed player, a begun dungeon game mode and an empire run. */
+	struct FDeathScene
+	{
+		UWorld* World = nullptr;
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		UCataclysmEmpireRun* Run = nullptr;
+		ACataclysmPlayerCharacter* Player = nullptr;
+		UAbilitySystemComponent* AbilitySystem = nullptr;
+
+		bool IsUsable() const
+		{
+			return World && Mode && Run && Run->Map && Run->Clock && Player
+				&& AbilitySystem;
+		}
+	};
+
+	/**
+	 * The scene every test below starts from.
+	 *
+	 * THE RUN HAS NOTHING STANDING ON IT. A day is spent, which lands the
+	 * opening wave, and both lists are then emptied, the way `MakeEmptyRun` in
+	 * the empire layer's own tests does and for its reason: the next surge is
+	 * 120 days off, further than any test here goes.
+	 *
+	 * THE GAME MODE HAS BEGUN PLAY, so it listens for deaths as it does in the
+	 * running game, and the run is handed to it through the test seam.
+	 *
+	 * @param LethalityRung 0 Standard, 1 Hardcore, 2 Heretic.
+	 */
+	FDeathScene MakeScene(int32 LethalityRung = 0)
+	{
+		FDeathScene Out;
+
+		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Out.World)
+		{
+			return Out;
+		}
+
+		ACataclysmPlayerState* PlayerState =
+			Out.World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = Out.World->SpawnActor<APlayerController>();
+		Out.Player = Out.World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!PlayerState || !Controller || !Out.Player)
+		{
+			return Out;
+		}
+		Controller->SetPlayerState(PlayerState);
+		Controller->Possess(Out.Player);
+		Out.AbilitySystem = Out.Player->GetAbilitySystemComponent();
+
+		Out.Mode = Out.World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Out.Mode)
+		{
+			return Out;
+		}
+		Out.Mode->StartPlay();
+
+		Out.Run = NewObject<UCataclysmEmpireRun>();
+		Out.Run->Begin(1, ECataclysmSurgeMode::Static, LethalityRung);
+		Out.Run->AdvanceDay();
+		Out.Run->Dungeons.Empty();
+		if (Out.Run->Clock)
+		{
+			Out.Run->Clock->Timers.Empty();
+		}
+		Out.Mode->SetEmpireRunForTests(Out.Run);
+
+		return Out;
+	}
+
+	/** The first Outpost of the map that has not fallen, or `INDEX_NONE`. */
+	int32 AnOutpostOf(const UCataclysmEmpireRun& Run)
+	{
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.Tier == ECataclysmCityTier::Outpost && !City.bFallen)
+			{
+				return City.CityId;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/**
+	 * Puts one dungeon on a city by hand, with its timer, and answers its number.
+	 *
+	 * BOTH LISTS, as a surge fills them: the dungeon on the run and its timer on
+	 * the clock. `FullTimerDays` is what the timer refills to and `DaysLeft` is
+	 * what it has left now, written straight onto the timer because the clock
+	 * has no call that sets one without the other.
+	 *
+	 * THE DAMAGE IS THE CALLER'S, for every kind. A Quest dungeon and a Dungeon
+	 * City carry none in the game; a test gives them some so that a resolve
+	 * reaching them by mistake would show on the city.
+	 */
+	int32 PlaceByHand(UCataclysmEmpireRun& Run, ECataclysmDungeonType Type,
+					  int32 CityId, int32 Floors, float FullTimerDays,
+					  float DaysLeft, float DefencePoints, float PopulationPoints)
+	{
+		const FCataclysmCity* City = Run.Map->Find(CityId);
+		if (City == nullptr || Run.Clock == nullptr)
+		{
+			return INDEX_NONE;
+		}
+
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = Run.NextDungeonId;
+		Dungeon.Type = Type;
+		Dungeon.SubType = ECataclysmDungeonSubType::None;
+		Dungeon.CityId = CityId;
+		Dungeon.CityTier = City->Tier;
+		Dungeon.Floors = Floors;
+		Dungeon.ResolveDays = FullTimerDays;
+		Dungeon.SpawnedDay = Run.Day();
+		Dungeon.DefenceDamage = DefencePoints;
+		Dungeon.PopulationDamage = PopulationPoints;
+
+		Run.NextDungeonId = Dungeon.DungeonId + 1;
+		Run.Dungeons.Add(Dungeon);
+
+		if (!Run.Clock->AddDungeon(Dungeon.DungeonId, Floors)
+			|| !Run.Clock->SetResolveDays(Dungeon.DungeonId, FullTimerDays))
+		{
+			return INDEX_NONE;
+		}
+
+		for (FCataclysmDungeonTimer& Counting : Run.Clock->Timers)
+		{
+			if (Counting.DungeonId == Dungeon.DungeonId)
+			{
+				Counting.DaysUntilResolve = DaysLeft;
+			}
+		}
+
+		return Dungeon.DungeonId;
+	}
+
+	/** Every city's defence added up, so a bite on any city shows. */
+	float DefenceOfEveryCity(const UCataclysmEmpireRun& Run)
+	{
+		float Total = 0.0f;
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			Total += City.Defence;
+		}
+		return Total;
+	}
+
+	/** Every city's population added up. */
+	float PopulationOfEveryCity(const UCataclysmEmpireRun& Run)
+	{
+		float Total = 0.0f;
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			Total += City.Population;
+		}
+		return Total;
+	}
+
+	/** How many times the clock says this dungeon has resolved, or -1. */
+	int32 TimesResolvedOf(const UCataclysmEmpireRun& Run, int32 DungeonId)
+	{
+		const FCataclysmDungeonTimer* Counting =
+			Run.Clock ? Run.Clock->FindTimer(DungeonId) : nullptr;
+		return Counting ? Counting->TimesResolved : -1;
+	}
+
+	/**
+	 * Enters the dungeon, clears its first floor of creatures and stands the
+	 * player at that floor's entrance. Each step is asserted as set-up.
+	 */
+	bool EnterAndStand(FAutomationTestBase& Test, const FDeathScene& Scene,
+					   int32 DungeonId)
+	{
+		if (!Test.TestTrue(TEXT("set-up: the dungeon was entered"),
+						   Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+
+		Scene.Mode->ClearFloorEnemies();
+
+		return Test.TestTrue(TEXT("set-up: the player stands at the floor's entrance"),
+							 Scene.Mode->PlaceAtEntrance(Scene.Player))
+			&& Test.TestEqual(TEXT("set-up: the game mode is walking that dungeon"),
+							  Scene.Mode->EmpireDungeonId, DungeonId);
+	}
+
+	/** Kills the player the way the dungeon rule tests do. Asserted as set-up. */
+	bool KillThePlayer(FAutomationTestBase& Test, const FDeathScene& Scene)
+	{
+		UCataclysmSkillEffects::ReduceHealthDirectly(Scene.Player, Scene.Player,
+													 1000000.0f);
+		return Test.TestTrue(TEXT("set-up: the player died"),
+							 UCataclysmSkillEffects::IsDead(Scene.Player));
+	}
+
+	/**
+	 * Stands the player back up by hand, which is what the respawn timer calls.
+	 * A world built for a test is never ticked, so that timer never fires.
+	 */
+	bool StandBackUp(FAutomationTestBase& Test, const FDeathScene& Scene)
+	{
+		Scene.Player->Revive();
+		return Test.TestFalse(TEXT("set-up: the player stood back up"),
+							  UCataclysmSkillEffects::IsDead(Scene.Player));
+	}
+
+	/** What one case left behind it, for comparing a death with a control. */
+	struct FAfterTheDays
+	{
+		float DefenceInside = 0.0f;
+		float Defence = 0.0f;
+		float PopulationInside = 0.0f;
+		float Population = 0.0f;
+		float TimerLeft = 0.0f;
+		int32 CityOfTheDungeon = INDEX_NONE;
+		int32 TimesResolved = 0;
+		int32 Detonated = 0;
+		int32 DaysPassed = 0;
+		int32 BoundAfter = 0;
+	};
+
+	/**
+	 * One case, in a world of its own: a dungeon of the given kind carrying 100
+	 * points of defence damage and 50 of population damage, entered, and then
+	 * either a death and standing back up, or the control.
+	 *
+	 * THE CONTROL IS THE SAME DAYS WITH NO DEATH: the dungeon is left by
+	 * `LeaveEmpireDungeon` and the run is advanced by `DaysForTheControl`.
+	 * Both cases draw the same numbers from the run's chance up to that point,
+	 * because the run is begun from one seed and does the same things.
+	 */
+	bool RunOneCase(FAutomationTestBase& Test, ECataclysmDungeonType Type,
+					float FullTimerDays, float DaysLeft, bool bThePlayerDies,
+					int32 DaysForTheControl, FAfterTheDays& Out)
+	{
+		FDeathScene Scene = MakeScene(0);
+		if (!Test.TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		if (!Test.TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+		{
+			return false;
+		}
+
+		const int32 CityId = AnOutpostOf(*Scene.Run);
+		const int32 DungeonId = PlaceByHand(*Scene.Run, Type, CityId, 20,
+											FullTimerDays, DaysLeft, 100.0f, 50.0f);
+		if (!Test.TestTrue(TEXT("set-up: a dungeon was placed on an Outpost"),
+						   DungeonId != INDEX_NONE)
+			|| !EnterAndStand(Test, Scene, DungeonId))
+		{
+			return false;
+		}
+
+		const int32 DayInside = Scene.Run->Day();
+		Out.DefenceInside = DefenceOfEveryCity(*Scene.Run);
+		Out.PopulationInside = PopulationOfEveryCity(*Scene.Run);
+
+		if (bThePlayerDies)
+		{
+			if (!KillThePlayer(Test, Scene) || !StandBackUp(Test, Scene))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			Scene.Mode->LeaveEmpireDungeon();
+			Scene.Run->AdvanceDays(DaysForTheControl);
+		}
+
+		const FCataclysmDungeon* Standing = Scene.Run->FindDungeon(DungeonId);
+
+		Out.Defence = DefenceOfEveryCity(*Scene.Run);
+		Out.Population = PopulationOfEveryCity(*Scene.Run);
+		Out.TimerLeft = Scene.Run->Clock->DaysUntilResolveFor(DungeonId);
+		Out.CityOfTheDungeon = Standing ? Standing->CityId : INDEX_NONE;
+		Out.TimesResolved = TimesResolvedOf(*Scene.Run, DungeonId);
+		Out.Detonated = Scene.Run->DungeonsDetonated;
+		Out.DaysPassed = Scene.Run->Day() - DayInside;
+		Out.BoundAfter = Scene.Mode->EmpireDungeonId;
+
+		return true;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// What a death costs in days
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostsTheModesDaysTest,
+	"Cataclysm.DungeonMode.ADeathInAnEmpireDungeonCostsTheDaysOfItsLethalityMode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathCostsTheModesDaysTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	// THE DESIGNED FIGURES, WRITTEN OUT. `docs/Cataclysm_GDD_v2.md` section II:
+	// dying costs 5 days in Standard, 10 in Hardcore and 15 in Heretic. Not read
+	// from `DeathDayCostFor`, which would compare the code with itself.
+	const int32 DesignedCost[3] = {5, 10, 15};
+	const TCHAR* const ModeName[3] =
+		{TEXT("Standard"), TEXT("Hardcore"), TEXT("Heretic")};
+
+	for (int32 Rung = 0; Rung < 3; ++Rung)
+	{
+		// THE DEATH. An ordinary dungeon twenty floors deep with a hundred days
+		// on its timer and no damage, so the days are the only thing that moves.
+		{
+			FDeathScene Scene = MakeScene(Rung);
+			if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+			{
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+			{
+				return false;
+			}
+
+			const int32 DungeonId = PlaceByHand(
+				*Scene.Run, ECataclysmDungeonType::Basic, AnOutpostOf(*Scene.Run),
+				20, 100.0f, 100.0f, 0.0f, 0.0f);
+			if (!TestTrue(TEXT("set-up: a dungeon was placed on an Outpost"),
+						  DungeonId != INDEX_NONE)
+				|| !EnterAndStand(*this, Scene, DungeonId))
+			{
+				return false;
+			}
+
+			const int32 DayInside = Scene.Run->Day();
+
+			if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+			{
+				return false;
+			}
+
+			TestEqual(FString::Printf(
+				TEXT("%s: a death in the dungeon cost %d days"),
+				ModeName[Rung], DesignedCost[Rung]),
+				Scene.Run->Day() - DayInside, DesignedCost[Rung]);
+		}
+
+		// THE CONTROL. The same run and the same dungeon, and nobody dies. The
+		// player is "stood back up" anyway, which for a living character must do
+		// nothing at all.
+		{
+			FDeathScene Scene = MakeScene(Rung);
+			if (!TestNotNull(TEXT("a second test world was created"), Scene.World))
+			{
+				return false;
+			}
+			ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			if (!TestTrue(TEXT("set-up: the control's scene was built"),
+						  Scene.IsUsable()))
+			{
+				return false;
+			}
+
+			const int32 DungeonId = PlaceByHand(
+				*Scene.Run, ECataclysmDungeonType::Basic, AnOutpostOf(*Scene.Run),
+				20, 100.0f, 100.0f, 0.0f, 0.0f);
+			if (!TestTrue(TEXT("set-up: the control's dungeon was placed"),
+						  DungeonId != INDEX_NONE)
+				|| !EnterAndStand(*this, Scene, DungeonId))
+			{
+				return false;
+			}
+
+			const int32 DayInside = Scene.Run->Day();
+
+			Scene.Player->Revive();
+
+			TestEqual(FString::Printf(
+				TEXT("CONTROL, %s: with no death no day passed"), ModeName[Rung]),
+				Scene.Run->Day() - DayInside, 0);
+			TestEqual(FString::Printf(
+				TEXT("CONTROL, %s: and the dungeon is still being walked"),
+				ModeName[Rung]),
+				Scene.Mode->EmpireDungeonId, DungeonId);
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// An ordinary dungeon resolves, once
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathResolvesOnceTest,
+	"Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonResolvesItOnceAndItsTimerStartsAgainFromFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathResolvesOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	// A FULL TIMER OF FORTY DAYS WITH TWO LEFT. Two is fewer than the five days
+	// a Standard death costs, so a death that resolved the dungeon and left its
+	// timer alone would resolve it a second time two days into the charge.
+	const float FullTimer = 40.0f;
+	const float DaysLeft = 2.0f;
+
+	// THE CONTROL: the same dungeon entered and left with nobody dying.
+	{
+		FDeathScene Scene = MakeScene(0);
+		if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		if (!TestTrue(TEXT("set-up: the control's scene was built"), Scene.IsUsable()))
+		{
+			return false;
+		}
+
+		const int32 DungeonId = PlaceByHand(
+			*Scene.Run, ECataclysmDungeonType::Basic, AnOutpostOf(*Scene.Run), 20,
+			FullTimer, DaysLeft, 100.0f, 50.0f);
+		if (!TestTrue(TEXT("set-up: the control's dungeon was placed"),
+					  DungeonId != INDEX_NONE)
+			|| !EnterAndStand(*this, Scene, DungeonId))
+		{
+			return false;
+		}
+
+		const float DefenceInside = DefenceOfEveryCity(*Scene.Run);
+
+		Scene.Mode->LeaveEmpireDungeon();
+
+		TestEqual(TEXT("CONTROL: leaving without dying takes nothing from any city"),
+				  DefenceOfEveryCity(*Scene.Run), DefenceInside, 0.01f);
+		TestEqual(TEXT("CONTROL: and no resolve has cost a city"),
+				  Scene.Run->DungeonsDetonated, 0);
+		TestEqual(TEXT("CONTROL: and its timer still has the two days it had"),
+				  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), DaysLeft, 0.001f);
+	}
+
+	// THE DEATH.
+	FDeathScene Scene = MakeScene(0);
+	if (!TestNotNull(TEXT("a second test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	const int32 CityId = AnOutpostOf(*Scene.Run);
+	const int32 DungeonId = PlaceByHand(
+		*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, FullTimer, DaysLeft,
+		100.0f, 50.0f);
+	const FCataclysmDungeon* Placed =
+		DungeonId != INDEX_NONE ? Scene.Run->FindDungeon(DungeonId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a dungeon was placed on an Outpost"), Placed))
+	{
+		return false;
+	}
+
+	// WHAT ONE RESOLVE OF THIS DUNGEON TAKES, worked out from the dungeon the
+	// way `ResolveDungeon` does: its points scaled by how deep it is against a
+	// typical dungeon of its kind on that tier of city.
+	const float DefenceBite = Placed->DefenceDamage * Placed->BiteScale();
+	const float PopulationBite = Placed->PopulationDamage * Placed->BiteScale();
+
+	if (!EnterAndStand(*this, Scene, DungeonId))
+	{
+		return false;
+	}
+
+	const FCataclysmCity* City = Scene.Run->Map->Find(CityId);
+	if (!TestNotNull(TEXT("set-up: the dungeon's city is on the map"), City))
+	{
+		return false;
+	}
+
+	const float DefenceInside = City->Defence;
+	const float PopulationInside = City->Population;
+	const int32 DayInside = Scene.Run->Day();
+
+	if (!TestTrue(TEXT("set-up: one resolve is a real amount the city can pay"),
+				  DefenceBite > 1.0f && PopulationBite > 1.0f
+					  && DefenceInside > 2.0f * DefenceBite
+					  && PopulationInside > 2.0f * PopulationBite)
+		|| !TestEqual(TEXT("set-up: before the death no resolve has cost a city"),
+					  Scene.Run->DungeonsDetonated, 0)
+		|| !TestEqual(TEXT("set-up: and the timer has the two days it was given"),
+					  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), DaysLeft,
+					  0.001f))
+	{
+		return false;
+	}
+
+	if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+	{
+		return false;
+	}
+
+	// THE CITY PAID FOR ONE RESOLVE AND NOT FOR TWO.
+	TestEqual(TEXT("the city lost one resolve's worth of defence"),
+			  DefenceInside - City->Defence, DefenceBite, 0.01f);
+	TestEqual(TEXT("and one resolve's worth of population"),
+			  PopulationInside - City->Population, PopulationBite, 0.01f);
+	TestEqual(TEXT("one resolve has cost a city, and only one"),
+			  Scene.Run->DungeonsDetonated, 1);
+	TestEqual(TEXT("the clock counts one resolve of that dungeon"),
+			  TimesResolvedOf(*Scene.Run, DungeonId), 1);
+
+	// IT STAYS ON THE MAP, as a dungeon whose timer ran out does.
+	TestNotNull(TEXT("the dungeon is still on the map"),
+				Scene.Run->FindDungeon(DungeonId));
+
+	// AND ITS TIMER WAS FULL WHEN THE DAYS BEGAN. Forty, less the five days a
+	// Standard death costs. Left alone it would have run out on the second of
+	// those days and read thirty-seven.
+	TestEqual(TEXT("the death cost five days"), Scene.Run->Day() - DayInside, 5);
+	TestEqual(TEXT("the timer was set to full at the death and has run the five days since"),
+			  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), FullTimer - 5.0f,
+			  0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A resolve that fells the city
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathFellsTheCityTest,
+	"Cataclysm.DungeonMode.ADeathWhoseResolveFellsTheCityTouchesNoDungeonThatIsGone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathFellsTheCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	FDeathScene Scene = MakeScene(0);
+	if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	// A CITY WITH TEN POINTS OF DEFENCE LEFT AND TWO ORDINARY DUNGEONS ON IT,
+	// each of which takes far more than ten when it resolves. The player walks
+	// the first; the second is there to be absorbed with it.
+	const int32 CityId = AnOutpostOf(*Scene.Run);
+	FCataclysmCity* Weakened = Scene.Run->Map->FindMutable(CityId);
+	if (!TestNotNull(TEXT("set-up: an Outpost is on the map"), Weakened))
+	{
+		return false;
+	}
+	Weakened->Defence = 10.0f;
+
+	const int32 DungeonId = PlaceByHand(
+		*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, 40.0f, 40.0f,
+		100.0f, 50.0f);
+	const int32 OtherId = PlaceByHand(
+		*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, 40.0f, 40.0f,
+		100.0f, 50.0f);
+	if (!TestTrue(TEXT("set-up: two dungeons were placed on that city"),
+				  DungeonId != INDEX_NONE && OtherId != INDEX_NONE
+					  && DungeonId != OtherId)
+		|| !EnterAndStand(*this, Scene, DungeonId))
+	{
+		return false;
+	}
+
+	const int32 FallenBefore = Scene.Run->Map->FallenCityCount();
+	const int32 DayInside = Scene.Run->Day();
+
+	// THE CONTROL: before the death the city stands and both dungeons stand.
+	if (!TestFalse(TEXT("CONTROL: before the death the city has not fallen"),
+				   Scene.Run->Map->Find(CityId)->bFallen)
+		|| !TestNotNull(TEXT("CONTROL: and the dungeon being walked is on the map"),
+						Scene.Run->FindDungeon(DungeonId))
+		|| !TestNotNull(TEXT("CONTROL: and so is the other one"),
+						Scene.Run->FindDungeon(OtherId)))
+	{
+		return false;
+	}
+
+	if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+	{
+		return false;
+	}
+
+	// THE RESOLVE FELLED THE CITY, and the city took its dungeons with it.
+	TestTrue(TEXT("the death's resolve felled the city"),
+			 Scene.Run->Map->Find(CityId)->bFallen);
+	TestEqual(TEXT("and it is the one city that fell"),
+			  Scene.Run->Map->FallenCityCount(), FallenBefore + 1);
+	TestEqual(TEXT("one resolve cost a city"), Scene.Run->DungeonsDetonated, 1);
+	TestNull(TEXT("the dungeon the player died in is off the map"),
+			 Scene.Run->FindDungeon(DungeonId));
+	TestNull(TEXT("and so is the other dungeon that stood on the city"),
+			 Scene.Run->FindDungeon(OtherId));
+
+	// AND NOTHING WAS DONE TO A DUNGEON THAT IS GONE. No timer was put back for
+	// it, and the two lists the run keeps in step still agree.
+	TestEqual(TEXT("no timer counts down for the dungeon that is gone"),
+			  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), -1.0f, 0.001f);
+
+	FString WhyNot;
+	const bool bListsAgree = UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+		Scene.Run->Dungeons, Scene.Run->Clock->Timers, WhyNot);
+	TestTrue(FString::Printf(
+		TEXT("every dungeon still has one timer and every timer a dungeon: %s"),
+		*WhyNot), bListsAgree);
+
+	// THE CITY BECAME A DUNGEON CITY, which is what a city falling does.
+	bool bDungeonCityStands = false;
+	for (const FCataclysmDungeon& Standing : Scene.Run->Dungeons)
+	{
+		bDungeonCityStands = bDungeonCityStands
+			|| (Standing.Type == ECataclysmDungeonType::FallenCity
+				&& Standing.CityId == CityId);
+	}
+	TestTrue(TEXT("a Dungeon City stands where the city fell"), bDungeonCityStands);
+
+	// THE PLAYER IS OUT OF IT AND THE DAYS WERE STILL PAID.
+	TestEqual(TEXT("the game mode is walking no dungeon"),
+			  Scene.Mode->EmpireDungeonId, INDEX_NONE);
+	TestEqual(TEXT("the clock holds nobody inside a dungeon"),
+			  Scene.Run->Clock->CurrentDungeonId, INDEX_NONE);
+	TestEqual(TEXT("and the death still cost five days"),
+			  Scene.Run->Day() - DayInside, 5);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A Quest dungeon and a Dungeon City
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathResolvesNoQuestDungeonTest,
+	"Cataclysm.DungeonMode.ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathResolvesNoQuestDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	// EVERY CASE CARRIES THE SAME DAMAGE, 100 points of defence and 50 of
+	// population, on a city that is standing. So if a death resolved a Quest
+	// dungeon or a Dungeon City by mistake, the city would show it.
+
+	// -- A Quest dungeon ---------------------------------------------------
+	//
+	// ITS TIMER IS A RELOCATION CLOCK: 25 days, with 3 left. Three is fewer
+	// than the five days charged, so the clock runs out on the third of them,
+	// refills, and has run two more by the end: 23. A death that touched the
+	// clock would leave some other figure.
+	const float QuestTimer = UCataclysmSurgeScheduler::QuestResolveDays;
+
+	FAfterTheDays QuestDeath;
+	FAfterTheDays QuestControl;
+	if (!RunOneCase(*this, ECataclysmDungeonType::Quest, QuestTimer, 3.0f,
+					/*bThePlayerDies=*/true, 0, QuestDeath)
+		|| !RunOneCase(*this, ECataclysmDungeonType::Quest, QuestTimer, 3.0f,
+					   /*bThePlayerDies=*/false, 5, QuestControl))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("CONTROL, Quest: five days passed with no death"),
+				   QuestControl.DaysPassed, 5)
+		|| !TestEqual(TEXT("CONTROL, Quest: its clock ran out on the third day and has run two since"),
+					  QuestControl.TimerLeft, QuestTimer - 2.0f, 0.001f)
+		|| !TestEqual(TEXT("CONTROL, Quest: the days alone took nothing from any city"),
+					  QuestControl.Defence, QuestControl.DefenceInside, 0.01f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("Quest: the death cost five days"), QuestDeath.DaysPassed, 5);
+	TestEqual(TEXT("Quest: no resolve cost a city"), QuestDeath.Detonated, 0);
+	TestEqual(TEXT("Quest: every city's defence is what the days alone make it"),
+			  QuestDeath.Defence, QuestControl.Defence, 0.01f);
+	TestEqual(TEXT("Quest: and every city's population"),
+			  QuestDeath.Population, QuestControl.Population, 0.01f);
+	TestEqual(TEXT("Quest: the relocation clock is what the days alone make it"),
+			  QuestDeath.TimerLeft, QuestControl.TimerLeft, 0.001f);
+	TestEqual(TEXT("Quest: it has run out as many times as the days alone make it"),
+			  QuestDeath.TimesResolved, QuestControl.TimesResolved);
+	TestEqual(TEXT("Quest: it stands on the city the days alone leave it on"),
+			  QuestDeath.CityOfTheDungeon, QuestControl.CityOfTheDungeon);
+	TestEqual(TEXT("Quest: the player is out of the dungeon"),
+			  QuestDeath.BoundAfter, INDEX_NONE);
+
+	// -- A Dungeon City ----------------------------------------------------
+	//
+	// A timer of 999 days with 500 left, so nothing runs out in five days.
+	const float CityTimer = UCataclysmSurgeScheduler::FallenCityResolveDays;
+
+	FAfterTheDays CityDeath;
+	FAfterTheDays CityControl;
+	if (!RunOneCase(*this, ECataclysmDungeonType::FallenCity, CityTimer, 500.0f,
+					/*bThePlayerDies=*/true, 0, CityDeath)
+		|| !RunOneCase(*this, ECataclysmDungeonType::FallenCity, CityTimer, 500.0f,
+					   /*bThePlayerDies=*/false, 5, CityControl))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("CONTROL, Dungeon City: five days passed with no death"),
+				   CityControl.DaysPassed, 5)
+		|| !TestEqual(TEXT("CONTROL, Dungeon City: its timer ran the five days"),
+					  CityControl.TimerLeft, 495.0f, 0.001f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("Dungeon City: the death cost five days"),
+			  CityDeath.DaysPassed, 5);
+	TestEqual(TEXT("Dungeon City: no resolve cost a city"), CityDeath.Detonated, 0);
+	TestEqual(TEXT("Dungeon City: every city's defence is what the days alone make it"),
+			  CityDeath.Defence, CityControl.Defence, 0.01f);
+	TestEqual(TEXT("Dungeon City: and every city's population"),
+			  CityDeath.Population, CityControl.Population, 0.01f);
+	TestEqual(TEXT("Dungeon City: its timer is what the days alone make it"),
+			  CityDeath.TimerLeft, CityControl.TimerLeft, 0.001f);
+	TestEqual(TEXT("Dungeon City: the player is out of the dungeon"),
+			  CityDeath.BoundAfter, INDEX_NONE);
+
+	// -- THE CONTROL THAT THE DAMAGE WAS REAL -------------------------------
+	//
+	// The same dungeon as an ordinary one. A death in it does take the city's
+	// defence, so the two kinds above were spared by their kind and not by a
+	// dungeon that could not have hurt anything.
+	FAfterTheDays OrdinaryDeath;
+	if (!RunOneCase(*this, ECataclysmDungeonType::Basic, 40.0f, 40.0f,
+					/*bThePlayerDies=*/true, 0, OrdinaryDeath))
+	{
+		return false;
+	}
+
+	TestTrue(FString::Printf(
+		TEXT("CONTROL: an ordinary dungeon carrying the same damage took %.1f defence at the death"),
+		OrdinaryDeath.DefenceInside - OrdinaryDeath.Defence),
+		OrdinaryDeath.DefenceInside - OrdinaryDeath.Defence > 100.0f);
+	TestEqual(TEXT("CONTROL: and one resolve cost a city"),
+			  OrdinaryDeath.Detonated, 1);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// With no dungeon of the empire bound
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathWithNothingBoundTest,
+	"Cataclysm.DungeonMode.ADeathWithNoEmpireDungeonBoundStandsThePlayerBackUpInTheLevelAndCostsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathWithNothingBoundTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	FDeathScene Scene = MakeScene(0);
+	if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	// A DUNGEON STANDS ON THE MAP AND NOBODY HAS ENTERED IT. The run is there
+	// and so is something a mistaken resolve could reach; the game mode is
+	// bound to nothing, which is pressing Play in the dungeon level.
+	const int32 CityId = AnOutpostOf(*Scene.Run);
+	const int32 NotEntered = PlaceByHand(
+		*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, 40.0f, 40.0f,
+		100.0f, 50.0f);
+	if (!TestTrue(TEXT("set-up: a dungeon stands on the map"), NotEntered != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: the game mode is walking no dungeon"),
+					  Scene.Mode->EmpireDungeonId, INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: floor 3 of the level was reached"),
+					 Scene.Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+
+	Scene.Mode->ClearFloorEnemies();
+	if (!TestTrue(TEXT("set-up: the player stands at the floor's entrance"),
+				  Scene.Mode->PlaceAtEntrance(Scene.Player)))
+	{
+		return false;
+	}
+
+	// THE PLAYER WALKS THIRTY METRES OFF AND DIES THERE, so standing back up at
+	// the entrance is a move and not where it already was.
+	const FVector Entrance = Scene.Player->GetActorLocation();
+	const FVector Away = Entrance + FVector(3000.0f, 3000.0f, 0.0f);
+	Scene.Player->SetActorLocation(Away);
+
+	const int32 DayBefore = Scene.Run->Day();
+	const float DefenceBefore = DefenceOfEveryCity(*Scene.Run);
+
+	if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("no day passed"), Scene.Run->Day(), DayBefore);
+	TestEqual(TEXT("no resolve cost a city"), Scene.Run->DungeonsDetonated, 0);
+	TestEqual(TEXT("and no city lost any defence"),
+			  DefenceOfEveryCity(*Scene.Run), DefenceBefore, 0.01f);
+	TestEqual(TEXT("the dungeon nobody entered still has its forty days"),
+			  Scene.Run->Clock->DaysUntilResolveFor(NotEntered), 40.0f, 0.001f);
+	TestEqual(TEXT("the floor being walked is still floor 3"),
+			  Scene.Mode->FloorNumber, 3);
+
+	const FVector StandingAgain = Scene.Player->GetActorLocation();
+	TestTrue(FString::Printf(
+		TEXT("the player stands back up at the floor's entrance: at %s, the entrance is %s"),
+		*StandingAgain.ToCompactString(), *Entrance.ToCompactString()),
+		FVector::Dist2D(StandingAgain, Entrance) < 1.0f);
+	TestTrue(TEXT("and not where it died"),
+			 FVector::Dist2D(StandingAgain, Away) > 100.0f);
+
+	const float Health = Scene.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float MaxHealth = Scene.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	TestTrue(TEXT("it has health again"), Health > 0.0f);
+	TestEqual(TEXT("all of it"), Health, MaxHealth, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The playtest switch
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathPlaytestSwitchTest,
+	"Cataclysm.DungeonMode.ThePlaytestSwitchKeepsADeadPlayerInTheDungeonAndWithoutItTheDeathEndsTheWalk",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathPlaytestSwitchTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	FDeathScene Scene = MakeScene(0);
+	if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	const int32 CityId = AnOutpostOf(*Scene.Run);
+	const int32 DungeonId = PlaceByHand(
+		*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, 40.0f, 40.0f,
+		100.0f, 50.0f);
+	if (!TestTrue(TEXT("set-up: a dungeon was placed on an Outpost"),
+				  DungeonId != INDEX_NONE)
+		|| !EnterAndStand(*this, Scene, DungeonId))
+	{
+		return false;
+	}
+
+	const FCataclysmCity* City = Scene.Run->Map->Find(CityId);
+	if (!TestNotNull(TEXT("set-up: the dungeon's city is on the map"), City))
+	{
+		return false;
+	}
+
+	const float DefenceInside = City->Defence;
+	const int32 DayInside = Scene.Run->Day();
+
+	// -- THE SWITCH SET: the death is what it was before issue #41 ----------
+	{
+		FScopedDeathSwitch KeepsThePlayer(1);
+		if (!TestNotNull(TEXT("set-up: the playtest switch is a console variable"),
+						 KeepsThePlayer.Variable)
+			|| !TestEqual(TEXT("set-up: with nothing having set it the switch read 0, the designed behaviour"),
+						  KeepsThePlayer.Before, 0))
+		{
+			return false;
+		}
+
+		if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("switch set: no day passed"), Scene.Run->Day(), DayInside);
+		TestEqual(TEXT("switch set: the dungeon is still being walked"),
+				  Scene.Mode->EmpireDungeonId, DungeonId);
+		TestEqual(TEXT("switch set: and the clock still holds the player inside it"),
+				  Scene.Run->Clock->CurrentDungeonId, DungeonId);
+		TestEqual(TEXT("switch set: no resolve cost a city"),
+				  Scene.Run->DungeonsDetonated, 0);
+		TestEqual(TEXT("switch set: the city kept its defence"),
+				  City->Defence, DefenceInside, 0.01f);
+		TestEqual(TEXT("switch set: the dungeon's timer still has its forty days"),
+				  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), 40.0f, 0.001f);
+	}
+
+	// -- THE SWITCH BACK AT ITS DEFAULT: the same player dies again ---------
+	//
+	// In the same dungeon, which the first death left bound. This half is what
+	// the half above is the control for, and the other way round.
+	if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("default: the death cost five days"),
+			  Scene.Run->Day() - DayInside, 5);
+	TestEqual(TEXT("default: the game mode is walking no dungeon"),
+			  Scene.Mode->EmpireDungeonId, INDEX_NONE);
+	TestEqual(TEXT("default: the clock holds nobody inside a dungeon"),
+			  Scene.Run->Clock->CurrentDungeonId, INDEX_NONE);
+	TestEqual(TEXT("default: one resolve cost a city"),
+			  Scene.Run->DungeonsDetonated, 1);
+	TestTrue(FString::Printf(
+		TEXT("default: the city lost defence to the resolve, %.1f of it"),
+		DefenceInside - City->Defence),
+		DefenceInside - City->Defence > 100.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Where the player is afterwards
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathLeavesAsAClearDoesTest,
+	"Cataclysm.DungeonMode.AfterADeathThePlayerIsOutOfTheDungeonAsAClearedOneLeavesThemAndStandsUpWhole",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathLeavesAsAClearDoesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	/** What the game mode and the clock say once a dungeon has been left. */
+	struct FLeftBehind
+	{
+		int32 Bound = 0;
+		int32 ClockInside = 0;
+		int32 EmpireFloors = -1;
+		int32 FloorNumber = 0;
+		int32 FloorModifiers = -1;
+		float ModifierScore = -1.0f;
+		bool bLastFloor = true;
+	};
+
+	const auto Read = [](const FDeathScene& From)
+	{
+		FLeftBehind Out;
+		Out.Bound = From.Mode->EmpireDungeonId;
+		Out.ClockInside = From.Run->Clock->CurrentDungeonId;
+		Out.EmpireFloors = From.Mode->EmpireDungeonFloors();
+		Out.FloorNumber = From.Mode->FloorNumber;
+		Out.FloorModifiers = From.Mode->FloorBrief.Modifiers.Num();
+		Out.ModifierScore = From.Mode->DungeonModifierScore;
+		Out.bLastFloor = From.Mode->IsOnTheLastFloor();
+		return Out;
+	};
+
+	// BOTH SCENES WALK THE SAME DUNGEON TO ITS THIRD FLOOR: twenty floors deep,
+	// no damage, a hundred days on its timer, and a modifier score of 30 put on
+	// it by hand so that there is something of the dungeon's on the game mode
+	// to see go.
+	const auto WalkToFloorThree = [this](const FDeathScene& Scene, int32& OutDungeonId)
+	{
+		OutDungeonId = PlaceByHand(
+			*Scene.Run, ECataclysmDungeonType::Basic, AnOutpostOf(*Scene.Run), 20,
+			100.0f, 100.0f, 0.0f, 0.0f);
+		for (FCataclysmDungeon& Standing : Scene.Run->Dungeons)
+		{
+			if (Standing.DungeonId == OutDungeonId)
+			{
+				Standing.ModifierScore = 30.0f;
+			}
+		}
+
+		if (!TestTrue(TEXT("set-up: a dungeon was placed on an Outpost"),
+					  OutDungeonId != INDEX_NONE)
+			|| !EnterAndStand(*this, Scene, OutDungeonId)
+			|| !TestTrue(TEXT("set-up: the first flight of stairs went down"),
+						 Scene.Mode->GoDownOneFloor())
+			|| !TestTrue(TEXT("set-up: and the second"), Scene.Mode->GoDownOneFloor()))
+		{
+			return false;
+		}
+
+		Scene.Mode->ClearFloorEnemies();
+
+		return TestTrue(TEXT("set-up: the player stands at the third floor's entrance"),
+						Scene.Mode->PlaceAtEntrance(Scene.Player))
+			&& TestEqual(TEXT("CONTROL: inside, the game mode is walking the dungeon"),
+						 Scene.Mode->EmpireDungeonId, OutDungeonId)
+			&& TestEqual(TEXT("CONTROL: inside, it is on floor 3"),
+						 Scene.Mode->FloorNumber, 3)
+			&& TestEqual(TEXT("CONTROL: inside, it reads the dungeon's twenty floors"),
+						 Scene.Mode->EmpireDungeonFloors(), 20)
+			&& TestEqual(TEXT("CONTROL: inside, it carries the dungeon's modifier score of 30"),
+						 Scene.Mode->DungeonModifierScore, 30.0f, 0.001f)
+			&& TestEqual(TEXT("CONTROL: inside, the clock holds the player in that dungeon"),
+						 Scene.Run->Clock->CurrentDungeonId, OutDungeonId);
+	};
+
+	// -- THE CONTROL: the dungeon is cleared ------------------------------
+	//
+	// By `ClearEmpireDungeon`, which is what the stairs of the last floor call.
+	FLeftBehind AfterAClear;
+	{
+		FDeathScene Scene = MakeScene(0);
+		if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		int32 ClearedId = INDEX_NONE;
+		if (!TestTrue(TEXT("set-up: the control's scene was built"), Scene.IsUsable())
+			|| !WalkToFloorThree(Scene, ClearedId)
+			|| !TestTrue(TEXT("set-up: the dungeon was cleared"),
+						 Scene.Mode->ClearEmpireDungeon()))
+		{
+			return false;
+		}
+
+		AfterAClear = Read(Scene);
+		TestNull(TEXT("CONTROL: a cleared dungeon is off the map"),
+				 Scene.Run->FindDungeon(ClearedId));
+	}
+
+	// -- THE DEATH --------------------------------------------------------
+	FDeathScene Scene = MakeScene(0);
+	if (!TestNotNull(TEXT("a second test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	int32 DungeonId = INDEX_NONE;
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable())
+		|| !WalkToFloorThree(Scene, DungeonId))
+	{
+		return false;
+	}
+
+	// THE PLAYER WALKS THIRTY METRES FROM THE ENTRANCE AND DIES THERE.
+	const FVector Entrance = Scene.Player->GetActorLocation();
+	const FVector Away = Entrance + FVector(3000.0f, 3000.0f, 0.0f);
+	Scene.Player->SetActorLocation(Away);
+
+	if (!KillThePlayer(*this, Scene))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute HealthAttribute =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!TestEqual(TEXT("CONTROL: dead, the player has no health"),
+				   Scene.AbilitySystem->GetNumericAttribute(HealthAttribute), 0.0f,
+				   0.01f)
+		|| !StandBackUp(*this, Scene))
+	{
+		return false;
+	}
+
+	const FLeftBehind AfterTheDeath = Read(Scene);
+
+	// THE STATE A CLEARED DUNGEON LEAVES, FIELD BY FIELD.
+	TestEqual(TEXT("the game mode is walking no dungeon"),
+			  AfterTheDeath.Bound, INDEX_NONE);
+	TestEqual(TEXT("which is what a cleared dungeon leaves"),
+			  AfterTheDeath.Bound, AfterAClear.Bound);
+	TestEqual(TEXT("the clock holds nobody inside a dungeon, as after a clear"),
+			  AfterTheDeath.ClockInside, AfterAClear.ClockInside);
+	TestEqual(TEXT("and that is nobody"), AfterTheDeath.ClockInside, INDEX_NONE);
+	TestEqual(TEXT("the game mode reads no dungeon's depth, as after a clear"),
+			  AfterTheDeath.EmpireFloors, AfterAClear.EmpireFloors);
+	TestEqual(TEXT("and that is none"), AfterTheDeath.EmpireFloors, 0);
+	TestEqual(TEXT("the dungeon's modifier score is off the game mode, as after a clear"),
+			  AfterTheDeath.ModifierScore, AfterAClear.ModifierScore, 0.001f);
+	TestEqual(TEXT("and that is nought"), AfterTheDeath.ModifierScore, 0.0f, 0.001f);
+	TestEqual(TEXT("the floor carries as many modifiers as after a clear"),
+			  AfterTheDeath.FloorModifiers, AfterAClear.FloorModifiers);
+	TestTrue(TEXT("whether the floor is the last floor is as after a clear"),
+			 AfterTheDeath.bLastFloor == AfterAClear.bLastFloor);
+	TestFalse(TEXT("and it is not: with no dungeon bound there is no last floor"),
+			  AfterTheDeath.bLastFloor);
+	TestEqual(TEXT("the floor still standing is the one the player died on, as after a clear"),
+			  AfterTheDeath.FloorNumber, AfterAClear.FloorNumber);
+	TestEqual(TEXT("and that is floor 3"), AfterTheDeath.FloorNumber, 3);
+
+	// THE ONE DIFFERENCE FROM A CLEAR: the dungeon is still on the map.
+	TestNotNull(TEXT("unlike a cleared dungeon, this one is still on the map"),
+				Scene.Run->FindDungeon(DungeonId));
+
+	// AND THE PLAYER STANDS BACK UP WHOLE, at the entrance of that floor.
+	const FVector StandingAgain = Scene.Player->GetActorLocation();
+	TestTrue(FString::Printf(
+		TEXT("the player stands back up at the floor's entrance: at %s, the entrance is %s"),
+		*StandingAgain.ToCompactString(), *Entrance.ToCompactString()),
+		FVector::Dist2D(StandingAgain, Entrance) < 1.0f);
+	TestTrue(TEXT("and not where it died"),
+			 FVector::Dist2D(StandingAgain, Away) > 100.0f);
+
+	const float Health = Scene.AbilitySystem->GetNumericAttribute(HealthAttribute);
+	const float MaxHealth = Scene.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	TestTrue(TEXT("it has health again"), Health > 0.0f);
+	TestEqual(TEXT("all of its maximum"), Health, MaxHealth, 0.01f);
+
+	if (const UCharacterMovementComponent* Movement =
+			Scene.Player->GetCharacterMovement())
+	{
+		TestEqual(TEXT("and it can walk again"),
+				  static_cast<int32>(Movement->MovementMode),
+				  static_cast<int32>(MOVE_Walking));
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Heretic, in a shallow dungeon
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathHereticShallowTest,
+	"Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonResolvesItAtTheDeathAndAgainFromTheDaysCharged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	// THE FIGURES THE CASE RESTS ON, READ FROM THE CLOCK AND CHECKED. A full
+	// timer is 10 days plus 1.6 a floor: 14.8 at three floors and 16.4 at four.
+	// A Heretic death costs 15. So a three floor dungeon, full again at the
+	// death, runs out inside the days the death costs, and a four floor one
+	// does not. No roll is on these timers; the test writes them.
+	const float TimerAtThree = UCataclysmDayClock::ResolveDaysFor(3);
+	const float TimerAtFour = UCataclysmDayClock::ResolveDaysFor(4);
+	constexpr int32 HereticRung = 2;
+
+	if (!TestEqual(TEXT("set-up: a three floor dungeon's full timer is 14.8 days"),
+				   TimerAtThree, 14.8f, 0.001f)
+		|| !TestEqual(TEXT("set-up: a four floor dungeon's is 16.4"),
+					  TimerAtFour, 16.4f, 0.001f)
+		|| !TestEqual(TEXT("set-up: a Heretic death costs 15 days"),
+					  UCataclysmDayClock::DeathDayCostFor(HereticRung), 15))
+	{
+		return false;
+	}
+
+	/** One Heretic death in a dungeon of this depth, and what it left. */
+	struct FShallow
+	{
+		float DefenceLost = 0.0f;
+		float OneBite = 0.0f;
+		float TimerLeft = 0.0f;
+		int32 Detonated = 0;
+		int32 TimesResolved = 0;
+		int32 DaysPassed = 0;
+	};
+
+	const auto DieIn = [this](int32 Floors, float FullTimer, FShallow& Out)
+	{
+		FDeathScene Scene = MakeScene(HereticRung);
+		if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+		{
+			return false;
+		}
+
+		const int32 CityId = AnOutpostOf(*Scene.Run);
+		const int32 DungeonId = PlaceByHand(
+			*Scene.Run, ECataclysmDungeonType::Basic, CityId, Floors, FullTimer,
+			FullTimer, 20.0f, 10.0f);
+		const FCataclysmDungeon* Placed =
+			DungeonId != INDEX_NONE ? Scene.Run->FindDungeon(DungeonId) : nullptr;
+		if (!TestNotNull(TEXT("set-up: a dungeon was placed on an Outpost"), Placed))
+		{
+			return false;
+		}
+		Out.OneBite = Placed->DefenceDamage * Placed->BiteScale();
+
+		if (!EnterAndStand(*this, Scene, DungeonId))
+		{
+			return false;
+		}
+
+		const FCataclysmCity* City = Scene.Run->Map->Find(CityId);
+		if (!TestNotNull(TEXT("set-up: the dungeon's city is on the map"), City))
+		{
+			return false;
+		}
+		const float DefenceInside = City->Defence;
+		const int32 DayInside = Scene.Run->Day();
+
+		if (!KillThePlayer(*this, Scene) || !StandBackUp(*this, Scene))
+		{
+			return false;
+		}
+
+		Out.DefenceLost = DefenceInside - City->Defence;
+		Out.TimerLeft = Scene.Run->Clock->DaysUntilResolveFor(DungeonId);
+		Out.Detonated = Scene.Run->DungeonsDetonated;
+		Out.TimesResolved = TimesResolvedOf(*Scene.Run, DungeonId);
+		Out.DaysPassed = Scene.Run->Day() - DayInside;
+		return true;
+	};
+
+	// -- THE CONTROL: four floors, one resolve ------------------------------
+	FShallow AtFour;
+	if (!DieIn(4, TimerAtFour, AtFour))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("CONTROL, four floors: the death cost 15 days"),
+			  AtFour.DaysPassed, 15);
+	TestEqual(TEXT("CONTROL, four floors: one resolve cost the city, at the death"),
+			  AtFour.Detonated, 1);
+	TestEqual(TEXT("CONTROL, four floors: the clock counts one resolve"),
+			  AtFour.TimesResolved, 1);
+	TestTrue(TEXT("CONTROL, four floors: one resolve is a real amount"),
+			 AtFour.OneBite > 1.0f);
+	TestEqual(TEXT("CONTROL, four floors: the city lost one resolve's defence"),
+			  AtFour.DefenceLost, AtFour.OneBite, 0.01f);
+	TestEqual(TEXT("CONTROL, four floors: its timer has 1.4 of its 16.4 days left"),
+			  AtFour.TimerLeft, TimerAtFour - 15.0f, 0.001f);
+
+	// -- THREE FLOORS: two resolves ---------------------------------------
+	FShallow AtThree;
+	if (!DieIn(3, TimerAtThree, AtThree))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("three floors: the death cost 15 days"), AtThree.DaysPassed, 15);
+	TestEqual(TEXT("three floors: two resolves cost the city, one at the death and one from the days charged"),
+			  AtThree.Detonated, 2);
+	TestEqual(TEXT("three floors: the clock counts two resolves"),
+			  AtThree.TimesResolved, 2);
+	TestTrue(TEXT("three floors: one resolve is a real amount"),
+			 AtThree.OneBite > 1.0f);
+	TestEqual(TEXT("three floors: the city lost two resolves' defence"),
+			  AtThree.DefenceLost, 2.0f * AtThree.OneBite, 0.01f);
+	TestEqual(TEXT("three floors: its timer ran out on the fifteenth day and is full again"),
+			  AtThree.TimerLeft, TimerAtThree, 0.001f);
 
 	return true;
 }

@@ -409,10 +409,13 @@ by `git add` with no error and no warning. Guarded by
   [#48](https://github.com/sdubois777/Cataclysm/issues/48)) and no travel between
   the empire and a dungeon level, so entering one is a console command typed
   while already standing in `L_Dungeon`, and clearing one leaves the player
-  standing on the floor they beat. **Only walking a dungeon and the
-  console commands move the day**: dying costs 5, 10 or 15 days in the design and
-  costs none here, though `UCataclysmDayClock::DeathDayCostFor` answers how many,
-  and there is no forge to spend the twelve a craft takes. A fallen city does not
+  standing on the floor they beat. **Only walking a dungeon, dying in one and the
+  console commands move the day**: a death inside a dungeon of the empire costs
+  5, 10 or 15 days by lethality mode, resolves an ordinary dungeon at once, and
+  leaves the player on the floor they died on with no dungeon bound (issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)). The equipment a
+  death costs in Hardcore and Heretic is not built, and there is no forge to
+  spend the twelve days a craft takes. A fallen city does not
   become a retakeable Dungeon City (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
   not fire when the path to the Pillar opens (issue
