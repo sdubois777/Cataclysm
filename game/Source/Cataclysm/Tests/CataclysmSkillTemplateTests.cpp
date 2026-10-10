@@ -29335,4 +29335,620 @@ bool FCataclysmStatusActionsTimeLockAndDepthTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A row makes a healing skill restore more health, and gives a share of what it
+// restored as energy shield. Ruled 2026-10-09 under the owner's delegation, for
+// "Healing skills restore 30%-60% more HP" and "Healing skills also restore
+// 10%-20% of the healed amount as energy shield". The healing skills are
+// Living Pyre and Blood Pyre. Two stats, `healing_skill_health_restored` and
+// `healing_skill_health_as_energy_shield`, each read where one of those two
+// skills pays its health. Engine only; no row is authored, so every row here is
+// made by hand in the shape `docs/DECISIONS.md` of that day gives.
+//
+// EVERY FIGHTER HERE IS A PLAIN TEST FIGHTER with 100,000 maximum health and
+// no stat line, so its regeneration is the attribute the test writes and the
+// figures are exact. A blow on Living Pyre's holder is `NoteBlowTaken` called
+// with a figure, as the Living Pyre tests above do it. A second of
+// regeneration is `UCataclysmRegeneration::ApplyStep` called once with one
+// second, as the Blood Pyre test above does it; no timer runs and nothing
+// waits.
+//
+// WHERE THE ACTORS STAND is said at the top of each test.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmHealingSkillTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Living Pyre's row, as the Living Pyre tests above state it. */
+	const TCHAR* const HealingLivingPyreParams =
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25");
+
+	/** Blood Pyre's row without its health cost, as the test of its doubled regeneration states it. */
+	const TCHAR* const HealingBloodPyreParams =
+		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
+			 "GroundPercent=12.5; OwnGroundRegenPercent=200");
+
+	/** The same throw leaving the same ground, with nothing said about its owner's regeneration. */
+	const TCHAR* const HealingPlainGroundParams =
+		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
+			 "GroundPercent=12.5");
+
+	/** Conflagration's row: an aura that returns no health. */
+	const TCHAR* const HealingPlainAuraParams =
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; "
+			 "AllyIncreasedDamage=8");
+
+	/**
+	 * Wear the two rows and nothing else: `more` on the health a healing skill restores, and `flat` on the share
+	 * given as energy shield. A figure of nought leaves that row off. Replaces whatever the fighter wore.
+	 */
+	void WearHealingSkillRows(FScopedFighter& Who, float MorePercent, float ShieldPercent)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		if (MorePercent != 0.0f)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::More;
+			Row.Source = ECataclysmModifierSource::Enchantment;
+			Row.Value = MorePercent;
+			FCataclysmStatInputs Line;
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Row);
+			Stats.Add(FName(UCataclysmRegeneration::HealingSkillHealthRestoredStat), Line);
+		}
+		if (ShieldPercent != 0.0f)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::Enchantment;
+			Row.Value = ShieldPercent;
+			FCataclysmStatInputs Line;
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Row);
+			Stats.Add(FName(UCataclysmRegeneration::HealingSkillHealthAsEnergyShieldStat), Line);
+		}
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** The energy shield a fighter holds. */
+	float HealingShieldHeldBy(const FScopedFighter& Who)
+	{
+		return Who.Get(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	}
+
+	/** Give a fighter an energy shield of this maximum holding this much, which regenerates nothing by itself. */
+	void GiveHealingShieldPool(FScopedFighter& Who, float Maximum, float Held)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), Maximum);
+		Who.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Held);
+		Who.Set(UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute(), 0.0f);
+	}
+
+	/** Set what a fighter's energy shield holds, leaving its maximum. */
+	void SetHealingShieldHeld(FScopedFighter& Who, float Held)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Held);
+	}
+
+	/** Set a fighter's health. */
+	void SetHealingHealth(FScopedFighter& Who, float Health)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+	}
+
+	/** Grant Living Pyre to a fighter and light it. Null when either step failed. */
+	UCataclysmAuraSkill* LightHealingLivingPyre(FScopedFighter& Holder)
+	{
+		Holder.GiveFervourForUltimates(1);
+		UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+			Holder, ECataclysmAbilitySlot::Ultimate, HealingLivingPyreParams,
+			TEXT("Living Pyre"), TEXT("Element.Demonic"));
+		return Pyre && Activate(Holder, Pyre) ? Pyre : nullptr;
+	}
+
+	/** The one patch of ground in the world that this actor owns, or null when it owns none or several. */
+	ACataclysmGroundZone* HealingGroundLeftBy(UWorld* World, const AActor* Owner)
+	{
+		ACataclysmGroundZone* Found = nullptr;
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (It->GetOwner() == Owner)
+			{
+				Found = *It;
+				++Count;
+			}
+		}
+		return Count == 1 ? Found : nullptr;
+	}
+
+	/**
+	 * Grant a projectile skill of this row to a fighter, throw it, and move the ground it left to the fighter's
+	 * own feet. Null when the skill was not granted, did not activate, or left no ground of the fighter's.
+	 */
+	ACataclysmGroundZone* ThrowHealingGroundAtOwnFeet(UWorld* World, FScopedFighter& Thrower,
+													  const TCHAR* ParamText, const TCHAR* Name)
+	{
+		UCataclysmProjectileSkill* Thrown = GrantSkill<UCataclysmProjectileSkill>(
+			Thrower, ECataclysmAbilitySlot::Special, ParamText, Name, TEXT("Element.Demonic"));
+		if (!Thrown || !Activate(Thrower, Thrown))
+		{
+			return nullptr;
+		}
+		ACataclysmGroundZone* Patch = HealingGroundLeftBy(World, Thrower.Actor);
+		if (Patch)
+		{
+			Patch->SetActorLocation(Thrower.Actor->GetActorLocation());
+		}
+		return Patch;
+	}
+
+	/** One second of regeneration for a fighter that was last damaged long ago, and the health it gained. */
+	float HealingHealthGainedInOneSecond(FScopedFighter& Who)
+	{
+		const float Before = Who.Health();
+		UCataclysmRegeneration::ApplyStep(Who.Actor, /*SecondsInStep=*/1.0f,
+										  /*SecondsSinceLastDamage=*/100.0f);
+		return Who.Health() - Before;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillLivingPyreMoreTest,
+	"Cataclysm.HealingSkills.ARowMakesTheLivingPyreReturnMoreAndEveryRuleOfAHealStillApplies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Healing skills restore 30%-60% more HP" as `healing_skill_health_restored`, more 60, on Living Pyre's holder.
+ *
+ * THE CONTROL is the same holder before it wears the row: a blow dealing 400 returns exactly 25% of it, 100.
+ * WITH THE ROW the same blow returns 160, which is 40% of it. Under a reduction of healing received of fifty it
+ * returns 80, and under a healing ceiling ten points above the holder's health it returns the 10 that fit.
+ *
+ * STANDING: one fighter at the origin and nobody else.
+ */
+bool FCataclysmHealingSkillLivingPyreMoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	SetHealingHealth(Holder, 50000.0f);
+	UCataclysmAuraSkill* Pyre = LightHealingLivingPyre(Holder);
+	if (!TestNotNull(TEXT("set-up: Living Pyre is granted and lit"), Pyre)
+		|| !TestEqual(TEXT("set-up: its holder is at 50,000 of 100,000 health"), Holder.Health(), 50000.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: with no row, an amount of 100 is handed back as 100"),
+					  UCataclysmRegeneration::HealingSkillAmount(*Holder.AbilitySystem, 100.0f), 100.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	const float PlainBefore = Holder.Health();
+	const float Plain = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("control: with no row a blow dealing 400 returns exactly 25% of it, 100"), Plain, 100.0f, 0.01f);
+	TestEqual(TEXT("control: and the holder's health rose by 100"), Holder.Health() - PlainBefore, 100.0f, 0.01f);
+
+	// THE ROW.
+	WearHealingSkillRows(Holder, /*MorePercent=*/60.0f, /*ShieldPercent=*/0.0f);
+	if (!TestEqual(TEXT("set-up: with the row worn, an amount of 100 is handed back as 160"),
+				   UCataclysmRegeneration::HealingSkillAmount(*Holder.AbilitySystem, 100.0f), 160.0f, 0.001f))
+	{
+		return false;
+	}
+	SetHealingHealth(Holder, 50000.0f);
+	const float More = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("with 60% more, a blow dealing 400 returns 160, which is 40% of it"), More, 160.0f, 0.01f);
+	TestEqual(TEXT("and the holder's health rose by 160"), Holder.Health() - 50000.0f, 160.0f, 0.01f);
+
+	// A REDUCTION OF HEALING RECEIVED STILL TAKES ITS SHARE.
+	Holder.Set(Vital::GetHealingReceivedReductionAttribute(), 50.0f);
+	SetHealingHealth(Holder, 50000.0f);
+	const float Halved = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("under a reduction of healing received of fifty, the same blow returns 80"), Halved, 80.0f, 0.01f);
+	Holder.Set(Vital::GetHealingReceivedReductionAttribute(), 0.0f);
+
+	// AND THE HEALING CEILING STILL STOPS IT.
+	Holder.Set(Vital::GetHealingCeilingReductionAttribute(), 50.0f);
+	SetHealingHealth(Holder, 49990.0f);
+	const float Capped = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("ten points under a healing ceiling of half, the same blow returns the 10 that fit"), Capped,
+			  10.0f, 0.01f);
+	TestEqual(TEXT("and the holder stops at half its maximum"), Holder.Health(), 50000.0f, 0.01f);
+
+	TestEqual(TEXT("the pyre reports the four returns together: 100, 160, 80 and 10"), Pyre->HealthReturned, 350.0f,
+			  0.01f);
+	TestEqual(TEXT("and it counted all four blows"), Pyre->BlowsTaken, 4);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillLivingPyreShieldTest,
+	"Cataclysm.HealingSkills.ARowGivesAShareOfTheHealthTheLivingPyreReturnedAsEnergyShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Healing skills also restore 10%-20% of the healed amount as energy shield" as
+ * `healing_skill_health_as_energy_shield`, flat 20, on Living Pyre's holder, whose energy shield holds up to 1,000.
+ *
+ * THE CONTROL is the same holder before it wears the row: a blow returns health and no shield. WITH THE ROW a
+ * return of 100 gives 20 shield. Under a reduction of healing received of fifty the return is 50 and the shield
+ * is 10: the share is of what arrived, and a share of the 100 offered would be 20. Five points under its maximum
+ * the shield stops at the maximum. At full health nothing is returned and no shield is given. With 50% more as
+ * well, the return is 150 and the shield is 30.
+ *
+ * STANDING: one fighter at the origin and nobody else.
+ */
+bool FCataclysmHealingSkillLivingPyreShieldTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	SetHealingHealth(Holder, 50000.0f);
+	GiveHealingShieldPool(Holder, /*Maximum=*/1000.0f, /*Held=*/0.0f);
+	UCataclysmAuraSkill* Pyre = LightHealingLivingPyre(Holder);
+	if (!TestNotNull(TEXT("set-up: Living Pyre is granted and lit"), Pyre)
+		|| !TestEqual(TEXT("set-up: its holder is at 50,000 of 100,000 health"), Holder.Health(), 50000.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: and holds an empty energy shield"), HealingShieldHeldBy(Holder), 0.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: whose maximum is 1,000"), Holder.Get(Vital::GetMaxEnergyShieldAttribute()),
+					  1000.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	const float Plain = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	if (!TestEqual(TEXT("control: with no row a blow dealing 400 returns 100 health"), Plain, 100.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and gives no energy shield"), HealingShieldHeldBy(Holder), 0.0f, 0.001f);
+
+	// THE ROW.
+	WearHealingSkillRows(Holder, /*MorePercent=*/0.0f, /*ShieldPercent=*/20.0f);
+	SetHealingHealth(Holder, 50000.0f);
+	const float Given = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("with the row, the blow still returns 100 health: the shield is not taken out of it"), Given,
+			  100.0f, 0.01f);
+	TestEqual(TEXT("and the shield rises by 20, which is 20% of the 100 that arrived"), HealingShieldHeldBy(Holder),
+			  20.0f, 0.01f);
+
+	// OF WHAT ARRIVED, NOT OF WHAT WAS OFFERED.
+	Holder.Set(Vital::GetHealingReceivedReductionAttribute(), 50.0f);
+	SetHealingHealth(Holder, 50000.0f);
+	SetHealingShieldHeld(Holder, 0.0f);
+	const float Halved = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	if (!TestEqual(TEXT("set-up: under a reduction of healing received of fifty, 50 of the 100 offered arrives"),
+				   Halved, 50.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("under that reduction the shield rises by 10, a share of the 50 that arrived and not of the 100 "
+				   "offered"),
+			  HealingShieldHeldBy(Holder), 10.0f, 0.01f);
+	Holder.Set(Vital::GetHealingReceivedReductionAttribute(), 0.0f);
+
+	// IT STOPS AT THE SHIELD'S MAXIMUM.
+	SetHealingHealth(Holder, 50000.0f);
+	SetHealingShieldHeld(Holder, 995.0f);
+	Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("five points under its maximum, the shield stops at the maximum of 1,000"),
+			  HealingShieldHeldBy(Holder), 1000.0f, 0.01f);
+
+	// NO HEALTH ARRIVING, NO SHIELD.
+	SetHealingHealth(Holder, 100000.0f);
+	SetHealingShieldHeld(Holder, 0.0f);
+	const float AtFull = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("at full health the blow returns no health"), AtFull, 0.0f, 0.001f);
+	TestEqual(TEXT("and so gives no energy shield"), HealingShieldHeldBy(Holder), 0.0f, 0.001f);
+
+	// BOTH ROWS TOGETHER.
+	WearHealingSkillRows(Holder, /*MorePercent=*/50.0f, /*ShieldPercent=*/20.0f);
+	SetHealingHealth(Holder, 50000.0f);
+	SetHealingShieldHeld(Holder, 0.0f);
+	const float Both = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("with 50% more as well, the blow returns 150 health"), Both, 150.0f, 0.01f);
+	TestEqual(TEXT("and the shield rises by 30, which is 20% of the 150 that arrived"), HealingShieldHeldBy(Holder),
+			  30.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillBloodPyreMoreTest,
+	"Cataclysm.HealingSkills.ARowMultipliesTheExtraRegenerationOfYourOwnBloodPyreAndNotTheBase",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Healing skills restore 30%-60% more HP" as `healing_skill_health_restored`, more 50, on a thrower whose health
+ * regeneration is 10 a second.
+ *
+ * THE CONTROLS are the same thrower before the throw, which regenerates 10 in a second, and in its own pyre
+ * before it wears the row, which regenerates 20: the base 10 and an extra 10.
+ * WITH THE ROW, in its own pyre it regenerates 25: the base 10 and the extra 10 times 1.5. A multiplier on the
+ * whole rate would give 30. Out of the pyre it regenerates the base 10. With no regeneration of its own it gains
+ * nothing in the pyre.
+ *
+ * STANDING: one fighter at the origin, its pyre moved to its feet. "Out of the pyre" is 30 m along X, and the
+ * pyre reaches 3 m.
+ */
+bool FCataclysmHealingSkillBloodPyreMoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Thrower(World, FVector::ZeroVector);
+	Thrower.Set(Vital::GetHealthRegenAttribute(), 10.0f);
+	SetHealingHealth(Thrower, 50000.0f);
+
+	if (!TestEqual(TEXT("set-up: before any pyre the thrower regenerates its 10 in a second"),
+				   HealingHealthGainedInOneSecond(Thrower), 10.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch =
+		ThrowHealingGroundAtOwnFeet(World, Thrower, HealingBloodPyreParams, TEXT("Blood Pyre"));
+	if (!TestNotNull(TEXT("set-up: Blood Pyre is thrown and leaves one patch of its thrower's"), Patch)
+		|| !TestTrue(TEXT("set-up: the patch covers where the thrower stands"),
+					 Patch->Covers(Thrower.Actor->GetActorLocation()))
+		|| !TestEqual(TEXT("set-up: and doubles its owner's regeneration"),
+					  ACataclysmGroundZone::RegenerationScaleFor(Thrower.Actor), 2.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: IN THE PYRE, NO ROW.
+	SetHealingHealth(Thrower, 50000.0f);
+	TestEqual(TEXT("control: with no row, a second in its own pyre returns 20: the base 10 and an extra 10"),
+			  HealingHealthGainedInOneSecond(Thrower), 20.0f, 0.01f);
+
+	// THE ROW, IN THE PYRE.
+	WearHealingSkillRows(Thrower, /*MorePercent=*/50.0f, /*ShieldPercent=*/0.0f);
+	if (!TestEqual(TEXT("set-up: with the row worn, an amount of 100 is handed back as 150"),
+				   UCataclysmRegeneration::HealingSkillAmount(*Thrower.AbilitySystem, 100.0f), 150.0f, 0.001f))
+	{
+		return false;
+	}
+	SetHealingHealth(Thrower, 50000.0f);
+	TestEqual(TEXT("with 50% more, a second in its own pyre returns 25: the base 10 and the extra 10 times 1.5, and "
+				   "not the 30 a multiplier on the whole rate would give"),
+			  HealingHealthGainedInOneSecond(Thrower), 25.0f, 0.01f);
+
+	// THE ROW, OUT OF THE PYRE.
+	Thrower.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+	if (!TestEqual(TEXT("set-up: 30 m away nothing scales the thrower's regeneration"),
+				   ACataclysmGroundZone::RegenerationScaleFor(Thrower.Actor), 1.0f, 0.01f))
+	{
+		return false;
+	}
+	SetHealingHealth(Thrower, 50000.0f);
+	TestEqual(TEXT("out of the pyre, the row adds nothing: a second returns the base 10"),
+			  HealingHealthGainedInOneSecond(Thrower), 10.0f, 0.01f);
+
+	// THE ROW, IN THE PYRE, WITH NO REGENERATION TO MULTIPLY.
+	Thrower.Actor->SetActorLocation(FVector::ZeroVector);
+	Thrower.Set(Vital::GetHealthRegenAttribute(), 0.0f);
+	if (!TestEqual(TEXT("set-up: back in the pyre the scale is 2 again"),
+				   ACataclysmGroundZone::RegenerationScaleFor(Thrower.Actor), 2.0f, 0.01f))
+	{
+		return false;
+	}
+	SetHealingHealth(Thrower, 50000.0f);
+	TestEqual(TEXT("a thrower with no health regeneration gains nothing in its own pyre, with the row worn"),
+			  HealingHealthGainedInOneSecond(Thrower), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillBloodPyreShieldTest,
+	"Cataclysm.HealingSkills.ARowGivesAShareOfTheExtraHealthYourOwnBloodPyreRestoredAsEnergyShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Healing skills also restore 10%-20% of the healed amount as energy shield" as
+ * `healing_skill_health_as_energy_shield`, flat 20, on a thrower whose health regeneration is 10 a second and
+ * whose energy shield holds up to 1,000 and regenerates nothing by itself.
+ *
+ * THE CONTROL is the thrower with the row worn and no pyre: a second regenerates 10 health and gives no shield.
+ * IN ITS OWN PYRE a second regenerates 20, of which the extra is 10, and the shield rises by 2. At full health
+ * the step restores nothing and gives no shield. Ten points under full health, 10 of the 20 offered arrive; the
+ * extra was half of what was offered, so half of what arrived, 5, is the extra's, and the shield rises by 1. Out
+ * of the pyre a second gives no shield. With 50% more as well, a second in the pyre regenerates 25, of which the
+ * extra is 15, and the shield rises by 3.
+ *
+ * STANDING: one fighter at the origin, its pyre moved to its feet. "Out of the pyre" is 30 m along X.
+ */
+bool FCataclysmHealingSkillBloodPyreShieldTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Thrower(World, FVector::ZeroVector);
+	Thrower.Set(Vital::GetHealthRegenAttribute(), 10.0f);
+	SetHealingHealth(Thrower, 50000.0f);
+	GiveHealingShieldPool(Thrower, /*Maximum=*/1000.0f, /*Held=*/0.0f);
+	WearHealingSkillRows(Thrower, /*MorePercent=*/0.0f, /*ShieldPercent=*/20.0f);
+
+	// THE CONTROL: THE ROW WORN AND NO PYRE.
+	if (!TestEqual(TEXT("set-up: the thrower holds an empty energy shield"), HealingShieldHeldBy(Thrower), 0.0f,
+				   0.001f)
+		|| !TestEqual(TEXT("control: with the row worn and no pyre, a second regenerates the base 10 health"),
+					  HealingHealthGainedInOneSecond(Thrower), 10.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and gives no energy shield, so the shield does not fill by itself here"),
+			  HealingShieldHeldBy(Thrower), 0.0f, 0.001f);
+
+	ACataclysmGroundZone* Patch =
+		ThrowHealingGroundAtOwnFeet(World, Thrower, HealingBloodPyreParams, TEXT("Blood Pyre"));
+	if (!TestNotNull(TEXT("set-up: Blood Pyre is thrown and leaves one patch of its thrower's"), Patch)
+		|| !TestTrue(TEXT("set-up: the patch covers where the thrower stands"),
+					 Patch->Covers(Thrower.Actor->GetActorLocation()))
+		|| !TestEqual(TEXT("set-up: and doubles its owner's regeneration"),
+					  ACataclysmGroundZone::RegenerationScaleFor(Thrower.Actor), 2.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// IN THE PYRE.
+	SetHealingHealth(Thrower, 50000.0f);
+	SetHealingShieldHeld(Thrower, 0.0f);
+	if (!TestEqual(TEXT("set-up: a second in its own pyre regenerates 20 health, of which the extra is 10"),
+				   HealingHealthGainedInOneSecond(Thrower), 20.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("in its own pyre the shield rises by 2, which is 20% of the extra 10 and not of the whole 20"),
+			  HealingShieldHeldBy(Thrower), 2.0f, 0.01f);
+
+	// AT FULL HEALTH.
+	SetHealingHealth(Thrower, 100000.0f);
+	SetHealingShieldHeld(Thrower, 0.0f);
+	TestEqual(TEXT("at full health a second in the pyre restores nothing"), HealingHealthGainedInOneSecond(Thrower),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("and gives no energy shield"), HealingShieldHeldBy(Thrower), 0.0f, 0.001f);
+
+	// TEN POINTS UNDER FULL HEALTH.
+	SetHealingHealth(Thrower, 99990.0f);
+	SetHealingShieldHeld(Thrower, 0.0f);
+	if (!TestEqual(TEXT("set-up: ten points under full health, 10 of the 20 offered arrive"),
+				   HealingHealthGainedInOneSecond(Thrower), 10.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the extra was half of what was offered, so half of the 10 that arrived is the extra's, and the "
+				   "shield rises by 1"),
+			  HealingShieldHeldBy(Thrower), 1.0f, 0.01f);
+
+	// OUT OF THE PYRE.
+	Thrower.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+	SetHealingHealth(Thrower, 50000.0f);
+	SetHealingShieldHeld(Thrower, 0.0f);
+	if (!TestEqual(TEXT("set-up: 30 m away a second regenerates the base 10"),
+				   HealingHealthGainedInOneSecond(Thrower), 10.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("out of the pyre no energy shield is given"), HealingShieldHeldBy(Thrower), 0.0f, 0.001f);
+
+	// BOTH ROWS TOGETHER, IN THE PYRE.
+	Thrower.Actor->SetActorLocation(FVector::ZeroVector);
+	WearHealingSkillRows(Thrower, /*MorePercent=*/50.0f, /*ShieldPercent=*/20.0f);
+	SetHealingHealth(Thrower, 50000.0f);
+	SetHealingShieldHeld(Thrower, 0.0f);
+	TestEqual(TEXT("with 50% more as well, a second in the pyre regenerates 25 health, of which the extra is 15"),
+			  HealingHealthGainedInOneSecond(Thrower), 25.0f, 0.01f);
+	TestEqual(TEXT("and the shield rises by 3, which is 20% of the extra 15"), HealingShieldHeldBy(Thrower), 3.0f,
+			  0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillControlsTest,
+	"Cataclysm.HealingSkills.BothRowsDoNothingInSomebodyElsesPyreNorOnGroundOrAnAuraThatRestoresNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three controls, each a fighter wearing BOTH rows, more 50 and a shield share of 20, with a health regeneration
+ * of 10 a second and an energy shield that holds up to 1,000 and regenerates nothing by itself.
+ *
+ * SOMEBODY ELSE'S PYRE: a stranger standing in another fighter's Blood Pyre regenerates its base 10 and is given
+ * no shield. GROUND THAT RESTORES NOTHING: a fighter standing in ground it left with a row that says nothing of
+ * regeneration regenerates its base 10 and is given no shield. AN AURA THAT RESTORES NOTHING: Conflagration's
+ * holder takes a blow, is returned no health and is given no shield.
+ *
+ * STANDING: the pyre's thrower at the origin with its pyre at its feet, and the stranger 1 m along X, inside the
+ * pyre's 3 m. The second thrower 40 m along Y with its ground at its feet. The aura's holder 80 m along Y; its
+ * aura reaches 10 m and nobody is within it.
+ */
+bool FCataclysmHealingSkillControlsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealingSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto MakeReady = [](FScopedFighter& Who)
+	{
+		Who.Set(Vital::GetHealthRegenAttribute(), 10.0f);
+		SetHealingHealth(Who, 50000.0f);
+		GiveHealingShieldPool(Who, /*Maximum=*/1000.0f, /*Held=*/0.0f);
+		WearHealingSkillRows(Who, /*MorePercent=*/50.0f, /*ShieldPercent=*/20.0f);
+	};
+
+	// SOMEBODY ELSE'S PYRE.
+	FScopedFighter Thrower(World, FVector::ZeroVector);
+	ACataclysmGroundZone* Pyre =
+		ThrowHealingGroundAtOwnFeet(World, Thrower, HealingBloodPyreParams, TEXT("Blood Pyre"));
+	FScopedFighter Stranger(World, FVector(1 * M, 0, 0));
+	MakeReady(Stranger);
+	if (!TestNotNull(TEXT("set-up: Blood Pyre is thrown and leaves one patch of its thrower's"), Pyre)
+		|| !TestTrue(TEXT("set-up: the patch covers where the stranger stands"),
+					 Pyre->Covers(Stranger.Actor->GetActorLocation()))
+		|| !TestEqual(TEXT("set-up: and doubles its owner's regeneration"),
+					  ACataclysmGroundZone::RegenerationScaleFor(Thrower.Actor), 2.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: and does not scale the stranger's"),
+					  ACataclysmGroundZone::RegenerationScaleFor(Stranger.Actor), 1.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: the stranger wears the row: an amount of 100 is handed back as 150"),
+					  UCataclysmRegeneration::HealingSkillAmount(*Stranger.AbilitySystem, 100.0f), 150.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a stranger in somebody else's pyre regenerates its base 10 in a second, with both rows worn"),
+			  HealingHealthGainedInOneSecond(Stranger), 10.0f, 0.01f);
+	TestEqual(TEXT("and is given no energy shield"), HealingShieldHeldBy(Stranger), 0.0f, 0.001f);
+
+	// GROUND THAT RESTORES NOTHING.
+	FScopedFighter Other(World, FVector(0, 40 * M, 0));
+	ACataclysmGroundZone* Ground =
+		ThrowHealingGroundAtOwnFeet(World, Other, HealingPlainGroundParams, TEXT("Plain ground"));
+	MakeReady(Other);
+	if (!TestNotNull(TEXT("set-up: the second thrower leaves one patch of its own"), Ground)
+		|| !TestTrue(TEXT("set-up: which covers where it stands"), Ground->Covers(Other.Actor->GetActorLocation()))
+		|| !TestEqual(TEXT("set-up: and does not scale its owner's regeneration, because its row says nothing of it"),
+					  ACataclysmGroundZone::RegenerationScaleFor(Other.Actor), 1.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a fighter on its own ground that restores nothing regenerates its base 10, with both rows worn"),
+			  HealingHealthGainedInOneSecond(Other), 10.0f, 0.01f);
+	TestEqual(TEXT("and is given no energy shield"), HealingShieldHeldBy(Other), 0.0f, 0.001f);
+
+	// AN AURA THAT RESTORES NOTHING.
+	FScopedFighter Ringed(World, FVector(0, 80 * M, 0));
+	MakeReady(Ringed);
+	UCataclysmAuraSkill* Ring = GrantSkill<UCataclysmAuraSkill>(
+		Ringed, ECataclysmAbilitySlot::Aura, HealingPlainAuraParams, TEXT("Conflagration"),
+		TEXT("Element.Demonic"));
+	if (!TestNotNull(TEXT("set-up: Conflagration is granted"), Ring)
+		|| !TestTrue(TEXT("set-up: and lit"), Activate(Ringed, Ring)))
+	{
+		return false;
+	}
+	const float RingedBefore = Ringed.Health();
+	TestEqual(TEXT("an aura whose row states no share returns no health from a blow dealing 400, with both rows "
+				   "worn"),
+			  Ring->NoteBlowTaken(/*DealtToHealth=*/400.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("its holder's health did not move"), Ringed.Health(), RingedBefore, 0.001f);
+	TestEqual(TEXT("and its holder is given no energy shield"), HealingShieldHeldBy(Ringed), 0.0f, 0.001f);
+	if (!TestEqual(TEXT("set-up, read last: the aura was up, because it counted the blow"), Ring->BlowsTaken, 1))
+	{
+		return false;
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
