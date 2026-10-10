@@ -76,6 +76,9 @@
 #include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmEquipmentComponent.h"
+// For counting what is in the bag when a second two-handed weapon is handed
+// back. Ruled 2026-10-10 (J3).
+#include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 // For the item base table, which says which weapon types a character may begin
 // holding. Issue #1055.
@@ -1189,6 +1192,210 @@ bool FCataclysmClassPointsSlotSwitchedOffTest::RunTest(const FString&)
 				   "again"),
 			  Player.FromTheTreeOn(TEXT("health_regen")), 6.0f * RegenPerPoint,
 			  0.001f);
+
+	return true;
+}
+
+namespace CataclysmClassPointsFromGearTest
+{
+	/**
+	 * The largest number any ability this character holds was granted under.
+	 *
+	 * WHAT IT COUNTS. The engine numbers every granted ability from one counter
+	 * that only rises (`FGameplayAbilitySpecHandle::GenerateNewHandle`), and a
+	 * handle prints its number. So the difference between two readings of this,
+	 * with nothing else granting in between, is how many abilities were granted
+	 * between them. The number of abilities HELD cannot count that: filling the
+	 * ability slots takes every one back before it grants again, so the number
+	 * held is the same after one fill as after two.
+	 */
+	int32 HighestGrantNumber(const UCataclysmAbilitySystemComponent* AbilitySystem)
+	{
+		int32 Highest = 0;
+		for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+		{
+			if (Spec.Handle.IsValid())
+			{
+				Highest = FMath::Max(Highest, FCString::Atoi(*Spec.Handle.ToString()));
+			}
+		}
+		return Highest;
+	}
+
+	/** The base of what is worn in one slot, or none. */
+	FName BaseIn(const UCataclysmEquipmentComponent* Equipment, ECataclysmGearSlot Slot)
+	{
+		const FCataclysmItem* Item = Equipment->EquippedAt(Slot);
+		return Item ? Item->Base : FName(NAME_None);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsSecondWeaponHandedBackTest,
+	"Cataclysm.Passives.ClassPointsFromGear.TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-10 (J3). A level 10 character has earned 15 points and has 16
+ * spent: 15 in a node in no tree, which grants nothing, and the last in the
+ * real capstone `Ravager_capstone_200` with its second option, Both Hands Full.
+ * The sixteenth point counts only because the boots it wears are said to carry
+ * a row of 7.9 class points. It holds a Greatsword and a Greataxe.
+ *
+ * THE CONTROL COMES FIRST: with the boots on, putting a ring on hands nothing
+ * back. Then the boots come off, by one call. When that call returns, the
+ * Greataxe is in the bag, the Greatsword is still held, and the stat line no
+ * longer holds the option. AS MANY ABILITIES WERE GRANTED IN THAT CHANGE AS IN A
+ * CHANGE OF GEAR THAT HANDS NOTHING BACK, which is the boots going on again
+ * with the same one weapon held: the ability slots were filled once.
+ *
+ * THE BAG CASE ONLY. The floor case is `Cataclysm.BothHandsFull.
+ * LosingTheOptionReturnsTheSecondToTheBagOrTheFloor`'s.
+ */
+bool FCataclysmClassPointsSecondWeaponHandedBackTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassPointsFromGearTest;
+
+	UWorld* World = CataclysmPassiveTest::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGearedPlayer Player = SpawnAtLevel(World, 10);
+	UCataclysmInventoryComponent* Bag =
+		Player.Character ? Player.Character->GetInventory() : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player with its parts"),
+				  Player.IsComplete())
+		|| !TestNotNull(TEXT("set-up: and a bag"), Bag))
+	{
+		return false;
+	}
+
+	const FName Greatsword(TEXT("Weapon_Greatsword"));
+	const FName Greataxe(TEXT("Weapon_Greataxe"));
+	const FName Capstone(TEXT("Ravager_capstone_200"));
+	const auto Of = [](const TCHAR* Base)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		return Item;
+	};
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+
+	// THE GREATSWORD FIRST, over whatever weapon the character started with, so
+	// the character is never without a weapon. Without the option a two-handed
+	// weapon takes both hands. Then the boots with the row tied to them.
+	Player.Equipment->EquipInto(Of(*Greatsword.ToString()), ECataclysmGearSlot::Weapon1,
+								Removed, AlsoRemoved);
+	Player.Equipment->EquipInto(Of(TEXT("Boots_Sabatons")), ECataclysmGearSlot::Boots,
+								Removed, AlsoRemoved);
+	Player.Equipment->SetRowsWornForTests(WornRows({GrantingRow(7.9f)}),
+										  ECataclysmGearSlot::Boots);
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	if (!TestFalse(TEXT("set-up: the boots are on"),
+				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Boots))
+		|| !TestEqual(TEXT("set-up: their row of 7.9 makes it 22 earned"),
+					  Player.State->PassivePointsAvailable(), 22))
+	{
+		return false;
+	}
+
+	// SIXTEEN POINTS, THE LAST OF THEM THE CAPSTONE'S. Put on unchecked, as a
+	// loaded allocation is.
+	FCataclysmPassiveAllocation Spent;
+	Spent.Add(FName(TEXT("Test_node_in_no_tree")), 15);
+	Spent.SetChosenOption(Capstone, 2);
+	Spent.Add(Capstone, 1);
+	Player.State->SetPassiveAllocation(Spent, TArray<FName>());
+	if (!TestEqual(TEXT("set-up: 16 points are spent"),
+				   Player.State->GetPassiveAllocation().Total(), 16)
+		|| !TestEqual(TEXT("set-up: the capstone is the last node first touched"),
+					  Player.State->GetPassiveAllocation().Nodes.Last().Node, Capstone)
+		|| !TestEqual(TEXT("set-up: no point adds nothing"),
+					  Player.State->PassivePointsAddingNothing(), 0)
+		|| !TestTrue(TEXT("set-up: the stat line holds Both Hands Full"),
+					 Player.Equipment->MayHoldTwoTwoHanded()))
+	{
+		return false;
+	}
+
+	// AND THE GREATAXE IN THE OTHER HAND, which the option allows.
+	Player.Equipment->EquipInto(Of(*Greataxe.ToString()), ECataclysmGearSlot::Weapon2,
+								Removed, AlsoRemoved);
+	if (!TestEqual(TEXT("set-up: the Greatsword is in the first hand"),
+				   BaseIn(Player.Equipment, ECataclysmGearSlot::Weapon1), Greatsword)
+		|| !TestEqual(TEXT("set-up: the Greataxe is in the second hand"),
+					  BaseIn(Player.Equipment, ECataclysmGearSlot::Weapon2), Greataxe))
+	{
+		return false;
+	}
+
+	// THE CONTROL: THE OPTION IS KEPT, AND ANOTHER CHANGE OF GEAR HANDS NOTHING
+	// BACK. A ring goes on.
+	const int32 CarriedBeforeTheRing = Bag->NumItems();
+	Player.Equipment->EquipInto(Of(TEXT("Ring_Band")), ECataclysmGearSlot::Ring1,
+								Removed, AlsoRemoved);
+	if (!TestFalse(TEXT("control set-up: the ring is on"),
+				   Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Ring1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with the boots on, the Greataxe is still in the "
+				   "second hand after the ring goes on"),
+			  BaseIn(Player.Equipment, ECataclysmGearSlot::Weapon2), Greataxe);
+	TestEqual(TEXT("control: and nothing went to the bag"), Bag->NumItems(),
+			  CarriedBeforeTheRing);
+	TestTrue(TEXT("control: and the stat line still holds the option"),
+			 Player.Equipment->MayHoldTwoTwoHanded());
+
+	// THE BOOTS COME OFF, BY ONE CALL. Everything below is read as that call
+	// left it.
+	const int32 CarriedBefore = Bag->NumItems();
+	const int32 GrantsBefore = HighestGrantNumber(Player.AbilitySystem);
+	FCataclysmItem Boots;
+	if (!TestTrue(TEXT("the boots come off"),
+				  Player.Equipment->Unequip(ECataclysmGearSlot::Boots, Boots)))
+	{
+		return false;
+	}
+	const int32 GrantsAfterHandBack = HighestGrantNumber(Player.AbilitySystem);
+
+	TestEqual(TEXT("boots off: 15 are earned"),
+			  Player.State->PassivePointsAvailable(), 15);
+	TestEqual(TEXT("boots off: all 16 points are still spent"),
+			  Player.State->GetPassiveAllocation().Total(), 16);
+	TestEqual(TEXT("boots off: the capstone's point adds nothing"),
+			  Player.State->PassivePointsAddingNothing(), 1);
+	TestEqual(TEXT("boots off: and the capstone keeps its choice"),
+			  Player.State->GetPassiveAllocation().ChosenOptionIn(Capstone), 2);
+	TestFalse(TEXT("boots off: the stat line no longer holds the option"),
+			  Player.Equipment->MayHoldTwoTwoHanded());
+	TestTrue(TEXT("boots off: the second hand is empty, in that same change"),
+			 Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon2));
+	TestEqual(TEXT("boots off: the Greatsword is still in the first hand"),
+			  BaseIn(Player.Equipment, ECataclysmGearSlot::Weapon1), Greatsword);
+	TestEqual(TEXT("boots off: the bag holds one more item, the Greataxe"),
+			  Bag->NumItems(), CarriedBefore + 1);
+
+	// THE BOOTS GO ON AGAIN: A CHANGE OF GEAR THAT HANDS NOTHING BACK, with the
+	// same one weapon held. What it grants is one filling of the ability slots.
+	Player.Equipment->EquipInto(Boots, ECataclysmGearSlot::Boots, Removed, AlsoRemoved);
+	const int32 GrantsAfterPlainChange = HighestGrantNumber(Player.AbilitySystem);
+	const int32 GrantedWithHandBack = GrantsAfterHandBack - GrantsBefore;
+	const int32 GrantedByOneFilling = GrantsAfterPlainChange - GrantsAfterHandBack;
+
+	if (TestTrue(TEXT("set-up of the count: a change of gear with a weapon held "
+					  "grants abilities, so there is something to count"),
+				 GrantedByOneFilling > 0))
+	{
+		TestEqual(TEXT("the change that handed the weapon back granted as many "
+					   "abilities as one filling of the ability slots, not two"),
+				  GrantedWithHandBack, GrantedByOneFilling);
+	}
+
+	TestTrue(TEXT("boots on again: the point counts and the option is back"),
+			 Player.Equipment->MayHoldTwoTwoHanded());
+	TestTrue(TEXT("boots on again: the second hand stays empty; nothing puts "
+				  "the weapon back"),
+			 Player.Equipment->SlotIsEmpty(ECataclysmGearSlot::Weapon2));
 
 	return true;
 }

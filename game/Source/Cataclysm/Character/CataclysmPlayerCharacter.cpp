@@ -2001,6 +2001,37 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 		if (Equipment)
 		{
 			Equipment->RefreshAttributes(ASC);
+
+			// AND A SECOND TWO-HANDED WEAPON GOES BACK WHEN THE CHANGE OF GEAR
+			// TOOK BOTH HANDS FULL AWAY. Ruled 2026-10-10 (J3). Since 2026-10-09
+			// taking gear off can do that: gear can grant class points, and the
+			// passive point that grants the option may count only because of
+			// them. The stat line refreshed on the line above is what says
+			// whether the option is still held, so this is asked after it.
+			// `ACataclysmPlayerState::RefreshCharacterStats` asks the same after
+			// a change to the allocation, and still does.
+			//
+			// IF A WEAPON CAME OFF, THIS CALL STOPS HERE, and that is what keeps
+			// one change of gear from filling the ability slots twice. Taking the
+			// weapon off announces a change of gear, so this function has already
+			// run a second time, inside the call below, for the gear as it now is:
+			// it refreshed the stat line, found no second weapon to hand back,
+			// filled the ability slots and drew the hands. Those are the only
+			// three things this function does, so nothing is left for this outer
+			// call to do, and doing the last two again is the double grant issue
+			// #1214 records.
+			//
+			// TO THE BAG AND TO THE FLOOR BOTH COUNT. Every other answer means no
+			// weapon moved and nothing was announced, and this call goes on.
+			const ECataclysmWearResult HandedBack =
+				UCataclysmWearing::ReturnSecondTwoHandedWeapon(
+					Inventory, Equipment, GetWorld(),
+					UCataclysmDropSpawner::DropSpotInFrontOf(*this));
+			if (HandedBack == ECataclysmWearResult::TakenOff
+				|| HandedBack == ECataclysmWearResult::Dropped)
+			{
+				return;
+			}
 		}
 	}
 

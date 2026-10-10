@@ -9,8 +9,9 @@ reader), `CataclysmPassiveTree.h` and `.cpp` (four functions, one refusal senten
 line), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (the figure kept at each refresh,
 the reduced allocation handed to the tree, one seam for tests), `game/Source/Cataclysm/Player/CataclysmPlayerState.h`
 and `.cpp` (the points earned gain a term; three functions), `CataclysmPassiveTreeWidget.cpp` (the points line,
-a node's label and tool tip), `CataclysmPlayerCharacter.cpp` (two lines of `Cataclysm.ShowPassives`),
-`CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute), seven new tests in
+a node's label and tool tip), `CataclysmPlayerCharacter.cpp` (two lines of `Cataclysm.ShowPassives`, and the
+hand-back of a second two-handed weapon on a change of gear), `CataclysmBothHandsFullTests.cpp` (one test's set-up),
+`CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute), eight new tests in
 `CataclysmPassiveTreeTests.cpp`, one probe in `CataclysmStatExemptionTests.cpp`, `tools/generate_datatables.py`
 (one check) and `tools/tests/test_generate_datatables.py`. No data row, no workbook cell and no saved field is
 changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
@@ -95,30 +96,55 @@ by two of this layer's tests. No test of the merged ones reads it on a character
 - **The same benefit on several pieces grants its points once**, at the higher roll. That is the rule every
   benefit follows and this layer does not change it.
 
-### SAID FIRST: WHAT WAS NOT READ, ONE THING FOUND AND NOT FIXED, AND ONE LEFT AS BUILT
+### SAID FIRST: ONE CHANGE OF GEAR CAN NOW HAND A WEAPON BACK, AND THEN REFRESHES THE STATS TWICE
+
+**A second two-handed weapon is handed back in the same change of gear that takes the option away.** The option
+to hold two (`two_handed_weapon_in_each_hand`, Both Hands Full) can be granted by a passive point, and since
+this layer that point may count only because worn gear grants class points. Taking that gear off takes the
+option off the stat line. Ruled 2026-10-10 by the coordinating session (J3):
+`ACataclysmPlayerCharacter::OnEquipmentChanged`, after `RefreshAttributes`, calls
+`UCataclysmWearing::ReturnSecondTwoHandedWeapon`, and if that took a weapon off it returns there. Before this
+the hand-back ran only from `ACataclysmPlayerState::RefreshCharacterStats`, which a change to the allocation
+calls, so the weapon stayed in the hand until the next change to the allocation. That caller is unchanged.
+
+- **Such a change of gear runs the stat refresh twice, and the first is needed.** The first refresh is what
+  shows the option is gone: the hand-back asks the stat line for it. Taking the weapon off then announces a
+  second change of gear, and `OnEquipmentChanged` runs a second time inside the first, for the gear as it now
+  is. A change of gear that hands nothing back refreshes once, as before.
+- **The outer call returns early because the inner call has done the rest.** Read on 2026-10-10:
+  `OnEquipmentChanged` does three things and no others. It refreshes the stat line, fills the ability slots from
+  the worn weapon (`FillAbilitySlotsFromWornWeapon`) and draws the hands (`RefreshWeaponMeshes`). The inner call
+  does all three for the gear as it now is, and its own hand-back finds one weapon and does nothing. So the
+  outer call has nothing left to do, and the ability slots are filled once. Without the early return they would
+  be emptied and filled twice for one change of gear, which is the fault issue #1214 records for a swap.
+- **Which answers count as a weapon taken off.** `ReturnSecondTwoHandedWeapon` answers an
+  `ECataclysmWearResult`. `TakenOff` (to the bag) and `Dropped` (to the floor, when the bag is full) return
+  early. `NothingWorn`, `NothingToWorkWith` and `TheFloorRefusedIt` mean no weapon moved and nothing was
+  announced, and the call goes on. With a full bag and a floor that refuses the weapon, it stays held.
+- **`EquipmentChanged` has one listener in game code.** Every place the delegate is bound in `game/Source` was
+  searched for on 2026-10-10. It is a plain multicast delegate, not one a Blueprint can bind
+  (`DECLARE_MULTICAST_DELEGATE`, no `BlueprintAssignable`). The one bind in game code is
+  `CataclysmPlayerCharacter.cpp`, `EquipmentChanged.AddUObject(this, &ACataclysmPlayerCharacter::OnEquipmentChanged)`
+  in `BeginPlay`. Three tests in `CataclysmEquipmentTests.cpp` bind a counting lambda to a component of their
+  own; none of them holds two two-handed weapons. The early return is in the listener and not in the
+  broadcast, so any other listener would still be told of both changes.
+- **A character with no player character behind it is not served.** The hand-back on a change of gear is in
+  the player character's listener. A plain actor wearing equipment has no listener and nothing hands its weapon
+  back; no such actor loses the option to gear in play.
+- **A merged test's set-up had to change.** `Cataclysm.BothHandsFull.LosingTheOptionReturnsTheSecondToTheBagOrTheFloor`
+  gave the option by hand just before each weapon went on a real player. The refresh after the second weapon
+  went on wiped the hand-given option, and with this change that refresh hands the weapon straight back, before
+  the respec the test is about. The test now gives the option through the real capstone
+  (`Ravager_capstone_200`, second option, one point) on an allocation put on unchecked. What it asserts after
+  the respec is unchanged.
+
+### SAID FIRST: WHAT WAS NOT READ, AND ONE THING LEFT AS BUILT
 
 - **Not read:** all of `UCataclysmPlayerClassStats::ApplyTo`. The part that records a stat's base and modifiers
   was read; that a stat on the list of stats with no attribute passes through the rest of it without a warning
   was taken from the stats already on that list.
 - **Not read:** the save writer, the save records and `CataclysmSaveGather.cpp` past the one line that copies
   the allocation into a record. This layer changes none of them.
-- **Found and not fixed: a second two-handed weapon is not handed back when gear comes off.** The option that
-  lets a character hold two (`two_handed_weapon_in_each_hand`) can be granted by a passive point. When that
-  point stops counting because gear came off, the stat line loses the option, and
-  `UCataclysmWearing::ReturnSecondTwoHandedWeapon` is what hands the second weapon back. It runs from
-  `ACataclysmPlayerState::RefreshCharacterStats`, which a change to the allocation calls, and not from
-  `ACataclysmPlayerCharacter::OnEquipmentChanged`, which a change of gear calls. The weapon stays in the hand
-  until the next change to the allocation.
-- **A fix for that was ruled into this layer on 2026-10-09 (J3) and was NOT written, because the hand-back
-  changes gear inside the gear refresh it would run from.** `ReturnSecondTwoHandedWeapon` takes the weapon off
-  with `UCataclysmEquipmentComponent::Unequip` (`CataclysmWearing.cpp`, both the bag branch and the floor
-  branch). `Unequip` calls `AnnounceChange`, which broadcasts `EquipmentChanged`, and the one listener is
-  `OnEquipmentChanged`. Called from `OnEquipmentChanged`, the hand-back would start a second broadcast and a
-  second `OnEquipmentChanged` while the first of each was still running. Nothing guards against that. The second
-  call would end by itself, since the second hand is then empty, but the abilities would be taken back and
-  granted twice and the hands drawn twice for one change of gear, the fault issue #1214 records for a swap. The
-  ruling said to stop and report in that case. What the fix needs is a ruling on how the weapon comes off
-  without an announcement inside an announcement.
 - **Left as built, ruled 2026-10-09 (J4): a capstone's threshold counts every point spent in its tree, the ones
   that add nothing included.** A capstone opened with gear points stays open while the gear is off. Its own point
   may be one that adds nothing.
@@ -228,7 +254,7 @@ first is safe, because the refresh that follows the gear counts every point agai
 
 ### Tests
 
-Seven automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one probe.
+Eight automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one probe.
 
 - `TheExcessIsTakenFromTheLastNodeFirstTouched`: the reduced allocation with no world. Three nodes holding 3, 5
   and 2, where the first node's third point is the last point spent. No excess returns the same entries; an
@@ -259,6 +285,15 @@ Seven automation tests under `Cataclysm.Passives.ClassPointsFromGear.`, and one 
   switched off nothing changes. With the weapon's slot switched off the weapon grants no point, 15 are earned,
   21 are still spent, 6 add nothing and Willing Flesh's modifier is off the stat line. With no slot off it is
   all back. This is the test that shows J5b; no earlier test switched a slot off under a granting item.
+- `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` (J3): a level 10 character with
+  16 points spent, the last in the real capstone with Both Hands Full, which counts only because its boots are
+  said to carry a row of 7.9. It holds a Greatsword and a Greataxe. The control comes first: a ring goes on,
+  and nothing is handed back. The boots come off by one call: the Greataxe is in the bag, the Greatsword is
+  held, the option is off the stat line, the capstone keeps its choice. The bag case only. THE ABILITIES ARE
+  COUNTED: that change granted as many as the boots going on again, which hands nothing back. The count is the
+  rise in the number the engine grants abilities under, read off the handles the character holds; the number of
+  abilities held cannot show a second filling, because a filling takes every one back first. It is in this
+  group and not beside the hand-back's own tests because it needs this layer's gear and its points.
 - `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for `class_points_granted`.
 
 Python: `TestAWornRowGrantsClassPoints` in `tools/tests/test_generate_datatables.py`, six tests of the rows'
@@ -270,8 +305,8 @@ shape and of each refusal with its control.
 label on a node's button, which the button has no function to read back, only its tool tip; the two lines
 `Cataclysm.ShowPassives` gained; a weapon planted by a real skill, since the test plants it directly; a slot
 switched off by the floor rule itself, since the test switches it off directly; a planted weapon in a
-switched-off slot; a second two-handed weapon held when the option's point stops counting; anything drawn on a
-screen.
+switched-off slot; a second two-handed weapon handed back to the floor on a change of gear, or refused by the
+floor; anything drawn on a screen.
 
 **No guard proof was run.** Three are proposed in the report of the session that wrote this.
 
