@@ -54917,6 +54917,7 @@ bool FCataclysmRealityChamberCarryTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("the drops lying in the world are the ones the roll counted"), RewardDrops,
 			  Mode->RealityChamberRewardDropsSpawned());
+	TestEqual(TEXT("a roll that left drops is given no extra drop"), Mode->RealityChamberRewardExtraDropsSpawned(), 0);
 	int32 DropsOffTheChamber = 0;
 	TSet<const ACataclysmDroppedItem*> TheReward;
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
@@ -55257,6 +55258,116 @@ bool FCataclysmRealityChamberObstacleTest::RunTest(const FString& Parameters)
 								Asked),
 				Allowed);
 	TestTrue(TEXT("and the player is still in the chamber"), Mode->PlayerIsInTheRealityChamber());
+	return true;
+}
+
+// THE CHAMBER'S REWARD IS NEVER EMPTY, ruled 2026-10-10. On a floor whose Elite roll at the player's own loot quantity,
+// the baseline of 100, leaves no drop, entering the chamber leaves exactly one. The floor is found by search over dungeon
+// seeds. THE CONTROL is the plain Elite roll made by the test on a stream of the same seed with the same magic find
+// and loot quantity before the chamber is entered: it leaves no drop. The same floor built again gives the same drop
+// by name, because the extra drop is drawn on the same seeded stream after the roll.
+//
+// WHERE EACH STANDS: the floor's creatures are cleared. The player is at the entrance, is moved to the middle of the
+// chamber rift's floor cell, the cell asserted as set-up, and is carried to the chamber's middle cell. The control
+// roll is asked for at the entrance and leaves nothing there.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRealityChamberNeverEmptyTest,
+	"Cataclysm.DungeonModifierEffects.RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRealityChamberNeverEmptyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	float MagicFind = 0.0f;
+	float LootQuantity = 0.0f;
+	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+	if (!TestEqual(TEXT("set-up: the player's loot quantity is the baseline"), LootQuantity,
+				   UCataclysmDropRoll::BaselineLootQuantity, 0.01f))
+	{
+		return false;
+	}
+
+	// A CHAMBER FLOOR WHOSE PLAIN ELITE ROLL IS EMPTY, SEARCHED FOR BY DUNGEON SEED. A roll that is not empty leaves its
+	// drops at the entrance, and the next floor built clears them.
+	const int32 EliteStep = 1;
+	int32 EmptySeed = 0;
+	int32 ChamberFloorsTried = 0;
+	for (int32 From = 1; From <= ChamberFloorSeedsTried && EmptySeed == 0;)
+	{
+		int32 SeedHere = 0;
+		if (!ARealityChamberFloor(*this, Mode, SeedHere, From))
+		{
+			return false;
+		}
+		++ChamberFloorsTried;
+		From = SeedHere + 1;
+		if (DropsInTheWorld(World) != 0)
+		{
+			continue;
+		}
+		FRandomStream PlainStream(Effects::RealityChamberRewardSeed(Mode->CurrentFloor->GetPlan().Seed));
+		const int32 PlainDrops = UCataclysmDropSpawner::SpawnDropsFor(
+			World, EliteStep, MagicFind, LootQuantity, Mode->CurrentFloor->EntranceWorld(), PlainStream);
+		if (PlainDrops == 0 && DropsInTheWorld(World) == 0)
+		{
+			EmptySeed = SeedHere;
+		}
+	}
+	if (!TestTrue(FString::Printf(TEXT("set-up: CONTROL: one of the %d chamber floors tried has a plain Elite roll that "
+								  "leaves no drop (dungeon seed %d)"), ChamberFloorsTried, EmptySeed),
+				  EmptySeed > 0)
+		|| !TestEqual(TEXT("set-up: CONTROL: and no drop lies in the world after that roll"), DropsInTheWorld(World), 0))
+	{
+		return false;
+	}
+
+	// INTO THE CHAMBER: EXACTLY ONE DROP, IN THE CHAMBER.
+	if (!ChamberEnter(*this, Mode, Player))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one roll was made"), Mode->RealityChamberRewardRollsMade(), 1);
+	TestEqual(TEXT("entering leaves exactly one drop in the world"), DropsInTheWorld(World), 1);
+	TestEqual(TEXT("which the chamber counts as its reward"), Mode->RealityChamberRewardDropsSpawned(), 1);
+	TestEqual(TEXT("and as the one extra drop"), Mode->RealityChamberRewardExtraDropsSpawned(), 1);
+	int32 OffTheChamber = 0;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		OffTheChamber +=
+			Mode->CurrentFloor->IsAHiddenChamberCell(Mode->CurrentFloor->CellOfWorld(It->GetActorLocation())) ? 0 : 1;
+	}
+	TestEqual(TEXT("and it lies on a chamber cell"), OffTheChamber, 0);
+	const TArray<FString> FirstNames = ChamberDropNames(World, TSet<const ACataclysmDroppedItem*>());
+
+	// THE SAME DUNGEON SEED AND FLOOR BUILT AGAIN: THE SAME ONE DROP.
+	int32 SeedAgain = 0;
+	if (!ARealityChamberFloor(*this, Mode, SeedAgain, EmptySeed)
+		|| !TestEqual(TEXT("set-up: the same dungeon seed has its chamber again"), SeedAgain, EmptySeed)
+		|| !TestEqual(TEXT("set-up: the floor built again begins with no drop"), DropsInTheWorld(World), 0)
+		|| !ChamberEnter(*this, Mode, Player))
+	{
+		return false;
+	}
+	const TArray<FString> AgainNames = ChamberDropNames(World, TSet<const ACataclysmDroppedItem*>());
+	TestEqual(TEXT("built again, entering leaves exactly one drop"), AgainNames.Num(), 1);
+	if (FirstNames.Num() == 1 && AgainNames.Num() == 1)
+	{
+		TestEqual(TEXT("and it is the same drop by name"), AgainNames[0], FirstNames[0]);
+	}
 	return true;
 }
 

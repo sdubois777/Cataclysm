@@ -2615,6 +2615,12 @@ public:
 	/** The hidden chamber, for tests: how many drops that roll put on its floor. */
 	int32 RealityChamberRewardDropsSpawned() const { return RealityChamberRewardDrops; }
 
+	/**
+	 * The hidden chamber, for tests: how many of those drops were given because the roll left none. One or nought.
+	 * Ruled 2026-10-10: the chamber's reward is never empty.
+	 */
+	int32 RealityChamberRewardExtraDropsSpawned() const { return RealityChamberRewardExtraDrops; }
+
 	/** Luxury Hoarders, for tests: where this floor's hoards lie. */
 	const TArray<FVector>& LuxuryHoardsNow() const { return LuxuryHoards; }
 
@@ -5029,6 +5035,7 @@ private:
 	bool bRealityChamberRewardGiven = false;
 	int32 RealityChamberRewardRolls = 0;
 	int32 RealityChamberRewardDrops = 0;
+	int32 RealityChamberRewardExtraDrops = 0;
 
 	/** Luxury Hoarders: where the hoards lie, their guards, and how many drops the piles were laid with. */
 	TArray<FVector> LuxuryHoards;

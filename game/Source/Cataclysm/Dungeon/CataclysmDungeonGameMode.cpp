@@ -9540,6 +9540,7 @@ void ACataclysmDungeonGameMode::ForgetTheRealityChamber()
 	bRealityChamberRewardGiven = false;
 	RealityChamberRewardRolls = 0;
 	RealityChamberRewardDrops = 0;
+	RealityChamberRewardExtraDrops = 0;
 	if (CurrentFloor)
 	{
 		CurrentFloor->ClearHiddenChamber();
@@ -9630,6 +9631,33 @@ void ACataclysmDungeonGameMode::StepTheRealityChamber(ACataclysmPlayerCharacter*
 		RealityChamberRewardDrops += UCataclysmDropSpawner::SpawnDropsFor(
 			World, Effects::RealityChamberRewardRung, MagicFind, LootQuantity, RealityChamberRewardWorld(),
 			RewardStream);
+
+		// NEVER EMPTY, ruled 2026-10-10: "A hidden chamber that gives nothing 37% of the time while the panel says
+		// "given" is not what the row promises." When the roll above left no drop, one more is given from the same
+		// Elite row, through the same function with its counts given instead of rolled, as The Infested Hoard's one
+		// extra drop is asked for: gear or a crafting material in the Elite row's own ratio of the two, drawn on the
+		// same stream after the roll, so the same floor gives the same reward. A gear item can fail to roll, so the
+		// other kind is asked for once if the first leaves nothing. What an Elite kill drops is not changed.
+		const UDataTable* EliteDropTable = UCataclysmDropRoll::LoadEnemyDropTable();
+		if (RealityChamberRewardDrops <= 0 && EliteDropTable)
+		{
+			const FName EliteRow =
+				UCataclysmDropSpawner::EnemyRarityForStep(EliteDropTable, Effects::RealityChamberRewardRung);
+			const float EliteGear = UCataclysmDropRoll::ExpectedGearDrops(
+				EliteDropTable, EliteRow, UCataclysmDropRoll::BaselineLootQuantity);
+			const float EliteMaterials = UCataclysmDropRoll::ExpectedMaterialDrops(
+				EliteDropTable, EliteRow, UCataclysmDropRoll::BaselineLootQuantity);
+			const bool bGearFirst = RewardStream.FRand() * (EliteGear + EliteMaterials) < EliteGear;
+			for (int32 Attempt = 0; Attempt < 2 && RealityChamberRewardExtraDrops <= 0; ++Attempt)
+			{
+				const bool bGearNow = (Attempt == 0) == bGearFirst;
+				RealityChamberRewardExtraDrops += UCataclysmDropSpawner::SpawnDropsFor(
+					World, Effects::RealityChamberRewardRung, MagicFind, LootQuantity, RealityChamberRewardWorld(),
+					RewardStream, /*bMarked=*/false, /*bInfested=*/false, /*GearCountGiven=*/bGearNow ? 1 : 0,
+					/*MaterialCountGiven=*/bGearNow ? 0 : 1);
+			}
+			RealityChamberRewardDrops += RealityChamberRewardExtraDrops;
+		}
 		++RealityChamberRewardRolls;
 		bRealityChamberRewardGiven = true;
 		UE_LOG(LogCataclysm, Log, TEXT("Reality Rifts: the hidden chamber gave its reward on floor %d, %d drop(s)"),

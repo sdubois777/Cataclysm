@@ -4,11 +4,30 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-10 — Reality Rifts: one floor in three carrying the row has a hidden chamber reached only by a rift of its own, holding one Elite drop roll, and the row is Built
 
-**Not built and not run.** The writing session wrote this layer on development 6288d58e: the code, six new Unreal
-tests, one Python check's wording, and this entry. It compiled nothing and ran no Unreal test. It ran the Python
-tests in `tools/tests`, the lint and the conflict check before the commit, and nothing else. Every statement below
-about what the engine does is read from the code. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
+**Not built and not run.** The writing session wrote this layer on development 6288d58e in two commits: the code,
+seven new Unreal tests, one Python check's wording, and this entry. The second commit follows the coordinating
+session's rulings of 2026-10-10 on the first: it makes the reward never empty, adds the seventh test and changes
+this entry. It compiled nothing and ran no Unreal test. It ran the Python tests in `tools/tests`, the lint and the
+conflict check before each commit, and nothing else. Every statement below about what the engine does is read
+from the code. Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820)
 and [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+**Said first: on a floor wider than 38 cells a click-to-walk inside the chamber gets no path.** Keys and
+hold-to-steer work. Widening the bounds needs the map asset regenerated and is issue
+[#2366](https://github.com/sdubois777/Cataclysm/issues/2366). The arithmetic is in a paragraph below. **How
+many floors are wider than 38 cells is not known from a measurement.** No merged entry records plan widths. The
+generator draws a floor's width and its height each as a whole number from 32 to 48, evenly, for every layout
+(`FCataclysmFloorGenerator::RollShape`, `LeastFloorSide` and `MostFloorSide`; nothing in play sets a width of
+its own). Ten of those seventeen widths are 39 or more, so by that rule about 59% of floors are wider than 38;
+a floor the generator rejects is rolled again at a new size, and that was not counted.
+
+**Said first: leaving takes two beats, stepping off the rift and back on.** A paragraph below says why.
+
+**Said first: followers are not carried into or out of the chamber.** Only the player's character is moved. What
+the player commands stays on the floor while the player is inside, and nothing was read about what a follower
+does then.
+
+**Said first: the salt was chosen so that four existing rift tests on seed 1, floors 2 and 3 get no chamber.**
 
 **Said first: the row answering Built adds nothing to Reality Twister's pool.** `EnterEmpireDungeon` fills that pool
 with every row that is not NotBuilt (`CataclysmDungeonGameMode.cpp` line 13942). Reality Rifts answered Partly
@@ -31,18 +50,19 @@ a path (line 1305), and the keys still move the player. The reward is put 150 cm
 it can be picked up from that spot without walking. Nothing was measured in play, and the bounds were not
 changed, because that needs the map asset made again in the editor.
 
-**Said first: at the baseline the reward is empty about one time in three.** Ruling 2 is one drop roll as an Elite
-kill's. `game/Data/EnemyDrops.csv` gives an Elite 0.5 gear and 0.5 materials on average, each count drawn from a
-Poisson distribution, so with no loot quantity both counts are nought with chance e^-1, about 37%. The panel then
-still says the reward is given.
+**Said first: the chamber's reward is never empty, by a ruling of 2026-10-10 on this layer as first written.**
+Ruling 2 is one drop roll as an Elite kill's. `game/Data/EnemyDrops.csv` gives an Elite 0.5 gear and 0.5
+materials on average, each count drawn from a Poisson distribution, so at the baseline loot quantity both
+counts are nought with chance e^-1, about 37%. As first written the chamber then gave nothing. Now, when the
+roll leaves no drop, one more drop is given from the same Elite row. An Elite kill drops what it did.
 
 **Said first: to leave, the player steps off the rift's end and back onto it.** The player arrives standing inside
 the rift's chamber end. The rift has no rest; it is armed again on the first beat the player stands in neither
 end, and carries on the next beat they stand in one. That is at least two beats, half a second. A rift that
 carried back with no step off would carry the player out on the beat after they arrived.
 
-**Said first: the salt that picks the floors was chosen so the four existing rift tests are untouched.** Those
-tests run on dungeon seed 1, floors 2 and 3, and count exactly five zones. Salts 0x52C1 to 0x52C3 each gave one of
+**The salt, in full.** The four existing rift tests run on dungeon seed 1, floors 2 and 3, and count exactly five
+zones. Salts 0x52C1 to 0x52C3 each gave one of
 those floors a chamber; 0x52C4 is the first tried that gives neither. With it dungeon seed 1 has a chamber on
 floor 9 only, of floors 1 to 10.
 
@@ -72,6 +92,32 @@ Each is a labelled judgement by the coordinating session under the owner's deleg
    has after a use must not keep the player in the chamber.
 
 All three are met as written. None was changed.
+
+### Rulings on the layer as written
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-10.
+
+1. The chamber beside the floor, off the plan's grid: accepted. The reading not taken, a pocket of walkable
+   cells inside the grid, stays recorded here.
+2. The navigation bounds: accepted as built for this layer. Widening them is issue
+   [#2366](https://github.com/sdubois777/Cataclysm/issues/2366).
+3. **The chamber's reward is never empty.** The Elite drop roll is kept as it is. If that roll leaves no drop,
+   one more drop is given from the same Elite row so that at least one lands, from the same seeded stream after
+   the roll, so the same floor gives the same reward. No table is invented and what an Elite kill drops is not
+   changed. The reason, in the coordinating session's words: "A hidden chamber that gives nothing 37% of the
+   time while the panel says "given" is not what the row promises."
+4. "No rest" built as arming, two beats to leave: accepted.
+5. Partly to Built, with Reality Twister's pool unchanged: accepted.
+6. The fitted salt: accepted.
+7. If the creature-for-creature assertion fails because the populator reads the floor's list of rows, that is
+   reported and nothing is changed.
+8. A correction, in the tests alone, to the seed figures written by hand is covered by this ruling and is
+   reported.
+9. Approved: one floor in three; a chamber allowed on the final floor, on a floor in sections, under Shadowy
+   Enemies and on the dark floor; the panel shows the chamber from the start; "given" means rolled; fewer than
+   six cells means no chamber; both ends in Void's colours.
+10. The three guard proofs are registered. Proof 1 is registered as: the named test fails, with the two named
+    assertions among its failures; a higher count in that one test is not a stop.
 
 ### What was read before writing
 
@@ -145,6 +191,16 @@ this layer adds of its own is that the rift is armed by stepping off it, and tha
   loot quantity, on a stream seeded `SeedForFloor(Plan.Seed, 0x52C5)`, at a point 150 cm from the chamber's
   middle. Once: `bRealityChamberRewardGiven` is set and is cleared only when a new arena is populated or the
   dungeon is left.
+- **Never empty.** When that call leaves no drop, the same function is called again on the same stream with its
+  counts given instead of rolled: one gear item and no material, or one material and no gear. Which of the two
+  is one draw on the stream against the Elite row's own ratio of gear to materials, which is one to one today.
+  A gear item can fail to roll, so if the first kind leaves nothing the other kind is asked for once.
+  **Why this way:** `UCataclysmDropSpawner::SpawnDropsFor` already takes a gear count and a material count in
+  place of its two rolls, and that is how The Infested Hoard asks for exactly one drop
+  (`SpawnOneInfestedDropFor`, `Items/CataclysmDroppedItem.cpp` line 643). That function itself could not be
+  called, because it marks its drop infested and puts "Infested" before its name. No function rolls a count
+  with a floor on it, and none was added, so the spawner and the drop roll are not changed and neither is a
+  kill's drop.
 - **The obstacle questions.** `ThePlayersCell` answers the chamber rift's floor cell while the player stands on a
   chamber cell. That cell is walkable and held. `CellsTheFloorHolds` holds it.
 - **Forgetting.** `PlaceTheRealityRifts` calls `ForgetTheRealityChamber` before it asks about the row, so every new
@@ -172,10 +228,16 @@ not affected.
 
 ### For the owner's play-check
 
+**First: on a floor wider than 38 cells a click-to-walk inside the chamber gets no path.** Keys and hold-to-steer
+work. Widening the bounds needs the map asset regenerated and is issue
+[#2366](https://github.com/sdubois777/Cataclysm/issues/2366). By the generator's rule about 59% of floors are
+that wide; it was not measured. **Second: leaving takes two beats, stepping off the rift and back on. Third:
+followers are not carried into or out of the chamber.**
+
 What a player sees: on about one floor in three that carries the row, a sixth rift in Void's colours, and the
 panel's line ends "a hidden chamber waits". Stepping into that rift puts them in a small walled room beside the
-floor, standing on a rift of the same colour, with the reward's drops lying 150 cm in front of them, if the roll
-left any. The panel then ends "the hidden chamber's reward is given". Stepping off the rift and back onto it puts
+floor, standing on a rift of the same colour, with the reward's drops lying 150 cm in front of them: at least
+one. The panel then ends "the hidden chamber's reward is given". Stepping off the rift and back onto it puts
 them back on the floor where they went in. Going in again gives nothing more.
 
 | Number or reading | What it does | The reading not taken |
@@ -186,13 +248,14 @@ them back on the floor where they went in. Going in again gives nothing more.
 | A rift of its own, the sixth | The five rifts are what they were | The gift rift or a pair's rift leading there |
 | Drawn in Void's colours | It reads apart from the pairs and the gift | The row's own colour |
 | Armed by stepping off | Out in two beats, with no rest | A rest, or a key press to use the rift |
-| One Elite roll, rung 1 | Ruling 2. Empty about 37% of the time at the baseline | A roll that always leaves a drop |
+| One Elite roll, rung 1 | Ruling 2. At the baseline it leaves no drop about 37% of the time | A richer rung |
+| One extra drop when the roll leaves none | The reward is never empty. Gear or a material, one to one | Nothing, as first written; or a second whole roll |
 | Rolled on arrival, lying on the floor | The smallest thing an existing mechanism gives | A chest to open |
 | 150 cm from where the player arrives | The drops can be taken without walking | In a far corner of the chamber |
 | The roll is seeded from the floor's seed | The same dungeon seed and floor roll the same reward | Seeded from the moment, as a kill's is |
 | The panel says a chamber waits | The player is told to look for the sixth rift | Hidden until found |
 | The panel says nothing on a floor without one | Its line is what it was | "no hidden chamber" on those floors |
-| "The hidden chamber's reward is given" | Said once the roll is made, whether or not it left a drop, and whether or not the drops were picked up | "taken", once the drops are picked up |
+| "The hidden chamber's reward is given" | Said once the roll is made, whether or not the drops were picked up | "taken", once the drops are picked up |
 | Never on a Horde arena | A wave's end does not move the player | A chamber kept across the waves |
 | Allowed on the final floor, in sections, under Shadowy Enemies, on the dark floor | The chamber is off the plan and none of those rules can see it | Refused on any of them |
 
@@ -227,10 +290,13 @@ Each is a judgement by the writing session, for the coordinating session to conf
     Only where the player stands changes, and `Revive` already does that.
 15. **The row answers Built.**
 16. **A floor too small for six cells 2,000 cm apart has no chamber**, though its seed says one.
+17. **How the extra drop is given**, under the ruling of 2026-10-10: through `SpawnDropsFor` with one count
+    given, the kind drawn on the reward's stream against the Elite row's ratio, the other kind asked for once if
+    the first leaves nothing, and the player's magic find and loot quantity passed as for the roll.
 
 ### Tests
 
-Six, in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group
+Seven, in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, group
 `Cataclysm.DungeonModifierEffects.`. None was run.
 
 - `RealityRiftsChamberFiguresTheSeededFloorsAndTheRowIsBuilt`: the figures; rung 1 is the Elite row of the drop
@@ -243,7 +309,8 @@ Six, in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, 
   rift on a walkable held cell that is none of the five, no creature in the chamber, every creature on the
   populator's own placement. Control: the same seed without the row, cell for cell and creature for creature.
 - `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce`: seven zones; the carry in; one
-  roll; the drops counted and lying on chamber cells; the control roll, an Elite kill's on the same seed, as many
+  roll; the drops counted and lying on chamber cells, and no extra drop; the control roll, an Elite kill's on the
+  same seed, as many
   drops with the same names; not carried straight back; out in two beats; not carried straight back in; a second
   entry rolls nothing; a pair still carries and rests, and during that rest the chamber's rift carries in and out.
 - `RealityRiftsChamberAFloorWithoutOneIsWhatItWasAndAHordeArenaHasNone`: dungeon seed 1's floor 2, five zones and
@@ -252,6 +319,10 @@ Six, in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, 
 - `RealityRiftsChamberAFloorChangeADeathAndLeavingTheDungeonTakeThePlayerOut`: each from inside the chamber.
 - `RealityRiftsChamberAnObstacleIsStillAllowedOnTheFloorWhileThePlayerIsInside`. Control: the rift's cell and a
   chamber cell are refused.
+- `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber`: a chamber floor found by search over
+  dungeon seeds whose plain Elite roll at the baseline loot quantity, made by the test on a stream of the same
+  seed, leaves no drop, which is the control; entering then leaves exactly one drop, on a chamber cell, counted
+  as the one extra drop; the same floor built again gives the same drop by name.
 
 Python: `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, the docstring of
 `test_reality_rifts_row_still_teleports_gives_buffs_and_names_hidden_areas` now says the phrase is built. Its
@@ -267,7 +338,8 @@ finds the new kept cell held.
 - Picking the reward up.
 - A roll that leaves more than eighteen drops, whose circle would reach past the chamber's wall. At a loot
   quantity of 600 the test asserts every drop lies on a chamber cell.
-- An empty roll. The test raises loot quantity so the roll is not empty.
+- An extra drop whose first kind fails to roll, so that the other kind is asked for. Read from the code.
+- An extra drop given at a loot quantity other than the baseline.
 - A floor too small for six cells, and so a floor whose seed says a chamber and has none. The plan test logs how
   many of forty there were.
 - The player's followers when the player is carried into the chamber. They are not carried.
@@ -298,6 +370,10 @@ None was run. Each is one line of `game/Source/Cataclysm/Dungeon/CataclysmDungeo
    `Cataclysm.DungeonModifierEffects.RealityRiftsChamberAnObstacleIsStillAllowedOnTheFloorWhileThePlayerIsInside`.
    Predicted: 1 assertion fails, "with the player in the chamber an obstacle is allowed on a floor cell", because
    the question is then asked from a cell that is not walkable and refuses every cell. The two controls pass.
+
+The second commit changed none of the three lines, and each still counts once. No predicted count moved: proof
+2's three assertions are in the carry test, whose roll is not empty, and the test of the empty roll enters each
+floor once. Proof 1 is registered as the named test failing with its two named assertions among the failures.
 
 ### What the row needs, for the session that writes rows
 
