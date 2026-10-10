@@ -333,6 +333,60 @@ no dry run was made. The stat `cooldown_recovery` could be stated by an enchantm
 figure; none is asked for. A scaled or conditioned row on it would be refused by the generator until the stat
 is added to its lists of stats with an asker, which this layer did not do.
 
+### Run
+
+One window on 2026-10-10 for two layers together: the walking-speed correction at `feat/walk-speed-order-2`
+030db491 and Fragmented Reality on it at `feat/fragmented-reality-4` 5fd76c7e, on development d7342c80. The build
+and every run were made at 5fd76c7e, the upper head, by the registering session, holding the lock as
+void-zones-w18. One attempt; nothing was corrected during it. Every figure is a line a run printed. The lock was
+taken only after development's own two workflow runs at d7342c80 had printed success, no run was in progress, no
+build process was running and no pull request was open. Times are UTC, from each step's log file.
+
+| Step | Began | Printed |
+|---|---|---|
+| Build | 17:28:29 | `Build: Succeeded - 29 actions, 24 files compiled` |
+| Whole Unreal suite | 17:29:35 | `3515 tests performed, 3515 succeeded, 0 failed`; `Declared: 3515 tests in the tree at 5fd76c7e; 3515 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | 18:26:53 | `5944 passed, 8 skipped in 429.36s (0:07:09)`; JUnit `errors="0" failures="0" skipped="8" tests="5952"` |
+| Ruff | | `All checks passed!` |
+| The four proofs | 18:34:05, ended 18:40:32 | below |
+
+Registered before the run: 3,515 Unreal tests (3,505 measured on development d7342c80, one of the walking-speed
+layer and nine of Fragmented Reality, by name) and a JUnit count of 5,952. Both printed as registered. No existing
+test failed.
+
+**What the run settled that was only read before it.** All nine tests of this layer passed, the one that failed
+in the first window among them and unchanged: with the walking-speed correction beneath it, the player's walking
+speed follows the movement speed stat in the same refresh. The set-up risks named before the first window (a
+basic attack granted to a real player, a cooldown reduction row put on a real player's stat line, a boundary cell
+being in no section) did not happen in either window.
+
+**Guard proofs, at 5fd76c7e, each with one anchor counted 1 and the source hash the same before and after, each
+PROVED: failed with the break in and passed with it out.** No break failed to compile. Each count of failed
+assertions is the one registered.
+
+| Proof | The break | Registered | With the break in | Restored |
+|---|---|---|---|---|
+| 1 | `CataclysmGameplayAbility.cpp`: `1.0f + FMath::Max(Recovery, 0.0f) / 100.0f);` becomes `1.0f + 0.0f * FMath::Max(Recovery, 0.0f) / 100.0f);` | 4 | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+| 2 | `CataclysmDungeonModifierEffects.cpp`: `return 1 + ...SeedForFloor(FloorSeed, FragmentedRealitySectionSalt) % NotTheEntrances;` becomes `return 0 + ...` | 16 | 1 performed, 1 failed, 16 failed assertions | 1 performed, 1 succeeded |
+| 3 | `CataclysmDungeonGameMode.cpp`: `== FragmentedRealitySection;` becomes `== 0;` | 4 | 1 performed, 1 failed, 4 failed assertions | 1 performed, 1 succeeded |
+
+Proof 1, as printed: "Expected 'inside, the skill's cooldown is its outside length divided by 1.5' to be
+3.333333, but it was 5.000000"; "Expected 'and with other reduction it is that wearer's outside length divided by
+1.5' to be 1.666667, but it was 2.500000"; "Expected 'inside, a 10 second cooldown asked for is the outside
+answer divided by 1.5' to be 6.666667, but it was 10.000000"; "Expected 'and with other reduction it is that
+wearer's outside answer divided by 1.5' to be 3.333333, but it was 5.000000".
+
+Proof 2, as printed, two for each of seeds 1 to 8, of this form: "Expected 'with two sections and seed 1 it is
+section 1, the stairs'' to be 1, but it was 0"; "Expected 'with three sections and seed 1 it is the section
+worked out by hand' to be 2, but it was 1".
+
+Proof 3, as printed: "Expected 'seed 1: no pair is in force at the entrance' to be -1, but it was 3"; "Expected
+'seed 2: no pair is in force at the entrance' to be -1, but it was 2"; "Expected 'seed 4: no pair is in force at
+the entrance' to be -1, but it was 1"; "Expected 'seed 5: no pair is in force at the entrance' to be -1, but it
+was 1".
+
+The commit that adds this section changes this entry alone, and the head that carries it was not run.
+
 ---
 
 ## 2026-10-09 — A player's walking speed is worked out from the stat line the same refresh stored, not from the one before (#2359)
