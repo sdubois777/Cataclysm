@@ -16010,7 +16010,10 @@ void ACataclysmDungeonGameMode::StepSufferingAura(
 	const float ManaLoss = Effects::SufferingAuraLossFor(
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute()),
 		Effects::SufferingAuraManaPercentPerSecond, SecondsBetweenWaveChecks);
-	if (ManaLoss > 0.0f)
+	// AND NOT FROM A PLAYER WHOSE WORN ROW HOLDS THE FLAG `suffering_aura_mana_drain_immunity`. The one
+	// read the entry of 2026-10-10 "A row can make its wearer immune to the Suffering Aura's mana drain"
+	// was ruled, as W3. The health loss above does not ask it.
+	if (ManaLoss > 0.0f && !UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(Player))
 	{
 		AbilitySystem->ApplyModToAttribute(Vital::GetManaAttribute(),
 										   EGameplayModOp::Additive, -ManaLoss);
