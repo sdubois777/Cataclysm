@@ -779,7 +779,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 577 SINCE THE CHARGE ROWS, issue #1833, from 575.
 	//
 	// AND 579 SINCE THE FIRST-HIT AILMENTS ROW AND CHRONOMANCER'S SIX-PIECE, issue #1833, from 577.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    579)
+	//
+	// AND 580 SINCE DIVINE RETRIBUTION'S TEN-PIECE ROW, issue #1833, from 579.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    580)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
