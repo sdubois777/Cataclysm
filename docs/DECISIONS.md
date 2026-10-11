@@ -1083,28 +1083,32 @@ none of them this layer's: 12 in `Cataclysm.DemonicRows`, 7 in `Cataclysm.Passiv
 `Cataclysm.MasochistVowRows`, and 1 each in `Cataclysm.MasochistStackRows`, `Cataclysm.PartialClauses` and
 `Cataclysm.DefenderBody`.
 
-**The cause.** Each of the 24 hands a filled passive tree to `ACataclysmPlayerState::SetPassiveAllocation` on a
-level 20 test character. A level 20 character with no boss kill has earned 30 points. The allocations hold more
-than 30. This layer made points spent above the points earned add nothing, taken from the last node first
+**The cause, as read and not as measured for each test.** The enchantment session opened some of the 24 and
+read them; it did not open all 24. Each one it opened hands a filled passive tree to
+`ACataclysmPlayerState::SetPassiveAllocation` on a level 20 test character. A level 20 character with no boss
+kill has earned 30 points. The allocations it read hold more than 30. What is measured is this: with the
+change below built, the second window's whole suite printed "3544 tests performed, 3544 succeeded, 0 failed",
+so all 24 pass with it. This layer made points spent above the points earned add nothing, taken from the last node first
 touched, so the refresh left out the late nodes of each handed allocation, and those are the nodes the tests
 read. `SetPassiveAllocation` checks nothing it is handed, and no line of game code calls it: its callers are
 automation tests.
 
-**The ruling, by the coordinating session on 2026-10-10, in its five points:**
+**The ruling of the coordinating session of 2026-10-10, restated in five points by the enchantment session.
+These are not that session's own words:**
 
-> 1. `SetPassiveAllocation` records ONE figure on the player state: the points of the handed allocation that the
->    character's level and bosses do not pay for, WITHOUT counting gear: points spent in the handed allocation
->    minus `UCataclysmPassivePoints::Available(level, bosses handed in the same call)`, floored at nought.
->    `PassivePointsEarnedWith` adds it. Name it for what it is (points an allocation was handed with), never as a
->    test switch. `ResetPassivePoints` clears it. A later call of `SetPassiveAllocation` replaces it.
-> 2. It does NOT turn the rule off. Points spent afterwards through `SpendPassivePoint` with granting gear worn,
->    and the gear then taken off, are reduced exactly as before. ONE NEW TEST shows that on a character whose
->    tree was first handed over above its level.
-> 3. This layer's own tests of the reduction must make their excess the way play does: spend through
->    `SpendPassivePoint` / `ChoosePassiveOption` with the granting gear worn, then take the gear off. NO test of
->    the reduction may rest on a hand-set allocation that exceeds level and bosses.
-> 4. The 24 failed tests and every other merged call site are NOT edited.
-> 5. `Cataclysm.PlayerLevel` lowered by hand after spending: left as the rule acting.
+1. `SetPassiveAllocation` records ONE figure on the player state: the points of the handed allocation that the
+   character's level and bosses do not pay for, WITHOUT counting gear: points spent in the handed allocation
+   minus `UCataclysmPassivePoints::Available(level, bosses handed in the same call)`, floored at nought.
+   `PassivePointsEarnedWith` adds it. Name it for what it is (points an allocation was handed with), never as a
+   test switch. `ResetPassivePoints` clears it. A later call of `SetPassiveAllocation` replaces it.
+2. It does NOT turn the rule off. Points spent afterwards through `SpendPassivePoint` with granting gear worn,
+   and the gear then taken off, are reduced exactly as before. ONE NEW TEST shows that on a character whose
+   tree was first handed over above its level.
+3. This layer's own tests of the reduction must make their excess the way play does: spend through
+   `SpendPassivePoint` / `ChoosePassiveOption` with the granting gear worn, then take the gear off. NO test of
+   the reduction may rest on a hand-set allocation that exceeds level and bosses.
+4. The 24 failed tests and every other merged call site are NOT edited.
+5. `Cataclysm.PlayerLevel` lowered by hand after spending: left as the rule acting.
 
 **What was built for it.** One replicated whole number on the player state, read through
 `ACataclysmPlayerState::PassivePointsAnAllocationWasHandedWith`. `SetPassiveAllocation` writes it on every call:
@@ -1175,17 +1179,16 @@ the reason though the cause here is the level. Raising the variable again counts
 holds for a character handed an allocation and then lowered: the figure was worked out at the level it had when
 the allocation was handed over, and it is not worked out again.
 
-**NOT COMPILED AND NOT RUN.** The session that made this change does not build Unreal. No line of it has been
-through a compiler, and neither the rewritten tests, the new test nor the 24 have been run against it. That the
-24 pass with it is what the code was written to do and is not a measurement.
+**Compiled and run in the second window, on 2026-10-10.** The session that made this change does not build
+Unreal; the enchantment session built it. The rewritten tests, the new test and the 24 all passed. The run is
+at the foot of this entry.
 
 ### SAID FIRST: WHAT WAS COMPILED AND RUN, AND WHAT WAS NOT
 
 **The C++ of 2026-10-09 in this entry was compiled and its tests were run once, in the first window described
 above, and 24 merged tests failed.** The session that wrote it does not build Unreal. **The change of
-2026-10-10 that answers those failures has not been through a compiler and none of its tests has been run.**
-Every statement in this entry about what the game does with that change is a statement about what the code was
-written to do. The enchantment session builds it and records the run at the foot of this entry.
+2026-10-10 that answers those failures was compiled and run in the second window, and nothing failed.** The
+run is at the foot of this entry.
 
 ### SAID FIRST: GAME CODE HOLDS A SEAM FOR TESTS, AND THE NEXT LAYER REMOVES IT
 
@@ -1496,12 +1499,31 @@ switched off by the floor rule itself, since the test switches it off directly; 
 switched-off slot; a second two-handed weapon handed back to the floor on a change of gear, or refused by the
 floor; anything drawn on a screen.
 
-**No guard proof was run.** Three were proposed in the report of the session that wrote this, and the report of
-the session that made the change of 2026-10-10 restates them and proposes two more.
+**Three guard proofs were run in the second window**, and they are in the run at the foot of this entry. **Two
+more were proposed and not registered, so these have a test and no proof:** that the points gear grants are a
+term of the points earned (the break was `PassivePointsAvailable` leaving the gear term out), and that a
+character handed an allocation is still overspent by points it spends afterwards with gear it then takes off
+(the break text for that was never compiled). **Also a test and no proof:** each worn row rounded down by
+itself; a planted weapon still granting; that a slot a floor rule switched off grants nothing; and spending
+refused while more is spent than earned.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-10, on development bd6133a3 (the hidden chamber of Reality Rifts), at the head of the rows layer, which holds both layers of this pair. The first window, on 06d81f8a, is described at the top of the class points entry: it printed 24 failures and is void.
+
+- **Build:** "Build: Succeeded - 34 actions, 29 files compiled".
+- **The whole Unreal suite:** "3544 tests performed, 3544 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3544 tests in the tree at 8ec8c065; 3544 performed, gap 0". Registered: 3544 and 0. All 24 tests that failed in the first window passed.
+- **Python:** "5954 passed, 8 skipped"; JUnit tests 5962, failures 0, errors 0, skipped 8. Registered: 5962 and 0. Lint: "All checks passed!".
+- **The enchantment assets were not rebuilt in this window.** The rows, the generator and `game/Data` at the tested head are byte for byte what the first window's head held (`git diff` of the two heads names only `docs/DECISIONS.md` and files under `game/Source`), the hidden chamber's commit changes no enchantment table, and the asset files are the ones the editor built in the first window (583 rows). In that window, before the rebuild, the group `Cataclysm.Passives.ClassPointsFromGear.` printed "8 tests performed, 3 succeeded, 5 failed", each of the five on the set-up assertion that the loaded tables hold the 5 to 10 row.
+- **Three guard proofs**, each run with the prefix `Cataclysm.Passives.ClassPointsFromGear.`, each "PROVED": failed with the break in, and "restored: 9 tests performed, 9 succeeded, 0 failed".
+
+| Proof | The break | Test stated to fail | Failed assertions, registered and printed |
+|---|---|---|---|
+| A | in `ReducedToPointsEarned`, the loop takes the excess from the front of the array | `TheExcessIsTakenFromTheLastNodeFirstTouched` | 24 and 24: the stated test 11, `TheScreenSaysWhichPointsAddNothingAndWhy` 5, `TakingOffGearThatPaidForBothHandsFull...` 4, `PointsSpentWithGearStaySpent...` 2, `ASlotAFloorRuleSwitchedOff...` 1, the test of a handed allocation 1 |
+| D | in `PassivePointsEarnedWith`, `+ PointsAnAllocationWasHandedWith` becomes `+ 0` | `AnAllocationHandedOverAboveTheLevelIsPaidForAndPointsSpentAfterItAreStillReduced` | 5 and 5, in that test alone. The 24 merged tests are outside the prefix and were not run by this proof |
+| E | in `OnEquipmentChanged`, the early return after a weapon is handed back cannot be reached | `TakingOffGearThatPaidForBothHandsFullHandsTheSecondWeaponBackInThatChange` | 1 and 1: abilities granted "to be 7, but it was 14" |
+
+**What the enchantment session read.** Every line of game code in both layers. Of this layer's nine tests: the four rewritten on 2026-10-10 and the new one line by line as they are now. Of the other four, some were read line by line as they are now and some only as they were before the rows layer rewrote them to wear the real rows; the session did not keep a record of which. The Python tests as names and assertions.
 
 ---
 
