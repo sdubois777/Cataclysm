@@ -67,6 +67,7 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, CreationChoice);
 	DOREPLIFETIME(ACataclysmPlayerState, PassiveAllocation);
 	DOREPLIFETIME(ACataclysmPlayerState, DefeatedCataclysmBosses);
+	DOREPLIFETIME(ACataclysmPlayerState, PointsAnAllocationWasHandedWith);
 }
 
 FCataclysmCreationChoice ACataclysmPlayerState::GetCreationChoice() const
@@ -311,13 +312,50 @@ void ACataclysmPlayerState::ResetAttributePoints()
 
 int32 ACataclysmPlayerState::PassivePointsAvailable() const
 {
+	return PassivePointsEarnedWith(PassivePointsFromGear());
+}
+
+int32 ACataclysmPlayerState::PassivePointsEarnedWith(int32 PointsFromGear) const
+{
+	// AND THE POINTS AN ALLOCATION WAS HANDED WITH. Ruled 2026-10-10. Nought
+	// unless `SetPassiveAllocation` was handed more points than the level and
+	// the bosses of that call had earned. It is a fixed number, so it pays for
+	// that many points and for no point spent afterwards.
 	return UCataclysmPassivePoints::Available(GetCharacterLevel(),
-											  DefeatedCataclysmBosses.Num());
+											  DefeatedCataclysmBosses.Num())
+		+ PointsAnAllocationWasHandedWith
+		+ FMath::Max(0, PointsFromGear);
+}
+
+int32 ACataclysmPlayerState::PassivePointsFromGear() const
+{
+	// ASKED OF THE PAWN'S EQUIPMENT COMPONENT, WHICH KEEPS WHAT ITS LAST
+	// REFRESH READ. Ruled 2026-10-09. `ClassPointsGranted` on that component
+	// says why the figure is kept there.
+	//
+	// NOUGHT WITH NO PAWN, and that is the point of asking the pawn: this
+	// player state outlives its pawn, and gear on a pawn that no longer exists
+	// grants nothing. Nought also before the pawn's first refresh.
+	const ACataclysmPlayerCharacter* Character =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	const UCataclysmEquipmentComponent* Equipment =
+		Character ? Character->GetEquipment() : nullptr;
+	return Equipment ? Equipment->ClassPointsGranted() : 0;
 }
 
 int32 ACataclysmPlayerState::PassivePointsUnspent() const
 {
-	return PassivePointsAvailable() - PassiveAllocation.Total();
+	// NEVER BELOW NOUGHT. Since 2026-10-09 more points can be spent than are
+	// earned, when gear that granted points has come off. Every reader of this
+	// prints it as points left to spend, and such a character has none.
+	// `PassivePointsAddingNothing` is the other half of the subtraction.
+	return FMath::Max(0, PassivePointsAvailable() - PassiveAllocation.Total());
+}
+
+int32 ACataclysmPlayerState::PassivePointsAddingNothing() const
+{
+	return UCataclysmPassiveTree::PointsAddingNothing(PassiveAllocation,
+													  PassivePointsAvailable());
 }
 
 bool ACataclysmPlayerState::RecordCataclysmBossDefeat(FName Boss)
@@ -476,6 +514,11 @@ void ACataclysmPlayerState::ResetPassivePoints()
 	// while leaving the capstone decisions made would not be a respec at all.
 	PassiveAllocation.Clear();
 
+	// AND THE POINTS AN ALLOCATION WAS HANDED WITH. Ruled 2026-10-10. The figure
+	// pays for points of one handed allocation, and that allocation is now
+	// empty. Left standing it would be points to spend that nothing earned.
+	PointsAnAllocationWasHandedWith = 0;
+
 	// AND EVERYTHING THE TREE WAS GRANTING GOES WITH THEM. Issue #1054. A respec
 	// that left the bonuses standing would be free power. Maximum health falling
 	// clamps current health down to it, which `UCataclysmVitalAttributeSet`
@@ -489,11 +532,28 @@ void ACataclysmPlayerState::SetPassiveAllocation(
 	PassiveAllocation = Allocation;
 	DefeatedCataclysmBosses = Bosses;
 
-	// A LOADED ALLOCATION IS A CHANGED ONE. Issue #1054. This runs before
-	// possession when a save is being restored, in which case it does nothing
-	// and possession applies the whole line a moment later; it runs after
-	// possession when anything else puts an allocation on a standing character,
-	// and then it is the only thing that would.
+	// THE POINTS OF THIS ALLOCATION THAT THE LEVEL AND THESE BOSSES DO NOT PAY
+	// FOR ARE RECORDED, AND COUNT AS EARNED. Ruled 2026-10-10. Since 2026-10-09
+	// points spent above the points earned add nothing, and this function is
+	// handed allocations nothing checked. Without the figure the late nodes of
+	// such an allocation would be left off the stat line.
+	//
+	// GEAR IS NOT COUNTED, so the figure does not depend on what the character
+	// wears when the allocation is handed over. REPLACED BY EVERY CALL, never
+	// added to: it describes the allocation handed in this call and no other.
+	//
+	// IT DOES NOT TURN THE RULE OFF. Points spent after this call with points
+	// that worn gear grants are above the points earned when that gear comes
+	// off, whatever this figure is.
+	PointsAnAllocationWasHandedWith = FMath::Max(
+		0, Allocation.Total()
+			   - UCataclysmPassivePoints::Available(GetCharacterLevel(),
+													Bosses.Num()));
+
+	// A HANDED ALLOCATION IS A CHANGED ONE. Issue #1054. Called before
+	// possession this does nothing, and possession applies the whole line a
+	// moment later; called after possession, on a standing character, it is the
+	// only thing that would.
 	RefreshCharacterStats();
 }
 

@@ -8275,6 +8275,88 @@ def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[st
     return problems
 
 
+#: The stat a worn row grants class points on. Ruled 2026-10-09, for "Gain 5-10
+#: class points" and "Gain 3-8 additional class points".
+#:
+#: THE GAME READS IT IN ONE PLACE AND NOT THROUGH THE STAT PIPELINE.
+#: `UCataclysmPassivePoints::GrantedByWornRows` reads the worn rows' own values
+#: in `UCataclysmEquipmentComponent::RefreshAttributes`, rounds each row DOWN to
+#: a whole number by itself, and adds the whole numbers. It runs no pipeline, so
+#: it counts a row only when the row is flat and carries no condition, no scale
+#: and no required tag. `refuse_a_class_point_row_the_game_cannot_count` refuses
+#: every other shape, because the game would grant nothing for it and say nothing.
+CLASS_POINTS_GRANTED_STAT = "class_points_granted"
+
+#: The fewest and the most class points one row's two figures may state.
+#:
+#: 1, BECAUSE THE GAME ROUNDS A ROW DOWN: a figure below 1 is a row that can
+#: roll no point. 10, BECAUSE IT IS THE LARGEST FIGURE EITHER RULED SENTENCE
+#: STATES ("Gain 5-10 class points"); a larger grant is a design decision, and
+#: this bound is where it is made. A labelled judgement of 2026-10-09.
+#:
+#: THE FIGURES NEED NOT BE WHOLE. A roll between 5 and 10 is 7.3 as often as it
+#: is 7, and the game rounds it down.
+MIN_CLASS_POINTS_GRANTED_BY_A_ROW = 1.0
+MAX_CLASS_POINTS_GRANTED_BY_A_ROW = 10.0
+
+
+def refuse_a_class_point_row_the_game_cannot_count(sheet: str,
+                                                   rows: list[dict]) -> list[str]:
+    """A row granting class points is one the game's one reader counts.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, for the reason
+    `CLASS_POINTS_GRANTED_STAT` gives. Each refusal names what the reader
+    cannot do with the row.
+
+    A PASSIVE NODE MAY NOT GRANT THE STAT AT ALL. The points decide how much of
+    the passive tree counts, so the game reads them from the worn rows before
+    the tree is added, and a node's row on this stat is never read. A row built
+    with a `Node` key is a passive effect row; that is how the sheet is told,
+    the way `refuse_a_reach_scale_a_row_cannot_state` tells it by a key.
+    """
+    problems = []
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != CLASS_POINTS_GRANTED_STAT:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        if "Node" in row:
+            problems.append(
+                f"{who}: a passive node grants {CLASS_POINTS_GRANTED_STAT!r}, "
+                f"and the game reads class points from worn rows only, before "
+                f"the passive tree is added. The row would grant NOTHING and "
+                f"say nothing.")
+            continue
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: grants {CLASS_POINTS_GRANTED_STAT!r} with the value "
+                f"kind {kind!r}. Class points are a count, read as a flat "
+                f"number and rounded down; any other kind grants NOTHING.")
+        for column, what in (("RequiredTags", "a required tag"),
+                             ("Condition", "a condition"),
+                             ("Condition2", "a second condition"),
+                             ("Scale", "a scale")):
+            if str(row.get(column) or "").strip():
+                problems.append(
+                    f"{who}: grants {CLASS_POINTS_GRANTED_STAT!r} under "
+                    f"{what}, {str(row[column]).strip()!r}. The code that "
+                    f"reads class points reads the row's value and judges "
+                    f"nothing else, so it counts no such row: this one would "
+                    f"grant NOTHING and say nothing.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not (MIN_CLASS_POINTS_GRANTED_BY_A_ROW <= value
+                    <= MAX_CLASS_POINTS_GRANTED_BY_A_ROW):
+                problems.append(
+                    f"{who}: states {value:g} class points, and a row may "
+                    f"state from {MIN_CLASS_POINTS_GRANTED_BY_A_ROW:g} to "
+                    f"{MAX_CLASS_POINTS_GRANTED_BY_A_ROW:g}. Below 1 the game "
+                    f"rounds the row down to no point; above "
+                    f"{MAX_CLASS_POINTS_GRANTED_BY_A_ROW:g} is more than any "
+                    f"ruled sentence grants.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -8478,6 +8560,10 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     problems.extend(refuse_a_scale_nothing_asks_for("PassiveEffects", effects))
     problems.extend(refuse_a_condition_nothing_asks_for("PassiveEffects", effects))
 
+    # AND NO NODE GRANTS CLASS POINTS, which the game reads from worn rows only.
+    problems.extend(
+        refuse_a_class_point_row_the_game_cannot_count("PassiveEffects", effects))
+
     return problems
 
 
@@ -8584,6 +8670,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # column for -- which is accepted, built, imported and dead.
     problems.extend(
         refuse_a_reach_scale_a_row_cannot_state("EnchantmentEffects", effects))
+
+    # AND A ROW GRANTING CLASS POINTS IS ONE THE GAME'S ONE READER COUNTS.
+    # Ruled 2026-10-09.
+    problems.extend(refuse_a_class_point_row_the_game_cannot_count(
+        "EnchantmentEffects", effects))
 
     return problems
 
