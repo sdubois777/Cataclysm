@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-10 — The dungeon level's navigation bounds are widened along X so the hidden chamber of Reality Rifts is inside them (#2366)
+
+**Said first: nothing here was tried in play, and no Unreal test can show it.** The automation tests build their
+own worlds and do not load the level `L_Dungeon`, and that level's navigation mesh is built at run time. What
+this layer has is a Python check on the numbers, the generator script's own check of the size it built, and the
+owner's play-check. That is accepted as enough: a labelled judgement by the coordinating session under the
+owner's delegation, 2026-10-10.
+
+**Said first: this entry is written before the level is regenerated.** The first commit changes the script that
+builds the level and the Python check that holds the script to the C++. The level file itself,
+`game/Content/Maps/L_Dungeon.umap`, is a binary asset that only the editor can rebuild, and the editor is one
+machine's to drive at a time. Until the Run section below exists the level in the repository is the old one,
+and the hidden chamber's click-to-walk limit still holds in play.
+
+**Said first: the level is a binary asset.** A regenerated `L_Dungeon` cannot be merged with another change to
+it. It is regenerated on development as it stands at that moment, by one session, with nothing else building.
+
+### What was wrong
+
+The hidden chamber of Reality Rifts is not in a floor's plan. It stands beside the floor on the +X side:
+`RealityChamberGapCells` (3) empty columns past the plan's last column, `RealityChamberSide` (3) columns wide.
+The level's navigation bounds were one square volume, 48 cells of 400 cm plus a margin of 800 cm: 20,000 cm on a
+side, centred on the level's origin, so they reached 10,000 cm from the middle. A floor is 32 to 48 cells on each
+axis. The far edge of the chamber is `(Width / 2 + 6) x 400` cm from the middle, which is inside 10,000 cm only
+while the floor is 38 cells wide or fewer, and is 12,000 cm on the widest floor. The generator draws a width from
+32 to 48, and ten of those seventeen widths are over 38: about 59% of floors, by that rule and not measured.
+Outside the bounds there is no navigation mesh, so inside the chamber a short click to walk, and a click on a
+drop out of reach, found no path. Keys and hold-to-steer use no path and worked.
+
+No floor without a chamber was outside the bounds: the widest floor's edge is 9,600 cm from the middle on either
+axis.
+
+### The rulings
+
+Each a labelled judgement by the coordinating session under the owner's delegation, 2026-10-10.
+
+1. The volume is widened along X only, to 24,800 cm, and stays centred on the origin; Y stays 20,000 cm. The
+   chamber is always on the +X side; centred keeps the generator's one volume at the origin; the strip on -X
+   that nothing uses is accepted.
+2. The script copies the chamber's gap and side, and the Python check reads `RealityChamberGapCells` and
+   `RealityChamberSide` from the C++ header and holds the script to them. Proved with `tools/prove_guard.py` in
+   a copy of the tree.
+3. The evidence named in the first paragraph is enough.
+4. The body of `tools/tests/test_the_dungeon_map_covers_a_whole_floor.py` is read before writing, and whether it
+   needs to change is said.
+5. The script and the check are written and pushed first. The level is regenerated later, under the editor
+   lock, and the hidden chamber's click-to-walk sentence comes out of its play-check list in that same step.
+
+### What was read before writing
+
+- `tools/generate_dungeon_map.py` whole: the copied constants, why the bounds are in the level and not spawned
+  with the floor, the volume built by `unreal.CataclysmLevelAuthoring.add_nav_mesh_bounds` at the origin with a
+  size given as full widths, and the script's own extent check.
+- `tools/tests/test_the_dungeon_map_covers_a_whole_floor.py` whole. Its eight checks read the floor's constants
+  and the script's and compare them; two of them pin the shape of the floor-width arithmetic by regular
+  expression. **None of the eight needed to change**: the floor's own width and the Y width are worked out as
+  before, so the pinned lines are untouched. Three checks were added.
+- `UCataclysmDungeonModifierEffects::RealityChamberOriginFor` and `ACataclysmDungeonFloor::WorldOfCell`, for
+  where the chamber's far edge is.
+- Not read: `UCataclysmLevelAuthoring::AddNavMeshBounds` in C++; what a larger volume costs at run time. A
+  navigation mesh is generated where geometry is, so the empty strips should cost little; that is a reading and
+  not a measurement.
+
+### How it is built
+
+- `tools/generate_dungeon_map.py`: `CHAMBER_GAP_CELLS = 3`, `CHAMBER_SIDE_CELLS = 3`,
+  `CHAMBER_REACH_CM = (CHAMBER_GAP_CELLS + CHAMBER_SIDE_CELLS) * CELL_SIZE_CM` (2,400), and
+  `NAV_WIDTH_X_CM = FLOOR_WIDTH_CM + 2.0 * CHAMBER_REACH_CM + NAV_MARGIN_CM` (24,800). The volume is built
+  `NAV_WIDTH_X_CM` by `NAV_WIDTH_CM` by `NAV_HEIGHT_CM`. That reaches 12,400 cm from the middle along X: the
+  chamber's far edge on the widest floor and the same 400 cm to spare a floor's own edge has.
+- The script now writes the extent it built to the log, and fails if the volume does not cover the chamber's
+  reach, before its older check that the volume covers a floor.
+- No C++ changed.
+
+### Tests
+
+Three Python checks added to `tools/tests/test_the_dungeon_map_covers_a_whole_floor.py`:
+
+- `test_the_map_script_agrees_with_the_cpp_about_the_hidden_chamber`: the script's two copies equal the C++.
+- `test_the_navigation_bounds_along_x_are_built_from_the_chambers_reach`: the two sums keep their shape and the
+  volume is built with the X width.
+- `test_the_navigation_bounds_reach_past_the_hidden_chamber`: from the middle, the volume's edge along X is
+  beyond the chamber's far edge on the widest floor, the chamber's place taken from the C++ and the volume's
+  width from the script.
+
+**Guard proofs, run by the registering session with `tools/prove_guard.py` in a copy of the tree made with
+`git archive`, each PROVED: failed with the break in and passed with it out.**
+
+| The break in `tools/generate_dungeon_map.py` | Printed | Named failures |
+|---|---|---|
+| `CHAMBER_GAP_CELLS` and `CHAMBER_SIDE_CELLS` set to 0, so the X width is 20,000 again | `PROVED: 2 failed, 8 passed in 0.21s \| restored: 10 passed in 0.09s` | `test_the_map_script_agrees_with_the_cpp_about_the_hidden_chamber`, `test_the_navigation_bounds_reach_past_the_hidden_chamber` |
+| the volume built `NAV_WIDTH_CM` along X again | `PROVED: 1 failed, 9 passed in 0.15s \| restored: 10 passed in 0.09s` | `test_the_navigation_bounds_along_x_are_built_from_the_chambers_reach` |
+
+### Not covered
+
+- Whether the regenerated level's volume is the size the script asked for, beyond the script's own check when
+  it runs. The Python checks cannot read the binary level; the existing check file says so of itself.
+- Whether a click to walk inside the chamber finds a path once the bounds cover it. For the owner's play-check.
+- What the wider volume costs at run time.
+
+### For the owner's play-check
+
+After the level is regenerated: on a wide floor carrying Reality Rifts with a hidden chamber, enter the chamber
+and click once on its floor and once on a drop out of reach. The character should walk there. Before this layer
+it turned to face the point and stopped.
+
+---
+
 ## 2026-10-10 — Reality Rifts: one floor in three carrying the row has a hidden chamber reached only by a rift of its own, holding one Elite drop roll, and the row is Built
 
 **Not built and not run.** The writing session wrote this layer on development 6288d58e in two commits: the code,
