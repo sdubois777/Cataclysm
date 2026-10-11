@@ -37,6 +37,8 @@ GENERATOR_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
                     / "CataclysmFloorGenerator.h")
 FLOOR_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
                 / "CataclysmDungeonFloor.h")
+EFFECTS_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+                  / "CataclysmDungeonModifierEffects.h")
 MAP_SCRIPT = REPO_ROOT / "tools" / "generate_dungeon_map.py"
 MAP_ASSET = REPO_ROOT / "game" / "Content" / "Maps" / "L_Dungeon.umap"
 
@@ -161,6 +163,88 @@ def test_the_navigation_bounds_are_wider_than_a_floor(floor_width_cm) -> None:
         f"a floor is {floor_width_cm:.0f} cm. The outer ring of every dungeon "
         f"would have no navigation mesh, enemies would stop pathing there, and "
         f"nothing would report why."
+    )
+
+
+def test_the_map_script_agrees_with_the_cpp_about_the_hidden_chamber() -> None:
+    """The script copies where Reality Rifts' hidden chamber stands. Issue #2366.
+
+    The chamber is not in a floor's plan. It stands beside the floor on the +X
+    side, a gap of empty columns past the plan's last column, and the navigation
+    bounds have to reach it or a click to walk inside it finds no path.
+    """
+    assert script_constant("CHAMBER_GAP_CELLS") == cpp_constant(
+        EFFECTS_HEADER, "RealityChamberGapCells", "int32"), (
+        "tools/generate_dungeon_map.py and CataclysmDungeonModifierEffects.h "
+        "disagree about how many empty columns lie between a floor and the "
+        "hidden chamber of Reality Rifts. The C++ is authoritative."
+    )
+    assert script_constant("CHAMBER_SIDE_CELLS") == cpp_constant(
+        EFFECTS_HEADER, "RealityChamberSide", "int32"), (
+        "tools/generate_dungeon_map.py and CataclysmDungeonModifierEffects.h "
+        "disagree about how many cells wide the hidden chamber of Reality "
+        "Rifts is. The C++ is authoritative."
+    )
+
+
+def test_the_navigation_bounds_along_x_are_built_from_the_chambers_reach() -> None:
+    """The X width is a sum too, and the volume is built with it.
+
+    Pinned for the reason the floor's own width is pinned above: the test below
+    reproduces this arithmetic, and a script that wrote a fixed number, or went
+    back to the square volume, would leave it comparing values the map never
+    used.
+    """
+    script = source(MAP_SCRIPT)
+    assert re.search(
+        r"^CHAMBER_REACH_CM\s*=\s*\(CHAMBER_GAP_CELLS\s*\+\s*CHAMBER_SIDE_CELLS\)"
+        r"\s*\*\s*CELL_SIZE_CM\s*$", script, re.MULTILINE), (
+        "tools/generate_dungeon_map.py no longer works out how far the hidden "
+        "chamber reaches past a floor as its gap plus its side, in cells."
+    )
+    assert re.search(
+        r"^NAV_WIDTH_X_CM\s*=\s*FLOOR_WIDTH_CM\s*\+\s*2\.0\s*\*\s*CHAMBER_REACH_CM"
+        r"\s*\+\s*NAV_MARGIN_CM\s*$", script, re.MULTILINE), (
+        "tools/generate_dungeon_map.py no longer sizes its navigation bounds "
+        "along X as the floor's width, the chamber's reach on both sides and a "
+        "margin. Whatever it does now, this test and the one below have to be "
+        "taught it."
+    )
+    assert re.search(
+        r"unreal\.Vector\(NAV_WIDTH_X_CM,\s*NAV_WIDTH_CM,\s*NAV_HEIGHT_CM\)",
+        script), (
+        "tools/generate_dungeon_map.py no longer builds the navigation bounds "
+        "volume NAV_WIDTH_X_CM along X. The width worked out for the hidden "
+        "chamber would then be a number nothing uses."
+    )
+
+
+def test_the_navigation_bounds_reach_past_the_hidden_chamber(floor_width_cm) -> None:
+    """On the widest floor, the chamber's far edge is inside the volume.
+
+    The volume is centred on the level's origin and so is a floor, so the test
+    is on half widths: from the middle to the chamber's far edge, against from
+    the middle to the volume's edge. The C++ says where the chamber is; the
+    script says how wide the volume is.
+    """
+    cell = cpp_constant(GENERATOR_HEADER, "CellSizeCm", "float")
+    reach_cells = (cpp_constant(EFFECTS_HEADER, "RealityChamberGapCells", "int32")
+                   + cpp_constant(EFFECTS_HEADER, "RealityChamberSide", "int32"))
+    chamber_far_edge = floor_width_cm / 2.0 + reach_cells * cell
+
+    script_reach = ((script_constant("CHAMBER_GAP_CELLS")
+                     + script_constant("CHAMBER_SIDE_CELLS"))
+                    * script_constant("CELL_SIZE_CM"))
+    nav_half_width_x = (script_constant("FLOOR_CELLS_ACROSS")
+                        * script_constant("CELL_SIZE_CM")
+                        + 2.0 * script_reach
+                        + script_constant("NAV_MARGIN_CM")) / 2.0
+
+    assert nav_half_width_x > chamber_far_edge, (
+        f"the navigation bounds in L_Dungeon reach {nav_half_width_x:.0f} cm "
+        f"from the middle along X, and on the widest floor the far edge of the "
+        f"hidden chamber of Reality Rifts is {chamber_far_edge:.0f} cm out. A "
+        f"click to walk inside the chamber would find no path. Issue #2366."
     )
 
 
