@@ -579,7 +579,13 @@ switched-off slot; an item carrying both rows at once; an item that also carries
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-10, on development bd6133a3 (the hidden chamber of Reality Rifts), at the head of the rows layer, which holds both layers of this pair. The first window, on 06d81f8a, is described at the top of the class points entry: it printed 24 failures and is void.
+
+- **Build:** "Build: Succeeded - 34 actions, 29 files compiled".
+- **The whole Unreal suite:** "3544 tests performed, 3544 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3544 tests in the tree at 8ec8c065; 3544 performed, gap 0". Registered: 3544 and 0. All 24 tests that failed in the first window passed.
+- **Python:** "5954 passed, 8 skipped"; JUnit tests 5962, failures 0, errors 0, skipped 8. Registered: 5962 and 0. Lint: "All checks passed!".
+- **The enchantment assets were not rebuilt in this window.** The rows, the generator and `game/Data` at the tested head are byte for byte what the first window's head held (`git diff` of the two heads names only `docs/DECISIONS.md` and files under `game/Source`), the hidden chamber's commit changes no enchantment table, and the asset files are the ones the editor built in the first window (583 rows). In that window, before the rebuild, the group `Cataclysm.Passives.ClassPointsFromGear.` printed "8 tests performed, 3 succeeded, 5 failed", each of the five on the set-up assertion that the loaded tables hold the 5 to 10 row.
+- **Guard proofs:** none is this layer's. The three run in this window are the lower layer's and are in its entry. That the two rows reach a character is shown by this layer's tests, which wear them, and by no proof.
 
 ---
 
