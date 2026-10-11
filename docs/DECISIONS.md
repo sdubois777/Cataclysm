@@ -410,6 +410,66 @@ Nothing. The row is `Chaos_Reality_Rifts` in `game/Data/DungeonModifiers.csv` an
 is written in the engine and states no stat row, so no row was passed through the generator and no dry run was
 made. No stat, condition or scale was added.
 
+### Run
+
+One window on 2026-10-10 at `feat/rift-chamber-2` a4983537, on development 06d81f8a. One attempt; nothing was
+corrected during it, and no test-only correction was needed. Every build, run and measurement here was made by
+the registering session, holding the lock as void-zones-w20. Every figure is a line a run printed. The lock was
+taken only after development's own two workflow runs at 06d81f8a had printed success, no run was in progress, no
+build process was running and no pull request was open. Times are UTC, from each step's log file.
+
+The head that was run holds all four commits: the layer, the reward that is never empty, the note on the base,
+and the panel's "held nothing" clause. The coordinating session named the window for the third commit, 83a079b3;
+the fourth was made on its own ruling before the build, and the registering session could not tell it so before
+the window because its allowance of messages was used up.
+
+| Step | Began | Printed |
+|---|---|---|
+| Build | 23:09:04 | `Build: Succeeded - 22 actions, 17 files compiled` |
+| Whole Unreal suite | 23:09:45 | `3535 tests performed, 3535 succeeded, 0 failed`; `Declared: 3535 tests in the tree at a4983537; 3535 performed, gap 0; every declared test was reported by the run`; 40 tests skipped part of what they check |
+| Python, with continuous integration idle | 23:49:15 | `5948 passed, 8 skipped in 351.31s (0:05:51)`; JUnit `errors="0" failures="0" skipped="8" tests="5956"` |
+| Ruff | | `All checks passed!` |
+| The three proofs | 23:55:08, ended 23:59:21 | below |
+
+Registered before the run: 3,535 Unreal tests (3,528 measured on development 06d81f8a plus the seven of this
+layer by name) and a JUnit count of 5,956. Both printed as registered. No existing test failed, so the four
+rift tests the salt was fitted for passed unchanged.
+
+**What the run settled that was only read before it.** The layer compiled. The hand-written figures, worked out
+by a Python copy of the seed function, are the engine's: the figures test passed, and it logged "of 1,000
+floors, dungeon seeds 1 to 100 and floors 1 to 10, 327 have a chamber by seed". The plan test logged "of dungeon
+seeds 1 to 40, floor 2: 13 have a chamber by seed and a chamber stood on 13", so on those forty floors the rift
+picker always found its sixth cell. The floor with a chamber has creature for creature what the same seed has
+without the row, so the populator does not read the row. The search for a floor whose plain Elite roll is empty
+found one among seeds 1 to 40 without being widened, and entering it left exactly one drop, the same one when
+the floor was built again.
+
+**Not settled by this run.** Nothing was tried in play: the click-to-walk limit on floors wider than 38 cells
+(issue #2366), what the chamber looks like, what followers do. No run made both attempts at the extra drop land
+nothing; the "held nothing" clause is asserted on its own. No test kills the player in a chamber with a dungeon
+of the empire bound.
+
+**Guard proofs, at a4983537, all in `CataclysmDungeonGameMode.cpp`, each with one anchor counted 1 and the source
+hash the same before and after, each PROVED: failed with the break in and passed with it out.** No break failed
+to compile.
+
+| Proof | The break | Test (`Cataclysm.DungeonModifierEffects.`) | Registered | With the break in | Restored |
+|---|---|---|---|---|---|
+| 1 | `bRealityChamberRiftArmed = false;` becomes `= true;` | `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce` | the test fails, the two named assertions among its failures | 1 performed, 1 failed, 2 failed assertions, the two named | 1 performed, 1 succeeded |
+| 2 | `if (bAtTheFloorEnd && !bRealityChamberRewardGiven)` becomes `if (bAtTheFloorEnd)` | the same test | 3 | 1 performed, 1 failed, 3 failed assertions | 1 performed, 1 succeeded |
+| 3 | `... ? RealityChamberRiftCell : StandsOn;` becomes `... ? StandsOn : StandsOn;` | `RealityRiftsChamberAnObstacleIsStillAllowedOnTheFloorWhileThePlayerIsInside` | 1 | 1 performed, 1 failed, 1 failed assertion | 1 performed, 1 succeeded |
+
+Proof 1, as printed: "Expected 'a beat later, still standing on the rift's end, the player is still in the
+chamber' to be true"; "Expected 'and standing there is not carried straight back in' to be true".
+
+Proof 2, as printed: "Expected 'entering again makes no second roll' to be 1, but it was 2"; "Expected 'and
+leaves no new drop in the world' to be 16, but it was 24"; "Expected 'and still one roll' to be 1, but it was 3".
+
+Proof 3, as printed: "Expected 'with the player in the chamber an obstacle is allowed on a floor cell (683
+asked)' to be not null".
+
+The commit that adds this section changes this entry alone, and the head that carries it was not run.
+
 ---
 
 ## 2026-10-09 — Dying inside a dungeon of the empire ends the walk of it, resolves an ordinary dungeon at once and costs the lethality mode's days
