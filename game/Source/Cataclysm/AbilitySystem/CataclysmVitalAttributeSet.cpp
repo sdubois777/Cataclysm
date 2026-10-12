@@ -1240,7 +1240,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// Not for a blow that was evaded, which did not hit; not for a tick; and a reflected hit is not
 				// reflected back, which the no-retaliation tag on it says. EMPTIED HERE, WHERE THE NO-DAMAGE
 				// WINDOW EMPTIES A BLOW, so everything after reads it as that window's blow is read.
-				const bool bMayBeTurned = !Resolved.bEvaded && Hit.Damage > 0.0f && !Guarded->IsDamageImmune();
+				//
+				// AND THE WINDOW AGAINST ONE DAMAGE TYPE IS READ WHEREVER THE NO-DAMAGE WINDOW IS, at the three
+				// places below. Ruled 2026-10-12, for "you have a 10% chance to become immune to the damage type
+				// that hit you for 5 seconds". `Hit.DamageType` is the type that decides a resistance, none for
+				// a blow whose element is for colour only, and `IsImmuneToDamageType` answers false for none.
+				// So a blow or a tick of a type whose window is open is emptied as the no-damage window empties
+				// one, and everything after reads it the same way. ASKED AT EACH PLACE AND NOT KEPT IN A LOCAL,
+				// as `IsDamageImmune` is: the save below can open the no-damage window between the second read
+				// and the third.
+				const bool bMayBeTurned = !Resolved.bEvaded && Hit.Damage > 0.0f && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType);
 				const bool bAbsorbed = bMayBeTurned && UCataclysmDamageCalculation::SpellIsAbsorbed(Guarded, Hit);
 				const bool bReflected = bMayBeTurned && !bAbsorbed
 					&& !AssetTags.HasTag(UCataclysmDamageCalculation::NoRetaliationTag())
@@ -1264,7 +1274,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Resolved.DealtToHealth + Resolved.AbsorbedByShield
 							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
-				if (Guarded->IsDamageImmune() || bAbsorbed || bReflected)
+				if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
+					|| bAbsorbed || bReflected)
 				{
 					Resolved.DealtToHealth = 0.0f;
 					Resolved.AbsorbedByShield = 0.0f;
@@ -1294,7 +1305,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// `NotifyHealthChanged`. A damage over time tick is saved too: the
 				// sentence is about health falling, not about a hit. After Nothing
 				// Stops It, which saves first and spends nothing of this.
-				if (!Guarded->IsDamageImmune() && GetHealth() > 1.0f
+				if (!Guarded->IsDamageImmune() && !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 1.0f
 					&& GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
 					&& Guarded->SavesLethalBlowByCrossing(GetHealth() / GetMaxHealth() * 100.0f))
 				{
@@ -1996,6 +2008,32 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				if (!Outcome.bEvaded && !Hit.bIsDamageOverTime)
 				{
 					Cataclysm->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+				}
+
+				// AND A HIT THAT WAS TAKEN MAY MAKE ITS WEARER IMMUNE TO ITS DAMAGE TYPE FOR A TIME. Ruled
+				// 2026-10-12 under the owner's delegation, for "Shard of Anarchy (6-Piece Bonus): When you take
+				// damage, you have a 10% chance to become immune to the damage type that hit you for 5 seconds".
+				// The chance and the seconds are the row's two stats; see `RollDamageTypeImmunityOnHit`.
+				//
+				// HERE, AFTER THE HEALTH IS WRITTEN, so the hit that rolls is taken in full and the window covers
+				// what comes after it. And here rather than on the event `hit_taken`, which carries no damage
+				// type: the type is in hand in this function and nowhere after it.
+				//
+				// A HIT ONLY, AND ONE THAT DEALT SOMETHING. Not a damage over time tick, as ruled. Not an evaded
+				// blow, which did not hit. Not a hit with no type, which has no type to become immune to. Not a
+				// hit that dealt nothing to health and nothing to a pool that absorbs: one stopped whole by a
+				// block, by armour and resistance, by a row's absorb or reflect, by the no-damage window or by
+				// this type's own window. THE SAME FOUR FIGURES the block above reads for "anything that got
+				// through", so a hit the energy shield or the temporary absorb took whole rolls: its wearer was
+				// struck and something it held was spent.
+				//
+				// NOT A HIT THAT KILLED. A judgement by the writing session: the death has been announced above
+				// by the time this line runs, and a window opened now would be opened on a dead character.
+				if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !Hit.DamageType.IsNone() && GetHealth() > 0.0f
+					&& (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
+						|| Outcome.AbsorbedByMana > 0.0f || Outcome.AbsorbedByTemporary > 0.0f))
+				{
+					Cataclysm->RollDamageTypeImmunityOnHit(Hit.DamageType);
 				}
 
 				// AND WHOEVER DEALT IT IS IN COMBAT TOO. Issue #1815. The same

@@ -2,6 +2,294 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A hit can make its wearer immune to that hit's damage type for a time: two stats, a window for each type, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the two stat
+names, the roll, the windows, the console variable that pins the roll, and the clearing at a death),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the window read at the three places the
+no-damage window is read, and the roll once a hit's health is written),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two names on the list of stats with no
+attribute), `game/Source/Cataclysm/Tests/CataclysmBlockShareTests.cpp` (five tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two probes), `tools/generate_datatables.py` (the
+two names, their bounds and one refusal), `tools/tests/test_generate_datatables.py` (one class of ten tests),
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two names and one test),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites added to its inventory). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, the six-piece bonus of the set Shard of Anarchy: "Shard of Anarchy (6-Piece Bonus): When you take
+damage, you have a 10% chance to become immune to the damage type that hit you for 5 seconds".
+
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+- **A dungeon floor rule's blow of the type IS refused while that type's window runs.** A floor rule deals its
+  typed damage with `UCataclysmSkillEffects::ApplyDirectDamage` and the type on the delivery
+  (`FCataclysmHitDelivery::DamageType`). That call writes the Damage attribute, so the blow is resolved in
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, the function that reads the window. This holds for a
+  floor rule's hit and for a floor rule's blow marked as damage over time. A floor rule's hit that is not marked
+  as damage over time also rolls, like any other typed hit.
+- **These losses are NOT refused, because none of them has a damage type or passes that place:**
+  - a direct reduction of health, `UCataclysmSkillEffects::ReduceHealthDirectly`, which writes the Health
+    attribute and not the Damage attribute. The dungeon rule Suffering Aura takes its health this way. A search of
+    `CataclysmDungeonGameMode.cpp` on 2026-10-12 found seven calls of it; they were counted and not each read.
+    The comments in `CataclysmVitalAttributeSet.cpp` say retaliation paid back to a character and the shares
+    Sacrificial Bond passes to allies are direct reductions too;
+  - a blow with no type. A player's hit carries its skill's element for colour only, and `Hit.DamageType` is
+    none for it. So an enemy wearing such a row would open a window only for a typed blow, and a player's hits
+    are not typed. No enemy wears a row today;
+  - a loss of mana, a skill's cost, and a health cost.
+- **A HIT only rolls. A damage over time tick never rolls.** As ruled.
+- **The type is `Hit.DamageType`, the type that decides a resistance. A hit with no type opens nothing.** As
+  ruled.
+- **The hit that rolls is itself taken in full.** The roll is made after the hit's health is written. The
+  window covers what comes after it.
+- **Which hits roll.** The ruling left this to be proposed; the enchantment session's reading was that an evaded
+  hit does not roll and every other hit that deals damage above nought does. What was built:
+
+  | The hit | Rolls | Why |
+  | :-- | :-- | :-- |
+  | Evaded | No | It did not hit. |
+  | Blocked, and part of it kept | Yes | It dealt damage above nought. |
+  | Blocked, and the block removed all of it | No | It dealt nothing. |
+  | The energy shield took it whole | Yes | A judgement: the wearer was struck and something it held was spent. The four figures read are the ones the same function reads for "anything that got through": health, energy shield, mana and the temporary absorb. |
+  | The temporary absorb took it whole | Yes | The same judgement. |
+  | Inside the no-damage window | No | The window empties it, so it dealt nothing. |
+  | Of a type whose own window is open | No | That window empties it, so it dealt nothing. |
+  | Turned aside by a row's spell absorb or melee reflect | No | It dealt nothing to the wearer. |
+  | Stopped whole by armour and resistance | No | It dealt nothing. |
+  | On a creature no damage reaches (The Reaper, a shrouded creature) | No | It dealt nothing. |
+  | A lethal hit that Nothing Stops It or a worn row saved at one health | Yes | It dealt damage and its wearer lives. |
+  | A hit that emptied its wearer's health | No | A judgement of the writing session: the death has been announced by the time the roll would be made. |
+  | A contagious touch of the dungeon rule Contagious Touch | No | That blow returns before any of this, having dealt nothing. |
+
+- **A window is never extended by a roll in play, as built.** The ruling says a later roll for the same type
+  extends the window to the later end and never shortens it. The function that opens a window does that
+  (`GrantDamageTypeImmunity`). But a hit of a type whose window is open deals nothing, and a hit that deals
+  nothing does not roll, so no roll for that type can happen until its window has ended. The extension is
+  reachable by calling the function, which the tests do. The option not taken: let a hit the window refused
+  roll. At a chance of 100 that would be immunity to the type without end.
+- **Damage over time of that type already on the wearer follows what the no-damage window does.** Read in
+  `PostGameplayEffectExecute`: a tick reaches the same function as a hit, marked by the tag
+  `UCataclysmDamageCalculation::DamageOverTimeTag`, and the block that empties a blow inside the no-damage window
+  is not limited to hits. So inside either window a tick of the type takes nothing from health, the energy
+  shield, mana or the temporary absorb. The effect is not removed and its seconds go on counting, so its ticks
+  after the window deal damage again. An emptied tick does not restart the energy shield's refill wait, gives
+  its attacker no leech and is not passed to `NoteBlowTaken`, because the block that does those is entered only
+  when something got through. An enemy's damage over time carries the enemy's type: `ApplyDamageOverTime` and the
+  share-of-health tick both send their spec through `ApplyTypedSpec`.
+- **The window is read at all three places the no-damage window is read.** A blow or tick of the type is
+  emptied; a row's spell absorb and melee reflect are not rolled for it; and the worn row that saves a blow by
+  crossing a health threshold is not asked for it. A hit of the type that would have killed is emptied before
+  Nothing Stops It is asked, so it spends no save.
+- **One window a type; windows for different types run side by side.** A map from the damage type to the world
+  time its window ends.
+- **The row's shape is TWO STAT ROWS, both `flat`, a judgement of the writing session.**
+  `damage_type_immunity_on_hit_chance`, 10 to 10, and `damage_type_immunity_on_hit_seconds`, 5 to 5. So the row
+  states the "10% chance" and the "5 seconds", and the code works for any chance and any time. This is the shape
+  of the two figures of Nothing Stops It, `lethal_hit_survived_every_seconds` and
+  `damage_immunity_after_lethal_hit_seconds`, which the same function reads at the same blow. The option not
+  taken: one action on the event `hit_taken`. That event carries no damage type, and an action row has one
+  figure, so the seconds would have needed a column that means something else today.
+- **Two rows on the same stat add, because they are flat.** A character holding this row from two sources would
+  hold a chance of 20 and 10 seconds. Only one set states the sentence, so this does not happen today.
+- **A chance of 100 or more is not rolled, so a stated 100 never fails.** Issue #2201: the roll is drawn from 0
+  to 100 and can be exactly 100. `CataclysmAilments.cpp` guards its rolls the same way. A chance below 100
+  succeeds on a roll strictly below it. `Cataclysm.DamageTypeImmunityRoll` pins the roll for tests.
+- **The generator's bounds are a judgement.** A chance above nought and up to 100. Seconds above nought and up
+  to 10, which is `MAX_DAMAGE_IMMUNITY_SECONDS`, the bound of the no-damage window. A row requiring a tag is
+  refused, because the game asks for both stats with no tags. An enchantment stating one of the two stats
+  without the other is refused, because the game opens nothing unless both are above nought.
+- **When the gear comes off, a window already open runs to its end.** The two stats are read when a hit rolls
+  and at no other time. No further window opens.
+- **At death the windows end when the character is revived.** `ClearWhatDeathEnds` empties them, beside the
+  no-damage window, and `ACataclysmPlayerCharacter::Revive` is what runs it.
+- **A new dungeon floor ends nothing.** A window ends on the world's clock. The entry below records that no code
+  in the game module travels to another level, so a floor change keeps the world and its clock.
+- **Nothing on screen shows a window or its seconds.** The owner's rule is that every system has a basic
+  interface. This layer does not give the window one. `DamageTypeImmunitySecondsLeft` is what an interface would
+  read. The coordinating session should rule on it before the row is authored.
+
+**Genre sources, fetched by the enchantment session on 2026-10-12.**
+
+- REACHED: `poedb.tw/us/Immortal_Call` (Path of Exile). Today the skill gives less physical and elemental
+  damage taken for about a second. Its version history for 3.7.0 says: "No longer makes you immune to physical
+  damage for a duration". So a shipped game had a timed immunity to one damage type and later withdrew it.
+- NOT REACHED: `diablo.fandom.com/wiki/Mara's_Kaleidoscope` (HTTP 402) and `diablowiki.net` (HTTP 403). Diablo
+  3's amulets that give immunity to one damage type are remembered by the enchantment session and were not
+  fetched. Nothing about them is stated here as fact.
+- What the one source settles: that a timed immunity to one damage type has shipped, and that the game that
+  shipped it took it away. It does not settle the chance, the seconds, which hits roll, or what a tick does.
+  Those are this game's, ruled or judged as labelled above.
+
+**What was not read:** the steps of `UCataclysmDamageCalculation::Resolve` beyond the evasion step and the
+block's roll; what is drawn on screen for a blow a window empties; `ACataclysmGroundZone`, beyond the comment in
+`DamageTypeOf` that says a floor patch carries its rule's type; each caller of `ReduceHealthDirectly`;
+`UCataclysmRetaliation::Pay`; how a set bonus's row is counted by pieces worn and turned into a line of the stat
+line; the whole of `ClearWhatDeathEnds`, which one test calls on a bare actor.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| C1 | A hit only raises it. A damage over time tick never rolls. | The condition `!Hit.bIsDamageOverTime` on the call of `RollDamageTypeImmunityOnHit` in `PostGameplayEffectExecute`. |
+| C2 | The type is the hit's main type, `Hit.DamageType`. A hit with no type opens nothing. | The call passes `Hit.DamageType`; the condition `!Hit.DamageType.IsNone()`, and the same refusal inside the function. |
+| C3 | The hit that rolls is itself taken in full. The window covers what comes after it. | The call is made after the hit's health is written, beside the count of an "every Nth hit you take" row. |
+| C4 | While a window for a type runs, damage of that type is refused at the place the no-damage window is read, and damage over time of that type follows what the no-damage window does. | `IsImmuneToDamageType(Hit.DamageType)` beside each of the three reads of `IsDamageImmune`. |
+| C5 | One window a type; a later roll for the same type extends it to the later end and never shortens it. Windows for different types run side by side. | `GrantDamageTypeImmunity` and the map `DamageTypeImmuneUntilSeconds`. |
+| C6 | The chance and the seconds come from the row, and the mechanism works for any chance and any time. | The two stats, asked in `RollDamageTypeImmunityOnHit` with no tags. |
+
+### WHAT WAS BUILT
+
+- **The two stats.** `UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat` and
+  `DamageTypeImmunityOnHitSecondsStat`. Neither has a gameplay attribute or a base. Both are on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, after `suffering_aura_mana_drain_immunity`, so a refresh
+  records a row's line for each.
+- **The roll.** `RollDamageTypeImmunityOnHit(FName DamageType)` asks both stats with `StatForSkill`, no tags and
+  a fallback of nought. No type, a chance of nought or less, or seconds of nought or less opens nothing. A
+  chance below 100 is compared with a roll; a chance of 100 or more is not. On success it calls
+  `GrantDamageTypeImmunity`.
+- **The windows.** `GrantDamageTypeImmunity(FName, float)` keeps the later of the end held and the new end, and
+  drops entries whose time has passed. `IsImmuneToDamageType(FName)` answers whether a type's window is open,
+  false for no type. `DamageTypeImmunitySecondsLeft(FName)` answers what is left.
+- **The reads.** In `PostGameplayEffectExecute`, the three conditions that read `IsDamageImmune` each read
+  `IsImmuneToDamageType(Hit.DamageType)` as well. Each is a call at its place and not a value kept from the
+  first: the save by Nothing Stops It can open the no-damage window between the second read and the third.
+- **The call of the roll.** In the same function, after `NoteHitTaken` and the count of an "every Nth hit you
+  take" row: for a blow that was not evaded, is not a tick, has a type, left its wearer's health above nought,
+  and took something from health, the energy shield, mana or the temporary absorb.
+- **The end at a death.** `ClearWhatDeathEnds` empties the map on the line after it ends the no-damage window.
+- **The generator.** `DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS` holds the two names and their bounds.
+  `refuse_a_damage_type_immunity_row_the_game_cannot_read` refuses a row on either stat that is not `flat`, that
+  requires a tag, or whose figure is outside its bounds, and an enchantment that states one of the two without
+  the other. `validate_enchantment_effects` runs it. A condition or a scale on either stat is refused by the two
+  checks that already refuse those on a stat not on their lists.
+- **The rows the enchantment session is to write** are two lines on the one enchantment: Stat
+  `damage_type_immunity_on_hit_chance`, Value Kind `flat`, 10 to 10; and Stat
+  `damage_type_immunity_on_hit_seconds`, Value Kind `flat`, 5 to 5. No Required Tags, no Condition, no Scale and
+  no Action on either.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the two names. The generator reads that list, so
+  it now accepts a row on either stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for each name.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains two call sites of
+  `StatForSkill`, both in `RollDamageTypeImmunityOnHit`, each with its reason. `CALL_SITES` is left at 65, the
+  figure measured on the commit that comment names; the comment above it gains a dated sentence.
+- `CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the two constant
+  names. They are stats and that file's other names are actions and statuses; they are there so the generator's
+  two names are compared with the engine's.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on
+  either stat, so no shipped row is refused.
+
+### Tests
+
+Five new Unreal tests in `CataclysmBlockShareTests.cpp`, after the tests of the no-damage window. Each wearer is
+a bare actor holding the two stats by hand and no other line. Every blow is a typed direct blow through the
+damage calculation and the attribute set, the shape a dungeon floor rule sends. Every figure is compared with
+what the same blow took from a fighter holding no row, read first. The critical strike roll and the block roll
+are pinned. The clock is moved by adding to the world's time; nothing waits on a tick. The fighters have no
+root component, so none has a body to overlap another.
+
+- `Cataclysm.BlockShare.AHitMayOpenAWindowAgainstItsOwnDamageTypeAndIsItselfTakenInFull`: at a chance of 50
+  with the roll pinned to succeed, the first War hit is taken in full and opens the War window for 5 seconds and
+  no other; a second War hit takes nothing; with the roll pinned to fail, a Demonic hit and a hit of no type are
+  taken in full; 4 seconds on a War hit takes nothing; 5.5 seconds on the window has ended and a War hit is
+  taken in full.
+- `Cataclysm.BlockShare.ARollThatFailsOpensNoWindowAndAStatedHundredNeverFails`: at a chance of 50 a roll of
+  exactly 50 opens nothing and a roll of 49 opens the window; at a stated 100 a roll of exactly 100 opens it,
+  where a chance of 50 on that roll opens nothing; on a roll of nought a fighter with no row, one holding a
+  chance and no seconds, and one holding seconds and no chance each open nothing.
+- `Cataclysm.BlockShare.ATickNeverRollsAndATickOfTheTypeInsideItsWindowTakesNothingAsInTheNoDamageWindow`: at a
+  chance of 100 a War tick is taken in full and opens nothing; after a War hit opens the window a War tick
+  takes nothing, as a tick takes nothing from a fighter inside the no-damage window; a Demonic tick is taken in
+  full and opens nothing; after the window a War tick is taken again.
+- `Cataclysm.BlockShare.WindowsForTwoTypesRunSideBySideAndALaterGrantNeverShortensOne`: a War hit and, 2
+  seconds later, a Demonic hit leave both windows open with 3 and 5 seconds left; a hit of either type takes
+  nothing and extends nothing; 5.5 seconds after the War hit its window has ended, the Demonic one has 1.5
+  seconds left, a War hit is taken in full and a Demonic hit takes nothing. By hand: a grant of 1 second inside
+  one of 5 leaves 5, a grant of 8 makes it 8, a grant for no type opens nothing, and `ClearWhatDeathEnds` ends
+  every window.
+- `Cataclysm.BlockShare.ABlockedHitAndAHitTheShieldTakesWholeRollAndAHitThatDealsNothingOrKillsDoesNot`: a
+  blocked hit that kept part of itself rolls; a hit the energy shield took whole rolls; a hit inside the
+  no-damage window takes nothing and does not roll, and after that window a hit is taken in full and rolls; a
+  hit that empties its taker's health opens nothing.
+
+Two probes in `CataclysmStatExemptionTests.cpp`, one for each stat, run by
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. Each strikes two fighters with a War hit; the
+two differ by the one stat probed, and only the one holding both is immune to War afterwards.
+
+Python:
+
+- `TestAHitMayMakeItsWearerImmuneToItsDamageType` in `tools/tests/test_generate_datatables.py`, ten tests on a
+  made-up sheet: the ruled pair of rows is carried through and not refused; both names are stats with no
+  attribute; the bounds; a pair at other figures inside the bounds is not refused; each wrong shape is refused
+  once and by its own sentence (a kind that is not flat, a required tag, a figure of nought, below nought or
+  above the bound); one of the two stats without the other is refused; a misspelt stat is refused by the
+  sheet's validation; a condition or a scale is refused by the two checks that hold those; a passive node's row
+  and a row on another stat are left alone; and the sheet's validation runs the check.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains one test: the generator's two
+  names are the two the engine's constants hold.
+
+**Not tested:** the rows arriving from a worn item through a gear refresh, because no row exists; the random
+roll with its pin off; an evaded hit, because evasion is rolled inside the damage calculation with no console
+variable to pin it; a hit the temporary absorb took whole; a block that removed all of a hit; a hit a row's
+spell absorb or melee reflect turned aside, and that neither is rolled inside the window; the worn row that
+saves a blow by crossing a health threshold, inside the window; a lethal hit of the type inside the window and
+Nothing Stops It not being spent; a blow from a floor's hazard source, a floor patch, an enemy or a projectile;
+a lasting damage over time effect of a type, running on a timer; the window on a player character with a
+player state; a real death and revival; a floor change with a window open; the gear coming off with a window
+open; two sources of the row adding; what is drawn on screen for an emptied blow.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
+`Cataclysm.BlockShare.`, with its trailing dot.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| C-I, a blow of the type is emptied inside its window | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | <code>if (Guarded->IsDamageImmune() &#124;&#124; Guarded->IsImmuneToDamageType(Hit.DamageType)</code> | `if (Guarded->IsDamageImmune()` | `WindowsForTwoTypesRunSideBySideAndALaterGrantNeverShortensOne` | `AHitMayOpenAWindowAgainstItsOwnDamageTypeAndIsItselfTakenInFull` and `ATickNeverRollsAndATickOfTheTypeInsideItsWindowTakesNothingAsInTheNoDamageWindow` |
+| C-II, a tick never rolls | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !Hit.DamageType.IsNone() && GetHealth() > 0.0f` | `if (!Outcome.bEvaded && !Hit.DamageType.IsNone() && GetHealth() > 0.0f` | `ATickNeverRollsAndATickOfTheTypeInsideItsWindowTakesNothingAsInTheNoDamageWindow` | none |
+| C-III, a stated 100 is not rolled | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (Chance < 100.0f)` | `if (Chance < 1000.0f)` | `ARollThatFailsOpensNoWindowAndAStatedHundredNeverFails` | none |
+
+C-I's old text, as it is in the file:
+
+    if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
+
+The table writes its two bars as character references, because a bar ends a table cell. The line after it in the
+file, `|| bAbsorbed || bReflected)`, is left as it is, so the broken condition still closes.
+
+Failed assertions in each test, by reading:
+
+- **C-I, 8 in 3 tests.** The two-types test 5: "a War hit takes nothing"; "and a Demonic hit takes nothing"; "a
+  hit its window refused did not roll: War still has 3 seconds", because the War hit is now taken and rolls at a
+  chance of 100; "five and a half seconds after the War hit its window has ended", for the same reason; and
+  "while a Demonic hit still takes nothing". The first test 2: "a second War hit inside the window takes
+  nothing" and "four seconds on a War hit still takes nothing". The tick test 1: "a War tick inside the window
+  takes nothing".
+- **C-II, 2 in 1 test.** "and a tick does not roll: no window, at a chance of 100"; and "and opens nothing",
+  after the Demonic tick, which now rolls.
+- **C-III, 1 in 1 test.** "a stated 100 opens the window on a roll of exactly 100". With this break every other
+  wearer at a chance of 100, in the three other tests and the two probes, draws a real roll with no pin, which
+  fails only when the draw is exactly 100.
+
+No test of another group is expected to fail under C-I or C-II. The first and the third of the three reads of
+the window have no test, so a break in either would fail nothing; they are listed under "Not tested".
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can lay a random buff or debuff on its wearer: a debuff from the merged draw, or one of a table of six buffs held for 30 seconds, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one status name,

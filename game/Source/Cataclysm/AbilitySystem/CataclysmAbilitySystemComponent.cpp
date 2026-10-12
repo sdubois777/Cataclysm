@@ -2116,6 +2116,100 @@ bool UCataclysmAbilitySystemComponent::IsDamageImmune() const
 		&& World->GetTimeSeconds() < DamageImmuneUntilSeconds;
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat =
+	TEXT("damage_type_immunity_on_hit_chance");
+const TCHAR* UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitSecondsStat =
+	TEXT("damage_type_immunity_on_hit_seconds");
+
+/**
+ * Pins the roll `RollDamageTypeImmunityOnHit` makes against its chance, 0 to 100, for tests. Negative, the default,
+ * rolls for real. Ruled 2026-10-12; the same shape as `Cataclysm.StatusRoll`. A chance of 100 or more is not
+ * compared with the roll, so it succeeds whatever is pinned here, 100 included. Issue #2201.
+ */
+static TAutoConsoleVariable<float> CVarDamageTypeImmunityRoll(
+	TEXT("Cataclysm.DamageTypeImmunityRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a hit makes against its wearer's chance to become immune to that hit's damage type. "
+		 "Negative rolls for real. A chance of 100 or more is not rolled."),
+	ECVF_Default);
+
+bool UCataclysmAbilitySystemComponent::RollDamageTypeImmunityOnHit(FName DamageType)
+{
+	// A HIT WITH NO TYPE OPENS NOTHING, as ruled. A player's hit on an enemy is such a hit.
+	if (DamageType.IsNone())
+	{
+		return false;
+	}
+
+	// BOTH FIGURES ARE THE ROW'S, asked with no tags: the chance and the time belong to the wearer and not to a
+	// skill, and the hit that rolls is the attacker's. Either at nought or less opens nothing, so a character with
+	// no such row stops here.
+	const float Chance = StatForSkill(FName(DamageTypeImmunityOnHitChanceStat), FGameplayTagContainer(), 0.0f);
+	const float Seconds = StatForSkill(FName(DamageTypeImmunityOnHitSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Chance <= 0.0f || Seconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A CHANCE OF 100 OR MORE IS NOT ROLLED. Issue #2201. The roll is drawn with `FMath::FRandRange(0.0f, 100.0f)`,
+	// which can return exactly 100, and 100 is not below 100; `CataclysmAilments.cpp` guards its rolls the same
+	// way. A chance below 100 is compared with the roll: a roll equal to the chance fails.
+	if (Chance < 100.0f)
+	{
+		const float Pinned = CVarDamageTypeImmunityRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (Roll >= Chance)
+		{
+			return false;
+		}
+	}
+
+	GrantDamageTypeImmunity(DamageType, Seconds);
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::GrantDamageTypeImmunity(FName DamageType, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || DamageType.IsNone() || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	// LAPSED WINDOWS ARE DROPPED HERE, so the map holds at most one entry for each type that was ever hit.
+	for (auto It = DamageTypeImmuneUntilSeconds.CreateIterator(); It; ++It)
+	{
+		if (Now >= It.Value())
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	// ONE WINDOW A TYPE, AND THE LATER OF THE TWO ENDS, so a short window never cuts a longer one short. Another
+	// type's window is another entry and is not touched.
+	const float End = Now + Seconds;
+	if (float* Until = DamageTypeImmuneUntilSeconds.Find(DamageType))
+	{
+		*Until = FMath::Max(*Until, End);
+	}
+	else
+	{
+		DamageTypeImmuneUntilSeconds.Add(DamageType, End);
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::IsImmuneToDamageType(FName DamageType) const
+{
+	return DamageTypeImmunitySecondsLeft(DamageType) > 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::DamageTypeImmunitySecondsLeft(FName DamageType) const
+{
+	const UWorld* World = GetWorld();
+	const float* Until = DamageType.IsNone() ? nullptr : DamageTypeImmuneUntilSeconds.Find(DamageType);
+	return World && Until ? FMath::Max(0.0f, *Until - World->GetTimeSeconds()) : 0.0f;
+}
+
 void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 {
 	const UWorld* World = GetWorld();
@@ -2577,6 +2671,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	MinionExplosionReplacementNextAllowedSeconds = -1.0f;
 	LethalHitSurvivalNextAllowedSeconds = -1.0f;
 	DamageImmuneUntilSeconds = -1.0f;
+	// AND THE WINDOWS AGAINST ONE DAMAGE TYPE, as the no-damage window above. Ruled 2026-10-12.
+	DamageTypeImmuneUntilSeconds.Reset();
 	ShieldWardNextAllowedSeconds = -1.0f;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
