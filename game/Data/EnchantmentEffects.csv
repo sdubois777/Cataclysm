@@ -582,3 +582,5 @@ Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec#1,Positive_Divine_Retribu
 Negative_Each_class_point_above_the_max_reduces_your_max#1,Negative_Each_class_point_above_the_max_reduces_your_max,resistance_cap,flat,-2.0,-5.0,,,0.0,class_points_spent,1.0,,,,0,0.0,230.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gain_5_10_class_points#1,Positive_Gain_5_10_class_points,class_points_granted,flat,5.0,10.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gain_3_8_additional_class_points#1,Positive_Gain_3_8_additional_class_points,class_points_granted,flat,3.0,8.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Healing_skills_restore_30_60_more_HP#1,Positive_Healing_skills_restore_30_60_more_HP,healing_skill_health_restored,more,30.0,60.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Healing_skills_also_restore_10_20_of_the_heale#1,Positive_Healing_skills_also_restore_10_20_of_the_heale,healing_skill_health_as_energy_shield,flat,10.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
