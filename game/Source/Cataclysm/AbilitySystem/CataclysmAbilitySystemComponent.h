@@ -615,6 +615,10 @@ public:
 	 * 12%-15% chance to trigger twice": `skill_use` leaves the basic attack out (ruled 2026-09-14) and stays as it
 	 * is, so `attack_use` is the event for EVERY paid use, the basic attack included. With `bBasicAttack` only
 	 * `attack_use` is raised. Both events of one use share the one pending repeat, so one use still gives one repeat.
+	 *
+	 * AND THE `healing_skill_use` EVENT, RAISED BETWEEN THE TWO, only when `SkillTags` holds a tag under
+	 * `Stat.Recovery`. Ruled 2026-10-10, for "Using a healing skill grants 10%-20% increased damage for 5 seconds".
+	 * It follows `skill_use`: not raised for the basic attack, and not raised when `SkillTags` is null.
 	 */
 	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim,
 					   bool bBasicAttack = false, bool bHasCooldown = false);
