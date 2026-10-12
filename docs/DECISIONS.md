@@ -10,7 +10,7 @@ this layer has is a Python check on the numbers, the generator script's own chec
 owner's play-check. That is accepted as enough: a labelled judgement by the coordinating session under the
 owner's delegation, 2026-10-10.
 
-**Said first: this entry is written before the level is regenerated.** The first commit changes the script that
+**Said first, and no longer so: the level has since been regenerated; the Run section at the end has what was printed.** When this paragraph was written it had not been. The first commit changes the script that
 builds the level and the Python check that holds the script to the C++. The level file itself,
 `game/Content/Maps/L_Dungeon.umap`, is a binary asset that only the editor can rebuild, and the editor is one
 machine's to drive at a time. Until the Run section below exists the level in the repository is the old one,
@@ -107,6 +107,49 @@ Three Python checks added to `tools/tests/test_the_dungeon_map_covers_a_whole_fl
 After the level is regenerated: on a wide floor carrying Reality Rifts with a hidden chamber, enter the chamber
 and click once on its floor and once on a drop out of reach. The character should walk there. Before this layer
 it turned to face the point and stopped.
+
+### Run
+
+On 2026-10-12 at `feat/nav-bounds` ca1d791c, on development 89e4d6a0, where the hidden chamber is merged. Every
+build, run and measurement here was made by the registering session, holding the editor lock as void-zones-nav.
+Every figure is a line a run printed. The lock was taken only after development's own two workflow runs at
+89e4d6a0 had printed success, no run was in progress, no build process was running and no pull request was open.
+Times are UTC.
+
+**Said first: nothing was tried in play.** No C++ changed in this layer, so no Unreal test was run: the whole
+Unreal suite was not run, and there is nothing in it that reads the level. What the level's volume is now rests
+on the one line the generator script printed.
+
+| Step | Began | Printed |
+|---|---|---|
+| Build of the editor at ca1d791c | 06:59:02 | `Build: Succeeded - 30 actions, 27 files compiled` |
+| `python tools/run_editor_python.py tools/generate_dungeon_map.py` | 06:59:54, ended 07:00:28 | `generate_dungeon_map.py ran.`; `The editor run left 1 file(s) changed: M game/Content/Maps/L_Dungeon.umap` |
+| The script's own line in the editor's log | 07:00:25 | `NavMeshBounds built to extent <Struct 'Vector' ... {x: 12400.000000, y: 10000.000000, z: 800.000000}> (half sizes, cm); asked for 24800.0 by 20000.0 by 1600.0 cm across.` |
+| Whole Python suite | | `5958 passed, 7 skipped in 322.63s (0:05:22)`; JUnit `errors="0" failures="0" skipped="7" tests="5965"` |
+| Ruff | | `All checks passed!` |
+
+The level file `game/Content/Maps/L_Dungeon.umap` is 25,159 bytes before and after; its contents differ (the
+SHA-256 began 251537e8 before and f575273e after). It is stored in Git LFS and cannot be read here.
+
+The JUnit count on development 8f5be126 was 5,962, given by the coordinating session; this layer adds three
+checks, and 5,965 printed.
+
+**The guard proof of the new checks, repeated at this head in a copy of the tree made with `git archive`, each
+PROVED.** With the chamber's reach set to nought: `PROVED: 2 failed, 8 passed in 0.11s | restored: 10 passed in
+0.05s`, the named failures `test_the_map_script_agrees_with_the_cpp_about_the_hidden_chamber` and
+`test_the_navigation_bounds_reach_past_the_hidden_chamber`. With the volume built square again: `PROVED: 1
+failed, 9 passed in 0.08s | restored: 10 passed in 0.05s`, the named failure
+`test_the_navigation_bounds_along_x_are_built_from_the_chambers_reach`.
+
+**What the run settled.** The changed script runs inside the editor, and the volume it built reaches 12,400 cm
+from the middle along X and 10,000 cm along Y, which is what was asked. The chamber's far edge on the widest
+floor is 12,000 cm out.
+
+**Not settled.** Whether a click to walk inside the chamber now finds a path: the owner's play-check. What the
+wider volume costs at run time.
+
+In the same commit the hidden chamber's entry below loses the click-to-walk sentence from its play-check list,
+as ruled, and says why.
 
 ---
 
@@ -365,11 +408,13 @@ not affected.
 
 ### For the owner's play-check
 
-**First: on a floor wider than 38 cells a click-to-walk inside the chamber gets no path.** Keys and hold-to-steer
-work. Widening the bounds needs the map asset regenerated and is issue
-[#2366](https://github.com/sdubois777/Cataclysm/issues/2366). By the generator's rule about 59% of floors are
-that wide; it was not measured. **Second: leaving takes two beats, stepping off the rift and back on. Third:
-followers are not carried into or out of the chamber.**
+**First: leaving takes two beats, stepping off the rift and back on. Second: followers are not carried into or
+out of the chamber.** The sentence that stood first here until 2026-10-12, that on a floor wider than 38 cells a
+click-to-walk inside the chamber gets no path, is taken out: the level's navigation bounds were widened and the
+level regenerated for issue [#2366](https://github.com/sdubois777/Cataclysm/issues/2366), and the entry above
+this one has what was printed. Whether a click now finds a path inside the chamber was not tried in play; it is
+on that entry's play-check list. The other mentions of that limit in this entry say what was true when they were
+written.
 
 What a player sees: on about one floor in three that carries the row, a sixth rift in Void's colours, and the
 panel's line ends "a hidden chamber waits". Stepping into that rift puts them in a small walled room beside the
