@@ -2504,6 +2504,86 @@ class TestGadgetDestroyedAndResourceConsumed:
         assert not {"gadget_destroyed", "resource_consumed"} & set(gen.HIT_FIRED_EVENTS)
 
 
+class TestTheUseOfAHealingSkillIsAnEventOfItsOwn:
+    """`healing_skill_use`, ruled 2026-10-10 and built ahead of its row, for
+    "Using a healing skill grants 10%-20% increased damage for 5 seconds". The
+    game raises it for a skill carrying a tag under `Stat.Recovery`.
+
+    THE ROW HERE IS THE SHAPE THE RULING GIVES: an own stack on that event with
+    NO Required Tags, so the stat is unscoped. The grant is narrowed by the
+    event, because a row's Required Tags never narrow an own stack's grant. It
+    is on a made-up enchantment sheet holding the real sentence; no row of
+    `game/Data/EnchantmentEffects.csv` names the event yet.
+
+    THAT THE GAME RAISES THE NAME is held by
+    `test_pool_action_names_match_the_engine.py`, which reads the C++.
+    """
+
+    WORDS = "Using a healing skill grants 10%-20% increased damage for 5 seconds"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    EVENT = "healing_skill_use"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Stat.Offense.Damage", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def out(self, tmp_path, changes, base=None):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+        values.update(base if base is not None else {
+            "Stat": "attack_damage", "Value Kind": "increased",
+            "Value Low": 10, "Value High": 20,
+            "Scale": "own_stacks", "Scale Step": 1,
+            "Action Event": self.EVENT, "Stack Seconds": 5,
+            "Scale Max Steps": 1})
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "healing_skill_use.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def test_the_ruled_row_is_carried_through_with_no_required_tags(self, tmp_path):
+        out = self.out(tmp_path, {})
+        assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["RequiredTags"], out[0]["Scale"],
+                out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"], out[0]["TriggerCooldown"]) == (
+            "attack_damage", "increased", 10.0, 20.0, "", "own_stacks",
+            "healing_skill_use", 5.0, 1, 0.0)
+
+    def test_the_same_row_on_an_event_the_game_does_not_raise_is_refused(
+            self, tmp_path):
+        # THE CONTROL: the row above is accepted for its event's name and not
+        # because an own stack's event goes unread.
+        with pytest.raises(gen.DataError, match="to grant them"):
+            self.out(tmp_path, {"Action Event": "healing_skill_used"})
+
+    def test_an_action_row_on_it_is_accepted_and_waits_for_nothing(self, tmp_path):
+        out = self.out(tmp_path, {}, base={
+            "Action": "health", "Action Event": self.EVENT,
+            "Value Low": 10, "Value High": 20})
+        assert (out[0]["Action"], out[0]["ActionEvent"],
+                out[0]["TriggerCooldown"]) == ("health", "healing_skill_use", 0.0)
+
+    def test_it_is_an_event_with_no_clock_and_is_on_no_narrower_list(self):
+        assert self.EVENT in gen.ACTION_ONLY_EVENTS
+        assert self.EVENT in gen.action_events()
+        assert self.EVENT in gen.granting_events()
+        assert "seconds_after_" + self.EVENT not in gen.CONDITIONS
+        # NO HIT CAUSES IT, so a row on it takes no default trigger cooldown.
+        assert self.EVENT not in gen.HIT_FIRED_EVENTS
+        # IT CARRIES NO AMOUNT AND NAMES NO OTHER CHARACTER.
+        assert self.EVENT not in gen.EVENTS_WITH_AN_AMOUNT
+        assert self.EVENT not in gen.STRIKE_TARGET_EVENTS
+        assert self.EVENT not in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK
+        assert self.EVENT not in gen.CONSECUTIVE_HIT_EVENTS
+        # A ROW THAT REPEATS THE SKILL USED STAYS ON THE TWO EVENTS IT HAD.
+        assert gen.REPEAT_SKILL_EVENTS == ("skill_use", "attack_use")
+
+
 class TestAStatusLaidOnTheWearer:
     """A status a row lays on its own wearer. Ruled 2026-10-06, for five
     drawbacks. Three actions; the event need name no other character."""

@@ -5610,6 +5610,16 @@ ACTION_ONLY_EVENTS = (
     # 12%-15% chance to trigger twice". A basic attack is asked with its own
     # tags and Type.Melee or Type.Ranged by its shape.
     "attack_use",
+    # A PAID USE OF A HEALING SKILL: a skill carrying a tag under
+    # `Stat.Recovery`, which are Living Pyre and Blood Pyre. Ruled 2026-10-10,
+    # for "Using a healing skill grants 10%-20% increased damage for 5
+    # seconds". Raised by `UCataclysmAbilitySystemComponent::ActOnSkillUse`
+    # after `skill_use` and never for the basic attack. It is an event of its
+    # own because a row scaled by `own_stacks` is granted on every event of its
+    # name whatever Required Tags it states, so such a row on `skill_use` would
+    # be granted by every skill. NOT IN `REPEAT_SKILL_EVENTS`: `skill_use`
+    # already serves a row that repeats the skill used.
+    "healing_skill_use",
     "hit_dealt",
     # APPLYING A DAMAGE OVER TIME TO ANOTHER CHARACTER, a refresh included.
     # Issue #1833, for "Applying a DoT to an enemy grants 5%-10% increased
