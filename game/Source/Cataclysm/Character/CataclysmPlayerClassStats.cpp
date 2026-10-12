@@ -315,6 +315,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// channeling interrupts the channel immediately". A flag. No gameplay
 		// attribute and no base.
 		TEXT("hit_taken_cancels_skills"),
+		// Whether the dungeon rule Suffering Aura takes no mana from this
+		// character, read by
+		// UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow for the
+		// one condition on the mana loss in
+		// ACataclysmDungeonGameMode::StepSufferingAura. Ruled 2026-10-09, for
+		// the first half of Mana Weaver's six-piece bonus: "You gain an aura
+		// that makes you and nearby allies immune to all mana-draining
+		// effects". That one rule's drain only, and the holder's only. A flag.
+		// No gameplay attribute and no base.
+		TEXT("suffering_aura_mana_drain_immunity"),
 		// The seconds a worn row adds to a skill's wind-up, read by
 		// UCataclysmSkillTemplate::SecondsUntilTheSwingConnects with the skill's
 		// tags. Ruled 2026-10-08: "Point blank AOE skills have a 0.75-1.5 second
