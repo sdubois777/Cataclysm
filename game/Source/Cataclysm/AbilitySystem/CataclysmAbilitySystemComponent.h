@@ -2465,6 +2465,57 @@ public:
 	 */
 	void GrantDamageImmunity(float Seconds);
 
+	/**
+	 * The two figures of a worn row by which A HIT MAY MAKE ITS WEARER IMMUNE TO THAT HIT'S DAMAGE TYPE FOR A TIME.
+	 * Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (6-Piece Bonus): When you take damage,
+	 * you have a 10% chance to become immune to the damage type that hit you for 5 seconds". The first is the
+	 * chance in percent, the 10; the second is the seconds, the 5. Both flat, neither with a gameplay attribute or
+	 * a base, and both on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. A character holding only one of the
+	 * two opens nothing. `tools/generate_datatables.py` holds the same names in
+	 * `DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS`. See `RollDamageTypeImmunityOnHit`.
+	 */
+	static const TCHAR* DamageTypeImmunityOnHitChanceStat;
+	static const TCHAR* DamageTypeImmunityOnHitSecondsStat;
+
+	/**
+	 * Roll this character's chance to become immune to `DamageType`, and open that type's window when the roll
+	 * succeeds. Ruled 2026-10-12. Asks the two stats above with no tags; a chance or a time of nought or less opens
+	 * nothing, and so does no type.
+	 *
+	 * CALLED FOR A HIT THAT HAS ALREADY BEEN TAKEN, by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` once
+	 * the blow's health is written: a hit and not a damage over time tick, not evaded, of a type, that dealt
+	 * something to health or to a pool that absorbs, and left its wearer alive. So the hit that rolls is taken in
+	 * full, and the window covers what comes after it.
+	 *
+	 * A CHANCE OF 100 OR MORE IS NOT ROLLED, so a stated 100 never fails. Issue #2201: the roll is drawn from 0 to
+	 * 100 and can be exactly 100. A chance below 100 succeeds on a roll strictly below it.
+	 * `Cataclysm.DamageTypeImmunityRoll` pins the roll for tests.
+	 *
+	 * @return whether a window was opened or kept open
+	 */
+	bool RollDamageTypeImmunityOnHit(FName DamageType);
+
+	/**
+	 * Open the window against `DamageType` for `Seconds` from now, or keep it open to its later end if it already
+	 * runs longer. Ruled 2026-10-12: one window a type, never shortened, and windows for different types run side
+	 * by side. No type, or no seconds, opens nothing. Lapsed windows are dropped here.
+	 */
+	void GrantDamageTypeImmunity(FName DamageType, float Seconds);
+
+	/**
+	 * Whether this character's window against `DamageType` is open. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` at the three places `IsDamageImmune` is read, so a
+	 * blow or a tick of that type is emptied exactly as the no-damage window empties one. False for no type: a blow
+	 * with no type is never refused by this.
+	 *
+	 * ENDED BY TIME AND BY `ClearWhatDeathEnds`, as the no-damage window is. Not ended by the gear coming off, by
+	 * leaving combat or by a new dungeon floor.
+	 */
+	bool IsImmuneToDamageType(FName DamageType) const;
+
+	/** The seconds left of the window against `DamageType`, or nought. For an interface and for tests. */
+	float DamageTypeImmunitySecondsLeft(FName DamageType) const;
+
 	/** When a lethal hit may next be survived, in world seconds. For tests. */
 	float LethalHitSurvivalAllowedAt() const
 	{
@@ -4372,6 +4423,12 @@ protected:
 
 	/** Until when, in world seconds, this character takes no damage. -1 is not. */
 	float DamageImmuneUntilSeconds = -1.0f;
+
+	/**
+	 * Until when, in world seconds, this character takes no damage of each damage type. Ruled 2026-10-12. A type
+	 * with no entry, or one whose time has passed, is not refused. See `GrantDamageTypeImmunity`.
+	 */
+	TMap<FName, float> DamageTypeImmuneUntilSeconds;
 
 	/** When Sacrificial Ward may next spend a minion. -1 is never yet. */
 	float ShieldWardNextAllowedSeconds = -1.0f;
