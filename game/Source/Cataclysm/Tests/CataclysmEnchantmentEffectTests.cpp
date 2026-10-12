@@ -21183,4 +21183,80 @@ bool FCataclysmHealingSkillRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillUseRowTest,
+	"Cataclysm.Enchantments.TheHealingSkillUseRowRaisesAllDamageForFiveSecondsAfterAHealingSkillAndAfterNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Using a healing skill grants 10%-20% increased damage for 5 seconds". Issue
+ * #1833: two rows, `attack_damage` and `spell_damage`, increased, 10 to 20, on
+ * their own stacks, one stack at most, five seconds, granted on
+ * `healing_skill_use`, the event of the entry "The use of a healing skill raises
+ * an event of its own". No Required Tags, so the increase is on every skill's
+ * damage. WORN, so the rows are at 20.
+ *
+ * THE USES ARE HANDED TO THE WEARER'S ROWS AS THE PLAYER CHARACTER HANDS THEM,
+ * with `ActOnSkillUse` and the two healing skills' own tags. No skill is run.
+ * THE WEARER IS A REFRESHED ONE, so every figure read is a difference.
+ */
+bool FCataclysmHealingSkillUseRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealingSkillUseTest;
+	FUseHolder Holder;
+	if (!TestNotNull(TEXT("set-up: a wearer in a world"), Holder.ASC()))
+	{
+		return false;
+	}
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Holder.Wearer->Equipment->Equip(Carrying(TEXT("Head_Helm"), TEXT("Positive_Using_a_healing_skill_grants_10_20_increased_d"), DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Holder.Wearer->Equipment->RefreshAttributes(Holder.ASC());
+
+	const FGameplayTagContainer LivingPyre = UCataclysmSkillShapes::TagsFromCell(LivingPyreTagCell);
+	const FGameplayTagContainer BloodPyre = UCataclysmSkillShapes::TagsFromCell(BloodPyreTagCell);
+	const FGameplayTagContainer Strike = UCataclysmSkillShapes::TagsFromCell(PlainStrikeTagCell);
+	if (!TestTrue(TEXT("set-up: the rows put a modifier on attack damage and one on spell damage. If not, "
+					   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+			CarriesAModifierOn(Holder.ASC(), TEXT("attack_damage"))
+				&& CarriesAModifierOn(Holder.ASC(), TEXT("spell_damage")))
+		|| !TestTrue(TEXT("set-up: the three sets of tags are registered"),
+			LivingPyre.Num() == 7 && BloodPyre.Num() == 9 && Strike.Num() == 3))
+	{
+		return false;
+	}
+
+	const auto StrikeIncreases = [&]()
+	{
+		return Holder.ASC()->AttackDamageIncreasesForSkill(Strike, -1.0f, -1.0f, -1.0f, false, nullptr);
+	};
+	const float Before = StrikeIncreases();
+
+	Holder.Use(&Strike);
+	TestEqual(TEXT("a use of a skill that is not a healing skill raises nothing: a strike's increases are as before"),
+		StrikeIncreases(), Before, 0.0001f);
+
+	Holder.Use(&LivingPyre, /*bBasicAttack=*/true);
+	TestEqual(TEXT("the basic attack raises nothing either, whatever its tags"), StrikeIncreases(), Before, 0.0001f);
+
+	Holder.Use(&LivingPyre);
+	TestEqual(TEXT("after a use of Living Pyre a STRIKE's increases are 20% higher: the row is on every skill"),
+		StrikeIncreases() - Before, 0.20f, 0.0001f);
+	Holder.Use(&LivingPyre);
+	TestEqual(TEXT("a second use holds one stack at most: still 20%"), StrikeIncreases() - Before, 0.20f, 0.0001f);
+
+	Holder.World->TimeSeconds += 4.9f;
+	TestEqual(TEXT("4.9 seconds after the last use: still 20%"), StrikeIncreases() - Before, 0.20f, 0.0001f);
+	Holder.World->TimeSeconds += 0.2f;
+	TestEqual(TEXT("5.1 seconds after the last use: a strike's increases are as before"),
+		StrikeIncreases(), Before, 0.0001f);
+
+	Holder.Use(&BloodPyre);
+	TestEqual(TEXT("after a use of Blood Pyre a strike's increases are 20% higher"),
+		StrikeIncreases() - Before, 0.20f, 0.0001f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
