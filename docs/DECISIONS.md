@@ -11,7 +11,24 @@ Decisions made outside the Google Drive documents, newest first.
 
 Nothing in the game changed: no C++, no data row, no workbook.
 
-**Said first: one existing test fails with this change and was left exactly as it is, for a ruling.**
+**Said first: one existing test failed with this change, and what it asserts was changed by a ruling.** The
+ruling, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-12: the
+comparison is made over many seeds together at the defaults, and the per-seed form is kept as its own case with
+`death_resolves_dungeon` off. So in `sim/tests/test_surge_when_the_board_empties.py`:
+- `test_the_rule_never_gives_a_campaign_fewer_surges`, seeds 0 to 3 each, now runs both campaigns with a death
+  resolving nothing. It held that way on 40 of 40 seeds looked at.
+- `test_over_many_campaigns_the_rule_raises_the_rate_of_surges` is new and runs at the defaults: seeds 0 to 19
+  together, every surge over every day. Measured 2026-10-12: 364 surges in 38,177 days with the rule off, 9.535
+  per 1,000 days; 371 in 30,600 with it on, 12.124. Over seeds 0 to 39, which include 3 and 34: 9.599 against
+  12.282. It asserts only that the rate with the rule on is at least the rate with it off; no ratio is pinned.
+- Why one seed can go either way: a death can now fell a city, and a city's fall fires a surge of its own, so
+  the two campaigns of one seed differ in more than the rule.
+
+After that change the whole suite printed `5996 passed, 7 skipped in 339.67s (0:05:39)`; JUnit `errors="0" failures="0" skipped="7" tests="6003"`. The design-log lines of this entry were
+written after that run, and the tool tests and ruff were run again after them.
+
+**What stood here before the ruling, kept as it was written:** one existing test fails with this change and was
+left exactly as it is, for a ruling.
 `sim/tests/test_surge_when_the_board_empties.py::TestOverWholeCampaigns::test_the_rule_never_gives_a_campaign_fewer_surges[3]`.
 It states a rule about `surge_on_empty_board`: for each of seeds 0 to 3, a campaign on the `triage` policy has
 at least as many surges per day with the rule on as with it off. Before this change that held on 40 of 40
@@ -168,6 +185,7 @@ order, the kind question before the resolve, no second copy of the arithmetic, t
 
 Whole Python suite before the change: `5958 passed, 7 skipped in 351.24s`. After it, before this entry was
 written: `1 failed, 5994 passed, 7 skipped in 344.01s`, the one failure named at the top.
+After the ruled change to that test: `5996 passed, 7 skipped in 339.67s (0:05:39)`.
 
 ### Not covered
 
