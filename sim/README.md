@@ -10,6 +10,66 @@ python experiments.py
 
 Pure standard-library Python. No dependencies.
 
+## A death resolves its dungeon, and every figure below was measured before it did
+
+**Since 2026-10-12 a death inside an ordinary dungeon resolves that dungeon at
+once**, which the game has done since 2026-10-10 (issue #41). The dungeon's
+consequence lands on its city exactly as when its timer runs out, its timer is
+set back to full, the player leaves, and `death_day_cost` days are then charged.
+A death in a Quest dungeon or a Fallen City dungeon costs the days and takes
+nothing from any city. A death in the Cataclysm dungeon ends the run, as before.
+`TuningConfig.death_resolves_dungeon` carries it and defaults to on. Before that
+date a death here cost days and touched no city.
+
+**EVERY OTHER TABLE AND FIGURE IN THIS FILE WAS MEASURED WITH THAT RULE ABSENT,
+AND NONE OF THEM HAS BEEN RE-MEASURED.** `experiments.py` has not been run since
+the change. Set `death_resolves_dungeon=False` to reproduce one of them. The same
+is true of every campaign figure in `docs/DECISIONS.md`, in
+`docs/Cataclysm_GDD_v2.md` and in the comments of this package dated before
+2026-10-12.
+
+**WHAT WAS MEASURED, AND IT IS A SMALL RUN.** 500 campaigns a cell, seeds 0 to
+499, the same seeds with the setting off and on, at raw `TuningConfig()` defaults
+but for the tier and the tree. Those are not the settings `experiments.py`
+calibrates (it uses 5 dungeons a surge, among others), so these rows cannot be
+set beside the report's tables. "Change" is the mean over seeds of on minus off
+in cities lost, with 1.96 standard errors of that paired difference. "Resolved"
+with the setting on includes the dungeons a death resolved.
+
+| policy | tree | tier | cities lost, off | on | change | won %, off | on | deaths, off | on | resolved, off | on |
+|---|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| `triage` | No tree | 1 | 5.31 | 5.32 | +0.00 +/- 0.34 | 26.8 | 27.6 | 6.47 | 6.52 | 87.0 | 89.1 |
+| `triage` | No tree | 2 | 18.15 | 18.29 | +0.14 +/- 0.43 | 7.4 | 8.4 | 9.68 | 9.38 | 183.8 | 183.6 |
+| `triage` | No tree | 3 | 23.06 | 23.05 | -0.01 +/- 0.25 | 0.6 | 0.6 | 9.04 | 8.80 | 220.7 | 219.0 |
+| `triage` | No tree | 4 | 23.59 | 23.54 | -0.05 +/- 0.12 | 0.0 | 0.2 | 7.68 | 7.64 | 222.2 | 221.9 |
+| `triage` | Explorer maxed (as designed) | 1 | 2.36 | 2.97 | **+0.61 +/- 0.22** | 35.4 | 35.0 | 7.98 | 8.51 | 29.9 | 34.4 |
+| `triage` | Explorer maxed (as designed) | 2 | 15.78 | 15.77 | -0.01 +/- 0.43 | 3.2 | 2.2 | 14.04 | 12.49 | 39.3 | 40.8 |
+| `triage` | Explorer maxed (as designed) | 3 | 16.86 | 16.85 | -0.02 +/- 0.42 | 0.6 | 0.4 | 7.82 | 7.09 | 33.2 | 33.2 |
+| `triage` | Explorer maxed (as designed) | 4 | 17.66 | 17.71 | +0.04 +/- 0.19 | 0.2 | 0.0 | 2.09 | 1.86 | 24.5 | 24.6 |
+| `lane_aware` | No tree | 1 | 3.54 | 4.11 | **+0.57 +/- 0.27** | 27.0 | 24.8 | 6.62 | 6.76 | 70.2 | 76.4 |
+| `lane_aware` | No tree | 2 | 19.32 | 19.35 | +0.03 +/- 0.45 | 6.4 | 5.4 | 11.65 | 11.04 | 194.0 | 194.1 |
+| `lane_aware` | No tree | 3 | 23.16 | 23.08 | -0.09 +/- 0.21 | 0.4 | 0.6 | 9.98 | 9.62 | 219.2 | 221.0 |
+| `lane_aware` | No tree | 4 | 23.48 | 23.46 | -0.02 +/- 0.15 | 0.6 | 0.2 | 8.58 | 8.24 | 219.2 | 220.5 |
+| `lane_aware` | Explorer maxed (as designed) | 1 | 2.34 | 2.89 | **+0.55 +/- 0.23** | 36.8 | 36.6 | 7.90 | 8.21 | 29.3 | 33.6 |
+| `lane_aware` | Explorer maxed (as designed) | 2 | 16.04 | 15.91 | -0.13 +/- 0.44 | 2.8 | 2.0 | 14.63 | 13.29 | 41.3 | 42.6 |
+| `lane_aware` | Explorer maxed (as designed) | 3 | 16.88 | 16.86 | -0.01 +/- 0.44 | 0.4 | 0.2 | 7.88 | 7.30 | 33.2 | 34.2 |
+| `lane_aware` | Explorer maxed (as designed) | 4 | 17.64 | 17.68 | +0.04 +/- 0.19 | 0.2 | 0.0 | 2.09 | 1.86 | 24.5 | 24.5 |
+
+**WHAT THAT SHOWS AND WHAT IT DOES NOT.** In three of the sixteen cells, all at
+tier 1, a campaign loses a little over half a city more with the rule on, and
+the change is outside its interval. In the other thirteen the change is inside
+it. No cell's win rate moved by more than 2.2 points, on 500 campaigns, which is
+not a sample that separates a 2 point change. Sixteen cells were looked at, so
+one interval missing by chance would not be surprising; three, all in the same
+direction and at the same tier, is more than that, and it is still three cells
+of one small run. `docs/DECISIONS.md`, 2026-10-12, has the script's printed
+output.
+
+**NO POLICY WEIGHS WHAT A DEATH NOW COSTS.** Every policy refuses a dungeon
+whose death chance is above `death_risk_tolerance` and treats every dungeon
+under it alike. That was written when a death cost days alone, and it was not
+changed with this rule.
+
 ## Which difficulty tier the results are from
 
 **Every section of `experiments.py` runs at difficulty tier 1, except section 7,
@@ -39,6 +99,9 @@ resolve timer 1.6 days per floor, 120 days between surges, dungeon power +0.22
 per 100 days, craft 12 days for +4% of a tier width, day cap 2,500, and
 `surge_on_empty_board` on. **Active Cataclysms follow the tier**: 1 at tier 1 and
 8 at tier 8. A figure from section 7 without those is not a figure.
+
+**MEASURED BEFORE A DEATH RESOLVED ITS DUNGEON, like the two tables after it.** See the
+section at the top of this file.
 
 | dungeons per surge | tier 1 | tier 8 | what the report printed |
 |---|---|---|---|
@@ -207,6 +270,12 @@ on what evidence at the time.
 - **Resolve timers scale with depth**: `resolve_days = base + floors * ratio`.
   A flat timer table cannot coexist with the rule above — a 40-floor dungeon
   on a 30-day timer is unsavable no matter how well the player plays.
+- **A death in an ordinary dungeon resolves it at once**, through the same call
+  its timer running out makes, and the days a death costs are charged after
+  that. It is the game's rule, built there for issue #41.
+  `TuningConfig.death_resolves_dungeon` turns it off, to reproduce a figure
+  measured before 2026-10-12; no sweep moves it. Whether the resolved dungeon
+  then stays is `dungeon_persists_after_resolve`, a separate rule.
 - **A city falling triggers a surge**, and optionally advances the escalation.
 - **An empty board triggers a surge too, however it emptied.** The project owner
   ruled on 2026-09-07, verbatim, "Anytime there are no longer dungeons on the
@@ -261,8 +330,13 @@ on what evidence at the time.
 | Quest objectives and the win condition | Anything visual |
 
 The player is a single actor who is either idle at the Pillar or committed to
-a dungeon for a fixed number of days. Combat is assumed won — the only cost of
-a dungeon is **time**, which is the design's stated primary resource.
+a dungeon for a fixed number of days. Combat is not played out: an attempt
+either clears the dungeon or, with the chance `Simulation.death_chance` gives,
+kills the player. A clear costs **time**, which is the design's stated primary
+resource. A death costs `death_day_cost` days and, in an ordinary dungeon,
+resolves that dungeon on its city. **This paragraph said "Combat is assumed
+won — the only cost of a dungeon is time" until 2026-10-12**, which the death
+roll had already made untrue and this rule made more so.
 
 ## The map
 
@@ -313,6 +387,10 @@ There are two ways to get into one:
   [#1406](https://github.com/sdubois777/Cataclysm/issues/1406). They are the
   best figures on record and they have not been re-measured; quote them with
   this sentence attached.
+
+  **AND EVERY ROW BELOW, AND EVERY ROW OF THE HISTORY TABLE AFTER IT, PREDATES
+  `death_resolves_dungeon`, WHICH ALSO DEFAULTS ON.** They were measured when a
+  death cost days and touched no city. Not re-measured.
 
   | | Value | Block sd | Count |
   |---|---:|---:|---|
