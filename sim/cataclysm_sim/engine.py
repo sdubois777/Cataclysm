@@ -147,6 +147,10 @@ class RunResult:
     bulwarks_lost: int
     sanctuaries_lost: int
     dungeons_cleared: int
+    #: A DEATH IN AN ORDINARY DUNGEON IS ONE OF THOSE TIMES, since 2026-10-12.
+    #: It detonates the dungeon through `_resolve`, where the tally is raised,
+    #: so the field below counts timers that ran out AND deaths that resolved.
+    #: With `death_resolves_dungeon` False it counts the timers alone.
     dungeons_resolved: int          # times a dungeon detonated undefeated
     objectives: int                 # quest dungeons cleared toward the win
     floors_cleared: int             # loot proxy -- reward scales with depth
@@ -934,6 +938,51 @@ class Simulation:
         self.craft_days_spent += cfg.craft_days
         self.crafting = False
 
+    def _resolve_on_death(self, d: Dungeon) -> None:
+        """The player died inside `d`: an ordinary dungeon resolves at once.
+
+        THE GAME'S RULE, COPIED. `UCataclysmEmpireRun::ResolveDungeonOnDeath`
+        is the other half, built for issue #41 on 2026-10-10. The owner's
+        words, 2026-09-10: "dying in a dungeon causes it to resolve, regardless
+        of the remaining time you would have had".
+
+        IT IS `_resolve` AND NOTHING BESIDE IT. The points taken, the tally in
+        `self.resolved`, the count on the dungeon, a city falling, and whether
+        the dungeon then stays (`dungeon_persists_after_resolve`) are whatever
+        a timer running out makes them, because it is the same call. No
+        arithmetic is repeated here.
+
+        THE KIND IS ASKED FIRST, AND THAT IS NOT A SHORT CUT. For a Quest
+        dungeon `_resolve` runs the relocation, which belongs to its timer and
+        draws from the campaign's random stream; for a Fallen City dungeon it
+        refills the timer and counts a resolve. A death does neither: the game
+        returns before its own resolve for every kind but the ordinary one. The
+        Cataclysm dungeon is stopped by the same question.
+
+        A DUNGEON NO LONGER ON THE MAP RESOLVES NOTHING. With
+        `timer_ticks_while_running` on and `dungeon_persists_after_resolve` off,
+        the dungeon being walked can detonate and leave while the player is
+        inside it. The game's words for its own case: "Nothing can resolve
+        then; the walk still ends and the days are still paid."
+
+        A RESOLVE THAT FELLS THE CITY TAKES THIS DUNGEON WITH IT. `_fall`
+        spares the dungeon the player is inside, which is this model's rule for
+        a city that falls while a walk goes on. The game's `CityFell` spares
+        nothing, and a death is not a walk that goes on, so the dungeon is
+        removed here. It is the one line in this function that `_resolve` does
+        not already do.
+        """
+        if not d.resolves or d.did not in self.dungeons:
+            return
+
+        city = self.empire.cities[d.city_id]
+        stood = not city.fallen
+
+        self._resolve(d)
+
+        if stood and city.fallen:
+            self.dungeons.pop(d.did, None)
+
     def _finish_current(self) -> None:
         d = self.current
         assert d is not None
@@ -942,6 +991,17 @@ class Simulation:
         # The attempt can still kill you if you went in underpowered.
         if self.rng.random() < self.death_chance(d):
             self.deaths += 1
+
+            # RESOLVE, LEAVE, CHARGE THE DAYS, in the order the game uses:
+            # `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, ruled on
+            # 2026-10-09. The dungeon resolves while the player is still
+            # inside it, and the days below then run against a full timer
+            # that counts down again because nobody is standing in it.
+            # `tools/tests/test_a_death_resolves_in_the_model_as_in_the_game.py`
+            # holds the order in both files.
+            if cfg.death_resolves_dungeon:
+                self._resolve_on_death(d)
+
             self.current = None
             # Dying to the Cataclysm -- whether you went to it or it came to
             # you in the Last Stand -- ends the run.
