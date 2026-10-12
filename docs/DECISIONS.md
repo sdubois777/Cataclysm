@@ -811,6 +811,222 @@ Run by the enchantment session on 2026-10-10, on development bd6133a3 (the hidde
 
 ---
 
+## 2026-10-10 — The use of a healing skill raises an event of its own, so a row can grant something for a time when one is used
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (one function,
+`UCataclysmAbilitySystemComponent::ActOnSkillUse`) and `.h` (that function's comment), five new tests in
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`, `tools/generate_datatables.py` (one name added
+to `ACTION_ONLY_EVENTS`) and `tools/tests/test_generate_datatables.py` (one new class of four tests). No data
+row, no skill row, no tag and no workbook cell is changed, and nothing in `CataclysmItem.cpp` is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: NOTHING HERE WAS COMPILED OR RUN IN UNREAL BY THE SESSION THAT WROTE IT
+
+**The C++ in this entry has not been through a compiler and none of its automation tests has been run.** The
+session that wrote it does not build Unreal. Every statement below about what the game does is a statement about
+what the code was written to do. The enchantment session builds it and records the run at the foot of this entry.
+
+### SAID FIRST: WHAT THIS COSTS
+
+- **The next sentence of this kind, for another kind of skill, needs its own event name.** "Using a movement
+  skill grants X for a time" already has `movement_skill`. A sentence about any kind of skill that has no event
+  yet needs a new name raised in C++, added to the generator's list, and held equal by
+  `tools/tests/test_pool_action_names_match_the_engine.py`. A row cannot ask `skill_use` for one kind of skill.
+- **"Healing skill" is decided in code by a tag.** `ActOnSkillUse` raises the event for any skill carrying a tag
+  under `Stat.Recovery`. Nothing in the C++ names Living Pyre or Blood Pyre. What holds the set to those two
+  skills is the Python check the layer below added,
+  `tools/tests/test_the_healing_skills_are_the_two_tagged_under_recovery.py`. A third skill given such a tag
+  fails that check, and until somebody changes the check it would also raise this event.
+- **No row is written yet, so no player gets anything from this layer** until the enchantment session writes the
+  row.
+
+### SAID FIRST: THE PHASE 1 JUDGEMENT IS UNCHANGED, AND THIS IS NOT A SECOND READING OF A ROW'S TAGS
+
+The phase 1 judgement is: on a row scaled by `own_stacks`, the row's Required Tags scope its stat and never its
+grant. It holds for every row and this layer changes nothing about how any row's tags are read.
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto` is not touched, and the action it builds to grant a stack
+still carries no tags unless the row's scale is `consecutive_hits`.
+
+**The grant is narrowed by which event is raised, not by the row.** The row for this sentence states no
+Required Tags. Its stat is therefore unscoped, which is what the sentence says: the increased damage is the
+character's. Its grant fires on every `healing_skill_use`, as any own-stack grant fires on every event of its
+name, and only the use of a healing skill raises that event. The tag is read once, in `ActOnSkillUse`, off the
+skill that was used. No row's tags are read there.
+
+**The two gadget rows read as they did.** "When any of your gadgets is destroyed, all remaining gadgets gain
+30%-50% increased damage for 5 seconds" is two own-stack rows on `gadget_destroyed` that require
+`Type.Deployable`. Their tag picks whose damage rises and not which event grants. A test in this layer holds
+that, including that a `gadget_destroyed` event carrying no tags still grants both stacks.
+
+### SAID FIRST: WHAT WAS NOT READ
+
+- **Not read:** whether switching an aura off passes through `UCataclysmSkillTemplate::CommitAndBegin`. Living
+  Pyre is an aura. The event is raised wherever `skill_use` is raised for it, and this layer did not look at
+  when that is for an aura beyond the one call of `UCataclysmCombatEvents::NoteSkillUsed` in `CommitAndBegin`.
+- **Not read:** `UCataclysmTriggeredSkill::BasicAttackUseTags`. The event is not raised for the basic attack
+  whatever tags it is asked with, so what that function returns does not reach the new line.
+- **Not read:** the body of `UCataclysmStatPipeline::Evaluate`. That an own-stack increase of 20 with one stack
+  held turns a figure of 1000 into 1200 was taken from the tests of the merged own-stack rows.
+- **Not read:** `UCataclysmEquipmentComponent::RefreshAttributes`. The made-up row does not pass through it; the
+  two gadget rows do, and that they arrive as two grants and one modifier on the attack damage line is asserted
+  in the test's set-up and was not read from that function.
+- **Read, in the engine's source and not assumed:** `UGameplayTagsManager::AddTagTableRow` (in
+  `GameplayTagsManager.cpp` of Unreal Engine 5.8) walks every parent of a declared tag and
+  `InsertTagIntoNodeArray` adds each one to `GameplayTagNodeMap`. `RequestGameplayTag` answers any name found in
+  that map. So `Stat.Recovery` is a valid tag although `game/Config/Tags/CataclysmTags.ini` declares only
+  `Stat.Recovery.Leech` and `Stat.Recovery.Regen`. `FGameplayTagContainer::HasTag` checks the container's own
+  tags and their parents, so a container holding either child answers true for the parent. An invalid tag makes
+  `HasTag` answer false.
+
+### WHAT IS RULED, AND WHERE EACH RULING IS IN THE CODE
+
+Each of these was ruled on 2026-10-10 by the coordinating session under the owner's delegation, and each is a
+labelled judgement. The shape was ruled, so no genre research was done for it.
+
+| | Ruling | Where |
+| :-- | :-- | :-- |
+| E1 | A new event name, `healing_skill_use`, is raised in `ActOnSkillUse` beside `skill_use`, only when the skill used carries a tag under `Stat.Recovery`. | `UCataclysmAbilitySystemComponent::ActOnSkillUse` in `CataclysmAbilitySystemComponent.cpp`; the name is in `ACTION_ONLY_EVENTS` in `tools/generate_datatables.py` |
+| E2 | The row for "Using a healing skill grants 10%-20% increased damage for 5 seconds" is an ordinary own-stack row on that event with no Required Tags. This layer authors no row. | The shape is at the foot of "What was built"; `TestTheUseOfAHealingSkillIsAnEventOfItsOwn` passes that shape through the generator |
+| E3 | The phase 1 judgement is not amended. Nothing about how any row's tags are read changes. | Nothing: `CataclysmItem.cpp` is not in this layer's diff. The fourth automation test holds the gadget rows |
+| E4 | The cost is said first: the next such sentence for another kind of skill needs its own event name, and "healing skill" is decided in code by the tag and held to the two skills by a Python check. | "What this costs", above |
+| E5 | Four assertions' worth of test and one proof. | Five tests under `Cataclysm.HealingSkillUse.`; the proof is proposed in the report of the session that wrote this and was not run |
+
+### WHAT WAS BUILT
+
+**One event, raised in one place.** `ActOnSkillUse` already raised `skill_use` for every paid use but the basic
+attack, and then `attack_use` for every paid use. Between the two it now asks for the tag `Stat.Recovery` by
+name and, when the skill's tags hold a tag under it, raises `healing_skill_use` with the same tags. The order
+for a healing skill is `skill_use`, `healing_skill_use`, `attack_use`.
+
+**It follows `skill_use`'s rule for the basic attack.** The new line is inside the branch that the basic attack
+does not enter. The two healing skills are an Ultimate and a Special, so no basic attack carries the tag today;
+the branch makes that hold whatever tags a basic attack is asked with.
+
+**It is raised at the same depth as the two events beside it.** `ActOnEvent` drops an event raised while
+another event of the same character is being acted on, except `afflicted_death`, which it keeps. `ActOnSkillUse`
+calls `ActOnEvent` three times one after another. Each call has returned, and its depth guard has ended, before
+the next begins, so the new event is acted on at depth nought as `skill_use` and `attack_use` are.
+
+**The skill in hand is still noted.** `SkillInHandName`, its aim and whether it has a cooldown are set before
+the first of the three events and cleared after the last, so a row on the new event reads the same use.
+
+**The generator.** `healing_skill_use` is in `ACTION_ONLY_EVENTS`, the list of events with no clock. That one
+list is what `action_events()` and `granting_events()` are built from, so an own-stack row and an action row may
+both name the event. It is on no other list:
+
+| List | Why the event is not on it |
+| :-- | :-- |
+| `HIT_FIRED_EVENTS` | No hit causes a skill use, so a row on it takes no default trigger cooldown |
+| `EVENTS_WITH_AN_AMOUNT` | It is raised with no amount |
+| `STRIKE_TARGET_EVENTS`, `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`, `CONSECUTIVE_HIT_EVENTS` | It names no other character |
+| `REPEAT_SKILL_EVENTS` | `skill_use` already serves a row that repeats the skill used |
+
+**There is no list of events built ahead of their rows.** `tools/tests/` keeps such a list for conditions and
+for scales and none for events, so the name is listed nowhere as built ahead.
+
+**The judgements of the session that wrote this, each labelled:**
+
+1. **The event is raised after `skill_use` and before `attack_use`.** The ruling says "beside `skill_use`".
+   After it, so a row on `skill_use` has acted first as it did before this layer; before `attack_use`, so the
+   line can sit inside the branch the basic attack does not enter.
+2. **A use handed over with a null tag pointer raises nothing, and so does a use with an empty set of tags.**
+   Neither can say the skill is a healing skill. `skill_use` and `attack_use` are still raised for both.
+3. **The parent tag is asked for by name on each use, and a missing tag raises nothing.** If no tag under
+   `Stat.Recovery` were declared, the request would answer an invalid tag, `HasTag` would answer false, and no
+   use would raise the event. Nothing would log that. The first automation test asserts in its set-up that the
+   tag is valid.
+4. **The event's name is written in the call and has no named constant.** The file writes every event's name in
+   its `ActOnEvent` call, and `test_pool_action_names_match_the_engine.py` reads the names from calls spelled
+   that way and fails when a call passes a name any other way.
+5. **The generator does not refuse a row on `healing_skill_use` that states Required Tags.** Such a row is
+   granted by every healing skill's use and its stat is scoped by its tags, as on any own-stack row. E3 says no
+   reading of tags changes, so no refusal was added.
+6. **The event is not on `REPEAT_SKILL_EVENTS`.** A row that repeats the skill used can already name
+   `skill_use` with a Required Tag, because an action row's tags do scope when it fires.
+7. **The tests are placed after the test of "Lose 10%-20% armor when you use a skill"** in
+   `CataclysmEnchantmentEffectTests.cpp`, under their own group `Cataclysm.HealingSkillUse.`. The group
+   `Cataclysm.HealingSkills.` is the layer below's; with their trailing dots neither name selects the other.
+
+**What follows from rules that were already there, and is not changed:**
+
+- A free repeat of a healing skill raises none of the three events, because `CommitAndBegin` announces no use
+  for one.
+- `ActOnEvent` announces every event on `OnActionEvent` before any row acts. The player character listens to
+  that and asks again for its movement speed, so a healing skill's use asks once more than it did.
+- Several worn copies of the row share one count, and a benefit counts once at the higher roll.
+
+**The shape of the row, for the session that writes it.** "Increased damage" is written as attack damage and
+spell damage on the merged rows, so two rows of this shape:
+
+| Column | Value |
+| :-- | :-- |
+| Stat | `attack_damage`, and a second row for `spell_damage` |
+| Value Kind | `increased` |
+| Value Low, Value High | 10, 20 |
+| Required Tags | empty |
+| Scale, Scale Step | `own_stacks`, 1 |
+| Action Event | `healing_skill_use` |
+| Stack Seconds | 5 |
+| Scale Max Steps | 1 |
+
+One stack at most is a reading of the sentence, which states no stacking; it is the enchantment session's to
+decide with the row.
+
+### Tests
+
+Five automation tests under `Cataclysm.HealingSkillUse.`, in `CataclysmEnchantmentEffectTests.cpp`. Four use a
+made-up row: `attack_damage`, increased, 20, scaled by `own_stacks`, on `healing_skill_use`, one stack at most,
+Stack Seconds 5, no Required Tags. It is passed through `AccumulateEnchantmentsInto` and its modifier and its
+grant are handed to a wearer that holds nothing else. Each use is handed to the rows with `ActOnSkillUse`. The
+events a use raised are heard on the component's `OnActionEvent`. Living Pyre's and Blood Pyre's tags are the
+Tags cells of `game/Data/WeaponSkills.csv`; the other skill is tagged `Type.Strike, Type.Melee, Slot.Heavy`.
+Time is moved by adding to the world's clock, as the tests of the merged own-stack rows move it.
+
+- `AUseOfASkillTaggedUnderRecoveryRaisesTheEventOnceAndGrantsTheStack`: a use with Living Pyre's tags
+  (`Stat.Recovery.Leech`) raises the event once and the stack is held. After the stack runs out, a use with
+  Blood Pyre's tags (`Stat.Recovery.Regen`) does the same. The set-up asserts `Stat.Recovery` is a valid tag.
+- `AUseOfAnyOtherSkillAUseWithNoTagsAndTheBasicAttackRaiseNothingAndGrantNothing`: after a control in which
+  Living Pyre grants the stack, four uses raise no `healing_skill_use` and grant nothing: the strike, a skill
+  with an empty set of tags, a null tag pointer, and the basic attack handed Living Pyre's tags. Each has a
+  control that the event it does raise was heard.
+- `TheStackRaisesTheDamageOfASkillThatIsNotAHealingSkillForFiveSeconds`: with the stack held, attack damage on
+  a figure of 1000 is 1200 asked for the strike, asked with no tags, and asked for Living Pyre. A second use
+  leaves it at 1200. 4.9 seconds after the last use it is 1200 and 5.1 seconds after it is 1000.
+- `TheGadgetRowsAreStillGrantedByAnyGadgetDestroyedAndRaiseOnlyADeployablesDamage`: the two real gadget rows,
+  worn. A `gadget_destroyed` event grants both stacks; attack damage asked for `Type.Deployable` rises by the
+  rolled 30% to 50% and attack damage asked for the strike does not. After 5.1 seconds, the same event carrying
+  no tags grants both again. A use of Living Pyre grants neither.
+- `SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`: beside the made-up row, one
+  action made by hand on `skill_use` and one on `attack_use`. Living Pyre's use and Blood Pyre's each raise
+  `skill_use`, `healing_skill_use`, `attack_use` in that order and nothing else. The strike's use raises
+  `skill_use` then `attack_use`. The basic attack raises `attack_use` alone. A null tag pointer raises
+  `skill_use` then `attack_use`. The two rows made by hand end at four and five stacks.
+
+Python: `TestTheUseOfAHealingSkillIsAnEventOfItsOwn` in `tools/tests/test_generate_datatables.py`, four tests.
+The ruled row's shape passes the generator with no Required Tags and no trigger cooldown; the same row on a
+name the game does not raise is refused; an action row on the event is accepted; and the event is on
+`ACTION_ONLY_EVENTS` and on none of the narrower lists in the table above. The existing
+`tools/tests/test_pool_action_names_match_the_engine.py` holds the generator's event names equal to the names
+the C++ raises, and passes with the name on both sides.
+
+**No guard proof was run.** One C++ proof is proposed in the report of the session that wrote this: the tag
+condition on raising the event removed, so any skill use with tags raises it.
+
+**Not tested here:** a real enchantment row on the event, since none is written; the walk from a row of
+`EnchantmentEffects.csv` through the built table to a worn item for this event; a real Living Pyre or Blood
+Pyre used by a player character through `CommitAndBegin`, since every use here is `ActOnSkillUse` called by
+hand; a third skill tagged under `Stat.Recovery`; `Stat.Recovery` itself as a skill's tag, which no skill
+carries; spell damage, since the made-up row is on attack damage alone; a blow dealt while the stack is held,
+since the tests read the stat and deal no damage; two worn copies of the row; a row on the event that states
+Required Tags or a Condition; an action row on the event in the game, which only the generator's test covers;
+switching Living Pyre off; anything drawn on a screen.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-09 — A row can make a healing skill restore more health and give a share of what it restored as energy shield; the healing skills are Living Pyre and Blood Pyre
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (two stat names, two
