@@ -1430,6 +1430,19 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.RepeatSharePercent = Effect->DamageShare;
 					}
+					// AND WHETHER IT GAINS A KEPT STACK ON A CLOCK AND, ON A USE OF A SKILL, SPENDS THEM ALL TO CAST THAT
+					// SKILL AGAIN. Ruled 2026-10-12 under the owner's delegation. The value is the share of its damage
+					// each extra cast deals, in per cent; Every Seconds is the period of the gain, set above; Scale Max
+					// Steps is the most stacks held. KEYED BY THE ROW'S TRIGGER KEY, set above from the enchantment, the
+					// action and the event, which no two rows share.
+					if (Effect->Action.Equals(
+							UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction,
+							ESearchCase::IgnoreCase))
+					{
+						Action.bKeptStacksRepeatSkill = true;
+						Action.KeptStackKey = Action.TriggerKey;
+						Action.KeptStackCap = Effect->ScaleMaxSteps;
+					}
 					// AND WHETHER IT TRIGGERS A DIFFERENT HELD SKILL: one with a cooldown, free, or a spell that
 					// pays its cost. Ruled 2026-10-06. The value is the chance.
 					Action.bTriggerHeldSkill = Effect->Action.Equals(

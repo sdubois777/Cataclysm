@@ -2,6 +2,342 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can gain a stack on a clock, keep it with no lifetime, and spend every one on a use of a skill to cast that skill again a drawn number of times, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (three fields on a worn action),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the action's name, the kept
+stacks, the request a use records, the gain in the timed step, and the three places that end the stacks),
+`game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.h` and `.cpp` (the casts, the console variable that
+pins the draw, and one lookup of the skill used that the merged repeat now shares),
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (a row of the action becomes a worn action),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the casts are made on the tick after the use),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (five tests), `tools/generate_datatables.py`
+(the action, its event, and what its row must and must not state), `tools/tests/test_generate_datatables.py` (one
+class of 45 tests), `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one name and one test).
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, the ten-piece bonus of the set Shard of Anarchy: "Shard of Anarchy (10-Piece Bonus): Every 30 seconds,
+you gain a stack of 'Temporal Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and your skill
+is cast a random number of times. The bonus is permanent for the rest of the dungeon".
+
+- **"The bonus is permanent for the rest of the dungeon" is the least certain sentence of the set.** The
+  coordinating session read it on 2026-10-12, under the owner's delegation, as: the stacks have no lifetime, are
+  kept between floors, and are cleared when the dungeon is left. That reading is what was built. **The reading not
+  taken:** that after the first use that spends stacks, the extra casts stay on every later use for the rest of the
+  dungeon. The owner has not ruled between the two.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+- **A stack is gained only at each whole 30 seconds of ONE UNBROKEN COMBAT, so in play a wearer gains a stack only
+  in a fight that lasts 30 seconds.** This is how every timed row is counted (`StepTimedGrants`, ruled
+  2026-09-24): once for every whole period of the current combat, the period in first, and not out of combat. A
+  combat ends 3 seconds after the wearer's last combat event (`CombatLapseSeconds`), and a new combat starts the
+  count of periods again. The stacks already held are kept through that; only the count towards the next one
+  starts again. So five stacks need one combat of 150 seconds, or several combats of 30 seconds or more. This
+  layer did not change the clock. The option not taken: a clock of this row's own that runs out of combat, or that
+  carries its seconds from one combat to the next. The coordinating session should rule on it before the row is
+  authored, because with the clock as it is the bonus does nothing in fights shorter than 30 seconds.
+- **A row put on part way through a combat is granted every period of that combat at its next step.** This too
+  is how every timed row is counted: the count of periods given starts at nought for a row not seen before. A row
+  put on 100 seconds into a combat gains three stacks at once.
+- **The row's shape is ONE ROW, a judgement of the writing session.** The action `kept_stacks_repeat_skill`; the
+  Action Event `skill_use`, which is the kind of use that spends the stacks; Every Seconds 30, the period of the
+  gain; Scale Max Steps 5, the most stacks held; and the value 100, the share of its damage each extra cast deals,
+  in per cent. The option not taken: two rows on the one enchantment, a gain row on `every_seconds` and a spend row
+  on `skill_use`, joined by the enchantment's name. Two rows can disagree or be written one without the other, and
+  the generator would need a check that each has its partner; one row cannot.
+- **The value is the share of its damage each extra cast deals, a judgement.** The ruled row states 100, "each of
+  those casts at full damage". The option not taken: the Damage Share column, which `repeat_skill` reads, with the
+  value fixed at 100. A row must state a value, the sentence states no chance for it to be, and a share is the one
+  figure the sentence leaves open. A Damage Share on this action is refused.
+- **The stacks are spent when the casts are made, on the tick after the use, and not inside the use.** The use
+  records which skill was used, where it was aimed and which row asked. This is where the merged `repeat_skill`
+  makes its repeat, and for the same reason: a skill cannot be granted inside another skill's activation. Three
+  things follow, and the ruling states none of them:
+  - **A skill no row may cast again spends nothing, a judgement.** `UCataclysmTriggeredSkill::RepeatsFromARow`
+    (ruled 2026-10-05 for the merged repeat rows) leaves out a self buff and every skill Wild Magic leaves out: a
+    skill with no shape, a movement skill, an aura, a summon or a deployable, a channelled or held skill, a skill
+    that plants the weapon, a skill that refuses unless a condition holds, and a skill that costs health. A use of
+    one of these keeps every stack for the next skill. **The option not taken, which is the ruling's words read
+    to the letter:** every paid use of a skill spends every stack, and a skill that cannot be cast again casts
+    nothing for them. To take it, `MakePendingKeptStackCasts` spends before it asks `RepeatsFromARow`.
+  - **A skill whose first extra cast refuses to start spends nothing, a judgement.** `Trigger` answers false for
+    a locked skill and for an unmet requirement. A later cast of the same use that refuses is not made up for.
+  - **A second use before the tick after the first lets go of the first use's request, and its stacks are still
+    held.** `ActOnSkillUse` begins every use with nothing pending, as it does for a pending repeat. The basic
+    attack begins a use too.
+- **All the extra casts start on the same tick, at the same aim, a judgement.** The option not taken: one cast
+  after another with time between them. The session that wrote this does not know whether the engine starts five
+  free copies of one skill on one tick as it starts one; the merged repeat starts one. The test of five stacks is
+  where that is found out.
+- **How `repeat_skill` stops a repeat from repeating, as read.** `UCataclysmTriggeredSkill::Trigger` sets
+  `bFreeRepeat` on the skill it starts. `UCataclysmSkillTemplate::CommitAndBegin` sends the skill-used notice only
+  when `bFreeRepeat` is not set. `ACataclysmPlayerCharacter::OnSkillWasUsed` is what calls `ActOnSkillUse`, and it
+  is called by that notice alone. So a free start raises no `skill_use` and no `attack_use`, and no row on either
+  event is asked. The extra casts here are started by the same `Trigger`, so an extra cast spends no stack, is not
+  cast again by this row, and is not repeated by a `repeat_skill` row.
+- **Worn beside a `repeat_skill` row, both act on one use, a judgement.** The repeat row's one repeat is made at
+  that row's chance and share, and the casts bought with stacks are made as well, at this row's share. One use at
+  five stacks with the draw at 5 beside a repeat row that passes its roll is the use, one repeat and five casts.
+  The ruling of 2026-10-05, "one repeat for one use", is kept among `repeat_skill` rows and is not applied across
+  the two kinds. The option not taken: one repeat for one use across both, the larger number kept.
+- **"Cleared when the dungeon is left" is a comparison and not a call, because `CataclysmDungeonGameMode.*` was
+  not edited.** When the dungeon is left, `ACataclysmDungeonGameMode::LeaveEmpireDungeon` clears state the game
+  mode holds, ends the player's followers and applies an empty set of floor rules. It calls nothing on the
+  player's ability system that means "the dungeon was left"; the one call it reaches there,
+  `UCataclysmDungeonModifierEffects::ApplyToCharacter`, is also made at every floor and on the floor's beat.
+  So each stack remembers which dungeon of the empire was being walked as it was gained
+  (`ACataclysmDungeonGameMode::EmpireDungeonId`, a public field, found through
+  `ACataclysmDungeonGameMode::InWorld`), and `KeptStacksHeld` answers nought for a stack whose dungeon is not the
+  one walked now. That is true from the moment the dungeon is left. The character's next step, a quarter of a
+  second later at most for a living character, removes the stack from the map. **What this leaves open:** a
+  dungeon left and the SAME dungeon entered again before the wearer's next step would find the stacks again. Only
+  the console commands `Cataclysm.LeaveDungeon` and `Cataclysm.EnterDungeon` can do that, and a person cannot type
+  both inside a quarter of a second. The option not taken, which is smaller and exact: one call in
+  `LeaveEmpireDungeon`.
+- **Stacks gained outside a dungeon of the empire are not carried into one, a judgement.** Outside one,
+  `EmpireDungeonId` is none, which that field's own comment calls the ordinary case today. A wearer there gains
+  and spends stacks as inside one, and keeps them until a dungeon is entered. The option not taken: carry them in.
+- **Kept between floors, as ruled.** A floor change does not write `EmpireDungeonId`; a search of the game module
+  found two writes of it, in `EnterEmpireDungeon` and in `LeaveEmpireDungeon`. Nothing a floor change runs
+  touches the stacks.
+- **At death the stacks end when the character is revived.** `ClearWhatDeathEnds` empties them, beside every
+  row's own stacks, and `ACataclysmPlayerCharacter::Revive` is what runs it. A death inside a dungeon of the
+  empire also leaves that dungeon, in the same `Revive`. With the playtest switch
+  `Cataclysm.DeathKeepsThePlayerInTheDungeon` set, the dungeon is not left and the stacks still end.
+- **When the gear comes off the stacks are forgotten, a judgement.** `SetPoolActions` forgets every kept stack
+  whose key no worn action carries. The row is a ten-piece bonus, so taking off any one of the ten pieces takes
+  the row off and forgets the stacks; putting the piece back starts at none. The option not taken: keep them
+  while the row is off, which would let a wearer hold stacks on a character that no longer wears the set.
+- **The basic attack does not spend them, as ruled.** The generator accepts the action on `skill_use` alone, the
+  event the basic attack does not raise. The engine code would act on any event that names a skill; `attack_use`
+  and `healing_skill_use` are refused by the generator until a sentence asks.
+- **Required Tags and a Condition are refused on the row, a judgement.** The stacks are gained on the clock, which
+  asks a row with no tags, and the game refuses a row that requires tags when it is asked with none. So a row
+  stating tags would never gain a stack. No sentence asks for either.
+- **The pinned draw is held to between 1 and the stacks spent.** `Cataclysm.KeptStackCastsDraw` at nought or
+  less, its default, draws for real: `FMath::RandRange(1, stacks)`, each number equally likely.
+- **An enemy wearing such a row would gain stacks and never spend one.** The timed step runs for every living
+  character. A skill use reaches worn rows only through `ACataclysmPlayerCharacter::OnSkillWasUsed`. No enemy
+  wears a row today.
+- **Nothing on screen shows the stacks.** The owner's rule is that every system has a basic interface. This
+  layer does not give the stacks one. `KeptStacksForDisplay` is what an interface would read: one entry for each
+  worn row, with what it holds and its cap. `StatusEffects.csv` has a row of kind Buff named Temporal Flux; it is
+  a name and a description, and nothing here reads it. The coordinating session should rule on the display
+  before the row is authored.
+- **`MakePendingRepeat` was changed and does what it did.** Its lookup of the skill used, by name, among the
+  held basic attack and the skills of the character's damage type, moved into one function,
+  `FindTheSkillUsed`, which the new casts call as well.
+- **The five tests are in a sub-group of their own, `Cataclysm.Enchantments.KeptStacks.`,** so that a guard
+  proof can run them without the rest of `Cataclysm.Enchantments.`. `Cataclysm.Passives.ClassPointsFromGear.` is
+  the precedent for a third level. A run of `Cataclysm.Enchantments.` includes them.
+
+**Genre source, fetched by the enchantment session on 2026-10-12.**
+
+- REACHED: `poedb.tw/us/Unleash_Support` (Path of Exile): "Supported Spells gain a Seal every (0.71-0.9) seconds,
+  to a maximum of 3 Seals"; "Supported Spells are Unsealed when cast, and their effects Reoccur for each Seal
+  lost"; "Supported Skills deal (26-45)% less Damage when Reoccurring".
+- What it settles: stacks gained over time, capped, all spent by one use, one repeat a stack.
+- What is this game's own and judged: the count drawn at random, the cap of 5, 30 seconds a stack, and full
+  damage for each repeat where Unleash gives less.
+
+**What was not read:** the engine's `GiveAbility` and `TryActivateAbility` for what they do when several specs of
+one ability class are given and started on one tick; the body of any skill shape, for what five copies started at
+one aim on one tick do in play; `ACataclysmDungeonGameMode::GoToFloor` and the dark floor's code, beyond the
+search for writes of `EmpireDungeonId`; what `ACataclysmDungeonGameMode` does in `BeginPlay` when one test spawns
+it beside a possessed player; the whole of `ClearWhatDeathEnds`, which one test calls on a living player's
+ability system; how a set bonus's row is counted by pieces worn and turned into a worn action.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| T1 | Every 30 seconds the wearer gains one stack, to at most 5. | The row's Every Seconds and Scale Max Steps, which become `EverySeconds` and `KeptStackCap` of the worn action. `StepTimedGrants` calls `GainKeptStack` once for each period due. |
+| T2 | A paid use of a skill, the event `skill_use`, with at least one stack held spends all of them and casts that skill again a number of times drawn from 1 to the stacks spent. | The branch `Action.bKeptStacksRepeatSkill` in `ActOnEvent` records the request. `UCataclysmTriggeredSkill::MakePendingKeptStackCasts` draws, spends and casts. |
+| T3 | Each of those casts is at full damage, as the merged "cast a second time" rows are. | The row's value, 100, is the share handed to `Trigger`, which is the share a merged repeat is handed. |
+| T4 | With no stack held a use does nothing extra. | The condition `KeptStacksHeld(Action.KeptStackKey) > 0` on the request. |
+| T5 | The basic attack does not spend them. | `KEPT_STACKS_REPEAT_SKILL_EVENTS` in the generator is `skill_use` alone, and `ActOnSkillUse` does not raise `skill_use` for the basic attack. |
+| T6 | The stacks have no lifetime, are kept between floors, and are cleared when the dungeon is left. | `FKeptStack` holds a count and a dungeon and no time. `KeptStacksHeld` compares the dungeon with `DungeonBeingWalked`; `ForgetKeptStacksOfAnotherDungeon` removes. |
+| T7 | The half "gained on a timer, held with no lifetime, spent by a named kind of use" can be used by another sentence. | `FCataclysmPoolAction::KeptStackKey` and `KeptStackCap` are the gain, read by `StepTimedGrants` for any action that carries the key. `GainKeptStack`, `KeptStacksHeld` and `SpendKeptStacks` are the stacks. `bKeptStacksRepeatSkill` is what this sentence buys. |
+| T8 | The drawn number is pinned by a console variable for tests. | `Cataclysm.KeptStackCastsDraw`. |
+| T9 | An extra cast does not itself spend stacks and is not repeated again by this row. | Each is a free start by `Trigger`, which sends no skill-used notice. |
+
+### WHAT WARLORD'S WILL'S TEN-PIECE WOULD STILL NEED
+
+Not built. The sentence: "Every 30 seconds, you gain a stack of 'Tactical Advantage.' When you use a movement
+ability, you consume all stacks of 'Tactical Advantage' and gain 100% more movement speed and 50% more damage for
+5 seconds". It would use what is here for the gain, the cap, the keeping and the spending: an action that sets
+`KeptStackKey` and `KeptStackCap` gains on the clock with no other change. It would still need:
+
+- **An event for a use of a movement ability,** or `skill_use` with the Required Tag `Slot.Movement`. The second
+  needs the gain to stop asking the row's tags at the clock, which is why Required Tags are refused today.
+- **A second thing bought:** an action that spends the stacks and lays "100% more movement speed and 50% more
+  damage" on the wearer for 5 seconds. A timed stat line on the wearer that a gear refresh does not erase exists
+  twice already: a row's own stacks (`own_stacks` with Stack Seconds), and the held buff of the two-piece layer.
+  Which of the two it should be was not worked out.
+- **A ruling on what the number of stacks spent changes.** Its sentence gives one figure whatever was spent.
+- **Its own name in the generator, its own branch in `ActOnEvent`, and its own row shape and tests.**
+
+### WHAT WAS BUILT
+
+- **The worn action.** `FCataclysmPoolAction::KeptStackKey`, `KeptStackCap` and `bKeptStacksRepeatSkill`.
+  `UCataclysmItemModifiers` sets all three for a row whose Action is
+  `UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction`: the key is the row's trigger key, which is the
+  enchantment, the action and the event; the cap is Scale Max Steps. The period is `EverySeconds` and the share
+  is `Percent`, both set as for every action row.
+- **The stacks.** `UCataclysmAbilitySystemComponent::KeptStacks`, a map from a row's key to a count and the
+  dungeon walked as the last was gained. `GainKeptStack(Key, Cap)` adds one to what is held now, to the cap.
+  `KeptStacksHeld(Key)` answers the count, or nought when the dungeon is not the one walked now.
+  `SpendKeptStacks(Key)` answers what was held and removes the entry. `DungeonBeingWalked()` answers
+  `EmpireDungeonId` of the dungeon game mode in the world, or none. `KeptStacksForDisplay()` is for an interface.
+- **The gain.** In `StepTimedGrants`, an action carrying a `KeptStackKey` is counted on the clock whatever its
+  event is, under its trigger key, and each period due calls `GainKeptStack`. That branch is asked before the
+  others, so such an action is never also moved as a pool. The same step calls
+  `ForgetKeptStacksOfAnotherDungeon` first, in combat or out of it.
+- **The request.** In `ActOnEvent`, after the branch of `repeat_skill`: for an event that names a skill, once
+  for each row for each event, while the row holds at least one stack, the skill, the aim, the row's key and its
+  share are recorded. `PendingKeptStackCastSkill`, `PendingKeptStackCastAim` and `PendingKeptStackCasts` read
+  them. `ActOnSkillUse` clears them at the start of every use.
+- **The casts.** `UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Character)` takes the request and clears
+  it; finds the skill used and asks `RepeatsFromARow`; and then for each row that asked reads the stacks held,
+  draws from 1 to that number, starts the first cast, spends the stacks if it started, and starts the rest. It
+  answers how many casts started. `ACataclysmPlayerCharacter::OnSkillWasUsed` calls it on the next tick, after
+  `MakePendingRepeat` and before `MakePendingHeldTrigger`, on the one timer.
+- **The ends.** `ClearWhatDeathEnds` empties the map, and adds what was held to its count of stacks ended.
+  `SetPoolActions` calls `ForgetKeptStacksNoWornActionCarries`.
+- **The generator.** `KEPT_STACKS_REPEAT_SKILL_ACTION` and `KEPT_STACKS_REPEAT_SKILL_EVENTS`.
+  `_check_kept_stacks_repeat_skill_action` refuses an event that is not `skill_use`, and a Fraction Of, a Value
+  Kind, a Scale, Required Tags or a Condition. The row must state Every Seconds, above 0 and up to 60, on an
+  event that is not the timed one; it must state Scale Max Steps, a whole number from 1 to 100, with no Scale; its
+  value is above 0 and up to 100; and Stack Seconds is refused. A Trigger Cooldown, a Damage Share, an Every Nth,
+  an Event Value and an Ailment are refused by the rules that were already there, and so is the row written
+  twice on one enchantment.
+- **The row the enchantment session is to write** is one line on the enchantment: Action
+  `kept_stacks_repeat_skill`, Action Event `skill_use`, Value Low 100, Every Seconds 30, Scale Max Steps 5, and
+  every other column empty.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains
+  `KeptStacksRepeatSkillAction`, so the generator's name is compared with the engine's.
+- The generator accepts three things it refused: the action `kept_stacks_repeat_skill`; Every Seconds on a row
+  whose event is not `every_seconds`, for that action alone; and Scale Max Steps on a row with no Scale, for that
+  action as well as the next-use and placed actions. A test holds that both are still refused on a
+  `repeat_skill` row.
+- The comment in the generator that began "A TIMED ROW STATES ITS PERIOD, AND ONLY A TIMED ROW DOES" gains a
+  paragraph saying this action states one too.
+- No pinned count or list of stats was changed. No shipped row is on the action, so no shipped row is refused or
+  newly accepted.
+
+### Tests
+
+Five new Unreal tests in `CataclysmEnchantmentEffectTests.cpp`, after the tests of the merged repeat action and
+using their rig: a possessed player whose damage type is Demonic, and the projectile skill Carom from the real
+skill table. The row is made by hand. Each test reads a control first. The draw is pinned. The clock is the
+world's, moved a second at a time with a blow each second to stay in combat and the timed step called by hand, as
+the tests of the timed rows move it; nothing waits on a tick. One character is spawned in each world, so no two
+actors stand within a metre of each other. A use is the skill-used notice the game sends, and the casts are made
+by calling `MakePendingKeptStackCasts`, as the merged tests call `MakePendingRepeat`.
+
+- `Cataclysm.Enchantments.KeptStacks.OneIsGainedEachPeriodOfAFightToTheCapAndNoneRunsOutWithTime`: no stack
+  before a period, and a use then asks for nothing and casts nothing; none at 29 seconds of a fight; one more at
+  each 30 seconds to five; the sixth and the seventh period add none; what an interface would read; ten minutes
+  out of combat the five are held; 29 seconds into a new fight the five are held; and a row of 10 seconds to a
+  cap of 2 gains one at 10 seconds and holds two at 40.
+- `Cataclysm.Enchantments.KeptStacks.AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage`:
+  no stack, nothing extra; one stack, the use records the skill, the aim, the row and a share of 1 and spends
+  nothing yet, and making gives one cast that is a free start at the aim and the whole of its damage, pays no
+  mana, sends no skill-used notice and leaves no stack; two stacks gained afterwards are held through a call
+  with no use behind it; five stacks with the draw at 1 give one cast and spend five; five with the draw at 5
+  give five casts, each at the whole of its damage; six gains hold five; a pin of 9 with three held gives three;
+  the draw with its pin off gives from 1 to 4 for four held; and a row stating 50 casts at half.
+- `Cataclysm.Enchantments.KeptStacks.TheBasicAttackAndASkillNoRowMayCastAgainSpendNone`: the control, a use of
+  Carom asks; a basic attack asks for nothing and lets go of the request before it; a self buff, Ashen Edge, and
+  a movement skill, Flashpoint, each ask and neither casts nor spends; a skill the table does not hold spends
+  nothing; and the same three stacks are then spent by a use of Carom.
+- `Cataclysm.Enchantments.KeptStacks.ThisRowAndARepeatRowOnOneUseEachMakeTheirOwnCasts`: the control, a repeat
+  row at half beside this row with no stack gives one repeat; with two stacks and the draw at 2, in either order
+  worn, the repeat is recorded at half, making it spends no stack, and two casts are made from the stacks; of
+  the seven that run, three are at half and four at the whole.
+- `Cataclysm.Enchantments.KeptStacks.TheyEndWhenTheDungeonIsLeftAtADeathAndWhenTheGearComesOff`: with no dungeon
+  game mode none is walked and a step removes nothing; a dungeon game mode is spawned and its `EmpireDungeonId`
+  is written by hand; stacks gained outside a dungeon are not held inside dungeon 7; the first gained inside is
+  one; a step inside the same dungeon removes none; the dungeon left, none is held before any step; after a step
+  the same dungeon entered again holds none; dungeon 8 entered from dungeon 7 holds none and its first is one;
+  `ClearWhatDeathEnds` leaves none; the row written again keeps them; a row under another key in its place, and
+  no row, each leave none.
+
+Python:
+
+- `TestKeptStacksSpentToCastASkillAgain` in `tools/tests/test_generate_datatables.py`, 45 tests on a made-up
+  sheet: the ruled row is carried through with its period, its cap and its share, and the whole sheet's
+  validation has nothing to say; another period, cap and share inside the bounds are carried; the names; three
+  misspelt actions are refused; the row on `every_seconds`, `attack_use`, `healing_skill_use`, `kill`,
+  `basic_attack`, a made-up event and no event is refused; no period, and a period of nought or past 60, are
+  refused; no cap, and a cap that is not a whole number from 1 to 100, are refused; a share of nought, below
+  nought or above 100 is refused; Stack Seconds is refused; Required Tags, a Condition, a Fraction Of, a Value
+  Kind and a Scale are each refused; ten other columns are each refused by the rule already there; the row
+  written twice is refused; and a period or a cap is still refused on a `repeat_skill` row.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains one test: the generator's name is
+  the engine's, and `CataclysmItem.cpp` compares a row's Action with the engine's constant.
+
+**Not tested:** the row arriving from a worn item through a gear refresh, because no row exists, so nothing
+tests that `UCataclysmItemModifiers` sets the three fields; the timer in `OnSkillWasUsed` that makes the casts on
+the next tick, and their order there after the repeat and before the trigger of a different skill; a real use of
+a skill through `CommitAndBegin`; what an extra cast hits and for how much, since "at full damage" is read as the
+share the started skill holds; the unpinned draw's spread, of which one draw's bounds are read; a skill whose
+first extra cast refuses to start; a second use before the casts of the first are made, other than by a basic
+attack; a real floor change with stacks held; a real `EnterEmpireDungeon` and `LeaveEmpireDungeon`, in place of
+the field written by hand; a real death and revival; the playtest switch; a dungeon left and entered again before
+a step; an enemy wearing the row; a row put on part way through a combat; two enchantments each with such a row;
+anything on screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
+`Cataclysm.Enchantments.KeptStacks.`, with its trailing dot. The test names below are written without that prefix.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| K-I, the cap | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Held.Count = FMath::Min(HeldNow + 1, Cap);` | `Held.Count = HeldNow + 1;` | `OneIsGainedEachPeriodOfAFightToTheCapAndNoneRunsOutWithTime` | `AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage` |
+| K-II, stacks of another dungeon are not held | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `return Held->DungeonId == DungeonBeingWalked() ? Held->Count : 0;` | `return Held->Count;` | `TheyEndWhenTheDungeonIsLeftAtADeathAndWhenTheGearComesOff` | none |
+| K-III, a use spends the stacks | `game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.cpp` | `System->SpendKeptStacks(Row.Key);` | `System->KeptStacksHeld(Row.Key);` | `AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage` | `TheBasicAttackAndASkillNoRowMayCastAgainSpendNone` and `ThisRowAndARepeatRowOnOneUseEachMakeTheirOwnCasts` |
+
+Failed assertions in each test, by reading:
+
+- **K-I, 8 in 2 tests.** The clock test 6: "the sixth period adds no sixth stack", which reads 6; "and the
+  seventh adds none", 7; "holding five", 7; "ten minutes out of combat the five stacks are still held", 7;
+  "twenty-nine seconds into a new fight the five are still held", 7; and "forty seconds in it holds its cap of
+  two", which reads 4. The spending test 2: "six gains to a cap of five hold five", which reads 6; and "spending
+  them answers five", 6. Every other gain in the five tests is of five stacks or fewer.
+- **K-II, 8 in 1 test.** "stacks gained outside a dungeon are not held inside one", which reads 3; "and an
+  interface would read none", 3; "the first stack gained inside the dungeon is one, not a fourth", 4; "three are
+  held inside the dungeon after a step", 5; "the dungeon left, none is held", 5; "in dungeon 8 the stacks of
+  dungeon 7 are not held", 3; "and the first gained there is one", 4; and "spending in dungeon 8 answers the
+  one", 4. The other four tests have no dungeon game mode, so every stack in them has the dungeon none and the
+  break changes nothing there.
+- **K-III, 9 in 3 tests.** The spending test 6: "and the stack is gone"; "and the two stacks are still held",
+  which reads 3; "and all five stacks are spent", twice; "and the three are spent"; and "set-up: four stacks are
+  held", which reads 5 and returns from the test. The test of what does not spend 1: "control: and spends the
+  three". The test beside a repeat row 2: "and the two stacks are spent"; and "set-up: two stacks are held" on
+  the second pass, which reads 4 and returns from the test.
+
+K-III's new text reads the stacks and spends nothing, so the line still compiles and the loop goes on.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A hit can make its wearer immune to that hit's damage type for a time: two stats, a window for each type, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the two stat
