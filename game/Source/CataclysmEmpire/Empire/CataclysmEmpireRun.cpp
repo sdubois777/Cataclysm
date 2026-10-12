@@ -416,9 +416,13 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	}
 
 	// THE SCHEDULE MOVES WHETHER OR NOT ANYTHING LANDED. A wave that found no
-	// target still counts as the surge for that period, which is what
-	// `Simulation.trigger_surge` does, and not moving it would fire a surge
-	// every day for ever.
+	// target still counts as the surge for that period; not moving it would
+	// fire a surge every day for ever.
+	//
+	// THE MODEL DOES NOT DO THIS, and this comment said it did until issue
+	// #1414. `Simulation.trigger_surge` returns before it logs anything when
+	// no city can be landed on, so its schedule does not move and it tries
+	// again the next day. The two differ only when nothing can be landed on.
 	Surges->RecordSurge(Today, bFromCityFall);
 
 	OutReport.bSurged = true;

@@ -16,6 +16,12 @@ checks that things happened at all (a city retaken, dungeons absorbed, and four 
 more waves and not fewer, and that is a reading, not a measurement. One comment in it was corrected. No other
 existing test advances a run past day 25 with nothing standing; every caller was read.
 
+**Said first: a save does not hold the two figures this rule keeps.** `LastSurgeDay`, the day of the last
+surge, and `SurgesFromEmptyBoard`, the count of surges this rule fired, are not written to the save record. A
+run restored from a save would measure the least interval from day 0 and count from nought. Nothing restores a
+run today; loading is issue [#753](https://github.com/sdubois777/Cataclysm/issues/753), and a comment there
+names the two fields. Judgement 5 below has the rest.
+
 **Said first: the game's surge when a city falls still has no least interval.** The simulation gave it one on
 2026-09-16 (issue #1432). The game did not get it and this layer does not add it. `DaysSinceLastSurge` is
 now there for whoever does.
@@ -182,8 +188,10 @@ tree made with `git archive` of the staged tree, each PROVED: failed with the br
 - The escalating surge modes with this rule. Only static surges are in the tests, as in the simulation's.
 - The save: see judgement 5.
 - The game's fall surge having no least interval: see the top of this entry.
-- The comment in `UCataclysmEmpireRun::FireSurge` that says moving the schedule when nothing landed "is what
-  `Simulation.trigger_surge` does". The simulation returns before moving it. Not changed here.
+- The comment in `UCataclysmEmpireRun::FireSurge` said moving the schedule when nothing landed "is what
+  `Simulation.trigger_surge` does". The simulation returns before moving it. This bullet said "Not changed
+  here" when it was written; the comment is corrected in this layer, as ruled by the coordinating session on
+  2026-10-12, and now says what the model does. No code changed with it.
 
 ### Guard proofs proposed for the C++
 
