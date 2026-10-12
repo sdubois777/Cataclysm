@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-12 — The game fires a surge when the board has no dungeons on it, as the simulation does (#1414)
 
-**Said first: nothing was compiled and nothing was run in Unreal.** The C++ and its six Unreal tests were written
+**Said first, and no longer so: the layer has since been built and run; the Run section at the end has what was printed.** What follows in this paragraph and the next was true when it was written. Nothing was compiled and nothing was run in Unreal. The C++ and its six Unreal tests were written
 and read, not built. Every day number in the tests is arithmetic done by hand. The Python checks were run, and
 proved in a copy of the tree; their output is below.
 
@@ -205,6 +205,47 @@ None was run. Each break is one line that counts once in its file and leaves the
 
 The test prefix for each is `Cataclysm.EmpireRun.` followed by the test's name. A wider prefix fails more tests
 than the one named, because all six read the same rule.
+
+### Run
+
+On 2026-10-12 at `feat/empty-board-surge-3` 48809103, on development 2366adbe, the commit that merged the
+simulation resolving an ordinary dungeon on a death. Every build, run and measurement here was made by the
+registering session, holding the editor lock as void-zones-w21. Every figure is a line a run printed. The lock
+was taken only after development's own run at 2366adbe had printed success, no run was in progress, no build or
+editor process was running and no pull request was open.
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 46 actions, 41 files compiled` |
+| Whole Unreal suite | 3567 performed, 0 failed | `3567 tests performed, 3567 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3567 tests in the tree at 48809103; 3567 performed, gap 0` |
+| Whole Python suite | 6025 collected, 0 failed | `6017 passed, 8 skipped in 328.50s (0:05:28)`; JUnit `errors="0" failures="0" skipped="8" tests="6025"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,561 the enchantment session's window printed on its tested top, given by the
+coordinating session, plus this layer's six tests.
+
+**The existing test this entry said would play differently passed.**
+`Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice` is among the 3,567 that succeeded.
+No existing test failed.
+
+**The Python run printed 8 skipped; a run of the simulation's branch in another worktree the same day printed
+7.** Which check skipped in the built worktree and not in the other was not looked into.
+
+**The three guard proofs, each PROVED: the named test failed with the break in and passed with it out.** The
+counts are of failed assertions, read from the engine's log of the run with the break in.
+
+| | Break | Test | Predicted | Printed |
+|---|---|---|---|---|
+| 1 | `>=` becomes `>` in `IsDueOnEmptyBoard` | `TheSchedulerAnswersAnEmptyBoardOnlyOnceTheLeastIntervalHasPassed` | 3 | 3: day 25 not due, day 125 not due, day 135 not due; restored `1 tests performed, 1 succeeded, 0 failed` |
+| 2 | `if (!Report.bPillarExposed` becomes `if (true` | `AnEmptyBoardFiresNothingOnceThePillarCanBeReached` | 3 | 3: one surge on days 2 to 40 where none was expected, one counted from an empty board, four dungeons on the board on day 40; restored `1 tests performed, 1 succeeded, 0 failed` |
+| 3 | `LastSurgeDay = Day;` becomes `LastSurgeDay = 0;` | `ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed` | 6 | 6: the last surge's day read 0, a surge inside days 2 to 25, four dungeons on day 25, one surge counted early, no surge on day 26, no dungeons brought on day 26; restored `1 tests performed, 1 succeeded, 0 failed` |
+
+**What the run settled.** The layer compiles. Its six tests pass and every other test still passes. Each of the
+three lines the proofs broke is held by the test named beside it.
+
+**Not settled.** Nothing was tried in play. The hand arithmetic of the day numbers in the tests agreed with the
+run; the escalating surge modes with this rule were not run. A save still holds neither `LastSurgeDay` nor
+`SurgesFromEmptyBoard`.
 
 ---
 
