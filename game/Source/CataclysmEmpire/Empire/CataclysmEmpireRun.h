@@ -33,6 +33,16 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bSurged = false;
 
+	/**
+	 * Whether a surge fired today because the board was empty.
+	 *
+	 * `bSurged` IS TRUE AS WELL. This says which of the three causes it was for
+	 * the one cause a caller cannot work out from the rest of the report: a
+	 * city falling is in `Fallen`, and the clock is what is left.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bSurgedOnEmptyBoard = false;
+
 	/** The dungeons that arrived today. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Spawned;
@@ -167,6 +177,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *   7. A city whose defence reached zero falls. Every dungeon standing on it is
  *      absorbed, and its fall fires a surge of its own.
  *   8. If a Sanctuary has fallen, the Cataclysm can reach the Pillar.
+ *   9. If nothing at all stands on the map, the Pillar cannot be reached and
+ *      the last surge is at least 25 days behind, the next wave lands now.
+ *      Its dungeons do not lose a day today, because the timers have already
+ *      moved. Issue #1414.
  *
  * STEPS 3 AND 5 ARE NOT IN `Simulation.step`. The model has neither city
  * upgrades nor sub-type behaviour, so its order is the order of what both have
@@ -635,6 +649,20 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 DungeonsDetonated = 0;
+
+	/**
+	 * Of `UCataclysmSurgeScheduler::SurgesFired`, how many fired because the
+	 * board was empty rather than because the clock or a city's fall sent them.
+	 *
+	 * A PORT OF `RunResult.surges_from_empty_board`. Under this rule the number
+	 * of surges in a run is no longer set by the clock alone, and this is how a
+	 * caller tells an early wave from a scheduled one. Issue #1414.
+	 *
+	 * IT IS NOT SAVED, like the four tallies above it. Issue
+	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 SurgesFromEmptyBoard = 0;
 
 	/**
 	 * Starts a run: an intact empire, a clock at day 0, and a surge due

@@ -2,6 +2,204 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — The game fires a surge when the board has no dungeons on it, as the simulation does (#1414)
+
+**Said first: nothing was compiled and nothing was run in Unreal.** The C++ and its six Unreal tests were written
+and read, not built. Every day number in the tests is arithmetic done by hand. The Python checks were run, and
+proved in a copy of the tree; their output is below.
+
+**Said first: one existing Unreal test will play differently and was not run.**
+`Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice` walks 20 campaigns in which the
+player clears dungeons and then waits on an empty board. Under this rule a wave comes after 25 days of that
+wait and not after up to 120. Its day-by-day comparisons do not depend on when waves come. Its six closing
+checks that things happened at all (a city retaken, dungeons absorbed, and four more) are expected to hold with
+more waves and not fewer, and that is a reading, not a measurement. One comment in it was corrected. No other
+existing test advances a run past day 25 with nothing standing; every caller was read.
+
+**Said first: the game's surge when a city falls still has no least interval.** The simulation gave it one on
+2026-09-16 (issue #1432). The game did not get it and this layer does not add it. `DaysSinceLastSurge` is
+now there for whoever does.
+
+### The ruling
+
+The game's surge on an empty board is built now, as its own layer, before any change to what a resolved dungeon
+does. It is a gap between the simulation and the game today. A labelled judgement by the coordinating session
+under the owner's delegation, 2026-10-12.
+
+The rule itself is the owner's, of 2026-09-07, verbatim: "Anytime there are no longer dungeons on the board, a
+surge happens." And on the cadence, verbatim: "it does not replace the surge cadence. It is there to ensure
+pressure remains." The entry of 2026-09-07 below records both and the measurements.
+
+### What was read before writing
+
+- Issue #1414 whole, issue #1406 with its five comments, and issue #1432 with its two.
+- `sim/cataclysm_sim/config.py` lines 319 to 390: `surge_interval_min` is 25.0 and `surge_on_empty_board` is
+  `True`.
+- `sim/cataclysm_sim/engine.py`: `trigger_surge` (550 to 601), `board_is_empty` (603 to 615),
+  `days_since_last_surge` (617 to 636), `_maybe_surge_on_empty_board` (638 to 678), `_fall` (880 to 914),
+  `_open_last_stand` (1166 to 1194) and `step` (1266 to 1317).
+- `sim/tests/test_surge_when_the_board_empties.py` whole, and the surge bullet of `sim/README.md`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp` (the cadence constants, `IsDue`,
+  `RecordSurge`, `PickTargets`, `RollWave`) and `CataclysmEmpireRun.h` and `.cpp` (`AdvanceDay`, `FireSurge`,
+  `ResolveDungeon`, `CityFell`, `ClearDungeon`, `RemoveDungeon`, the day report).
+- `tools/tests/test_surge_port.py`: the class this layer changes was read whole, and the rest of the file to
+  line 1116 and by search after it.
+- Every caller of `AdvanceDay`, `AdvanceDays` and `SpendFloorTime` on a run, in both modules' tests and in the
+  game mode and player character.
+- `game/README.md` does not say the game lacks this surge, so it is unchanged.
+
+### The simulation's rule, as read
+
+- **What counts as standing: every dungeon of every kind.** `board_is_empty` is `return not self.dungeons`. A
+  Quest dungeon, a Fallen City, the Cataclysm dungeon, the Last Stand and the dungeon the player is inside all
+  keep the board from being empty.
+- **The least interval is 25 days**, `surge_interval_min`. The rule refuses while
+  `days_since_last_surge() < cfg.surge_interval_min`, so it fires on the 25th day and not the 26th.
+- **It is measured from the last surge that was logged, whatever fired it.** Before any surge the day itself is
+  the answer, so the start of the run counts as day 0.
+- **A refusal is a delay.** The rule is asked every day, so it fires on the first day the interval allows.
+- **It resets the clock.** It calls `trigger_surge()` with no flag, which sets `next_surge_day` to today plus
+  the gap and advances `surge_index`. One wave replaces one wave.
+- **It is asked late in the day:** after the scheduled surge, the Sieges, the timers, the resolves and the Last
+  Stand, and before the player's turn. A dungeon the player clears on day N is removed at the end of day N and
+  seen on day N+1. A wave it brings is below the timer loop, so it does not lose a day on the day it lands; a
+  scheduled wave does.
+- **Day 0 and before the first surge:** `next_surge_day` starts at 0, so the scheduled surge fires on day 1 and
+  the board is not empty. The rule cannot fire before day 25 in any case.
+- **A city's fall** fires its surge only when the last one is at least 25 days behind, since issue #1432. A
+  refused fall surge is not retried.
+
+Nothing in the simulation was found wrong, and nothing under `sim/` was changed.
+
+### How it is built
+
+- `UCataclysmSurgeScheduler::bSurgeOnEmptyBoard = true`, beside `bSurgeOnCityFall`. The brake is the
+  `LeastIntervalDays` (25) the scheduler already held; no second number.
+- `UCataclysmSurgeScheduler::LastSurgeDay`, 0 to start, written by `RecordSurge`. `DaysSinceLastSurge(Day)`
+  answers `Day - LastSurgeDay`.
+- `UCataclysmSurgeScheduler::IsDueOnEmptyBoard(Day, DungeonsStanding)`: the flag, nothing standing, and
+  `DaysSinceLastSurge(Day) >= LeastIntervalDays`. It decides and does not act, like `IsDue`.
+- `UCataclysmEmpireRun::AdvanceDay` asks it last in the day, with `Dungeons.Num()`, and not while the Pillar is
+  exposed. When it answers yes the run calls `FireSurge(Today, false, Report)`, the same call the clock's surge
+  makes, sets `FCataclysmDayReport::bSurgedOnEmptyBoard` and raises `UCataclysmEmpireRun::SurgesFromEmptyBoard`.
+  `Begin` sets that tally to 0.
+- The day report did not say why a surge fired for the other two causes and still does not; `bSurged` is true
+  for all three. The new flag is the one cause a caller could not work out from the rest of the report.
+- Nothing in the `Cataclysm` module changed, and `CataclysmEmpire` includes nothing from it.
+
+### For the owner's play-check
+
+- Clear every dungeon on the map. If the last wave came 25 or more days ago, a new wave of four lands on the
+  next day that passes. If it came more recently, the wave lands on the 25th day after it. Before this layer
+  nothing came until the 120-day clock.
+- The empire screen's "next surge" count restarts at 120 from the day that wave lands.
+- A wave still comes on the 120-day clock when something is left standing, including a Quest dungeon or a
+  Fallen City nobody walks.
+- Nothing on screen says why a wave came. `Cataclysm.EmpireAdvance <days>` prints a surge the same way for
+  every cause.
+- **The one judged number is none.** 25 days and 120 days are the simulation's.
+
+### The writing session's judgements
+
+Each a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The rule does not fire while the Pillar is exposed.** In the simulation an exposed Pillar opens the Last
+   Stand, which stands on the board, so the board is never empty from then on. The game has no Last Stand
+   (issue #43), so `AdvanceDay` asks `!Report.bPillarExposed` directly. The reading not taken: fire anyway, on
+   the cities still exposed, in a run the game already calls lost.
+2. **The interval is measured from the last surge the scheduler recorded, landed or not.** Issue #1414 asks for
+   the last surge that spawned, because the simulation's `trigger_surge` returns without logging when it has no
+   target and is tried again every day. The game differs already: `FireSurge` calls `RecordSurge` whether or
+   not anything landed, so its clock moves on and its counters advance on an attempt. Measuring from a landing
+   in the game would let an empty board with no target fire every day, moving the clock 120 days on and adding
+   one to the escalation counter each time. On an empty board with the Pillar shielded a rim city always
+   stands to be landed on, so the two readings are not expected to differ in play.
+3. **`SurgesFromEmptyBoard` counts every surge the rule fires.** The simulation counts one when its log grew,
+   and its log is its count of surges; `SurgesFired` is the game's, and it grows on every `RecordSurge`.
+4. **`bSurgedOnEmptyBoard` was added to the day report.** Not asked for by the issue. It is how a test, or a
+   screen later, tells this surge from the clock's on the same day's report.
+5. **`LastSurgeDay` and `SurgesFromEmptyBoard` are not written to the save.** `UCataclysmRunSave` holds five
+   surge fields written out by name and the run's other tallies are already absent (issue #1374). A restored
+   run would measure the interval from day 0. Nothing restores a run today.
+6. **The 2026-09-07 entry's sentence "The game does not have this rule" was corrected in place**, as issue #1414
+   asks, by adding one sentence after it. Nothing else in that entry was touched.
+7. **`game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp` had two comments this rule made false or
+   incomplete**, in the campaign test named above and on `MakeEmptyRun`. Both were corrected.
+8. **No research into other games was done; no source was read.** The shape is the simulation's, ruled by the
+   owner on 2026-09-07.
+
+### Tests
+
+Six Unreal tests appended to `CataclysmEmpireRunTests.cpp`, none run. No actor is spawned in any of them; a run
+is an object with no world.
+
+- `Cataclysm.EmpireRun.TheSchedulerAnswersAnEmptyBoardOnlyOnceTheLeastIntervalHasPassed`: the scheduler alone.
+  Day 24 not due, day 25 due, day 25 with one dungeon standing not due; after a surge on day 100, day 124 not
+  due and day 125 due; after a fall's surge on day 110, day 134 not due and day 135 due.
+- `Cataclysm.EmpireRun.ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`: two runs alike to day 30 with one
+  hand-placed dungeon; one clears it. Day 31 brings four dungeons to that run, counted as one surge from an
+  empty board, each with its whole timer left. The control run gets nothing on day 31.
+- `Cataclysm.EmpireRun.ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed`: a board empty from day 1.
+  No surge on days 2 to 25; a surge on day 26.
+- `Cataclysm.EmpireRun.AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`: a run against days written by
+  hand. Surges on days 1, 26, 51 and 171; the clock's next surge reads 121, then 146, then 171, then 291; the
+  first three after day 1 are two from an empty board and one from the clock, with a Quest dungeon standing
+  through days 52 to 170.
+- `Cataclysm.EmpireRun.EveryKindOfDungeonKeepsTheBoardFromBeingEmpty`: one dungeon of each of the four kinds,
+  no surge to day 40; the control with nothing standing surges once, on day 26.
+- `Cataclysm.EmpireRun.AnEmptyBoardFiresNothingOnceThePillarCanBeReached`: Sanctuaries felled through the map
+  until the Pillar is exposed, nothing standing, no surge to day 40; the control surges once.
+
+`tools/tests/test_surge_port.py`, class `TestWhatAnEmptyBoardDoes`:
+
+- **Before:** `test_the_game_has_no_board_empty_trigger_yet` asserted `"bSurgeOnEmptyBoard" not in` the header.
+- **After:** that test is deleted. `test_an_empty_board_fires_a_surge_in_both` asserts
+  `flag(surge_header, "bSurgeOnEmptyBoard") == model.surge_on_empty_board`. Three more checks read the code with
+  comments removed: `test_the_games_rule_asks_what_the_models_asks`,
+  `test_both_measure_the_gap_from_the_last_surge_of_any_cause` and
+  `test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge`. Two docstrings in the class were
+  reworded; their assertions are unchanged.
+
+**Guard proofs of the Python checks, run by the writing session with `tools/prove_guard.py` in a copy of the
+tree made with `git archive` of the staged tree, each PROVED: failed with the break in and passed with it out.**
+
+| The break | Printed | Named failure |
+|---|---|---|
+| `bSurgeOnEmptyBoard = false` in `CataclysmSurge.h` | `PROVED: 1 failed, 57 passed in 0.27s \| restored: 58 passed in 0.14s` | `test_an_empty_board_fires_a_surge_in_both` |
+| `>` for `>=` on the least interval in `CataclysmSurge.cpp` | `PROVED: 1 failed, 57 passed in 0.18s \| restored: 58 passed in 0.14s` | `test_the_games_rule_asks_what_the_models_asks` |
+| `RecordSurge` no longer writes `LastSurgeDay` | `PROVED: 1 failed, 57 passed in 0.18s \| restored: 58 passed in 0.13s` | `test_both_measure_the_gap_from_the_last_surge_of_any_cause` |
+| the rule also asked above the day's resolves in `AdvanceDay` | `PROVED: 1 failed, 57 passed in 0.19s \| restored: 58 passed in 0.14s` | `test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge` |
+| the Pillar condition replaced by `true` in `AdvanceDay` | `PROVED: 1 failed, 57 passed in 0.19s \| restored: 58 passed in 0.14s` | `test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge` |
+
+### Not covered
+
+- Anything in Unreal: the build, the six new tests, and the whole suite with this rule on.
+- The dungeon the player is inside counting as standing. It is in `Dungeons` until it is cleared, so the kinds
+  test covers the array; no test enters one.
+- A board emptied by a city's fall. `CityFell` leaves a Fallen City dungeon unless the city is erased, and
+  nothing in the game marks a city to be erased yet.
+- A board with nothing standing and no city a wave can land on.
+- The escalating surge modes with this rule. Only static surges are in the tests, as in the simulation's.
+- The save: see judgement 5.
+- The game's fall surge having no least interval: see the top of this entry.
+- The comment in `UCataclysmEmpireRun::FireSurge` that says moving the schedule when nothing landed "is what
+  `Simulation.trigger_surge` does". The simulation returns before moving it. Not changed here.
+
+### Guard proofs proposed for the C++
+
+None was run. Each break is one line that counts once in its file and leaves the file compiling.
+
+| | File | Before | After | Test | Predicted |
+|---|---|---|---|---|---|
+| 1 | `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp` | `		&& DaysSinceLastSurge(Day) >= LeastIntervalDays;` | `		&& DaysSinceLastSurge(Day) > LeastIntervalDays;` | `TheSchedulerAnswersAnEmptyBoardOnlyOnceTheLeastIntervalHasPassed` | 3 failed assertions: day 25, day 125 and day 135 are each asserted due and answer not due. |
+| 2 | `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp` | `	if (!Report.bPillarExposed` | `	if (true` | `AnEmptyBoardFiresNothingOnceThePillarCanBeReached` | 3 failed assertions: the lost run surges once on day 26, so "no surge on days 2 to 40" reads 1, "no surge counted from an empty board" reads 1 and "the board is still empty on day 40" reads 4. |
+| 3 | `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp` | `	LastSurgeDay = Day;` | `	LastSurgeDay = 0;` | `ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed` | 6 failed assertions: the last surge reads day 0 and not 1; the wave comes on day 25, so "no surge on days 2 to 25" reads 1, the board holds 4 on day 25 and one surge is already counted; then day 26 does not surge and brings 0 and not 4. |
+
+The test prefix for each is `Cataclysm.EmpireRun.` followed by the test's name. A wider prefix fails more tests
+than the one named, because all six read the same rule.
+
+---
+
 ## 2026-10-10 — The dungeon level's navigation bounds are widened along X so the hidden chamber of Reality Rifts is inside them (#2366)
 
 **Said first: nothing here was tried in play, and no Unreal test can show it.** The automation tests build their
@@ -69738,6 +69936,10 @@ Neither is fixed here and neither changes a figure above.
 have this rule; [#1414](https://github.com/sdubois777/Cataclysm/issues/1414) owns
 the port, and a test in `tools/tests/test_surge_port.py` fails the moment it
 lands.
+
+**Corrected on 2026-10-12: the game has this rule now.** Issue #1414 ported it;
+the entry of 2026-10-12 at the top of this file records how, and the test named
+above was replaced by ones that hold the two halves equal.
 
 ### The ruling
 
