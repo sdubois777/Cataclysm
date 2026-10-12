@@ -625,6 +625,68 @@ The commit that adds this section changes this entry alone, and the head that ca
 
 ---
 
+## 2026-10-10 — "Healing skills restore 30%-60% more HP" and "Healing skills also restore 10%-20% of the healed amount as energy shield" are built as two rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts),
+`docs/README.md`. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A PLAYER GETS, AND WHO GETS NOTHING
+
+- **Two skills in the game are healing skills, Living Pyre and Blood Pyre, and both belong to the Demonic
+  Fist.** A wearer who uses neither gets nothing from either row. The owner named the two; see below.
+- **Living Pyre returns 25% of each hit taken as health.** With the first row at 60 it returns 40% of the hit.
+  With the second row at 20, a fifth of the health that actually arrived is also given as energy shield.
+- **Blood Pyre doubles its owner's health regeneration while the owner stands in its own pyre.** The first row
+  multiplies only the extra the pyre gives, not the character's own regeneration: at 60, a character that
+  regenerates 10 a second regenerates 26 in its pyre, not 32. A character with no health regeneration gets
+  nothing from the pyre and so nothing from either row.
+- **The shield is a share of the health that ARRIVED**, so a heal cut by a healing ceiling, by a reduction of
+  healing received or by full health gives less shield or none. It goes into the ordinary energy shield and
+  stops at its maximum. It is given inside the shield's recharge wait as well as outside it, and a shield filled
+  this way does not raise the "energy shield fully recharges" event. Each of these is said first, with its
+  ruling, in the entry of the mechanism.
+- **The rows state no Required Tags.** Each stat is read only at the two places a healing skill pays health, so
+  nothing else can read it; the generator refuses a tag on either.
+- **The third sentence of this family, "Using a healing skill grants 10%-20% increased damage for 5 seconds",
+  is not in this layer.** It has a layer and a row of its own.
+- **The test here calls the two functions the healing skills call; it uses no skill.**
+
+### WHAT THE OWNER SAID
+
+On 2026-10-08, asked which skills are healing skills: "Name the healing skills". The coordinating session named
+Living Pyre and Blood Pyre, and on 2026-10-09 the owner accepted its recommendations: "your rec on all the open
+questions".
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Healing skills restore 30%-60% more HP | `healing_skill_health_restored`, more, 30 to 60 |
+| Healing skills also restore 10%-20% of the healed amount as energy shield | `healing_skill_health_as_energy_shield`, flat, 10 to 20 |
+
+EnchantmentEffects 583 to 585, over 493 to 495 enchantments. No engine code and no generator code is changed:
+the two stats, their bounds and where they are read are the entry "A row can make a healing skill restore more
+health and give a share of it as energy shield".
+
+### Tests
+
+- `Cataclysm.Enchantments.TheTwoHealingSkillRowsMultiplyWhatAHealingSkillRestoresAndGiveAShareAsEnergyShield`:
+  with no row, 100 health is handed back as 100 and 100 health arriving gives no shield. With the real first row
+  worn the wearer holds a modifier on its stat, 100 health becomes 160, and nothing is put on the shield share.
+  With the real second row worn, 100 health arriving gives 20 energy shield, the shield holds that 20, and the
+  amount of health is left as it was.
+
+**Not tested here:** either skill used under the real rows, which the mechanism's tests cover with rows made by
+hand; a roll of either row other than its top; both rows worn together.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-10 — "Gain 5-10 class points" and "Gain 3-8 additional class points" are built as two rows, and the test seam of the layer below is deleted
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),

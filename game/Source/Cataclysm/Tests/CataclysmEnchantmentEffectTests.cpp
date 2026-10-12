@@ -20476,4 +20476,101 @@ bool FCataclysmClassPointsAboveTheMaxRowTest::RunTest(const FString&)
 	TestEqual(TEXT("at 100 points spent the row takes nothing"), Cap(), Unworn, 0.001f);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingSkillRowsTest,
+	"Cataclysm.Enchantments.TheTwoHealingSkillRowsMultiplyWhatAHealingSkillRestoresAndGiveAShareAsEnergyShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Healing skills restore 30%-60% more HP" and "Healing skills also restore
+ * 10%-20% of the healed amount as energy shield". Issue #1833: the stats
+ * `healing_skill_health_restored` (more, 30 to 60) and
+ * `healing_skill_health_as_energy_shield` (flat, 10 to 20), built by the entry
+ * "A row can make a healing skill restore more health". WORN, so each row is at
+ * the top of its range.
+ *
+ * THIS TEST READS THE TWO FUNCTIONS THE TWO HEALING SKILLS CALL. It uses no
+ * skill: that Living Pyre and Blood Pyre call them, and nothing else does, is
+ * the mechanism's own tests and its Python check.
+ */
+bool FCataclysmHealingSkillRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Wear = [](FWearer& Wearer, const TCHAR* Benefit)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(Carrying(TEXT("Head_Helm"), Benefit, DrawbackWithNoEffect),
+			Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	};
+	const FGameplayAttribute Shield = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+	const FGameplayAttribute MaxShield = UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute();
+
+	// WITHOUT EITHER ROW an amount is handed back as it is and no shield is given.
+	{
+		FWearer Plain(World);
+		Plain.Equipment->RefreshAttributes(Plain.AbilitySystem);
+		Plain.AbilitySystem->SetNumericAttributeBase(MaxShield, 1000.0f);
+		Plain.AbilitySystem->SetNumericAttributeBase(Shield, 0.0f);
+		if (!TestEqual(TEXT("set-up: with no row, 100 health is handed back as 100"),
+				UCataclysmRegeneration::HealingSkillAmount(*Plain.AbilitySystem, 100.0f), 100.0f, 0.001f)
+			|| !TestEqual(TEXT("set-up: with no row, 100 health arriving gives no energy shield"),
+				UCataclysmRegeneration::GiveHealingSkillShield(*Plain.AbilitySystem, 100.0f), 0.0f, 0.001f))
+		{
+			return false;
+		}
+	}
+
+	// THE MORE ROW, at 60.
+	{
+		FWearer Wearer(World);
+		Wear(Wearer, TEXT("Positive_Healing_skills_restore_30_60_more_HP"));
+		if (!TestTrue(TEXT("set-up: the more row put a modifier on healing_skill_health_restored. If not, "
+						   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+				CarriesAModifierOn(Wearer.AbilitySystem, TEXT("healing_skill_health_restored"))))
+		{
+			return false;
+		}
+		TestEqual(TEXT("with the row at 60, 100 health a healing skill restores becomes 160"),
+			UCataclysmRegeneration::HealingSkillAmount(*Wearer.AbilitySystem, 100.0f), 160.0f, 0.01f);
+		TestFalse(TEXT("and the more row puts nothing on the shield share"),
+			CarriesAModifierOn(Wearer.AbilitySystem, TEXT("healing_skill_health_as_energy_shield")));
+	}
+
+	// THE SHIELD ROW, at 20.
+	{
+		FWearer Wearer(World);
+		Wear(Wearer, TEXT("Positive_Healing_skills_also_restore_10_20_of_the_heale"));
+		if (!TestTrue(TEXT("set-up: the shield row put a modifier on healing_skill_health_as_energy_shield. If "
+						   "not, DT_EnchantmentEffects may be older than the rows: run "
+						   "tools/generate_datatable_assets.py"),
+				CarriesAModifierOn(Wearer.AbilitySystem, TEXT("healing_skill_health_as_energy_shield"))))
+		{
+			return false;
+		}
+		Wearer.AbilitySystem->SetNumericAttributeBase(MaxShield, 1000.0f);
+		Wearer.AbilitySystem->SetNumericAttributeBase(Shield, 0.0f);
+		if (!TestEqual(TEXT("set-up: the wearer holds an empty energy shield"),
+				Wearer.AbilitySystem->GetNumericAttribute(Shield), 0.0f, 0.001f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("with the row at 20, 100 health arriving gives 20 energy shield"),
+			UCataclysmRegeneration::GiveHealingSkillShield(*Wearer.AbilitySystem, 100.0f), 20.0f, 0.01f);
+		TestEqual(TEXT("and the shield holds that 20"),
+			Wearer.AbilitySystem->GetNumericAttribute(Shield), 20.0f, 0.01f);
+		TestEqual(TEXT("and the shield row leaves the amount of health as it was"),
+			UCataclysmRegeneration::HealingSkillAmount(*Wearer.AbilitySystem, 100.0f), 100.0f, 0.001f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
