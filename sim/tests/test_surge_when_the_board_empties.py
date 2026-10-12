@@ -392,8 +392,9 @@ class TestOverWholeCampaigns:
     """The claims that only whole campaigns can make."""
 
     @staticmethod
-    def _run(on: bool, seed: int):
-        cfg = dataclasses.replace(TuningConfig(), surge_on_empty_board=on)
+    def _run(on: bool, seed: int, **settings):
+        cfg = dataclasses.replace(TuningConfig(), surge_on_empty_board=on,
+                                  **settings)
         return Simulation(cfg, seed=seed).run(policies.triage)
 
     @pytest.mark.parametrize("seed", range(4))
@@ -405,15 +406,62 @@ class TestOverWholeCampaigns:
         length either side -- more waves means the empire falls sooner -- so a
         raw count of surges can go down while the cadence went up, and would
         make this assertion fail for a reason that is not a defect.
+
+        **HELD WITH `death_resolves_dungeon` OFF SINCE 2026-10-12**, by a
+        ruling of the coordinating session under the owner's delegation. Until
+        then this ran at the defaults. A death in an ordinary dungeon now
+        resolves it, which can fell its city, and a city's fall fires a surge
+        of its own. The two campaigns of one seed stop being the same campaign
+        the first time the board empties, so the deaths, the falls and the
+        surges those falls fire differ between them, and one seed can go
+        either way: at the defaults seeds 3 and 34 of 0 to 39 had a lower
+        rate with the rule on. With a death resolving nothing the only thing
+        that differs is the rule, and the comparison held on 40 of 40 seeds.
+        `test_over_many_campaigns_the_rule_raises_the_rate_of_surges` is the
+        same claim at the defaults.
         """
-        off, on = self._run(False, seed), self._run(True, seed)
+        off = self._run(False, seed, death_resolves_dungeon=False)
+        on = self._run(True, seed, death_resolves_dungeon=False)
         rate_off = off.surges / max(1, off.survived_days)
         rate_on = on.surges / max(1, on.survived_days)
 
         assert rate_on >= rate_off, (
             f"campaign {seed}: {rate_on * 1000:.2f} surges per 1,000 days with "
-            f"the rule on against {rate_off * 1000:.2f} with it off. The rule "
-            "is supposed to pull waves forward, never remove one")
+            f"the rule on against {rate_off * 1000:.2f} with it off, with a "
+            "death resolving nothing. The rule is supposed to pull waves "
+            "forward, never remove one")
+
+    def test_over_many_campaigns_the_rule_raises_the_rate_of_surges(self):
+        """The claim above AT THE DEFAULTS, where a death resolves its dungeon.
+
+        SEEDS 0 TO 19 TOGETHER, AND NOT EACH SEED: every surge of the twenty
+        campaigns over every day they lasted, rule on against rule off. The
+        docstring above says why one seed can go either way.
+
+        MEASURED 2026-10-12: 364 surges in 38,177 days with the rule off, 9.535
+        per 1,000 days; 371 in 30,600 with it on, 12.124. The ratio is 1.27.
+        Over seeds 0 to 39, which include 3 and 34, it is 1.28.
+
+        THE MARGIN ASSERTED IS NONE: the rate with the rule on is at least the
+        rate with it off. The measured gap is 27%, so two seeds going the
+        other way do not decide it; a pinned ratio would only make this a
+        record of today's tuning.
+        """
+        seeds = range(20)
+        off = [self._run(False, seed) for seed in seeds]
+        on = [self._run(True, seed) for seed in seeds]
+        assert all(r.survived_days > 0 for r in off + on), (
+            "a campaign lasted no days, so a rate over them means nothing")
+        rate_off = sum(r.surges for r in off) / sum(r.survived_days for r in off)
+        rate_on = sum(r.surges for r in on) / sum(r.survived_days for r in on)
+
+        assert TuningConfig().death_resolves_dungeon is True, (
+            "this is the comparison at the defaults, and a death no longer "
+            "resolves its dungeon by default")
+        assert rate_on >= rate_off, (
+            f"seeds 0 to 19 together: {rate_on * 1000:.2f} surges per 1,000 "
+            f"days with the rule on against {rate_off * 1000:.2f} with it off. "
+            "The rule is supposed to pull waves forward, never remove one")
 
     @pytest.mark.parametrize("seed", range(4))
     def test_with_the_rule_off_nothing_is_pulled_forward(self, seed):

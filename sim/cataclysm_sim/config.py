@@ -434,6 +434,22 @@ class TuningConfig:
     # timer) or disappear? Staying is what lets an ignored city actually die.
     dungeon_persists_after_resolve: bool = True
 
+    # Does dying inside an ordinary dungeon resolve it at once? In the game it
+    # does, since 2026-10-10 (issue #41): the dungeon's consequence lands on
+    # its city exactly as when its timer runs out, its timer is set back to
+    # full, the player leaves the dungeon, and `death_day_cost` days are then
+    # charged. A Quest dungeon and a Fallen City dungeon never resolve, so a
+    # death in one costs the days and takes nothing from any city. A death in
+    # the Cataclysm dungeon ends the run whatever this is set to.
+    #
+    # False is the model as it was before 2026-10-12: a death cost days and
+    # touched no city. EVERY CAMPAIGN FIGURE RECORDED BEFORE THAT DATE WAS
+    # MEASURED THAT WAY, so set this False to reproduce one.
+    #
+    # Whether the resolved dungeon then stays is the setting above and not this
+    # one. The two are separate so they can be measured apart.
+    death_resolves_dungeon: bool = True
+
     # =====================================================================
     # Power and the forge
     # =====================================================================
