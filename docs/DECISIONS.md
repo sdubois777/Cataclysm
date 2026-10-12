@@ -168,7 +168,7 @@ of stats with no attribute), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGame
 
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
   the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
-  engine does is read from the code. The enchantment session takes the layer through the build and records its
+  engine does was read from the code when it was written. The enchantment session has since built it; its
   run in the last section.
 - **No row is authored, so a player sees no change.** No character holds the flag until the enchantment session
   writes Mana Weaver's row.
@@ -286,7 +286,20 @@ second; a second player, which the game does not have.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-12, on development f136733e (the dungeon level's navigation bounds), in one window for six layers stacked in this order: the healing mechanism, its two rows, the healing-use event, its rows, the Suffering Aura immunity, and Mana Weaver's rows. The suite and Python were run at the top of the six, which holds all of them.
+
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled". This was the first compile of all six layers.
+- **The enchantments group on the assets as merged, before any rebuild:** "312 tests performed, 309 succeeded, 3 failed", registered 312, 309 and 3. The three are the tests that wear the six layers' new rows: the Mana Weaver rows test with 7 failed assertions, and the two healing row tests with 1 each, on their set-up assertions that the rows put modifiers on the wearer. All as registered.
+- **The editor rebuilt the effect table's asset three times**, once for each row layer: 585, 587 and 589 rows. Each row layer carries its own asset in a commit of its own, and the tree ids matched.
+- **The whole Unreal suite:** "3561 tests performed, 3561 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3561 tests in the tree at 125ba135; 3561 performed, gap 0". Registered: 3561 and 0.
+- **Python:** "5976 passed, 8 skipped"; JUnit tests 5984, failures 0, errors 0, skipped 8. Registered: 5984 and 0. Lint: "All checks passed!".
+- **One guard proof for this layer**, prefix `Cataclysm.SufferingAuraImmunity.` (3 tests), "PROVED": failed with the break in, and "restored: 3 tests performed, 3 succeeded, 0 failed".
+
+| Proof | The break | Test stated to fail | Failed assertions, registered and printed |
+|---|---|---|---|
+| W1 | in `StepSufferingAura`, the immunity condition is taken off the mana loss | `AHolderOfTheFlagKeepsItsManaAndStillLosesTheRulesShareOfHealth` | 2 and 2: the stated test 1 ("with the flag held a beat takes no mana" was 0.870003), `OnceTheFlagIsRemovedTheNextBeatTakesManaAgain` 1, at its set-up check |
+
+**A test and no proof:** that a holder of the flag still pays a skill's mana cost.
 
 ---
 
