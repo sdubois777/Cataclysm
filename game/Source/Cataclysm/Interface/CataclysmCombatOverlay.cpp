@@ -544,6 +544,21 @@ FString UCataclysmCombatOverlay::MaddenedTextFor(const AActor* Actor)
 																						  : FString();
 }
 
+FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const FName Held = AbilitySystem ? AbilitySystem->HeldRandomBuff() : FName();
+	if (Held.IsNone() || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	// ROUNDED UP, so the last second reads "1s" and a buff still held never reads "0s".
+	return FString::Printf(TEXT("%s %ds"), *Held.ToString(),
+		FMath::CeilToInt(AbilitySystem->HeldRandomBuffSecondsLeft()));
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -803,7 +818,9 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
-		  DamageCutTextFor(Actor)})
+		  DamageCutTextFor(Actor),
+		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
+		  HeldBuffTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{
