@@ -7432,6 +7432,39 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `suffering_aura_mana_drain_immunity`, read by `UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow`,
+	 * which is what `ACataclysmDungeonGameMode::StepSufferingAura` asks in the condition on its mana loss. Ruled
+	 * 2026-10-09, for the first half of Mana Weaver's six-piece bonus. Two characters, the second carrying the
+	 * stat at a flat 1: the plain one is not immune and the carrying one is.
+	 *
+	 * WHAT THIS DOES NOT REACH. That the rule then leaves the mana alone: that needs a dungeon game mode, a floor
+	 * carrying the rule and a possessed player, and `Cataclysm.SufferingAuraImmunity.*` in
+	 * `CataclysmSufferingAuraImmunityTests.cpp` holds it. This observes the function that rule calls, and no
+	 * further.
+	 *
+	 * STANDING: the plain character at the origin, the carrying one 100 m along Y.
+	 */
+	void ProbeSufferingAuraManaDrainImmunity(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Carrier(World, FVector(0, 100 * M, 0));
+		GrantFlat(Carrier.Actor, UCataclysmSkillEffects::SufferingAuraManaDrainImmunityStat, 1.0f);
+
+		Test.TestFalse(TEXT("control: a character with no row is not immune to the Suffering Aura's mana drain"),
+					   UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(Plain.Actor));
+		Test.TestTrue(TEXT("and one carrying suffering_aura_mana_drain_immunity at 1 is, so "
+						   "ImmuneToSufferingAuraManaDrainByARow really reads it"),
+					  UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(Carrier.Actor));
+	}
+
+	/**
 	 * `blow_delay_seconds`, asked by `UCataclysmSkillTemplate::SecondsUntilTheSwingConnects` with the skill's tags.
 	 * Ruled 2026-10-08: "Point blank AOE skills have a 0.75-1.5 second cast delay before firing".
 	 *
@@ -7736,6 +7769,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("crowd_control_health_ceiling_reduction"), &ProbeCrowdControlHealthCeiling},
 			{TEXT("cannot_walk"), &ProbeCannotWalk},
 			{TEXT("hit_taken_cancels_skills"), &ProbeHitTakenCancelsSkills},
+			{TEXT("suffering_aura_mana_drain_immunity"), &ProbeSufferingAuraManaDrainImmunity},
 			{TEXT("blow_delay_seconds"), &ProbeBlowDelaySeconds},
 			{TEXT("minion_defences_percent_of_yours"), &ProbeMinionDefencesPercentOfYours},
 			{TEXT("class_points_granted"), &ProbeClassPointsGranted},
