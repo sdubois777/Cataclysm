@@ -3665,6 +3665,194 @@ class TestRepeatSkill:
                 "Damage Share": 50}))
 
 
+class TestKeptStacksSpentToCastASkillAgain:
+    """`kept_stacks_repeat_skill`, ruled 2026-10-12 and built ahead of its
+    row, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a
+    stack of 'Temporal Flux.' When you use a skill, you consume all stacks of
+    'Temporal Flux' and your skill is cast a random number of times. The bonus
+    is permanent for the rest of the dungeon".
+
+    ONE ROW STATES ALL OF IT: the period of the gain in Every Seconds, 30; the
+    most stacks in Scale Max Steps, 5; the kind of use that spends them as the
+    Action Event, `skill_use`; and the share of its damage each extra cast
+    deals as the value, 100.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the sentence without its set label, as a Generic row on the
+    Positive side. The real row is the enchantment session's to write, under
+    the label a set bonus has.
+    """
+
+    WORDS = ("Every 30 seconds, you gain a stack of 'Temporal Flux.' When you "
+             "use a skill, you consume all stacks of 'Temporal Flux' and your "
+             "skill is cast a random number of times. The bonus is permanent "
+             "for the rest of the dungeon")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnSkillUse, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+    RULED = {"Action": "kept_stacks_repeat_skill", "Action Event": "skill_use",
+             "Value Low": 100, "Every Seconds": 30, "Scale Max Steps": 5}
+
+    def book(self, tmp_path, changes, rows=1):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+        values.update(self.RULED)
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "kept.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER] + [row] * rows}))
+
+    def out(self, tmp_path, changes):
+        return gen.enchantment_effects(self.book(tmp_path, changes))
+
+    def test_the_ruled_row_is_carried_through_with_its_period_its_cap_and_its_share(
+            self, tmp_path):
+        out = self.out(tmp_path, {})
+        assert len(out) == 1
+        row = out[0]
+        assert (row["Enchantment"], row["Stat"], row["Action"],
+                row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
+                row["EverySeconds"], row["ScaleMaxSteps"]) == (
+            self.NAME, "", "kept_stacks_repeat_skill", "skill_use", 100.0,
+            100.0, 30.0, 5)
+        # AND NOTHING ELSE IS WRITTEN FOR IT: no lifetime, no fraction, no
+        # wait between firings, no share in the column `repeat_skill` reads,
+        # no tags, no condition and no scale.
+        assert (row["StackSeconds"], row["FractionOf"], row["TriggerCooldown"],
+                row["DamageShare"], row["RequiredTags"], row["Condition"],
+                row["Scale"], row["ValueKind"]) == (
+            0.0, "", 0.0, 0.0, "", "", "", "")
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_another_period_cap_and_share_inside_the_bounds_are_carried_too(
+            self, tmp_path):
+        """The mechanism is for any period, any cap and any share, so a row
+        other than the sentence's is carried, each bound itself included."""
+        for period, cap, share in ((10, 3, 50), (gen.MAX_EVERY_SECONDS, 1, 100),
+                                   (0.5, gen.MAX_SCALE_STEPS, 0.5)):
+            row = self.out(tmp_path, {"Every Seconds": period,
+                                      "Scale Max Steps": cap,
+                                      "Value Low": share})[0]
+            assert (row["EverySeconds"], row["ScaleMaxSteps"], row["ValueLow"],
+                    row["ValueHigh"]) == (
+                float(period), int(cap), float(share), float(share))
+
+    def test_the_names_the_game_reads(self):
+        assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION == "kept_stacks_repeat_skill"
+        assert gen.KEPT_STACKS_REPEAT_SKILL_EVENTS == ("skill_use",)
+        # ITS EVENT NAMES A SKILL, as a repeat's must, and it is not the one
+        # that includes the basic attack.
+        assert set(gen.KEPT_STACKS_REPEAT_SKILL_EVENTS) <= set(gen.REPEAT_SKILL_EVENTS)
+        assert "attack_use" not in gen.KEPT_STACKS_REPEAT_SKILL_EVENTS
+        # NOT A POOL, AND NOT AN ACTION WHOSE VALUE IS A CHANCE.
+        assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION not in gen.POOL_ACTIONS
+        assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION not in gen.SKILL_IN_HAND_ACTIONS
+        assert not gen.takes_a_trigger_cooldown(gen.KEPT_STACKS_REPEAT_SKILL_ACTION)
+
+    @pytest.mark.parametrize("misspelt", ["kept_stack_repeat_skill",
+                                          "kept_stacks_repeat_skil",
+                                          "keep_stacks_repeat_skill"])
+    def test_a_misspelt_action_is_refused(self, tmp_path, misspelt):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            self.out(tmp_path, {"Action": misspelt, "Fraction Of": "maximum"})
+
+    # ONLY A PAID USE OF A SKILL SPENDS. The clock is not the row's event: its
+    # period is Every Seconds. `attack_use` would let the basic attack spend,
+    # which the ruling leaves out.
+    @pytest.mark.parametrize("event", ["every_seconds", "attack_use",
+                                       "healing_skill_use", "kill",
+                                       "basic_attack", "timed", None])
+    def test_the_row_on_any_event_but_a_skill_use_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="the kind of use that spends them"):
+            self.out(tmp_path, {"Action Event": event})
+
+    def test_the_row_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="gains kept stacks and states no Every Seconds"):
+            self.out(tmp_path, {"Every Seconds": None})
+
+    @pytest.mark.parametrize("period", [0, -30, 60.5, 300])
+    def test_a_period_of_nought_or_past_the_bound_is_refused(self, tmp_path, period):
+        with pytest.raises(gen.DataError, match="A period is above 0 and up to 60"):
+            self.out(tmp_path, {"Every Seconds": period})
+
+    def test_the_row_with_no_cap_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="gains kept stacks and states no Scale Max Steps"):
+            self.out(tmp_path, {"Scale Max Steps": None})
+
+    @pytest.mark.parametrize("cap", [0, -5, 2.5, 101])
+    def test_a_cap_that_is_not_a_whole_number_from_1_is_refused(self, tmp_path, cap):
+        with pytest.raises(gen.DataError, match="A cap is a whole number of steps"):
+            self.out(tmp_path, {"Scale Max Steps": cap})
+
+    @pytest.mark.parametrize("share", [0, -100, 100.5, 500])
+    def test_a_share_outside_above_0_and_up_to_100_is_refused(self, tmp_path, share):
+        with pytest.raises(gen.DataError,
+                           match="the value is that share, above 0 and up to 100"):
+            self.out(tmp_path, {"Value Low": share})
+
+    def test_a_lifetime_is_refused_because_a_kept_stack_has_none(self, tmp_path):
+        with pytest.raises(gen.DataError, match="A kept stack has no lifetime"):
+            self.out(tmp_path, {"Stack Seconds": 30})
+
+    @pytest.mark.parametrize("column, written", [("Required Tags", "Type.Spell"),
+                                                 ("Condition", "health_below"),
+                                                 ("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "own_stacks")])
+    def test_tags_a_condition_a_fraction_a_value_kind_or_a_scale_is_refused(
+            self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="gains kept stacks on a clock and states"):
+            self.out(tmp_path, {column: written})
+
+    # EVERY OTHER COLUMN THE GAME WOULD NOT READ FOR THIS ACTION IS REFUSED BY
+    # THE RULE THAT WAS ALREADY THERE FOR IT.
+    @pytest.mark.parametrize("column, written, said", [
+        ("Trigger Cooldown", 5, "states a Trigger Cooldown"),
+        ("Damage Share", 50, "states a Damage Share"),
+        ("Every Nth", 3, "states Every Nth"),
+        ("Event Value", 25, "states an Event Value"),
+        ("Ailment", "Bleed", "names the ailment"),
+        ("Scale Offset", 100, "has an offset of"),
+        ("Scale Step High", 5, "Scale Step High and no scale"),
+        ("Stack Seconds High", 5, "Stack Seconds High and no Stack Seconds"),
+        ("Condition Value 2", 5, "Condition Value 2 and no Condition 2"),
+        ("Condition Value High", 5, "Condition Value High and no condition"),
+    ])
+    def test_a_column_the_game_would_not_read_for_it_is_refused(
+            self, tmp_path, column, written, said):
+        with pytest.raises(gen.DataError, match=said):
+            self.out(tmp_path, {column: written})
+
+    def test_the_row_written_twice_on_one_enchantment_is_refused(self, tmp_path):
+        """The game keys the stacks by the enchantment, the action and the
+        event, so two such rows on one enchantment would share one count."""
+        assert len(gen.enchantment_effects(self.book(tmp_path, {}, rows=1))) == 1
+        with pytest.raises(gen.DataError, match="grants the same stat twice"):
+            gen.enchantment_effects(self.book(tmp_path, {}, rows=2))
+
+    def test_a_period_or_a_cap_is_still_refused_on_a_row_that_only_repeats(
+            self, tmp_path):
+        """The two exceptions made for this action are for it alone. The
+        control is the same row with neither, which is carried."""
+        repeat = {"Action": "repeat_skill", "Every Seconds": None,
+                  "Scale Max Steps": None}
+        assert self.out(tmp_path, repeat)[0]["Action"] == "repeat_skill"
+        with pytest.raises(gen.DataError, match="states Every Seconds on the event"):
+            self.out(tmp_path, dict(repeat, **{"Every Seconds": 30}))
+        with pytest.raises(gen.DataError, match="steps and no scale"):
+            self.out(tmp_path, dict(repeat, **{"Scale Max Steps": 5}))
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 

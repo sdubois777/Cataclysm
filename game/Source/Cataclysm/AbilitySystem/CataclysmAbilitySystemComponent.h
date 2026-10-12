@@ -568,11 +568,15 @@ public:
 	 * AND A RESISTANCE A ROW WAS HOLDING AT NOUGHT IS RELEASED WHEN THAT ROW IS
 	 * NOT AMONG THE NEW ACTIONS. Ruled 2026-10-12. The row is what would have
 	 * moved the hold at its next firing, so without it the hold would never end.
+	 *
+	 * AND A KEPT STACK IS FORGOTTEN WHEN NO NEW ACTION CARRIES ITS KEY. Ruled
+	 * 2026-10-12. See `GainKeptStack`.
 	 */
 	void SetPoolActions(TArray<FCataclysmPoolAction>&& Actions)
 	{
 		PoolActions = MoveTemp(Actions);
 		ReleaseHeldResistanceUnlessARowHoldsIt();
+		ForgetKeptStacksNoWornActionCarries();
 	}
 
 	/** What this character would do on an event. For a test or a character sheet. */
@@ -738,6 +742,91 @@ public:
 		bPendingHeldTriggerSpell = false;
 		bPendingHeldTriggerCooldownSkill = false;
 	}
+
+	/** One worn row that asked, on the use in hand, to spend its kept stacks and cast the used skill again. */
+	struct FPendingKeptStackCast
+	{
+		/** The row's `FCataclysmPoolAction::KeptStackKey`. */
+		FName Key;
+
+		/** The share of its damage each extra cast deals: 1 is all of it. */
+		float DamageShare = 1.0f;
+	};
+
+	/**
+	 * The casts a row asked for on the use in hand by spending its kept stacks, which nobody has made yet. Ruled
+	 * 2026-10-12 under the owner's delegation, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a
+	 * stack of 'Temporal Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast
+	 * a random number of times. The bonus is permanent for the rest of the dungeon".
+	 *
+	 * `ActOnEvent` ONLY RECORDS THE REQUEST: the skill used, where it was aimed, and each row that asked while it
+	 * held a stack. NOTHING IS SPENT AND NOTHING IS DRAWN THERE. `UCataclysmTriggeredSkill::MakePendingKeptStackCasts`
+	 * takes the request on the tick after the use, for the reason `MakePendingRepeat` waits a tick, and is where the
+	 * stacks are spent, the number is drawn and the casts are started.
+	 *
+	 * KEPT APART FROM THE PENDING REPEAT ABOVE. A `repeat_skill` row's one repeat and these casts are counted
+	 * separately and both are made: see `MakePendingKeptStackCasts`.
+	 *
+	 * A NEW USE BEGINS WITH NONE, as it begins with no pending repeat. The stacks of a request nobody made are still
+	 * held, because nothing was spent when it was recorded.
+	 */
+	FName PendingKeptStackCastSkill() const { return PendingKeptStackCastName; }
+	FVector PendingKeptStackCastAim() const { return PendingKeptStackCastAimPoint; }
+	const TArray<FPendingKeptStackCast>& PendingKeptStackCasts() const { return PendingKeptStackCastRows; }
+	void ClearPendingKeptStackCasts()
+	{
+		PendingKeptStackCastName = NAME_None;
+		PendingKeptStackCastRows.Reset();
+	}
+
+	/**
+	 * How many kept stacks this character holds under one row's key now. Ruled 2026-10-12.
+	 *
+	 * NOUGHT FOR STACKS GAINED IN ANOTHER DUNGEON, or gained in a dungeon when none is being walked now, or gained
+	 * outside one when one is being walked now: each stack remembers `DungeonBeingWalked` as it was gained, and
+	 * this compares it with the answer now. That comparison is what "cleared when the dungeon is left" is. See
+	 * `GainKeptStack`.
+	 */
+	int32 KeptStacksHeld(FName Key) const;
+
+	/**
+	 * Gain one kept stack under a row's key, to at most `Cap`. Ruled 2026-10-12 under the owner's delegation. A key
+	 * of none or a cap of nought or less gains nothing.
+	 *
+	 * A KEPT STACK HAS NO LIFETIME. It is not ended by time, by leaving combat or by a new floor of the same
+	 * dungeon. FOUR THINGS END IT:
+	 *   - A use that spends it (`SpendKeptStacks`).
+	 *   - THE DUNGEON BEING LEFT, OR ANOTHER ENTERED. Nothing calls this component when that happens, and
+	 *     `ACataclysmDungeonGameMode::LeaveEmpireDungeon` was not edited for it. Instead each stack remembers
+	 *     `DungeonBeingWalked` as it was gained, `KeptStacksHeld` answers nought for a stack whose dungeon is not the
+	 *     one walked now, and `StepTimedGrants` removes such a stack at the character's next step.
+	 *   - A DEATH. `ClearWhatDeathEnds` empties them, as it empties every row's own stacks.
+	 *   - THE GEAR COMING OFF. `SetPoolActions` forgets every kept stack whose key no worn action carries.
+	 *
+	 * A STACK GAINED WHILE THE ONES HELD BELONG TO ANOTHER DUNGEON STARTS AGAIN AT ONE, because those read as nought.
+	 */
+	void GainKeptStack(FName Key, int32 Cap);
+
+	/** Spend every kept stack held under a row's key. @return how many were held, by `KeptStacksHeld`. */
+	int32 SpendKeptStacks(FName Key);
+
+	/**
+	 * Which dungeon of the empire this character's world is walking, or `INDEX_NONE`:
+	 * `ACataclysmDungeonGameMode::EmpireDungeonId` of the dungeon game mode found by
+	 * `ACataclysmDungeonGameMode::InWorld`, and `INDEX_NONE` in a world with no dungeon game mode.
+	 */
+	int32 DungeonBeingWalked() const;
+
+	/** One worn row's kept stacks, for an interface to show. Nothing on screen reads this yet. */
+	struct FHeldKeptStacks
+	{
+		FName Key;
+		int32 Held = 0;
+		int32 Cap = 0;
+	};
+
+	/** Every worn action that gains kept stacks, one entry a key, in the order worn, with what it holds now. */
+	TArray<FHeldKeptStacks> KeptStacksForDisplay() const;
 
 	/**
 	 * How many stacks of one row's own this character holds now: nought once
@@ -1207,6 +1296,15 @@ public:
 	 * `FCataclysmPoolAction::bRepeatSkill`.
 	 */
 	static const TCHAR* RepeatSkillAction;
+
+	/**
+	 * The action that gains a kept stack on a clock and, on a use of a skill, spends them all to cast that skill
+	 * again a drawn number of times, with its value as the share of its damage each extra cast deals, in per cent.
+	 * Ruled 2026-10-12 under the owner's delegation, for Shard of Anarchy's ten-piece bonus.
+	 * `tools/generate_datatables.py` holds the same name in `KEPT_STACKS_REPEAT_SKILL_ACTION`. See
+	 * `FCataclysmPoolAction::KeptStackKey` and `FCataclysmPoolAction::bKeptStacksRepeatSkill`.
+	 */
+	static const TCHAR* KeptStacksRepeatSkillAction;
 
 	/**
 	 * The two actions that trigger a different held skill, with the value as the chance: one with a cooldown, free;
@@ -4398,6 +4496,30 @@ protected:
 	FName PendingRepeatName;
 	FVector PendingRepeatAimPoint = FVector::ZeroVector;
 	float PendingRepeatDamageShare = 0.0f;
+
+	/** The casts rows asked for by spending kept stacks, which nobody has made yet. See `PendingKeptStackCastSkill`. */
+	FName PendingKeptStackCastName;
+	FVector PendingKeptStackCastAimPoint = FVector::ZeroVector;
+	TArray<FPendingKeptStackCast> PendingKeptStackCastRows;
+
+	/** One row's kept stacks: how many, and `DungeonBeingWalked` as the last of them was gained. */
+	struct FKeptStack
+	{
+		int32 Count = 0;
+		int32 DungeonId = INDEX_NONE;
+	};
+
+	/**
+	 * Every row's kept stacks, by `FCataclysmPoolAction::KeptStackKey`. Ruled 2026-10-12. See `GainKeptStack`.
+	 * NOT REPLICATED, as `OwnStacks` is not.
+	 */
+	TMap<FName, FKeptStack> KeptStacks;
+
+	/** Forgets every kept stack whose key no action in `PoolActions` carries. Run by `SetPoolActions`. */
+	void ForgetKeptStacksNoWornActionCarries();
+
+	/** Removes every kept stack gained in a dungeon that is not the one walked now. Run by `StepTimedGrants`. */
+	void ForgetKeptStacksOfAnotherDungeon();
 
 	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */
 	FName PendingHeldTriggerUsedName;

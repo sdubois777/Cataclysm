@@ -4296,6 +4296,39 @@ struct CATACLYSM_API FCataclysmPoolAction
 	float RepeatSharePercent = 100.0f;
 
 	/**
+	 * Set, this action GAINS ONE KEPT STACK EVERY `EverySeconds`, to at most `KeptStackCap`, whatever its `Event` is.
+	 * The stacks are kept under this key on the wearer's ability system. Ruled 2026-10-12 under the owner's
+	 * delegation, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal Flux.' When
+	 * you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast a random number of times. The
+	 * bonus is permanent for the rest of the dungeon".
+	 *
+	 * A KEPT STACK HAS NO LIFETIME, which is what parts it from a row's own stacks (`StackKey`, `StackSeconds`). See
+	 * `UCataclysmAbilitySystemComponent::GainKeptStack` for what ends one.
+	 *
+	 * THE GAIN IS THIS FIELD'S AND WHAT A USE BUYS WITH THE STACKS IS ANOTHER FIELD'S, so that another sentence can
+	 * gain the same way and buy something else. `bKeptStacksRepeatSkill` is the one thing bought so far.
+	 *
+	 * `Event` IS THE KIND OF USE THAT SPENDS THEM and not the clock: the clock is `EverySeconds`, read by
+	 * `UCataclysmAbilitySystemComponent::StepTimedGrants` for every action carrying this key.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName KeptStackKey;
+
+	/** The most kept stacks this action holds. See `KeptStackKey`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 KeptStackCap = 0;
+
+	/**
+	 * Set, a use on this action's `Event` that names a skill SPENDS EVERY KEPT STACK UNDER `KeptStackKey` AND CASTS
+	 * THAT SKILL AGAIN, free, a number of times drawn from 1 to the stacks spent, each at `Percent` per cent of its
+	 * damage, instead of moving a pool. Ruled 2026-10-12. Only on an event that names a skill. See
+	 * `UCataclysmAbilitySystemComponent::PendingKeptStackCastSkill` and
+	 * `UCataclysmTriggeredSkill::MakePendingKeptStackCasts`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKeptStacksRepeatSkill = false;
+
+	/**
 	 * Set, this action triggers a DIFFERENT skill the character holds that has a cooldown, free, with `Percent` as
 	 * its chance out of 100. Ruled 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25% chance to
 	 * trigger an ability with a cooldown". The triggered skill's cooldown is not waited for and none is started.

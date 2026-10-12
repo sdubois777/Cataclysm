@@ -57,6 +57,8 @@
 #include "Items/CataclysmItem.h"
 // For the gear refresh that writes a buff a row drew onto the stat line.
 #include "Items/CataclysmEquipmentComponent.h"
+// For which dungeon of the empire is being walked, which a kept stack remembers. See `DungeonBeingWalked`.
+#include "Dungeon/CataclysmDungeonGameMode.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
@@ -2555,6 +2557,14 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	OwnStacks.Empty();
 
+	// AND EVERY ROW'S KEPT STACKS. Ruled 2026-10-12. They have no lifetime, and a death is one of the four things
+	// that end them: see `GainKeptStack`. Counted as held now, so stacks of a dungeon already left add nothing.
+	for (const TPair<FName, FKeptStack>& Held : KeptStacks)
+	{
+		Ended.Stacks += KeptStacksHeld(Held.Key);
+	}
+	KeptStacks.Empty();
+
 	// AND EVERY ROW'S HITS IN A ROW, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FConsecutiveHits>& Held : ConsecutiveHits)
 	{
@@ -4089,6 +4099,7 @@ float UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 	return Cataclysm ? Cataclysm->AilmentRiderPercentNow(Kind) : 0.0f;
 }
 const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
+const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction = TEXT("kept_stacks_repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSkillAction = TEXT("trigger_held_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSpellAction = TEXT("trigger_held_spell");
 const TCHAR* UCataclysmAbilitySystemComponent::UseNoDamageAction = TEXT("use_no_damage");
@@ -4603,6 +4614,11 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 	// one gear refresh; and ending the old one first would run a refresh of its own before the rows are read.
 	ON_SCOPE_EXIT { EndHeldRandomBuffIfItsTimeHasPassed(); };
 
+	// AND A KEPT STACK OF A DUNGEON THAT IS NOT THE ONE WALKED NOW IS REMOVED, in combat or out of it. Ruled
+	// 2026-10-12. `KeptStacksHeld` already answers nought for one; this takes it out of the map, so that walking the
+	// same dungeon again later does not find it.
+	ForgetKeptStacksOfAnotherDungeon();
+
 	const float InCombat = SecondsInCombat();
 
 	// A NEW COMBAT, OR NONE, STARTS EVERY COUNT AGAIN, ruled 2026-09-24.
@@ -4622,7 +4638,12 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 	const TArray<FCataclysmPoolAction> Firing = PoolActions;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		if (Action.Event != Timed || Action.EverySeconds <= 0.0f)
+		// AN ACTION THAT GAINS KEPT STACKS IS ON THE CLOCK WHATEVER ITS EVENT IS. Ruled 2026-10-12. Its event is the
+		// kind of use that spends the stacks, and its period is `EverySeconds` like any timed row's. It is counted
+		// under its own trigger key, which `TimedGrantKeyOf` answers for it, and asked with no tags, as every timed
+		// row is; the generator refuses Required Tags on such a row for that reason.
+		const bool bGainsKeptStacks = !Action.KeptStackKey.IsNone();
+		if ((Action.Event != Timed && !bGainsKeptStacks) || Action.EverySeconds <= 0.0f)
 		{
 			continue;
 		}
@@ -4647,7 +4668,13 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 		while (Given < Due)
 		{
 			++Given;
-			if (!Action.NextUseKey.IsNone())
+			// A KEPT STACK, AND NOTHING ELSE OF THIS ACTION'S. Asked first, so that an action carrying the key is
+			// never also moved as a pool by the last branch below.
+			if (bGainsKeptStacks)
+			{
+				GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
+			}
+			else if (!Action.NextUseKey.IsNone())
 			{
 				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
@@ -5094,12 +5121,107 @@ void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
 	Held.WindowSeconds = WindowSeconds;
 }
 
+int32 UCataclysmAbilitySystemComponent::DungeonBeingWalked() const
+{
+	// FOUND BY WALKING THE LEVEL, as the player's revival finds it: a world built for a test has no authority game
+	// mode, and a test spawns a dungeon game mode into it to say which dungeon is walked.
+	const ACataclysmDungeonGameMode* Mode = ACataclysmDungeonGameMode::InWorld(GetWorld());
+	return Mode ? Mode->EmpireDungeonId : INDEX_NONE;
+}
+
+int32 UCataclysmAbilitySystemComponent::KeptStacksHeld(FName Key) const
+{
+	const FKeptStack* Held = KeptStacks.Find(Key);
+	if (!Held || Held->Count <= 0)
+	{
+		return 0;
+	}
+	return Held->DungeonId == DungeonBeingWalked() ? Held->Count : 0;
+}
+
+void UCataclysmAbilitySystemComponent::GainKeptStack(FName Key, int32 Cap)
+{
+	if (Key.IsNone() || Cap <= 0)
+	{
+		return;
+	}
+
+	// WHAT IS HELD NOW, which is nought for stacks of another dungeon, so the first stack of a new dungeon is one.
+	const int32 HeldNow = KeptStacksHeld(Key);
+	FKeptStack& Held = KeptStacks.FindOrAdd(Key);
+	Held.Count = FMath::Min(HeldNow + 1, Cap);
+	Held.DungeonId = DungeonBeingWalked();
+}
+
+int32 UCataclysmAbilitySystemComponent::SpendKeptStacks(FName Key)
+{
+	const int32 Spent = KeptStacksHeld(Key);
+	KeptStacks.Remove(Key);
+	return Spent;
+}
+
+TArray<UCataclysmAbilitySystemComponent::FHeldKeptStacks>
+UCataclysmAbilitySystemComponent::KeptStacksForDisplay() const
+{
+	TArray<FHeldKeptStacks> Out;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		const FName Key = Action.KeptStackKey;
+		if (Key.IsNone() || Out.ContainsByPredicate([Key](const FHeldKeptStacks& Each) { return Each.Key == Key; }))
+		{
+			continue;
+		}
+		FHeldKeptStacks Entry;
+		Entry.Key = Key;
+		Entry.Held = KeptStacksHeld(Key);
+		Entry.Cap = Action.KeptStackCap;
+		Out.Add(Entry);
+	}
+	return Out;
+}
+
+void UCataclysmAbilitySystemComponent::ForgetKeptStacksNoWornActionCarries()
+{
+	if (KeptStacks.IsEmpty())
+	{
+		return;
+	}
+	for (auto It = KeptStacks.CreateIterator(); It; ++It)
+	{
+		const FName Key = It.Key();
+		if (!PoolActions.ContainsByPredicate(
+				[Key](const FCataclysmPoolAction& Action) { return Action.KeptStackKey == Key; }))
+		{
+			It.RemoveCurrent();
+		}
+	}
+}
+
+void UCataclysmAbilitySystemComponent::ForgetKeptStacksOfAnotherDungeon()
+{
+	if (KeptStacks.IsEmpty())
+	{
+		return;
+	}
+	const int32 Now = DungeonBeingWalked();
+	for (auto It = KeptStacks.CreateIterator(); It; ++It)
+	{
+		if (It.Value().DungeonId != Now)
+		{
+			It.RemoveCurrent();
+		}
+	}
+}
+
 void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags,
 													 const FVector& Aim, bool bBasicAttack, bool bHasCooldown)
 {
 	// A NEW USE BEGINS WITH NOTHING PENDING: a repeat nobody made belongs to the use before, and is let go.
 	ClearPendingRepeat();
 	ClearPendingHeldTrigger();
+	// AND NO CASTS ASKED FOR BY SPENDING KEPT STACKS. Nothing was spent when such a request was recorded, so the
+	// stacks of one nobody made are still held.
+	ClearPendingKeptStackCasts();
 	bPendingUseNoDamage = false;
 	PendingUseIncreasePercent = 0.0f;
 	PendingUseHitsAllCm = 0.0f;
@@ -5573,6 +5695,35 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					}
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// A USE THAT SPENDS THE ROW'S KEPT STACKS TO CAST ITS SKILL AGAIN. Ruled 2026-10-12 under the owner's
+		// delegation. Only when the event names a skill, once per row per event, and only while the row holds at
+		// least one stack: with none held a use does nothing extra. NO ROLL: the sentence states no chance.
+		//
+		// ONLY RECORDED HERE. Nothing is spent and nothing is drawn. This runs inside the used skill's activation,
+		// where a skill cannot be granted, and whether the skill may be cast again by a row at all is a question
+		// about its row in the skill table, which this component does not read. So
+		// `UCataclysmTriggeredSkill::MakePendingKeptStackCasts` spends, draws and casts on the next tick, and
+		// spends nothing for a skill no row may cast again.
+		//
+		// BESIDE A `repeat_skill` ROW AND NOT IN ITS PLACE. That row's one repeat is recorded above in its own
+		// fields and this in others, so a wearer of both gets both.
+		if (Action.bKeptStacksRepeatSkill)
+		{
+			if (bLanded && !SkillInHandName.IsNone() && !Action.KeptStackKey.IsNone()
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
+				&& KeptStacksHeld(Action.KeptStackKey) > 0)
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				PendingKeptStackCastName = SkillInHandName;
+				PendingKeptStackCastAimPoint = SkillInHandAim;
+				FPendingKeptStackCast Asked;
+				Asked.Key = Action.KeptStackKey;
+				Asked.DamageShare = Action.Percent / 100.0f;
+				PendingKeptStackCastRows.Add(Asked);
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}
