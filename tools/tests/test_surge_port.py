@@ -81,6 +81,28 @@ def flag(text: str, name: str) -> bool:
     return constant(text, name, r"true|false") == "true"
 
 
+def code_only(text: str) -> str:
+    """C++ with its comments taken out and its whitespace flattened.
+
+    BOTH ARE NEEDED BY THE EMPTY-BOARD CHECKS BELOW. The comments beside the
+    rule name every identifier those checks look for, so a search of the raw
+    file passes when only a comment mentions one; and the conditions they look
+    for are wrapped across lines.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+    text = re.sub(r"//[^\n]*", " ", text)
+    return " ".join(text.split())
+
+
+def body_of(source: str, signature: str) -> str:
+    """One C++ function, from its signature to the first closing brace in the
+    first column, as code only."""
+    parts = source.split(signature, 1)
+    if len(parts) != 2:
+        pytest.fail(f"could not find {signature} -- has it been renamed?")
+    return code_only(parts[1].split("\n}", 1)[0])
+
+
 @pytest.fixture(scope="module")
 def surge_header() -> str:
     return read(SURGE_HEADER)
@@ -144,15 +166,26 @@ class TestWhatACityFallingDoes:
 
 
 class TestWhatAnEmptyBoardDoes:
-    """**A DELIBERATE DIVERGENCE, RECORDED SO IT IS NOT MISTAKEN FOR DRIFT.**
+    """The game fires a surge on an empty board, as the model does.
 
     The project owner ruled on 2026-09-07, verbatim: "Anytime there are no
     longer dungeons on the board, a surge happens." Issue #1406 built that in
-    the model. The game does not have it yet and issue #1414 owns porting it.
+    the model and issue #1414 ported it to the game on 2026-10-12.
+
+    **THIS CLASS RECORDED A DIVERGENCE UNTIL THEN.** It held a test named
+    `test_the_game_has_no_board_empty_trigger_yet`, which asserted that
+    `bSurgeOnEmptyBoard` was ABSENT from `CataclysmSurge.h` and existed to fail
+    when the port landed. It did, and the checks below replace it.
+
+    WHAT THESE CAN AND CANNOT SAY. They read source text: that the flag
+    matches, that the game's rule asks the same three things, and that it is
+    asked where the model asks. That the rule BEHAVES is the Unreal tests'
+    job -- `Cataclysm.EmpireRun.ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`
+    and the four beside it.
     """
 
     def test_the_model_fires_a_surge_on_an_empty_board(self, model):
-        """The model's half of the rule, which is what #1414 has to copy."""
+        """The model's half of the rule, which is what #1414 copied."""
         assert model.surge_on_empty_board is True, (
             "TuningConfig.surge_on_empty_board is off. The owner ruled the "
             "rule on 2026-09-07 and issue #1406 built it; turning it off is a "
@@ -161,8 +194,9 @@ class TestWhatAnEmptyBoardDoes:
     def test_the_brake_is_the_gap_the_game_already_carries(self, surge_header,
                                                            model):
         """`surge_interval_min` is the ONLY brake on the trigger and the game
-        already holds the same number as `LeastIntervalDays`. So #1414 has the
-        constant it needs and does not get to pick a second one.
+        holds the same number as `LeastIntervalDays`. Issue #1414 used that
+        constant and did not add a second one;
+        `test_the_games_rule_asks_what_the_models_asks` is what says so.
 
         `TestTheCadence` already compares the two; this says which rule now
         depends on them being equal.
@@ -170,25 +204,174 @@ class TestWhatAnEmptyBoardDoes:
         assert (number(surge_header, "LeastIntervalDays")
                 == pytest.approx(model.surge_interval_min))
 
-    def test_the_game_has_no_board_empty_trigger_yet(self, surge_header):
-        """**THIS TEST EXISTS TO FAIL WHEN ISSUE #1414 LANDS**, which is the
-        point: at that moment the divergence stops being real and the records
-        of it become wrong.
+    def test_an_empty_board_fires_a_surge_in_both(self, surge_header, model):
+        """The flag, the way `test_a_fall_fires_a_surge_in_both` holds its own.
 
-        Searched with the header's whitespace flattened, because every file
-        here is hard-wrapped and a raw search for a phrase reports a clean file
-        that is not.
+        THIS REPLACES `test_the_game_has_no_board_empty_trigger_yet`, whose
+        failure message asked for exactly this.
         """
-        flat = " ".join(surge_header.split())
+        assert (flag(surge_header, "bSurgeOnEmptyBoard")
+                == model.surge_on_empty_board), (
+            "UCataclysmSurgeScheduler::bSurgeOnEmptyBoard and "
+            "TuningConfig.surge_on_empty_board disagree, so one half fires a "
+            "surge on an empty board and the other does not. The owner ruled "
+            "the rule on 2026-09-07; issues #1406 and #1414")
 
-        assert "bSurgeOnEmptyBoard" not in flat, (
-            "UCataclysmSurgeScheduler now declares bSurgeOnEmptyBoard, so the "
-            "game has the board-empty surge trigger and this divergence is "
-            "over. Delete this test, assert instead that the flag matches "
-            "TuningConfig.surge_on_empty_board the way "
-            "test_a_fall_fires_a_surge_in_both does, close issue #1414, and "
-            "correct the docs/DECISIONS.md entry of 2026-09-07 that says the "
-            "game does not have it")
+    def test_the_games_rule_asks_what_the_models_asks(self):
+        """The flag, the board and the least interval, in both.
+
+        A FLAG THE CODE IGNORES WOULD PASS THE TEST ABOVE, so this reads the
+        function that decides. The model refuses on three lines; the game
+        answers with one expression holding the same three.
+
+        THE COMPARISON'S DIRECTION IS PART OF IT. The model refuses while the
+        gap is BELOW the minimum and the game fires when it is AT OR ABOVE it,
+        which are the same rule; `>` in the game would fire a day late.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        asked = inspect.getsource(Simulation._maybe_surge_on_empty_board)
+
+        for line in ("if not cfg.surge_on_empty_board:",
+                     "if not self.board_is_empty():",
+                     "if self.days_since_last_surge() < cfg.surge_interval_min:"):
+            assert line in asked, (
+                f"Simulation._maybe_surge_on_empty_board no longer has "
+                f"`{line}`. If the model's rule changed, the game's "
+                "UCataclysmSurgeScheduler::IsDueOnEmptyBoard has to change "
+                "with it and this test with both")
+
+        empty = inspect.getsource(Simulation.board_is_empty)
+        assert "return not self.dungeons" in empty, (
+            "Simulation.board_is_empty no longer counts every dungeon of every "
+            "kind. The game passes `Dungeons.Num()`, which does")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnEmptyBoard(")
+
+        for part in ("return bSurgeOnEmptyBoard",
+                     "&& DungeonsStanding <= 0",
+                     "&& DaysSinceLastSurge(Day) >= LeastIntervalDays;"):
+            assert part in due, (
+                "UCataclysmSurgeScheduler::IsDueOnEmptyBoard no longer holds "
+                f"`{part}`. It must ask the flag, that nothing stands, and "
+                "that the last surge is at least LeastIntervalDays behind -- "
+                "the three refusals of "
+                "Simulation._maybe_surge_on_empty_board. Issue #1414")
+
+    def test_both_measure_the_gap_from_the_last_surge_of_any_cause(self):
+        """`days_since_last_surge` against `DaysSinceLastSurge`.
+
+        The model reads the last entry of `surge_log`, which `trigger_surge`
+        appends to whatever fired it, and answers the day itself while the log
+        is empty. The game writes `LastSurgeDay` in `RecordSurge`, which every
+        surge goes through, and starts it at 0.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        since = inspect.getsource(Simulation.days_since_last_surge)
+        assert "return float(self.day)" in since, (
+            "the model no longer counts the start of the run as day 0 before "
+            "any surge has landed; the game's LastSurgeDay starts at 0 for "
+            "that reason")
+        assert "return float(self.day - self.surge_log[-1][0])" in since, (
+            "the model no longer measures from the last entry of surge_log")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        assert ("return static_cast<float>(Day - LastSurgeDay);"
+                in body_of(source,
+                           "UCataclysmSurgeScheduler::DaysSinceLastSurge(")), (
+            "UCataclysmSurgeScheduler::DaysSinceLastSurge no longer answers "
+            "the days since LastSurgeDay. Issue #1414")
+
+        assert "LastSurgeDay = Day;" in body_of(
+            source, "UCataclysmSurgeScheduler::RecordSurge("), (
+            "UCataclysmSurgeScheduler::RecordSurge no longer writes "
+            "LastSurgeDay, so the empty-board rule measures its least interval "
+            "from the start of the run for ever. Issue #1414")
+
+        header = code_only(read(SURGE_HEADER))
+        assert "int32 LastSurgeDay = 0;" in header, (
+            "LastSurgeDay no longer starts at 0 in CataclysmSurge.h. The "
+            "model counts the start of the run as day 0")
+
+    def test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge(
+            self):
+        """WHERE the rule is asked, which no constant can show.
+
+        THE MODEL ASKS BELOW `_open_last_stand` AND ABOVE THE PLAYER'S TURN.
+        Its comment says why: every removal the day makes is above it, and a
+        surge fired a moment before the Last Stand opens would deepen that
+        fight. It also asks below its timer loop, so a wave the empty board
+        brings does not lose a day on the day it lands.
+
+        THE GAME ASKS LAST IN `AdvanceDay`, below the clock, the Sieges and the
+        resolves, and not while the Pillar can be reached -- the game has no
+        Last Stand dungeon to make its board non-empty, so it asks the
+        condition the Last Stand would have supplied.
+
+        AND BOTH FIRE IT AS AN ORDINARY SURGE: the model calls
+        `trigger_surge()` with no flag and the game calls `FireSurge` with
+        `bFromCityFall` false, so the clock is reset from today and the
+        escalation counter advances.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        step = inspect.getsource(Simulation.step)
+        last_stand = step.index("self._open_last_stand()")
+        asked = step.index("self._maybe_surge_on_empty_board()")
+        ticked = step.index("d.resolve_in -= 1.0")
+        player = step.index("# -- player action")
+
+        assert ticked < last_stand < asked < player, (
+            "Simulation.step no longer asks the empty-board rule after the "
+            "timers and the Last Stand and before the player's turn. The "
+            "game's AdvanceDay asks it last; if the model moved, the game "
+            "has to move with it")
+
+        fired = inspect.getsource(Simulation._maybe_surge_on_empty_board)
+        assert "self.trigger_surge()" in fired, (
+            "the model no longer fires its empty-board surge as an ordinary "
+            "one, with no city-fall flag")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+        day = body_of(source,
+                      "FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay(")
+
+        rule = ("if (!Report.bPillarExposed && "
+                "Surges->IsDueOnEmptyBoard(Today, Dungeons.Num())) "
+                "{ FireSurge(Today, false, Report);")
+        assert rule in day, (
+            "UCataclysmEmpireRun::AdvanceDay no longer asks "
+            "IsDueOnEmptyBoard for today with every dungeon standing, behind "
+            "the Pillar not being exposed, and fires an ordinary surge when "
+            "it answers yes. Issue #1414")
+
+        for earlier in ("Clock->AdvanceDay();", "ApplySiegeDamage(Report);",
+                        "ResolveDungeon(DungeonId, Report);",
+                        "Report.bPillarExposed = Map->IsPillarExposed();"):
+            assert earlier in day and day.index(earlier) < day.index(rule), (
+                f"UCataclysmEmpireRun::AdvanceDay asks the empty-board rule "
+                f"before `{earlier}`. It must be asked last, after every "
+                "removal the day makes and after the timers have moved, "
+                "which is where Simulation.step asks. Issue #1414")
+
+        assert day.count("IsDueOnEmptyBoard(") == 1, (
+            "AdvanceDay asks the empty-board rule more than once in a day")
+
+        assert "++SurgesFromEmptyBoard;" in day, (
+            "AdvanceDay no longer counts the surges an empty board fired, "
+            "which is the game's RunResult.surges_from_empty_board")
 
 
 class TestTheLethalityModes:

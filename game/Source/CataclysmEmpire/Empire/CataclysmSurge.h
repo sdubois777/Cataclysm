@@ -478,6 +478,26 @@ public:
 	static constexpr bool bCityFallAdvancesEscalation = true;
 
 	/**
+	 * Whether a board with no dungeons on it fires a surge.
+	 * `config.surge_on_empty_board`.
+	 *
+	 * THE PROJECT OWNER RULED IT ON 2026-09-07, verbatim: "Anytime there are no
+	 * longer dungeons on the board, a surge happens." And on whether it
+	 * replaces the cadence, verbatim: "it does not replace the surge cadence.
+	 * It is there to ensure pressure remains." Issue #1406 built it in the
+	 * simulation and issue #1414 built it here.
+	 *
+	 * ANY EMPTY BOARD, WHATEVER EMPTIED IT, and every kind of dungeon counts as
+	 * standing: a Quest dungeon, a Fallen City and the dungeon the player is
+	 * inside all keep the board from being empty. `Simulation.board_is_empty`
+	 * is `not self.dungeons` and reads no kind.
+	 *
+	 * `LeastIntervalDays` IS THE ONLY BRAKE ON IT, and `IntervalDays` keeps
+	 * running: whichever comes first fires. See `IsDueOnEmptyBoard`.
+	 */
+	static constexpr bool bSurgeOnEmptyBoard = true;
+
+	/**
 	 * What Heretic multiplies a wave by. "Surges spawn 25% more dungeons."
 	 *
 	 * APPLIED AFTER THE CAP AND NOT BEFORE, and the order is the whole point.
@@ -1020,6 +1040,24 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float NextSurgeDay = 0.0f;
 
+	/**
+	 * The day the last surge fired, or 0 when none has.
+	 *
+	 * WHAT THE EMPTY-BOARD RULE MEASURES ITS LEAST INTERVAL FROM.
+	 * `Simulation.days_since_last_surge` reads the last entry of its surge log
+	 * and answers the day itself while the log is empty, so the start of the
+	 * run counts as day 0; a 0 here gives the same answer.
+	 *
+	 * WRITTEN BY `RecordSurge` AND BY NOTHING ELSE, so it moves on exactly the
+	 * days `NextSurgeDay` and `SurgesFired` move.
+	 *
+	 * IT IS NOT WRITTEN TO THE SAVE. `UCataclysmRunSave` holds five surge
+	 * fields and this is not one of them, so a restored run would measure the
+	 * interval from day 0.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastSurgeDay = 0;
+
 	/** What a wave is multiplied by in this lethality mode. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float DungeonMultiplier() const;
@@ -1039,6 +1077,36 @@ public:
 	/** How many days until the next surge. Zero once it is due. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float DaysUntilNextSurge(int32 Day) const;
+
+	/**
+	 * How many days it has been since a surge last fired.
+	 * `Simulation.days_since_last_surge`.
+	 *
+	 * @param Day the day being asked about
+	 * @return `Day` itself before any surge has fired.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	float DaysSinceLastSurge(int32 Day) const;
+
+	/**
+	 * Whether a surge fires today because nothing stands on the board.
+	 *
+	 * A PORT OF THE THREE REFUSALS AT THE TOP OF
+	 * `Simulation._maybe_surge_on_empty_board`: the rule is on, the board is
+	 * empty, and the last surge is at least `LeastIntervalDays` behind.
+	 *
+	 * A REFUSAL IS A DELAY AND NOT A LOSS. The caller asks again every day, the
+	 * board is still empty tomorrow, and this answers true on the first day the
+	 * interval allows.
+	 *
+	 * IT DECIDES AND DOES NOT ACT, like `IsDue`. The run counts its dungeons and
+	 * passes the number in, because this class does not own them.
+	 *
+	 * @param Day              the day being asked about
+	 * @param DungeonsStanding how many dungeons of any kind are on the map
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsDueOnEmptyBoard(int32 Day, int32 DungeonsStanding) const;
 
 	/**
 	 * Records that a surge fired today, and sets when the next one is due.

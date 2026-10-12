@@ -486,9 +486,32 @@ float UCataclysmSurgeScheduler::DaysUntilNextSurge(int32 Day) const
 	return FMath::Max(0.0f, NextSurgeDay - static_cast<float>(Day));
 }
 
+float UCataclysmSurgeScheduler::DaysSinceLastSurge(int32 Day) const
+{
+	return static_cast<float>(Day - LastSurgeDay);
+}
+
+bool UCataclysmSurgeScheduler::IsDueOnEmptyBoard(int32 Day,
+												 int32 DungeonsStanding) const
+{
+	// THE INTERVAL IS THE ONLY BRAKE. A board can be emptied the day after a
+	// wave lands, and without it a player who clears quickly would be sent a
+	// wave every day.
+	//
+	// ONE EXPRESSION AND NOT THREE EARLY RETURNS, because the flag is a constant
+	// and a block behind a constant condition is code the compiler can call
+	// unreachable.
+	return bSurgeOnEmptyBoard
+		&& DungeonsStanding <= 0
+		&& DaysSinceLastSurge(Day) >= LeastIntervalDays;
+}
+
 void UCataclysmSurgeScheduler::RecordSurge(int32 Day, bool bFromCityFall)
 {
 	++SurgesFired;
+
+	// WHAT `IsDueOnEmptyBoard` MEASURES ITS INTERVAL FROM. See `LastSurgeDay`.
+	LastSurgeDay = Day;
 
 	// THE GAP IS READ BEFORE THE COUNTER MOVES, which is the order
 	// `Simulation.trigger_surge` uses. Reading it afterwards would skip the
