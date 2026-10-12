@@ -889,7 +889,7 @@ labelled judgement. The shape was ruled, so no genre research was done for it.
 | E2 | The row for "Using a healing skill grants 10%-20% increased damage for 5 seconds" is an ordinary own-stack row on that event with no Required Tags. This layer authors no row. | The shape is at the foot of "What was built"; `TestTheUseOfAHealingSkillIsAnEventOfItsOwn` passes that shape through the generator |
 | E3 | The phase 1 judgement is not amended. Nothing about how any row's tags are read changes. | Nothing: `CataclysmItem.cpp` is not in this layer's diff. The fourth automation test holds the gadget rows |
 | E4 | The cost is said first: the next such sentence for another kind of skill needs its own event name, and "healing skill" is decided in code by the tag and held to the two skills by a Python check. | "What this costs", above |
-| E5 | Four assertions' worth of test and one proof. | Five tests under `Cataclysm.HealingSkillUse.`; the proof is proposed in the report of the session that wrote this and was not run |
+| E5 | Four assertions' worth of test and one proof. | Five tests under `Cataclysm.HealingSkillUse.`; the proof was proposed in the report of the session that wrote this and was run in the window of 2026-10-12 |
 
 ### WHAT WAS BUILT
 
@@ -1009,7 +1009,7 @@ name the game does not raise is refused; an action row on the event is accepted;
 `tools/tests/test_pool_action_names_match_the_engine.py` holds the generator's event names equal to the names
 the C++ raises, and passes with the name on both sides.
 
-**No guard proof was run.** One C++ proof is proposed in the report of the session that wrote this: the tag
+**One guard proof was run in the window**, and it is in the run at the foot of this entry. It is the C++ proof proposed in the report of the session that wrote this: the tag
 condition on raising the event removed, so any skill use with tags raises it.
 
 **Not tested here:** a real enchantment row on the event, since none is written; the walk from a row of
@@ -1023,7 +1023,19 @@ switching Living Pyre off; anything drawn on a screen.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-12, on development f136733e (the dungeon level's navigation bounds), in one window for six layers stacked in this order: the healing mechanism, its two rows, the healing-use event, its rows, the Suffering Aura immunity, and Mana Weaver's rows. The suite and Python were run at the top of the six, which holds all of them.
+
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled". This was the first compile of all six layers.
+- **The enchantments group on the assets as merged, before any rebuild:** "312 tests performed, 309 succeeded, 3 failed", registered 312, 309 and 3. The three are the tests that wear the six layers' new rows: the Mana Weaver rows test with 7 failed assertions, and the two healing row tests with 1 each, on their set-up assertions that the rows put modifiers on the wearer. All as registered.
+- **The editor rebuilt the effect table's asset three times**, once for each row layer: 585, 587 and 589 rows. Each row layer carries its own asset in a commit of its own, and the tree ids matched.
+- **The whole Unreal suite:** "3561 tests performed, 3561 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3561 tests in the tree at 125ba135; 3561 performed, gap 0". Registered: 3561 and 0.
+- **Python:** "5976 passed, 8 skipped"; JUnit tests 5984, failures 0, errors 0, skipped 8. Registered: 5984 and 0. Lint: "All checks passed!".
+- **The three set-up figures the session that wrote this left to the first build** (how the two real gadget rows arrive on a wearer, the tag counts of the two healing skills, and one damage figure) all held: no set-up assertion failed and no test was corrected.
+- **One guard proof for this layer**, prefix `Cataclysm.HealingSkillUse.` (5 tests), "PROVED": failed with the break in, and "restored: 5 tests performed, 5 succeeded, 0 failed".
+
+| Proof | The break | Test stated to fail | Failed assertions, registered and printed |
+|---|---|---|---|
+| V1 | in `CataclysmAbilitySystemComponent.cpp`, any use handed a tag container raises the event | `AUseOfAnyOtherSkillAUseWithNoTagsAndTheBasicAttackRaiseNothingAndGrantNothing` | 4 and 4: a skill with other tags raises the event and is granted the stack, and so is a skill with an empty set of tags |
 
 ---
 
