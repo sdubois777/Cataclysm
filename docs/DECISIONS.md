@@ -2,6 +2,186 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — The simulation resolves an ordinary dungeon when the player dies in it, as the game does
+
+**Affects:** `sim/cataclysm_sim/engine.py`, `sim/cataclysm_sim/config.py`, `sim/README.md`,
+`sim/tests/test_a_death_resolves_an_ordinary_dungeon.py`,
+`tools/tests/test_a_death_resolves_in_the_model_as_in_the_game.py`. Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+Nothing in the game changed: no C++, no data row, no workbook.
+
+**Said first: one existing test fails with this change and was left exactly as it is, for a ruling.**
+`sim/tests/test_surge_when_the_board_empties.py::TestOverWholeCampaigns::test_the_rule_never_gives_a_campaign_fewer_surges[3]`.
+It states a rule about `surge_on_empty_board`: for each of seeds 0 to 3, a campaign on the `triage` policy has
+at least as many surges per day with the rule on as with it off. Before this change that held on 40 of 40
+seeds looked at; with a death resolving its dungeon it fails on 2 of 40, seeds 3 and 34. The figures are under
+"What was printed". Nothing in that test was changed and no tolerance was loosened. The whole suite is
+therefore not green at this commit: `1 failed, 5994 passed, 7 skipped`.
+
+**Said first: this is a change to the model, and it makes dying cost a city a hit.** Until now a death in the
+simulation left the dungeon, cost the lethality mode's days and touched no city. **Every campaign figure on
+record was measured that way**: every table in `sim/README.md` but the new one, every figure in this file and
+in `docs/Cataclysm_GDD_v2.md` taken from the simulation, and the figures in the simulation's own comments.
+**None of them was re-measured.** `sim/experiments.py` was not run. What was measured is one small comparison,
+printed below: sixteen cells of 500 campaigns, the setting off and on.
+
+**Said first: what the model does not copy.**
+
+- A death in the Cataclysm's own dungeon ends the run in the model, as it always has. In the game the player
+  stands back up in the level and nothing ends; nothing puts that dungeon on the map there yet. Left as it
+  was, by instruction.
+- The game ends the dungeon when the character stands back up, 3 seconds after the blow, and has a playtest
+  switch. The model has no seconds and no switch; `death_resolves_dungeon` off is its nearest thing.
+- The equipment a Hardcore or Heretic death costs is not modelled, as before.
+- In the model a city that falls while the player is inside one of its dungeons leaves that dungeon standing
+  (`_fall` spares the one being walked); in the game it is absorbed. That difference is older than this
+  change and was not touched. A death in such a dungeon takes nothing in either, and in the model its timer
+  is refilled.
+
+### The ruling
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-12: the simulation gains
+"a death resolves the dungeon" first, as its own change, before any change to whether a resolved dungeon
+stays, so the two rules can be measured apart. `dungeon_persists_after_resolve` is left at True.
+
+### What was read before writing
+
+- `UCataclysmEmpireRun::ResolveDungeonOnDeath` and `ResolveDungeon`, and
+  `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, whole. The entry of 2026-10-09 below, "Dying inside a
+  dungeon of the empire ends the walk of it", and the two sentences on dying in `docs/Cataclysm_GDD_v2.md`.
+- `Simulation._finish_current`, `_resolve`, `_fall`, `_open_last_stand` and `step`. A death sets `dying` and
+  `days_remaining`; each later `step` moves every timer, lands sieges and surges, and takes one day off.
+- Every reader of `deaths` and `dungeons_resolved`: `sim/experiments.py`, `sim/analyse_lethality_modes.py`,
+  `sim/analyse_board_empty_surge.py`, `sim/analyse_tier_throughput.py`, and three test files in the simulation's tests. A death's
+  resolve is counted in `dungeons_resolved`, as the game counts it in `DungeonsDetonated`.
+- `sim/cataclysm_sim/policies.py`. **No policy weighs what a death costs.** `_safe` refuses a dungeon whose
+  death chance is above `death_risk_tolerance`, 0.35, and that is the only place a policy reads it. Not
+  changed: a judgement by the writing session, since changing how the policies play is a second change.
+- `tools/tests/test_day_clock_port.py` and `tools/tests/test_a_death_ends_the_dungeon.py`, which hold the days
+  a death costs and the game's order.
+
+### How it is built
+
+- `TuningConfig.death_resolves_dungeon`, default True.
+- `Simulation._resolve_on_death`: returns for a dungeon that does not resolve or is no longer on the map;
+  otherwise calls `_resolve`, the call a timer running out makes, and repeats none of its arithmetic. So the
+  points, the count, a city falling and `dungeon_persists_after_resolve` are what they are for a timer. One
+  line is its own: when the resolve fells the city the dungeon is removed, because `_fall` spares the dungeon
+  being walked and the game spares none.
+- `Simulation._finish_current`, on a death: resolve, leave, charge the days, the game's order. The Cataclysm
+  dungeon is stopped by the kind question and ends the run on the lines it always did.
+- Judgement by the writing session: a Quest dungeon's death does not reach `_resolve` at all, as in the game,
+  so it draws nothing from the campaign's random stream.
+
+### What was printed
+
+`what_moves.py`, kept by the writing session, run on the changed code. Raw `TuningConfig()` defaults but for
+tier and tree, which are not the settings `sim/experiments.py` calibrates.
+
+```
+500 campaigns a cell, seeds 0 to 499, the same seeds off and on. TuningConfig() defaults but for tier and tree.
+off = death_resolves_dungeon False (the model before 2026-10-12); on = True (the default now).
+cities = cities lost a campaign; won% and lost% = share of campaigns; deaths, resolved, cleared = a campaign; days = days survived.
+d cities = mean of (on - off) per seed, +/- 1.96 standard errors of that paired difference.
+
+policy     tree     tier set  cities   won%  lost%  deaths  resolved  cleared    days          d cities
+triage     No tree     1 off    5.31   26.8   57.8    6.47      87.0     56.3    1520
+triage     No tree     1 on     5.32   27.6   56.4    6.52      89.1     56.2    1518    +0.00 +/- 0.34
+triage     No tree     2 off   18.15    7.4   92.4    9.68     183.8     47.9    1337
+triage     No tree     2 on    18.29    8.4   91.6    9.38     183.6     46.8    1319    +0.14 +/- 0.43
+triage     No tree     3 off   23.06    0.6   99.4    9.04     220.7     38.3    1152
+triage     No tree     3 on    23.05    0.6   99.4    8.80     219.0     37.8    1141    -0.01 +/- 0.25
+triage     No tree     4 off   23.59    0.0  100.0    7.68     222.2     31.7     985
+triage     No tree     4 on    23.54    0.2   99.8    7.64     221.9     31.0     977    -0.05 +/- 0.12
+
+triage     Explorer    1 off    2.36   35.4   43.0    7.98      29.9     56.6    1588
+triage     Explorer    1 on     2.97   35.0   43.0    8.51      34.4     57.1    1573    +0.61 +/- 0.22
+triage     Explorer    2 off   15.78    3.2   96.0   14.04      39.3     32.0    1134
+triage     Explorer    2 on    15.77    2.2   96.0   12.49      40.8     28.0     995    -0.01 +/- 0.43
+triage     Explorer    3 off   16.86    0.6   98.2    7.82      33.2     15.2     850
+triage     Explorer    3 on    16.85    0.4   97.8    7.09      33.2     13.3     799    -0.02 +/- 0.42
+triage     Explorer    4 off   17.66    0.2   99.8    2.09      24.5      2.3     668
+triage     Explorer    4 on    17.71    0.0  100.0    1.86      24.6      1.8     657    +0.04 +/- 0.19
+
+lane_aware No tree     1 off    3.54   27.0   50.6    6.62      70.2     60.7    1601
+lane_aware No tree     1 on     4.11   24.8   51.8    6.76      76.4     61.4    1619    +0.57 +/- 0.27
+lane_aware No tree     2 off   19.32    6.4   92.2   11.65     194.0     57.0    1588
+lane_aware No tree     2 on    19.35    5.4   93.0   11.04     194.1     54.3    1534    +0.03 +/- 0.45
+lane_aware No tree     3 off   23.16    0.4   99.6    9.98     219.2     41.7    1231
+lane_aware No tree     3 on    23.08    0.6   99.4    9.62     221.0     40.5    1212    -0.09 +/- 0.21
+lane_aware No tree     4 off   23.48    0.6   99.4    8.58     219.2     34.8    1046
+lane_aware No tree     4 on    23.46    0.2   99.8    8.24     220.5     34.2    1035    -0.02 +/- 0.15
+
+lane_aware Explorer    1 off    2.34   36.8   40.8    7.90      29.3     59.2    1636
+lane_aware Explorer    1 on     2.89   36.6   40.2    8.21      33.6     59.4    1626    +0.55 +/- 0.23
+lane_aware Explorer    2 off   16.04    2.8   96.2   14.63      41.3     32.8    1169
+lane_aware Explorer    2 on    15.91    2.0   96.8   13.29      42.6     29.2    1021    -0.13 +/- 0.44
+lane_aware Explorer    3 off   16.88    0.4   99.0    7.88      33.2     15.3     842
+lane_aware Explorer    3 on    16.86    0.2   98.4    7.30      34.2     13.7     805    -0.01 +/- 0.44
+lane_aware Explorer    4 off   17.64    0.2   99.8    2.09      24.5      2.3     667
+lane_aware Explorer    4 on    17.68    0.0  100.0    1.86      24.5      1.8     657    +0.04 +/- 0.19
+```
+
+Three cells of sixteen moved outside their interval, all at tier 1, each by a little over half a city. The
+rest did not. No cell's win rate moved by more than 2.2 points, which 500 campaigns cannot separate.
+
+The test that fails, measured for 40 seeds; rows are seeds 0 to 3 and every seed where the comparison fails:
+
+```
+seed  death_resolves  board-rule off: surges days rate | on: surges days rate   holds
+   0  False             20  1934  10.34 |   20  1624  12.32   True
+   0  True              20  1934  10.34 |   17  1193  14.25   True
+   1  False             14  1496   9.36 |    8   510  15.69   True
+   1  True              14  1496   9.36 |    8   510  15.69   True
+   2  False             11  1153   9.54 |   11   755  14.57   True
+   2  True              11  1153   9.54 |   11   755  14.57   True
+   3  False             26  2500  10.40 |   28  2418  11.58   True
+   3  True              27  2317  11.65 |   25  2242  11.15   False
+  34  True              29  2359  12.29 |   28  2500  11.20   False
+death_resolves_dungeon=False: the per-seed rate comparison fails on 0 of 40 seeds: []
+death_resolves_dungeon=True: the per-seed rate comparison fails on 2 of 40 seeds: [3, 34]
+```
+
+### Tests
+
+`sim/tests/test_a_death_resolves_an_ordinary_dungeon.py`, 32 tests, each death made certain by replacing
+`death_chance`: the consequence lands once and equals what a timer takes; no other city pays; the control
+with the setting off; the timer full, or the dungeon gone, by `dungeon_persists_after_resolve`; a resolve that
+fells the city; a Quest dungeon, a Fallen City dungeon, a city already fallen and a dungeon already off the
+map; the Cataclysm dungeon; the days by lethality mode; the order.
+
+`tools/tests/test_a_death_resolves_in_the_model_as_in_the_game.py`, 5 tests, reads both halves as text: the
+order, the kind question before the resolve, no second copy of the arithmetic, the default.
+
+**Guard proofs, run with `tools/prove_guard.py` in a copy of the tree made with `git archive`, each PROVED.**
+
+| The break | Printed | Named failures |
+|---|---|---|
+| the new call taken out of `_finish_current` | `PROVED: 10 failed, 22 passed in 0.48s \| restored: 32 passed in 0.08s` | ten of the 32, among them `test_its_consequence_lands_on_its_city_once` |
+| the dungeon not removed when the resolve fells the city | `PROVED: 2 failed, 30 passed in 0.12s \| restored: 32 passed in 0.08s` | `test_the_city_falls_and_the_dungeon_is_absorbed[True]`, `test_the_days_then_pass_without_an_error` |
+| the kind not asked | `PROVED: 2 failed, 30 passed in 0.12s \| restored: 32 passed in 0.08s` | `test_a_quest_dungeon_charges_the_days_and_takes_nothing`, `test_a_fallen_city_dungeon_charges_the_days_and_takes_nothing` |
+| a dungeon off the map resolved again | `PROVED: 1 failed, 31 passed in 0.13s \| restored: 32 passed in 0.08s` | `test_a_dungeon_already_off_the_map_is_still_charged` |
+| the model leaves before it resolves | `PROVED: 1 failed, 4 passed in 0.13s \| restored: 5 passed in 0.07s` | `test_both_halves_resolve_then_leave_then_charge_the_days` |
+| the kind asked after the resolve | `PROVED: 1 failed, 4 passed in 0.10s \| restored: 5 passed in 0.07s` | `test_both_halves_ask_the_kind_before_they_resolve` |
+| the default turned off | `PROVED: 1 failed, 4 passed in 0.10s \| restored: 5 passed in 0.07s` | `test_the_designed_behaviour_is_the_default_in_both` |
+
+Whole Python suite before the change: `5958 passed, 7 skipped in 351.24s`. After it, before this entry was
+written: `1 failed, 5994 passed, 7 skipped in 344.01s`, the one failure named at the top.
+
+### Not covered
+
+- **Resolve then leave, against leave then resolve, is held by the text check alone.** With the two lines
+  swapped all 32 simulation tests still pass, because the dungeon is removed either way. Tried.
+- Every figure named at the top as not re-measured, and the lethality comparison in
+  `sim/analyse_lethality_modes.py`, whose "death cost only" row now changes more than days.
+- Whether the policies should weigh a death's new cost.
+- The game's rule that a shallow dungeon resolves twice from one Heretic death follows here from the same
+  arithmetic and was not measured. With no tree the shortest timer an ordinary dungeon can roll is 19 whole days,
+  on an Outpost, above Heretic's 15.
+
+---
+
 ## 2026-10-10 — The dungeon level's navigation bounds are widened along X so the hidden chamber of Reality Rifts is inside them (#2366)
 
 **Said first: nothing here was tried in play, and no Unreal test can show it.** The automation tests build their
