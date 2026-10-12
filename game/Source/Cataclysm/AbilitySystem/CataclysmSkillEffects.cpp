@@ -2730,6 +2730,26 @@ bool UCataclysmSkillEffects::CannotWalkByARow(const AActor* Actor)
 	return Walker->StatForSkill(FName(CannotWalkStat), FGameplayTagContainer(), 0.0f) > 0.0f;
 }
 
+const TCHAR* UCataclysmSkillEffects::SufferingAuraManaDrainImmunityStat =
+	TEXT("suffering_aura_mana_drain_immunity");
+
+bool UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Holder =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Actor));
+	if (!Holder)
+	{
+		return false;
+	}
+
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought and is drained. NO TAGS: the drain is a
+	// dungeon rule's and not a skill's. A condition on the row, if one is ever
+	// written, is judged inside the lookup from the character's state now.
+	return Holder->StatForSkill(FName(SufferingAuraManaDrainImmunityStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
 bool UCataclysmSkillEffects::IsStaggered(const AActor* Actor)
 {
 	return HasTag(Actor, StaggeredTag());

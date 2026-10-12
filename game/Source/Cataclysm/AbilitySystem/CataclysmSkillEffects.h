@@ -2623,6 +2623,46 @@ public:
 	 */
 	static bool CannotWalkByARow(const AActor* Actor);
 
+	/**
+	 * `suffering_aura_mana_drain_immunity`, a flag: above nought, the dungeon
+	 * rule Suffering Aura takes no mana from the character that holds it. Ruled
+	 * 2026-10-09 under the owner's delegation, for the first half of "Mana
+	 * Weaver (6-Piece Bonus): You gain an aura that makes you and nearby allies
+	 * immune to all mana-draining effects", whose row is to be a `flat` line
+	 * of 1.
+	 *
+	 * ONE RULE'S DRAIN AND NOTHING ELSE. The sentence says "all mana-draining
+	 * effects"; by ruling the flag stops the mana loss of Suffering Aura only.
+	 * A skill's cost, an aura's upkeep and every other loss of mana are paid as
+	 * before, and none of them reads this. The health that rule takes is not
+	 * stopped either: the sentence says mana.
+	 *
+	 * THE HOLDER'S ONLY. The rule takes mana from the player's character and
+	 * from nobody else, so there is no ally whose mana it could spare.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE. It is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()` and is asked by
+	 * `ImmuneToSufferingAuraManaDrainByARow` below, with no tags.
+	 */
+	static const TCHAR* SufferingAuraManaDrainImmunityStat;
+
+	/**
+	 * Whether a row this character carries stops the dungeon rule Suffering Aura
+	 * taking its mana right now: `SufferingAuraManaDrainImmunityStat` above
+	 * nought, asked with no tags and the character's state at this moment.
+	 * Ruled 2026-10-09.
+	 *
+	 * ONE CALLER IN PLAY: `ACataclysmDungeonGameMode::StepSufferingAura`, in the
+	 * condition on its mana loss. NO TAGS, because the drain is not a skill.
+	 * False for an actor with no ability system of this project's, and for a
+	 * character with no such row, which is every character until the row is
+	 * authored.
+	 *
+	 * A FUNCTION OF THE ACTOR, as `CannotWalkByARow` above is, so that the
+	 * question can be asked without a dungeon game mode.
+	 */
+	static bool ImmuneToSufferingAuraManaDrainByARow(const AActor* Actor);
+
 	/** The tag a character carries while nothing can hit it. */
 	static FGameplayTag UntargetableTag();
 
