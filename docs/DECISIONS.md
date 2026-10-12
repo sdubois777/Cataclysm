@@ -181,6 +181,10 @@ of stats with no attribute), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGame
   pawn of the world's first player controller, cast to `ACataclysmPlayerCharacter`, and that character's ability
   system. The function takes health and mana from that one ability system. No minion, no thrall and no other
   character is ever passed to it. Ruling W2 below.
+- **What the tests of other losses of mana do and do not show, in the enchantment session's words.** One
+  test reads another loss of mana: a skill's cost, paid in full by a holder of the flag. It reads it on a
+  bare actor that has an ability system and is not a player character. No test reads an aura's upkeep, so
+  that a holder still pays upkeep is read from the code and is not tested.
 - **The rule's health loss is untouched.** The sentence says mana. A holder of the flag on a floor carrying the
   rule loses the same health every beat as a player without it, and can die of it.
 - **One line was written in a file of the dungeon session, by the ruling W3.** In
