@@ -681,6 +681,18 @@ void ACataclysmHUD::DrawPlayerVitals()
 		DrawTextCentred(Maddened, FLinearColor::White,
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
+
+	// AND THE BUFF A WORN ROW DREW, WITH ITS SECONDS LEFT, such as "Commander 12s". Ruled 2026-10-12 by the
+	// coordinating session: the held buff is shown wherever the drawn debuff of the merged drawback is shown to
+	// the player, and Madness, the one of those five debuffs a screen names, is named just above. The owner's
+	// rule is that a system ships with a basic in-game display.
+	const FString HeldBuff = UCataclysmCombatOverlay::HeldBuffTextFor(Pawn);
+	if (!HeldBuff.IsEmpty())
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawTextCentred(HeldBuff, FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+	}
 }
 
 void ACataclysmHUD::DrawOverheadBars()

@@ -6,8 +6,10 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one status name,
 the table of buffs, the draw, the held buff and its end), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`
-(the gear refresh reads the held buff's lines), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`
-(eight tests), `tools/generate_datatables.py` (one more status name `apply_status_to_self` alone may state),
+(the gear refresh reads the held buff's lines), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and
+`.cpp` and `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the held buff's name and seconds left, above the
+player's bars), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (eight tests),
+`game/Source/Cataclysm/Tests/CataclysmCombatOverlayTests.cpp` (one test), `tools/generate_datatables.py` (one more status name `apply_status_to_self` alone may state),
 `tools/tests/test_generate_datatables.py` (five tests),
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one name), a new file
 `tools/tests/test_the_random_buff_table_names_buff_rows.py` (five tests). Issue
@@ -22,6 +24,27 @@ seconds, a random buff or debuff is applied to you".
   the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
   engine does was read from the code when it was written.
 - **No row is authored, so a player sees no change.**
+- **What a player is shown, once a row exists.** Added in a second commit of this layer, by the coordinating
+  session's ruling of 2026-10-12: "show the held buff WHEREVER THE DRAWN DEBUFF OF THE MERGED DRAWBACK IS SHOWN
+  TO THE PLAYER".
+  - **The held buff is named on the line above the player's own bars, with its seconds left**, such as
+    "Commander 12s". The seconds are whole and rounded up.
+  - **Of the five debuffs the draw can give, only Madness is named there.** "Maddened" is drawn above the
+    player's bars and under a creature's bar.
+  - **Cripple, Weaken, Shred and Stun are named on no screen.** No file under
+    `game/Source/Cataclysm/Interface` holds any of the four words outside a comment (searched every `.cpp`
+    and `.h` there without regard to case; the only hits are three comments in `CataclysmCombatOverlay.h`,
+    one of which says of Cripple "it is a tagged debuff, and no screen shows those yet"). What each does to
+    a figure a screen shows was not read: a Shred lowers a resistance, and the character sheet has a line
+    for each resistance. Whether a stunned character is shown by an animation or an effect was not read.
+  - **The resistance the set's drawback holds at nought is shown only as nought on the character sheet's line
+    for that resistance.** The console command `Cataclysm.ShowResistances` prints the same. Nothing names it
+    above the player's bars.
+  - **The line above the player's bars is not the creature's status line.** `ACataclysmHUD` draws the player's
+    texts one by one, each on a line of its own: "Feared", then "Maddened", and now the held buff above them.
+    It does not call `UCataclysmCombatOverlay::StatusLineFor`; that function's one caller in the display
+    draws the line under a creature's bar. The held buff's text is in both: drawn above the player's bars,
+    and last on `StatusLineFor`, where it is empty for every creature today because none wears a row.
 - **Which buffs are in the pool is with the owner.** The owner has been asked. Until the answer, a drawn buff is
   one entry of a table in code, `UCataclysmAbilitySystemComponent::RandomBuffTable`. The owner's answer changes
   the table and its two Python lists, and not the mechanism.
@@ -107,10 +130,9 @@ seconds, a random buff or debuff is applied to you".
   `StepTimedGrants` ends a buff whose seconds have passed and refreshes. A refresh run by anything else after
   the 30 seconds also drops the lines, because the component stops handing them over once the time has passed.
   A dead character does not run the step; its buff ends when it stands back up.
-- **Nothing on screen names the held buff or its seconds.** The owner's rule is that every system has a basic
-  interface. This layer does not give the held buff one: the figures it changes are the character's ordinary
-  figures, and no line says where they came from. `HeldRandomBuff` and `HeldRandomBuffSecondsLeft` are what an
-  interface would read. The coordinating session should rule on it before the row is authored.
+- **The held buff's lines are not named on screen, only the buff.** The text above the player's bars says
+  which buff is held and for how long. The figures it changes are the character's ordinary figures, and no
+  line says which of them the buff moved.
 - **The generator accepts the name on `apply_status_to_self` only**, on any event that action may wait on and at
   any chance. Only the timed event at a chance of 100 is tested.
 
@@ -149,6 +171,10 @@ Each was ruled on 2026-10-12 by the coordinating session under the owner's deleg
   dungeon floor's.
 - **The end.** `EndHeldRandomBuffIfItsTimeHasPassed()`, run as `StepTimedGrants` returns, whatever it returned
   for; and `EndHeldRandomBuff()` in `ClearWhatDeathEnds`. Each runs a gear refresh when a buff was held.
+- **The display.** `UCataclysmCombatOverlay::HeldBuffTextFor(Actor)` answers the held buff's name and its
+  seconds left rounded up, such as "Commander 12s", or nothing for an actor that holds none or is dead. It
+  reads `HeldRandomBuff()` and `HeldRandomBuffSecondsLeft()`. `ACataclysmHUD` draws it above the player's bars,
+  after "Feared" and "Maddened", when it is not empty. `StatusLineFor` holds it last.
 - **The row the enchantment session is to write** is one line: Action `apply_status_to_self`, Action Event
   `every_seconds`, Every Seconds 30, Ailment "Random Buff or Debuff", value 100 to 100.
 
@@ -180,6 +206,17 @@ step of the clock.
   `TheRandomBuffSpellslingerIsTenLessManaCostAtOneStack` (a cost of 100 comes to nine tenths of what it came
   to, with no tags and with the spell tag).
 
+One more Unreal test, in the overlay's own test file, `CataclysmCombatOverlayTests.cpp`:
+
+- `Cataclysm.Overlay.TheBuffAWornRowDrewIsNamedWithItsSecondsLeftAboveThePlayersBars`: a player wired as the
+  game wires one, and a creature 5 metres away. The control first: with no buff the text is empty and the
+  status line does not name the buff. The buff laid by the draw, pinned to Commander: half a second later the
+  text is "Commander 30s" and the status line contains it; a creature holding none says nothing; with 19.5
+  seconds left the text reads "Commander 20s", with 10.5 "Commander 11s", with half a second "Commander 1s";
+  half a second after the 30 seconds the text is empty and the status line no longer names the buff. It tests
+  the text. Nothing drawn can be watched under test, as that file says at its top, so the call that draws the
+  text above the player's bars is not reached.
+
 Python:
 
 - `TestAStatusLaidOnTheWearer` in `tools/tests/test_generate_datatables.py` gains five tests on a made-up sheet:
@@ -198,7 +235,8 @@ gear; what each line does in play beyond the one reading its test takes (a swing
 blow's damage, a leech payment); a buff's seconds ending while its holder is out of a fight; a floor change
 with a buff held; a real death and revival; a drawn debuff
 ending at its own duration; a debuff other than Cripple; the row on an event other than the timed one, or at
-a chance under 100; a wearer with no equipment component.
+a chance under 100; a wearer with no equipment component; the held buff's text being drawn, which needs a
+person to look at the screen; where it sits when "Feared" and "Maddened" are drawn with it.
 
 ### GUARD PROOFS PROPOSED
 
