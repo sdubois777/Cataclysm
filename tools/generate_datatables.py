@@ -8357,6 +8357,87 @@ def refuse_a_class_point_row_the_game_cannot_count(sheet: str,
     return problems
 
 
+#: The two stats a row changes a healing skill's health through, each with the
+#: one value kind its reader gives a meaning to and the least and the most its
+#: two figures may state. Ruled 2026-10-09.
+#:
+#: THE HEALING SKILLS ARE LIVING PYRE AND BLOOD PYRE, the owner's decision of
+#: 2026-10-09, and they are the two skills tagged under `Stat.Recovery`.
+#: `tools/tests/test_the_healing_skills_are_the_two_tagged_under_recovery.py`
+#: holds that against `game/Data/WeaponSkills.csv`.
+#:
+#: `healing_skill_health_restored` IS A `more` ROW OF 30 TO 60, for "Healing
+#: skills restore 30%-60% more HP". `UCataclysmRegeneration::HealingSkillAmount`
+#: applies it to the health Living Pyre returns from a blow and to the EXTRA
+#: regeneration a character gets in its own Blood Pyre.
+#:
+#: `healing_skill_health_as_energy_shield` IS A `flat` ROW OF 10 TO 20, for
+#: "Healing skills also restore 10%-20% of the healed amount as energy shield".
+#: `UCataclysmRegeneration::GiveHealingSkillShield` reads it as a percentage of
+#: the health that arrived.
+#:
+#: THE BOUNDS ARE THE FIGURES THE TWO SENTENCES STATE. A figure outside them is
+#: a design decision, and this is where it is made. A labelled judgement of
+#: 2026-10-09.
+#:
+#: BOTH ARE ASKED WITH NO TAGS, at the two places a healing skill pays its
+#: health and nowhere else. A row carrying Required Tags would match at neither
+#: place, so `refuse_a_healing_skill_row_the_game_cannot_read` refuses one.
+HEALING_SKILL_STATS: dict[str, tuple[str, float, float]] = {
+    "healing_skill_health_restored": ("more", 30.0, 60.0),
+    "healing_skill_health_as_energy_shield": ("flat", 10.0, 20.0),
+}
+
+
+def refuse_a_healing_skill_row_the_game_cannot_read(sheet: str,
+                                                    rows: list[dict]) -> list[str]:
+    """A row on one of the two healing skill stats is one its reader gives
+    the meaning its sentence has.
+
+    THE ROW IS ACCEPTED AND WRONG OR DEAD OTHERWISE, for the reasons
+    `HEALING_SKILL_STATS` gives. Each refusal names what the reader would do
+    with the row.
+
+    A CONDITION OR A SCALE ON EITHER STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    neither stat is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE. It states a value per point and no pair
+    of figures, so the bounds here do not describe it, and no ruled sentence is
+    a passive node's. A row built with a `Node` key is a passive effect row.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in HEALING_SKILL_STATS or "Node" in row:
+            continue
+        wanted, least, most = HEALING_SKILL_STATS[stat]
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != wanted:
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"ruled sentence makes it a {wanted!r} row, and any other kind "
+                f"changes a healing skill's health by a figure the sentence "
+                f"does not state.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, at the two places a "
+                f"healing skill pays its health, so a row requiring a tag "
+                f"matches at neither: this one would grant NOTHING and say "
+                f"nothing.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not least <= value <= most:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row may state "
+                    f"from {least:g} to {most:g}, the figures its ruled "
+                    f"sentence states.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -8674,6 +8755,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW GRANTING CLASS POINTS IS ONE THE GAME'S ONE READER COUNTS.
     # Ruled 2026-10-09.
     problems.extend(refuse_a_class_point_row_the_game_cannot_count(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW ON A HEALING SKILL STAT IS ONE ITS READER GIVES ITS SENTENCE'S
+    # MEANING. Ruled 2026-10-09.
+    problems.extend(refuse_a_healing_skill_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

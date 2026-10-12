@@ -116,6 +116,82 @@ public:
 	static const TCHAR* HealingReceivedStat;
 
 	/**
+	 * `healing_skill_health_restored`: what a row does to the health a healing
+	 * skill restores, as its own multiplier. Ruled 2026-10-09 for "Healing skills
+	 * restore 30%-60% more HP": a `more` row of 30 to 60.
+	 *
+	 * THE HEALING SKILLS ARE LIVING PYRE AND BLOOD PYRE, the owner's decision of
+	 * 2026-10-09, and they are the two skills tagged under `Stat.Recovery`.
+	 *
+	 * READ BY `HealingSkillAmount` AND BY NOTHING ELSE, and that function is
+	 * called at two places: `UCataclysmAuraSkill::NoteBlowTaken`, for the health
+	 * Living Pyre returns from a blow, and `ApplyStep`, for the EXTRA health
+	 * regeneration a character gets from standing in its own Blood Pyre. The
+	 * character's base regeneration is not multiplied.
+	 *
+	 * ASKED OF THE CHARACTER WHOSE SKILL IT IS, WITH NO TAGS: the aura's holder,
+	 * and the patch's owner. A row on this stat therefore carries no Required
+	 * Tags; one that did would match nothing at either place. It has no gameplay
+	 * attribute and no base, so it is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* HealingSkillHealthRestoredStat;
+
+	/**
+	 * `healing_skill_health_as_energy_shield`: the percentage of the health a
+	 * healing skill restored that the character also gains as energy shield.
+	 * Ruled 2026-10-09 for "Healing skills also restore 10%-20% of the healed
+	 * amount as energy shield": a `flat` row of 10 to 20.
+	 *
+	 * READ BY `GiveHealingSkillShield` AND BY NOTHING ELSE, called at the same
+	 * two places as `HealingSkillAmount` above, with the health that ARRIVED.
+	 * Asked with no tags, as that stat is. No gameplay attribute and no base.
+	 */
+	static const TCHAR* HealingSkillHealthAsEnergyShieldStat;
+
+	/**
+	 * An amount of health a healing skill is about to restore, after the rows
+	 * on `HealingSkillHealthRestoredStat` this character carries. 100 with a
+	 * `more` row of 50 is 150.
+	 *
+	 * THE AMOUNT IS HANDED BACK UNCHANGED for a character with no such row, and
+	 * for an ability system that is not this project's own. Never below nought.
+	 * An amount of nought or less is answered with nought and asks nothing.
+	 *
+	 * THE CALLER PAYS THE RESULT THROUGH `TopUp`, which then applies every rule
+	 * a heal of health obeys. This function restores nothing itself.
+	 */
+	static float HealingSkillAmount(const UAbilitySystemComponent& AbilitySystem,
+									float Amount);
+
+	/**
+	 * Gives this character energy shield equal to its
+	 * `HealingSkillHealthAsEnergyShieldStat` percentage of `HealthArrived`, and
+	 * answers how much shield was added. Nought when the character carries no
+	 * such row, when `HealthArrived` is nought or less, or when the shield is
+	 * already at its maximum.
+	 *
+	 * `HealthArrived` IS THE HEALTH THAT REALLY ROSE, read off the health
+	 * attribute by the caller after `TopUp`, and not what was offered. So a heal
+	 * cut by the healing ceiling, by reserved health or by a reduction of
+	 * healing received gives a smaller shield, and a heal on a character at full
+	 * health gives none.
+	 *
+	 * INTO THE ORDINARY ENERGY SHIELD, through `TopUp`, which stops at the
+	 * maximum the shield's clamp and its bar use. It is not the temporary absorb
+	 * `UCataclysmAbilitySystemComponent::NoteOverheal` keeps.
+	 *
+	 * THE SHIELD'S RECHARGE WAIT IS NEITHER READ NOR RESTARTED. That wait is the
+	 * time since the character last took damage, and only taking damage writes
+	 * it. This gift arrives inside the wait as well as outside it.
+	 *
+	 * THE RECHARGE CEILING DOES NOT BIND IT. `EnergyShieldRechargeCeilingReductionStat`
+	 * is ruled to cover regeneration only, and this is not regeneration.
+	 */
+	static float GiveHealingSkillShield(UAbilitySystemComponent& AbilitySystem,
+										float HealthArrived);
+
+	/**
 	 * The stat saying this character's energy shield recharges before the
 	 * wait after being damaged has run out, at a reduced rate. Issue #1515.
 	 *
