@@ -58,6 +58,29 @@ FLOOR_WIDTH_CM = FLOOR_CELLS_ACROSS * CELL_SIZE_CM
 NAV_MARGIN_CM = 800.0
 NAV_WIDTH_CM = FLOOR_WIDTH_CM + NAV_MARGIN_CM
 
+# AND WIDER STILL ALONG X, FOR THE HIDDEN CHAMBER OF REALITY RIFTS. Issue #2366.
+# That chamber is not in a floor's plan: it stands beside the floor, on the +X
+# side, CHAMBER_GAP_CELLS empty columns past the plan's last column and
+# CHAMBER_SIDE_CELLS columns wide. Both are copies of `RealityChamberGapCells`
+# and `RealityChamberSide` in
+# game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h, and
+# tools/tests/test_the_dungeon_map_covers_a_whole_floor.py holds them to it.
+#
+# On the widest floor the chamber's far edge is the floor's half width plus
+# (3 + 3) cells from the middle: 9,600 + 2,400 = 12,000 cm, against the 10,000
+# the square volume reached. Inside it a click to walk found no path on any
+# floor wider than 38 cells, which is about six floors in ten.
+#
+# ON BOTH SIDES THOUGH THE CHAMBER IS ONLY EVER ON ONE, because the volume is
+# placed at the level's origin and a volume centred there needs no second
+# number. The strip on -X holds no geometry, and a navigation mesh is only
+# generated where geometry is. Y is not widened: the chamber sits half way down
+# the plan. Ruled 2026-10-10.
+CHAMBER_GAP_CELLS = 3
+CHAMBER_SIDE_CELLS = 3
+CHAMBER_REACH_CM = (CHAMBER_GAP_CELLS + CHAMBER_SIDE_CELLS) * CELL_SIZE_CM
+NAV_WIDTH_X_CM = FLOOR_WIDTH_CM + 2.0 * CHAMBER_REACH_CM + NAV_MARGIN_CM
+
 # Tall enough for the ground blocks below the walking surface and the wall blocks
 # above it, which are 40 cm and 400 cm in CataclysmDungeonFloor.h, with headroom.
 NAV_HEIGHT_CM = 1600.0
@@ -148,7 +171,7 @@ def make_dungeon_level():
     nav = unreal.CataclysmLevelAuthoring.add_nav_mesh_bounds(
         world,
         unreal.Vector(0.0, 0.0, 200.0),
-        unreal.Vector(NAV_WIDTH_CM, NAV_WIDTH_CM, NAV_HEIGHT_CM))
+        unreal.Vector(NAV_WIDTH_X_CM, NAV_WIDTH_CM, NAV_HEIGHT_CM))
     if nav is None:
         fail("Could not create the navigation bounds volume")
     nav.set_actor_label("NavMeshBounds")
@@ -156,6 +179,17 @@ def make_dungeon_level():
     # Checked, not assumed. See this file's docstring for why the usual
     # is-a-point-on-the-navigation-mesh check cannot be used here.
     extent = unreal.CataclysmLevelAuthoring.get_volume_extent(nav)
+    # SAID, NOT ONLY CHECKED, so a run of this script leaves the size it built in
+    # the log for whoever has to quote it. Issue #2366.
+    log("NavMeshBounds built to extent {} (half sizes, cm); asked for {} by {} "
+        "by {} cm across.".format(extent, NAV_WIDTH_X_CM, NAV_WIDTH_CM,
+                                  NAV_HEIGHT_CM))
+    if extent.x * 2.0 < FLOOR_WIDTH_CM + 2.0 * CHAMBER_REACH_CM:
+        fail("The navigation bounds volume built to extent {}, which does not "
+             "cover the hidden chamber of Reality Rifts beside a floor {} cm "
+             "across: it reaches {} cm past the floor's edge. A click to walk "
+             "inside the chamber would find no path.".format(
+                 extent, FLOOR_WIDTH_CM, CHAMBER_REACH_CM))
     if extent.x * 2.0 < FLOOR_WIDTH_CM or extent.y * 2.0 < FLOOR_WIDTH_CM:
         fail("The navigation bounds volume built to extent {}, which does not "
              "cover a floor {} cm across. Enemies would stop pathing outside it "
