@@ -2599,6 +2599,10 @@ class TestAStatusLaidOnTheWearer:
     TIMED = gen.row_name("Negative", TIMED_WORDS[:48])
     MANY_WORDS = "Whenever you apply a DOT, 1-40 stacks are applied to you"
     MANY = gen.row_name("Negative", MANY_WORDS[:48])
+    # THE DRAWBACK OF THE SET SHARD OF ANARCHY, verbatim. Ruled 2026-10-12.
+    RESIST_WORDS = ("Every 5 seconds, one of your resistances is reduced to 0 "
+                    "until this triggers again")
+    RESIST = gen.row_name("Negative", RESIST_WORDS[:48])
     ENCHANTMENTS = [
         ["Positives", "Type", "Weight", "Column 4", None,
          "Negatives", "Type", "Weight", "Tags"],
@@ -2608,6 +2612,7 @@ class TestAStatusLaidOnTheWearer:
         [None, None, None, None, None, DOT_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
         [None, None, None, None, None, TIMED_WORDS, "Generic", 4, "Keyword.Debuff"],
         [None, None, None, None, None, MANY_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
+        [None, None, None, None, None, RESIST_WORDS, "Generic", 4, "Keyword.Debuff"],
     ]
     HEADER = TestScaleStepHigh.HEADER
 
@@ -2671,6 +2676,52 @@ class TestAStatusLaidOnTheWearer:
             "Value Low": 100, "Value High": 100}))
         assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"]) == (
             "apply_status_to_self", "every_seconds", 15.0)
+
+    def resist(self, tmp_path, changes):
+        """The row the enchantment session will write for the drawback of the
+        set Shard of Anarchy: a resistance drawn and held at nought, every 5
+        seconds. Ruled 2026-10-12."""
+        values = {"Enchantment": self.RESIST, "Effect": self.RESIST_WORDS,
+                  "Action": "apply_status_to_self", "Action Event": "every_seconds",
+                  "Every Seconds": 5,
+                  "Ailment": gen.RANDOM_RESISTANCE_AT_NOUGHT_STATUS,
+                  "Value Low": 100, "Value High": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_timed_row_that_holds_a_resistance_at_nought_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.resist(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "apply_status_to_self", "every_seconds", 5.0, 100.0, 100.0,
+            "Random Resistance At Nought")
+
+    def test_the_resistance_status_is_carried_through_at_another_period(self, tmp_path):
+        out = gen.enchantment_effects(self.resist(tmp_path, {"Every Seconds": 12}))
+        assert out[0]["EverySeconds"] == 12.0
+
+    def test_the_resistance_status_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Resistance At Naught'"):
+            gen.enchantment_effects(self.resist(
+                tmp_path, {"Ailment": "Random Resistance At Naught"}))
+
+    def test_the_resistance_status_is_refused_on_the_seconds_form(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Resistance At Nought'"):
+            gen.enchantment_effects(self.resist(tmp_path, {
+                "Action": "apply_status_to_self_seconds",
+                "Value Low": 5, "Value High": 5}))
+
+    def test_the_resistance_status_is_refused_on_the_action_that_lays_a_status_on_another(self, tmp_path):
+        """An enemy holds no per-type resistance, so the status is for a wearer
+        only and the list both actions share does not hold it."""
+        assert gen.RANDOM_RESISTANCE_AT_NOUGHT_STATUS not in gen.APPLY_STATUSES
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Resistance At Nought'"):
+            gen.enchantment_effects(self.resist(tmp_path, {
+                "Action": "apply_status", "Action Event": "hit_dealt",
+                "Every Seconds": None}))
 
     def test_an_event_that_is_not_one_of_the_wearers_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="lays a status on its wearer on the event"):

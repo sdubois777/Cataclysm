@@ -433,8 +433,11 @@ FCataclysmStatLine UCataclysmCharacterSheetLayout::LineFor(
 			}
 		}
 
+		// THROUGH `TypedResistanceOf`, AS A BLOW READS IT, since 2026-10-12: a
+		// resistance a worn row is holding at nought shows as nought here for as
+		// long as it is held, which is the visible part of that row.
 		const float Held =
-			Generic + Read(ASC, UCataclysmDamageCalculation::ResistanceAttributeFor(Type));
+			Generic + UCataclysmDamageCalculation::TypedResistanceOf(ASC, Type);
 		const float Penalty =
 			UCataclysmDamageCalculation::ResistancePenaltyAt(DifficultyTier);
 		// UNDER THE CHARACTER'S OWN CAP, the one `Resolve` holds a hit to.

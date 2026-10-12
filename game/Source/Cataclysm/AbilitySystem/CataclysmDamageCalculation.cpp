@@ -253,15 +253,13 @@ namespace
 		// CLASS ON 2026-09-01, because the Wand's Shred writes the same slot this
 		// reads. It was a lambda table here, and a second copy of it beside the
 		// debuff is how the two would have come to disagree.
-		const FGameplayAttribute Typed =
-			UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
-
+		//
 		// A damage type nobody has heard of adds nothing, and the generic figure
 		// still applies, because it applies to everything by definition.
-		if (Typed.IsValid() && Defender->HasAttributeSetForAttribute(Typed))
-		{
-			Total += Defender->GetNumericAttribute(Typed);
-		}
+		//
+		// READ THROUGH `TypedResistanceOf` SINCE 2026-10-12, which is where a
+		// resistance a worn row is holding at nought reads as nought.
+		Total += UCataclysmDamageCalculation::TypedResistanceOf(Defender, DamageType);
 
 		// AND THE DIFFICULTY TIER TAKES ITS SHARE, FOR A PLAYER ONLY. Issue
 		// #1229. Subtracted here rather than clamped, because
@@ -555,6 +553,35 @@ FGameplayAttribute UCataclysmDamageCalculation::ResistanceAttributeFor(
 
 	const FGameplayAttribute* Found = Slots.Find(DamageType);
 	return Found ? *Found : FGameplayAttribute();
+}
+
+float UCataclysmDamageCalculation::TypedResistanceOf(
+	const UAbilitySystemComponent* Defender, FName DamageType)
+{
+	const FGameplayAttribute Typed = ResistanceAttributeFor(DamageType);
+	if (!Defender || !Typed.IsValid() || !Defender->HasAttributeSetForAttribute(Typed))
+	{
+		return 0.0f;
+	}
+
+	const float Held = Defender->GetNumericAttribute(Typed);
+
+	// A RESISTANCE A WORN ROW IS HOLDING AT NOUGHT READS AS NOUGHT WHEN IT IS
+	// ABOVE NOUGHT, AND AS ITSELF WHEN IT IS NOT. Ruled 2026-10-12, for "Every 5
+	// seconds, one of your resistances is reduced to 0 until this triggers
+	// again": a resistance above nought is held at nought, and a negative one is
+	// left as it is.
+	//
+	// THE ATTRIBUTE'S CURRENT VALUE IS WHAT IS HELD DOWN, so a Shred already on
+	// the character is part of the figure compared with nought, and nothing that
+	// raises the attribute while the hold lasts raises what a blow meets.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	if (Cataclysm && Cataclysm->ResistanceHeldAtNought() == DamageType)
+	{
+		return FMath::Min(Held, 0.0f);
+	}
+	return Held;
 }
 
 FGameplayTag UCataclysmDamageCalculation::ElementTagFor(FName DamageType)

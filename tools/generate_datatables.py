@@ -5227,6 +5227,22 @@ APPLY_STATUSES = (
 #: `UCataclysmAbilitySystemComponent::AllDotsStatus` holds the same name.
 ALL_DOTS_STATUS = "All DoTs"
 
+#: One more status, which `apply_status_to_self` ALONE may name: ONE OF THE
+#: WEARER'S PER-TYPE RESISTANCES, DRAWN AND HELD AT NOUGHT until the row fires
+#: again. Ruled 2026-10-12 under the owner's delegation, for "Every 5 seconds,
+#: one of your resistances is reduced to 0 until this triggers again". NOT IN
+#: `APPLY_STATUSES`: that list is read for the other character of an event
+#: too, and an enemy holds no per-type resistance to draw from. Nor may the
+#: seconds or the sized form name it: the hold lasts until the next firing and
+#: has no size. `UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus`
+#: holds the same name.
+RANDOM_RESISTANCE_AT_NOUGHT_STATUS = "Random Resistance At Nought"
+
+#: Every status `apply_status_to_self` alone may name, beside `APPLY_STATUSES`.
+APPLY_STATUSES_TO_SELF_ONLY = (
+    RANDOM_RESISTANCE_AT_NOUGHT_STATUS,
+)
+
 #: The actions that lay a status ON THE WEARER. Ruled 2026-10-06, for five
 #: drawbacks: "Taking a hit has a 15%-25% chance to trigger a random negative
 #: status effect on you" and the four beside it. The first two are the two
@@ -7386,6 +7402,9 @@ def enchantment_effects(book) -> list[dict]:
                      # AND `apply_status` ALONE MAY NAME ALL FIVE DAMAGE OVER
                      # TIME AILMENTS AT ONCE. The owner, 2026-10-08.
                      "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,),
+                     # AND `apply_status_to_self` ALONE MAY NAME THE STATUSES
+                     # THAT ARE ONLY FOR A WEARER. Ruled 2026-10-12.
+                     "apply_status_to_self": APPLY_STATUSES + APPLY_STATUSES_TO_SELF_ONLY,
                      }.get(action, APPLY_STATUSES)
             if ailment not in known:
                 raise DataError(
