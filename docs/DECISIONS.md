@@ -32,7 +32,10 @@ mana. Each stack increases your spell damage by 1% for 5 seconds".
 - **Full hundreds are counted and there is no cap.** 399 maximum mana is three steps, 3%. A character with
   less than 100 maximum mana gets nothing from the second half. The game reads the maximum, so spending mana
   does not lower it. This is the shape of the merged passive Drawn Deep (`Ritualist_basic_d_a2`), which gives 1%
-  increased spell damage for every full 200.
+  increased spell damage for every full 200. **A correction made before this was committed:** the
+  enchantment session's first draft of this entry said the row stops at 1,000 maximum mana. That was
+  wrong. The generator's figure of 1,000 bounds the size of one step a row may state; it is not a bound
+  on the maximum mana counted.
 - **What the mechanism's tests do not show, in the enchantment session's words.** That an aura's upkeep is
   still paid by a holder of the flag is not tested: the test of other losses reads a skill's cost only. That
   test uses a bare actor with an ability system and not a player character. Both are in the entry "A row can
@@ -93,7 +96,14 @@ name misspelt on the list of stats with no attribute. It was never rehearsed.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-12, on development f136733e (the dungeon level's navigation bounds), in one window for six layers stacked in this order: the healing mechanism, its two rows, the healing-use event, its rows, the Suffering Aura immunity, and Mana Weaver's rows. The suite and Python were run at the top of the six, which holds all of them.
+
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled". This was the first compile of all six layers.
+- **The enchantments group on the assets as merged, before any rebuild:** "312 tests performed, 309 succeeded, 3 failed", registered 312, 309 and 3. The three are the tests that wear the six layers' new rows: the Mana Weaver rows test with 7 failed assertions, and the two healing row tests with 1 each, on their set-up assertions that the rows put modifiers on the wearer. All as registered.
+- **The editor rebuilt the effect table's asset three times**, once for each row layer: 585, 587 and 589 rows. Each row layer carries its own asset in a commit of its own, and the tree ids matched.
+- **The whole Unreal suite:** "3561 tests performed, 3561 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3561 tests in the tree at 125ba135; 3561 performed, gap 0". Registered: 3561 and 0.
+- **Python:** "5976 passed, 8 skipped"; JUnit tests 5984, failures 0, errors 0, skipped 8. Registered: 5984 and 0. Lint: "All checks passed!".
+- **Guard proofs:** none is this layer's. The proof of the mechanism (W1) is in the entry "A row can make its wearer immune to the Suffering Aura's mana drain". That the two rows reach a wearer is shown by this layer's test, which passed once the asset held the rows and failed on 7 assertions before, and by no proof.
 
 ---
 
