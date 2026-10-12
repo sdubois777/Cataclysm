@@ -2,6 +2,101 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — Mana Weaver's six-piece bonus is built as two rows: no mana lost to the Suffering Aura, and 1% increased spell damage for every 100 maximum mana
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (two rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, one new test in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts and
+one name on the list of on-or-off stats), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A WEARER GETS, AND WHAT THE SENTENCE SAYS THAT IS NOT BUILT
+
+The sentence: "Mana Weaver (6-Piece Bonus): You gain an aura that makes you and nearby allies immune to all
+mana-draining effects. Additionally, every 5 seconds, you gain a stack of "Mana Surge" for every 100 maximum
+mana. Each stack increases your spell damage by 1% for 5 seconds".
+
+- **The wearer loses no mana to the dungeon rule Suffering Aura. That is the whole of the first half as built.**
+  The sentence says "all mana-draining effects". Suffering Aura is the one thing in the game today that drains
+  mana without the player choosing to spend it. A skill's cost and an aura's upkeep are paid as before.
+- **"Nearby allies" get nothing, and there is no aura.** The flag is the wearer's. Suffering Aura takes mana
+  from the player's character alone, so no ally has mana that it drains. Nothing is drawn around the wearer and
+  nothing reads a distance.
+- **The rule's health loss is untouched.** A wearer on a floor carrying Suffering Aura loses the same health
+  every beat as anybody and can die of it.
+- **The second half is always on. There are no stacks, no five seconds and nothing called Mana Surge.** A stack
+  gained every 5 seconds that lasts 5 seconds, one for every 100 maximum mana, is held all the time at that
+  count, so the row is written as what the wearer always has: 1% increased spell damage for every full 100
+  maximum mana. The first five seconds after the set is put on, in which the sentence gives nothing, are not
+  built.
+- **Full hundreds are counted and there is no cap.** 399 maximum mana is three steps, 3%. A character with
+  less than 100 maximum mana gets nothing from the second half. The game reads the maximum, so spending mana
+  does not lower it. This is the shape of the merged passive Drawn Deep (`Ritualist_basic_d_a2`), which gives 1%
+  increased spell damage for every full 200.
+- **What the mechanism's tests do not show, in the enchantment session's words.** That an aura's upkeep is
+  still paid by a holder of the flag is not tested: the test of other losses reads a skill's cost only. That
+  test uses a bare actor with an ability system and not a player character. Both are in the entry "A row can
+  make its wearer immune to the Suffering Aura's mana drain".
+
+### WHAT THE OWNER SAID
+
+On 2026-10-09 the owner accepted the coordinating session's recommendations on every open question, "your rec
+on all the open questions"; for this sentence the recommendation was to build both halves. The reading of each
+half above is the coordinating session's ruling under that, made on 2026-10-09 and 2026-10-10: the first half
+as immunity to the one rule's drain for the wearer alone, the second as a plain row.
+
+### WHAT WAS BUILT
+
+| Half of the sentence | Row |
+| :-- | :-- |
+| You gain an aura that makes you and nearby allies immune to all mana-draining effects | `suffering_aura_mana_drain_immunity`, flat, 1 to 1. No tags, no condition |
+| every 5 seconds, you gain a stack of "Mana Surge" for every 100 maximum mana. Each stack increases your spell damage by 1% for 5 seconds | `spell_damage`, increased, 1 to 1, Scale `max_mana`, Scale Step 100 |
+
+EnchantmentEffects 587 to 589, over 496 to 497 enchantments. No engine code and no generator code is changed.
+`suffering_aura_mana_drain_immunity` joins `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`: it is an on-or-off stat whose row states 1, and no
+sentence states that 1.
+
+**Judgements of the session that wrote the rows, each open to the coordinating session's correction:** "spell
+damage" is the stat `spell_damage` in the increased bucket, as the merged rows on those words are written;
+"for every 100 maximum mana" counts full hundreds, because that is how the game counts every step of a row
+scaled by maximum mana (`FMath::FloorToFloat(State.MaximumMana / Modifier.ScaleStep)` in
+`CataclysmStatPipeline.cpp`).
+
+### Tests
+
+One automation test, `Cataclysm.Enchantments.ManaWeaversSixPiecesStopTheSufferingAurasManaDrainAndRaiseSpellDamageByOnePerHundredMaximumMana`, written
+by a second session and read line by line by the enchantment session. Three wearers, each in a world of its
+own: one wearing nothing, one wearing five pieces of the set and one wearing six. **Five pieces are the
+control for every figure**: five pieces already hold the set's two-piece bonus (20% increased maximum mana),
+and the sixth adds the two rows. The sixth piece is on a different item base from the other five; the
+second session read that none of the six bases has an implicit on spell damage, attack damage or maximum
+mana. Each wearer is read four times: at the maximum mana its refresh gave it, then with the attribute
+written to 250, 299 and 300.
+
+- The flag: the wearer of nothing and the wearer of five are not immune; the wearer of six is. The reading
+  is `UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow`, the function the dungeon game mode
+  asks.
+- Spell damage: five pieces put no modifier on it and six do. At each of the four readings a spell's
+  increases with six pieces are higher than with five by 0.01 for each full hundred of the maximum mana
+  read from the attribute. From 250 to 299 they do not move; from 299 to 300 they rise by 0.01; with five
+  pieces 299 to 300 changes nothing.
+- Attack damage: at each reading a melee attack's increases with six pieces are what they are with five.
+
+**Not tested here:** a dungeon game mode stepping Suffering Aura on a wearer of the real row (the
+mechanism's tests step it with the flag written by hand, and this test reads the function the game mode
+asks); a player character, since the wearer is the plain test wearer; a maximum mana changed by gear and a
+refresh, since the attribute is written directly; a wearer with less than 100 maximum mana.
+
+**No guard proof is this layer's.** One was proposed by the second session and not registered: the stat's
+name misspelt on the list of stats with no attribute. It was never rehearsed.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-10 — A row can make its wearer immune to the Suffering Aura's mana drain: a flag stat and one condition, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (the stat's name and the
