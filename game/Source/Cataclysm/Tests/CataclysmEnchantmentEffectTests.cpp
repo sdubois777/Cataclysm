@@ -21259,4 +21259,184 @@ bool FCataclysmHealingSkillUseRowTest::RunTest(const FString&)
 		StrikeIncreases() - Before, 0.20f, 0.0001f);
 	return true;
 }
+
+// MANA WEAVER'S SIX-PIECE BONUS, THROUGH ITS TWO REAL ROWS. Issue #1833. The mechanism of the first row is
+// `UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow`, and its own tests in
+// `CataclysmSufferingAuraImmunityTests.cpp` write the flag by hand; none of them wears a row. The second row uses
+// the scale the passive Drawn Deep uses, with a step of 100 where Drawn Deep's is 200.
+namespace CataclysmManaWeaverRowsTest
+{
+	/** How many times one wearer is read, each at a different maximum mana. */
+	constexpr int32 Readings = 4;
+
+	/**
+	 * The maximum mana written before each reading. Below nought means "leave it as the refresh wrote it".
+	 * 250 and 299 are both two full hundreds; 300 is three, so the last two stand either side of a boundary.
+	 */
+	const float MaximumManaWritten[Readings] = {-1.0f, 250.0f, 299.0f, 300.0f};
+
+	/** What one wearer answered. Each array holds one figure for each reading above. */
+	struct FAnswers
+	{
+		bool bImmune = false;
+		bool bCarriesAModifierOnSpellDamage = false;
+		float MaximumMana[Readings] = {0.0f, 0.0f, 0.0f, 0.0f};
+		float SpellIncreases[Readings] = {0.0f, 0.0f, 0.0f, 0.0f};
+		float AttackIncreases[Readings] = {0.0f, 0.0f, 0.0f, 0.0f};
+	};
+
+	/** The full hundreds in a maximum mana, with the floor `UCataclysmStatPipeline` uses for the scale. */
+	float FullHundreds(float MaximumMana)
+	{
+		return FMath::Max(0.0f, FMath::FloorToFloat(MaximumMana / 100.0f));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaWeaverSixRowsTest,
+	"Cataclysm.Enchantments.ManaWeaversSixPiecesStopTheSufferingAurasManaDrainAndRaiseSpellDamageByOnePerHundredMaximumMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Mana Weaver (6-Piece Bonus): You gain an aura that makes you and nearby allies immune to all mana-draining
+ * effects. Additionally, every 5 seconds, you gain a stack of "Mana Surge" for every 100 maximum mana. Each stack
+ * increases your spell damage by 1% for 5 seconds". Two rows: `suffering_aura_mana_drain_immunity`, flat, 1; and
+ * `spell_damage`, increased, 1, Scale `max_mana`, Scale Step 100.
+ *
+ * THREE WEARERS, EACH IN A WORLD OF ITS OWN: one wearing nothing, one wearing five pieces of the set and one
+ * wearing six. FIVE PIECES ARE THE CONTROL FOR EVERY FIGURE. Five pieces already hold the set's two-piece bonus,
+ * 20% increased maximum mana, and the set's drawback, 50% reduced mana regeneration; six pieces add the two rows
+ * and nothing else. So six against five is the two rows alone.
+ *
+ * EVERY FIGURE IS A DIFFERENCE OF TWO READINGS. A refreshed wearer is a level 20 Ravager with class lines of its
+ * own. The maximum mana is read from the attribute at every reading and the expected steps are worked out from
+ * what was read.
+ *
+ * THE MAXIMUM MANA IS CHANGED AS THE NEIGHBOURING TESTS CHANGE IT, by writing the attribute's base after the
+ * refresh, with no second refresh: the scale reads the attribute when the stat is asked.
+ *
+ * NO DUNGEON GAME MODE IS STEPPED. The function read here is the one the game mode asks.
+ */
+bool FCataclysmManaWeaverSixRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using namespace CataclysmHealthThresholdRowTest;
+	using namespace CataclysmManaWeaverRowsTest;
+
+	// THE NAME WORN IS LOOKED UP IN THE TABLE FIRST, so a name that is not a row fails here and says so. It was
+	// printed by `row_name("Positive", sentence[:48])` of `tools/generate_datatables.py`, not typed.
+	const TCHAR* const SixPieceBonus = TEXT("Positive_Mana_Weaver_6_Piece_Bonus_You_gain_an_aura_th");
+	const UDataTable* Positive = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	if (!TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+		|| !TestTrue(TEXT("set-up: the name this test wears is a row of EnchantmentsPositive.csv"),
+					 Positive->GetRowMap().Contains(FName(SixPieceBonus))))
+	{
+		return false;
+	}
+
+	const FGameplayTagContainer Spell = SkillTagged(TEXT("Type.Spell"));
+	const FGameplayTagContainer Melee = SkillTagged(TEXT("Type.Melee"));
+	if (!TestTrue(TEXT("set-up: Type.Spell and Type.Melee are registered tags"), Spell.Num() == 1 && Melee.Num() == 1))
+	{
+		return false;
+	}
+	const FName SpellDamage(TEXT("spell_damage"));
+	const FName AttackDamage(TEXT("attack_damage"));
+	const FGameplayAttribute MaximumMana = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+
+	const auto Ask = [&](int32 Pieces, FAnswers& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %d pieces: a world"), Pieces), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FWearer Wearer(World);
+		WearSet(Wearer, SixPieceBonus, Pieces);
+
+		Out.bImmune = UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(Wearer.Actor);
+		Out.bCarriesAModifierOnSpellDamage = CarriesAModifierOn(Wearer.AbilitySystem, TEXT("spell_damage"));
+		for (int32 Index = 0; Index < Readings; ++Index)
+		{
+			if (MaximumManaWritten[Index] >= 0.0f)
+			{
+				Wearer.AbilitySystem->SetNumericAttributeBase(MaximumMana, MaximumManaWritten[Index]);
+			}
+			Out.MaximumMana[Index] = Wearer.AbilitySystem->GetNumericAttribute(MaximumMana);
+			Out.SpellIncreases[Index] = Wearer.AbilitySystem->IncreasesForStat(SpellDamage, Spell);
+			Out.AttackIncreases[Index] = Wearer.AbilitySystem->IncreasesForStat(AttackDamage, Melee);
+		}
+		return true;
+	};
+
+	FAnswers None;
+	FAnswers Five;
+	FAnswers Six;
+	if (!Ask(0, None) || !Ask(5, Five) || !Ask(6, Six))
+	{
+		return false;
+	}
+
+	// SET-UP: THE MAXIMUM MANA EVERY EXPECTED FIGURE IS WORKED OUT FROM.
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the refreshed wearer of six pieces has at least 100 maximum mana, so "
+										"the row is worth something: %.2f"), Six.MaximumMana[0]),
+				  Six.MaximumMana[0] >= 100.0f)
+		|| !TestTrue(*FString::Printf(TEXT("set-up: the three maximum manas written hold two, two and three full "
+										   "hundreds: %.2f, %.2f, %.2f"),
+									  Six.MaximumMana[1], Six.MaximumMana[2], Six.MaximumMana[3]),
+					 FullHundreds(Six.MaximumMana[1]) == 2.0f && FullHundreds(Six.MaximumMana[2]) == 2.0f
+						 && FullHundreds(Six.MaximumMana[3]) == 3.0f))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Readings; ++Index)
+	{
+		if (!TestEqual(*FString::Printf(TEXT("set-up, reading %d: the wearer of five pieces has the maximum mana "
+											 "the wearer of six has"), Index),
+					   Five.MaximumMana[Index], Six.MaximumMana[Index], 0.01f))
+		{
+			return false;
+		}
+	}
+
+	// THE FIRST ROW: THE FLAG.
+	TestFalse(TEXT("control: a wearer of nothing is not immune to the Suffering Aura's mana drain"), None.bImmune);
+	TestFalse(TEXT("control: a wearer of five pieces is not immune either"), Five.bImmune);
+	TestTrue(*(FString(TEXT("a wearer of six pieces is immune to the Suffering Aura's mana drain.")) +
+			   CataclysmRepeatRowsTest::OlderAsset),
+		Six.bImmune);
+
+	// THE SECOND ROW: SPELL DAMAGE, 1% FOR EVERY FULL 100 MAXIMUM MANA.
+	TestFalse(TEXT("control: five pieces put no modifier on spell damage"), Five.bCarriesAModifierOnSpellDamage);
+	TestTrue(*(FString(TEXT("six pieces put a modifier on spell damage.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Six.bCarriesAModifierOnSpellDamage);
+	TestEqual(TEXT("control: as refreshed, a spell's increases with five pieces are what they are with none"),
+		Five.SpellIncreases[0], None.SpellIncreases[0], 0.0001f);
+	for (int32 Index = 0; Index < Readings; ++Index)
+	{
+		const float Hundreds = FullHundreds(Six.MaximumMana[Index]);
+		TestEqual(*FString::Printf(TEXT("reading %d, maximum mana %.2f: a spell's increases with six pieces are "
+										"higher than with five by 0.01 for each of the %.0f full hundreds"),
+								   Index, Six.MaximumMana[Index], Hundreds),
+			Six.SpellIncreases[Index] - Five.SpellIncreases[Index], 0.01f * Hundreds, 0.0001f);
+	}
+	TestEqual(TEXT("control: with five pieces, going from 299 to 300 maximum mana leaves a spell's increases as "
+				   "they were"),
+		Five.SpellIncreases[3], Five.SpellIncreases[2], 0.0001f);
+	TestEqual(TEXT("with six pieces, going from 250 to 299 maximum mana leaves a spell's increases as they were: "
+				   "no full hundred is crossed"),
+		Six.SpellIncreases[2], Six.SpellIncreases[1], 0.0001f);
+	TestEqual(TEXT("with six pieces, going from 299 to 300 maximum mana raises a spell's increases by 0.01: one "
+				   "full hundred is crossed"),
+		Six.SpellIncreases[3] - Six.SpellIncreases[2], 0.01f, 0.0001f);
+
+	// AND NOT ATTACK DAMAGE.
+	for (int32 Index = 0; Index < Readings; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("reading %d: a melee attack's increases with six pieces are what they are "
+										"with five"), Index),
+			Six.AttackIncreases[Index], Five.AttackIncreases[Index], 0.0001f);
+	}
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
