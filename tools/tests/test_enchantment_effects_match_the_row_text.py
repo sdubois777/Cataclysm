@@ -255,7 +255,14 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # while channeling interrupts the channel immediately". The game
               # asks whether it is above nought for each running skill when a
               # hit lands.
-              "hit_taken_cancels_skills"}
+              "hit_taken_cancels_skills",
+              # ONE MORE JOINED with its row, issue #1833: the first half of
+              # Mana Weaver's six-piece bonus, "You gain an aura that makes you
+              # and nearby allies immune to all mana-draining effects". The
+              # dungeon game mode asks whether it is above nought before the
+              # rule Suffering Aura takes the player's mana. The holder only,
+              # and that one rule's drain only.
+              "suffering_aura_mana_drain_immunity"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -820,8 +827,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-10, from 583 over 493: two rows on two enchantments.
 #: AND 587 OVER 496 SINCE THE ROWS ON THE USE OF A HEALING SKILL,
 #: issue #1833, 2026-10-10, from 585 over 495: two rows on one enchantment.
-AUTHORED_ROWS = 587
-AUTHORED_ENCHANTMENTS = 496
+#: AND 589 OVER 497 SINCE MANA WEAVER'S SIX-PIECE ROWS,
+#: issue #1833, 2026-10-12, from 587 over 496: two rows on one enchantment.
+AUTHORED_ROWS = 589
+AUTHORED_ENCHANTMENTS = 497
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
