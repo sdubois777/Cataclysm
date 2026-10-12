@@ -2603,12 +2603,19 @@ class TestAStatusLaidOnTheWearer:
     RESIST_WORDS = ("Every 5 seconds, one of your resistances is reduced to 0 "
                     "until this triggers again")
     RESIST = gen.row_name("Negative", RESIST_WORDS[:48])
+    # THE TWO-PIECE BONUS OF THE SAME SET, verbatim. Ruled 2026-10-12. TYPED
+    # GENERIC HERE, as the set sentences of the classes below are: a set is
+    # written whole or not at all, and this sheet holds one sentence of it.
+    BUFF_WORDS = ("Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random "
+                  "buff or debuff is applied to you")
+    BUFF = gen.row_name("Positive", BUFF_WORDS[:48])
     ENCHANTMENTS = [
         ["Positives", "Type", "Weight", "Column 4", None,
          "Negatives", "Type", "Weight", "Tags"],
         ["Your block chance is increased by 10%-20%", "Generic", 4,
          "Stat.Defense.Block", None, HIT_WORDS, "Generic", 3, "Keyword.Debuff"],
-        [None, None, None, None, None, STUN_WORDS, "Generic", 4, "Keyword.Charge"],
+        [BUFF_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         STUN_WORDS, "Generic", 4, "Keyword.Charge"],
         [None, None, None, None, None, DOT_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
         [None, None, None, None, None, TIMED_WORDS, "Generic", 4, "Keyword.Debuff"],
         [None, None, None, None, None, MANY_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
@@ -2722,6 +2729,49 @@ class TestAStatusLaidOnTheWearer:
             gen.enchantment_effects(self.resist(tmp_path, {
                 "Action": "apply_status", "Action Event": "hit_dealt",
                 "Every Seconds": None}))
+
+    def buff(self, tmp_path, changes):
+        """The row the enchantment session will write for the two-piece bonus
+        of the set Shard of Anarchy: a random buff or debuff, every 30 seconds.
+        Ruled 2026-10-12."""
+        values = {"Enchantment": self.BUFF, "Effect": self.BUFF_WORDS,
+                  "Action": "apply_status_to_self", "Action Event": "every_seconds",
+                  "Every Seconds": 30,
+                  "Ailment": gen.RANDOM_BUFF_OR_DEBUFF_STATUS,
+                  "Value Low": 100, "Value High": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_timed_row_that_lays_a_random_buff_or_debuff_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.buff(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "apply_status_to_self", "every_seconds", 30.0, 100.0, 100.0,
+            "Random Buff or Debuff")
+
+    def test_the_buff_or_debuff_status_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Buff and Debuff'"):
+            gen.enchantment_effects(self.buff(
+                tmp_path, {"Ailment": "Random Buff and Debuff"}))
+
+    @pytest.mark.parametrize("action, event, low, high", [
+        ("apply_status", "hit_dealt", 100, 100),
+        ("apply_status_seconds", "hit_dealt", 5, 5),
+        ("apply_status_to_self_seconds", "every_seconds", 5, 5),
+    ])
+    def test_the_buff_or_debuff_status_is_refused_on_every_other_status_action(
+            self, tmp_path, action, event, low, high):
+        """A buff is lines on a character's stat line, so the status is for a
+        wearer; and it has no seconds of the row's, so the seconds forms cannot
+        name it."""
+        assert gen.RANDOM_BUFF_OR_DEBUFF_STATUS not in gen.APPLY_STATUSES
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Buff or Debuff'"):
+            gen.enchantment_effects(self.buff(tmp_path, {
+                "Action": action, "Action Event": event,
+                "Every Seconds": 30 if event == "every_seconds" else None,
+                "Value Low": low, "Value High": high}))
 
     def test_an_event_that_is_not_one_of_the_wearers_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="lays a status on its wearer on the event"):
