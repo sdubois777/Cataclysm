@@ -122,6 +122,9 @@ CONSTANTS = {
     # the refusal it makes on their rows, so they are compared here as well.
     "DamageTypeImmunityOnHitChanceStat": "damage_type_immunity_on_hit_chance",
     "DamageTypeImmunityOnHitSecondsStat": "damage_type_immunity_on_hit_seconds",
+    # AND THE ONE THAT GAINS KEPT STACKS ON A CLOCK AND SPENDS THEM ON A USE TO
+    # CAST ITS SKILL AGAIN, ruled 2026-10-12.
+    "KeptStacksRepeatSkillAction": "kept_stacks_repeat_skill",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -270,6 +273,17 @@ def test_the_generator_spells_the_statuses_for_a_wearer_only_as_the_engine_does(
 def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() -> None:
     """Mechanism B2."""
     assert gen.REPEAT_SKILL_ACTION == engine_names()["RepeatSkillAction"]
+
+
+def test_the_generator_accepts_exactly_the_kept_stacks_repeat_skill_name_the_engine_has() -> None:
+    """Ruled 2026-10-12. One name on each side, and the item code compares a
+    row's Action with the engine's constant and not with a spelling of its
+    own."""
+    assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION == engine_names()["KeptStacksRepeatSkillAction"]
+    item = (ROOT / "game" / "Source" / "Cataclysm" / "Items"
+            / "CataclysmItem.cpp").read_text(encoding="utf-8")
+    assert "UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction" in item
+    assert '"kept_stacks_repeat_skill"' not in item
 
 
 def test_the_generator_knows_exactly_the_use_outcome_names_the_engine_has() -> None:
