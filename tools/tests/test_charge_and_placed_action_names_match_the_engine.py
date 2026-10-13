@@ -125,6 +125,9 @@ CONSTANTS = {
     # AND THE ONE THAT GAINS KEPT STACKS ON A CLOCK AND SPENDS THEM ON A USE TO
     # CAST ITS SKILL AGAIN, ruled 2026-10-12.
     "KeptStacksRepeatSkillAction": "kept_stacks_repeat_skill",
+    # AND THE ONE THAT EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS
+    # HEALTH, ruled 2026-10-12.
+    "ExecuteTargetAction": "execute_target",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -310,6 +313,20 @@ def test_the_generator_accepts_exactly_the_overkill_explosion_name_the_engine_ha
 def test_the_generator_accepts_exactly_the_strike_target_name_the_engine_has() -> None:
     """Ruled 2026-10-07."""
     assert gen.STRIKE_TARGET_ACTION == engine_names()["StrikeTargetAction"]
+
+
+def test_the_generator_accepts_exactly_the_execute_target_name_the_engine_has() -> None:
+    """Ruled 2026-10-12. And the condition the generator requires on the row is
+    one the engine's condition table names, because the engine reads the row's
+    share of health from that condition's value and from no other."""
+    assert gen.EXECUTE_TARGET_ACTION == engine_names()["ExecuteTargetAction"]
+    assert gen.EXECUTE_TARGET_ACTION not in gen.POOL_ACTIONS
+    pipeline = (SOURCE.parent / "CataclysmStatPipeline.cpp").read_text(encoding="utf-8")
+    assert re.search(
+        rf'TEXT\("{gen.EXECUTE_TARGET_CONDITION}"\),\s*'
+        r"ECataclysmStatCondition::TargetHealthBelowPercent", pipeline)
+    assert ("Action.Condition == ECataclysmStatCondition::TargetHealthBelowPercent"
+            in SOURCE.read_text(encoding="utf-8"))
 
 
 def test_the_generator_accepts_exactly_the_temporary_absorb_name_the_engine_has() -> None:

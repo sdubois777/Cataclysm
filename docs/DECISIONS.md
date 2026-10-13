@@ -2,6 +2,283 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can execute the enemy a hit leaves below a share of its health, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (one field of `FCataclysmPoolAction`),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one action name, one console
+variable, one branch of the row loop, one exemption in `PoolActionAllowed`, a request kept on the character
+struck, four functions and three one-line readers and writers of the request), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the damage
+branch of `PostGameplayEffectExecute` takes the request and acts on it),
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the row's flag),
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (six tests), `tools/generate_datatables.py` (one
+action name and its checks), `tools/tests/test_generate_datatables.py` (27 tests),
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one name, one test). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence: "Strike skills have a 10%-20% chance to execute enemies below 15% HP".
+
+- **NOT COMPILED AND NOT RUN.** Nothing here was compiled and no Unreal test was run by the session that wrote
+  it. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** No enemy is executed until the enchantment session writes
+  the row.
+- **The enemy's health is NOT yet lowered when `hit_dealt` is judged.** Read:
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls `UCataclysmCombatEvents::NoteBlow` and then
+  writes the hit's damage to health, and the comment above that call says the blow is announced before health is
+  written. The player character raises `hit_dealt` from inside `NoteBlow`. So `PoolActionAllowed`, which judges a row's condition when the
+  event is raised, reads the health the enemy held BEFORE the hit.
+- **So "below 15%" is judged AFTER the hit, by a new step, and not by `PoolActionAllowed`.** A judgement of the
+  writing session, on the ruling's words "judged after the hit is accepted" and on the genre source below. The
+  row loop rolls the chance and leaves a request on the enemy struck. The enemy's attribute set takes the request
+  when `NoteBlow` returns and acts on it once the hit's damage is written. A hit that takes an enemy from 20% to
+  10% executes it. The option not taken: let `PoolActionAllowed` judge the row as it judges every other row and
+  kill from inside the row loop. That needs no change to the attribute set, and it has two costs: a hit from
+  above 15% to below it would never execute, and a kill made inside the row loop reaches none of the wearer's
+  `kill` rows, because the loop acts on one event at a time.
+- **What "credited as the wearer's kill" is in code.** The kill is
+  `UCataclysmSkillEffects::ReduceHealthDirectly(wearer, enemy, the health the enemy has left)`. That writes the
+  Health attribute, the attribute set's health branch sees health at nought and calls the creature's
+  `HandleDeath`, and `UCataclysmSkillEffects::MarkDead` calls `UCataclysmCombatEvents::NoteDeath`. `NoteDeath`
+  names as the killer the attacker of the last blow on the enemy's record, and that record was written by the
+  hit that asked, a moment before. So the death notice names the wearer as the killer and the striking skill as
+  the killing skill, with that hit's melee, ranged and spell marks. The wearer's `OnSomethingDied` hears it as it
+  hears a death by a blow: the kill is counted on the player state and on the worn weapons, the event `kill` is
+  raised with the striking skill's tags, the dead enemy and its maximum health, Follow Through's test of a melee
+  kill reads the hit's melee mark, and the creature's own death runs as for any death (drops, the ailment
+  spread, `afflicted_death`).
+- **Two things on that death notice differ from a death by the hit itself: its killing tags are empty and its
+  overkill is nought.** The hit on record was not lethal, and `NoteBlow` copies killing tags and overkill for a
+  lethal blow only. So a wearer of "Enemies killed by you explode for the overkill amount" gets no explosion from
+  an executed enemy, and a row that reads the killing blow's tags, as the necrosis row does, reads none.
+- **NO OVERKILL, for that reason and one more:** the loss is exactly the health the enemy held, so nothing is
+  taken past nought.
+- **When the last blow on the enemy's record is not the wearer's, nothing is done.** A judgement of the writing
+  session. The record is what credits the kill, so an execute that found another character's blow there would
+  be credited to that character. This can happen only if another blow lands on the same enemy between the
+  wearer's hit being announced and its damage being written. The option not taken: write a record of the
+  wearer's own before the kill.
+- **A hit that takes nothing from the enemy's health executes nobody.** A judgement of the writing session. A
+  hit wholly absorbed by an energy shield, a mana shield or a temporary absorb leaves no record on the enemy and
+  writes nothing to health, and the step that acts on the request is where health is written. So an enemy
+  already below 15% that is struck for nothing is not executed by that hit. The option not taken: act on every
+  landed hit, which needs the record written by hand.
+- **The kill is not a hit.** It is written to Health and not to the Damage attribute, so nothing resolves it and
+  `NoteBlow` is not called: no `hit_dealt`, `first_hit_dealt` or `critical_strike` of its own, no evasion,
+  block, armour or resistance, no critical strike, no leech, no retaliation and no ailment.
+- **When the hit itself kills, nothing is left to execute.** The request is acted on after the death check that
+  follows the write, and it refuses a dead character. One death is announced, the hit's.
+- **Whether a minion's hit can execute.** `hit_dealt` is raised by the player character for a blow whose
+  attacker is the player. A minion's blow names the minion as its attacker unless its summoner holds the
+  Ritualist keystone Conduit, so without Conduit a minion's hit raises nothing for the summoner and executes
+  nobody. With Conduit the blow is the summoner's and `hit_dealt` is raised, but a minion's blow carries no
+  skill and so no tags, and a row scoped to `Type.Strike` refuses an event with no tags. So the ruled row never
+  acts on a minion's hit. An unscoped execute row worn by a summoner with Conduit would. Read and not tested. A
+  deployable's blow raises `deployable_hit`, which this action is not accepted on.
+- **A damage over time tick and an overkill explosion execute nobody**, because the player character raises
+  `hit_dealt` for neither. A hit a row deals from inside the row loop, as `strike_target` deals, executes nobody
+  either: its `hit_dealt` is raised while the wearer is acting on an event and is dropped.
+- **The chance is rolled before the share of health is known.** The roll is made in the row loop, at the hit.
+  A roll that comes up for an enemy the hit then leaves above the share does nothing and starts no cooldown.
+- **THE ROW AS RULED TAKES A TRIGGER COOLDOWN OF 0.25 SECONDS, AND THAT NEEDS A RULING.** The ruling of
+  2026-09-30 gives every action row that makes something happen on a hit-fired event a default wait of 0.25
+  seconds, and `hit_dealt` is such an event. The writing session put this action on that list, as
+  `strike_target` is. The wait starts when an enemy is executed and not when the roll alone comes up. Its effect
+  in play: one swing that leaves three enemies below 15% executes at most one of them, and the next execute is
+  possible a quarter of a second later. A row that states Trigger Cooldown 0 has no wait, and then each enemy a
+  swing leaves below the share is rolled for separately. The option not taken: leave the action off the list, as
+  `repeat_skill` and `explode_victim_for_overkill` are, so that no wait can be stated at all.
+- **An enemy in a friendly Unholy Sigil is not executed.** `PreAttributeChange` holds it at one health against
+  every loss of health, a direct loss included. No cooldown starts. Read and not tested.
+- **A Herald can be executed.** `ACataclysmEnemyCharacter::IsBoss` is true for the two rungs from Boss up, and a
+  Herald is the rung below.
+- **The exclusion of a boss and of a creature no damage reaches is asked twice:** in the row loop, so no roll is
+  made and no request left, and again when the request is acted on.
+- **A character that is not an enemy character is not refused by the boss rule.** The row is worn by a player
+  and a player's hits land on enemies, so no such case exists in play today. Read and not tested.
+- **Nothing existing fitted the step after the write, so one thing is new: a request kept on the character
+  struck.** Two existing ways were read first.
+  - *The share recorded on the wearer and taken by whoever raised the event*, as
+    `explode_victim_for_overkill` does at a kill. Whoever raises `hit_dealt` is the player character, inside
+    `NoteBlow`, which returns before health is written. So the taker would still act before the write.
+  - *`UCataclysmCombatEvents::AfterThisDeathIsHeard`*, which runs work when an announcement has returned. It is
+    for deaths. A hit has no such list, and a list for hits would run when `NoteBlow` returns, which is again
+    before the write.
+  - *What was built instead.* `UCataclysmAbilitySystemComponent::AskToBeExecuted` keeps the request on the
+    struck character's ability system. The damage branch takes it when `NoteBlow` returns and calls
+    `ExecuteIfLeftBelow` after the write. What was asked before the hit is set aside and put back, so a hit
+    dealt to the same character from inside another hit's announcement acts on its own request only.
+
+**What was not read:** how a creature's `HandleDeath` removes it from the world, beyond the comments that say a
+dead creature leaves on a timer; `UCataclysmEnemyModifiers::IsProtectedBySigil`; what a `Type.Spell` tag does to
+the price of a blow; whether any dungeon floor rule that listens for deaths reads a death notice's killing tags.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | One action, `execute_target`, on the event `hit_dealt`. Its value is the chance. The row states Required Tags `Type.Strike`, Condition `target_health_below` 15, Value Low 10, Value High 20. | `UCataclysmAbilitySystemComponent::ExecuteTargetAction`; `FCataclysmPoolAction::bExecuteTarget`, set in `CataclysmItem.cpp`; the branch `if (Action.bExecuteTarget)` of the row loop in `ActOnEvent`. |
+| R2 | The kill is a direct loss of the health left, with no damage formula, credited as the wearer's kill so that rows on a kill fire, with no overkill. | `ExecuteIfLeftBelow`: `UCataclysmSkillEffects::ReduceHealthDirectly(By, Struck, Health)`, called from the damage branch of `PostGameplayEffectExecute` after the wearer's row loop has returned. |
+| R3 | Never a Boss or a Cataclysm Boss, by the ruling on file. The exclusion is inside the action. | `CanBeExecuted`, asked in the row loop and in `ExecuteIfLeftBelow`. |
+| R4 | Nothing is done to a creature that takes no damage. | `CanBeExecuted`: `ACataclysmEnemyCharacter::TakesNoDamage`. |
+| R5 | Read whether the target's health is already lowered when the event is judged, and say which. | It is not. Said first above. The share is judged in `ExecuteIfLeftBelow`, after the write, and `PoolActionAllowed` does not judge an execute row's `target_health_below`. |
+| R6 | The four other executes can use it: the threshold is the row's condition value and the chance the row's value. | `Action.ConditionValue` and `Action.Percent`. Nothing in the action names 15, 10 or 20, or a tag. |
+| R7 | The chance roll is pinned by a console variable for tests, and a stated 100 never fails its roll. | `Cataclysm.ExecuteRoll`, 0 to 100, negative rolls for real. `Action.Percent >= 100.0f || Roll < Action.Percent`, as the other chance rolls guard it for issue [#2201](https://github.com/sdubois777/Cataclysm/issues/2201). |
+
+**The ruling on file that R3 follows** is the line "An execute (P177) | Never kills a Boss or a Cataclysm Boss" in
+the table "Numbers the rows leave out" of the entry headed "## 2026-09-11 — The owner's answers on enchantment
+ranges, stagger, stacks and damage taken by source, and the judgements delegated to the enchantment session".
+
+### The genre source
+
+Fetched by the enchantment session on 2026-10-12 and not fetched again by the writing session.
+
+- REACHED: `poedb.tw/us/Culling_Strike_Support` (Path of Exile), the first 100,000 characters of the page read:
+  "Kill Enemies that have 10% Life or lower when Hit by Supported Skills"; "If enemies are left below 10% of
+  maximum life after being hit by these skills, they will be killed".
+- NOT REACHED: `poedb.tw/us/Culling_Strike` (HTTP 404).
+
+What it settles: a kill at a share of maximum life, judged after the hit. What is this game's own and is a
+judgement: a chance and not a certainty, the 15%, and no kill of a boss.
+
+### WHAT WAS BUILT
+
+- **The action's name.** `UCataclysmAbilitySystemComponent::ExecuteTargetAction`, "execute_target".
+  `tools/generate_datatables.py` holds the same name in `EXECUTE_TARGET_ACTION`.
+- **The row loop.** For a landed `hit_dealt` that names a character other than the wearer and took something
+  from its health, for a row whose Condition is `target_health_below` with a value above nought, for a character
+  `CanBeExecuted` accepts, once per row per event and only while the row's trigger cooldown is not running: the
+  chance is rolled, and a row whose roll comes up calls `AskToBeExecuted` on the struck character with the
+  wearer, the row's Condition Value, and the row's trigger key and cooldown.
+- **`PoolActionAllowed`** does not judge `target_health_below` on a row whose `bExecuteTarget` is set. The
+  row's Required Tags are judged there as before.
+- **The request.** `FExecuteAsked`: who asked, the share, and the asking row's trigger key and cooldown.
+  `AskToBeExecuted` keeps the largest share of those asked for one hit, so two rows worn together act as the one
+  with the larger share whose roll came up. `TakeExecuteAsked` reads it once and clears it;
+  `PutBackExecuteAsked` puts back what was set aside; `ExecuteAskedNow` reads it for tests.
+- **The step after the write.** In the damage branch of `PostGameplayEffectExecute`: what was asked before the
+  hit is set aside, `NoteBlow` is called, what it asked is taken, what was set aside is put back, and after the
+  hit's damage is written and the death check has run, `ExecuteIfLeftBelow` is called with what was taken.
+- **`ExecuteIfLeftBelow`** refuses a request nobody made, a character `CanBeExecuted` refuses, and a record
+  whose last blow is not the asker's. It judges the health held now with
+  `UCataclysmStatPipeline::ConditionHolds` for `target_health_below`, on a state built as `WithTargetState`
+  builds it, so "below" is strict: an enemy at exactly the share is not executed. It then takes the health held
+  with `ReduceHealthDirectly`, and when the character is dead it starts the asking row's trigger cooldown on the
+  asker with `NoteExecuteMade`.
+- **The generator** accepts `execute_target` on `hit_dealt` only; requires the Condition `target_health_below`
+  and a Condition Value above 0 and up to 100; requires a chance above 0 and up to 100; refuses Fraction Of,
+  Value Kind and Scale; and lists the action among those that take a trigger cooldown. The existing rules
+  refuse a Condition 2 and a Condition Value High on any action row.
+- **The row the enchantment session is to write** is one line: Enchantment
+  `Positive_Strike_skills_have_a_10_20_chance_to_execute_e`, Action `execute_target`, Action Event `hit_dealt`,
+  Required Tags `Type.Strike`, Condition `target_health_below`, Condition Value 15, Value Low 10, Value High 20.
+  With Trigger Cooldown left empty the generator writes 0.25; with 0 it writes none. Which of the two is for the
+  coordinating session to rule.
+
+### What each of the four other executes would still need
+
+None is built. Each sentence was read in the data tables.
+
+| Design | Its sentence | What it still needs |
+| :-- | :-- | :-- |
+| Executioner's Arc (`WeaponSkills.csv`, a War greatsword's heavy skill) | "Enemies below 5% HP are instantly killed." | The skill itself: its row has no Shape. A way for a skill's own hit to ask, with no worn row: one call of `AskToBeExecuted` with a share of 5 from the skill's hit, or a column of the skill table that makes one. A chance of 100. A ruling on whether "instantly killed" spares a boss as an execute does. |
+| Killing Blow (`PassiveNodes.csv`, Berserker) | "At 10 points: when you attack at maximum Fervour, all enemies below 25% HP are instantly killed." | A passive node cannot carry an action: `PassiveEffects.csv` has no Action column. A second condition, maximum Fervour, on an action that carries one. A ruling on "all enemies": the enemies the attack hits, or every enemy below 25%. A gate on ten points in the node. |
+| The buff Death (`StatusEffects.csv`, `Buff_Death`) | "Every 10 seconds, when a skill is used, it has a 25% chance to instantly kill an enemy below 50% health." | No code reads the row. A buff that grants its holder an action. A ruling on which enemy: this action acts on the enemy a hit struck, and the sentence names a skill used. A trigger cooldown of 10 seconds could state "Every 10 seconds" if the wait is to start at an execute. |
+| Reaper's Embrace's ten-piece (`EnchantmentsPositive.csv`) | "For each stack of Soul Strike you gain 5% cull on hit." | Soul Strike's stacks, which do not exist. A chance scaled by a count of stacks: the generator refuses a Scale on an action row. The share of health a cull acts below, which the sentence does not state. |
+
+### Tests
+
+Six new Unreal tests in `CataclysmSkillTemplateTests.cpp`, after the tests of `strike_target` and of
+`explode_victim_for_overkill` on a real player. In each a possessed player character at the origin strikes
+creatures of 10,000 health standing at least 4 metres apart, the roll is pinned by `Cataclysm.ExecuteRoll`, no
+blow is a critical strike, nothing waits, and what a blow takes is measured first on a creature 30 metres away.
+A creature's share of health is worked out from the maximum its ability system reports.
+
+- `Cataclysm.Execute.AStrikeThatLeavesAnEnemyBelowTheShareExecutesItAndTheKillIsTheWearers`. The control is
+  the same blow with no execute row worn: the creature is left below 15%, alive, and nobody has died. With the
+  ruled row worn at chance 20 and the roll at 0: a creature the blow leaves below 15% dies; one death is
+  announced; the death notice names the player as the killer and the striking skill as the killing skill, its
+  overkill is nought and its killing tags are empty; the player's `kill` row acts once; the player's `hit_dealt`
+  row acts once and one blow is announced. A creature the blow leaves above 15% lives, having lost what the blow
+  takes and no more. A creature the blow itself kills dies once, and its notice carries an overkill above nought.
+- `...AFailedRollLeavesItAliveAnotherSkillDoesNothingAndAStatedHundredNeverFails`. Every creature is left below
+  the share. Chance 20 and roll 0 executes (the control); roll 20 and roll 99 do not; a blow of a skill tagged
+  `Type.Spell` and a blow of no skill do not, at roll 0; chance 99 at roll 100 does not; chance 100 at roll 100
+  executes.
+- `...ABossACataclysmBossAndACreatureNoDamageReachesAreNotExecuted`. Every creature starts at 5% of its own
+  maximum. An ordinary creature and a Herald are executed (the controls). A Boss and a Cataclysm Boss each lose
+  something to the blow and live. A creature made unhurtable and a shrouded one live. `CanBeExecuted` answers for
+  each. Then the player's request is acted on by hand on the Boss, the Cataclysm Boss, the unhurtable creature
+  and the shrouded one, each holding the player's blow on its record, and kills none.
+- `...TwoRowsWithDifferentSharesEachActByTheirOwn`. A row of 10 scoped to `Type.Strike` and a row of 30 scoped to
+  `Type.Spell`: a Strike blow leaving a creature just under 10% executes it (the control) and one leaving a
+  creature just under 20% does not; a Spell blow leaving a creature just under 20% executes it and one leaving a
+  creature just under 40% does not. Then both rows unscoped: with both rolls up, a creature left just under 20%
+  is executed; with only the row of 10's roll up, it is not, and a creature left just under 10% is.
+- `...TheShareIsStrictAndOnlyTheCharacterWhoseBlowIsOnRecordIsCredited`. `ExecuteIfLeftBelow` called by hand
+  with a share of 12.5: at exactly an eighth of its maximum a creature lives; a request nobody made does
+  nothing; a creature nothing has struck and a creature a second attacker struck last are not executed by the
+  player's request; of shares 10, 30 and 20 asked, 30 is kept; and one health under an eighth the same request
+  kills, and the player's `kill` row acts (the control).
+- `...TheRowsTriggerCooldownStartsWhenAnEnemyIsExecutedAndNotWhenTheRollAloneComesUp`. A row with a trigger
+  cooldown of 0.25: a blow that leaves a creature above the share starts no wait; a blow that executes starts
+  it; a blow in the same instant that leaves another creature below the share does nothing.
+
+Python:
+
+- `TestExecuteTarget` in `tools/tests/test_generate_datatables.py`, 27 tests on a made-up sheet: the ruled row
+  is carried through with its scope, its share and the 0.25 wait; a stated wait of 0 is carried through; a row
+  of 100 below 5 with no tags is carried through; the name misspelt is refused; seven other events are refused;
+  the list of events is `hit_dealt` alone; no condition, three other conditions and a second condition are each
+  refused; a share of 0, of 101 and none stated are refused and 100 is carried through; a chance of 0 and of 101
+  are refused; a chance the words do not state is refused; a fraction, a value kind and a scale are refused.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the constant's name and one test:
+  the generator's name is the engine's, the action is not a pool, the condition the generator requires is the
+  name the engine's condition table gives `TargetHealthBelowPercent`, and the row loop compares the row's
+  condition with that.
+
+**Changes to what a check accepts:** one. `CONSTANTS` in
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains `"ExecuteTargetAction":
+"execute_target"`.
+
+**Not tested:** the row arriving from a worn item through a gear refresh, because no row exists; a real skill
+used through the player's input; a minion's hit, with and without Conduit; an enemy in an Unholy Sigil; an enemy
+under Sacrificial Bond; a hit wholly absorbed by a shield; a hit dealt to an enemy from inside another hit's
+announcement, which is what setting the earlier request aside is for; the random roll with the pin off; a
+creature at exactly the share after a real blow (the by-hand test reads exactly the share); an executed enemy
+with an overkill explosion row worn; the trigger cooldown ending; a player or a minion as the character struck.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session, and each new text was counted nought
+times. Each is a break in `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`. The prefix
+of each is `Cataclysm.Execute.`, which holds the six tests above and no other. The failed assertions are counted
+by reading the tests and were not measured. In the table, `\|` stands for the one character `|`, which a table
+cell cannot hold unescaped: the first old text is `return !Enemy`, two `|`, then
+`(!Enemy->IsBoss() && !Enemy->TakesNoDamage());`.
+
+| Proof | Old text | New text | Test stated to fail | Every other test expected to fail | Failed assertions, by reading |
+|---|---|---|---|---|---|
+| The boss rule | `return !Enemy \|\| (!Enemy->IsBoss() && !Enemy->TakesNoDamage());` | `return !Enemy \|\| !Enemy->TakesNoDamage();` | `ABossACataclysmBossAndACreatureNoDamageReachesAreNotExecuted` | none | 6: "the Boss lives"; "the Boss lost something to the blow and holds health below the share"; the same two for the Cataclysm Boss; and for each of the two, one of the by-hand checks: "and the creature lives", or "the creature's ability system" if a dead creature is no longer valid |
+| Judged after the hit | `const bool bJudgedAfterTheHit = Action.bExecuteTarget` | `const bool bJudgedAfterTheHit = Action.bCleanse` | `AStrikeThatLeavesAnEnemyBelowTheShareExecutesItAndTheKillIsTheWearers` | `AFailedRollLeavesItAliveAnotherSkillDoesNothingAndAStatedHundredNeverFails`, `TwoRowsWithDifferentSharesEachActByTheirOwn`, `TheRowsTriggerCooldownStartsWhenAnEnemyIsExecutedAndNotWhenTheRollAloneComesUp` | 8 in the test stated: the creature dead, one death, the kill row once, one death notice, "still one death", two deaths, the kill row twice, two death notices. 1 in each of the next two, their controls, after which each returns. 2 in the last: "the first creature left below the share is executed" and "and the row is waiting" |
+| The credit | `if (!LastBlow.IsOnRecord() \|\| LastBlow.Attacker.Get() != By)` | `if (!LastBlow.IsOnRecord())` | `TheShareIsStrictAndOnlyTheCharacterWhoseBlowIsOnRecordIsCredited` | none | 2: "with another's blow last on its record the player's request does nothing" and the "and the creature lives" after it |
+
+With the second break in, `PoolActionAllowed` judges an execute row's share on the health held before the hit,
+because `bCleanse` is false on an execute row. The test of the bosses passes under it, because its creatures
+start below the share.
+
+**A test and no proof:** a stated 100 never failing; the largest share being kept; the trigger cooldown; a
+creature that takes no damage.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — The set Shard of Anarchy is built whole: its drawback and its 2-piece, 6-piece and 10-piece bonuses, five rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
