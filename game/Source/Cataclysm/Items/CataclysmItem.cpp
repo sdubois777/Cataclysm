@@ -1442,6 +1442,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.bKeptStacksRepeatSkill = true;
 						Action.KeptStackKey = Action.TriggerKey;
 						Action.KeptStackCap = Effect->ScaleMaxSteps;
+						// AND WHAT THE ROW CALLS ITS STACKS, from the Ailment cell, for the text above the player's
+						// bars. Nothing applies it as a status: this action's `ApplyStatus` is None.
+						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
 					}
 					// AND WHETHER IT TRIGGERS A DIFFERENT HELD SKILL: one with a cooldown, free, or a spell that
 					// pays its cost. Ruled 2026-10-06. The value is the chance.

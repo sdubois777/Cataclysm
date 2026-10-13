@@ -1409,4 +1409,91 @@ bool FCataclysmOverlayNamesTheHeldBuff::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayNamesTheKeptStacks,
+	"Cataclysm.Overlay.TheKeptStacksOfAWornRowAreNamedWithTheirCountAndCapAboveThePlayersBars",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-12 by the coordinating session: a text above the player's bars with the count and the cap of the
+ * kept stacks a worn row gains, such as "Temporal Flux 3/5". The name is the row's own, from its Ailment cell.
+ *
+ * THE TEXT IS WHAT IS TESTED, for the reason the top of this file gives. `ACataclysmHUD` draws this text above the
+ * player's bars when it is not empty, and that call is not reached here. The row is made by hand, as a row of the
+ * effect table would give it: no authored row carries the action. The stacks are gained by hand.
+ */
+bool FCataclysmOverlayNamesTheKeptStacks::RunTest(const FString&)
+{
+	using FOverlay = UCataclysmCombatOverlay;
+	using FSystem = UCataclysmAbilitySystemComponent;
+
+	UWorld* World = CataclysmOverlayTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = CataclysmOverlayTest::SpawnPlayer(World);
+	FSystem* System = Player ? Cast<FSystem>(Player->GetAbilitySystemComponent()) : nullptr;
+	ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player with an ability system"), System)
+		|| !TestNotNull(TEXT("set-up: a creature"), Creature))
+	{
+		return false;
+	}
+	const auto ARow = [](const TCHAR* Key, const TCHAR* Name, int32 Cap)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("skill_use"));
+		Action.Pool = FName(FSystem::KeptStacksRepeatSkillAction);
+		Action.Percent = 100.0f;
+		Action.EverySeconds = 30.0f;
+		Action.bKeptStacksRepeatSkill = true;
+		Action.KeptStackKey = FName(Key);
+		Action.KeptStackCap = Cap;
+		Action.TriggerKey = FName(Key);
+		Action.StatusName = Name;
+		return Action;
+	};
+	const FName Key(TEXT("Test:kept"));
+
+	// THE CONTROL, READ FIRST: no row, no text, and nothing of it on the status line.
+	TestEqual(TEXT("control: a player wearing no such row says nothing of stacks"), FOverlay::KeptStacksTextFor(Player), FString());
+	TestFalse(TEXT("control: and its status line does not name them"),
+			  FOverlay::StatusLineFor(Player).Contains(TEXT("Temporal Flux")));
+
+	// THE ROW WORN AND NO STACK YET: the name, nought and the cap.
+	System->SetPoolActions({ARow(TEXT("Test:kept"), TEXT("Temporal Flux"), 5)});
+	TestEqual(TEXT("the row worn and no stack held reads 0/5"), FOverlay::KeptStacksTextFor(Player), FString(TEXT("Temporal Flux 0/5")));
+
+	// THE COUNT RISES WITH EACH STACK AND STOPS AT THE CAP.
+	for (int32 Held = 1; Held <= 5; ++Held)
+	{
+		System->GainKeptStack(Key, 5);
+		TestEqual(*FString::Printf(TEXT("with %d held the text reads %d/5"), Held, Held),
+				  FOverlay::KeptStacksTextFor(Player), FString::Printf(TEXT("Temporal Flux %d/5"), Held));
+	}
+	System->GainKeptStack(Key, 5);
+	TestEqual(TEXT("a sixth gain still reads 5/5"), FOverlay::KeptStacksTextFor(Player), FString(TEXT("Temporal Flux 5/5")));
+	TestTrue(TEXT("and the status line contains that text"),
+			 FOverlay::StatusLineFor(Player).Contains(TEXT("Temporal Flux 5/5")));
+	TestEqual(TEXT("control: a creature wearing no row says nothing of stacks"), FOverlay::KeptStacksTextFor(Creature), FString());
+
+	// SPENT, IT READS NOUGHT AGAIN, and the row is still named.
+	System->SpendKeptStacks(Key);
+	TestEqual(TEXT("with the stacks spent the text reads 0/5"), FOverlay::KeptStacksTextFor(Player), FString(TEXT("Temporal Flux 0/5")));
+
+	// A ROW THAT STATES NO NAME READS "Stacks", and two rows are joined by two spaces in the order worn.
+	System->SetPoolActions({ARow(TEXT("Test:kept"), TEXT("Temporal Flux"), 5), ARow(TEXT("Test:unnamed"), TEXT(""), 3)});
+	System->GainKeptStack(FName(TEXT("Test:unnamed")), 3);
+	TestEqual(TEXT("a named row and an unnamed one"), FOverlay::KeptStacksTextFor(Player),
+			  FString(TEXT("Temporal Flux 0/5  Stacks 1/3")));
+
+	// THE ROW OFF, NOTHING.
+	System->SetPoolActions(TArray<FCataclysmPoolAction>());
+	TestEqual(TEXT("with no row worn the text is empty"), FOverlay::KeptStacksTextFor(Player), FString());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

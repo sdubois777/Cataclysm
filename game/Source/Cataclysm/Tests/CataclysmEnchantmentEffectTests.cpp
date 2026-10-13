@@ -14279,16 +14279,27 @@ namespace CataclysmKeptStacksTest
 	 * A fight on the world's clock, as the tests of the timed rows move it: a blow begins the combat, the clock moves
 	 * half a second so that no step sits on the edge of a period, and then each second has a blow, to stay in combat,
 	 * and one step of the timed grants, called by hand. Nothing waits on a tick.
+	 *
+	 * `Begin(0.0f)` LEAVES THE HALF SECOND OUT, for a fight whose seconds are added to an earlier fight's: a first
+	 * fight then counts its seconds and a half, and each later fight whole seconds, so no sum sits on an edge.
 	 */
 	struct FKeptFight
 	{
 		FKeptFight(UWorld* InWorld, UCataclysmAbilitySystemComponent* InSystem) : World(InWorld), System(InSystem) {}
 
-		void Begin()
+		void Begin(float Offset = 0.5f)
 		{
 			System->NoteHitDealt();
-			World->TimeSeconds += 0.5f;
+			World->TimeSeconds += Offset;
 			Began = World->TimeSeconds;
+		}
+
+		/** Ten minutes with no blow, and one step to see it: the combat has ended. */
+		bool End()
+		{
+			World->TimeSeconds += 600.0f;
+			System->StepTimedGrants();
+			return System->SecondsInCombat() < 0.0f;
 		}
 
 		void Until(float Seconds)
@@ -14350,6 +14361,10 @@ bool FCataclysmKeptStackGainedOnAClockTest::RunTest(const FString&)
 	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
 	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5)});
 
+	// ONE STEP OUT OF COMBAT, WHICH IS WHERE THE ROW'S CLOCK IS FIRST SEEN. A clock counts from the step that first
+	// sees it. In play a living character steps four times a second, so a worn row has been seen before any fight.
+	Rig.System->StepTimedGrants();
+
 	// THE CONTROL, READ FIRST: wearing the row and before any period has passed, no stack is held, and a use of a
 	// skill records nothing and casts nothing more.
 	TestEqual(TEXT("control: before a period has passed no stack is held"), Rig.System->KeptStacksHeld(Key), 0);
@@ -14358,8 +14373,8 @@ bool FCataclysmKeptStackGainedOnAClockTest::RunTest(const FString&)
 	TestEqual(TEXT("control: and none is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
 	TestEqual(TEXT("control: and nothing runs"), RepeatsRunning(Rig.System, Rig.Projectile->Name), 0);
 
-	// ONE STACK FOR EACH WHOLE PERIOD OF THE FIGHT, the period in first: none at 29 seconds, one at 30, and one more
-	// at each 30 after it.
+	// ONE STACK FOR EACH 30 SECONDS OF FIGHTING: none at 29 seconds, one at 30, and one more at each 30 after it.
+	// This is one unbroken fight; the seconds carried from one fight to the next are the test after this one.
 	FKeptFight Fight(World, Rig.System);
 	Fight.Begin();
 	Fight.Until(29.0f);
@@ -14399,14 +14414,12 @@ bool FCataclysmKeptStackGainedOnAClockTest::RunTest(const FString&)
 	TestEqual(TEXT("twenty-nine seconds into a new fight the five are still held"), Rig.System->KeptStacksHeld(Key), 5);
 
 	// ANOTHER PERIOD AND ANOTHER CAP WORK: a row of 10 seconds to 2, under a key of its own. THE FIGHT BEFORE IS
-	// ENDED FIRST. A row put on part way through a combat is granted every period of that combat at its next step,
-	// as every timed row is, so in the fight above this row would gain its two at once.
+	// ENDED FIRST, and the step that ends it is the one that first sees this row's clock, so the clock counts the
+	// new fight from its start.
 	const TCHAR* const OtherKey = TEXT("Test:another");
 	Rig.System->SetPoolActions({AKeptStacksRow(10.0f, 2, 100.0f, OtherKey)});
 	TestEqual(TEXT("the first row gone, its stacks are forgotten"), Rig.System->KeptStacksHeld(Key), 0);
-	World->TimeSeconds += 600.0f;
-	Rig.System->StepTimedGrants();
-	if (!TestTrue(TEXT("set-up: the fight before has ended"), Rig.System->SecondsInCombat() < 0.0f))
+	if (!TestTrue(TEXT("set-up: the fight before has ended"), Fight.End()))
 	{
 		return false;
 	}
@@ -14417,6 +14430,146 @@ bool FCataclysmKeptStackGainedOnAClockTest::RunTest(const FString&)
 	TestEqual(TEXT("ten seconds in it has gained one"), Rig.System->KeptStacksHeld(FName(OtherKey)), 1);
 	Fight.Until(40.0f);
 	TestEqual(TEXT("forty seconds in it holds its cap of two"), Rig.System->KeptStacksHeld(FName(OtherKey)), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStackSecondsCarriedTest,
+	"Cataclysm.Enchantments.KeptStacks.TheSecondsTowardsTheNextOneAreCarriedFromOneFightToTheNext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-12 by the coordinating session: "the count towards the next stack CARRIES FROM ONE FIGHT TO THE
+ * NEXT. In-combat seconds accumulate and are not thrown away when a fight ends." For rows that gain kept stacks
+ * only. THE CONTROL IS AN ORDINARY TIMED ROW WORN BESIDE IT, a row's own stacks gained every 30 seconds: it counts
+ * whole periods of one combat and starts again with each combat, as it did before this.
+ */
+bool FCataclysmKeptStackSecondsCarriedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable()))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FName OrdinaryKey(TEXT("Test:ordinary"));
+
+	// THE ORDINARY TIMED ROW: one of its own stacks every 30 seconds, to 5, each lasting 60 seconds.
+	FCataclysmPoolAction Ordinary;
+	Ordinary.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+	Ordinary.EverySeconds = 30.0f;
+	Ordinary.StackKey = OrdinaryKey;
+	Ordinary.StackSeconds = 60.0f;
+	Ordinary.StackCap = 5;
+	Ordinary.TriggerKey = OrdinaryKey;
+	const FCataclysmPoolAction Kept = AKeptStacksRow(30.0f, 5);
+	Rig.System->SetPoolActions({Kept, Ordinary});
+	Rig.System->StepTimedGrants();
+	const auto Towards = [&]() { return Rig.System->KeptStackSecondsTowardsNext(Key); };
+
+	// THE CONTROL, READ FIRST: nothing held, nothing counted.
+	TestEqual(TEXT("control: no kept stack is held"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("control: no second is counted towards one"), Towards(), 0.0f, 0.01f);
+	TestEqual(TEXT("control: the ordinary row holds none of its own"), Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+
+	// THE FIRST FIGHT, OF 20 SECONDS AND A HALF: no stack, and its seconds are counted.
+	FKeptFight Fight(World, Rig.System);
+	Fight.Begin();
+	Fight.Until(20.0f);
+	TestEqual(TEXT("a fight of 20.5 seconds gains no kept stack"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("and 20.5 seconds are counted towards one"), Towards(), 20.5f, 0.01f);
+	TestEqual(TEXT("and the ordinary row holds none"), Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+
+	// THE FIGHT ENDS, AND NOTHING COUNTED IS LOST. Out of combat nothing is counted either.
+	if (!TestTrue(TEXT("set-up: the first fight has ended"), Fight.End()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("out of combat the 20.5 seconds are kept, and ten minutes add none"), Towards(), 20.5f, 0.01f);
+
+	// THE SECOND FIGHT: THE STACK COMES AT 30 SECONDS OF FIGHTING, which is its tenth second.
+	Fight.Begin(0.0f);
+	Fight.Until(9.0f);
+	TestEqual(TEXT("nine seconds into the second fight, 29.5 of fighting, no kept stack"), Rig.System->KeptStacksHeld(Key), 0);
+	Fight.Until(10.0f);
+	TestEqual(TEXT("ten seconds into it, 30.5 of fighting, one kept stack"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("with half a second counted towards the next"), Towards(), 0.5f, 0.01f);
+	Fight.Until(20.0f);
+	TestEqual(TEXT("two fights of 20 seconds have given one kept stack"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("with 10.5 seconds carried on towards the next"), Towards(), 10.5f, 0.01f);
+	TestEqual(TEXT("control: the ordinary row, 20 seconds into its second fight, holds none"),
+			  Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+
+	// THE CONTROL: THE ORDINARY ROW GAINS AT 30 SECONDS OF ONE FIGHT, having fought 50 in all. Read at 29 and at 31
+	// seconds of the fight, a second each side of its period.
+	Fight.Until(29.0f);
+	TestEqual(TEXT("control: 29 seconds into this fight the ordinary row holds none"), Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+	Fight.Until(31.0f);
+	TestEqual(TEXT("control: 31 seconds into this fight the ordinary row holds one"), Rig.System->OwnStacksHeld(OrdinaryKey), 1);
+	TestEqual(TEXT("and the kept row, at 51.5 seconds of fighting, still holds one"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("with 21.5 seconds towards the next"), Towards(), 21.5f, 0.01f);
+
+	// A THIRD FIGHT: the second kept stack in its ninth second. A USE THAT SPENDS DOES NOT CLEAR THE SECONDS.
+	if (!TestTrue(TEXT("set-up: the second fight has ended"), Fight.End()))
+	{
+		return false;
+	}
+	Fight.Begin(0.0f);
+	Fight.Until(8.0f);
+	TestEqual(TEXT("eight seconds into the third fight, 59.5 of fighting, still one kept stack"), Rig.System->KeptStacksHeld(Key), 1);
+	Fight.Until(15.0f);
+	TestEqual(TEXT("fifteen seconds into it, 66.5 of fighting, two"), Rig.System->KeptStacksHeld(Key), 2);
+	TestEqual(TEXT("with 6.5 seconds towards the next"), Towards(), 6.5f, 0.01f);
+	TestEqual(TEXT("spending answers the two"), Rig.System->SpendKeptStacks(Key), 2);
+	TestEqual(TEXT("and the 6.5 seconds are still counted"), Towards(), 6.5f, 0.01f);
+
+	// A DEATH CLEARS THE SECONDS, where it clears the stacks.
+	Rig.System->ClearWhatDeathEnds();
+	TestEqual(TEXT("after what a death ends is cleared, no second is counted"), Towards(), 0.0f, 0.01f);
+
+	// THE GEAR COMING OFF CLEARS THEM. Ten and a half seconds are counted again first; the step before the fight is
+	// the one that first sees the clock again.
+	Rig.System->StepTimedGrants();
+	Fight.Begin();
+	Fight.Until(10.0f);
+	if (TestEqual(TEXT("set-up: 10.5 seconds are counted again"), Towards(), 10.5f, 0.01f))
+	{
+		Rig.System->SetPoolActions({Ordinary});
+		TestEqual(TEXT("with the row off no second is counted"), Towards(), 0.0f, 0.01f);
+		Rig.System->SetPoolActions({Kept, Ordinary});
+		TestEqual(TEXT("and the row put back on starts at none"), Towards(), 0.0f, 0.01f);
+	}
+
+	// PUT ON PART WAY THROUGH A FIGHT, THE CLOCK COUNTS FROM THE STEP THAT FIRST SEES IT and is owed nothing earlier.
+	Rig.System->StepTimedGrants();
+	TestEqual(TEXT("the step that first sees the clock counts nothing"), Towards(), 0.0f, 0.01f);
+	Fight.Until(20.0f);
+	if (!TestEqual(TEXT("ten seconds on, 10 are counted"), Towards(), 10.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// ANOTHER DUNGEON CLEARS THEM: not read inside it, and removed by the next step.
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("set-up: the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with the game mode walking no dungeon the 10 are still counted"), Towards(), 10.0f, 0.01f);
+	Mode->EmpireDungeonId = 7;
+	TestEqual(TEXT("in dungeon 7 the seconds counted outside it are not read"), Towards(), 0.0f, 0.01f);
+	Rig.System->StepTimedGrants();
+	Mode->EmpireDungeonId = INDEX_NONE;
+	TestEqual(TEXT("and after a step, outside it again, none is counted"), Towards(), 0.0f, 0.01f);
 	return true;
 }
 

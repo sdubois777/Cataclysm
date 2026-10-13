@@ -793,6 +793,12 @@ public:
 	 * Gain one kept stack under a row's key, to at most `Cap`. Ruled 2026-10-12 under the owner's delegation. A key
 	 * of none or a cap of nought or less gains nothing.
 	 *
+	 * WHEN ONE IS GAINED. `StepKeptStackClocks` counts the seconds the wearer spends in combat, for each row, and
+	 * calls this once for each whole period counted. THE SECONDS ARE CARRIED FROM ONE FIGHT TO THE NEXT, ruled
+	 * 2026-10-12: two fights of 20 seconds give a row of 30 one stack, with 10 seconds kept towards the next.
+	 * Every other timed row counts whole periods of one combat and starts again with each combat; that is not
+	 * changed. The seconds are cleared by the last three of the four things below, and not by a use that spends.
+	 *
 	 * A KEPT STACK HAS NO LIFETIME. It is not ended by time, by leaving combat or by a new floor of the same
 	 * dungeon. FOUR THINGS END IT:
 	 *   - A use that spends it (`SpendKeptStacks`).
@@ -817,10 +823,19 @@ public:
 	 */
 	int32 DungeonBeingWalked() const;
 
-	/** One worn row's kept stacks, for an interface to show. Nothing on screen reads this yet. */
+	/**
+	 * The seconds of combat counted towards a row's next kept stack, from nought to under its period. Nought for a
+	 * key with no clock and for a clock of another dungeon, as `KeptStacksHeld` is.
+	 */
+	float KeptStackSecondsTowardsNext(FName Key) const;
+
+	/** One worn row's kept stacks, for an interface to show. `UCataclysmCombatOverlay::KeptStacksTextFor` reads it. */
 	struct FHeldKeptStacks
 	{
 		FName Key;
+
+		/** What the row calls its stacks, `FCataclysmPoolAction::StatusName`, or empty when it states no name. */
+		FString Name;
 		int32 Held = 0;
 		int32 Cap = 0;
 	};
@@ -4520,6 +4535,28 @@ protected:
 
 	/** Removes every kept stack gained in a dungeon that is not the one walked now. Run by `StepTimedGrants`. */
 	void ForgetKeptStacksOfAnotherDungeon();
+
+	/** One row's count of combat seconds towards its next kept stack. See `GainKeptStack`. */
+	struct FKeptStackClock
+	{
+		/** Seconds of combat counted and not yet turned into a stack. */
+		float Seconds = 0.0f;
+
+		/** The world time of the last step that counted, or -1 after a step out of combat. */
+		float LastCountedAtSeconds = -1.0f;
+
+		/** `DungeonBeingWalked` at the last step. */
+		int32 DungeonId = INDEX_NONE;
+	};
+
+	/** Every row's clock, by `FCataclysmPoolAction::KeptStackKey`. NOT REPLICATED, as `KeptStacks` is not. */
+	TMap<FName, FKeptStackClock> KeptStackClocks;
+
+	/**
+	 * Counts this step's seconds of combat for every worn action that gains kept stacks, and gains a stack for each
+	 * whole period counted. `InCombat` is `SecondsInCombat()`. Run by `StepTimedGrants` on every step.
+	 */
+	void StepKeptStackClocks(float InCombat);
 
 	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */
 	FName PendingHeldTriggerUsedName;

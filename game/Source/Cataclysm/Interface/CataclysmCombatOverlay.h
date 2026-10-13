@@ -575,6 +575,24 @@ public:
 	static FString HeldBuffTextFor(const AActor* Actor);
 
 	/**
+	 * The kept stacks of each row a living actor wears that gains them, as the name the row gives them, the count
+	 * held and the cap, such as "Temporal Flux 3/5", or empty while it wears no such row. Read from
+	 * `UCataclysmAbilitySystemComponent::KeptStacksForDisplay`. Ruled 2026-10-12 by the coordinating session: a text
+	 * above the player's bars with the count and the cap.
+	 *
+	 * THE NAME IS THE ROW'S, from its Ailment cell (`FCataclysmPoolAction::StatusName`), which the generator
+	 * requires on such a row and checks against the row's own sentence. A worn action that states no name, which
+	 * only one made by hand can be, reads "Stacks".
+	 *
+	 * SHOWN WHILE THE ROW IS WORN, AT NOUGHT TOO, a judgement of the writing session: "Temporal Flux 0/5" tells a
+	 * player the bonus is there before the first stack is gained. Two such rows are joined by two spaces.
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, after the held buff's text, and last on a creature's status line,
+	 * where it is empty today because no creature wears a row.
+	 */
+	static FString KeptStacksTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.

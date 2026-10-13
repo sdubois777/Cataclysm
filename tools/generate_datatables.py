@@ -5442,6 +5442,16 @@ REPEAT_SKILL_EVENTS = ("skill_use", "attack_use")
 #: deals, in per cent, 100 for the whole. A kept stack has no lifetime, so
 #: Stack Seconds is refused.
 #:
+#: AND THE AILMENT CELL IS WHAT THE SENTENCE CALLS THE STACKS, "Temporal Flux",
+#: which the game shows above the player's bars with the count and the cap.
+#: Ruled 2026-10-12. Required, and it must be a name the row's own sentence
+#: writes between single quotes, so a name cannot be typed that the sentence
+#: does not give. On this action the cell names nothing the game applies.
+#:
+#: THE PERIOD IS COUNTED IN SECONDS OF COMBAT THAT ARE CARRIED FROM ONE FIGHT TO
+#: THE NEXT, ruled 2026-10-12, for this action alone. Every other timed row
+#: counts whole periods of one combat.
+#:
 #: NOT ONE OF `SKILL_IN_HAND_ACTIONS`, AND ON PURPOSE. The value of each of
 #: those is a chance, and this row has none: a use with a stack held always
 #: spends.
@@ -7544,6 +7554,24 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} applies the status "
                     f"{ailment or '(none)'!r}, which {action} cannot. Known: "
                     f"{', '.join(known)}.")
+        elif action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+            # WHAT THE SENTENCE CALLS THE STACKS, in the same cell. Ruled
+            # 2026-10-12. Required, and a name the row's own words write
+            # between single quotes: "a stack of 'Temporal Flux.'" gives
+            # Temporal Flux, the full stop left out.
+            if not ailment:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains kept "
+                    f"stacks and states no name for them in Ailment. On "
+                    f"{action} that cell is what the sentence calls the "
+                    f"stacks, which the game shows with their count.")
+            if ailment.endswith(".") or not re.search(
+                    r"'" + re.escape(ailment) + r"\.?'", words[name]):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} calls its kept "
+                    f"stacks {ailment!r}, which its words {words[name]!r} do "
+                    f"not write between single quotes. Write the name as the "
+                    f"sentence gives it, without its full stop.")
         elif ailment:
             if action not in REMAINING_DAMAGE_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:

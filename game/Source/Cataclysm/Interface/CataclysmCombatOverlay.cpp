@@ -559,6 +559,24 @@ FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
 		FMath::CeilToInt(AbilitySystem->HeldRandomBuffSecondsLeft()));
 }
 
+FString UCataclysmCombatOverlay::KeptStacksTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	for (const UCataclysmAbilitySystemComponent::FHeldKeptStacks& Each : AbilitySystem->KeptStacksForDisplay())
+	{
+		Parts.Add(FString::Printf(TEXT("%s %d/%d"), Each.Name.IsEmpty() ? TEXT("Stacks") : *Each.Name,
+								  Each.Held, Each.Cap));
+	}
+	return FString::Join(Parts, TEXT("  "));
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -820,7 +838,9 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  MaddenedTextFor(Actor),
 		  DamageCutTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
-		  HeldBuffTextFor(Actor)})
+		  HeldBuffTextFor(Actor),
+		  // AND THE KEPT STACKS OF A WORN ROW, AFTER IT. Ruled 2026-10-12. Empty for every creature today.
+		  KeptStacksTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

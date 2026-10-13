@@ -2564,6 +2564,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 		Ended.Stacks += KeptStacksHeld(Held.Key);
 	}
 	KeptStacks.Empty();
+	// AND THE SECONDS COUNTED TOWARDS THE NEXT ONE. Ruled 2026-10-12: cleared where the stacks are cleared.
+	KeptStackClocks.Empty();
 
 	// AND EVERY ROW'S HITS IN A ROW, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FConsecutiveHits>& Held : ConsecutiveHits)
@@ -4621,6 +4623,11 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 
 	const float InCombat = SecondsInCombat();
 
+	// AND THE CLOCK OF EVERY ROW THAT GAINS KEPT STACKS, WHICH IS NOT THE CLOCK BELOW. Ruled 2026-10-12. The rows
+	// below count whole periods of the current combat and start again with each combat. A kept stack's seconds
+	// are carried from one fight to the next. Before the returns below, so that a step out of combat is seen.
+	StepKeptStackClocks(InCombat);
+
 	// A NEW COMBAT, OR NONE, STARTS EVERY COUNT AGAIN, ruled 2026-09-24.
 	if (InCombat < 0.0f || CombatStartedAtSeconds != TimedGrantsCombatStartedAt)
 	{
@@ -4638,12 +4645,9 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 	const TArray<FCataclysmPoolAction> Firing = PoolActions;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		// AN ACTION THAT GAINS KEPT STACKS IS ON THE CLOCK WHATEVER ITS EVENT IS. Ruled 2026-10-12. Its event is the
-		// kind of use that spends the stacks, and its period is `EverySeconds` like any timed row's. It is counted
-		// under its own trigger key, which `TimedGrantKeyOf` answers for it, and asked with no tags, as every timed
-		// row is; the generator refuses Required Tags on such a row for that reason.
-		const bool bGainsKeptStacks = !Action.KeptStackKey.IsNone();
-		if ((Action.Event != Timed && !bGainsKeptStacks) || Action.EverySeconds <= 0.0f)
+		// AN ACTION THAT GAINS KEPT STACKS IS NOT COUNTED HERE, whatever its event is. `StepKeptStackClocks` counts
+		// it, above. Ruled 2026-10-12.
+		if (Action.Event != Timed || Action.EverySeconds <= 0.0f || !Action.KeptStackKey.IsNone())
 		{
 			continue;
 		}
@@ -4668,13 +4672,7 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 		while (Given < Due)
 		{
 			++Given;
-			// A KEPT STACK, AND NOTHING ELSE OF THIS ACTION'S. Asked first, so that an action carrying the key is
-			// never also moved as a pool by the last branch below.
-			if (bGainsKeptStacks)
-			{
-				GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
-			}
-			else if (!Action.NextUseKey.IsNone())
+			if (!Action.NextUseKey.IsNone())
 			{
 				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
@@ -4720,6 +4718,66 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			}
 		}
 	}
+}
+
+void UCataclysmAbilitySystemComponent::StepKeptStackClocks(float InCombat)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	const int32 Dungeon = DungeonBeingWalked();
+
+	// A COPY, for the reason `ActOnEvent` gives. ONE CLOCK A KEY, however many copies of the row are worn.
+	const TArray<FCataclysmPoolAction> Counting = PoolActions;
+	TSet<FName> Stepped;
+	for (const FCataclysmPoolAction& Action : Counting)
+	{
+		const FName Key = Action.KeptStackKey;
+		if (Key.IsNone() || Action.EverySeconds <= 0.0f || Stepped.Contains(Key))
+		{
+			continue;
+		}
+		Stepped.Add(Key);
+
+		// A CLOCK SEEN FOR THE FIRST TIME COUNTS FROM NOW. A judgement of the writing session: a row put on part
+		// way through a combat is not owed that combat's earlier seconds. Taking the row off forgets its clock, so
+		// otherwise taking it off and putting it on would pay a long combat's seconds a second time.
+		const bool bKnown = KeptStackClocks.Contains(Key);
+		FKeptStackClock& Clock = KeptStackClocks.FindOrAdd(Key);
+		Clock.DungeonId = Dungeon;
+
+		// OUT OF COMBAT NOTHING IS COUNTED AND NOTHING IS LOST. And a step on which the row is refused counts
+		// nothing, as a period that ends while a timed row is refused is passed over.
+		if (InCombat < 0.0f || !PoolActionAllowed(Action, nullptr))
+		{
+			Clock.LastCountedAtSeconds = InCombat < 0.0f ? -1.0f : Now;
+			continue;
+		}
+
+		// THE SECONDS OF COMBAT SINCE THE LAST STEP THAT COUNTED, and for the first step of a combat the seconds
+		// since that combat began. `LastCountedAtSeconds` is -1 after a step out of combat, and is earlier than
+		// the combat's start when the combat before lapsed with no step in between.
+		const float From = bKnown ? FMath::Max(Clock.LastCountedAtSeconds, CombatStartedAtSeconds) : Now;
+		Clock.Seconds += FMath::Max(0.0f, Now - From);
+		Clock.LastCountedAtSeconds = Now;
+
+		// ONE STACK FOR EACH WHOLE PERIOD COUNTED, and what is left over is kept towards the next. At the cap the
+		// seconds go on being counted and the stack is not gained.
+		while (Clock.Seconds >= Action.EverySeconds)
+		{
+			Clock.Seconds -= Action.EverySeconds;
+			GainKeptStack(Key, Action.KeptStackCap);
+		}
+	}
+}
+
+float UCataclysmAbilitySystemComponent::KeptStackSecondsTowardsNext(FName Key) const
+{
+	const FKeptStackClock* Clock = KeptStackClocks.Find(Key);
+	return Clock && Clock->DungeonId == DungeonBeingWalked() ? Clock->Seconds : 0.0f;
 }
 
 void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttack,
@@ -5173,6 +5231,7 @@ UCataclysmAbilitySystemComponent::KeptStacksForDisplay() const
 		}
 		FHeldKeptStacks Entry;
 		Entry.Key = Key;
+		Entry.Name = Action.StatusName;
 		Entry.Held = KeptStacksHeld(Key);
 		Entry.Cap = Action.KeptStackCap;
 		Out.Add(Entry);
@@ -5182,15 +5241,26 @@ UCataclysmAbilitySystemComponent::KeptStacksForDisplay() const
 
 void UCataclysmAbilitySystemComponent::ForgetKeptStacksNoWornActionCarries()
 {
-	if (KeptStacks.IsEmpty())
+	if (KeptStacks.IsEmpty() && KeptStackClocks.IsEmpty())
 	{
 		return;
 	}
+	const auto bWorn = [this](FName Key)
+	{
+		return PoolActions.ContainsByPredicate(
+			[Key](const FCataclysmPoolAction& Action) { return Action.KeptStackKey == Key; });
+	};
 	for (auto It = KeptStacks.CreateIterator(); It; ++It)
 	{
-		const FName Key = It.Key();
-		if (!PoolActions.ContainsByPredicate(
-				[Key](const FCataclysmPoolAction& Action) { return Action.KeptStackKey == Key; }))
+		if (!bWorn(It.Key()))
+		{
+			It.RemoveCurrent();
+		}
+	}
+	// AND THE SECONDS COUNTED TOWARDS THE NEXT ONE, with them.
+	for (auto It = KeptStackClocks.CreateIterator(); It; ++It)
+	{
+		if (!bWorn(It.Key()))
 		{
 			It.RemoveCurrent();
 		}
@@ -5199,12 +5269,20 @@ void UCataclysmAbilitySystemComponent::ForgetKeptStacksNoWornActionCarries()
 
 void UCataclysmAbilitySystemComponent::ForgetKeptStacksOfAnotherDungeon()
 {
-	if (KeptStacks.IsEmpty())
+	if (KeptStacks.IsEmpty() && KeptStackClocks.IsEmpty())
 	{
 		return;
 	}
 	const int32 Now = DungeonBeingWalked();
 	for (auto It = KeptStacks.CreateIterator(); It; ++It)
+	{
+		if (It.Value().DungeonId != Now)
+		{
+			It.RemoveCurrent();
+		}
+	}
+	// AND THE SECONDS COUNTED TOWARDS THE NEXT ONE, with them.
+	for (auto It = KeptStackClocks.CreateIterator(); It; ++It)
 	{
 		if (It.Value().DungeonId != Now)
 		{
