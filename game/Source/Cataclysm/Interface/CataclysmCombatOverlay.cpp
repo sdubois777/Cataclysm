@@ -872,6 +872,34 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 	return FString::Join(Parts, TEXT("  "));
 }
 
+FString UCataclysmCombatOverlay::ImmuneToPlayerTextFor(const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	if (!Actor || !LocalPlayerPawn || Actor == LocalPlayerPawn || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* Its =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const UAbilitySystemComponent* ThePlayers =
+		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(LocalPlayerPawn);
+	// THE FUNCTION THAT REFUSES THE BLOW ANSWERS, so the word is shown exactly while the player's damage is refused.
+	return Its && ThePlayers && Its->IsImmuneToDamageOf(ThePlayers) ? FString(TEXT("Immune to you")) : FString();
+}
+
+FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	// AFTER EVERYTHING ELSE ON THE LINE: what the creature is comes first, and this is being done to the player's
+	// blows on it. Ruled 2026-10-12.
+	const FString Line = StatusLineFor(Actor);
+	const FString Immune = ImmuneToPlayerTextFor(Actor, LocalPlayerPawn);
+	if (Immune.IsEmpty())
+	{
+		return Line;
+	}
+	return Line.IsEmpty() ? Immune : Line + TEXT("  ") + Immune;
+}
+
 bool UCataclysmCombatOverlay::VitalsOf(const AActor* Actor, float& OutHealth,
 									   float& OutMaxHealth)
 {

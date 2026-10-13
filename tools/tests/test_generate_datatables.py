@@ -6767,3 +6767,194 @@ class TestEnemiesThatSurviveFiveSecondsAfterAFirstHit:
         assert self.CONDITION not in gen.CONDITIONS_OF_A_HIT_DEALT
         assert gen.CONDITIONS[self.CONDITION] == (
             0.0, 60.0, "a number of seconds")
+
+
+class TestEnemiesImmuneFifteenSecondsAfterAFirstHit:
+    """`enemies_immune_to_you_after_seconds`, ruled 2026-10-12 and built ahead
+    of its row, for "Enemies that have been alive for more than 15 seconds
+    become immune to your damage until you disengage for 3 seconds". One stat
+    at a flat 15 with no Required Tags, no Condition, no Scale and no Action:
+    `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` asks the attacker
+    for it where a blow is resolved.
+
+    THE 3 SECONDS ARE NOT ON THE ROW. They are the game's combat lapse, and
+    every refusal about a figure says so.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one. The real row is the enchantment session's to write; this shows that
+    the generator carries the ruled row through and refuses the wrong ones.
+    """
+
+    WORDS = ("Enemies that have been alive for more than 15 seconds become "
+             "immune to your damage until you disengage for 3 seconds")
+    STAT = "enemies_immune_to_you_after_seconds"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 15, "Value High": 15}
+    LAPSE = "are the game's own combat lapse (CombatLapseSeconds)"
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_an_enemies_immune_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 15.0, 15.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_stat_has_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.ENEMIES_IMMUNE_AFTER_SECONDS_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "enemies_immune_after_seconds" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_the_name_and_the_lapse_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks the
+        attacker's stat line for the name in
+        `CataclysmAbilitySystemComponent.cpp`. THE CONTROL is the seconds stat
+        of the damage type immunity, read by the same pattern from the same
+        file. And the 3 seconds every refusal quotes are the engine's own
+        `CombatLapseSeconds`, read out of the header."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["DamageTypeImmunityOnHitSecondsStat"] == (
+            gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_SECONDS_STAT)
+        assert names["EnemiesImmuneAfterSecondsStat"] == (
+            gen.ENEMIES_IMMUNE_AFTER_SECONDS_STAT)
+        header = (folder / "CataclysmAbilitySystemComponent.h").read_text(
+            encoding="utf-8")
+        (lapse,) = re.findall(
+            r"static constexpr float CombatLapseSeconds = ([0-9.]+)f;", header)
+        assert float(lapse) == gen.COMBAT_LAPSE_SECONDS == 3.0
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 on"),
+                ({"ValueLow": -1.0, "ValueHigh": -1.0}, "states -1 on"),
+                ({"ValueLow": 61.0, "ValueHigh": 61.0}, "states 61 on"),
+                ({"Action": "health"}, "with the action 'health'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # THE BOUND IS INCLUDED AT ITS TOP.
+        assert self.refusals([dict(row, ValueLow=60.0, ValueHigh=60.0)]) == []
+
+    def test_a_range_is_refused_and_told_the_three_seconds_are_not_a_cell(
+            self, tmp_path):
+        """15 to 18 is the row somebody writes who adds the 3 to the 15, and
+        3 to 15 the row of somebody who puts both figures in the two value
+        columns. Each is one refusal, and it says where the 3 seconds are."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        for low, high in ((15.0, 18.0), (3.0, 15.0)):
+            problems = self.refusals([dict(row, ValueLow=low, ValueHigh=high)])
+            assert len(problems) == 1, problems
+            assert f"states {low:g} to {high:g} on" in problems[0]
+            assert "ONE figure" in problems[0] and self.LAPSE in problems[0]
+
+    @pytest.mark.parametrize("column", [
+        "ConditionValue", "ConditionValue2", "ConditionValueHigh",
+        "StackSeconds", "StackSecondsHigh", "EverySeconds", "TriggerCooldown",
+        "EventValue"])
+    def test_a_three_written_in_another_cell_is_refused_and_told_why(
+            self, tmp_path, column):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert float(row[column]) == 0.0
+        problems = self.refusals([dict(row, **{column: 3.0})])
+        assert len(problems) == 1, problems
+        assert f"states 3 in {column} beside" in problems[0]
+        assert self.LAPSE in problems[0]
+        assert column in gen.COLUMNS_THE_IMMUNITY_ROW_DOES_NOT_READ
+
+    def test_a_second_row_holding_the_three_is_refused(self, tmp_path):
+        """Two flat rows on one stat are added together, so a second row of 3
+        would make the wait 18 seconds. One refusal for the enchantment,
+        however many rows it has; rows of two enchantments are not counted
+        together."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        second = dict(row, Name=row["Name"].replace("#1", "#2"),
+                      ValueLow=3.0, ValueHigh=3.0)
+        third = dict(second, Name=row["Name"].replace("#1", "#3"))
+        for rows in ([row, second], [row, second, third]):
+            problems = self.refusals(rows)
+            assert len(problems) == 1, problems
+            assert "on more than one row" in problems[0]
+            assert self.LAPSE in problems[0]
+        other = dict(row, Name="Negative_Made_up#1", Enchantment="Negative_Made_up")
+        assert self.refusals([row, other]) == []
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="seconds_in_combat")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "damage_taken",
+                               "ValueKind": "increased", "ValueLow": 20.0,
+                               "ValueHigh": 40.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], ValueLow=15.0, ValueHigh=18.0)]},
+            set())
+        assert any("ONE figure" in problem and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """As the same test of the retaliation flag does it: the name one
+        letter off, with a kind that is not flat. The control is the row
+        spelt right.
+
+        WHAT THIS DOES NOT SHOW. Measured 2026-10-12: the same misspelt name
+        on a FLAT row is carried through and the sheet's validation says
+        nothing of it, so the ruled row misspelt would be accepted and read
+        by nothing. That is how the validation treats every flat row, it was
+        so before this stat, and it is not changed here."""
+        good = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, set()) == []
+        misspelt = "enemies_immune_to_you_after_second"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased")]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems

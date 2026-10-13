@@ -1039,6 +1039,28 @@ bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
 		return false;
 	}
 
+	// AND NOTHING IS TAKEN FROM A CHARACTER THAT HAS BECOME IMMUNE TO THE
+	// INSTIGATOR. Ruled 2026-10-12, for "Enemies that have been alive for more
+	// than 15 seconds become immune to your damage until you disengage for 3
+	// seconds": while an enemy is immune to the wearer nothing of the wearer's
+	// reaches its health, and this write goes round the place where a blow is
+	// resolved, which is where the refusal of a blow sits. The one loss this
+	// function makes on another character in a wearer's name today is an
+	// execute, `UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow`.
+	//
+	// THE INSTIGATOR AS IT IS HANDED IN, and not `AttackerOf`: this is not a
+	// blow and has no dealer apart from its instigator. A loss a character
+	// takes from itself is never refused; `IsImmuneToDamageOf` answers false
+	// for the character itself.
+	if (const UCataclysmAbilitySystemComponent* Refusing =
+			Cast<UCataclysmAbilitySystemComponent>(Struck))
+	{
+		if (Refusing->IsImmuneToDamageOf(Source))
+		{
+			return false;
+		}
+	}
+
 	// THE HEALTH ATTRIBUTE AND NOT THE DAMAGE META ATTRIBUTE. That is what keeps
 	// this from being a hit: the vital attribute set only runs the mitigation
 	// order when the Damage attribute changes, and handles the Health attribute

@@ -3606,6 +3606,71 @@ public:
 	float SecondsSinceFirstStruckBy(const UAbilitySystemComponent* Striker) const;
 
 	/**
+	 * `enemies_immune_to_you_after_seconds`: how many seconds after this
+	 * character's first hit on an enemy that enemy becomes immune to this
+	 * character's damage. Ruled 2026-10-12 under the owner's delegation, for
+	 * "Enemies that have been alive for more than 15 seconds become immune to
+	 * your damage until you disengage for 3 seconds". The row states the 15,
+	 * flat. Nought or less is no such rule, which is every character without
+	 * the row. No gameplay attribute and no base; on
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 *
+	 * THE 3 SECONDS ARE NOT A STAT. "Disengage for 3 seconds" is this
+	 * character out of combat, and `CombatLapseSeconds` is how long that takes.
+	 *
+	 * `tools/generate_datatables.py` holds the same name in
+	 * `ENEMIES_IMMUNE_AFTER_SECONDS_STAT`. See `IsImmuneToDamageOf`.
+	 */
+	static const TCHAR* EnemiesImmuneAfterSecondsStat;
+
+	/**
+	 * Whether THIS character has become immune to the damage of `Attacker`.
+	 * Ruled 2026-10-12, for the sentence quoted above.
+	 *
+	 * TRUE WHEN ALL OF THESE HOLD. `Attacker` is another character, and holds
+	 * `EnemiesImmuneAfterSecondsStat` above nought. This character holds an
+	 * engagement time for `Attacker` that still stands (see
+	 * `SecondsSinceEngagedBy`). And that time is at least the stat's seconds
+	 * ago: AT LEAST, the comparison `OpponentFirstStruckByYouSecondsAgo` makes.
+	 *
+	 * SO A CHARACTER `Attacker` HAS NEVER STRUCK IS NEVER IMMUNE TO IT, and the
+	 * moment `Attacker`'s combat lapses every character is open to it again:
+	 * nothing is cleared then, the time simply no longer stands.
+	 *
+	 * READ WHERE A BLOW IS RESOLVED, beside the other immunities in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on
+	 * `UCataclysmCombatEvents::AttackerOf`; by
+	 * `UCataclysmSkillEffects::ReduceHealthDirectly`, which is how an execute
+	 * takes health; and by the heads-up display for the word under a
+	 * creature's health bar.
+	 */
+	bool IsImmuneToDamageOf(const UAbilitySystemComponent* Attacker) const;
+
+	/**
+	 * How long ago `Striker`'s first blow of ITS CURRENT COMBAT got through to
+	 * this character, in seconds, or -1 when no such time stands. Ruled
+	 * 2026-10-12.
+	 *
+	 * A THIRD RECORD BESIDE `StruckBy` AND `FirstStruckBy`, because neither is
+	 * this: the first is overwritten by every blow, and the second is never
+	 * written again, so it cannot give an enemy "a fresh 15 seconds" after the
+	 * striker has disengaged.
+	 *
+	 * A TIME STANDS WHILE THE STRIKER HAS BEEN IN COMBAT WITHOUT A BREAK SINCE
+	 * IT WAS WRITTEN: the striker is in combat now, and the time is not older
+	 * than the start of that combat. `NoteStruckBy` writes the time when none
+	 * stands, and leaves a standing one alone. So it is written by the blows
+	 * that write the other two records: a tick writes it, and a row's answer to
+	 * an event and the consequence of a death do not.
+	 *
+	 * NOTHING IS CLEARED WHEN THE STRIKER'S COMBAT LAPSES. The time stops
+	 * standing at that moment and is overwritten by the striker's next blow to
+	 * get through. The whole record is cleared with `StruckBy`, on this
+	 * character's revival.
+	 */
+	float SecondsSinceEngagedBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -4470,6 +4535,22 @@ protected:
 	 * overwritten, and cleared with `StruckBy`. See `SecondsSinceFirstStruckBy`.
 	 */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> FirstStruckBy;
+
+	/**
+	 * When each striker's first blow of its current combat got through to this
+	 * character, in world seconds. Ruled 2026-10-12. Written by `NoteStruckBy`
+	 * when no time stands for that striker, and cleared with `StruckBy`. See
+	 * `SecondsSinceEngagedBy` for when a time stands.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> EngagedBy;
+
+	/**
+	 * Whether the engagement time `At` still stands for `Striker` at `Now`:
+	 * `Striker` is in combat at `Now`, by the comparison `NoteCombatEvent`
+	 * makes, and `At` is not before that combat began. False for a striker that
+	 * is not this project's ability system, which has no combat clock.
+	 */
+	static bool EngagementStands(float At, const UAbilitySystemComponent* Striker, float Now);
 
 	/** Rendering Blows: landed melee hits per striker, and the removal running. */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, int32> LandedMeleeHitsFrom;

@@ -8903,6 +8903,123 @@ def refuse_a_retaliation_flag_row_the_game_cannot_read(
     return problems
 
 
+#: How many seconds after its wearer's first hit on an enemy that enemy becomes
+#: immune to the wearer's damage. Ruled 2026-10-12 under the owner's
+#: delegation, for "Enemies that have been alive for more than 15 seconds
+#: become immune to your damage until you disengage for 3 seconds".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 15 to 15, with no Required Tags, no
+#: Condition, no Scale and no Action.
+#: `UCataclysmAbilitySystemComponent::EnemiesImmuneAfterSecondsStat` holds the
+#: same name, and `TestEnemiesImmuneFifteenSecondsAfterAFirstHit` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf`, and reads nought or
+#: less as no such rule. So a row requiring a tag matches nowhere, and a row
+#: of any kind but `flat` works on a base of nought and states no seconds.
+#:
+#: THE SENTENCE'S 3 SECONDS ARE NOT ON THE ROW. "Disengage for 3 seconds" is
+#: the wearer out of combat, and how long that takes is the game's one combat
+#: lapse, `UCataclysmAbilitySystemComponent::CombatLapseSeconds`, held here as
+#: `COMBAT_LAPSE_SECONDS` and compared with the engine's by that test class.
+#: No cell of the row is read for it.
+#:
+#: THE BOUND. Above nought and up to 60 seconds, the bound of the seconds
+#: conditions: a labelled judgement of the writing session.
+ENEMIES_IMMUNE_AFTER_SECONDS_STAT = "enemies_immune_to_you_after_seconds"
+MAX_ENEMIES_IMMUNE_AFTER_SECONDS = 60.0
+COMBAT_LAPSE_SECONDS = 3.0
+
+#: The columns of a row on `ENEMIES_IMMUNE_AFTER_SECONDS_STAT` that must state
+#: nothing, each a place somebody might write the sentence's 3 seconds.
+COLUMNS_THE_IMMUNITY_ROW_DOES_NOT_READ = (
+    "ConditionValue", "ConditionValue2", "ConditionValueHigh", "StackSeconds",
+    "StackSecondsHigh", "EverySeconds", "TriggerCooldown", "EventValue")
+
+
+def refuse_an_enemies_immune_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `ENEMIES_IMMUNE_AFTER_SECONDS_STAT` is one figure its reader
+    takes as the seconds, and it states nothing about the 3 seconds.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant
+    above gives. Each refusal names what the reader would do with the row.
+
+    ONE FIGURE. The sentence states 15 and no range, so the two value columns
+    agree. An enchantment states the stat on ONE row: two flat rows are added
+    together by the stat pipeline, so a second row holding the 3 would make
+    the wait 18 seconds and say nothing.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_a_retaliation_flag_row_the_game_cannot_read` leaves one.
+    """
+    problems = []
+    stat = ENEMIES_IMMUNE_AFTER_SECONDS_STAT
+    lapse = (f"The sentence's {COMBAT_LAPSE_SECONDS:g} seconds of disengaging "
+             f"are the game's own combat lapse (CombatLapseSeconds) and are "
+             f"not a cell of this row")
+    rows_of: dict[str, int] = {}
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        owner = str(row.get("Enchantment") or row["Name"])
+        rows_of[owner] = rows_of.get(owner, 0) + 1
+        if rows_of[owner] == 2:
+            problems.append(
+                f"{sheet}/{owner}: states {stat!r} on more than one row. Flat "
+                f"rows on one stat are added together, so the enemy would "
+                f"become immune after the SUM of them. {lapse}: state the "
+                f"seconds once.")
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself as the seconds, so the row "
+                f"must be 'flat'; any other kind works on a base of nought "
+                f"and makes NOTHING immune.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, where a blow on the "
+                f"enemy is resolved, so a row requiring a tag matches "
+                f"nowhere: this one would make NOTHING immune and say "
+                f"nothing.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low != high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the row "
+                f"states ONE figure, the seconds after the first hit, in both "
+                f"value columns. {lapse}.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= MAX_ENEMIES_IMMUNE_AFTER_SECONDS:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the seconds "
+                    f"must be above 0 and at most "
+                    f"{MAX_ENEMIES_IMMUNE_AFTER_SECONDS:g}. Nought or less is "
+                    f"read as no such rule.")
+        for column in COLUMNS_THE_IMMUNITY_ROW_DOES_NOT_READ:
+            written = float(row.get(column) or 0.0)
+            if written != 0.0:
+                problems.append(
+                    f"{who}: states {written:g} in {column} beside {stat!r}, "
+                    f"and nothing reads that cell for this stat. {lapse}.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The stat is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"make NOTHING immune.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9235,6 +9352,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW ON THE FLAG THAT RETALIATION CANNOT BE MITIGATED IS ONE THE
     # GAME ANSWERS YES TO. Ruled 2026-10-12.
     problems.extend(refuse_a_retaliation_flag_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW ON THE SECONDS AFTER WHICH AN ENEMY IS IMMUNE TO ITS WEARER IS
+    # ONE FIGURE THE GAME READS, AND STATES NOTHING OF THE 3 SECONDS. Ruled
+    # 2026-10-12.
+    problems.extend(refuse_an_enemies_immune_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
