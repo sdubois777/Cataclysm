@@ -5426,6 +5426,43 @@ REPEAT_SKILL_ACTION = "repeat_skill"
 #: paid use, the basic attack included. `basic_attack` carries no skill.
 REPEAT_SKILL_EVENTS = ("skill_use", "attack_use")
 
+#: The action that GAINS A KEPT STACK ON A CLOCK AND, ON A USE OF A SKILL, SPENDS
+#: THEM ALL TO CAST THAT SKILL AGAIN a number of times drawn from 1 to the
+#: stacks spent. Ruled 2026-10-12 under the owner's delegation, for "Shard of
+#: Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal
+#: Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and
+#: your skill is cast a random number of times. The bonus is permanent for the
+#: rest of the dungeon".
+#: `UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction` holds the
+#: same name.
+#:
+#: ONE ROW STATES ALL OF IT. Every Seconds is the period of the gain, 30. Scale
+#: Max Steps is the most stacks held, 5. The Action Event is the kind of use
+#: that spends them. The value is the share of its damage each extra cast
+#: deals, in per cent, 100 for the whole. A kept stack has no lifetime, so
+#: Stack Seconds is refused.
+#:
+#: AND THE AILMENT CELL IS WHAT THE SENTENCE CALLS THE STACKS, "Temporal Flux",
+#: which the game shows above the player's bars with the count and the cap.
+#: Ruled 2026-10-12. Required, and it must be a name the row's own sentence
+#: writes between single quotes, so a name cannot be typed that the sentence
+#: does not give. On this action the cell names nothing the game applies.
+#:
+#: THE PERIOD IS COUNTED IN SECONDS OF COMBAT THAT ARE CARRIED FROM ONE FIGHT TO
+#: THE NEXT, ruled 2026-10-12, for this action alone. Every other timed row
+#: counts whole periods of one combat.
+#:
+#: NOT ONE OF `SKILL_IN_HAND_ACTIONS`, AND ON PURPOSE. The value of each of
+#: those is a chance, and this row has none: a use with a stack held always
+#: spends.
+KEPT_STACKS_REPEAT_SKILL_ACTION = "kept_stacks_repeat_skill"
+
+#: The events whose use spends kept stacks: `skill_use`, and no other until a
+#: sentence asks for one. It is every paid use of a skill but the basic
+#: attack, which the ruling of 2026-10-12 leaves out. The clock that gains the
+#: stacks is not an event of the row: it is the row's Every Seconds.
+KEPT_STACKS_REPEAT_SKILL_EVENTS = ("skill_use",)
+
 #: The actions that trigger a DIFFERENT skill the character holds, with the
 #: value as the chance. Ruled 2026-10-06, for Spellblade's Will. The first
 #: takes a held skill with a cooldown, free: "Your melee attacks have a 25%
@@ -5866,6 +5903,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_temporary_absorb_action(index, who, action, event, fraction_of,
                                        kind, raw, headers)
         return
+    if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+        _check_kept_stacks_repeat_skill_action(index, who, action, event,
+                                               fraction_of, kind, raw, headers)
+        return
     if action in AILMENT_RIDER_ACTIONS:
         _check_ailment_rider_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
@@ -5890,6 +5931,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
             f"or {TEMPORARY_ABSORB_ACTION}; "
+            f"or {KEPT_STACKS_REPEAT_SKILL_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
             f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
@@ -6360,6 +6402,46 @@ def _check_repeat_skill_action(index: int, who: str, action: str, event: str,
                 f"else, so the column must be empty.")
 
 
+def _check_kept_stacks_repeat_skill_action(index: int, who: str, action: str,
+                                           event: str, fraction_of: str,
+                                           kind: str, raw,
+                                           headers: dict[str, int]) -> None:
+    """Everything a row that gains kept stacks and spends them to cast a skill
+    again must say, and everything it must not. Ruled 2026-10-12.
+
+    ITS EVENT IS THE KIND OF USE THAT SPENDS THE STACKS, one of
+    `KEPT_STACKS_REPEAT_SKILL_EVENTS`. The period, the cap and the share are
+    checked where Every Seconds, Scale Max Steps and the value are read.
+
+    REQUIRED TAGS AND A CONDITION ARE REFUSED. The stacks are gained on the
+    clock, which asks the row with no tags and no other character, as it asks
+    every timed row. The game refuses a row that requires tags when it is
+    asked with none, so a row stating them would never gain a stack. A
+    condition would be judged at the clock and again at the use, and no
+    sentence asks for either. A fraction, a value kind and a scale each mean
+    nothing here.
+    """
+    if event not in KEPT_STACKS_REPEAT_SKILL_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} spends kept stacks on the "
+            f"event {event or '(none)'!r}. The Action Event of {action} is the "
+            f"kind of use that spends them, and the game spends them on: "
+            f"{', '.join(KEPT_STACKS_REPEAT_SKILL_EVENTS)}. The clock that "
+            f"gains them is Every Seconds and not an event.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale"))),
+                            ("Required Tags",
+                             clean(_cell(raw, headers, "Required Tags"))),
+                            ("Condition", clean(_cell(raw, headers, "Condition")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} gains kept stacks on "
+                f"a clock and states {column} {written!r}. The clock asks the "
+                f"row with no tags, and its value is a share of damage and "
+                f"nothing else, so the column must be empty.")
+
+
 def _check_nth_action(index: int, who: str, action: str, event: str,
                       fraction_of: str, kind: str, raw,
                       headers: dict[str, int]) -> None:
@@ -6636,6 +6718,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != STRIKE_TARGET_ACTION \
                     and action != TEMPORARY_ABSORB_ACTION \
+                    and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
@@ -6709,7 +6792,8 @@ def enchantment_effects(book) -> list[dict]:
         if cap_text:
             cap = number(cap_text, "Scale Max Steps", index)
             if not scale and action not in NEXT_USE_ACTIONS \
-                    and action not in PLACED_ACTIONS:
+                    and action not in PLACED_ACTIONS \
+                    and action != KEPT_STACKS_REPEAT_SKILL_ACTION:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has a cap of "
                     f"{cap:g} steps and no scale. A cap limits how many steps "
@@ -6742,6 +6826,24 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} grants a "
                     f"{action} charge worth {low:g} to {high:g}. A charge is "
                     f"increased damage, so both ends are above nought.")
+
+        # A ROW THAT GAINS KEPT STACKS STATES THE MOST IT HOLDS, AND ITS VALUE
+        # IS THE SHARE OF ITS DAMAGE EACH EXTRA CAST DEALS, above 0 and up to
+        # 100. Ruled 2026-10-12. The cap is required rather than defaulted: "to
+        # at most 5" is the ruling's and not the sentence's, so the sheet is
+        # where it is written.
+        if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+            if scale_max_steps < 1:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains kept "
+                    f"stacks and states no Scale Max Steps. On {action} that "
+                    f"column is the most stacks held, a whole number from 1.")
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} casts a skill "
+                    f"again at {low:g} to {high:g} per cent of its damage. On "
+                    f"{action} the value is that share, above 0 and up to "
+                    f"100, and 100 is the whole.")
 
         # A COOLDOWN RESET'S VALUE IS ITS CHANCE, above 0 and up to 100. Issue
         # #1833, the cooldown reset action. 100 is always.
@@ -7007,6 +7109,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} places {action} "
                     f"worth {low:g} to {high:g} a stack. A stack takes away a "
                     f"share, so both ends are above nought.")
+        elif action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+            # A KEPT STACK HAS NO LIFETIME. Ruled 2026-10-12. Refused rather
+            # than dropped, so that a row is never read as stating one.
+            if stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains kept "
+                    f"stacks and states Stack Seconds. A kept stack has no "
+                    f"lifetime: it is held until a use spends it, the dungeon "
+                    f"is left, the wearer dies or the gear comes off. Leave "
+                    f"the column empty.")
         elif action == STUN_NEAR_THE_DYING_ACTION:
             # HOW LONG THE STUN LASTS. Ruled 2026-10-08: a chance and a duration
             # on one row, the duration here because the value is the chance.
@@ -7080,9 +7192,27 @@ def enchantment_effects(book) -> list[dict]:
         # #1833: "Every 10 seconds" is 10. Refused either way round, so a
         # period is never written where nothing reads it, nor a clock left
         # with none.
+        #
+        # AND A ROW THAT GAINS KEPT STACKS DOES AS WELL. Ruled 2026-10-12. Its
+        # Action Event is the use that spends the stacks, so its period cannot
+        # be told from its event; the game reads Every Seconds for it whatever
+        # the event is. Required there, with the same bound.
         every_text = clean(_cell(raw, headers, "Every Seconds"))
         every_seconds = 0.0
-        if action_event == TIMED_EVENT:
+        if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+            if not every_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains kept "
+                    f"stacks and states no Every Seconds, so it would never "
+                    f"gain one. On {action} that column is the period of the "
+                    f"gain.")
+            every_seconds = number(every_text, "Every Seconds", index)
+            if not 0.0 < every_seconds <= MAX_EVERY_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains a kept "
+                    f"stack every {every_seconds:g} seconds. A period is above "
+                    f"0 and up to {MAX_EVERY_SECONDS:g}.")
+        elif action_event == TIMED_EVENT:
             if not every_text:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} grants on "
@@ -7424,6 +7554,24 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} applies the status "
                     f"{ailment or '(none)'!r}, which {action} cannot. Known: "
                     f"{', '.join(known)}.")
+        elif action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+            # WHAT THE SENTENCE CALLS THE STACKS, in the same cell. Ruled
+            # 2026-10-12. Required, and a name the row's own words write
+            # between single quotes: "a stack of 'Temporal Flux.'" gives
+            # Temporal Flux, the full stop left out.
+            if not ailment:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains kept "
+                    f"stacks and states no name for them in Ailment. On "
+                    f"{action} that cell is what the sentence calls the "
+                    f"stacks, which the game shows with their count.")
+            if ailment.endswith(".") or not re.search(
+                    r"'" + re.escape(ailment) + r"\.?'", words[name]):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} calls its kept "
+                    f"stacks {ailment!r}, which its words {words[name]!r} do "
+                    f"not write between single quotes. Write the name as the "
+                    f"sentence gives it, without its full stop.")
         elif ailment:
             if action not in REMAINING_DAMAGE_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:

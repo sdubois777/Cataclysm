@@ -14224,6 +14224,798 @@ bool FCataclysmRepeatRowSelfBuffTest::RunTest(const FString&)
 	return true;
 }
 
+// KEPT STACKS: gained on a clock, held with no lifetime, and spent by a use of a skill to cast that skill again a drawn
+// number of times. Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (10-Piece Bonus): Every 30
+// seconds, you gain a stack of 'Temporal Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and
+// your skill is cast a random number of times. The bonus is permanent for the rest of the dungeon". The rows here are
+// made by hand, as a row of the effect table would give them: no authored row carries the action. Issue #1833.
+namespace CataclysmKeptStacksTest
+{
+	/** The key the hand-made row keeps its stacks under. A worn row's is its enchantment, action and event. */
+	const TCHAR* const RowKey = TEXT("Test:kept_stacks_repeat_skill:skill_use");
+
+	/** A row that gains a kept stack every `EverySeconds` to `Cap`, and spends them on `skill_use`. */
+	FCataclysmPoolAction AKeptStacksRow(float EverySeconds, int32 Cap, float SharePercent = 100.0f,
+										const TCHAR* Key = RowKey)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("skill_use"));
+		Action.Pool = FName(UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction);
+		Action.Percent = SharePercent;
+		Action.EverySeconds = EverySeconds;
+		Action.bKeptStacksRepeatSkill = true;
+		Action.KeptStackKey = FName(Key);
+		Action.KeptStackCap = Cap;
+		Action.TriggerKey = FName(Key);
+		return Action;
+	}
+
+	/** The draw of how many casts pinned, and put back to "drawn" afterwards. */
+	struct FKeptDrawPinned
+	{
+		explicit FKeptDrawPinned(int32 Casts)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.KeptStackCastsDraw"));
+			Set(Casts);
+		}
+
+		~FKeptDrawPinned()
+		{
+			Set(0);
+		}
+
+		void Set(int32 Casts)
+		{
+			if (Variable)
+			{
+				Variable->Set(Casts, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/**
+	 * A fight on the world's clock, as the tests of the timed rows move it: a blow begins the combat, the clock moves
+	 * half a second so that no step sits on the edge of a period, and then each second has a blow, to stay in combat,
+	 * and one step of the timed grants, called by hand. Nothing waits on a tick.
+	 *
+	 * `Begin(0.0f)` LEAVES THE HALF SECOND OUT, for a fight whose seconds are added to an earlier fight's: a first
+	 * fight then counts its seconds and a half, and each later fight whole seconds, so no sum sits on an edge.
+	 */
+	struct FKeptFight
+	{
+		FKeptFight(UWorld* InWorld, UCataclysmAbilitySystemComponent* InSystem) : World(InWorld), System(InSystem) {}
+
+		void Begin(float Offset = 0.5f)
+		{
+			System->NoteHitDealt();
+			World->TimeSeconds += Offset;
+			Began = World->TimeSeconds;
+		}
+
+		/** Ten minutes with no blow, and one step to see it: the combat has ended. */
+		bool End()
+		{
+			World->TimeSeconds += 600.0f;
+			System->StepTimedGrants();
+			return System->SecondsInCombat() < 0.0f;
+		}
+
+		void Until(float Seconds)
+		{
+			while (World->TimeSeconds < Began + Seconds - 0.001f)
+			{
+				World->TimeSeconds += 1.0f;
+				System->NoteHitDealt();
+				System->StepTimedGrants();
+			}
+		}
+
+		UWorld* World = nullptr;
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		double Began = 0.0;
+	};
+
+	/** The share of its damage each running repeat of this name deals, one entry a repeat. */
+	TArray<float> SharesOfRepeatsRunning(const UCataclysmAbilitySystemComponent* System, const FString& Name)
+	{
+		TArray<float> Shares;
+		for (const FGameplayAbilitySpec& Spec : System->GetActivatableAbilities())
+		{
+			const UCataclysmSkillTemplate* Skill = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Skill && Spec.IsActive() && Skill->SkillName == Name && Skill->bFreeRepeat
+				&& !Spec.GetDynamicSpecSourceTags().HasTagExact(CataclysmAbilitySlots::Tag(Skill->Slot)))
+			{
+				Shares.Add(Skill->FreeRepeatDamageShare);
+			}
+		}
+		return Shares;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStackGainedOnAClockTest,
+	"Cataclysm.Enchantments.KeptStacks.OneIsGainedEachPeriodOfAFightToTheCapAndNoneRunsOutWithTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKeptStackGainedOnAClockTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FKeptDrawPinned Pinned(1);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the draw can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5)});
+
+	// ONE STEP OUT OF COMBAT, WHICH IS WHERE THE ROW'S CLOCK IS FIRST SEEN. A clock counts from the step that first
+	// sees it. In play a living character steps four times a second, so a worn row has been seen before any fight.
+	Rig.System->StepTimedGrants();
+
+	// THE CONTROL, READ FIRST: wearing the row and before any period has passed, no stack is held, and a use of a
+	// skill records nothing and casts nothing more.
+	TestEqual(TEXT("control: before a period has passed no stack is held"), Rig.System->KeptStacksHeld(Key), 0);
+	ThePlayerUses(Rig.Player, Rig.Projectile->Name, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestTrue(TEXT("control: with no stack held a use asks for no cast"), Rig.System->PendingKeptStackCastSkill().IsNone());
+	TestEqual(TEXT("control: and none is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("control: and nothing runs"), RepeatsRunning(Rig.System, Rig.Projectile->Name), 0);
+
+	// ONE STACK FOR EACH 30 SECONDS OF FIGHTING: none at 29 seconds, one at 30, and one more at each 30 after it.
+	// This is one unbroken fight; the seconds carried from one fight to the next are the test after this one.
+	FKeptFight Fight(World, Rig.System);
+	Fight.Begin();
+	Fight.Until(29.0f);
+	TestEqual(TEXT("twenty-nine seconds into a fight no stack is held"), Rig.System->KeptStacksHeld(Key), 0);
+	for (int32 Period = 1; Period <= 5; ++Period)
+	{
+		Fight.Until(30.0f * Period);
+		TestEqual(*FString::Printf(TEXT("after period %d of the fight that many stacks are held"), Period),
+				  Rig.System->KeptStacksHeld(Key), Period);
+	}
+
+	// THE SIXTH PERIOD ADDS NO SIXTH STACK, and neither does the seventh.
+	Fight.Until(180.0f);
+	TestEqual(TEXT("the sixth period adds no sixth stack"), Rig.System->KeptStacksHeld(Key), 5);
+	Fight.Until(210.0f);
+	TestEqual(TEXT("and the seventh adds none"), Rig.System->KeptStacksHeld(Key), 5);
+	const TArray<UCataclysmAbilitySystemComponent::FHeldKeptStacks> Shown = Rig.System->KeptStacksForDisplay();
+	if (TestEqual(TEXT("what an interface would read has one entry"), Shown.Num(), 1))
+	{
+		TestTrue(TEXT("under the row's key"), Shown[0].Key == Key);
+		TestEqual(TEXT("holding five"), Shown[0].Held, 5);
+		TestEqual(TEXT("of at most five"), Shown[0].Cap, 5);
+	}
+
+	// THE STACKS DO NOT RUN OUT WITH TIME. Ten minutes pass with no blow, which ends the combat; the stacks are held.
+	// A row's own stacks, by contrast, are counted as nought once their seconds have passed.
+	World->TimeSeconds += 600.0f;
+	Rig.System->StepTimedGrants();
+	if (TestTrue(TEXT("set-up: ten minutes with no blow end the combat"), Rig.System->SecondsInCombat() < 0.0f))
+	{
+		TestEqual(TEXT("ten minutes out of combat the five stacks are still held"), Rig.System->KeptStacksHeld(Key), 5);
+	}
+
+	// AND A NEW FIGHT STARTS THE COUNT OF PERIODS AGAIN WITHOUT TAKING A STACK AWAY.
+	Fight.Begin();
+	Fight.Until(29.0f);
+	TestEqual(TEXT("twenty-nine seconds into a new fight the five are still held"), Rig.System->KeptStacksHeld(Key), 5);
+
+	// ANOTHER PERIOD AND ANOTHER CAP WORK: a row of 10 seconds to 2, under a key of its own. THE FIGHT BEFORE IS
+	// ENDED FIRST, and the step that ends it is the one that first sees this row's clock, so the clock counts the
+	// new fight from its start.
+	const TCHAR* const OtherKey = TEXT("Test:another");
+	Rig.System->SetPoolActions({AKeptStacksRow(10.0f, 2, 100.0f, OtherKey)});
+	TestEqual(TEXT("the first row gone, its stacks are forgotten"), Rig.System->KeptStacksHeld(Key), 0);
+	if (!TestTrue(TEXT("set-up: the fight before has ended"), Fight.End()))
+	{
+		return false;
+	}
+	Fight.Begin();
+	Fight.Until(9.0f);
+	TestEqual(TEXT("nine seconds into a fight the row of ten has gained nothing"), Rig.System->KeptStacksHeld(FName(OtherKey)), 0);
+	Fight.Until(10.0f);
+	TestEqual(TEXT("ten seconds in it has gained one"), Rig.System->KeptStacksHeld(FName(OtherKey)), 1);
+	Fight.Until(40.0f);
+	TestEqual(TEXT("forty seconds in it holds its cap of two"), Rig.System->KeptStacksHeld(FName(OtherKey)), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStackSecondsCarriedTest,
+	"Cataclysm.Enchantments.KeptStacks.TheSecondsTowardsTheNextOneAreCarriedFromOneFightToTheNext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-12 by the coordinating session: "the count towards the next stack CARRIES FROM ONE FIGHT TO THE
+ * NEXT. In-combat seconds accumulate and are not thrown away when a fight ends." For rows that gain kept stacks
+ * only. THE CONTROL IS AN ORDINARY TIMED ROW WORN BESIDE IT, a row's own stacks gained every 30 seconds: it counts
+ * whole periods of one combat and starts again with each combat, as it did before this.
+ */
+bool FCataclysmKeptStackSecondsCarriedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable()))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FName OrdinaryKey(TEXT("Test:ordinary"));
+
+	// THE ORDINARY TIMED ROW: one of its own stacks every 30 seconds, to 5, each lasting 60 seconds.
+	FCataclysmPoolAction Ordinary;
+	Ordinary.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+	Ordinary.EverySeconds = 30.0f;
+	Ordinary.StackKey = OrdinaryKey;
+	Ordinary.StackSeconds = 60.0f;
+	Ordinary.StackCap = 5;
+	Ordinary.TriggerKey = OrdinaryKey;
+	const FCataclysmPoolAction Kept = AKeptStacksRow(30.0f, 5);
+	Rig.System->SetPoolActions({Kept, Ordinary});
+	Rig.System->StepTimedGrants();
+	const auto Towards = [&]() { return Rig.System->KeptStackSecondsTowardsNext(Key); };
+
+	// THE CONTROL, READ FIRST: nothing held, nothing counted.
+	TestEqual(TEXT("control: no kept stack is held"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("control: no second is counted towards one"), Towards(), 0.0f, 0.01f);
+	TestEqual(TEXT("control: the ordinary row holds none of its own"), Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+
+	// THE FIRST FIGHT, OF 20 SECONDS AND A HALF: no stack, and its seconds are counted.
+	FKeptFight Fight(World, Rig.System);
+	Fight.Begin();
+	Fight.Until(20.0f);
+	TestEqual(TEXT("a fight of 20.5 seconds gains no kept stack"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("and 20.5 seconds are counted towards one"), Towards(), 20.5f, 0.01f);
+	TestEqual(TEXT("and the ordinary row holds none"), Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+
+	// THE FIGHT ENDS, AND NOTHING COUNTED IS LOST. Out of combat nothing is counted either.
+	if (!TestTrue(TEXT("set-up: the first fight has ended"), Fight.End()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("out of combat the 20.5 seconds are kept, and ten minutes add none"), Towards(), 20.5f, 0.01f);
+
+	// THE SECOND FIGHT: THE STACK COMES AT 30 SECONDS OF FIGHTING, which is its tenth second.
+	Fight.Begin(0.0f);
+	Fight.Until(9.0f);
+	TestEqual(TEXT("nine seconds into the second fight, 29.5 of fighting, no kept stack"), Rig.System->KeptStacksHeld(Key), 0);
+	Fight.Until(10.0f);
+	TestEqual(TEXT("ten seconds into it, 30.5 of fighting, one kept stack"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("with half a second counted towards the next"), Towards(), 0.5f, 0.01f);
+	Fight.Until(20.0f);
+	TestEqual(TEXT("two fights of 20 seconds have given one kept stack"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("with 10.5 seconds carried on towards the next"), Towards(), 10.5f, 0.01f);
+	TestEqual(TEXT("control: the ordinary row, 20 seconds into its second fight, holds none"),
+			  Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+
+	// THE CONTROL: THE ORDINARY ROW GAINS AT 30 SECONDS OF ONE FIGHT, having fought 50 in all. Read at 29 and at 31
+	// seconds of the fight, a second each side of its period.
+	Fight.Until(29.0f);
+	TestEqual(TEXT("control: 29 seconds into this fight the ordinary row holds none"), Rig.System->OwnStacksHeld(OrdinaryKey), 0);
+	Fight.Until(31.0f);
+	TestEqual(TEXT("control: 31 seconds into this fight the ordinary row holds one"), Rig.System->OwnStacksHeld(OrdinaryKey), 1);
+	TestEqual(TEXT("and the kept row, at 51.5 seconds of fighting, still holds one"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("with 21.5 seconds towards the next"), Towards(), 21.5f, 0.01f);
+
+	// A THIRD FIGHT: the second kept stack in its ninth second. A USE THAT SPENDS DOES NOT CLEAR THE SECONDS.
+	if (!TestTrue(TEXT("set-up: the second fight has ended"), Fight.End()))
+	{
+		return false;
+	}
+	Fight.Begin(0.0f);
+	Fight.Until(8.0f);
+	TestEqual(TEXT("eight seconds into the third fight, 59.5 of fighting, still one kept stack"), Rig.System->KeptStacksHeld(Key), 1);
+	Fight.Until(15.0f);
+	TestEqual(TEXT("fifteen seconds into it, 66.5 of fighting, two"), Rig.System->KeptStacksHeld(Key), 2);
+	TestEqual(TEXT("with 6.5 seconds towards the next"), Towards(), 6.5f, 0.01f);
+	TestEqual(TEXT("spending answers the two"), Rig.System->SpendKeptStacks(Key), 2);
+	TestEqual(TEXT("and the 6.5 seconds are still counted"), Towards(), 6.5f, 0.01f);
+
+	// A DEATH CLEARS THE SECONDS, where it clears the stacks.
+	Rig.System->ClearWhatDeathEnds();
+	TestEqual(TEXT("after what a death ends is cleared, no second is counted"), Towards(), 0.0f, 0.01f);
+
+	// THE GEAR COMING OFF CLEARS THEM. Ten and a half seconds are counted again first; the step before the fight is
+	// the one that first sees the clock again.
+	Rig.System->StepTimedGrants();
+	Fight.Begin();
+	Fight.Until(10.0f);
+	if (TestEqual(TEXT("set-up: 10.5 seconds are counted again"), Towards(), 10.5f, 0.01f))
+	{
+		Rig.System->SetPoolActions({Ordinary});
+		TestEqual(TEXT("with the row off no second is counted"), Towards(), 0.0f, 0.01f);
+		Rig.System->SetPoolActions({Kept, Ordinary});
+		TestEqual(TEXT("and the row put back on starts at none"), Towards(), 0.0f, 0.01f);
+	}
+
+	// PUT ON PART WAY THROUGH A FIGHT, THE CLOCK COUNTS FROM THE STEP THAT FIRST SEES IT and is owed nothing earlier.
+	Rig.System->StepTimedGrants();
+	TestEqual(TEXT("the step that first sees the clock counts nothing"), Towards(), 0.0f, 0.01f);
+	Fight.Until(20.0f);
+	if (!TestEqual(TEXT("ten seconds on, 10 are counted"), Towards(), 10.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// ANOTHER DUNGEON CLEARS THEM: not read inside it, and removed by the next step.
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("set-up: the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with the game mode walking no dungeon the 10 are still counted"), Towards(), 10.0f, 0.01f);
+	Mode->EmpireDungeonId = 7;
+	TestEqual(TEXT("in dungeon 7 the seconds counted outside it are not read"), Towards(), 0.0f, 0.01f);
+	Rig.System->StepTimedGrants();
+	Mode->EmpireDungeonId = INDEX_NONE;
+	TestEqual(TEXT("and after a step, outside it again, none is counted"), Towards(), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStacksSpentTest,
+	"Cataclysm.Enchantments.KeptStacks.AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKeptStacksSpentTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FKeptDrawPinned Pinned(1);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the draw can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FString& Carom = Rig.Projectile->Name;
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5)});
+	const auto Use = [&]()
+	{
+		ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	};
+
+	// THE CONTROL, READ FIRST: no stack, and a use casts nothing more.
+	Use();
+	TestTrue(TEXT("control: with no stack held a use asks for no cast"), Rig.System->PendingKeptStackCastSkill().IsNone());
+	TestEqual(TEXT("control: and none is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("control: and nothing runs"), RepeatsRunning(Rig.System, Carom), 0);
+
+	// ONE STACK: THE USE RECORDS THE REQUEST AND SPENDS NOTHING YET. Stacks are granted by hand from here on; the
+	// clock that grants them is the test before this one.
+	Rig.System->GainKeptStack(Key, 5);
+	if (!TestEqual(TEXT("set-up: one stack is held"), Rig.System->KeptStacksHeld(Key), 1))
+	{
+		return false;
+	}
+	Use();
+	TestEqual(TEXT("the used skill is the one to cast again"), Rig.System->PendingKeptStackCastSkill(), FName(*Carom));
+	TestTrue(TEXT("at the point the use was aimed"), Rig.System->PendingKeptStackCastAim().Equals(Aim, 0.01f));
+	if (TestEqual(TEXT("one row asked"), Rig.System->PendingKeptStackCasts().Num(), 1))
+	{
+		TestTrue(TEXT("the row that holds the stacks"), Rig.System->PendingKeptStackCasts()[0].Key == Key);
+		TestEqual(TEXT("at the whole of its damage"), Rig.System->PendingKeptStackCasts()[0].DamageShare, 1.0f, 0.001f);
+	}
+	TestEqual(TEXT("nothing is started inside the use"), RepeatsRunning(Rig.System, Carom), 0);
+	TestEqual(TEXT("and the stack is still held until the casts are made"), Rig.System->KeptStacksHeld(Key), 1);
+
+	// MADE: ONE CAST MORE, THE STACK GONE, FREE, NOT A USE.
+	const float ManaBefore = Rig.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute());
+	const uint32 UsesBefore = UCataclysmCombatEvents::In(World)->SkillUsesSent();
+	TestEqual(TEXT("one stack: one cast more is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 1);
+	TestEqual(TEXT("and one runs"), RepeatsRunning(Rig.System, Carom), 1);
+	TestEqual(TEXT("and the stack is gone"), Rig.System->KeptStacksHeld(Key), 0);
+	const UCataclysmSkillTemplate* Running = nullptr;
+	if (RepeatsRunning(Rig.System, Carom, &Running) == 1 && TestNotNull(TEXT("the cast that runs"), Running))
+	{
+		TestTrue(TEXT("it is a free start"), Running->bFreeRepeat);
+		TestTrue(TEXT("aimed where the use was aimed"), Running->FreeRepeatAim.Equals(Aim, 0.01f));
+		TestEqual(TEXT("at the whole of its damage"), Running->FreeRepeatDamageShare, 1.0f, 0.001f);
+	}
+	TestEqual(TEXT("it paid no mana"), Rig.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute()),
+			  ManaBefore);
+	TestEqual(TEXT("and sent no skill-used notice, so an extra cast is not a use"),
+			  UCataclysmCombatEvents::In(World)->SkillUsesSent(), UsesBefore);
+	TestTrue(TEXT("nothing is pending any more"), Rig.System->PendingKeptStackCastSkill().IsNone());
+	TestEqual(TEXT("and with nothing pending nothing is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+
+	// AN EXTRA CAST SPENDS NOTHING AND IS NOT CAST AGAIN BY THIS ROW. Stacks gained after the use are held through a
+	// call that has no use behind it: the casts above raised no use, so there is no request to take them.
+	Rig.System->GainKeptStack(Key, 5);
+	Rig.System->GainKeptStack(Key, 5);
+	TestEqual(TEXT("with two stacks and no new use, nothing is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("and the two stacks are still held"), Rig.System->KeptStacksHeld(Key), 2);
+	TestEqual(TEXT("and still one cast runs"), RepeatsRunning(Rig.System, Carom), 1);
+
+	// FIVE STACKS, THE DRAW PINNED TO ITS LOW END: one cast more, and all five are spent.
+	for (int32 More = 0; More < 3; ++More)
+	{
+		Rig.System->GainKeptStack(Key, 5);
+	}
+	if (!TestEqual(TEXT("set-up: five stacks are held"), Rig.System->KeptStacksHeld(Key), 5))
+	{
+		return false;
+	}
+	Pinned.Set(1);
+	Use();
+	int32 RunningBefore = RepeatsRunning(Rig.System, Carom);
+	TestEqual(TEXT("five stacks, the draw at 1: one cast more"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 1);
+	TestEqual(TEXT("one more runs"), RepeatsRunning(Rig.System, Carom) - RunningBefore, 1);
+	TestEqual(TEXT("and all five stacks are spent"), Rig.System->KeptStacksHeld(Key), 0);
+
+	// FIVE STACKS, THE DRAW PINNED TO ITS HIGH END: five casts more, each at the whole of its damage.
+	for (int32 More = 0; More < 5; ++More)
+	{
+		Rig.System->GainKeptStack(Key, 5);
+	}
+	if (!TestEqual(TEXT("set-up: five stacks are held again"), Rig.System->KeptStacksHeld(Key), 5))
+	{
+		return false;
+	}
+	Pinned.Set(5);
+	Use();
+	RunningBefore = RepeatsRunning(Rig.System, Carom);
+	TestEqual(TEXT("five stacks, the draw at 5: five casts more"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 5);
+	TestEqual(TEXT("five more run"), RepeatsRunning(Rig.System, Carom) - RunningBefore, 5);
+	TestEqual(TEXT("and all five stacks are spent"), Rig.System->KeptStacksHeld(Key), 0);
+	const TArray<float> Shares = SharesOfRepeatsRunning(Rig.System, Carom);
+	TestEqual(TEXT("seven casts run in all: one, one and five"), Shares.Num(), 7);
+	for (const float Share : Shares)
+	{
+		TestEqual(TEXT("each extra cast is at the whole of its damage"), Share, 1.0f, 0.001f);
+	}
+
+	// A SIXTH GAIN ADDS NO SIXTH STACK, by hand as on the clock.
+	for (int32 More = 0; More < 6; ++More)
+	{
+		Rig.System->GainKeptStack(Key, 5);
+	}
+	TestEqual(TEXT("six gains to a cap of five hold five"), Rig.System->KeptStacksHeld(Key), 5);
+	TestEqual(TEXT("spending them answers five"), Rig.System->SpendKeptStacks(Key), 5);
+	TestEqual(TEXT("and leaves none"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("and spending none answers nought"), Rig.System->SpendKeptStacks(Key), 0);
+
+	// THE PIN IS HELD TO THE STACKS SPENT: pinned to 9 with three held, three casts more.
+	for (int32 More = 0; More < 3; ++More)
+	{
+		Rig.System->GainKeptStack(Key, 5);
+	}
+	if (!TestEqual(TEXT("set-up: three stacks are held"), Rig.System->KeptStacksHeld(Key), 3))
+	{
+		return false;
+	}
+	Pinned.Set(9);
+	Use();
+	TestEqual(TEXT("three stacks, the draw pinned to 9: three casts more"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 3);
+	TestEqual(TEXT("and the three are spent"), Rig.System->KeptStacksHeld(Key), 0);
+
+	// THE DRAW WITH ITS PIN OFF IS FROM 1 TO THE STACKS SPENT. One draw, so only its bounds are read.
+	for (int32 More = 0; More < 4; ++More)
+	{
+		Rig.System->GainKeptStack(Key, 5);
+	}
+	if (!TestEqual(TEXT("set-up: four stacks are held"), Rig.System->KeptStacksHeld(Key), 4))
+	{
+		return false;
+	}
+	Pinned.Set(0);
+	Use();
+	const int32 Drawn = UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player);
+	TestTrue(*FString::Printf(TEXT("four stacks, the draw not pinned: from 1 to 4 casts more, and it was %d"), Drawn),
+			 Drawn >= 1 && Drawn <= 4);
+	TestEqual(TEXT("and the four are spent whatever was drawn"), Rig.System->KeptStacksHeld(Key), 0);
+
+	// A ROW STATING A SHARE OF 50 CASTS AT HALF. The mechanism is for any share; the ruled row states 100.
+	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5, 50.0f)});
+	Rig.System->GainKeptStack(Key, 5);
+	Pinned.Set(1);
+	Use();
+	if (TestEqual(TEXT("a row of 50: one row asked"), Rig.System->PendingKeptStackCasts().Num(), 1))
+	{
+		TestEqual(TEXT("at half its damage"), Rig.System->PendingKeptStackCasts()[0].DamageShare, 0.5f, 0.001f);
+	}
+	TestEqual(TEXT("and its cast is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 1);
+	TestTrue(TEXT("at half its damage"), SharesOfRepeatsRunning(Rig.System, Carom).Contains(0.5f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStacksNotSpentTest,
+	"Cataclysm.Enchantments.KeptStacks.TheBasicAttackAndASkillNoRowMayCastAgainSpendNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKeptStacksNotSpentTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FKeptDrawPinned Pinned(1);
+	const FCataclysmWeaponSkill* SelfBuff = TheSkillNamed(Rig.Skills, TEXT("Ashen Edge"));
+	const FCataclysmWeaponSkill* Movement = TheSkillNamed(Rig.Skills, TEXT("Flashpoint"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestNotNull(TEXT("set-up: the draw can be pinned"), Pinned.Variable)
+		|| !TestNotNull(TEXT("set-up: Ashen Edge"), SelfBuff) || !TestNotNull(TEXT("set-up: Flashpoint"), Movement))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FString& Carom = Rig.Projectile->Name;
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5)});
+	for (int32 More = 0; More < 3; ++More)
+	{
+		Rig.System->GainKeptStack(Key, 5);
+	}
+	if (!TestEqual(TEXT("set-up: three stacks are held"), Rig.System->KeptStacksHeld(Key), 3))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: a paid use of a skill a row may cast again asks for casts. It is not made; the next
+	// use lets it go, and nothing was spent by recording it.
+	ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("control: a use of Carom asks for casts"), Rig.System->PendingKeptStackCastSkill(), FName(*Carom));
+	TestEqual(TEXT("control: and the three stacks are still held"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// THE BASIC ATTACK SPENDS NOTHING. It raises no `skill_use`, and it begins a new use, so the request of the use
+	// before it is let go with its stacks unspent.
+	ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::BasicAttack, Aim);
+	TestTrue(TEXT("a basic attack asks for no cast, and lets go of the request before it"),
+			 Rig.System->PendingKeptStackCastSkill().IsNone());
+	TestEqual(TEXT("nothing is made for it"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("and the three stacks are still held"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// A SELF BUFF AND A MOVEMENT SKILL ARE PAID USES OF A SKILL, SO EACH ASKS; NEITHER MAY BE CAST AGAIN BY A ROW, SO
+	// NOTHING IS CAST AND NOTHING IS SPENT.
+	TestFalse(TEXT("set-up: a self buff may not be cast again by a row"), UCataclysmTriggeredSkill::RepeatsFromARow(*SelfBuff));
+	TestFalse(TEXT("set-up: a movement skill may not"), UCataclysmTriggeredSkill::RepeatsFromARow(*Movement));
+	ThePlayerUses(Rig.Player, SelfBuff->Name, SelfBuff->Tags, ECataclysmAbilitySlot::Support, Rig.Player->GetActorLocation());
+	TestEqual(TEXT("a use of a self buff asks"), Rig.System->PendingKeptStackCastSkill(), FName(*SelfBuff->Name));
+	TestEqual(TEXT("and nothing is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("and no copy of it runs"), RepeatsRunning(Rig.System, SelfBuff->Name), 0);
+	TestEqual(TEXT("and the three stacks are still held"), Rig.System->KeptStacksHeld(Key), 3);
+	TestTrue(TEXT("and the request is gone"), Rig.System->PendingKeptStackCastSkill().IsNone());
+
+	ThePlayerUses(Rig.Player, Movement->Name, Movement->Tags, ECataclysmAbilitySlot::Movement, Aim);
+	TestEqual(TEXT("a use of a movement skill asks"), Rig.System->PendingKeptStackCastSkill(), FName(*Movement->Name));
+	TestEqual(TEXT("and nothing is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("and no copy of it runs"), RepeatsRunning(Rig.System, Movement->Name), 0);
+	TestEqual(TEXT("and the three stacks are still held"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// A SKILL THE TABLE DOES NOT HOLD SPENDS NOTHING.
+	ThePlayerUses(Rig.Player, TEXT("No Such Skill"), Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("a skill the table does not hold: nothing is made"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 0);
+	TestEqual(TEXT("and the three stacks are still held"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// THE CONTROL AGAIN, MADE THIS TIME: the same three stacks are spent by a use of Carom.
+	ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("control: a use of Carom casts once more at a draw of 1"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 1);
+	TestEqual(TEXT("control: and spends the three"), Rig.System->KeptStacksHeld(Key), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStacksBesideARepeatRowTest,
+	"Cataclysm.Enchantments.KeptStacks.ThisRowAndARepeatRowOnOneUseEachMakeTheirOwnCasts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKeptStacksBesideARepeatRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	FKeptDrawPinned Pinned(2);
+	FRepeatRollPinned Roll(TEXT("0"));
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable())
+		|| !TestTrue(TEXT("set-up: the draw and the roll can be pinned"), Pinned.Variable && Roll.Variable))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FString& Carom = Rig.Projectile->Name;
+	const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 0.0f, 0.0f);
+	const FCataclysmPoolAction Half = ARepeatRow(TEXT("Test:half"), 40.0f, 50.0f);
+	const FCataclysmPoolAction Kept = AKeptStacksRow(30.0f, 5);
+
+	// THE CONTROL, READ FIRST: the repeat row worn beside the kept stacks row, with no stack held. One repeat at
+	// half, and no cast from stacks.
+	Rig.System->SetPoolActions({Half, Kept});
+	ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+	TestEqual(TEXT("control: the repeat row records its repeat"), Rig.System->PendingRepeatSkill(), FName(*Carom));
+	TestTrue(TEXT("control: with no stack held nothing is asked for from stacks"), Rig.System->PendingKeptStackCastSkill().IsNone());
+	TestTrue(TEXT("control: the repeat is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+	TestEqual(TEXT("control: one cast runs"), RepeatsRunning(Rig.System, Carom), 1);
+
+	// BOTH ON ONE USE, in either order worn: the repeat row's one repeat at its half share, and two casts from two
+	// stacks at the whole. Neither takes the other's place and neither changes the other's share.
+	int32 RunningBefore = RepeatsRunning(Rig.System, Carom);
+	for (const bool bKeptFirst : {false, true})
+	{
+		Rig.System->SetPoolActions(bKeptFirst ? TArray<FCataclysmPoolAction>{Kept, Half}
+											  : TArray<FCataclysmPoolAction>{Half, Kept});
+		Rig.System->GainKeptStack(Key, 5);
+		Rig.System->GainKeptStack(Key, 5);
+		if (!TestEqual(TEXT("set-up: two stacks are held"), Rig.System->KeptStacksHeld(Key), 2))
+		{
+			return false;
+		}
+		ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy, Aim);
+		TestEqual(TEXT("the repeat row records its repeat"), Rig.System->PendingRepeatSkill(), FName(*Carom));
+		TestEqual(TEXT("at its own half share"), Rig.System->PendingRepeatShare(), 0.5f, 0.001f);
+		TestEqual(TEXT("and the kept stacks row asks as well"), Rig.System->PendingKeptStackCastSkill(), FName(*Carom));
+		TestTrue(TEXT("the repeat is made"), UCataclysmTriggeredSkill::MakePendingRepeat(Rig.Player));
+		TestEqual(TEXT("making the repeat spends no stack"), Rig.System->KeptStacksHeld(Key), 2);
+		TestEqual(TEXT("and two casts are made from the two stacks"), UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player), 2);
+		TestEqual(TEXT("three more run: one repeat and two casts"), RepeatsRunning(Rig.System, Carom) - RunningBefore, 3);
+		TestEqual(TEXT("and the two stacks are spent"), Rig.System->KeptStacksHeld(Key), 0);
+		RunningBefore = RepeatsRunning(Rig.System, Carom);
+	}
+
+	// OF THE SEVEN THAT RUN, THREE ARE AT HALF AND FOUR AT THE WHOLE: the control's repeat and the two repeats, and
+	// the two pairs of casts.
+	int32 AtHalf = 0;
+	int32 AtWhole = 0;
+	for (const float Share : SharesOfRepeatsRunning(Rig.System, Carom))
+	{
+		AtHalf += FMath::IsNearlyEqual(Share, 0.5f, 0.001f) ? 1 : 0;
+		AtWhole += FMath::IsNearlyEqual(Share, 1.0f, 0.001f) ? 1 : 0;
+	}
+	TestEqual(TEXT("three repeats run at half"), AtHalf, 3);
+	TestEqual(TEXT("and four casts run at the whole"), AtWhole, 4);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKeptStacksEndTest,
+	"Cataclysm.Enchantments.KeptStacks.TheyEndWhenTheDungeonIsLeftAtADeathAndWhenTheGearComesOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKeptStacksEndTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillRepeatTest;
+	using namespace CataclysmKeptStacksTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRepeatRig Rig(World);
+	if (!TestTrue(TEXT("set-up: a possessed player and the Carom row"), Rig.IsUsable()))
+	{
+		return false;
+	}
+	const FName Key(RowKey);
+	const FCataclysmPoolAction Row = AKeptStacksRow(30.0f, 5);
+	Rig.System->SetPoolActions({Row});
+	const auto GainThree = [&]()
+	{
+		for (int32 More = 0; More < 3; ++More)
+		{
+			Rig.System->GainKeptStack(Key, 5);
+		}
+	};
+
+	// THE CONTROL, READ FIRST: in a world with no dungeon game mode no dungeon is being walked, three gains hold
+	// three, and a step of the timed grants removes none of them.
+	TestEqual(TEXT("control: with no dungeon game mode no dungeon is being walked"), Rig.System->DungeonBeingWalked(), static_cast<int32>(INDEX_NONE));
+	GainThree();
+	TestEqual(TEXT("control: three gains hold three"), Rig.System->KeptStacksHeld(Key), 3);
+	Rig.System->StepTimedGrants();
+	TestEqual(TEXT("control: a step removes none while nothing has changed"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// A DUNGEON GAME MODE IN THE WORLD, WALKING NO DUNGEON OF THE EMPIRE: still none, and the three are still held.
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("set-up: the dungeon game mode spawned"), Mode)
+		|| !TestEqual(TEXT("set-up: it walks no dungeon of the empire"), Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the game mode walking none, none is being walked"), Rig.System->DungeonBeingWalked(), static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and the three are still held"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// A DUNGEON ENTERED: stacks gained outside one are not held inside it, at once and before any step.
+	Mode->EmpireDungeonId = 7;
+	TestEqual(TEXT("dungeon 7 is the one being walked"), Rig.System->DungeonBeingWalked(), 7);
+	TestEqual(TEXT("stacks gained outside a dungeon are not held inside one"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("and an interface would read none"), Rig.System->KeptStacksForDisplay().Num() == 1 ? Rig.System->KeptStacksForDisplay()[0].Held : -1, 0);
+
+	// GAINED INSIDE IT, THEY START AT ONE, and a step inside the same dungeon removes none.
+	Rig.System->GainKeptStack(Key, 5);
+	TestEqual(TEXT("the first stack gained inside the dungeon is one, not a fourth"), Rig.System->KeptStacksHeld(Key), 1);
+	Rig.System->GainKeptStack(Key, 5);
+	Rig.System->GainKeptStack(Key, 5);
+	Rig.System->StepTimedGrants();
+	TestEqual(TEXT("three are held inside the dungeon after a step"), Rig.System->KeptStacksHeld(Key), 3);
+
+	// THE DUNGEON LEFT: none is held, at once and before any step.
+	Mode->EmpireDungeonId = INDEX_NONE;
+	TestEqual(TEXT("the dungeon left, none is held"), Rig.System->KeptStacksHeld(Key), 0);
+
+	// AND THE NEXT STEP REMOVES THEM, so walking the same dungeon again does not find them. The control for the step
+	// is the line after it: the same dungeon entered again holds none.
+	Rig.System->StepTimedGrants();
+	Mode->EmpireDungeonId = 7;
+	TestEqual(TEXT("the same dungeon entered again after a step holds none"), Rig.System->KeptStacksHeld(Key), 0);
+
+	// ANOTHER DUNGEON ENTERED WITHOUT LEAVING THE FIRST: none is held, and a gain there starts at one.
+	GainThree();
+	TestEqual(TEXT("set-up: three held in dungeon 7"), Rig.System->KeptStacksHeld(Key), 3);
+	Mode->EmpireDungeonId = 8;
+	TestEqual(TEXT("in dungeon 8 the stacks of dungeon 7 are not held"), Rig.System->KeptStacksHeld(Key), 0);
+	Rig.System->GainKeptStack(Key, 5);
+	TestEqual(TEXT("and the first gained there is one"), Rig.System->KeptStacksHeld(Key), 1);
+	TestEqual(TEXT("spending in dungeon 8 answers the one"), Rig.System->SpendKeptStacks(Key), 1);
+
+	// A DEATH ENDS THEM. `ClearWhatDeathEnds` is what the player's revival runs.
+	GainThree();
+	if (TestEqual(TEXT("set-up: three held before the death"), Rig.System->KeptStacksHeld(Key), 3))
+	{
+		Rig.System->ClearWhatDeathEnds();
+		TestEqual(TEXT("after what a death ends is cleared, none is held"), Rig.System->KeptStacksHeld(Key), 0);
+	}
+
+	// THE GEAR COMING OFF ENDS THEM. The control first: the same row written again, as every gear refresh writes it,
+	// keeps them.
+	GainThree();
+	Rig.System->SetPoolActions({Row});
+	TestEqual(TEXT("control: the row written again keeps the three"), Rig.System->KeptStacksHeld(Key), 3);
+	Rig.System->SetPoolActions({AKeptStacksRow(30.0f, 5, 100.0f, TEXT("Test:another"))});
+	TestEqual(TEXT("a row under another key in its place: the three are forgotten"), Rig.System->KeptStacksHeld(Key), 0);
+	Rig.System->SetPoolActions({Row});
+	TestEqual(TEXT("and the row put back on holds none"), Rig.System->KeptStacksHeld(Key), 0);
+	GainThree();
+	Rig.System->SetPoolActions(TArray<FCataclysmPoolAction>());
+	TestEqual(TEXT("with no row worn none is held"), Rig.System->KeptStacksHeld(Key), 0);
+	TestEqual(TEXT("and an interface would read no entry"), Rig.System->KeptStacksForDisplay().Num(), 0);
+	return true;
+}
+
 namespace CataclysmAilmentRiderRowTest
 {
 	/** A creature three metres along X with a great deal of health and an attack worth 100. */
