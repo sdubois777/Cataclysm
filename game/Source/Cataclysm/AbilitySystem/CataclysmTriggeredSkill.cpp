@@ -18,6 +18,51 @@ static TAutoConsoleVariable<int32> CVarTriggerHeldSkillPick(
 	TEXT("Pins which skill of its pool a trigger-held-skill enchantment takes, by index. Negative picks for real."),
 	ECVF_Default);
 
+/**
+ * Pins how many times a use that spends kept stacks casts its skill again, for tests. Nought or less, the default,
+ * draws for real. Ruled 2026-10-12; the same purpose as `Cataclysm.TriggerHeldSkillPick` above.
+ */
+static TAutoConsoleVariable<int32> CVarKeptStackCastsDraw(
+	TEXT("Cataclysm.KeptStackCastsDraw"), 0,
+	TEXT("Pins how many times a use that spends kept stacks casts its skill again. A pinned number is held to "
+		 "between 1 and the stacks spent. Nought or less draws for real, each number from 1 to the stacks spent "
+		 "equally likely."),
+	ECVF_Default);
+
+/**
+ * The row of the skill a character used, by the name its use was announced under. Copied into `Out`, because starting
+ * a skill may change what the character holds.
+ *
+ * THE BASIC ATTACK COMES FROM THE WEAPON AND NOT FROM THE TABLE, so its name is looked up among the skills the
+ * character holds. Every other name is looked up among the skills of the character's damage type.
+ *
+ * @return whether a skill of that name was found
+ */
+static bool FindTheSkillUsed(AActor* Character, FName Named, FCataclysmWeaponSkill& Out)
+{
+	if (Named == FName(UCataclysmWeaponSkills::BasicAttackName))
+	{
+		const FCataclysmWeaponSkill* Held = UCataclysmTriggeredSkill::HeldBasicAttack(Character);
+		if (!Held)
+		{
+			return false;
+		}
+		Out = *Held;
+		return true;
+	}
+
+	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(
+			 UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character)))
+	{
+		if (FName(*Skill.Name) == Named)
+		{
+			Out = Skill;
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
 									   float DamageShare, bool bPaysCost)
 {
@@ -84,28 +129,65 @@ bool UCataclysmTriggeredSkill::MakePendingRepeat(AActor* Character)
 	const float Share = System->PendingRepeatShare();
 	System->ClearPendingRepeat();
 
-	// THE BASIC ATTACK COMES FROM THE WEAPON AND NOT FROM THE TABLE. Copied, because starting it may change what the
-	// character holds.
-	if (Named == FName(UCataclysmWeaponSkills::BasicAttackName))
+	// THE SAME LOOKUP THE CASTS BOUGHT WITH KEPT STACKS MAKE, in one place since 2026-10-12: `FindTheSkillUsed`.
+	FCataclysmWeaponSkill Skill;
+	return FindTheSkillUsed(Character, Named, Skill) && RepeatsFromARow(Skill)
+		&& Trigger(Character, Skill, Aim, Share);
+}
+
+int32 UCataclysmTriggeredSkill::MakePendingKeptStackCasts(AActor* Character)
+{
+	UCataclysmAbilitySystemComponent* System =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!System || System->PendingKeptStackCastSkill().IsNone())
 	{
-		const FCataclysmWeaponSkill* Held = HeldBasicAttack(Character);
-		if (!Held)
-		{
-			return false;
-		}
-		const FCataclysmWeaponSkill Basic = *Held;
-		return RepeatsFromARow(Basic) && Trigger(Character, Basic, Aim, Share);
+		return 0;
 	}
 
-	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(
-			 UCataclysmWeaponSkills::LoadGeneratedTable(), UCataclysmWeaponSlotsComponent::DamageTypeOf(Character)))
+	// TAKEN AND CLEARED BEFORE ANYTHING IS STARTED, as a pending repeat is. A copy of the rows, because clearing
+	// empties the list they are in.
+	const FName Named = System->PendingKeptStackCastSkill();
+	const FVector Aim = System->PendingKeptStackCastAim();
+	const TArray<UCataclysmAbilitySystemComponent::FPendingKeptStackCast> Rows = System->PendingKeptStackCasts();
+	System->ClearPendingKeptStackCasts();
+
+	// A SKILL NO ROW MAY CAST AGAIN SPENDS NOTHING. A judgement of the writing session: see the header.
+	FCataclysmWeaponSkill Skill;
+	if (!FindTheSkillUsed(Character, Named, Skill) || !RepeatsFromARow(Skill))
 	{
-		if (FName(*Skill.Name) == Named)
+		return 0;
+	}
+
+	int32 Started = 0;
+	for (const UCataclysmAbilitySystemComponent::FPendingKeptStackCast& Row : Rows)
+	{
+		// READ NOW AND NOT AT THE USE, so stacks that ended in the tick between are not counted.
+		const int32 Held = System->KeptStacksHeld(Row.Key);
+		if (Held <= 0)
 		{
-			return RepeatsFromARow(Skill) && Trigger(Character, Skill, Aim, Share);
+			continue;
+		}
+
+		// DRAWN FROM 1 TO THE STACKS HELD, each number equally likely. Drawn before anything is spent.
+		const int32 Pinned = CVarKeptStackCastsDraw.GetValueOnAnyThread();
+		const int32 Casts = Pinned > 0 ? FMath::Clamp(Pinned, 1, Held) : FMath::RandRange(1, Held);
+
+		// THE FIRST CAST DECIDES WHETHER THE STACKS ARE SPENT: a skill that refuses itself leaves them held.
+		if (!Trigger(Character, Skill, Aim, Row.DamageShare))
+		{
+			continue;
+		}
+		System->SpendKeptStacks(Row.Key);
+		++Started;
+		for (int32 Cast = 1; Cast < Casts; ++Cast)
+		{
+			if (Trigger(Character, Skill, Aim, Row.DamageShare))
+			{
+				++Started;
+			}
 		}
 	}
-	return false;
+	return Started;
 }
 
 const FCataclysmWeaponSkill* UCataclysmTriggeredSkill::HeldBasicAttack(const AActor* Character)

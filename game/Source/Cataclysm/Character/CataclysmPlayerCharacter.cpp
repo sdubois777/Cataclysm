@@ -1058,11 +1058,15 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 		// where a skill cannot be granted; Follow Through, Wild Magic and Echo Chamber wait a tick for the same reason.
 		// AND SO IS A TRIGGER OF A DIFFERENT HELD SKILL, after the repeat. Ruled 2026-10-06. Each asks the ability
 		// system whether anything is pending for it, so one timer serves both.
-		if (!Acting->PendingRepeatSkill().IsNone() || !Acting->PendingHeldTriggerUsedSkill().IsNone())
+		// AND SO ARE THE CASTS A ROW ASKED FOR BY SPENDING ITS KEPT STACKS, after the repeat and before the trigger of a
+		// different skill. Ruled 2026-10-12. The same timer serves all three.
+		if (!Acting->PendingRepeatSkill().IsNone() || !Acting->PendingHeldTriggerUsedSkill().IsNone()
+			|| !Acting->PendingKeptStackCastSkill().IsNone())
 		{
 			GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 			{
 				UCataclysmTriggeredSkill::MakePendingRepeat(this);
+				UCataclysmTriggeredSkill::MakePendingKeptStackCasts(this);
 				UCataclysmTriggeredSkill::MakePendingHeldTrigger(this);
 			}));
 		}
