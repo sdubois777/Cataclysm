@@ -2210,6 +2210,32 @@ float UCataclysmAbilitySystemComponent::DamageTypeImmunitySecondsLeft(FName Dama
 	return World && Until ? FMath::Max(0.0f, *Until - World->GetTimeSeconds()) : 0.0f;
 }
 
+TArray<FName> UCataclysmAbilitySystemComponent::DamageTypesImmuneTo() const
+{
+	// THE EIGHT IN THEIR OWN ORDER FIRST, so the answer does not depend on which window opened first.
+	TArray<FName> Open;
+	for (const FName& DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		if (IsImmuneToDamageType(DamageType))
+		{
+			Open.Add(DamageType);
+		}
+	}
+
+	// AND ANY OTHER TYPE AFTER THEM, by name. No blow carries one today.
+	TArray<FName> Others;
+	for (const TPair<FName, float>& Window : DamageTypeImmuneUntilSeconds)
+	{
+		if (!Open.Contains(Window.Key) && IsImmuneToDamageType(Window.Key))
+		{
+			Others.Add(Window.Key);
+		}
+	}
+	Others.Sort(FNameLexicalLess());
+	Open.Append(Others);
+	return Open;
+}
+
 void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 {
 	const UWorld* World = GetWorld();

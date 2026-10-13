@@ -2516,6 +2516,17 @@ public:
 	/** The seconds left of the window against `DamageType`, or nought. For an interface and for tests. */
 	float DamageTypeImmunitySecondsLeft(FName DamageType) const;
 
+	/**
+	 * The damage types whose window is open now. For `UCataclysmCombatOverlay::DamageTypeImmunityTextFor`, which
+	 * names each above the player's bars, and for tests. Ruled 2026-10-12.
+	 *
+	 * IN THE ORDER OF `UCataclysmItemModifiers::DamageTypeNames`, War first and Void last, which is the order the
+	 * character sheet lists the resistances in. A map's own order is the order its entries were added in, so a text
+	 * built from it would change places as windows opened and ended. A type that is not one of those eight comes
+	 * after them, in the order of its name; no blow carries such a type today.
+	 */
+	TArray<FName> DamageTypesImmuneTo() const;
+
 	/** When a lethal hit may next be survived, in world seconds. For tests. */
 	float LethalHitSurvivalAllowedAt() const
 	{

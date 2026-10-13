@@ -13,7 +13,11 @@ attribute), `game/Source/Cataclysm/Tests/CataclysmBlockShareTests.cpp` (five tes
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two probes), `tools/generate_datatables.py` (the
 two names, their bounds and one refusal), `tools/tests/test_generate_datatables.py` (one class of ten tests),
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two names and one test),
-`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites added to its inventory). Issue
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites added to its inventory). And, in
+a second commit for the display: `CataclysmAbilitySystemComponent.h` and `.cpp` again (one reader of which
+windows are open), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (the text),
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the text drawn above the player's bars),
+`game/Source/Cataclysm/Tests/CataclysmCombatOverlayTests.cpp` (one test). Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
 ### SAID FIRST
@@ -21,6 +25,12 @@ two names, their bounds and one refusal), `tools/tests/test_generate_datatables.
 The sentence, the six-piece bonus of the set Shard of Anarchy: "Shard of Anarchy (6-Piece Bonus): When you take
 damage, you have a 10% chance to become immune to the damage type that hit you for 5 seconds".
 
+- **A window is never extended in play. Ruled by the coordinating session on 2026-10-12: as built.** The
+  extension to the later end exists only in the function that opens a window, `GrantDamageTypeImmunity`, and is
+  tested there, by calling it. In play nothing reaches it: a hit of a type whose window is open deals nothing,
+  and a hit that deals nothing does not roll, so no roll for that type can happen until its window has ended.
+  So each window lasts the row's seconds from the hit that opened it and no longer. The option not taken: let a
+  hit the window refused roll. At a chance of 100 that would be immunity to the type without end.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
   the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
   engine does was read from the code when it was written.
@@ -65,12 +75,6 @@ damage, you have a 10% chance to become immune to the damage type that hit you f
   | A hit that emptied its wearer's health | No | A judgement of the writing session: the death has been announced by the time the roll would be made. |
   | A contagious touch of the dungeon rule Contagious Touch | No | That blow returns before any of this, having dealt nothing. |
 
-- **A window is never extended by a roll in play, as built.** The ruling says a later roll for the same type
-  extends the window to the later end and never shortens it. The function that opens a window does that
-  (`GrantDamageTypeImmunity`). But a hit of a type whose window is open deals nothing, and a hit that deals
-  nothing does not roll, so no roll for that type can happen until its window has ended. The extension is
-  reachable by calling the function, which the tests do. The option not taken: let a hit the window refused
-  roll. At a chance of 100 that would be immunity to the type without end.
 - **Damage over time of that type already on the wearer follows what the no-damage window does.** Read in
   `PostGameplayEffectExecute`: a tick reaches the same function as a hit, marked by the tag
   `UCataclysmDamageCalculation::DamageOverTimeTag`, and the block that empties a blow inside the no-damage window
@@ -108,9 +112,23 @@ damage, you have a 10% chance to become immune to the damage type that hit you f
   no-damage window, and `ACataclysmPlayerCharacter::Revive` is what runs it.
 - **A new dungeon floor ends nothing.** A window ends on the world's clock. The entry below records that no code
   in the game module travels to another level, so a floor change keeps the world and its clock.
-- **Nothing on screen shows a window or its seconds.** The owner's rule is that every system has a basic
-  interface. This layer does not give the window one. `DamageTypeImmunitySecondsLeft` is what an interface would
-  read. The coordinating session should rule on it before the row is authored.
+- **A player is shown each open window as a text above the player's own bars, such as "Immune War 4s".** Ruled
+  by the coordinating session on 2026-10-12: a text above the player's bars for each open type, in the form of
+  the held buff's, in this layer. Built in a second commit. The text is "Immune", the type's name and the whole
+  seconds left, rounded up as the held buff's are, so a window in its last second reads "1s". It is drawn on a
+  line of its own directly after the held buff's text.
+- **Several open types are one text on one line, in the order of the damage type names:** War, Demonic, Death,
+  Pestilence, Famine, Celestial, Chaos, Void, each part written as it would be alone and joined by two spaces,
+  as the parts of a status line are: "Immune War 4s  Immune Demonic 2s". A judgement of the writing session, on
+  the coordinating session's suggestion. That is the order of `UCataclysmItemModifiers::DamageTypeNames()`. The
+  windows are kept in a map, whose own order is the order its entries were added in, so a text in the map's
+  order would change places as windows opened and ended. The option not taken: a line for each type, which
+  would move the lines above it up and down as windows opened and ended.
+- **The text is empty for a dead actor and while no window is open.** It is also last on a creature's status
+  line, after the held buff's, where it is empty today because no creature wears a row.
+- **The draw in the HUD itself cannot be tested and needs a person to look.** `ACataclysmHUD::DrawHUD` never
+  runs in the test runs. The test reads the text the HUD is handed and the status line. That the text is drawn,
+  where it sits and that it can be read on screen are not shown by any test.
 
 **Genre sources, fetched by the enchantment session on 2026-10-12.**
 
@@ -163,6 +181,11 @@ Each was ruled on 2026-10-12 by the coordinating session under the owner's deleg
   take" row: for a blow that was not evaded, is not a tick, has a type, left its wearer's health above nought,
   and took something from health, the energy shield, mana or the temporary absorb.
 - **The end at a death.** `ClearWhatDeathEnds` empties the map on the line after it ends the no-damage window.
+- **The display, in a second commit.** `UCataclysmAbilitySystemComponent::DamageTypesImmuneTo()` answers the
+  types whose window is open now, the eight damage type names in their order and any other type after them by
+  name. `UCataclysmCombatOverlay::DamageTypeImmunityTextFor(const AActor*)` builds the text from it and from
+  `DamageTypeImmunitySecondsLeft`, in the form of `HeldBuffTextFor`. `ACataclysmHUD` draws it above the
+  player's own bars directly after the held buff's text, and `StatusLineFor` holds it after the held buff's.
 - **The generator.** `DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS` holds the two names and their bounds.
   `refuse_a_damage_type_immunity_row_the_game_cannot_read` refuses a row on either stat that is not `flat`, that
   requires a tag, or whose figure is outside its bounds, and an enchantment that states one of the two without
@@ -226,6 +249,16 @@ Two probes in `CataclysmStatExemptionTests.cpp`, one for each stat, run by
 `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. Each strikes two fighters with a War hit; the
 two differ by the one stat probed, and only the one holding both is immune to War afterwards.
 
+One test of the display in `CataclysmCombatOverlayTests.cpp`, after the test of the held buff's text, in the
+second commit: `Cataclysm.Overlay.EachDamageTypeThePlayerIsImmuneToIsNamedWithItsSecondsLeftAboveThePlayersBars`.
+A player wired as the game wires one and a creature 5 m away. The windows are opened by hand with
+`GrantDamageTypeImmunity`, Demonic first and War second, so that War standing first in the text shows the
+order is the damage type names' and not the order the windows opened in. The control first: no window, no text,
+and no "Immune" on the status line. Then "Immune Demonic 5s" half a second after a window of 5 seconds opens,
+with the status line containing it and the creature saying nothing; "Immune Demonic 4s" a second later;
+"Immune War 4s  Immune Demonic 3s" with both open, on the text and on the status line; "Immune War 1s" after
+the Demonic window has ended; and nothing, on the text and on the status line, after both have ended.
+
 Python:
 
 - `TestAHitMayMakeItsWearerImmuneToItsDamageType` in `tools/tests/test_generate_datatables.py`, ten tests on a
@@ -246,7 +279,8 @@ saves a blow by crossing a health threshold, inside the window; a lethal hit of 
 Nothing Stops It not being spent; a blow from a floor's hazard source, a floor patch, an enemy or a projectile;
 a lasting damage over time effect of a type, running on a timer; the window on a player character with a
 player state; a real death and revival; a floor change with a window open; the gear coming off with a window
-open; two sources of the row adding; what is drawn on screen for an emptied blow.
+open; two sources of the row adding; what is drawn on screen for an emptied blow; the draw of the text in the
+HUD, which no test run reaches; the text for a dead actor; a type that is not one of the eight.
 
 ### GUARD PROOFS PROPOSED
 
@@ -283,6 +317,12 @@ Failed assertions in each test, by reading:
 
 No test of another group is expected to fail under C-I or C-II. The first and the third of the three reads of
 the window have no test, so a break in either would fail nothing; they are listed under "Not tested".
+
+**The second commit, the display, changes none of the three.** Each anchor was counted again, once, in its file
+after that commit. That commit does not touch `CataclysmVitalAttributeSet.cpp`, and the function it adds to
+`CataclysmAbilitySystemComponent.cpp` does not hold C-III's old text. Its one test is in the group
+`Cataclysm.Overlay.`, outside the prefix, and opens its windows with `GrantDamageTypeImmunity`: it deals no blow
+and makes no roll, so none of the three breaks reaches it. No proof of the display is proposed.
 
 ### THE WINDOW'S RUN
 

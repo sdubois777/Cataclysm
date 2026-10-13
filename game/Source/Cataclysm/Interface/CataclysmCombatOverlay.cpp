@@ -559,6 +559,26 @@ FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
 		FMath::CeilToInt(AbilitySystem->HeldRandomBuffSecondsLeft()));
 }
 
+FString UCataclysmCombatOverlay::DamageTypeImmunityTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	// ONE PART FOR EACH OPEN WINDOW, in the order the component answers them in. ROUNDED UP, as the held buff's
+	// seconds are, so the last second reads "1s".
+	TArray<FString> Parts;
+	for (const FName& DamageType : AbilitySystem->DamageTypesImmuneTo())
+	{
+		Parts.Add(FString::Printf(TEXT("Immune %s %ds"), *DamageType.ToString(),
+			FMath::CeilToInt(AbilitySystem->DamageTypeImmunitySecondsLeft(DamageType))));
+	}
+	return FString::Join(Parts, TEXT("  "));
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -820,7 +840,10 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  MaddenedTextFor(Actor),
 		  DamageCutTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
-		  HeldBuffTextFor(Actor)})
+		  HeldBuffTextFor(Actor),
+		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every
+		  // creature today, for the same reason.
+		  DamageTypeImmunityTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{
