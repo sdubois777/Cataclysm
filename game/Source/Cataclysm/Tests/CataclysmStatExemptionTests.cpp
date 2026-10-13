@@ -7815,6 +7815,36 @@ namespace CataclysmStatExemptionTest
 					   FromHolding.DealtToHealth, 0.0f, 0.001f);
 	}
 
+	/**
+	 * `projectile_count`, read by `UCataclysmProjectileSkill::ExtraProjectilesWithRows` where the skill fires. Ruled
+	 * 2026-10-12, for "Skills get +1-4 to projectile count".
+	 *
+	 * ONE CHARACTER at the origin holding the projectile skill `ProjectileSkillOn` gives, which states a speed and
+	 * throws once. Asked with nothing granted, nothing is added and one use is one projectile. Granted 2 flat, 2 are
+	 * added and one use is three. Nothing is fired: `Cataclysm.ProjectileCount.` in
+	 * `CataclysmProjectileRangeTests.cpp` fires them.
+	 */
+	void ProbeProjectileCount(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		const UCataclysmProjectileSkill* Skill = ProjectileSkillOn(Holder);
+		if (!Test.TestNotNull(TEXT("a projectile skill"), Skill))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("nothing granted: no projectile is added"), Skill->ExtraProjectilesWithRows(), 0);
+		Test.TestEqual(TEXT("nothing granted: one use is one projectile"), Skill->ProjectilesOfOneUse(), 1);
+		GrantFlat(Holder.Actor, UCataclysmProjectileSkill::ProjectileCountStat, 2.0f);
+		Test.TestEqual(TEXT("projectile_count is read: 2 granted adds 2"), Skill->ExtraProjectilesWithRows(), 2);
+		Test.TestEqual(TEXT("and one use is three projectiles"), Skill->ProjectilesOfOneUse(), 3);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7954,6 +7984,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_type_immunity_on_hit_seconds"), &ProbeDamageTypeImmunityOnHitSeconds},
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeRetaliationCannotBeMitigated},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
+			{TEXT("projectile_count"), &ProbeProjectileCount},
 		};
 		return Made;
 	}
