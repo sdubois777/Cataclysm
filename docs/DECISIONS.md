@@ -177,7 +177,18 @@ whose effect rows the asset lacks logs no error.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **The seven tests that wear the real rows** failed on the asset as merged on the seven assertions above and passed in the whole suite once the asset held the rows. In the first run one of them, the teleport row's test, failed five assertions for the fault of the mechanism said first above; it was not changed and passed in the second run.
+- **Guard proofs:** none is this entry's. The fifteen proofs of the window are in the seven mechanism entries: three for the unmitigated retaliation and two for each of the others.
 
 ---
 
@@ -527,7 +538,24 @@ less than the health held and send no tick.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Two guard proofs for this layer**, prefix `Cataclysm.DelayedDamage.` (12 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| D1 | a tick of damage over time is delayed | `ATickOfDamageOverTimeIsNotDelayed` alone | 2 and 2 |
+| D2 | a parcel of another dungeon is kept and drained | `ADeathAndAnotherDungeonClearTheStoreAndAFloorOfTheSameDungeonDoesNot` alone | 6 and 6 |
+
+The proof proposed for the share being of the whole blow (D-I) was not run. **A test and no proof:** that a share is taken at all, which ten of the twelve tests would fail without, and that the regeneration step drains it, which a Python check of the step's jobs reads.
 
 ---
 
@@ -873,7 +901,24 @@ cooldown's 2 seconds; the wait not starting when nothing moved; staying put with
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Two guard proofs for this layer**, prefix `Cataclysm.TeleportWhenHit.` (5 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| T1 | the move is counted by the movement sampler as ground walked | `TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone` alone | 5 and 5 |
+| T2 | a wearer whose movement skill is running is moved | `ASkillInUseIsNotEndedByTheMoveAndAWearerInALastingChargeIsNotMoved` alone | 4 and 4 |
+
+The proof proposed for a tick (the first of the three) was not run. **The mechanism was corrected between the two runs**, as said first above: a point is now held to its row's metres within 0.01 centimetres, where a point a rounding error put 0.0000000000004 centimetres past them was refused. **A test and no proof:** that a tick and an evaded blow do not move the wearer, and the 0.01 centimetres. **Still not exercised by any test:** the navigation system's answer, the redraw, and the check that the wearer fits at the point.
 
 ---
 
@@ -1271,7 +1316,24 @@ use is three projectiles". No other test of another group is expected to fail un
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Two guard proofs for this layer**, prefix `Cataclysm.ProjectileCount.` (6 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| P1 | a projectile strikes an enemy another of its use landed on | `OneEnemyInThePathOfTwoProjectilesOfOneUseTakesOneHitAndTheNextUseHitsItAgain` alone | 6 and 6 |
+| P2 | the fan is not centred on the aim | `TheProjectilesOfOneUseFlyTenDegreesApartCentredOnTheAim` and `EachProjectileOfAUseDealsWhatALoneProjectileDeals` | 18 and 18 |
+
+The proof proposed for the count itself (P-I) was not run. **A test and no proof:** that the rows' count is added to the one, that a use costs once and is announced once, and that the skill ends when the last projectile finishes.
 
 ---
 
@@ -1732,7 +1794,24 @@ test of another group is expected to fail under any of the three.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Two guard proofs for this layer**, prefix `Cataclysm.ImmuneAfterFifteenSeconds.` (8 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| I1 | a blow from the attacker is never refused where it is resolved | `InsideTheFifteenSecondsEveryKindOfTheWearersDamageReachesAnEnemyAndFromThemOnNoneDoes`, `WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds`, `ABossBecomesImmuneToTheWearerAndTheWearersMinionAndAnotherCharacterStillDamageIt`, `ACharacterWithoutTheRowMakesNothingImmuneAndTheStatCarriesTheSeconds`, `ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent` and `TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt` | 21 and 21 |
+| I2 | a time goes on standing after the attacker's combat lapses | `WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds`, `AnExecuteAskedByTheWearerKillsInsideTheFifteenSecondsAndDoesNothingAfterThem`, `TheStatusLineSaysImmuneToYouUnderACreatureThePlayersDamageIsRefusedBy` and `TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt` | 11 and 11 |
+
+**I1's break text was corrected in the window.** As proposed above it read `if (Refusing->IsImmuneToDamageOf(nullptr) && UCataclysmTargeting::AbilitySystemOf(`, which leaves one closing bracket too many and did not compile ("error C2059: syntax error: ')'"); the proof stopped there with the file restored. It was run as `if (false && Refusing->IsImmuneToDamageOf(UCataclysmTargeting::AbilitySystemOf(`, which has the same meaning: the refusal is never made. The proof proposed for a direct loss in the attacker's name (I-II) was not run. One test of this layer was corrected between the two runs, as said first above: its pin of the critical strike roll was moved to after its world is made, so every blow of that test is now a critical strike.
 
 ---
 
@@ -1966,7 +2045,24 @@ three.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Two guard proofs for this layer**, each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| F1, prefix `Cataclysm.MinionGear.` (14 tests) | the reader reads the most recent strike and not the first | `TheStruckRecordKeepsWhenEachStrikersFirstBlowGotThroughAndALaterBlowDoesNotMoveIt` and `ATickStartsTheFirstStruckTimeAndARowsBlowAndAConsequenceOfADeathDoNot` | 3 and 3 |
+| F2, prefix `Cataclysm.DamageBySource.` (15 tests) | the hit is not told when its target first struck its thrower | `ARealBlowFromAnOpponentTheWearerFirstStruckFiveSecondsAgoIsRaisedAndBeforeThatIsNot` alone | 4 and 4 |
+
+The third proof proposed (the comparison made "more than" in place of "at least") was not run. **A test and no proof:** that exactly the stated seconds meets the condition.
 
 ---
 
@@ -2321,7 +2417,25 @@ its new probe would fail on its last assertion.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Three guard proofs for this layer**, prefix `Cataclysm.RetaliationUnmitigated.` (6 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out. They are the three the coordinating session approved.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| U1 | a flagged blow meets damage reduction and the whole of `damage_taken` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` and `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` | 7 and 7 |
+| U2 | a net increase in `damage_taken` is not kept for a flagged blow | the same two | 6 and 6 |
+| U3 | a resistance below nought is not kept for a flagged blow | the same two | 5 and 5 |
+
+**A test and no proof:** that the flag is read where retaliation is paid, and the evasion, block and armour steps. One test of this layer was corrected between the two runs, as said first above: its pin of the critical strike roll was moved to after its world is made.
 
 ---
 
@@ -2625,7 +2739,24 @@ itself with no cooldown; a stated trigger cooldown; a creature that takes no dam
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13, on development 55f09115, in one window for seven layers stacked in this order, each a mechanism with its row: the execute; the unmitigated retaliation; the time of a first hit; the immunity fifteen seconds after a first hit; the added projectiles; the teleport when hit; and the damage taken dealt over seconds. The suite and Python were run at the top of the seven, which holds all of them. Until this window no line of the seven layers had been compiled.
+
+- **SAID FIRST: THE FIRST RUN OF THE WHOLE SUITE FAILED FOUR TESTS, and the window was stopped and begun again.** It printed "3650 tests performed, 3646 succeeded, 4 failed", nine failed assertions, all in new tests of these layers. Two were controls that expected a critical strike, in `Cataclysm.RetaliationUnmitigated.AHoldersPaymentStillCannotCriticallyStrikeOrLeech` and `Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: each test pinned the critical strike roll before making its world, and `MakeWorldThatHasBegunPlay` sets that roll to 100, so no blow could be critical. Each pin was moved to after the world; no game code was changed for them. The other two were `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`: the mechanism refused a point pinned at the whole of its row's metres at 90 or at 180 degrees, because the point measured 400.0000000000004 centimetres from the wearer. That was a fault of the mechanism's comparison, which now allows 0.01 centimetres; the two tests were not changed. The three corrections were written by a second session, read by the enchantment session, and placed each in its own layer. No merged test was changed. Every figure below is of the second run, on the corrected layers.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled", in both runs. All seven layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "330 tests performed, 323 succeeded, 7 failed", registered 330, 323 and 7. The seven are the tests that wear the real rows, each on its one check that the row reached the wearer, seven failed assertions, registered seven.
+- **The editor rebuilt the effect table's asset seven times**, once for each layer: 595, 596, 597, 598, 599, 600 and 602 rows, as registered. Each layer carries its own asset in a commit of its own, and the tree ids matched. The corrections changed no table, so the assets of the first run were placed again and not rebuilt.
+- **The whole Unreal suite:** "3650 tests performed, 3650 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3650 tests in the tree at c1f9fd8d; 3650 performed, gap 0". Registered: 3650 and 0.
+- **Python:** "6211 passed, 8 skipped"; JUnit tests 6219, failures 0, errors 0, skipped 8. Registered: 6219 and 0. Lint: "All checks passed!".
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition. The count of failed assertions had been read from the code and not measured, and was registered as a figure to report and not as a stop condition. In all fifteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display, which does not draw in the test runs; and any row worn by a player in play.
+- **Two guard proofs for this layer**, prefix `Cataclysm.Execute.` (6 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| E1 | the boss rule removed from `CanBeExecuted` | `ABossACataclysmBossAndACreatureNoDamageReachesAreNotExecuted` alone | 6 and 6 |
+| E2 | an execute credited whoever's blow is last on record | `TheShareIsStrictAndOnlyTheCharacterWhoseBlowIsOnRecordIsCredited` alone | 2 and 2 |
+
+The third proof proposed (an execute row judged on the health held before the hit) was not run. **A test and no proof:** that the enemy is judged after the hit, a stated 100 never failing, the largest share being kept, each enemy rolling for itself, and a stated trigger cooldown.
 
 ---
 
