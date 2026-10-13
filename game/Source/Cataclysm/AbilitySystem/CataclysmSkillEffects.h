@@ -92,6 +92,33 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCannotBeEvaded = false;
 
 	/**
+	 * The target cannot reduce or mitigate this blow. Ruled 2026-10-12 under the owner's delegation, for
+	 * "Retaliation damage cannot be reduced or mitigated by the attacker". `UCataclysmRetaliation::Pay` is the one
+	 * writer, for a retaliating character whose rows hold `UCataclysmRetaliation::CannotBeMitigatedStat`.
+	 *
+	 * "MITIGATED" IS SIX STEPS OF THE TARGET'S AND NOT ITS POOLS. `UCataclysmDamageCalculation::Resolve` skips, for
+	 * a blow that carries this: evasion, block, armour, resistance, damage reduction (the capped line and the
+	 * multiplicative one), and the target's `damage_taken`. It still meets the temporary absorb, mana and the
+	 * energy shield, which are pools the target holds and not reductions of the blow.
+	 *
+	 * AN INCREASE TO DAMAGE TAKEN IS SKIPPED WITH THE REDUCTIONS, AND SO IS A RESISTANCE BELOW NOUGHT. The step
+	 * `damage_taken` is one figure that holds increases and reductions alike, with what rides on the target's
+	 * ailments added to it, and a resistance is one figure that may be negative. Both steps are skipped whole, so
+	 * against a target that takes more damage than normal this blow is SMALLER than the same blow without the flag.
+	 *
+	 * IT IS NOT AN IMMUNITY BYPASS. A creature that takes no damage, the no-damage window and the window against
+	 * one damage type are read by `UCataclysmVitalAttributeSet` after the calculation and empty this blow as they
+	 * empty any other. What the calculation does not touch is listed at `FCataclysmIncomingHit::bCannotBeMitigated`.
+	 *
+	 * THE BLOW SAYS SO BECAUSE EVERY ONE OF THE SIX IS READ ON THE TARGET, as `bCannotBeEvaded` above says of
+	 * evasion. The effect is stamped with `UCataclysmSkillEffects::CannotBeMitigatedDataName` and
+	 * `UCataclysmVitalAttributeSet` reads the stamp into `FCataclysmIncomingHit::bCannotBeMitigated`. It is still a
+	 * blow written to the Damage attribute, so it raises what a blow raises: the hit notice, the death notice and
+	 * the retaliating character's `retaliation_dealt`.
+	 */
+	bool bCannotBeMitigated = false;
+
+	/**
 	 * Per cent of the target's armour this blow ignores because a modifier NAMED the kind of thing that
 	 * struck it. Nought for every blow but one. Ruled 2026-10-07 for "Your traps ignore 20%-40% of enemy
 	 * armor": a trap's blow carries what its summoner's `armor_penetration` rows requiring `Type.Trap` come
@@ -1858,6 +1885,14 @@ public:
 	 * `FCataclysmHitDelivery::bCannotBeEvaded`.
 	 */
 	static const TCHAR* CannotBeEvadedDataName;
+
+	/**
+	 * The name an effect is stamped under when its target cannot reduce or mitigate its blow, with any value above
+	 * nought. Ruled 2026-10-12. A plain name and no gameplay tag, as `CannotBeEvadedDataName` is. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` before the blow is resolved. See
+	 * `FCataclysmHitDelivery::bCannotBeMitigated`.
+	 */
+	static const TCHAR* CannotBeMitigatedDataName;
 
 	/**
 	 * The name an effect is stamped under when its blow ignores a share of armour that a modifier naming its

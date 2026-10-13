@@ -788,7 +788,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// AND A BLOW MAY REFUSE TO BE DODGED. The Perfect Aim enemy modifier
 	// reads "Attacks cannot be dodged", and evasion is rolled here on the
 	// target, so the only place an attacker can refuse it is on the blow.
-	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && Combat)
+	//
+	// AND A BLOW THE DEFENDER CANNOT MITIGATE SKIPS THIS STEP AND FIVE MORE BELOW. Ruled
+	// 2026-10-12, for "Retaliation damage cannot be reduced or mitigated by the
+	// attacker". See `FCataclysmIncomingHit::bCannotBeMitigated`, which lists the
+	// six and what is not among them. Each of the six reads the flag where it
+	// stands; no roll is made for a step that is skipped.
+	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && !Hit.bCannotBeMitigated && Combat)
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : FMath::FRandRange(0.0f, 100.0f);
@@ -854,7 +860,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	// 2. Block. Applies to area damage too, and removes half rather than all.
-	if (Combat)
+	// Not to a blow the defender cannot mitigate, which is never blocked.
+	if (Combat && !Hit.bCannotBeMitigated)
 	{
 		const float Roll = BlockRoll >= 0.0f ? BlockRoll
 											 : FMath::FRandRange(0.0f, 100.0f);
@@ -907,7 +914,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// AND FOR A MINION WITH ARMOUR FROM ITS SUMMONER, since 2026-10-08. A minion
 	// holds no combat set, so until then it never entered this step and took
 	// every blow with no armour at all.
-	if (Combat || ArmourFromSummoner > 0.0f)
+	//
+	// NOT FOR A BLOW THE DEFENDER CANNOT MITIGATE: neither its own armour nor
+	// what it takes from its summoner is applied, and nothing is recorded as
+	// removed by armour.
+	if (!Hit.bCannotBeMitigated && (Combat || ArmourFromSummoner > 0.0f))
 	{
 		// THE ATTACKER'S OWN STAT PLUS WHAT THE WEAPON IGNORES, clamped once at the
 		// end. Mirrors `Attacker.total_armor_ignored` in
@@ -999,7 +1010,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// 2026-10-08: the summoner's resistance to this type after the summoner's own
 	// cap, times the share. The attacker's penetration and the minion's own cap
 	// then apply to it as to any defender's resistance.
-	const float Resist = EffectiveResistanceUnderCap(
+	//
+	// NOUGHT FOR A BLOW THE DEFENDER CANNOT MITIGATE, WHATEVER ITS SIGN. A
+	// resistance below nought, the difficulty tier's penalty included, would
+	// raise the blow; the whole step is skipped, a labelled judgement of
+	// 2026-10-12 that follows the ruling on `damage_taken` below.
+	const float Resist = Hit.bCannotBeMitigated ? 0.0f : EffectiveResistanceUnderCap(
 		ResistanceFor(Defender, Hit.DamageType, Tier)
 			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
 		Hit.ResistancePenetration, ResistanceCapOf(Defender));
@@ -1118,6 +1134,27 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 						 Combat->GetDamageTaken(), BlowOf(Hit))
 			+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f;
+
+		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS
+		// BEFORE STEPS 5 AND 6. Ruled 2026-10-12: it skips damage reduction, both
+		// lines, and `damage_taken`. `BeforeReduction` is the blow as it arrived
+		// at step 5, and every line between there and here multiplies `Damage`
+		// and writes nothing else but the figure cleared below.
+		//
+		// PUT BACK AND NOT GUARDED LINE BY LINE, so the three multiplications
+		// above stay exactly as they were for every other blow.
+		//
+		// AN INCREASE IS UNDONE WITH THE REDUCTIONS. `damage_taken` above 100,
+		// and what rides on the defender's ailments, would have raised this
+		// blow, and they are part of the step the ruling skips.
+		//
+		// BEFORE THE Nth HIT'S SHARE BELOW, WHICH IS KEPT: it is not one of the
+		// six, and it raises the blow and never lowers it.
+		if (Hit.bCannotBeMitigated)
+		{
+			Damage = BeforeReduction;
+			Result.RemovedByDamageReduction = 0.0f;
+		}
 
 		// AND THE Nth HIT OF AN "EVERY Nth HIT YOU TAKE" ROW TAKES ITS SHARE ON
 		// TOP. Issue #1833, phase 2. Nought on every other hit.
