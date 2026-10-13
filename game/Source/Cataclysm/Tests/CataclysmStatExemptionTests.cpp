@@ -7758,6 +7758,63 @@ namespace CataclysmStatExemptionTest
 					   Whole, 100.0f, 0.01f);
 	}
 
+	/**
+	 * `enemies_immune_to_you_after_seconds`, read by `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` where a
+	 * blow is resolved. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune
+	 * to your damage until you disengage for 3 seconds". Two attackers each strike the same enemy once and then stay
+	 * in combat for 16 seconds, a second at a time. Only the second holds the stat, at a flat 15. The first
+	 * attacker's next blow reaches health; the second's deals nothing.
+	 *
+	 * NO ROLL IS MADE: the enemy has no evasion and no block chance, and the blows are sent as direct damage.
+	 *
+	 * STANDING: nowhere. All three are bare actors with no root component, as `HealthAfterBlows` above makes them,
+	 * so none has a body to overlap another.
+	 *
+	 * WHAT THIS DOES NOT REACH. The kinds of damage, a boss, a minion, the lapse of combat and the text on screen:
+	 * `Cataclysm.ImmuneAfterFifteenSeconds.` in `CataclysmSkillTemplateTests.cpp` holds those.
+	 */
+	void ProbeEnemiesImmuneAfterSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Enemy(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor,
+				   {{FName(UCataclysmAbilitySystemComponent::EnemiesImmuneAfterSecondsStat), 15.0f}});
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Plain.Actor, Enemy.Actor, 1.0f);
+		UCataclysmSkillEffects::ApplyDirectDamage(Holding.Actor, Enemy.Actor, 1.0f);
+
+		// BOTH STAY IN COMBAT FOR 16 SECONDS, a second at a time, one second past the stat's 15, because a combat lapses 3 seconds after its
+		// last event and a lapsed combat makes nothing immune.
+		for (int32 Second = 0; Second < 16; ++Second)
+		{
+			World->TimeSeconds += 1.0f;
+			Plain.AbilitySystem->NoteHitDealt();
+			Holding.AbilitySystem->NoteHitDealt();
+		}
+
+		FCataclysmDamageResult FromPlain;
+		UCataclysmSkillEffects::ApplyDirectDamage(Plain.Actor, Enemy.Actor, 100.0f, FCataclysmHitDelivery(),
+												  &FromPlain);
+		Test.TestTrue(*FString::Printf(TEXT("control: 16 seconds after its first hit, a blow from the attacker with "
+											"no such stat reaches health: %.2f did"), FromPlain.DealtToHealth),
+					  FromPlain.DealtToHealth > 0.0f);
+
+		FCataclysmDamageResult FromHolding;
+		UCataclysmSkillEffects::ApplyDirectDamage(Holding.Actor, Enemy.Actor, 100.0f, FCataclysmHitDelivery(),
+												  &FromHolding);
+		Test.TestEqual(TEXT("and with enemies_immune_to_you_after_seconds at 15 the same blow deals nothing, so "
+							"IsImmuneToDamageOf really reads it"),
+					   FromHolding.DealtToHealth, 0.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7896,6 +7953,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_type_immunity_on_hit_chance"), &ProbeDamageTypeImmunityOnHitChance},
 			{TEXT("damage_type_immunity_on_hit_seconds"), &ProbeDamageTypeImmunityOnHitSeconds},
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeRetaliationCannotBeMitigated},
+			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 		};
 		return Made;
 	}

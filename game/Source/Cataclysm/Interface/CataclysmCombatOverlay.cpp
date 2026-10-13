@@ -213,6 +213,14 @@ FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
 		return TEXT("Evaded");
 	}
 
+	// A BLOW THE STRUCK CHARACTER REFUSED AS IMMUNE TO ITS ATTACKER SAYS SO, in the words the status line under
+	// that character uses. Ruled 2026-10-12. Until then it printed "0", which means the defences stopped the blow.
+	// After "Evaded", because a blow that missed did not reach the refusal as a hit.
+	if (Outcome.bRefusedByImmunityToAttacker)
+	{
+		return TEXT("Immune to you");
+	}
+
 	// ROUNDED, BUT NEVER ROUNDED AWAY. See FigureFor: any damage at all prints
 	// at least 1, because "0" already means the defence stopped the whole blow.
 	const int32 ToHealth = FigureFor(Outcome.DealtToHealth);
@@ -870,6 +878,34 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		}
 	}
 	return FString::Join(Parts, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::ImmuneToPlayerTextFor(const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	if (!Actor || !LocalPlayerPawn || Actor == LocalPlayerPawn || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* Its =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const UAbilitySystemComponent* ThePlayers =
+		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(LocalPlayerPawn);
+	// THE FUNCTION THAT REFUSES THE BLOW ANSWERS, so the word is shown exactly while the player's damage is refused.
+	return Its && ThePlayers && Its->IsImmuneToDamageOf(ThePlayers) ? FString(TEXT("Immune to you")) : FString();
+}
+
+FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	// AFTER EVERYTHING ELSE ON THE LINE: what the creature is comes first, and this is being done to the player's
+	// blows on it. Ruled 2026-10-12.
+	const FString Line = StatusLineFor(Actor);
+	const FString Immune = ImmuneToPlayerTextFor(Actor, LocalPlayerPawn);
+	if (Immune.IsEmpty())
+	{
+		return Line;
+	}
+	return Line.IsEmpty() ? Immune : Line + TEXT("  ") + Immune;
 }
 
 bool UCataclysmCombatOverlay::VitalsOf(const AActor* Actor, float& OutHealth,

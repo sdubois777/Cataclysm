@@ -642,6 +642,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// "Retaliation damage cannot be reduced or mitigated by the attacker". A
 		// flag. No gameplay attribute and no base.
 		TEXT("retaliation_cannot_be_mitigated"),
+		// How many seconds after this character's first hit on an enemy that
+		// enemy becomes immune to this character's damage, read by
+		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on
+		// that enemy is resolved. Ruled 2026-10-12: "Enemies that have been
+		// alive for more than 15 seconds become immune to your damage until you
+		// disengage for 3 seconds". The 15, flat; nought is no such rule. No
+		// gameplay attribute and no base.
+		TEXT("enemies_immune_to_you_after_seconds"),
 	};
 	return Stats;
 }

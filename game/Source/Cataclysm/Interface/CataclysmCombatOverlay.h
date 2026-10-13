@@ -779,6 +779,26 @@ public:
 	static FString StatusLineFor(const AActor* Actor);
 
 	/**
+	 * "Immune to you" under the health bar of a creature that has become immune to the damage of `LocalPlayerPawn`,
+	 * or empty. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune to your
+	 * damage until you disengage for 3 seconds". It says why the player's blows on it do nothing.
+	 *
+	 * ASKED OF THE CREATURE, WITH THE PLAYER AS THE ATTACKER:
+	 * `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf`, the function that refuses the blow, so the word and
+	 * the refusal cannot disagree. Empty with no player, for a dead creature, and for the player's own pawn.
+	 *
+	 * THE ONE TEXT ON THE LINE THAT DEPENDS ON WHO IS LOOKING, which is why it takes the pawn and the others do not.
+	 */
+	static FString ImmuneToPlayerTextFor(const AActor* Actor, const AActor* LocalPlayerPawn);
+
+	/**
+	 * The status line as `LocalPlayerPawn` sees it: `StatusLineFor(Actor)` with `ImmuneToPlayerTextFor` joined on
+	 * after it by two spaces. Ruled 2026-10-12. `ACataclysmHUD::DrawStatusLines` draws this one, with its owning
+	 * pawn. With no pawn it is `StatusLineFor(Actor)` and nothing more.
+	 */
+	static FString StatusLineFor(const AActor* Actor, const AActor* LocalPlayerPawn);
+
+	/**
 	 * Whether an actor is a candidate for an overhead bar at all.
 	 *
 	 * NOT THE PLAYER'S OWN PAWN, which has its bar on the frame instead, and

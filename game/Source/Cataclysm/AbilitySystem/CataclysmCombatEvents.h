@@ -111,6 +111,13 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bConsequenceOfADeath = false;
 
 	/**
+	 * Whether the target emptied the blow because it has become immune to this attacker's damage. Ruled
+	 * 2026-10-12. Copied from `FCataclysmDamageResult::bRefusedByImmunityToAttacker`. The blow is still announced,
+	 * so every listener still hears of it; the player's on-hit rows read this and act on none of it.
+	 */
+	bool bRefusedByImmunityToAttacker = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.
