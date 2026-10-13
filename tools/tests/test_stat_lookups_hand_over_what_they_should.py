@@ -127,6 +127,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The flag by which retaliation cannot be mitigated added one more on
 #: 2026-10-12, asked by `UCataclysmRetaliation::CannotBeMitigatedFor` where a
 #: payment of retaliation is built.
+#: The seconds after which an enemy is immune to its attacker added one more
+#: on 2026-10-12, asked of the attacker by `IsImmuneToDamageOf` where a blow
+#: on that enemy is resolved.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -822,6 +825,14 @@ INVENTORY = {
         "tags, and the flag is the retaliating character's own and asks "
         "nothing about the blow it took or the character it strikes, so no "
         "blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(EnemiesImmuneAfterSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "how many seconds after its first hit on an enemy that enemy becomes "
+        "immune to this character's damage (ruled 2026-10-12), asked of the "
+        "attacker by IsImmuneToDamageOf where a blow on the enemy is "
+        "resolved; the rule is the attacker's whatever it strikes with, so "
+        "no tags, and it is refused for every kind of blow alike, so no blow "
+        "and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
