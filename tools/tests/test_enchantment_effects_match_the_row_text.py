@@ -844,8 +844,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-12, from 587 over 496: two rows on one enchantment.
 #: AND 594 OVER 501 SINCE THE WHOLE SET SHARD OF ANARCHY,
 #: issue #1833, 2026-10-12, from 589 over 497: five rows on four enchantments.
-AUTHORED_ROWS = 594
-AUTHORED_ENCHANTMENTS = 501
+#: AND 595 OVER 502 SINCE THE EXECUTE ROW,
+#: issue #1833, 2026-10-12, from 594 over 501: one row on one enchantment.
+AUTHORED_ROWS = 595
+AUTHORED_ENCHANTMENTS = 502
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
