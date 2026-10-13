@@ -382,7 +382,20 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # value is a chance: "Every 15 seconds a random debuff is applied to you"
     # states no chance, so it is applied every time, as "reset" is on the
     # cooldown reset actions. 2026-10-07.
-    "apply_status_to_self": {"applied": 100.0},
+    # AND "REDUCED" IS 100 ON THE SAME ACTION, for the set Shard of Anarchy's
+    # drawback, "Every 5 seconds, one of your resistances is reduced to 0 until
+    # this triggers again": it states no chance, so one is reduced every time.
+    # 2026-10-12. THE COST OF THIS WORD: this table matches single words and not
+    # phrases, so it cannot say "reduced to 0". A later sentence on this action
+    # that says "reduced by 10%" would therefore be excused a stated 100 that it
+    # does not state. Whoever writes such a row has to read this entry again.
+    "apply_status_to_self": {"applied": 100.0, "reduced": 100.0},
+    # "CAST" IS 100 ON THE ACTION THAT SPENDS KEPT STACKS TO CAST A SKILL AGAIN,
+    # whose value is the share of its damage each extra cast deals: "your skill
+    # is cast a random number of times" states no share, and each cast at the
+    # whole of its damage is ruled 2026-10-12 in the entry on kept stacks, as
+    # the merged "cast a second time" rows are.
+    "kept_stacks_repeat_skill": {"cast": 100.0},
 }
 
 #: The label a set bonus's sentence opens with, as in "Plague Doctor (10-Piece
@@ -829,8 +842,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-10, from 585 over 495: two rows on one enchantment.
 #: AND 589 OVER 497 SINCE MANA WEAVER'S SIX-PIECE ROWS,
 #: issue #1833, 2026-10-12, from 587 over 496: two rows on one enchantment.
-AUTHORED_ROWS = 589
-AUTHORED_ENCHANTMENTS = 497
+#: AND 594 OVER 501 SINCE THE WHOLE SET SHARD OF ANARCHY,
+#: issue #1833, 2026-10-12, from 589 over 497: five rows on four enchantments.
+AUTHORED_ROWS = 594
+AUTHORED_ENCHANTMENTS = 501
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -887,7 +902,12 @@ REMOVED_ROWS = 34
 #: can raise the health a heal restores: its 2-piece bonus is one
 #: `healing_received` row in the more bucket and its drawback one `health_regen`
 #: row. Its 6-piece and 10-piece rows still wait.
-SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18]
+#:
+#: THIRTEEN OF FOURTEEN SINCE 2026-10-12. Shard of Anarchy (15) is written
+#: whole: its drawback, and its 2-piece, 6-piece and 10-piece bonuses, five rows
+#: on the four mechanisms the entries of that day built. Null Emperor (14) is
+#: the one set with no row.
+SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -1083,12 +1103,11 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Twelve of the fourteen sets have a row written: Archon's Aegis (5),
+    """Thirteen of the fourteen sets have a row written: Archon's Aegis (5),
     Tyrant's Chains (6), Chronomancer's Time-Lock (7), Mana Weaver (8), Brute's Heart (9), Spellblade's
-    Will (10), Demon King's Regalia (11), Plague Doctor (12), Starvation (13), Divine Retribution
-    (16), Warlord's Will (17) and Reaper's Embrace (18). The other two wait
-    for what their rows need, which `docs/DECISIONS.md` lists set by set. This
-    moves only when somebody means it to.
+    Will (10), Demon King's Regalia (11), Plague Doctor (12), Starvation (13), Shard of Anarchy (15),
+    Divine Retribution (16), Warlord's Will (17) and Reaper's Embrace (18). The other one, Null
+    Emperor (14), waits for what its rows need. This moves only when somebody means it to.
 
     THIS SENTENCE SAID "FOUR" AND NAMED FOUR WHILE THE LIST BELOW HELD SIX.
     The count above it was kept current and this one was not, so read the
