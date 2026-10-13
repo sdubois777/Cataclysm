@@ -327,6 +327,7 @@ const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
 const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
 const TCHAR* UCataclysmSkillEffects::CannotBeEvadedDataName = TEXT("Cataclysm.CannotBeEvaded");
+const TCHAR* UCataclysmSkillEffects::CannotBeMitigatedDataName = TEXT("Cataclysm.CannotBeMitigated");
 const TCHAR* UCataclysmSkillEffects::NamedArmorPenetrationDataName =
 	TEXT("Cataclysm.NamedArmorPenetration");
 const TCHAR* UCataclysmSkillEffects::RowsAnswerToAnEventDataName = TEXT("Cataclysm.RowsAnswerToAnEvent");
@@ -1422,6 +1423,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bCannotBeEvaded)
 	{
 		Spec.SetSetByCallerMagnitude(FName(CannotBeEvadedDataName), 1.0f);
+	}
+
+	// AND WHETHER THE TARGET CANNOT REDUCE OR MITIGATE IT, which the target reads before it resolves the blow.
+	// Ruled 2026-10-12. Not stamped when false, so every other blow is as it was.
+	if (Delivery.bCannotBeMitigated)
+	{
+		Spec.SetSetByCallerMagnitude(FName(CannotBeMitigatedDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF ARMOUR A MODIFIER NAMING THE BLOW'S KIND SAYS IT IGNORES, which the target adds to

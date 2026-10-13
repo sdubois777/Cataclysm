@@ -8727,6 +8727,74 @@ def refuse_a_damage_type_immunity_row_the_game_cannot_read(
     return problems
 
 
+#: The flag by which what a character's retaliation strikes cannot reduce or
+#: mitigate it. Ruled 2026-10-12 under the owner's delegation, for
+#: "Retaliation damage cannot be reduced or mitigated by the attacker".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, with no Required Tags, no Condition
+#: and no Scale. `UCataclysmRetaliation::CannotBeMitigatedStat` holds the same
+#: name, and `TestRetaliationThatCannotBeMitigated` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmRetaliation::CannotBeMitigatedFor`, and reads any value above
+#: nought as yes. So a row requiring a tag matches nowhere, and a row of any
+#: kind but `flat` works on a base of nought and says no;
+#: `refuse_a_retaliation_flag_row_the_game_cannot_read` refuses both.
+RETALIATION_CANNOT_BE_MITIGATED_STAT = "retaliation_cannot_be_mitigated"
+
+
+def refuse_a_retaliation_flag_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `RETALIATION_CANNOT_BE_MITIGATED_STAT` is one its reader
+    answers yes to.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row.
+
+    THE FIGURE IS 1 AND NOTHING ELSE. The reader takes any value above nought
+    as yes, so 2 would work in the game; it is refused because a flag that
+    states another number reads as a quantity, and the ruling states the row
+    flat, 1 to 1.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_a_damage_type_immunity_row_the_game_cannot_read` leaves one: it
+    states a value per point and no pair of figures, and the ruled sentence is
+    an enchantment's. A row built with a `Node` key is a passive effect row.
+    """
+    problems = []
+    stat = RETALIATION_CANNOT_BE_MITIGATED_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself and takes any value above "
+                f"nought as yes, so the row must be 'flat'; any other kind "
+                f"works on a base of nought and grants NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, where retaliation is "
+                f"paid, so a row requiring a tag matches nowhere: this one "
+                f"would grant NOTHING and say nothing.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on this "
+                    f"flag states 1 and nothing else.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9054,6 +9122,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW ON EITHER STAT OF AN IMMUNITY TO THE DAMAGE TYPE THAT HIT IS ONE
     # THE GAME OPENS A WINDOW FOR. Ruled 2026-10-12.
     problems.extend(refuse_a_damage_type_immunity_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW ON THE FLAG THAT RETALIATION CANNOT BE MITIGATED IS ONE THE
+    # GAME ANSWERS YES TO. Ruled 2026-10-12.
+    problems.extend(refuse_a_retaliation_flag_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

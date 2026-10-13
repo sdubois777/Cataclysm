@@ -636,6 +636,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmGameplayAbility::ManaCostFor with the skill's tags. Issue
 		// #1833: "Movement abilities cost 20%-50% of your maximum mana".
 		TEXT("mana_cost_as_maximum_mana_percent"),
+		// Whether what this character's retaliation strikes cannot reduce or
+		// mitigate it, read by UCataclysmRetaliation::CannotBeMitigatedFor where
+		// UCataclysmRetaliation::Pay builds the blow. Ruled 2026-10-12:
+		// "Retaliation damage cannot be reduced or mitigated by the attacker". A
+		// flag. No gameplay attribute and no base.
+		TEXT("retaliation_cannot_be_mitigated"),
 	};
 	return Stats;
 }
