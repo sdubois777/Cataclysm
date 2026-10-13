@@ -121,6 +121,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The flag by which the dungeon rule Suffering Aura takes no mana from its
 #: holder added one more on 2026-10-10, asked by the one helper the condition
 #: on that rule's mana loss calls.
+#: An immunity to the damage type that hit added two more on 2026-10-12, the
+#: chance and the seconds, both asked by `RollDamageTypeImmunityOnHit` once a
+#: typed hit on its wearer has been taken.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -796,6 +799,18 @@ INVENTORY = {
         "ImmuneToSufferingAuraManaDrainByARow for the one condition on that "
         "rule's mana loss; the drain is not a skill, so no tags, and there is "
         "no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(DamageTypeImmunityOnHitChanceStat), FGameplayTagContainer(), 0.0f'):
+        "the wearer's chance to become immune to the damage type of a hit it "
+        "has taken (ruled 2026-10-12), asked by RollDamageTypeImmunityOnHit "
+        "after the hit's health is written; the chance belongs to the wearer "
+        "and not to a skill, so no tags, and the hit is the attacker's and "
+        "already resolved, so no blow is handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(DamageTypeImmunityOnHitSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds that immunity lasts (ruled 2026-10-12), asked in the "
+        "same function beside the chance and for the same reason: no tags "
+        "and no blow",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

@@ -166,6 +166,45 @@ namespace CataclysmBlockShareTest
 		int32 Count = 0;
 		FDelegateHandle Handle;
 	};
+
+	/**
+	 * The two figures of a row by which a hit may make its wearer immune to that hit's damage type, each flat on a
+	 * base of nought, as a gear refresh records a row's line. Ruled 2026-10-12. THE WHOLE STAT LINE IS WRITTEN, so
+	 * the fighter holds these two lines and no other.
+	 */
+	void HoldTypeImmunity(const FFighter& Who, float ChancePercent, float Seconds)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		const auto Flat = [&Lines](const TCHAR* Stat, float Value)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::Enchantment;
+			Row.Value = Value;
+			FCataclysmStatInputs& Inputs = Lines.FindOrAdd(FName(Stat));
+			Inputs.Base = 0.0f;
+			Inputs.Modifiers = {Row};
+		};
+		Flat(UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat, ChancePercent);
+		Flat(UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitSecondsStat, Seconds);
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/**
+	 * What one direct blow worth `Damage` took from `Defender`'s health: of `DamageType`, or of no type for
+	 * `NAME_None`; a hit, or a damage over time tick when `bTick`. THE SHAPE A DUNGEON FLOOR RULE SENDS, a stated
+	 * amount with the type on the delivery, here from a bare actor and not from a floor's hazard source.
+	 */
+	float Typed(const FFighter& Attacker, const FFighter& Defender, FName DamageType, bool bTick = false,
+		float Damage = 100.0f, FCataclysmDamageResult* OutResolved = nullptr)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.DamageType = DamageType;
+		Delivery.bIsDamageOverTime = bTick;
+		const float Before = Defender.Get(UCataclysmVitalAttributeSet::GetHealthAttribute());
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Defender.Actor, Damage, Delivery, OutResolved);
+		return Before - Defender.Get(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
 }
 
 #define CATACLYSM_TEST(TestClass, TestName) \
@@ -443,6 +482,409 @@ CATACLYSM_TEST(FCataclysmShieldRechargedTest,
 		TestEqual(TEXT("set-up: the ceiling held the shield at half"),
 			Ceilinged.Get(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()), 50.0f, 0.01f);
 		TestEqual(TEXT("so it never fully recharged and raised nothing"), CeilingRecharged.Count, 0);
+	}
+	return true;
+}
+
+// A HIT MAY MAKE ITS WEARER IMMUNE TO THAT HIT'S DAMAGE TYPE FOR A TIME. Ruled 2026-10-12 under the owner's
+// delegation, for "Shard of Anarchy (6-Piece Bonus): When you take damage, you have a 10% chance to become immune to
+// the damage type that hit you for 5 seconds". The five tests below. No row is authored: each wearer holds the row's
+// two stats by hand, `damage_type_immunity_on_hit_chance` and `damage_type_immunity_on_hit_seconds`.
+//
+// EVERY BLOW IS REAL AND TYPED: `ApplyDirectDamage` with the type on the delivery, through the damage calculation
+// and the attribute set, which is the shape a dungeon floor rule sends. The critical strike roll and the block roll
+// are pinned, and the roll of this mechanism by `Cataclysm.DamageTypeImmunityRoll` wherever a chance is under 100.
+// Every figure is compared with what the same blow took from a fighter holding no row, read first.
+//
+// STANDING: nowhere. Every fighter is a bare actor with no root component, so none has a body to overlap another,
+// and a direct blow reads no distance. THE CLOCK is moved by adding to the world's time, as the test of a block
+// opening the no-damage window above does; nothing here waits on a tick.
+
+CATACLYSM_TEST(FCataclysmTypeImmunityOpensTest,
+	"Cataclysm.BlockShare.AHitMayOpenAWindowAgainstItsOwnDamageTypeAndIsItselfTakenInFull")
+{
+	using namespace CataclysmBlockShareTest;
+	// A WEARER AT A CHANCE OF 50 FOR 5 SECONDS, THE ROLL PINNED TO SUCCEED. Its first War hit is taken in full and
+	// opens the window against War, for 5 seconds, and against no other type. A second War hit inside the window
+	// takes nothing. With the roll then pinned to fail, a Demonic hit and a hit of no type inside the window are
+	// taken in full. Four seconds on a War hit still takes nothing; five and a half seconds on the window has ended
+	// and a War hit is taken in full again.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+	const FName War(TEXT("War"));
+	const FName Demonic(TEXT("Demonic"));
+	{
+		const FFighter Attacker(World, 0.0f);
+		const FFighter Plain(World, 0.0f);
+		const FFighter Wearer(World, 0.0f);
+		HoldTypeImmunity(Wearer, 50.0f, 5.0f);
+
+		const FPinned Succeeds(TEXT("Cataclysm.DamageTypeImmunityRoll"), 0.0f);
+		if (!TestTrue(TEXT("set-up: the roll's console variable exists"), Succeeds.Variable != nullptr))
+		{
+			return false;
+		}
+
+		// THE CONTROL: a fighter holding no row, struck by each of the three blows.
+		const float Full = Typed(Attacker, Plain, War);
+		const float FullDemonic = Typed(Attacker, Plain, Demonic);
+		const float FullUntyped = Typed(Attacker, Plain, NAME_None);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: with no row a War hit took %.1f, a Demonic one %.1f and one of "
+				"no type %.1f"), Full, FullDemonic, FullUntyped),
+				Full > 0.0f && FullDemonic > 0.0f && FullUntyped > 0.0f))
+		{
+			return false;
+		}
+		TestFalse(TEXT("control: a fighter with no row is not immune to War after a War hit, on a roll of nought"),
+			Plain.AbilitySystem->IsImmuneToDamageType(War));
+		TestEqual(TEXT("control: and its second War hit takes what its first took"),
+			Typed(Attacker, Plain, War), Full, 0.001f);
+
+		TestFalse(TEXT("before any hit the wearer is not immune to War"),
+			Wearer.AbilitySystem->IsImmuneToDamageType(War));
+		TestEqual(TEXT("the hit that rolls is itself taken in full"), Typed(Attacker, Wearer, War), Full, 0.001f);
+		TestTrue(TEXT("and it opened the window against War"), Wearer.AbilitySystem->IsImmuneToDamageType(War));
+		TestEqual(TEXT("for the 5 seconds the wearer holds"),
+			Wearer.AbilitySystem->DamageTypeImmunitySecondsLeft(War), 5.0f, 0.001f);
+		TestFalse(TEXT("and no window against another type"), Wearer.AbilitySystem->IsImmuneToDamageType(Demonic));
+		TestEqual(TEXT("a second War hit inside the window takes nothing"),
+			Typed(Attacker, Wearer, War), 0.0f, 0.001f);
+
+		{
+			// THE ROLL NOW FAILS, so the two hits below are read for what they take and open nothing themselves.
+			const FPinned Fails(TEXT("Cataclysm.DamageTypeImmunityRoll"), 99.0f);
+			TestEqual(TEXT("a Demonic hit inside the War window is taken in full"),
+				Typed(Attacker, Wearer, Demonic), FullDemonic, 0.001f);
+			TestEqual(TEXT("and so is a hit of no type"), Typed(Attacker, Wearer, NAME_None), FullUntyped, 0.001f);
+
+			World->TimeSeconds += 4.0f;
+			TestEqual(TEXT("four seconds on a War hit still takes nothing"),
+				Typed(Attacker, Wearer, War), 0.0f, 0.001f);
+			World->TimeSeconds += 1.5f;
+			TestFalse(TEXT("five and a half seconds on the window has ended"),
+				Wearer.AbilitySystem->IsImmuneToDamageType(War));
+			TestEqual(TEXT("and a War hit is taken in full again"), Typed(Attacker, Wearer, War), Full, 0.001f);
+		}
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTypeImmunityRollTest,
+	"Cataclysm.BlockShare.ARollThatFailsOpensNoWindowAndAStatedHundredNeverFails")
+{
+	using namespace CataclysmBlockShareTest;
+	// THE ROLL AGAINST THE CHANCE. At a chance of 50 a roll of exactly 50 fails: the hit is taken in full, nothing
+	// opens and the next hit is taken in full too; a roll of 49 opens the window. AT A STATED 100 A ROLL OF EXACTLY
+	// 100 OPENS IT (issue #2201: the roll can be 100 itself, and a chance of 100 is not rolled), where a chance of
+	// 50 on that roll opens nothing. On a roll of nought a fighter with no row, one holding a chance and no seconds,
+	// and one holding seconds and no chance each open nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+	const FName War(TEXT("War"));
+	const FName Demonic(TEXT("Demonic"));
+	{
+		const FFighter Attacker(World, 0.0f);
+		const FFighter Plain(World, 0.0f);
+		const FFighter Half(World, 0.0f);
+		const FFighter Certain(World, 0.0f);
+		const FFighter NoSeconds(World, 0.0f);
+		const FFighter NoChance(World, 0.0f);
+		HoldTypeImmunity(Half, 50.0f, 5.0f);
+		HoldTypeImmunity(Certain, 100.0f, 5.0f);
+		HoldTypeImmunity(NoSeconds, 100.0f, 0.0f);
+		HoldTypeImmunity(NoChance, 0.0f, 5.0f);
+
+		const float Full = Typed(Attacker, Plain, War);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: with no row a War hit took %.1f"), Full), Full > 0.0f))
+		{
+			return false;
+		}
+		{
+			const FPinned AtTheChance(TEXT("Cataclysm.DamageTypeImmunityRoll"), 50.0f);
+			if (!TestTrue(TEXT("set-up: the roll's console variable exists"), AtTheChance.Variable != nullptr))
+			{
+				return false;
+			}
+			TestEqual(TEXT("a hit whose roll fails is taken in full"), Typed(Attacker, Half, War), Full, 0.001f);
+			TestFalse(TEXT("a roll equal to the chance fails and opens nothing"),
+				Half.AbilitySystem->IsImmuneToDamageType(War));
+			TestEqual(TEXT("so the next War hit is taken in full too"), Typed(Attacker, Half, War), Full, 0.001f);
+		}
+		{
+			const FPinned JustUnder(TEXT("Cataclysm.DamageTypeImmunityRoll"), 49.0f);
+			Typed(Attacker, Half, War);
+			TestTrue(TEXT("a roll below the chance opens the window"),
+				Half.AbilitySystem->IsImmuneToDamageType(War));
+		}
+		{
+			const FPinned TopOfTheRoll(TEXT("Cataclysm.DamageTypeImmunityRoll"), 100.0f);
+			Typed(Attacker, Certain, War);
+			TestTrue(TEXT("a stated 100 opens the window on a roll of exactly 100"),
+				Certain.AbilitySystem->IsImmuneToDamageType(War));
+			Typed(Attacker, Half, Demonic);
+			TestFalse(TEXT("control: on that roll a chance of 50 opens nothing"),
+				Half.AbilitySystem->IsImmuneToDamageType(Demonic));
+		}
+		{
+			const FPinned Succeeds(TEXT("Cataclysm.DamageTypeImmunityRoll"), 0.0f);
+			Typed(Attacker, Plain, War);
+			TestFalse(TEXT("control: a fighter with no row opens nothing on a roll of nought"),
+				Plain.AbilitySystem->IsImmuneToDamageType(War));
+			Typed(Attacker, NoSeconds, War);
+			TestFalse(TEXT("a chance with no seconds opens nothing"),
+				NoSeconds.AbilitySystem->IsImmuneToDamageType(War));
+			Typed(Attacker, NoChance, War);
+			TestFalse(TEXT("and seconds with no chance open nothing"),
+				NoChance.AbilitySystem->IsImmuneToDamageType(War));
+		}
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTypeImmunityTickTest,
+	"Cataclysm.BlockShare.ATickNeverRollsAndATickOfTheTypeInsideItsWindowTakesNothingAsInTheNoDamageWindow")
+{
+	using namespace CataclysmBlockShareTest;
+	// A WEARER AT A CHANCE OF 100, so nothing is rolled. A War damage over time tick on it is taken in full and
+	// opens nothing: a tick does not roll. A War HIT then opens the window, and a War tick inside it takes nothing,
+	// which is what a tick takes from a fighter inside the no-damage window. A Demonic tick inside the War window
+	// is taken in full and opens nothing. After the window a War tick is taken again.
+	//
+	// THE TICK IS A DIRECT ONE marked as damage over time, as a dungeon floor rule sends one; no lasting effect
+	// is applied and no timer runs.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+	const FName War(TEXT("War"));
+	const FName Demonic(TEXT("Demonic"));
+	{
+		const FFighter Attacker(World, 0.0f);
+		const FFighter Plain(World, 0.0f);
+		const FFighter Wearer(World, 0.0f);
+		const FFighter Guarded(World, 0.0f);
+		HoldTypeImmunity(Wearer, 100.0f, 5.0f);
+
+		const float TickFull = Typed(Attacker, Plain, War, /*bTick=*/true);
+		const float TickFullDemonic = Typed(Attacker, Plain, Demonic, /*bTick=*/true);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: with no row a War tick took %.1f and a Demonic one %.1f"),
+				TickFull, TickFullDemonic), TickFull > 0.0f && TickFullDemonic > 0.0f))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("a War tick on the wearer is taken in full"),
+			Typed(Attacker, Wearer, War, /*bTick=*/true), TickFull, 0.001f);
+		TestFalse(TEXT("and a tick does not roll: no window, at a chance of 100"),
+			Wearer.AbilitySystem->IsImmuneToDamageType(War));
+
+		Typed(Attacker, Wearer, War);
+		if (!TestTrue(TEXT("set-up: a War hit opened the window"), Wearer.AbilitySystem->IsImmuneToDamageType(War)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("a War tick inside the window takes nothing"),
+			Typed(Attacker, Wearer, War, /*bTick=*/true), 0.0f, 0.001f);
+		Guarded.AbilitySystem->GrantDamageImmunity(5.0f);
+		TestEqual(TEXT("which is what a tick takes inside the no-damage window"),
+			Typed(Attacker, Guarded, War, /*bTick=*/true), 0.0f, 0.001f);
+		TestEqual(TEXT("a Demonic tick inside the War window is taken in full"),
+			Typed(Attacker, Wearer, Demonic, /*bTick=*/true), TickFullDemonic, 0.001f);
+		TestFalse(TEXT("and opens nothing"), Wearer.AbilitySystem->IsImmuneToDamageType(Demonic));
+
+		World->TimeSeconds += 5.5f;
+		TestEqual(TEXT("after the window a War tick is taken again"),
+			Typed(Attacker, Wearer, War, /*bTick=*/true), TickFull, 0.001f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTypeImmunityTwoTypesTest,
+	"Cataclysm.BlockShare.WindowsForTwoTypesRunSideBySideAndALaterGrantNeverShortensOne")
+{
+	using namespace CataclysmBlockShareTest;
+	// A WEARER AT A CHANCE OF 100 FOR 5 SECONDS. A War hit, and two seconds later a Demonic hit: both windows are
+	// open, War with 3 seconds left and Demonic with 5, and a hit of either type takes nothing and extends nothing.
+	// Five and a half seconds after the War hit its window has ended and the Demonic one has 1.5 seconds left: a
+	// War hit is taken in full again and a Demonic hit still takes nothing.
+	//
+	// THEN THE GRANT BY HAND, because a hit inside its own window deals nothing and so cannot roll again: a grant
+	// of 1 second inside one of 5 leaves 5, a grant of 8 makes it 8, and a grant for no type opens nothing. Last,
+	// `ClearWhatDeathEnds` ends every window.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+	const FName War(TEXT("War"));
+	const FName Demonic(TEXT("Demonic"));
+	const FName OfVoid(TEXT("Void"));
+	{
+		const FFighter Attacker(World, 0.0f);
+		const FFighter Plain(World, 0.0f);
+		const FFighter Wearer(World, 0.0f);
+		HoldTypeImmunity(Wearer, 100.0f, 5.0f);
+		UCataclysmAbilitySystemComponent* Its = Wearer.AbilitySystem.Get();
+
+		const float Full = Typed(Attacker, Plain, War);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: with no row a War hit took %.1f"), Full), Full > 0.0f))
+		{
+			return false;
+		}
+
+		Typed(Attacker, Wearer, War);
+		World->TimeSeconds += 2.0f;
+		Typed(Attacker, Wearer, Demonic);
+		if (!TestTrue(TEXT("set-up: both windows are open"),
+				Its->IsImmuneToDamageType(War) && Its->IsImmuneToDamageType(Demonic)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the War window has 3 seconds left"), Its->DamageTypeImmunitySecondsLeft(War), 3.0f, 0.001f);
+		TestEqual(TEXT("and the Demonic window its whole 5"),
+			Its->DamageTypeImmunitySecondsLeft(Demonic), 5.0f, 0.001f);
+		TestEqual(TEXT("a War hit takes nothing"), Typed(Attacker, Wearer, War), 0.0f, 0.001f);
+		TestEqual(TEXT("and a Demonic hit takes nothing"), Typed(Attacker, Wearer, Demonic), 0.0f, 0.001f);
+		TestEqual(TEXT("a hit its window refused did not roll: War still has 3 seconds"),
+			Its->DamageTypeImmunitySecondsLeft(War), 3.0f, 0.001f);
+
+		World->TimeSeconds += 3.5f;
+		TestFalse(TEXT("five and a half seconds after the War hit its window has ended"),
+			Its->IsImmuneToDamageType(War));
+		TestEqual(TEXT("and the Demonic window has 1.5 seconds left"),
+			Its->DamageTypeImmunitySecondsLeft(Demonic), 1.5f, 0.001f);
+		TestEqual(TEXT("a War hit is taken in full again"), Typed(Attacker, Wearer, War), Full, 0.001f);
+		TestEqual(TEXT("while a Demonic hit still takes nothing"), Typed(Attacker, Wearer, Demonic), 0.0f, 0.001f);
+
+		// THE GRANT BY HAND.
+		Its->GrantDamageTypeImmunity(OfVoid, 5.0f);
+		Its->GrantDamageTypeImmunity(OfVoid, 1.0f);
+		TestEqual(TEXT("a shorter grant does not shorten a window"),
+			Its->DamageTypeImmunitySecondsLeft(OfVoid), 5.0f, 0.001f);
+		Its->GrantDamageTypeImmunity(OfVoid, 8.0f);
+		TestEqual(TEXT("and a longer one extends it to the later end"),
+			Its->DamageTypeImmunitySecondsLeft(OfVoid), 8.0f, 0.001f);
+		Its->GrantDamageTypeImmunity(NAME_None, 5.0f);
+		TestFalse(TEXT("a grant for no type opens nothing"), Its->IsImmuneToDamageType(NAME_None));
+
+		// AND WHAT A DEATH CLEARS. The War hit above was taken at a chance of 100, so War is open again.
+		if (!TestTrue(TEXT("set-up: three windows are open before the clearing"),
+				Its->IsImmuneToDamageType(War) && Its->IsImmuneToDamageType(Demonic)
+					&& Its->IsImmuneToDamageType(OfVoid)))
+		{
+			return false;
+		}
+		Its->ClearWhatDeathEnds();
+		TestFalse(TEXT("ClearWhatDeathEnds ends every window"),
+			Its->IsImmuneToDamageType(War) || Its->IsImmuneToDamageType(Demonic)
+				|| Its->IsImmuneToDamageType(OfVoid));
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTypeImmunityWhichHitsRollTest,
+	"Cataclysm.BlockShare.ABlockedHitAndAHitTheShieldTakesWholeRollAndAHitThatDealsNothingOrKillsDoesNot")
+{
+	using namespace CataclysmBlockShareTest;
+	// WHICH HITS ROLL, each on a wearer of its own at a chance of 100 for 5 seconds. A blocked hit that kept part
+	// of itself rolls. A hit the energy shield took whole rolls. A hit inside the no-damage window takes nothing and
+	// does not roll, and once that window has ended a hit is taken in full and rolls. A hit that empties its
+	// taker's health opens nothing.
+	//
+	// NOT HERE: an evaded hit. Evasion is rolled inside the damage calculation with no console variable to pin it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FPinned NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+	const FName War(TEXT("War"));
+	{
+		const FFighter Attacker(World, 0.0f);
+		const FFighter Plain(World, 0.0f);
+		const FFighter Blocker(World, 0.0f);
+		const FFighter Shielded(World, 0.0f);
+		const FFighter Guarded(World, 0.0f);
+		const FFighter Dying(World, 0.0f);
+		for (const FFighter* Wearer : {&Blocker, &Shielded, &Guarded, &Dying})
+		{
+			HoldTypeImmunity(*Wearer, 100.0f, 5.0f);
+		}
+
+		const float Full = Typed(Attacker, Plain, War);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: with no row a War hit took %.1f"), Full), Full > 0.0f))
+		{
+			return false;
+		}
+
+		// A BLOCKED HIT.
+		Blocker.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+		{
+			const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
+			FCataclysmDamageResult Blocked;
+			const float Kept = Typed(Attacker, Blocker, War, /*bTick=*/false, 100.0f, &Blocked);
+			if (!TestTrue(*FString::Printf(TEXT("set-up: the hit was blocked and kept part of itself: %.1f of %.1f"),
+					Kept, Full), Blocked.bBlocked && Kept > 0.0f && Kept < Full))
+			{
+				return false;
+			}
+			TestTrue(TEXT("a blocked hit that dealt damage rolls"), Blocker.AbilitySystem->IsImmuneToDamageType(War));
+		}
+
+		// A HIT THE ENERGY SHIELD TOOK WHOLE.
+		Shielded.Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 500.0f);
+		Shielded.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 500.0f);
+		const float ShieldBefore = Shielded.Get(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+		const float FromHealth = Typed(Attacker, Shielded, War);
+		const float FromShield =
+			ShieldBefore - Shielded.Get(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+		if (!TestTrue(*FString::Printf(TEXT("set-up: a shield of %.1f took the hit whole: %.1f from the shield and "
+				"%.1f from health"), ShieldBefore, FromShield, FromHealth),
+				FromShield > 0.0f && FMath::IsNearlyZero(FromHealth, 0.001f)))
+		{
+			return false;
+		}
+		TestTrue(TEXT("a hit the energy shield took whole rolls"), Shielded.AbilitySystem->IsImmuneToDamageType(War));
+
+		// A HIT INSIDE THE NO-DAMAGE WINDOW.
+		Guarded.AbilitySystem->GrantDamageImmunity(3.0f);
+		TestEqual(TEXT("a War hit inside the no-damage window takes nothing"),
+			Typed(Attacker, Guarded, War), 0.0f, 0.001f);
+		TestFalse(TEXT("and does not roll"), Guarded.AbilitySystem->IsImmuneToDamageType(War));
+		World->TimeSeconds += 3.5f;
+		TestEqual(TEXT("once that window has ended a War hit is taken in full"),
+			Typed(Attacker, Guarded, War), Full, 0.001f);
+		TestTrue(TEXT("and rolls"), Guarded.AbilitySystem->IsImmuneToDamageType(War));
+
+		// A HIT THAT KILLS.
+		Typed(Attacker, Dying, War, /*bTick=*/false, 5000.0f);
+		if (!TestTrue(TEXT("set-up: the hit emptied its taker's health"),
+				Dying.Get(UCataclysmVitalAttributeSet::GetHealthAttribute()) <= 0.0f))
+		{
+			return false;
+		}
+		TestFalse(TEXT("a hit that kills opens nothing"), Dying.AbilitySystem->IsImmuneToDamageType(War));
 	}
 	return true;
 }

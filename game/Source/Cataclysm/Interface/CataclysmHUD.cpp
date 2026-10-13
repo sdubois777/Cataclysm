@@ -693,6 +693,17 @@ void ACataclysmHUD::DrawPlayerVitals()
 		DrawTextCentred(HeldBuff, FLinearColor::White,
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
+
+	// AND EVERY DAMAGE TYPE THE PLAYER IS IMMUNE TO FOR A TIME, WITH ITS SECONDS LEFT, such as "Immune War 4s".
+	// Ruled 2026-10-12 by the coordinating session: a text above the player's bars for each open type, in the form
+	// of the held buff's just above. One line: several types are joined in the one text.
+	const FString ImmuneTo = UCataclysmCombatOverlay::DamageTypeImmunityTextFor(Pawn);
+	if (!ImmuneTo.IsEmpty())
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawTextCentred(ImmuneTo, FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+	}
 }
 
 void ACataclysmHUD::DrawOverheadBars()

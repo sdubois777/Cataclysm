@@ -5730,6 +5730,193 @@ class TestARowChangesWhatAHealingSkillRestores:
                    for problem in problems), problems
 
 
+class TestAHitMayMakeItsWearerImmuneToItsDamageType:
+    """`damage_type_immunity_on_hit_chance` and
+    `damage_type_immunity_on_hit_seconds`, ruled 2026-10-12 and built ahead of
+    their rows, for "Shard of Anarchy (6-Piece Bonus): When you take damage,
+    you have a 10% chance to become immune to the damage type that hit you for
+    5 seconds". Two rows for one sentence, both flat with no Required Tags, no
+    Condition and no Scale: the chance, 10 to 10, and the seconds, 5 to 5.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the sentence without its set label, on the Negative side of a
+    made-up sheet. The real rows are the enchantment session's to write, under
+    the label a set bonus has; this shows that the generator carries the two
+    rows through and refuses every shape the game would open nothing for.
+    """
+
+    WORDS = ("When you take damage, you have a 10% chance to become immune to "
+             "the damage type that hit you for 5 seconds")
+    CHANCE = "damage_type_immunity_on_hit_chance"
+    SECONDS = "damage_type_immunity_on_hit_seconds"
+    CHANCE_ROW = {"Stat": CHANCE, "Value Kind": "flat",
+                  "Value Low": 10, "Value High": 10}
+    SECONDS_ROW = {"Stat": SECONDS, "Value Kind": "flat",
+                   "Value Low": 5, "Value High": 5}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_damage_type_immunity_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_pair_of_rows_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.CHANCE, "flat", 10.0, 10.0, "", "", "", ""),
+            (self.SECONDS, "flat", 5.0, 5.0, "", "", "", "")]
+        assert out[0]["Enchantment"] == out[1]["Enchantment"]
+        assert self.refusals(out) == []
+        # NO CONDITION AND NO SCALE, so neither of those checks has anything
+        # to say; and the whole sheet's validation has nothing to say either.
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_both_stats_are_ones_with_no_attribute(self):
+        """What lets the rows above name them: neither holds a gameplay
+        attribute, so both names are on the engine's list of stats that need
+        none. TESTED BY NAME. The control is a made-up name on no list."""
+        assert set(gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS) == {
+            self.CHANCE, self.SECONDS}
+        for stat in gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS:
+            assert stat in gen.stats_with_no_attribute()
+        assert "damage_type_immunity_chance" not in gen.stats_with_no_attribute()
+
+    def test_the_bounds_are_a_chance_up_to_100_and_seconds_up_to_the_windows_bound(
+            self):
+        assert gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS == {
+            self.CHANCE: (0.0, 100.0),
+            self.SECONDS: (0.0, gen.MAX_DAMAGE_IMMUNITY_SECONDS)}
+        assert gen.MAX_DAMAGE_IMMUNITY_SECONDS == 10.0
+
+    def test_any_chance_and_any_time_inside_the_bounds_is_not_refused(
+            self, tmp_path):
+        """The mechanism is for any chance and any time, so a pair other than
+        the sentence's is carried too, each bound itself included, and a pair
+        that rolls between two figures."""
+        chance, seconds = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert self.refusals([chance, seconds]) == []
+        for low, high, least, most in ((100.0, 100.0, 10.0, 10.0),
+                                       (0.5, 0.5, 0.25, 0.25),
+                                       (5.0, 25.0, 2.0, 8.0)):
+            assert self.refusals([
+                dict(chance, ValueLow=low, ValueHigh=high),
+                dict(seconds, ValueLow=least, ValueHigh=most)]) == []
+
+    def test_every_shape_the_game_would_open_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to a carried pair at a time, each refused once and by
+        its own sentence. The control is the first line: the pair unchanged is
+        not refused."""
+        chance, seconds = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert self.refusals([chance, seconds]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -10.0}, "states -10 on"),
+                ({"ValueHigh": 101.0}, "states 101 on")):
+            problems = self.refusals([dict(chance, **change), seconds])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.CHANCE) in problems[0]
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 10.5}, "states 10.5 on")):
+            problems = self.refusals([chance, dict(seconds, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.SECONDS) in problems[0]
+
+    def test_one_of_the_two_stats_without_the_other_is_refused(self, tmp_path):
+        """The game opens a window only when both figures are above nought,
+        so an enchantment stating one alone grants nothing. Each half alone is
+        refused once, naming the stat that is missing; and the sheet's reader
+        carries the lone row through, so the refusal is this check's."""
+        chance, seconds = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert self.refusals([chance, seconds]) == []
+        alone = self.refusals([chance])
+        assert len(alone) == 1 and repr(self.SECONDS) in alone[0], alone
+        assert "states no row on" in alone[0]
+        alone = self.refusals([seconds])
+        assert len(alone) == 1 and repr(self.CHANCE) in alone[0], alone
+        # TWO ENCHANTMENTS EACH WITH ONE HALF ARE TWO REFUSALS: the two rows
+        # must be on the same enchantment.
+        elsewhere = dict(seconds, Name="Another#1", Enchantment="Another")
+        assert len(self.refusals([chance, elsewhere])) == 2
+        lone = self.out(tmp_path, [self.CHANCE_ROW])
+        assert [row["Stat"] for row in lone] == [self.CHANCE]
+        assert len(self.refusals(lone)) == 1
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """A name one letter off is on no list of stats, so the check every
+        stat row passes refuses it. The control is the pair spelt right."""
+        good = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, set()) == []
+        misspelt = "damage_type_immunity_on_hit_chanse"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased"), good[1]]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+
+    def test_a_condition_or_a_scale_on_either_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """Neither stat is on the list of stats asked for under a condition
+        or the list asked for under a scale, so the two checks that read
+        those lists refuse such a row. The control is the pair unchanged."""
+        out = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        for row in out:
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="health_below")])
+            assert len(conditioned) == 1 and row["Stat"] in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+            assert len(scaled) == 1 and row["Stat"] in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.CHANCE, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_damage_type_immunity_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "healing_received",
+                               "ValueKind": "increased", "ValueLow": 1.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The pair unchanged gives it nothing to say; the chance
+        alone is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [out[0]]}, set())
+        assert any("states no row on" in problem and repr(self.SECONDS) in problem
+                   for problem in problems), problems
+
+
 class TestAChargesDamageByTheShareOfItsRangeMoved:
     """`share_of_range_moved`, ruled 2026-10-08 and built ahead of its rows.
     The rows here are the shape `docs/DECISIONS.md` of that day gives the
