@@ -91,12 +91,10 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # `target_carries_void_splinter` LEFT on 2026-10-01 with its row, "You deal
     # 3%-5% more damage to an enemy carrying a void splinter", issue #1833 group
     # E part 1.
-    # ONE JOINED ON 2026-10-12, ruled that day under the owner's delegation
-    # and built ahead of its row: "Enemies that survive more than 5 seconds
-    # after first being hit gain 20%-40% increased damage".
-    # `docs/DECISIONS.md` of that day gives the shape of the row. It leaves
-    # with its row.
-    "opponent_first_struck_by_you_seconds_ago",
+    # `opponent_first_struck_by_you_seconds_ago` JOINED AND LEFT ON 2026-10-12:
+    # the engine half of "Enemies that survive more than 5 seconds after first
+    # being hit gain 20%-40% increased damage" landed first and its row the
+    # same day, issue #1833.
 }
 
 #: A condition several enchantment effect rows name. The control.
