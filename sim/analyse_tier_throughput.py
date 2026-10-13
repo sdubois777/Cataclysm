@@ -53,6 +53,16 @@ completes 3.31 quest objectives against a requirement of at least ten.
 
 ## Conditions
 
+**THIS FILE DESCRIBES THE MODEL AS IT WAS BEFORE 2026-10-12, WHEN AN ORDINARY
+DUNGEON STAYED ON THE MAP AFTER IT HIT ITS CITY.** That day
+`TuningConfig.dungeon_persists_after_resolve` became False by default, by the
+owner's ruling of 2026-10-08 that such a dungeon does its damage and then
+despawns. Step 2 above, "nothing removes a dungeon but a clear", is no longer
+true of the shipped model. `base_config` holds the setting True so that every
+figure here is still what the command below prints, and the section 4 row
+"detonated dungeon leaves" is the shipped rule, not a counterfactual. No figure
+here was re-measured under the shipped rule.
+
 Every campaign figure runs under `triage`, STATIC surges at the shipped
 `surge_dungeon_count` and `surge_interval_days`, resolve floor ratio 2.0, dungeon
 power escalation 0.10 per 100 days, and craft 12 days for +4% of a tier width --
@@ -126,6 +136,13 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
+        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
+        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
+        # leaves after it hits its city. Every figure this file's docstring
+        # and the issues quote was measured with the dungeon staying, and none
+        # has been re-measured, so the setting is held where it was. Remove
+        # this line to measure the shipped rule; the figures then move.
+        dungeon_persists_after_resolve=True,
     ).with_tree(tree)
     return replace(cfg, **over) if over else cfg
 

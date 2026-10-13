@@ -816,6 +816,30 @@ class Simulation:
         if city.defense <= 0:
             self._fall(city)
 
+        # IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of
+        # 2026-10-08, verbatim: "Ordinary dungeons will do their
+        # city/population damage, and then despawn." The setting is False
+        # since 2026-10-12; True is the model as it was, the dungeon staying
+        # with its timer full again.
+        #
+        # ONLY AN ORDINARY DUNGEON ON A CITY THAT WAS STANDING GETS HERE. A
+        # Quest dungeon returned at the top and a Fallen City dungeon, or any
+        # dungeon on a city already fallen, returned at the guard.
+        #
+        # THE FALL COMES FIRST, SO THE DUNGEON THAT FELLS ITS CITY IS ABSORBED
+        # AND NOT REMOVED HERE. `_fall` above has already taken every dungeon
+        # on the city off the map, and the `pop` finds nothing. The one it
+        # spares is the dungeon the player is inside, which reaches this line
+        # by a death, or by its timer when `timer_ticks_while_running` is on,
+        # and then leaves by it.
+        #
+        # NOT A CLEAR. Nothing is added to `cleared`, `basic_cleared`, the
+        # empire points or the materials, so a dungeon that leaves adds no
+        # floor to the Cataclysm boss.
+        #
+        # THE GAME DOES NOT DO THIS YET.
+        # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
+        # reads this function and `UCataclysmEmpireRun::ResolveDungeon`.
         if cfg.dungeon_persists_after_resolve:
             d.resolve_in = float(d.resolve_max)
         else:
@@ -995,8 +1019,11 @@ class Simulation:
             # RESOLVE, LEAVE, CHARGE THE DAYS, in the order the game uses:
             # `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, ruled on
             # 2026-10-09. The dungeon resolves while the player is still
-            # inside it, and the days below then run against a full timer
-            # that counts down again because nobody is standing in it.
+            # inside it. Since 2026-10-12 it then leaves the map, so nothing
+            # of it is left to hit during the days below. With
+            # `dungeon_persists_after_resolve` on it stays, as in the game
+            # today, and those days run against a full timer that counts down
+            # again because nobody is standing in it.
             # `tools/tests/test_a_death_resolves_in_the_model_as_in_the_game.py`
             # holds the order in both files.
             if cfg.death_resolves_dungeon:

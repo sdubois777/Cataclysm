@@ -214,6 +214,13 @@ def base_config(tier: int = 1, tree=TREE_NONE, min_gap: float | None = None,
         craft_days=12,
         craft_power_gain_frac=0.04,
         surge_on_empty_board=on,
+        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
+        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
+        # leaves after it hits its city. Every figure this file's docstring
+        # and the issues quote was measured with the dungeon staying, and none
+        # has been re-measured, so the setting is held where it was. Remove
+        # this line to measure the shipped rule; the figures then move.
+        dungeon_persists_after_resolve=True,
     ).with_tree(tree)
     if min_gap is not None:
         cfg = replace(cfg, surge_interval_min=float(min_gap))

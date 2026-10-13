@@ -117,12 +117,45 @@ class TestTheTwoStructuralRules:
             f"Unreal has {unreal}, the model has "
             f"{model.timer_ticks_while_running}")
 
-    def test_a_resolved_dungeon_persists_in_both(self, clock_source, model):
+    def test_the_clock_refills_every_timer_and_is_not_held_to_the_model(
+            self, clock_source, model):
+        """REPOINTED ON 2026-10-12. It was
+        `test_a_resolved_dungeon_persists_in_both` and held the clock's
+        constant equal to `TuningConfig.dungeon_persists_after_resolve`.
+
+        THE TWO ARE NO LONGER THE SAME QUESTION. The model's setting is now
+        False: an ordinary dungeon leaves after it hits its city, by the
+        owner's ruling of 2026-10-08. It is read only for an ordinary dungeon
+        on a standing city. The clock's constant is about every timer of every
+        kind, and its false branch in `UCataclysmDayClock::AdvanceDay` removes
+        each one that ran out. Flipping it to follow the model would take the
+        timers of Quest dungeons and Dungeon Cities while those dungeons stay
+        listed, so a Quest dungeon would never relocate again.
+
+        THE GAME DOES NOT HAVE THE RULE YET, ON PURPOSE, and when it gains it
+        the rule goes at the end of `UCataclysmEmpireRun::ResolveDungeon` as
+        one `RemoveDungeon(DungeonId)` call.
+        `test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
+        records the divergence and fails when the game gains the rule.
+        """
         unreal = constant(clock_source, "bDungeonPersistsAfterResolve",
                           r"true|false")
-        assert (unreal == "true") == model.dungeon_persists_after_resolve, (
-            f"Unreal has {unreal}, the model has "
-            f"{model.dungeon_persists_after_resolve}")
+        assert unreal == "true", (
+            "UCataclysmDayClock::bDungeonPersistsAfterResolve is now false. "
+            "Its false branch removes every timer that ran out whatever the "
+            "kind of dungeon, so Quest dungeons and Dungeon Cities lose their "
+            "timers while they stay on the map. The rule that an ordinary "
+            "dungeon leaves after it hits its city belongs at the end of "
+            "UCataclysmEmpireRun::ResolveDungeon as one "
+            "RemoveDungeon(DungeonId) call. Put the constant back to true. If "
+            "the constant and its branch were removed on purpose, delete this "
+            "test.")
+        assert model.dungeon_persists_after_resolve is False, (
+            "The model keeps a resolved ordinary dungeon again. If that was "
+            "done to make the model match the clock's constant, undo it: the "
+            "two differ on purpose, and "
+            "test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_"
+            "game.py says what ends the difference.")
 
 
 class TestWhatDyingCosts:
