@@ -2,6 +2,240 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A character keeps the time of each striker's first hit, and a row can raise what its wearer takes from an opponent it first struck N seconds ago, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one record, its
+write, its clearing and one function that reads it),
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (one field of the hit, and its
+copy into the blow record), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the field
+filled where the hit is built), `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (one
+condition, one field of the blow record, the name, what it depends on and the comparison),
+`game/Source/Cataclysm/Tests/CataclysmDamageBySourceTests.cpp` (two tests),
+`game/Source/Cataclysm/Tests/CataclysmMinionGearTests.cpp` (three tests), `tools/generate_datatables.py` (the
+condition's name and bound, and its place among the conditions of a blow taken),
+`tools/tests/test_generate_datatables.py` (one class of 13 tests),
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (one name). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsNegative.csv`: "Enemies that survive more than 5 seconds after first
+being hit gain 20%-40% increased damage".
+
+- **This row goes on the owner's play-check list.** Nothing here was played.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** NOT COMPILED AND NOT
+  RUN. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** The enchantment session writes the row. Its shape is
+  under "What was built".
+- **No genre source was reached for this sentence.** No page about another game was fetched, and nothing here
+  states what another game does. The readings are the coordinating session's rulings of 2026-10-12, made under
+  the owner's delegation.
+- **The increase is against the wearer only. The wearer's minions and allies do not take more.** The row is the
+  wearer's own `damage_taken`, as every merged row that says enemies deal more damage is ("Staggered enemies
+  deal 15%-30% increased damage" is `damage_taken` under `opponent_is_staggered`). `damage_taken` is asked of
+  the ability system of the character taking the blow, and a minion's is its own. A test reads a minion of the
+  wearer taking the same from the enemy before and after.
+- **The enemy's damage over time is not raised.** A tick of an enemy's damage over time on the wearer is handed
+  an empty blow record: `UCataclysmDamageCalculation::BlowContextFor` returns a default record for a tick
+  before it copies any field. So the condition reads -1 and refuses, as every condition of a blow taken does
+  for a tick. A burn an enemy laid on the wearer ticks for the same amount before and after the 5 seconds. Two
+  tests read this, one on a tick built by hand and one on a tick sent by `ApplyDirectDamage`.
+- **"More than 5 seconds" is built as AT LEAST 5 seconds. This is a judgement of the writing session.** The
+  seconds conditions beside it compare at least: `in_combat_for_seconds`, `stationary_for_seconds` and
+  `not_attacked_for_seconds`. The option not taken is the strict comparison, which
+  `attacker_beyond_metres` makes for its node's "more than 6 metres". It was not taken because the brief names
+  the condition "at least N seconds ago", and the two differ only for a blow that lands in the same instant
+  the fifth second ends. A blow exactly 5.0 seconds after the first hit is raised. Tests read both sides of the
+  boundary.
+- **The clock starts at the wearer's first blow that GETS THROUGH to that enemy, and a tick starts it.** That is
+  the blow the existing first-hit record counts: one that reached health, the energy shield, mana or the
+  temporary absorb. An evaded blow, and one stopped whole by a block or by armour and resistance, does not
+  start it. A tick of the wearer's damage over time counts, by the ruling in the entry headed "## 2026-09-23 —
+  Set Upon and Set the Pack On: a minion hits harder against an enemy its summoner damaged in the last 2
+  seconds": "**A damage over time tick counts**". So the wearer's burn on an enemy starts that enemy's 5
+  seconds with its first tick, if no hit of the wearer's got through before it.
+- **A blow that is a row's answer to an event, and a blow that is the consequence of a death, do not start the
+  clock.** They do not write the first-hit record today, and this record is written on the same answer. So an
+  enemy first touched by the wearer's `strike_target` row or by an overkill explosion has no clock until a hit
+  or a tick of the wearer's gets through.
+- **The clock never restarts while the enemy lives.** The record is cleared only where the first-hit record is
+  cleared: when the character STRUCK is revived. Leaving combat does not clear it, and the wearer's own death
+  and revival do not clear what an enemy holds about the wearer. An enemy first struck, left for a minute and
+  met again deals the increase at once.
+- **It is per enemy and per striker.** Each enemy keeps a time for each character that has struck it. An enemy
+  the wearer has never struck deals no more to the wearer, whoever else struck it.
+- **A blow of the wearer's minion does not start the wearer's clock, unless the wearer holds the Ritualist
+  keystone Conduit.** The record is keyed on `UCataclysmCombatEvents::AttackerOf`, which names the minion for a
+  minion's blow and the summoner only while the summoner holds Conduit. This is how the first-hit record was
+  keyed before this change.
+- **The opponent is the actor that threw the blow.** The field is read off the effect's causer, the actor the
+  staggered and crowd-controlled facts are read off. A creature's minion striking the wearer is asked for its
+  own record of the wearer, and not its summoner's. Whether any creature summons a minion was not read.
+- **The condition is a condition of a blow taken, and only the five stats asked for at a defence step can judge
+  it.** The generator refuses it on any other stat, with the sentence it already has for the other nine
+  conditions of a blow taken.
+- **Wearing the row after the fight has begun raises damage at once.** The record is kept by every character
+  whether or not anyone wears the row. An enemy the wearer first struck 5 seconds or more before putting the
+  item on deals the increase from its next blow.
+
+**What was not read:** how a worn row becomes a line of the stat line at a gear refresh; whether any creature
+summons a minion; what the creature's controller does; the heads-up display. Nothing on screen says which
+enemies have passed their 5 seconds: no display was built for this layer, and the brief asks for one only for
+the immunity of the next layer.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | Keep the time of each striker's first hit beside the latest. | `UCataclysmAbilitySystemComponent::FirstStruckBy`, written by `NoteStruckBy` only on the call that answers true, and read by `SecondsSinceFirstStruckBy`. |
+| R2 | A tick counts as the first hit. | Nothing new: `NoteStruckBy` is called for a tick as for a hit, at the one place in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` that calls it. |
+| R3 | A row's answer to an event and the consequence of a death do not start the clock. | Nothing new: that same place skips `NoteStruckBy` for both stamps, so neither record is written. |
+| R4 | The record is cleared where the existing one is cleared. | `ClearWhatDeathEnds`, one line after `StruckBy.Reset()`. |
+| R5 | One new opponent condition on a blow taken: the opponent was first struck by you at least N seconds ago. | `ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo`, named `opponent_first_struck_by_you_seconds_ago`, judged in `UCataclysmStatPipeline::ConditionHolds` on `FCataclysmBlowContext::SecondsSinceYouFirstStruckOpponent`. |
+| R6 | "At least 5" or "more than 5": decide by the neighbours, state which, test the boundary. | At least. See "Said first". |
+| R7 | Against the wearer only. | The row's stat is the wearer's `damage_taken`. Nothing was built for it. |
+| R8 | The condition is filled wherever the other opponent conditions are filled. | `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` fills `FCataclysmIncomingHit::SecondsSinceDefenderFirstStruckAttacker` directly after `AttackerDebuffs`, and `UCataclysmDamageCalculation::BlowContextFor` copies it directly after `OpponentDebuffs`. Those are the two places the other opponent facts pass through. |
+
+### WHAT WAS BUILT
+
+- **The record.** `FirstStruckBy`, a map from a striker's ability system to world seconds, beside `StruckBy` on
+  `UCataclysmAbilitySystemComponent`. `NoteStruckBy` already works out whether the blow is the striker's first
+  before it overwrites `StruckBy`; when it is, the same time is added to `FirstStruckBy`. Nothing overwrites an
+  entry. `ClearWhatDeathEnds` resets it with `StruckBy`.
+- **The reader.** `SecondsSinceFirstStruckBy(const UAbilitySystemComponent* Striker) const`: the seconds since
+  that striker's entry, or -1 with no entry or no world. The shape of `SecondsSinceStruckBy`.
+- **The fact on the hit.** `FCataclysmIncomingHit::SecondsSinceDefenderFirstStruckAttacker`, -1 by default.
+  Where the hit is built, the effect's causer is cast to this project's ability system and asked
+  `SecondsSinceFirstStruckBy` about the defender's ability system. A causer that is not such a character leaves
+  -1.
+- **The fact on the blow record.** `FCataclysmBlowContext::SecondsSinceYouFirstStruckOpponent`, -1 by default,
+  copied by `BlowContextFor` for a hit and left at -1 for a tick.
+- **The condition.** `OpponentFirstStruckByYouSecondsAgo`, the last enumerator of `ECataclysmStatCondition`. It
+  holds when the reading is nought or more and at least the row's value. A negative reading refuses, and the
+  test of that is written out and not folded into the comparison, because a row whose value is nought would
+  otherwise hold against an opponent never struck. It takes a value. `WhatConditionDependsOn` classes it with
+  the conditions of a blow or a skill. The two sentences in `CataclysmStatPipeline.h` that count the conditions
+  now say seventy, and seventy-first for the next.
+- **The generator.** `CONDITIONS` gains `opponent_first_struck_by_you_seconds_ago` with the bound 0 to 60
+  seconds that the seconds conditions use, and `CONDITIONS_OF_A_BLOW_TAKEN` gains the name.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment: Stat
+  `damage_taken`, Value Kind `increased`, Value Low 20, Value High 40, Condition
+  `opponent_first_struck_by_you_seconds_ago`, Condition Value 5. No Required Tags, no Scale and no Action.
+  **With the row, that session takes the name off `BUILT_AHEAD_OF_THEIR_ROWS`** in
+  `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `BUILT_AHEAD_OF_THEIR_ROWS` in `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`
+  gains `opponent_first_struck_by_you_seconds_ago`, with its reason. It leaves with its row.
+- `CONDITIONS` and `CONDITIONS_OF_A_BLOW_TAKEN` in `tools/generate_datatables.py` each gain the name, so the
+  generator now accepts a row under it on the five stats asked for at a defence step.
+- The two counts of conditions in `CataclysmStatPipeline.h` move from sixty-nine to seventy and from seventieth
+  to seventy-first. The count of conditions that compare nothing stays at thirty-one.
+- `tools/tests/test_every_condition_is_recorded_in_the_decisions_log.py` is NOT changed. It requires the new
+  name to appear in this file, and this entry is where it appears.
+
+### Tests
+
+Five new Unreal tests. Every expected figure of a blow is a ratio to the same opponent's blow on the same
+character read before the first hit, and that control is read first. The world's clock is moved by adding to
+`World->TimeSeconds`. Nothing waits on a tick. The characters are bare actors holding the attribute sets, as in
+the tests beside them. A bare actor has no body and no place, so they are all at the world's origin, as they
+are in those tests; the one actor with a body is the imp, spawned 1 m from them.
+
+In `CataclysmDamageBySourceTests.cpp`, group `Cataclysm.DamageBySource.`:
+
+- `AHandBuiltHitFromAnOpponentFirstStruckFiveSecondsAgoMeetsTheRowAndATickDoesNot`: the name a sheet writes
+  reaches the condition and the condition takes a value. Then `Resolve` on a hit of 400 filled by hand, against
+  a defender holding `damage_taken` 40% increased under the condition at 5: never struck, 400; struck this
+  instant, 400; 4.99 seconds, 400; exactly 5 seconds, 560; 30 seconds, 560; a tick carrying 30 seconds, 400.
+  `BlowContextFor` holds no time for that tick and holds 30 for the hit.
+- `ARealBlowFromAnOpponentTheWearerFirstStruckFiveSecondsAgoIsRaisedAndBeforeThatIsNot`: real blows both ways
+  between four characters. Before the wearer's first hit the opponent's blow on it is the control. In the
+  instant of the first hit, and 4.5 seconds after it, the ratio is 1. Exactly 5 seconds after it the ratio is
+  1.4. A second wearer of the same row first strikes the same opponent then: 3 seconds later the opponent's
+  blow on the first wearer is at 1.4 and on the second at 1, and 5.5 seconds after the second wearer's own
+  first hit it is at 1.4. An opponent the wearer never struck stays at 1. A tick of the opponent's on the
+  wearer equals a tick of the unstruck opponent's, at a moment when the opponent's hit is at 1.4. A set-up
+  check requires the world's clock to start at a time a float holds exactly, because the boundary is read at
+  exactly 5 seconds.
+
+In `CataclysmMinionGearTests.cpp`, group `Cataclysm.MinionGear.`, directly after the existing test of the
+struck record's time:
+
+- `TheStruckRecordKeepsWhenEachStrikersFirstBlowGotThroughAndALaterBlowDoesNotMoveIt`: no time before any blow;
+  nought at the first blow; a stranger has none; a second blow 1.5 seconds later makes the most recent time
+  nought (the control) and leaves the first time at 1.5; a second striker's first time is its own; and
+  `ClearWhatDeathEnds` empties the most recent record (the control) and the first time with it, for both
+  strikers.
+- `ATickStartsTheFirstStruckTimeAndARowsBlowAndAConsequenceOfADeathDoNot`: three enemies take one marked blow
+  each, and each blow is checked to have reached health. The tick starts the time; the row's answer and the
+  consequence of a death leave it at -1. A plain blow 2 seconds later does not move the time the tick started,
+  and starts the time on the other two (the control).
+- `AnOpponentItsSummonerFirstStruckDealsNoMoreToTheMinionAndMoreToTheSummoner`: a summoner holding the row, its
+  imp and an enemy. The enemy's blow on each is read before the summoner's first hit and 6 seconds after it.
+  The summoner's ratio is 1.4 (the control) and the imp's is 1.
+
+Python, `TestEnemiesThatSurviveFiveSecondsAfterAFirstHit` in `tools/tests/test_generate_datatables.py`, 13
+tests on a made-up sheet holding the real sentence: the ruled row is carried through, `damage_taken` can judge
+its condition, and the sheet's validation has nothing to say; the same row under `opponent_is_staggered` passes
+(the control); a missing Condition Value, 61 and -1 are each refused; the condition on `attack_damage`,
+`spell_damage`, `movement_speed` and `armor_penetration` is refused once each, by the sentence that names the
+condition and the stat; on each of the five stats asked for at a defence step it is not refused; and the name is
+a condition of a blow taken with the seconds bound.
+
+**Not tested:** the row arriving from a worn item through a gear refresh, because no row exists; a wearer that
+is a player character on a player state; an opponent that is an enemy creature of the game's own class (every
+character in these tests is a bare actor or an imp); a creature's minion; the wearer holding Conduit, where its
+minion's blow would start the wearer's clock; a first blow that the energy shield or the temporary absorb took
+whole; an evaded or wholly blocked first blow not starting the clock; a periodic damage over time effect
+ticking by the engine's own timer (the ticks here are single blows marked as ticks); the strict side of the
+boundary through a real blow at 4.99 seconds (it is read at 4.5); the row beside another `damage_taken` row.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the tests and were not measured.
+
+| Proof | File | Old text | New text | Prefix | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|---|
+| F-I, the reader reads the first time and not the most recent | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `const float* At = Striker ? FirstStruckBy.Find(Striker) : nullptr;` | `const float* At = Striker ? StruckBy.Find(Striker) : nullptr;` | `Cataclysm.MinionGear.` | `TheStruckRecordKeepsWhenEachStrikersFirstBlowGotThroughAndALaterBlowDoesNotMoveIt` | `ATickStartsTheFirstStruckTimeAndARowsBlowAndAConsequenceOfADeathDoNot` |
+| F-II, the fact is filled from the two characters where the hit is built | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `Thrower->SecondsSinceFirstStruckBy(GetOwningAbilitySystemComponent());` | `Thrower ? -1.0f : -1.0f;` | `Cataclysm.DamageBySource.` | `ARealBlowFromAnOpponentTheWearerFirstStruckFiveSecondsAgoIsRaisedAndBeforeThatIsNot` | None inside the prefix |
+| F-III, the comparison is at least | `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` | `&& State.Blow.SecondsSinceYouFirstStruckOpponent >= Value;` | `&& State.Blow.SecondsSinceYouFirstStruckOpponent > Value;` | `Cataclysm.DamageBySource.` | `AHandBuiltHitFromAnOpponentFirstStruckFiveSecondsAgoMeetsTheRowAndATickDoesNot` | `ARealBlowFromAnOpponentTheWearerFirstStruckFiveSecondsAgoIsRaisedAndBeforeThatIsNot` |
+
+Failed assertions in each test, by reading:
+
+- **F-I, 3 in 2 tests.** The first-time test 2: "and leaves the first time 1.5 seconds old", which would read
+  nought; and "and yours is 3.5 seconds old", which would read 2. The kinds test 1: "a plain blow 2 seconds
+  later does not move the time the tick started", which would read nought. The third new test of the group
+  passes: its summoner strikes the enemy once, so both records hold the same time.
+- **F-II, 4 in 1 test.** The real-blow test: "exactly 5 seconds after it the opponent's blow is 40% increased";
+  "8 seconds after the wearer's first hit the opponent's blow on it is 40% increased"; "5.5 seconds after the
+  second wearer's own first hit the blow on it is 40% increased"; and "control: at that same moment the
+  opponent's hit is 40% increased". The hand-built test passes, because it fills the field by hand.
+- **F-III, 2 in 2 tests.** The hand-built test 1: "one first struck exactly 5 seconds ago deals 40% more: at
+  least, not more than". The real-blow test 1: "exactly 5 seconds after it the opponent's blow is 40%
+  increased".
+
+**Tests and no proof:** that the first time is written only on the first blow (F-I's break is in the reader);
+the clearing on revival; the copy in `BlowContextFor`; the refusal of a negative reading.
+
+One test outside its prefix is expected to fail under F-II: `Cataclysm.MinionGear.`
+`AnOpponentItsSummonerFirstStruckDealsNoMoreToTheMinionAndMoreToTheSummoner`, on "control: six seconds after its
+first hit the summoner takes 40% more". No other test of another group is expected to fail under any of the
+three.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can make its wearer's retaliation skip six steps of the struck character's mitigation: a flag stat and a flag on the blow, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.h` and `.cpp` (the stat's name, the one

@@ -362,6 +362,24 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	FGameplayTagContainer AttackerDebuffs;
+
+	/**
+	 * How long ago, in seconds, the character TAKING this blow first got a blow
+	 * through to whoever threw it, or -1 when it never has or it is not known.
+	 * Ruled 2026-10-12 under the owner's delegation, for "Enemies that survive
+	 * more than 5 seconds after first being hit gain 20%-40% increased damage".
+	 *
+	 * READ OFF THE EFFECT'S CAUSER, the actor `bFromStaggered` above reads, by
+	 * `UCataclysmAbilitySystemComponent::SecondsSinceFirstStruckBy` asked about
+	 * the defender's ability system. So it is the thrower's record of the
+	 * defender: a creature the defender has never struck answers -1.
+	 *
+	 * -1 FOR "NEVER" AND FOR "NOT KNOWN", as `OpponentDistanceMetres` uses it.
+	 * Nought is a real reading: the creature struck a moment ago strikes back
+	 * in the same instant.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float SecondsSinceDefenderFirstStruckAttacker = -1.0f;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */

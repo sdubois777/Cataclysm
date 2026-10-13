@@ -4125,6 +4125,22 @@ CONDITIONS = {
     #
     # IT TAKES NO VALUE: it names a state rather than comparing a number.
     "wielding_two_handed_weapon": None,
+
+    # "Enemies that survive more than 5 seconds after first being hit gain
+    # 20%-40% increased damage" is `opponent_first_struck_by_you_seconds_ago`
+    # with 5, on a `damage_taken` row. Ruled 2026-10-12 under the owner's
+    # delegation. It asks about the character on the other side of a blow
+    # being TAKEN: whether the wearer's first blow got through to it at least
+    # that many seconds ago. An opponent the wearer has never struck refuses
+    # whatever the value, and so does a damage over time tick, which carries
+    # no blow record.
+    #
+    # AT LEAST, as `in_combat_for_seconds` and `stationary_for_seconds`
+    # compare. The sentence writes "more than"; the strict comparison is the
+    # option not taken, and `docs/DECISIONS.md` of that day says why.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "opponent_first_struck_by_you_seconds_ago": (0.0, 60.0, "a number of seconds"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -8386,6 +8402,7 @@ CONDITIONS_OF_A_BLOW_TAKEN = frozenset({
     "hit_is_spell",
     "melee_hit_while_moving",
     "opponent_carries_weaken",
+    "opponent_first_struck_by_you_seconds_ago",
     "opponent_is_boss",
     "opponent_is_crowd_controlled",
     "opponent_is_staggered",

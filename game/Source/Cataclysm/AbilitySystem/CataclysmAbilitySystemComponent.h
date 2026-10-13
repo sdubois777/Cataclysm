@@ -3583,6 +3583,29 @@ public:
 	float SecondsSinceStruckBy(const UAbilitySystemComponent* Striker) const;
 
 	/**
+	 * How long ago `Striker`'s FIRST blow got through to this character, in
+	 * seconds, or -1 if none has. Ruled 2026-10-12 under the owner's delegation,
+	 * for "Enemies that survive more than 5 seconds after first being hit gain
+	 * 20%-40% increased damage".
+	 *
+	 * A SECOND RECORD BESIDE `StruckBy`, WRITTEN ONCE. `StruckBy` holds each
+	 * striker's most recent blow and is overwritten by the next, so the time of
+	 * the first cannot be read from it. `NoteStruckBy` writes this one only on
+	 * the call that returns true, so the two cannot disagree about which blow
+	 * was the first: what does not write `StruckBy` does not write this.
+	 *
+	 * SO A TICK STARTS IT, and a blow that is a row's answer to an event or the
+	 * consequence of a death does not, exactly as for `WasStruckBy`. Cleared
+	 * where `StruckBy` is cleared, on revival, and nowhere else: leaving combat
+	 * does not clear it.
+	 *
+	 * READ BY `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` ON THE
+	 * CHARACTER THAT THREW A BLOW, asked about the character taking it, into
+	 * `FCataclysmIncomingHit::SecondsSinceDefenderFirstStruckAttacker`.
+	 */
+	float SecondsSinceFirstStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -4440,6 +4463,13 @@ protected:
 	 */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> StruckBy;
 	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> CriticallyStruckBy;
+
+	/**
+	 * When each striker's FIRST blow got through to this character, in world
+	 * seconds. Ruled 2026-10-12. Written once a striker by `NoteStruckBy`, never
+	 * overwritten, and cleared with `StruckBy`. See `SecondsSinceFirstStruckBy`.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> FirstStruckBy;
 
 	/** Rendering Blows: landed melee hits per striker, and the removal running. */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, int32> LandedMeleeHitsFrom;

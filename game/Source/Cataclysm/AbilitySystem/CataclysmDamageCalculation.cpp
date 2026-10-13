@@ -420,6 +420,12 @@ FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
 	// like every fact above, and a tick returned before reaching this line keeps
 	// an empty container, which is what `OpponentCarriesWeaken` refuses on.
 	Blow.OpponentDebuffs = Hit.AttackerDebuffs;
+
+	// AND HOW LONG AGO THE CHARACTER TAKING IT FIRST STRUCK WHOEVER THREW IT.
+	// Ruled 2026-10-12. Copied across like every fact above. A tick returned
+	// before reaching this line keeps -1, which
+	// `OpponentFirstStruckByYouSecondsAgo` refuses whatever its value.
+	Blow.SecondsSinceYouFirstStruckOpponent = Hit.SecondsSinceDefenderFirstStruckAttacker;
 	return Blow;
 }
 
