@@ -45032,8 +45032,11 @@ bool FCataclysmGatedShortcutFiguresTest::RunTest(const FString& Parameters)
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 	TestEqual(TEXT("Soul Chains is built"), static_cast<int32>(Effects::BuiltStateOf(SoulChainsRow)),
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
-	TestEqual(TEXT("The Labrynth is partly built: rooms do not rearrange"),
-			  static_cast<int32>(Effects::BuiltStateOf(LabrynthRow)), static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	// THIS ASSERTED `Partly` UNTIL 2026-10-12, under the label "The Labrynth is partly built: rooms do not rearrange".
+	// The rooms still do not rearrange. The row was accepted as blocked and redirected paths and marked Built; the
+	// reason is at `LabrynthKey` and in `BuiltStateOf`.
+	TestEqual(TEXT("The Labrynth is built: gated shortcuts opening and closing in turn are the row"),
+			  static_cast<int32>(Effects::BuiltStateOf(LabrynthRow)), static_cast<int32>(ECataclysmModifierBuilt::Built));
 	return true;
 }
 
@@ -54650,8 +54653,10 @@ bool FCataclysmRealityChamberFiguresTest::RunTest(const FString& Parameters)
 			  FString(TEXT("Common")));
 	TestEqual(TEXT("the row is built"), static_cast<int32>(Effects::BuiltStateOf(RealityRow)),
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
-	TestEqual(TEXT("CONTROL: The Labrynth is still only partly built"),
-			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::LabrynthKey))),
+	// THE PARTLY BUILT CONTROL WAS THE LABRYNTH UNTIL 2026-10-12, when that row was marked Built; Insanity Bursts,
+	// which waits on co-op, is the control now.
+	TestEqual(TEXT("CONTROL: Insanity Bursts is still only partly built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::InsanityBurstsKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
 	// WHICH FLOORS, BY THE FLOOR'S SEED: seeds 1 to 12, worked out by hand.
@@ -55436,6 +55441,80 @@ bool FCataclysmRealityChamberNeverEmptyTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("and it is the same drop by name"), AgainNames[0], FirstNames[0]);
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_The_Labrynth is marked Built, 2026-10-12. Nothing the rule does changed; see `LabrynthKey`.
+// ---------------------------------------------------------------------------
+
+// THE ROW'S STATE AND THE PANEL'S NAME LINE. No world and no actor: `BuiltStateOf` and the panel's layout are plain
+// functions, and the table is the real one. Each answer about The Labrynth stands beside the same question asked of
+// a row in another state, so "built" is not simply what these functions say of every row.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLabrynthMarkedBuiltTest,
+	"Cataclysm.DungeonModifierEffects.TheLabrynthIsMarkedBuiltAndItsPanelLineNoLongerSaysPartlyBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLabrynthMarkedBuiltTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using PanelLayout = UCataclysmFloorModifierPanelLayout;
+
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_DungeonModifiers would not load."));
+		return false;
+	}
+
+	const FName PartlyControl(Effects::InsanityBurstsKey);
+	const FName UnbuiltControl(TEXT("War_Supply_Lines"));
+
+	TestEqual(TEXT("The Labrynth is built"), static_cast<int32>(Effects::BuiltStateOf(LabrynthRow)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+	TestEqual(TEXT("CONTROL: Insanity Bursts is partly built"), static_cast<int32>(Effects::BuiltStateOf(PartlyControl)),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+	TestEqual(TEXT("CONTROL: Supply Lines is not built"), static_cast<int32>(Effects::BuiltStateOf(UnbuiltControl)),
+			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
+
+	// THE NAME LINE WITH NOTHING COUNTED: the row's name and no mark after it.
+	const TArray<FCataclysmFloorModifierLine> Bare = PanelLayout::LinesFor({LabrynthRow, PartlyControl}, Table);
+	if (!TestEqual(TEXT("set-up: one line per row"), Bare.Num(), 2))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: both are rows of the table"), Bare[0].bIsARow && Bare[1].bIsARow))
+	{
+		return false;
+	}
+	TestEqual(TEXT("The Labrynth's name line is its name alone"), PanelLayout::NameLineFor(Bare[0]),
+			  FString(TEXT("The Labrynth")));
+	TestEqual(TEXT("CONTROL: a partly built row's name line says so"), PanelLayout::NameLineFor(Bare[1]),
+			  FString(TEXT("Insanity Bursts (partly built)")));
+
+	// AND WITH THE COUNT THE FLOOR GIVES IT, written here as `LiveCountsForTheFloor` writes it on a floor with four
+	// gates, two open. The same count is given to the control, so the two lines differ by the mark alone.
+	const FString Counting(TEXT("the labrynth: 2 of 4 gates open"));
+	TMap<FName, FString> Counts;
+	Counts.Add(LabrynthRow, Counting);
+	Counts.Add(PartlyControl, Counting);
+	const TArray<FCataclysmFloorModifierLine> Counted = PanelLayout::LinesFor({LabrynthRow, PartlyControl}, Table, Counts);
+	if (!TestEqual(TEXT("set-up: one counted line per row"), Counted.Num(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("The Labrynth's name line with its count"), PanelLayout::NameLineFor(Counted[0]),
+			  FString(TEXT("The Labrynth (the labrynth: 2 of 4 gates open)")));
+	TestEqual(TEXT("CONTROL: the partly built row's line with the same count keeps its mark"),
+			  PanelLayout::NameLineFor(Counted[1]),
+			  FString(TEXT("Insanity Bursts (partly built) (the labrynth: 2 of 4 gates open)")));
+
+	// THE SENTENCE UNDER THE NAME IS THE ROW'S OWN, UNCHANGED. It still says "rooms rearrange", which is not what
+	// happens; this layer may not edit the table, and the entry of 2026-10-12 says so first.
+	TestTrue(TEXT("the line under the name is the row's own sentence"),
+			 Bare[0].Description.Contains(TEXT("blocked or redirected")));
+
 	return true;
 }
 
