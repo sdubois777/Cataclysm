@@ -5344,6 +5344,26 @@ DAMAGE_IMMUNITY_ACTION = "damage_immunity"
 #: The longest no-damage window a row may open. A sanity bound.
 MAX_DAMAGE_IMMUNITY_SECONDS = 10.0
 
+#: The action that MOVES ITS WEARER TO A RANDOM REACHABLE POINT NEARBY, with its
+#: value as the furthest it may be moved IN METRES, above 0 and up to
+#: `MAX_TELEPORT_RANDOMLY_METRES`. Ruled 2026-10-12 by the coordinating session
+#: under the owner's delegation: "Teleport to a random location within 4 meters
+#: when hit". `UCataclysmAbilitySystemComponent::TeleportRandomlyAction` holds
+#: the same name.
+#:
+#: THE METRES ARE THE ROW'S VALUE, as a no-damage window's seconds are. The
+#: sentence states one number and the action needs one, so the value column
+#: carries it and no other column is read for it.
+TELEPORT_RANDOMLY_ACTION = "teleport_randomly"
+
+#: The furthest a row may move its wearer, in metres. A sanity bound.
+MAX_TELEPORT_RANDOMLY_METRES = 20.0
+
+#: The events it may hang on: `hit_taken` and no other. The engine acts for a
+#: landed hit and not for a tick of damage over time, and `hit_taken` is the
+#: one event for which the engine holds whether the blow was a tick.
+TELEPORT_RANDOMLY_EVENTS = ("hit_taken",)
+
 #: The action that CLEANSES THE WEARER: it removes every damage over time, stun,
 #: debuff and fear on the wearer that the wearer did not put there itself, which
 #: is what `UCataclysmDebuffs::Cleanse` removes. Issue #1833, ruled 2026-09-26
@@ -5636,6 +5656,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == HEALTH_CAP_ACTION or action in NEARBY_ACTIONS
             or action in REMAINING_DAMAGE_ACTIONS or action in ALL_APPLY_STATUS_ACTIONS
             or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION
+            or action == TELEPORT_RANDOMLY_ACTION
             or action == BLAST_FROM_THE_DYING_ACTION
             or action == STUN_NEAR_THE_DYING_ACTION
             or action == STRIKE_TARGET_ACTION
@@ -5927,6 +5948,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_damage_immunity_action(index, who, action, event, fraction_of,
                                       kind, raw, headers)
         return
+    if action == TELEPORT_RANDOMLY_ACTION:
+        _check_teleport_randomly_action(index, who, action, event, fraction_of,
+                                        kind, raw, headers)
+        return
     if action in SKILL_IN_HAND_ACTIONS:
         _check_repeat_skill_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -5985,6 +6010,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(NEARBY_ACTIONS)}; or a remaining damage action, "
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(ALL_APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
+            f"or {TELEPORT_RANDOMLY_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
             f"or {STUN_NEAR_THE_DYING_ACTION}; "
             f"or {CLEANSE_ACTION}; "
@@ -6429,6 +6455,45 @@ def _check_damage_immunity_action(index: int, who: str, action: str, event: str,
                 f"nothing else, so the column must be empty.")
 
 
+def _check_teleport_randomly_action(index: int, who: str, action: str, event: str,
+                                    fraction_of: str, kind: str, raw,
+                                    headers: dict[str, int]) -> None:
+    """Everything a row that moves its wearer to a random point must say, and
+    everything it must not. Ruled 2026-10-12. ON `hit_taken` ONLY, the one event
+    for which the engine holds whether the blow was a tick. IT MUST STATE ITS
+    TRIGGER COOLDOWN, because the sentence states none and the wait is a judged
+    number: an empty cell would take the quarter second every hit-fired event
+    takes, and a wearer under steady hits would be moved four times a second
+    with nothing in the row saying so. The metres are checked where the value
+    is read. A fraction, a value kind and a scale each mean nothing here, and
+    `hit_taken` carries no tags for a scoped row to match, so each is refused
+    rather than dropped.
+    """
+    if event not in TELEPORT_RANDOMLY_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves its wearer to a "
+            f"random point on the event {event or '(none)'!r}. The game moves "
+            f"it for a hit taken and for nothing else: "
+            f"{', '.join(TELEPORT_RANDOMLY_EVENTS)}.")
+    if not clean(_cell(raw, headers, "Trigger Cooldown")):
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves its wearer to a "
+            f"random point and states no Trigger Cooldown. Its sentence states "
+            f"none, so the row must: an empty cell would take the "
+            f"{DEFAULT_TRIGGER_COOLDOWN:g} seconds of a hit-fired event.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale"))),
+                            ("Required Tags",
+                             clean(_cell(raw, headers, "Required Tags")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} moves its wearer to a "
+                f"random point and states {column} {written!r}. Its value is "
+                f"metres and its event carries no tags, so the column must be "
+                f"empty.")
+
+
 def _check_ailment_rider_action(index: int, who: str, action: str, event: str,
                                 fraction_of: str, kind: str, raw,
                                 headers: dict[str, int]) -> None:
@@ -6818,6 +6883,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in REMAINING_DAMAGE_ACTIONS \
                     and action not in ALL_APPLY_STATUS_ACTIONS \
                     and action != DAMAGE_IMMUNITY_ACTION \
+                    and action != TELEPORT_RANDOMLY_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != BLAST_FROM_THE_DYING_ACTION \
                     and action != STUN_NEAR_THE_DYING_ACTION \
@@ -7093,6 +7159,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} opens a no-damage "
                     f"window of {low:g} to {high:g} seconds. It lasts above 0 and "
                     f"up to {MAX_DAMAGE_IMMUNITY_SECONDS:g}.")
+
+        # A MOVE TO A RANDOM POINT STATES METRES, above 0 and up to the bound.
+        # Ruled 2026-10-12.
+        if action == TELEPORT_RANDOMLY_ACTION:
+            if not (0 < low <= MAX_TELEPORT_RANDOMLY_METRES
+                    and 0 < high <= MAX_TELEPORT_RANDOMLY_METRES):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} moves its wearer "
+                    f"to a random point within {low:g} to {high:g} metres. It is "
+                    f"above 0 and up to {MAX_TELEPORT_RANDOMLY_METRES:g}.")
 
         # A RIDER'S VALUE IS A PERCENT, above 0 and up to 100. Issue #1833.
         if action in AILMENT_RIDER_ACTIONS:

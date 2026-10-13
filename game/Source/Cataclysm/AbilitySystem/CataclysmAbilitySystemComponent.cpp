@@ -59,6 +59,8 @@
 #include "Items/CataclysmEquipmentComponent.h"
 // For which dungeon of the empire is being walked, which a kept stack remembers. See `DungeonBeingWalked`.
 #include "Dungeon/CataclysmDungeonGameMode.h"
+// For a random reachable point near a character. See `TeleportTheWearerRandomly`.
+#include "NavigationSystem.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
@@ -3063,6 +3065,11 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	// AFTER THE CANCEL, AND THE ORDER IS DELIBERATE. A row that answers a hit by
 	// starting something was not running when the hit landed, so what it starts
 	// here is not among the skills collected above.
+	//
+	// AND WHETHER THE BLOW WAS A TICK IS HELD WHILE THE ROWS ACT, for the one action ruled to act on a hit and not
+	// on a tick: `TeleportRandomlyAction`, 2026-10-12. The event itself carries no such fact. Put back when this
+	// call returns, so it reads false at every other time.
+	TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);
 	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
 }
 
@@ -6113,6 +6120,28 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// THE WEARER IS MOVED TO A RANDOM REACHABLE POINT NEARBY. Ruled 2026-10-12 under the owner's delegation, for
+		// "Teleport to a random location within 4 meters when hit". Landed only, once per row per event, and NOT ON A
+		// TICK of damage over time, which reaches `hit_taken` as every blow does and is said by
+		// `bHitBeingAnnouncedIsATick`. The row's value is the furthest it may be moved, in metres.
+		//
+		// ITS COOLDOWN STARTS ONLY WHEN THE WEARER WAS MOVED. A hit that finds no point starts no wait.
+		//
+		// THE HIT IS ALREADY TAKEN. `hit_taken` is raised by the attribute set after the hit's damage is written to
+		// health, so the hit that moves the wearer is taken in full where the wearer stood.
+		if (Action.bTeleportRandomly)
+		{
+			if (bLanded && !bHitBeingAnnouncedIsATick && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				if (TeleportTheWearerRandomly(Action.Percent))
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
 		// A STATUS ON THE OTHER CHARACTER OF THE EVENT. Issue #1833 group E part
 		// 1, ruled 2026-10-01. Landed only, once per row per event, and only for
 		// an event naming that character. A chance row rolls its value; a
@@ -6201,6 +6230,130 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		ApplyPoolAction(Action, EventTags, EventAmount);
 		NoteTriggerFired(Action);
 	}
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::TeleportRandomlyAction = TEXT("teleport_randomly");
+
+/**
+ * Pins the direction `TeleportTheWearerRandomly` moves its character in, for tests: degrees from the world's X axis
+ * towards its Y axis. Negative, the default, asks the navigation system for a random reachable point. Ruled
+ * 2026-10-12. A PINNED POINT IS TAKEN AS REACHABLE: the navigation system is not asked, because a world made for an
+ * automation test has none.
+ */
+static TAutoConsoleVariable<float> CVarTeleportRandomlyDegrees(
+	TEXT("Cataclysm.TeleportRandomlyDegrees"), -1.0f,
+	TEXT("Pins the direction, in degrees, a teleport-when-hit enchantment moves its wearer in. Negative asks the navigation system."),
+	ECVF_Default);
+
+/**
+ * With the direction pinned, how far `TeleportTheWearerRandomly` moves its character, as a share of the row's metres
+ * from 0 to 1. Read only while `Cataclysm.TeleportRandomlyDegrees` is nought or above. Held to 0 to 1, so no pin
+ * moves a character further than its row states.
+ */
+static TAutoConsoleVariable<float> CVarTeleportRandomlyShare(
+	TEXT("Cataclysm.TeleportRandomlyShare"), 1.0f,
+	TEXT("With Cataclysm.TeleportRandomlyDegrees pinned, the share of the row's metres the wearer is moved, 0 to 1."),
+	ECVF_Default);
+
+bool UCataclysmAbilitySystemComponent::TeleportTheWearerRandomly(float Metres)
+{
+	AActor* Self = GetAvatarActor();
+	UWorld* World = GetWorld();
+	if (!Self || !World || Metres <= 0.0f || UCataclysmSkillEffects::IsDead(Self))
+	{
+		return false;
+	}
+
+	// NOT WHILE A MOVEMENT SKILL OF THE CHARACTER'S IS RUNNING. A lasting charge adds up its walk from where its
+	// last search ended to where the character is now, and strikes what lies on that line; moved from outside, it
+	// would count the move as ground walked and strike along it. A Flicker between arrivals is moved by its own
+	// timer. A blink, a leap, a recall and a swap have ended by the time anything can hit, and are not running.
+	// A judgement of the writing session: the character stays put and the skill goes on.
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.IsActive() && Cast<UCataclysmMovementSkill>(Spec.GetPrimaryInstance()))
+		{
+			return false;
+		}
+	}
+
+	const FVector From = Self->GetActorLocation();
+	const float ReachCm = Metres * 100.0f;
+	FVector To = From;
+	bool bDrawn = false;
+
+	const float PinnedDegrees = CVarTeleportRandomlyDegrees.GetValueOnAnyThread();
+	if (PinnedDegrees >= 0.0f)
+	{
+		// PINNED FOR A TEST, AND TAKEN AS REACHABLE. Along the ground, at the character's own height.
+		const float Share = FMath::Clamp(CVarTeleportRandomlyShare.GetValueOnAnyThread(), 0.0f, 1.0f);
+		const float Radians = FMath::DegreesToRadians(PinnedDegrees);
+		To = From + FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * (ReachCm * Share);
+		bDrawn = true;
+	}
+	else if (UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
+	{
+		// THE NAVIGATION SYSTEM'S ANSWER, as `ACataclysmEnemyController` asks it for a place to roam to: a point on
+		// the navigation mesh that a path exists to from here. NOT A const UWorld*, for the reason given there.
+		for (int32 Draw = 0; Draw < TeleportRandomlyDraws && !bDrawn; ++Draw)
+		{
+			FNavLocation Reachable;
+			if (!Navigation->GetRandomReachablePointInRadius(From, ReachCm, Reachable))
+			{
+				break;
+			}
+
+			// THE POINT IS ON THE GROUND AND THE CHARACTER'S PLACE IS ITS MIDDLE, so it stands half its own height
+			// above the point. AND NO FURTHER THAN THE ROW'S METRES ALONG THE GROUND: see `TeleportRandomlyDraws`.
+			const FVector Standing =
+				Reachable.Location + FVector(0.0f, 0.0f, Self->GetSimpleCollisionHalfHeight());
+			if (FVector::Dist2D(From, Standing) <= ReachCm)
+			{
+				To = Standing;
+				bDrawn = true;
+			}
+		}
+	}
+
+	// WITH NO NAVIGATION SYSTEM, OR NO POINT IN REACH, THE CHARACTER STAYS PUT. No fallback to an unchecked point: a
+	// point nothing has said is reachable may be behind a wall or off the floor.
+	if (!bDrawn)
+	{
+		return false;
+	}
+
+	// AND WHERE THE CHARACTER FITS. `FindTeleportSpot` moves the point out of anything that blocks the character's
+	// collision, by the little a point on the navigation mesh can sit inside the floor, and refuses a point it
+	// cannot make fit. A point it had to move past the row's metres is refused here.
+	FVector Fitted = To;
+	if (!World->FindTeleportSpot(Self, Fitted, Self->GetActorRotation())
+		|| FVector::Dist2D(From, Fitted) > ReachCm)
+	{
+		return false;
+	}
+
+	// A POINT WITHIN ONE CENTIMETRE OF WHERE IT STANDS IS NO MOVE, and starts no cooldown.
+	if (FVector::DistSquared(From, Fitted) <= 1.0f)
+	{
+		return false;
+	}
+
+	// UNSWEPT AND UNCHECKED, as the dungeon's own relocations are: the fit was asked above, and a swept move would
+	// stop at whatever stands between the two points, which a teleport does not cross.
+	if (!Self->TeleportTo(Fitted, Self->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true))
+	{
+		return false;
+	}
+
+	// AND IT IS NOT MOVEMENT. The movement sampler compares where the character is with where it last saw it, and
+	// cannot tell this from a walk. So the place it last saw is moved by what the character was moved by: its next
+	// step then measures only the ground walked since its last, and adds no distance and marks nothing as moving
+	// for this. The clock the standing-still conditions read is left alone.
+	if (bHasSampledLocation)
+	{
+		NoteSampledAt(LastSampledLocation + (Self->GetActorLocation() - From));
+	}
+	return true;
 }
 
 bool UCataclysmAbilitySystemComponent::PoolActionAllowed(

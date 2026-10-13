@@ -803,7 +803,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 598 SINCE THE ROW THAT MAKES ENEMIES IMMUNE FIFTEEN SECONDS AFTER A FIRST HIT, issue #1833, from 597.
 	//
 	// AND 599 SINCE THE ROW THAT ADDS PROJECTILES TO A SKILL, issue #1833, from 598.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    599)
+	//
+	// AND 600 SINCE THE ROW THAT TELEPORTS ITS WEARER WHEN HIT, issue #1833, from 599.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    600)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
