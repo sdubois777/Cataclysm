@@ -465,6 +465,9 @@ public:
 	/**
 	 * Whether a city falling fires a surge of its own.
 	 * `config.surge_on_city_fall`. The design document says it does.
+	 *
+	 * NOT EVERY FALL DOES. `IsDueOnCityFall` asks this flag and also that the
+	 * last surge is at least `LeastIntervalDays` behind. Issue #2380.
 	 */
 	static constexpr bool bSurgeOnCityFall = true;
 
@@ -1043,7 +1046,8 @@ public:
 	/**
 	 * The day the last surge fired, or 0 when none has.
 	 *
-	 * WHAT THE EMPTY-BOARD RULE MEASURES ITS LEAST INTERVAL FROM.
+	 * WHAT THE EMPTY-BOARD RULE AND A CITY'S FALL MEASURE THEIR LEAST INTERVAL
+	 * FROM. See `IsDueOnEmptyBoard` and `IsDueOnCityFall`.
 	 * `Simulation.days_since_last_surge` reads the last entry of its surge log
 	 * and answers the day itself while the log is empty, so the start of the
 	 * run counts as day 0; a 0 here gives the same answer.
@@ -1107,6 +1111,34 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsDueOnEmptyBoard(int32 Day, int32 DungeonsStanding) const;
+
+	/**
+	 * Whether a city falling on this day fires a surge of its own.
+	 *
+	 * A PORT OF THE CONDITION AT THE END OF `Simulation._fall`: the rule is on,
+	 * and the last surge is at least `LeastIntervalDays` (25) behind. The model
+	 * has asked both since issue #1432; the game asked only the flag until
+	 * issue #2380.
+	 *
+	 * A REFUSAL IS A LOSS AND NOT A DELAY, which is the opposite of
+	 * `IsDueOnEmptyBoard`. A fall is a moment. The caller asks once, when the
+	 * city falls, and a fall refused today is not asked about tomorrow. The
+	 * city still falls and still becomes a Dungeon City; only the wave is
+	 * withheld.
+	 *
+	 * SO TWO CITIES FALLING ON ONE DAY BRING ONE WAVE. The first fall's surge
+	 * is recorded by `RecordSurge`, which writes today into `LastSurgeDay`,
+	 * and the second fall is then nought days behind it. A fall on a day the
+	 * clock has already surged brings none for the same reason.
+	 *
+	 * IT DOES NOT ASK WHAT STANDS ON THE BOARD, unlike the empty-board rule.
+	 *
+	 * IT DECIDES AND DOES NOT ACT, like `IsDue` and `IsDueOnEmptyBoard`.
+	 *
+	 * @param Day the day the city fell on
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsDueOnCityFall(int32 Day) const;
 
 	/**
 	 * Records that a surge fired today, and sets when the next one is due.
