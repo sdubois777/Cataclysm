@@ -564,10 +564,15 @@ public:
 	 *
 	 * WRITTEN WHOLESALE, for the reason `SetStatInputs` is: a row that came off
 	 * with the gear must stop firing rather than go on firing.
+	 *
+	 * AND A RESISTANCE A ROW WAS HOLDING AT NOUGHT IS RELEASED WHEN THAT ROW IS
+	 * NOT AMONG THE NEW ACTIONS. Ruled 2026-10-12. The row is what would have
+	 * moved the hold at its next firing, so without it the hold would never end.
 	 */
 	void SetPoolActions(TArray<FCataclysmPoolAction>&& Actions)
 	{
 		PoolActions = MoveTemp(Actions);
+		ReleaseHeldResistanceUnlessARowHoldsIt();
 	}
 
 	/** What this character would do on an event. For a test or a character sheet. */
@@ -979,6 +984,44 @@ public:
 	 */
 	static const TCHAR* StunStatus;
 	static const TCHAR* AppliedDotStatus;
+
+	/**
+	 * One more status, which only `ApplyStatusToSelfAction` may name: ONE OF THE WEARER'S PER-TYPE RESISTANCES, DRAWN
+	 * AND HELD AT NOUGHT until the row fires again. Ruled 2026-10-12 under the owner's delegation, for "Every 5
+	 * seconds, one of your resistances is reduced to 0 until this triggers again". `tools/generate_datatables.py`
+	 * holds the same name in `RANDOM_RESISTANCE_AT_NOUGHT_STATUS`. See `HoldARandomResistanceAtNought`.
+	 */
+	static const TCHAR* RandomResistanceAtNoughtStatus;
+
+	/**
+	 * Draw one of this character's per-type resistances and hold it at nought, in place of the one held before.
+	 * Ruled 2026-10-12 under the owner's delegation.
+	 *
+	 * THE DRAW IS OVER EVERY PER-TYPE RESISTANCE THE CHARACTER HOLDS, the eight of
+	 * `UCataclysmItemModifiers::DamageTypeNames` for a player, each equally likely, whatever each one reads. A PLAIN
+	 * DRAW: the one held before may be drawn again. `Cataclysm.RandomResistancePick` pins the draw for tests, by the
+	 * resistance's place in that list.
+	 *
+	 * NOTHING IS WRITTEN TO AN ATTRIBUTE. The damage type drawn is kept on this component, and
+	 * `UCataclysmDamageCalculation::TypedResistanceOf` reads it wherever a per-type resistance is read. So a gear
+	 * refresh, which writes the whole stat line again, neither erases the hold nor has to know about it; and the
+	 * figure the gear gives is still there when the hold moves to another resistance.
+	 *
+	 * A CHARACTER WITH NO PER-TYPE RESISTANCE DRAWS NOTHING. An enemy holds one all-resistance figure and none of the
+	 * eight, so this holds nothing on it and returns false.
+	 *
+	 * @return whether a resistance is now held
+	 */
+	bool HoldARandomResistanceAtNought();
+
+	/**
+	 * The damage type whose resistance this character is holding at nought, or none.
+	 *
+	 * RELEASED WHEN NO WORN ACTION NAMES `RandomResistanceAtNoughtStatus` ANY MORE (`SetPoolActions`), and by
+	 * `ClearWhatDeathEnds`. Not released by time, by leaving combat or by a new dungeon floor: the sentence holds it
+	 * "until this triggers again".
+	 */
+	FName ResistanceHeldAtNought() const { return ResistanceHeldAtNoughtType; }
 
 	/** The event raised when a skill's ability ends without being cancelled, with the skill's tags. */
 	static const TCHAR* SkillEndEvent;
@@ -3843,6 +3886,18 @@ protected:
 	 * are replicated attributes already.
 	 */
 	TMap<FName, TArray<FCataclysmStatModifier>> DungeonStatModifiers;
+
+	/**
+	 * The damage type whose per-type resistance a worn row is holding at nought, or none. Ruled 2026-10-12. Written
+	 * by `HoldARandomResistanceAtNought`, read through `ResistanceHeldAtNought`.
+	 *
+	 * NOT A STAT MODIFIER AND NOT IN ANY OF THE THREE LISTS ABOVE, so the gear refresh never writes or erases it.
+	 * NOT REPLICATED, as those lists are not.
+	 */
+	FName ResistanceHeldAtNoughtType;
+
+	/** Lets go of `ResistanceHeldAtNoughtType` when no action in `PoolActions` names the status that holds it. */
+	void ReleaseHeldResistanceUnlessARowHoldsIt();
 
 	/**
 	 * Leech promised and not yet paid, one entry per hit. Issue #895.

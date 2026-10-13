@@ -8853,6 +8853,271 @@ bool FCataclysmStatusOnTheWearerTest::RunTest(const FString&)
 	return true;
 }
 
+// A ROW DRAWS ONE OF ITS WEARER'S RESISTANCES AND HOLDS IT AT NOUGHT UNTIL IT FIRES AGAIN. Ruled 2026-10-12 under the
+// owner's delegation, for the drawback of the set Shard of Anarchy: "Every 5 seconds, one of your resistances is
+// reduced to 0 until this triggers again". The row is `apply_status_to_self` on the timed event with the status
+// `UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus`; it is built by hand here, as the item would
+// build it, because no such row is authored yet.
+
+namespace CataclysmStatExemptionTest
+{
+	/**
+	 * A timed row that lays this status on its wearer at a chance of 100, as the item would build it from a row of
+	 * `apply_status_to_self` on `every_seconds`, at this period.
+	 */
+	FCataclysmPoolAction TimedStatusOnTheWearerRow(const TCHAR* Status, float EverySeconds)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+		Action.EverySeconds = EverySeconds;
+		Action.ApplyStatus = ECataclysmApplyStatus::Chance;
+		Action.bStatusOnTheWearer = true;
+		Action.StatusName = Status;
+		Action.Percent = 100.0f;
+		Action.TriggerKey = FName(*FString::Printf(TEXT("a timed status on the wearer:%s"), Status));
+		return Action;
+	}
+
+	/** The timed row that holds a resistance at nought, at this period. */
+	FCataclysmPoolAction ResistanceAtNoughtRow(float EverySeconds)
+	{
+		return TimedStatusOnTheWearerRow(UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus, EverySeconds);
+	}
+
+	/** What a blow of 100 of this damage type takes from this character's health, with every roll pinned to miss. */
+	float TypedBlowOn(const UAbilitySystemComponent* Defender, FName DamageType)
+	{
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		Blow.DamageType = DamageType;
+		return UCataclysmDamageCalculation::Resolve(Blow, Defender, /*Tier=*/1,
+			/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f, /*CritRoll=*/100.0f).DealtToHealth;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResistanceHeldAtNoughtTest,
+	"Cataclysm.StatExemption.ARowDrawsOneOfItsWearersResistancesAndHoldsItAtNoughtUntilItFiresAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResistanceHeldAtNoughtTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	IConsoleVariable* Pick = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomResistancePick"));
+	if (!TestNotNull(TEXT("set-up: the pin for the draw"), Pick))
+	{
+		return false;
+	}
+	const int32 PickWas = Pick->GetInt();
+	ON_SCOPE_EXIT { Pick->Set(PickWas, ECVF_SetByConsole); };
+
+	// THE EIGHT, COUNTED IN THE CODE AND NOT ASSUMED: the draw is over the damage type names, and each must have a
+	// per-type resistance attribute of its own.
+	const TArray<FName>& Types = UCataclysmItemModifiers::DamageTypeNames();
+	if (!TestEqual(TEXT("set-up: a player has eight per-type resistances"), Types.Num(), 8))
+	{
+		return false;
+	}
+	const TCHAR* const ExpectedOrder[] = {TEXT("War"), TEXT("Demonic"), TEXT("Death"), TEXT("Pestilence"),
+										  TEXT("Famine"), TEXT("Celestial"), TEXT("Chaos"), TEXT("Void")};
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("set-up: place %d of the draw"), Index), Types[Index].ToString(),
+				  FString(ExpectedOrder[Index]));
+	}
+
+	// EACH RESISTANCE IS GIVEN A FIGURE OF ITS OWN, SO NO READING CAN BE ANOTHER'S: 10, 20, 30, 40, then FAMINE AT -15,
+	// then 60, 70, 80. The twin beside it holds the same eight and wears no row; it is the control for every blow.
+	const int32 NegativePlace = 4;
+	const auto FigureAt = [NegativePlace](int32 Index) { return Index == NegativePlace ? -15.0f : 10.0f * (Index + 1); };
+	FScopedSwinger Wearer(World, FVector::ZeroVector);
+	FScopedSwinger Twin(World, FVector(3 * M, 0.0f, 0.0f));
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		const FGameplayAttribute Slot = UCataclysmDamageCalculation::ResistanceAttributeFor(Types[Index]);
+		if (!TestTrue(*FString::Printf(TEXT("set-up: %s has a resistance attribute the wearer holds"), *Types[Index].ToString()),
+					  Slot.IsValid() && Wearer.AbilitySystem->HasAttributeSetForAttribute(Slot)))
+		{
+			return false;
+		}
+		Wearer.Set(Slot, FigureAt(Index));
+		Twin.Set(Slot, FigureAt(Index));
+	}
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const auto Reads = [ASC](FName Type) { return UCataclysmDamageCalculation::TypedResistanceOf(ASC, Type); };
+
+	// THE CONTROL, READ FIRST: wearing the row and before it has fired, nothing is held, every resistance reads its own
+	// figure, and a blow of each type takes from the wearer exactly what it takes from the twin.
+	ASC->SetPoolActions({ResistanceAtNoughtRow(5.0f)});
+	TestTrue(TEXT("control: before the row has fired nothing is held"), ASC->ResistanceHeldAtNought().IsNone());
+	TArray<float> BlowBefore;
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("control: %s reads its own figure"), *Types[Index].ToString()),
+				  Reads(Types[Index]), FigureAt(Index), 0.001f);
+		BlowBefore.Add(TypedBlowOn(ASC, Types[Index]));
+		TestEqual(*FString::Printf(TEXT("control: a %s blow takes the same from the wearer and the twin"), *Types[Index].ToString()),
+				  BlowBefore[Index], TypedBlowOn(Twin.AbilitySystem, Types[Index]), 0.001f);
+	}
+	if (!TestTrue(*FString::Printf(TEXT("control: a War blow against 10 takes less than a Famine blow against -15: %.2f and %.2f"),
+								   BlowBefore[0], BlowBefore[NegativePlace]),
+				  BlowBefore[0] > 0.0f && BlowBefore[0] < BlowBefore[NegativePlace]))
+	{
+		return false;
+	}
+
+	// THE CLOCK IS THE WORLD'S, MOVED A SECOND AT A TIME WITH A BLOW DEALT EACH SECOND TO STAY IN COMBAT, as the timed
+	// cleanse's test moves it (`Cataclysm.Cleanse.ATimedCleanseActionFiresEveryFiveSecondsOfAFight`). The step is
+	// called by hand because a bare actor has no regeneration step to call it.
+	//
+	// EVERY STEP IS HALF A SECOND PAST A WHOLE SECOND OF THE COMBAT, so no step sits on the edge of a period: the
+	// combat begins, the clock moves half a second, and the whole seconds are counted from there. "Until 5" is then
+	// five and a half seconds into the combat, which is the first step at or past the row's fifth second.
+	float Began = 0.0f;
+	const auto BeginAFight = [&]()
+	{
+		ASC->NoteHitDealt();
+		World->TimeSeconds += 0.5f;
+		Began = World->TimeSeconds;
+	};
+	const auto FightUntil = [&](float Seconds)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			ASC->NoteHitDealt();
+			ASC->StepTimedGrants();
+		}
+	};
+	BeginAFight();
+
+	// OUT OF A PERIOD, NOTHING: four seconds into the fight the row has not fired.
+	Pick->Set(0, ECVF_SetByConsole);
+	FightUntil(4.0f);
+	TestTrue(TEXT("four seconds into a fight nothing is held"), ASC->ResistanceHeldAtNought().IsNone());
+
+	// EACH OF THE EIGHT CAN BE DRAWN. One firing for each, five seconds apart, the draw pinned to each place in turn.
+	// The one drawn reads nought, or its own figure when that is under nought; the other seven read their own
+	// figures, the one drawn at the firing before among them, which is the release.
+	for (int32 Drawn = 0; Drawn < 8; ++Drawn)
+	{
+		Pick->Set(Drawn, ECVF_SetByConsole);
+		FightUntil(5.0f * (Drawn + 1));
+		TestTrue(*FString::Printf(TEXT("firing %d, pinned to %s: that resistance is the one held"), Drawn + 1, *Types[Drawn].ToString()),
+				 ASC->ResistanceHeldAtNought() == Types[Drawn]);
+		for (int32 Index = 0; Index < 8; ++Index)
+		{
+			const float Expected = Index == Drawn ? FMath::Min(FigureAt(Index), 0.0f) : FigureAt(Index);
+			TestEqual(*FString::Printf(TEXT("with %s held, %s reads %.0f"), *Types[Drawn].ToString(), *Types[Index].ToString(), Expected),
+					  Reads(Types[Index]), Expected, 0.001f);
+		}
+		// THE ATTRIBUTE IS NOT WRITTEN: the figure the gear gave is still there for when the hold moves on.
+		TestEqual(*FString::Printf(TEXT("with %s held, its attribute still holds its own figure"), *Types[Drawn].ToString()),
+				  Wearer.Get(UCataclysmDamageCalculation::ResistanceAttributeFor(Types[Drawn])), FigureAt(Drawn), 0.001f);
+	}
+
+	// A PLAIN DRAW: the same resistance drawn at two firings running is held through both.
+	Pick->Set(7, ECVF_SetByConsole);
+	FightUntil(45.0f);
+	TestTrue(TEXT("the resistance drawn twice running is still the one held"), ASC->ResistanceHeldAtNought() == Types[7]);
+	TestEqual(TEXT("and still reads nought"), Reads(Types[7]), 0.0f, 0.001f);
+
+	// A BLOW OF THE TYPE DRAWN IS RESISTED AS AT NOUGHT. War is drawn; the twin's War resistance is written to nought
+	// on its attribute, and a War blow then takes the same from both. It takes more from the wearer than it did
+	// before the row fired, and a blow of another type takes what it took before.
+	Pick->Set(0, ECVF_SetByConsole);
+	FightUntil(50.0f);
+	if (TestTrue(TEXT("set-up: War is the one held"), ASC->ResistanceHeldAtNought() == Types[0]))
+	{
+		Twin.Set(UCataclysmDamageCalculation::ResistanceAttributeFor(Types[0]), 0.0f);
+		const float WarOnWearer = TypedBlowOn(ASC, Types[0]);
+		TestEqual(TEXT("a War blow takes from the wearer what it takes from a character whose War resistance is nought"),
+				  WarOnWearer, TypedBlowOn(Twin.AbilitySystem, Types[0]), 0.001f);
+		TestTrue(*FString::Printf(TEXT("and more than before the row fired: %.2f against %.2f"), WarOnWearer, BlowBefore[0]),
+				 WarOnWearer > BlowBefore[0] + 0.5f);
+		TestEqual(TEXT("and a Demonic blow takes what it took before"), TypedBlowOn(ASC, Types[1]), BlowBefore[1], 0.001f);
+	}
+
+	// A NEGATIVE ONE DRAWN STAYS NEGATIVE: a Famine blow takes what it took before the row fired, and not less.
+	Pick->Set(NegativePlace, ECVF_SetByConsole);
+	FightUntil(55.0f);
+	if (TestTrue(TEXT("set-up: Famine is the one held"), ASC->ResistanceHeldAtNought() == Types[NegativePlace]))
+	{
+		TestEqual(TEXT("a negative resistance that is drawn still reads -15"), Reads(Types[NegativePlace]), -15.0f, 0.001f);
+		TestEqual(TEXT("and a Famine blow takes what it took before the row fired"),
+				  TypedBlowOn(ASC, Types[NegativePlace]), BlowBefore[NegativePlace], 0.001f);
+	}
+
+	// LEAVING COMBAT RELEASES NOTHING, AND ANOTHER PERIOD WORKS. Death is drawn; then ten seconds pass with no blow,
+	// which ends the combat and starts every timed count again. The resistance is still held: it is held "until
+	// this triggers again", and out of combat the row does not fire. Then the same row at 12 seconds, in a new
+	// combat: nothing new 11 seconds in, the pinned draw at 12, and the old one let go.
+	Pick->Set(2, ECVF_SetByConsole);
+	FightUntil(60.0f);
+	if (TestTrue(TEXT("set-up: Death is the one held"), ASC->ResistanceHeldAtNought() == Types[2]))
+	{
+		World->TimeSeconds += 10.0f;
+		ASC->StepTimedGrants();
+		if (TestTrue(TEXT("set-up: ten seconds with no blow end the combat"), ASC->SecondsInCombat() < 0.0f))
+		{
+			TestTrue(TEXT("out of combat the resistance is still held"), ASC->ResistanceHeldAtNought() == Types[2]);
+			TestEqual(TEXT("and still reads nought"), Reads(Types[2]), 0.0f, 0.001f);
+		}
+
+		ASC->SetPoolActions({ResistanceAtNoughtRow(12.0f)});
+		TestTrue(TEXT("a row of the same status put on in its place keeps what was held"), ASC->ResistanceHeldAtNought() == Types[2]);
+		Pick->Set(5, ECVF_SetByConsole);
+		BeginAFight();
+		FightUntil(11.0f);
+		TestTrue(TEXT("eleven seconds into the new fight the row of twelve has not fired"), ASC->ResistanceHeldAtNought() == Types[2]);
+		FightUntil(12.0f);
+		TestTrue(TEXT("twelve seconds in it has, and holds the new draw"), ASC->ResistanceHeldAtNought() == Types[5]);
+		TestEqual(TEXT("and lets the old one go"), Reads(Types[2]), FigureAt(2), 0.001f);
+	}
+
+	// THE GEAR COMING OFF RELEASES IT: with no action of that status among the wearer's actions nothing is held.
+	ASC->SetPoolActions(TArray<FCataclysmPoolAction>());
+	TestTrue(TEXT("with the row gone nothing is held"), ASC->ResistanceHeldAtNought().IsNone());
+	TestEqual(TEXT("and the resistance reads its own figure again"), Reads(Types[5]), FigureAt(5), 0.001f);
+
+	// A DEATH RELEASES IT. Drawn by hand, which is what a firing does.
+	ASC->SetPoolActions({ResistanceAtNoughtRow(5.0f)});
+	Pick->Set(6, ECVF_SetByConsole);
+	if (TestTrue(TEXT("set-up: a draw holds one"), ASC->HoldARandomResistanceAtNought())
+		&& TestTrue(TEXT("set-up: Chaos is the one held"), ASC->ResistanceHeldAtNought() == Types[6]))
+	{
+		ASC->ClearWhatDeathEnds();
+		TestTrue(TEXT("a character that stands back up holds none"), ASC->ResistanceHeldAtNought().IsNone());
+	}
+
+	// AN ENEMY HAS ONE ALL-RESISTANCE FIGURE AND NONE OF THE EIGHT, so the draw finds nothing and holds nothing, and
+	// a typed blow takes from it what it took before.
+	ACataclysmEnemyCharacter* Creature =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(0.0f, 30 * M, 0.0f), FRotator::ZeroRotator);
+	UCataclysmAbilitySystemComponent* CreatureSystem =
+		Creature ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Creature)) : nullptr;
+	if (TestNotNull(TEXT("set-up: a creature with an ability system"), CreatureSystem))
+	{
+		Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Creature->SetHealth(1000.0f);
+		const float CreatureBefore = TypedBlowOn(CreatureSystem, Types[0]);
+		CreatureSystem->SetPoolActions({ResistanceAtNoughtRow(5.0f)});
+		Pick->Set(0, ECVF_SetByConsole);
+		TestFalse(TEXT("a creature has none of the eight to draw, so the draw holds nothing"),
+				  CreatureSystem->HoldARandomResistanceAtNought());
+		TestTrue(TEXT("and nothing is held on it"), CreatureSystem->ResistanceHeldAtNought().IsNone());
+		TestEqual(TEXT("and a War blow takes from it what it took before"), TypedBlowOn(CreatureSystem, Types[0]), CreatureBefore, 0.001f);
+	}
+	return true;
+}
+
 // DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven drawbacks: "Bleed effects applied to
 // you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs on you have 100%-300% more duration", "DoTs
 // on you tick twice as fast while moving", "Unaffected by bleeding", "10%-20% of bleed damage you take is taken from

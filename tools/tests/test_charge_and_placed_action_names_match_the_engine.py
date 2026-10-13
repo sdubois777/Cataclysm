@@ -113,6 +113,8 @@ CONSTANTS = {
     "StrikeTargetAction": "strike_target",
     # AND THE ONE THAT GRANTS A TEMPORARY ABSORB, by the owner's decision of 2026-10-07.
     "TemporaryAbsorbAction": "temporary_absorb",
+    # AND THE STATUS THAT HOLDS ONE OF THE WEARER'S RESISTANCES AT NOUGHT, ruled 2026-10-12.
+    "RandomResistanceAtNoughtStatus": "Random Resistance At Nought",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -238,6 +240,23 @@ def test_the_generator_spells_all_five_damage_over_time_ailments_as_the_engine_d
     listed = re.search(r"for \(const TCHAR\* Name : \{(.*?)\}\)", pool.group(1), re.DOTALL)
     assert listed, "the pool's list of names was not found"
     assert tuple(re.findall(r'TEXT\("([A-Za-z ]+)"\)', listed.group(1))) == gen.AILMENTS
+
+
+def test_the_generator_spells_the_statuses_for_a_wearer_only_as_the_engine_does() -> None:
+    """Ruled 2026-10-12. A status only `apply_status_to_self` may name is not an
+    ailment kind, so `UCataclysmAilments::KindNamed` cannot find it: the engine
+    compares the row's Ailment cell with a constant of its own before it looks.
+    A name spelled differently on the two sides would pass the generator, and
+    in the game it would log a warning each time it fired and do nothing."""
+    names = engine_names()
+    assert gen.RANDOM_RESISTANCE_AT_NOUGHT_STATUS == names["RandomResistanceAtNoughtStatus"]
+    assert set(gen.APPLY_STATUSES_TO_SELF_ONLY) == {
+        name for constant, name in names.items()
+        if constant in ("RandomResistanceAtNoughtStatus",)}
+    # FOR A WEARER ONLY: the lists the other four status actions read hold none.
+    for other in (gen.APPLY_STATUSES, gen.APPLY_STATUSES_FOR_SECONDS,
+                  gen.APPLY_STATUSES_TO_SELF_FOR_SECONDS):
+        assert not set(gen.APPLY_STATUSES_TO_SELF_ONLY) & set(other)
 
 
 def test_the_generator_accepts_exactly_the_repeat_skill_name_the_engine_has() -> None:

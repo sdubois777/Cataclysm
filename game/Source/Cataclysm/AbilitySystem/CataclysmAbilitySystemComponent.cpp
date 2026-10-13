@@ -2503,6 +2503,11 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// empties it: it is temporary, and this function removes what is temporary.
 	TemporaryAbsorb = 0.0f;
 
+	// AND THE RESISTANCE A ROW WAS HOLDING AT NOUGHT. Ruled 2026-10-12. A judgement by the writing session: the hold
+	// is a temporary thing laid on the character, and this function removes what is temporary. The revived
+	// character holds none until the row fires again, which is its period into the next combat.
+	ResistanceHeldAtNoughtType = NAME_None;
+
 	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
 	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
 	// same ruling: every character, The Reckoning included. That keystone's debt
@@ -3713,6 +3718,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSecondsAction = 
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSizedAction = TEXT("apply_status_to_self_sized");
 const TCHAR* UCataclysmAbilitySystemComponent::StunStatus = TEXT("Stun");
 const TCHAR* UCataclysmAbilitySystemComponent::AppliedDotStatus = TEXT("Applied DoT");
+const TCHAR* UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus = TEXT("Random Resistance At Nought");
 const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
@@ -4197,6 +4203,17 @@ static TAutoConsoleVariable<float> CVarCooldownResetRoll(
 static TAutoConsoleVariable<float> CVarStatusRoll(
 	TEXT("Cataclysm.StatusRoll"), -1.0f,
 	TEXT("Pins the 0-100 roll a status enchantment makes against its chance. Negative rolls for real."),
+	ECVF_Default);
+
+/**
+ * Pins which per-type resistance `HoldARandomResistanceAtNought` draws, by its place in
+ * `UCataclysmItemModifiers::DamageTypeNames`, for tests. -1, the default, draws each equally likely. Ruled
+ * 2026-10-12; the same shape as `Cataclysm.RandomDebuffPick`.
+ */
+static TAutoConsoleVariable<int32> CVarRandomResistancePick(
+	TEXT("Cataclysm.RandomResistancePick"), -1,
+	TEXT("Pins the resistance a row holds at nought, by its place among the damage types: 0 War, 1 Demonic, "
+		 "2 Death, 3 Pestilence, 4 Famine, 5 Celestial, 6 Chaos, 7 Void. -1 picks at random."),
 	ECVF_Default);
 
 /**
@@ -5719,6 +5736,13 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPo
 		return UCataclysmAilments::ApplyRandomDebuff(Wearer, Wearer, /*DealtToHealth=*/0.0f,
 			/*bWithoutABlow=*/true) != nullptr;
 	}
+	// ONE OF THE WEARER'S RESISTANCES, DRAWN AND HELD AT NOUGHT UNTIL THIS FIRES AGAIN. Ruled 2026-10-12, for "Every 5
+	// seconds, one of your resistances is reduced to 0 until this triggers again". Each firing draws again, and
+	// the new draw takes the place of the last one. The row's period is the timer's and is not read here.
+	if (Action.StatusName.Equals(RandomResistanceAtNoughtStatus, ESearchCase::IgnoreCase))
+	{
+		return HoldARandomResistanceAtNought();
+	}
 	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Action.StatusName);
 	if (!Kind)
 	{
@@ -5728,6 +5752,54 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPo
 	}
 	return UCataclysmAilments::Apply(Wearer, Wearer, *Kind, /*Magnitude=*/1.0f,
 		/*Skill=*/nullptr, NAME_None, bSeconds ? Action.Percent : 0.0f);
+}
+
+bool UCataclysmAbilitySystemComponent::HoldARandomResistanceAtNought()
+{
+	// EVERY PER-TYPE RESISTANCE THIS CHARACTER HOLDS IS IN THE DRAW, whatever it reads: one at nought or under it can
+	// be drawn, and the draw then changes nothing a blow meets. In the order of the damage type names, which is the
+	// order the pin counts in.
+	TArray<FName> InTheDraw;
+	for (const FName& DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FGameplayAttribute Slot = UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
+		if (Slot.IsValid() && HasAttributeSetForAttribute(Slot))
+		{
+			InTheDraw.Add(DamageType);
+		}
+	}
+
+	// NONE OF THE EIGHT, which is an enemy: it holds one all-resistance figure. Nothing is held, and what was held
+	// is let go, so the answer is the same whatever came before.
+	if (InTheDraw.IsEmpty())
+	{
+		ResistanceHeldAtNoughtType = NAME_None;
+		return false;
+	}
+
+	// A PLAIN DRAW, so the one held before may come up again.
+	const int32 Pinned = CVarRandomResistancePick.GetValueOnAnyThread();
+	ResistanceHeldAtNoughtType = InTheDraw[InTheDraw.IsValidIndex(Pinned)
+		? Pinned
+		: FMath::RandRange(0, InTheDraw.Num() - 1)];
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::ReleaseHeldResistanceUnlessARowHoldsIt()
+{
+	if (ResistanceHeldAtNoughtType.IsNone())
+	{
+		return;
+	}
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.bStatusOnTheWearer
+			&& Action.StatusName.Equals(RandomResistanceAtNoughtStatus, ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+	}
+	ResistanceHeldAtNoughtType = NAME_None;
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction& Action,
