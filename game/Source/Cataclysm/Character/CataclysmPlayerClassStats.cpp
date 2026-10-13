@@ -325,6 +325,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// effects". That one rule's drain only, and the holder's only. A flag.
 		// No gameplay attribute and no base.
 		TEXT("suffering_aura_mana_drain_immunity"),
+		// The chance in percent that a hit this character has taken makes it
+		// immune to that hit's damage type, and the seconds the immunity lasts.
+		// Read by UCataclysmAbilitySystemComponent::RollDamageTypeImmunityOnHit,
+		// which UCataclysmVitalAttributeSet::PostGameplayEffectExecute calls
+		// once a typed hit's health is written. Ruled 2026-10-12, for Shard of
+		// Anarchy's six-piece bonus: "When you take damage, you have a 10%
+		// chance to become immune to the damage type that hit you for 5
+		// seconds". Either at nought opens nothing. No gameplay attribute and
+		// no base.
+		TEXT("damage_type_immunity_on_hit_chance"),
+		TEXT("damage_type_immunity_on_hit_seconds"),
 		// The seconds a worn row adds to a skill's wind-up, read by
 		// UCataclysmSkillTemplate::SecondsUntilTheSwingConnects with the skill's
 		// tags. Ruled 2026-10-08: "Point blank AOE skills have a 0.75-1.5 second

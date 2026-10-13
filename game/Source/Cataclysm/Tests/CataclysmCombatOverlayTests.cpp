@@ -1409,4 +1409,96 @@ bool FCataclysmOverlayNamesTheHeldBuff::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayNamesTheDamageTypesImmuneTo,
+	"Cataclysm.Overlay.EachDamageTypeThePlayerIsImmuneToIsNamedWithItsSecondsLeftAboveThePlayersBars",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-12 by the coordinating session: a text above the player's bars for each damage type the player is
+ * immune to for a time, in the form of the held buff's, such as "Immune War 4s". The windows are the ones a hit on
+ * the wearer of Shard of Anarchy's six-piece bonus opens.
+ *
+ * THE TEXT IS WHAT IS TESTED, for the reason the top of this file gives: nothing drawn can be watched under test.
+ * `ACataclysmHUD` draws this text above the player's bars when it is not empty, and that call is not reached here.
+ *
+ * A PLAYER WIRED AS THE GAME WIRES ONE, as the test above makes one. The windows are opened by hand with
+ * `GrantDamageTypeImmunity`; no row is worn and no blow is dealt. THE DEMONIC WINDOW IS OPENED FIRST AND THE WAR
+ * ONE SECOND, so that War standing first in the text shows the order is the damage type names' and not the order
+ * the windows opened in. The clock is the world's, moved by hand so that every reading has a half second on it and
+ * none sits on the edge of a whole second.
+ *
+ * STANDING: the player where `SpawnPlayer` puts it and the creature 5 m along X, as in the test above.
+ */
+bool FCataclysmOverlayNamesTheDamageTypesImmuneTo::RunTest(const FString&)
+{
+	using FOverlay = UCataclysmCombatOverlay;
+	using FSystem = UCataclysmAbilitySystemComponent;
+
+	UWorld* World = CataclysmOverlayTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = CataclysmOverlayTest::SpawnPlayer(World);
+	FSystem* System = Player ? Cast<FSystem>(Player->GetAbilitySystemComponent()) : nullptr;
+	ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player with an ability system"), System)
+		|| !TestNotNull(TEXT("set-up: a creature"), Creature))
+	{
+		return false;
+	}
+	const FName War(TEXT("War"));
+	const FName Demonic(TEXT("Demonic"));
+
+	// THE CONTROL, READ FIRST: no window, no text, and nothing of it on the status line.
+	TestEqual(TEXT("control: a player with no window open says nothing of one"),
+			  FOverlay::DamageTypeImmunityTextFor(Player), FString());
+	TestFalse(TEXT("control: and its status line does not say Immune"),
+			  FOverlay::StatusLineFor(Player).Contains(TEXT("Immune")));
+
+	// ONE WINDOW: Demonic for 5 seconds, read half a second on with 4.5 left, which reads 5.
+	System->GrantDamageTypeImmunity(Demonic, 5.0f);
+	if (!TestTrue(TEXT("set-up: the Demonic window is open"), System->IsImmuneToDamageType(Demonic)))
+	{
+		return false;
+	}
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("half a second after the window opens the text is Immune, the type and 5s"),
+			  FOverlay::DamageTypeImmunityTextFor(Player), FString(TEXT("Immune Demonic 5s")));
+	TestTrue(TEXT("and the status line contains that text"),
+			 FOverlay::StatusLineFor(Player).Contains(TEXT("Immune Demonic 5s")));
+	TestEqual(TEXT("control: a creature with no window open says nothing of one"),
+			  FOverlay::DamageTypeImmunityTextFor(Creature), FString());
+
+	// THE SECONDS FALL, ROUNDED UP: 3.5 left reads 4.
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("with 3.5 seconds left the text reads 4s"),
+			  FOverlay::DamageTypeImmunityTextFor(Player), FString(TEXT("Immune Demonic 4s")));
+
+	// TWO WINDOWS AT ONCE. War is opened now, a second and a half after Demonic, for 4.5 seconds. A second on, War
+	// has 3.5 left and Demonic 2.5. WAR IS NAMED FIRST though it opened second.
+	System->GrantDamageTypeImmunity(War, 4.5f);
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("two windows are one text, in the order of the damage type names, joined by two spaces"),
+			  FOverlay::DamageTypeImmunityTextFor(Player), FString(TEXT("Immune War 4s  Immune Demonic 3s")));
+	TestTrue(TEXT("and the status line contains both"),
+			 FOverlay::StatusLineFor(Player).Contains(TEXT("Immune War 4s  Immune Demonic 3s")));
+
+	// THE DEMONIC WINDOW ENDS FIRST. Three seconds on it ended half a second ago and War has half a second left.
+	World->TimeSeconds += 3.0f;
+	TestEqual(TEXT("after the Demonic window ends only War is named, at 1s in its last half second"),
+			  FOverlay::DamageTypeImmunityTextFor(Player), FString(TEXT("Immune War 1s")));
+
+	// AFTER BOTH END, NOTHING, though nothing has run to drop them: the text asks which windows are open now.
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("half a second after the last window ends the text is empty"),
+			  FOverlay::DamageTypeImmunityTextFor(Player), FString());
+	TestFalse(TEXT("and the status line no longer says Immune"),
+			  FOverlay::StatusLineFor(Player).Contains(TEXT("Immune")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -7638,6 +7638,81 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmPassivePoints::GrantedByWornRows(Carrier), 7);
 	}
 
+	/**
+	 * Whether a War hit of one point on a fighter holding `Stats` leaves it immune to War damage. For the two
+	 * probes below. The blow is a direct one of the type, as a dungeon floor rule sends one, so nothing of the
+	 * attacker's is read. A chance of 100 is not rolled, so no roll is pinned.
+	 *
+	 * STANDING: nowhere. Both are bare actors with no root component, as `HealthAfterBlows` above makes them, so
+	 * neither has a body to overlap the other, and a direct blow reads no distance.
+	 */
+	bool AWarHitLeavesItsTakerImmuneToWar(FAutomationTestBase& Test, UWorld* World, const TMap<FName, float>& Stats)
+	{
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Taker(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Taker.Actor, Stats);
+
+		const FName War(TEXT("War"));
+		FCataclysmHitDelivery OfWar;
+		OfWar.DamageType = War;
+		const float Before = Taker.Health();
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Taker.Actor, 1.0f, OfWar);
+		Test.TestTrue(TEXT("set-up: the War hit took health from its taker"), Taker.Health() < Before);
+
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Taker.Actor));
+		return Its && Its->IsImmuneToDamageType(War);
+	}
+
+	/**
+	 * `damage_type_immunity_on_hit_chance`, read by `UCataclysmAbilitySystemComponent::RollDamageTypeImmunityOnHit`,
+	 * which `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls once a typed hit's health is written.
+	 * Ruled 2026-10-12, for Shard of Anarchy's six-piece bonus. Two fighters, both holding the seconds at 5; only
+	 * the second holds the chance, at 100. A War hit leaves the first open to War damage and the second immune.
+	 *
+	 * WHAT THIS DOES NOT REACH. A chance under 100, the roll, the length of the window and what the window
+	 * refuses: `Cataclysm.BlockShare.` in `CataclysmBlockShareTests.cpp` holds those.
+	 */
+	void ProbeDamageTypeImmunityOnHitChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Chance(UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat);
+		const FName Seconds(UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitSecondsStat);
+		Test.TestFalse(TEXT("control: a fighter holding the seconds and no chance is not immune after a War hit"),
+					   AWarHitLeavesItsTakerImmuneToWar(Test, World, {{Seconds, 5.0f}}));
+		Test.TestTrue(TEXT("and one also holding damage_type_immunity_on_hit_chance at 100 is, so "
+						   "RollDamageTypeImmunityOnHit really reads it"),
+					  AWarHitLeavesItsTakerImmuneToWar(Test, World, {{Seconds, 5.0f}, {Chance, 100.0f}}));
+	}
+
+	/**
+	 * `damage_type_immunity_on_hit_seconds`, read in the same function. The mirror of the probe above: both
+	 * fighters hold the chance at 100 and only the second holds the seconds, at 5.
+	 */
+	void ProbeDamageTypeImmunityOnHitSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Chance(UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat);
+		const FName Seconds(UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitSecondsStat);
+		Test.TestFalse(TEXT("control: a fighter holding the chance and no seconds is not immune after a War hit"),
+					   AWarHitLeavesItsTakerImmuneToWar(Test, World, {{Chance, 100.0f}}));
+		Test.TestTrue(TEXT("and one also holding damage_type_immunity_on_hit_seconds at 5 is, so "
+						   "RollDamageTypeImmunityOnHit really reads it"),
+					  AWarHitLeavesItsTakerImmuneToWar(Test, World, {{Chance, 100.0f}, {Seconds, 5.0f}}));
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7773,6 +7848,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("blow_delay_seconds"), &ProbeBlowDelaySeconds},
 			{TEXT("minion_defences_percent_of_yours"), &ProbeMinionDefencesPercentOfYours},
 			{TEXT("class_points_granted"), &ProbeClassPointsGranted},
+			{TEXT("damage_type_immunity_on_hit_chance"), &ProbeDamageTypeImmunityOnHitChance},
+			{TEXT("damage_type_immunity_on_hit_seconds"), &ProbeDamageTypeImmunityOnHitSeconds},
 		};
 		return Made;
 	}
