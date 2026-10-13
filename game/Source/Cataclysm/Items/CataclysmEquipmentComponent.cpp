@@ -880,6 +880,19 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		{
 			Modifiers.FindOrAdd(Stat.Key).Append(Stat.Value);
 		}
+
+		// AND THE BUFF A WORN ROW DREW FOR THIS CHARACTER, WHILE IT IS HELD. Ruled 2026-10-12, for "Shard of Anarchy
+		// (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to you". The floor's way, for the
+		// floor's reason: the buff is not from gear, so this refresh would drop it unless it is one of the sources
+		// gathered here. The component hands over the lines of the buff it holds, and nothing once the buff's
+		// seconds have passed.
+		//
+		// AFTER THE CLASS POINTS WERE READ ABOVE, and no line of the table grants one.
+		const TMap<FName, TArray<FCataclysmStatModifier>> HeldBuff = Cataclysm->HeldRandomBuffStatModifiers();
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Line : HeldBuff)
+		{
+			Modifiers.FindOrAdd(Line.Key).Append(Line.Value);
+		}
 	}
 
 	return UCataclysmPlayerClassStats::ApplyTo(

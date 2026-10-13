@@ -5238,9 +5238,22 @@ ALL_DOTS_STATUS = "All DoTs"
 #: holds the same name.
 RANDOM_RESISTANCE_AT_NOUGHT_STATUS = "Random Resistance At Nought"
 
+#: And one more, for a wearer only: A RANDOM BUFF OR A RANDOM DEBUFF, at even
+#: odds. Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy
+#: (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to
+#: you". A drawn debuff is the draw "Random Debuff" makes; a drawn buff is one
+#: entry of a table in the engine, held for 30 seconds, which is the engine's
+#: figure and not this row's value. A buff is a set of lines on a character's
+#: stat line, and an enemy has no stat line, so this is not for the other
+#: character of an event.
+#: `UCataclysmAbilitySystemComponent::RandomBuffOrDebuffStatus` holds the same
+#: name.
+RANDOM_BUFF_OR_DEBUFF_STATUS = "Random Buff or Debuff"
+
 #: Every status `apply_status_to_self` alone may name, beside `APPLY_STATUSES`.
 APPLY_STATUSES_TO_SELF_ONLY = (
     RANDOM_RESISTANCE_AT_NOUGHT_STATUS,
+    RANDOM_BUFF_OR_DEBUFF_STATUS,
 )
 
 #: The actions that lay a status ON THE WEARER. Ruled 2026-10-06, for five

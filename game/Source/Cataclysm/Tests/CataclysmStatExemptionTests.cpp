@@ -9118,6 +9118,593 @@ bool FCataclysmResistanceHeldAtNoughtTest::RunTest(const FString&)
 	return true;
 }
 
+// A ROW LAYS A RANDOM BUFF OR DEBUFF ON ITS WEARER. Ruled 2026-10-12 under the owner's delegation, for the two-piece
+// bonus of the set Shard of Anarchy: "Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random buff or debuff is
+// applied to you". The row is `apply_status_to_self` on the timed event with the status
+// `UCataclysmAbilitySystemComponent::RandomBuffOrDebuffStatus`; it is built by hand here, because no such row is
+// authored yet. A drawn debuff is the merged row's draw. A drawn buff is one entry of
+// `UCataclysmAbilitySystemComponent::RandomBuffTable`, held for 30 seconds and read by the gear refresh.
+//
+// EVERY FIGURE ON THE WEARER IS A DIFFERENCE OF TWO READINGS, because a wearer the gear refresh has written holds
+// the lines of a class of its own.
+
+namespace CataclysmStatExemptionTest
+{
+	/**
+	 * A swinger that wears equipment, so a gear refresh can be run on it and the ability system can find the
+	 * component to run one. Refreshed once as it is made, so the control readings are a refreshed wearer's.
+	 *
+	 * NO GEAR IS PUT ON IT. A gear refresh therefore writes it no actions, and a row built by hand is written over
+	 * by every refresh; the tests below put the row back before each step of the clock for that reason.
+	 */
+	struct FScopedGearWearer : FScopedSwinger
+	{
+		FScopedGearWearer(UWorld* World, const FVector& Where)
+			: FScopedSwinger(World, Where)
+		{
+			Equipment = NewObject<UCataclysmEquipmentComponent>(Actor);
+			Equipment->RegisterComponent();
+			Equipment->RefreshAttributes(AbilitySystem);
+		}
+
+		/** The increases the wearer carries on a stat now, as a fraction, with no skill in hand. */
+		float Increases(const TCHAR* Stat) const
+		{
+			return AbilitySystem->IncreasesForStat(FName(Stat), FGameplayTagContainer());
+		}
+
+		UCataclysmEquipmentComponent* Equipment = nullptr;
+	};
+
+	/** Pins one whole-number console variable at the console's priority until it goes out of scope. */
+	struct FPinnedPick
+	{
+		FPinnedPick(const TCHAR* Name, int32 Value)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FPinnedPick()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		void Set(int32 Value)
+		{
+			if (Variable)
+			{
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		int32 Previous = -1;
+	};
+
+	/** The place a buff has in the table of buffs a row may draw, by its name, or -1 when it is not in the table. */
+	int32 PlaceOfRandomBuff(const TCHAR* Name)
+	{
+		const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& Table =
+			UCataclysmAbilitySystemComponent::RandomBuffTable();
+		for (int32 Index = 0; Index < Table.Num(); ++Index)
+		{
+			if (FString(Table[Index].Name) == Name)
+			{
+				return Index;
+			}
+		}
+		return -1;
+	}
+
+	/** How many lines the buff of this name lays, or -1 when it is not in the table. */
+	int32 LinesOfRandomBuff(const TCHAR* Name)
+	{
+		const int32 Place = PlaceOfRandomBuff(Name);
+		return Place < 0 ? -1 : UCataclysmAbilitySystemComponent::RandomBuffTable()[Place].Lines.Num();
+	}
+
+	/** The timed row that lays a random buff or debuff, at this period. */
+	FCataclysmPoolAction RandomBuffOrDebuffRow(float EverySeconds)
+	{
+		return TimedStatusOnTheWearerRow(UCataclysmAbilitySystemComponent::RandomBuffOrDebuffStatus, EverySeconds);
+	}
+
+	/**
+	 * Draws a buff for the wearer with the draw pinned to the buff of this name, and says whether the wearer then
+	 * holds it. The pin lasts for the call.
+	 */
+	bool DrawsTheBuff(FAutomationTestBase& Test, FScopedGearWearer& Wearer, const TCHAR* Name)
+	{
+		const int32 Place = PlaceOfRandomBuff(Name);
+		if (!Test.TestTrue(*FString::Printf(TEXT("set-up: %s is in the table of buffs"), Name), Place >= 0))
+		{
+			return false;
+		}
+		const FPinnedPick Pinned(TEXT("Cataclysm.RandomBuffPick"), Place);
+		return Test.TestNotNull(TEXT("set-up: the pin for which buff"), Pinned.Variable)
+			&& Test.TestTrue(TEXT("set-up: the draw lays a buff"), Wearer.AbilitySystem->HoldARandomBuff())
+			&& Test.TestTrue(*FString::Printf(TEXT("set-up: the buff held is %s"), Name),
+							 Wearer.AbilitySystem->HeldRandomBuff() == FName(Name));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffHeldTest,
+	"Cataclysm.StatExemption.ARandomBuffOrDebuffPinnedToABuffLaysItForThirtySecondsAndTheNextBuffReplacesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRandomBuffHeldTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 Commander = PlaceOfRandomBuff(TEXT("Commander"));
+	const int32 Famished = PlaceOfRandomBuff(TEXT("Famished"));
+	FPinnedPick BuffOrDebuff(TEXT("Cataclysm.RandomBuffOrDebuffPick"), 0);
+	FPinnedPick WhichBuff(TEXT("Cataclysm.RandomBuffPick"), Commander);
+	if (!TestTrue(TEXT("set-up: both pins, and both buffs in the table"),
+				  BuffOrDebuff.Variable && WhichBuff.Variable && Commander >= 0 && Famished >= 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a buff is laid for 30 seconds"), UCataclysmAbilitySystemComponent::RandomBuffSeconds, 30.0f, 0.001f);
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FCataclysmPoolAction Row = RandomBuffOrDebuffRow(30.0f);
+
+	// THE CONTROL, READ FIRST: a refreshed wearer with no buff.
+	const float MoveBefore = Wearer.Increases(TEXT("movement_speed"));
+	const float AttackBefore = Wearer.Increases(TEXT("attack_speed"));
+	const float LeechBefore = Wearer.Increases(TEXT("life_leech"));
+	TestTrue(TEXT("control: a wearer no row has fired for holds no buff"), ASC->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("control: and no lines for the gear refresh to read"), ASC->HeldRandomBuffStatModifiers().Num(), 0);
+
+	// THE CLOCK, AS THE TEST OF THE RESISTANCE HELD AT NOUGHT MOVES IT: a second at a time with a blow dealt each
+	// second, every step half a second past a whole second of the fight, and the step called by hand.
+	//
+	// THE ROW IS PUT BACK BEFORE EVERY STEP WHILE IT IS WORN. Laying a buff runs a gear refresh, a gear refresh
+	// writes the wearer's actions from its gear, and this wearer's gear carries no row.
+	float Began = 0.0f;
+	const auto BeginAFight = [&]()
+	{
+		ASC->NoteHitDealt();
+		World->TimeSeconds += 0.5f;
+		Began = World->TimeSeconds;
+	};
+	const auto FightUntil = [&](float Seconds, bool bWearingTheRow)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			ASC->NoteHitDealt();
+			if (bWearingTheRow)
+			{
+				ASC->SetPoolActions({Row});
+			}
+			ASC->StepTimedGrants();
+		}
+	};
+	BeginAFight();
+
+	// THE FIRST 30 SECONDS OF A FIGHT: NOTHING.
+	FightUntil(29.0f, /*bWearingTheRow=*/true);
+	TestTrue(TEXT("29 seconds into a fight the wearer holds no buff"), ASC->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and its movement speed increases are what they were"), Wearer.Increases(TEXT("movement_speed")), MoveBefore, 0.0001f);
+
+	// AT 30 SECONDS, PINNED TO A BUFF AND TO COMMANDER: its two lines, for 30 seconds.
+	FightUntil(30.0f, /*bWearingTheRow=*/true);
+	if (!TestTrue(TEXT("30 seconds in, the wearer holds Commander"), ASC->HeldRandomBuff() == FName(TEXT("Commander"))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with 30 seconds left"), ASC->HeldRandomBuffSecondsLeft(), 30.0f, 0.01f);
+	TestEqual(TEXT("Commander adds 20 to the wearer's movement speed increases"),
+			  Wearer.Increases(TEXT("movement_speed")) - MoveBefore, 0.20f, 0.0001f);
+	TestEqual(TEXT("and 20 to its attack speed increases"), Wearer.Increases(TEXT("attack_speed")) - AttackBefore, 0.20f, 0.0001f);
+	TestEqual(TEXT("and nothing to its life leech increases"), Wearer.Increases(TEXT("life_leech")), LeechBefore, 0.0001f);
+
+	// FIFTEEN SECONDS LATER IT IS STILL HELD, with fifteen left.
+	FightUntil(45.0f, /*bWearingTheRow=*/true);
+	TestTrue(TEXT("15 seconds later the wearer still holds Commander"), ASC->HeldRandomBuff() == FName(TEXT("Commander")));
+	TestEqual(TEXT("with 15 seconds left"), ASC->HeldRandomBuffSecondsLeft(), 15.0f, 0.01f);
+
+	// THE NEXT FIRING, PINNED TO FAMISHED: the new buff takes the place of the old one.
+	WhichBuff.Set(Famished);
+	FightUntil(60.0f, /*bWearingTheRow=*/true);
+	if (!TestTrue(TEXT("at the next firing the wearer holds Famished"), ASC->HeldRandomBuff() == FName(TEXT("Famished"))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with 30 seconds left"), ASC->HeldRandomBuffSecondsLeft(), 30.0f, 0.01f);
+	TestEqual(TEXT("Commander's movement speed line is gone"), Wearer.Increases(TEXT("movement_speed")), MoveBefore, 0.0001f);
+	TestEqual(TEXT("and its attack speed line"), Wearer.Increases(TEXT("attack_speed")), AttackBefore, 0.0001f);
+	TestEqual(TEXT("Famished adds 5 to the wearer's life leech increases"),
+			  Wearer.Increases(TEXT("life_leech")) - LeechBefore, 0.05f, 0.0001f);
+
+	// THE GEAR COMES OFF: the buff already laid stays for the rest of its 30 seconds, and then the step ends it.
+	ASC->SetPoolActions(TArray<FCataclysmPoolAction>());
+	TestTrue(TEXT("with the row taken off the wearer still holds Famished"), ASC->HeldRandomBuff() == FName(TEXT("Famished")));
+	FightUntil(89.0f, /*bWearingTheRow=*/false);
+	TestTrue(TEXT("29 seconds after it was laid the wearer still holds Famished"), ASC->HeldRandomBuff() == FName(TEXT("Famished")));
+	TestEqual(TEXT("and its line"), Wearer.Increases(TEXT("life_leech")) - LeechBefore, 0.05f, 0.0001f);
+	FightUntil(90.0f, /*bWearingTheRow=*/false);
+	TestTrue(TEXT("30 seconds after it was laid the wearer holds no buff"), ASC->HeldRandomBuff().IsNone());
+	TestEqual(TEXT("and its line is gone from the stat line"), Wearer.Increases(TEXT("life_leech")), LeechBefore, 0.0001f);
+
+	// A DEATH ENDS A HELD BUFF AND WRITES THE STAT LINE WITHOUT IT.
+	if (TestTrue(TEXT("set-up: a draw by hand lays a buff"), ASC->HoldARandomBuff())
+		&& TestTrue(TEXT("set-up: it is Famished"), ASC->HeldRandomBuff() == FName(TEXT("Famished")))
+		&& TestEqual(TEXT("set-up: and its line is on the stat line"), Wearer.Increases(TEXT("life_leech")) - LeechBefore, 0.05f, 0.0001f))
+	{
+		ASC->ClearWhatDeathEnds();
+		TestTrue(TEXT("a character that stands back up holds no buff"), ASC->HeldRandomBuff().IsNone());
+		TestEqual(TEXT("and the line is gone from its stat line"), Wearer.Increases(TEXT("life_leech")), LeechBefore, 0.0001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffOrDebuffAsDebuffTest,
+	"Cataclysm.StatExemption.ARandomBuffOrDebuffPinnedToADebuffLaysWhatTheRandomDebuffRowLaysAndLeavesAHeldBuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRandomBuffOrDebuffAsDebuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// PINNED TO A DEBUFF, AND THE DEBUFF PINNED TO CRIPPLE, the second of the merged pool: Madness, Cripple, Weaken,
+	// Shred, Stun.
+	const int32 Commander = PlaceOfRandomBuff(TEXT("Commander"));
+	FPinnedPick BuffOrDebuff(TEXT("Cataclysm.RandomBuffOrDebuffPick"), 1);
+	FPinnedPick WhichBuff(TEXT("Cataclysm.RandomBuffPick"), Commander);
+	const FPinnedPick WhichDebuff(TEXT("Cataclysm.RandomDebuffPick"), 1);
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!TestTrue(TEXT("set-up: the three pins, the buff in the table and the Cripple tag"),
+				  BuffOrDebuff.Variable && WhichBuff.Variable && WhichDebuff.Variable && Commander >= 0 && Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	// TWO WEARERS, 3 METRES APART: one fires the new status, the other the merged row's "Random Debuff".
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	FScopedGearWearer Merged(World, FVector(3 * M, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FCataclysmPoolAction Row = RandomBuffOrDebuffRow(10.0f);
+	const FCataclysmPoolAction MergedRow =
+		TimedStatusOnTheWearerRow(UCataclysmAbilitySystemComponent::RandomDebuffStatus, 10.0f);
+
+	// THE CONTROL: neither carries Cripple and neither holds a buff.
+	TestFalse(TEXT("control: the wearer carries no Cripple"), ASC->HasMatchingGameplayTag(Cripple));
+	TestFalse(TEXT("control: nor does the wearer of the merged row"), Merged.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestTrue(TEXT("control: and the wearer holds no buff"), ASC->HeldRandomBuff().IsNone());
+
+	// EACH ROW FIRED ONCE, BY THE FUNCTION THE TIMED STEP CALLS FOR IT.
+	TestTrue(TEXT("the new status, pinned to a debuff, lays something"), ASC->ApplyStatusToTheWearer(Row));
+	TestTrue(TEXT("set-up: the merged row lays something"), Merged.AbilitySystem->ApplyStatusToTheWearer(MergedRow));
+	if (TestTrue(TEXT("set-up: the wearer of the merged row carries Cripple"), Merged.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		TestTrue(TEXT("pinned to a debuff, the wearer carries the debuff the merged draw gives"), ASC->HasMatchingGameplayTag(Cripple));
+		TestEqual(TEXT("at the strength the merged row lays it"),
+				  UCataclysmSkillEffects::StatedStrengthOn(Wearer.Actor, Cripple),
+				  UCataclysmSkillEffects::StatedStrengthOn(Merged.Actor, Cripple), 0.001f);
+	}
+	TestTrue(TEXT("and a drawn debuff lays no buff"), ASC->HeldRandomBuff().IsNone());
+
+	// A DRAWN DEBUFF LEAVES A HELD BUFF WHERE IT IS. A row of 10 seconds: a buff at 10, a debuff at 20, and the buff
+	// laid at 10 is still held at 20 with 20 of its 30 seconds left.
+	UCataclysmDebuffs::Cleanse(Wearer.Actor);
+	if (!TestFalse(TEXT("set-up: a cleanse takes the Cripple off"), ASC->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	const float MoveBefore = Wearer.Increases(TEXT("movement_speed"));
+	float Began = 0.0f;
+	const auto BeginAFight = [&]()
+	{
+		ASC->NoteHitDealt();
+		World->TimeSeconds += 0.5f;
+		Began = World->TimeSeconds;
+	};
+	const auto FightUntil = [&](float Seconds)
+	{
+		while (World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			World->TimeSeconds += 1.0f;
+			ASC->NoteHitDealt();
+			// PUT BACK BEFORE EVERY STEP, because laying a buff runs a gear refresh and this wearer's gear carries no row.
+			ASC->SetPoolActions({Row});
+			ASC->StepTimedGrants();
+		}
+	};
+	BuffOrDebuff.Set(0);
+	BeginAFight();
+	FightUntil(10.0f);
+	if (!TestTrue(TEXT("set-up: at 10 seconds, pinned to a buff, the wearer holds Commander"), ASC->HeldRandomBuff() == FName(TEXT("Commander")))
+		|| !TestFalse(TEXT("set-up: and carries no Cripple"), ASC->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	BuffOrDebuff.Set(1);
+	FightUntil(20.0f);
+	TestTrue(TEXT("at 20 seconds, pinned to a debuff, the wearer carries Cripple"), ASC->HasMatchingGameplayTag(Cripple));
+	TestTrue(TEXT("and still holds the buff laid at 10"), ASC->HeldRandomBuff() == FName(TEXT("Commander")));
+	TestEqual(TEXT("with 20 of its 30 seconds left"), ASC->HeldRandomBuffSecondsLeft(), 20.0f, 0.01f);
+	TestEqual(TEXT("and its movement speed line still on the stat line"), Wearer.Increases(TEXT("movement_speed")) - MoveBefore, 0.20f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffManaSurgeTest,
+	"Cataclysm.StatExemption.TheRandomBuffManaSurgeIsOneIncreasedSpellDamageForEveryFullHundredMaximumMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "Increases spell damage by 1% for 5 seconds for every 100 maximum mana." The buff is laid for 30 seconds, as every
+// buff of the table is; its own 5 seconds are not kept.
+bool FCataclysmRandomBuffManaSurgeTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const auto SpellIncreasesAt = [&Wearer](float MaximumMana)
+	{
+		Wearer.Set(Vital::GetMaxManaAttribute(), MaximumMana);
+		return Wearer.Increases(TEXT("spell_damage"));
+	};
+
+	// THE CONTROL: with no buff, the wearer's spell damage increases do not move with its maximum mana.
+	const float Before = SpellIncreasesAt(350.0f);
+	TestEqual(TEXT("control: with no buff, 1,000 maximum mana reads what 350 reads"), SpellIncreasesAt(1000.0f), Before, 0.0001f);
+	TestEqual(TEXT("the buff lays one line"), LinesOfRandomBuff(TEXT("Mana Surge")), 1);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Mana Surge")))
+	{
+		return false;
+	}
+	// THE MAXIMUM IS WRITTEN AFTER THE DRAW, because the draw runs a gear refresh and a refresh writes the maximum.
+	TestEqual(TEXT("at 99 maximum mana the buff adds nothing"), SpellIncreasesAt(99.0f) - Before, 0.0f, 0.0001f);
+	TestEqual(TEXT("at 100 it adds 1"), SpellIncreasesAt(100.0f) - Before, 0.01f, 0.0001f);
+	TestEqual(TEXT("at 350 it adds 3, for three full hundreds"), SpellIncreasesAt(350.0f) - Before, 0.03f, 0.0001f);
+	TestEqual(TEXT("at 1,000 it adds 10"), SpellIncreasesAt(1000.0f) - Before, 0.10f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffTacticalAdvantageTest,
+	"Cataclysm.StatExemption.TheRandomBuffTacticalAdvantageIsThirtyFiveIncreasedSpeedAndDamageForFiveSecondsAfterAMovementSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "Increases movement speed and damage by 35% after using a movement ability." Damage is attack damage and spell
+// damage. The description states no length for "after"; 5 seconds is a judgement, recorded with the entry.
+bool FCataclysmRandomBuffTacticalAdvantageTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const TCHAR* const Stats[] = {TEXT("movement_speed"), TEXT("attack_damage"), TEXT("spell_damage")};
+	float Before[3] = {0.0f, 0.0f, 0.0f};
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		Before[Index] = Wearer.Increases(Stats[Index]);
+	}
+	TestEqual(TEXT("the buff lays three lines"), LinesOfRandomBuff(TEXT("Tactical Advantage")), 3);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Tactical Advantage")))
+	{
+		return false;
+	}
+	const auto Adds = [&](const TCHAR* When, float Expected)
+	{
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			TestEqual(*FString::Printf(TEXT("%s, the buff adds %.0f to %s increases"), When, Expected * 100.0f, Stats[Index]),
+					  Wearer.Increases(Stats[Index]) - Before[Index], Expected, 0.0001f);
+		}
+	};
+
+	// THE CONDITION IS KEPT: held, and no movement skill used, the buff adds nothing.
+	Adds(TEXT("control: with no movement skill used"), 0.0f);
+
+	Wearer.AbilitySystem->NoteMovementSkillUsed();
+	Adds(TEXT("as a movement skill is used"), 0.35f);
+	World->TimeSeconds += 4.0f;
+	Adds(TEXT("4 seconds after it"), 0.35f);
+	World->TimeSeconds += 2.0f;
+	Adds(TEXT("6 seconds after it"), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffFamishedTest,
+	"Cataclysm.StatExemption.TheRandomBuffFamishedIsFiveIncreasedLifeManaAndEnergyShieldLeech",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "Increases all of your leech by 5%."
+bool FCataclysmRandomBuffFamishedTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const TCHAR* const Stats[] = {TEXT("life_leech"), TEXT("mana_leech"), TEXT("energy_shield_leech")};
+	float Before[3] = {0.0f, 0.0f, 0.0f};
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		Before[Index] = Wearer.Increases(Stats[Index]);
+	}
+	const float MoveBefore = Wearer.Increases(TEXT("movement_speed"));
+	TestEqual(TEXT("the buff lays three lines"), LinesOfRandomBuff(TEXT("Famished")), 3);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Famished")))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("the buff adds 5 to %s increases"), Stats[Index]),
+				  Wearer.Increases(Stats[Index]) - Before[Index], 0.05f, 0.0001f);
+	}
+	TestEqual(TEXT("control: and nothing to movement speed increases"), Wearer.Increases(TEXT("movement_speed")), MoveBefore, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffCommanderTest,
+	"Cataclysm.StatExemption.TheRandomBuffCommanderIsTwentyIncreasedMovementSpeedAndAttackSpeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "All nearby allies gain 20% increased movement speed and attack speed." Laid on the holder; no ally is read.
+bool FCataclysmRandomBuffCommanderTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const float MoveBefore = Wearer.Increases(TEXT("movement_speed"));
+	const float AttackBefore = Wearer.Increases(TEXT("attack_speed"));
+	const float SpellBefore = Wearer.Increases(TEXT("spell_damage"));
+	TestEqual(TEXT("the buff lays two lines"), LinesOfRandomBuff(TEXT("Commander")), 2);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Commander")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff adds 20 to movement speed increases"), Wearer.Increases(TEXT("movement_speed")) - MoveBefore, 0.20f, 0.0001f);
+	TestEqual(TEXT("and 20 to attack speed increases"), Wearer.Increases(TEXT("attack_speed")) - AttackBefore, 0.20f, 0.0001f);
+	TestEqual(TEXT("control: and nothing to spell damage increases"), Wearer.Increases(TEXT("spell_damage")), SpellBefore, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffDivineAegisTest,
+	"Cataclysm.StatExemption.TheRandomBuffDivineAegisIsSeventyFiveLessDamageTakenWhileBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "Gain a divine shield when below 50% HP, reducing all damage taken by 75%."
+bool FCataclysmRandomBuffDivineAegisTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const float MaximumHealth = Wearer.Get(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the refreshed wearer has a maximum health: %.1f"), MaximumHealth), MaximumHealth > 0.0f))
+	{
+		return false;
+	}
+
+	// WHAT AN UNTYPED BLOW OF 100 TAKES FROM THE WEARER'S HEALTH WITH ITS HEALTH AT THIS SHARE OF ITS MAXIMUM. The
+	// energy shield is emptied first, so nothing but health takes the blow and the two readings can be compared.
+	const auto BlowAt = [&](float ShareOfMaximum)
+	{
+		Wearer.Set(Vital::GetEnergyShieldAttribute(), 0.0f);
+		Wearer.Set(Vital::GetHealthAttribute(), MaximumHealth * ShareOfMaximum);
+		return TypedBlowOn(Wearer.AbilitySystem, NAME_None);
+	};
+
+	// THE CONTROL: with no buff a blow takes the same at full health and at two fifths.
+	const float FullBefore = BlowAt(1.0f);
+	if (!TestTrue(*FString::Printf(TEXT("control: with no buff a blow takes something at full health: %.2f"), FullBefore), FullBefore > 0.0f)
+		|| !TestEqual(TEXT("control: and the same at two fifths of it"), BlowAt(0.4f), FullBefore, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff lays one line"), LinesOfRandomBuff(TEXT("Divine Aegis")), 1);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Divine Aegis")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("above half health the buff changes nothing"), BlowAt(1.0f), FullBefore, 0.001f);
+	TestEqual(TEXT("at exactly half health it changes nothing: half is not below half"), BlowAt(0.5f), FullBefore, 0.001f);
+	TestEqual(TEXT("below half health a blow takes a quarter of what it took"), BlowAt(0.4f), FullBefore * 0.25f, FullBefore * 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRandomBuffSpellslingerTest,
+	"Cataclysm.StatExemption.TheRandomBuffSpellslingerIsTenLessManaCostAtOneStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// "Each stack reduces the mana cost of your abilities by 10%." One stack.
+bool FCataclysmRandomBuffSpellslingerTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedGearWearer Wearer(World, FVector::ZeroVector);
+	const FGameplayTagContainer ASpell = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Spell"));
+	const auto CostOfAHundred = [&Wearer](const FGameplayTagContainer& SkillTags)
+	{
+		return Wearer.AbilitySystem->StatAppliedTo(FName(UCataclysmSkillSlots::ManaCostStat), SkillTags, 100.0f);
+	};
+
+	// THE CONTROL: what a cost of 100 comes to for the refreshed wearer with no buff.
+	const float Before = CostOfAHundred(FGameplayTagContainer());
+	const float SpellBefore = CostOfAHundred(ASpell);
+	if (!TestTrue(*FString::Printf(TEXT("control: with no buff a cost of 100 comes to something: %.2f"), Before), Before > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff lays one line"), LinesOfRandomBuff(TEXT("Spellslinger")), 1);
+
+	if (!DrawsTheBuff(*this, Wearer, TEXT("Spellslinger")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the buff takes a tenth off a skill's mana cost"), CostOfAHundred(FGameplayTagContainer()), Before * 0.9f, Before * 0.001f);
+	TestEqual(TEXT("and a tenth off a spell's: the description says abilities"), CostOfAHundred(ASpell), SpellBefore * 0.9f, SpellBefore * 0.001f);
+	return true;
+}
+
 // DAMAGE OVER TIME ON THE WEARER, SCOPED BY AILMENT. Ruled 2026-10-06, for seven drawbacks: "Bleed effects applied to
 // you deal 30%-50% increased damage", "Bleeding on you lasts 50%-100% longer", "DoTs on you have 100%-300% more duration", "DoTs
 // on you tick twice as fast while moving", "Unaffected by bleeding", "10%-20% of bleed damage you take is taken from

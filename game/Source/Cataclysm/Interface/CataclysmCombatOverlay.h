@@ -556,6 +556,25 @@ public:
 	static FString MaddenedTextFor(const AActor* Actor);
 
 	/**
+	 * The buff a worn row drew for a living actor and its whole seconds left, such as "Commander 12s", or empty
+	 * while it holds none. Read from `UCataclysmAbilitySystemComponent::HeldRandomBuff` and
+	 * `HeldRandomBuffSecondsLeft`.
+	 *
+	 * WHY IT IS HERE. Ruled 2026-10-12 by the coordinating session: the held buff is shown wherever the drawn debuff
+	 * of the merged drawback is shown to the player. Of the five debuffs that draw can give, "Maddened" is the one
+	 * a screen names, on the line above the player's own bars, so the held buff is named there too, beside it.
+	 * And the owner's rule is that a system ships with a basic in-game display: without this a buff a row drew
+	 * changed the character's figures and nothing said which buff it was or how long it had left.
+	 *
+	 * THE SECONDS ARE ROUNDED UP, a judgement: a buff just laid reads "30s", and one in its last second reads "1s"
+	 * and never "0s" while it is still held.
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, which `ACataclysmHUD` draws text by text, and last on a creature's
+	 * status line, where it is empty today because no creature wears a row.
+	 */
+	static FString HeldBuffTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.
@@ -715,7 +734,8 @@ public:
 	 * IN THIS ORDER, which is not the order they are declared in: Second Self,
 	 * Harbinger, Chorus, Bloom, Spire, Beacon, Vein, the armour removed, the
 	 * slow, Held, the damage cut. What the creature is comes first, and what
-	 * is being done to it after (issues #41, #1515 and #1833).
+	 * is being done to it after (issues #41, #1515 and #1833). The buff a worn
+	 * row drew is last of all, since 2026-10-12.
 	 */
 	static FString StatusLineFor(const AActor* Actor);
 
