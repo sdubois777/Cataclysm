@@ -1693,10 +1693,6 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedStillNotAHitTest,
 {
 	using namespace CataclysmRetaliationUnmitigatedTest;
 
-	// THE CRITICAL STRIKE ROLL IS PINNED AT 0, so every blow that may critically
-	// strike does. The holder holds a chance of 100, a multiplier of 300, an
-	// attack of 100 and a life leech of 10.
-	const FUnmitigatedPinned AlwaysCritical(TEXT("Cataclysm.CritRoll"), 0.0f);
 	const FUnmitigatedPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -1705,6 +1701,17 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedStillNotAHitTest,
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE CRITICAL STRIKE ROLL IS PINNED AT 0, so every blow that may critically
+	// strike does. The holder holds a chance of 100, a multiplier of 300, an
+	// attack of 100 and a life leech of 10.
+	//
+	// PINNED AFTER THE WORLD IS MADE, AND IT MUST BE. Corrected 2026-10-13.
+	// `MakeWorldThatHasBegunPlay` calls `SilenceCriticalStrikes`, which sets this
+	// same roll to 100, so a pin made before it is overwritten and no blow is a
+	// critical strike. This pin stood two lines above the world, and the first
+	// compiled run failed the control below for it.
+	const FUnmitigatedPinned AlwaysCritical(TEXT("Cataclysm.CritRoll"), 0.0f);
 
 	FUnmitigatedThree Three(World);
 	UCataclysmAbilitySystemComponent* Struck = Three.Attacker.AbilitySystem.Get();
