@@ -4323,6 +4323,21 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bDamageImmunity = false;
 
 	/**
+	 * Set, this action MOVES ITS WEARER TO A RANDOM REACHABLE POINT NEARBY instead of moving a pool. `Percent` is the
+	 * furthest the wearer may be moved, IN METRES and not a percentage. Ruled 2026-10-12 by the coordinating session
+	 * under the owner's delegation, for "Teleport to a random location within 4 meters when hit". On the event
+	 * `hit_taken` and no other.
+	 *
+	 * A LANDED HIT ONLY. Not an evaded blow and not a tick of damage over time. A blocked blow landed, and so did one
+	 * the energy shield took whole. The row loop asks `bLanded` for the first and
+	 * `UCataclysmAbilitySystemComponent::bHitBeingAnnouncedIsATick` for the second.
+	 *
+	 * THE ROW'S TRIGGER COOLDOWN STARTS ONLY WHEN THE WEARER WAS MOVED. A hit that finds no point to move to starts
+	 * no wait, so the next hit asks again. See `UCataclysmAbilitySystemComponent::TeleportTheWearerRandomly`.
+	 */
+	bool bTeleportRandomly = false;
+
+	/**
 	 * Set, this action repeats the skill just used, free, with `Percent` as its chance out of 100, instead of moving
 	 * a pool. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for free".
 	 * Only on an event that names a skill, which is `skill_use` or `attack_use`. See

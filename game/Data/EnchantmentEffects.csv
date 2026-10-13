@@ -598,3 +598,4 @@ Positive_Retaliation_damage_cannot_be_reduced_or_mitigate#1,Positive_Retaliation
 Negative_Enemies_that_survive_more_than_5_seconds_after_f#1,Negative_Enemies_that_survive_more_than_5_seconds_after_f,damage_taken,increased,20.0,40.0,,opponent_first_struck_by_you_seconds_ago,5.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Enemies_that_have_been_alive_for_more_than_15_se#1,Negative_Enemies_that_have_been_alive_for_more_than_15_se,enemies_immune_to_you_after_seconds,flat,15.0,15.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Skills_get_1_4_to_projectile_count#1,Positive_Skills_get_1_4_to_projectile_count,projectile_count,flat,1.0,4.0,Type.Projectile,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Teleport_to_a_random_location_within_4_meters_wh#1,Positive_Teleport_to_a_random_location_within_4_meters_wh,,,4.0,4.0,,,0.0,,0.0,teleport_randomly,hit_taken,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,2.0,0.0,,0.0
