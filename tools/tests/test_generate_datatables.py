@@ -6973,3 +6973,271 @@ class TestEnemiesImmuneFifteenSecondsAfterAFirstHit:
             set())
         assert any(repr(misspelt) in problem and "is not a stat" in problem
                    for problem in problems), problems
+
+
+class TestAShareOfDamageTakenIsDealtOverSeconds:
+    """`damage_taken_delayed_percent` and `damage_taken_delayed_seconds`, ruled
+    2026-10-12 and built ahead of their rows, for "25%-50% of damage taken is
+    dealt over 4-8 seconds". Two flat rows on ONE enchantment, the share 25
+    to 50 and the seconds 4 to 8, with no Required Tags, no Condition, no
+    Scale and no Action: `UCataclysmDelayedDamage::DelayShare` asks the struck
+    character for both where a blow's damage reaches health.
+
+    BOTH FIGURES COME FROM ONE ROLL BECAUSE BOTH ROWS ARE ROWS OF ONE
+    ENCHANTMENT. An item records one roll for each half of an enchantment
+    pair and the game rolls every row of that enchantment with it. What this
+    file can show of that is the half the generator owns: both rows are
+    carried under one enchantment's name, in the order the game rolls them
+    from, and a sheet that splits the two stats across enchantments, or
+    states one without the other, is refused. The rolling itself is the
+    engine's, and `CataclysmEnchantmentRollTests.cpp` reads it.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Positive
+    one. The real rows are the enchantment session's to write; this shows
+    that the generator carries the ruled rows through and refuses the wrong
+    ones.
+    """
+
+    WORDS = "25%-50% of damage taken is dealt over 4-8 seconds"
+    SHARE = "damage_taken_delayed_percent"
+    SECONDS = "damage_taken_delayed_seconds"
+    SHARE_ROW = {"Stat": SHARE, "Value Kind": "flat",
+                 "Value Low": 25, "Value High": 50}
+    SECONDS_ROW = {"Stat": SECONDS, "Value Kind": "flat",
+                   "Value Low": 4, "Value High": 8}
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+
+    def out(self, tmp_path, rows):
+        """The generator's rows for the Positive sentence and these effect
+        rows, each a dict of columns. As `out` of
+        `TestTheChannellingConditionsOfTheEighthOfOctober`, with the sentence
+        in the Positive column."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Positive", self.WORDS[:48]),
+                      "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [self.WORDS, "Generic", 3, "Keyword.DoT.Generic", None,
+                     "You have 20% less hp", "Generic", 1,
+                     "Stat.Defense.Health"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "delayed.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_delayed_damage_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def pair(self, tmp_path):
+        share, seconds = self.out(tmp_path, [self.SHARE_ROW, self.SECONDS_ROW])
+        assert (share["Stat"], seconds["Stat"]) == (self.SHARE, self.SECONDS)
+        return share, seconds
+
+    def test_the_ruled_rows_are_carried_through_and_are_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.SHARE_ROW, self.SECONDS_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.SHARE, "flat", 25.0, 50.0, "", "", "", ""),
+            (self.SECONDS, "flat", 4.0, 8.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_both_figures_are_rows_of_one_enchantment_so_one_roll_sets_both(
+            self, tmp_path):
+        """What the generator owns of "one roll": both rows carry the one
+        enchantment's name, each range runs from its low end to its high end
+        as the sentence writes it, and each range is one the sentence states.
+        THE CONTROL is the last line: the same two stats under two
+        enchantments' names are refused, because those would be two rolls."""
+        share, seconds = self.pair(tmp_path)
+        name = gen.row_name("Positive", self.WORDS[:48])
+        assert share["Enchantment"] == seconds["Enchantment"] == name
+        assert (share["Name"], seconds["Name"]) == (name + "#1", name + "#2")
+        stated = gen.enchantment_ranges(self.WORDS)
+        assert stated == [(25.0, 50.0), (4.0, 8.0)]
+        assert (share["ValueLow"], share["ValueHigh"]) == stated[0]
+        assert (seconds["ValueLow"], seconds["ValueHigh"]) == stated[1]
+        # NO SECOND FIGURE IS HIDDEN IN A CELL THAT ROLLS APART FROM THE VALUE.
+        for row in (share, seconds):
+            assert (row["ScaleStep"], row["ScaleStepHigh"], row["StackSeconds"],
+                    row["StackSecondsHigh"]) == (0.0, 0.0, 0.0, 0.0)
+        split = dict(seconds, Name="Positive_Made_up#1",
+                     Enchantment="Positive_Made_up")
+        problems = self.refusals([share, split])
+        assert len(problems) == 2, problems
+        assert all("ONE enchantment" in problem for problem in problems)
+
+    def test_the_two_stats_have_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DAMAGE_TAKEN_DELAYED_PERCENT_STAT == self.SHARE
+        assert gen.DAMAGE_TAKEN_DELAYED_SECONDS_STAT == self.SECONDS
+        listed = gen.stats_with_no_attribute()
+        assert self.SHARE in listed and self.SECONDS in listed
+        assert "damage_taken_delayed" not in listed
+
+    def test_the_generator_holds_the_names_the_engine_has(self):
+        """The generator refuses bad rows by these names and the engine asks
+        the struck character's stat line for the names in
+        `CataclysmDelayedDamage.cpp`. THE CONTROL is that the pattern finds
+        exactly the two, so a name that moved file or changed form fails here
+        and does not pass by finding nothing."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmDelayedDamage.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmDelayedDamage::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names == {
+            "SharePercentStat": gen.DAMAGE_TAKEN_DELAYED_PERCENT_STAT,
+            "SecondsStat": gen.DAMAGE_TAKEN_DELAYED_SECONDS_STAT}
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to one of the two carried rows at a time. The control
+        is the first line: the pair unchanged is not refused."""
+        share, seconds = self.pair(tmp_path)
+        assert self.refusals([share, seconds]) == []
+        for stat, changed, kept in ((self.SHARE, share, seconds),
+                                    (self.SECONDS, seconds, share)):
+            for change, said in (
+                    ({"ValueKind": "increased"}, "value kind 'increased'"),
+                    ({"ValueKind": "more"}, "value kind 'more'"),
+                    ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                    ({"Action": "health"}, "with the action 'health'")):
+                problems = self.refusals([dict(changed, **change), kept])
+                assert len(problems) == 1, (stat, change, problems)
+                assert said in problems[0], (stat, change, problems)
+                assert repr(stat) in problems[0]
+
+    def test_a_figure_outside_its_bounds_is_refused(self, tmp_path):
+        """The share above 0 and at most 100; the seconds above 0 and at most
+        60. The bounds are included at their tops. Each refused row keeps the
+        range rising, so the bound is the one refusal."""
+        share, seconds = self.pair(tmp_path)
+        for changed, kept, low, high, said in (
+                (share, seconds, 0.0, 50.0, "states 0 on"),
+                (share, seconds, -5.0, 50.0, "states -5 on"),
+                (share, seconds, 25.0, 101.0, "states 101 on"),
+                (seconds, share, 0.0, 8.0, "states 0 on"),
+                (seconds, share, 4.0, 61.0, "states 61 on")):
+            problems = self.refusals(
+                [dict(changed, ValueLow=low, ValueHigh=high), kept])
+            assert len(problems) == 1, (low, high, problems)
+            assert said in problems[0] and repr(changed["Stat"]) in problems[0]
+        assert self.refusals([dict(share, ValueLow=25.0, ValueHigh=100.0),
+                              dict(seconds, ValueLow=4.0, ValueHigh=60.0)]) == []
+
+    def test_a_range_that_falls_is_refused(self, tmp_path):
+        """8 to 4 would give the longest spread to the lowest roll, and 50 to
+        25 the largest share. Both figures rise together, ruled."""
+        share, seconds = self.pair(tmp_path)
+        for changed, kept, low, high in ((seconds, share, 8.0, 4.0),
+                                         (share, seconds, 50.0, 25.0)):
+            problems = self.refusals(
+                [dict(changed, ValueLow=low, ValueHigh=high), kept])
+            assert len(problems) == 1, problems
+            assert f"states {low:g} to {high:g} on" in problems[0]
+            assert "the range must rise" in problems[0]
+
+    def test_one_stat_without_the_other_is_refused(self, tmp_path):
+        """The game delays nothing unless the wearer holds both. One refusal
+        for the enchantment, naming the stat it lacks."""
+        share, seconds = self.pair(tmp_path)
+        for alone, lacking in ((share, self.SECONDS), (seconds, self.SHARE)):
+            problems = self.refusals([alone])
+            assert len(problems) == 1, problems
+            assert f"and not {lacking!r}" in problems[0]
+            assert "ONE enchantment" in problems[0]
+
+    def test_a_stat_stated_twice_is_refused(self, tmp_path):
+        """Two flat rows on one stat are added together: a second share row of
+        25 to 50 would make the share 50 to 100."""
+        share, seconds = self.pair(tmp_path)
+        for twice, other in ((share, seconds), (seconds, share)):
+            again = dict(twice, Name=twice["Name"].split("#")[0] + "#3")
+            problems = self.refusals([twice, other, again])
+            assert len(problems) == 1, problems
+            assert "on more than one row" in problems[0]
+            assert repr(twice["Stat"]) in problems[0]
+
+    def test_a_range_on_one_row_and_a_single_figure_on_the_other_is_refused(
+            self, tmp_path):
+        """The sentence states two ranges. A share that rolls beside seconds
+        that do not is refused, and so is the reverse. THE CONTROL is two
+        single figures, which is a pair that does not roll and is accepted."""
+        share, seconds = self.pair(tmp_path)
+        fixed_share = dict(share, ValueLow=50.0, ValueHigh=50.0)
+        fixed_seconds = dict(seconds, ValueLow=8.0, ValueHigh=8.0)
+        assert self.refusals([fixed_share, fixed_seconds]) == []
+        for rows in ([share, fixed_seconds], [fixed_share, seconds]):
+            problems = self.refusals(rows)
+            assert len(problems) == 1, problems
+            assert "both rows state a range or neither does" in problems[0]
+
+    def test_a_condition_or_a_scale_on_either_stat_is_refused_elsewhere(
+            self, tmp_path):
+        for row in self.pair(tmp_path):
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="in_combat")])
+            assert len(conditioned) == 1 and row["Stat"] in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="seconds_in_combat")])
+            assert len(scaled) == 1 and row["Stat"] in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        for stat in (self.SHARE, self.SECONDS):
+            node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                        "Stat": stat, "ValueKind": "increased",
+                        "ValuePerPoint": 1.0}
+            assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "damage_taken",
+                               "ValueKind": "increased", "ValueLow": 20.0,
+                               "ValueHigh": 40.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        share, seconds = self.pair(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, seconds]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share]}, set())
+        assert any(f"and not {self.SECONDS!r}" in problem
+                   for problem in problems), problems
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """As the same test of the stat before this one does it: the name one
+        letter off, with a kind that is not flat. The control is the pair
+        spelt right.
+
+        WHAT THIS DOES NOT SHOW. A misspelt name on a FLAT row is carried
+        through and the sheet's validation says nothing of it; that was
+        measured for the stat before this one on 2026-10-12 and is not
+        changed here. For this pair one misspelt name does leave the other
+        stat alone on its enchantment, which IS refused, and the last lines
+        read that."""
+        share, seconds = self.pair(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, seconds]}, set()) == []
+        misspelt = "damage_taken_delayed_second"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, dict(seconds, Stat=misspelt,
+                                                ValueKind="increased")]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+        flat = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, dict(seconds, Stat=misspelt)]},
+            set())
+        assert any(f"and not {self.SECONDS!r}" in problem
+                   for problem in flat), flat

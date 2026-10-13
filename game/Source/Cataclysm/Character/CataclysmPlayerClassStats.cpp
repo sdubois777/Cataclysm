@@ -650,6 +650,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// disengage for 3 seconds". The 15, flat; nought is no such rule. No
 		// gameplay attribute and no base.
 		TEXT("enemies_immune_to_you_after_seconds"),
+		// The share of what would reach this character's health that is taken
+		// later instead, as a percent, and the seconds it is drained over. Both
+		// read by UCataclysmDelayedDamage::DelayShare where a blow's damage
+		// reaches health. Ruled 2026-10-12: "25%-50% of damage taken is dealt
+		// over 4-8 seconds". Flat; either at nought delays nothing. No gameplay
+		// attribute and no base.
+		TEXT("damage_taken_delayed_percent"),
+		TEXT("damage_taken_delayed_seconds"),
 	};
 	return Stats;
 }

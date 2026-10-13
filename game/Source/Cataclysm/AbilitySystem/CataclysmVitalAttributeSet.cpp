@@ -13,6 +13,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "AbilitySystem/CataclysmDamageConversion.h"
+// For the share of a blow that is taken later instead of now. Ruled 2026-10-12.
+#include "AbilitySystem/CataclysmDelayedDamage.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For every chance to apply an ailment a blow carried, a blunt weapon's stun
@@ -1807,8 +1809,41 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// blow whole or not at all, when `Arriving` is nought and nothing is shared. So `Whole` takes nothing
 			// off for it. A conversion of part of a blow, or one a creature could hold, would need a ruling on
 			// what `Whole` is.
+			//
+			// AND A SHARE OF WHAT WOULD REACH HEALTH MAY BE TAKEN LATER INSTEAD. Ruled 2026-10-12 under the owner's
+			// delegation, for "25%-50% of damage taken is dealt over 4-8 seconds". The share is taken off HERE, of
+			// what is about to be written to health, so mana, the energy shield and the temporary absorb have had
+			// theirs and none of what they took is delayed. It is held in a store on the character and drained by
+			// `UCataclysmDelayedDamage::DrainStep`.
+			//
+			// OF THE BLOW BEFORE IT IS CUT TO THE HEALTH LEFT, which is `Arriving` and the overkill together, as
+			// the bond below reads it. So the share is taken first, and a blow that would have emptied health can
+			// leave the character alive, holding a store that then empties it. Ruled.
+			//
+			// AFTER THE CONVERSION TO BLEEDING, AND A BLOW THAT CONVERSION TOOK IS NOT DELAYED. While The Breaking
+			// Point's window is open the whole blow has become a Bleed, `Arriving` is nought and nothing is asked.
+			// The Bleed's ticks are ticks, which are never delayed. A judgement of the writing session. The option
+			// not taken: take the share first and turn only the rest into bleeding. It was not taken because that
+			// conversion turns a blow whole or not at all and every line below is written on that.
+			//
+			// AFTER THE TWO SAVES FROM A LETHAL BLOW, which sit above and read the blow before any share is taken.
+			// So a blow whose whole figure reaches the health held is saved, and its save spent, though with the
+			// share taken off it would not have killed. The share is then taken of the figure the save left.
+			//
+			// `Outcome` IS NOT CHANGED, as for the bond: whoever struck leeches from the whole blow and is told of
+			// the whole blow, and the number drawn over the character is the whole blow.
+			//
+			// NOUGHT FOR A TICK AND FOR A CHARACTER WITH NO SUCH ROW, so every line below reads what it read.
+			const float WholeBeforeDelay = Arriving + Outcome.Overkill;
+			const float Delayed = Arriving > 0.0f
+				? UCataclysmDelayedDamage::DelayShare(
+					GetOwningAbilitySystemComponent(), WholeBeforeDelay, Hit.bIsDamageOverTime)
+				: 0.0f;
+
+			// THE BOND DIVIDES WHAT IS LEFT ONCE THE SHARE IS TAKEN. No character holds both today: a creature
+			// wears no row.
 			TArray<AActor*> Sharing;
-			const float Whole = Arriving + Outcome.Overkill;
+			const float Whole = WholeBeforeDelay - Delayed;
 			const float KeptOfWhole = Arriving > 0.0f
 				? Whole * UCataclysmEnemyModifiers::ShareOfDamageKept(GetOwningActor(), &Sharing)
 				: Arriving;
@@ -1910,6 +1945,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				//
 				// THE FERVOUR A CONVERTED BLOW IS WORTH STILL ARRIVES, a tick at
 				// a time, as the Bleeding takes health through this same path.
+				//
+				// SINCE 2026-10-12 THERE IS A CASE WHERE THE TWO EXPRESSIONS DIFFER HERE. A worn row can take
+				// a share of a blow off above and hold it (`UCataclysmDelayedDamage::DelayShare`), and
+				// `ToHealth` is then less than what the blow resolved to. Fervour is filled by what was taken
+				// at once. THE HELD SHARE FILLS NONE WHEN IT IS DRAINED: the drain writes health directly and
+				// does not come through this path.
 				UCataclysmFervour::GainFromDamage(
 					GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
 			}

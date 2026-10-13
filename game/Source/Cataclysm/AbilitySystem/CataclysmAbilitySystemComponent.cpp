@@ -2656,6 +2656,11 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	ClearHealthDebtDue();
 
+	// AND THE DELAYED DAMAGE STILL TO BE DRAINED. Ruled 2026-10-12, for "25%-50% of damage taken is dealt over 4-8
+	// seconds": a death clears the store. HERE, WHERE THE HEALTH DEBT IS CLEARED, which is the revival and not the
+	// moment of death. Between the two nothing is drained: `UCataclysmDelayedDamage::DrainStep` skips a corpse.
+	Ended.DelayedDamageOwed = ClearDelayedDamage();
+
 	// THE WINDOWS A RECENT EVENT OPENED, back to the "never" every character
 	// starts with. Each is a bonus or a protection that lasts a few seconds after
 	// something happened, which is a temporary buff by another name. The health
@@ -5440,6 +5445,111 @@ void UCataclysmAbilitySystemComponent::ForgetKeptStacksOfAnotherDungeon()
 			It.RemoveCurrent();
 		}
 	}
+}
+
+bool UCataclysmAbilitySystemComponent::HoldDelayedDamage(float Amount, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Amount <= 0.0f || Seconds <= 0.0f)
+	{
+		// NO CLOCK, NO PARCEL. The caller then delays nothing and the blow lands whole, which is the direction that
+		// loses no damage.
+		return false;
+	}
+
+	FDelayedDamageParcel Parcel;
+	Parcel.Amount = Amount;
+	Parcel.TakenAtSeconds = World->GetTimeSeconds();
+	Parcel.Seconds = Seconds;
+	Parcel.DungeonId = DungeonBeingWalked();
+	DelayedDamageParcels.Add(Parcel);
+	return true;
+}
+
+float UCataclysmAbilitySystemComponent::DelayedDamageOwed() const
+{
+	if (DelayedDamageParcels.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	// ONLY THE PARCELS OF THE DUNGEON WALKED NOW, as `KeptStacksHeld` counts only its stacks.
+	const int32 Now = DungeonBeingWalked();
+	float Owed = 0.0f;
+	for (const FDelayedDamageParcel& Parcel : DelayedDamageParcels)
+	{
+		if (Parcel.DungeonId == Now)
+		{
+			Owed += FMath::Max(0.0f, Parcel.Amount - Parcel.Paid);
+		}
+	}
+	return Owed;
+}
+
+float UCataclysmAbilitySystemComponent::DelayedDamageOwedBy(float Amount, float SecondsSinceTaken, float Seconds)
+{
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+	if (Seconds <= 0.0f || SecondsSinceTaken >= Seconds)
+	{
+		return Amount;
+	}
+	return SecondsSinceTaken <= 0.0f ? 0.0f : Amount * SecondsSinceTaken / Seconds;
+}
+
+float UCataclysmAbilitySystemComponent::TakeDelayedDamageDue()
+{
+	const UWorld* World = GetWorld();
+	if (!World || DelayedDamageParcels.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	const double NowSeconds = World->GetTimeSeconds();
+	const int32 Dungeon = DungeonBeingWalked();
+	float Due = 0.0f;
+	// FROM THE LAST TO THE FIRST, because a parcel may be removed as it is read.
+	for (int32 Index = DelayedDamageParcels.Num() - 1; Index >= 0; --Index)
+	{
+		FDelayedDamageParcel& Parcel = DelayedDamageParcels[Index];
+		// TAKEN IN ANOTHER DUNGEON, OR IN ONE WHEN NONE IS WALKED NOW: forgotten, and nothing of it is taken.
+		// Ruled 2026-10-12: leaving the dungeon clears the store.
+		if (Parcel.DungeonId != Dungeon)
+		{
+			DelayedDamageParcels.RemoveAt(Index);
+			continue;
+		}
+
+		// THE DIFFERENCE OF THE TWO TIMES IS NARROWED TO A FLOAT BEFORE IT IS COMPARED. The clock is a double, and
+		// a difference that should be exactly the parcel's seconds can come out under them by the last digit a
+		// double holds. Narrowed to a float it is the seconds, so the parcel is emptied at its seconds and not a
+		// step later.
+		const float SecondsSinceTaken = static_cast<float>(NowSeconds - Parcel.TakenAtSeconds);
+		const float OwedByNow = DelayedDamageOwedBy(Parcel.Amount, SecondsSinceTaken, Parcel.Seconds);
+		if (OwedByNow > Parcel.Paid)
+		{
+			Due += OwedByNow - Parcel.Paid;
+			Parcel.Paid = OwedByNow;
+		}
+		if (Parcel.Paid >= Parcel.Amount)
+		{
+			DelayedDamageParcels.RemoveAt(Index);
+		}
+	}
+	return Due;
+}
+
+float UCataclysmAbilitySystemComponent::ClearDelayedDamage()
+{
+	float Owed = 0.0f;
+	for (const FDelayedDamageParcel& Parcel : DelayedDamageParcels)
+	{
+		Owed += FMath::Max(0.0f, Parcel.Amount - Parcel.Paid);
+	}
+	DelayedDamageParcels.Reset();
+	return Owed;
 }
 
 void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags,

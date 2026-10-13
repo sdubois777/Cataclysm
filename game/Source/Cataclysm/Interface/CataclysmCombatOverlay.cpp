@@ -597,6 +597,20 @@ FString UCataclysmCombatOverlay::KeptStacksTextFor(const AActor* Actor)
 	return FString::Join(Parts, TEXT("  "));
 }
 
+FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	// ROUNDED UP, so the last point still owed reads "Owed 1".
+	const float Owed = AbilitySystem->DelayedDamageOwed();
+	return Owed > 0.0f ? FString::Printf(TEXT("Owed %d"), FMath::CeilToInt(Owed)) : FString();
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -862,7 +876,10 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every
 		  // creature today, for the same reason.
 		  DamageTypeImmunityTextFor(Actor),
-		  KeptStacksTextFor(Actor)})
+		  KeptStacksTextFor(Actor),
+		  // AND THE DELAYED DAMAGE IT STILL OWES, last. Ruled 2026-10-12. Empty for every creature today, for the
+		  // same reason.
+		  OwedTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

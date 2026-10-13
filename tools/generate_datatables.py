@@ -9032,6 +9032,137 @@ def refuse_an_enemies_immune_row_the_game_cannot_read(
     return problems
 
 
+#: The share of the damage that would reach its wearer's health that is taken
+#: later instead, as a percent, and the seconds that share is drained over.
+#: Ruled 2026-10-12 under the owner's delegation, for "25%-50% of damage taken
+#: is dealt over 4-8 seconds".
+#:
+#: ONE SENTENCE IS TWO ROWS ON ONE ENCHANTMENT, one on each stat: `flat`, the
+#: share 25 to 50 and the seconds 4 to 8, with no Required Tags, no Condition,
+#: no Scale and no Action. `UCataclysmDelayedDamage::SharePercentStat` and
+#: `SecondsStat` hold the same names, and
+#: `TestAShareOfDamageTakenIsDealtOverSeconds` in
+#: `tools/tests/test_generate_datatables.py` compares them.
+#:
+#: BOTH FIGURES COME FROM THE ITEM'S ONE ROLL, which is why two rows on one
+#: enchantment are the shape. `AccumulateEnchantmentsInto` of
+#: `UCataclysmItemModifiers` rolls every row of an enchantment with the one
+#: roll its item recorded for that half. So a low roll is 25% over 4 seconds
+#: and a high roll 50% over 8, ruled. Two enchantments would be two rolls.
+#:
+#: THE GAME ASKS FOR BOTH IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmDelayedDamage::DelayShare`, where a blow's damage reaches health,
+#: and delays nothing when either is nought or less. So a row requiring a tag
+#: matches nowhere, a row of any kind but `flat` works on a base of nought,
+#: and an enchantment stating one of the two without the other does nothing.
+#:
+#: THE BOUNDS. The share above nought and at most 100, which the game holds it
+#: to. The seconds above nought and at most 60, the bound of the seconds
+#: conditions: a labelled judgement of the writing session.
+DAMAGE_TAKEN_DELAYED_PERCENT_STAT = "damage_taken_delayed_percent"
+DAMAGE_TAKEN_DELAYED_SECONDS_STAT = "damage_taken_delayed_seconds"
+MAX_DAMAGE_TAKEN_DELAYED_PERCENT = 100.0
+MAX_DAMAGE_TAKEN_DELAYED_SECONDS = 60.0
+
+
+def refuse_a_delayed_damage_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `DAMAGE_TAKEN_DELAYED_PERCENT_STAT` or on
+    `DAMAGE_TAKEN_DELAYED_SECONDS_STAT` is a figure its one reader takes as
+    it stands, and an enchantment states the two together, once each.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants
+    above give. Each refusal names what the reader would do with the row.
+
+    A RANGE IS ALLOWED AND MUST RISE: the low column is not above the high
+    one. The game rolls from the first column to the second, and both figures
+    rise together on the one roll, ruled; a row written 8 to 4 would give the
+    longest spread to the lowest roll.
+
+    BOTH OR NEITHER STATE A RANGE. One row ranged and the other a single
+    figure is refused: the sentence states two ranges, and the two rows of
+    one sentence either both roll or both do not.
+
+    A CONDITION OR A SCALE ON EITHER STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    neither stat is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_an_enemies_immune_row_the_game_cannot_read` leaves one.
+    """
+    problems = []
+    share = DAMAGE_TAKEN_DELAYED_PERCENT_STAT
+    seconds = DAMAGE_TAKEN_DELAYED_SECONDS_STAT
+    tops = {share: MAX_DAMAGE_TAKEN_DELAYED_PERCENT,
+            seconds: MAX_DAMAGE_TAKEN_DELAYED_SECONDS}
+    rows_of: dict[str, dict[str, list[dict]]] = {}
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in tops or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        owner = str(row.get("Enchantment") or row["Name"])
+        rows_of.setdefault(owner, {share: [], seconds: []})[stat].append(row)
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; "
+                f"any other kind works on a base of nought and delays "
+                f"NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, where a blow's damage "
+                f"reaches health, so a row requiring a tag matches nowhere: "
+                f"this one would delay NOTHING and say nothing.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise. The share and the seconds rise together "
+                f"on the item's one roll, so the lowest roll is the first "
+                f"column of both rows.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= tops[stat]:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0 and at most {tops[stat]:g}. Nought or "
+                    f"less delays nothing.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The stat is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"delay NOTHING.")
+    for owner, held in rows_of.items():
+        for stat, other in ((share, seconds), (seconds, share)):
+            if len(held[stat]) > 1:
+                problems.append(
+                    f"{sheet}/{owner}: states {stat!r} on more than one row. "
+                    f"Flat rows on one stat are added together, so the game "
+                    f"would read the SUM of them: state it once.")
+            if held[stat] and not held[other]:
+                problems.append(
+                    f"{sheet}/{owner}: states {stat!r} and not {other!r}. "
+                    f"The game delays nothing unless the wearer holds both, "
+                    f"and both must be rows of ONE enchantment so that the "
+                    f"item's one roll sets the two together.")
+        if len(held[share]) == 1 and len(held[seconds]) == 1:
+            ranged = [float(row.get("ValueLow") or 0.0)
+                      != float(row.get("ValueHigh") or 0.0)
+                      for row in (held[share][0], held[seconds][0])]
+            if ranged[0] != ranged[1]:
+                problems.append(
+                    f"{sheet}/{owner}: states a range on one of {share!r} "
+                    f"and {seconds!r} and a single figure on the other. The "
+                    f"two rise together on the item's one roll, so both rows "
+                    f"state a range or neither does.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9370,6 +9501,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # ONE FIGURE THE GAME READS, AND STATES NOTHING OF THE 3 SECONDS. Ruled
     # 2026-10-12.
     problems.extend(refuse_an_enemies_immune_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE SHARE OF DAMAGE TAKEN THAT IS DELAYED AND ITS SECONDS ARE TWO
+    # FLAT ROWS OF ONE ENCHANTMENT, EACH STATED ONCE. Ruled 2026-10-12.
+    problems.extend(refuse_a_delayed_damage_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

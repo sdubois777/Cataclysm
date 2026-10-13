@@ -46,6 +46,12 @@ struct FCataclysmWhatDeathEnded
 	/** Health that was owed and is not any more. */
 	float HealthOwed = 0.0f;
 
+	/**
+	 * Delayed damage that was still to be drained and is not any more. Ruled 2026-10-12, for "25%-50% of damage
+	 * taken is dealt over 4-8 seconds": a death clears the store. Not on the log line; a test reads it.
+	 */
+	float DelayedDamageOwed = 0.0f;
+
 	/** Self buffs that were still running and were ended. */
 	int32 BuffsEnded = 0;
 
@@ -3671,6 +3677,56 @@ public:
 	float SecondsSinceEngagedBy(const UAbilitySystemComponent* Striker) const;
 
 	/**
+	 * Hold a parcel of delayed damage: `Amount` of health this character is to lose evenly over `Seconds`, counted
+	 * from now. Ruled 2026-10-12, for "25%-50% of damage taken is dealt over 4-8 seconds". Called by
+	 * `UCataclysmDelayedDamage::DelayShare` with the share it took off a blow.
+	 *
+	 * EACH PARCEL KEEPS ITS OWN AMOUNT, ITS OWN SECONDS AND THE TIME IT WAS TAKEN. So parcels add up and overlap,
+	 * a later blow changes nothing of what an earlier one owes, and a parcel keeps the seconds it was taken with
+	 * when the row's figure changes or the gear comes off.
+	 *
+	 * AND `DungeonBeingWalked` AS IT WAS TAKEN, as a kept stack does. That comparison is what "leaving the dungeon
+	 * clears it" is: nothing calls this component when a dungeon is left, and
+	 * `ACataclysmDungeonGameMode::LeaveEmpireDungeon` was not edited for it. `DelayedDamageOwed` answers nought
+	 * for a parcel of another dungeon and `TakeDelayedDamageDue` removes it. A new floor of the same dungeon
+	 * changes nothing.
+	 *
+	 * NOT AN AILMENT AND NOT A GAMEPLAY EFFECT, so nothing that counts, cleanses, shortens or lengthens debuffs
+	 * sees it.
+	 *
+	 * @return false, holding nothing, for an amount or seconds of nought or less and for a component with no world
+	 */
+	bool HoldDelayedDamage(float Amount, float Seconds);
+
+	/**
+	 * What this character still owes of its delayed damage, as of the last time it was drained: every parcel's
+	 * amount less what has been taken of it. Parcels taken in a dungeon that is not the one walked now count for
+	 * nothing. `UCataclysmCombatOverlay::OwedTextFor` shows it.
+	 */
+	float DelayedDamageOwed() const;
+
+	/**
+	 * Work out what every parcel owes for the time since it was last drained, mark it taken, and answer the sum.
+	 * `UCataclysmDelayedDamage::DrainStep` writes the answer to health. Parcels of a dungeon that is not the one
+	 * walked now are removed and owe nothing, and a parcel is removed when its last part is taken.
+	 *
+	 * BY THE WORLD'S CLOCK AND NOT BY THE LENGTH OF A STEP, through `DelayedDamageOwedBy`. So a step that arrives
+	 * late takes what the late time owes, and a parcel is empty at the first step at or after its seconds.
+	 */
+	float TakeDelayedDamageDue();
+
+	/** Empty the store. A death does this. @return what was still owed, every dungeon's parcels counted */
+	float ClearDelayedDamage();
+
+	/**
+	 * How much of a parcel of `Amount` over `Seconds` has fallen due `SecondsSinceTaken` after it was taken.
+	 *
+	 * PURE ARITHMETIC. Evenly: `Amount` times the share of the seconds that has passed. Nought at or before the
+	 * moment it was taken, and the whole amount at its seconds and after, and for seconds of nought or less.
+	 */
+	static float DelayedDamageOwedBy(float Amount, float SecondsSinceTaken, float Seconds);
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -4754,6 +4810,27 @@ protected:
 
 	/** Removes every kept stack gained in a dungeon that is not the one walked now. Run by `StepTimedGrants`. */
 	void ForgetKeptStacksOfAnotherDungeon();
+
+	/** One parcel of delayed damage. See `HoldDelayedDamage`. */
+	struct FDelayedDamageParcel
+	{
+		/** The whole of the share taken off the blow. */
+		float Amount = 0.0f;
+		/** How much of it has been drained out of health. */
+		float Paid = 0.0f;
+		/** The world's seconds when it was taken. A double, as the world's clock is. */
+		double TakenAtSeconds = 0.0;
+		/** The seconds it is drained over, as the row stated them when it was taken. */
+		float Seconds = 0.0f;
+		/** `DungeonBeingWalked` as it was taken. */
+		int32 DungeonId = INDEX_NONE;
+	};
+
+	/**
+	 * Every parcel of delayed damage this character holds, oldest first. Ruled 2026-10-12. NOT REPLICATED, as
+	 * `KeptStacks` is not.
+	 */
+	TArray<FDelayedDamageParcel> DelayedDamageParcels;
 
 	/** One row's count of combat seconds towards its next kept stack. See `GainKeptStack`. */
 	struct FKeptStackClock
