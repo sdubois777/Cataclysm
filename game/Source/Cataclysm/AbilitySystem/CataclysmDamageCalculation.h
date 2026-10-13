@@ -95,6 +95,43 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bCannotBeEvaded = false;
 
 	/**
+	 * Whether the defender cannot reduce or mitigate this blow. Ruled 2026-10-12 under the owner's delegation, for
+	 * "Retaliation damage cannot be reduced or mitigated by the attacker". Read into here by
+	 * `UCataclysmVitalAttributeSet` from the stamp `UCataclysmSkillEffects::CannotBeMitigatedDataName`; see
+	 * `FCataclysmHitDelivery::bCannotBeMitigated`. Its one source is retaliation from a character holding
+	 * `UCataclysmRetaliation::CannotBeMitigatedStat`.
+	 *
+	 * WHAT `Resolve` SKIPS FOR IT, the six: step 1, evasion, so the blow is never reported evaded; step 2, block,
+	 * so it is never reported blocked and `DamageBlocked` is nought; step 3, armour, the defender's own and what a
+	 * minion takes from its summoner, so `RemovedByArmour` is nought; step 4, resistance, WHEN THE FIGURE THE BLOW
+	 * MEETS IS ABOVE NOUGHT; step 5, damage reduction, the capped line and the multiplicative one, so
+	 * `RemovedByDamageReduction` is nought; and step 6, `damage_taken` with what rides on the defender's ailments,
+	 * WHEN ITS NET EFFECT ON THE BLOW IS A REDUCTION.
+	 *
+	 * WHAT `Resolve` STILL DOES TO IT. The critical strike roll and the non-critical share, which belong to
+	 * whoever is swinging and which retaliation is forbidden by another flag. `BonusDamagePercent`, the share on
+	 * top for the Nth hit of the defender's worn "every Nth hit you take" row: it is not one of the six and it
+	 * raises the blow. For a tick of damage over time, `debuff_damage_suppressed` and `damage_over_time_taken`;
+	 * no blow carries both this and the tick flag today. Step 6b, the temporary absorb; step 7, mana, for a tick
+	 * only; step 8, the energy shield, with the magic sub-type's share and the defender's
+	 * `energy_shield_damage_taken`; step 9, the slashing sub-type's share against health.
+	 *
+	 * THE ATTACKER'S TWO PENETRATIONS ARE READ AND THEN HAVE NOTHING TO CUT INTO, because the armour and the
+	 * resistance they would lower are not applied.
+	 *
+	 * THE FLAG NEVER LOWERS A BLOW. Ruled 2026-10-12. A resistance below nought, the difficulty tier's penalty
+	 * inside it included, raises this blow as it raises any other, and so does a `damage_taken` above 100. Each
+	 * step this blow skips can only lower a blow, and each step that can raise one is applied when it raises. So
+	 * on the same defender this blow is never smaller than the same blow without the flag, and before the pools
+	 * it is never smaller than the figure it arrived with.
+	 *
+	 * THE ORDER FOR THIS BLOW: the critical strike, if the blow may make one; a resistance below nought; a
+	 * `damage_taken` above 100; the Nth hit's share; the temporary absorb; mana, for a tick; the energy shield;
+	 * health. Every step before the pools is a multiplication, so their order among themselves changes nothing.
+	 */
+	bool bCannotBeMitigated = false;
+
+	/**
 	 * The attacker's chance to critically strike, 0-100.
 	 *
 	 * READ OFF THE ATTACKER AND CARRIED, for the same reason the two penetration

@@ -124,6 +124,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: An immunity to the damage type that hit added two more on 2026-10-12, the
 #: chance and the seconds, both asked by `RollDamageTypeImmunityOnHit` once a
 #: typed hit on its wearer has been taken.
+#: The flag by which retaliation cannot be mitigated added one more on
+#: 2026-10-12, asked by `UCataclysmRetaliation::CannotBeMitigatedFor` where a
+#: payment of retaliation is built.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -811,6 +814,14 @@ INVENTORY = {
         "the seconds that immunity lasts (ruled 2026-10-12), asked in the "
         "same function beside the chance and for the same reason: no tags "
         "and no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
+     'FName(CannotBeMitigatedStat), FGameplayTagContainer(), 0.0f'):
+        "whether what this character's retaliation strikes cannot reduce or "
+        "mitigate it (ruled 2026-10-12), asked by CannotBeMitigatedFor where "
+        "Pay builds the blow it sends; retaliation is not a skill, so no "
+        "tags, and the flag is the retaliating character's own and asks "
+        "nothing about the blow it took or the character it strikes, so no "
+        "blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
