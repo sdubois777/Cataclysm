@@ -3647,6 +3647,25 @@ public:
 	bool IsImmuneToDamageOf(const UAbilitySystemComponent* Attacker) const;
 
 	/**
+	 * This character has just refused a blow as immune to its attacker: write its maximum health again from the
+	 * ailment riders that still count. Ruled 2026-10-12: "on an enemy that is immune to the wearer, the wearer's
+	 * ailments and their riders take nothing either, the 'maximum health removed' rider included".
+	 *
+	 * `RewriteMaximumHealthForAilments` LEAVES OUT THE RIDER OF AN APPLIER THIS CHARACTER IS IMMUNE TO, so a
+	 * maximum such a rider was holding down returns here. Health is not raised with it: what the lowering took
+	 * before the immunity began stays taken.
+	 *
+	 * WHY HERE. Nothing announces the moment a character becomes immune; it happens by time passing. A refused
+	 * blow is the first thing that shows it, and an ailment's own tick is such a blow.
+	 *
+	 * NOTHING ANNOUNCES THE END OF THE IMMUNITY EITHER, AND NOTHING IS WRITTEN THEN. The rider counts again from
+	 * the next time the maximum is written: its applier's next application or refresh of that ailment
+	 * (`ReceiveAilmentRiders`), that ailment's tag arriving or leaving, or the next blow this character refuses
+	 * from anyone. `docs/DECISIONS.md`, 2026-10-12, states the option not taken.
+	 */
+	void NoteBlowRefusedAsImmune();
+
+	/**
 	 * How long ago `Striker`'s first blow of ITS CURRENT COMBAT got through to
 	 * this character, in seconds, or -1 when no such time stands. Ruled
 	 * 2026-10-12.

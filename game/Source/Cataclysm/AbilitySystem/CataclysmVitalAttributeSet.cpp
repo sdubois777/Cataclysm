@@ -1388,7 +1388,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			//
 			// AFTER THE TWO SAVES AND BESIDE THE CREATURE NO DAMAGE REACHES, and before the overkill line
 			// below, which then clears the overkill of a blow this emptied.
-			if (const UCataclysmAbilitySystemComponent* Refusing =
+			//
+			// AND THE RESULT SAYS WHY IT IS EMPTY, which the three other immunities above do not say of theirs.
+			// Ruled 2026-10-12: an immune enemy feeds no on-hit row and shows no figure. The mark is read by the
+			// hit's announcement, by a machine's `deployable_hit` and by the floating number; see
+			// `FCataclysmDamageResult::bRefusedByImmunityToAttacker`. THE BLOW IS STILL A COMBAT EVENT FOR BOTH
+			// CHARACTERS: the lines far below that record a hit taken and a hit dealt do not read the mark.
+			//
+			// AND A MAXIMUM AN AILMENT OF THAT ATTACKER'S WAS HOLDING DOWN RETURNS NOW. Ruled 2026-10-12: on an
+			// enemy immune to it, the attacker's ailments and their riders take nothing. Nothing announces the
+			// moment an enemy becomes immune, so the first blow it refuses is where that is acted on; for an
+			// ailment that is its next tick. See `UCataclysmAbilitySystemComponent::NoteBlowRefusedAsImmune`.
+			if (UCataclysmAbilitySystemComponent* Refusing =
 					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
 			{
 				if (Refusing->IsImmuneToDamageOf(UCataclysmTargeting::AbilitySystemOf(
@@ -1398,6 +1409,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Resolved.AbsorbedByShield = 0.0f;
 					Resolved.AbsorbedByMana = 0.0f;
 					Resolved.AbsorbedByTemporary = 0.0f;
+					Resolved.bRefusedByImmunityToAttacker = true;
+					Refusing->NoteBlowRefusedAsImmune();
 				}
 			}
 

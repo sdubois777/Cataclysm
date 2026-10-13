@@ -6,25 +6,35 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one stat's name,
 one record, its write and its clearing, and three functions),
-`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (one refusal where a blow is resolved),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (one refusal where a blow is resolved, its
+mark on the result and one call),
 `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (one refusal in `ReduceHealthDirectly`),
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` (one mark on a blow's result),
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the mark copied to the hit's
+announcement), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the player's on-hit rows refuse a
+marked blow), `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (a machine's `deployable_hit` does not
+land for a marked blow),
 `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no
 attribute), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (one text and one form of the
-status line that takes the player's pawn), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the status line
-drawn with the owning pawn), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (six tests and one
-include), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe),
+status line that takes the player's pawn, and the floating number's words for a refused blow),
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the status line drawn with the owning pawn),
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (eight tests and one include), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe),
 `tools/generate_datatables.py` (the name, two figures and one refusal),
 `tools/tests/test_generate_datatables.py` (one class of 18 tests),
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory). Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833). It stands on the entry directly below this one,
-which keeps the time of a first hit.
+which keeps the time of a first hit. It was built in two commits: the layer, and then three rulings of the
+coordinating session of 2026-10-12 on what the first commit handed back (the ailment rider, the on-hit rows and
+the floating number). This entry describes both together.
 
 ### SAID FIRST
 
 The sentence, from `game/Data/EnchantmentsNegative.csv`: "Enemies that have been alive for more than 15 seconds
 become immune to your damage until you disengage for 3 seconds".
 
-- **This row goes on the owner's play-check list.** Nothing here was played.
+- **This row goes on the owner's play-check list, and first on it, in the coordinating session's words: "to
+  re-open enemies the wearer must deal nothing and take nothing for more than 3 seconds".** Nothing here was
+  played.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** NOT COMPILED AND NOT
   RUN. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
   statement below about what the engine does was read from the code when it was written.
@@ -43,7 +53,7 @@ become immune to your damage until you disengage for 3 seconds".
   not taken is "the wearer has not struck THAT enemy for 3 seconds". A character is in combat from a hit it
   deals or takes until more than `CombatLapseSeconds`, 3 seconds, have passed with neither.
 - **So to open an immune enemy again the wearer must neither deal a hit nor take one, from anything, for more
-  than 3 seconds.** Three consequences, each read in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`,
+  than 3 seconds. Ruled 2026-10-12, accepted as built.** Three consequences, each read in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`,
   which records a hit dealt and a hit taken for every blow it resolves, whatever became of the blow:
   - **A blow of the wearer's that an immune enemy refuses still counts as a hit dealt.** Striking an immune
     enemy keeps the wearer in combat and keeps every immune enemy immune.
@@ -54,9 +64,9 @@ become immune to your damage until you disengage for 3 seconds".
     in combat until the effect ends, and so does one ticking on the wearer. The seconds between two ticks of an
     effect were not read; this holds wherever they are 3 or fewer.
 - **Exactly 3 seconds is not enough, and exactly 15 seconds is.** The lapse is "more than 3 seconds", the
-  comparison the combat clock already makes. The 15 is built as AT LEAST 15 seconds, the comparison of the
-  entry below, although the sentence writes "more than"; a judgement of the writing session, for that entry's
-  reason. A blow exactly 15.0 seconds after the first hit is refused.
+  comparison the combat clock already makes. The 15 is built as AT LEAST 15 seconds, as the merged time
+  conditions compare, although the sentence writes "more than". Ruled 2026-10-12, accepted as built. A blow
+  exactly 15.0 seconds after the first hit is refused.
 - **When the wearer's combat lapses every enemy is open again at once, and each gets a fresh 15 seconds from
   the wearer's next first hit on it.** No record is cleared at the lapse. Each enemy keeps the time of the
   wearer's first blow of the wearer's current combat. That time STANDS only while the wearer has been in combat
@@ -78,18 +88,66 @@ become immune to your damage until you disengage for 3 seconds".
   execute. The first five are one refusal, where a blow is resolved. The execute is a direct loss of health and
   is refused in `UCataclysmSkillEffects::ReduceHealthDirectly`. A refused blow also draws nothing from the
   enemy's energy shield or temporary absorb, and the wearer leeches nothing from it.
-- **ONE THING OF THE WEARER'S STILL LOWERS AN IMMUNE ENEMY'S HEALTH, AND IT IS NOT COVERED.** A worn row that
-  hangs "maximum health removed" on an ailment (`ailment_max_health_removed`) lowers the maximum health of an
-  enemy carrying the wearer's ailment, and `UCataclysmVitalAttributeSet::PostAttributeChange` lowers health to
-  a lowered maximum. Nothing built here stops the wearer applying an ailment to an immune enemy, so the rider
-  is laid and the health follows. The ailment's ticks are refused. The option not taken: refuse the wearer's
-  ailments and their riders on an immune enemy. It was not taken because the brief rules a refusal where a
-  blow is resolved, and an ailment is not a blow. It is for the coordinating session to rule.
-- **Everything of the wearer's that is not damage still lands on an immune enemy.** A stun, a slow, a
-  knockback, an ailment and its riders are not refused. Only what would be taken from health and from the two
-  pools in front of it is emptied.
-- **The wearer's minions' damage is NOT refused. This is a judgement.** The sentence names "your damage", and a
-  minion is another character. The option not taken: refuse the damage of the wearer's minions too. What was
+- **The "maximum health removed" rider on an ailment takes nothing from an enemy that is immune to the
+  ailment's applier.** Ruled 2026-10-12: "on an enemy that is immune to the wearer, the wearer's ailments and
+  their riders take nothing either, the 'maximum health removed' rider included. It is damage by another name."
+  A worn row that hangs `ailment_max_health_removed` on an ailment lowers the maximum health of an enemy
+  carrying the wearer's ailment, and health is lowered to a lowered maximum. The first commit of this layer left
+  that standing and said so. Now the sum that writes the maximum leaves out the rider of an applier the carrier
+  is immune to. The rider is the applier's whose ailment it is: one ailment on a carrier holds one applier's
+  numbers.
+  - **Laid while immune:** the ailment is carried, its ticks are refused, and its rider lowers nothing.
+  - **Immunity begun while the rider was acting:** the maximum returns at the first blow of anyone's that the
+    enemy refuses as immune, which for an ailment is its own next tick. Nothing announces the moment an enemy
+    becomes immune, so until that blow the maximum stays lowered. Health is not raised when the maximum
+    returns: what the lowering took before the immunity stays taken. The option not taken: leave the maximum
+    lowered for as long as the ailment runs. It was not taken because a lowered maximum holds down what the
+    enemy heals, which is taking, and the mechanism can return it.
+  - **When the immunity ends the rider does NOT act again by itself.** Nothing announces the end either, and
+    nothing is written then. The rider counts again the next time the maximum is written: its applier's next
+    application or refresh of that ailment, that ailment's tag arriving or leaving, or the next blow the enemy
+    refuses from anyone. Until then the enemy carries the ailment at its full maximum. The option not taken:
+    write the maximum at the applier's next blow to get through. It was not taken because that write would
+    lower health in the middle of resolving a blow, between working out what the blow deals and writing it.
+    What was built is the milder outcome for the enemy. A judgement of the writing session.
+  - **The other riders, read in `ECataclysmAilmentRider`, and whether each is refused.** Damage taken and
+    armour removed raise what the carrier takes from every blow: not refused, because the wearer's own blows
+    are refused whole and the rider then acts only on other characters' damage. Healing received lowers what
+    the carrier heals and takes no health: not refused. Damage dealt, speed and movement speed lower what the
+    carrier does: not refused. Spread on death and spread on application lay copies of the ailment on other
+    enemies: not refused; each copy's ticks meet that enemy's own immunity. Detonates when reapplied deals
+    damage, by a path that was not read to its blow: not checked. Only the maximum health rider lowers a
+    carrier's health or maximum health by itself, and it is the one changed.
+- **A refused blow fires none of the wearer's on-hit rows and feeds no leech.** Ruled 2026-10-12: "an immune
+  enemy would otherwise still feed leech and on-hit effects". What was read, and what a refused blow raises now:
+  - `hit_dealt` and `critical_strike`: the player's pawn raised both for a refused hit, with an amount of
+    nought. It no longer raises either. A blow emptied by the no-damage window, by a window against a damage
+    type or by a creature no damage reaches still raises them, as before; that is not changed.
+  - `first_hit_dealt`: never raised for a refused blow, before or now, because a blow that does not get through
+    is not recorded as a first blow.
+  - `deployable_hit`: a machine's blow was told to its summoner's rows as landed unless evaded. A refused one is
+    now told as not landed. A machine's blow is refused only while its summoner holds Conduit.
+  - `retaliation_dealt`: already told as not landed when the payment took no health. Not changed.
+  - Leech: never promised for a refused blow, before or now. It is promised only for a blow that got through.
+  - The Nth-attack and Nth-spell counts: counted at the use of a skill and not at its hit. Not changed.
+  - `dot_applied`: raised when the wearer applies a damage over time effect, to an immune enemy as to any. Still
+    raised; the ailment is carried and takes nothing.
+  - The combat event: KEPT, as ruled. A refused blow still records a hit dealt for the wearer and a hit taken
+    for the enemy, so the wearer stays in combat.
+  - The announcement itself is still made, carrying a mark that the blow was refused. So the dungeon game
+    mode's listener and every other listener still hears of the blow; what each does with it was not read.
+- **The floating number for a refused blow says "Immune to you".** Ruled 2026-10-12. Before, it printed "0",
+  the figure for a blow the defences stopped whole; a blow inside the no-damage window prints "0" still. The
+  neighbouring cases print a word ("Evaded", "Blocked"), so a word was used, the status line's. Only the text
+  is tested: `UCataclysmCombatOverlay::TextFor`. THE NUMBER ON SCREEN WAS NOT SEEN; A PERSON NEEDS TO LOOK. The
+  words say "to you" for a blow of any attacker's that is refused this way; in play that is the player, or its
+  minion under Conduit.
+- **Everything else of the wearer's that is not damage still lands on an immune enemy.** A stun, a slow, a
+  knockback and an ailment are not refused. Only what would be taken from health and from the two pools in
+  front of it is emptied, and the maximum health rider is left out.
+- **The wearer's minions' damage is NOT refused. Ruled 2026-10-12, accepted as built.** The sentence names
+  "your damage", and a minion is another character. The option not taken: refuse the damage of the wearer's
+  minions too. What was
   found about how a minion's blow names its dealer: a minion strikes as its own instigator, and
   `UCataclysmCombatEvents::AttackerOf` answers the minion for its blow, or its summoner while the summoner
   holds the Ritualist keystone Conduit (`ACataclysmMinion::HitsCountAsTheSummoners`). The refusal and the
@@ -115,15 +173,16 @@ become immune to your damage until you disengage for 3 seconds".
   so before this change and is not changed by it. It is reported to the coordinating session.
 
 **What was not read:** how a worn row becomes a line of the stat line at a gear refresh; the seconds between
-two ticks of any damage over time effect; what the hit announcement, the floating number and the wearer's
-`hit_dealt` rows do for a blow that is refused (the block beside the refusal, for a creature no damage reaches,
-says such a blow is still announced); the creature's controller and its threat; every write of the health
+two ticks of any damage over time effect; what the dungeon game mode's listener and any listener other than
+the player's pawn does with the announcement of a refused blow; how the heads-up display draws a floating
+number; the path from the "detonates when reapplied" rider to its blow; the creature's controller and its
+threat; every write of the health
 attribute that is not a blow and not `ReduceHealthDirectly`. A search for those writes found them in
 `CataclysmCommand.cpp`, `CataclysmEnemyCharacter.cpp`, `CataclysmEnemyModifiers.cpp`,
 `CataclysmPlayerCharacter.cpp`, `CataclysmHealthDebt.cpp`, `CataclysmMinion.cpp`, `CataclysmSkillTemplate.cpp`,
 `CataclysmDungeonGameMode.cpp`, one in the row loop for "You start every dungeon floor at 30%-50% of your
 maximum HP", and two in the vital set (the Sacrificial Ward's minion, and health lowered to a lowered maximum).
-Only the last was followed, and it is the hole stated above.
+Only the last was followed, and it is the maximum health rider's route, closed as stated above.
 
 ### THE RULINGS, AND WHERE EACH IS IN THE CODE
 
@@ -135,10 +194,13 @@ Each was ruled on 2026-10-12 by the coordinating session under the owner's deleg
 | R2 | "Disengage" is the wearer out of combat for the game's combat lapse. | `EngagementStands` reads the attacker's own combat clock, by the comparison `NoteCombatEvent` makes with `CombatLapseSeconds`. |
 | R3 | When the wearer's combat lapses every enemy is re-opened, with a fresh 15 seconds from the wearer's next first hit on it. | No time written before the lapse stands after it; `NoteStruckBy` overwrites a time that does not stand. See "Said first" for what is and is not cleared. |
 | R4 | It applies to bosses. | Nothing asks what the enemy is. |
-| R5 | While an enemy is immune, nothing of the wearer's reaches its health: hits, ticks, retaliation, a row's blows, explosions, an execute. | One refusal in `PostGameplayEffectExecute` for everything that is a blow, and one in `ReduceHealthDirectly` for the execute. The hole is stated under "Said first". |
+| R5 | While an enemy is immune, nothing of the wearer's reaches its health: hits, ticks, retaliation, a row's blows, explosions, an execute. | One refusal in `PostGameplayEffectExecute` for everything that is a blow, and one in `ReduceHealthDirectly` for the execute. The maximum health rider is R9. |
 | R6 | A refusal where a blow is resolved, keyed on the attacker, beside the other immunities. | Directly after the block for a creature no damage reaches, and before the line that clears overkill. `IsImmuneToDamageOf` is asked about `AttackerOf`. |
 | R7 | The stat on the wearer carries the 15; the 3 seconds are not a cell of the row. | `EnemiesImmuneAfterSecondsStat`, `enemies_immune_to_you_after_seconds`, asked of the attacker. `refuse_an_enemies_immune_row_the_game_cannot_read` in the generator. |
 | R8 | An enemy immune to the player says so on screen. | `UCataclysmCombatOverlay::ImmuneToPlayerTextFor`, and `StatusLineFor(Actor, LocalPlayerPawn)`, which `ACataclysmHUD::DrawStatusLines` now draws. |
+| R9 | On an immune enemy the wearer's ailments and their riders take nothing, the maximum health rider included. | `RewriteMaximumHealthForAilments` leaves out an applier the carrier answers `IsImmuneToDamageOf` for; `NoteBlowRefusedAsImmune` writes the maximum again at a refused blow. |
+| R10 | A refused blow feeds no leech and fires no on-hit row, and is still a combat event. | `FCataclysmDamageResult::bRefusedByImmunityToAttacker`, copied to `FCataclysmHitNotice`, read by `ACataclysmPlayerCharacter::OnSomethingWasHit` and by `ACataclysmMinion::AttackTarget`. The lines that record a hit dealt and a hit taken do not read it. |
+| R11 | The floating number for a refused blow shows the status line's words. | `UCataclysmCombatOverlay::TextFor`, after "Evaded" and before any figure. |
 
 ### `ReduceHealthDirectly` AND ITS CALLERS
 
@@ -179,6 +241,15 @@ takes from itself is never refused.
   system answers `IsImmuneToDamageOf` for the pawn's, and empty for no pawn, the pawn itself and a dead actor.
   `StatusLineFor(Actor, LocalPlayerPawn)` is the existing line with that text joined on after it. The existing
   `StatusLineFor(Actor)` is unchanged, and every caller but the heads-up display still calls it.
+- **The mark on a refused blow.** `FCataclysmDamageResult::bRefusedByImmunityToAttacker`, set where the blow is
+  emptied and nowhere else. `UCataclysmCombatEvents::NoteBlow` copies it to
+  `FCataclysmHitNotice::bRefusedByImmunityToAttacker`. `ACataclysmPlayerCharacter::OnSomethingWasHit` returns
+  for a marked notice before it raises `hit_dealt`, `first_hit_dealt` or `critical_strike`.
+  `ACataclysmMinion::AttackTarget` tells `deployable_hit` the blow did not land. `TextFor` prints "Immune to
+  you" for a marked result that was not evaded.
+- **The rider.** In `RewriteMaximumHealthForAilments`, a carried ailment whose applier the carrier is immune to
+  adds nothing to the sum. `NoteBlowRefusedAsImmune()`, public, calls that function with no arguments; the
+  refusal of a blow calls it.
 - **The generator.** `ENEMIES_IMMUNE_AFTER_SECONDS_STAT` holds the name, `MAX_ENEMIES_IMMUNE_AFTER_SECONDS` the
   bound of 60, a judgement of the writing session, and `COMBAT_LAPSE_SECONDS` the 3 its messages quote.
   `refuse_an_enemies_immune_row_the_game_cannot_read` refuses an enchantment's row on the stat that is not
@@ -214,7 +285,7 @@ The coordinating session rules on each.
 
 ### Tests
 
-Six new Unreal tests at the end of `CataclysmSkillTemplateTests.cpp`, in the group
+Eight new Unreal tests at the end of `CataclysmSkillTemplateTests.cpp`, in the group
 `Cataclysm.ImmuneAfterFifteenSeconds.`, on the rig of the execute tests in that file: a player character on a
 player state at the origin, and creatures of the game's own class along +X, 4 m apart and at least 4 m from the
 player. A second attacker, where there is one, is a bare fighter 16 m along +X. The wearer's stat line is
@@ -260,6 +331,27 @@ inside the 15 seconds first as the control. No critical strike is rolled.
   20. With the stat at 15 it is immune at once. With the stat at 30 it is not, and at 31 seconds it is. With
   the stat at nought it is not.
 
+- `ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`: the wearer holds a life leech
+  of 10 and three hand-made rows that each grant a stack on one event. Every blow has a critical strike chance
+  of 100 with the roll pinned to nought. The first hit takes health, raises `hit_dealt` and `first_hit_dealt`
+  once, is promised one leech payment, is not marked as refused and prints no words (the controls), and raises
+  `critical_strike` once. 16 seconds on, the last 2.5 of them with nothing done, the creature is immune. The
+  refused blow takes nothing, is marked, raises no `hit_dealt`, no `first_hit_dealt` and no `critical_strike`,
+  is promised no leech, and prints "Immune to you". 2.5 seconds after it, and 5 after the event before it, the
+  wearer is still in combat and the creature still immune. The comparison: a second creature inside its own
+  no-damage window takes nothing from a blow, the blow is not marked, `hit_dealt` is raised for it, and it
+  prints "0". Then the text alone on results made by hand: nothing dealt prints "0", the same marked prints the
+  words, and an evaded one prints "Evaded".
+- `TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt`: bare fighters, as in the tests of the
+  rider itself, the two enemies 5 m and 8 m from the wearer with 1,000 health each. The wearer holds the
+  immunity row at 15 and a row of 2% of maximum health removed on Necrosis, and strikes each enemy once. The
+  first enemy is given the Necrosis inside its 15 seconds: its maximum is 980 and its health no more (the
+  control). 16 seconds on both are immune. The second is given the Necrosis then: it carries it, its maximum is
+  1,000, its health is where it was and nothing is held off. The first's maximum is still 980 until a tick of
+  the wearer's is refused; the tick takes nothing, the maximum returns to 1,000 and its health does not move.
+  3.5 seconds later the second is not immune and its maximum is still 1,000; the wearer refreshes its Necrosis,
+  and its maximum is 980, its health no more, and 2% is held off.
+
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
 `ProbeEnemiesImmuneAfterSeconds`. Two bare attackers each strike one bare enemy and stay in combat for 16
 seconds. The blow of the one without the stat reaches health (the control), and the blow of the one holding the
@@ -278,44 +370,52 @@ a scale is refused by the two checks that hold those; a passive node's row and a
 alone; the sheet's validation runs the check; and a misspelt name of another value kind is refused by the
 sheet's validation.
 
-**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; the hole
-stated under "Said first", an ailment rider that lowers maximum health; a periodic damage over time effect
+**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; the maximum
+health rider with a real periodic tick as the refused blow, and with two ailments or two appliers on one enemy;
+a machine's `deployable_hit` for a refused blow, which needs a summoner holding Conduit; what the dungeon game
+mode does with the announcement of a refused blow; the floating number as drawn; a periodic damage over time effect
 ticking by the engine's own timer (the ticks here are single blows marked as ticks); a real skill of the
 wearer's, a projectile, a ground zone or a deployable (every hit here is `ApplyHit` or `ApplyDirectDamage`
 called by the test); retaliation paid in answer to a real blow, and a reflected hit; an execute asked by a real
 row through a real hit; the wearer holding Conduit, where a minion's blow is the wearer's; the wearer taking a
 hit, as the thing that keeps it in combat; the wearer's death and revival; an enemy's revival; a Cataclysm
 Boss; a creature with an energy shield or a temporary absorb, whose pools a refused blow should not draw; the
-leech a refused blow should not pay; what the hit announcement and the floating number show for a refused
-blow; the Sacrificial Bond's share; anything drawn by the heads-up display, where only the text is read; a
+leech a refused blow should not pay, for any blow but a hit; the Sacrificial Bond's share; anything drawn by the heads-up display, where only the text is read; a
 world whose clock does not start at a time a float holds exactly.
 
 ### GUARD PROOFS PROPOSED
 
 Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
 The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
-`Cataclysm.ImmuneAfterFifteenSeconds.`, with its trailing dot, which is 6 tests.
+`Cataclysm.ImmuneAfterFifteenSeconds.`, with its trailing dot, which is 8 tests. They were derived again
+against the layer's second commit.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
 |---|---|---|---|---|---|
-| I-I, a blow from the attacker is refused where it is resolved | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (Refusing->IsImmuneToDamageOf(UCataclysmTargeting::AbilitySystemOf(` | `if (Refusing->IsImmuneToDamageOf(nullptr) && UCataclysmTargeting::AbilitySystemOf(` | `InsideTheFifteenSecondsEveryKindOfTheWearersDamageReachesAnEnemyAndFromThemOnNoneDoes` | `WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds`, `ABossBecomesImmuneToTheWearerAndTheWearersMinionAndAnotherCharacterStillDamageIt` and `ACharacterWithoutTheRowMakesNothingImmuneAndTheStatCarriesTheSeconds` |
+| I-I, a blow from the attacker is refused where it is resolved | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (Refusing->IsImmuneToDamageOf(UCataclysmTargeting::AbilitySystemOf(` | `if (Refusing->IsImmuneToDamageOf(nullptr) && UCataclysmTargeting::AbilitySystemOf(` | `InsideTheFifteenSecondsEveryKindOfTheWearersDamageReachesAnEnemyAndFromThemOnNoneDoes` | `WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds`, `ABossBecomesImmuneToTheWearerAndTheWearersMinionAndAnotherCharacterStillDamageIt`, `ACharacterWithoutTheRowMakesNothingImmuneAndTheStatCarriesTheSeconds`, `ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent` and `TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt` |
 | I-II, a direct loss in the attacker's name is refused | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `if (Refusing->IsImmuneToDamageOf(Source))` | `if (Refusing->IsImmuneToDamageOf(nullptr))` | `AnExecuteAskedByTheWearerKillsInsideTheFifteenSecondsAndDoesNothingAfterThem` | `InsideTheFifteenSecondsEveryKindOfTheWearersDamageReachesAnEnemyAndFromThemOnNoneDoes` |
-| I-III, a time stops standing when the attacker's combat lapses | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (Now - Its->LastCombatEventAtSeconds > CombatLapseSeconds)` | `if (Now - Its->LastCombatEventAtSeconds > CombatLapseSeconds * 1000.0f)` | `WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds` | `AnExecuteAskedByTheWearerKillsInsideTheFifteenSecondsAndDoesNothingAfterThem` and `TheStatusLineSaysImmuneToYouUnderACreatureThePlayersDamageIsRefusedBy` |
+| I-III, a time stops standing when the attacker's combat lapses | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (Now - Its->LastCombatEventAtSeconds > CombatLapseSeconds)` | `if (Now - Its->LastCombatEventAtSeconds > CombatLapseSeconds * 1000.0f)` | `WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds` | `AnExecuteAskedByTheWearerKillsInsideTheFifteenSecondsAndDoesNothingAfterThem`, `TheStatusLineSaysImmuneToYouUnderACreatureThePlayersDamageIsRefusedBy` and `TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt` |
 
 Failed assertions in each test, by reading:
 
-- **I-I, 11 in 4 tests.** The every-kind test 7: "from 15 seconds on, ... of the wearer's takes nothing", five
+- **I-I, 21 in 6 tests.** The every-kind test 7: "from 15 seconds on, ... of the wearer's takes nothing", five
   times, once for each kind; "the refused hit resolves to nothing dealt to health"; and "and a hit of the
   wearer's still takes nothing", at 45 seconds. Its two lines about the direct loss pass, because that refusal
   is in another file, and its lines that ask whether the creature is immune pass, because the function that
   answers is not broken. The lapse test 1: "and a hit takes nothing from it". The Boss test 2: "and the
   wearer's hit takes nothing from it"; and "control, read last: at that same moment the wearer's hit still
-  takes nothing". The stat test 1: "and a hit takes nothing". The execute test and the status line test pass.
+  takes nothing". The stat test 1: "and a hit takes nothing". The feeds-nothing test 7: "the refused blow takes nothing"; "its
+  result is marked as refused by an immunity to its attacker"; "it raises no hit_dealt: still one"; "it raises
+  no critical_strike: what the first hit left"; "and the wearer is promised no leech for it"; "its floating
+  text is the words the status line uses"; and "comparison: it still raises hit_dealt, as before this change:
+  two now", which would read three. Its line on `first_hit_dealt` passes, because the blow that lands is not the
+  wearer's first on that creature. The rider test 3: "the refused tick takes nothing"; "and at that refusal the
+  maximum returns to 1,000"; and "and nothing is held off it". The execute test and the status line test pass.
 - **I-II, 6 in 2 tests.** The execute test 4: "after the 15 seconds, one health under the share, the wearer's
   request does nothing"; "and the creature lives"; "holding what it held"; and "control, read last: with the
   wearer's combat lapsed the same request kills", because the creature is already dead. The every-kind test 2:
   "a direct loss of health in the wearer's name is refused"; and "and takes nothing".
-- **I-III, 10 in 3 tests.** The lapse test 8: "the first creature is no longer immune"; "nor the second"; "and
+- **I-III, 11 in 4 tests.** The lapse test 8: "the first creature is no longer immune"; "nor the second"; "and
   the first holds no standing time for the wearer"; "a tick of the wearer's now takes health from the first
   creature", because the tick is refused; "and starts its time for the wearer from nought", which would read
   -1, because the refused tick still begins a new combat and the old time is before it; "while the first's is
@@ -323,14 +423,35 @@ Failed assertions in each test, by reading:
   because the first's time was written by the hit half a second earlier; and "and a hit takes nothing from
   it". The execute test 1: "set-up: 3.5 seconds after the wearer's last blow the creature is not immune", after
   which the test returns. The status line test 1: "3.5 seconds after the wearer's last blow the text is empty
-  again".
+  again". The rider test 1: "set-up: 3.5 seconds after the wearer's last blow the second enemy is not immune",
+  after which the test returns.
 
 One message is used for more than one assertion: the every-kind test's "from 15 seconds on" line, five times,
 each with the kind's name in it.
 
 **Tests and no proof:** that the comparison with the stat is at least and not more than; that the time is kept
 for each attacker apart; that the character itself is never refused; the text and the form of the status line
-that takes the pawn; the write of the time only when none stands, apart from what I-III shows of it.
+that takes the pawn; the write of the time only when none stands, apart from what I-III shows of it; the
+floating number's words and the on-hit rows, apart from what I-I shows of them.
+
+**Two other proofs, offered in place of I-III if the new rules are thought to deserve one more.** Neither was
+run and each anchor was counted once.
+
+- The rider is left out for an applier the carrier is immune to. File
+  `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`, old text
+  `if (IsImmuneToDamageOf(Held.Value.Applier.Get()))`, new text `if (IsImmuneToDamageOf(nullptr))`. Test stated
+  to fail: `TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt`, 6 assertions: "a Necrosis laid
+  on an immune enemy leaves its maximum at 1,000"; "and its health where it was"; "and nothing is held off its
+  maximum"; "and at that refusal the maximum returns to 1,000"; "and nothing is held off it"; and "when the
+  immunity ends the second enemy's maximum is still 1,000: nothing is written then". No other test of the
+  group is expected to fail.
+- The player's on-hit rows refuse a marked blow. File
+  `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, old text
+  `if (Notice.bRefusedByImmunityToAttacker)`, new text
+  `if (Notice.bRefusedByImmunityToAttacker && Notice.bEvaded)`. Test stated to fail:
+  `ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent`, 3 assertions: "it raises no
+  hit_dealt: still one"; "it raises no critical_strike: what the first hit left"; and "comparison: it still
+  raises hit_dealt, as before this change: two now". No other test of the group is expected to fail.
 
 One test outside the prefix is expected to fail under I-I:
 `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, on its new probe's last assertion. No other
