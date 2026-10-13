@@ -3017,6 +3017,126 @@ class TestDamageImmunityAndTheShieldRecharge:
             "Value Low": 50, "Value High": 100}))
         assert out[0]["TriggerCooldown"] == 0.0
 
+class TestTeleportToARandomPointWhenHit:
+    """A row that moves its wearer to a random reachable point nearby when it is
+    hit. Ruled 2026-10-12 by the coordinating session under the owner's
+    delegation: "Teleport to a random location within 4 meters when hit". The
+    value is the metres, the event is `hit_taken` and no other, and the row
+    states its Trigger Cooldown because its sentence states none."""
+
+    WORDS = "Teleport to a random location within 4 meters when hit"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    IMMUNE_WORDS = "When you are hit, you become immune to all damage for 3 seconds"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Slot.Movement, Trigger.OnHit", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [IMMUNE_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values, words=WORDS):
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:],
+                        self.ENCHANTMENTS[2]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "teleport.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def teleport(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "teleport_randomly", "Action Event": "hit_taken",
+                  "Value Low": 4, "Trigger Cooldown": 2}
+        values.update(changes)
+        return self.book(tmp_path, values, words)
+
+    def test_the_row_name_is_the_one_the_table_of_sentences_gives(self):
+        assert self.NAME == "Positive_Teleport_to_a_random_location_within_4_meters_wh"
+
+    def test_the_ruled_row_is_carried_through_with_its_metres_and_its_two_seconds(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.teleport(tmp_path, {}))
+        assert len(out) == 1
+        assert out[0]["Enchantment"] == self.NAME
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["TriggerCooldown"], out[0]["RequiredTags"],
+                out[0]["FractionOf"], out[0]["Scale"], out[0]["Condition"]) == (
+            "teleport_randomly", "hit_taken", 4.0, 4.0, 2.0, "", "", "", "")
+
+    def test_control_another_action_on_a_hit_taken_takes_the_quarter_second_when_it_states_none(
+            self, tmp_path):
+        """So the refusal below is this action's own and not the event's."""
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": gen.row_name("Positive", self.IMMUNE_WORDS[:48]),
+            "Effect": self.IMMUNE_WORDS, "Action": "damage_immunity",
+            "Action Event": "hit_taken", "Value Low": 3}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_the_row_that_states_no_trigger_cooldown_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Trigger Cooldown"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Trigger Cooldown": None}))
+
+    @pytest.mark.parametrize("seconds", [0, 0.25, 10])
+    def test_a_stated_trigger_cooldown_is_carried_through_and_nought_is_none(
+            self, tmp_path, seconds):
+        out = gen.enchantment_effects(self.teleport(tmp_path, {"Trigger Cooldown": seconds}))
+        assert out[0]["TriggerCooldown"] == float(seconds)
+
+    def test_the_action_is_one_that_takes_a_trigger_cooldown(self):
+        assert gen.takes_a_trigger_cooldown(gen.TELEPORT_RANDOMLY_ACTION)
+        assert gen.TELEPORT_RANDOMLY_ACTION not in gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN
+
+    def test_the_name_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Action": "teleport_random"}))
+
+    @pytest.mark.parametrize("event", ["melee_hit_taken", "block", "dodge", "hit_dealt",
+                                       "every_seconds", "skill_use", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="for a hit taken and for nothing else"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_hit_taken_alone(self):
+        assert gen.TELEPORT_RANDOMLY_EVENTS == ("hit_taken",)
+        assert set(gen.TELEPORT_RANDOMLY_EVENTS) <= gen.action_events()
+        assert set(gen.TELEPORT_RANDOMLY_EVENTS) <= set(gen.HIT_FIRED_EVENTS)
+        assert not set(gen.TELEPORT_RANDOMLY_EVENTS) & set(gen.EVENTS_WITH_AN_AMOUNT)
+
+    @pytest.mark.parametrize("metres", [0, -4, 21])
+    def test_metres_of_nought_or_below_or_past_the_bound_are_refused(self, tmp_path, metres):
+        words = self.WORDS.replace("4 meters", f"{metres} meters")
+        with pytest.raises(gen.DataError, match="It is above 0 and up to 20"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Value Low": metres}, words=words))
+
+    def test_metres_at_the_bound_are_carried_through(self, tmp_path):
+        words = self.WORDS.replace("4 meters", "20 meters")
+        out = gen.enchantment_effects(self.teleport(tmp_path, {"Value Low": 20}, words=words))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (20.0, 20.0)
+
+    def test_a_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Value Low": 2, "Value High": 4}))
+
+    @pytest.mark.parametrize("column, written", [("Required Tags", "Slot.Movement"),
+                                                 ("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_tags_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="metres and its event carries no tags"):
+            gen.enchantment_effects(self.teleport(tmp_path, {column: written}))
+
+    def test_an_event_value_is_refused_as_on_every_event_but_the_threshold(self, tmp_path):
+        """The option not taken for the metres: Event Value is read by one event
+        and refused on every other, this one included."""
+        with pytest.raises(gen.DataError, match="states an Event Value"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Event Value": 4}))
+
+
 class TestRidersOnAnAilment:
     """A number hung on an ailment the wearer applies. Issue #1833, ruled
     2026-10-06: "Bleeding enemies take 20%-40% increased damage from all

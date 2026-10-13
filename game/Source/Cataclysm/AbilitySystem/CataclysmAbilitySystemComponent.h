@@ -1324,6 +1324,71 @@ public:
 	static const TCHAR* DamageImmunityAction;
 
 	/**
+	 * The action that MOVES ITS WEARER TO A RANDOM REACHABLE POINT within its value in metres. Ruled 2026-10-12 by
+	 * the coordinating session under the owner's delegation, for "Teleport to a random location within 4 meters when
+	 * hit". `tools/generate_datatables.py` holds the same name in `TELEPORT_RANDOMLY_ACTION`. See
+	 * `FCataclysmPoolAction::bTeleportRandomly` and `TeleportTheWearerRandomly`.
+	 */
+	static const TCHAR* TeleportRandomlyAction;
+
+	/**
+	 * How many points `TeleportTheWearerRandomly` asks the navigation system for before it gives up and leaves the
+	 * wearer where it stands. A JUDGEMENT OF THE WRITING SESSION and not a ruled number.
+	 *
+	 * MORE THAN ONE BECAUSE THE NAVIGATION SYSTEM'S ANSWER IS NOT HELD TO THE RADIUS ASKED. It picks a point in a
+	 * navigation polygon the circle reaches, and that point can lie outside the circle. A point further than the
+	 * row's metres is thrown away and another is asked for.
+	 */
+	static constexpr int32 TeleportRandomlyDraws = 8;
+
+	/**
+	 * Whether the blow `NoteHitTaken` is announcing with the event `hit_taken` is a TICK of damage over time and not
+	 * a hit. Set by `NoteHitTaken` for the length of its call to `ActOnEvent` and false at every other time.
+	 *
+	 * HERE BECAUSE THE EVENT CARRIES NO SUCH FACT. `hit_taken` is raised for every blow, ticks included, with no
+	 * tags, no amount and no character, and every row on it before 2026-10-12 acts on a tick as on a hit. The action
+	 * `TeleportRandomlyAction` is ruled to act on a hit only, so the row loop reads this for that action and for no
+	 * other.
+	 *
+	 * WRITTEN BY `NoteHitTaken` ONLY. A test that raises `hit_taken` by calling `ActOnEvent` itself leaves it false,
+	 * which says "not a tick".
+	 */
+	bool bHitBeingAnnouncedIsATick = false;
+
+	/**
+	 * Move this character to a random reachable point within this many metres of where it stands, or leave it where
+	 * it stands. Ruled 2026-10-12, for "Teleport to a random location within 4 meters when hit".
+	 *
+	 * WHERE IT MAY LAND. A point the navigation system says a path exists to from where the character stands
+	 * (`UNavigationSystemV1::GetRandomReachablePointInRadius`, the call an enemy's roaming makes), no further along
+	 * the ground than the metres given, and where `UWorld::FindTeleportSpot` says the character's collision fits
+	 * without overlapping anything that blocks it. A point that fails either is not used. So the character is never
+	 * put inside a wall, inside another character or off the navigation mesh.
+	 *
+	 * IT STAYS PUT, and this returns false, when: the character is dead; the metres are nought or less; a movement
+	 * skill of the character's is running (a lasting charge or a Flicker between arrivals), because that skill
+	 * measures its own walk from where the character was; the world has no navigation system; the navigation system
+	 * finds no reachable point within the metres in `TeleportRandomlyDraws` draws; the point does not fit; or the
+	 * point is within one centimetre of where the character already stands.
+	 *
+	 * IT IS NOT MOVEMENT. No distance is added to `MetresMovedSinceOwnAttack` or `MetresWalkedTotal`, the character
+	 * is not marked as moving, and the clock `SecondsSinceMoved` reads is not touched. The place the movement
+	 * sampler last saw the character is moved by exactly what the character was moved by, so the sampler's next step
+	 * measures only what the character walked.
+	 *
+	 * NOTHING ELSE IS MOVED OR ENDED. Followers and minions stay where they are. No skill is cancelled.
+	 *
+	 * FOR TESTS, `Cataclysm.TeleportRandomlyDegrees` at nought or above pins the direction, in degrees from the
+	 * world's X axis towards its Y axis, and `Cataclysm.TeleportRandomlyShare` then gives the distance as a share of
+	 * the metres, from 0 to 1. A PINNED POINT IS TAKEN AS REACHABLE and the navigation system is not asked, because
+	 * a world made for an automation test has none. The fit is still asked.
+	 *
+	 * @param Metres  the furthest the character may be moved, along the ground
+	 * @return whether the character was moved
+	 */
+	bool TeleportTheWearerRandomly(float Metres);
+
+	/**
 	 * The action that reflects a share of the damage a block removed, and the
 	 * nearby action scaled by armour. Issue #1833 group E part 3, ruled
 	 * 2026-10-02. `tools/generate_datatables.py` holds the same names in

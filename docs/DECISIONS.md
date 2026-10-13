@@ -2,6 +2,316 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can move its wearer to a random reachable point nearby when it is hit, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (one field of `FCataclysmPoolAction`),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one action name, one count of
+draws, one flag that says a blow being announced is a tick, one function, two console variables, one branch of
+the row loop, one line in `NoteHitTaken`, one include), `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the row's
+flag), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (five tests and one include),
+`tools/generate_datatables.py` (one action name and its checks), `tools/tests/test_generate_datatables.py` (27
+tests), `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one name, one test). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence: "Teleport to a random location within 4 meters when hit".
+
+- **NOT COMPILED AND NOT RUN.** Nothing here was compiled and no Unreal test was run by the session that wrote
+  it. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** Nobody is moved until the enchantment session writes the
+  row.
+- **THE ROW GOES ON THE OWNER'S PLAY-CHECK LIST.** Where a wearer lands in a real dungeon, what the camera does
+  and whether 2 seconds is the right wait cannot be judged from an automation test: a test world has no floor,
+  no walls and no navigation system.
+- **THE SENTENCE STATES NO COOLDOWN, AND THE ROW IS GIVEN ONE OF 2 SECONDS. A judged number, ruled 2026-10-12 by
+  the coordinating session under the owner's delegation.** Why one is given: `hit_taken` is a hit-fired event,
+  and an action row on one waits 0.25 seconds when its Trigger Cooldown cell is empty (ruled 2026-09-30). With
+  nothing stated, a wearer under steady hits would be moved four times a second. The row states Trigger Cooldown
+  2. The generator REFUSES a row of this action whose Trigger Cooldown cell is empty, so the judged number
+  cannot be lost by leaving the cell out. That refusal is a judgement of the writing session. The option not
+  taken: accept an empty cell and give it the 0.25 seconds every other action on this event takes. A stated 0
+  is accepted and is none.
+- **The wait starts only when the wearer was moved.** A hit that finds no point to move to starts no wait, so
+  the next hit asks again. A judgement of the writing session. The option not taken: start the wait at every
+  landed hit, moved or not.
+- **WHICH BLOWS MOVE THE WEARER.** Ruled: a landed hit only; not a tick of damage over time; not an evaded hit.
+  Read: the attribute set calls `NoteHitTaken(!Outcome.bEvaded, attacker, Hit.bIsDamageOverTime)` for every
+  blow that reaches it, so `bLanded` is false for an evaded blow and true for every other.
+  - *A blocked hit moves the wearer*, a block that stopped the whole blow included. `bLanded` is true for it,
+    and the rulings of 2026-09-24 and 2026-10-08 already read a blocked blow as one that landed. Decided by the
+    sentence: "when hit" says nothing about what got through. The option not taken: only a hit that took
+    something from health or from a pool.
+  - *A hit the energy shield, the mana shield or a temporary absorb took whole moves the wearer*, for the same
+    reason. So does a hit that armour, resistance or a no-damage window reduced to nothing. The option not
+    taken is the same.
+  - *A tick does not.* The event `hit_taken` carries no tags, no amount and no character, and nothing on it
+    said whether the blow was a tick: every row on it before this one acts on a tick as on a hit. So
+    `NoteHitTaken` now holds that fact in `bHitBeingAnnouncedIsATick` for the length of its call to
+    `ActOnEvent`, and the row loop reads it for this action and for no other. No existing row changes.
+  - *An evaded hit does not.* `bLanded` is false.
+  - *A hit the wearer deals to itself moves it.* A judgement of the writing session, by the sentence, which
+    names no attacker. The option not taken: leave the wearer's own blow out, as `hit_taken_cancels_skills`
+    does. Not tested.
+  - *A hit that kills the wearer does not move it.* The action refuses a dead character. Read from the comment
+    in the attribute set that says the death has been announced by the time `NoteHitTaken` is called. Not
+    tested.
+- **THE HIT THAT MOVES THE WEARER IS ITSELF TAKEN IN FULL.** `NoteHitTaken` is called after the hit's damage is
+  written to health. The wearer is moved after that, so the move saves it nothing from that hit. Tested.
+- **WHERE THE WEARER MAY LAND, AND BY WHAT CHECK.** Three checks, all of which a point must pass.
+  1. A point `UNavigationSystemV1::GetRandomReachablePointInRadius` returns for where the wearer stands and the
+     row's metres. That is the call an enemy's roaming makes. It returns a point on the navigation mesh that a
+     path exists to, so not a point behind a wall with no way round within reach, and not a point off the floor.
+  2. No further than the row's metres along the ground from where the wearer stood. The navigation system picks
+     a point in a navigation polygon its circle reaches, and that point can lie outside the circle, so a point
+     further than the metres is thrown away and another is asked for, up to 8 times
+     (`TeleportRandomlyDraws`, a number of the writing session's).
+  3. `UWorld::FindTeleportSpot` says the wearer's collision fits there. It moves a point a little out of
+     anything that blocks the wearer, and refuses a point it cannot make fit. A point it had to move past the
+     row's metres is refused. So the wearer is not put inside a wall or inside another character.
+  The wearer stands half its own height above the point, because the point is on the ground and a character's
+  place is its middle. The move itself is `TeleportTo` with no sweep and no further check, as the dungeon's own
+  relocations are made.
+- **WITH NO REACHABLE POINT THE WEARER STAYS PUT.** Ruled. That is: no navigation system in the world; no point
+  within the metres in 8 draws; or a point that does not fit. There is no fallback to an unchecked point.
+- **A WORLD MADE FOR AN AUTOMATION TEST HAS NO NAVIGATION SYSTEM.** Checked: the third test below asserts it
+  before it relies on it. So in a test, with nothing pinned, a wearer is never moved. Built as the enchantment
+  session proposed: two console variables pin the point for tests. `Cataclysm.TeleportRandomlyDegrees`, at
+  nought or above, is the direction in degrees from the world's X axis towards its Y axis.
+  `Cataclysm.TeleportRandomlyShare` is then the distance as a share of the row's metres, held to 0 to 1. A
+  PINNED POINT IS TAKEN AS REACHABLE: the navigation system is not asked. The fit check is still made. So no
+  test here exercises the navigation system's answer or the redraw. Both are in "Not tested".
+- **Any level with no navigation system leaves the wearer where it stands.** The dungeon level has navigation
+  bounds (issue [#2366](https://github.com/sdubois777/Cataclysm/issues/2366) extended them). Whether every level
+  a player can be hit in has them was not read.
+- **IT CAN MOVE THE WEARER TOWARDS ENEMIES, INTO A GROUP OF THEM, OR ONTO A HAZARD ON THE GROUND.** The point is
+  random. Nothing asks what stands or lies at it, other than that the wearer's collision fits.
+- **FOLLOWERS AND MINIONS ARE NOT MOVED.** Nothing moves them with the wearer.
+- **AN ENEMY'S ATTACK ALREADY UNDER WAY: PARTLY READ.** `ACataclysmEnemyCharacter::AttackTarget` deals its hit to
+  the target it is handed, with no question about distance on that line. Whether its caller asks about reach
+  again at the moment a swing connects was NOT READ, and what a projectile already in the air does when its
+  target is moved was NOT READ.
+- **IT DOES NOT END A SKILL IN USE.** Ruled. The action cancels nothing. Tested for a strike that spins: it is
+  still running after the move. Where a running spin's later swings search from, and what a swing waiting to
+  connect does when its user is moved, were NOT READ.
+- **A WEARER WHOSE MOVEMENT SKILL IS RUNNING IS NOT MOVED.** A judgement of the writing session, made because
+  moving the pawn WOULD break a running charge. Read: a lasting charge
+  (`UCataclysmMovementSkill::AdvanceOneStep`) adds to its walk the distance from where its last search ended
+  to where the character is now, and strikes what lies on that line. Moved from outside, it would count up to
+  4 metres as ground walked, pay `share_of_range_moved` for it and strike along it. So while any movement skill
+  of the wearer's is running (a lasting charge, or a Flicker between arrivals) the action leaves the wearer
+  where it stands and starts no wait. Read: those two are the modes that set timers and stay running; every
+  other mode makes its one move and ends inside the call that uses it, so none of them is running when a hit
+  lands. The option not taken: move the wearer and move the charge's search point by
+  the same amount, which needs a new function on the movement skill.
+- **IT IS NOT MOVEMENT, AND IT FEEDS NONE OF THE FOUR MOVEMENT RECORDS.** Ruled. The existing ruling is in the
+  entry headed "## 2026-09-12 — A character knows whether it is moving, Forced March damages one that stands
+  still, and The Nihil's Embrace takes resistance as it walks", judgement 2: "**A teleport is not movement.**"
+  What records a character's movement, read: `UCataclysmMovement::SampleStep` compares where the character is
+  with where it last saw it, four times a second, and writes four things on the ability system component.
+  - *The distance since its own last attack* (`MetresMovedSinceOwnAttack`, read by `metres_moved_before_attack`):
+    not fed.
+  - *The total distance walked* (`MetresWalkedTotal`, read by the dungeon game mode for The Nihil's Embrace):
+    not fed.
+  - *Whether it is moving* (`IsMoving`, read by `while_moving`, `while_stationary` and
+    `melee_hit_while_moving`): not fed.
+  - *The clock of when it last moved* (`SecondsSinceMoved`, read by `stationary_for_seconds`,
+    `moved_within_seconds` and the scale `seconds_stationary`): not fed.
+  How: the sampler cannot tell an instant move from a walk. So when the action moves the wearer it moves the
+  place the sampler last saw the wearer by the same amount. The sampler's next step then measures only what the
+  wearer walked.
+- **THIS DIFFERS FROM THE 2026-09-12 JUDGEMENT IN ONE THING, AND THE COORDINATING SESSION SHOULD RULE ON IT.**
+  That judgement says a teleport "starts the standing-still clock afresh without adding distance", and
+  `UCataclysmAbilitySystemComponent::NoteRelocatedInstantly` exists to do that. This action does NOT call it:
+  the brief's ruling is that the move is not movement for the rows that ask whether the wearer is stationary,
+  and `stationary_for_seconds` is such a row. So a wearer who has stood still for 5 seconds and is moved by
+  this row still reads 5 seconds. The option not taken is one line: call `NoteRelocatedInstantly` after the
+  move, which restarts that one clock and feeds nothing else.
+- **FOUND WHILE READING, AND NOT CHANGED: `NoteRelocatedInstantly` HAS NO CALLER IN THE GAME.** Its comment and
+  the comment on `UCataclysmMovement` say each place that relocates a character at once calls it: a blink, a
+  recall, a swap, a Flicker, the Phasewalker modifier and the placement at a floor's start. A search of
+  `game/Source` finds the declaration, the definition and one call in `CataclysmMovementTests.cpp`, and no
+  other. So those relocations are counted by the sampler as ground walked today. Not in this layer's scope.
+- **THE 4 METRES ARE THE ROW'S VALUE.** Value Low 4 and Value High 4. The engine reads the value of this action
+  as metres, as it reads the value of `damage_immunity` as seconds. This costs no other row anything: no column
+  is added and no check on another action changes. Two options not taken. *Event Value*, which the search
+  suggested: one event reads it and the generator refuses it on every other, so it would need that refusal
+  opened for this action, and the row would still have to state a value, which for this sentence would be a
+  chance nobody wrote. *An engine constant*, as `use_hits_all_nearby` holds its 3 metres: the row would not
+  state the 4, and a second sentence with another distance would need engine code.
+- **THE SENTENCE'S TAG `Slot.Movement` CANNOT SCOPE THE ROW.** `hit_taken` carries no tags, and
+  `PoolActionAllowed` refuses a row with Required Tags on an event with none. The generator refuses Required
+  Tags on this action, so a row that could never act is not written.
+- **AN ENEMY WEARING THE ROW.** The action acts on whatever character wears it: it asks nothing about the
+  wearer being a player. Rows reach a character through `UCataclysmEquipmentComponent::RefreshAttributes`,
+  which is the one caller of `SetPoolActions` outside tests, so no enemy wears a row today. Not tested on an
+  enemy.
+- **Rows of the wearer's on `melee_hit_taken` are judged after the move.** The attribute set raises
+  `melee_hit_taken` after `hit_taken`, so a condition on the distance to the attacker on such a row reads the
+  wearer's new place. Read and not tested.
+- **Two different rows of this action worn together each move the wearer for one hit.** Each row has its own
+  key and its own wait. Two copies of the same row share one key and move it once.
+- **No least distance.** A random point may be centimetres from where the wearer stood. A point within one
+  centimetre is no move and starts no wait.
+- **Nothing existing fitted, so three things are new:** the fact of a tick held while `hit_taken` is acted on;
+  a move that asks the navigation system and the fit check before it is made (movement skills sweep and stop at
+  a wall, and the dungeon's relocations go unchecked to cells the game mode knows); and moving the sampler's
+  last-seen place with the character.
+
+**What was not read:** what the camera does when the pawn is moved 4 metres at once; what the dungeon's floor
+rules that watch where the player stands do when the player is moved onto one of their cells (a Reality Rift's
+cell, a trap's trigger); whether a hit reaction or a knockback moves the pawn after `NoteHitTaken` returns;
+where retaliation is paid relative to `NoteHitTaken`; whether every level has a navigation system; how far the
+navigation system's point can lie above or below the real floor.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | One action on the event `hit_taken`. A landed hit only: not a tick, not an evaded hit. | `UCataclysmAbilitySystemComponent::TeleportRandomlyAction`, "teleport_randomly"; `FCataclysmPoolAction::bTeleportRandomly`, set in `CataclysmItem.cpp`; the branch `if (Action.bTeleportRandomly)` of the row loop in `ActOnEvent`, which asks `bLanded` and `!bHitBeingAnnouncedIsATick`. |
+| R2 | It moves the wearer to a random reachable point within the row's metres and stays put if none is found, using the navigation system as the enemy roaming does. | `TeleportTheWearerRandomly`. |
+| R3 | A trigger cooldown of 2 seconds, stated by the row. | The row's Trigger Cooldown cell, which the generator requires on this action. The engine starts the wait in the row loop when `TeleportTheWearerRandomly` returns true. |
+| R4 | It does not interrupt a skill in use. | Nothing is cancelled. A wearer whose movement skill is running is not moved: the loop over `GetActivatableAbilities` at the top of `TeleportTheWearerRandomly`. |
+| R5 | It is not movement for the rows that ask whether the wearer is moving or stationary. | The last lines of `TeleportTheWearerRandomly`: `NoteSampledAt(LastSampledLocation + (Self->GetActorLocation() - From))`, and no call of `NoteMovedMetres` or `NoteRelocatedInstantly`. |
+| R6 | The row states the 4 metres. | The row's value: `Action.Percent`, read as metres. |
+| R7 | An enemy wearing the row: say what happens. | Said first above. The action asks nothing about who wears it. |
+
+### The genre source
+
+One web search was made by the enchantment session on 2026-10-12 for an item affix in Diablo, Path of Exile,
+Last Epoch or Torchlight that teleports its wearer to a random place when hit. It found none. So there is one
+search, nothing found, and the reading of this sentence is the coordinating session's ruling. The writing
+session made no search.
+
+### WHAT WAS BUILT
+
+- **The action's name.** `UCataclysmAbilitySystemComponent::TeleportRandomlyAction`, "teleport_randomly".
+  `tools/generate_datatables.py` holds the same name in `TELEPORT_RANDOMLY_ACTION`.
+- **The fact of a tick.** `bHitBeingAnnouncedIsATick` on the ability system component, set by `NoteHitTaken`
+  with a `TGuardValue` for the length of its call to `ActOnEvent` and false at every other time. A test that
+  raises `hit_taken` by calling `ActOnEvent` itself leaves it false.
+- **The row loop.** For a landed `hit_taken` that is not a tick, once per row per event, while the row's wait
+  is not running: `TeleportTheWearerRandomly(Action.Percent)` is called, and the wait is started when it
+  returns true.
+- **`TeleportTheWearerRandomly(Metres)`** returns false and moves nothing for a dead character, for metres of
+  nought or less, and while a movement skill of the character's is running. With the direction pinned it takes
+  the pinned point. Otherwise it asks the navigation system, up to `TeleportRandomlyDraws` times, for a
+  reachable point, and keeps the first that is no further along the ground than the metres. With no point it
+  returns false. It asks `UWorld::FindTeleportSpot` whether the character fits, refuses a point that does not
+  or that was moved past the metres, refuses a point within one centimetre of where the character stands,
+  moves the character with `TeleportTo`, and moves the sampler's last-seen place by what the character was
+  moved by.
+- **Two console variables**, `Cataclysm.TeleportRandomlyDegrees` (default -1, which asks the navigation system)
+  and `Cataclysm.TeleportRandomlyShare` (default 1).
+- **The generator** accepts `teleport_randomly` on `hit_taken` only; requires a stated Trigger Cooldown;
+  requires metres above 0 and up to 20 (`MAX_TELEPORT_RANDOMLY_METRES`, a sanity bound of the writing
+  session's); refuses Required Tags, Fraction Of, Value Kind and Scale. A Condition is accepted and is judged
+  as on any action row. The existing rules refuse an Event Value on this event and a range the words do not
+  state.
+- **The row the enchantment session is to write** is one line: Enchantment
+  `Positive_Teleport_to_a_random_location_within_4_meters_wh`, Action `teleport_randomly`, Action Event
+  `hit_taken`, Value Low 4, Value High 4 (or empty, which the generator reads as the low value), Trigger
+  Cooldown 2. Every other cell is empty: no Required Tags, no Condition, no Fraction Of, no Value Kind, no
+  Scale, no Event Value.
+
+### Tests
+
+Five new Unreal tests in `CataclysmSkillTemplateTests.cpp`, after the tests of `hit_taken_cancels_skills`,
+whose fixture they use. In four of them a hit is a real blow from another fighter, resolved by the wearer's own
+attribute set; no blow is a critical strike; the point is pinned; the world's clock is set by hand and nothing
+waits on a tick; every actor is at least 36 metres from every other.
+
+- `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull`. The control first: a
+  fighter with no row takes the blow, loses health and is not moved. A wearer of the ruled row, pinned at the
+  whole of its metres along X: moved by more than nought and no more than 4 metres, stands 4 metres along X,
+  and has lost exactly what the fighter with no row lost. Pinned at half along Y: 2 metres along Y. A row of 2
+  metres pinned at the whole against X: 2 metres against X. A share pinned at 5: still 4 metres.
+- `...AnEvadedBlowATickAndAHitInsideTheTriggerCooldownDoNotMoveTheWearer`. One wearer. An evaded blow and one
+  tick of a burn that takes health each leave it where it stood with no wait started. The control: a landed
+  blow moves it 4 metres and starts the wait. A landed blow in the same instant and one 1.9 seconds later do
+  not move it; one 2.1 seconds later does. A blocked blow moves it. A blow the energy shield takes whole moves
+  it.
+- `...WithNoReachablePointTheWearerStaysPutTakesTheHitAndStartsNoTriggerCooldown`. Set-up asserts the world has
+  no navigation system. The control first: a second wearer, pinned, is moved. The wearer with the pin off:
+  struck, loses health, stands where it stood, wait not started. Pinned at a share of nought: the same. Pinned
+  at the whole, in the same instant: moved, and the wait starts.
+- `...TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone`. Two real player
+  characters, because the sampler takes a character of this project's. The sampler is called by hand. The
+  control: a character put 4 metres away by hand is, at the sampler's next step, moving, with 4 metres more
+  since its own attack, 4 metres more in total and its clock at nought. The wearer is told of a tick with
+  `NoteHitTaken` and is not moved; told of a landed hit, it is moved 4 metres; the sampler's last-seen place is
+  where it stands; its clock still reads 5 seconds; and after the sampler's next step it is not moving, has no
+  more metres of either kind and its clock still reads 5 seconds. Each distance is a difference of two
+  readings.
+- `...ASkillInUseIsNotEndedByTheMoveAndAWearerInALastingChargeIsNotMoved`. The control first: a wearer running
+  a spin is moved 4 metres and the spin is still running. A wearer in a 3 second charge is struck: not moved,
+  the charge still running, wait not started. The charge is then ended from outside and the next landed hit
+  moves that wearer.
+
+Python:
+
+- `TestTeleportToARandomPointWhenHit` in `tools/tests/test_generate_datatables.py`, 27 tests on a made-up
+  sheet: the row's name is the one the table of sentences gives; the ruled row is carried through with 4, 4 and
+  2 seconds and every other cell empty; the control, a `damage_immunity` row on `hit_taken` with no Trigger
+  Cooldown, takes the default 0.25; this action's row with no Trigger Cooldown is refused; a stated 0, 0.25 and
+  10 are carried through; the action is one that takes a trigger cooldown and is not on the list of those with
+  no default; the name misspelt is refused; seven other events are refused; the list of events is `hit_taken`
+  alone; metres of 0, -4 and 21 are refused and 20 is carried through; a range the words do not state is
+  refused; Required Tags, a fraction, a value kind and a scale are each refused; an Event Value is refused.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the constant's name and one test:
+  the generator's name is the engine's, the action is not a pool, and three lines of code are in the engine as
+  code with comment lines left out: the row loop's `if (Action.bTeleportRandomly)` asking `bLanded` and
+  `!bHitBeingAnnouncedIsATick`, the guard in `NoteHitTaken`, and the item setting the flag from the name.
+
+**Changes to what a check accepts:** one. `CONSTANTS` in
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains `"TeleportRandomlyAction":
+"teleport_randomly"`.
+
+**Not tested:** anything with a navigation system: the random reachable point, the redraw of a point past the
+metres, and navigation finding no point; the fit check refusing or moving a point, because a test world has
+nothing that blocks; a wall, a floor edge or another character at the point; the half height added to a
+navigation point; the row arriving from a worn item through a gear refresh, because no row exists; a blow
+resolved on a real player character that wears the row (the test on real player characters tells the wearer of
+its hit directly); the wearer's own blow on itself; a hit that kills the wearer; a hit that armour, resistance
+or a no-damage window reduced to nothing; a hit a mana shield or a temporary absorb took whole; a Flicker
+between arrivals; a real charge pushed by the movement component, because a test fighter has none; two
+different rows of the action worn together; an enemy as the wearer; a row of the wearer's on `melee_hit_taken`
+reading the new place; a Condition on the row; the pin off in a world that has a navigation system.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session, and each new text was counted nought
+times. Each is a break in `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`. The prefix
+of each is `Cataclysm.TeleportWhenHit.`, which holds the five tests above and no other. The failed assertions
+are counted by reading the tests and were not measured. The Python suite must not run while one is run: the
+second test of the names file reads the first proof's line.
+
+| Proof | Old text | New text | Test stated to fail | Every other test expected to fail | Failed assertions, by reading |
+|---|---|---|---|---|---|
+| Not on a tick | `TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);` | `TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, false);` | `AnEvadedBlowATickAndAHitInsideTheTriggerCooldownDoNotMoveTheWearer` | `TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone` | 2 in the test stated: "a tick of damage over time does not move the wearer" and the "and starts no trigger cooldown" after it. 1 in the other: "told of a tick, the wearer is not moved" |
+| Not movement | `NoteSampledAt(LastSampledLocation + (Self->GetActorLocation() - From));` | `NoteSampledAt(LastSampledLocation);` | `TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone` | none | 5: the sampler's last-seen place; "the sampler's next step does not see the wearer as moving"; "and adds no metres since its own attack"; "and no metres in total"; "and leaves its clock at 5 seconds since it moved" |
+| Not while a movement skill runs | `if (Spec.IsActive() && Cast<UCataclysmMovementSkill>(Spec.GetPrimaryInstance()))` | `if (Spec.IsActive() && Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance()))` | `ASkillInUseIsNotEndedByTheMoveAndAWearerInALastingChargeIsNotMoved` | none | 4: the control "a wearer running a spin is moved 4 metres"; "a wearer in a lasting charge is not moved"; "and the row's trigger cooldown has not started"; "with the charge over, a landed hit moves that wearer 4 metres" |
+
+How the counts were reached. Under the first break the tick moves the wearer and starts the wait, so the
+landed blow in the same instant does not move it again and the wearer stands 4 metres from where it began,
+which is where the control expects it; every later assertion then reads as written. Under the second break the
+wearer's clock is still not touched by the action, so the two assertions made before the sampler's next step on
+the clock and on `IsMoving` pass, and the sampler's next step then counts 4 metres. Under the third break the
+spinning wearer is held and the charging wearer is moved at once and again after its charge is ended, so it
+stands 8 metres away.
+
+**A test and no proof:** the metres bounding the move; the hit taken in full; an evaded blow; the trigger
+cooldown's 2 seconds; the wait not starting when nothing moved; staying put with no navigation system.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can add projectiles to one use of a projectile skill: a fan of 10 degrees, and one enemy landed on by at most one of them, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (one stat's name, one
