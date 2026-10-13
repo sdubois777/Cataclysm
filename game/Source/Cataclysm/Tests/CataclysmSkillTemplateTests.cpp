@@ -21373,6 +21373,955 @@ bool FCataclysmStrikeTargetActsOnNoOnHitRowTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
+// AN EXECUTE OF THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS HEALTH. Ruled 2026-10-12 under the owner's delegation,
+// for "Strike skills have a 10%-20% chance to execute enemies below 15% HP". No row is authored, so every row here
+// is built by hand as the loader builds it.
+//
+// A REAL PLAYER CHARACTER STRIKES REAL CREATURES. The pawn raises `hit_dealt` for its own blows, the row leaves its
+// request on the creature struck, and the creature's attribute set acts on it once the blow's damage is written.
+// Nobody calls the execute except where a test says it does so by hand.
+//
+// EVERY FIGURE IS MEASURED FIRST. What the player's blow takes is read off a creature 30 m away with health to
+// spare, and a creature's share of health is worked out from the maximum its ability system reports. Nothing here
+// assumes a creature's defences are nought or that a maximum is the figure asked for.
+//
+// THE ROLL IS PINNED in every test by `Cataclysm.ExecuteRoll`, and no blow is a critical strike.
+//
+// WHERE THE ACTORS STAND is said at the top of each test. The player is at the origin, the creatures are along +X
+// at least 4 m apart and at least 4 m from the player, and the measuring creature is 30 m along +Y. Nothing waits.
+// ---------------------------------------------------------------------------
+namespace CataclysmExecuteTest
+{
+	using namespace CataclysmOverkillAtAKillTest;
+
+	/** The execute roll pinned, and put back to "rolled" afterwards. */
+	struct FExecuteRollPinned
+	{
+		explicit FExecuteRollPinned(const TCHAR* Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.ExecuteRoll"));
+			Set(Roll);
+		}
+
+		~FExecuteRollPinned()
+		{
+			Set(TEXT("-1"));
+		}
+
+		void Set(const TCHAR* Roll)
+		{
+			if (Variable)
+			{
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/** The row as the loader builds it: on `hit_dealt`, the value as the chance, the condition's value as the share. */
+	FCataclysmPoolAction AnExecuteRow(const TCHAR* Key, float Chance, float BelowPercent, const TCHAR* ScopedTo)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("hit_dealt"));
+		Action.Pool = FName(UCataclysmAbilitySystemComponent::ExecuteTargetAction);
+		Action.Percent = Chance;
+		Action.bExecuteTarget = true;
+		Action.Condition = ECataclysmStatCondition::TargetHealthBelowPercent;
+		Action.ConditionValue = BelowPercent;
+		Action.TriggerKey = FName(Key);
+		if (ScopedTo)
+		{
+			Action.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(ScopedTo)));
+		}
+		return Action;
+	}
+
+	/** A skill of the player's that carries this one tag, for a blow to be dealt in the name of. */
+	UCataclysmStrikeSkill* ASkillTagged(ACataclysmPlayerCharacter* Owner, const TCHAR* Name, const TCHAR* Tag)
+	{
+		UCataclysmStrikeSkill* Skill = NewObject<UCataclysmStrikeSkill>(Owner);
+		Skill->SkillName = Name;
+		Skill->SkillTags.AddTag(FGameplayTag::RequestGameplayTag(FName(Tag)));
+		return Skill;
+	}
+
+	/** One blow of the player's at 100%, never a critical strike, in the name of `Skill` or of no skill. */
+	void Blow(const FRealKiller& Killer, ACataclysmEnemyCharacter* Target, const UCataclysmSkillTemplate* Skill)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 0.0f;
+		Delivery.Skill = Skill;
+		UCataclysmSkillEffects::ApplyHit(Killer.Character, Target, /*DamagePercent=*/100.0f,
+										 Skill ? Skill->SkillTags : FGameplayTagContainer(), Delivery);
+	}
+
+	/** The maximum health a creature's ability system reports. */
+	float MaximumOf(ACataclysmEnemyCharacter* Who)
+	{
+		const UAbilitySystemComponent* System = IsValid(Who) ? UCataclysmTargeting::AbilitySystemOf(Who) : nullptr;
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	}
+
+	/** This much health, written to the creature's health and nothing else. */
+	void Hold(ACataclysmEnemyCharacter* Who, float Health)
+	{
+		if (UAbilitySystemComponent* System = IsValid(Who) ? UCataclysmTargeting::AbilitySystemOf(Who) : nullptr)
+		{
+			System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		}
+	}
+
+	/** `SharePercent` of the creature's maximum health. */
+	float ShareOf(ACataclysmEnemyCharacter* Who, float SharePercent)
+	{
+		return MaximumOf(Who) * SharePercent / 100.0f;
+	}
+
+	/** The creature's own ability system, for a request made or acted on by hand. */
+	UCataclysmAbilitySystemComponent* SystemOf(ACataclysmEnemyCharacter* Who)
+	{
+		return IsValid(Who) ? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who))
+							: nullptr;
+	}
+
+	/** The creature number `Place` along +X, 4 m from the one before, with 10,000 health. */
+	ACataclysmEnemyCharacter* CreatureNumber(UWorld* World, int32 Place)
+	{
+		return CreatureAt(World, FVector(4 * M * static_cast<float>(Place), 0, 0), 10000.0f);
+	}
+
+	/** What one death notice said. */
+	struct FDeathHeard
+	{
+		const AActor* Victim = nullptr;
+		const AActor* Killer = nullptr;
+		float Overkill = 0.0f;
+		FName Skill;
+		bool bNoKillingTags = false;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteBelowAShareTest,
+	"Cataclysm.Execute.AStrikeThatLeavesAnEnemyBelowTheShareExecutesItAndTheKillIsTheWearers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The ruled row: chance 20, share 15, scoped to `Type.Strike`, the roll pinned at 0, which is under the chance.
+ *
+ * THE CONTROL IS THE SAME BLOW ON THE SAME KIND OF CREATURE WITH NO EXECUTE ROW WORN: the creature is left below 15%
+ * of its maximum, alive, having lost what the blow takes and no more, and nobody has died.
+ *
+ * THEN, WITH THE ROW WORN:
+ *   - a creature the blow leaves below 15% dies. One death is announced, the death notice names the player as the
+ *     killer and the striking skill as the killing skill, its overkill is nought and its killing tags are empty, the
+ *     player's `kill` row acts once, and the player's `hit_dealt` row acts once for the blow and not again for the
+ *     execute: one blow is announced, not two.
+ *   - a creature the blow leaves above 15% lives, having lost what the blow takes and no more.
+ *   - a creature the blow itself kills dies once: one death, and its notice carries the blow's own overkill, above
+ *     nought, so it is the blow's death and not an execute's. Whether a lethal blow's killing tags are empty is not
+ *     asserted: a player's blow with no element may carry none.
+ *
+ * STANDING: the player at the origin; four creatures at 4 m, 8 m, 12 m and 16 m along +X; the measuring creature
+ * 30 m along +Y.
+ */
+bool FCataclysmExecuteBelowAShareTest::RunTest(const FString&)
+{
+	using namespace CataclysmExecuteTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const FExecuteRollPinned Roll(TEXT("0"));
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FRealKiller Killer(World);
+	if (!TestNotNull(TEXT("set-up: the announcements"), Events)
+		|| !TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete())
+		|| !TestNotNull(TEXT("set-up: the roll's console variable exists"), Roll.Variable))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Unworn = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* LeftBelow = CreatureNumber(World, 2);
+	ACataclysmEnemyCharacter* LeftAbove = CreatureNumber(World, 3);
+	ACataclysmEnemyCharacter* Frail = CreatureNumber(World, 4);
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), 10000.0f);
+	if (!TestNotNull(TEXT("set-up: the control creature"), Unworn)
+		|| !TestNotNull(TEXT("set-up: the creature left below the share"), LeftBelow)
+		|| !TestNotNull(TEXT("set-up: the creature left above the share"), LeftAbove)
+		|| !TestNotNull(TEXT("set-up: the creature the blow kills"), Frail)
+		|| !TestNotNull(TEXT("set-up: the measuring creature"), Far))
+	{
+		return false;
+	}
+
+	TArray<FDeathHeard> Heard;
+	const FDelegateHandle Listening = Events->OnDeath.AddLambda([&Heard](const FCataclysmDeathNotice& Notice)
+	{
+		FDeathHeard One;
+		One.Victim = Notice.Victim;
+		One.Killer = Notice.Killer;
+		One.Overkill = Notice.Overkill;
+		One.Skill = Notice.KillingSkillName;
+		One.bNoKillingTags = Notice.KillingTags && Notice.KillingTags->IsEmpty();
+		Heard.Add(One);
+	});
+	ON_SCOPE_EXIT { Events->OnDeath.Remove(Listening); };
+
+	UCataclysmStrikeSkill* Swing = ASkillTagged(Killer.Character, TEXT("Test Swing"), TEXT("Type.Strike"));
+	const FName Kills(TEXT("Test:kills"));
+	const FName Hits(TEXT("Test:hits"));
+	Killer.AbilitySystem->SetPoolActions({CountOn(TEXT("kill"), Kills), CountOn(TEXT("hit_dealt"), Hits)});
+
+	// MEASURED: what the player's Strike blow takes from a creature with health to spare.
+	Blow(Killer, Far, Swing);
+	const float Taken = 10000.0f - HealthOf(Far);
+	const float Share = ShareOf(Unworn, 15.0f);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the blow takes something, and under half the share: %.2f of %.2f"),
+								   Taken, Share),
+				  Taken > 1.0f && Taken < Share / 2.0f)
+		|| !TestEqual(TEXT("set-up: the measuring blow raised hit_dealt once"),
+					  Killer.AbilitySystem->OwnStacksHeld(Hits), 1))
+	{
+		return false;
+	}
+
+	// THE CONTROL: no execute row is worn. The blow leaves the creature below the share, alive.
+	Hold(Unworn, Share + Taken / 2.0f);
+	Blow(Killer, Unworn, Swing);
+	if (!TestFalse(TEXT("control: with no execute row the creature left below the share lives"), IsGone(Unworn))
+		|| !TestEqual(TEXT("control: it has lost what the blow takes and no more"), HealthOf(Unworn),
+					  Share - Taken / 2.0f, 0.01f)
+		|| !TestTrue(TEXT("control: and that is below the share"), HealthOf(Unworn) < Share)
+		|| !TestEqual(TEXT("control: nobody has died"), static_cast<int32>(Events->DeathsSent()), 0)
+		|| !TestEqual(TEXT("control: and the kill row has not acted"), Killer.AbilitySystem->OwnStacksHeld(Kills), 0))
+	{
+		return false;
+	}
+
+	// THE ROW, WORN.
+	Killer.AbilitySystem->SetPoolActions({CountOn(TEXT("kill"), Kills), CountOn(TEXT("hit_dealt"), Hits),
+										  AnExecuteRow(TEXT("Test:execute"), 20.0f, 15.0f, TEXT("Type.Strike"))});
+
+	// LEFT BELOW THE SHARE: executed.
+	Hold(LeftBelow, ShareOf(LeftBelow, 15.0f) + Taken / 2.0f);
+	const int32 HitRowsBefore = Killer.AbilitySystem->OwnStacksHeld(Hits);
+	const uint32 BlowsBefore = Events->HitsSent();
+	Blow(Killer, LeftBelow, Swing);
+	TestTrue(TEXT("the creature the blow left below the share is dead"), IsGone(LeftBelow));
+	TestEqual(TEXT("one death was announced"), static_cast<int32>(Events->DeathsSent()), 1);
+	TestEqual(TEXT("the player's kill row acted once"), Killer.AbilitySystem->OwnStacksHeld(Kills), 1);
+	TestEqual(TEXT("the player's hit_dealt row acted once: for the blow, and not again for the execute"),
+			  Killer.AbilitySystem->OwnStacksHeld(Hits) - HitRowsBefore, 1);
+	TestEqual(TEXT("one blow was announced, not two: the execute is not a hit"),
+			  static_cast<int32>(Events->HitsSent() - BlowsBefore), 1);
+	if (TestEqual(TEXT("one death notice was heard"), Heard.Num(), 1))
+	{
+		TestTrue(TEXT("it names the creature executed"), Heard[0].Victim == LeftBelow);
+		TestTrue(TEXT("it names the player as the killer"), Heard[0].Killer == Killer.Character);
+		TestTrue(TEXT("it names the striking skill as the killing skill"),
+				 Heard[0].Skill == FName(TEXT("Test Swing")));
+		TestEqual(TEXT("its overkill is nought"), Heard[0].Overkill, 0.0f, 0.0001f);
+		TestTrue(TEXT("its killing tags are empty: the blow on record was not lethal"), Heard[0].bNoKillingTags);
+	}
+
+	// LEFT ABOVE THE SHARE: nothing.
+	Hold(LeftAbove, ShareOf(LeftAbove, 15.0f) + Taken * 2.0f);
+	Blow(Killer, LeftAbove, Swing);
+	TestFalse(TEXT("the creature the blow left above the share lives"), IsGone(LeftAbove));
+	TestEqual(TEXT("it has lost what the blow takes and no more"), HealthOf(LeftAbove),
+			  ShareOf(LeftAbove, 15.0f) + Taken, 0.01f);
+	TestEqual(TEXT("still one death"), static_cast<int32>(Events->DeathsSent()), 1);
+	TestFalse(TEXT("and no request is left waiting on it"),
+			  SystemOf(LeftAbove) && SystemOf(LeftAbove)->ExecuteAskedNow().IsAsked());
+
+	// THE BLOW ITSELF KILLS: one death, and it is the blow's.
+	Hold(Frail, Taken / 2.0f);
+	Blow(Killer, Frail, Swing);
+	TestTrue(TEXT("the creature the blow killed is dead"), IsGone(Frail));
+	TestEqual(TEXT("two deaths now: the blow's kill is one death and not two"),
+			  static_cast<int32>(Events->DeathsSent()), 2);
+	TestEqual(TEXT("the kill row has acted twice"), Killer.AbilitySystem->OwnStacksHeld(Kills), 2);
+	if (TestEqual(TEXT("two death notices were heard"), Heard.Num(), 2))
+	{
+		TestTrue(TEXT("the second names the creature the blow killed"), Heard[1].Victim == Frail);
+		TestTrue(TEXT("and carries the blow's own overkill, above nought, so it is the blow's death"),
+				 Heard[1].Overkill > 0.0f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteRollAndScopeTest,
+	"Cataclysm.Execute.AFailedRollLeavesItAliveAnotherSkillDoesNothingAndAStatedHundredNeverFails",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every creature here is left below the share by the blow, so only the roll and the skill decide.
+ *
+ * THE CONTROL: chance 20, roll pinned at 0, a Strike blow: executed.
+ *   - the roll pinned at 20, equal to the chance: it lives. A roll equal to the chance fails.
+ *   - the roll pinned at 99: it lives.
+ *   - the roll pinned at 0 and a blow of a skill tagged `Type.Spell` and not `Type.Strike`: it lives.
+ *   - the roll pinned at 0 and a blow of no skill: it lives. A blow with no skill carries no tags.
+ *   - chance 99 and the roll pinned at 100: it lives. This is the control for the next line.
+ *   - chance 100 and the roll pinned at 100: executed. A stated 100 is compared and not rolled.
+ * Each creature that lives is read as below the share afterwards, so none lived by being above it.
+ *
+ * STANDING: the player at the origin; seven creatures 4 m apart along +X from 4 m to 28 m; the measuring creature
+ * 30 m along +Y, which is 30.3 m from the nearest of the seven.
+ */
+bool FCataclysmExecuteRollAndScopeTest::RunTest(const FString&)
+{
+	using namespace CataclysmExecuteTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FExecuteRollPinned Roll(TEXT("0"));
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Killer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete())
+		|| !TestNotNull(TEXT("set-up: the roll's console variable exists"), Roll.Variable))
+	{
+		return false;
+	}
+	TArray<ACataclysmEnemyCharacter*> Creatures;
+	for (int32 Place = 1; Place <= 7; ++Place)
+	{
+		Creatures.Add(CreatureNumber(World, Place));
+		if (!TestNotNull(*FString::Printf(TEXT("set-up: creature %d"), Place), Creatures.Last()))
+		{
+			return false;
+		}
+	}
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), 10000.0f);
+	if (!TestNotNull(TEXT("set-up: the measuring creature"), Far))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Swing = ASkillTagged(Killer.Character, TEXT("Test Swing"), TEXT("Type.Strike"));
+	UCataclysmStrikeSkill* SpellSkill = ASkillTagged(Killer.Character, TEXT("Test Spell"), TEXT("Type.Spell"));
+
+	// MEASURED: the largest of what the three kinds of blow take, so one starting health serves all three.
+	Blow(Killer, Far, Swing);
+	const float BySwing = 10000.0f - HealthOf(Far);
+	Hold(Far, 10000.0f);
+	Blow(Killer, Far, SpellSkill);
+	const float BySpell = 10000.0f - HealthOf(Far);
+	Hold(Far, 10000.0f);
+	Blow(Killer, Far, nullptr);
+	const float ByNoSkill = 10000.0f - HealthOf(Far);
+	const float Smallest = FMath::Min3(BySwing, BySpell, ByNoSkill);
+	const float Share = ShareOf(Creatures[0], 15.0f);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: each blow takes something, and under half the share: %.2f, "
+										"%.2f and %.2f of %.2f"), BySwing, BySpell, ByNoSkill, Share),
+				  Smallest > 1.0f && FMath::Max3(BySwing, BySpell, ByNoSkill) < Share / 2.0f))
+	{
+		return false;
+	}
+	// EVERY CREATURE STARTS HALF THE SMALLEST BLOW ABOVE THE SHARE, so any of the three blows leaves it below.
+	for (ACataclysmEnemyCharacter* Creature : Creatures)
+	{
+		Hold(Creature, ShareOf(Creature, 15.0f) + Smallest / 2.0f);
+	}
+	const auto LivesBelowTheShare = [this](const TCHAR* What, ACataclysmEnemyCharacter* Creature)
+	{
+		TestFalse(*FString::Printf(TEXT("%s: the creature lives"), What), IsGone(Creature));
+		TestTrue(*FString::Printf(TEXT("%s: and the blow left it below the share, so the share did not spare it"),
+								  What),
+				 HealthOf(Creature) > 0.0f && HealthOf(Creature) < ShareOf(Creature, 15.0f));
+	};
+
+	Killer.AbilitySystem->SetPoolActions({AnExecuteRow(TEXT("Test:execute"), 20.0f, 15.0f, TEXT("Type.Strike"))});
+
+	// THE CONTROL: the roll under the chance, a Strike blow.
+	Blow(Killer, Creatures[0], Swing);
+	if (!TestTrue(TEXT("control: chance 20, roll 0, a Strike blow: executed"), IsGone(Creatures[0])))
+	{
+		return false;
+	}
+
+	Roll.Set(TEXT("20"));
+	Blow(Killer, Creatures[1], Swing);
+	LivesBelowTheShare(TEXT("chance 20, roll 20"), Creatures[1]);
+
+	Roll.Set(TEXT("99"));
+	Blow(Killer, Creatures[2], Swing);
+	LivesBelowTheShare(TEXT("chance 20, roll 99"), Creatures[2]);
+
+	Roll.Set(TEXT("0"));
+	Blow(Killer, Creatures[3], SpellSkill);
+	LivesBelowTheShare(TEXT("roll 0, a blow of a skill that is no Strike"), Creatures[3]);
+
+	Blow(Killer, Creatures[4], nullptr);
+	LivesBelowTheShare(TEXT("roll 0, a blow of no skill"), Creatures[4]);
+
+	// A STATED 100 NEVER FAILS, and 99 does at the same roll.
+	Roll.Set(TEXT("100"));
+	Killer.AbilitySystem->SetPoolActions({AnExecuteRow(TEXT("Test:execute"), 99.0f, 15.0f, TEXT("Type.Strike"))});
+	Blow(Killer, Creatures[5], Swing);
+	LivesBelowTheShare(TEXT("chance 99, roll 100"), Creatures[5]);
+
+	Killer.AbilitySystem->SetPoolActions({AnExecuteRow(TEXT("Test:execute"), 100.0f, 15.0f, TEXT("Type.Strike"))});
+	Blow(Killer, Creatures[6], Swing);
+	TestTrue(TEXT("chance 100, roll 100: executed"), IsGone(Creatures[6]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteSparesBossesTest,
+	"Cataclysm.Execute.ABossACataclysmBossAndACreatureNoDamageReachesAreNotExecuted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The row at chance 100 and share 15, unscoped, so every blow of the player's asks.
+ *
+ * EVERY CREATURE STARTS AT 5% OF ITS OWN MAXIMUM, which is below the share before and after the blow whatever the
+ * blow takes from it. A boss's maximum is read after its rung is set, because a rung is part of its stat block.
+ *
+ * THE CONTROLS: an ordinary creature and a Herald, the rung below Boss, are each executed by the blow.
+ *   - a Boss and a Cataclysm Boss each lose something to the blow and live.
+ *   - a creature made unhurtable after it was lowered to 5%, and a shrouded one, each live. No damage reaches them,
+ *     so the blow takes nothing; the next lines are what test the refusal itself.
+ *   - `CanBeExecuted` answers for each of the six.
+ *   - BY HAND: the player's request acted on directly on the Boss, the unhurtable creature and the shrouded one
+ *     kills none of them. The Boss holds the player's blow on its record, so only the boss rule refuses it. The
+ *     other two were struck by the player BEFORE they were made unhurtable or shrouded, for the same reason.
+ *
+ * STANDING: the player at the origin; six creatures 8 m apart along +X from 8 m to 48 m, because a boss's body is
+ * larger; the measuring creature 30 m along +Y.
+ */
+bool FCataclysmExecuteSparesBossesTest::RunTest(const FString&)
+{
+	using namespace CataclysmExecuteTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const FExecuteRollPinned Roll(TEXT("0"));
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Killer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Ordinary = CreatureNumber(World, 2);
+	ACataclysmEnemyCharacter* Herald = CreatureNumber(World, 4);
+	ACataclysmEnemyCharacter* Boss = CreatureNumber(World, 6);
+	ACataclysmEnemyCharacter* CataclysmBoss = CreatureNumber(World, 8);
+	ACataclysmEnemyCharacter* Unhurtable = CreatureNumber(World, 10);
+	ACataclysmEnemyCharacter* Shrouded = CreatureNumber(World, 12);
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), 10000.0f);
+	if (!TestNotNull(TEXT("set-up: the ordinary creature"), Ordinary) || !TestNotNull(TEXT("set-up: the Herald"), Herald)
+		|| !TestNotNull(TEXT("set-up: the Boss"), Boss)
+		|| !TestNotNull(TEXT("set-up: the Cataclysm Boss"), CataclysmBoss)
+		|| !TestNotNull(TEXT("set-up: the unhurtable creature"), Unhurtable)
+		|| !TestNotNull(TEXT("set-up: the shrouded creature"), Shrouded)
+		|| !TestNotNull(TEXT("set-up: the measuring creature"), Far))
+	{
+		return false;
+	}
+	Herald->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	CataclysmBoss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep + 1);
+	if (!TestFalse(TEXT("set-up: a Herald is not a boss"), Herald->IsBoss())
+		|| !TestTrue(TEXT("set-up: a Boss is a boss"), Boss->IsBoss())
+		|| !TestTrue(TEXT("set-up: a Cataclysm Boss is a boss"), CataclysmBoss->IsBoss()))
+	{
+		return false;
+	}
+
+	// MEASURED: what the blow takes, which must be under 5% of the smallest maximum so no blow here kills by itself.
+	Blow(Killer, Far, nullptr);
+	const float Taken = 10000.0f - HealthOf(Far);
+	float SmallestMaximum = MaximumOf(Ordinary);
+	for (ACataclysmEnemyCharacter* Creature : {Ordinary, Herald, Boss, CataclysmBoss, Unhurtable, Shrouded})
+	{
+		SmallestMaximum = FMath::Min(SmallestMaximum, MaximumOf(Creature));
+		Hold(Creature, ShareOf(Creature, 5.0f));
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the blow takes %.2f, under 5%% of the smallest maximum, %.2f"), Taken,
+								   SmallestMaximum),
+				  Taken > 1.0f && Taken < SmallestMaximum * 0.05f))
+	{
+		return false;
+	}
+
+	// THE TWO THAT NO DAMAGE WILL REACH ARE STRUCK ONCE FIRST, with no row worn, so each holds the player's blow on
+	// its record; then lowered to 5% again and made unhurtable and shrouded.
+	Blow(Killer, Unhurtable, nullptr);
+	Blow(Killer, Shrouded, nullptr);
+	if (!TestTrue(TEXT("set-up: the blow reached the creature that will be unhurtable"),
+				  HealthOf(Unhurtable) < ShareOf(Unhurtable, 5.0f))
+		|| !TestTrue(TEXT("set-up: and the creature that will be shrouded"),
+					 HealthOf(Shrouded) < ShareOf(Shrouded, 5.0f)))
+	{
+		return false;
+	}
+	Unhurtable->bCannotBeHurt = true;
+	Shrouded->bShrouded = true;
+	const float UnhurtableHeld = HealthOf(Unhurtable);
+	const float ShroudedHeld = HealthOf(Shrouded);
+
+	Killer.AbilitySystem->SetPoolActions({AnExecuteRow(TEXT("Test:execute"), 100.0f, 15.0f, nullptr)});
+
+	// THE CONTROLS.
+	Blow(Killer, Ordinary, nullptr);
+	Blow(Killer, Herald, nullptr);
+	if (!TestTrue(TEXT("control: the ordinary creature below the share is executed"), IsGone(Ordinary))
+		|| !TestTrue(TEXT("control: and so is the Herald, the rung below Boss"), IsGone(Herald)))
+	{
+		return false;
+	}
+
+	// THE TWO BOSSES.
+	const float BossBefore = HealthOf(Boss);
+	const float CataclysmBossBefore = HealthOf(CataclysmBoss);
+	Blow(Killer, Boss, nullptr);
+	Blow(Killer, CataclysmBoss, nullptr);
+	TestFalse(TEXT("the Boss lives"), IsGone(Boss));
+	TestTrue(TEXT("the Boss lost something to the blow and holds health below the share"),
+			 HealthOf(Boss) > 0.0f && HealthOf(Boss) < BossBefore);
+	TestFalse(TEXT("the Cataclysm Boss lives"), IsGone(CataclysmBoss));
+	TestTrue(TEXT("the Cataclysm Boss lost something to the blow and holds health below the share"),
+			 HealthOf(CataclysmBoss) > 0.0f && HealthOf(CataclysmBoss) < CataclysmBossBefore);
+
+	// THE TWO THAT NO DAMAGE REACHES.
+	Blow(Killer, Unhurtable, nullptr);
+	Blow(Killer, Shrouded, nullptr);
+	TestFalse(TEXT("the shrouded creature lives"), IsGone(Shrouded));
+	TestEqual(TEXT("and holds what it held"), HealthOf(Shrouded), ShroudedHeld, 0.001f);
+	TestFalse(TEXT("the unhurtable creature lives"), IsGone(Unhurtable));
+
+	// WHAT THE RULE ANSWERS FOR EACH.
+	TestFalse(TEXT("CanBeExecuted: not a Boss"), UCataclysmAbilitySystemComponent::CanBeExecuted(Boss));
+	TestFalse(TEXT("CanBeExecuted: not a Cataclysm Boss"),
+			  UCataclysmAbilitySystemComponent::CanBeExecuted(CataclysmBoss));
+	TestFalse(TEXT("CanBeExecuted: not an unhurtable creature"),
+			  UCataclysmAbilitySystemComponent::CanBeExecuted(Unhurtable));
+	TestFalse(TEXT("CanBeExecuted: not a shrouded creature"),
+			  UCataclysmAbilitySystemComponent::CanBeExecuted(Shrouded));
+	TestFalse(TEXT("CanBeExecuted: not the dead"), UCataclysmAbilitySystemComponent::CanBeExecuted(Ordinary));
+	TestTrue(TEXT("CanBeExecuted: the measuring creature, which is ordinary and alive"),
+			 UCataclysmAbilitySystemComponent::CanBeExecuted(Far));
+
+	// BY HAND: the player's request acted on directly. Each holds the player's blow on its record and is below the
+	// share, so nothing but the rule for its kind refuses it.
+	UCataclysmAbilitySystemComponent::FExecuteAsked ByThePlayer;
+	ByThePlayer.By = Killer.Character;
+	ByThePlayer.BelowPercent = 15.0f;
+	for (ACataclysmEnemyCharacter* Creature : {Boss, CataclysmBoss, Unhurtable, Shrouded})
+	{
+		UCataclysmAbilitySystemComponent* Its = SystemOf(Creature);
+		if (TestNotNull(TEXT("by hand: the creature's ability system"), Its))
+		{
+			TestTrue(TEXT("by hand: the last blow on its record is the player's"),
+					 Its->GetLastBlow().Attacker.Get() == Killer.Character);
+			TestFalse(TEXT("by hand: the request kills nothing"), Its->ExecuteIfLeftBelow(ByThePlayer));
+			TestFalse(TEXT("by hand: and the creature lives"), IsGone(Creature));
+		}
+	}
+	TestEqual(TEXT("by hand: the unhurtable creature holds what it held, so nothing was written to its health"),
+			  HealthOf(Unhurtable), UnhurtableHeld, 0.001f);
+	TestEqual(TEXT("by hand: and so does the shrouded one"), HealthOf(Shrouded), ShroudedHeld, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteTwoRowsTest,
+	"Cataclysm.Execute.TwoRowsWithDifferentSharesEachActByTheirOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two rows, each at chance 100: one scoped to `Type.Strike` with a share of 10, one scoped to `Type.Spell` with a
+ * share of 30. The roll is pinned at 0.
+ *
+ * THE CONTROL: a Strike blow that leaves a creature just under 10% executes it.
+ *   - a Strike blow that leaves a creature just under 20% does nothing: 20 is above the Strike row's 10.
+ *   - a Spell blow that leaves a creature just under 20% executes it: 20 is below the Spell row's 30.
+ *   - a Spell blow that leaves a creature just under 40% does nothing.
+ *
+ * THEN BOTH ROWS UNSCOPED, WORN TOGETHER, the 30 at chance 50 and the 10 at chance 100:
+ *   - the roll pinned at 0, both rolls come up: a blow leaving a creature just under 20% executes it, by the 30.
+ *   - the roll pinned at 60, only the 10's roll comes up: a blow leaving a creature just under 20% does nothing,
+ *     and a blow leaving a creature just under 10% executes it.
+ *
+ * STANDING: the player at the origin; seven creatures 4 m apart along +X from 4 m to 28 m; the measuring creature
+ * 30 m along +Y.
+ */
+bool FCataclysmExecuteTwoRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmExecuteTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FExecuteRollPinned Roll(TEXT("0"));
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Killer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
+	{
+		return false;
+	}
+	TArray<ACataclysmEnemyCharacter*> Creatures;
+	for (int32 Place = 1; Place <= 7; ++Place)
+	{
+		Creatures.Add(CreatureNumber(World, Place));
+		if (!TestNotNull(*FString::Printf(TEXT("set-up: creature %d"), Place), Creatures.Last()))
+		{
+			return false;
+		}
+	}
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), 10000.0f);
+	if (!TestNotNull(TEXT("set-up: the measuring creature"), Far))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Swing = ASkillTagged(Killer.Character, TEXT("Test Swing"), TEXT("Type.Strike"));
+	UCataclysmStrikeSkill* SpellSkill = ASkillTagged(Killer.Character, TEXT("Test Spell"), TEXT("Type.Spell"));
+	Blow(Killer, Far, Swing);
+	const float BySwing = 10000.0f - HealthOf(Far);
+	Hold(Far, 10000.0f);
+	Blow(Killer, Far, SpellSkill);
+	const float BySpell = 10000.0f - HealthOf(Far);
+	const float Smallest = FMath::Min(BySwing, BySpell);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: each blow takes something, and under 5%% of a maximum: %.2f and %.2f"),
+								   BySwing, BySpell),
+				  Smallest > 1.0f && FMath::Max(BySwing, BySpell) < MaximumOf(Creatures[0]) * 0.05f))
+	{
+		return false;
+	}
+	// HALF THE SMALLEST BLOW ABOVE A SHARE, so either blow leaves the creature just under that share.
+	const auto JustAbove = [Smallest](ACataclysmEnemyCharacter* Creature, float SharePercent)
+	{
+		Hold(Creature, ShareOf(Creature, SharePercent) + Smallest / 2.0f);
+	};
+	const auto LivesJustUnder = [this](const TCHAR* What, ACataclysmEnemyCharacter* Creature, float SharePercent)
+	{
+		TestFalse(*FString::Printf(TEXT("%s: the creature lives"), What), IsGone(Creature));
+		TestTrue(*FString::Printf(TEXT("%s: and the blow left it under %.0f%%"), What, SharePercent),
+				 HealthOf(Creature) > 0.0f && HealthOf(Creature) < ShareOf(Creature, SharePercent));
+	};
+
+	Killer.AbilitySystem->SetPoolActions({AnExecuteRow(TEXT("Test:strikes"), 100.0f, 10.0f, TEXT("Type.Strike")),
+										  AnExecuteRow(TEXT("Test:spells"), 100.0f, 30.0f, TEXT("Type.Spell"))});
+
+	// THE CONTROL.
+	JustAbove(Creatures[0], 10.0f);
+	Blow(Killer, Creatures[0], Swing);
+	if (!TestTrue(TEXT("control: a Strike blow leaving a creature just under 10% executes it"), IsGone(Creatures[0])))
+	{
+		return false;
+	}
+
+	JustAbove(Creatures[1], 20.0f);
+	Blow(Killer, Creatures[1], Swing);
+	LivesJustUnder(TEXT("a Strike blow, the Strike row's share is 10"), Creatures[1], 20.0f);
+
+	JustAbove(Creatures[2], 20.0f);
+	Blow(Killer, Creatures[2], SpellSkill);
+	TestTrue(TEXT("a Spell blow leaving a creature just under 20% executes it: the Spell row's share is 30"),
+			 IsGone(Creatures[2]));
+
+	JustAbove(Creatures[3], 40.0f);
+	Blow(Killer, Creatures[3], SpellSkill);
+	LivesJustUnder(TEXT("a Spell blow, the Spell row's share is 30"), Creatures[3], 40.0f);
+
+	// BOTH UNSCOPED AND WORN TOGETHER.
+	Killer.AbilitySystem->SetPoolActions({AnExecuteRow(TEXT("Test:ten"), 100.0f, 10.0f, nullptr),
+										  AnExecuteRow(TEXT("Test:thirty"), 50.0f, 30.0f, nullptr)});
+	JustAbove(Creatures[4], 20.0f);
+	Blow(Killer, Creatures[4], Swing);
+	TestTrue(TEXT("both rolls come up: a blow leaving a creature just under 20% executes it, by the row of 30"),
+			 IsGone(Creatures[4]));
+
+	Roll.Set(TEXT("60"));
+	JustAbove(Creatures[5], 20.0f);
+	Blow(Killer, Creatures[5], Swing);
+	LivesJustUnder(TEXT("only the row of 10's roll comes up"), Creatures[5], 20.0f);
+
+	JustAbove(Creatures[6], 10.0f);
+	Blow(Killer, Creatures[6], Swing);
+	TestTrue(TEXT("only the row of 10's roll comes up: a blow leaving a creature just under 10% executes it"),
+			 IsGone(Creatures[6]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteJudgedByHandTest,
+	"Cataclysm.Execute.TheShareIsStrictAndOnlyTheCharacterWhoseBlowIsOnRecordIsCredited",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `ExecuteIfLeftBelow` called by hand, so each refusal is read alone. The share asked is 12.5 and a creature is held
+ * at exactly an eighth of its maximum, which is 12.5% with no rounding: a maximum divided by 8 is exact.
+ *
+ * THE CONTROL, LAST AND ON THE SAME CREATURE: one health under an eighth, the same request kills it, and the player's
+ * `kill` row acts.
+ *   - at exactly an eighth, the request does nothing: "below" is strict.
+ *   - a request nobody made does nothing.
+ *   - on a creature nothing has struck, the player's request does nothing: no blow is on its record.
+ *   - on a creature a second attacker struck last, the player's request does nothing: the death would be credited
+ *     to that attacker. The second attacker is a bare fighter with no team, which is every character's enemy.
+ *   - `AskToBeExecuted` keeps the largest share of those asked, and `TakeExecuteAsked` clears it.
+ *
+ * STANDING: the player at the origin; the creature struck by the player 4 m along +X; the one never struck at 8 m;
+ * the one struck by another at 12 m; the bare fighter that strikes it at 16 m.
+ */
+bool FCataclysmExecuteJudgedByHandTest::RunTest(const FString&)
+{
+	using namespace CataclysmExecuteTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Killer(World);
+	if (!TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Struck = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* NeverStruck = CreatureNumber(World, 2);
+	ACataclysmEnemyCharacter* StruckByAnother = CreatureNumber(World, 3);
+	FScopedFighter Another(World, FVector(16 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up: the creature the player struck"), Struck)
+		|| !TestNotNull(TEXT("set-up: the creature never struck"), NeverStruck)
+		|| !TestNotNull(TEXT("set-up: the creature another struck"), StruckByAnother)
+		|| !TestNotNull(TEXT("set-up: the second attacker"), Another.Actor))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* StruckSystem = SystemOf(Struck);
+	UCataclysmAbilitySystemComponent* NeverStruckSystem = SystemOf(NeverStruck);
+	UCataclysmAbilitySystemComponent* ByAnotherSystem = SystemOf(StruckByAnother);
+	if (!TestNotNull(TEXT("set-up: the struck creature's ability system"), StruckSystem)
+		|| !TestNotNull(TEXT("set-up: the never struck creature's"), NeverStruckSystem)
+		|| !TestNotNull(TEXT("set-up: the creature another struck's"), ByAnotherSystem))
+	{
+		return false;
+	}
+
+	const FName Kills(TEXT("Test:kills"));
+	Killer.AbilitySystem->SetPoolActions({CountOn(TEXT("kill"), Kills)});
+
+	// THE RECORDS. The player strikes one creature; the bare fighter strikes another with 50 of direct damage.
+	Blow(Killer, Struck, nullptr);
+	UCataclysmSkillEffects::ApplyDirectDamage(Another.Actor, StruckByAnother, /*Damage=*/50.0f);
+	if (!TestTrue(TEXT("set-up: the player's blow is the last on the struck creature's record"),
+				  StruckSystem->GetLastBlow().IsOnRecord()
+					  && StruckSystem->GetLastBlow().Attacker.Get() == Killer.Character)
+		|| !TestFalse(TEXT("set-up: no blow is on the never struck creature's record"),
+					  NeverStruckSystem->GetLastBlow().IsOnRecord())
+		|| !TestTrue(TEXT("set-up: the second attacker's blow is the last on the third creature's record"),
+					 ByAnotherSystem->GetLastBlow().IsOnRecord()
+						 && ByAnotherSystem->GetLastBlow().Attacker.Get() == Another.Actor))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent::FExecuteAsked ByThePlayer;
+	ByThePlayer.By = Killer.Character;
+	ByThePlayer.BelowPercent = 12.5f;
+
+	// AT EXACTLY THE SHARE: nothing.
+	const float AnEighth = MaximumOf(Struck) / 8.0f;
+	Hold(Struck, AnEighth);
+	if (!TestEqual(TEXT("set-up: the struck creature holds exactly an eighth of its maximum"), HealthOf(Struck),
+				   AnEighth, 0.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("at exactly the share the request does nothing"), StruckSystem->ExecuteIfLeftBelow(ByThePlayer));
+	TestFalse(TEXT("and the creature lives"), IsGone(Struck));
+	TestEqual(TEXT("holding what it held"), HealthOf(Struck), AnEighth, 0.0f);
+
+	// A REQUEST NOBODY MADE.
+	Hold(Struck, AnEighth - 1.0f);
+	TestFalse(TEXT("a request nobody made does nothing"),
+			  StruckSystem->ExecuteIfLeftBelow(UCataclysmAbilitySystemComponent::FExecuteAsked()));
+	TestFalse(TEXT("and the creature lives"), IsGone(Struck));
+
+	// NO BLOW ON RECORD, AND ANOTHER'S BLOW ON RECORD.
+	Hold(NeverStruck, MaximumOf(NeverStruck) / 8.0f - 1.0f);
+	TestFalse(TEXT("with no blow on its record the player's request does nothing"),
+			  NeverStruckSystem->ExecuteIfLeftBelow(ByThePlayer));
+	TestFalse(TEXT("and the creature lives"), IsGone(NeverStruck));
+	Hold(StruckByAnother, MaximumOf(StruckByAnother) / 8.0f - 1.0f);
+	TestFalse(TEXT("with another's blow last on its record the player's request does nothing"),
+			  ByAnotherSystem->ExecuteIfLeftBelow(ByThePlayer));
+	TestFalse(TEXT("and the creature lives"), IsGone(StruckByAnother));
+	TestEqual(TEXT("the player's kill row has not acted"), Killer.AbilitySystem->OwnStacksHeld(Kills), 0);
+
+	// THE LARGEST SHARE ASKED IS KEPT.
+	NeverStruckSystem->AskToBeExecuted(Killer.Character, 10.0f, FName(TEXT("Test:ten")), 0.0f);
+	NeverStruckSystem->AskToBeExecuted(Killer.Character, 30.0f, FName(TEXT("Test:thirty")), 0.0f);
+	NeverStruckSystem->AskToBeExecuted(Killer.Character, 20.0f, FName(TEXT("Test:twenty")), 0.0f);
+	TestEqual(TEXT("of 10, 30 and 20 asked, 30 is kept"), NeverStruckSystem->ExecuteAskedNow().BelowPercent, 30.0f,
+			  0.0001f);
+	TestTrue(TEXT("with the row that asked it"),
+			 NeverStruckSystem->ExecuteAskedNow().TriggerKey == FName(TEXT("Test:thirty")));
+	TestEqual(TEXT("taking it gives 30"), NeverStruckSystem->TakeExecuteAsked().BelowPercent, 30.0f, 0.0001f);
+	TestFalse(TEXT("and leaves nothing asked"), NeverStruckSystem->ExecuteAskedNow().IsAsked());
+
+	// THE CONTROL: one health under the share, the same request, the creature the player struck.
+	TestTrue(TEXT("control: one health under the share, the player's request kills"),
+			 StruckSystem->ExecuteIfLeftBelow(ByThePlayer));
+	TestTrue(TEXT("control: the creature is dead"), IsGone(Struck));
+	TestEqual(TEXT("control: and the player's kill row acted once"), Killer.AbilitySystem->OwnStacksHeld(Kills), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteEachEnemyRollsForItselfTest,
+	"Cataclysm.Execute.EachEnemyLeftBelowTheShareRollsForItselfAndAStatedTriggerCooldownStartsAtAnExecute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-12 by the coordinating session: an execute takes no trigger cooldown, and each enemy a strike leaves
+ * below the share rolls for itself. The world's clock does not move in this test, so every blow here is in the same
+ * instant, as the blows of one swing are.
+ *
+ * THE ROW AS RULED, WITH NO TRIGGER COOLDOWN, at chance 50 and share 15, unscoped:
+ *   - the control: before any blow the row is not waiting.
+ *   - the roll pinned at 0: a blow that leaves the first creature below the share executes it.
+ *   - the roll pinned at 60, over the chance: a blow that leaves the second creature below the share does nothing.
+ *   - the roll pinned at 0 again: a blow that leaves the third creature below the share executes it, in the same
+ *     instant as the first. Two deaths are announced, and the row is not waiting after either.
+ *
+ * THEN THE SAME ROW STATING A TRIGGER COOLDOWN OF 0.25 SECONDS, which a row may state and the ruled row does not.
+ * The roll pinned at 0:
+ *   - a blow that leaves a creature above the share: the roll came up and nobody was executed. The row is not
+ *     waiting.
+ *   - a blow that leaves a creature below the share executes it. The row is waiting.
+ *   - a blow in the same instant that leaves another creature below the share does nothing: the row is waiting.
+ *
+ * STANDING: the player at the origin; six creatures 4 m apart along +X from 4 m to 24 m; the measuring creature 30 m
+ * along +Y.
+ */
+bool FCataclysmExecuteEachEnemyRollsForItselfTest::RunTest(const FString&)
+{
+	using namespace CataclysmExecuteTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FExecuteRollPinned Roll(TEXT("0"));
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FRealKiller Killer(World);
+	if (!TestNotNull(TEXT("set-up: the announcements"), Events)
+		|| !TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* RolledUnder = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* RolledOver = CreatureNumber(World, 2);
+	ACataclysmEnemyCharacter* RolledUnderToo = CreatureNumber(World, 3);
+	ACataclysmEnemyCharacter* LeftAbove = CreatureNumber(World, 4);
+	ACataclysmEnemyCharacter* First = CreatureNumber(World, 5);
+	ACataclysmEnemyCharacter* Second = CreatureNumber(World, 6);
+	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), 10000.0f);
+	if (!TestNotNull(TEXT("set-up: the first creature of the swing"), RolledUnder)
+		|| !TestNotNull(TEXT("set-up: the second creature of the swing"), RolledOver)
+		|| !TestNotNull(TEXT("set-up: the third creature of the swing"), RolledUnderToo)
+		|| !TestNotNull(TEXT("set-up: the creature left above the share"), LeftAbove)
+		|| !TestNotNull(TEXT("set-up: the first creature left below with a cooldown stated"), First)
+		|| !TestNotNull(TEXT("set-up: the second creature left below with a cooldown stated"), Second)
+		|| !TestNotNull(TEXT("set-up: the measuring creature"), Far))
+	{
+		return false;
+	}
+	Blow(Killer, Far, nullptr);
+	const float Taken = 10000.0f - HealthOf(Far);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the blow takes something, and under 5%% of a maximum: %.2f"), Taken),
+				  Taken > 1.0f && Taken < MaximumOf(First) * 0.05f))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : {RolledUnder, RolledOver, RolledUnderToo, First, Second})
+	{
+		Hold(Creature, ShareOf(Creature, 15.0f) + Taken / 2.0f);
+	}
+	Hold(LeftAbove, ShareOf(LeftAbove, 15.0f) + Taken * 2.0f);
+
+	// THE ROW AS RULED: NO TRIGGER COOLDOWN.
+	const FName Key(TEXT("Test:execute"));
+	const FCataclysmPoolAction AsRuled = AnExecuteRow(TEXT("Test:execute"), 50.0f, 15.0f, nullptr);
+	Killer.AbilitySystem->SetPoolActions({AsRuled});
+	if (!TestEqual(TEXT("set-up: the row as the loader builds it states no trigger cooldown"),
+				   AsRuled.TriggerCooldownSeconds, 0.0f, 0.0f)
+		|| !TestFalse(TEXT("control: before any blow the row is not waiting"),
+					  Killer.AbilitySystem->TriggerCoolingDown(Key)))
+	{
+		return false;
+	}
+
+	Blow(Killer, RolledUnder, nullptr);
+	TestTrue(TEXT("roll 0 of chance 50: the first creature left below the share is executed"), IsGone(RolledUnder));
+	TestFalse(TEXT("and the row is not waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
+
+	Roll.Set(TEXT("60"));
+	Blow(Killer, RolledOver, nullptr);
+	TestFalse(TEXT("roll 60 of chance 50: the second creature lives"), IsGone(RolledOver));
+	TestTrue(TEXT("and the blow did leave it below the share"),
+			 HealthOf(RolledOver) > 0.0f && HealthOf(RolledOver) < ShareOf(RolledOver, 15.0f));
+
+	Roll.Set(TEXT("0"));
+	Blow(Killer, RolledUnderToo, nullptr);
+	TestTrue(TEXT("roll 0 again, in the same instant: the third creature left below the share is executed"),
+			 IsGone(RolledUnderToo));
+	TestEqual(TEXT("two deaths were announced: each enemy whose roll came up, and not the one whose roll did not"),
+			  static_cast<int32>(Events->DeathsSent()), 2);
+	TestFalse(TEXT("and the row is still not waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
+
+	// THE SAME ROW STATING A TRIGGER COOLDOWN.
+	FCataclysmPoolAction Stated = AnExecuteRow(TEXT("Test:execute"), 50.0f, 15.0f, nullptr);
+	Stated.TriggerCooldownSeconds = 0.25f;
+	Killer.AbilitySystem->SetPoolActions({Stated});
+
+	Blow(Killer, LeftAbove, nullptr);
+	TestFalse(TEXT("cooldown stated: the creature left above the share lives"), IsGone(LeftAbove));
+	TestFalse(TEXT("cooldown stated: the roll came up and nobody was executed, so the row is not waiting"),
+			  Killer.AbilitySystem->TriggerCoolingDown(Key));
+
+	Blow(Killer, First, nullptr);
+	TestTrue(TEXT("cooldown stated: the first creature left below the share is executed"), IsGone(First));
+	TestTrue(TEXT("cooldown stated: and the row is waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
+
+	Blow(Killer, Second, nullptr);
+	TestFalse(TEXT("cooldown stated: in the same instant the second creature left below the share lives"),
+			  IsGone(Second));
+	TestTrue(TEXT("cooldown stated: and the blow did leave it below the share"),
+			 HealthOf(Second) > 0.0f && HealthOf(Second) < ShareOf(Second, 15.0f));
+	TestEqual(TEXT("three deaths in all"), static_cast<int32>(Events->DeathsSent()), 3);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // THE TEMPORARY ABSORB. The project owner, 2026-10-07: it is separate from the
 // energy shield. "Every 12 seconds gain a shield absorbing 15%-25% of your
 // maximum HP in damage" is the row it is for, and no row is authored yet, so

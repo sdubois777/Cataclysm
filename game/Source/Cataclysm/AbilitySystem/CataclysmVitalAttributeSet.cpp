@@ -1753,9 +1753,26 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// this line, evaded and blocked ones included. The death the write
 			// below may cause reads the record this leaves, so it must come
 			// first. `NoteBlow` builds nothing when nothing listens.
+			//
+			// AND WHAT THE ANNOUNCEMENT ASKED OF THIS CHARACTER IS TAKEN WHEN IT RETURNS. Ruled 2026-10-12: a row
+			// of the attacker's that executes the enemy a hit leaves below a share of its health hears the hit
+			// inside `NoteBlow`, before the write below, and leaves its request on this character's ability system.
+			// See `UCataclysmAbilitySystemComponent::AskToBeExecuted`. WHAT WAS ASKED BEFORE THIS HIT IS SET ASIDE
+			// AND PUT BACK, so this hit acts only on its own announcement's request: a hit dealt to this character
+			// from inside another hit's announcement reaches these lines while the outer hit's request is waiting.
+			UCataclysmAbilitySystemComponent* Executable =
+				Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+			const UCataclysmAbilitySystemComponent::FExecuteAsked AskedBeforeThisHit =
+				Executable ? Executable->TakeExecuteAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			UCataclysmCombatEvents::NoteBlow(
 				Data, Hit, Outcome, AssetTags,
 				/*bLethal=*/bWouldKill && !bHeldBySigil, bFirstFromAttacker);
+			const UCataclysmAbilitySystemComponent::FExecuteAsked AskedByThisHit =
+				Executable ? Executable->TakeExecuteAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
+			if (Executable)
+			{
+				Executable->PutBackExecuteAsked(AskedBeforeThisHit);
+			}
 
 			if (ToHealth > 0.0f)
 			{
@@ -1772,6 +1789,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 				NotifyIfHealthReachedZero();
 				NotifyHealthChanged();
+
+				// AND THE EXECUTE THIS HIT'S ANNOUNCEMENT ASKED FOR, NOW THAT THE HIT'S DAMAGE IS WRITTEN. Ruled
+				// 2026-10-12. AFTER THE DEATH CHECK ABOVE, so a hit that killed leaves nothing to execute:
+				// `ExecuteIfLeftBelow` refuses the dead. It judges the share on the health this write left, and
+				// takes what is left as a direct loss, which comes back through the health branch at the end of
+				// this function and not through this one. ONLY INSIDE THIS BLOCK: a hit that wrote nothing to
+				// health executes nobody.
+				if (Executable && AskedByThisHit.IsAsked())
+				{
+					Executable->ExecuteIfLeftBelow(AskedByThisHit);
+				}
 
 				// AND HEALTH LOST TO DAMAGE FILLS FERVOUR. Issue #954. The
 				// Masochist's starting node states the rule -- 1 Fervour per 1%

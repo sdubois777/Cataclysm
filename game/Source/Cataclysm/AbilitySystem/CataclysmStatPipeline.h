@@ -4445,6 +4445,19 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bStrikeTarget = false;
 
 	/**
+	 * Set, this action EXECUTES THE ENEMY A HIT OF ITS WEARER'S LEAVES BELOW A SHARE OF ITS HEALTH. `Percent` is the
+	 * chance, where 100 is always, and `ConditionValue` is the share, in per cent of the enemy's maximum health: the
+	 * row's Condition is `target_health_below`. Ruled 2026-10-12 under the owner's delegation, for "Strike skills
+	 * have a 10%-20% chance to execute enemies below 15% HP". On the event `hit_dealt` and no other.
+	 *
+	 * THE SHARE IS JUDGED AFTER THE HIT'S DAMAGE IS TAKEN, and so not by `PoolActionAllowed`, which runs while the
+	 * enemy still holds what it held before the hit. The row loop rolls the chance and leaves a request on the enemy;
+	 * the enemy's own attribute set acts on it once the hit's damage is written. See
+	 * `UCataclysmAbilitySystemComponent::AskToBeExecuted` and `ExecuteIfLeftBelow`.
+	 */
+	bool bExecuteTarget = false;
+
+	/**
 	 * Set, this action GRANTS ITS WEARER A TEMPORARY ABSORB of `Percent` of the wearer's maximum health. The project
 	 * owner, 2026-10-07: it is separate from the energy shield. For "Every 12 seconds gain a shield absorbing 15%-25%
 	 * of your maximum HP in damage". A grant refreshes what is held to its own amount and never adds. See

@@ -793,7 +793,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 589 SINCE MANA WEAVER'S SIX-PIECE ROWS, issue #1833, from 587.
 	//
 	// AND 594 SINCE THE WHOLE SET SHARD OF ANARCHY, issue #1833, from 589.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    594)
+	//
+	// AND 595 SINCE THE EXECUTE ROW, issue #1833, from 594.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    595)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
