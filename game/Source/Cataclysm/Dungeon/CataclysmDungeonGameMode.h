@@ -2436,11 +2436,22 @@ public:
 	float EternalChorusSourceHealth() const { return ImpHealth; }
 
 	/**
-	 * Where a floor's choruses stand: up to `Count` random floor cells, each at least
+	 * Where a floor's choruses stand: up to `Count` floor cells, each at least
 	 * `EternalChorusApartCm` from the floor's entrance and from each other. Fewer when the floor
 	 * has no more room. Issues #1820 and #41.
+	 *
+	 * DRAWN ON A SEEDED STREAM SINCE ISSUE #2342, ruled 2026-10-12: the same dungeon seed, floor and salt give the
+	 * same cells in the same order. This form is Eternal Chorus's own and uses `EternalChorusCellsSalt`. EVERY
+	 * OTHER RULE USES THE FORM BELOW WITH ITS OWN SALT; a rule that called this one would be given the choruses'
+	 * cells.
 	 */
 	static TArray<FIntPoint> EternalChorusCells(const ACataclysmDungeonFloor& Floor, int32 Count);
+
+	/**
+	 * The same rule for another rule's objects: `Salt` is that rule's own, one of the `...CellsSalt` constants of
+	 * `UCataclysmDungeonModifierEffects`. Issue #2342.
+	 */
+	static TArray<FIntPoint> EternalChorusCells(const ACataclysmDungeonFloor& Floor, int32 Count, int32 Salt);
 
 	/**
 	 * Whether `Cell` is a floor cell beside a wall: at least one of its four neighbours is not floor,
@@ -2451,9 +2462,13 @@ public:
 
 	/**
 	 * Where a floor's veins stand: `EternalChorusCells`' rule, among floor cells beside a wall only.
-	 * Fewer when the floor has no more room. Issues #1820 and #41.
+	 * Fewer when the floor has no more room. Issues #1820 and #41. Infested Veins' own form: it uses
+	 * `InfestedVeinsCellsSalt`. Issue #2342.
 	 */
 	static TArray<FIntPoint> InfestedVeinsCells(const ACataclysmDungeonFloor& Floor, int32 Count);
+
+	/** The same among cells beside a wall, for another rule's objects, on that rule's own `Salt`. Issue #2342. */
+	static TArray<FIntPoint> InfestedVeinsCells(const ACataclysmDungeonFloor& Floor, int32 Count, int32 Salt);
 
 	/** Infested Veins, for the panel and tests: the veins standing now. */
 	TArray<ACataclysmEnemyCharacter*> InfestedVeinsStanding() const;
@@ -3342,8 +3357,15 @@ private:
 	 * The cells `EternalChorusCells` and `InfestedVeinsCells` share: every floor cell at least
 	 * `EternalChorusApartCm` from the entrance -- beside a wall as well when asked -- in an even shuffle,
 	 * then the first that are that far from every one already taken.
+	 *
+	 * THE SHUFFLE IS DRAWN ON A STREAM SEEDED FROM THE FLOOR'S SEED MIXED WITH `Salt`, as `GatedShortcutStream` is
+	 * made, and not on the global random. Issue #2342, ruled 2026-10-12. The candidates are gathered row by row and
+	 * column by column before it, so the same plan, seed and salt give the same cells in the same order. `Salt` is
+	 * the calling rule's own. The candidates are the plan's walkable cells AS IT STANDS, so a rule that closes or
+	 * carves cells before this is asked still moves what another rule is given.
 	 */
-	static TArray<FIntPoint> FloorSourceCells(const ACataclysmDungeonFloor& Floor, int32 Count, bool bBesideAWallOnly);
+	static TArray<FIntPoint> FloorSourceCells(const ACataclysmDungeonFloor& Floor, int32 Count, bool bBesideAWallOnly,
+											  int32 Salt);
 
 	/** Infested Veins: this arena's veins, placed where a new arena is populated, and its count reset. */
 	void PlaceTheVeins();
@@ -3358,10 +3380,11 @@ private:
 	 * Floor objects of one rule on this floor: up to `Count`, on Eternal Chorus's cells -- away from the entrance, so
 	 * the player walks to one -- each carrying the rule's key, the name and the prompt given. The caller gives each its
 	 * choices and keeps them. Issues #1820 and #41. Taken out of Grim Totems so every rule that places a floor object
-	 * places it the one way.
+	 * places it the one way. `CellsSalt` is the calling rule's own salt for the cell picker, so two rules that
+	 * place floor objects on one floor are not given the same cells. Issue #2342.
 	 */
-	TArray<class ACataclysmFloorObject*> PlaceFloorObjects(FName RuleKey, int32 Count, const FString& DisplayName,
-														   const FString& Prompt);
+	TArray<class ACataclysmFloorObject*> PlaceFloorObjects(FName RuleKey, int32 Count, int32 CellsSalt,
+														   const FString& DisplayName, const FString& Prompt);
 
 	/**
 	 * Up to `Count` creatures of the floor's own kinds, on cells beside a point `AwayCm` from `At` at a random angle --
@@ -4393,7 +4416,11 @@ private:
 	/** The beat: a Soul Chains gate whose bearers are dead opens and pays; The Labrynth swaps a gate when due. */
 	void StepGatedShortcuts();
 
-	/** `FloorSourceCells`' two rules on a plan not built yet, drawn on a stream rather than the global random. */
+	/**
+	 * `FloorSourceCells`' two rules on a plan not built yet, measured in cells and drawn on the stream it is handed.
+	 * `FloorSourceCells` has drawn on a seeded stream of its own since issue #2342; until then it drew on the global
+	 * random and this was the only seeded form.
+	 */
 	static TArray<FIntPoint> SeededSourceCells(const FCataclysmFloorPlan& Plan, int32 Count, FRandomStream& Stream);
 
 	float HeavensQuakeSecondsSince = 0.0f;
