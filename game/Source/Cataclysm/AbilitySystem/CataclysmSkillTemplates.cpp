@@ -1281,6 +1281,55 @@ int32 UCataclysmProjectileSkill::PierceWithRows() const
 	return All > 0.0f ? FMath::Max(Params.Pierce, PierceAllCount) : Params.Pierce;
 }
 
+const TCHAR* UCataclysmProjectileSkill::ProjectileCountStat = TEXT("projectile_count");
+
+int32 UCataclysmProjectileSkill::ExtraProjectilesWithRows() const
+{
+	// `GetCurrentActorInfo`, for the reason `BouncesWithRows` gives.
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	const UCataclysmAbilitySystemComponent* Mine = Info
+		? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+		: nullptr;
+
+	// ASKED WITH THE SKILL'S TAGS AND ROUNDED, as `BouncesWithRows` asks and rounds: the row states whole
+	// projectiles and a roll lands on one. NEVER BELOW NOUGHT, so no row can take away the one the skill fires.
+	const float Added = Mine
+		? Mine->StatForSkill(FName(ProjectileCountStat), SkillTags, 0.0f)
+		: 0.0f;
+	return FMath::Max(0, FMath::RoundToInt(Added));
+}
+
+int32 UCataclysmProjectileSkill::ProjectilesOfOneUse() const
+{
+	// A RACK'S COUNT IS ITS OWN, AND A BEAM PUTS NOTHING IN THE AIR. Ruled 2026-10-12. Butcher's Bill throws its
+	// thirty one at a time on a timer. A skill that states no speed is resolved at once by `Land`, with no actor.
+	if (ThrowsRepeatedly() || ScaledProjectileSpeed() <= 0.0f)
+	{
+		return 1;
+	}
+	return 1 + ExtraProjectilesWithRows();
+}
+
+float UCataclysmProjectileSkill::FanDegreesFor(int32 Index, int32 Total)
+{
+	// CENTRED: the first is half the whole spread to one side, and each next one is one step further round.
+	return (static_cast<float>(Index) - static_cast<float>(Total - 1) * 0.5f) * FanDegreesBetweenProjectiles;
+}
+
+FVector UCataclysmProjectileSkill::FanAim(const FVector& From, const FVector& To, float Degrees)
+{
+	if (Degrees == 0.0f)
+	{
+		// The aim itself, bit for bit, so a use of one projectile is aimed exactly where it was before this.
+		return To;
+	}
+
+	// ON THE GROUND PLANE, AS A PROJECTILE'S FLIGHT IS: `ACataclysmProjectile::Fire` flattens the same difference.
+	const FVector Flat(To.X - From.X, To.Y - From.Y, 0.0);
+	const FVector Turned = Flat.RotateAngleAxis(Degrees, FVector::UpVector);
+	return FVector(From.X + Turned.X, From.Y + Turned.Y, To.Z);
+}
+
 void UCataclysmProjectileSkill::LetItGlance(ACataclysmProjectile* Shot)
 {
 	const int32 Glances = BouncesWithRows();
@@ -1419,8 +1468,15 @@ void UCataclysmProjectileSkill::ActivateAbility(
 			Params.ArcHeightFraction,
 			static_cast<float>(FVector::Dist2D(Origin, Destination)));
 
+		// HOW MANY THIS USE PUTS IN THE AIR, AND WHERE THE FIRST IS AIMED. Ruled 2026-10-12, for "Skills get +1-4 to
+		// projectile count". One for a user with no row, and then `FanAim` answers `Destination` itself, so that
+		// use is what it was before. The rest of the use's projectiles are fired below, after the first.
+		const int32 ProjectilesThisUse = ProjectilesOfOneUse();
+		FiredThisUse.Reset();
+		AlsoInFlight.Reset();
+
 		InFlight = ACataclysmProjectile::Fire(
-			Caster, Origin, Destination, ScaledRadiusCm(),
+			Caster, Origin, FanAim(Origin, Destination, FanDegreesFor(0, ProjectilesThisUse)), ScaledRadiusCm(),
 			ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
 			GetDamagePercent(), SkillTags, Params.bBurns,
 			/*InBodyMesh=*/nullptr, FlightSeconds,
@@ -1463,13 +1519,73 @@ void UCataclysmProjectileSkill::ActivateAbility(
 
 		InFlight->OnFinished.AddUObject(
 			this, &UCataclysmProjectileSkill::OnProjectileFinished);
+		FiredThisUse.Add(InFlight);
+
+		// AND THE REST OF THIS USE'S PROJECTILES, when a row of the user's adds any. Ruled 2026-10-12. Nothing below
+		// runs for a use of one projectile.
+		//
+		// EACH IS FIRED AS THE FIRST WAS, with the same figures, from the same place, and is told to glance as the
+		// first was. Only where it is aimed differs: `FanDegreesBetweenProjectiles` further round for each.
+		//
+		// THEY SHARE ONE RECORD OF WHICH OF THEM FIRST LANDED ON EACH ENEMY, so one enemy is landed on by at most
+		// one projectile of this use. Made here, for this use alone: the next use makes its own, so it may strike
+		// the same enemy again. See `ACataclysmProjectile::JoinsAUse`.
+		//
+		// NO PROJECTILE CAN FINISH BEFORE THIS LOOP DOES. `Fire` moves nothing; a projectile first moves on its own
+		// next tick. So every one of them is listed before `OnProjectileFinished` is first called.
+		if (ProjectilesThisUse > 1)
+		{
+			const TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>> LandedOn =
+				MakeShared<TMap<TWeakObjectPtr<AActor>, int32>>();
+			InFlight->JoinsAUse(LandedOn, 0);
+
+			for (int32 Index = 1; Index < ProjectilesThisUse; ++Index)
+			{
+				ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+					Caster, Origin, FanAim(Origin, Destination, FanDegreesFor(Index, ProjectilesThisUse)),
+					ScaledRadiusCm(), ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
+					GetDamagePercent(), SkillTags, Params.bBurns,
+					/*InBodyMesh=*/nullptr, FlightSeconds,
+					CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
+				if (!Shot)
+				{
+					// The world refused to spawn it. The first of the use is in the air, so the use goes on with
+					// the ones it has.
+					continue;
+				}
+				Shot->JoinsAUse(LandedOn, Index);
+				LetItGlance(Shot);
+				Shot->OnFinished.AddUObject(
+					this, &UCataclysmProjectileSkill::OnProjectileFinished);
+				FiredThisUse.Add(Shot);
+				AlsoInFlight.Add(Shot);
+			}
+		}
 	});
 }
 
 void UCataclysmProjectileSkill::OnProjectileFinished(
 	ACataclysmProjectile* Projectile)
 {
-	InFlight = nullptr;
+	// ONE OF THIS USE'S PROJECTILES HAS FINISHED. Ruled 2026-10-12. For a use of one projectile `AlsoInFlight` is
+	// empty and this is `InFlight = nullptr`, as it was. For a use of several, the next still in the air takes the
+	// place of the one that finished, so `InFlight` is null only when the last has.
+	//
+	// A PROJECTILE THAT IS NEITHER is one an earlier use fired, finishing after that use was cut short and the skill
+	// used again. It changes neither, so it cannot end this use; what it leaves below, it leaves as before.
+	if (!Projectile || Projectile == InFlight)
+	{
+		InFlight = nullptr;
+		if (!AlsoInFlight.IsEmpty())
+		{
+			InFlight = AlsoInFlight[0];
+			AlsoInFlight.RemoveAt(0);
+		}
+	}
+	else
+	{
+		AlsoInFlight.Remove(Projectile);
+	}
 
 	if (Projectile)
 	{
@@ -1516,6 +1632,15 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 	else
 	{
 		++Landings;
+	}
+
+	// THE USE ENDS WHEN THE LAST OF ITS PROJECTILES HAS FINISHED, AND NOT BEFORE. Ruled 2026-10-12. Each leaves its
+	// own ground, buried weapon and spread curses above, through this skill, as it finishes. A skill that throws
+	// once has always stayed active until its shot finished, and a use of several keeps that: until the last has
+	// finished the skill reads as running, and `CanBeInterruptedByAHit` answers as it does for one shot in the air.
+	if (InFlight)
+	{
+		return;
 	}
 
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
@@ -1840,6 +1965,9 @@ bool UCataclysmProjectileSkill::CanBeInterruptedByAHit() const
 	// ONE SHOT, ALREADY IN THE AIR. See the header. `InFlight` is set only by a
 	// skill that throws once, and is cleared when that shot finishes; a rack
 	// never sets it, so a rack answers as every running skill does.
+	//
+	// SEVERAL SHOTS OF ONE USE ANSWER AS ONE DOES. Ruled 2026-10-12: `InFlight` is null only when the last of them
+	// has finished. See `OnProjectileFinished`.
 	if (InFlight)
 	{
 		return false;

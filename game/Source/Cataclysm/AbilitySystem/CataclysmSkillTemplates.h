@@ -586,6 +586,73 @@ public:
 	 */
 	int32 PierceWithRows() const;
 
+	/**
+	 * The stat by which a worn row adds projectiles to one use of this skill. Ruled 2026-10-12 under the owner's
+	 * delegation, for "Skills get +1-4 to projectile count". No gameplay attribute; it is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Asked with this skill's tags, as `projectile_bounces` is,
+	 * so a row's Required Tags decide which projectile skills it reaches.
+	 *
+	 * A FAN, CENTRED ON THE AIM. The projectiles of one use leave from the same place and fly
+	 * `FanDegreesBetweenProjectiles` apart, as many to one side of the aim as to the other. With an even number in
+	 * the air none flies along the aim itself; with an odd number the middle one does.
+	 *
+	 * EACH IS A WHOLE PROJECTILE OF THIS SKILL: the skill's own damage, pierce, bounces, return and burn, and its
+	 * own count of landed contacts for `projectile_later_hit_damage`. When each finishes it leaves the ground, the
+	 * buried weapon and the spread curses a lone one leaves.
+	 *
+	 * ONE ENEMY IS LANDED ON BY AT MOST ONE PROJECTILE OF ONE USE. See `ACataclysmProjectile::JoinsAUse`.
+	 *
+	 * NOT FOR A SKILL THAT THROWS REPEATEDLY, whose count is its own, AND NOT FOR ONE THAT STATES NO SPEED, which is
+	 * a beam and puts nothing in the air. `ProjectilesOfOneUse` answers one for both.
+	 *
+	 * THE USE IS STILL ONE USE: one cost, one cooldown, one announcement. It ends when the last of its projectiles
+	 * has finished, and until then a hit does not cut it short, as with one shot in the air.
+	 */
+	static const TCHAR* ProjectileCountStat;
+
+	/** The degrees between two neighbouring projectiles of one use. Ruled 2026-10-12. */
+	static constexpr float FanDegreesBetweenProjectiles = 10.0f;
+
+	/**
+	 * How many projectiles the user's rows add to one use of this skill: the stat, rounded to the nearest whole
+	 * number as `BouncesWithRows` rounds, and never below nought. Nought for a user with no row and for a skill no
+	 * character holds. It does not ask what kind of projectile skill this is; `ProjectilesOfOneUse` does.
+	 */
+	int32 ExtraProjectilesWithRows() const;
+
+	/**
+	 * How many projectiles one use of this skill puts in the air at once: one, plus `ExtraProjectilesWithRows`.
+	 * One, whatever the rows add, for a skill that throws repeatedly and for one whose speed is nought or less.
+	 */
+	int32 ProjectilesOfOneUse() const;
+
+	/**
+	 * How many degrees from the aim projectile `Index` of `Total` flies, counting from nought. Nought for a lone
+	 * one, and for the middle one of an odd number.
+	 */
+	static float FanDegreesFor(int32 Index, int32 Total);
+
+	/**
+	 * The point `To`, turned about `From` on the ground plane by these degrees. `To` itself, untouched, at nought
+	 * degrees. The height of `To` is kept, so a lobbed shot still lands at the height it was aimed at.
+	 */
+	static FVector FanAim(const FVector& From, const FVector& To, float Degrees);
+
+	/**
+	 * Every projectile the last use fired, in the order it fired them, the first being the one furthest to one
+	 * side. One entry for a use with no row. Empty for a beam and for a skill that throws repeatedly. Emptied when
+	 * the next use begins. A finished projectile stays listed until the engine collects it. Read by tests.
+	 */
+	UPROPERTY()
+	TArray<TObjectPtr<ACataclysmProjectile>> FiredThisUse;
+
+	/**
+	 * The projectiles of this use still in the air beside `InFlight`, in the order they were fired. When `InFlight`
+	 * finishes, the first of these takes its place, so `InFlight` is null only when none of the use is in the air.
+	 */
+	UPROPERTY()
+	TArray<TObjectPtr<ACataclysmProjectile>> AlsoInFlight;
+
 	/** How many times it has landed or a projectile of its has finished. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 Landings = 0;

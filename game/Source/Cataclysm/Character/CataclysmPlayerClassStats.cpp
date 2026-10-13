@@ -650,6 +650,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// disengage for 3 seconds". The 15, flat; nought is no such rule. No
 		// gameplay attribute and no base.
 		TEXT("enemies_immune_to_you_after_seconds"),
+		// How many projectiles are added to the one a projectile skill fires,
+		// read by UCataclysmProjectileSkill::ExtraProjectilesWithRows where the
+		// skill fires, with the skill's tags. Ruled 2026-10-12: "Skills get +1-4
+		// to projectile count". A whole number, rounded where it is read. No
+		// gameplay attribute and no base.
+		TEXT("projectile_count"),
 	};
 	return Stats;
 }
