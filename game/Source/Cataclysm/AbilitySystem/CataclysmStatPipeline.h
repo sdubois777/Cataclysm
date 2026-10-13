@@ -1632,6 +1632,34 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	ChannellingForUnderSeconds
 		UMETA(DisplayName = "Channelling For Under Seconds"),
+
+	/**
+	 * The character on the other side of a blow being TAKEN was first struck by
+	 * this character at least `ConditionValue` seconds ago. Ruled 2026-10-12
+	 * under the owner's delegation, for "Enemies that survive more than 5
+	 * seconds after first being hit gain 20%-40% increased damage", which is a
+	 * value of 5 on a `damage_taken` row.
+	 *
+	 * "FIRST STRUCK" IS THE FIRST BLOW OF THIS CHARACTER'S TO GET THROUGH TO IT,
+	 * the blow `UCataclysmAbilitySystemComponent::NoteStruckBy` answers true
+	 * for: a damage over time tick counts, and a blow that is a row's answer to
+	 * an event or the consequence of a death does not. An opponent this
+	 * character has never struck refuses whatever the value.
+	 *
+	 * AT LEAST, the comparison `InCombatForSeconds`, `StationaryForSeconds` and
+	 * `NotAttackedForSeconds` make: exactly 5 seconds after the first blow
+	 * holds a value of 5. The sentence writes "more than", and the option not
+	 * taken is the strict comparison `OpponentBeyondMetres` makes for its own
+	 * "more than"; the two differ only at the one instant. `docs/DECISIONS.md`,
+	 * 2026-10-12, states it as a judgement.
+	 *
+	 * A CONDITION OF A BLOW TAKEN. Read from
+	 * `FCataclysmBlowContext::SecondsSinceYouFirstStruckOpponent`, which only
+	 * the defender's lookups at a defence step are handed, and which a damage
+	 * over time tick leaves at -1: the row grants nothing against a tick.
+	 */
+	OpponentFirstStruckByYouSecondsAgo
+		UMETA(DisplayName = "Opponent First Struck By You Seconds Ago"),
 };
 
 /**
@@ -2491,6 +2519,18 @@ struct CATACLYSM_API FCataclysmBlowContext
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FGameplayTagContainer OpponentDebuffs;
+
+	/**
+	 * How long ago, in seconds, the character taking this blow first got a blow
+	 * through to the character on the other side of it, or -1 when it never
+	 * has, when there is no blow, and for a damage over time tick. Ruled
+	 * 2026-10-12. See `ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo`.
+	 *
+	 * -1 AND NOT NOUGHT FOR "NOTHING", as `OpponentDistanceMetres` above uses
+	 * it: nought is a real reading, the instant of the first blow.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceYouFirstStruckOpponent = -1.0f;
 };
 
 /**
@@ -4759,7 +4799,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventieth, which is the drift that put the passive tree eight
+	 * adds a seventy-first, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4768,7 +4808,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-ONE OF THE SIXTY-NINE COMPARE NOTHING. They are the case labels
+	 * THIRTY-ONE OF THE SEVENTY COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

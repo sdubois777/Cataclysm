@@ -797,7 +797,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 595 SINCE THE EXECUTE ROW, issue #1833, from 594.
 	//
 	// AND 596 SINCE THE ROW THAT MAKES RETALIATION SKIP MITIGATION, issue #1833, from 595.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    596)
+	//
+	// AND 597 SINCE THE ROW ON ENEMIES THAT SURVIVE FIVE SECONDS AFTER A FIRST HIT, issue #1833, from 596.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    597)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

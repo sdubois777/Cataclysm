@@ -2679,6 +2679,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
 	CriticallyStruckBy.Reset();
+	// AND WHEN EACH FIRST STRUCK IT, cleared with the record it is written
+	// beside. Ruled 2026-10-12.
+	FirstStruckBy.Reset();
 	// AND THE COMBAT CLOCK: a revived character starts out of combat, counted
 	// from its revival. Issue #1815.
 	LastCombatEventAtSeconds = -1.0f;
@@ -3605,7 +3608,16 @@ bool UCataclysmAbilitySystemComponent::NoteStruckBy(
 	// WITH THE TIME, which Set Upon reads. Issue #1515. A later blow from the
 	// same striker overwrites it, so the entry is always the most recent.
 	const UWorld* World = GetWorld();
-	StruckBy.Add(Striker, World ? World->GetTimeSeconds() : -1.0f);
+	const float Now = World ? World->GetTimeSeconds() : -1.0f;
+	StruckBy.Add(Striker, Now);
+	// AND THE TIME OF THE FIRST IS KEPT APART, WRITTEN ONCE. Ruled 2026-10-12, for
+	// "Enemies that survive more than 5 seconds after first being hit". On the
+	// same answer this function returns, so the blow that is announced as the
+	// striker's first is the one whose time is kept.
+	if (bFirst)
+	{
+		FirstStruckBy.Add(Striker, Now);
+	}
 	if (bCritical)
 	{
 		CriticallyStruckBy.Add(Striker);
@@ -3630,6 +3642,20 @@ float UCataclysmAbilitySystemComponent::SecondsSinceStruckBy(
 {
 	const UWorld* World = GetWorld();
 	const float* At = Striker ? StruckBy.Find(Striker) : nullptr;
+	if (!World || !At || *At < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceFirstStruckBy(
+	const UAbilitySystemComponent* Striker) const
+{
+	// THE SHAPE OF `SecondsSinceStruckBy` DIRECTLY ABOVE, ON THE OTHER RECORD.
+	const UWorld* World = GetWorld();
+	const float* At = Striker ? FirstStruckBy.Find(Striker) : nullptr;
 	if (!World || !At || *At < 0.0f)
 	{
 		return -1.0f;
