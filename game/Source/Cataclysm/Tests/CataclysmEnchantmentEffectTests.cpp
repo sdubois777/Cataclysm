@@ -22231,4 +22231,961 @@ bool FCataclysmManaWeaverSixRowsTest::RunTest(const FString&)
 	}
 	return true;
 }
+
+// THE AUTHORED ROWS OF THE SET SHARD OF ANARCHY. Issue #1833. Four tests, one for each sentence of the set: its
+// drawback and its 2-piece, 6-piece and 10-piece bonuses. Each WEARS THE REAL ROWS, by pieces, through the gear
+// refresh; none builds the row it tests by hand. What each mechanism does with a row is its own tests', with rows
+// made by hand: `Cataclysm.StatExemption.ARowDrawsOneOfItsWearersResistancesAndHoldsItAtNoughtUntilItFiresAgain`,
+// the two tests named `Cataclysm.StatExemption.ARandomBuffOrDebuffPinnedTo...`, the `Cataclysm.BlockShare` tests
+// of the window against one damage type, and the group `Cataclysm.Enchantments.KeptStacks.`.
+//
+// HOW A PIECE IS WORN. Each piece carries the set's lowest bonus, the 2-piece row, and the set's own drawback beside
+// it. That is what a drop records for a piece of a set (see `SetOfBenefit` in CataclysmItem.cpp), and it is how the
+// tests of Spellblade's Will and Reaper's Embrace above wear theirs. `AccumulateEnchantmentsInto` grants nothing for
+// a set row on a piece. It counts the pieces, and from the set's first threshold it grants every bonus whose
+// threshold the count has reached, and the set's drawback once. So the drawback turns on with the 2-piece bonus, at
+// two pieces, and a wearer of ONE piece carries both names on its piece and is granted neither.
+//
+// SO EVERY WEARER OF TWO PIECES OR MORE HOLDS THE DRAWBACK AND THE 2-PIECE ROW AS WELL. Both are timed rows. A test
+// that steps the clock pins every draw those two rows make.
+//
+// THE CONTROL OF EACH TEST IS A WEARER OF ONE PIECE FEWER THAN THE THRESHOLD, in a world of its own, as the test of
+// Mana Weaver's six pieces has it. EVERY FIGURE IS A DIFFERENCE OF TWO READINGS OF ONE WEARER. No size is compared
+// between two wearers: a refreshed wearer is a level 20 Ravager with lines of its own, and one piece more is one
+// more base, which may carry armour of its own.
+//
+// THE FOUR NAMES WERE PRINTED BY `row_name(kind, sentence[:48])` OF `tools/generate_datatables.py` and compared
+// with the two enchantment CSVs by a script, not typed. `EveryNameIsARow` looks each one up again as set-up.
+namespace CataclysmShardOfAnarchyRowsTest
+{
+	const TCHAR* const Drawback = TEXT("Negative_Every_5_seconds_one_of_your_resistances_is_redu");
+	const TCHAR* const TwoPieceBonus = TEXT("Positive_Shard_of_Anarchy_2_Piece_Bonus_Every_30_secon");
+	const TCHAR* const SixPieceBonus = TEXT("Positive_Shard_of_Anarchy_6_Piece_Bonus_When_you_take");
+	const TCHAR* const TenPieceBonus = TEXT("Positive_Shard_of_Anarchy_10_Piece_Bonus_Every_30_seco");
+
+	/** How many rows of this effect table name this enchantment. */
+	int32 EffectRowsOf(const UDataTable* Effects, const TCHAR* Enchantment)
+	{
+		int32 Count = 0;
+		for (const TPair<FName, uint8*>& Row : Effects->GetRowMap())
+		{
+			const FCataclysmEnchantmentEffectRow* Effect =
+				reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+			if (Effect && Effect->Enchantment == Enchantment)
+			{
+				++Count;
+			}
+		}
+		return Count;
+	}
+
+	/**
+	 * SET-UP FOR EVERY TEST BELOW: each of the four names is a row of its own enchantment CSV, and the effect CSV
+	 * holds the rows the set was written with: one for the drawback, one for the 2-piece bonus, two for the 6-piece
+	 * and one for the 10-piece. Read from `game/Data`, so a name that is not a row fails here and says so.
+	 *
+	 * THE WEARERS BELOW ARE SERVED BY THE DATATABLE ASSETS AND NOT BY THESE FILES. This passing while a test's
+	 * figures fail means the asset is older than the CSV.
+	 */
+	bool EveryNameIsARow(FAutomationTestBase& Test)
+	{
+		const UDataTable* Positive = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsPositive.csv"));
+		const UDataTable* Negative = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsNegative.csv"));
+		const UDataTable* Effects = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentEffectRow>(
+			TEXT("EnchantmentEffects.csv"));
+		if (!Test.TestNotNull(TEXT("set-up: EnchantmentsPositive.csv can be read"), Positive)
+			|| !Test.TestNotNull(TEXT("set-up: EnchantmentsNegative.csv can be read"), Negative)
+			|| !Test.TestNotNull(TEXT("set-up: EnchantmentEffects.csv can be read"), Effects))
+		{
+			return false;
+		}
+
+		bool bAll = true;
+		for (const TCHAR* Name : {TwoPieceBonus, SixPieceBonus, TenPieceBonus})
+		{
+			bAll &= Test.TestTrue(*FString::Printf(TEXT("set-up: %s is a row of EnchantmentsPositive.csv"), Name),
+				Positive->GetRowMap().Contains(FName(Name)));
+		}
+		bAll &= Test.TestTrue(*FString::Printf(TEXT("set-up: %s is a row of EnchantmentsNegative.csv"), Drawback),
+			Negative->GetRowMap().Contains(FName(Drawback)));
+
+		const TCHAR* const Written[] = {Drawback, TwoPieceBonus, SixPieceBonus, TenPieceBonus};
+		const int32 RowsWritten[] = {1, 1, 2, 1};
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			bAll &= Test.TestEqual(*FString::Printf(TEXT("set-up: the rows of EnchantmentEffects.csv that name %s"),
+				Written[Index]), EffectRowsOf(Effects, Written[Index]), RowsWritten[Index]);
+		}
+		return bAll;
+	}
+
+	/**
+	 * Wear this many pieces of the set, then refresh. Each piece is one of the ten bases, in a slot of its own, and
+	 * carries the 2-piece row and the set's drawback, as a dropped piece of the set does.
+	 */
+	void WearPieces(UCataclysmEquipmentComponent* Equipment, UAbilitySystemComponent* System, int32 Pieces)
+	{
+		for (int32 Index = 0; Index < Pieces; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(CataclysmEnchantmentEffectTest::Carrying(
+				CataclysmHealthThresholdRowTest::TenBases[Index], TwoPieceBonus, Drawback),
+				Removed, AlsoRemoved, Slot);
+		}
+		Equipment->RefreshAttributes(System);
+	}
+
+	/** Pins one whole-number console variable at the console's priority until it goes out of scope. */
+	struct FWholePin
+	{
+		FWholePin(const TCHAR* Name, int32 Value)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FWholePin()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		void Set(int32 Value)
+		{
+			if (Variable)
+			{
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		int32 Previous = -1;
+	};
+
+	/** Pins one console variable holding a roll, the same way. */
+	struct FRollPin
+	{
+		FRollPin(const TCHAR* Name, float Value)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		~FRollPin()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		void Set(float Value)
+		{
+			if (Variable)
+			{
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/** The place a buff has in the table of buffs a row may draw, by its name, or -1 when it is not in the table. */
+	int32 PlaceOfBuff(const TCHAR* Name)
+	{
+		const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& Table =
+			UCataclysmAbilitySystemComponent::RandomBuffTable();
+		for (int32 Index = 0; Index < Table.Num(); ++Index)
+		{
+			if (FString(Table[Index].Name) == Name)
+			{
+				return Index;
+			}
+		}
+		return -1;
+	}
+
+	/** The names of the table of buffs, in the order the pin counts in, with a comma and a space between. */
+	FString BuffNamesInOrder()
+	{
+		TArray<FString> Names;
+		for (const UCataclysmAbilitySystemComponent::FRandomBuff& Buff : UCataclysmAbilitySystemComponent::RandomBuffTable())
+		{
+			Names.Add(FString(Buff.Name));
+		}
+		return FString::Join(Names, TEXT(", "));
+	}
+
+	/** The figure the drawback's test writes on the resistance at this place: 10, 20 and so on to 80. */
+	float ResistanceWrittenAt(int32 Place)
+	{
+		return 10.0f * (Place + 1);
+	}
+
+	/** Whether each of eight readings is the figure written at its place, but for the two places named. */
+	bool ReadTheirOwnFigures(const float* Reads, int32 ButForPlace = INDEX_NONE, int32 AndButForPlace = INDEX_NONE)
+	{
+		for (int32 Place = 0; Place < 8; ++Place)
+		{
+			if (Place != ButForPlace && Place != AndButForPlace
+				&& !FMath::IsNearlyEqual(Reads[Place], ResistanceWrittenAt(Place), 0.001f))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * The seconds of the ten-piece test's second fight at which the stacks are read, and what ten pieces hold at
+	 * each. The first fight was 20 and a half seconds, so the first stack comes in this fight's tenth second.
+	 */
+	constexpr int32 Readings = 9;
+	const float ReadAtSecond[Readings] = {9.0f, 10.0f, 39.0f, 40.0f, 70.0f, 100.0f, 130.0f, 160.0f, 190.0f};
+	const int32 TenHoldAt[Readings] = {0, 1, 1, 2, 3, 4, 5, 5, 5};
+
+	/** Eight readings, for a message. */
+	FString Listed(const float* Reads)
+	{
+		return FString::Printf(TEXT("%.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f"), Reads[0], Reads[1], Reads[2],
+			Reads[3], Reads[4], Reads[5], Reads[6], Reads[7]);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShardOfAnarchyDrawbackRowTest,
+	"Cataclysm.Enchantments.ShardOfAnarchysDrawbackHoldsOneResistanceAtNoughtEveryFiveSecondsFromTwoPiecesOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 5 seconds, one of your resistances is reduced to 0 until this triggers again", the drawback of the set
+ * Shard of Anarchy. One row: `apply_status_to_self` on `every_seconds`, 100, Every Seconds 5, the status "Random
+ * Resistance At Nought". It turns on at the set's first threshold, two pieces.
+ *
+ * TWO WEARERS, EACH IN A WORLD OF ITS OWN: one piece, the control, and two. Each has its eight resistances written
+ * by hand after the refresh, 10, 20 and so on to 80, as the mechanism's test writes them, so no reading can be
+ * another's. Nothing refreshes the gear afterwards: the fight is 10 and a half seconds, and the 2-piece row the
+ * wearer of two also holds does not fire before 30.
+ *
+ * THE CLOCK IS MOVED AS THE MECHANISM'S TEST MOVES IT, with `CataclysmKeptStacksTest::FKeptFight`: a blow begins
+ * the fight, the clock moves half a second, and each second has a blow and one step of the timed grants.
+ *
+ * THE DRAW IS PINNED to the third resistance for the firing at 5 seconds and to the sixth for the one at 10.
+ */
+bool FCataclysmShardOfAnarchyDrawbackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmShardOfAnarchyRowsTest;
+	if (!EveryNameIsARow(*this))
+	{
+		return false;
+	}
+
+	const TArray<FName>& Types = UCataclysmItemModifiers::DamageTypeNames();
+	const int32 FirstDrawn = 2;
+	const int32 SecondDrawn = 5;
+	FWholePin Pick(TEXT("Cataclysm.RandomResistancePick"), FirstDrawn);
+	if (!TestNotNull(TEXT("set-up: the pin for the draw of a resistance"), Pick.Variable)
+		|| !TestEqual(TEXT("set-up: a player has eight per-type resistances"), Types.Num(), 8))
+	{
+		return false;
+	}
+
+	struct FAnswers
+	{
+		FName HeldBefore;
+		FName HeldAtFour;
+		FName HeldAtFive;
+		FName HeldAtNine;
+		FName HeldAtTen;
+		float ReadsBefore[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+		float ReadsAtFive[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+		float ReadsAtTen[8] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+		float AttributeOfTheFirstDrawnAtFive = 0.0f;
+		float BlowBefore = 0.0f;
+		float BlowAtFive = 0.0f;
+	};
+
+	const auto Ask = [&](int32 Pieces, FAnswers& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %d pieces: a world"), Pieces), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+		WearPieces(Wearer.Equipment, Wearer.AbilitySystem, Pieces);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+		for (int32 Place = 0; Place < 8; ++Place)
+		{
+			const FGameplayAttribute Slot = UCataclysmDamageCalculation::ResistanceAttributeFor(Types[Place]);
+			if (!TestTrue(*FString::Printf(TEXT("set-up, %d pieces: %s has a resistance attribute the wearer holds"),
+					Pieces, *Types[Place].ToString()), Slot.IsValid() && ASC->HasAttributeSetForAttribute(Slot)))
+			{
+				return false;
+			}
+			ASC->SetNumericAttributeBase(Slot, ResistanceWrittenAt(Place));
+		}
+		const auto ReadAll = [&](float* Into)
+		{
+			for (int32 Place = 0; Place < 8; ++Place)
+			{
+				Into[Place] = UCataclysmDamageCalculation::TypedResistanceOf(ASC, Types[Place]);
+			}
+		};
+		// A BLOW OF 100 OF THE TYPE DRAWN FIRST, with every roll pinned to miss, as the mechanism's test asks it.
+		const auto BlowOfTheFirstDrawn = [&]()
+		{
+			FCataclysmIncomingHit Blow;
+			Blow.Damage = 100.0f;
+			Blow.DamageType = Types[FirstDrawn];
+			return UCataclysmDamageCalculation::Resolve(Blow, ASC, /*Tier=*/1,
+				/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f, /*CritRoll=*/100.0f).DealtToHealth;
+		};
+
+		Pick.Set(FirstDrawn);
+		Out.HeldBefore = ASC->ResistanceHeldAtNought();
+		ReadAll(Out.ReadsBefore);
+		Out.BlowBefore = BlowOfTheFirstDrawn();
+
+		CataclysmKeptStacksTest::FKeptFight Fight(World, ASC);
+		Fight.Begin();
+		Fight.Until(4.0f);
+		Out.HeldAtFour = ASC->ResistanceHeldAtNought();
+		Fight.Until(5.0f);
+		Out.HeldAtFive = ASC->ResistanceHeldAtNought();
+		ReadAll(Out.ReadsAtFive);
+		Out.AttributeOfTheFirstDrawnAtFive =
+			ASC->GetNumericAttribute(UCataclysmDamageCalculation::ResistanceAttributeFor(Types[FirstDrawn]));
+		Out.BlowAtFive = BlowOfTheFirstDrawn();
+
+		Pick.Set(SecondDrawn);
+		Fight.Until(9.0f);
+		Out.HeldAtNine = ASC->ResistanceHeldAtNought();
+		Fight.Until(10.0f);
+		Out.HeldAtTen = ASC->ResistanceHeldAtNought();
+		ReadAll(Out.ReadsAtTen);
+		return true;
+	};
+
+	FAnswers One;
+	FAnswers Two;
+	if (!Ask(1, One) || !Ask(2, Two))
+	{
+		return false;
+	}
+	const FString First = Types[FirstDrawn].ToString();
+	const FString Second = Types[SecondDrawn].ToString();
+
+	// SET-UP: THE EIGHT FIGURES WRITTEN BY HAND ARE WHAT EACH WEARER READS BEFORE ANYTHING FIRES.
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the wearer of one piece reads the eight figures written: %s"),
+			*Listed(One.ReadsBefore)), ReadTheirOwnFigures(One.ReadsBefore))
+		|| !TestTrue(*FString::Printf(TEXT("set-up: the wearer of two pieces reads the eight figures written: %s"),
+			*Listed(Two.ReadsBefore)), ReadTheirOwnFigures(Two.ReadsBefore))
+		|| !TestTrue(*FString::Printf(TEXT("set-up: a %s blow of 100 takes something from each before anything "
+			"fires: %.2f and %.2f"), *First, One.BlowBefore, Two.BlowBefore),
+			One.BlowBefore > 0.0f && Two.BlowBefore > 0.0f))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: ONE PIECE, WHICH CARRIES THE DRAWBACK'S NAME AND IS BELOW THE THRESHOLD.
+	TestTrue(TEXT("control: before a fight the wearer of one piece holds no resistance at nought"),
+		One.HeldBefore.IsNone());
+	TestTrue(TEXT("control: 4 seconds into a fight it holds none"), One.HeldAtFour.IsNone());
+	TestTrue(TEXT("control: 5 seconds into a fight it holds none"), One.HeldAtFive.IsNone());
+	TestTrue(*FString::Printf(TEXT("control: and its eight resistances read their own figures: %s"),
+		*Listed(One.ReadsAtFive)), ReadTheirOwnFigures(One.ReadsAtFive));
+	TestEqual(*FString::Printf(TEXT("control: and a %s blow takes from it what it took before the fight"), *First),
+		One.BlowAtFive, One.BlowBefore, 0.001f);
+	TestTrue(TEXT("control: 10 seconds into the fight it holds none"), One.HeldAtTen.IsNone());
+	TestTrue(*FString::Printf(TEXT("control: and its eight resistances read their own figures: %s"),
+		*Listed(One.ReadsAtTen)), ReadTheirOwnFigures(One.ReadsAtTen));
+
+	// TWO PIECES: BEFORE THE ROW'S FIFTH SECOND, NOTHING.
+	TestTrue(TEXT("control: before a fight the wearer of two pieces holds no resistance at nought"),
+		Two.HeldBefore.IsNone());
+	TestTrue(TEXT("control: 4 seconds into a fight it holds none: the row's period is 5"), Two.HeldAtFour.IsNone());
+
+	// TWO PIECES, AT 5 SECONDS: THE PINNED ONE IS HELD AND READS NOUGHT, AND THE OTHER SEVEN READ THEIR OWN.
+	TestTrue(*(FString::Printf(TEXT("5 seconds into a fight the wearer of two pieces holds %s at nought, the one "
+		"pinned: it holds '%s'."), *First, *Two.HeldAtFive.ToString()) + CataclysmRepeatRowsTest::OlderAsset),
+		Two.HeldAtFive == Types[FirstDrawn]);
+	TestEqual(*FString::Printf(TEXT("and %s reads nought, down from the %.0f written"), *First,
+		ResistanceWrittenAt(FirstDrawn)), Two.ReadsAtFive[FirstDrawn], 0.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("and the other seven read their own figures: %s"), *Listed(Two.ReadsAtFive)),
+		ReadTheirOwnFigures(Two.ReadsAtFive, FirstDrawn));
+	TestEqual(*FString::Printf(TEXT("and the attribute of %s still holds the figure written"), *First),
+		Two.AttributeOfTheFirstDrawnAtFive, ResistanceWrittenAt(FirstDrawn), 0.001f);
+	TestTrue(*FString::Printf(TEXT("and a %s blow takes more from it than before the fight: %.2f against %.2f"),
+		*First, Two.BlowAtFive, Two.BlowBefore), Two.BlowAtFive > Two.BlowBefore + 0.5f);
+
+	// TWO PIECES, AT 9 AND AT 10 SECONDS: HELD UNTIL THE ROW FIRES AGAIN, AND THEN THE NEW DRAW.
+	TestTrue(*FString::Printf(TEXT("9 seconds in, the pin moved to %s, it still holds %s: it holds '%s'"), *Second,
+		*First, *Two.HeldAtNine.ToString()), Two.HeldAtNine == Types[FirstDrawn]);
+	TestTrue(*FString::Printf(TEXT("10 seconds in it holds %s, the one now pinned: it holds '%s'"), *Second,
+		*Two.HeldAtTen.ToString()), Two.HeldAtTen == Types[SecondDrawn]);
+	TestEqual(*FString::Printf(TEXT("and %s reads nought, down from the %.0f written"), *Second,
+		ResistanceWrittenAt(SecondDrawn)), Two.ReadsAtTen[SecondDrawn], 0.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("and the other seven read their own figures, %s among them again: %s"), *First,
+		*Listed(Two.ReadsAtTen)), ReadTheirOwnFigures(Two.ReadsAtTen, SecondDrawn));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShardOfAnarchyTwoPieceRowTest,
+	"Cataclysm.Enchantments.ShardOfAnarchysTwoPiecesLayAPinnedBuffOrTheMergedDrawsDebuffAfterThirtySecondsOfAFight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to you". One row:
+ * `apply_status_to_self` on `every_seconds`, 100, Every Seconds 30, the status "Random Buff or Debuff".
+ *
+ * FOUR WEARERS, EACH IN A WORLD OF ITS OWN: one piece and two with the draw pinned to a buff, and one piece and two
+ * with it pinned to a debuff. PINNED TO A BUFF, THE BUFF IS COMMANDER, which lays 20 increased movement speed and
+ * 20 increased attack speed: two lines to read on the stat line and one stat, life leech, that it does not touch.
+ * PINNED TO A DEBUFF, THE DEBUFF IS THE SECOND OF THE MERGED DRAW'S POOL, Cripple, as the mechanism's test pins it.
+ *
+ * "THE MERGED DRAW'S DEBUFF" IS READ FROM THE MERGED ROW ITSELF. A fifth wearer, of one piece, is handed the
+ * status "Random Debuff" by the function the timed step calls, on a row made by hand; the row tested is not that
+ * one. What the wearer of two pieces carries at 30 seconds is compared with what that wearer carries: the same tag,
+ * at the same stated strength.
+ *
+ * THE WEARER OF TWO PIECES HOLDS THE DRAWBACK TOO, which fires six times in these 30 seconds. Its draw is pinned.
+ * It writes no attribute and no line, so the stat line read here is not changed by it.
+ */
+bool FCataclysmShardOfAnarchyTwoPieceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmShardOfAnarchyRowsTest;
+	if (!EveryNameIsARow(*this))
+	{
+		return false;
+	}
+
+	const int32 Commander = PlaceOfBuff(TEXT("Commander"));
+	FWholePin BuffOrDebuff(TEXT("Cataclysm.RandomBuffOrDebuffPick"), 0);
+	FWholePin WhichBuff(TEXT("Cataclysm.RandomBuffPick"), Commander);
+	FWholePin WhichDebuff(TEXT("Cataclysm.RandomDebuffPick"), 1);
+	FWholePin WhichResistance(TEXT("Cataclysm.RandomResistancePick"), 0);
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!TestTrue(TEXT("set-up: the four pins exist"), BuffOrDebuff.Variable && WhichBuff.Variable
+			&& WhichDebuff.Variable && WhichResistance.Variable)
+		|| !TestEqual(TEXT("set-up: the six buffs of the table, in the order the pin counts in"), BuffNamesInOrder(),
+			FString(TEXT("Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis, Spellslinger")))
+		|| !TestTrue(TEXT("set-up: Commander is in the table and the Cripple tag exists"),
+			Commander >= 0 && Cripple.IsValid()))
+	{
+		return false;
+	}
+	const FName CommanderName(TEXT("Commander"));
+	const FGameplayTagContainer NoTags;
+
+	struct FAnswers
+	{
+		FName HeldBefore;
+		FName HeldAtTwentyNine;
+		FName HeldAtThirty;
+		float SecondsLeftAtThirty = 0.0f;
+		float MoveBefore = 0.0f;
+		float MoveAtTwentyNine = 0.0f;
+		float MoveAtThirty = 0.0f;
+		float AttackBefore = 0.0f;
+		float AttackAtThirty = 0.0f;
+		float LeechBefore = 0.0f;
+		float LeechAtThirty = 0.0f;
+		bool bCrippledBefore = false;
+		bool bCrippledAtTwentyNine = false;
+		bool bCrippledAtThirty = false;
+		float CrippleStrengthAtThirty = 0.0f;
+	};
+
+	const auto Ask = [&](int32 Pieces, bool bDebuff, FAnswers& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %d pieces: a world"), Pieces), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+		WearPieces(Wearer.Equipment, Wearer.AbilitySystem, Pieces);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+		BuffOrDebuff.Set(bDebuff ? 1 : 0);
+
+		Out.HeldBefore = ASC->HeldRandomBuff();
+		Out.MoveBefore = ASC->IncreasesForStat(FName(TEXT("movement_speed")), NoTags);
+		Out.AttackBefore = ASC->IncreasesForStat(FName(TEXT("attack_speed")), NoTags);
+		Out.LeechBefore = ASC->IncreasesForStat(FName(TEXT("life_leech")), NoTags);
+		Out.bCrippledBefore = ASC->HasMatchingGameplayTag(Cripple);
+
+		CataclysmKeptStacksTest::FKeptFight Fight(World, ASC);
+		Fight.Begin();
+		Fight.Until(29.0f);
+		Out.HeldAtTwentyNine = ASC->HeldRandomBuff();
+		Out.MoveAtTwentyNine = ASC->IncreasesForStat(FName(TEXT("movement_speed")), NoTags);
+		Out.bCrippledAtTwentyNine = ASC->HasMatchingGameplayTag(Cripple);
+
+		Fight.Until(30.0f);
+		Out.HeldAtThirty = ASC->HeldRandomBuff();
+		Out.SecondsLeftAtThirty = ASC->HeldRandomBuffSecondsLeft();
+		Out.MoveAtThirty = ASC->IncreasesForStat(FName(TEXT("movement_speed")), NoTags);
+		Out.AttackAtThirty = ASC->IncreasesForStat(FName(TEXT("attack_speed")), NoTags);
+		Out.LeechAtThirty = ASC->IncreasesForStat(FName(TEXT("life_leech")), NoTags);
+		Out.bCrippledAtThirty = ASC->HasMatchingGameplayTag(Cripple);
+		Out.CrippleStrengthAtThirty = UCataclysmSkillEffects::StatedStrengthOn(Wearer.Actor, Cripple);
+		return true;
+	};
+
+	FAnswers BuffOne;
+	FAnswers BuffTwo;
+	FAnswers DebuffOne;
+	FAnswers DebuffTwo;
+	if (!Ask(1, /*bDebuff=*/false, BuffOne) || !Ask(2, /*bDebuff=*/false, BuffTwo)
+		|| !Ask(1, /*bDebuff=*/true, DebuffOne) || !Ask(2, /*bDebuff=*/true, DebuffTwo))
+	{
+		return false;
+	}
+
+	// WHAT THE MERGED DRAW LAYS, READ FROM THE MERGED ROW: a wearer of one piece handed "Random Debuff" by hand.
+	bool bMergedLaidSomething = false;
+	bool bMergedCrippled = false;
+	float MergedCrippleStrength = 0.0f;
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("set-up, the merged row: a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		CataclysmEnchantmentEffectTest::FWearer Merged(World);
+		WearPieces(Merged.Equipment, Merged.AbilitySystem, 1);
+		FCataclysmPoolAction MergedRow;
+		MergedRow.Event = FName(UCataclysmAbilitySystemComponent::TimedEvent);
+		MergedRow.EverySeconds = 30.0f;
+		MergedRow.ApplyStatus = ECataclysmApplyStatus::Chance;
+		MergedRow.bStatusOnTheWearer = true;
+		MergedRow.StatusName = UCataclysmAbilitySystemComponent::RandomDebuffStatus;
+		MergedRow.Percent = 100.0f;
+		MergedRow.TriggerKey = FName(TEXT("Test:the merged draw, by hand"));
+		bMergedLaidSomething = Merged.AbilitySystem->ApplyStatusToTheWearer(MergedRow);
+		bMergedCrippled = Merged.AbilitySystem->HasMatchingGameplayTag(Cripple);
+		MergedCrippleStrength = UCataclysmSkillEffects::StatedStrengthOn(Merged.Actor, Cripple);
+	}
+
+	// PINNED TO A BUFF. THE CONTROL, READ FIRST: ONE PIECE.
+	TestTrue(TEXT("control, a buff: before a fight the wearer of one piece holds no buff"), BuffOne.HeldBefore.IsNone());
+	TestTrue(TEXT("control, a buff: 30 seconds into a fight it holds none"), BuffOne.HeldAtThirty.IsNone());
+	TestEqual(TEXT("control, a buff: and its movement speed increases are what they were before the fight"),
+		BuffOne.MoveAtThirty, BuffOne.MoveBefore, 0.0001f);
+	TestEqual(TEXT("control, a buff: and its attack speed increases"), BuffOne.AttackAtThirty, BuffOne.AttackBefore,
+		0.0001f);
+
+	// TWO PIECES: NOTHING BEFORE THE ROW'S THIRTIETH SECOND.
+	TestTrue(TEXT("control, a buff: before a fight the wearer of two pieces holds no buff"), BuffTwo.HeldBefore.IsNone());
+	TestTrue(TEXT("control, a buff: 29 seconds into a fight it holds none: the row's period is 30"),
+		BuffTwo.HeldAtTwentyNine.IsNone());
+	TestEqual(TEXT("control, a buff: and its movement speed increases are what they were before the fight"),
+		BuffTwo.MoveAtTwentyNine, BuffTwo.MoveBefore, 0.0001f);
+
+	// TWO PIECES, AT 30 SECONDS: THE PINNED BUFF, AND ITS TWO LINES ON THE STAT LINE.
+	TestTrue(*(FString::Printf(TEXT("30 seconds into a fight the wearer of two pieces holds Commander, the buff "
+		"pinned: it holds '%s'."), *BuffTwo.HeldAtThirty.ToString()) + CataclysmRepeatRowsTest::OlderAsset),
+		BuffTwo.HeldAtThirty == CommanderName);
+	TestEqual(TEXT("with the 30 seconds a buff of the table is laid for"), BuffTwo.SecondsLeftAtThirty,
+		UCataclysmAbilitySystemComponent::RandomBuffSeconds, 0.01f);
+	TestEqual(TEXT("its movement speed increases are higher than before the fight by Commander's 0.20"),
+		BuffTwo.MoveAtThirty - BuffTwo.MoveBefore, 0.20f, 0.0001f);
+	TestEqual(TEXT("and its attack speed increases by Commander's 0.20"),
+		BuffTwo.AttackAtThirty - BuffTwo.AttackBefore, 0.20f, 0.0001f);
+	TestEqual(TEXT("and its life leech increases, which Commander does not name, are what they were"),
+		BuffTwo.LeechAtThirty, BuffTwo.LeechBefore, 0.0001f);
+	TestFalse(TEXT("and pinned to a buff it carries no Cripple"), BuffTwo.bCrippledAtThirty);
+
+	// PINNED TO A DEBUFF. THE CONTROL, READ FIRST: ONE PIECE.
+	TestFalse(TEXT("control, a debuff: before a fight the wearer of one piece carries no Cripple"),
+		DebuffOne.bCrippledBefore);
+	TestFalse(TEXT("control, a debuff: 30 seconds into a fight it carries none"), DebuffOne.bCrippledAtThirty);
+	TestFalse(TEXT("control, a debuff: before a fight the wearer of two pieces carries no Cripple"),
+		DebuffTwo.bCrippledBefore);
+	TestFalse(TEXT("control, a debuff: 29 seconds into a fight it carries none"), DebuffTwo.bCrippledAtTwentyNine);
+
+	// TWO PIECES, AT 30 SECONDS: WHAT THE MERGED ROW LAYS.
+	if (TestTrue(TEXT("set-up: the merged row, handed to a wearer of one piece, lays something"), bMergedLaidSomething)
+		&& TestTrue(TEXT("set-up: and that wearer carries Cripple, the second of the merged pool"), bMergedCrippled))
+	{
+		TestTrue(*(FString(TEXT("30 seconds into a fight, pinned to a debuff, the wearer of two pieces carries the "
+			"debuff the merged draw gives.")) + CataclysmRepeatRowsTest::OlderAsset), DebuffTwo.bCrippledAtThirty);
+		TestEqual(TEXT("at the stated strength the merged row lays it at"), DebuffTwo.CrippleStrengthAtThirty,
+			MergedCrippleStrength, 0.001f);
+	}
+	TestTrue(TEXT("and pinned to a debuff it holds no buff"), DebuffTwo.HeldAtThirty.IsNone());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShardOfAnarchySixPieceRowsTest,
+	"Cataclysm.Enchantments.ShardOfAnarchysSixPiecesOpenAFiveSecondWindowAgainstAHitsDamageTypeOnARollUnderTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Shard of Anarchy (6-Piece Bonus): When you take damage, you have a 10% chance to become immune to the damage
+ * type that hit you for 5 seconds". Two rows: `damage_type_immunity_on_hit_chance`, flat, 10, and
+ * `damage_type_immunity_on_hit_seconds`, flat, 5.
+ *
+ * TWO WEARERS, EACH IN A WORLD OF ITS OWN: five pieces, the control, and six. Five pieces already hold the drawback
+ * and the 2-piece row; six add the two rows and nothing else. Nothing steps the clock of the timed rows here.
+ *
+ * EVERY BLOW IS A REAL, TYPED, DIRECT ONE, `ApplyDirectDamage` with the type on the delivery, as the mechanism's
+ * tests send it. EACH WEARER'S BLOWS ARE COMPARED WITH ITS OWN FIRST BLOW and not with the other wearer's: six
+ * pieces are one base more than five.
+ *
+ * THE WEARER IS NOT THE MECHANISM'S. Its tests use a bare actor that cannot wear gear and holds the two stats by
+ * hand. This one is the wearer the test of Mana Weaver's six pieces uses, refreshed, and so a level 20 Ravager
+ * with defences of its own. For that reason every blow here says it cannot be evaded, where the mechanism's tests
+ * rely on a bare actor's evasion of nought; the block roll and the critical strike roll are pinned as theirs are.
+ *
+ * THE ROW'S 10 IS WHAT IS READ: a roll pinned to 10.1 opens nothing and a roll pinned to 9.9 opens the window.
+ * THE ROW'S 5 IS WHAT IS READ: the window has 5 seconds left as it opens, holds 4 seconds on, and has ended 5.5 on.
+ */
+bool FCataclysmShardOfAnarchySixPieceRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmShardOfAnarchyRowsTest;
+	if (!EveryNameIsARow(*this))
+	{
+		return false;
+	}
+
+	const FRollPin NeverCritical(TEXT("Cataclysm.CritRoll"), 100.0f);
+	const FRollPin NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
+	FRollPin Roll(TEXT("Cataclysm.DamageTypeImmunityRoll"), 10.1f);
+	if (!TestTrue(TEXT("set-up: the three rolls can be pinned"),
+			NeverCritical.Variable && NeverBlocks.Variable && Roll.Variable))
+	{
+		return false;
+	}
+	const FName War(TEXT("War"));
+	const FName Demonic(TEXT("Demonic"));
+
+	struct FAnswers
+	{
+		bool bImmuneBeforeAnyHit = false;
+		float First = 0.0f;
+		bool bImmuneAfterTheRollJustOver = false;
+		float AfterTheRollJustOver = 0.0f;
+		float TheHitThatRollsJustUnder = 0.0f;
+		bool bImmuneAfterTheRollJustUnder = false;
+		float SecondsLeft = 0.0f;
+		bool bImmuneToAnotherType = false;
+		float InsideTheWindow = 0.0f;
+		float FourSecondsOn = 0.0f;
+		bool bImmuneFiveAndAHalfSecondsOn = false;
+		float AfterTheWindow = 0.0f;
+	};
+
+	const auto Ask = [&](int32 Pieces, FAnswers& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %d pieces: a world"), Pieces), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		CataclysmEnchantmentEffectTest::FWearer Attacker(World);
+		CataclysmEnchantmentEffectTest::FWearer Wearer(World);
+		WearPieces(Wearer.Equipment, Wearer.AbilitySystem, Pieces);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+		CataclysmHealthThresholdRowTest::SetHealth(ASC, 100000.0f, 100000.0f);
+		// NO ENERGY SHIELD, so every hit is read whole from health and the first is no different from the rest.
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+
+		// WHAT ONE DIRECT WAR HIT WORTH 1,000 TAKES FROM THE WEARER'S HEALTH.
+		const auto WarHit = [&]()
+		{
+			FCataclysmHitDelivery Delivery;
+			Delivery.DamageType = War;
+			Delivery.bCannotBeEvaded = true;
+			const float Before = CataclysmHealthThresholdRowTest::HealthOf(ASC);
+			UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, 1000.0f, Delivery);
+			return Before - CataclysmHealthThresholdRowTest::HealthOf(ASC);
+		};
+
+		// A ROLL JUST OVER THE ROW'S 10.
+		Roll.Set(10.1f);
+		Out.bImmuneBeforeAnyHit = ASC->IsImmuneToDamageType(War);
+		Out.First = WarHit();
+		Out.bImmuneAfterTheRollJustOver = ASC->IsImmuneToDamageType(War);
+		Out.AfterTheRollJustOver = WarHit();
+
+		// A ROLL JUST UNDER IT.
+		Roll.Set(9.9f);
+		Out.TheHitThatRollsJustUnder = WarHit();
+		Out.bImmuneAfterTheRollJustUnder = ASC->IsImmuneToDamageType(War);
+		Out.SecondsLeft = ASC->DamageTypeImmunitySecondsLeft(War);
+		Out.bImmuneToAnotherType = ASC->IsImmuneToDamageType(Demonic);
+
+		// THE ROLL FAILS FROM HERE ON, so the hits below are read for what they take and open nothing themselves.
+		Roll.Set(99.0f);
+		Out.InsideTheWindow = WarHit();
+		World->TimeSeconds += 4.0f;
+		Out.FourSecondsOn = WarHit();
+		World->TimeSeconds += 1.5f;
+		Out.bImmuneFiveAndAHalfSecondsOn = ASC->IsImmuneToDamageType(War);
+		Out.AfterTheWindow = WarHit();
+		return true;
+	};
+
+	FAnswers Five;
+	FAnswers Six;
+	if (!Ask(5, Five) || !Ask(6, Six))
+	{
+		return false;
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: a War hit of 1,000 takes something from each wearer's health: "
+			"%.2f with five pieces and %.2f with six"), Five.First, Six.First), Five.First > 0.0f && Six.First > 0.0f))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: FIVE PIECES. Every hit takes what the first took, and no window opens on any roll.
+	TestFalse(TEXT("control: before any hit the wearer of five pieces is not immune to War"), Five.bImmuneBeforeAnyHit);
+	TestFalse(TEXT("control: a War hit on a roll of 10.1 opens it no window"), Five.bImmuneAfterTheRollJustOver);
+	TestFalse(TEXT("control: a War hit on a roll of 9.9 opens it no window"), Five.bImmuneAfterTheRollJustUnder);
+	TestEqual(TEXT("control: and it has no seconds left of one"), Five.SecondsLeft, 0.0f, 0.001f);
+	TestEqual(TEXT("control: the War hit after the roll of 9.9 takes from it what its first took"),
+		Five.InsideTheWindow, Five.First, 0.01f);
+	TestEqual(TEXT("control: and so does one 4 seconds on"), Five.FourSecondsOn, Five.First, 0.01f);
+	TestEqual(TEXT("control: and one 5.5 seconds on"), Five.AfterTheWindow, Five.First, 0.01f);
+
+	// SIX PIECES, A ROLL JUST OVER THE ROW'S 10: NOTHING OPENS.
+	TestFalse(TEXT("control: before any hit the wearer of six pieces is not immune to War"), Six.bImmuneBeforeAnyHit);
+	TestFalse(TEXT("six pieces: a War hit on a roll of 10.1, just over the row's 10, opens no window"),
+		Six.bImmuneAfterTheRollJustOver);
+	TestEqual(TEXT("six pieces: so the next War hit takes what the first took"), Six.AfterTheRollJustOver, Six.First,
+		0.01f);
+
+	// SIX PIECES, A ROLL JUST UNDER IT: THE HIT IS TAKEN, AND THE WINDOW OPENS FOR THE ROW'S 5 SECONDS.
+	TestEqual(TEXT("six pieces: the War hit that rolls 9.9 is itself taken in full"), Six.TheHitThatRollsJustUnder,
+		Six.First, 0.01f);
+	TestTrue(*(FString(TEXT("six pieces: a War hit on a roll of 9.9, just under the row's 10, opens the window "
+		"against War.")) + CataclysmRepeatRowsTest::OlderAsset), Six.bImmuneAfterTheRollJustUnder);
+	TestEqual(TEXT("six pieces: for the row's 5 seconds"), Six.SecondsLeft, 5.0f, 0.001f);
+	TestFalse(TEXT("six pieces: and no window against another type"), Six.bImmuneToAnotherType);
+	TestEqual(TEXT("six pieces: a second War hit, inside the window, takes nothing"), Six.InsideTheWindow, 0.0f,
+		0.001f);
+	TestEqual(TEXT("six pieces: 4 seconds on a War hit still takes nothing"), Six.FourSecondsOn, 0.0f, 0.001f);
+	TestFalse(TEXT("six pieces: 5.5 seconds on the window has ended"), Six.bImmuneFiveAndAHalfSecondsOn);
+	TestEqual(TEXT("six pieces: and a War hit takes what the first took again"), Six.AfterTheWindow, Six.First, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShardOfAnarchyTenPieceRowTest,
+	"Cataclysm.Enchantments.ShardOfAnarchysTenPiecesGainAStackEachThirtySecondsOfFightingToFiveAndAUseSpendsThemAll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal Flux.' When you use a skill,
+ * you consume all stacks of 'Temporal Flux' and your skill is cast a random number of times. The bonus is permanent
+ * for the rest of the dungeon". One row: `kept_stacks_repeat_skill` on `skill_use`, 100, Every Seconds 30, Scale
+ * Max Steps 5, named "Temporal Flux".
+ *
+ * TWO WEARERS, EACH IN A WORLD OF ITS OWN: nine pieces, the control, and ten. EACH IS THE MECHANISM'S OWN WEARER,
+ * `CataclysmSkillRepeatTest::FRepeatRig`: a possessed player character, which can wear gear, and the skill Carom.
+ * The pieces go on over what the player starts with; nothing is taken off, so the weapon its skills come from
+ * stays. A use is made and counted exactly as the mechanism's tests do it: `ThePlayerUses`, then
+ * `UCataclysmTriggeredSkill::MakePendingKeptStackCasts`, with `Cataclysm.KeptStackCastsDraw` pinned.
+ *
+ * THE CLOCK COUNTS SECONDS OF FIGHTING AND CARRIES THEM FROM ONE FIGHT TO THE NEXT, so the first stack is read
+ * across two fights: 20 and a half seconds, then the tenth second of the next. One step out of combat comes first,
+ * because a clock counts from the step that first sees its row. The stack after it comes each 30 seconds of the
+ * second fight, at its 40th, 70th, 100th and 130th seconds; its 160th and 190th add none to the five.
+ *
+ * BOTH WEARERS HOLD THE DRAWBACK AND THE 2-PIECE ROW, which fire in these fights. Every draw they make is pinned,
+ * and the 2-piece row is pinned to a buff, Famished, which changes leech only: a debuff drawn could be a stun.
+ */
+bool FCataclysmShardOfAnarchyTenPieceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmShardOfAnarchyRowsTest;
+	if (!EveryNameIsARow(*this))
+	{
+		return false;
+	}
+
+	const int32 Famished = PlaceOfBuff(TEXT("Famished"));
+	const FWholePin BuffOrDebuff(TEXT("Cataclysm.RandomBuffOrDebuffPick"), 0);
+	const FWholePin WhichBuff(TEXT("Cataclysm.RandomBuffPick"), Famished);
+	const FWholePin WhichDebuff(TEXT("Cataclysm.RandomDebuffPick"), 1);
+	const FWholePin WhichResistance(TEXT("Cataclysm.RandomResistancePick"), 0);
+	const int32 CastsPinned = 3;
+	CataclysmKeptStacksTest::FKeptDrawPinned Draw(CastsPinned);
+	if (!TestTrue(TEXT("set-up: the five pins exist and Famished is in the table of buffs"), BuffOrDebuff.Variable
+			&& WhichBuff.Variable && WhichDebuff.Variable && WhichResistance.Variable && Draw.Variable && Famished >= 0))
+	{
+		return false;
+	}
+
+	// THE KEY A WORN ROW KEEPS ITS STACKS UNDER: its enchantment, its action and its event, as the item builds it.
+	const FName Key(*FString::Printf(TEXT("%s:%s:skill_use"), TenPieceBonus,
+		UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction));
+
+	struct FAnswers
+	{
+		int32 HeldBefore = 0;
+		int32 HeldAfterTheFirstFight = 0;
+		float TowardsAfterTheFirstFight = 0.0f;
+		float TowardsOutOfCombat = 0.0f;
+		int32 HeldAt[Readings] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+		int32 Shown = 0;
+		FName ShownKey;
+		FString ShownName;
+		int32 ShownHeld = 0;
+		int32 ShownCap = 0;
+		FName CastAgain;
+		int32 RowsThatAsked = 0;
+		FName RowThatAsked;
+		float Share = 0.0f;
+		int32 HeldAfterTheUse = 0;
+		int32 CastsMade = 0;
+		int32 MoreRunning = 0;
+		int32 HeldAfterTheCasts = 0;
+		FName Carom;
+	};
+
+	const auto Ask = [&](int32 Pieces, FAnswers& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %d pieces: a world"), Pieces), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		CataclysmSkillRepeatTest::FRepeatRig Rig(World);
+		UCataclysmEquipmentComponent* Equipment = Rig.Player ? Rig.Player->GetEquipment() : nullptr;
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %d pieces: a possessed player and the Carom row"), Pieces),
+				Rig.IsUsable())
+			|| !TestNotNull(*FString::Printf(TEXT("set-up, %d pieces: the player's equipment"), Pieces), Equipment))
+		{
+			return false;
+		}
+		WearPieces(Equipment, Rig.System, Pieces);
+		const FString& Carom = Rig.Projectile->Name;
+		Out.Carom = FName(*Carom);
+		const FVector Aim = Rig.Player->GetActorLocation() + FVector(900.0f, 300.0f, 0.0f);
+
+		// ONE STEP OUT OF COMBAT, WHICH IS WHERE THE ROW'S CLOCK IS FIRST SEEN.
+		Rig.System->StepTimedGrants();
+		Out.HeldBefore = Rig.System->KeptStacksHeld(Key);
+
+		// THE FIRST FIGHT, OF 20 SECONDS AND A HALF, AND ITS END.
+		CataclysmKeptStacksTest::FKeptFight Fight(World, Rig.System);
+		Fight.Begin();
+		Fight.Until(20.0f);
+		Out.HeldAfterTheFirstFight = Rig.System->KeptStacksHeld(Key);
+		Out.TowardsAfterTheFirstFight = Rig.System->KeptStackSecondsTowardsNext(Key);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %d pieces: the first fight has ended"), Pieces), Fight.End()))
+		{
+			return false;
+		}
+		Out.TowardsOutOfCombat = Rig.System->KeptStackSecondsTowardsNext(Key);
+
+		// THE SECOND FIGHT, WITH NO HALF SECOND OF ITS OWN, as the mechanism's test of the carried seconds begins it.
+		Fight.Begin(0.0f);
+		for (int32 Index = 0; Index < Readings; ++Index)
+		{
+			Fight.Until(ReadAtSecond[Index]);
+			Out.HeldAt[Index] = Rig.System->KeptStacksHeld(Key);
+		}
+		const TArray<UCataclysmAbilitySystemComponent::FHeldKeptStacks> Shown = Rig.System->KeptStacksForDisplay();
+		Out.Shown = Shown.Num();
+		if (Shown.Num() == 1)
+		{
+			Out.ShownKey = Shown[0].Key;
+			Out.ShownName = Shown[0].Name;
+			Out.ShownHeld = Shown[0].Held;
+			Out.ShownCap = Shown[0].Cap;
+		}
+
+		// A USE OF A SKILL, AND THEN THE CASTS IT ASKED FOR.
+		CataclysmSkillRepeatTest::ThePlayerUses(Rig.Player, Carom, Rig.Projectile->Tags, ECataclysmAbilitySlot::Heavy,
+			Aim);
+		Out.CastAgain = Rig.System->PendingKeptStackCastSkill();
+		Out.RowsThatAsked = Rig.System->PendingKeptStackCasts().Num();
+		if (Out.RowsThatAsked == 1)
+		{
+			Out.RowThatAsked = Rig.System->PendingKeptStackCasts()[0].Key;
+			Out.Share = Rig.System->PendingKeptStackCasts()[0].DamageShare;
+		}
+		Out.HeldAfterTheUse = Rig.System->KeptStacksHeld(Key);
+		const int32 RunningBefore = CataclysmSkillRepeatTest::RepeatsRunning(Rig.System, Carom);
+		Out.CastsMade = UCataclysmTriggeredSkill::MakePendingKeptStackCasts(Rig.Player);
+		Out.MoreRunning = CataclysmSkillRepeatTest::RepeatsRunning(Rig.System, Carom) - RunningBefore;
+		Out.HeldAfterTheCasts = Rig.System->KeptStacksHeld(Key);
+		return true;
+	};
+
+	FAnswers Nine;
+	FAnswers Ten;
+	if (!Ask(9, Nine) || !Ask(10, Ten))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: NINE PIECES GAIN NONE, SHOW NONE, AND A USE CASTS NOTHING MORE.
+	TestEqual(TEXT("control: before a fight the wearer of nine pieces holds no stack"), Nine.HeldBefore, 0);
+	TestEqual(TEXT("control: 20.5 seconds of fighting count no second towards one for it"),
+		Nine.TowardsAfterTheFirstFight, 0.0f, 0.01f);
+	for (int32 Index = 0; Index < Readings; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("control: %.0f seconds into the second fight the wearer of nine pieces holds "
+			"no stack"), ReadAtSecond[Index]), Nine.HeldAt[Index], 0);
+	}
+	TestEqual(TEXT("control: and an interface would read no entry for it"), Nine.Shown, 0);
+	TestTrue(TEXT("control: a use of a skill asks for no cast"), Nine.CastAgain.IsNone());
+	TestEqual(TEXT("control: and none is made"), Nine.CastsMade, 0);
+	TestEqual(TEXT("control: and nothing more runs"), Nine.MoreRunning, 0);
+
+	// TEN PIECES: NOTHING BEFORE 30 SECONDS OF FIGHTING, AND THE SECONDS OF THE FIRST FIGHT ARE KEPT.
+	TestEqual(TEXT("control: before a fight the wearer of ten pieces holds no stack"), Ten.HeldBefore, 0);
+	TestEqual(TEXT("control: a first fight of 20.5 seconds gains it none"), Ten.HeldAfterTheFirstFight, 0);
+	TestEqual(*(FString(TEXT("ten pieces: and 20.5 seconds are counted towards one.")) + CataclysmRepeatRowsTest::OlderAsset),
+		Ten.TowardsAfterTheFirstFight, 20.5f, 0.01f);
+	TestEqual(TEXT("ten pieces: out of combat the 20.5 seconds are kept, and ten minutes add none"),
+		Ten.TowardsOutOfCombat, 20.5f, 0.01f);
+
+	// TEN PIECES: ONE STACK FOR EACH 30 SECONDS OF FIGHTING, AND NO SIXTH.
+	for (int32 Index = 0; Index < Readings; ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("ten pieces: %.0f seconds into the second fight, %.1f of fighting, the "
+			"stacks held"), ReadAtSecond[Index], ReadAtSecond[Index] + 20.5f), Ten.HeldAt[Index], TenHoldAt[Index]);
+	}
+	if (TestEqual(TEXT("ten pieces: what an interface would read has one entry"), Ten.Shown, 1))
+	{
+		TestTrue(*FString::Printf(TEXT("ten pieces: under the key of the worn row: '%s'"), *Ten.ShownKey.ToString()),
+			Ten.ShownKey == Key);
+		TestEqual(TEXT("ten pieces: named as the row names its stacks"), Ten.ShownName, FString(TEXT("Temporal Flux")));
+		TestEqual(TEXT("ten pieces: holding five"), Ten.ShownHeld, 5);
+		TestEqual(TEXT("ten pieces: of the row's five at most"), Ten.ShownCap, 5);
+	}
+
+	// TEN PIECES: A USE RECORDS THE REQUEST AND SPENDS NOTHING; THE CASTS ARE THE DRAW, AND ALL FIVE ARE SPENT.
+	TestTrue(*FString::Printf(TEXT("ten pieces: the skill used is the one to cast again: '%s'"),
+		*Ten.CastAgain.ToString()), Ten.CastAgain == Ten.Carom && !Ten.Carom.IsNone());
+	if (TestEqual(TEXT("ten pieces: one row asked"), Ten.RowsThatAsked, 1))
+	{
+		TestTrue(TEXT("ten pieces: the worn row"), Ten.RowThatAsked == Key);
+		TestEqual(TEXT("ten pieces: at the whole of its damage, the row's 100"), Ten.Share, 1.0f, 0.001f);
+	}
+	TestEqual(TEXT("ten pieces: the five stacks are still held until the casts are made"), Ten.HeldAfterTheUse, 5);
+	TestEqual(TEXT("ten pieces: five stacks, the draw pinned to 3: three casts more are made"), Ten.CastsMade,
+		CastsPinned);
+	TestEqual(TEXT("ten pieces: and three more run"), Ten.MoreRunning, CastsPinned);
+	TestEqual(TEXT("ten pieces: and all five stacks are spent"), Ten.HeldAfterTheCasts, 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
