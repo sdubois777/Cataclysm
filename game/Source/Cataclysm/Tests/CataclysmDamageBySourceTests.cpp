@@ -1009,4 +1009,206 @@ bool FCataclysmDamageBySourceDistanceTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+namespace CataclysmFirstStruckOpponentTest
+{
+	/**
+	 * "Enemies that survive more than 5 seconds after first being hit gain
+	 * 20%-40% increased damage", at its top roll: the wearer's own damage
+	 * taken, 40% increased, from an opponent it first struck at least 5
+	 * seconds ago. Ruled 2026-10-12.
+	 */
+	FCataclysmStatModifier FortyMoreAfterFive()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = 40.0f;
+		Modifier.Condition = ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo;
+		Modifier.ConditionValue = 5.0f;
+		return Modifier;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceFirstStruckHandBuiltTest,
+	"Cataclysm.DamageBySource.AHandBuiltHitFromAnOpponentFirstStruckFiveSecondsAgoMeetsTheRowAndATickDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceFirstStruckHandBuiltTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// THE ARITHMETIC AND THE BOUNDARY, on a hit filled by hand. The test below
+	// this one checks that a real blow fills the same field.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE NAME A DATA SHEET WRITES REACHES THIS CONDITION, AND IT KEEPS ITS VALUE.
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("opponent_first_struck_by_you_seconds_ago is a name this build knows"),
+		UCataclysmStatPipeline::ConditionNamed(
+			TEXT("opponent_first_struck_by_you_seconds_ago"), Named));
+	TestEqual(TEXT("and it names this condition"), static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo));
+	TestTrue(TEXT("and the condition compares its value"),
+		UCataclysmStatPipeline::ConditionTakesAValue(
+			ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo));
+
+	const FScopedFighter Defender(World);
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ CataclysmFirstStruckOpponentTest::FortyMoreAfterFive() });
+
+	const auto From = [](float SecondsAgo)
+	{
+		FCataclysmIncomingHit Hit = HitOf(true, false, false);
+		Hit.SecondsSinceDefenderFirstStruckAttacker = SecondsAgo;
+		return Hit;
+	};
+
+	TestEqual(TEXT("control: an opponent never struck deals the whole four hundred"),
+		Defender.Taken(From(-1.0f)), 400.0f, 0.01f);
+	TestEqual(TEXT("one first struck this instant deals the whole four hundred"),
+		Defender.Taken(From(0.0f)), 400.0f, 0.01f);
+	TestEqual(TEXT("one first struck 4.99 seconds ago deals the whole four hundred"),
+		Defender.Taken(From(4.99f)), 400.0f, 0.01f);
+	TestEqual(TEXT("one first struck exactly 5 seconds ago deals 40% more: at least, not more than"),
+		Defender.Taken(From(5.0f)), 560.0f, 0.01f);
+	TestEqual(TEXT("and one first struck 30 seconds ago deals 40% more"),
+		Defender.Taken(From(30.0f)), 560.0f, 0.01f);
+
+	// AND A TICK CARRYING THE SAME FACT IS NOT RAISED: `BlowContextFor` hands a
+	// tick an empty blow record, so the condition reads -1.
+	FCataclysmIncomingHit Tick = From(30.0f);
+	Tick.bIsDamageOverTime = true;
+	TestEqual(TEXT("a tick from an opponent first struck 30 seconds ago is not raised"),
+		Defender.Taken(Tick), 400.0f, 0.01f);
+	TestEqual(TEXT("and the blow record built for that tick holds no time"),
+		UCataclysmDamageCalculation::BlowContextFor(Tick).SecondsSinceYouFirstStruckOpponent,
+		-1.0f, 0.001f);
+	TestEqual(TEXT("control: the record built for the hit holds the 30 seconds"),
+		UCataclysmDamageCalculation::BlowContextFor(From(30.0f)).SecondsSinceYouFirstStruckOpponent,
+		30.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceFirstStruckRealBlowTest,
+	"Cataclysm.DamageBySource.ARealBlowFromAnOpponentTheWearerFirstStruckFiveSecondsAgoIsRaisedAndBeforeThatIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceFirstStruckRealBlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// REAL BLOWS BOTH WAYS, for the reason the staggered test above gives: the
+	// hand-built test would pass if nothing filled the field from the two
+	// characters. The wearer's blow writes the opponent's record; the
+	// opponent's blow reads it back where the hit is built.
+	//
+	// EVERY FIGURE IS A RATIO TO THE SAME OPPONENT'S BLOW ON THE SAME WEARER
+	// BEFORE THE FIRST HIT, so armour, resistance and the opponent's own damage
+	// cancel and only the row is measured.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE BOUNDARY BELOW IS READ AT EXACTLY FIVE SECONDS, which needs the time
+	// of the first hit to be a number a float holds exactly: the record keeps
+	// it as a float and the world's clock is a double.
+	if (!TestEqual(TEXT("set-up: the world's clock starts at a time a float holds exactly"),
+				   static_cast<double>(static_cast<float>(World->GetTimeSeconds())),
+				   World->GetTimeSeconds()))
+	{
+		return false;
+	}
+
+	const FScopedFighter Wearer(World);
+	const FScopedFighter Other(World);
+	const FScopedFighter Opponent(World);
+	const FScopedFighter Unstruck(World);
+	TakeDamageThrough(Wearer.AbilitySystem,
+		{ CataclysmFirstStruckOpponentTest::FortyMoreAfterFive() });
+	TakeDamageThrough(Other.AbilitySystem,
+		{ CataclysmFirstStruckOpponentTest::FortyMoreAfterFive() });
+
+	const auto Struck = [](const FScopedFighter& From, const FScopedFighter& Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From.Actor, Target.Actor, 100.0f,
+										 FGameplayTagContainer(), NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	// BEFORE THE FIRST HIT. These are the figures every ratio below divides by.
+	const float OnWearer = Struck(Opponent, Wearer);
+	const float OnOther = Struck(Opponent, Other);
+	const float UnstruckOnWearer = Struck(Unstruck, Wearer);
+	if (!TestTrue(TEXT("set-up: each blow lands for something before any first hit"),
+				  OnWearer > 0.0f && OnOther > 0.0f && UnstruckOnWearer > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WEARER'S FIRST HIT ON THE OPPONENT.
+	UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Actor, Opponent.Actor, 1.0f);
+	if (!TestEqual(TEXT("set-up: the opponent's record holds the wearer's first hit as this instant"),
+				   Opponent.AbilitySystem->SecondsSinceFirstStruckBy(Wearer.AbilitySystem),
+				   0.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("in the instant of the first hit the opponent's blow is not raised"),
+		Struck(Opponent, Wearer) / OnWearer, 1.0f, 0.001f);
+
+	World->TimeSeconds += 4.5f;
+	TestEqual(TEXT("4.5 seconds after it the opponent's blow is not raised"),
+		Struck(Opponent, Wearer) / OnWearer, 1.0f, 0.001f);
+
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("exactly 5 seconds after it the opponent's blow is 40% increased"),
+		Struck(Opponent, Wearer) / OnWearer, 1.4f, 0.001f);
+
+	// A SECOND WEARER OF THE ROW STRIKES THE SAME OPPONENT NOW. Its clock is its
+	// own: the opponent's blow on it is not raised while the first wearer's is.
+	UCataclysmSkillEffects::ApplyDirectDamage(Other.Actor, Opponent.Actor, 1.0f);
+	World->TimeSeconds += 3.0f;
+	TestEqual(TEXT("8 seconds after the wearer's first hit the opponent's blow on it is 40% increased"),
+		Struck(Opponent, Wearer) / OnWearer, 1.4f, 0.001f);
+	TestEqual(TEXT("and on the second wearer, 3 seconds after its own first hit, it is not"),
+		Struck(Opponent, Other) / OnOther, 1.0f, 0.001f);
+	TestEqual(TEXT("and an opponent the wearer has never struck is not raised either"),
+		Struck(Unstruck, Wearer) / UnstruckOnWearer, 1.0f, 0.001f);
+
+	World->TimeSeconds += 2.5f;
+	TestEqual(TEXT("5.5 seconds after the second wearer's own first hit the blow on it is 40% increased"),
+		Struck(Opponent, Other) / OnOther, 1.4f, 0.001f);
+
+	// AND A TICK OF THE OPPONENT'S ON THE WEARER IS NOT RAISED, at a moment when
+	// its hit is. A tick is handed no blow record.
+	FCataclysmHitDelivery Tick = NoCritical();
+	Tick.bIsDamageOverTime = true;
+	const auto Ticked = [&Tick](const FScopedFighter& From, const FScopedFighter& Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyDirectDamage(From.Actor, Target.Actor, 100.0f, Tick, &Resolved);
+		return Resolved.DealtToHealth;
+	};
+	const float UnstruckTick = Ticked(Unstruck, Wearer);
+	if (!TestTrue(TEXT("set-up: a tick from the opponent never struck lands for something"),
+				  UnstruckTick > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick of the opponent's is what a tick of the unstruck opponent's is"),
+		Ticked(Opponent, Wearer) / UnstruckTick, 1.0f, 0.001f);
+	TestEqual(TEXT("control: at that same moment the opponent's hit is 40% increased"),
+		Struck(Opponent, Wearer) / OnWearer, 1.4f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
