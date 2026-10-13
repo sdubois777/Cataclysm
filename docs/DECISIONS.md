@@ -2,6 +2,356 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can take a share of the damage that would reach its wearer's health and deal it over seconds: two stats and a store of parcels, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.h` and `.cpp` (new: the two stats' names
+and three functions), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the
+store, five functions, its clearing where a death's effects are cleared, and one field of what a death ended),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the share taken where a blow reaches
+health), `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` (one comment),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the drain on the regeneration step),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two names on the list of stats with no
+attribute), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (one text, and its place on the
+status line), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the text drawn above the player's bars),
+`game/Source/Cataclysm/Tests/CataclysmDelayedDamageTests.cpp` (new: twelve tests),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentRollTests.cpp` (one test and one include),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two probes, one helper and one include),
+`tools/generate_datatables.py` (the two names, two bounds and one refusal),
+`tools/tests/test_generate_datatables.py` (one class of 14 tests),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites added to its inventory),
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (one job added to the regeneration
+step's list). Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "25%-50% of damage taken is dealt over 4-8 seconds".
+
+- **This row goes on the owner's play-check list.** Nothing here was played.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** NOT COMPILED AND NOT
+  RUN. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** The enchantment session writes the rows. Their shape is
+  under "What was built".
+- **One genre source, fetched by the enchantment session on 2026-10-12, and no other.** `poedb.tw/us/Progenesis`
+  (Path of Exile, a flask): "When Hit during effect, 25% of Life loss from Damage taken occurs over 4 seconds
+  instead". What it settles: a share of the loss of life from a hit, taken over seconds instead, as a loss and
+  not as an ailment. What is this game's own and judged: the range of share and seconds on one roll, the store
+  adding up, and what clears it. The writing session fetched nothing.
+- **Both ranges rise together on the item's one roll.** Ruled. A low roll is 25% over 4 seconds and a high roll
+  50% over 8. The share lands on a whole percent, one of 26, and the seconds on a whole second, one of 5,
+  because `UCataclysmItemValues::EnchantmentValue` gives each range its written values. A roll of a half is 38%
+  over 6 seconds. So a longer spread always comes with a larger share.
+- **A second piece carrying the same benefit adds nothing.** `UCataclysmItemModifiers::AccumulateEnchantmentsInto`
+  grants a benefit once however many pieces carry it, at the higher of their rolls. Read there; not tested here.
+- **It is a store and not a bleed.** Ruled. The share is taken off the blow and added to a store on the wearer.
+  It is not an ailment and not a debuff, is not cleansed, does not count as bleeding or as damage over time, and
+  nothing that shortens or lengthens debuffs sees it.
+- **Only what would reach health is delayed.** Ruled. The share is taken after the blow's mitigation and after
+  the temporary absorb, the energy shield and mana have taken theirs. What those took is not delayed.
+- **A tick of damage over time is not delayed.** Ruled. That covers the only damage mana takes, which is a tick
+  on a character holding `damage_over_time_taken_from_mana_first`.
+- **A blow that The Breaking Point's window turns into bleeding is not delayed. A judgement of the writing
+  session.** The conversion to bleeding stands first at that place. While its window is open the whole blow has
+  become a Bleed and nothing is left to take a share of; the Bleed's ticks are ticks. The option not taken: take
+  the share first and turn only the rest into bleeding. It was not taken because that conversion turns a blow
+  whole or not at all, and the lines below it are written on that. A character holding both today is a
+  Masochist with that node wearing the row.
+- **Each blow's share is its own parcel.** A judgement, and the enchantment session's proposal. A parcel is
+  drained evenly over the seconds the row stated when its blow was taken, counted from that moment. Parcels
+  overlap, and what a step takes is the sum of what each owes for the time since the step before. The option
+  not taken: one pooled figure with one clock, which is what the health debt keeps. In play that would make a
+  new blow stretch or shorten what was already owed: with the clock restarted at each blow, a wearer struck
+  every few seconds would never finish paying an old blow, and with the clock left alone a blow taken in the
+  last second of a spread would be taken almost at once.
+- **The drained loss is a direct loss of health.** Ruled. It is written to health and is not damage. It meets
+  no evasion, block, armour, resistance, damage reduction, mana, energy shield or temporary absorb: the share
+  was taken after all of those.
+- **Nothing that stops damage stops the drain.** A window in which the wearer takes no damage, an immunity to a
+  damage type, and the two saves from a lethal blow all stand where a blow is resolved, and the drain is not a
+  blow. A wearer holding "you cannot be brought below 1 health by a single hit" is still killed by the drain.
+- **The drain can kill.** Ruled. When what a step is owed is at least the health held, the store is cleared,
+  health is written to nought and the wearer dies.
+- **The killer named is whoever the wearer's last blow on record names.** `UCataclysmCombatEvents::NoteDeath`
+  reads the dying character's last blow that reached health, however long ago, and names its attacker; nobody
+  when no blow is on record. That is what a death by the health debt's drain names, and a death by
+  `ReduceHealthDirectly` on oneself: each writes health without a blow and records none. So the killer is
+  usually the attacker whose blow is being drained, and is another attacker when a later blow of another's
+  reached health. A test reads the attacker named.
+- **A hit that would have killed can leave the wearer alive, holding a store that then kills it.** Ruled: the
+  share is taken first. It is taken of the whole of what would reach health, before that is cut to the health
+  held. A wearer on 320 health at 50% struck for 400 loses 200 and owes 200.
+- **The two saves from a lethal blow read the blow before the share is taken.** They stand above the place the
+  share is taken. A blow whose whole figure reaches the health held is saved, and the save's cooldown spent,
+  though with the share taken off it would not have killed. The share is then taken of the figure the save
+  left. The option not taken: take the share before the saves. It needs the share moved to before the blow's
+  result is recorded, and is for the coordinating session to rule.
+- **The Sacrificial Bond divides what is left once the share is taken.** No character holds both today: the
+  bond is a creature's and a creature wears no row. The comment at that place asked for a ruling before a part
+  of a blow was taken off ahead of the bond; this is that case, and it is for the coordinating session to rule.
+- **Whoever struck is told of the whole blow.** The blow's result is not changed, as it is not for the bond.
+  The attacker leeches from the whole blow, the number drawn over the wearer is the whole blow, the hit
+  announcement carries the whole blow, and a skill of the wearer's that returns health for damage taken (the
+  Fist's Living Pyre) is handed the whole blow. Fervour from health lost is filled by what was taken at once,
+  and the drain fills none.
+- **The drain is not a hit taken.** It does not put or keep the wearer in combat, does not restart the wait
+  before the energy shield refills, and provokes no retaliation.
+- **What each of the three does to what is still in the store.**
+  - **A death clears it.** What was still owed is never taken. A death the drain itself causes clears the store
+    at once. A death by anything else leaves the store untouched until the revival, where
+    `ClearWhatDeathEnds` clears it beside the health debt; between the two nothing is drained, because the
+    drain skips a corpse.
+  - **Leaving the dungeon clears it.** What was still owed is never taken. Nothing calls the wearer when a
+    dungeon is left, and `CataclysmDungeonGameMode.*` was not edited. Each parcel remembers
+    `DungeonBeingWalked` as it was taken, as a kept stack does. A parcel of a dungeon that is not the one
+    walked now is not owed, is not drained, and is removed at the wearer's next regeneration step. No call
+    that clears the health debt when a dungeon is left was found, so there was none to copy.
+  - **A floor change does not.** A new floor of the same dungeon changes nothing: the parcels go on draining
+    by the world's clock.
+- **With the gear off, the store keeps draining.** The damage was already taken. A parcel holds its own amount
+  and its own seconds, so it drains as it would have. A blow taken with the row off is not delayed.
+- **A changed roll, or another piece put on, changes nothing of parcels already taken.** Each keeps the seconds
+  it was taken with. A blow taken afterwards is a parcel of the figures worn then.
+- **Something is said on screen.** "Owed 132" is drawn above the player's own bars while the store holds
+  anything, after the kept stacks' text. The figure is what is still owed as of the last regeneration step,
+  rounded up.
+- **The store is not replicated.** It is held on the ability system as the kept stacks are. Whether a client
+  that is not the server ever draws this text was not read.
+
+**What was not read:** how a worn row becomes a line of the stat line at a gear refresh; what becomes of a
+player's ability system when the world changes; `ACataclysmDungeonGameMode::GoToFloor` and what a floor change
+does to a character; `ACataclysmDungeonGameMode::LeaveEmpireDungeon`; what a player's death does after it is
+marked; the hover text beyond `UCataclysmItemValues::EnchantmentTextAtRoll`; whether the heal of a worn row
+that heals as health falls below a share fires on a fall the drain causes (the drain's write reaches
+`NotifyHealthChanged`, which is where such a fall is noticed); whether
+`tools/tests/test_enchantment_effects_match_the_row_text.py` accepts the two rows.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | A store and not a bleed; it adds up; not an ailment, not cleansed. | `DelayedDamageParcels` on `UCataclysmAbilitySystemComponent`, a plain array and no gameplay effect. |
+| R2 | Only what would reach health is delayed, after mana, the energy shield and the temporary absorb. | `UCataclysmDelayedDamage::DelayShare` is called in `PostGameplayEffectExecute` after those three are written, on what is left for health. |
+| R3 | A tick is not delayed. | `DelayShare` answers nought for `bIsDamageOverTime`. |
+| R4 | The drained loss is a direct loss of health that can kill. | `UCataclysmDelayedDamage::DrainStep` writes the health attribute, and writes it to nought and asks for the death when what is due reaches the health held. |
+| R5 | A death clears the store; leaving the dungeon clears it; a floor change does not. | `ClearWhatDeathEnds` and `DrainStep` call `ClearDelayedDamage`; each parcel holds `DungeonId` and `TakeDelayedDamageDue` removes one of another dungeon; nothing reads the floor. |
+| R6 | Both ranges rise together on one roll. | Two rows on one enchantment. See "What was built". |
+| R7 | With the gear off it keeps draining. | A parcel holds its own amount and seconds; nothing reads the stat line when it drains. |
+| R8 | A hit that would kill: the share is taken first. | `DelayShare` is handed what reached health and the overkill together. |
+| R9 | The wearer sees what is still owed. | `UCataclysmCombatOverlay::OwedTextFor`, drawn by `ACataclysmHUD::DrawPlayerVitals`. |
+
+### WHAT WAS BUILT
+
+- **The two stats.** `damage_taken_delayed_percent`, the share as a percent, and `damage_taken_delayed_seconds`,
+  the seconds. Both flat, with no gameplay attribute and no base, the last two names on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code: `UCataclysmDelayedDamage::SharePercentStat` and
+  `SecondsStat`. Either at nought or less delays nothing. The share is held to 100.
+- **The class.** `UCataclysmDelayedDamage`, static functions, as `UCataclysmHealthDebt` is.
+  `AmountDelayed(ToHealth, SharePercent, Seconds)` is the arithmetic. `DelayShare(AbilitySystem, ToHealth,
+  bIsDamageOverTime)` asks the two stats with `StatForSkill`, no tags and a fallback of nought, the share
+  first; holds a parcel; and answers what it took. `DrainStep(Character)` is the drain.
+- **Taking the share.** In `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, after the conversion to
+  bleeding and before the Sacrificial Bond: `WholeBeforeDelay` is what is arriving and the overkill together,
+  `Delayed` is `DelayShare` of it when anything is arriving, and `Whole`, which the bond and the write to health
+  read, is the one less the other. For a tick and for a character with no row `Delayed` is nought and every
+  line below reads what it read.
+- **The store.** `DelayedDamageParcels`, an array of `FDelayedDamageParcel`: the amount, how much of it has been
+  paid, the world's seconds when it was taken, its seconds, and `DungeonBeingWalked` as it was taken.
+  `HoldDelayedDamage(Amount, Seconds)` adds one, and refuses with no world. `DelayedDamageOwed()` is what the
+  parcels of the dungeon walked now still owe. `DelayedDamageOwedBy(Amount, SecondsSinceTaken, Seconds)` is
+  the arithmetic of one parcel: evenly, nought at the moment it is taken and the whole at its seconds.
+  `TakeDelayedDamageDue()` removes the parcels of another dungeon, marks what each other parcel owes by now as
+  paid, removes a finished one, and answers the sum. `ClearDelayedDamage()` empties it and answers what was
+  owed.
+- **The drain is by the world's clock and not by the length of a step.** A step that arrives late takes what
+  the late time owes, and a parcel is empty at the first step at or after its seconds. The difference of two
+  times is narrowed to a float before it is compared with the parcel's seconds, so a parcel is emptied at its
+  seconds and not one step later.
+- **The step.** `ACataclysmCharacterBase::RegenerationStep` calls `DrainStep` after the health debt's two
+  drains and before its guard on a corpse. `DrainStep` skips a corpse; takes what is due from health with
+  `ApplyModToAttribute` when that is less than the health held; and otherwise clears the store, writes health
+  to nought and calls `HandleDeath`, the pair `UCataclysmHealthDebt::DrainWhileDebtExceedsHealth` uses.
+- **What a death ends.** `ClearWhatDeathEnds` clears the store beside the health debt and reports it in a new
+  field, `FCataclysmWhatDeathEnded::DelayedDamageOwed`. The log line of a revival was not changed.
+- **The text.** `UCataclysmCombatOverlay::OwedTextFor(Actor)`: "Owed" and the figure rounded up while the
+  actor's store owes anything, and empty otherwise and for a dead actor. It is the last part of
+  `StatusLineFor`, and `ACataclysmHUD::DrawPlayerVitals` draws it on a line of its own after the kept stacks'.
+- **The generator.** `DAMAGE_TAKEN_DELAYED_PERCENT_STAT` and `DAMAGE_TAKEN_DELAYED_SECONDS_STAT` hold the names,
+  and `MAX_DAMAGE_TAKEN_DELAYED_PERCENT`, 100, and `MAX_DAMAGE_TAKEN_DELAYED_SECONDS`, 60, the bounds; the 60
+  is a judgement of the writing session. `refuse_a_delayed_damage_row_the_game_cannot_read` refuses an
+  enchantment's row on either stat that is not `flat`, that requires a tag, whose range falls, whose figure is
+  not above 0 and at most its bound, or that names an action; and an enchantment that states either stat on
+  more than one row, that states one and not the other, or that states a range on one and a single figure on
+  the other. `validate_enchantment_effects` runs it. A condition or a scale on either stat is refused by the
+  two checks that already refuse those on a stat not on their lists.
+- **The rows the enchantment session is to write** are two lines on the sentence's enchantment,
+  `Positive_25_50_of_damage_taken_is_dealt_over_4_8_second`. The first: Stat `damage_taken_delayed_percent`,
+  Value Kind `flat`, Value Low 25, Value High 50. The second: Stat `damage_taken_delayed_seconds`, Value Kind
+  `flat`, Value Low 4, Value High 8. No Required Tags, no Condition, no Scale and no Action on either. Two rows
+  on one enchantment is the shape because the game rolls every row of an enchantment with the one roll its
+  item recorded. The option not taken: one action row with the seconds in Stack Seconds and Stack Seconds
+  High, which also roll with the value. It was not taken because it needs a new action name, a reader of the
+  worn actions where a blow reaches health, and a stat line reads the same two figures with neither.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the two names, at its end. The generator reads
+  that list, so it now accepts a row on either stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for each name, the last two
+  entries of `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains two call sites of
+  `StatForSkill`, both in `CataclysmDelayedDamage.cpp`, each with its reason, as its last two entries.
+  `CALL_SITES` is left at 65; the comment above it gains a dated sentence.
+- `HOOKS` in `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` gains one job of
+  `ACataclysmCharacterBase::RegenerationStep`: `UCataclysmDelayedDamage::DrainStep`.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on
+  either stat, so no shipped row is refused.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` is NOT changed. The comparison of the
+  generator's two names with the engine's is a test of the new class in
+  `tools/tests/test_generate_datatables.py`, which reads the names out of `CataclysmDelayedDamage.cpp`.
+
+### Tests
+
+Twelve new Unreal tests in the new file `CataclysmDelayedDamageTests.cpp`, in the group
+`Cataclysm.DelayedDamage.`, beside the tests of the health debt and of the damage conversion and on their rig:
+a plain actor holding an ability system and its attribute sets. A plain actor has no root component and no
+body. Two tests spawn a real player character at the origin on a player state. The wearer's stat line is
+written by hand. Every blow is direct damage that cannot be evaded, cannot critically strike and cannot be
+retaliated against. The world's clock is moved by adding to `World->TimeSeconds` and the drain is called as the
+regeneration step calls it. Nothing waits on a tick. Every figure is a difference from what the same blow
+takes from a character wearing no row, read first.
+
+- `TheShareTakenAndWhatAParcelOwesByATimeAreArithmetic`: the two pure functions, at their ends and between.
+- `AShareOfABlowIsTakenOffWhatReachesHealthAndHeldAndTheRestLandsAtOnce`: with no row the blow takes health
+  and nothing is owed (the control). With the share and no seconds, and with the seconds and no share, the
+  whole blow lands at once. At 50% over 8 half lands and half is held, and the blow's own result still holds
+  the whole blow. At 25% over 4 three quarters land and a quarter is held. At 250% nothing lands and the whole
+  blow, and no more, is held. A second blow adds to what is held.
+- `ATickOfDamageOverTimeIsNotDelayed`: a hit on a wearer leaves it owing (the control); a tick on a wearer
+  takes at once what it takes from a character wearing no row, and nothing is owed for it.
+- `WhatTheEnergyShieldAndTheTemporaryAbsorbTookIsNotDelayed`: with an energy shield of 100, and again with a
+  temporary absorb of 150, the wearer's pool takes what the pool of a character wearing no row took, and half
+  of what was left for health lands and half is held.
+- `TheStoreDrainsEvenlyByTheWorldsClockAndIsEmptyAtTheRowsSeconds`: at 50% over 4, a drain in the instant of
+  the blow takes nothing (the control); each of sixteen steps of a quarter of a second takes a sixteenth, out
+  of health; half is owed after two seconds; something is owed a quarter of a second before the four; nothing
+  at the four; a seventeenth step takes nothing; the blow has then cost the wearer what it cost the character
+  wearing no row. A parcel past its seconds and never drained is taken whole by one drain, and one drain a
+  second after a fresh blow takes a quarter.
+- `TwoBlowsAreTwoParcelsEachDrainedOverTheRowsSecondsFromItsOwnMoment`: a blow of 400 and, two seconds later,
+  one of 800. Each step takes the sum of what each parcel owes; four seconds after the first blow only half of
+  the second parcel is owed; six seconds after it nothing is.
+- `TheDrainedLossMeetsNoArmourNoEnergyShieldAndNoTemporaryAbsorb`: the wearer is given 5,000 armour, an energy
+  shield and a temporary absorb after its blow. A character wearing no row with the same three loses less
+  health to a blow than one without them, and its pools take some (the control). The drain takes the whole of
+  what was held out of health and nothing out of either pool.
+- `TheShareIsTakenOfTheWholeBlowSoABlowThatWouldHaveEmptiedHealthLeavesSome`: holding four fifths of what the
+  blow is worth, a character wearing no row is emptied (the control); the wearer loses half of the whole blow,
+  keeps three tenths and owes half of the whole blow. Two seconds on the drain takes a quarter; a second later
+  it takes the twentieth that is left, health is at nought and the store is empty.
+- `TheDrainKillsAndTheDeathNamesTheAttackerOfTheLastBlowOnRecordAndClearsTheStore`: a real player. Two blows
+  with no row take the same (set-up). Left four fifths of that and wearing 50% over 4, a third blow leaves it
+  alive and owing half. Two seconds on it lives; a second later the drain kills it, its health is nought, the
+  store is empty, and the one death announced names the attacker. A parcel held by hand on the corpse is not
+  drained, and `ClearWhatDeathEnds` reports and clears it.
+- `ADeathAndAnotherDungeonClearTheStoreAndAFloorOfTheSameDungeonDoesNot`: `ClearWhatDeathEnds` reports all that
+  was owed and leaves nothing. With a dungeon game mode spawned and walking no dungeon the half is still owed
+  (the control). With its floor number moved on the half is still owed and a step takes an eighth. In dungeon
+  7 what was taken outside it is not owed and not drained, and is gone after a step. A blow taken inside
+  dungeon 7 is owed there (the control) and is not owed, not drained and gone once it is left. The floor
+  number is written by hand: `GoToFloor` is not called.
+- `WithTheGearOffTheStoreKeepsDrainingAndAChangedRowLeavesParcelsAlreadyTakenAsTheyWere`: with the row off the
+  half is still owed, a new blow lands whole, and the parcel drains over its four seconds. A parcel taken at 4
+  seconds is finished at 4 seconds under a row that now states 8, and a blow taken then is a quarter over 8.
+- `TheTextSaysWhatIsStillOwedRoundedUpWhileTheStoreHoldsAnything`: a real player owing nothing has no text
+  (the control). Holding 131.2 the text is "Owed 132" and the status line holds it; with 65.6 owed "Owed 66";
+  with 8.2 "Owed 9"; at the parcel's seconds it is empty.
+
+One test joins `CataclysmEnchantmentRollTests.cpp`:
+`Cataclysm.Enchantments.TheShareOfDamageTakenLaterAndItsSecondsRiseTogetherOnTheItemsOneRoll`. A made-up effect
+table holds the two rows under the real sentence's name. An item carrying another benefit puts nothing on
+either stat (the control). At a roll of 0 the item puts 25 on the share and 4 on the seconds; at 1, 50 and 8;
+at a half, 38 and 6; at a quarter, 31 and 5. The sentence at those rolls reads the same figures.
+
+Two probes join `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeDamageTakenDelayedPercent` and `ProbeDamageTakenDelayedSeconds`. In each, a fighter holding one of the two
+stats loses health to a blow at once (the control), and one holding both loses half as much.
+
+Python, `TestAShareOfDamageTakenIsDealtOverSeconds` in `tools/tests/test_generate_datatables.py`, 14 tests on a
+made-up sheet holding the real sentence: the two ruled rows are carried through and not refused by any check;
+both rows carry the one enchantment's name, each range is one the sentence states, no figure is in a cell that
+rolls apart from the value, and the two stats under two enchantments' names are refused; the names are stats
+with no attribute, and a made-up name is not; the generator's names are the two `CataclysmDelayedDamage.cpp`
+holds; each wrong shape of either row is refused once and by its own sentence (a kind that is not flat, a
+required tag, an action); a figure outside its bounds is refused and the bounds' tops are accepted; a range
+that falls is refused; one stat without the other is refused; a stat stated twice is refused; a range beside a
+single figure is refused and two single figures are accepted; a condition or a scale is refused by the two
+checks that hold those; a passive node's row and a row on another stat are left alone; the sheet's validation
+runs the check; and a misspelt name is refused.
+
+**Not tested:** the stats arriving from worn rows through a gear refresh, because no row exists; a blow turned
+into bleeding by The Breaking Point on a wearer; either save from a lethal blow on a wearer; the Sacrificial
+Bond with a share taken; mana; a real skill, a projectile or a creature's attack (every blow here is
+`ApplyDirectDamage` called by the test); a periodic damage over time effect ticking by the engine's own timer
+(the tick here is a single blow marked as a tick); the regeneration step calling the drain by its timer, which
+a Python check of the source reads; what the attacker leeches from a blow part of which was delayed; the
+number drawn; the hit announcement; Fervour; the drain crossing a health threshold a worn row or a passive
+node watches; a death of the wearer by another blow while it owes, and the revival after it; a death with no
+blow on record; a second piece carrying the benefit; a floor change made by `GoToFloor`; a dungeon left by
+`LeaveEmpireDungeon`; a world whose clock is far from nought; anything drawn by the heads-up display, where
+only the text is read; a client that is not the server.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
+`Cataclysm.DelayedDamage.`, with its trailing dot, which is 12 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| D-I, the share is taken of the whole blow and not of the figure cut to the health held | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `GetOwningAbilitySystemComponent(), WholeBeforeDelay, Hit.bIsDamageOverTime)` | `GetOwningAbilitySystemComponent(), Arriving, Hit.bIsDamageOverTime)` | `TheShareIsTakenOfTheWholeBlowSoABlowThatWouldHaveEmptiedHealthLeavesSome` | `TheDrainKillsAndTheDeathNamesTheAttackerOfTheLastBlowOnRecordAndClearsTheStore` |
+| D-II, a tick is not delayed | `game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp` | `if (bIsDamageOverTime \|\| ToHealth <= 0.0f)` | `if (ToHealth <= 0.0f)` | `ATickOfDamageOverTimeIsNotDelayed` | None |
+| D-III, a parcel of another dungeon is removed and not drained | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (Parcel.DungeonId != Dungeon)` | `if (false && Parcel.DungeonId != Dungeon)` | `ADeathAndAnotherDungeonClearTheStoreAndAFloorOfTheSameDungeonDoesNot` | None |
+
+Failed assertions in each test, by reading:
+
+- **D-I, 8 in 2 tests.** With the break a wearer on four fifths of the blow holds two fifths of the blow and
+  loses three fifths at once. The whole-blow test 6: "the wearer loses half of the whole blow at once"; "and is
+  left with three tenths of what the blow is worth"; "and owes half of the whole blow, which is more than the
+  health it has left"; "two seconds on the drain takes a quarter of the whole blow", which would take a fifth;
+  "leaving a twentieth of it as health", which would leave none or a rounding's worth; and "a second later the
+  drain is owed an eighth and takes the twentieth that is there". Its last two lines pass. The kill test 2:
+  "the player loses half of the whole blow at once"; and "and owes half of the whole blow", after which the
+  test returns.
+- **D-II, 2 in 1 test.** "a tick on a wearer takes at once what it takes from a character wearing no row",
+  which would take half; and "and the wearer owes nothing for it".
+- **D-III, 6 in 1 test.** In dungeon 7: "and a drain a second later takes nothing", which would take an
+  eighth; "and health is where it was"; and "and outside it again, after that step, nothing is owed: the
+  parcel was removed". After the blow taken inside dungeon 7: "with the dungeon left it is not owed", which
+  would read what is left of the first parcel; "and a drain a second later takes nothing"; and "and back
+  inside dungeon 7, after that step, nothing is owed". The line "in dungeon 7 what was taken outside it is not
+  owed" passes, because `DelayedDamageOwed` makes the comparison itself and is not broken.
+
+No message is used for more than one assertion in the lines counted, except "and a drain a second later takes
+nothing", which is in the dungeon test twice and is counted twice under D-III.
+
+**Tests and no proof:** that a share is taken at all and that the regeneration step drains it (ten of the
+twelve tests fail without the first, and the Python check of the hook reads the second); the evenness of the
+drain and the parcel emptied at its seconds; two parcels; the pools; the drain as a direct loss; the kill and
+the killer; the clearing by a death; the gear coming off; the text; the roll.
+
+No test outside the prefix is expected to fail under any of the three. The two probes of the stats strike for
+less than the health held and send no tick.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can move its wearer to a random reachable point nearby when it is hit, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (one field of `FCataclysmPoolAction`),
