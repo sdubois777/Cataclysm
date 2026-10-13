@@ -32252,13 +32252,18 @@ bool FCataclysmImmuneAfterFifteenFeedsNothingTest::RunTest(const FString&)
 	using namespace CataclysmImmuneAfterFifteenTest;
 	using FOverlay = UCataclysmCombatOverlay;
 
-	const CataclysmTestWorld::FScopedCritRoll RollOfNought(0.0f);
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("set-up: a world"), World))
 	{
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE ROLL IS PINNED AFTER THE WORLD IS MADE, AND IT MUST BE. Corrected 2026-10-13. `MakeWorldThatHasBegunPlay`
+	// calls `SilenceCriticalStrikes`, which sets this same roll to 100, so a pin made before it is overwritten and no
+	// blow is a critical strike. This pin stood on the line above the world, and the first compiled run read nought
+	// for "raised critical_strike once" for it.
+	const CataclysmTestWorld::FScopedCritRoll RollOfNought(0.0f);
 
 	FRealKiller Wearer(World);
 	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
