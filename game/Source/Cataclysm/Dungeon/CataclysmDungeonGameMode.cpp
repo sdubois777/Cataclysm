@@ -3861,7 +3861,13 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::EternalChorusEarshotOf(
 TArray<FIntPoint> ACataclysmDungeonGameMode::EternalChorusCells(const ACataclysmDungeonFloor& Floor,
 																 int32 Count)
 {
-	return FloorSourceCells(Floor, Count, /*bBesideAWallOnly=*/false);
+	return EternalChorusCells(Floor, Count, UCataclysmDungeonModifierEffects::EternalChorusCellsSalt);
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::EternalChorusCells(const ACataclysmDungeonFloor& Floor,
+																 int32 Count, int32 Salt)
+{
+	return FloorSourceCells(Floor, Count, /*bBesideAWallOnly=*/false, Salt);
 }
 
 bool ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(const FCataclysmFloorPlan& Plan, FIntPoint Cell)
@@ -3877,16 +3883,28 @@ bool ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(const FCataclysmF
 
 TArray<FIntPoint> ACataclysmDungeonGameMode::InfestedVeinsCells(const ACataclysmDungeonFloor& Floor, int32 Count)
 {
-	return FloorSourceCells(Floor, Count, /*bBesideAWallOnly=*/true);
+	return InfestedVeinsCells(Floor, Count, UCataclysmDungeonModifierEffects::InfestedVeinsCellsSalt);
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::InfestedVeinsCells(const ACataclysmDungeonFloor& Floor, int32 Count,
+																 int32 Salt)
+{
+	return FloorSourceCells(Floor, Count, /*bBesideAWallOnly=*/true, Salt);
 }
 
 TArray<FIntPoint> ACataclysmDungeonGameMode::FloorSourceCells(const ACataclysmDungeonFloor& Floor, int32 Count,
-															  bool bBesideAWallOnly)
+															  bool bBesideAWallOnly, int32 Salt)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
 	// EVERY FLOOR CELL FAR ENOUGH FROM THE ENTRANCE, in an even shuffle, and then the first that are
 	// far enough from every one already taken.
+	//
+	// GATHERED ROW BY ROW AND COLUMN BY COLUMN, ALWAYS IN THAT ORDER, AND SHUFFLED ON THE CALLING RULE'S OWN STREAM:
+	// the plan's seed mixed with the rule's salt, as `PlanTheGatedShortcuts` makes its stream. Issue #2342, ruled
+	// 2026-10-12. The plan's seed is made from the dungeon seed and the floor number, so the same dungeon, floor and
+	// rule give the same cells in the same order. Until that issue this drew on the global random, and two builds of
+	// one floor put every rule's objects on different cells.
 	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
 	const FVector Entrance = Floor.EntranceWorld();
 	TArray<FIntPoint> Candidates;
@@ -3902,9 +3920,10 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::FloorSourceCells(const ACataclysmDu
 			}
 		}
 	}
+	FRandomStream CellsStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, Salt));
 	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
 	{
-		Candidates.Swap(Index, FMath::RandRange(0, Index));
+		Candidates.Swap(Index, CellsStream.RandRange(0, Index));
 	}
 
 	TArray<FIntPoint> Chosen;
@@ -3961,7 +3980,7 @@ void ACataclysmDungeonGameMode::PlaceTheChoruses()
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmChorusSourceCharacter::StaticClass();
 	FActorSpawnParameters Spawn;
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::EternalChorusCellsSalt))
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
@@ -4138,7 +4157,7 @@ void ACataclysmDungeonGameMode::PlaceTheBlooms()
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmBloomCharacter::StaticClass();
 	FActorSpawnParameters Spawn;
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::NecroticBloomCellsSalt))
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
@@ -4301,7 +4320,7 @@ void ACataclysmDungeonGameMode::PlaceTheSpires()
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmSpireCharacter::StaticClass();
 	FActorSpawnParameters Spawn;
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::GoldenSpiresCellsSalt))
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
@@ -4677,7 +4696,7 @@ void ACataclysmDungeonGameMode::PlaceTheSarcophagi()
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmSarcophagusCharacter::StaticClass();
 	FActorSpawnParameters Spawn;
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::ObsidianSarcophagiCellsSalt))
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
@@ -4889,7 +4908,7 @@ void ACataclysmDungeonGameMode::PlaceTheBeacons()
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmBeaconCharacter::StaticClass();
 	FActorSpawnParameters Spawn;
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::PestilentEmpowermentCellsSalt))
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
@@ -5003,7 +5022,7 @@ void ACataclysmDungeonGameMode::PlaceThePortals()
 	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmPortalCharacter::StaticClass();
 	FActorSpawnParameters Spawn;
 	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::PortalUnleashingCellsSalt))
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
@@ -5158,7 +5177,7 @@ void ACataclysmDungeonGameMode::PlaceTheRivers()
 	// picker gives and at a random heading, keeping the marks that stand clear of the entrance.
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::RawSewageRiversPerHordeArena : Effects::RawSewageRiversPerFloor;
 	const FVector Entrance = CurrentFloor->EntranceWorld();
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, Effects::RawSewageCellsSalt))
 	{
 		const float Heading = FMath::FRandRange(0.0f, PI);
 		for (const FVector& Where : WingsOfTheHostFeathers(
@@ -5947,7 +5966,8 @@ void ACataclysmDungeonGameMode::PlaceTheControlPoints()
 	// ON A HALLS FLOOR THE POINTS WERE CHOSEN BEFORE IT WAS BUILT, on its seed, because each point's shortcut is
 	// measured from it (`PlanTheGatedShortcuts`). Elsewhere they are drawn as they always were.
 	WarzonePointCells = WarzonePlannedPoints.IsEmpty()
-		? EternalChorusCells(*CurrentFloor, Effects::WarzoneControlPointsPerFloor)
+		? EternalChorusCells(*CurrentFloor, Effects::WarzoneControlPointsPerFloor,
+							 Effects::WarzoneControlPointsCellsSalt)
 		: WarzonePlannedPoints;
 	UE_LOG(LogCataclysm, Log, TEXT("Warzone Control Points: %d point(s) on floor %d"), WarzonePointCells.Num(),
 		   FloorNumber);
@@ -6681,7 +6701,8 @@ void ACataclysmDungeonGameMode::PlaceTheAngelicStatues()
 	// Veins uses. A CELL REFUSED IS SKIPPED and no other is tried, so a floor may have fewer than the row's count.
 	int32 Refused = 0;
 	for (const FIntPoint& Cell :
-		 FloorSourceCells(*CurrentFloor, Effects::AngelicWardensStatuesPerFloor, /*bBesideAWallOnly=*/true))
+		 FloorSourceCells(*CurrentFloor, Effects::AngelicWardensStatuesPerFloor, /*bBesideAWallOnly=*/true,
+						  Effects::AngelicWardensCellsSalt))
 	{
 		Refused += PlaceAnAngelicStatueOn(Cell) ? 0 : 1;
 	}
@@ -6835,7 +6856,8 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::ChooseTheChasmCells(int32 RulesAppl
 
 	// EVERY WALKABLE CELL OF THE PLAN AS IT STANDS, ROW BY ROW, THEN SHUFFLED ON THE RULE'S OWN STREAM. The stream is
 	// made from the plan's seed as `PlanTheGatedShortcuts` makes its own, with this rule's salt, so the same dungeon
-	// seed and floor give the same order. Not the global random (`FloorSourceCells`, issue #2342). A closed section
+	// seed and floor give the same order. `FloorSourceCells` drew on the global random until issue #2342 and now
+	// draws on a stream made the same way, with its calling rule's salt. A closed section
 	// barrier's cell and a standing statue's cell are Solid in the plan and are not among them.
 	TArray<FIntPoint> Candidates;
 	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
@@ -7948,7 +7970,8 @@ void ACataclysmDungeonGameMode::PlaceTheShelters()
 	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources.
 	LocustShelterCells = EternalChorusCells(
 		*CurrentFloor, FloorBrief.bWaveWalksIn ? Effects::SwarmOfLocustsSheltersPerHordeArena
-											   : Effects::SwarmOfLocustsSheltersPerFloor);
+											   : Effects::SwarmOfLocustsSheltersPerFloor,
+		Effects::SwarmOfLocustsCellsSalt);
 	LocustShelters.SetNum(LocustShelterCells.Num());
 	UE_LOG(LogCataclysm, Log, TEXT("Swarm of Locusts: %d shelter(s) on floor %d"), LocustShelterCells.Num(), FloorNumber);
 	RefreshFloorModifierPanel();
@@ -8119,7 +8142,7 @@ void ACataclysmDungeonGameMode::PlaceTheRift()
 		RefreshFloorModifierPanel();
 		return;
 	}
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, 1);
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, 1, Effects::AbyssalRiftsCellsSalt);
 	if (Cells.IsEmpty())
 	{
 		return;
@@ -8459,7 +8482,8 @@ void ACataclysmDungeonGameMode::PlaceTheBloom()
 	{
 		return;
 	}
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::InfectionBloomsPerFloor);
+	const TArray<FIntPoint> Cells =
+		EternalChorusCells(*CurrentFloor, Effects::InfectionBloomsPerFloor, Effects::InfectionBloomCellsSalt);
 	if (Cells.IsEmpty())
 	{
 		return;
@@ -8727,7 +8751,8 @@ void ACataclysmDungeonGameMode::PlaceTheQuarantine()
 	{
 		return;
 	}
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::QuarantineBreachPerFloor);
+	const TArray<FIntPoint> Cells =
+		EternalChorusCells(*CurrentFloor, Effects::QuarantineBreachPerFloor, Effects::QuarantineBreachCellsSalt);
 	const FCataclysmFloorPopulation Population =
 		FloorPopulationNow();
 	if (Cells.IsEmpty() || Population.Enemies.IsEmpty())
@@ -9123,7 +9148,8 @@ void ACataclysmDungeonGameMode::PlaceTheHoards()
 	float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
 	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
 
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::LuxuryHoardersPerFloor);
+	const TArray<FIntPoint> Cells =
+		EternalChorusCells(*CurrentFloor, Effects::LuxuryHoardersPerFloor, Effects::LuxuryHoardersCellsSalt);
 	for (int32 Index = 0; Index < Cells.Num(); ++Index)
 	{
 		const FVector Where = CurrentFloor->WorldOfCell(Cells[Index]);
@@ -9336,11 +9362,13 @@ void ACataclysmDungeonGameMode::PlaceTheRealityRifts()
 	// keeps whole pairs only, and the gift only when a cell is left for it.
 	//
 	// AND ONE CELL MORE ON A FLOOR THAT GETS A HIDDEN CHAMBER, for the rift that leads to it. The picker shuffles
-	// every candidate before it reads the count, so asking for one more draws nothing more from the global random,
-	// and the cells before the last are the ones it would have answered for the smaller count.
+	// every candidate before it reads the count, so asking for one more draws nothing more from its stream (seeded
+	// since issue #2342; the global random before), and the cells before the last are the ones it would have
+	// answered for the smaller count.
 	const int32 RiftsOfTheFloor = 2 * Effects::RealityRiftPairs + 1;
 	const bool bAChamber = FloorGetsARealityChamber(CurrentFloor->GetPlan());
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, RiftsOfTheFloor + (bAChamber ? 1 : 0));
+	const TArray<FIntPoint> Cells =
+		EternalChorusCells(*CurrentFloor, RiftsOfTheFloor + (bAChamber ? 1 : 0), Effects::RealityRiftsCellsSalt);
 	const int32 Paired = FMath::Min(Cells.Num() / 2, Effects::RealityRiftPairs) * 2;
 	for (int32 Index = 0; Index < Paired; ++Index)
 	{
@@ -9906,7 +9934,8 @@ void ACataclysmDungeonGameMode::PlaceTheAltar()
 		return;
 	}
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::CarrionFeastAltarsPerHordeArena : Effects::CarrionFeastAltarsPerFloor;
-	for (ACataclysmFloorObject* Altar : PlaceFloorObjects(FName(Effects::CarrionFeastKey), Count, TEXT("Purification Altar"),
+	for (ACataclysmFloorObject* Altar : PlaceFloorObjects(FName(Effects::CarrionFeastKey), Count,
+														  Effects::CarrionFeastCellsSalt, TEXT("Purification Altar"),
 														  TEXT("An altar of cleansing light. Consecrating it burns the dead around it.")))
 	{
 		FCataclysmFloorObjectChoice Consecrate;
@@ -10471,7 +10500,7 @@ void ACataclysmDungeonGameMode::PlaceTheVeins()
 	// floor has fewer such cells far enough apart.
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::InfestedVeinsPerHordeArena
 											: Effects::InfestedVeinsPerFloor;
-	for (const FIntPoint& Cell : InfestedVeinsCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : InfestedVeinsCells(*CurrentFloor, Count, Effects::InfestedVeinsCellsSalt))
 	{
 		FInfestedVein One;
 		One.Cell = Cell;
@@ -10670,7 +10699,8 @@ void ACataclysmDungeonGameMode::PlaceTheShadowLights()
 	// THE ROW'S ZONES, AT LEAST `EternalChorusApartCm` FROM THE ENTRANCE AND FROM EACH OTHER by Eternal Chorus's
 	// picker, AND ONE MORE ON THE EXIT WHEN A BOSS STANDS THERE, as ruled on 2026-09-26: a character with no fire
 	// could not otherwise be sure of hurting the boss it has to kill.
-	ShadowLightCells = EternalChorusCells(*CurrentFloor, Effects::ShadowyEnemiesLightZonesPerFloor);
+	ShadowLightCells = EternalChorusCells(*CurrentFloor, Effects::ShadowyEnemiesLightZonesPerFloor,
+										  Effects::ShadowyEnemiesCellsSalt);
 	if (FloorBrief.bBossAtTheExit)
 	{
 		ShadowLightCells.Add(CurrentFloor->GetPlan().Exit);
@@ -10851,7 +10881,8 @@ void ACataclysmDungeonGameMode::PlaceTheLight()
 
 	// ONE A FLOOR, AND ONE ON A HORDE ARENA, KEPT, at least `EternalChorusApartCm` from the entrance by
 	// Eternal Chorus's picker, so a player does not start the floor standing in it.
-	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::VoidParasiteLightZonesPerFloor);
+	const TArray<FIntPoint> Cells =
+		EternalChorusCells(*CurrentFloor, Effects::VoidParasiteLightZonesPerFloor, Effects::VoidParasiteCellsSalt);
 	if (!Cells.IsEmpty())
 	{
 		VoidParasiteLightCell = Cells[0];
@@ -10910,7 +10941,7 @@ void ACataclysmDungeonGameMode::ForgetTheTotems()
 }
 
 TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FName RuleKey, int32 Count,
-																		   const FString& DisplayName,
+																		   int32 CellsSalt, const FString& DisplayName,
 																		   const FString& Prompt)
 {
 	TArray<ACataclysmFloorObject*> Placed;
@@ -10919,7 +10950,7 @@ TArray<ACataclysmFloorObject*> ACataclysmDungeonGameMode::PlaceFloorObjects(FNam
 	{
 		return Placed;
 	}
-	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count, CellsSalt))
 	{
 		if (ACataclysmFloorObject* Object = PlaceFloorObjectAt(RuleKey, CurrentFloor->WorldOfCell(Cell), DisplayName,
 															   Prompt))
@@ -11088,6 +11119,7 @@ void ACataclysmDungeonGameMode::PlaceTheRelics()
 
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::BattlefieldRelicsPerHordeArena : Effects::BattlefieldRelicsPerFloor;
 	for (ACataclysmFloorObject* Relic : PlaceFloorObjects(FName(Effects::BattlefieldRelicsKey), Count,
+														  Effects::BattlefieldRelicsCellsSalt,
 														  TEXT("Battlefield Relic"),
 														  TEXT("An ancient relic of war. Activating it wakes the fallen.")))
 	{
@@ -11249,7 +11281,8 @@ void ACataclysmDungeonGameMode::PlaceTheBoxes()
 		return;
 	}
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::PandorasBoxPerHordeArena : Effects::PandorasBoxPerFloor;
-	for (ACataclysmFloorObject* Box : PlaceFloorObjects(FName(Effects::PandorasBoxKey), Count, TEXT("Pandora's Box"),
+	for (ACataclysmFloorObject* Box : PlaceFloorObjects(FName(Effects::PandorasBoxKey), Count,
+														Effects::PandorasBoxCellsSalt, TEXT("Pandora's Box"),
 														TEXT("A chest sealed with chaos. It holds treasure, or something else.")))
 	{
 		FCataclysmFloorObjectChoice Open;
@@ -11403,7 +11436,8 @@ void ACataclysmDungeonGameMode::PlaceTheInfernalBeacons()
 		return;
 	}
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::InfernalBeaconsPerHordeArena : Effects::InfernalBeaconsPerFloor;
-	for (ACataclysmFloorObject* Beacon : PlaceFloorObjects(FName(Effects::InfernalBeaconsKey), Count, TEXT("Infernal Beacon"),
+	for (ACataclysmFloorObject* Beacon : PlaceFloorObjects(FName(Effects::InfernalBeaconsKey), Count,
+														   Effects::InfernalBeaconsCellsSalt, TEXT("Infernal Beacon"),
 														   TEXT("A beacon of hellfire. Lighting it draws power to the dungeon and fortune to you.")))
 	{
 		FCataclysmFloorObjectChoice Activate;
@@ -11533,7 +11567,8 @@ void ACataclysmDungeonGameMode::PlaceTheWarBanner()
 		return;
 	}
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::WarBannerPerHordeArena : Effects::WarBannerPerFloor;
-	for (ACataclysmFloorObject* Banner : PlaceFloorObjects(FName(Effects::WarBannerKey), Count, TEXT("War Banner"),
+	for (ACataclysmFloorObject* Banner : PlaceFloorObjects(FName(Effects::WarBannerKey), Count,
+														   Effects::WarBannerCellsSalt, TEXT("War Banner"),
 														   TEXT("A war banner, furled. Plant it here and hold the ground around it.")))
 	{
 		FCataclysmFloorObjectChoice Plant;
@@ -11708,7 +11743,8 @@ void ACataclysmDungeonGameMode::PlaceTheTotems()
 	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, placed the one way floor objects are. Each is a floor object the
 	// player clicks, offering its two choices.
 	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::GrimTotemsPerHordeArena : Effects::GrimTotemsPerFloor;
-	for (ACataclysmFloorObject* Totem : PlaceFloorObjects(FName(Effects::GrimTotemsKey), Count, TEXT("Grim Totem"),
+	for (ACataclysmFloorObject* Totem : PlaceFloorObjects(FName(Effects::GrimTotemsKey), Count,
+														  Effects::GrimTotemsCellsSalt, TEXT("Grim Totem"),
 														  TEXT("Dark energy pours from it. Embrace its power, or cleanse it.")))
 	{
 		FCataclysmFloorObjectChoice Embrace;

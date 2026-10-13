@@ -55518,4 +55518,345 @@ bool FCataclysmLabrynthMarkedBuiltTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The cell picker for floor rules' objects shuffles on a seeded stream. Issue #2342. Ruled 2026-10-12.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The dungeon seeds and the floor the seeded picker's tests build. Halls, the game mode's own layout. */
+	constexpr int32 SeededCellsDungeonSeed = 7;
+	constexpr int32 SeededCellsOtherDungeonSeed = 8;
+	constexpr int32 SeededCellsFloor = 2;
+
+	/** How many cells the picker is asked for where two draws are compared: more than any rule asks. */
+	constexpr int32 SeededCellsAsked = 8;
+
+	/** Every placing rule's salt for the shared cell picker, in the order the header lists them. */
+	TArray<int32> EveryPlacingRulesCellsSalt()
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		return {Effects::EternalChorusCellsSalt,		  Effects::NecroticBloomCellsSalt,
+				Effects::GoldenSpiresCellsSalt,			  Effects::ObsidianSarcophagiCellsSalt,
+				Effects::PestilentEmpowermentCellsSalt,	  Effects::PortalUnleashingCellsSalt,
+				Effects::RawSewageCellsSalt,			  Effects::WarzoneControlPointsCellsSalt,
+				Effects::AngelicWardensCellsSalt,		  Effects::SwarmOfLocustsCellsSalt,
+				Effects::AbyssalRiftsCellsSalt,			  Effects::InfectionBloomCellsSalt,
+				Effects::QuarantineBreachCellsSalt,		  Effects::LuxuryHoardersCellsSalt,
+				Effects::RealityRiftsCellsSalt,			  Effects::InfestedVeinsCellsSalt,
+				Effects::ShadowyEnemiesCellsSalt,		  Effects::VoidParasiteCellsSalt,
+				Effects::CarrionFeastCellsSalt,			  Effects::BattlefieldRelicsCellsSalt,
+				Effects::PandorasBoxCellsSalt,			  Effects::InfernalBeaconsCellsSalt,
+				Effects::WarBannerCellsSalt,			  Effects::GrimTotemsCellsSalt};
+	}
+
+	/** Whether the first `Count` cells of the two lists are the same cells in the same order. Both must hold that many. */
+	bool SeededCellsBeginAlike(const TArray<FIntPoint>& One, const TArray<FIntPoint>& Other, int32 Count)
+	{
+		if (One.Num() < Count || Other.Num() < Count)
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			if (One[Index] != Other[Index])
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
+// THE SAME DUNGEON SEED AND FLOOR GIVE A RULE THE SAME CELLS IN THE SAME ORDER ON TWO SEPARATE BUILDS, AND THE PICKER
+// ASKED TWICE OF ONE BUILT FLOOR WITH ONE SALT ANSWERS THE SAME. Reality Rifts is the rule, because the game mode hands
+// its cells back in the order the picker gave them (`RealityRiftCellsNow`).
+//
+// THE CONTROL is the same floor of another dungeon seed, whose rifts are on other cells: "the same" is then not a
+// picker that answers one list whatever it is asked. Before issue #2342 the second build of the first seed gave other
+// cells too, and the picker asked twice gave two lists.
+//
+// WHERE EACH STANDS: the player is the only actor the test places, and `GoToFloor` puts them at the floor's entrance.
+// Every rift is at least `EternalChorusApartCm`, twenty metres, from the entrance by the picker's own rule. The floor's
+// creatures stand where the populator puts them and nothing is asked of them. Nothing waits and no time passes.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededCellsSameSeedTest,
+	"Cataclysm.DungeonModifierEffects.TheObjectPickerGivesARuleTheSameCellsOnTheSameSeedAndFloorAndOthersOnAnotherSeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededCellsSameSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {RealityRow};
+	const int32 RiftsOfAFloor = 2 * Effects::RealityRiftPairs + 1;
+
+	// THE FIRST DUNGEON SEED'S FLOOR, AND THE PICKER ASKED TWICE OF IT WHILE IT STANDS.
+	Mode->DungeonSeed = SeededCellsDungeonSeed;
+	if (!TestTrue(TEXT("set-up: the floor of the first dungeon seed was reached"), Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> First = Mode->RealityRiftCellsNow();
+	const int32 FirstPlanSeed = Mode->CurrentFloor->GetPlan().Seed;
+	const TArray<FIntPoint> AskedOnce = ACataclysmDungeonGameMode::EternalChorusCells(
+		*Mode->CurrentFloor, SeededCellsAsked, Effects::RealityRiftsCellsSalt);
+	const TArray<FIntPoint> AskedAgain = ACataclysmDungeonGameMode::EternalChorusCells(
+		*Mode->CurrentFloor, SeededCellsAsked, Effects::RealityRiftsCellsSalt);
+	const TArray<FIntPoint> AskedOfAnotherRule = ACataclysmDungeonGameMode::EternalChorusCells(
+		*Mode->CurrentFloor, SeededCellsAsked, Effects::EternalChorusCellsSalt);
+
+	// THE SAME FLOOR OF ANOTHER DUNGEON SEED, THEN THE FIRST SEED'S FLOOR BUILT A SECOND TIME.
+	Mode->DungeonSeed = SeededCellsOtherDungeonSeed;
+	if (!TestTrue(TEXT("set-up: the floor of the other dungeon seed was reached"), Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Other = Mode->RealityRiftCellsNow();
+	const int32 OtherPlanSeed = Mode->CurrentFloor->GetPlan().Seed;
+	Mode->DungeonSeed = SeededCellsDungeonSeed;
+	if (!TestTrue(TEXT("set-up: the floor of the first dungeon seed was built a second time"),
+				  Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Second = Mode->RealityRiftCellsNow();
+
+	AddInfo(FString::Printf(TEXT("seeded cells: dungeon seed %d floor %d gives %d rifts, the first on cell %s; dungeon ")
+							TEXT("seed %d gives %d, the first on cell %s"),
+							SeededCellsDungeonSeed, SeededCellsFloor, First.Num(),
+							First.Num() > 0 ? *First[0].ToString() : TEXT("none"), SeededCellsOtherDungeonSeed, Other.Num(),
+							Other.Num() > 0 ? *Other[0].ToString() : TEXT("none")));
+	if (!TestEqual(TEXT("set-up: the first dungeon seed's floor has the rule's two pairs and its gift"), First.Num(),
+				   RiftsOfAFloor)
+		|| !TestEqual(TEXT("set-up: the other dungeon seed's floor has the rule's two pairs and its gift"), Other.Num(),
+					  RiftsOfAFloor)
+		|| !TestTrue(TEXT("set-up: the two dungeon seeds give the floor two plan seeds"), FirstPlanSeed != OtherPlanSeed))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the same dungeon seed and floor give the same number of rifts"), Second.Num(), First.Num());
+	TestTrue(TEXT("and the same cells in the same order"), Second == First);
+	TestTrue(TEXT("CONTROL: the same floor of another dungeon seed gives other cells"), Other != First);
+
+	if (TestTrue(TEXT("set-up: the picker asked for eight cells answers at least the rule's five"),
+				 AskedOnce.Num() >= RiftsOfAFloor))
+	{
+		TestTrue(TEXT("the picker asked twice of one floor with one salt answers the same cells in the same order"),
+				 AskedAgain == AskedOnce);
+		TestTrue(TEXT("the floor's rifts are the first cells the picker answers for Reality Rifts' own salt"),
+				 SeededCellsBeginAlike(AskedOnce, First, RiftsOfAFloor));
+		TestFalse(TEXT("CONTROL: and not the first cells it answers for Eternal Chorus's salt"),
+				  SeededCellsBeginAlike(AskedOfAnotherRule, First, RiftsOfAFloor));
+	}
+	return true;
+}
+
+// NO TWO PLACING RULES ARE GIVEN THE SAME CELLS IN THE SAME ORDER ON ONE FLOOR. Two ways, both on one built floor that
+// carries Reality Rifts and Shadowy Enemies together:
+// - the picker asked once with each of the twenty-four rules' salts, and every pair of answers compared;
+// - the floor's own rifts beside its own light zones, which the game mode placed with its own two salts.
+//
+// THE CONTROL for "differ" is that a salt repeated answers the same list (the test above), and here that the two
+// forms with no salt answer exactly what the salted forms answer for their own rule's salt.
+//
+// WHERE EACH STANDS: the player at the entrance, where `GoToFloor` puts them, at least twenty metres from every rift
+// and every light zone the picker placed. A light zone on the exit, placed when a boss stands there, is the last of
+// the list and is not compared. Nothing waits and no time passes.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededCellsTwoRulesTest,
+	"Cataclysm.DungeonModifierEffects.TheObjectPickerGivesNoTwoPlacingRulesTheSameCellsInTheSameOrder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededCellsTwoRulesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {RealityRow, ShadowyRow};
+	Mode->DungeonSeed = SeededCellsDungeonSeed;
+	if (!TestTrue(TEXT("set-up: the floor was reached"), Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+
+	// EVERY RULE'S SALT, ONE ANSWER EACH, AND EVERY PAIR COMPARED.
+	const TArray<int32> Salts = EveryPlacingRulesCellsSalt();
+	TArray<TArray<FIntPoint>> Answers;
+	int32 Fewest = MAX_int32;
+	for (const int32 Salt : Salts)
+	{
+		Answers.Add(ACataclysmDungeonGameMode::EternalChorusCells(Floor, SeededCellsAsked, Salt));
+		Fewest = FMath::Min(Fewest, Answers.Last().Num());
+	}
+	if (!TestEqual(TEXT("set-up: twenty-four placing rules have a salt"), Salts.Num(), 24)
+		|| !TestTrue(TEXT("set-up: every salt's answer holds at least three cells"), Fewest >= 3))
+	{
+		return false;
+	}
+	int32 PairsCompared = 0;
+	int32 PairsAlike = 0;
+	int32 SaltsAlike = 0;
+	for (int32 One = 0; One < Salts.Num(); ++One)
+	{
+		for (int32 Two = One + 1; Two < Salts.Num(); ++Two)
+		{
+			++PairsCompared;
+			PairsAlike += Answers[One] == Answers[Two] ? 1 : 0;
+			SaltsAlike += Salts[One] == Salts[Two] ? 1 : 0;
+		}
+	}
+	AddInfo(FString::Printf(TEXT("seeded cells: %d pairs of salts compared on dungeon seed %d floor %d, %d alike; the ")
+							TEXT("shortest answer holds %d cells"),
+							PairsCompared, SeededCellsDungeonSeed, SeededCellsFloor, PairsAlike, Fewest));
+	TestEqual(TEXT("set-up: every pair of the twenty-four was compared"), PairsCompared, 276);
+	TestEqual(TEXT("no two placing rules have the same salt"), SaltsAlike, 0);
+	TestEqual(TEXT("no two placing rules' salts give the same cells in the same order"), PairsAlike, 0);
+
+	// THE TWO FORMS WITH NO SALT ARE THEIR OWN RULE'S.
+	TestTrue(TEXT("the form with no salt answers what Eternal Chorus's salt answers"),
+			 ACataclysmDungeonGameMode::EternalChorusCells(Floor, SeededCellsAsked)
+				 == ACataclysmDungeonGameMode::EternalChorusCells(Floor, SeededCellsAsked, Effects::EternalChorusCellsSalt));
+	const TArray<FIntPoint> VeinsOwn = ACataclysmDungeonGameMode::InfestedVeinsCells(Floor, SeededCellsAsked);
+	if (TestTrue(TEXT("set-up: the floor has cells beside a wall for the picker"), VeinsOwn.Num() >= 3))
+	{
+		TestTrue(TEXT("the beside-a-wall form with no salt answers what Infested Veins' salt answers"),
+				 VeinsOwn == ACataclysmDungeonGameMode::InfestedVeinsCells(Floor, SeededCellsAsked,
+																		   Effects::InfestedVeinsCellsSalt));
+		TestTrue(TEXT("and another rule's salt answers other cells beside a wall"),
+				 VeinsOwn != ACataclysmDungeonGameMode::InfestedVeinsCells(Floor, SeededCellsAsked,
+																		   Effects::AngelicWardensCellsSalt));
+	}
+
+	// THE FLOOR'S OWN TWO RULES. Both draw from the same candidates, so with one salt between them the three light
+	// zones would be the first three rifts.
+	const TArray<FIntPoint> Rifts = Mode->RealityRiftCellsNow();
+	TArray<FIntPoint> Lights;
+	for (const FVector& Light : Mode->ShadowyEnemiesLightsNow())
+	{
+		Lights.Add(Floor.CellOfWorld(Light));
+	}
+	const int32 LightsOfAFloor = Effects::ShadowyEnemiesLightZonesPerFloor;
+	if (TestTrue(TEXT("set-up: the floor has the rule's light zones"), Lights.Num() >= LightsOfAFloor)
+		&& TestTrue(TEXT("set-up: and at least as many rifts"), Rifts.Num() >= LightsOfAFloor))
+	{
+		TestFalse(TEXT("the floor's light zones are not its first rifts' cells in the same order"),
+				  SeededCellsBeginAlike(Lights, Rifts, LightsOfAFloor));
+		TestTrue(TEXT("the light zones are the first cells the picker answers for Shadowy Enemies' own salt"),
+				 SeededCellsBeginAlike(ACataclysmDungeonGameMode::EternalChorusCells(Floor, SeededCellsAsked,
+																					 Effects::ShadowyEnemiesCellsSalt),
+									   Lights, LightsOfAFloor));
+	}
+	return true;
+}
+
+// A RULE'S CELLS DO NOT CHANGE WHEN A SECOND RULE IS ADDED TO THE SAME FLOOR. Reality Rifts alone; then with Eternal
+// Chorus, whose sources are placed BEFORE the rifts; then with Shadowy Enemies, whose light zones are placed AFTER.
+// Neither added rule closes or carves a cell, which is what this holds for: a rule that changes which cells are
+// walkable before the rifts are drawn still moves them, and the decisions entry of 2026-10-12 says which rules do.
+//
+// THE CONTROL is that the added rule did place its own objects, on cells that are not the rifts': so "unchanged" is
+// not a floor the second rule never reached.
+//
+// WHERE EACH STANDS: the player at the entrance, where `GoToFloor` puts them. The two chorus sources stand on the
+// picker's cells, at least twenty metres from the entrance and from each other. Nothing waits and no time passes.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeededCellsSecondRuleTest,
+	"Cataclysm.DungeonModifierEffects.TheObjectPickerGivesARuleTheSameCellsWhenASecondRuleIsAddedToTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeededCellsSecondRuleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonSeed = SeededCellsDungeonSeed;
+	const int32 RiftsOfAFloor = 2 * Effects::RealityRiftPairs + 1;
+
+	// THE RULE ALONE.
+	Mode->DungeonModifiers = {RealityRow};
+	if (!TestTrue(TEXT("set-up: the floor was reached with the rule alone"), Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Alone = Mode->RealityRiftCellsNow();
+	if (!TestEqual(TEXT("set-up: the floor has the rule's two pairs and its gift"), Alone.Num(), RiftsOfAFloor))
+	{
+		return false;
+	}
+
+	// WITH ETERNAL CHORUS, PLACED BEFORE THE RIFTS.
+	Mode->DungeonModifiers = {ChorusRow, RealityRow};
+	if (!TestTrue(TEXT("set-up: the floor was reached with Eternal Chorus added"), Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> WithChorus = Mode->RealityRiftCellsNow();
+	TArray<FIntPoint> ChorusCells;
+	for (const ACataclysmEnemyCharacter* Source : Mode->EternalChorusSourcesNow())
+	{
+		ChorusCells.Add(Mode->CurrentFloor->CellOfWorld(Source->GetActorLocation()));
+	}
+	if (TestEqual(TEXT("set-up: CONTROL: Eternal Chorus placed its two sources"), ChorusCells.Num(),
+				  Effects::EternalChorusSources))
+	{
+		TestFalse(TEXT("CONTROL: and they stand on other cells than the first two rifts"),
+				  SeededCellsBeginAlike(ChorusCells, Alone, Effects::EternalChorusSources));
+	}
+	TestEqual(TEXT("with Eternal Chorus added the floor has as many rifts"), WithChorus.Num(), Alone.Num());
+	TestTrue(TEXT("with Eternal Chorus added the rifts are on the same cells in the same order"), WithChorus == Alone);
+
+	// WITH SHADOWY ENEMIES, PLACED AFTER THE RIFTS.
+	Mode->DungeonModifiers = {RealityRow, ShadowyRow};
+	if (!TestTrue(TEXT("set-up: the floor was reached with Shadowy Enemies added"), Mode->GoToFloor(SeededCellsFloor)))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> WithLights = Mode->RealityRiftCellsNow();
+	TestTrue(TEXT("set-up: CONTROL: Shadowy Enemies placed its light zones"),
+			 Mode->ShadowyEnemiesLightsNow().Num() >= Effects::ShadowyEnemiesLightZonesPerFloor);
+	TestEqual(TEXT("with Shadowy Enemies added the floor has as many rifts"), WithLights.Num(), Alone.Num());
+	TestTrue(TEXT("with Shadowy Enemies added the rifts are on the same cells in the same order"), WithLights == Alone);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
