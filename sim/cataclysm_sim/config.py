@@ -354,31 +354,38 @@ class TuningConfig:
     # dungeon that detonated undefeated both count. A narrower rule -- fire only
     # on a clear -- was proposed and the owner overruled it.
     #
-    # AT THESE DEFAULTS THE TWO RULES ARE THE SAME RULE, AND THAT IS A FACT
+    # SINCE 2026-10-12 THE TWO RULES ARE DIFFERENT RULES, AND THAT IS A FACT
     # ABOUT `dungeon_persists_after_resolve` RATHER THAN ABOUT EITHER OF THEM.
-    # It is True above, so a Basic dungeon that detonates undefeated STAYS on
-    # the board with a refreshed timer; a detonation therefore cannot empty the
-    # board. Measured over 20 campaigns on the `triage` policy: 126 empty-board
-    # surges fired and every one of the 126 was the player clearing the last
-    # dungeon. **So the stalling exploit sometimes given as the reason for the
-    # broad rule -- let the last dungeon detonate instead of clearing it, pay
-    # one city's damage, buy a quiet stretch -- does not exist here today**, and
-    # this comment used to claim it did.
+    # It is False below, so an ordinary dungeon that hits its city undefeated
+    # leaves the map, and the last one leaving empties the board. Until that
+    # date it was True: the dungeon stayed with its timer full again, a hit
+    # could not empty the board, and this comment said so. Measured then over
+    # 20 campaigns on the `triage` policy: 126 empty-board surges fired and
+    # every one of the 126 was the player clearing the last dungeon.
     #
-    # THE BROAD RULE IS STILL THE ONE TO BUILD. It is what the owner ruled; it
-    # is simpler to read from inside the game, because there is always something
+    # SO THE STALLING TRADE IS REAL NOW AND THE BROAD RULE IS WHAT ANSWERS IT.
+    # Let the last dungeon hit instead of clearing it and pay one city's
+    # damage: under "only a clear fires" a quiet stretch would follow, and
+    # under the rule built here the next wave follows, braked by
+    # `surge_interval_min` alone. Measured on 2026-10-12, 300 campaigns on the
+    # `triage` policy at these defaults, tier 1, no empire tree: 8.63
+    # empty-board surges a campaign with the dungeon staying and 14.02 with it
+    # leaving. How many of those follow a hit and how many a clear was not
+    # counted.
+    #
+    # THE BROAD RULE IS THE ONE BUILT. It is what the owner ruled, and it is
+    # simpler to read from inside the game, because there is always something
     # on the board and a player never has to work out why a wave did or did not
-    # arrive; and it stays correct if `dungeon_persists_after_resolve` is ever
-    # turned off, which is the setting that would make the stalling trade real.
-    # The other reason given for it does hold: the game already fires a surge on
-    # a failure, because `surge_on_city_fall` above defaults True.
+    # arrive. The game already fires a surge on a failure as well, because
+    # `surge_on_city_fall` above defaults True.
     #
     # THE 120-DAY CLOCK STAYS AND WHICHEVER COMES FIRST WINS. A trigger that
     # REPLACED the timer would give the weakest player FEWER surges than today,
     # because a Quest dungeon and a Fallen City dungeon never leave the board on
     # their own -- `_resolve` relocates the first and refreshes the second -- so
     # a player who ignores one keeps the board permanently non-empty. Measured
-    # over 60 campaigns at these defaults on the `triage` policy: 32 of them
+    # on 2026-09-07, when an ordinary dungeon still stayed after it hit, over
+    # 60 campaigns at the defaults of that day on the `triage` policy: 32 of them
     # held at least one day whose whole board was made of such dungeons, and the
     # longest unbroken stretch was 171 days, which is longer than the clock.
     # Firing early therefore ADDS surges and never removes one.
@@ -430,15 +437,51 @@ class TuningConfig:
     # other timers advance without you.
     timer_ticks_while_running: bool = False
 
-    # After resolving undefeated, does the dungeon stay (with a refreshed
-    # timer) or disappear? Staying is what lets an ignored city actually die.
-    dungeon_persists_after_resolve: bool = True
+    # After an ordinary dungeon hits its city undefeated, does it stay (with
+    # its timer full again) or leave the map?
+    #
+    # IT LEAVES, SINCE 2026-10-12. The owner ruled on 2026-10-08, verbatim:
+    # "Ordinary dungeons will do their city/population damage, and then
+    # despawn. Quest dungeons will do their city/population damage, and either
+    # refresh their timer and stay on that city, or potentially move to an
+    # adjacent city. Fallen city dungeons don't have a resolution timer as
+    # they're the enemies now."
+    #
+    # ONLY AN ORDINARY DUNGEON ON A STANDING CITY IS ASKED. This is read once,
+    # as the last statement of `Simulation._resolve`, below the returns for a
+    # Quest dungeon, a Fallen City dungeon and a city already fallen. A hit
+    # that fells the city runs `_fall` first, and the fall absorbs the dungeon
+    # as it always did. A death resolves through the same call, so the dungeon
+    # the player died in leaves too. A dungeon carrying a Siege leaves like any
+    # other and its daily damage stops with it. A dungeon that leaves is not a
+    # clear: it adds nothing to the Cataclysm boss's floors.
+    #
+    # True IS THE MODEL AS IT WAS BEFORE 2026-10-12. What was written here
+    # then was "Staying is what lets an ignored city actually die", and the
+    # measurement agrees with it. EVERY CAMPAIGN FIGURE RECORDED BEFORE THAT
+    # DATE WAS MEASURED WITH True, AND NO CONSTANT HAS BEEN RETUNED FOR False.
+    # Measured on 2026-10-12 at these defaults with nobody entering any
+    # dungeon, 500 campaigns a tier, 2,000 days: the path to the Pillar is
+    # lost in 100.0% of campaigns at each of tiers 1 to 4 with True, and in
+    # 15.0%, 37.6%, 81.0% and 95.8% of them with False. The `docs/DECISIONS.md`
+    # entry of 2026-10-12 has the tables and what a first look at the surge
+    # constants found.
+    #
+    # THE GAME DOES NOT HAVE THIS RULE YET AND DIFFERS ON PURPOSE.
+    # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
+    # records that. `UCataclysmDayClock::bDungeonPersistsAfterResolve` is NOT
+    # this setting and must not follow it: its false branch removes every
+    # timer that ran out, whatever the kind of dungeon.
+    dungeon_persists_after_resolve: bool = False
 
     # Does dying inside an ordinary dungeon resolve it at once? In the game it
     # does, since 2026-10-10 (issue #41): the dungeon's consequence lands on
-    # its city exactly as when its timer runs out, its timer is set back to
-    # full, the player leaves the dungeon, and `death_day_cost` days are then
-    # charged. A Quest dungeon and a Fallen City dungeon never resolve, so a
+    # its city exactly as when its timer runs out, the player leaves the
+    # dungeon, and `death_day_cost` days are then charged. What becomes of the
+    # dungeon is the setting above: in this model it leaves the map since
+    # 2026-10-12, and in the game, which does not have that rule yet, its timer
+    # is set back to full. A Quest dungeon and a Fallen City dungeon never
+    # resolve, so a
     # death in one costs the days and takes nothing from any city. A death in
     # the Cataclysm dungeon ends the run whatever this is set to.
     #

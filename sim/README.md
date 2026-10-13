@@ -10,12 +10,88 @@ python experiments.py
 
 Pure standard-library Python. No dependencies.
 
+## An ordinary dungeon leaves after it hits its city, and nothing has been retuned for it
+
+**Since 2026-10-12 an ordinary dungeon that hits its city undefeated leaves the
+map.** The owner ruled it on 2026-10-08, verbatim: "Ordinary dungeons will do
+their city/population damage, and then despawn." Until that date it stayed, with
+its timer full again, and hit the same city every time the timer came round.
+`TuningConfig.dungeon_persists_after_resolve` carries the rule and now defaults
+to `False`; `True` is the model as it was. A Quest dungeon and a Fallen City
+dungeon do not change. The dungeon whose hit fells its city is absorbed by the
+fall, as before. A dungeon carrying a Siege leaves like any other and its daily
+damage stops. A dungeon the player dies in hits once and leaves. A dungeon that
+leaves is not a clear and adds nothing to the Cataclysm boss's floors.
+
+**THE GAME DOES NOT HAVE THIS RULE YET AND DIFFERS ON PURPOSE.** It goes into
+the game only with retuned numbers.
+`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
+records the difference and fails when the game gains the rule.
+
+**NOTHING HAS BEEN RETUNED, AND AN EMPIRE NOBODY DEFENDS NO LONGER ALWAYS
+LOSES.** No constant moved with the default. `experiments.py` has not been run
+since. Every other table and figure in this file, in `docs/DECISIONS.md`, in
+`docs/Cataclysm_GDD_v2.md` and in the comments of this package dated before
+2026-10-12 was measured with the dungeon staying; set
+`dungeon_persists_after_resolve=True` to reproduce one. Four analysis scripts
+hold that setting `True` in their `base_config` for that reason:
+`analyse_tier_throughput.py`, `analyse_surge_cadence.py`,
+`analyse_board_empty_surge.py` and `analyse_siege_dose.py`. The other campaign
+scripts run at the default and their quoted figures are from before the change.
+
+**Nobody enters any dungeon.** 500 campaigns a cell, seeds 0 to 499, raw
+`TuningConfig()` defaults but for the tier, no empire tree, 2,000 days. "Lost"
+is the first day `Empire.pillar_exposed()` answers true. Cities lost are counted
+on that day, or on day 2,000 where it never came. "Hits" are the times a dungeon
+took from a city.
+
+| tier | rule | path to the Pillar lost (95% interval) | day lost: median | quartiles | cities lost | surges | from an empty board | hits |
+|---:|---|---|---:|---|---:|---:|---:|---:|
+| 1 | stays | 100.0% (99.2 to 100.0) | 883 | 746 to 1036 | 17.63 | 14.23 | 0.00 | 189.07 |
+| 1 | leaves | 15.0% (12.1 to 18.4) | 1443 | 1046 to 1734 | 5.56 | 18.29 | 1.08 | 58.58 |
+| 2 | stays | 100.0% (99.2 to 100.0) | 641 | 542 to 732 | 17.93 | 11.62 | 0.00 | 196.54 |
+| 2 | leaves | 37.6% (33.5 to 41.9) | 1516 | 1112 to 1799 | 9.70 | 18.26 | 0.43 | 92.26 |
+| 3 | stays | 100.0% (99.2 to 100.0) | 510 | 438 to 582 | 17.92 | 10.24 | 0.00 | 190.99 |
+| 3 | leaves | 81.0% (77.3 to 84.2) | 1435 | 1108 to 1707 | 13.03 | 17.05 | 0.27 | 108.82 |
+| 4 | stays | 100.0% (99.2 to 100.0) | 447 | 378 to 515 | 18.14 | 9.55 | 0.00 | 192.03 |
+| 4 | leaves | 95.8% (93.7 to 97.2) | 1260 | 963 to 1539 | 14.13 | 15.39 | 0.18 | 117.47 |
+
+**A player on the `triage` policy.** 300 campaigns a cell, seeds 0 to 299, raw
+`TuningConfig()` defaults but for the tier and the tree, the day cap of 2,500.
+Explorer is `TREE_EXPLORER_AS_DESIGNED`. These are not the settings
+`experiments.py` calibrates, so the rows cannot be set beside the report's
+tables. "Lost" includes a death in the earned Cataclysm dungeon.
+
+| tree | tier | rule | won (95% interval) | lost | cities lost | dungeons cleared | hits | deaths | surges | from an empty board | days | idle days (share of free days) | Last Stand reached |
+|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| Explorer | 1 | stays | 36.3% (31.1 to 41.9) | 44.0% | 3.05 +/- 0.16 | 55.99 | 34.20 | 8.60 | 17.24 | 2.64 | 1538 | 0.15 (0.2%) | 5.7% |
+| Explorer | 1 | leaves | 38.0% (32.7 to 43.6) | 40.3% | 1.55 +/- 0.08 | 44.30 | 20.27 | 6.15 | 17.06 | 8.81 | 1542 | 0.15 (0.2%) | 2.3% |
+| Explorer | 2 | stays | 1.7% (0.7 to 3.8) | 96.0% | 15.75 +/- 0.24 | 27.60 | 40.54 | 12.41 | 14.02 | 0.04 | 1000 | 0.88 (0.5%) | 90.7% |
+| Explorer | 2 | leaves | 4.3% (2.5 to 7.3) | 94.7% | 14.03 +/- 0.29 | 27.28 | 37.53 | 12.63 | 15.11 | 0.19 | 1220 | 26.76 (5.4%) | 84.0% |
+| Explorer | 3 | stays | 0.3% (0.1 to 1.9) | 98.3% | 16.44 +/- 0.25 | 13.19 | 32.26 | 6.98 | 11.97 | 0.01 | 780 | 31.55 (6.5%) | 100.0% |
+| Explorer | 3 | leaves | 0.3% (0.1 to 1.9) | 99.0% | 16.69 +/- 0.23 | 11.05 | 33.55 | 6.29 | 12.68 | 0.01 | 869 | 110.77 (31.0%) | 100.0% |
+| Explorer | 4 | stays | 0.0% (0.0 to 1.3) | 100.0% | 17.91 +/- 0.22 | 1.77 | 24.89 | 1.84 | 10.82 | 0.00 | 662 | 435.48 (81.8%) | 100.0% |
+| Explorer | 4 | leaves | 0.0% (0.0 to 1.3) | 99.7% | 17.70 +/- 0.23 | 1.28 | 24.79 | 1.53 | 10.85 | 0.00 | 685 | 486.39 (90.0%) | 100.0% |
+| none | 1 | stays | 27.0% (22.3 to 32.3) | 58.0% | 5.27 +/- 0.24 | 56.29 | 89.34 | 6.39 | 18.20 | 8.63 | 1499 | 0.04 (0.1%) | 7.3% |
+| none | 1 | leaves | 40.3% (34.9 to 46.0) | 57.3% | 1.00 +/- 0.07 | 31.59 | 35.74 | 4.11 | 17.60 | 14.02 | 1019 | 0.18 (0.7%) | 1.0% |
+| none | 2 | stays | 8.7% (6.0 to 12.4) | 91.3% | 18.27 +/- 0.37 | 46.71 | 185.01 | 9.35 | 17.09 | 0.99 | 1316 | 0.00 (0.0%) | 73.3% |
+| none | 2 | leaves | 25.7% (21.1 to 30.9) | 68.0% | 3.00 +/- 0.17 | 29.44 | 62.05 | 7.18 | 15.34 | 8.85 | 1094 | 11.46 (5.0%) | 7.0% |
+| none | 3 | stays | 1.0% (0.3 to 2.9) | 99.0% | 23.10 +/- 0.16 | 37.74 | 219.19 | 8.79 | 16.05 | 0.11 | 1138 | 0.00 (0.0%) | 100.0% |
+| none | 3 | leaves | 3.3% (1.8 to 6.0) | 56.7% | 12.05 +/- 0.35 | 50.04 | 132.75 | 16.26 | 24.34 | 6.09 | 2018 | 194.77 (49.0%) | 54.7% |
+| none | 4 | stays | 0.0% (0.0 to 1.3) | 100.0% | 23.53 +/- 0.11 | 30.82 | 221.40 | 7.52 | 14.51 | 0.03 | 973 | 0.00 (0.0%) | 100.0% |
+| none | 4 | leaves | 1.0% (0.3 to 2.9) | 85.7% | 17.58 +/- 0.36 | 41.22 | 147.30 | 14.24 | 22.68 | 3.58 | 1836 | 306.68 (69.4%) | 90.7% |
+
+`docs/DECISIONS.md`, 2026-10-12, has the same for `lane_aware`, and a first look
+at which single constant would make the undefended empire lose again.
+
 ## A death resolves its dungeon, and every figure below was measured before it did
 
 **Since 2026-10-12 a death inside an ordinary dungeon resolves that dungeon at
 once**, which the game has done since 2026-10-10 (issue #41). The dungeon's
-consequence lands on its city exactly as when its timer runs out, its timer is
-set back to full, the player leaves, and `death_day_cost` days are then charged.
+consequence lands on its city exactly as when its timer runs out, the dungeon
+then leaves the map (it stayed with its timer full again until the rule in the
+section above; the measurement below was taken while it stayed), the player
+leaves, and `death_day_cost` days are then charged.
 A death in a Quest dungeon or a Fallen City dungeon costs the days and takes
 nothing from any city. A death in the Cataclysm dungeon ends the run, as before.
 `TuningConfig.death_resolves_dungeon` carries it and defaults to on. Before that
@@ -276,6 +352,12 @@ on what evidence at the time.
   `TuningConfig.death_resolves_dungeon` turns it off, to reproduce a figure
   measured before 2026-10-12; no sweep moves it. Whether the resolved dungeon
   then stays is `dungeon_persists_after_resolve`, a separate rule.
+- **An ordinary dungeon leaves the map after it hits its city**, by its timer
+  or by a death. The owner ruled it on 2026-10-08.
+  `TuningConfig.dungeon_persists_after_resolve` is `False`; `True` keeps the
+  dungeon with its timer full again, which was the rule here until 2026-10-12
+  and is what the game still does. No sweep moves it. A Quest dungeon and a
+  Fallen City dungeon stay as they were.
 - **A city falling triggers a surge**, and optionally advances the escalation.
 - **An empty board triggers a surge too, however it emptied.** The project owner
   ruled on 2026-09-07, verbatim, "Anytime there are no longer dungeons on the
@@ -284,15 +366,16 @@ on what evidence at the time.
   proposed and overruled. `TuningConfig.surge_on_empty_board` carries it and
   issue #1406 has the reasoning.
 
-  **AT THESE DEFAULTS THE BROAD AND NARROW VERSIONS BEHAVE IDENTICALLY**, and
+  **SINCE 2026-10-12 THE BROAD AND NARROW VERSIONS ARE DIFFERENT RULES**, and
   that is a fact about `dungeon_persists_after_resolve` rather than about either
-  of them. It is `True`, so a Basic dungeon that detonates undefeated *stays* on
-  the board with a refreshed timer and cannot empty it. Measured over 20
-  campaigns on the `triage` policy: 126 empty-board surges fired and all 126
-  followed the player clearing the last dungeon. The broad rule is still what is
-  built — it is what the owner ruled, and it stays correct if that setting is
-  ever turned off — but nothing on record may claim the narrow version allows a
-  stalling trade that today it does not.
+  of them. It is `False`, so an ordinary dungeon that hits its city undefeated
+  leaves the board, and the last one leaving empties it. Until that date it was
+  `True`, a hit could not empty the board, and the two versions behaved
+  identically: measured then over 20 campaigns on the `triage` policy, 126
+  empty-board surges fired and all 126 followed the player clearing the last
+  dungeon. The stalling trade the narrow version would allow — let the last
+  dungeon hit, pay one city's damage, buy a quiet stretch — is real now, and the
+  broad rule, which is the one built, is what answers it.
 
   **THE 120-DAY CLOCK STAYS AND WHICHEVER COMES FIRST WINS.** A trigger that
   replaced the timer would give the weakest player *fewer* surges than today,

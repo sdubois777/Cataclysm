@@ -95,7 +95,21 @@ TIERS = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY,
 #: `TuningConfig.surge_dungeon_count`, which is 4. At four the Sanctuary median
 #: is 37 rather than 34, measured over 1,000 campaigns at each, so quoting a
 #: walk without its surge size says nothing.
+#:
+#: AN ORDINARY DUNGEON STAYS AFTER IT HITS ITS CITY HERE, WHICH IS NO LONGER
+#: THE DEFAULT. Since 2026-10-12 `TuningConfig` ships
+#: `dungeon_persists_after_resolve` False. The figures `policies.py` states
+#: were measured with it True and have not been re-measured, so this file
+#: re-measures them the way they were taken. **AT THE NEW DEFAULT TWO OF THEM
+#: ARE NOT TRUE**, measured on 2026-10-12: over three blocks of 320 campaigns
+#: the Sanctuary median walk is 34 to 35 days against the 37 stated, and over
+#: the first 320 campaigns 82.3% of Sieges sit on a Basic dungeon against the
+#: 79% stated, which is outside the three points this file allows. The
+#: Outpost, Bulwark and Pillar medians stay inside their tolerance. Fewer
+#: cities fall, so fewer Dungeon Cities are made. Nothing in `policies.py` was
+#: changed; its prose describes the model as it was.
 REPORT_SETTINGS = dict(
+    dungeon_persists_after_resolve=True,
     tier=1,
     surge_mode=SurgeMode.STATIC,
     surge_interval_days=120.0,
