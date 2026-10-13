@@ -2,6 +2,185 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — Seven sentences are given their rows: execute, unmitigated retaliation, enemies that survive a first hit, enemies immune after fifteen seconds, added projectiles, teleport when hit, and damage taken dealt over seconds
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (eight rows of the Enchantment Effects sheet, on seven
+enchantments), `game/Data/EnchantmentEffects.csv` and its asset,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (seven tests that wear the real rows),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts, and one name on the list of
+on-or-off stats), `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (one name leaves
+the list), `docs/Cataclysm_GDD_v2.md` (one paragraph on retaliation), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+Each row was written in a commit of its own, directly above the commit that built its mechanism. This entry is
+the one record of all seven rows. Each mechanism has an entry of its own, dated the same day, which holds its
+rulings, its tests and its guard proofs; this entry does not repeat them and says where each is.
+
+### SAID FIRST: WHAT A PERSON MUST PLAY, AND WHAT EACH ROW DOES THAT ITS SENTENCE DOES NOT SAY
+
+**Every one of the seven rows is on the owner's play-check list. No row here was played by anybody.** The tests
+show figures on test characters in worlds with no floor, no walls and no navigation.
+
+1. **"Strike skills have a 10%-20% chance to execute enemies below 15% HP".** The enemy is judged after the hit:
+   a Strike that leaves a non-boss enemy below 15% of its maximum health may kill it. A boss is never executed. A
+   hit that an absorb took whole executes nobody. The kill is a direct loss of health with no overkill and no
+   killing tags. An enemy left at exactly 15% is not executed. The row states a trigger cooldown of 0, so every
+   Strike hit rolls; a row that stated a cooldown would keep it. A minion's hit was not tested.
+2. **"Retaliation damage cannot be reduced or mitigated by the attacker".** "Mitigated" is six steps of the
+   struck character: evasion, block, armour, resistance above nought, damage reduction, and a damage-taken line
+   below nought. The payment still meets an absorb, the mana shield and the energy shield. The row never lowers a
+   payment: an attacker with negative resistance or a net increase to damage taken still takes more.
+3. **"Enemies that survive more than 5 seconds after first being hit gain 20%-40% increased damage".** Built as
+   what the wearer takes: an enemy the wearer first struck 5 seconds ago or longer deals the wearer 20% to 40%
+   more. **At least 5 seconds and not more than 5**: at exactly 5 seconds the line is on. The enemy deals nobody
+   else more. The time is the wearer's own first hit on that enemy. It is not cleared when combat lapses; the code clears it
+   where a character's records are reset at its revival.
+4. **"Enemies that have been alive for more than 15 seconds become immune to your damage until you disengage for
+   3 seconds".** The 15 seconds run from the wearer's first hit on that enemy, not from the enemy's birth.
+   **To re-open enemies the wearer must deal nothing and take nothing for more than 3 seconds**: the 3 seconds
+   are the game's combat lapse and are no cell of the row. **At least 15 seconds**: at exactly 15 the enemy is
+   immune. While it is immune the wearer's blows of every kind take nothing, its on-hit rows do not fire, it is
+   fed no leech, the "maximum health removed" rider takes nothing, and the number over the enemy reads "Immune to
+   you". A refused blow still counts as a combat event, so striking an immune enemy keeps the wearer in combat.
+   A minion's blow is the minion's own and is not refused, unless the summoner holds Conduit. Three judgements of
+   the enchantment session that no ruling states word for word: when the immunity ends the rider lowers the
+   maximum again only at the wearer's next application of that ailment; when it begins on an enemy already
+   carrying the rider the maximum returns at the first blow the enemy refuses; the words "Immune to you" are
+   also shown for a Conduit minion's refused blow.
+5. **"Skills get +1-4 to projectile count".** One use fires 1 plus the count, 10 degrees apart, centred on the
+   aim; with an even number in the air none flies along the exact line aimed. Each projectile deals full damage.
+   **One enemy is struck by at most one projectile of one use, so against a single enemy the row adds no
+   damage.** Each projectile leaves what a lone one leaves: Blood Pyre with 4 added leaves up to five pyres.
+   There is no cap. **The row does nothing for twelve skills tagged `Type.Projectile` that fire nothing that
+   flies, for Butcher's Bill, which throws on a timer, and for Compel, which states no speed.** It changes seven
+   skills: Carom, Harrower, Emberhurl, Blood Pyre, Skewer, Malefice and Tether.
+6. **"Teleport to a random location within 4 meters when hit".** **The row states a trigger cooldown of 2
+   seconds, which the sentence does not; it is a judged number**, given because without it a wearer under steady
+   hits would be moved four times a second. A landed hit moves the wearer, a blocked hit and a hit the energy
+   shield took whole included; an evaded blow and a tick of damage over time do not. The point is one the
+   navigation system says can be reached, within 4 metres, and the wearer stays put when there is none. It can
+   move the wearer towards enemies or onto a hazard. A wearer whose movement skill is running is not moved. The
+   move is not movement for the rows that ask about moving or standing still. **No test exercises the navigation
+   system or the check that the wearer fits at the point.**
+7. **"25%-50% of damage taken is dealt over 4-8 seconds".** **Both figures rise together on the item's one roll:
+   a low roll is 25% over 4 seconds and a high roll 50% over 8.** Only what would reach health is delayed, after
+   mana, the energy shield and the temporary absorb. What is delayed is a store that adds up, drained evenly,
+   shown as "Owed N" above the wearer's bars. **The drain can kill, and nothing stops it**: no armour, no
+   shield, no save from a lethal blow, no immunity. A blow that would have killed can leave the wearer alive and
+   owing more than its health. The two saves from a lethal blow read the blow before the share is taken, so a
+   save can be spent on a blow that, with the share taken off, would not have killed. A death clears the store;
+   leaving the dungeon clears it; a floor change does not; taking the gear off does not.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner delegated every open question on these sentences to the coordinating session ("your rec on all the
+open questions", 2026-10-09). The readings above are the coordinating session's rulings of 2026-10-12 under that
+delegation, except where a line says it is a judgement of the enchantment session or of the session that wrote
+the mechanism. The eighth sentence of this group, "Your burn effects have a 20%-40% chance to explode for double
+their remaining damage when they expire", has no row: it is held for the owner, because at a burn's expiry
+nothing of it remains.
+
+### WHAT WAS BUILT
+
+| Sentence | Row or rows |
+| :-- | :-- |
+| Strike skills have a 10%-20% chance to execute enemies below 15% HP | Action `execute_target` on `hit_dealt`, 10 to 20, Required Tags `Type.Strike`, Condition `target_health_below` 15, Trigger Cooldown 0 |
+| Retaliation damage cannot be reduced or mitigated by the attacker | `retaliation_cannot_be_mitigated`, flat, 1 to 1 |
+| Enemies that survive more than 5 seconds after first being hit gain 20%-40% increased damage | `damage_taken`, increased, 20 to 40, Condition `opponent_first_struck_by_you_seconds_ago` 5 |
+| Enemies that have been alive for more than 15 seconds become immune to your damage until you disengage for 3 seconds | `enemies_immune_to_you_after_seconds`, flat, 15 to 15 |
+| Skills get +1-4 to projectile count | `projectile_count`, flat, 1 to 4, Required Tags `Type.Projectile` |
+| Teleport to a random location within 4 meters when hit | Action `teleport_randomly` on `hit_taken`, 4 to 4 (metres), Trigger Cooldown 2 |
+| 25%-50% of damage taken is dealt over 4-8 seconds | `damage_taken_delayed_percent`, flat, 25 to 50; `damage_taken_delayed_seconds`, flat, 4 to 8 |
+
+EnchantmentEffects 594 to 602 rows, over 501 to 508 enchantments. `retaliation_cannot_be_mitigated` joined
+`FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`: it is an on-or-off stat whose row
+states 1, and no sentence states that 1. `opponent_first_struck_by_you_seconds_ago` left the list of conditions
+built ahead of their rows.
+
+**Where each mechanism's rulings, tests and proofs are**, by the heading of its entry of 2026-10-12:
+
+- "A row can execute the enemy a hit leaves below a share of its health, with no row authored"
+- "A row can make its wearer's retaliation skip six steps of the struck character's mitigation: a flag stat and
+  a flag on the blow, with no row authored"
+- "A character keeps the time of each striker's first hit, and a row can raise what its wearer takes from an
+  opponent it first struck N seconds ago, with no row authored"
+- "A row can make every enemy immune to its wearer's damage 15 seconds after the wearer's first hit on it, until
+  the wearer has been out of combat, with no row authored"
+- "A row can add projectiles to one use of a projectile skill: a fan of 10 degrees, and one enemy landed on by
+  at most one of them, with no row authored"
+- "A row can move its wearer to a random reachable point nearby when it is hit, with no row authored"
+- "A row can take a share of the damage that would reach its wearer's health and deal it over seconds: two stats
+  and a store of parcels, with no row authored"
+
+### Found while this was built
+
+- [#2387](https://github.com/sdubois777/Cataclysm/issues/2387): the generator accepts a flat row on a stat name
+  nothing in the game reads, and says nothing.
+- [#2388](https://github.com/sdubois777/Cataclysm/issues/2388): no game code calls
+  `UCataclysmAbilitySystemComponent::NoteRelocatedInstantly`, so a blink or other instant relocation is measured
+  by the movement sampler as ground walked. The decision of 2026-09-12 that a teleport is not movement states
+  two things that do not agree about the standing-still clock. The teleport row leaves that clock alone.
+
+### Tests
+
+Seven automation tests in the group `Cataclysm.Enchantments.`, in `CataclysmEnchantmentEffectTests.cpp`, written
+by two second sessions and read assertion by assertion by the enchantment session. Each wears the real row from
+the loaded tables on a helm, beside a control wearer whose helm carries no such row, and each first checks that
+the row's name and figures are in the CSV files. Each test's first check on the wearer of the row is that the row
+reached it; that check ends the test when the data table asset is older than the rows.
+
+- `TheStrikeExecuteRowKillsWhatAStrikeLeavesBelowFifteenPercentAtItsRolledChance`. Three player characters, each
+  in its own world: no row, the row at its low roll (10) and at its high roll (20). With the execute roll pinned
+  half a point above the chance a Strike leaves the creature alive below the share, and half a point below it the
+  creature is dead. A skill that is no Strike and a blow of no skill execute nobody at a roll of nought. A
+  creature left above the share lives. **A creature left at exactly the share is checked only when two trial
+  blows can leave one there; otherwise the test reports that half as skipped.**
+- `TheUnmitigatedRetaliationRowSendsTheWholeAmountPastArmourResistanceAndDamageReduction`. Two bare wearers and
+  a bare attacker. With 5,000 armour, a resistance of 50 and a damage reduction of 50 on the attacker, it loses to
+  the wearer of the row what it lost with no defence, and to the wearer without the row less than a quarter of
+  that. **Every other stat line of both wearers is replaced when they are given their retaliation**, and the
+  row's own line is read first and put back unchanged.
+- `TheSurviveFiveSecondsRowRaisesWhatAnEnemyTheWearerFirstStruckDealsItFromFiveSecondsOn`. Three bare wearers
+  (no row, 20, 40) and two opponents, one struck by all three at one instant and one never struck. Read before
+  the first hit, at it, 4.5 seconds, exactly 5 seconds and 8 seconds after: the struck opponent's blow on a
+  wearer of the row, divided by its blow on the wearer without it, is 1.0 for the first three readings and 1.2
+  or 1.4 for the last two; the opponent never struck is at 1.0 throughout.
+- `TheImmuneAfterFifteenSecondsRowStopsTheWearersBlowFifteenSecondsAfterItsFirst`. Two player characters. With
+  the row a blow 14.5 seconds after the first takes what the first took, and a blow at exactly 15 seconds takes
+  nothing; without the row both take what the first took. Nothing is asserted here about on-hit rows, leech,
+  riders or the floating number; the mechanism's tests hold those.
+- `TheProjectileCountRowAddsItsRolledOneToFourProjectilesToAUseOfAProjectileSkillAlone`. Six bare wearers given a
+  sphere to stand in: three helms (no row, low roll, high roll), each with a skill tagged `Type.Projectile` or
+  with one that is not. The low roll fires two, the high roll five, no row one; the skill without the tag fires
+  one for every wearer. **The wearer is not a player character**: the second session judged that a player's
+  shot leaves at the release of its throw, which a world that is not ticked never reaches. No enemy is placed.
+- `TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`. Two player characters, each
+  struck by a creature 40 metres away, with the point pinned by the two console variables. The first landed hit
+  moves the wearer of the row 4 metres; a hit 1.9 seconds later does not; a hit 2.1 seconds later moves it
+  another 4; pinned at half, 2 metres. The wearer without the row is never moved. **This is the one test in
+  which a real blow is resolved on a real player wearing the row. The navigation system is not exercised.**
+- `TheDamageOverSecondsRowHoldsItsRolledShareOfABlowAndDrainsItEvenlyOverItsRolledSeconds`. Three bare wearers
+  (no rows, low roll, high roll) take one blow of 400. At the low roll three quarters land at once and the rest
+  is drained in four equal steps of one second; at the high roll half lands at once and the rest in eight equal
+  steps, with half of it still owed at 4 seconds. Each wearer has lost in all what the wearer without the rows
+  lost at once.
+
+**Not tested by these seven:** any of the rows in a dungeon level, with a floor, walls or navigation; a row worn
+by a player in play; anything listed as not tested in each mechanism's own entry.
+
+**Predicted on the data table asset as merged, before it is rebuilt:** seven tests fail, each on the one check
+that the row reached the wearer. That prediction rests on a thing nobody checked: that wearing an enchantment
+whose effect rows the asset lacks logs no error.
+
+**No guard proof is this entry's.** The proofs are the mechanisms' and are in their entries.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can take a share of the damage that would reach its wearer's health and deal it over seconds: two stats and a store of parcels, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.h` and `.cpp` (new: the two stats' names
