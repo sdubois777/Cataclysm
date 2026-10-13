@@ -5623,10 +5623,21 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == BLAST_FROM_THE_DYING_ACTION
             or action == STUN_NEAR_THE_DYING_ACTION
             or action == STRIKE_TARGET_ACTION
-            # AN EXECUTE MAKES SOMETHING HAPPEN ON A HIT DEALT, so it waits as
-            # the others do. The engine starts the wait when an enemy is
-            # executed, and not when the roll alone comes up.
+            # AN EXECUTE MAY STATE ONE, AND TAKES NONE BY DEFAULT: see
+            # `ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN`. The engine starts a
+            # stated wait when an enemy is executed, and not when the roll
+            # alone comes up.
             or action == EXECUTE_TARGET_ACTION)
+
+
+#: The actions that MAY STATE a Trigger Cooldown and are given NONE when the
+#: cell is empty, on a hit-fired event as on any other. Ruled 2026-10-12 by the
+#: coordinating session: "EXECUTE'S TRIGGER COOLDOWN: none. Each enemy a strike
+#: leaves below the share rolls for itself." So the ruled row, whose cell is
+#: empty, writes no wait, and one swing that leaves three enemies below the
+#: share rolls for each of the three. A row that states a wait keeps it: the
+#: engine already starts one at an execute, and a later sentence may state one.
+ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN = (EXECUTE_TARGET_ACTION,)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -7597,6 +7608,7 @@ def enchantment_effects(book) -> list[dict]:
                     f"Cooldown of {trigger_cooldown:g} seconds. It is from 0, "
                     f"which is none, up to {MAX_TRIGGER_COOLDOWN:g}.")
         elif action and takes_a_trigger_cooldown(action) \
+                and action not in ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN \
                 and action_event in HIT_FIRED_EVENTS:
             trigger_cooldown = DEFAULT_TRIGGER_COOLDOWN
 

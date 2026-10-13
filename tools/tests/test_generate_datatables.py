@@ -3418,10 +3418,11 @@ class TestExecuteTarget:
             {"Enchantments": enchantments,
              "Enchantment Effects": [self.HEADER, row]}))
 
-    def test_the_ruled_row_is_carried_through_with_its_scope_its_share_and_the_hit_fired_wait(
+    def test_the_ruled_row_is_carried_through_with_its_scope_its_share_and_no_wait(
             self, tmp_path):
-        # `hit_dealt` IS A HIT-FIRED EVENT, so a row that states no Trigger
-        # Cooldown takes the default.
+        # `hit_dealt` IS A HIT-FIRED EVENT, AND AN EXECUTE TAKES NO DEFAULT WAIT
+        # ALL THE SAME. Ruled 2026-10-12: each enemy a strike leaves below the
+        # share rolls for itself.
         out = gen.enchantment_effects(self.execute(tmp_path, {}))
         assert len(out) == 1
         assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
@@ -3429,11 +3430,26 @@ class TestExecuteTarget:
                 out[0]["ConditionValue"], out[0]["FractionOf"], out[0]["Scale"],
                 out[0]["TriggerCooldown"]) == (
             "execute_target", "hit_dealt", 10.0, 20.0, "Type.Strike",
-            "target_health_below", 15.0, "", "", gen.DEFAULT_TRIGGER_COOLDOWN)
+            "target_health_below", 15.0, "", "", 0.0)
 
-    def test_a_trigger_cooldown_of_nought_is_carried_through_as_none(self, tmp_path):
-        out = gen.enchantment_effects(self.execute(tmp_path, {"Trigger Cooldown": 0}))
-        assert out[0]["TriggerCooldown"] == 0.0
+    def test_the_control_another_action_on_the_same_event_takes_the_default_wait(
+            self, tmp_path):
+        """So the nought above is this action's and not the event's."""
+        assert "hit_dealt" in gen.HIT_FIRED_EVENTS
+        assert gen.takes_a_trigger_cooldown(gen.STRIKE_TARGET_ACTION)
+        assert gen.STRIKE_TARGET_ACTION not in gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN
+        out = gen.enchantment_effects(TestStrikeTarget().strike(
+            tmp_path, {"Action Event": "hit_dealt", "Required Tags": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_execute_is_the_one_action_with_no_default_wait_and_may_state_one(self):
+        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION,)
+        assert gen.takes_a_trigger_cooldown(gen.EXECUTE_TARGET_ACTION)
+
+    @pytest.mark.parametrize("stated", [0, 0.25, 10])
+    def test_a_stated_trigger_cooldown_is_carried_through(self, tmp_path, stated):
+        out = gen.enchantment_effects(self.execute(tmp_path, {"Trigger Cooldown": stated}))
+        assert out[0]["TriggerCooldown"] == float(stated)
 
     def test_a_row_of_100_below_5_is_the_same_action(self, tmp_path):
         """What another execute would state: always, below another share."""
@@ -3460,7 +3476,6 @@ class TestExecuteTarget:
         assert gen.EXECUTE_TARGET_EVENTS == ("hit_dealt",)
         assert set(gen.EXECUTE_TARGET_EVENTS) <= gen.granting_events()
         assert set(gen.EXECUTE_TARGET_EVENTS) <= set(gen.EVENTS_WITH_AN_AMOUNT)
-        assert set(gen.EXECUTE_TARGET_EVENTS) <= set(gen.HIT_FIRED_EVENTS)
 
     def test_the_row_with_no_condition_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="states that condition and no other"):
