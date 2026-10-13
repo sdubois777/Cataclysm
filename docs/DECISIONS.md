@@ -2,6 +2,277 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can lay a random buff or debuff on its wearer: a debuff from the merged draw, or one of a table of six buffs held for 30 seconds, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one status name,
+the table of buffs, the draw, the held buff and its end), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`
+(the gear refresh reads the held buff's lines), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and
+`.cpp` and `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the held buff's name and seconds left, above the
+player's bars), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (eight tests),
+`game/Source/Cataclysm/Tests/CataclysmCombatOverlayTests.cpp` (one test), `tools/generate_datatables.py` (one more status name `apply_status_to_self` alone may state),
+`tools/tests/test_generate_datatables.py` (five tests),
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one name), a new file
+`tools/tests/test_the_random_buff_table_names_buff_rows.py` (five tests). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, the two-piece bonus of the set Shard of Anarchy: "Shard of Anarchy (2-Piece Bonus): Every 30
+seconds, a random buff or debuff is applied to you".
+
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+- **What a player is shown, once a row exists.** Added in a second commit of this layer, by the coordinating
+  session's ruling of 2026-10-12: "show the held buff WHEREVER THE DRAWN DEBUFF OF THE MERGED DRAWBACK IS SHOWN
+  TO THE PLAYER".
+  - **The held buff is named on the line above the player's own bars, with its seconds left**, such as
+    "Commander 12s". The seconds are whole and rounded up.
+  - **Of the five debuffs the draw can give, only Madness is named there.** "Maddened" is drawn above the
+    player's bars and under a creature's bar.
+  - **Cripple, Weaken, Shred and Stun are named on no screen.** No file under
+    `game/Source/Cataclysm/Interface` holds any of the four words outside a comment (searched every `.cpp`
+    and `.h` there without regard to case; the only hits are three comments in `CataclysmCombatOverlay.h`,
+    one of which says of Cripple "it is a tagged debuff, and no screen shows those yet"). What each does to
+    a figure a screen shows was not read: a Shred lowers a resistance, and the character sheet has a line
+    for each resistance. Whether a stunned character is shown by an animation or an effect was not read.
+  - **The resistance the set's drawback holds at nought is shown only as nought on the character sheet's line
+    for that resistance.** The console command `Cataclysm.ShowResistances` prints the same. Nothing names it
+    above the player's bars.
+  - **The line above the player's bars is not the creature's status line.** `ACataclysmHUD` draws the player's
+    texts one by one, each on a line of its own: "Feared", then "Maddened", and now the held buff above them.
+    It does not call `UCataclysmCombatOverlay::StatusLineFor`; that function's one caller in the display
+    draws the line under a creature's bar. The held buff's text is in both: drawn above the player's bars,
+    and last on `StatusLineFor`, where it is empty for every creature today because none wears a row.
+- **Which buffs are in the pool is with the owner.** The owner has been asked. Until the answer, a drawn buff is
+  one entry of a table in code, `UCataclysmAbilitySystemComponent::RandomBuffTable`. The owner's answer changes
+  the table and its two Python lists, and not the mechanism.
+- **Six buffs are in the table.** Each is laid as the stat line its own description in `StatusEffects.csv`
+  states, on the buff's holder.
+
+  | Place | Buff | Its description | The lines laid |
+  | :-- | :-- | :-- | :-- |
+  | 0 | Mana Surge | "Increases spell damage by 1% for 5 seconds for every 100 maximum mana." | `spell_damage` increased 1, scaled by `max_mana` at a step of 100 |
+  | 1 | Tactical Advantage | "Increases movement speed and damage by 35% after using a movement ability." | `movement_speed`, `attack_damage` and `spell_damage` increased 35, each under `seconds_after_movement_skill` 5 |
+  | 2 | Famished | "Increases all of your leech by 5%." | `life_leech`, `mana_leech` and `energy_shield_leech` increased 5 |
+  | 3 | Commander | "All nearby allies gain 20% increased movement speed and attack speed." | `movement_speed` and `attack_speed` increased 20 |
+  | 4 | Divine Aegis | "Gain a divine shield when below 50% HP, reducing all damage taken by 75%." | `damage_taken` more -75, under `health_below` 50 |
+  | 5 | Spellslinger | "Each stack reduces the mana cost of your abilities by 10%." | `mana_cost` more -10 |
+
+- **Two of the eight candidates are left out by the writing session, because a part of each description cannot be
+  expressed with what exists.**
+  - *Dervish*, "Increases your attack speed for melee attacks by 10% per stack." The restriction to melee attacks
+    cannot be kept. A line scoped to `Type.Melee` is counted only by a reader that asks with that tag. The one
+    place found that asks the stat line for `attack_speed` by name is the basic attack's swing interval in
+    `CataclysmBasicAttack.cpp`, and it asks with no tags; its comment says a modifier scoped to a tag does not
+    reach it. A scoped line would reach nothing there; an unscoped line would speed every swing, a ranged
+    weapon's included. The option not taken: lay it unscoped, `attack_speed` increased 10.
+  - *Demonic Rage*, "When your health falls below 25%, you become immune to crowd control and deal 100% more
+    damage for 10 seconds." Ten seconds from the moment health falls below a quarter is an event and a window,
+    not a condition a stat line can carry. The merged row that names this buff, Demon King's Regalia's six-piece
+    bonus, is built from the event `health_falls_below`, a stack of the row's own lasting 10 seconds and a
+    cooldown of 300 seconds. A buff of the table is a list of stat lines and has no event. The options not
+    taken: lay it under `health_below` 25, which holds for as long as health stays under a quarter and not for
+    10 seconds; or give the table's entries actions as well as lines.
+- **Ten more Buff rows are not in the table, as ruled, pending the owner:** Warhound, Plague, Sanctified Power,
+  Temporal Flux, Void, Death, Warzone Control Points, Chaotic Barrier, The Ascended and Feasting. Each describes
+  another set's own mechanic or an enemy's.
+- **What the wearer holds in the first 30 seconds of a fight: nothing.** Every timed row fires once for every
+  whole period of the current combat, a period in first (`StepTimedGrants`, ruled 2026-09-24), and not out of
+  combat. So the first buff or debuff arrives 30 seconds into the first fight.
+- **A buff lasts 30 seconds of the world's clock from when it is laid, in a fight or out of one.** The 30 is
+  `RandomBuffSeconds`, a figure of the mechanism as ruled, and not the row's period. A new buff takes the place
+  of the one held. With the row at its period of 30, a buff's 30 seconds end at the step of the next firing.
+- **A drawn debuff is the merged draw and nothing else.** `UCataclysmAilments::ApplyRandomDebuff`, called as the
+  merged status "Random Debuff" calls it on a wearer: Madness, Cripple, Weaken, Shred or Stun, each lasting what
+  that debuff lasts. It is not ended or replaced at the next firing, and it does not end a buff that is held. A
+  drawn buff does not end a debuff.
+- **Even odds of a buff or a debuff at each firing.**
+- **When the gear comes off, a buff already laid stays for the rest of its 30 seconds.** A judgement of the
+  writing session. A debuff the row laid stays when the gear comes off, because it is a gameplay effect with
+  its own duration; the buff is treated the same way. No further buff is drawn, because the row no longer
+  fires. The option not taken: end the buff at the refresh that no longer gathers the row.
+- **At death a held buff ends.** `ClearWhatDeathEnds` ends it and runs a gear refresh, so the revived
+  character's stat line is written without it. A judgement of the writing session, for the reason the entry on
+  the held resistance gives. A debuff ends at death as every timed effect does.
+- **A new dungeon floor ends nothing.** A floor change runs a gear refresh, and the refresh reads the held
+  buff, so its lines stay; its seconds go on counting on the world's clock. No code in the game module travels
+  to another level (searched for `OpenLevel`, `ServerTravel`, `ClientTravel` and `SeamlessTravel`, none found),
+  so a floor change keeps the world and its clock.
+- **Tactical Advantage's "after" is 5 seconds, a judgement.** The description states no length. The one merged
+  sentence that names the buff, Warlord's Will's ten-piece bonus, gives its bonus "for 5 seconds" after a
+  movement ability. A movement skill used up to 5 seconds before the buff is laid counts. The options not
+  taken: 30 seconds, the whole of the buff; 3 seconds, the window of the one merged row on that condition.
+- **Mana Surge's "for 5 seconds" is not kept.** The ruling lays a buff for 30 seconds, and the entry is laid
+  for 30 like the others.
+- **Famished is an increase of 5 on life, mana and energy shield leech, a judgement.** That is how the merged
+  row that names the buff is written, Starvation's ten-piece bonus. The option not taken: a flat 5 on each,
+  which is how "You have 5% life, mana and ES leech" is written.
+- **Commander is laid on the holder, and no ally gets anything.** As ruled.
+- **Spellslinger is unscoped, a judgement.** Its own description says "your abilities". The set sentence that
+  names it, Spellblade's Will's six-piece bonus, says "your spells"; as ruled, an entry follows its own
+  description. One stack, as ruled. "Reduces by 10%" is `more` -10, as "Your spells cost 10%-20% less mana"
+  is written.
+- **Nothing existing fitted for holding the buff, so one small thing is new: the name of the held buff and when
+  it ends, kept on the ability system component, and read by the gear refresh.** The two existing ways were
+  read, as the entry on the held resistance records. The dungeon floor's map has one writer that replaces the
+  whole map. A row's own timed stacks scale that row's own lines, and a table in code has no row. What was
+  built follows the dungeon floor's way exactly: the refresh asks the component for the held buff's lines
+  (`HeldRandomBuffStatModifiers`) and adds them to the modifiers it has gathered, in the block that adds the
+  floor's. So a gear refresh run for any reason keeps a held buff and drops an ended one.
+- **Laying a buff, and ending one, runs a gear refresh.** That is what writes a line onto the stat line. The
+  component finds the equipment component on its avatar and calls `RefreshAttributes`, as a planted weapon
+  does. At the row's period that is one gear refresh every 30 seconds of a fight.
+- **A character with no equipment component gets nothing from a drawn buff.** The name is held and no line is
+  written. That is every enemy; none wears a row today.
+- **The buff's end is noticed by the timed step, which a living character runs several times a second.**
+  `StepTimedGrants` ends a buff whose seconds have passed and refreshes. A refresh run by anything else after
+  the 30 seconds also drops the lines, because the component stops handing them over once the time has passed.
+  A dead character does not run the step; its buff ends when it stands back up.
+- **The held buff's lines are not named on screen, only the buff.** The text above the player's bars says
+  which buff is held and for how long. The figures it changes are the character's ordinary figures, and no
+  line says which of them the buff moved.
+- **The generator accepts the name on `apply_status_to_self` only**, on any event that action may wait on and at
+  any chance. Only the timed event at a chance of 100 is tested.
+
+**What was not read:** how a set bonus's row is counted by pieces worn and handed to the wearer as an action;
+what the gear refresh costs in time; every reader of the nine stats the table's lines are on, beyond the one
+function each test asks; whether `UCataclysmEquipmentComponent::RefreshAttributes` is safe to run from inside
+`ClearWhatDeathEnds` for a player character, beyond that it is run from a planted weapon's hand-back and from
+a kill at arbitrary moments; the code that draws the character sheet.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| B1 | A new status name for `apply_status_to_self`. On each firing, even odds of a buff or a debuff. | `RandomBuffOrDebuffStatus`, "Random Buff or Debuff"; `ApplyRandomBuffOrDebuff`, called by `ApplyStatusToTheWearer`. |
+| B2 | A drawn debuff is exactly the merged draw. | The same call of `UCataclysmAilments::ApplyRandomDebuff` the status "Random Debuff" makes for a wearer. |
+| B3 | A drawn buff is one row of a table in code, laid on the wearer for 30 seconds; a new buff replaces the last one held. | `RandomBuffTable`, `HoldARandomBuff`, `RandomBuffSeconds`. One name is held, so a new draw writes over it. |
+| B4 | The table holds the candidates a character can hold, each as its own description states, with any condition the existing row conditions can express; a buff whose condition cannot be expressed is left out. | The six entries above; Dervish and Demonic Rage left out. |
+| B5 | "Damage" in a description is attack damage and spell damage. | Tactical Advantage's two damage lines. |
+| B6 | A console variable pins buff-or-debuff, and one pins which buff. | `Cataclysm.RandomBuffOrDebuffPick`: 0 a buff, 1 a debuff, -1 at random. `Cataclysm.RandomBuffPick`: the place in the table, -1 at random. The debuff is pinned by the merged `Cataclysm.RandomDebuffPick`. |
+
+### WHAT WAS BUILT
+
+- **The status name.** `UCataclysmAbilitySystemComponent::RandomBuffOrDebuffStatus`. The generator holds it in
+  `RANDOM_BUFF_OR_DEBUFF_STATUS`, on the list `APPLY_STATUSES_TO_SELF_ONLY` the layer below added.
+- **The table.** `RandomBuffTable()` answers a list of `FRandomBuff`: a name, which is the name of the buff's row
+  in `StatusEffects.csv`, and its lines, each a stat name and a stat modifier from the source `Enchantment`.
+  Built once, on first use.
+- **The draw.** `ApplyRandomBuffOrDebuff()` picks a buff or a debuff and calls `HoldARandomBuff()` or the merged
+  debuff draw. `HoldARandomBuff()` picks an entry, keeps its name and the world time 30 seconds on, and runs
+  a gear refresh.
+- **The read.** `HeldRandomBuff()` answers the held buff's name, or none once its time has passed.
+  `HeldRandomBuffSecondsLeft()` answers what is left. `HeldRandomBuffStatModifiers()` answers the held buff's
+  lines keyed by stat, or nothing. `UCataclysmEquipmentComponent::RefreshAttributes` adds them after the
+  dungeon floor's.
+- **The end.** `EndHeldRandomBuffIfItsTimeHasPassed()`, run as `StepTimedGrants` returns, whatever it returned
+  for; and `EndHeldRandomBuff()` in `ClearWhatDeathEnds`. Each runs a gear refresh when a buff was held.
+- **The display.** `UCataclysmCombatOverlay::HeldBuffTextFor(Actor)` answers the held buff's name and its
+  seconds left rounded up, such as "Commander 12s", or nothing for an actor that holds none or is dead. It
+  reads `HeldRandomBuff()` and `HeldRandomBuffSecondsLeft()`. `ACataclysmHUD` draws it above the player's bars,
+  after "Feared" and "Maddened", when it is not empty. `StatusLineFor` holds it last.
+- **The row the enchantment session is to write** is one line: Action `apply_status_to_self`, Action Event
+  `every_seconds`, Every Seconds 30, Ailment "Random Buff or Debuff", value 100 to 100.
+
+### Tests
+
+Eight new Unreal tests, after the test of the held resistance. The wearer is a bare character with an equipment
+component and no gear, refreshed once as it is made. Every figure on it is a difference of two readings, or a
+ratio of two. A gear refresh writes this wearer no actions, so the row built by hand is put back before every
+step of the clock.
+
+- `Cataclysm.StatExemption.ARandomBuffOrDebuffPinnedToABuffLaysItForThirtySecondsAndTheNextBuffReplacesIt`:
+  the control first, a refreshed wearer with no buff. Pinned to a buff and to Commander: nothing 29 seconds
+  into a fight; at 30, Commander with 30 seconds left and its two lines; 15 seconds later still held with 15
+  left; at 60, pinned to Famished, Famished with 30 left, Commander's lines gone and Famished's on; the row
+  taken off and the buff still held 29 seconds after it was laid and gone at 30; a buff laid by hand ended by
+  `ClearWhatDeathEnds`, with its line gone.
+- `Cataclysm.StatExemption.ARandomBuffOrDebuffPinnedToADebuffLaysWhatTheRandomDebuffRowLaysAndLeavesAHeldBuff`:
+  two wearers 3 metres apart, one firing the new status pinned to a debuff, one the merged "Random Debuff",
+  the debuff pinned to Cripple. Both carry Cripple at the same stated strength and the first holds no buff.
+  Then a row of 10 seconds: a buff at 10, a debuff at 20, and the buff still held at 20 with 20 seconds left.
+- One test for each buff of the table, each laying the buff by the draw with the pin and reading the control
+  first: `TheRandomBuffManaSurgeIsOneIncreasedSpellDamageForEveryFullHundredMaximumMana` (nothing at 99, 1 at
+  100, 3 at 350, 10 at 1,000); `TheRandomBuffTacticalAdvantageIsThirtyFiveIncreasedSpeedAndDamageForFiveSecondsAfterAMovementSkill`
+  (nothing with no movement skill used, 35 on the three stats as one is used and 4 seconds after, nothing 6
+  seconds after); `TheRandomBuffFamishedIsFiveIncreasedLifeManaAndEnergyShieldLeech`;
+  `TheRandomBuffCommanderIsTwentyIncreasedMovementSpeedAndAttackSpeed`;
+  `TheRandomBuffDivineAegisIsSeventyFiveLessDamageTakenWhileBelowHalfHealth` (an untyped blow of 100 takes the
+  same at full health and at exactly half, and a quarter of it at two fifths);
+  `TheRandomBuffSpellslingerIsTenLessManaCostAtOneStack` (a cost of 100 comes to nine tenths of what it came
+  to, with no tags and with the spell tag).
+
+One more Unreal test, in the overlay's own test file, `CataclysmCombatOverlayTests.cpp`:
+
+- `Cataclysm.Overlay.TheBuffAWornRowDrewIsNamedWithItsSecondsLeftAboveThePlayersBars`: a player wired as the
+  game wires one, and a creature 5 metres away. The control first: with no buff the text is empty and the
+  status line does not name the buff. The buff laid by the draw, pinned to Commander: half a second later the
+  text is "Commander 30s" and the status line contains it; a creature holding none says nothing; with 19.5
+  seconds left the text reads "Commander 20s", with 10.5 "Commander 11s", with half a second "Commander 1s";
+  half a second after the 30 seconds the text is empty and the status line no longer names the buff. It tests
+  the text. Nothing drawn can be watched under test, as that file says at its top, so the call that draws the
+  text above the player's bars is not reached.
+
+Python:
+
+- `TestAStatusLaidOnTheWearer` in `tools/tests/test_generate_datatables.py` gains five tests on a made-up sheet:
+  the row's shape is carried through; the name misspelt is refused; the name is refused on `apply_status`, on
+  `apply_status_seconds` and on `apply_status_to_self_seconds`.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the constant's name, and its test
+  of the statuses for a wearer only now compares both names.
+- `tools/tests/test_the_random_buff_table_names_buff_rows.py`, new, five tests: the table's names are read out
+  of the engine's source and are the six listed, in order; each is a Buff row of `StatusEffects.csv`; the 18
+  Buff rows are exactly the six in the table and the twelve left out; and the help text of
+  `Cataclysm.RandomBuffPick` names the six in the table's order.
+
+**Not tested:** the row arriving from a worn item through a gear refresh, because no row exists; the even
+odds, and each random draw with its pin off; the buff on a player character, with a player state, a level and
+gear; what each line does in play beyond the one reading its test takes (a swing's interval, a walk's speed, a
+blow's damage, a leech payment); a buff's seconds ending while its holder is out of a fight; a floor change
+with a buff held; a real death and revival; a drawn debuff
+ending at its own duration; a debuff other than Cripple; the row on an event other than the timed one, or at
+a chance under 100; a wearer with no equipment component; the held buff's text being drawn, which needs a
+person to look at the screen; where it sits when "Feared" and "Maddened" are drawn with it.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
+`Cataclysm.StatExemption.`, with its trailing dot.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| B-I, the gear refresh reads the held buff | `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp` | `Modifiers.FindOrAdd(Line.Key).Append(Line.Value);` | `Modifiers.FindOrAdd(Line.Key);` | `ARandomBuffOrDebuffPinnedToABuffLaysItForThirtySecondsAndTheNextBuffReplacesIt` | the other seven of this layer: the debuff test and the six tests of one buff each |
+| B-II, a buff is held for 30 seconds | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `HeldRandomBuffUntilSeconds = World->GetTimeSeconds() + RandomBuffSeconds;` | `HeldRandomBuffUntilSeconds = World->GetTimeSeconds() + 2.0f * RandomBuffSeconds;` | the same test | `ARandomBuffOrDebuffPinnedToADebuffLaysWhatTheRandomDebuffRowLaysAndLeavesAHeldBuff` |
+| B-III, the pin's 0 is a buff and its 1 a debuff | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (bDrawsABuff)` | `if (!bDrawsABuff)` | `ARandomBuffOrDebuffPinnedToADebuffLaysWhatTheRandomDebuffRowLaysAndLeavesAHeldBuff` | `ARandomBuffOrDebuffPinnedToABuffLaysItForThirtySecondsAndTheNextBuffReplacesIt` |
+
+Failed assertions in each test, by reading:
+
+- **B-I, 23 in 8 tests.** The held test 5: Commander's two lines at 30 seconds; Famished's line at 60; "and its
+  line" 29 seconds after it was laid; and the set-up check of the line before the death, which skips the two
+  checks after it. The debuff test 1: "and its movement speed line still on the stat line". Mana Surge 3: at
+  100, 350 and 1,000. Tactical Advantage 6: the three stats as a movement skill is used and 4 seconds after.
+  Famished 3. Commander 2. Divine Aegis 1: below half health. Spellslinger 2.
+- **B-II, 6 in 2 tests.** The held test 5: "with 30 seconds left" at 30 seconds, "with 15 seconds left", "with
+  30 seconds left" at 60, and the two checks that the buff and its line are gone 30 seconds after it was laid.
+  The debuff test 1: "with 20 of its 30 seconds left".
+- **B-III, 5 in 2 tests.** The debuff test 4: the wearer carries the debuff, its strength, "and a drawn debuff
+  lays no buff", and the set-up check that the wearer carries no Cripple at 10 seconds, where the test stops.
+  The held test 1: "30 seconds in, the wearer holds Commander", where the test stops.
+
+No test of another group is expected to fail under any of the three. Under B-I the buff's name is still held and
+only its lines are missing, so every check of the name passes.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can draw one of its wearer's eight resistances and hold it at nought until it fires again, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one status name,

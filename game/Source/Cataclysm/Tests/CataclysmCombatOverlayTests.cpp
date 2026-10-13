@@ -4,6 +4,8 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For the buff a worn row drew, which the overlay names with its seconds left.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -16,6 +18,7 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmHUD.h"
 #include "Player/CataclysmGameMode.h"
@@ -1308,6 +1311,101 @@ bool FCataclysmOverlayFollowersAreGreen::RunTest(const FString&)
 	TestEqual(TEXT("with no local player, nothing is anybody's"),
 			  FString(UCataclysmCombatOverlay::HealthFillHexFor(Thrall, nullptr)), Red);
 	TestNotEqual(TEXT("and the two fills differ"), Green, Red);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverlayNamesTheHeldBuff,
+	"Cataclysm.Overlay.TheBuffAWornRowDrewIsNamedWithItsSecondsLeftAboveThePlayersBars",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-10-12 by the coordinating session: the buff a worn row drew is shown wherever the drawn debuff of the
+ * merged drawback is shown to the player. "Maddened" is on the line above the player's own bars, so the held buff
+ * is named there with its whole seconds left, such as "Commander 12s". The owner's rule is that a system ships
+ * with a basic in-game display.
+ *
+ * THE TEXT IS WHAT IS TESTED, for the reason the top of this file gives: nothing drawn can be watched under test.
+ * `ACataclysmHUD` draws this text above the player's bars when it is not empty, and that call is not reached here.
+ *
+ * A PLAYER WIRED AS THE GAME WIRES ONE, so the text is read through the pawn to the ability system on its player
+ * state, which is how the display asks. The buff is laid by the draw itself with the draw pinned. The clock is
+ * the world's, moved by hand to a half second each time so that no reading sits on the edge of a whole second.
+ */
+bool FCataclysmOverlayNamesTheHeldBuff::RunTest(const FString&)
+{
+	using FOverlay = UCataclysmCombatOverlay;
+	using FSystem = UCataclysmAbilitySystemComponent;
+
+	UWorld* World = CataclysmOverlayTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE PLACE OF COMMANDER IN THE TABLE, LOOKED UP AND NOT ASSUMED, and the draw pinned to it.
+	int32 Commander = INDEX_NONE;
+	const TArray<FSystem::FRandomBuff>& Table = FSystem::RandomBuffTable();
+	for (int32 Index = 0; Index < Table.Num(); ++Index)
+	{
+		if (FString(Table[Index].Name) == TEXT("Commander"))
+		{
+			Commander = Index;
+		}
+	}
+	IConsoleVariable* Pick = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomBuffPick"));
+	if (!TestNotNull(TEXT("set-up: the pin for which buff"), Pick)
+		|| !TestTrue(TEXT("set-up: Commander is in the table of buffs"), Commander != INDEX_NONE))
+	{
+		return false;
+	}
+	const int32 PickWas = Pick->GetInt();
+	ON_SCOPE_EXIT { Pick->Set(PickWas, ECVF_SetByConsole); };
+	Pick->Set(Commander, ECVF_SetByConsole);
+
+	ACataclysmPlayerCharacter* Player = CataclysmOverlayTest::SpawnPlayer(World);
+	FSystem* System = Player ? Cast<FSystem>(Player->GetAbilitySystemComponent()) : nullptr;
+	ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player with an ability system"), System)
+		|| !TestNotNull(TEXT("set-up: a creature"), Creature))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: no buff, no text, and nothing of it on the status line.
+	TestEqual(TEXT("control: a player holding no buff says nothing of one"), FOverlay::HeldBuffTextFor(Player), FString());
+	TestFalse(TEXT("control: and its status line does not name the buff"),
+			  FOverlay::StatusLineFor(Player).Contains(TEXT("Commander")));
+
+	if (!TestTrue(TEXT("set-up: the draw lays a buff"), System->HoldARandomBuff())
+		|| !TestTrue(TEXT("set-up: the buff held is Commander"), System->HeldRandomBuff() == FName(TEXT("Commander"))))
+	{
+		return false;
+	}
+
+	// THE TEXT WITH THE BUFF HELD, AND THE STATUS LINE HOLDING IT. Read half a second after the buff is laid, with
+	// 29.5 seconds left, which reads 30.
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("half a second after the buff is laid the text is its name and 30s"),
+			  FOverlay::HeldBuffTextFor(Player), FString(TEXT("Commander 30s")));
+	TestTrue(TEXT("and the status line contains that text"),
+			 FOverlay::StatusLineFor(Player).Contains(TEXT("Commander 30s")));
+	TestEqual(TEXT("control: a creature holding no buff says nothing of one"), FOverlay::HeldBuffTextFor(Creature), FString());
+
+	// THE SECONDS FALL, ROUNDED UP: 19.5 left reads 20, 10.5 reads 11, and half a second reads 1.
+	World->TimeSeconds += 10.0f;
+	TestEqual(TEXT("with 19.5 seconds left the text reads 20s"), FOverlay::HeldBuffTextFor(Player), FString(TEXT("Commander 20s")));
+	World->TimeSeconds += 9.0f;
+	TestEqual(TEXT("with 10.5 seconds left it reads 11s"), FOverlay::HeldBuffTextFor(Player), FString(TEXT("Commander 11s")));
+	World->TimeSeconds += 10.0f;
+	TestEqual(TEXT("with half a second left it reads 1s"), FOverlay::HeldBuffTextFor(Player), FString(TEXT("Commander 1s")));
+
+	// AFTER IT ENDS, NOTHING, though no step of the clock has run to end it: the text asks whether a buff is held now.
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("half a second after its 30 seconds the text is empty"), FOverlay::HeldBuffTextFor(Player), FString());
+	TestFalse(TEXT("and the status line no longer names the buff"),
+			  FOverlay::StatusLineFor(Player).Contains(TEXT("Commander")));
 	return true;
 }
 
