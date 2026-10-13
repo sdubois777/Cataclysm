@@ -79,7 +79,9 @@ this paragraph was written.
   one name in `result.named_failures` was
   `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py::test_the_game_does_not_remove_a_resolved_dungeon_yet`.
   The control no longer fails with it.
-- The whole fast suite had not been run on this correction when this paragraph was written.
+- The whole fast suite had not been run on this correction when this paragraph was written. It has been run
+  since, on the correction as committed (9cfae879): `6044 passed, 7 skipped in 378.20s (0:06:18)`; JUnit
+  `tests="6051" failures="0" errors="0" skipped="7"`; ruff `All checks passed!`.
 
 **Said first: every campaign figure on record before this date was measured with the dungeon staying.** That
 is every table in `sim/README.md` below its new first section, every campaign figure in the entries of this
