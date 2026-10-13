@@ -5584,6 +5584,31 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
 #: sentence is 20 to 70.
 MAX_STRIKE_TARGET_PERCENT = 1000.0
 
+#: The action that EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS HEALTH,
+#: with its value as the chance, where 100 is always. Ruled 2026-10-12 under the
+#: owner's delegation: "Strike skills have a 10%-20% chance to execute enemies
+#: below 15% HP". The enemy loses the health it has left, with no damage formula,
+#: and the death is the wearer's kill. Never a Boss or a Cataclysm Boss, and
+#: nothing is done to a creature that takes no damage; the engine holds both
+#: inside the action.
+#: `UCataclysmAbilitySystemComponent::ExecuteTargetAction` holds the same name.
+#:
+#: THE SHARE IS THE ROW'S CONDITION VALUE, and the Condition must be
+#: `EXECUTE_TARGET_CONDITION`. An action carries one condition, and on this
+#: action it is the share of health and nothing else. The engine does not judge
+#: it when the event is raised, which is before the hit's damage is written; it
+#: judges it on the health the hit leaves.
+EXECUTE_TARGET_ACTION = "execute_target"
+
+#: The one condition an execute row states, and must state.
+EXECUTE_TARGET_CONDITION = "target_health_below"
+
+#: The events an execute may hang on: `hit_dealt` and no other. The engine acts
+#: on the row's request where a hit's damage is written to the enemy's health,
+#: and only `hit_dealt` is raised from inside that step with the enemy struck
+#: and what reached its health.
+EXECUTE_TARGET_EVENTS = ("hit_dealt",)
+
 
 def takes_a_trigger_cooldown(action: str) -> bool:
     """Whether an action row MAKES SOMETHING HAPPEN, and so may wait between
@@ -5597,7 +5622,11 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == DAMAGE_IMMUNITY_ACTION or action == REFLECT_BLOCKED_ACTION
             or action == BLAST_FROM_THE_DYING_ACTION
             or action == STUN_NEAR_THE_DYING_ACTION
-            or action == STRIKE_TARGET_ACTION)
+            or action == STRIKE_TARGET_ACTION
+            # AN EXECUTE MAKES SOMETHING HAPPEN ON A HIT DEALT, so it waits as
+            # the others do. The engine starts the wait when an enemy is
+            # executed, and not when the roll alone comes up.
+            or action == EXECUTE_TARGET_ACTION)
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -5899,6 +5928,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_strike_target_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
         return
+    if action == EXECUTE_TARGET_ACTION:
+        _check_execute_target_action(index, who, action, event, fraction_of,
+                                     kind, raw, headers)
+        return
     if action == TEMPORARY_ABSORB_ACTION:
         _check_temporary_absorb_action(index, who, action, event, fraction_of,
                                        kind, raw, headers)
@@ -5930,6 +5963,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
+            f"or {EXECUTE_TARGET_ACTION}; "
             f"or {TEMPORARY_ABSORB_ACTION}; "
             f"or {KEPT_STACKS_REPEAT_SKILL_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
@@ -6294,6 +6328,52 @@ def _check_strike_target_action(index: int, who: str, action: str, event: str,
                 f"Enchantment Effects row {index}: {who} strikes the other "
                 f"character of its event and states {column} {written!r}. Its "
                 f"value is a percentage of attack damage and nothing else, so "
+                f"the column must be empty.")
+
+
+def _check_execute_target_action(index: int, who: str, action: str, event: str,
+                                 fraction_of: str, kind: str, raw,
+                                 headers: dict[str, int]) -> None:
+    """Everything an execute row must say, and everything it must not. Ruled
+    2026-10-12. ON `hit_dealt` ONLY, because that is the one event raised where
+    the engine can act once the hit's damage is written. THE CONDITION MUST BE
+    `target_health_below`, because its value is the share of health the row
+    executes below and the engine reads no other from this action; a row with
+    no condition would execute nobody and say so nowhere. The chance and the
+    share are checked where the value is read. A fraction, a value kind and a
+    scale each mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in EXECUTE_TARGET_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} executes an enemy on the "
+            f"event {event or '(none)'!r}. Only a hit dealt names the enemy "
+            f"struck where its health is written: "
+            f"{', '.join(EXECUTE_TARGET_EVENTS)}.")
+    condition = clean(_cell(raw, headers, "Condition")).lower()
+    if condition != EXECUTE_TARGET_CONDITION:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} executes an enemy and "
+            f"states the Condition {condition or '(none)'!r}. The share of "
+            f"health it executes below is the value of the Condition "
+            f"{EXECUTE_TARGET_CONDITION!r}, and the row states that condition "
+            f"and no other.")
+    # ABOVE 0 AND UP TO 100. The condition's own bound lets 0 through, and an
+    # execute below 0% of health is a row that never acts and says so nowhere.
+    share_text = clean(_cell(raw, headers, "Condition Value"))
+    share = number(share_text, "Condition Value", index) if share_text else 0.0
+    if not 0 < share <= 100:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} executes an enemy below "
+            f"{share:g} per cent of its maximum health. The share is its "
+            f"Condition Value, above 0 and up to 100.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} executes an enemy and "
+                f"states {column} {written!r}. Its value is a chance and its "
+                f"Condition Value the share of health, and nothing else, so "
                 f"the column must be empty.")
 
 
@@ -6717,6 +6797,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != STRIKE_TARGET_ACTION \
+                    and action != EXECUTE_TARGET_ACTION \
                     and action != TEMPORARY_ABSORB_ACTION \
                     and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
@@ -6947,6 +7028,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} strikes for "
                     f"{low:g} to {high:g} per cent of attack damage. A strike "
                     f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
+
+        # AN EXECUTE'S VALUE IS ITS CHANCE, above 0 and up to 100. Ruled
+        # 2026-10-12. 100 is always. Its share of health is checked where the
+        # Condition Value is read.
+        if action == EXECUTE_TARGET_ACTION:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} executes an enemy "
+                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                    f"and up to 100, and 100 is always.")
 
         # A TEMPORARY ABSORB'S VALUE IS A PERCENTAGE OF THE WEARER'S MAXIMUM
         # HEALTH, above 0 and up to the bound. Ruled 2026-10-07.
