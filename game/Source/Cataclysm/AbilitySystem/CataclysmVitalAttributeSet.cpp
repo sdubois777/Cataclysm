@@ -524,6 +524,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					   FName(UCataclysmSkillEffects::CannotBeEvadedDataName),
 					   /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 
+			// AND WHETHER THE BLOW SAYS THIS CHARACTER CANNOT REDUCE OR MITIGATE IT.
+			// Ruled 2026-10-12, for "Retaliation damage cannot be reduced or
+			// mitigated by the attacker". `FCataclysmHitDelivery::bCannotBeMitigated`
+			// is stamped on the effect by `UCataclysmSkillEffects::ApplyTypedSpec`,
+			// and the one blow that sets it is retaliation from a character whose
+			// rows hold `UCataclysmRetaliation::CannotBeMitigatedStat`.
+			//
+			// ONLY THE CALCULATION READS IT, for the six steps
+			// `FCataclysmIncomingHit::bCannotBeMitigated` lists. NOTHING BELOW IN
+			// THIS FUNCTION READS IT, so the blow is still emptied by the Sacrificial
+			// Ward, by the no-damage window, by the window against its damage type
+			// and by a creature that takes no damage, is still held to one point by
+			// the two saves from a lethal blow, and is still turned into bleeding or
+			// divided by the Sacrificial Bond, as any blow is. Those are not among
+			// the six the ruling names.
+			Hit.bCannotBeMitigated = Data.EffectSpec.GetSetByCallerMagnitude(
+				FName(UCataclysmSkillEffects::CannotBeMitigatedDataName),
+				/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+
 			// AND WHETHER WHOEVER THREW IT IS STAGGERED, for "Staggered enemies
 			// deal 15%-30% increased damage to you". Issue #45.
 			//
