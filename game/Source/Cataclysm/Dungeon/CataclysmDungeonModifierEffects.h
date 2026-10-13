@@ -6079,6 +6079,44 @@ public:
 	static constexpr int32 RealityChamberSalt = 0x52C4;
 	static constexpr int32 RealityChamberRewardSalt = 0x52C5;
 
+	/**
+	 * The salts of the shared cell picker, one for each rule that places its objects through it
+	 * (`ACataclysmDungeonGameMode::FloorSourceCells`). Issue #2342.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-10-12, a labelled judgement: the picker
+	 * shuffles its candidates on a stream seeded from the floor's seed mixed with the rule's salt, as
+	 * `RealityChamberSalt` is mixed, and there is ONE SALT FOR EACH PLACING RULE, so the order a rule's cells are
+	 * drawn in does not depend on which other rules the floor carries. The floor's seed already differs by dungeon
+	 * and by floor, so the floor number is not mixed in again.
+	 *
+	 * NO TWO ARE EQUAL AND NONE EQUALS ANOTHER SALT IN THE GAME'S SOURCE. A new placing rule takes the next number
+	 * and a line here; it never borrows another rule's.
+	 */
+	static constexpr int32 EternalChorusCellsSalt = 0x5CE1;
+	static constexpr int32 NecroticBloomCellsSalt = 0x5CE2;
+	static constexpr int32 GoldenSpiresCellsSalt = 0x5CE3;
+	static constexpr int32 ObsidianSarcophagiCellsSalt = 0x5CE4;
+	static constexpr int32 PestilentEmpowermentCellsSalt = 0x5CE5;
+	static constexpr int32 PortalUnleashingCellsSalt = 0x5CE6;
+	static constexpr int32 RawSewageCellsSalt = 0x5CE7;
+	static constexpr int32 WarzoneControlPointsCellsSalt = 0x5CE8;
+	static constexpr int32 AngelicWardensCellsSalt = 0x5CE9;
+	static constexpr int32 SwarmOfLocustsCellsSalt = 0x5CEA;
+	static constexpr int32 AbyssalRiftsCellsSalt = 0x5CEB;
+	static constexpr int32 InfectionBloomCellsSalt = 0x5CEC;
+	static constexpr int32 QuarantineBreachCellsSalt = 0x5CED;
+	static constexpr int32 LuxuryHoardersCellsSalt = 0x5CEE;
+	static constexpr int32 RealityRiftsCellsSalt = 0x5CEF;
+	static constexpr int32 InfestedVeinsCellsSalt = 0x5CF0;
+	static constexpr int32 ShadowyEnemiesCellsSalt = 0x5CF1;
+	static constexpr int32 VoidParasiteCellsSalt = 0x5CF2;
+	static constexpr int32 CarrionFeastCellsSalt = 0x5CF3;
+	static constexpr int32 BattlefieldRelicsCellsSalt = 0x5CF4;
+	static constexpr int32 PandorasBoxCellsSalt = 0x5CF5;
+	static constexpr int32 InfernalBeaconsCellsSalt = 0x5CF6;
+	static constexpr int32 WarBannerCellsSalt = 0x5CF7;
+	static constexpr int32 GrimTotemsCellsSalt = 0x5CF8;
+
 	/** Whether a floor of this seed that carries Reality Rifts has a hidden chamber. The same seed, the same answer. */
 	static bool RealityChamberOnFloor(int32 FloorSeed);
 

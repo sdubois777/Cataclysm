@@ -2,6 +2,288 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — The cell picker for floor rules' objects shuffles on a seeded stream, so one dungeon seed and floor give each rule the same cells (#2342)
+
+**Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ was written and read. Three
+new Unreal tests were written and none has been seen to pass. Every statement below about what a test will do is a
+prediction from reading.
+
+**Said first: a repeated dungeon seed now gives the same objects in the same places.** Until this entry the picker
+that 24 dungeon rules place their objects through shuffled on the engine's global random, so two builds of one floor
+put chorus sources, statues, rifts, light zones, hoards and the rest on different cells. It now shuffles on a stream
+made from the floor's seed and the placing rule's own salt. Every one of those objects stands somewhere else than it
+did on any given seed, and stands there every time.
+
+**Said first: the floor's seed already differs by floor, so the floor number is not mixed in again.** Read before
+writing: `FCataclysmFloorGenerator::Generate` sets `Plan.Seed = SeedForFloor(Request.DungeonSeed, Request.FloorNumber)`
+(`CataclysmFloorGenerator.cpp`, the first line of `Generate`), and it is the only place a plan's seed is set.
+`ACataclysmDungeonGameMode::BuildFloor` fills the request with `ChooseSeedForThisFloor()` and
+`FloorBrief.CarvedAsFloorNumber`. `SeedForFloor` multiplies its two numbers by different odd constants, adds them and
+mixes the sum; it never answers below nought. So `SeedForFloor(Plan.Seed, Salt)` differs by dungeon, by floor and by
+salt. One case shares a plan seed across floors, by design: a Horde dungeon carves every floor as floor 1 and keeps
+the arena it built. Its objects are placed once, with the arena, and kept, so nothing is drawn a second time there.
+The dark floor of Those in the Dark has its own dungeon seed and so its own plan seed.
+
+**Said first: no rule calls the picker twice on one floor, so no call counter was added.** Every call was read. There
+are 19 call sites in `CataclysmDungeonGameMode.cpp`, in 19 functions, serving 24 rules. Each of the 19 functions has
+one caller, `PopulateFloor`, inside `if (!FloorBrief.bSameArenaAsLastFloor)`. `PlaceFloorObjects` is one of the 19 and
+has six callers, one a rule, each called once from the same place. `PopulateFloor` has one caller in the game,
+`GoToFloor`, which builds the floor first. None is called from a tick, a beat, a respawn, a refill, a wave or a
+re-place. A floor reached a second time through `GoToFloor` with the same seed and number is given the same cells,
+which is what was ruled. The only repeated calls found are in a test, below.
+
+**Said first: a rule's cells still move when another rule changes which cells are walkable.** The ruling's purpose is
+that a rule's cells do not depend on which other rules the floor carries. That holds for the order of the draw. It
+does not hold for the candidates: they are the plan's walkable cells as the plan stands when the rule picks, and the
+shuffle runs from the end of the list, so one candidate more or fewer changes every swap. Three kinds of row change
+the walkable cells before another rule picks: Warzone Control Points, Soul Chains and The Labrynth carve shortcuts and
+close their gates' cells before the floor is built; a row that gives the floor sections closes every barrier's cells
+at the top of `PopulateFloor`. Angelic Wardens' statues close their cells too, but they are placed last of the 24, so
+they move no other rule's cells; a statue is still refused on a cell another rule holds. Of the 24 rules that place
+through the picker, the other 22 leave the plan as it was. This layer does not change that.
+
+**Said first: these existing tests may fail on fixed cells. None was edited and none was run.** Each searches dungeon
+seeds until the picker gives a cell that serves. Until now every seed tried was a fresh draw; now each seed gives one
+answer, so the search finds the same seed every run or finds none.
+
+- `Cataclysm.DungeonModifierEffects.LightforgedWallsARealityRiftPastAClosedBarrierStillFindsTheStairsSealed`: seeds 1
+  to 20, a rift pair with a closed barrier between its two cells. The narrowest condition of these.
+- Every test that uses the helper `AnAngelicStage`: seeds 1 to 20, a statue with open ground at five distances.
+- `Cataclysm.DungeonModifierEffects.AngelicWardensStatuesStandAsPillarsWhenTheFloorBeginsAndNoCreatureIsMade`: a seed
+  whose floor 2 has a statue.
+- `Cataclysm.DungeonModifierEffects.AngelicWardensAStatueBehindAClosedBarrierIsNotWokenFromTheOtherSideAndIsOnceItOpens`:
+  it places its own statue, and the floor's own statues hold cells.
+- `Cataclysm.DungeonModifierEffects.ThoseInTheDarkNoChasmIsOnABarriersCellAStatuesCellOrACellAnotherRuleHolds`, its
+  first part: a seed with a barrier, a statue and a chasm.
+- Every test that uses the helper `ARealityChamberFloor`, and
+  `Cataclysm.DungeonModifierEffects.RealityRiftsChamberAFloorWithoutOneIsWhatItWasAndAHordeArenaHasNone`: a seed whose
+  floor has a chamber, which needs the picker to have had a sixth cell.
+
+One test is weakened and is not predicted to fail:
+`Cataclysm.DungeonModifierEffects.LightforgedWallsNoCellTheObjectPickerChoosesIsAClosedBarriersCell` asks the picker
+twenty times a floor "because it shuffles on the global random". It is now given the same two lists twenty times, so
+it samples one draw a floor and not twenty. Its comment is no longer true. It is in a test this layer may not edit.
+
+No test was found that types a cell or a count that depends on which cells the picker returned: every typed cell in
+`CataclysmDungeonModifierEffectsTests.cpp` from line 27000 on is in a hand-made plan, a step between neighbours or a
+pure function's answer. No test was found that asserts two builds give different cells from this picker. The tests
+that read a rule's cells back from the game mode were counted by a search, 75 lines naming one of seven accessors,
+and were not each read. A test that passed on most draws and failed on a few could not be found by reading; if one
+exists it now always passes or always fails.
+
+### The decision
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-12: accepted,
+`ACataclysmDungeonGameMode::FloorSourceCells` takes a salt and shuffles on
+`FRandomStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, Salt))`, as `GatedShortcutStream` is made; one salt
+for each placing rule, so a rule's cells do not depend on which other rules the floor carries.
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-12: tests that passed by the
+luck of the shuffle and fail on fixed cells are reported, not edited.
+
+A labelled judgement by the coordinating session under the owner's delegation, 2026-10-12: `SeededSourceCells` and
+the Those in the Dark picker already use streams and are left; no other use of the global random is changed here.
+
+No source was read. The shape is not new to this game: the gated shortcuts (2026-10-04), the chasms of Those in the
+Dark and the hidden chamber of Reality Rifts are each drawn on a stream made from the floor's seed and a salt.
+
+### What was read before writing
+
+- Issue #2342, whole. It has no comments.
+- `CataclysmFloorGenerator.cpp`: `SeedForFloor` and `Generate`.
+- `CataclysmDungeonGameMode.cpp`: `ChooseSeed`, `ChooseSeedForThisFloor`, `BuildFloor`, `GoToFloor`, `PopulateFloor`
+  from its resets to `PlaceTheChasms`, `FloorSourceCells` and its two wrappers, `SeededSourceCells`,
+  `PlanTheGatedShortcuts`, `ChooseTheChasmCells`, `PlaceTheAngelicStatues`, `PlaceTheRealityRifts`,
+  `PlaceFloorObjects`, and the lines around each of the 19 calls.
+- Every caller of each of the 19 placing functions and of the six callers of `PlaceFloorObjects`, by searching the
+  file for each name followed by a bracket.
+- In `CataclysmDungeonModifierEffectsTests.cpp`: the two tests that call the static picker, the 29 loops over dungeon
+  seeds or tries from line 22473 on, the helper `ACurseDungeon`, and the Those in the Dark test of the same seed and
+  floor, which the new tests copy.
+
+### How it is built
+
+- `FloorSourceCells(Floor, Count, bBesideAWallOnly, Salt)`. The candidates are gathered as they were, rows from
+  nought and within a row columns from nought, which is a fixed order. The shuffle draws on
+  `FRandomStream CellsStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, Salt))` in place of `FMath::RandRange`.
+  Nothing else in the function changed: the two distance rules and the order cells are taken in are as they were.
+- `EternalChorusCells(Floor, Count, Salt)` and `InfestedVeinsCells(Floor, Count, Salt)` are new forms that hand the
+  salt on. Every placing function calls one of them, or `FloorSourceCells`, with its own rule's salt.
+- `EternalChorusCells(Floor, Count)` and `InfestedVeinsCells(Floor, Count)` are kept. Each is now its own rule's form
+  and uses `EternalChorusCellsSalt` or `InfestedVeinsCellsSalt`. Two existing tests call them and may not be edited.
+  No function of the game calls them.
+- `PlaceFloorObjects` takes the calling rule's salt as `CellsSalt`, after `Count`. Its six callers each pass their
+  own.
+- Warzone Control Points on a Halls floor is unchanged: its points are drawn before the floor is built, by
+  `SeededSourceCells` on `GatedShortcutStream`. On any other floor it draws through the picker with its own salt.
+- Three comments that said the picker uses the global random were corrected: the comment on `SeededSourceCells` in
+  `CataclysmDungeonGameMode.h`; the comment on the shuffle in `ChooseTheChasmCells`; and the comment on asking for
+  one cell more in `PlaceTheRealityRifts`. The comments on `EternalChorusCells`, `InfestedVeinsCells`,
+  `FloorSourceCells` and `PlaceFloorObjects` in the header say what each now does.
+
+### The salts
+
+In `CataclysmDungeonModifierEffects.h`, after `RealityChamberRewardSalt`. They are there and not beside
+`GatedShortcutSalt` in the game mode's header because that part of the game mode is private and the tests name each
+salt; the hidden chamber's two salts are the precedent.
+
+| Rule | Constant | Value | Placed by | Cells asked |
+|---|---|---|---|---|
+| Eternal Chorus | `EternalChorusCellsSalt` | 0x5CE1 | `PlaceTheChoruses` | 2, 1 on a Horde arena |
+| Necrotic Bloom | `NecroticBloomCellsSalt` | 0x5CE2 | `PlaceTheBlooms` | 2, 1 |
+| Golden Spires | `GoldenSpiresCellsSalt` | 0x5CE3 | `PlaceTheSpires` | 2, 1 |
+| Obsidian Sarcophagi | `ObsidianSarcophagiCellsSalt` | 0x5CE4 | `PlaceTheSarcophagi` | 2, 1 |
+| Pestilent Empowerment | `PestilentEmpowermentCellsSalt` | 0x5CE5 | `PlaceTheBeacons` | 2, 1 |
+| Portal Unleashing | `PortalUnleashingCellsSalt` | 0x5CE6 | `PlaceThePortals` | 2, 1 |
+| Raw Sewage | `RawSewageCellsSalt` | 0x5CE7 | `PlaceTheRivers` | 2, 1 |
+| Warzone Control Points | `WarzoneControlPointsCellsSalt` | 0x5CE8 | `PlaceTheControlPoints`, when no points were planned | 2 |
+| Angelic Wardens | `AngelicWardensCellsSalt` | 0x5CE9 | `PlaceTheAngelicStatues`, beside a wall | 3 |
+| Swarm of Locusts | `SwarmOfLocustsCellsSalt` | 0x5CEA | `PlaceTheShelters` | 2, 1 |
+| Abyssal Rifts | `AbyssalRiftsCellsSalt` | 0x5CEB | `PlaceTheRift` | 1, none on a Horde arena |
+| Infection Bloom | `InfectionBloomCellsSalt` | 0x5CEC | `PlaceTheBloom` | 1 |
+| Quarantine Breach | `QuarantineBreachCellsSalt` | 0x5CED | `PlaceTheQuarantine` | 1 |
+| Luxury Hoarders | `LuxuryHoardersCellsSalt` | 0x5CEE | `PlaceTheHoards` | 2 |
+| Reality Rifts | `RealityRiftsCellsSalt` | 0x5CEF | `PlaceTheRealityRifts` | 5, or 6 on a floor with a chamber |
+| Infested Veins | `InfestedVeinsCellsSalt` | 0x5CF0 | `PlaceTheVeins`, beside a wall | 3, 1 |
+| Shadowy Enemies | `ShadowyEnemiesCellsSalt` | 0x5CF1 | `PlaceTheShadowLights` | 3 |
+| Void Parasite | `VoidParasiteCellsSalt` | 0x5CF2 | `PlaceTheLight` | 1 |
+| Carrion Feast | `CarrionFeastCellsSalt` | 0x5CF3 | `PlaceTheAltar` through `PlaceFloorObjects` | the rule's count |
+| Battlefield Relics | `BattlefieldRelicsCellsSalt` | 0x5CF4 | `PlaceTheRelics` through `PlaceFloorObjects` | the rule's count |
+| Pandora's Box | `PandorasBoxCellsSalt` | 0x5CF5 | `PlaceTheBoxes` through `PlaceFloorObjects` | the rule's count |
+| Infernal Beacons | `InfernalBeaconsCellsSalt` | 0x5CF6 | `PlaceTheInfernalBeacons` through `PlaceFloorObjects` | the rule's count |
+| War Banner | `WarBannerCellsSalt` | 0x5CF7 | `PlaceTheWarBanner` through `PlaceFloorObjects` | the rule's count |
+| Grim Totems | `GrimTotemsCellsSalt` | 0x5CF8 | `PlaceTheTotems` through `PlaceFloorObjects` | the rule's count |
+
+Checked by a script written for this layer and run on the edited files. It reads every `constexpr` whose name ends
+`Salt` in `game/Source` outside the tests, and every number a seed is xored with. It printed:
+
+```
+new salts: 24, distinct values among them: 24
+lowest 0x5CE1, highest 0x5CF8
+every salt and xor literal found: 47, distinct values: 47
+new salts equal to another salt or literal: none
+new salts within 16 above a xor literal: none
+existing salts equal to each other (not this layer's): none
+```
+
+### For the owner's play-check
+
+A player who enters the same dungeon seed twice now finds each rule's objects where they were the first time. Nothing
+else a player sees is meant to change: the counts, the twenty metres from the entrance and from each other, and what
+each object does are as they were. No number was judged.
+
+### Tests
+
+Unreal, written and not run, appended to `CataclysmDungeonModifierEffectsTests.cpp` after the Labrynth test. Each
+builds floor 2 of dungeon seed 7 through `GoToFloor`, places no actor but the player, waits for nothing, and reads a
+rule's cells back from the game mode. Reality Rifts is the rule read, because `RealityRiftCellsNow` hands its cells
+back in the picker's order.
+
+- `Cataclysm.DungeonModifierEffects.TheObjectPickerGivesARuleTheSameCellsOnTheSameSeedAndFloorAndOthersOnAnotherSeed`.
+  Floor 2 of seed 7, floor 2 of seed 8, then floor 2 of seed 7 again. The two builds of seed 7 hold the same rifts in
+  the same order. CONTROL: seed 8's rifts are other cells. The picker asked twice of the standing floor with one salt
+  answers the same list; the floor's five rifts are the first five cells the picker answers for Reality Rifts' own
+  salt, and CONTROL not the first five it answers for Eternal Chorus's.
+- `Cataclysm.DungeonModifierEffects.TheObjectPickerGivesNoTwoPlacingRulesTheSameCellsInTheSameOrder`. Two rows on one
+  floor, Reality Rifts and Shadowy Enemies, on one build. The picker is asked once with each of the 24 salts and all
+  276 pairs of answers are compared: none alike. The two forms with no salt answer what their own rule's salt
+  answers, and another rule's salt answers other cells beside a wall. The floor's three light zones are not its
+  first three rifts, and are the first three cells the picker answers for Shadowy Enemies' own salt.
+- `Cataclysm.DungeonModifierEffects.TheObjectPickerGivesARuleTheSameCellsWhenASecondRuleIsAddedToTheFloor`. Reality
+  Rifts alone; then with Eternal Chorus, whose sources are placed before the rifts; then with Shadowy Enemies, whose
+  zones are placed after. The rifts are on the same cells each time. CONTROL: each added rule placed its objects,
+  and the chorus sources stand on other cells than the first two rifts.
+
+### Not covered by a test
+
+- Nothing was run in Unreal. Seeds 7 and 8 were not chosen by a run: that floor 2 of each holds five rifts, and that
+  their lists differ, are asserted as set-up and are not known.
+- Of the 24 rules, the tests read back the cells of two, Reality Rifts and Shadowy Enemies, and so prove those two
+  call sites pass their own salt. That each of the other 22 passes its own salt is checked by the edit script only:
+  each salt's name appears once in `CataclysmDungeonGameMode.cpp`, twice for the two kept forms.
+- The beside-a-wall form in the game, Angelic Wardens' statues and Infested Veins' veins, is not read back.
+- A Horde arena, the dark floor and a floor that is not Halls are not built by the new tests.
+- That a second rule which closes or carves cells moves another rule's cells is read, not tested.
+- Nothing was tried in play.
+
+### Judgements by the writing session, for the coordinating session to confirm
+
+- The salts are in `CataclysmDungeonModifierEffects.h` and public, not beside `GatedShortcutSalt`, so the tests can
+  name them. A judgement by the writing session, for the coordinating session to confirm.
+- The two forms with no salt are kept, each using its own rule's salt, because two existing tests call them and this
+  layer may not edit a test. A later rule that called one would be given another rule's cells; the header says so.
+  A judgement by the writing session, for the coordinating session to confirm.
+- The salts are 24 numbers running from 0x5CE1. A judgement by the writing session, for the coordinating session to
+  confirm.
+- No call counter is mixed into the salt, because no rule calls twice. A judgement by the writing session, for the
+  coordinating session to confirm.
+- The brief asked for the findings in a file `findings.md` in the scratch folder. The tool that writes files refused
+  a report file there, so the findings are in this entry and in the session's report only. A judgement by the
+  writing session, for the coordinating session to confirm.
+
+### Other uses of the global random that decide placement, listed and not changed
+
+All in `CataclysmDungeonGameMode.cpp`. When a floor is populated: the heading of each of Raw Sewage's rivers
+(`PlaceTheRivers`); the kind Quarantine Breach holds (`PlaceTheQuarantine`); the kind and cell of each of Luxury
+Hoarders' guards (`PlaceTheHoards`); the kind of each Battlefield Relic (`PlaceTheRelics`); the order of the pacts
+offered (`PlaceThePactAltar`); which creatures are Plague Harbingers (`ChooseThePlagueHarbingers`) and which is the
+Plaguebearer (`ChooseThePlaguebearer`). During play, on a beat or a death: the cell or the angle and distance a rule
+puts a zone, an obstacle or a creature at, in `StepPlagueConvergence`, `StepWingsOfTheHost`, `StepNecroticBloom`,
+`NoteDeathForObsidianSarcophagi`, `StepPortalUnleashing`, `ChooseObstacleCells`, `BringWarzoneAllies`,
+`SendWarzoneWave`, `StepSwarmOfLocusts`, `StepAbyssalRifts`, `InfectionBloomSend`, `StepInfectionBloom`,
+`NoteDeathForQuarantineBreach`, `StepFunerealProcession`, `StepMindShatteringIllusions`, `StepCarrionFeast`,
+`StepInfestedVeins`, `BringCreaturesNear`, `StepDivineWrath`, `RaiseTheTrickOrTreatPair`, `StepInfernalRain`,
+`StepSingularityWells`, `StepArtilleryStrike`, `StepHallowedGroundfall`, `StepGraspingTentacles`, `StepJudgmentZones`,
+`StepAntiMagicZones`, `StepNecroticGround` and `StepGraveTide`.
+
+### Proofs proposed, not run
+
+Both are in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, in `FloorSourceCells`. Each line counts once.
+
+One, the salt is ignored. The line
+
+```
+	FRandomStream CellsStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, Salt));
+```
+
+changed to
+
+```
+	FRandomStream CellsStream(FCataclysmFloorGenerator::SeedForFloor(Plan.Seed, 0));
+```
+
+still compiles. In `Cataclysm.DungeonModifierEffects.TheObjectPickerGivesNoTwoPlacingRulesTheSameCellsInTheSameOrder`
+three assertions are predicted to fail: "no two placing rules' salts give the same cells in the same order", with 276
+alike; "and another rule's salt answers other cells beside a wall"; and "the floor's light zones are not its first
+rifts' cells in the same order". The others are predicted to hold. Each of the other two new tests is predicted to
+fail one control.
+
+Two, the stream is replaced by the global random again. The line
+
+```
+		Candidates.Swap(Index, CellsStream.RandRange(0, Index));
+```
+
+changed to
+
+```
+		Candidates.Swap(Index, FMath::RandRange(0, Index));
+```
+
+still compiles. In
+`Cataclysm.DungeonModifierEffects.TheObjectPickerGivesARuleTheSameCellsOnTheSameSeedAndFloorAndOthersOnAnotherSeed`
+three assertions are predicted to fail: "and the same cells in the same order"; "the picker asked twice of one floor
+with one salt answers the same cells in the same order"; and "the floor's rifts are the first cells the picker
+answers for Reality Rifts' own salt". Whether it fails reliably depends on how many candidates the floor has, and
+that was not measured, because nothing was run. By the generator's constants a floor is 32 to 48 cells a side and
+an attempt is kept when a quarter of it is walkable, so 256 walkable cells or more; fewer than 80 cells lie within
+twenty metres, five cells, of the entrance. That leaves about 176 candidates or more, and two random shuffles of
+that many agree on their first five cells about once in the fifth power of that count. On a floor with a handful
+of candidates this proof would pass by chance some of the time; the first test logs how many rifts each seed gave,
+not how many candidates there were.
+
+---
+
 ## 2026-10-12 — The dungeon rule The Labrynth is marked Built; its rooms do not move, and nothing it does changed
 
 **Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ was written and read. The
