@@ -2,6 +2,190 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can draw one of its wearer's eight resistances and hold it at nought until it fires again, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one status name,
+one draw, one held damage type, its release), `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h`
+and `.cpp` (one new function, `TypedResistanceOf`, and the mitigation order reading through it),
+`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.cpp` and
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the character sheet and the console command
+`Cataclysm.ShowResistances` reading through it), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`
+(one test), `tools/generate_datatables.py` (one status name `apply_status_to_self` alone may state),
+`tools/tests/test_generate_datatables.py` (five tests),
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one name, one test). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, the drawback of the set Shard of Anarchy: "Every 5 seconds, one of your resistances is reduced to 0
+until this triggers again".
+
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** No character holds a resistance at nought until the
+  enchantment session writes the row.
+- **A player has eight per-type resistances, counted in the code:** War, Demonic, Death, Pestilence, Famine,
+  Celestial, Chaos and Void. They are the eight names of `UCataclysmItemModifiers::DamageTypeNames`, the eight
+  slots of `UCataclysmDamageCalculation::ResistanceAttributeFor`, and the eight stats `resistance_war` to
+  `resistance_void` in `UCataclysmPlayerClassStats::StatToAttribute`. All eight are in the draw.
+- **An enemy wearing such a row would get nothing.** An enemy holds one all-resistance figure
+  (`UCataclysmAllResistanceAttributeSet`) and none of the eight, so the draw finds nothing to draw and holds
+  nothing. No enemy wears a row today: a character's actions are written by the gear refresh, which only a
+  character with an equipment component runs.
+- **The first firing is 5 seconds into a fight, and nothing fires out of a fight.** That is the rule every timed
+  row already follows (`StepTimedGrants`, ruled 2026-09-24): a row with a period of N fires once for every whole
+  N seconds of the current combat, N seconds in first. So a wearer holds nothing for the first 5 seconds of
+  its first fight.
+- **Between fights the resistance stays held.** A judgement of the writing session. The sentence holds it "until
+  this triggers again", and out of a fight the row does not trigger. A wearer who leaves a fight with a
+  resistance held walks with it held until 5 seconds into the next fight. The option not taken: release it
+  when the fight ends.
+- **When the gear comes off, the hold is released at once.** `SetPoolActions` is what the gear refresh writes a
+  character's actions with; when no action naming this status is among the new actions, the held resistance is
+  let go. Without that the hold would never end, because the row is what would have moved it. A set bonus's row
+  that stops counting, a slot a floor rule switches off and a weapon planted in the ground all reach the same
+  line, because each is a gear refresh that no longer gathers the row.
+- **At death the hold is released.** `ClearWhatDeathEnds`, which runs when a player stands back up, lets it go.
+  A judgement of the writing session: that function removes what is temporary, and the hold is temporary. The
+  revived character holds none until the row fires again. The option not taken: keep it through a death.
+- **A new dungeon floor releases nothing.** A floor change runs a gear refresh with the row still worn, so the
+  hold is kept, and the timed count is the combat's and not the floor's.
+- **What is held at nought is the per-type attribute's current value, read where a blow reads it.** A judgement
+  of the writing session. While a resistance is held, `TypedResistanceOf` answers nought for it when the
+  attribute reads above nought, and the attribute's own figure when it reads nought or under it. So a negative
+  resistance that is drawn is left as it is, as ruled. A Shred already on the character is part of the figure
+  compared with nought. Anything that raises the attribute while the hold lasts does not raise what a blow
+  meets.
+- **The difficulty tier's penalty is still taken off afterwards.** The mitigation order subtracts
+  `ResistancePenaltyFor` after the per-type figure is read, as it did before. A player on a tier whose penalty
+  is 30 meets a blow of the held type at -30, which is what a player with nought of that resistance meets. The
+  option not taken: hold the figure after the penalty at nought.
+- **A minion that takes a share of its summoner's resistances takes a share of nought for the held type.**
+  `InheritedResistance` reads the summoner through the same mitigation function. Read from the code and not
+  tested.
+- **A cleanse does not release it.** The hold is not a gameplay effect and carries no debuff tag, so
+  `UCataclysmDebuffs::Cleanse` does not see it. Read from the code and not tested.
+- **One resistance is held at a time, however many rows fire.** Each firing replaces what is held. Two copies of
+  the row would each draw at each period and the second draw would stand.
+- **What the player can see.** The character sheet's line for the held resistance, and the console command
+  `Cataclysm.ShowResistances`, read through the same function as a blow and so show nought while it is held.
+  Nothing else on screen names which resistance is held.
+- **Nothing existing fitted, so one small thing is new: a damage type name kept on the ability system
+  component.** Two existing ways of keeping a modifier that is not from gear were read first.
+  - *The dungeon floor's map* (`SetDungeonStatModifiers`, read by the gear refresh under "AND THE DUNGEON FLOOR
+    BEING STOOD ON"). It has one writer, `UCataclysmDungeonModifierEffects::ApplyToCharacter`, which writes the
+    whole map when a floor begins. A second writer's lines would be erased by the next floor.
+  - *A row's own timed stacks* (`own_stacks` with Stack Seconds). A stack scales a stat row's value by a count
+    that the same row's action grants. No action draws one key of eight; a hold "until this triggers again"
+    has no seconds of its own; a `removed` line would take a negative resistance up to nought; and the eight
+    resistances are gameplay attributes the refresh writes with no character state in hand, so a line scaled by
+    stacks is worth nothing in them.
+  - *What was built instead.* The damage type drawn is one `FName` on the component. Nothing is written to an
+    attribute and no stat modifier is made, so a gear refresh neither erases the hold nor has to know of it.
+    One function, `UCataclysmDamageCalculation::TypedResistanceOf`, is where a per-type resistance is read for
+    what a blow meets, and it reads the held name.
+  - *The option not taken:* write the held resistance's attribute to nought in the refresh and run a gear
+    refresh at each firing. That is a whole gear refresh every 5 seconds from inside the timed step.
+- **A status name the existing timed action accepts, and not a new action.** A judgement of the writing session.
+  The row is `apply_status_to_self` on `every_seconds` with the status "Random Resistance At Nought", value 100,
+  Every Seconds 5, which is the shape of the merged row "Every 15 seconds a random debuff is applied to you".
+  That reuses the generator's checks of the action, the item's reading of the row and the timed step as they
+  are. A new action would need a name on the generator's list of actions, a field on the action struct, a
+  branch where the item reads the row and a branch in the timed step, for the same result.
+- **The generator accepts the name on `apply_status_to_self` only.** Not on `apply_status`, which lays a status
+  on another character, and not on the seconds or the sized form. It accepts it on any event that action may
+  wait on (`hit_taken`, `critical_strike`, `every_seconds`, `skill_end`), and at any chance. Only the timed
+  event at a chance of 100 is tested.
+
+**What was not read:** how a set's drawback row is counted by pieces worn and handed to the wearer as an action;
+whether a drawback of a set can be granted twice; the code that draws the character sheet from its lines; what
+`ACataclysmCharacterBase::RegenerationStep` does besides calling `StepTimedGrants`; how a minion's blow is
+resolved beyond `InheritedResistance`.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | On each firing ONE of the player's resistances is drawn, all of them in the draw, and held at nought until the next firing, when a new draw replaces it. | `UCataclysmAbilitySystemComponent::HoldARandomResistanceAtNought`, called by `ApplyStatusToTheWearer` for the status `RandomResistanceAtNoughtStatus`. The draw is over every damage type whose per-type attribute the character holds. |
+| R2 | A plain draw: the same resistance may be drawn twice running. | The draw does not look at what is held. |
+| R3 | A resistance above nought is held at nought. A negative resistance is left as it is. | `UCataclysmDamageCalculation::TypedResistanceOf`: the smaller of the attribute's value and nought, for the held type only. |
+| R4 | The row will state Every Seconds 5; the mechanism must work for any period. | The period is the timed step's and is not read by the draw. The test fires a row of 5 and a row of 12. |
+| R5 | A console variable pins the draw for tests. | `Cataclysm.RandomResistancePick`: 0 War, 1 Demonic, 2 Death, 3 Pestilence, 4 Famine, 5 Celestial, 6 Chaos, 7 Void; -1 draws at random. |
+
+### WHAT WAS BUILT
+
+- **The status name.** `UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus`, "Random Resistance At
+  Nought". `tools/generate_datatables.py` holds the same name in `RANDOM_RESISTANCE_AT_NOUGHT_STATUS`, on a new
+  list `APPLY_STATUSES_TO_SELF_ONLY` that `apply_status_to_self` reads beside `APPLY_STATUSES`.
+- **The draw.** `HoldARandomResistanceAtNought()`: every damage type whose per-type resistance attribute the
+  character holds, each equally likely, pinned by the console variable. It writes the damage type drawn to
+  `ResistanceHeldAtNoughtType` and returns whether one is held. With none of the eight it holds nothing.
+- **The read.** `ResistanceHeldAtNought()` answers the held damage type or none.
+  `UCataclysmDamageCalculation::TypedResistanceOf(Defender, DamageType)` answers the per-type attribute's
+  current value, or the smaller of that and nought for the held type, or nought for a character without the
+  attribute. Three readers go through it: the mitigation order (`ResistanceFor`), the character sheet's
+  resistance lines, and `Cataclysm.ShowResistances`. Each read the attribute directly before.
+- **The release.** `ReleaseHeldResistanceUnlessARowHoldsIt()`, called by `SetPoolActions`, and one line in
+  `ClearWhatDeathEnds`.
+- **The row the enchantment session is to write** is one line: Action `apply_status_to_self`, Action Event
+  `every_seconds`, Every Seconds 5, Ailment "Random Resistance At Nought", value 100 to 100.
+
+### Tests
+
+One new Unreal test, beside the test of the five rows that lay a status on their wearer:
+
+- `Cataclysm.StatExemption.ARowDrawsOneOfItsWearersResistancesAndHoldsItAtNoughtUntilItFiresAgain`. A bare
+  character holding the eight per-type resistances at 10, 20, 30, 40, -15 (Famine), 60, 70 and 80, wearing the
+  row built by hand, and a twin 3 metres away with the same eight and no row. The clock is the world's, moved a
+  second at a time with a blow dealt each second, as the timed cleanse's test moves it; every step is half a
+  second past a whole second of the fight. The control is read first: before the row fires nothing is held,
+  each resistance reads its own figure and a blow of each type takes the same from the wearer and the twin.
+  Then: nothing held 4 seconds in; each of the eight drawn in turn by the pin, five seconds apart, the drawn one
+  reading nought (Famine reading -15), the other seven reading their own figures, and the drawn one's attribute
+  still holding its own figure; the same one drawn twice running; a War blow with War held taking what it takes
+  from the twin once the twin's War resistance is written to nought, more than it took before, and a Demonic
+  blow taking what it took before; a Famine blow with Famine held taking what it took before; ten seconds with
+  no blow ending the fight and the resistance still held; the same row at 12 seconds in a new fight not firing
+  at 11 and firing at 12; the row taken off releasing the hold; a death releasing the hold; and a creature,
+  which has none of the eight, holding nothing and taking from a War blow what it took before.
+
+Python:
+
+- `TestAStatusLaidOnTheWearer` in `tools/tests/test_generate_datatables.py` gains five tests on a made-up sheet:
+  the row's shape is carried through; it is carried through at a period of 12; the name misspelt is refused;
+  the name is refused on `apply_status_to_self_seconds`; the name is refused on `apply_status`.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the constant's name and one
+  test: the generator's name is the engine's, and the list for a wearer only shares no name with the lists
+  the other status actions read.
+
+**Not tested:** the row arriving from a worn item through a gear refresh, because no row exists; a real gear
+refresh run while a resistance is held; the character sheet's line and the console command; a minion's share of
+a held resistance; a cleanse; the row on an event other than the timed one, or at a chance under 100; two
+copies of the row; a difficulty tier with a penalty; a Shred laid while a resistance is held; the random draw
+with the pin off.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the test and were not measured.
+
+| Proof | File | Old text | New text | Prefix | Test stated to fail | Failed assertions, by reading |
+|---|---|---|---|---|---|---|
+| R3 | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `return FMath::Min(Held, 0.0f);` | `return Held;` | `Cataclysm.StatExemption.` | `ARowDrawsOneOfItsWearersResistancesAndHoldsItAtNoughtUntilItFiresAgain` | 11: the drawn one reading nought, for the seven that are above nought; "and still reads nought" after the second draw of Void; the War blow equal to the twin's; the War blow more than before; "and still reads nought" out of combat |
+| R1 | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `return HoldARandomResistanceAtNought();` | `return false;` | `Cataclysm.StatExemption.` | the same test | 20: "that resistance is the one held" for the eight; the drawn one reading nought for the seven above nought; the two after the second draw of Void; the three set-up checks that War, Famine and Death are held |
+| Release | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (ResistanceHeldAtNoughtType.IsNone())` | `if (!ResistanceHeldAtNoughtType.IsNone())` | `Cataclysm.StatExemption.` | the same test | 2: "with the row gone nothing is held" and "and the resistance reads its own figure again" |
+
+No other test is expected to fail under any of the three.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — The game fires a surge when the board has no dungeons on it, as the simulation does (#1414)
 
 **Said first, and no longer so: the layer has since been built and run; the Run section at the end has what was printed.** What follows in this paragraph and the next was true when it was written. Nothing was compiled and nothing was run in Unreal. The C++ and its six Unreal tests were written
