@@ -140,6 +140,8 @@ namespace
 		{ TEXT("while_channelling"),            ECataclysmStatCondition::WhileChannelling },
 		{ TEXT("channelling_for_under_seconds"),
 												ECataclysmStatCondition::ChannellingForUnderSeconds },
+		{ TEXT("opponent_first_struck_by_you_seconds_ago"),
+												ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo },
 	};
 
 	struct FNamedStatScale
@@ -485,6 +487,10 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
 	case C::TargetStandsInYourZone:
+	// A FACT OF THE BLOW BEING TAKEN, ruled 2026-10-12: how long ago its taker
+	// first struck whoever threw it. It moves with time as well, and it is
+	// classed here because it is only ever read with a blow in hand.
+	case C::OpponentFirstStruckByYouSecondsAgo:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -1178,6 +1184,20 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// out, and it is worse on this side of the pair than on the other.
 		return State.Blow.OpponentDistanceMetres >= 0.0f
 			&& State.Blow.OpponentDistanceMetres <= Value;
+
+	case ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo:
+		// AT LEAST THAT LONG SINCE THIS CHARACTER'S FIRST BLOW GOT THROUGH TO
+		// WHOEVER THREW THE BLOW IN HAND. Ruled 2026-10-12, for "Enemies that
+		// survive more than 5 seconds after first being hit gain 20%-40%
+		// increased damage". The comparison `InCombatForSeconds` and
+		// `NotAttackedForSeconds` make, so exactly 5 seconds holds a value of 5.
+		//
+		// A NEGATIVE READING REFUSES AND IS ASKED OUTRIGHT: never struck, no blow
+		// in hand, or a damage over time tick. It cannot be folded into the
+		// comparison, because a row whose value is nought would then hold for
+		// an opponent never struck.
+		return State.Blow.SecondsSinceYouFirstStruckOpponent >= 0.0f
+			&& State.Blow.SecondsSinceYouFirstStruckOpponent >= Value;
 
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
