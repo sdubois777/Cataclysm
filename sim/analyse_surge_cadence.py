@@ -345,6 +345,13 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
+        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
+        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
+        # leaves after it hits its city. Every figure this file's docstring
+        # and the issues quote was measured with the dungeon staying, and none
+        # has been re-measured, so the setting is held where it was. Remove
+        # this line to measure the shipped rule; the figures then move.
+        dungeon_persists_after_resolve=True,
     ).with_tree(tree)
 
 

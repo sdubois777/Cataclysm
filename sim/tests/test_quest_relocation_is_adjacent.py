@@ -578,7 +578,14 @@ class TestWhatARelocatedDungeonKeeps:
 
         Simulation._resolve = watched
         try:
-            for seed in range(20):
+            # 60 CAMPAIGNS, AND IT WAS 20 UNTIL 2026-10-12. An ordinary
+            # dungeon now leaves after it hits its city, so far fewer cities
+            # fall, the frontier stays on the Outposts, and a relocation
+            # seldom crosses a tier boundary: measured that day, 4 of 49
+            # relocations over 20 campaigns crossed one, against 27 of 51
+            # with the dungeon staying. 60 campaigns give 16 of 137, which is
+            # what the control below needs.
+            for seed in range(60):
                 Simulation(safe(), seed=seed).run(POLICIES["triage"])
         finally:
             Simulation._resolve = original

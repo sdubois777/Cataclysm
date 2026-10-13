@@ -178,7 +178,11 @@ class TestADeathInAnOrdinaryDungeon:
             "default no longer does")
 
     def test_its_timer_is_full_afterwards_and_it_stays(self):
-        sim = simulation(True)
+        """With a resolved dungeon staying, which was the default until
+        2026-10-12 and is what the game still does. At the default now the
+        dungeon leaves: the test below, and
+        `test_an_ordinary_dungeon_leaves_after_it_hits_its_city.py`."""
+        sim = simulation(True, dungeon_persists_after_resolve=True)
         assert sim.cfg.dungeon_persists_after_resolve is True
         d = a_dungeon(sim, DungeonType.BASIC, an_outpost(sim))
         d.resolve_in = 2.0
@@ -195,6 +199,8 @@ class TestADeathInAnOrdinaryDungeon:
             "what the timer had left")
 
     def test_it_is_gone_afterwards_when_a_resolved_dungeon_does_not_stay(self):
+        """The default since 2026-10-12, and still set by name here."""
+        assert TuningConfig().dungeon_persists_after_resolve is False
         sim = simulation(True, dungeon_persists_after_resolve=False)
         city = an_outpost(sim)
         d = a_dungeon(sim, DungeonType.BASIC, city)
@@ -454,7 +460,10 @@ class TestTheDaysADeathCosts:
         assert sim.day == day_of_the_death + spent
 
     def test_the_consequence_lands_before_the_days_pass(self):
-        sim = simulation(True)
+        """Its last line reads the refilled timer, so the dungeon is kept:
+        `dungeon_persists_after_resolve` is set on, as the default was until
+        2026-10-12."""
+        sim = simulation(True, dungeon_persists_after_resolve=True)
         city = an_outpost(sim)
         d = a_dungeon(sim, DungeonType.BASIC, city)
         before = city.defense
@@ -476,8 +485,11 @@ class TestTheDaysADeathCosts:
         The days charged run against the timer the death refilled, which is why
         the refill comes first. Standard's 5 days are fewer than any timer a
         dungeon here can have, so nothing resolves a second time.
+
+        WITH A RESOLVED DUNGEON STAYING, set by name since 2026-10-12, when
+        the default became that it leaves and there is no timer to count down.
         """
-        sim = simulation(True)
+        sim = simulation(True, dungeon_persists_after_resolve=True)
         city = an_outpost(sim)
         d = a_dungeon(sim, DungeonType.BASIC, city)
         cost = sim.cfg.death_day_cost
