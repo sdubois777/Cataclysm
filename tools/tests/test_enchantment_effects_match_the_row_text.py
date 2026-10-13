@@ -385,7 +385,10 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # AND "REDUCED" IS 100 ON THE SAME ACTION, for the set Shard of Anarchy's
     # drawback, "Every 5 seconds, one of your resistances is reduced to 0 until
     # this triggers again": it states no chance, so one is reduced every time.
-    # 2026-10-12.
+    # 2026-10-12. THE COST OF THIS WORD: this table matches single words and not
+    # phrases, so it cannot say "reduced to 0". A later sentence on this action
+    # that says "reduced by 10%" would therefore be excused a stated 100 that it
+    # does not state. Whoever writes such a row has to read this entry again.
     "apply_status_to_self": {"applied": 100.0, "reduced": 100.0},
     # "CAST" IS 100 ON THE ACTION THAT SPENDS KEPT STACKS TO CAST A SKILL AGAIN,
     # whose value is the share of its damage each extra cast deals: "your skill
