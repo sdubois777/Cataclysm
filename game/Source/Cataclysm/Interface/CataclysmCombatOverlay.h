@@ -614,6 +614,22 @@ public:
 	static FString KeptStacksTextFor(const AActor* Actor);
 
 	/**
+	 * What a living actor still owes of its delayed damage, such as "Owed 132", or empty while it owes nothing.
+	 * Read from `UCataclysmAbilitySystemComponent::DelayedDamageOwed`. Ruled 2026-10-12 by the coordinating
+	 * session, for "25%-50% of damage taken is dealt over 4-8 seconds": the wearer must see what is still owed.
+	 * Without it health falls for seconds after a blow and nothing says why or how much more is to come.
+	 *
+	 * THE FIGURE IS ROUNDED UP, a judgement: the last point still owed reads "Owed 1" and never "Owed 0".
+	 *
+	 * AS OF THE LAST DRAIN, which is a quarter of a second ago at most in play: the store is drained on the
+	 * regeneration step, and this reads what that step left.
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, after the kept stacks' text, and last on a creature's status line,
+	 * where it is empty today because no creature wears a row.
+	 */
+	static FString OwedTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.
