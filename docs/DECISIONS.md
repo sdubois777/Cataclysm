@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — The dungeon rule The Labrynth is marked Built; its rooms do not move, and nothing it does changed
+
+**Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ was written and read. The
+Python checks were run; no Unreal test was.
+
+**Said first: the rooms do not move.** The floor is not carved again and no room changes place. Gated shortcuts
+opening and closing in turn are the row. That was so before this entry and is so after it. This entry changes one
+answer, `UCataclysmDungeonModifierEffects::BuiltStateOf(Chaos_The_Labrynth)`, from Partly to Built. It changes no
+rule, no figure and no data row.
+
+**Said first: the floor panel still shows a sentence that says rooms rearrange.** Under a row's name the panel shows
+the row's own Description from `game/Data/DungeonModifiers.csv`. For this row that is "Dungeon rooms rearrange
+themselves periodically. Players might find paths they already cleared are now blocked or redirected." The brief for
+this layer said the row's panel text must not claim rooms move. The same brief forbade editing any file under
+`game/Data/`, and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` requires the phrase "rooms rearrange
+themselves periodically" in that sentence. So that part was not done. It needs the session that writes rows, or a
+ruling that the sentence stays.
+
+**Said first: the line the panel adds for this row was not reworded.** It reads "the labrynth: 2 of 4 gates open".
+Saying more in it, such as the 20 seconds between swaps, would change an existing assertion that this layer was not
+allowed to change (`Cataclysm.DungeonModifierEffects.TheLabrynthSwapsOneGateEveryTwentySeconds`, label "the panel").
+
+### The decision
+
+The row, `Chaos_The_Labrynth`, Name "The Labrynth", verbatim: "Dungeon rooms rearrange themselves periodically.
+Players might find paths they already cleared are now blocked or redirected."
+
+The coordinating session put three recommendations to the owner. One of them, in the coordinating session's words
+and not the owner's: The Labrynth is accepted as blocked and redirected paths; mark it Built.
+
+The owner, typed in the coordinating session on 2026-10-12, verbatim: "your rec on all three, continue".
+
+Changing each existing assertion that the row is Partly is a labelled judgement by the coordinating session under
+the owner's delegation, 2026-10-12.
+
+No source was read. The shape of the rule is not new: it was built on 2026-10-04 and is not changed here.
+
+### What was read before writing
+
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`, `BuiltStateOf`, line 681 to line 876 before
+  this change. The row was the second arm of the Partly block.
+- Every caller of `BuiltStateOf` outside the tests, three in all:
+  - `CataclysmDungeonGameMode.cpp` line 405, `DungeonGameModeModifierNameAndState`: the log's name of a modifier.
+  - `CataclysmDungeonGameMode.cpp` line 13970, in entering an empire dungeon: fills `DungeonEveryBuiltModifier` with
+    every row whose state is not NotBuilt. This is the pool Reality Twister draws from.
+  - `Interface/CataclysmFloorModifierPanelLayout.cpp` line 20, `LinesFor`: the state a panel line carries.
+    `NameLineFor`, line 50 on, turns it into the mark after the name. `CataclysmFloorModifierPanel.cpp` line 50 dims
+    a line only when the state is NotBuilt.
+- How the two most recent rows went from Partly to Built: Reality Rifts in commit `bd6133a3` and Lightforged Walls in
+  commit `9bfac4da`. Each moved the row's arm into the Built block with a dated comment, left a "WAS HERE UNTIL" line
+  in the Partly block, rewrote the key's comment in the header, flipped the existing assertion with a comment saying
+  what it asserted before, and corrected the docstring of the row's Python check. Neither changed a file under `Interface/`.
+- `CataclysmDungeonGameMode.cpp` line 18319 to line 18338, `GateLine`: the count the panel adds for this row.
+
+### What Built changes
+
+- **The panel's name line.** It read "The Labrynth (partly built) (the labrynth: 2 of 4 gates open)". It now reads
+  "The Labrynth (the labrynth: 2 of 4 gates open)". With no gates it ends "(the labrynth: no paths to turn on this
+  floor)" or "(the labrynth: no paths to turn on a floor of this shape)", as before. The line was not dimmed before
+  and is not now.
+- **The log.** `DungeonGameModeModifierNameAndState` prints "The Labrynth (Built)" where it printed "The Labrynth
+  (Partly built)".
+- **Reality Twister's pool does not change.** `CataclysmDungeonGameMode.cpp` line 13970 keeps every row whose state
+  is not NotBuilt. Partly and Built both pass, so the row was in the pool and still is.
+  `CataclysmFloorBrief.cpp` line 250 draws from that pool and asks nothing more about a row's state. Read, not run.
+- **Counts.** No test and no Python check pins a number of Built, Partly or NotBuilt rows; `CataclysmFloorBriefTests.cpp`
+  line 2390 on counts them at run time. One row is now Partly: `Void_Insanity_Bursts`. The Unreal suite gains one test.
+
+### How it is built
+
+- `BuiltStateOf`: the arm `|| RowKey == FName(LabrynthKey)` is in the Built block, after Reality Rifts, with a
+  comment that says the rooms do not move, that gated shortcuts opening and closing in turn are the row, and why.
+  The Partly block keeps a "WAS HERE UNTIL 2026-10-12" line and now has one arm.
+- `LabrynthKey` in the header: the comment says Built since 2026-10-12, that the rooms do not move, and that the
+  row's sentence still says they do.
+- No rule, figure, panel code or data row was changed.
+
+### Tests
+
+Unreal, written and not run:
+
+- NEW: `Cataclysm.DungeonModifierEffects.TheLabrynthIsMarkedBuiltAndItsPanelLineNoLongerSaysPartlyBuilt`. No world
+  and no actor. The Labrynth is Built, beside Insanity Bursts Partly and Supply Lines NotBuilt. The Labrynth's name
+  line is "The Labrynth", beside "Insanity Bursts (partly built)". With the same count given to both, the two lines
+  differ by the mark alone. The line under the name is the row's own sentence.
+- CHANGED: `Cataclysm.DungeonModifierEffects.GatedShortcutFiguresAndTheThreeRowsBuiltStates`. The assertion "The
+  Labrynth is partly built: rooms do not rearrange" expected Partly. It is now "The Labrynth is built: gated
+  shortcuts opening and closing in turn are the row" and expects Built.
+- CHANGED: `Cataclysm.DungeonModifierEffects.RealityRiftsChamberFiguresTheSeededFloorsAndTheRowIsBuilt`. Its
+  control "CONTROL: The Labrynth is still only partly built" is now "CONTROL: Insanity Bursts is still only partly
+  built", so the test still has a row that is not Built.
+
+Python, run: `test_the_labrynth_row_still_says_rooms_rearrange_and_paths_are_blocked_or_redirected` asserts what it
+asserted; only its docstring changed.
+
+### Not covered by a test
+
+- Nothing was run in Unreal, so none of the three tests above has been seen to pass.
+- That Reality Twister's pool is unchanged is read from the code. The existing test
+  `CataclysmFloorBriefTests.cpp` line 2390 on counts every row that is not NotBuilt; it does not name this row.
+- The log's line "The Labrynth (Built)" has no test.
+- Nothing was tried in play.
+
+### Judgements by the writing session, for the coordinating session to confirm
+
+- The partly built control in the Reality Rifts test was replaced by Insanity Bursts, not deleted. A judgement by
+  the writing session, for the coordinating session to confirm.
+- The count line and the row's sentence were left as they are, and the two "said first" paragraphs above report it,
+  in place of rewording either. A judgement by the writing session, for the coordinating session to confirm.
+- The name of the test `GatedShortcutFiguresAndTheThreeRowsBuiltStates` and the name of the Python check were kept. A
+  judgement by the writing session, for the coordinating session to confirm.
+
+### Proofs proposed, not run
+
+One. In `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp` the line, counted once,
+
+```
+		|| RowKey == FName(LabrynthKey)
+```
+
+changed to
+
+```
+		|| RowKey == FName(RealityRiftsKey)
+```
+
+makes the row NotBuilt and still compiles. In
+`Cataclysm.DungeonModifierEffects.TheLabrynthIsMarkedBuiltAndItsPanelLineNoLongerSaysPartlyBuilt` three assertions
+are predicted to fail: "The Labrynth is built", "The Labrynth's name line is its name alone" and "The Labrynth's name
+line with its count". Its controls and its last assertion are predicted to hold. Other tests under the same prefix
+would fail too, the gated-shortcut figures test and the two tests that walk the rule list among them. A break that
+returns the row to Partly needs two lines changed, so none is proposed.
+
+---
+
 ## 2026-10-12 — The set Shard of Anarchy is built whole: its drawback and its 2-piece, 6-piece and 10-piece bonuses, five rows
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
