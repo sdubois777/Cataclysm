@@ -575,6 +575,27 @@ public:
 	static FString HeldBuffTextFor(const AActor* Actor);
 
 	/**
+	 * Every damage type a living actor is immune to for a time and the whole seconds left of each, such as
+	 * "Immune War 4s", or empty while no such window is open. Read from
+	 * `UCataclysmAbilitySystemComponent::DamageTypesImmuneTo` and `DamageTypeImmunitySecondsLeft`.
+	 *
+	 * WHY IT IS HERE. Ruled 2026-10-12 by the coordinating session: a text above the player's bars for each open
+	 * type, in the form of the held buff's. The windows are opened by a hit on the wearer of Shard of Anarchy's
+	 * six-piece bonus, and without this a blow of the type dealt nothing and nothing said why or for how long.
+	 *
+	 * SEVERAL TYPES ARE ONE TEXT, each written as it would be alone and joined by two spaces, as the parts of a
+	 * status line are: "Immune War 4s  Immune Demonic 2s". IN THE ORDER OF THE DAMAGE TYPE NAMES, War first and Void
+	 * last, which is the order `DamageTypesImmuneTo` answers in, so a type keeps its place while the others open
+	 * and end.
+	 *
+	 * THE SECONDS ARE ROUNDED UP, as the held buff's are: a window in its last second reads "1s" and never "0s".
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, directly after the held buff's text, and after it on a creature's
+	 * status line, where it is empty today because no creature wears a row.
+	 */
+	static FString DamageTypeImmunityTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.
