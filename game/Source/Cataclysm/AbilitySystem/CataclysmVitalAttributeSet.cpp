@@ -1369,6 +1369,51 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Resolved.AbsorbedByTemporary = 0.0f;
 			}
 
+			// AND A CHARACTER THAT HAS BECOME IMMUNE TO THE ONE ATTACKER THAT THREW THIS BLOW. Ruled 2026-10-12
+			// under the owner's delegation, for "Enemies that have been alive for more than 15 seconds become
+			// immune to your damage until you disengage for 3 seconds". THE ONE IMMUNITY HERE THAT IS KEYED ON
+			// THE ATTACKER: every one above refuses all attackers alike. The blow is emptied as those empty one,
+			// so everything after reads it the same way: no health, no shield or absorb drawn, no leech, no
+			// record of a blow that got through, no retaliation in answer.
+			//
+			// EVERY KIND OF BLOW THAT REACHES THIS FUNCTION, WITH NO EXCEPTION BY KIND: a hit, a tick of damage
+			// over time, retaliation, a blow that is a row's answer to an event, and a blow that is the
+			// consequence of a death. A blow that carries the cannot-be-mitigated flag is emptied too: that flag
+			// is read by the calculation alone, as it is for the immunities above.
+			//
+			// `AttackerOf`, THE CHARACTER `NoteStruckBy` BELOW RECORDS THE BLOW UNDER, so the blow that starts
+			// an attacker's time and the blows refused when it runs out are the same attacker's. A minion's
+			// blow is the minion's own and is not refused for its summoner's rule; while the summoner holds
+			// Conduit it is the summoner's, and is.
+			//
+			// AFTER THE TWO SAVES AND BESIDE THE CREATURE NO DAMAGE REACHES, and before the overkill line
+			// below, which then clears the overkill of a blow this emptied.
+			//
+			// AND THE RESULT SAYS WHY IT IS EMPTY, which the three other immunities above do not say of theirs.
+			// Ruled 2026-10-12: an immune enemy feeds no on-hit row and shows no figure. The mark is read by the
+			// hit's announcement, by a machine's `deployable_hit` and by the floating number; see
+			// `FCataclysmDamageResult::bRefusedByImmunityToAttacker`. THE BLOW IS STILL A COMBAT EVENT FOR BOTH
+			// CHARACTERS: the lines far below that record a hit taken and a hit dealt do not read the mark.
+			//
+			// AND A MAXIMUM AN AILMENT OF THAT ATTACKER'S WAS HOLDING DOWN RETURNS NOW. Ruled 2026-10-12: on an
+			// enemy immune to it, the attacker's ailments and their riders take nothing. Nothing announces the
+			// moment an enemy becomes immune, so the first blow it refuses is where that is acted on; for an
+			// ailment that is its next tick. See `UCataclysmAbilitySystemComponent::NoteBlowRefusedAsImmune`.
+			if (UCataclysmAbilitySystemComponent* Refusing =
+					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
+			{
+				if (Refusing->IsImmuneToDamageOf(UCataclysmTargeting::AbilitySystemOf(
+						UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()))))
+				{
+					Resolved.DealtToHealth = 0.0f;
+					Resolved.AbsorbedByShield = 0.0f;
+					Resolved.AbsorbedByMana = 0.0f;
+					Resolved.AbsorbedByTemporary = 0.0f;
+					Resolved.bRefusedByImmunityToAttacker = true;
+					Refusing->NoteBlowRefusedAsImmune();
+				}
+			}
+
 			// AND A BLOW THAT NO LONGER EMPTIES HEALTH HAS NO OVERKILL. Ruled 2026-10-07. Every step above that
 			// lowers `Resolved.DealtToHealth` leaves it below the health held: the boss's floor on a share tick,
 			// the Sacrificial Ward, an immune, absorbing or reflecting wearer, the two saves that leave one

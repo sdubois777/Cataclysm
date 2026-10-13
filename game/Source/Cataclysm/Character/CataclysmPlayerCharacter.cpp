@@ -964,6 +964,16 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// NOR A BLOW ITS TARGET REFUSED AS IMMUNE TO THIS CHARACTER. Ruled 2026-10-12, for "Enemies that have been
+	// alive for more than 15 seconds become immune to your damage until you disengage for 3 seconds": an immune
+	// enemy feeds no on-hit row, so none of the three events below is raised for a blow it emptied. The blow is
+	// still a combat event for this character, which `UCataclysmVitalAttributeSet` records and not this function.
+	// A BLOW EMPTIED BY THE NO-DAMAGE WINDOW OR BY A CREATURE NO DAMAGE REACHES STILL RAISES THEM, as before.
+	if (Notice.bRefusedByImmunityToAttacker)
+	{
+		return;
+	}
+
 	UCataclysmAbilitySystemComponent* Acting =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 	if (!Acting)

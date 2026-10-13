@@ -900,7 +900,8 @@ void ACataclysmHUD::DrawStatusLines()
 			continue;
 		}
 
-		const FString Words = UCataclysmCombatOverlay::StatusLineFor(Enemy);
+		// WITH THE OWNING PAWN, since 2026-10-12: one text on the line, "Immune to you", depends on who is looking.
+		const FString Words = UCataclysmCombatOverlay::StatusLineFor(Enemy, LocalPawn);
 		if (Words.IsEmpty())
 		{
 			continue;

@@ -220,6 +220,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	// distance at all. Adding one to the hit would have made two definitions of
 	// the same measurement, and a passive row and this announcement could then
 	// have disagreed about one strike. Issue #1581 was that fault one layer up.
+	// AND WHETHER THE TARGET REFUSED IT AS IMMUNE TO THIS ATTACKER. Ruled 2026-10-12.
+	Notice.bRefusedByImmunityToAttacker = Outcome.bRefusedByImmunityToAttacker;
 	Notice.DistanceMetres = UCataclysmTargeting::MetresBetween(DealtBy, Target);
 	Notice.Location = Target->GetActorLocation();
 	Notice.EffectTags = &EffectTags;
