@@ -2145,9 +2145,14 @@ public:
 	 * `Chaos_The_Labrynth`: "Dungeon rooms rearrange themselves periodically. Players might find paths they already
 	 * cleared are now blocked or redirected." Issues #1820 and #41.
 	 *
-	 * `Partly` BUILT, AND THE MISSING HALF IS "ROOMS REARRANGE": the rooms do not move and the floor is not carved
-	 * again. What is built is an approximation on the gated shortcut (see `SoulChainsKey`), RULED 2026-10-04, each a
-	 * labelled judgement:
+	 * `Built` SINCE 2026-10-12, AND THE ROOMS DO NOT MOVE: the floor is not carved again and no room changes place.
+	 * Gated shortcuts opening and closing in turn are the row. Until that day `BuiltStateOf` answered `Partly`, for
+	 * "rooms rearrange". Nothing the rule does changed on that day; only the answer did. WHY: the coordinating session
+	 * recommended that The Labrynth be accepted as blocked and redirected paths and marked Built, and the owner
+	 * answered on 2026-10-12 "your rec on all three, continue". THE ROW'S SENTENCE STILL SAYS "ROOMS REARRANGE", and
+	 * the floor panel shows that sentence under the row's name; see the entry of 2026-10-12 in `docs/DECISIONS.md`.
+	 *
+	 * What is built is on the gated shortcut (see `SoulChainsKey`), RULED 2026-10-04, each a labelled judgement:
 	 * - HALLS FLOORS ONLY, and never a Horde arena.
 	 * - UP TO `LabrynthMostGates` GATED SHORTCUTS, half closed when the floor begins. EVERY
 	 *   `LabrynthSecondsBetweenSwaps` one open gate closes and one closed gate opens, so a path walked a moment ago is

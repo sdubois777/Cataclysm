@@ -5067,12 +5067,14 @@ def test_soul_chains_row_still_says_souls_are_released_by_defeating_enemies_and_
 
 
 def test_the_labrynth_row_still_says_rooms_rearrange_and_paths_are_blocked_or_redirected():
-    """The phrases The Labrynth's readings rest on, and the one that keeps it Partly.
+    """The phrases The Labrynth's readings rest on, and the one that kept it Partly until 2026-10-12.
 
     "Dungeon rooms rearrange themselves periodically. Players might find paths they already cleared are now blocked or
     redirected." PERIODICALLY is the swap on a clock; BLOCKED OR REDIRECTED is one gate closing and another opening;
-    ROOMS REARRANGE is what is NOT built -- the rooms do not move -- and why BuiltStateOf answers Partly. See LabrynthKey
-    in CataclysmDungeonModifierEffects.h.
+    ROOMS REARRANGE is what does NOT happen -- the rooms do not move. It was why BuiltStateOf answered Partly until
+    2026-10-12, when the row was accepted as blocked and redirected paths and marked Built with no change to what it
+    does. The sentence still says it, and the floor panel shows the sentence. See LabrynthKey in
+    CataclysmDungeonModifierEffects.h.
     """
     words = flat(rows()["Chaos_The_Labrynth"]["Description"])
     lower = words.lower()
