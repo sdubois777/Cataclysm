@@ -860,8 +860,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-12, from 598 over 505: one row on one enchantment.
 #: AND 600 OVER 507 SINCE THE ROW THAT TELEPORTS ITS WEARER WHEN HIT,
 #: issue #1833, 2026-10-12, from 599 over 506: one row on one enchantment.
-AUTHORED_ROWS = 600
-AUTHORED_ENCHANTMENTS = 507
+#: AND 602 OVER 508 SINCE THE TWO ROWS THAT DEAL A SHARE OF DAMAGE TAKEN OVER SECONDS,
+#: issue #1833, 2026-10-12, from 600 over 507: two rows on one enchantment.
+AUTHORED_ROWS = 602
+AUTHORED_ENCHANTMENTS = 508
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
