@@ -522,6 +522,14 @@ bool ACataclysmProjectile::HitAlongStep(const FVector& Previous,
 		{
 			continue;
 		}
+
+		// ANOTHER PROJECTILE OF THE SAME USE HAS LANDED ON THIS ONE, so this one passes through it: it does not
+		// strike it, stop at it or glance from it, and does not count it as hit. Ruled 2026-10-12. Never true for a
+		// projectile fired alone. See `JoinsAUse`.
+		if (WasLandedOnByAnotherOfItsUse(Target))
+		{
+			continue;
+		}
 		AlreadyHit.Add(Target);
 		LastTouchedEnemy = Target;
 
@@ -673,6 +681,14 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	if (Dealt > 0.0f && !Resolved.bEvaded)
 	{
 		++LandedContacts;
+
+		// AND THE OTHER PROJECTILES OF ITS USE ARE TOLD, so none of them strikes this enemy. Ruled 2026-10-12. The
+		// first to land keeps the enemy; a later landing of this projectile's own changes nothing.
+		const TWeakObjectPtr<AActor> Landed(Target);
+		if (LandedOnInItsUse.IsValid() && !LandedOnInItsUse->Contains(Landed))
+		{
+			LandedOnInItsUse->Add(Landed, NumberInItsUse);
+		}
 	}
 	if (Dealt > 0.0f)
 	{
@@ -746,6 +762,24 @@ void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
 	BounceDamagePercentPer = InDamagePercentPer;
 }
 
+void ACataclysmProjectile::JoinsAUse(
+	const TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>>& InLandedOnInItsUse, int32 InNumberInItsUse)
+{
+	LandedOnInItsUse = InLandedOnInItsUse;
+	NumberInItsUse = InNumberInItsUse;
+}
+
+bool ACataclysmProjectile::WasLandedOnByAnotherOfItsUse(AActor* Target) const
+{
+	if (!LandedOnInItsUse.IsValid() || !Target)
+	{
+		// Fired alone, which is every projectile of a user with no row and every creature's.
+		return false;
+	}
+	const int32* LandedBy = LandedOnInItsUse->Find(TWeakObjectPtr<AActor>(Target));
+	return LandedBy && *LandedBy != NumberInItsUse;
+}
+
 void ACataclysmProjectile::TurnTowardAPull(const FVector& At, float Seconds)
 {
 	// A LOBBED SHOT IS NOT TURNED: it is aimed at a point and must land there. Infernal Rain's fireball makes its patch
@@ -802,6 +836,12 @@ bool ACataclysmProjectile::GlanceOnwardFrom(const FVector& At)
 			GetWorld(), Firer, At, BounceReachCm))
 	{
 		if (AlreadyHit.Contains(Candidate))
+		{
+			continue;
+		}
+
+		// NOR TOWARD ONE ANOTHER PROJECTILE OF ITS USE HAS LANDED ON, which it could not strike. Ruled 2026-10-12.
+		if (WasLandedOnByAnotherOfItsUse(Candidate))
 		{
 			continue;
 		}
@@ -868,6 +908,13 @@ void ACataclysmProjectile::Finish()
 				// NOT ONE IT ALREADY STRUCK BY GLANCING FROM THEM. Ruled 2026-10-07. Empty unless a row gave
 				// the shot its bounces.
 				if (StruckOnAGlance.Contains(Target))
+				{
+					continue;
+				}
+
+				// NOR ONE ANOTHER PROJECTILE OF ITS USE HAS LANDED ON. Ruled 2026-10-12. Asked for each enemy in
+				// turn, so one this blast itself lands on is not then refused to it.
+				if (WasLandedOnByAnotherOfItsUse(Target))
 				{
 					continue;
 				}
