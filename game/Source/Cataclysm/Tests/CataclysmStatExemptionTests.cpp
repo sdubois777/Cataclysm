@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmChorus.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmPotions.h"
@@ -7845,6 +7846,77 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and one use is three projectiles"), Skill->ProjectilesOfOneUse(), 3);
 	}
 
+	/**
+	 * The health one blow of 100 takes at once from a fighter holding these flat stats. A helper of the two probes
+	 * below. NO ROLL IS MADE: the fighter has no evasion and no block chance, and the blow is sent as direct damage
+	 * that cannot critically strike.
+	 *
+	 * STANDING: nowhere. Both are bare actors with no root component, as `HealthAfterBlows` above makes them.
+	 */
+	float HealthABlowTakesAtOnceFrom(UWorld* World, const TMap<FName, float>& Stats)
+	{
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Taker(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Taker.Actor, Stats);
+
+		FCataclysmHitDelivery NoCrit;
+		NoCrit.bCannotCriticallyStrike = true;
+		const float Before = Taker.Health();
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Taker.Actor, 100.0f, NoCrit);
+		return Before - Taker.Health();
+	}
+
+	/**
+	 * `damage_taken_delayed_percent`, read by `UCataclysmDelayedDamage::DelayShare`, which
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls where a blow's damage reaches health. Ruled
+	 * 2026-10-12, for "25%-50% of damage taken is dealt over 4-8 seconds". Two fighters, both holding the seconds at
+	 * 8; only the second holds the share, at 50. The same blow takes health from the first and less from the second.
+	 *
+	 * WHAT THIS DOES NOT REACH. How much is held, the drain, what clears it and the text:
+	 * `Cataclysm.DelayedDamage.` in `CataclysmDelayedDamageTests.cpp` holds those.
+	 */
+	void ProbeDamageTakenDelayedPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Share(UCataclysmDelayedDamage::SharePercentStat);
+		const FName Seconds(UCataclysmDelayedDamage::SecondsStat);
+		const float Without = HealthABlowTakesAtOnceFrom(World, {{Seconds, 8.0f}});
+		Test.TestTrue(*FString::Printf(TEXT("control: a blow takes health at once from a fighter holding the seconds "
+											"and no share: %.2f"), Without), Without > 0.0f);
+		const float With = HealthABlowTakesAtOnceFrom(World, {{Seconds, 8.0f}, {Share, 50.0f}});
+		Test.TestEqual(TEXT("and half as much from one also holding damage_taken_delayed_percent at 50, so DelayShare "
+							"really reads it"), With, Without * 0.5f, 0.01f);
+	}
+
+	/**
+	 * `damage_taken_delayed_seconds`, read in the same function. The mirror of the probe above: both fighters hold
+	 * the share at 50 and only the second holds the seconds, at 8.
+	 */
+	void ProbeDamageTakenDelayedSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Share(UCataclysmDelayedDamage::SharePercentStat);
+		const FName Seconds(UCataclysmDelayedDamage::SecondsStat);
+		const float Without = HealthABlowTakesAtOnceFrom(World, {{Share, 50.0f}});
+		Test.TestTrue(*FString::Printf(TEXT("control: a blow takes health at once from a fighter holding the share and "
+											"no seconds: %.2f"), Without), Without > 0.0f);
+		const float With = HealthABlowTakesAtOnceFrom(World, {{Share, 50.0f}, {Seconds, 8.0f}});
+		Test.TestEqual(TEXT("and half as much from one also holding damage_taken_delayed_seconds at 8, so DelayShare "
+							"really reads it"), With, Without * 0.5f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7985,6 +8057,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeRetaliationCannotBeMitigated},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
+			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
+			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
 		};
 		return Made;
 	}

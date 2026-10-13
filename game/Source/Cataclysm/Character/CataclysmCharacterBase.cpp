@@ -12,6 +12,7 @@
 // For health owed falling due. Issue #991.
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -156,6 +157,20 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// reason: zero is the ordinary answer and it is returned for tests.
 	UCataclysmHealthDebt::DrainWhileDebtExceedsHealth(
 		this, UCataclysmRegeneration::StepSeconds);
+
+	// AND THE DELAYED SHARE OF BLOWS ALREADY TAKEN DRAINS ON THE SAME TIMER. Ruled 2026-10-12, for "25%-50% of
+	// damage taken is dealt over 4-8 seconds". A worn row takes a share off each blow where it reaches health and
+	// holds it; this takes what the held parcels owe for the time since the step before.
+	//
+	// IT IS NOT HANDED THE STEP'S LENGTH. Each parcel is counted by the world's clock from the moment it was
+	// taken, so a step that arrives late takes what the late time owes.
+	//
+	// AFTER THE HEALTH DEBT'S TWO AND BEFORE THE GUARD BELOW, because this can kill and a character it has just
+	// killed should gain nothing on this step. It skips a corpse itself.
+	//
+	// ITS RETURN VALUE IS DROPPED. Nought is the answer for every character holding no parcel, and it is returned
+	// for tests.
+	UCataclysmDelayedDamage::DrainStep(this);
 
 	// AND FERVOUR MAY ARRIVE FROM THE PASSAGE OF TIME ALONE. Issue #1008. The
 	// Masochist's Low Life keystone reads "While at or below 35% health you gain
