@@ -31,6 +31,56 @@ three blocks of 320 campaigns (seeds 1000 to 1959), and 82.3% over seeds 0 to 31
 that prose now holds `dungeon_persists_after_resolve` True, so it measures what the prose was measured on. The
 policy was not changed.
 
+**Corrected on 2026-10-12, in a second change made after this entry was written. The paragraph above is no
+longer the state of the branch, and neither are four other places in this entry: judgement 4, the row for the
+Siege prose test under "Existing tests that changed", the line on the Siege prose under "Not covered", and the
+words "the proof was not run again" under "Run".** The coordinating session ruled, as a labelled judgement
+under the owner's delegation, 2026-10-12: a change must not ship beside a statement it knows is false. Every
+figure below was printed by a script of the correcting session on a `git archive` copy of b5d49e81, before
+this paragraph was written.
+
+- The prose in `sim/cataclysm_sim/policies.py` was re-measured at the new default and rewritten; each sentence
+  says how it was measured and what it said before. Docstrings and comments only: no line of code in
+  `policies.py` changed, so `triage` and `lane_aware` do what they did. The method is the prose test's own:
+  the report settings, no tree, `triage`, every dungeon recorded when it is made, 10,000 campaigns, seeds 0 to
+  9999, 754,158 dungeons. The control, the same seeds with the dungeon staying, made 891,123 dungeons and gave
+  the medians on record, 14 / 24 / 37 / 123; the record of 2026-09-16 has 890,790 dungeons, on code that has
+  changed since.
+- The median walk is now 14 / 22 / 34 / 123 days (was 14 / 24 / 37 / 123). Against a median walk of 14 / 22 /
+  34 days to an Outpost, Bulwark and Sanctuary and the 25 / 39 / 55 days a fresh Siege leaves, the slack is
+  eleven, seventeen and twenty-one days (was eleven, fifteen and eighteen). The Outpost shares at 13 and 14
+  days or fewer are 48.17% and 56.35% (were 47.3% and 54.9%); the prose test asks for the second to be under
+  58%, and one of ten disjoint blocks of 320 campaigns, seeds 2240 to 2559, gave 58.16%. The test reads seeds
+  0 to 319, which give 56.49%.
+- The Siege mix is now 55,361 Sieges at 83% Basic, 11% Quest, 4% Fallen City and 1% Cataclysm, about 5.54 a
+  campaign (was 65,636 at 79 / 11 / 10 / 1 and 6.56). Fallen City dungeons made fell from 95,660 to 37,679.
+- "At the larger city sizes the medians differ by more than the day of wobble" between four and five dungeons
+  a surge was false when measured: 10,000 campaigns at four give 14 / 22 / 34 / 123 as well, over 720,044
+  dungeons. With the dungeon staying, four gives 14 / 24 / 38 / 124.
+- "AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY" is rewritten. One ordinary dungeon carrying a Siege on a city at
+  full defence, nothing else on it, nobody entering, no tree, 10,000 dungeons a city size (seeds 0 to 9999).
+  At the shipped defaults the city fell in 86.1% of cases on an Outpost, 79.0% on a Bulwark and 86.7% on a
+  Sanctuary; in the rest the dungeon left first and the city stood. At the report settings, where the timer is
+  longer, 97.0%, 96.8% and 99.8%. With the dungeon staying, the control, all 10,000 at each size. A city
+  already damaged was not measured. `siege_urgency` still weighs a reachable Siege as certain to kill its
+  city; that is code and was not changed.
+- `sim/tests/test_the_siege_prose_in_policies_is_true.py` no longer sets `dungeon_persists_after_resolve`, so
+  it measures the default. `CAMPAIGNS` went from 250 to 320: ten disjoint blocks of 250 made 17,996 to 19,664
+  dungeons, under the 20,000 its fixture asks for, and ten blocks of 320 made 23,152 to 25,213. One pinned
+  sentence changed with the prose, the two Outpost shares. No tolerance changed and no other assertion changed.
+- The copy of the median walk in `sim/cataclysm_sim/config.py`, on `siege_damage_growth_per_day`, follows.
+  Two docstrings in `sim/tests/test_policies_see_sieges.py` that repeated the old sentences follow. The older
+  entries of this file that quote 14 / 24 / 37 are dated records and were left; the two checks that read this
+  file for the median walk and the slack are met by this paragraph.
+- Not re-measured: the dated history paragraphs of that prose, and "it moved the acceptance ratio from 1.01
+  to 1.03" over 600 campaigns, which describes a version of `siege_urgency` that no longer exists.
+- The fourth guard proof under "Run" was run again, on a fresh `git archive` copy of b5d49e81, over the same
+  six test files. It printed `PROVED: 1 failed, 107 passed in 2.08s | restored: 108 passed in 1.94s`, and the
+  one name in `result.named_failures` was
+  `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py::test_the_game_does_not_remove_a_resolved_dungeon_yet`.
+  The control no longer fails with it.
+- The whole fast suite had not been run on this correction when this paragraph was written.
+
 **Said first: every campaign figure on record before this date was measured with the dungeon staying.** That
 is every table in `sim/README.md` below its new first section, every campaign figure in the entries of this
 file below this one, and the figures in `docs/Cataclysm_GDD_v2.md`. Four analysis scripts hold the old rule in
