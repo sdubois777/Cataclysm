@@ -118,7 +118,17 @@ entries.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-12, on development 9463a971, in one window for the five layers of the set Shard of Anarchy stacked in this order: the drawback's mechanism, the two-piece's, the six-piece's, the ten-piece's, and the five rows. The suite and Python were run at the top of the five, which holds all of them. Until this window no line of the five layers had been compiled.
+
+- **Build:** "Build: Succeeded - 45 actions, 40 files compiled". All five layers compiled at the first attempt.
+- **The enchantments group on the asset as merged, before the rebuild:** "322 tests performed, 318 succeeded, 4 failed", registered 322, 318 and 4. The four are the tests that wear the set's real rows, with 32 failed assertions, registered 32: the drawback's 6, the two-piece's 6, the six-piece's 4 and the ten-piece's 16, each one that needs the rows in the built table.
+- **The editor rebuilt the effect table's asset once:** 594 rows. It is one commit of the rows layer, and the tree ids matched.
+- **The whole Unreal suite:** "3594 tests performed, 3594 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3594 tests in the tree at 2e474887; 3594 performed, gap 0". Registered: 3594 and 0.
+- **Python:** "6097 passed, 8 skipped"; JUnit tests 6105, failures 0, errors 0, skipped 8. Registered: 6105 and 0. Lint: "All checks passed!".
+- **What was not known before the run and held:** the engine started five free copies of one skill on one tick; a test player wore ten pieces over its starting gear and fought for 210 seconds with the two-piece row laying a buff every 30; and a refreshed wearer's War hits were all equal.
+- **Not shown by any run:** the three texts above the player's bars being drawn. The heads-up display does not draw in the test runs; the drawing needs a person to look.
+- **The four tests that wear the real rows** failed on the asset as merged on the 32 assertions above and passed in the whole suite once the asset held the rows.
+- **Guard proofs:** none is this layer's. The eight proofs of the window are in the four mechanism entries below: two for each.
 
 ---
 
