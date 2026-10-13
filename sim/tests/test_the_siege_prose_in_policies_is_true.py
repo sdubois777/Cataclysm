@@ -92,24 +92,21 @@ TIERS = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY,
 #: prints it above its own tables.
 #:
 #: FIVE DUNGEONS A SURGE IS THE BALANCE REPORT'S SETTING AND NOT
-#: `TuningConfig.surge_dungeon_count`, which is 4. At four the Sanctuary median
-#: is 37 rather than 34, measured over 1,000 campaigns at each, so quoting a
-#: walk without its surge size says nothing.
+#: `TuningConfig.surge_dungeon_count`, which is 4. This comment said that at
+#: four the Sanctuary median is 37 rather than 34, measured over 1,000
+#: campaigns at each. Measured on 2026-10-12 over 10,000 campaigns at each
+#: (seeds 0 to 9999), the four medians are 14 / 22 / 34 / 123 at four and at
+#: five; the samples are 720,044 and 754,158 dungeons. The surge size is still
+#: part of the settings a figure is quoted with.
 #:
-#: AN ORDINARY DUNGEON STAYS AFTER IT HITS ITS CITY HERE, WHICH IS NO LONGER
-#: THE DEFAULT. Since 2026-10-12 `TuningConfig` ships
-#: `dungeon_persists_after_resolve` False. The figures `policies.py` states
-#: were measured with it True and have not been re-measured, so this file
-#: re-measures them the way they were taken. **AT THE NEW DEFAULT TWO OF THEM
-#: ARE NOT TRUE**, measured on 2026-10-12: over three blocks of 320 campaigns
-#: the Sanctuary median walk is 34 to 35 days against the 37 stated, and over
-#: the first 320 campaigns 82.3% of Sieges sit on a Basic dungeon against the
-#: 79% stated, which is outside the three points this file allows. The
-#: Outpost, Bulwark and Pillar medians stay inside their tolerance. Fewer
-#: cities fall, so fewer Dungeon Cities are made. Nothing in `policies.py` was
-#: changed; its prose describes the model as it was.
+#: WHETHER AN ORDINARY DUNGEON STAYS AFTER IT HITS ITS CITY IS NOT SET HERE,
+#: SO THIS FILE MEASURES THE RULE `TuningConfig` SHIPS. Since 2026-10-12 that
+#: is `dungeon_persists_after_resolve` False: the dungeon leaves. For a few
+#: hours on that day this block set it True, because the prose in
+#: `policies.py` had been measured with the dungeon staying and two of its
+#: figures were not true with it leaving. The prose was re-measured the same
+#: day and the setting was taken back out.
 REPORT_SETTINGS = dict(
-    dungeon_persists_after_resolve=True,
     tier=1,
     surge_mode=SurgeMode.STATIC,
     surge_interval_days=120.0,
@@ -131,7 +128,15 @@ REPORT_SETTINGS = dict(
 #: 10,000-campaign answer of 14 / 24 / 37, and 122 to 127 for the Pillar
 #: against 123, which is inside `PILLAR_TOLERANCE_DAYS` and touches it once.
 #: (Before #1432, ten blocks of 120 put a Sanctuary two days out.)
-CAMPAIGNS = 250
+#:
+#: It was 250 until 2026-10-12. With an ordinary dungeon leaving after it hits
+#: its city, ten disjoint blocks of 250 made 17,996 to 19,664 dungeons each,
+#: all under the 20,000. Ten disjoint blocks of 320 (seeds 0 to 3199) made
+#: 23,152 to 25,213 each, with medians of 13 to 14 for the Outpost, 22 to 23
+#: for the Bulwark, 34 to 35 for the Sanctuary and 121 to 126 for the Pillar,
+#: against a 10,000-campaign answer of 14 / 22 / 34 / 123. None is outside
+#: its tolerance. This file reads seeds 0 to 319: 24,140 dungeons.
+CAMPAIGNS = 320
 
 #: How far a measured median may sit from the stated one. See the module
 #: docstring: the walk distribution is flat where the median falls.
@@ -368,7 +373,7 @@ class TestTheMedianWalkTheProseStates:
             "The docstring's claim that the median is a coin flip between two "
             "adjacent days rests on that being near half.")
         says(DOC_URGENCY,
-             "47.3% of Outpost dungeons walk in 13 days or fewer and 54.9% in "
+             "48.17% of Outpost dungeons walk in 13 days or fewer and 56.35% in "
              "14 or fewer",
              "Those are the shares from the 10,000-campaign measurement.")
 

@@ -83,11 +83,15 @@ def siege_daily_damage(sim, d, city) -> float:
     `TuningConfig.siege_damage_growth_per_day`.
 
     ANY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
-    `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-09-16 over
-    10,000 campaigns at the settings `siege_urgency` names below, the 65,636
-    Sieges that reached the map were 79% Basic, 11% Quest, 10% Fallen City and
-    1% Cataclysm, about 6.56 a campaign. That is why the callers below apply
-    this in all three scoring branches instead of only the ordinary one.
+    `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-10-12 over
+    10,000 campaigns (seeds 0 to 9999) at the settings `siege_urgency` names
+    below, with an ordinary dungeon leaving after it hits its city
+    (`dungeon_persists_after_resolve` False, the default since that day), the
+    55,361 Sieges that reached the map were 83% Basic, 11% Quest, 4% Fallen
+    City and 1% Cataclysm, about 5.54 a campaign. That is why the callers below
+    apply this in all three scoring branches instead of only the ordinary one.
+    UNTIL 2026-10-12 THIS SAID 65,636 Sieges at 79 / 11 / 10 / 1 and 6.56 a
+    campaign, measured on 2026-09-16 with the dungeon staying.
 
     THE RATE FELL FROM 10.6 A CAMPAIGN AND THE FOUR SHARES DID NOT MOVE AT ALL.
     Issue #1357 changed when the Cataclysm dungeon opens, so campaigns end
@@ -99,6 +103,23 @@ def siege_daily_damage(sim, d, city) -> float:
     city's fall stopped firing a surge inside `surge_interval_min`; the four
     shares moved by under a point (78 / 11 / 10 / 1 to 78.5 / 10.7 / 9.6 /
     1.1 before rounding), for the same reason.
+
+    THE RATE FELL A THIRD TIME, FROM 6.56 TO 5.54, ON 2026-10-12, AND THIS TIME
+    A SHARE MOVED WITH IT. An ordinary dungeon now leaves after it hits its
+    city, so fewer cities fall and fewer Fallen City dungeons are made. Over
+    the same 10,000 seeds, with the dungeon staying and with it leaving:
+    891,123 dungeons against 754,158; Fallen City dungeons made, 95,660 against
+    37,679; Sieges, 65,637 against 55,361; the four shares before rounding,
+    78.02 / 10.85 / 9.97 / 1.16 against 83.45 / 11.46 / 3.63 / 1.46. The share of
+    each KIND that rolls a Siege moved little for three of them (Basic 7.41%
+    to 7.42%, Quest 7.51% to 7.52%, Cataclysm 8.11% to 8.25%) and fell for the
+    Fallen City (6.84% to 5.33%); why that one fell was not measured. So the
+    sentence two paragraphs up, that the shares are a property of
+    `_roll_subtype` and not of the campaign, holds for the roll and not for
+    the mix: the mix follows how many dungeons of each kind are made. The run
+    with the dungeon staying is the control for the method; it gives 65,637
+    Sieges where the 2026-09-16 record has 65,636, on code that has changed
+    since.
 
     THE COUNTS THAT USED TO BE HERE -- 114 Basic, 28 Fallen City, 11 Quest and 3
     Cataclysm over twelve campaigns -- were taken before two changes of the same
@@ -143,12 +164,42 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     """How much more this dungeon is worth clearing because a Siege stands on
     it. Exactly 1.0 -- no change at all -- for everything that is not one.
 
-    AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY. That is not a risk, it is the
-    sub-type's definition: 25 days for an Outpost, 39 for a Bulwark, 55 for a
-    Sanctuary, 70 for the Pillar. So "will this city die?" is settled before
-    the policy is asked, and the only live question is **whether the player can
-    still get there in time**. This returns the policy's own `fatal` multiplier
-    when they can and 1.0 when they cannot.
+    AN UNATTENDED SIEGE EMPTIES ITS CITY IF IT STANDS LONG ENOUGH: 25 days for
+    an Outpost, 39 for a Bulwark, 55 for a Sanctuary, 70 for the Pillar. This
+    function treats "will this city die?" as settled before the policy is
+    asked, so the only question it asks is **whether the player can still get
+    there in time**. This returns the policy's own `fatal` multiplier when they
+    can and 1.0 when they cannot.
+
+    THIS PARAGRAPH SAID "AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY" UNTIL
+    2026-10-12, AND FOR A SIEGE ON AN ORDINARY DUNGEON THAT IS NO LONGER TRUE.
+    Since that day `TuningConfig.dungeon_persists_after_resolve` is False: an
+    ordinary dungeon hits its city once when its timer runs out and leaves the
+    map, and the Siege it carries leaves with it. Its timer is rolled from its
+    depth and can be shorter than the days above. Measured on 2026-10-12: one
+    ordinary dungeon carrying a Siege on a city at full defence, nothing else
+    on the city, nobody entering, no tree, 10,000 dungeons for each city size
+    (seeds 0 to 9999), each day driven through `_apply_siege_damage` and then
+    `_resolve` in the order `Simulation.step` uses.
+
+      * At the shipped defaults the city fell in 86.1% of cases on an
+        Outpost, 79.0% on a Bulwark and 86.7% on a Sanctuary: to the daily
+        damage in 81.9% / 70.5% / 78.7%, and to the one hit at the timer's
+        end in 4.2% / 8.6% / 8.0%. In the other 13.9% / 20.9% / 13.3%
+        the dungeon left first and the city stood, on a median of 12.4% /
+        8.7% / 7.8% of its defence. The timers rolled were 19 to 39, 28 to 57
+        and 42 to 85 days.
+      * At the report settings named below, where the timer is longer
+        (`resolve_floor_ratio` 2.0 against 1.6; timers of 22 to 45, 34 to 68
+        and 51 to 103 days), the city fell in 97.0% / 96.8% / 99.8% of cases.
+      * The control: at the shipped defaults with the dungeon staying, the
+        city fell in all 10,000 cases at each size.
+
+    A city already damaged falls sooner, and that was not measured. A Siege on
+    a Quest dungeon, a Fallen City dungeon or the Cataclysm is not removed by
+    that rule. THE CODE BELOW DOES NOT KNOW ANY OF THIS: it still weighs a
+    Siege the player can reach as certain to kill its city, whatever kind of
+    dungeon carries it. On 2026-10-12 this text changed and the code did not.
 
     THOSE FOUR WERE 14 / 23 / 34 / 47 until the owner cut the growth from ten
     points a day to 2.5 on issue #1349 on 2026-09-06. They are not targets: the
@@ -167,17 +218,22 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
     and static surges of five dungeons every 120 days, the median walk is 14
-    days to an Outpost, 24 to a Bulwark, 37 to a Sanctuary and 123 to the
+    days to an Outpost, 22 to a Bulwark, 34 to a Sanctuary and 123 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 11 / 15 / 18 days. Measured on 2026-09-16 over 10,000
-    campaigns and 890,790 dungeons, each recorded at the moment it was made;
+    sizes, the slack is 11 / 17 / 21 days. Measured on 2026-10-12 over 10,000
+    campaigns (seeds 0 to 9999) and 754,158 dungeons, each recorded at the
+    moment it was made, with an ordinary dungeon leaving after it hits its city
+    (`dungeon_persists_after_resolve` False, the default since that day).
+    UNTIL THEN THIS SAID 14 / 24 / 37 / 123 AND A SLACK OF 11 / 15 / 18,
+    measured on 2026-09-16 over 890,790 dungeons with the dungeon staying;
     issues #1364 and #1432.
 
     QUOTE THOSE TO THE DAY AND NO FINER, AND RE-MEASURE RATHER THAN CARRYING
     THEM FORWARD. The walk lengths are nearly uniform where the median sits --
-    47.3% of Outpost dungeons walk in 13 days or fewer and 54.9% in 14 or fewer
+    48.17% of Outpost dungeons walk in 13 days or fewer and 56.35% in 14 or
+    fewer, in the 2026-10-12 measurement above (47.3% and 54.9% on 2026-09-16)
     -- so the median is a coin flip between two adjacent days, and a block of
-    250 campaigns lands on either side of it at random. That is how this file
+    320 campaigns lands on either side of it at random. That is how this file
     came to state 12 / 20 / 33 while issue #1364 measured 14 / 22 / 33 on the
     same code: neither was reproducible, and neither was wrong by much.
     `tests/test_the_siege_prose_in_policies_is_true.py` re-measures all four and
@@ -225,10 +281,34 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     failed first, again, which is what it is for; the day loop's before-and-
     after figures are in the decisions log entry for #1432.
 
+    AND IT MOVED A FOURTH TIME, ON 2026-10-12, WHEN AN ORDINARY DUNGEON BEGAN
+    TO LEAVE AFTER IT HITS ITS CITY. Fewer cities fall. Re-measured that day
+    over 10,000 campaigns (seeds 0 to 9999) under each rule: the Bulwark
+    median fell from 24 to 22 and the Sanctuary median from 37 to 34; the
+    Outpost and the Pillar held at 14 and 123. The sample fell from 891,123
+    dungeons to 754,158: 685,247 to 687,981 on an Outpost, 155,635 to 47,007
+    on a Bulwark, 40,118 to 8,572 on a Sanctuary and 10,123 to 10,598 on the
+    Pillar. Which dungeons stopped being made on the two larger sizes, by
+    kind, was not measured. The Outpost share at 14 days or fewer rose from
+    54.67% to 56.35%, so the headroom under the guard's 58% is 1.65 points,
+    and over ten disjoint blocks of 320 campaigns one block (seeds 2240 to
+    2559) gave 58.16%. The guard reads seeds 0 to 319, which give 56.49%. THE
+    GUARD DID NOT FAIL FIRST THIS TIME: the change that moved the rule pinned
+    the guard to the old rule, and the prose was corrected afterwards in a
+    second change. The guard now runs 320 campaigns, because 250 made 18,654
+    dungeons at the new rule and its fixture asks for more than 20,000.
+
     THE SETTINGS ARE PART OF THE FIGURE. Five dungeons a surge is what the
     balance report uses and NOT `TuningConfig.surge_dungeon_count`, which is 4.
-    The two are different worlds, and at the larger city sizes the medians
-    differ by more than the day of wobble above. Issue #1286 names the block.
+    The two are different worlds. THE FOUR MEDIANS ARE THE SAME IN BOTH SINCE
+    2026-10-12, and the samples are not: measured that day over 10,000
+    campaigns each (seeds 0 to 9999) with the dungeon leaving, four a surge
+    gives 14 / 22 / 34 / 123 over 720,044 dungeons and five gives 14 / 22 / 34
+    / 123 over 754,158. With the dungeon staying the same seeds give 14 / 24 /
+    38 / 124 at four and 14 / 24 / 37 / 123 at five. This paragraph said until
+    then that at the larger city sizes the medians differ by more than the day
+    of wobble above; neither pair measured on 2026-10-12 does. Issue #1286
+    names the block.
 
     THAT MAKES THE ANSWER REACHABLE AND NOT AUTOMATIC. A Siege that has already
     stood for a while is still hopeless, and this returns 1.0 for it. So is
