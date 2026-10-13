@@ -715,6 +715,17 @@ void ACataclysmHUD::DrawPlayerVitals()
 		DrawTextCentred(KeptStacks, FLinearColor::White,
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
+
+	// AND THE DELAYED DAMAGE THE PLAYER STILL OWES, such as "Owed 132". Ruled 2026-10-12 by the coordinating
+	// session, for "25%-50% of damage taken is dealt over 4-8 seconds": the wearer must see what is still owed.
+	// Shown while the store holds anything. On a line of its own, as each text above is.
+	const FString Owed = UCataclysmCombatOverlay::OwedTextFor(Pawn);
+	if (!Owed.IsEmpty())
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawTextCentred(Owed, FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+	}
 }
 
 void ACataclysmHUD::DrawOverheadBars()

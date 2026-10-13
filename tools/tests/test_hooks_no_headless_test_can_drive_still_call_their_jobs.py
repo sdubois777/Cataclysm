@@ -67,6 +67,12 @@ HOOKS = {
             "UCataclysmHealthDebt::DrainWhileDebtExceedsHealth":
                 "a character bleeding out while it owes more health than it "
                 "has, issue #1120",
+            "UCataclysmDelayedDamage::DrainStep":
+                "the share of blows already taken that a worn row delayed "
+                "draining out of health, ruled 2026-10-12 for '25%-50% of "
+                "damage taken is dealt over 4-8 seconds'. Deleting it leaves "
+                "the share taken off every blow and never taken from health: "
+                "the row would be a plain reduction of damage taken",
             "UCataclysmFervour::GainPerSecondStep":
                 "the Fervour that arrives from the passage of time",
             "UCataclysmFervour::DecayStep":
