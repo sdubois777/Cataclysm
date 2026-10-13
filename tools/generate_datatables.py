@@ -8480,6 +8480,105 @@ def refuse_a_healing_skill_row_the_game_cannot_read(sheet: str,
     return problems
 
 
+#: The two stats by which a hit may make its wearer immune to that hit's damage
+#: type for a time, each with the least its two figures may state, not included,
+#: and the most, included. Ruled 2026-10-12 under the owner's delegation, for
+#: "Shard of Anarchy (6-Piece Bonus): When you take damage, you have a 10%
+#: chance to become immune to the damage type that hit you for 5 seconds".
+#:
+#: ONE SENTENCE IS TWO ROWS, BOTH `flat`: the chance in percent on
+#: `damage_type_immunity_on_hit_chance`, 10 to 10, and the seconds on
+#: `damage_type_immunity_on_hit_seconds`, 5 to 5. So the row states both
+#: figures, and the game works for any chance and any time inside the bounds.
+#: `UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat` and
+#: `DamageTypeImmunityOnHitSecondsStat` hold the same names, and
+#: `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+#: compares them.
+#:
+#: THE GAME ASKS FOR BOTH IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmAbilitySystemComponent::RollDamageTypeImmunityOnHit`, and opens
+#: nothing unless BOTH are above nought. So a row requiring a tag matches
+#: nowhere, and an enchantment stating one of the two without the other grants
+#: nothing; `refuse_a_damage_type_immunity_row_the_game_cannot_read` refuses
+#: both.
+#:
+#: THE BOUNDS. A chance above nought and up to 100: the game does not roll a
+#: chance of 100 or more, so a larger figure would say nothing more. Seconds
+#: above nought and up to `MAX_DAMAGE_IMMUNITY_SECONDS`, the bound of the
+#: no-damage window, a labelled judgement of 2026-10-12: a longer immunity to
+#: one type is a design decision, and this bound is where it is made.
+DAMAGE_TYPE_IMMUNITY_ON_HIT_CHANCE_STAT = "damage_type_immunity_on_hit_chance"
+DAMAGE_TYPE_IMMUNITY_ON_HIT_SECONDS_STAT = "damage_type_immunity_on_hit_seconds"
+DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS: dict[str, tuple[float, float]] = {
+    DAMAGE_TYPE_IMMUNITY_ON_HIT_CHANCE_STAT: (0.0, 100.0),
+    DAMAGE_TYPE_IMMUNITY_ON_HIT_SECONDS_STAT: (0.0, MAX_DAMAGE_IMMUNITY_SECONDS),
+}
+
+
+def refuse_a_damage_type_immunity_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of the two stats above is one its reader opens a window
+    for.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, for the reasons
+    `DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS` gives. Each refusal names what the
+    reader would do with the row.
+
+    A CONDITION OR A SCALE ON EITHER STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    neither stat is on the lists those two read.
+
+    AND THE TWO STATS COME TOGETHER. An enchantment with a row on one and none
+    on the other is refused once, by the name of the row it does have.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_a_healing_skill_row_the_game_cannot_read` leaves one: it states a
+    value per point and no pair of figures, and no ruled sentence is a passive
+    node's. A row built with a `Node` key is a passive effect row.
+    """
+    problems = []
+    stated: dict[str, dict[str, str]] = {}
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS or "Node" in row:
+            continue
+        above, most = DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS[stat]
+        who = f"{sheet}/{row['Name']}"
+        stated.setdefault(str(row.get("Enchantment") or row["Name"]),
+                          {}).setdefault(stat, who)
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, as a percentage chance or as "
+                f"seconds, so the row must be 'flat'; any other kind works on "
+                f"a base of nought and opens NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, where a hit its "
+                f"wearer took is rolled, so a row requiring a tag matches "
+                f"nowhere: this one would grant NOTHING and say nothing.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not above < value <= most:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row may "
+                    f"state a figure above {above:g} and up to {most:g}.")
+    for held in stated.values():
+        for stat in DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS:
+            if stat in held:
+                continue
+            other = next(iter(held.values()))
+            problems.append(
+                f"{other}: its enchantment states no row on {stat!r}. The "
+                f"game opens a window only when the chance and the seconds "
+                f"are both above nought, so this row alone would grant "
+                f"NOTHING and say nothing.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -8802,6 +8901,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW ON A HEALING SKILL STAT IS ONE ITS READER GIVES ITS SENTENCE'S
     # MEANING. Ruled 2026-10-09.
     problems.extend(refuse_a_healing_skill_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW ON EITHER STAT OF AN IMMUNITY TO THE DAMAGE TYPE THAT HIT IS ONE
+    # THE GAME OPENS A WINDOW FOR. Ruled 2026-10-12.
+    problems.extend(refuse_a_damage_type_immunity_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

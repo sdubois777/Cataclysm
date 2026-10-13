@@ -117,6 +117,11 @@ CONSTANTS = {
     "RandomResistanceAtNoughtStatus": "Random Resistance At Nought",
     # AND THE STATUS THAT LAYS A RANDOM BUFF OR DEBUFF ON THE WEARER, ruled 2026-10-12.
     "RandomBuffOrDebuffStatus": "Random Buff or Debuff",
+    # AND THE TWO STATS OF AN IMMUNITY TO THE DAMAGE TYPE THAT HIT, ruled
+    # 2026-10-12. Stats and not actions; the generator holds both names for
+    # the refusal it makes on their rows, so they are compared here as well.
+    "DamageTypeImmunityOnHitChanceStat": "damage_type_immunity_on_hit_chance",
+    "DamageTypeImmunityOnHitSecondsStat": "damage_type_immunity_on_hit_seconds",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -320,6 +325,20 @@ def test_the_generator_accepts_exactly_the_trigger_held_names_the_engine_has() -
 def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:
     """Issue #1833 group E part 2."""
     assert gen.DAMAGE_IMMUNITY_ACTION == engine_names()["DamageImmunityAction"]
+
+
+def test_the_generator_holds_exactly_the_damage_type_immunity_stats_the_engine_reads() -> None:
+    """Ruled 2026-10-12. The chance and the seconds of "become immune to the
+    damage type that hit you": the two names the generator refuses bad rows
+    on are the two `RollDamageTypeImmunityOnHit` asks for, and no other."""
+    engine = engine_names()
+    assert gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_CHANCE_STAT == engine[
+        "DamageTypeImmunityOnHitChanceStat"]
+    assert gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_SECONDS_STAT == engine[
+        "DamageTypeImmunityOnHitSecondsStat"]
+    assert set(gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS) == {
+        engine["DamageTypeImmunityOnHitChanceStat"],
+        engine["DamageTypeImmunityOnHitSecondsStat"]}
 
 
 def test_the_generator_accepts_exactly_the_ailment_rider_names_the_engine_has() -> None:
