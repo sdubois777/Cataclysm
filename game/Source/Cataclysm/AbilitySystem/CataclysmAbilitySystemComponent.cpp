@@ -3753,6 +3753,14 @@ bool UCataclysmAbilitySystemComponent::IsImmuneToDamageOf(
 	return After > 0.0f && Engaged >= After;
 }
 
+void UCataclysmAbilitySystemComponent::NoteBlowRefusedAsImmune()
+{
+	// THE WHOLE SUM AGAIN, which leaves out every applier this character is
+	// immune to now. It writes only a change, so a character carrying no such
+	// rider is not written at all.
+	RewriteMaximumHealthForAilments();
+}
+
 void UCataclysmAbilitySystemComponent::NoteSupportSkillUsed()
 {
 	if (const UWorld* World = GetWorld())
@@ -4143,6 +4151,14 @@ void UCataclysmAbilitySystemComponent::RewriteMaximumHealthForAilments(
 			? ChangedCount > 0
 			: HasMatchingGameplayTag(Held.Key);
 		if (!bCarried)
+		{
+			continue;
+		}
+		// AND AN APPLIER THIS CHARACTER IS IMMUNE TO TAKES NOTHING BY ITS RIDER. Ruled
+		// 2026-10-12: on an enemy immune to the wearer, the wearer's ailments and their
+		// riders take nothing, this one included. Judged when the maximum is written
+		// and not between writes; see `NoteBlowRefusedAsImmune` for when that is.
+		if (IsImmuneToDamageOf(Held.Value.Applier.Get()))
 		{
 			continue;
 		}

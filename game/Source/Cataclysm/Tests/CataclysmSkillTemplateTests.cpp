@@ -31587,6 +31587,252 @@ bool FCataclysmImmuneAfterFifteenStatusLineTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenFeedsNothingTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.ARefusedBlowFiresNoOnHitRowFeedsNoLeechShowsTheWordsAndIsStillACombatEvent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin, the struck creature 4 m along +X and a creature inside its own no-damage
+ * window 8 m along +X.
+ *
+ * Ruled 2026-10-12: an immune enemy feeds no leech and no on-hit row. The wearer holds a life leech of 10 and three
+ * hand-made rows, each a stack granted on one event, so a count of stacks is a count of that event: `hit_dealt`,
+ * `first_hit_dealt` and `critical_strike`. Every blow here is given a critical strike chance of 100 with the roll
+ * pinned to nought.
+ *
+ * THE CREATURE IN THE NO-DAMAGE WINDOW IS THE COMPARISON. Its blow is emptied too, by another immunity, and that one
+ * still raises `hit_dealt` and still prints a figure, as it did before this change.
+ */
+bool FCataclysmImmuneAfterFifteenFeedsNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+	using FOverlay = UCataclysmCombatOverlay;
+
+	const CataclysmTestWorld::FScopedCritRoll RollOfNought(0.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Struck = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* Windowed = CreatureNumber(World, 2);
+	UCataclysmAbilitySystemComponent* WindowedSystem = SystemOf(Windowed);
+	if (!TestNotNull(TEXT("set-up: the creature the wearer strikes"), Struck)
+		|| !TestNotNull(TEXT("set-up: the creature that will stand in a no-damage window"), WindowedSystem))
+	{
+		return false;
+	}
+	WearTheRow(Wearer.AbilitySystem, 15.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetLifeLeechAttribute(), 10.0f);
+	const FName Hits(TEXT("Test:hits"));
+	const FName FirstHits(TEXT("Test:first hits"));
+	const FName Crits(TEXT("Test:crits"));
+	Wearer.AbilitySystem->SetPoolActions({CountOn(TEXT("hit_dealt"), Hits),
+										  CountOn(TEXT("first_hit_dealt"), FirstHits),
+										  CountOn(TEXT("critical_strike"), Crits)});
+
+	const auto Strike = [&Wearer](ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 100.0f;
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Wearer.Character, Target, /*DamagePercent=*/100.0f, FGameplayTagContainer(),
+										 Delivery, &Resolved);
+		return Resolved;
+	};
+	const auto Promised = [&Wearer]() { return Wearer.AbilitySystem->GetLeechPayments().Num(); };
+
+	// THE CONTROLS, READ FIRST: inside the 15 seconds a hit raises its events and is promised leech.
+	const FCataclysmDamageResult First = Strike(Struck);
+	if (!TestTrue(TEXT("control: the first hit takes health"), First.DealtToHealth > 0.0f)
+		|| !TestEqual(TEXT("control: and raises hit_dealt once"), Wearer.AbilitySystem->OwnStacksHeld(Hits), 1)
+		|| !TestEqual(TEXT("control: and first_hit_dealt once"), Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1)
+		|| !TestEqual(TEXT("control: and the wearer is promised one leech payment for it"), Promised(), 1))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: the first hit's result is not marked as refused"), First.bRefusedByImmunityToAttacker);
+	TestNotEqual(TEXT("control: and its floating text is a figure and not the words"), FOverlay::TextFor(First),
+				 FString(TEXT("Immune to you")));
+	const int32 CritsAfterTheFirst = Wearer.AbilitySystem->OwnStacksHeld(Crits);
+	TestEqual(TEXT("control: the first hit was a critical strike and raised critical_strike once"),
+			  CritsAfterTheFirst, 1);
+	Wearer.AbilitySystem->SetLeechPayments(TArray<FCataclysmLeechPayment>());
+
+	// 16 SECONDS ON, WITH THE LAST 2.5 OF THEM SPENT DOING NOTHING. The wearer is still in combat, 2.5 seconds
+	// after its last event, and the creature is immune.
+	FightOn(World, Wearer.AbilitySystem, 13.5f);
+	World->TimeSeconds += 2.5f;
+	if (!TestTrue(TEXT("set-up: 16 seconds after the first hit the creature is immune to the wearer"),
+				  IsImmuneTo(Struck, Wearer))
+		|| !TestEqual(TEXT("set-up: no stack has lapsed: hit_dealt is still at one"),
+					  Wearer.AbilitySystem->OwnStacksHeld(Hits), 1))
+	{
+		return false;
+	}
+
+	// THE REFUSED BLOW.
+	const float Before = HealthOf(Struck);
+	const FCataclysmDamageResult Refused = Strike(Struck);
+	TestEqual(TEXT("the refused blow takes nothing"), Before - HealthOf(Struck), 0.0f, 0.0f);
+	TestTrue(TEXT("its result is marked as refused by an immunity to its attacker"),
+			 Refused.bRefusedByImmunityToAttacker);
+	TestEqual(TEXT("it raises no hit_dealt: still one"), Wearer.AbilitySystem->OwnStacksHeld(Hits), 1);
+	TestEqual(TEXT("it raises no first_hit_dealt: still one"), Wearer.AbilitySystem->OwnStacksHeld(FirstHits), 1);
+	TestEqual(TEXT("it raises no critical_strike: what the first hit left"),
+			  Wearer.AbilitySystem->OwnStacksHeld(Crits), CritsAfterTheFirst);
+	TestEqual(TEXT("and the wearer is promised no leech for it"), Promised(), 0);
+	TestEqual(TEXT("its floating text is the words the status line uses"), FOverlay::TextFor(Refused),
+			  FString(TEXT("Immune to you")));
+
+	// AND IT IS STILL A COMBAT EVENT. Another 2.5 seconds on, the wearer's only event in the last 5 seconds is the
+	// refused blow, and a combat lapses after 3.
+	World->TimeSeconds += 2.5f;
+	TestTrue(TEXT("2.5 seconds after the refused blow, and 5 after the event before it, the wearer is still in "
+				  "combat"), Wearer.AbilitySystem->SecondsInCombat() >= 0.0f);
+	TestTrue(TEXT("and the creature is still immune"), IsImmuneTo(Struck, Wearer));
+
+	// THE COMPARISON: A BLOW EMPTIED BY THE NO-DAMAGE WINDOW STILL RAISES hit_dealt AND STILL PRINTS A FIGURE.
+	WindowedSystem->GrantDamageImmunity(5.0f);
+	if (!TestTrue(TEXT("set-up: the second creature's no-damage window is open"), WindowedSystem->IsDamageImmune()))
+	{
+		return false;
+	}
+	const float BeforeWindowed = HealthOf(Windowed);
+	const FCataclysmDamageResult InTheWindow = Strike(Windowed);
+	TestEqual(TEXT("comparison: a blow inside the no-damage window takes nothing"),
+			  BeforeWindowed - HealthOf(Windowed), 0.0f, 0.0f);
+	TestFalse(TEXT("comparison: and is not marked as refused by an immunity to its attacker"),
+			  InTheWindow.bRefusedByImmunityToAttacker);
+	TestEqual(TEXT("comparison: it still raises hit_dealt, as before this change: two now"),
+			  Wearer.AbilitySystem->OwnStacksHeld(Hits), 2);
+	TestEqual(TEXT("comparison: and its floating text is the figure 0, as before this change"),
+			  FOverlay::TextFor(InTheWindow), FString(TEXT("0")));
+
+	// THE TEXT ALONE, ON RESULTS MADE BY HAND.
+	FCataclysmDamageResult ByHand;
+	TestEqual(TEXT("a result with nothing dealt prints 0"), FOverlay::TextFor(ByHand), FString(TEXT("0")));
+	ByHand.bRefusedByImmunityToAttacker = true;
+	TestEqual(TEXT("the same result marked as refused prints the words"), FOverlay::TextFor(ByHand),
+			  FString(TEXT("Immune to you")));
+	ByHand.bEvaded = true;
+	TestEqual(TEXT("and an evaded blow prints Evaded whatever else it is marked"), FOverlay::TextFor(ByHand),
+			  FString(TEXT("Evaded")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenRiderTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.TheWearersMaximumHealthRiderTakesNothingFromAnEnemyThatIsImmuneToIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin, one enemy 5 m along +Y and another 8 m along +Y. All three are the bare
+ * fighters of the tests of the rider itself, `Cataclysm.DefenderStats.`, and each enemy holds 1,000 health.
+ *
+ * Ruled 2026-10-12: "on an enemy that is immune to the wearer, the wearer's ailments and their riders take nothing
+ * either, the 'maximum health removed' rider included". The wearer holds the immunity row at 15 and a hand-made row
+ * of 2% of maximum health removed, hung on Necrosis. The first enemy is given the Necrosis inside its 15 seconds
+ * and the second after them.
+ */
+bool FCataclysmImmuneAfterFifteenRiderTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FGameplayTag Necrosis = NecrosisTag();
+	if (!TestTrue(TEXT("set-up: Keyword.DoT.Necrosis is a tag this build knows"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Early(World, FVector(0, 5 * M, 0));
+	FScopedFighter Late(World, FVector(0, 8 * M, 0));
+	GiveHealth(Early, CarrierHealth, CarrierHealth);
+	GiveHealth(Late, CarrierHealth, CarrierHealth);
+	CataclysmImmuneAfterFifteenTest::WearTheRow(Wearer.AbilitySystem, 15.0f);
+	WearTheMaxHealthRow(Wearer, 2.0f);
+
+	// THE WEARER'S FIRST HIT ON EACH, which starts each enemy's 15 seconds.
+	UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Actor, Early.Actor, /*Damage=*/1.0f);
+	UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Actor, Late.Actor, /*Damage=*/1.0f);
+
+	// THE CONTROL, READ FIRST: inside the 15 seconds the rider lowers the maximum and the health with it.
+	if (!TestTrue(TEXT("set-up: the wearer gives the first enemy a Necrosis"),
+				  Afflict(Wearer.Actor, Early.Actor, Necrosis))
+		|| !TestEqual(TEXT("control: inside the 15 seconds the rider leaves a maximum of 980"), MaxHealthOf(Early),
+					  980.0f, 0.001f)
+		|| !TestTrue(TEXT("control: and the health is brought down to it"), Early.Health() <= 980.0f))
+	{
+		return false;
+	}
+
+	CataclysmImmuneAfterFifteenTest::FightOn(World, Wearer.AbilitySystem, 16.0f);
+	if (!TestTrue(TEXT("set-up: 16 seconds on, both enemies are immune to the wearer"),
+				  Early.AbilitySystem->IsImmuneToDamageOf(Wearer.AbilitySystem)
+					  && Late.AbilitySystem->IsImmuneToDamageOf(Wearer.AbilitySystem)))
+	{
+		return false;
+	}
+
+	// LAID WHILE IMMUNE: the Necrosis is carried and its rider takes nothing.
+	const float LateBefore = Late.Health();
+	if (!TestTrue(TEXT("set-up: the wearer gives the second enemy a Necrosis"),
+				  Afflict(Wearer.Actor, Late.Actor, Necrosis))
+		|| !TestTrue(TEXT("set-up: and that enemy carries it"), UCataclysmSkillEffects::HasTag(Late.Actor, Necrosis)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a Necrosis laid on an immune enemy leaves its maximum at 1,000"), MaxHealthOf(Late),
+			  CarrierHealth, 0.001f);
+	TestEqual(TEXT("and its health where it was"), Late.Health(), LateBefore, 0.001f);
+	TestEqual(TEXT("and nothing is held off its maximum"),
+			  Late.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 0.0f, 0.001f);
+
+	// BEGUN WHILE THE RIDER WAS ACTING: the maximum returns at the first blow the enemy refuses, which for an
+	// ailment is its next tick. The health it took before the immunity stays taken.
+	TestEqual(TEXT("the first enemy's maximum is still 980 before it has refused a blow"), MaxHealthOf(Early),
+			  980.0f, 0.001f);
+	const float EarlyBefore = Early.Health();
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Actor, Early.Actor, /*Damage=*/5.0f, Tick);
+	TestEqual(TEXT("the refused tick takes nothing"), Early.Health(), EarlyBefore, 0.001f);
+	TestEqual(TEXT("and at that refusal the maximum returns to 1,000"), MaxHealthOf(Early), CarrierHealth, 0.001f);
+	TestEqual(TEXT("and nothing is held off it"),
+			  Early.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 0.0f, 0.001f);
+
+	// THE IMMUNITY ENDS. Nothing is written then; the rider acts again at its applier's next application.
+	World->TimeSeconds += 3.5f;
+	if (!TestFalse(TEXT("set-up: 3.5 seconds after the wearer's last blow the second enemy is not immune"),
+				   Late.AbilitySystem->IsImmuneToDamageOf(Wearer.AbilitySystem)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("when the immunity ends the second enemy's maximum is still 1,000: nothing is written then"),
+			  MaxHealthOf(Late), CarrierHealth, 0.001f);
+	TestTrue(TEXT("set-up: the wearer refreshes the second enemy's Necrosis"),
+			 Afflict(Wearer.Actor, Late.Actor, Necrosis));
+	TestEqual(TEXT("and at that application the rider acts again: a maximum of 980"), MaxHealthOf(Late), 980.0f,
+			  0.001f);
+	TestTrue(TEXT("and the health is brought down to it"), Late.Health() <= 980.0f);
+	TestEqual(TEXT("with 2% held off the maximum"),
+			  Late.AbilitySystem->AilmentMaxHealthRemovedPercentInForce(), 2.0f, 0.001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenStatCarriesTheSecondsTest,
 	"Cataclysm.ImmuneAfterFifteenSeconds.ACharacterWithoutTheRowMakesNothingImmuneAndTheStatCarriesTheSeconds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
