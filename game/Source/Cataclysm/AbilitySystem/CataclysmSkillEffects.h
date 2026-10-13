@@ -101,10 +101,10 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * multiplicative one), and the target's `damage_taken`. It still meets the temporary absorb, mana and the
 	 * energy shield, which are pools the target holds and not reductions of the blow.
 	 *
-	 * AN INCREASE TO DAMAGE TAKEN IS SKIPPED WITH THE REDUCTIONS, AND SO IS A RESISTANCE BELOW NOUGHT. The step
-	 * `damage_taken` is one figure that holds increases and reductions alike, with what rides on the target's
-	 * ailments added to it, and a resistance is one figure that may be negative. Both steps are skipped whole, so
-	 * against a target that takes more damage than normal this blow is SMALLER than the same blow without the flag.
+	 * THE FLAG NEVER LOWERS A BLOW. Ruled 2026-10-12. Resistance is skipped only when the figure the blow meets
+	 * is above nought, and `damage_taken` only when its net effect on the blow is a reduction. A target whose
+	 * resistance is below nought, or that takes more damage than normal, takes as much from this blow as from the
+	 * same blow without the flag.
 	 *
 	 * IT IS NOT AN IMMUNITY BYPASS. A creature that takes no damage, the no-damage window and the window against
 	 * one damage type are read by `UCataclysmVitalAttributeSet` after the calculation and empty this blow as they

@@ -27,17 +27,35 @@ attacker".
   resistance, damage reduction (the capped line and the multiplicative one) and `damage_taken`. The blow of a
   wearer still meets the struck character's temporary absorb and its energy shield, which take it point for
   point before health. So an attacker with an energy shield still loses shield to it and not health.
-- **Against a target that takes MORE damage than normal, the blow is SMALLER with the flag than without it.**
-  The step `damage_taken` is one figure. It holds reductions and increases alike, and what rides on the target's
-  ailments is added to it ("Bleeding enemies take 20%-40% increased damage from all sources"). The ruling skips
-  the step whole. A target at `damage_taken` 150 takes 150 of a plain payment of 100 and 100 of a wearer's.
-- **The same holds for a resistance below nought, and that is a judgement of the writing session.** Resistance
-  is one figure that may be negative, and for a player the difficulty tier's penalty is subtracted inside it.
-  The whole step is skipped, so a target at -50 takes 150 of a plain payment and 100 of a wearer's. The option
-  not taken: skip the step only when the figure is above nought. It was not taken because the ruling treats
-  `damage_taken` as one step skipped whole, and a blow that is exempt from a figure when it lowers the blow and
-  subject to it when it raises the blow is a second rule the sentence does not state. A creature has no tier
-  penalty, and retaliation's ordinary targets are creatures.
+- **The flag never lowers a payment. Ruled by the coordinating session on 2026-10-12, in a second ruling the
+  same day, which changed what was first built.** In its words: "the flag must never LOWER a payment. The
+  sentence says the damage 'cannot be reduced or mitigated'; skipping a negative resistance, or an increase
+  inside damage_taken, reduces it. So: resistance is skipped only when it is above nought (a negative
+  resistance, the difficulty tier's penalty inside it included, still raises the payment); and the damage_taken
+  step is skipped only when its net effect on this payment is a reduction." As first built, both steps were
+  skipped whole, so a target at `damage_taken` 150 or at a resistance of -50 took 150 of a plain payment of 100
+  and 100 of a wearer's. It now takes 150 of each. That first build is the commit before this entry's second
+  commit, and it was never compiled.
+- **Resistance is judged on the one figure the blow meets.** At the resistance step that figure is one number:
+  the target's own resistance less the difficulty tier's penalty, what a minion takes from its summoner, the
+  attacker's penetration, the floor and the target's cap are all inside it before the blow is multiplied. A
+  wearer's blow meets the smaller of that figure and nought. Penetration stops at nought and leaves a figure
+  already below nought where it is, so it never makes a resistance negative.
+- **`damage_taken` is judged on its own factor, which is in hand, so nothing is computed twice.** The step is
+  one multiplication by the target's `damage_taken` with what rides on its ailments added ("Bleeding enemies take
+  20%-40% increased damage from all sources"), floored at nought. A wearer's blow is multiplied by the larger of
+  that factor and one. The net is judged: a target with a reduction of 20 and an ailment's increase of 40 stands
+  at 120 and that raises the blow; one at 80 is not applied. The payment is not computed both ways.
+- **Damage reduction is still skipped whole, because neither of its lines can raise a blow.** Read in
+  `Resolve`: the capped line multiplies by one less a figure `EffectiveDamageReduction` holds between nought and
+  75, and the multiplicative line by one less a figure clamped between nought and 99. Each factor is at most
+  one. Evasion, block and armour are skipped as first built; none of them can raise a blow either.
+- **The order for a wearer's blow, and what follows from it.** The steps it meets, in order: a resistance below
+  nought; a `damage_taken` above 100; the Nth hit's share; the temporary absorb; the energy shield; health.
+  Each step before the pools multiplies by one or more. So before the pools the blow is never below the figure
+  sent. And on the same target it is never below what the plain payment deals: each factor the plain payment
+  meets is at most the factor the wearer's meets at the same step, and the pools take from the larger blow what
+  they take from the smaller, or more.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
   the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
   engine does was read from the code when it was written.
@@ -85,12 +103,13 @@ Each was ruled on 2026-10-12 by the coordinating session under the owner's deleg
 | | Ruling | Where it is |
 | :-- | :-- | :-- |
 | R1 | A flag stat on the retaliating character, read where retaliation is paid. The row states it flat, 1 to 1. | `UCataclysmRetaliation::CannotBeMitigatedStat`, `retaliation_cannot_be_mitigated`. `CannotBeMitigatedFor` asks it with no tags and a fallback of nought, and `Pay` calls that once for a payment. |
-| R2 | With the flag held the blow skips six: evasion, block, armour, resistance, damage reduction (both lines) and `damage_taken`. | `UCataclysmDamageCalculation::Resolve`, at each of the six, on `FCataclysmIncomingHit::bCannotBeMitigated`. See "What was built". |
+| R2 | With the flag held the blow skips six: evasion, block, armour, resistance, damage reduction (both lines) and `damage_taken`. Narrowed by R7 for the fourth and the sixth. | `UCataclysmDamageCalculation::Resolve`, at each of the six, on `FCataclysmIncomingHit::bCannotBeMitigated`. See "What was built". |
 | R3 | It still meets the temporary absorb, mana and the energy shield. | Steps 6b, 7 and 8 of `Resolve` do not read the flag. |
 | R4 | It does nothing to a creature that takes no damage, and nothing inside a no-damage window or a damage-type window of the target. | Nothing in `PostGameplayEffectExecute` after the call of `Resolve` reads the flag. See "Said first". |
 | R5 | It still cannot critically strike and cannot leech. | `Pay` sets `bCannotCriticallyStrike` and `bCannotLeech` as before; neither line is changed. The Masochist's Feeding Wound still leeches by its own route, as before. |
 | R6 | A reflected melee hit, paid back as retaliation, takes the flag too. | `PayReflected` is one call of `Pay`, and the flag is read inside `Pay`. |
-| R7 | An increase to damage taken that sits inside `damage_taken` is skipped with it. | The put-back in `Resolve` after the `damage_taken` line. See "Said first". |
+| R7 | CHANGED the same day. First: an increase to damage taken that sits inside `damage_taken` is skipped with it. Then: the flag must never lower a payment; resistance is skipped only when it is above nought, and `damage_taken` only when its net effect on the payment is a reduction. | `ResistanceMet` and the line after it in `Resolve`; `DamageTakenFactor` and the put-back after it. See "Said first". |
+| R9 | The Nth hit's share is kept, and the generator refuses a figure other than 1 on the flag. Both ruled as built, in the second ruling. | `Resolve`, the line after the put-back; `refuse_a_retaliation_flag_row_the_game_cannot_read`. |
 | R8 | A flag on the blow's delivery, honoured in the damage calculation, and not a direct write of health. | `FCataclysmHitDelivery::bCannotBeMitigated`, stamped by `ApplyTypedSpec` under `UCataclysmSkillEffects::CannotBeMitigatedDataName`. The blow is still written to the Damage attribute by `ApplyDirectDamage`. |
 
 ### EVERYTHING ELSE THAT RAISES OR LOWERS A BLOW, AND WHAT WAS DONE WITH EACH
@@ -106,9 +125,9 @@ one, the line says "judgement" and gives the option not taken.
 | The chance that a block removes all of a hit (`block_negation_chance`), and the share a block removes | `Resolve`, inside the block step | Skipped with the block step: both are inside it. |
 | The armour a minion takes from its summoner | `Resolve`, the armour step | Skipped with armour. Judgement: it is armour of the struck character's for that blow. The option not taken: apply the inherited share alone. |
 | The attacker's armour penetration, a piercing weapon's share, the share a critical strike ignores, the target's `armor_penetration_suppressed`, Rending Blows' share removed | `Resolve`, the armour step | Nothing to act on: each changes the armour figure, and the armour figure is not applied. The two penetration figures are still read off the retaliating character in the vital set. |
-| A resistance below nought, and the difficulty tier's resistance penalty | `Resolve`, the resistance step | Skipped with the step. Judgement; see "Said first" for the option not taken. |
-| The attacker's resistance penetration, the target's resistance cap, the resistance a minion takes from its summoner, a resistance a row holds at nought | `Resolve`, the resistance step | Nothing to act on: the step is not applied. |
-| What rides on the target's ailments as damage taken | `Resolve`, added inside the `damage_taken` line | Skipped with `damage_taken`, as ruled (R7). |
+| A resistance below nought, and the difficulty tier's resistance penalty | `Resolve`, the resistance step | Kept, as ruled (R7): a figure below nought raises a wearer's blow as it raises any other. First built the other way. |
+| The attacker's resistance penetration, the target's resistance cap, the resistance a minion takes from its summoner, a resistance a row holds at nought | `Resolve`, the resistance step | Each is inside the one figure the blow meets, and that figure is applied only when it is below nought. So none of them lowers a wearer's blow. |
+| What rides on the target's ailments as damage taken | `Resolve`, added inside the `damage_taken` line | Part of the one factor of that step. Applied when the factor as a whole is above one, and not applied otherwise, as ruled (R7). |
 | The share on top for the Nth hit of the target's worn "every Nth hit you take" row | `Resolve`, after `damage_taken` | Kept. Judgement: it is not one of the six, it is not inside `damage_taken`, and it raises a blow and never lowers one. The count of hits the target has taken advances as before. The option not taken: skip it as an increase to damage taken. |
 | `debuff_damage_suppressed` and `damage_over_time_taken` | `Resolve`, for a tick only | Kept. Retaliation is never a tick, and no blow carries both this flag and the tick flag. |
 | The energy shield's own rules: the magic sub-type's share, the target's `energy_shield_damage_taken`, the bleed rules | `Resolve`, step 8 | Kept, with the pool (R3). Retaliation carries no weapon sub-type, as before. |
@@ -141,11 +160,21 @@ one, the line says "judgement" and gives the option not taken.
 - **The read of the stamp.** In `PostGameplayEffectExecute`, after the read of the cannot-be-evaded stamp, the
   stamp is read into `FCataclysmIncomingHit::bCannotBeMitigated`. Nothing else in that function reads it.
 - **The six steps in `Resolve`.** Evasion: the step's condition gains `!Hit.bCannotBeMitigated`. Block: the
-  same. Armour: the same. Resistance: the figure is nought for a flagged blow. Damage reduction and
-  `damage_taken`: after the `damage_taken` line, a flagged blow is put back to the figure it held on arriving at
-  step 5, and the figure recorded as removed by damage reduction is cleared. The three multiplications of those
-  two steps are left as they were for every other blow; they multiply the damage and write nothing else. No roll
-  is made for a step that is skipped.
+  same. Armour: the same. Resistance: the figure the blow meets is held in a local, `ResistanceMet`, and a
+  flagged blow meets the smaller of it and nought. Damage reduction and `damage_taken`: the factor of
+  `damage_taken` is held in a local, `DamageTakenFactor`, and multiplied in as before; after it, a flagged blow
+  is put back to the figure it held on arriving at step 5, multiplied by the larger of that factor and one, and
+  the figure recorded as removed by damage reduction is cleared. The three multiplications of those two steps
+  give every other blow what they gave before. No roll is made for a step that is skipped.
+- **What the second ruling changed in `Resolve`, line by line.** The line
+  `const float Resist = Hit.bCannotBeMitigated ? 0.0f : EffectiveResistanceUnderCap(` became
+  `const float ResistanceMet = EffectiveResistanceUnderCap(`, with a new line after the call,
+  `const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;`. The line
+  `Damage *= FMath::Max(0.0f,` that opens the `damage_taken` step became
+  `const float DamageTakenFactor = FMath::Max(0.0f,`, with a new line after the expression,
+  `Damage *= DamageTakenFactor;`. And `Damage = BeforeReduction;` became
+  `Damage = BeforeReduction * FMath::Max(1.0f, DamageTakenFactor);`. The conditions on evasion, block and armour
+  are as first built.
 - **The generator.** `RETALIATION_CANNOT_BE_MITIGATED_STAT` holds the name.
   `refuse_a_retaliation_flag_row_the_game_cannot_read` refuses an enchantment's row on the stat that is not
   `flat`, that requires a tag, or whose figure in either column is not 1. `validate_enchantment_effects` runs
@@ -188,14 +217,19 @@ block roll are pinned in every test that sends a real blow. Nothing waits on a t
   both payments take 100. Then, one at a time: an evasion of 200 (the plain payment is evaded and takes nothing;
   the holder's is not evaded and takes 100); a block chance of 50 with the roll pinned to block (the plain
   payment is blocked and takes half; the holder's is not blocked and takes 100); 5,000 armour; a resistance of
-  50; a damage reduction of 50; a multiplicative damage reduction of 50; `damage_taken` at 50; and
-  `damage_taken` at 150, where the plain payment takes 150 and the holder's takes 100. Last, the attacker
+  50; a resistance of -50, where the plain payment takes 150 and the holder's takes the same 150; a damage
+  reduction of 50; a multiplicative damage reduction of 50; `damage_taken` at 50; and `damage_taken` at 150,
+  where the plain payment takes 150 and the holder's takes the same 150. For each of those seven, the holder's
+  payment is also read to be no less than the plain one. Last, the attacker
   strikes each retaliator with a real hit of 500 while holding 5,000 armour: the hit on the plain one sends back
   less than 100, and the hit on the holder sends back 100.
 - `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest`: `Resolve` called directly with its three rolls
   passed in. Evasion of 50 on a roll of 0; block of 50 on a roll of 0, with the figure recorded as blocked;
-  armour, with the figure recorded as removed by armour; a resistance of 50 and of -50; both lines of damage
-  reduction, with the figure recorded as removed; `damage_taken` at 50 and at 150. Then what is kept: the Nth
+  armour, with the figure recorded as removed by armour; a resistance of 50, which the flagged blow skips, and
+  of -50, which raises it to 150 as it raises the plain blow; both lines of damage reduction, with the figure
+  recorded as removed; `damage_taken` at 50, skipped, and at 150, which raises the flagged blow to 150 as it
+  raises the plain one; `damage_taken` at 150 under a damage reduction of 50, where the plain blow is 75 and
+  the flagged blow 150; and those two with a resistance of -50, 112.5 and 225. Then what is kept: the Nth
   hit's share of 50 raises both blows to 150; a blow with a critical strike chance critically strikes with the
   flag as without; and with 5,000 armour, a temporary absorb of 40 and an energy shield of 30, the flagged blow
   of 100 puts 40 to the absorb, 30 to the shield and 30 to health.
@@ -245,45 +279,73 @@ creature with an energy shield.
 
 ### GUARD PROOFS PROPOSED
 
-Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
-The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
-`Cataclysm.RetaliationUnmitigated.`, with its trailing dot, which is 6 tests.
+Not run. Each anchor was counted once in its file by the writing session, at the second commit. Each is a break
+in one `.cpp` file. The failed assertions are counted by reading the tests and were not measured. The prefix of
+all three is `Cataclysm.RetaliationUnmitigated.`, with its trailing dot, which is 6 tests.
+
+**All three were derived again after the second ruling.** U-I keeps its texts and loses one failed assertion.
+U-II has a new old text, because the line changed, and the same meaning. U-III has a new old text and a new new
+text, and the same meaning: resistance is not skipped at all.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
 |---|---|---|---|---|---|
 | U-I, the flag is read where retaliation is paid | `game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp` | `Delivery.bCannotBeMitigated = CannotBeMitigatedFor(Defender);` | `Delivery.bCannotBeMitigated = false;` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` | `AHoldersPaymentStillMeetsTheTemporaryAbsorbAndTheEnergyShieldAndManaTakesOnlyATick` and `AReflectedMeleeHitFromAHolderIsPaidBackWholePastTheAttackersArmour` |
-| U-II, damage reduction and `damage_taken` are skipped | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `Damage = BeforeReduction;` | `Damage = Damage + 0.0f;` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` |
-| U-III, resistance is skipped, above nought and below | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `const float Resist = Hit.bCannotBeMitigated ? 0.0f : EffectiveResistanceUnderCap(` | `const float Resist = EffectiveResistanceUnderCap(` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` |
+| U-II, damage reduction is skipped, and `damage_taken` where it lowers | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `Damage = BeforeReduction * FMath::Max(1.0f, DamageTakenFactor);` | `Damage = Damage + 0.0f;` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` |
+| U-III, a resistance above nought is skipped | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;` | `const float Resist = ResistanceMet;` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` |
 
 Failed assertions in each test, by reading:
 
-- **U-I, 15 in 3 tests.** The six-defences test 11: "the holder's payment is not evaded"; "and takes what the
-  undefended attacker took", after the evasion; "the holder's payment is not blocked"; "and takes what the
-  undefended attacker took", after the block; "the holder's payment takes what the undefended attacker took",
-  six times, once for each line of the table of defences; and "and its hit on the holder sends back the whole
-  100". The pools test 3: "the holder's payment empties the temporary absorb of its 40"; "and the 60 left
-  reaches health"; and "the shield takes the whole 100 of the holder's payment". The reflected test 1: "and the
-  attacker takes the whole 500, past its armour". The calculation test passes, because it calls `Resolve` and
-  not `Pay`. The immunities test passes: its creatures hold no defence, and its War blow sets the flag on the
-  delivery by hand. The last test passes.
-- **U-II, 7 in 2 tests.** The calculation test 3: "the flagged blow is whole", under the two lines of damage
-  reduction; "and leaves the flagged blow whole", under `damage_taken` at 50; and "and the flagged blow is
-  still 100: an increase is skipped with the step". The line that clears the figure recorded as removed is left
-  in, so "and nothing is recorded as removed by damage reduction" still passes. The six-defences test 4: "the
-  holder's payment takes what the undefended attacker took" for the damage reduction of 50, the multiplicative
-  damage reduction of 50, `damage_taken` at 50 and `damage_taken` at 150.
-- **U-III, 3 in 2 tests.** The calculation test 2: "and leaves the flagged blow whole", under the resistance of
-  50; and "and the flagged blow is still 100: a negative resistance is skipped with the step". The six-defences
-  test 1: "the holder's payment takes what the undefended attacker took" for the resistance of 50.
+- **U-I, 14 in 3 tests. It was 15.** The six-defences test 10: "the holder's payment is not evaded"; "and takes
+  what the undefended attacker took", after the evasion; "the holder's payment is not blocked"; "and takes what
+  the undefended attacker took", after the block; "the holder's payment takes what the undefended attacker
+  took", five times, for the armour, the resistance of 50, the two lines of damage reduction and `damage_taken`
+  at 50; and "and its hit on the holder sends back the whole 100". The lines for the resistance of -50 and for
+  `damage_taken` at 150 pass under the break, because there the holder's payment is the plain one's with the
+  flag or without; the line for `damage_taken` at 150 is the one that failed before and no longer does. The
+  pools test 3: "the holder's payment empties the temporary absorb of its 40"; "and the 60 left reaches
+  health"; and "the shield takes the whole 100 of the holder's payment". The reflected test 1: "and the attacker
+  takes the whole 500, past its armour". The calculation test passes, because it calls `Resolve` and not `Pay`.
+  The immunities test passes: its creatures hold no defence, and its War blow sets the flag on the delivery by
+  hand. The last test passes.
+- **U-II, 7 in 2 tests. The count is the same and the assertions are not.** With the break a flagged blow meets
+  both lines of damage reduction and the whole of `damage_taken`. The calculation test 4: "the flagged blow is
+  whole", under the two lines of damage reduction; "and leaves the flagged blow whole", under `damage_taken` at
+  50; "the flagged blow skips the reduction and keeps the increase: 150", which is 75; and "and the flagged blow
+  meets both increases and no reduction: 225", which is 112.5. The line that clears the figure recorded as
+  removed is left in, so "and nothing is recorded as removed by damage reduction" still passes. `damage_taken`
+  at 150 alone passes, because the break leaves the increase applied. The six-defences test 3: "the holder's
+  payment takes what the undefended attacker took" for the damage reduction of 50, the multiplicative damage
+  reduction of 50 and `damage_taken` at 50.
+- **U-III, 2 in 2 tests. It was 3.** With the break a flagged blow meets resistance whatever its sign. The
+  calculation test 1: "and leaves the flagged blow whole", under the resistance of 50. The six-defences test 1:
+  "the holder's payment takes what the undefended attacker took" for the resistance of 50. Every assertion at a
+  resistance of -50 passes under the break, because the figure is applied there with the break or without.
 
-Three messages are each used for more than one assertion: "and leaves the flagged blow whole" twice in the
-calculation test, under the resistance of 50 and under `damage_taken` at 50; "and takes what the undefended
-attacker took" twice in the six-defences test, after the evasion and after the block; and the holder's line of
-the table of defences six times in that test, each time with the defence's name in front of it.
+**The second ruling's two rules have tests and are not among the three proofs.** A proof is limited to three a
+layer. If the coordinating session prefers either of these to U-II or U-III, each anchor was counted once:
+
+- **For "a net increase in `damage_taken` is kept":** in `CataclysmDamageCalculation.cpp`, old text
+  `FMath::Max(1.0f, DamageTakenFactor)`, new text `1.0f`. Expected by reading, 6 in 2 tests. The calculation test
+  3: "and raises the flagged blow by half too: a net increase is not skipped"; "the flagged blow skips the
+  reduction and keeps the increase: 150"; "and the flagged blow meets both increases and no reduction: 225". The
+  six-defences test 3, all for `damage_taken` at 150: "the holder's payment takes the same as the plain one, so
+  the flag does not lower it"; "and that is 1.50 of the undefended one"; "the holder's payment is never less
+  than the plain one".
+- **For "a resistance below nought is kept":** in the same file, old text `FMath::Min(ResistanceMet, 0.0f)`, new
+  text `0.0f`. Expected by reading, 5 in 2 tests. The calculation test 2: "and raises the flagged blow by half
+  too: a negative resistance is not skipped"; and "and the flagged blow meets both increases and no reduction:
+  225". The six-defences test 3, all for the resistance of -50: the same three messages as above.
+
+Messages used for more than one assertion: "and leaves the flagged blow whole" twice in the calculation test,
+under the resistance of 50 and under `damage_taken` at 50; "and takes what the undefended attacker took" twice
+in the six-defences test, after the evasion and after the block; and in that test's table of defences, each
+with the defence's name in front of it, the holder's line five times, the two lines for a figure that raises a
+blow twice each, and "the holder's payment is never less than the plain one" seven times.
 
 **Tests and no proof:** the evasion step, the block step and the armour step, each of which is one condition in
 `Resolve`; the stamp written by `ApplyTypedSpec` and its read in the vital set, which U-I's failures would
-repeat; that the pools, the immunities, the critical strike and the leech are as they were.
+repeat; that the pools, the immunities, the critical strike and the leech are as they were; and the two rules
+of the second ruling, unless one of the two breaks above is run in place of a proposed one.
 
 No test of another group is expected to fail under any of the three, with one exception to check in the
 window: `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` is outside the prefix, and under U-I

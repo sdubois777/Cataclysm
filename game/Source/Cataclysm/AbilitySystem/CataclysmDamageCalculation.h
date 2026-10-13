@@ -103,10 +103,10 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 *
 	 * WHAT `Resolve` SKIPS FOR IT, the six: step 1, evasion, so the blow is never reported evaded; step 2, block,
 	 * so it is never reported blocked and `DamageBlocked` is nought; step 3, armour, the defender's own and what a
-	 * minion takes from its summoner, so `RemovedByArmour` is nought; step 4, resistance, the defender's own, what
-	 * a minion takes from its summoner and the difficulty tier's penalty inside it; step 5, damage reduction, the
-	 * capped line and the multiplicative one, so `RemovedByDamageReduction` is nought; and step 6, `damage_taken`,
-	 * with what rides on the defender's ailments.
+	 * minion takes from its summoner, so `RemovedByArmour` is nought; step 4, resistance, WHEN THE FIGURE THE BLOW
+	 * MEETS IS ABOVE NOUGHT; step 5, damage reduction, the capped line and the multiplicative one, so
+	 * `RemovedByDamageReduction` is nought; and step 6, `damage_taken` with what rides on the defender's ailments,
+	 * WHEN ITS NET EFFECT ON THE BLOW IS A REDUCTION.
 	 *
 	 * WHAT `Resolve` STILL DOES TO IT. The critical strike roll and the non-critical share, which belong to
 	 * whoever is swinging and which retaliation is forbidden by another flag. `BonusDamagePercent`, the share on
@@ -119,8 +119,15 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 * THE ATTACKER'S TWO PENETRATIONS ARE READ AND THEN HAVE NOTHING TO CUT INTO, because the armour and the
 	 * resistance they would lower are not applied.
 	 *
-	 * A REDUCTION AND AN INCREASE ARE SKIPPED ALIKE. A defender whose `damage_taken` is above 100, or whose
-	 * resistance is below nought, takes LESS from this blow than from the same blow without the flag.
+	 * THE FLAG NEVER LOWERS A BLOW. Ruled 2026-10-12. A resistance below nought, the difficulty tier's penalty
+	 * inside it included, raises this blow as it raises any other, and so does a `damage_taken` above 100. Each
+	 * step this blow skips can only lower a blow, and each step that can raise one is applied when it raises. So
+	 * on the same defender this blow is never smaller than the same blow without the flag, and before the pools
+	 * it is never smaller than the figure it arrived with.
+	 *
+	 * THE ORDER FOR THIS BLOW: the critical strike, if the blow may make one; a resistance below nought; a
+	 * `damage_taken` above 100; the Nth hit's share; the temporary absorb; mana, for a tick; the energy shield;
+	 * health. Every step before the pools is a multiplication, so their order among themselves changes nothing.
 	 */
 	bool bCannotBeMitigated = false;
 

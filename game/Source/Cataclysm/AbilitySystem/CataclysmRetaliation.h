@@ -199,7 +199,8 @@ public:
 	 * UNLESS THE DEFENDER'S ROWS SAY THE STRUCK CHARACTER CANNOT MITIGATE IT. Ruled 2026-10-12. For a defender
 	 * that `CannotBeMitigatedFor` answers yes for, the blow still goes through `ApplyDirectDamage` and carries
 	 * `FCataclysmHitDelivery::bCannotBeMitigated`, and the calculation skips evasion, block, armour, resistance,
-	 * damage reduction and `damage_taken` for it. It is not a return to `ReduceHealthDirectly`: the blow still
+	 * damage reduction and `damage_taken` for it, the fourth and the last only where they would lower the blow:
+	 * the flag never lowers a payment. It is not a return to `ReduceHealthDirectly`: the blow still
 	 * meets the temporary absorb and the energy shield, still does nothing to what takes no damage, and still
 	 * raises what a blow raises. A reflected hit, `PayReflected` below, is paid through here and takes the flag too.
 	 *

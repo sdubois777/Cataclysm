@@ -880,7 +880,9 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechCountsWhatLandedTest,
  * WHAT THESE SIX TESTS HOLD. A retaliating character whose rows hold the flag
  * `retaliation_cannot_be_mitigated` sends a blow that skips six steps of the
  * struck character's: evasion, block, armour, resistance, damage reduction and
- * `damage_taken`. It still meets the temporary absorb and the energy shield,
+ * `damage_taken`. THE FLAG NEVER LOWERS A PAYMENT: a resistance below nought
+ * and a net increase in `damage_taken` raise a holder's blow as they raise any
+ * other. It still meets the temporary absorb and the energy shield,
  * does nothing to a creature that takes no damage or inside a window that
  * refuses damage, and still cannot critically strike or leech.
  *
@@ -1095,27 +1097,35 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedSixTest,
 	// not nothing", because what armour removes is the armour curve's answer and
 	// is not copied here.
 	//
-	// THE LAST LINE IS THE ONE THE RULING SAID TO SAY FIRST: an attacker that
-	// takes MORE damage than normal takes 150 from the plain retaliator and 100
-	// from the holder. The flag makes that payment smaller.
+	// THE FLAG NEVER LOWERS A PAYMENT, ruled 2026-10-12, AND TWO LINES READ THAT
+	// THROUGH A REAL PAYMENT. An attacker at a resistance of -50, and one whose
+	// damage taken stands at 150, each take 150 from the plain retaliator and
+	// the same 150 from the holder. `HolderShare` is what the holder's payment is
+	// of the undefended one: 1 where the defence would lower a blow and is
+	// skipped, and the plain payment's own share where the figure raises a blow
+	// and is applied.
 	struct FDefence
 	{
 		const TCHAR* Name;
 		FGameplayAttribute Attribute;
 		float Held;
 		float PlainShare;
+		float HolderShare;
 	};
 	const FDefence Defences[] = {
-		{TEXT("5,000 armour"), UCataclysmCombatAttributeSet::GetArmorAttribute(), 5000.0f, -1.0f},
+		{TEXT("5,000 armour"), UCataclysmCombatAttributeSet::GetArmorAttribute(), 5000.0f, -1.0f, 1.0f},
 		{TEXT("a resistance of 50 to everything, which an untyped blow meets"),
-		 UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f, 0.5f},
-		{TEXT("a damage reduction of 50"), UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 50.0f, 0.5f},
+		 UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f, 0.5f, 1.0f},
+		{TEXT("a resistance of -50 to everything, which raises a blow"),
+		 UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), -50.0f, 1.5f, 1.5f},
+		{TEXT("a damage reduction of 50"),
+		 UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 50.0f, 0.5f, 1.0f},
 		{TEXT("a multiplicative damage reduction of 50"),
-		 UCataclysmCombatAttributeSet::GetDamageReductionMoreAttribute(), 50.0f, 0.5f},
+		 UCataclysmCombatAttributeSet::GetDamageReductionMoreAttribute(), 50.0f, 0.5f, 1.0f},
 		{TEXT("damage taken at 50, a reduction"),
-		 UCataclysmCombatAttributeSet::GetDamageTakenAttribute(), 50.0f, 0.5f},
-		{TEXT("damage taken at 150, an increase"),
-		 UCataclysmCombatAttributeSet::GetDamageTakenAttribute(), 150.0f, 1.5f},
+		 UCataclysmCombatAttributeSet::GetDamageTakenAttribute(), 50.0f, 0.5f, 1.0f},
+		{TEXT("damage taken at 150, a net increase"),
+		 UCataclysmCombatAttributeSet::GetDamageTakenAttribute(), 150.0f, 1.5f, 1.5f},
 	};
 	for (const FDefence& Defence : Defences)
 	{
@@ -1137,9 +1147,24 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedSixTest,
 						  Defence.Name, Defence.PlainShare),
 				PlainTook, HolderOpen * Defence.PlainShare, 0.01f);
 		}
-		TestEqual(*FString::Printf(TEXT("%s: the holder's payment takes what the undefended attacker took"),
-					  Defence.Name),
-			HolderTook, HolderOpen, 0.01f);
+		if (Defence.HolderShare > 1.0f)
+		{
+			TestEqual(*FString::Printf(TEXT("%s: the holder's payment takes the same as the plain one, so the "
+											"flag does not lower it"), Defence.Name),
+				HolderTook, PlainTook, 0.01f);
+			TestEqual(*FString::Printf(TEXT("%s: and that is %.2f of the undefended one"),
+						  Defence.Name, Defence.HolderShare),
+				HolderTook, HolderOpen * Defence.HolderShare, 0.01f);
+		}
+		else
+		{
+			TestEqual(*FString::Printf(TEXT("%s: the holder's payment takes what the undefended attacker took"),
+						  Defence.Name),
+				HolderTook, HolderOpen, 0.01f);
+		}
+		TestTrue(*FString::Printf(TEXT("%s: the holder's payment is never less than the plain one: %.2f and %.2f"),
+					 Defence.Name, HolderTook, PlainTook),
+			HolderTook >= PlainTook - 0.01f);
 	}
 
 	// AND A PAYMENT PROVOKED BY A REAL HIT, so the flag is shown to arrive where
@@ -1260,9 +1285,10 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedCalculationTest,
 	}
 	Hold(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
 
-	// 4. RESISTANCE, ABOVE NOUGHT AND BELOW IT. Below nought is the judgement the
-	// ruling did not settle: the whole step is skipped, so a defender whose
-	// resistance is negative takes less from the flagged blow than from the plain.
+	// 4. RESISTANCE, ABOVE NOUGHT AND BELOW IT. Ruled 2026-10-12: the flag never
+	// lowers a blow, so the step is skipped only when the figure is above nought.
+	// A defender whose resistance is negative takes the same raised blow from the
+	// flagged one as from the plain.
 	const FGameplayAttribute AllResistance = UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute();
 	Hold(AllResistance, 50.0f);
 	TestEqual(TEXT("control: a resistance of 50 halves the plain blow"),
@@ -1272,8 +1298,8 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedCalculationTest,
 	Hold(AllResistance, -50.0f);
 	TestEqual(TEXT("control: a resistance of -50 raises the plain blow by half"),
 		Resolved(PlainHit, Never, Never, Never).DealtToHealth, 150.0f, 0.001f);
-	TestEqual(TEXT("and the flagged blow is still 100: a negative resistance is skipped with the step"),
-		Resolved(FlaggedHit, Never, Never, Never).DealtToHealth, 100.0f, 0.001f);
+	TestEqual(TEXT("and raises the flagged blow by half too: a negative resistance is not skipped"),
+		Resolved(FlaggedHit, Never, Never, Never).DealtToHealth, 150.0f, 0.001f);
 	Hold(AllResistance, 0.0f);
 
 	// 5. DAMAGE REDUCTION, THE CAPPED LINE AND THE MULTIPLICATIVE ONE TOGETHER.
@@ -1303,8 +1329,26 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationUnmitigatedCalculationTest,
 	Hold(DamageTaken, 150.0f);
 	TestEqual(TEXT("control: damage taken at 150 raises the plain blow by half"),
 		Resolved(PlainHit, Never, Never, Never).DealtToHealth, 150.0f, 0.001f);
-	TestEqual(TEXT("and the flagged blow is still 100: an increase is skipped with the step"),
-		Resolved(FlaggedHit, Never, Never, Never).DealtToHealth, 100.0f, 0.001f);
+	TestEqual(TEXT("and raises the flagged blow by half too: a net increase is not skipped"),
+		Resolved(FlaggedHit, Never, Never, Never).DealtToHealth, 150.0f, 0.001f);
+
+	// AND DAMAGE REDUCTION IS STILL SKIPPED WHOLE BESIDE AN INCREASE THAT IS KEPT.
+	// Damage taken at 150 with a damage reduction of 50: the plain blow is halved
+	// and then raised by half, 75; the flagged blow skips the reduction and keeps
+	// the increase, 150. With a resistance of -50 as well, the flagged blow meets
+	// both increases, 225, and the plain one 112.5.
+	Hold(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 50.0f);
+	TestEqual(TEXT("control: damage taken at 150 under a damage reduction of 50 leaves 75 of the plain blow"),
+		Resolved(PlainHit, Never, Never, Never).DealtToHealth, 75.0f, 0.001f);
+	TestEqual(TEXT("the flagged blow skips the reduction and keeps the increase: 150"),
+		Resolved(FlaggedHit, Never, Never, Never).DealtToHealth, 150.0f, 0.001f);
+	Hold(AllResistance, -50.0f);
+	TestEqual(TEXT("control: with a resistance of -50 as well the plain blow is 112.5"),
+		Resolved(PlainHit, Never, Never, Never).DealtToHealth, 112.5f, 0.001f);
+	TestEqual(TEXT("and the flagged blow meets both increases and no reduction: 225"),
+		Resolved(FlaggedHit, Never, Never, Never).DealtToHealth, 225.0f, 0.001f);
+	Hold(AllResistance, 0.0f);
+	Hold(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
 	Hold(DamageTaken, 100.0f);
 
 	// WHAT IS NOT ONE OF THE SIX IS KEPT. The Nth hit's share on top, which the
