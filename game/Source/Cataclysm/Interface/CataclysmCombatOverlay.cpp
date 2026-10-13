@@ -579,6 +579,24 @@ FString UCataclysmCombatOverlay::DamageTypeImmunityTextFor(const AActor* Actor)
 	return FString::Join(Parts, TEXT("  "));
 }
 
+FString UCataclysmCombatOverlay::KeptStacksTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	for (const UCataclysmAbilitySystemComponent::FHeldKeptStacks& Each : AbilitySystem->KeptStacksForDisplay())
+	{
+		Parts.Add(FString::Printf(TEXT("%s %d/%d"), Each.Name.IsEmpty() ? TEXT("Stacks") : *Each.Name,
+								  Each.Held, Each.Cap));
+	}
+	return FString::Join(Parts, TEXT("  "));
+}
+
 FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
 {
 	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
@@ -843,7 +861,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  HeldBuffTextFor(Actor),
 		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every
 		  // creature today, for the same reason.
-		  DamageTypeImmunityTextFor(Actor)})
+		  DamageTypeImmunityTextFor(Actor),
+		  KeptStacksTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

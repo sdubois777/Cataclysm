@@ -4309,7 +4309,11 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * gain the same way and buy something else. `bKeptStacksRepeatSkill` is the one thing bought so far.
 	 *
 	 * `Event` IS THE KIND OF USE THAT SPENDS THEM and not the clock: the clock is `EverySeconds`, read by
-	 * `UCataclysmAbilitySystemComponent::StepTimedGrants` for every action carrying this key.
+	 * `UCataclysmAbilitySystemComponent::StepKeptStackClocks` for every action carrying this key. That clock
+	 * counts seconds of combat and carries them from one fight to the next.
+	 *
+	 * `StatusName` IS WHAT THE ROW CALLS ITS STACKS, for the text above the player's bars, such as "Temporal Flux".
+	 * On an action carrying this key it is a name to show and nothing applies it as a status.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FName KeptStackKey;

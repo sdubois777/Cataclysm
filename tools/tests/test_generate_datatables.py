@@ -3674,8 +3674,9 @@ class TestKeptStacksSpentToCastASkillAgain:
 
     ONE ROW STATES ALL OF IT: the period of the gain in Every Seconds, 30; the
     most stacks in Scale Max Steps, 5; the kind of use that spends them as the
-    Action Event, `skill_use`; and the share of its damage each extra cast
-    deals as the value, 100.
+    Action Event, `skill_use`; the share of its damage each extra cast deals
+    as the value, 100; and what the sentence calls the stacks in Ailment,
+    Temporal Flux.
 
     THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
     words are the sentence without its set label, as a Generic row on the
@@ -3696,7 +3697,8 @@ class TestKeptStacksSpentToCastASkillAgain:
     ]
     HEADER = TestScaleStepHigh.HEADER
     RULED = {"Action": "kept_stacks_repeat_skill", "Action Event": "skill_use",
-             "Value Low": 100, "Every Seconds": 30, "Scale Max Steps": 5}
+             "Value Low": 100, "Every Seconds": 30, "Scale Max Steps": 5,
+             "Ailment": "Temporal Flux"}
 
     def book(self, tmp_path, changes, rows=1):
         values = {"Enchantment": self.NAME, "Effect": self.WORDS}
@@ -3718,9 +3720,9 @@ class TestKeptStacksSpentToCastASkillAgain:
         row = out[0]
         assert (row["Enchantment"], row["Stat"], row["Action"],
                 row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
-                row["EverySeconds"], row["ScaleMaxSteps"]) == (
+                row["EverySeconds"], row["ScaleMaxSteps"], row["Ailment"]) == (
             self.NAME, "", "kept_stacks_repeat_skill", "skill_use", 100.0,
-            100.0, 30.0, 5)
+            100.0, 30.0, 5, "Temporal Flux")
         # AND NOTHING ELSE IS WRITTEN FOR IT: no lifetime, no fraction, no
         # wait between firings, no share in the column `repeat_skill` reads,
         # no tags, no condition and no scale.
@@ -3821,7 +3823,6 @@ class TestKeptStacksSpentToCastASkillAgain:
         ("Damage Share", 50, "states a Damage Share"),
         ("Every Nth", 3, "states Every Nth"),
         ("Event Value", 25, "states an Event Value"),
-        ("Ailment", "Bleed", "names the ailment"),
         ("Scale Offset", 100, "has an offset of"),
         ("Scale Step High", 5, "Scale Step High and no scale"),
         ("Stack Seconds High", 5, "Stack Seconds High and no Stack Seconds"),
@@ -3832,6 +3833,32 @@ class TestKeptStacksSpentToCastASkillAgain:
             self, tmp_path, column, written, said):
         with pytest.raises(gen.DataError, match=said):
             self.out(tmp_path, {column: written})
+
+    def test_the_row_with_no_name_for_its_stacks_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="states no name for them in Ailment"):
+            self.out(tmp_path, {"Ailment": None})
+
+    # THE NAME IS ONE THE SENTENCE WRITES BETWEEN SINGLE QUOTES, whole, in
+    # its own letters, and without the full stop the sentence puts inside
+    # the quotes. An ailment's name is not one, and neither is a word the
+    # sentence uses outside quotes.
+    @pytest.mark.parametrize("named", ["Bleed", "Temporal", "Flux",
+                                       "Temporal Flux.", "temporal flux",
+                                       "skill"])
+    def test_a_name_the_sentence_does_not_give_the_stacks_is_refused(
+            self, tmp_path, named):
+        with pytest.raises(gen.DataError,
+                           match="do not write between single quotes"):
+            self.out(tmp_path, {"Ailment": named})
+
+    def test_the_name_is_still_refused_on_a_row_that_only_repeats(self, tmp_path):
+        """The cell carries a name for this action alone. The control is the
+        ruled row, which is carried with it."""
+        assert self.out(tmp_path, {})[0]["Ailment"] == "Temporal Flux"
+        with pytest.raises(gen.DataError, match="names the ailment"):
+            self.out(tmp_path, {"Action": "repeat_skill", "Every Seconds": None,
+                                "Scale Max Steps": None})
 
     def test_the_row_written_twice_on_one_enchantment_is_refused(self, tmp_path):
         """The game keys the stacks by the enchantment, the action and the
@@ -3845,7 +3872,7 @@ class TestKeptStacksSpentToCastASkillAgain:
         """The two exceptions made for this action are for it alone. The
         control is the same row with neither, which is carried."""
         repeat = {"Action": "repeat_skill", "Every Seconds": None,
-                  "Scale Max Steps": None}
+                  "Scale Max Steps": None, "Ailment": None}
         assert self.out(tmp_path, repeat)[0]["Action"] == "repeat_skill"
         with pytest.raises(gen.DataError, match="states Every Seconds on the event"):
             self.out(tmp_path, dict(repeat, **{"Every Seconds": 30}))
