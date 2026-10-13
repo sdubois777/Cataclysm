@@ -24310,4 +24310,787 @@ bool FCataclysmImmuneAfterFifteenSecondsRowTest::RunTest(const FString&)
 	TestEqual(TEXT("the row: and a blow then takes nothing"), Worn.BlowAtFifteen, 0.0f, 0.0f);
 	return true;
 }
+
+// THREE MORE SINGLE ROWS OF ISSUE #1833, EACH WORN FROM THE LOADED TABLES. Each mechanism has tests of its own that
+// build the row by hand: `Cataclysm.ProjectileCount.`, `Cataclysm.TeleportWhenHit.` and `Cataclysm.DelayedDamage.`.
+// None of them wears a row. The three tests below wear the authored rows and read what reaches a character. They
+// stand on the helpers of `CataclysmFourSingleRowsTest` above and add only what those lack.
+//
+// EVERY TEST READS A WEARER WITHOUT ITS ROW FIRST, wearing `HelmWithNoRow`, as the four tests above do.
+//
+// WHICH WEARER EACH TEST USES, AND WHY.
+// - The projectile count is driven by `CataclysmEnchantmentEffectTest::FWearer`, a bare actor with an equipment
+//   component, given the sphere the mechanism's own `FBody` is made with so that it stands somewhere. NOT A PLAYER
+//   CHARACTER: a player character's projectile leaves at the release of its throw, which a world that is never ticked
+//   does not reach, so the use would have fired nothing by the time it is read. The skill is the mechanism's own
+//   test skill by its figures, `Range=10; Radius=1; Speed=2000`, granted by `CataclysmProjectileRangeRowsTest::SkillOn`.
+// - The teleport is driven by `FRowStriker`, a player character on a player state. NOT A BARE ACTOR: the action moves
+//   its wearer with `AActor::TeleportTo`, which refuses an actor with no root component. The mechanism's own tests use
+//   a fighter that has a sphere and cannot wear gear, and one of them moves a player character.
+// - The damage over seconds is driven by the bare `FWearer` as it is, as the mechanism's tests use a plain actor.
+//   Nothing in that test searches an area or reads a distance.
+//
+// THE THREE NAMES WERE PRINTED BY `row_name("Positive", sentence[:48])` OF `tools/generate_datatables.py` and compared
+// with `EnchantmentsPositive.csv`, `EnchantmentEffects.csv` and this file by a script, not typed. Each test looks its
+// own up again as set-up.
+//
+// INCLUDED HERE AND NOT AT THE TOP OF THE FILE so that this block is one piece: the projectile, the sphere, the actor
+// iterator and the delayed damage are used by nothing above this line.
+#include "AbilitySystem/CataclysmDelayedDamage.h"
+#include "AbilitySystem/CataclysmProjectile.h"
+#include "Components/SphereComponent.h"
+#include "EngineUtils.h"
+
+namespace CataclysmThreeMoreSingleRowsTest
+{
+	using namespace CataclysmFourSingleRowsTest;
+	using FBareWearer = CataclysmEnchantmentEffectTest::FWearer;
+
+	const TCHAR* const ProjectileCountBenefit = TEXT("Positive_Skills_get_1_4_to_projectile_count");
+	const TCHAR* const TeleportBenefit = TEXT("Positive_Teleport_to_a_random_location_within_4_meters_wh");
+	const TCHAR* const DelayedBenefit = TEXT("Positive_25_50_of_damage_taken_is_dealt_over_4_8_second");
+
+	/**
+	 * What `game/Data` states for one stat of a benefit that has more than one effect row, which `WrittenFor` cannot
+	 * say: it keeps the last row that names the enchantment. `EffectRows` here counts the rows of the enchantment
+	 * that name this stat, and `OutRowsOfTheEnchantment` every row of the enchantment.
+	 */
+	FWrittenRow WrittenForStat(const TCHAR* Name, const TCHAR* Stat, int32& OutRowsOfTheEnchantment)
+	{
+		FWrittenRow Out;
+		OutRowsOfTheEnchantment = 0;
+		const UDataTable* Names =
+			CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+		const UDataTable* Effects = CataclysmEnchantmentEffectTest::LoadCsv<FCataclysmEnchantmentEffectRow>(
+			TEXT("EnchantmentEffects.csv"));
+		Out.bNamed = Names && Names->GetRowMap().Contains(FName(Name));
+		if (Effects)
+		{
+			for (const TPair<FName, uint8*>& Row : Effects->GetRowMap())
+			{
+				const FCataclysmEnchantmentEffectRow* Effect =
+					reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+				if (!Effect || !(Effect->Enchantment == Name))
+				{
+					continue;
+				}
+				++OutRowsOfTheEnchantment;
+				if (Effect->Stat == Stat)
+				{
+					++Out.EffectRows;
+					Out.Stat = Effect->Stat;
+					Out.ValueKind = Effect->ValueKind;
+					Out.Action = Effect->Action;
+					Out.ActionEvent = Effect->ActionEvent;
+					Out.RequiredTags = Effect->RequiredTags;
+					Out.Condition = Effect->Condition;
+					Out.ValueLow = Effect->ValueLow;
+					Out.ValueHigh = Effect->ValueHigh;
+					Out.ConditionValue = Effect->ConditionValue;
+					Out.TriggerCooldown = Effect->TriggerCooldown;
+				}
+			}
+		}
+		return Out;
+	}
+
+	/**
+	 * Give a bare wearer a place to stand: the sphere `CataclysmRicochetPierceTest::FBody` is made with, as its root,
+	 * at this point. A bare wearer has no root component until this is called.
+	 */
+	void StandAt(FBareWearer& Wearer, const FVector& Where)
+	{
+		USphereComponent* Sphere = NewObject<USphereComponent>(Wearer.Actor);
+		Sphere->InitSphereRadius(34.0f);
+		Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Sphere->SetCollisionObjectType(ECC_Pawn);
+		Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+		Wearer.Actor->SetRootComponent(Sphere);
+		Sphere->RegisterComponent();
+		Wearer.Actor->SetActorLocation(Where);
+	}
+
+	/** How far apart two points are in every direction, in centimetres. */
+	float CmBetween(const FVector& A, const FVector& B)
+	{
+		return static_cast<float>(FVector::Dist(A, B));
+	}
+
+	/** What one wearer of the projectile count test answered. */
+	struct FCountAnswers
+	{
+		int32 Lines = 0;
+		float LineValue = -1.0f;
+		bool bLineIsFlat = false;
+		bool bLineIsScopedToProjectileAlone = false;
+		float HeldForAProjectileSkill = -1.0f;
+		float HeldForAnotherSkill = -1.0f;
+		bool bGranted = false;
+		bool bRan = false;
+		int32 Extra = -1;
+		int32 Fired = -1;
+		int32 InTheWorld = -1;
+	};
+
+	/** The four blows of the teleport test, in order. */
+	constexpr int32 BlowThatMoves = 0;
+	constexpr int32 BlowInsideTheWait = 1;
+	constexpr int32 BlowAfterTheWait = 2;
+	constexpr int32 BlowAtHalfShare = 3;
+	constexpr int32 BlowsTaken = 4;
+
+	/** What became of one blow on a wearer of the teleport test. */
+	struct FBlowRead
+	{
+		bool bLanded = false;
+		bool bWaitingBefore = false;
+		bool bWaitingAfter = false;
+		FVector Before = FVector::ZeroVector;
+		FVector After = FVector::ZeroVector;
+	};
+
+	/** What one wearer of the teleport test answered. */
+	struct FTeleportAnswers
+	{
+		int32 TeleportRows = 0;
+		float Metres = -1.0f;
+		float Cooldown = -1.0f;
+		bool bOnHitTaken = false;
+		bool bUnscoped = false;
+		bool bUnconditional = false;
+		FName Key;
+		FBlowRead Blows[BlowsTaken];
+	};
+
+	/** The seconds the damage over seconds test drains through, one second at a step. */
+	constexpr int32 SecondsDrained = 8;
+
+	/** What one wearer of the damage over seconds test answered. */
+	struct FDelayedAnswers
+	{
+		TArray<FCataclysmStatModifier> ShareLines;
+		TArray<FCataclysmStatModifier> SecondsLines;
+		float AtOnce = 0.0f;
+		float Held = 0.0f;
+		float Drained[SecondsDrained] = {};
+		float OwedAfter[SecondsDrained] = {};
+		float LostInAll = 0.0f;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountRowTest,
+	"Cataclysm.Enchantments.TheProjectileCountRowAddsItsRolledOneToFourProjectilesToAUseOfAProjectileSkillAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Skills get +1-4 to projectile count". One row: `projectile_count`, flat, 1 to 4, Required Tags `Type.Projectile`.
+ *
+ * SIX WEARERS IN ONE WORLD, each a bare actor given a sphere, each alone in a lane of its own 60 m from the next, at
+ * the lane's start. Three helms, the one without the row, the row at the bottom of its range and the row at the top,
+ * and for each helm one wearer that uses a skill tagged `Type.Ranged, Type.Projectile` and one that uses a skill
+ * tagged `Type.Ranged` alone. The two skills differ by the tag `Type.Projectile` and by nothing else. No enemy stands
+ * anywhere: this test counts what a use puts in the air, and what the projectiles strike is the mechanism's.
+ *
+ * WHAT IS COUNTED IS READ TWICE, as the mechanism's test reads it: the projectiles the skill lists for its use, and
+ * the projectiles in the world whose owner is the wearer. Each use is then flown to its end by calling each
+ * projectile's own `Step`, a sixtieth of a second at a time. Nothing waits on a tick.
+ *
+ * EACH WEARER IS GIVEN 1,000 MANA AND 100 ATTACK DAMAGE AFTER ITS REFRESH, as the mechanism's `FBody` holds.
+ */
+bool FCataclysmProjectileCountRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmThreeMoreSingleRowsTest;
+
+	const TCHAR* const Stat = UCataclysmProjectileSkill::ProjectileCountStat;
+	const FWrittenRow Written = WrittenFor(ProjectileCountBenefit, /*bBenefit=*/true);
+	if (!IsWrittenOnce(*this, ProjectileCountBenefit, Written)
+		|| !TestTrue(*FString::Printf(TEXT("set-up: the CSV row is projectile_count, flat, scoped to Type.Projectile, "
+				"with no condition and no action: '%s', '%s', '%s', '%s', '%s'"), *Written.Stat, *Written.ValueKind,
+				*Written.RequiredTags, *Written.Condition, *Written.Action),
+			Written.Stat == Stat && Written.ValueKind == TEXT("flat") && Written.RequiredTags == TEXT("Type.Projectile")
+				&& Written.Condition.IsEmpty() && Written.Action.IsEmpty())
+		|| !TestEqual(TEXT("set-up: the CSV row's count at the bottom of its range"), Written.ValueLow, 1.0f)
+		|| !TestEqual(TEXT("set-up: the CSV row's count at the top of its range"), Written.ValueHigh, 4.0f))
+	{
+		return false;
+	}
+
+	const TCHAR* const ProjectileSkillTags = TEXT("Type.Ranged, Type.Projectile");
+	const TCHAR* const OtherSkillTags = TEXT("Type.Ranged");
+	const FGameplayTag ProjectileTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Projectile")), /*ErrorIfNotFound=*/false);
+	const FGameplayTagContainer TagsOfAProjectileSkill = UCataclysmSkillShapes::TagsFromCell(ProjectileSkillTags);
+	const FGameplayTagContainer TagsOfAnotherSkill = UCataclysmSkillShapes::TagsFromCell(OtherSkillTags);
+	if (!TestTrue(TEXT("set-up: the tag Type.Projectile is registered"), ProjectileTag.IsValid())
+		|| !TestTrue(TEXT("set-up: the two skills' tags differ by Type.Projectile and by nothing else"),
+			TagsOfAProjectileSkill.Num() == 2 && TagsOfAnotherSkill.Num() == 1
+				&& TagsOfAProjectileSkill.HasTagExact(ProjectileTag) && !TagsOfAnotherSkill.HasTag(ProjectileTag)
+				&& TagsOfAProjectileSkill.HasAll(TagsOfAnotherSkill)))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	constexpr float LaneApartCm = 6000.0f;
+	int32 LanesUsed = 0;
+	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* SkillTagCell, FCountAnswers& Out)
+	{
+		FBareWearer Wearer(World);
+		StandAt(Wearer, FVector(0.0f, LaneApartCm * static_cast<float>(LanesUsed++), 0.0f));
+		WearAndRefresh(Wearer, Helm);
+		UCataclysmAbilitySystemComponent* System = Wearer.AbilitySystem;
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+		// WHAT THE WEARER HOLDS OF THE ROW: its enchantment lines on the stat, and the stat asked as the skill asks it.
+		const TArray<FCataclysmStatModifier> Lines = EnchantmentModifiersOn(System, Stat);
+		Out.Lines = Lines.Num();
+		if (Lines.Num() > 0)
+		{
+			Out.LineValue = Lines[0].Value;
+			Out.bLineIsFlat = Lines[0].Bucket == ECataclysmStatBucket::Flat;
+			Out.bLineIsScopedToProjectileAlone =
+				Lines[0].RequiredTags.Num() == 1 && Lines[0].RequiredTags.HasTagExact(ProjectileTag);
+		}
+		Out.HeldForAProjectileSkill = System->StatForSkill(FName(Stat), TagsOfAProjectileSkill, 0.0f);
+		Out.HeldForAnotherSkill = System->StatForSkill(FName(Stat), TagsOfAnotherSkill, 0.0f);
+
+		UCataclysmProjectileSkill* Skill = CataclysmProjectileRangeRowsTest::SkillOn<UCataclysmProjectileSkill>(
+			System, Wearer.Actor, CataclysmProjectileRangeRowsTest::Bolt, SkillTagCell);
+		Out.bGranted = Skill != nullptr;
+		if (!Skill)
+		{
+			return;
+		}
+		Skill->SkillName = TEXT("Test Shot");
+		Skill->DamagePercentOverride = 100.0f;
+		Out.bRan = System->TryActivateAbility(Skill->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		Out.Extra = Skill->ExtraProjectilesWithRows();
+		Out.Fired = Skill->FiredThisUse.Num();
+		Out.InTheWorld = 0;
+		for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
+		{
+			Out.InTheWorld += It->GetOwner() == Wearer.Actor ? 1 : 0;
+		}
+
+		// FLOWN TO THE END OF THE USE, one step each in the order they were fired, as the mechanism's `FlyAll`.
+		for (int32 Steps = 0; Steps < 600; ++Steps)
+		{
+			bool bAnyFlew = false;
+			for (ACataclysmProjectile* Shot : Skill->FiredThisUse)
+			{
+				if (Shot && !Shot->bFinished)
+				{
+					Shot->Step(1.0f / 60.0f);
+					bAnyFlew = true;
+				}
+			}
+			if (!bAnyFlew)
+			{
+				break;
+			}
+		}
+	};
+
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	FCountAnswers Unworn;
+	FCountAnswers Low;
+	FCountAnswers High;
+	FCountAnswers UnwornOther;
+	FCountAnswers LowOther;
+	FCountAnswers HighOther;
+	Ask(HelmWithNoRow(), ProjectileSkillTags, Unworn);
+	Ask(HelmCarrying(ProjectileCountBenefit, NoEffect, /*PositiveRoll=*/0.0f), ProjectileSkillTags, Low);
+	Ask(HelmCarrying(ProjectileCountBenefit, NoEffect, /*PositiveRoll=*/1.0f), ProjectileSkillTags, High);
+	Ask(HelmWithNoRow(), OtherSkillTags, UnwornOther);
+	Ask(HelmCarrying(ProjectileCountBenefit, NoEffect, /*PositiveRoll=*/0.0f), OtherSkillTags, LowOther);
+	Ask(HelmCarrying(ProjectileCountBenefit, NoEffect, /*PositiveRoll=*/1.0f), OtherSkillTags, HighOther);
+
+	// SET-UP, FOR EACH OF THE SIX: THE SKILL WAS GRANTED, ITS USE RAN, AND THE TWO COUNTS OF ITS PROJECTILES AGREE.
+	const auto WasUsed = [this](const TCHAR* Who, const FCountAnswers& A)
+	{
+		return TestTrue(*FString::Printf(TEXT("set-up, %s: the skill was granted and its use ran"), Who),
+				A.bGranted && A.bRan)
+			&& TestEqual(*FString::Printf(TEXT("set-up, %s: the projectiles in the world that the wearer owns are the "
+				"ones the skill lists for its use"), Who), A.InTheWorld, A.Fired);
+	};
+	if (!WasUsed(TEXT("no row, a projectile skill"), Unworn)
+		|| !WasUsed(TEXT("the row at 1, a projectile skill"), Low)
+		|| !WasUsed(TEXT("the row at 4, a projectile skill"), High)
+		|| !WasUsed(TEXT("no row, a skill without the tag"), UnwornOther)
+		|| !WasUsed(TEXT("the row at 1, a skill without the tag"), LowOther)
+		|| !WasUsed(TEXT("the row at 4, a skill without the tag"), HighOther))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW A USE OF EITHER SKILL FIRES ONE.
+	if (!TestEqual(TEXT("control: the wearer without the row holds no enchantment line on projectile_count"),
+			Unworn.Lines + UnwornOther.Lines, 0)
+		|| !TestEqual(TEXT("control: the wearer without the row fires one projectile from a projectile skill"),
+			Unworn.Fired, 1)
+		|| !TestEqual(TEXT("control: and one from a skill without the tag"), UnwornOther.Fired, 1)
+		|| !TestEqual(TEXT("control: its projectile skill is told of no added projectile"), Unworn.Extra, 0))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED THE FOUR WEARERS OF IT.
+	const FString Arrive(RowDidNotArrive);
+	if (!TestEqual(*(TEXT("set-up: the wearer of the row at the bottom of its range, with a projectile skill, holds "
+				"one enchantment line on projectile_count.") + Arrive), Low.Lines, 1)
+		|| !TestEqual(*(TEXT("set-up: the wearer of the row at the top of its range, with a projectile skill, holds one "
+				"enchantment line on projectile_count.") + Arrive), High.Lines, 1)
+		|| !TestEqual(*(TEXT("set-up: the wearer of the row at the bottom of its range, with a skill without the tag, "
+				"holds one enchantment line on projectile_count.") + Arrive), LowOther.Lines, 1)
+		|| !TestEqual(*(TEXT("set-up: the wearer of the row at the top of its range, with a skill without the tag, "
+				"holds one enchantment line on projectile_count.") + Arrive), HighOther.Lines, 1))
+	{
+		return false;
+	}
+
+	// THE FIGURES THE WEARERS HOLD ARE THE ROW'S, EACH AT ITS OWN ROLL.
+	TestEqual(TEXT("the helm rolled at the bottom holds a line worth 1"), Low.LineValue, 1.0f, 0.001f);
+	TestEqual(TEXT("the helm rolled at the top holds a line worth 4"), High.LineValue, 4.0f, 0.001f);
+	TestTrue(TEXT("at 1, the line is flat and scoped to Type.Projectile alone"),
+		Low.bLineIsFlat && Low.bLineIsScopedToProjectileAlone);
+	TestTrue(TEXT("at 4, the line is flat and scoped to Type.Projectile alone"),
+		High.bLineIsFlat && High.bLineIsScopedToProjectileAlone);
+	TestEqual(TEXT("at 1, the stat asked for a projectile skill is 1 above the wearer without the row"),
+		Low.HeldForAProjectileSkill - Unworn.HeldForAProjectileSkill, 1.0f, 0.001f);
+	TestEqual(TEXT("at 4, the stat asked for a projectile skill is 4 above the wearer without the row"),
+		High.HeldForAProjectileSkill - Unworn.HeldForAProjectileSkill, 4.0f, 0.001f);
+	TestEqual(TEXT("at 1, the stat asked for a skill without the tag is what the wearer without the row holds"),
+		Low.HeldForAnotherSkill - Unworn.HeldForAnotherSkill, 0.0f, 0.001f);
+	TestEqual(TEXT("at 4, the stat asked for a skill without the tag is what the wearer without the row holds"),
+		High.HeldForAnotherSkill - Unworn.HeldForAnotherSkill, 0.0f, 0.001f);
+
+	// THE ROW: A USE OF A PROJECTILE SKILL FIRES THE ROLLED NUMBER MORE.
+	TestEqual(TEXT("at 1, the projectile skill is told of one added projectile"), Low.Extra - Unworn.Extra, 1);
+	TestEqual(TEXT("at 1, a use of a projectile skill fires one more than the wearer without the row fires: two"),
+		Low.Fired - Unworn.Fired, 1);
+	TestEqual(TEXT("at 4, the projectile skill is told of four added projectiles"), High.Extra - Unworn.Extra, 4);
+	TestEqual(TEXT("at 4, a use of a projectile skill fires four more than the wearer without the row fires: five"),
+		High.Fired - Unworn.Fired, 4);
+
+	// AND A SKILL WITHOUT THE TAG FIRES ONE FOR EVERY WEARER.
+	TestEqual(TEXT("at 1, a skill without Type.Projectile is told of no added projectile"), LowOther.Extra, 0);
+	TestEqual(TEXT("at 1, a use of a skill without Type.Projectile fires what the wearer without the row fires: one"),
+		LowOther.Fired, UnwornOther.Fired);
+	TestEqual(TEXT("at 4, a skill without Type.Projectile is told of no added projectile"), HighOther.Extra, 0);
+	TestEqual(TEXT("at 4, a use of a skill without Type.Projectile fires what the wearer without the row fires: one"),
+		HighOther.Fired, UnwornOther.Fired);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitRowTest,
+	"Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Teleport to a random location within 4 meters when hit". One row: the action `teleport_randomly` on `hit_taken`,
+ * 4 to 4 metres, Trigger Cooldown 2.
+ *
+ * TWO WEARERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN: one without the row, the control, and one with it. Each
+ * is at the origin. Each is struck by one creature of its own 40 m along +X, which is given 100 attack damage.
+ *
+ * THE POINT IS PINNED BY THE TWO CONSOLE VARIABLES, as the mechanism's tests pin it: `Cataclysm.TeleportRandomlyDegrees`
+ * at 90, which is along +Y, and `Cataclysm.TeleportRandomlyShare` at the whole of the row's metres or at half of them.
+ * Along +Y and not +X so that no move brings the wearer nearer its creature: the wearer moves 10 m along +Y in all.
+ * A pinned point is taken as reachable; a world made for a test has no navigation system to ask.
+ *
+ * EVERY BLOW IS A REAL HIT of the creature's, `UCataclysmSkillEffects::ApplyHit` at 100% with a critical strike
+ * chance of 0, resolved by the wearer's own attribute set. Each wearer is given 100,000 health and an evasion and a
+ * block chance of 0 after its refresh, and that each blow landed is read back before anything is concluded from it.
+ *
+ * THE CLOCK IS THE WORLD'S, SET BY HAND. Four blows: at 100 s, pinned at the whole; at 101.9 s, 1.9 seconds after the
+ * move; at 102.1 s, 2.1 seconds after it; and at 110 s, pinned at half. Nothing waits.
+ *
+ * WHAT THIS TEST DOES NOT READ: an evaded blow, a tick, a blocked blow, a wearer with no reachable point, the
+ * movement records and a skill in use. Those are the mechanism's.
+ */
+bool FCataclysmTeleportWhenHitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmThreeMoreSingleRowsTest;
+
+	const FWrittenRow Written = WrittenFor(TeleportBenefit, /*bBenefit=*/true);
+	if (!IsWrittenOnce(*this, TeleportBenefit, Written)
+		|| !TestTrue(*FString::Printf(TEXT("set-up: the CSV row is teleport_randomly on hit_taken, with no stat, tags "
+				"or condition: '%s' on '%s', '%s', '%s', '%s'"), *Written.Action, *Written.ActionEvent, *Written.Stat,
+				*Written.RequiredTags, *Written.Condition),
+			Written.Action == UCataclysmAbilitySystemComponent::TeleportRandomlyAction
+				&& Written.ActionEvent == TEXT("hit_taken") && Written.Stat.IsEmpty()
+				&& Written.RequiredTags.IsEmpty() && Written.Condition.IsEmpty())
+		|| !TestEqual(TEXT("set-up: the CSV row's metres at the bottom of its range"), Written.ValueLow, 4.0f)
+		|| !TestEqual(TEXT("set-up: the CSV row's metres at the top of its range"), Written.ValueHigh, 4.0f)
+		|| !TestEqual(TEXT("set-up: the CSV row's trigger cooldown"), Written.TriggerCooldown, 2.0f))
+	{
+		return false;
+	}
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	CataclysmShardOfAnarchyRowsTest::FRollPin Degrees(TEXT("Cataclysm.TeleportRandomlyDegrees"), 90.0f);
+	CataclysmShardOfAnarchyRowsTest::FRollPin Share(TEXT("Cataclysm.TeleportRandomlyShare"), 1.0f);
+	if (!TestTrue(TEXT("set-up: the two console variables that pin the point were found"),
+			Degrees.Variable != nullptr && Share.Variable != nullptr))
+	{
+		return false;
+	}
+
+	constexpr int32 PlaceOfTheCreature = 10;
+	constexpr double SecondsAtEachBlow[BlowsTaken] = {100.0, 101.9, 102.1, 110.0};
+	constexpr float ShareAtEachBlow[BlowsTaken] = {1.0f, 1.0f, 1.0f, 0.5f};
+	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* Who, FTeleportAnswers& Out) -> bool
+	{
+		FRowStriker Wearer(Helm);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: a player character wearing its helm, in a world"), Who),
+				Wearer.Ready()))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Creature = Wearer.CreatureNumber(PlaceOfTheCreature);
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: a creature 40 m along +X"), Who), Creature))
+		{
+			return false;
+		}
+		Creature->SetAttackDamage(100.0f);
+		FourRowsGiveHealth(Wearer.ASC, 100000.0f);
+		Wearer.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Wearer.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+
+		// WHAT THE WEARER HOLDS OF THE ROW: its actions that teleport, and the figures of the last of them.
+		for (const FCataclysmPoolAction& Action : Wearer.ASC->GetPoolActions())
+		{
+			if (Action.bTeleportRandomly)
+			{
+				++Out.TeleportRows;
+				Out.Metres = Action.Percent;
+				Out.Cooldown = Action.TriggerCooldownSeconds;
+				Out.bOnHitTaken = Action.Event == FName(TEXT("hit_taken"));
+				Out.bUnscoped = Action.RequiredTags.IsEmpty();
+				Out.bUnconditional = Action.Condition == ECataclysmStatCondition::Always;
+				Out.Key = Action.TriggerKey;
+			}
+		}
+
+		for (int32 Blow = 0; Blow < BlowsTaken; ++Blow)
+		{
+			FBlowRead& Read = Out.Blows[Blow];
+			Wearer.World->TimeSeconds = SecondsAtEachBlow[Blow];
+			Share.Set(ShareAtEachBlow[Blow]);
+			Read.Before = Wearer.Character->GetActorLocation();
+			Read.bWaitingBefore = !Out.Key.IsNone() && Wearer.ASC->TriggerCoolingDown(Out.Key);
+
+			FCataclysmHitDelivery Delivery;
+			Delivery.CritChancePercent = 0.0f;
+			FCataclysmDamageResult Resolved;
+			UCataclysmSkillEffects::ApplyHit(Creature, Wearer.Character, /*DamagePercent=*/100.0f,
+				FGameplayTagContainer(), Delivery, &Resolved);
+			Read.bLanded = !Resolved.bEvaded && Resolved.DealtToHealth > 0.0f;
+			Read.After = Wearer.Character->GetActorLocation();
+			Read.bWaitingAfter = !Out.Key.IsNone() && Wearer.ASC->TriggerCoolingDown(Out.Key);
+		}
+		return true;
+	};
+
+	FTeleportAnswers Unworn;
+	FTeleportAnswers Worn;
+	if (!Ask(HelmWithNoRow(), TEXT("no row"), Unworn)
+		|| !Ask(HelmCarrying(TeleportBenefit, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect), TEXT("the row"),
+			Worn))
+	{
+		return false;
+	}
+
+	// SET-UP, FOR EACH WEARER: EVERY ONE OF THE FOUR BLOWS LANDED AND TOOK HEALTH.
+	const TCHAR* const BlowWhen[BlowsTaken] = {TEXT("the first blow"), TEXT("the blow 1.9 seconds after the move"),
+		TEXT("the blow 2.1 seconds after the move"), TEXT("the blow pinned at half")};
+	for (int32 Blow = 0; Blow < BlowsTaken; ++Blow)
+	{
+		if (!TestTrue(*FString::Printf(TEXT("set-up, no row, %s: it landed and took health"), BlowWhen[Blow]),
+				Unworn.Blows[Blow].bLanded)
+			|| !TestTrue(*FString::Printf(TEXT("set-up, the row, %s: it landed and took health"), BlowWhen[Blow]),
+				Worn.Blows[Blow].bLanded))
+		{
+			return false;
+		}
+	}
+
+	// SET-UP: THE ROW REACHED THE WEARER OF IT, AND NOT THE WEARER WITHOUT IT.
+	if (!TestEqual(TEXT("control: the wearer without the row holds no action that teleports"), Unworn.TeleportRows, 0)
+		|| !TestEqual(*(FString(TEXT("set-up: the wearer of the row holds one action that teleports.")) +
+			RowDidNotArrive), Worn.TeleportRows, 1))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW NO BLOW MOVES THE WEARER.
+	for (int32 Blow = 0; Blow < BlowsTaken; ++Blow)
+	{
+		TestEqual(*FString::Printf(TEXT("control, no row, %s: the wearer stands where it stood"), BlowWhen[Blow]),
+			CmBetween(Unworn.Blows[Blow].After, Unworn.Blows[Blow].Before), 0.0f, 0.01f);
+	}
+
+	// THE FIGURES THE WEARER HOLDS ARE THE ROW'S.
+	TestEqual(TEXT("the action's metres are the row's 4"), Worn.Metres, 4.0f, 0.001f);
+	TestEqual(TEXT("the action's trigger cooldown is the row's 2 seconds"), Worn.Cooldown, 2.0f, 0.001f);
+	TestTrue(TEXT("the action is on hit_taken, with no required tags and no condition"),
+		Worn.bOnHitTaken && Worn.bUnscoped && Worn.bUnconditional);
+	TestFalse(TEXT("the action has a key for its trigger cooldown"), Worn.Key.IsNone());
+
+	// THE ROW: A LANDED HIT MOVES THE WEARER THE ROW'S 4 METRES AT THE WHOLE SHARE, AND STARTS THE ROW'S WAIT.
+	const FVector FourMetres(0.0f, 400.0f, 0.0f);
+	const FVector TwoMetres(0.0f, 200.0f, 0.0f);
+	const FBlowRead& First = Worn.Blows[BlowThatMoves];
+	const FBlowRead& Inside = Worn.Blows[BlowInsideTheWait];
+	const FBlowRead& After = Worn.Blows[BlowAfterTheWait];
+	const FBlowRead& AtHalf = Worn.Blows[BlowAtHalfShare];
+	TestFalse(TEXT("the row: before the first blow the row is not waiting"), First.bWaitingBefore);
+	TestEqual(TEXT("the row, pinned at the whole of its metres along +Y: the first landed hit leaves the wearer 4 "
+			"metres along +Y from where it stood"), CmBetween(First.After, First.Before + FourMetres), 0.0f, 0.01f);
+	TestTrue(TEXT("the row: and the move starts the row's wait"), First.bWaitingAfter);
+
+	// THE ROW'S TRIGGER COOLDOWN OF 2: NOT MOVED 1.9 SECONDS AFTER THE MOVE, AND MOVED 2.1 SECONDS AFTER IT.
+	TestTrue(TEXT("the row, 1.9 seconds after the move: the row is still waiting"), Inside.bWaitingBefore);
+	TestEqual(TEXT("the row, 1.9 seconds after the move: a landed hit leaves the wearer where it stood"),
+		CmBetween(Inside.After, Inside.Before), 0.0f, 0.01f);
+	TestFalse(TEXT("the row, 2.1 seconds after the move: the row is no longer waiting"), After.bWaitingBefore);
+	TestEqual(TEXT("the row, 2.1 seconds after the move: a landed hit leaves the wearer another 4 metres along +Y"),
+		CmBetween(After.After, After.Before + FourMetres), 0.0f, 0.01f);
+
+	// AND AT HALF THE SHARE THE WEARER IS MOVED 2 METRES.
+	TestFalse(TEXT("the row, 7.9 seconds after the second move: the row is not waiting"), AtHalf.bWaitingBefore);
+	TestEqual(TEXT("the row, pinned at half of its metres: a landed hit leaves the wearer 2 metres along +Y from "
+			"where it stood"), CmBetween(AtHalf.After, AtHalf.Before + TwoMetres), 0.0f, 0.01f);
+	const float MovedAtTheWhole = CmBetween(First.After, First.Before);
+	if (TestTrue(*FString::Printf(TEXT("the row: the first move was a move: %.2f cm"), MovedAtTheWhole),
+			MovedAtTheWhole > 1.0f))
+	{
+		TestEqual(TEXT("the row: the move at half the share is half the move at the whole"),
+			CmBetween(AtHalf.After, AtHalf.Before) / MovedAtTheWhole, 0.5f, 0.0001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageOverSecondsRowTest,
+	"Cataclysm.Enchantments.TheDamageOverSecondsRowHoldsItsRolledShareOfABlowAndDrainsItEvenlyOverItsRolledSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "25%-50% of damage taken is dealt over 4-8 seconds". Two rows of one enchantment: `damage_taken_delayed_percent`,
+ * flat, 25 to 50, and `damage_taken_delayed_seconds`, flat, 4 to 8. ONE ROLL OF THE HELM'S IS BOTH ROWS' ROLL, so the
+ * helm rolled at the bottom is 25% over 4 seconds and the helm rolled at the top is 50% over 8.
+ *
+ * THREE WEARERS AND ONE ATTACKER IN ONE WORLD, each a bare actor: `Plain` without the rows, the control; `Low`, whose
+ * helm rolled the bottom; and `High`, whose helm rolled the top. Each wearer is given 10,000 health after its
+ * refresh, the pool the mechanism's tests use. The attacker wears nothing, is never refreshed, and is given 10,000
+ * health. A BARE ACTOR HAS NO PLACE TO STAND and nothing here searches an area or reads a distance.
+ *
+ * THE BLOW IS MADE EXACT AS THE MECHANISM'S TESTS MAKE IT: 400 of direct damage that cannot be evaded, cannot
+ * critically strike and cannot be retaliated against, with the critical strike roll pinned as well. Each wearer takes
+ * it once, at one time. EVERY FIGURE IS COMPARED WITH WHAT THE SAME BLOW TOOK FROM `Plain`, so the armour and damage
+ * reduction all three hold alike cancel.
+ *
+ * THE CLOCK IS THE WORLD'S, MOVED BY HAND, AND THE DRAIN IS CALLED AS THE REGENERATION STEP CALLS IT:
+ * `UCataclysmDelayedDamage::DrainStep`, once for each wearer after each of eight steps of one second. Nothing waits.
+ */
+bool FCataclysmDamageOverSecondsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmThreeMoreSingleRowsTest;
+
+	const TCHAR* const ShareStat = UCataclysmDelayedDamage::SharePercentStat;
+	const TCHAR* const SecondsStat = UCataclysmDelayedDamage::SecondsStat;
+	int32 RowsOfTheEnchantment = 0;
+	int32 RowsCountedAgain = 0;
+	const FWrittenRow WrittenShare = WrittenForStat(DelayedBenefit, ShareStat, RowsOfTheEnchantment);
+	const FWrittenRow WrittenSeconds = WrittenForStat(DelayedBenefit, SecondsStat, RowsCountedAgain);
+	const auto IsAPlainFlatRow = [](const FWrittenRow& Row)
+	{
+		return Row.ValueKind == TEXT("flat") && Row.RequiredTags.IsEmpty() && Row.Condition.IsEmpty()
+			&& Row.Action.IsEmpty();
+	};
+	if (!TestTrue(*FString::Printf(TEXT("set-up: %s is a row of its enchantment CSV"), DelayedBenefit),
+			WrittenShare.bNamed)
+		|| !TestEqual(TEXT("set-up: the rows of EnchantmentEffects.csv that name the enchantment"),
+			RowsOfTheEnchantment, 2)
+		|| !TestEqual(TEXT("set-up: of them, the rows on damage_taken_delayed_percent"), WrittenShare.EffectRows, 1)
+		|| !TestEqual(TEXT("set-up: and the rows on damage_taken_delayed_seconds"), WrittenSeconds.EffectRows, 1)
+		|| !TestTrue(TEXT("set-up: each of the two CSV rows is flat, with no tags, condition or action"),
+			IsAPlainFlatRow(WrittenShare) && IsAPlainFlatRow(WrittenSeconds))
+		|| !TestEqual(TEXT("set-up: the CSV row's share at the bottom of its range"), WrittenShare.ValueLow, 25.0f)
+		|| !TestEqual(TEXT("set-up: the CSV row's share at the top of its range"), WrittenShare.ValueHigh, 50.0f)
+		|| !TestEqual(TEXT("set-up: the CSV row's seconds at the bottom of its range"), WrittenSeconds.ValueLow, 4.0f)
+		|| !TestEqual(TEXT("set-up: the CSV row's seconds at the top of its range"), WrittenSeconds.ValueHigh, 8.0f))
+	{
+		return false;
+	}
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	// A PARCEL IS GONE AT EXACTLY ITS SECONDS, which is read here at exactly 4 and exactly 8 seconds after the blow.
+	if (!TestEqual(TEXT("set-up: the world's clock starts at a time a float holds exactly"),
+			static_cast<double>(static_cast<float>(World->GetTimeSeconds())), World->GetTimeSeconds()))
+	{
+		return false;
+	}
+
+	constexpr float HealthGiven = 10000.0f;
+	constexpr float BlowDamage = 400.0f;
+	constexpr float Tolerated = 0.01f;
+	constexpr int32 Wearers = 3;
+	constexpr int32 PlainOne = 0;
+	constexpr int32 LowOne = 1;
+	constexpr int32 HighOne = 2;
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	FBareWearer Plain(World);
+	FBareWearer Low(World);
+	FBareWearer High(World);
+	FBareWearer Attacker(World);
+	WearAndRefresh(Plain, HelmWithNoRow());
+	WearAndRefresh(Low, HelmCarrying(DelayedBenefit, NoEffect, /*PositiveRoll=*/0.0f));
+	WearAndRefresh(High, HelmCarrying(DelayedBenefit, NoEffect, /*PositiveRoll=*/1.0f));
+	FBareWearer* const Wearing[Wearers] = {&Plain, &Low, &High};
+	FDelayedAnswers Answers[Wearers];
+	const FGameplayAttribute HealthHeld = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	FourRowsGiveHealth(Attacker.AbilitySystem, HealthGiven);
+	for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+	{
+		FourRowsGiveHealth(Wearing[Wearer]->AbilitySystem, HealthGiven);
+		// WHAT THE REFRESH WROTE ON EACH OF THE TWO STATS.
+		Answers[Wearer].ShareLines = EnchantmentModifiersOn(Wearing[Wearer]->AbilitySystem, ShareStat);
+		Answers[Wearer].SecondsLines = EnchantmentModifiersOn(Wearing[Wearer]->AbilitySystem, SecondsStat);
+	}
+
+	// ONE BLOW ON EACH WEARER, AT ONE TIME: what it took at once, and what the wearer then owes.
+	for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+	{
+		UCataclysmAbilitySystemComponent* System = Wearing[Wearer]->AbilitySystem;
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotBeEvaded = true;
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCannotBeRetaliatedAgainst = true;
+		const float Before = System->GetNumericAttribute(HealthHeld);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearing[Wearer]->Actor, BlowDamage, Delivery);
+		Answers[Wearer].AtOnce = Before - System->GetNumericAttribute(HealthHeld);
+		Answers[Wearer].Held = System->DelayedDamageOwed();
+	}
+
+	// EIGHT STEPS OF ONE SECOND, each wearer drained once after each.
+	for (int32 Second = 0; Second < SecondsDrained; ++Second)
+	{
+		World->TimeSeconds += 1.0;
+		for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+		{
+			Answers[Wearer].Drained[Second] = UCataclysmDelayedDamage::DrainStep(Wearing[Wearer]->Actor);
+			Answers[Wearer].OwedAfter[Second] = Wearing[Wearer]->AbilitySystem->DelayedDamageOwed();
+		}
+	}
+	for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+	{
+		Answers[Wearer].LostInAll = HealthGiven - Wearing[Wearer]->AbilitySystem->GetNumericAttribute(HealthHeld);
+	}
+
+	// SET-UP: THE BLOW TOOK HEALTH FROM THE WEARER WITHOUT THE ROWS, AND THE ROWS REACHED THE TWO WEARERS OF THEM.
+	const float Whole = Answers[PlainOne].AtOnce;
+	const FString Arrive(RowDidNotArrive);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the blow takes health from the wearer without the rows: %.2f"), Whole),
+			Whole > 1.0f)
+		|| !TestEqual(TEXT("control: the wearer without the rows holds no enchantment line on either stat"),
+			Answers[PlainOne].ShareLines.Num() + Answers[PlainOne].SecondsLines.Num(), 0)
+		|| !TestEqual(*(TEXT("set-up: the wearer of the rows at the bottom of their ranges holds one enchantment line "
+				"on damage_taken_delayed_percent.") + Arrive), Answers[LowOne].ShareLines.Num(), 1)
+		|| !TestEqual(*(TEXT("set-up: and one on damage_taken_delayed_seconds.") + Arrive),
+			Answers[LowOne].SecondsLines.Num(), 1)
+		|| !TestEqual(*(TEXT("set-up: the wearer of the rows at the top of their ranges holds one enchantment line on "
+				"damage_taken_delayed_percent.") + Arrive), Answers[HighOne].ShareLines.Num(), 1)
+		|| !TestEqual(*(TEXT("set-up: and one on damage_taken_delayed_seconds.") + Arrive),
+			Answers[HighOne].SecondsLines.Num(), 1))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROWS THE WHOLE BLOW LANDS AT ONCE, AND NOTHING IS OWED OR DRAINED.
+	TestEqual(TEXT("control, no rows: after the blow the wearer owes nothing"), Answers[PlainOne].Held, 0.0f, 0.0f);
+	for (int32 Second = 0; Second < SecondsDrained; ++Second)
+	{
+		TestEqual(*FString::Printf(TEXT("control, no rows: the drain %d seconds after the blow takes nothing"),
+			Second + 1), Answers[PlainOne].Drained[Second], 0.0f, 0.0f);
+	}
+	TestEqual(TEXT("control, no rows: eight seconds on, the blow has cost what it took at once and no more"),
+		Answers[PlainOne].LostInAll, Whole, Tolerated);
+
+	// THE LINES THE ROWS WROTE ARE THE ROWS', EACH AT ITS OWN ROLL.
+	TestEqual(TEXT("the helm rolled at the bottom holds a share of 25"), Answers[LowOne].ShareLines[0].Value, 25.0f,
+		0.001f);
+	TestEqual(TEXT("and 4 seconds"), Answers[LowOne].SecondsLines[0].Value, 4.0f, 0.001f);
+	TestEqual(TEXT("the helm rolled at the top holds a share of 50"), Answers[HighOne].ShareLines[0].Value, 50.0f,
+		0.001f);
+	TestEqual(TEXT("and 8 seconds"), Answers[HighOne].SecondsLines[0].Value, 8.0f, 0.001f);
+	for (const int32 Wearer : {LowOne, HighOne})
+	{
+		for (const FCataclysmStatModifier* Line : {&Answers[Wearer].ShareLines[0], &Answers[Wearer].SecondsLines[0]})
+		{
+			TestEqual(TEXT("the line is in the flat bucket"), static_cast<int32>(Line->Bucket),
+				static_cast<int32>(ECataclysmStatBucket::Flat));
+			TestTrue(TEXT("with no required tags and no condition"),
+				Line->RequiredTags.IsEmpty() && Line->Condition == ECataclysmStatCondition::Always);
+		}
+	}
+
+	// THE ROWS AT 25% OVER 4 SECONDS: THREE QUARTERS AT ONCE, A QUARTER OWED, DRAINED EVENLY AND GONE AT 4 SECONDS.
+	const FDelayedAnswers& AtLow = Answers[LowOne];
+	TestEqual(TEXT("at 25%: three quarters of the blow land at once"), AtLow.AtOnce, Whole * 0.75f, Tolerated);
+	TestEqual(TEXT("at 25%: and a quarter of it is owed"), AtLow.Held, Whole * 0.25f, Tolerated);
+	for (int32 Second = 0; Second < SecondsDrained; ++Second)
+	{
+		if (Second < 4)
+		{
+			TestEqual(*FString::Printf(TEXT("at 25%% over 4 seconds: the drain %d seconds after the blow takes a "
+				"quarter of what was owed"), Second + 1), AtLow.Drained[Second], AtLow.Held / 4.0f, Tolerated);
+		}
+		else
+		{
+			TestEqual(*FString::Printf(TEXT("at 25%% over 4 seconds: the drain %d seconds after the blow takes "
+				"nothing"), Second + 1), AtLow.Drained[Second], 0.0f, 0.0f);
+		}
+	}
+	TestEqual(TEXT("at 25% over 4 seconds: 3 seconds after the blow a quarter of what was owed is still owed"),
+		AtLow.OwedAfter[2], AtLow.Held * 0.25f, Tolerated);
+	TestTrue(TEXT("at 25% over 4 seconds: so 3 seconds after the blow something is still owed"),
+		AtLow.OwedAfter[2] > 0.0f);
+	TestEqual(TEXT("at 25% over 4 seconds: 4 seconds after the blow nothing is owed"), AtLow.OwedAfter[3], 0.0f, 0.0f);
+	TestEqual(TEXT("at 25% over 4 seconds: the blow has cost in all what it cost the wearer without the rows"),
+		AtLow.LostInAll, Whole, Tolerated);
+
+	// THE ROWS AT 50% OVER 8 SECONDS: HALF AT ONCE, HALF OWED, DRAINED EVENLY, NOT GONE AT 4 SECONDS AND GONE AT 8.
+	const FDelayedAnswers& AtHigh = Answers[HighOne];
+	TestEqual(TEXT("at 50%: half of the blow lands at once"), AtHigh.AtOnce, Whole * 0.5f, Tolerated);
+	TestEqual(TEXT("at 50%: and half of it is owed"), AtHigh.Held, Whole * 0.5f, Tolerated);
+	for (int32 Second = 0; Second < SecondsDrained; ++Second)
+	{
+		TestEqual(*FString::Printf(TEXT("at 50%% over 8 seconds: the drain %d seconds after the blow takes an eighth "
+			"of what was owed"), Second + 1), AtHigh.Drained[Second], AtHigh.Held / 8.0f, Tolerated);
+	}
+	TestEqual(TEXT("at 50% over 8 seconds: 4 seconds after the blow half of what was owed is still owed"),
+		AtHigh.OwedAfter[3], AtHigh.Held * 0.5f, Tolerated);
+	TestTrue(TEXT("at 50% over 8 seconds: so it is not gone at 4 seconds"), AtHigh.OwedAfter[3] > 0.0f);
+	TestTrue(TEXT("at 50% over 8 seconds: 7 seconds after the blow something is still owed"),
+		AtHigh.OwedAfter[6] > 0.0f);
+	TestEqual(TEXT("at 50% over 8 seconds: 8 seconds after the blow nothing is owed"), AtHigh.OwedAfter[7], 0.0f, 0.0f);
+	TestEqual(TEXT("at 50% over 8 seconds: the blow has cost in all what it cost the wearer without the rows"),
+		AtHigh.LostInAll, Whole, Tolerated);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

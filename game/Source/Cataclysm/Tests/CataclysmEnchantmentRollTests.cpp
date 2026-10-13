@@ -4,6 +4,8 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For the two stats of a share of damage taken later. Ruled 2026-10-12.
+#include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmItemTooltip.h"
@@ -709,6 +711,95 @@ bool FCataclysmEnchantmentRollUseIncreaseTest::RunTest(const FString& Parameters
 	TestEqual(TEXT("and the increase is 200, from the row's Scale Step High"), Best.UseIncreasePercent, 200.0f, 0.001f);
 	TestEqual(TEXT("at the bottom roll the chance is 5"), Least.Percent, 5.0f, 0.001f);
 	TestEqual(TEXT("and the increase is 50, from the row's Scale Step"), Least.UseIncreasePercent, 50.0f, 0.001f);
+	return true;
+}
+
+// BOTH FIGURES OF A SHARE OF DAMAGE TAKEN LATER COME FROM THE ITEM'S ONE ROLL. Ruled 2026-10-12: "25%-50% of damage
+// taken is dealt over 4-8 seconds" is two rows on one enchantment, the share on one stat and the seconds on another,
+// so a low roll is 25% over 4 seconds and a high roll 50% over 8. No row is authored: the effect table here is made
+// up, in the shape `docs/DECISIONS.md` gives the session that writes the row. The sentence is the real one.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentRollDelayedDamageTest,
+	"Cataclysm.Enchantments.TheShareOfDamageTakenLaterAndItsSecondsRiseTogetherOnTheItemsOneRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentRollDelayedDamageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentRollTest;
+
+	/** The real benefit: "25%-50% of damage taken is dealt over 4-8 seconds". */
+	const TCHAR* Benefit = TEXT("Positive_25_50_of_damage_taken_is_dealt_over_4_8_second");
+	const FName Share(UCataclysmDelayedDamage::SharePercentStat);
+	const FName Seconds(UCataclysmDelayedDamage::SecondsStat);
+
+	UDataTable* Positive = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	UDataTable* Negative = LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	UDataTable* Effects = NewObject<UDataTable>();
+	Effects->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
+	const FString Csv =
+		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds,EveryNth,ScaleStepHigh,StackSecondsHigh,Condition2,ConditionValue2,ConditionValueHigh,TriggerCooldown,EventValue,Ailment,DamageShare\n"))
+		+ FString::Printf(TEXT("%s#1,%s,%s,flat,25,50,,,0,,0,,,,0,0,0,0,0,0,0,,0,0,0,0,,0\n"),
+						  Benefit, Benefit, UCataclysmDelayedDamage::SharePercentStat)
+		+ FString::Printf(TEXT("%s#2,%s,%s,flat,4,8,,,0,,0,,,,0,0,0,0,0,0,0,,0,0,0,0,,0\n"),
+						  Benefit, Benefit, UCataclysmDelayedDamage::SecondsStat);
+	for (const FString& Problem : Effects->CreateTableFromCSVString(Csv))
+	{
+		AddError(Problem);
+	}
+	if (!Positive || !Negative || Effects->GetRowMap().Num() != 2)
+	{
+		AddError(TEXT("A table could not be read."));
+		return false;
+	}
+	const FCataclysmEnchantmentRow* Sentence =
+		Positive->FindRow<FCataclysmEnchantmentRow>(FName(Benefit), TEXT("test"), /*bWarnIfRowMissing=*/false);
+	if (!TestNotNull(TEXT("set-up: the benefit is a real row of the positive table"), Sentence))
+	{
+		return false;
+	}
+
+	/** The one flat figure an item at this roll puts on a stat, or -1 when it puts none or more than one. */
+	const auto FigureAt = [&](float Roll, FName Stat) -> float
+	{
+		const FCataclysmItem Helm = Carrying(TEXT("Head_Helm"), Benefit, Roll, DrawbackWithNoEffect, 1.0f);
+		FTotals Totals;
+		UCataclysmItemModifiers::AccumulateEnchantmentsInto(Totals, {Helm}, Effects, Positive, Negative, nullptr);
+		const TArray<FCataclysmStatModifier>* Found = Totals.Find(Stat);
+		return Found && Found->Num() == 1 && (*Found)[0].Bucket == ECataclysmStatBucket::Flat ? (*Found)[0].Value : -1.0f;
+	};
+
+	// THE CONTROL: an item carrying another benefit puts nothing on either stat.
+	{
+		const FCataclysmItem Other = Carrying(TEXT("Head_Helm"), BlockBenefit, 1.0f, DrawbackWithNoEffect, 1.0f);
+		FTotals Totals;
+		UCataclysmItemModifiers::AccumulateEnchantmentsInto(Totals, {Other}, Effects, Positive, Negative, nullptr);
+		TestNull(TEXT("control: an item carrying another benefit puts nothing on the share"), Totals.Find(Share));
+		TestNull(TEXT("control: nor on the seconds"), Totals.Find(Seconds));
+	}
+
+	TestEqual(TEXT("at the lowest roll the share is 25"), FigureAt(0.0f, Share), 25.0f, 0.001f);
+	TestEqual(TEXT("and the seconds are 4"), FigureAt(0.0f, Seconds), 4.0f, 0.001f);
+	TestEqual(TEXT("at the highest roll the share is 50"), FigureAt(1.0f, Share), 50.0f, 0.001f);
+	TestEqual(TEXT("and the seconds are 8"), FigureAt(1.0f, Seconds), 8.0f, 0.001f);
+
+	// ONE ROLL SETS BOTH, AND EACH LANDS ON A WRITTEN VALUE OF ITS OWN RANGE: 26 whole percents and 5 whole seconds.
+	TestEqual(TEXT("at a roll of a half the share is 38"), FigureAt(0.5f, Share), 38.0f, 0.001f);
+	TestEqual(TEXT("and the seconds are 6"), FigureAt(0.5f, Seconds), 6.0f, 0.001f);
+	TestEqual(TEXT("at a roll of a quarter the share is 31"), FigureAt(0.25f, Share), 31.0f, 0.001f);
+	TestEqual(TEXT("and the seconds are 5"), FigureAt(0.25f, Seconds), 5.0f, 0.001f);
+
+	// AND THE HOVER TEXT SHOWS THE SAME TWO FIGURES, each range of the sentence at the same roll.
+	TestEqual(TEXT("the sentence at the lowest roll reads 25% over 4 seconds"),
+			  FValues::EnchantmentTextAtRoll(Sentence->Effect, 0.0f),
+			  FString(TEXT("25% of damage taken is dealt over 4 seconds")));
+	TestEqual(TEXT("at the highest roll it reads 50% over 8 seconds"),
+			  FValues::EnchantmentTextAtRoll(Sentence->Effect, 1.0f),
+			  FString(TEXT("50% of damage taken is dealt over 8 seconds")));
+	TestEqual(TEXT("and at a roll of a half 38% over 6 seconds"),
+			  FValues::EnchantmentTextAtRoll(Sentence->Effect, 0.5f),
+			  FString(TEXT("38% of damage taken is dealt over 6 seconds")));
 	return true;
 }
 
