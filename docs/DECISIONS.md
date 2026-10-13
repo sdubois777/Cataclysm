@@ -235,6 +235,20 @@ The test prefix for each is `Cataclysm.EmpireRun.` followed by the test's name. 
 `ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave` under a wider prefix, because their fall on day 26
 would then bring nothing.
 
+### Ruled after this entry was written: the one assertion that became false
+
+On 2026-10-12 the coordinating session ruled, a labelled judgement under the owner's delegation, on the one
+existing assertion this entry lists as becoming false. In
+`Cataclysm.EmpireRun.ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind` the assertion "the
+report says a surge fired exactly when a city's fall fires one" compared `Report.bSurged` with the flag
+`bSurgeOnCityFall`. It now reads "the report says a surge fired exactly when the scheduler said a fall's was due"
+and compares `Report.bSurged` with what `Surges->IsDueOnCityFall` answered when asked before the fall. A set-up
+assertion beside it says that on day 1, the day of the opening wave, a fall's surge is not due. The case where the
+answer is yes is `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`, named in the
+test's comment. Where this entry says above that the assertion was left failing, that was true when it was
+written. Every other test this entry lists is unchanged; the run finds out. Not compiled or run when this was
+written.
+
 ---
 
 ## 2026-10-12 — The cell picker for floor rules' objects shuffles on a seeded stream, so one dungeon seed and floor give each rule the same cells (#2342)

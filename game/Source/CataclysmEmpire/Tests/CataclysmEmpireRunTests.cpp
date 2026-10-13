@@ -3849,6 +3849,13 @@ bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters
 		return false;
 	}
 
+	// ASKED BEFORE THE FALL, because the fall's own surge would move the day it is measured from. Until issue
+	// #2380 this test compared the report with the bare flag `bSurgeOnCityFall`; a fall's surge now also waits
+	// for the least interval, and this death is on day 1, the day of the opening wave, so none is due. Ruled by
+	// the coordinating session on 2026-10-12. THE CASE WHERE THE ANSWER IS YES is
+	// `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`.
+	const bool bAFallsSurgeWasDue = Run->Surges->IsDueOnCityFall(Run->Day());
+	TestFalse(TEXT("set-up: on the day of the opening wave a fall's surge is not due"), bAFallsSurgeWasDue);
 	const FCataclysmDayReport Report = Run->ResolveDungeonOnDeath(DiedIn);
 
 	// THE CITY FELL TO THE RESOLVE.
@@ -3884,7 +3891,7 @@ bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters
 			 bListsAgree);
 
 	// AND WHAT A CITY FALLING DOES STILL HAPPENED: it became a Dungeon City, and
-	// its fall fired a surge when the rule says a fall does.
+	// its fall fired a surge exactly when the scheduler said a fall's surge was due.
 	bool bDungeonCityStands = false;
 	for (const FCataclysmDungeon& Standing : Run->Dungeons)
 	{
@@ -3893,8 +3900,8 @@ bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters
 				&& Standing.CityId == CityId);
 	}
 	TestTrue(TEXT("a Dungeon City stands where the city fell"), bDungeonCityStands);
-	TestTrue(TEXT("the report says a surge fired exactly when a city's fall fires one"),
-			 Report.bSurged == UCataclysmSurgeScheduler::bSurgeOnCityFall);
+	TestTrue(TEXT("the report says a surge fired exactly when the scheduler said a fall's was due"),
+			 Report.bSurged == bAFallsSurgeWasDue);
 
 	return true;
 }
