@@ -599,9 +599,44 @@ The sentence: "Teleport to a random location within 4 meters when hit".
   3. `UWorld::FindTeleportSpot` says the wearer's collision fits there. It moves a point a little out of
      anything that blocks the wearer, and refuses a point it cannot make fit. A point it had to move past the
      row's metres is refused. So the wearer is not put inside a wall or inside another character.
+     **CORRECTED 2026-10-13: "past the row's metres" here is past them by more than 0.01 centimetres**, a tenth
+     of a millimetre. The paragraph "THE METRES ARE HELD TO WITHIN A TENTH OF A MILLIMETRE" below says why.
   The wearer stands half its own height above the point, because the point is on the ground and a character's
   place is its middle. The move itself is `TeleportTo` with no sweep and no further check, as the dungeon's own
   relocations are made.
+- **THE METRES ARE HELD TO WITHIN A TENTH OF A MILLIMETRE. Corrected 2026-10-13, after the first compiled run;
+  the correction itself is NOT COMPILED AND NOT RUN.** The third check compared the distance of the fitted
+  point with the row's metres and allowed nothing. A point pinned for a test is built from a cosine and a sine
+  held as 32-bit floats, and those two do not make a direction of length exactly one: at 90 degrees the cosine
+  is -0.0000000437 and not nought. So a point pinned at the whole of 4 metres along +Y measured
+  400.0000000000004 centimetres from the wearer, a point pinned at the whole of 2 metres against X measured
+  200.0000000000008, each was refused as past the metres, and the wearer stayed put. A point pinned along +X
+  is exact and was not refused. In the first compiled run of the whole Unreal suite, on 2026-10-13 at commit
+  `a9189779`, that failed one assertion of
+  `Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull` and five of
+  `Cataclysm.Enchantments.TheTeleportWhenHitRowMovesItsWearerFourMetresOnALandedHitAndThenWaitsTwoSeconds`.
+  The arithmetic was repeated in a script, in the widths the code uses, before the code was changed, and gave
+  those two distances, and for each of the six pinned cases of the two tests the answer the run gave: the two
+  at the whole of the metres along +Y or against X refused, the other four not.
+  - *The allowance is 0.01 centimetres*: the comparison is now `Dist2D(From, Fitted) > ReachCm + 0.01`. A
+    judged number of the correcting session's. Why that size: by the same script, over every whole degree, a
+    pinned point at the whole of the metres measures at most 0.000014 centimetres past a row of 4 metres and
+    0.000068 past a row of 20, which is the most the generator accepts, so the allowance is about 150 times the
+    largest excess found. Why no player could notice it: it is a tenth of a millimetre in a move of metres.
+  - *It applies to a navigation point too*, because the comparison is the one both kinds of point pass after
+    the fit. A point the navigation system gave, or one `FindTeleportSpot` moved, may now stand up to a tenth
+    of a millimetre past the row's metres. The second check, which throws away a navigation point further than
+    the metres before the fit, is unchanged and allows nothing.
+  - *Whether `FindTeleportSpot` moved the pinned points of the two tests.* Read in the engine's source
+    (`LevelActor.cpp`, Unreal Engine 5.8): it returns the point unchanged when nothing that blocks the
+    character overlaps it there, and moves it only by an adjustment the overlap gives. Both tests stand every
+    actor 36 metres or more from every other in a world with no floor and no walls, and in each the same
+    wearer or its like was moved by a point pinned at half the metres or along +X. So it is read as not having
+    moved them. Not measured: no run printed the fitted point.
+  - *The two tests are unchanged.* They are the tests of this correction.
+  - *The option not taken:* build the pinned point so that it cannot exceed the metres, by shortening it. That
+    changes where a pinned wearer lands by a fraction no test could read, and leaves the comparison refusing a
+    point for a rounding error of any other origin.
 - **WITH NO REACHABLE POINT THE WEARER STAYS PUT.** Ruled. That is: no navigation system in the world; no point
   within the metres in 8 draws; or a point that does not fit. There is no fallback to an unchecked point.
 - **A WORLD MADE FOR AN AUTOMATION TEST HAS NO NAVIGATION SYSTEM.** Checked: the third test below asserts it
@@ -730,7 +765,8 @@ session made no search.
   the pinned point. Otherwise it asks the navigation system, up to `TeleportRandomlyDraws` times, for a
   reachable point, and keeps the first that is no further along the ground than the metres. With no point it
   returns false. It asks `UWorld::FindTeleportSpot` whether the character fits, refuses a point that does not
-  or that was moved past the metres, refuses a point within one centimetre of where the character stands,
+  or that was moved more than 0.01 centimetres past the metres (corrected 2026-10-13, from "past the metres"),
+  refuses a point within one centimetre of where the character stands,
   moves the character with `TeleportTo`, and moves the sampler's last-seen place by what the character was
   moved by.
 - **Two console variables**, `Cataclysm.TeleportRandomlyDegrees` (default -1, which asks the navigation system)

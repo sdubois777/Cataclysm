@@ -6435,9 +6435,20 @@ bool UCataclysmAbilitySystemComponent::TeleportTheWearerRandomly(float Metres)
 	// AND WHERE THE CHARACTER FITS. `FindTeleportSpot` moves the point out of anything that blocks the character's
 	// collision, by the little a point on the navigation mesh can sit inside the floor, and refuses a point it
 	// cannot make fit. A point it had to move past the row's metres is refused here.
+	//
+	// PAST THE METRES BY MORE THAN A HUNDREDTH OF A CENTIMETRE, AND NOT BY LESS. Corrected 2026-10-13. The pinned
+	// point is built from a cosine and a sine held as floats, and the two do not make a vector of length exactly
+	// one: at 90 degrees the cosine is -0.0000000437 and not nought, so a point pinned at the whole of 4 metres
+	// measures 400.0000000000004 centimetres from the character, and at 180 degrees a row of 2 metres measures
+	// 200.0000000000008. Compared with no allowance, both were past the metres and the character stayed put, which
+	// the first compiled run of the tests showed. Over every whole degree the excess is at most 0.00007 centimetres
+	// for the 20 metres the generator allows a row. The allowance is 0.01 centimetres, a tenth of a millimetre.
+	// IT APPLIES TO A POINT THE NAVIGATION SYSTEM GAVE AS WELL, after the fit: such a point may now stand up to a
+	// tenth of a millimetre past the row's metres.
+	const double ReachAllowanceCm = 0.01;
 	FVector Fitted = To;
 	if (!World->FindTeleportSpot(Self, Fitted, Self->GetActorRotation())
-		|| FVector::Dist2D(From, Fitted) > ReachCm)
+		|| FVector::Dist2D(From, Fitted) > ReachCm + ReachAllowanceCm)
 	{
 		return false;
 	}

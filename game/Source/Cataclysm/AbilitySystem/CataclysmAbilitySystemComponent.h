@@ -1369,7 +1369,8 @@ public:
 	 * (`UNavigationSystemV1::GetRandomReachablePointInRadius`, the call an enemy's roaming makes), no further along
 	 * the ground than the metres given, and where `UWorld::FindTeleportSpot` says the character's collision fits
 	 * without overlapping anything that blocks it. A point that fails either is not used. So the character is never
-	 * put inside a wall, inside another character or off the navigation mesh.
+	 * put inside a wall, inside another character or off the navigation mesh. THE METRES ARE HELD TO WITHIN 0.01
+	 * CENTIMETRES, a tenth of a millimetre, after the fit: the function's comment at that comparison says why.
 	 *
 	 * IT STAYS PUT, and this returns false, when: the character is dead; the metres are nought or less; a movement
 	 * skill of the character's is running (a lasting charge or a Flicker between arrivals), because that skill
