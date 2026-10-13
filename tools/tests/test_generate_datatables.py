@@ -6698,3 +6698,87 @@ class TestAllDotsOnTheFirstHitAndTheStunNearTheDying:
     def test_a_stated_trigger_cooldown_is_kept_on_the_stun(self, tmp_path):
         out = gen.enchantment_effects(self.lock(tmp_path, {"Trigger Cooldown": 10}))
         assert out[0]["TriggerCooldown"] == 10.0
+
+
+class TestEnemiesThatSurviveFiveSecondsAfterAFirstHit:
+    """`opponent_first_struck_by_you_seconds_ago`, ruled 2026-10-12 and built
+    ahead of its row, for "Enemies that survive more than 5 seconds after
+    first being hit gain 20%-40% increased damage". The row is the wearer's
+    own `damage_taken`, increased, 20 to 40, under that condition with 5:
+    the shape every merged row saying "enemies deal more damage" has.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one, on a made-up sheet. The real row is the enchantment session's to
+    write; this shows that the generator carries the ruled row through and
+    refuses the wrong ones.
+    """
+
+    WORDS = ("Enemies that survive more than 5 seconds after first being hit "
+             "gain 20%-40% increased damage")
+    CONDITION = "opponent_first_struck_by_you_seconds_ago"
+    ROW = {"Stat": "damage_taken", "Value Kind": "increased",
+           "Value Low": 20, "Value High": 40,
+           "Condition": CONDITION, "Condition Value": 5}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def test_the_ruled_row_is_carried_through_and_its_asker_can_judge_it(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["Condition"], row["ConditionValue"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("damage_taken", "increased", 20.0, 40.0, self.CONDITION, 5.0,
+             "", "")]
+        # IT ASKS ABOUT THE BLOW BEING TAKEN, which `damage_taken` is handed.
+        assert gen.what_a_condition_needs(self.CONDITION) == "blow_taken"
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_control_the_same_row_under_a_merged_opponent_condition_passes(
+            self, tmp_path):
+        """The control for the refusals below: the made-up sheet carries a
+        `damage_taken` row under a condition that was merged long before."""
+        out = self.out(tmp_path, [dict(
+            self.ROW, **{"Condition": "opponent_is_staggered",
+                         "Condition Value": None})])
+        assert out[0]["Condition"] == "opponent_is_staggered"
+
+    def test_the_seconds_must_be_stated_and_inside_a_minute(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Condition Value"):
+            self.out(tmp_path, [dict(self.ROW, **{"Condition Value": None})])
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, [dict(self.ROW, **{"Condition Value": 61})])
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, [dict(self.ROW, **{"Condition Value": -1})])
+
+    @pytest.mark.parametrize("stat", [
+        "attack_damage", "spell_damage", "movement_speed", "armor_penetration"])
+    def test_the_condition_on_a_stat_that_is_not_handed_a_blow_taken_is_refused(
+            self, tmp_path, stat):
+        """A stat asked for while a hit is DEALT, or with the wearer's state
+        alone, is handed no blow taken: the condition would be refused every
+        time it was judged and the row would grant nothing."""
+        out = self.out(tmp_path, [dict(self.ROW, Stat=stat)])
+        problems = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out)
+        assert len(problems) == 1
+        assert self.CONDITION in problems[0] and repr(stat) in problems[0]
+
+    @pytest.mark.parametrize("stat", [
+        "armor", "block_chance", "damage_reduction", "damage_taken", "evasion"])
+    def test_every_stat_asked_for_at_a_defence_step_can_judge_it(
+            self, tmp_path, stat):
+        out = self.out(tmp_path, [dict(self.ROW, Stat=stat)])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+
+    def test_the_name_is_a_condition_of_a_blow_taken_with_a_seconds_bound(self):
+        assert self.CONDITION in gen.CONDITIONS_OF_A_BLOW_TAKEN
+        assert self.CONDITION not in gen.CONDITIONS_OF_A_HIT_DEALT
+        assert gen.CONDITIONS[self.CONDITION] == (
+            0.0, 60.0, "a number of seconds")

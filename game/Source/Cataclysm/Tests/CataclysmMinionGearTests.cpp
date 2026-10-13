@@ -10,6 +10,7 @@
 #include "Character/CataclysmEnemyRarity.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -814,6 +815,241 @@ bool FCataclysmMinionGearStruckRecordTimeTest::RunTest(const FString&)
 	TestEqual(TEXT("and a second blow makes it this instant again"),
 			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), 0.0f,
 			  0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionGearFirstStruckTimeTest,
+	"Cataclysm.MinionGear.TheStruckRecordKeepsWhenEachStrikersFirstBlowGotThroughAndALaterBlowDoesNotMoveIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The time of each striker's FIRST blow, kept beside the most recent. Ruled
+ * 2026-10-12, for "Enemies that survive more than 5 seconds after first being
+ * hit gain 20%-40% increased damage".
+ *
+ * THE TEST ABOVE IS THE CONTROL FOR THIS ONE: there a second blow makes the
+ * most recent time this instant again. Here the same second blow leaves the
+ * first time where it was, and both readings are taken side by side.
+ */
+bool FCataclysmMinionGearFirstStruckTimeTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter You(World, SummonerWeapon);
+	FScopedFighter Stranger(World, SummonerWeapon);
+	FScopedFighter Enemy(World, /*AttackDamage=*/0.0f);
+
+	TestEqual(TEXT("before any blow the enemy has no first time for you"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), -1.0f,
+			  0.001f);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(You.Actor, Enemy.Actor, 1.0f);
+	TestEqual(TEXT("your first blow is recorded as this instant"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("and a stranger still has none"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(Stranger.AbilitySystem),
+			  -1.0f, 0.001f);
+
+	World->TimeSeconds += 1.5f;
+	UCataclysmSkillEffects::ApplyDirectDamage(You.Actor, Enemy.Actor, 1.0f);
+	TestEqual(TEXT("control: a second blow makes the most recent time this instant"),
+			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("and leaves the first time 1.5 seconds old"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 1.5f,
+			  0.001f);
+
+	// A SECOND STRIKER HAS ITS OWN CLOCK, started by its own first blow.
+	UCataclysmSkillEffects::ApplyDirectDamage(Stranger.Actor, Enemy.Actor, 1.0f);
+	World->TimeSeconds += 2.0f;
+	TestEqual(TEXT("the stranger's first time is 2 seconds old"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(Stranger.AbilitySystem),
+			  2.0f, 0.001f);
+	TestEqual(TEXT("and yours is 3.5 seconds old"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 3.5f,
+			  0.001f);
+
+	// CLEARED WHERE `StruckBy` IS CLEARED: when the character struck is revived.
+	if (!TestTrue(TEXT("set-up: the most recent record holds you before the clearing"),
+				  Enemy.AbilitySystem->WasStruckBy(You.AbilitySystem)))
+	{
+		return false;
+	}
+	Enemy.AbilitySystem->ClearWhatDeathEnds();
+	TestFalse(TEXT("control: the clearing emptied the most recent record"),
+			  Enemy.AbilitySystem->WasStruckBy(You.AbilitySystem));
+	TestEqual(TEXT("and the first time with it"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), -1.0f,
+			  0.001f);
+	TestEqual(TEXT("for every striker"),
+			  Enemy.AbilitySystem->SecondsSinceFirstStruckBy(Stranger.AbilitySystem),
+			  -1.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionGearFirstStruckKindsTest,
+	"Cataclysm.MinionGear.ATickStartsTheFirstStruckTimeAndARowsBlowAndAConsequenceOfADeathDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Which blows start the first-struck time. Ruled 2026-10-12: the blows that
+ * write the first-hit record, and no others.
+ *
+ * THREE ENEMIES, ONE KIND OF BLOW EACH, and a plain blow on each afterwards.
+ * The plain blow is the control: it starts the time on the two enemies whose
+ * marked blow did not, which shows those enemies could be recorded at all.
+ */
+bool FCataclysmMinionGearFirstStruckKindsTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter You(World, SummonerWeapon);
+	FScopedFighter Ticked(World, /*AttackDamage=*/0.0f);
+	FScopedFighter Answered(World, /*AttackDamage=*/0.0f);
+	FScopedFighter Blasted(World, /*AttackDamage=*/0.0f);
+
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	FCataclysmHitDelivery RowsAnswer;
+	RowsAnswer.bIsARowsAnswerToAnEvent = true;
+	FCataclysmHitDelivery OfADeath;
+	OfADeath.bIsConsequenceOfADeath = true;
+
+	const auto Dealt = [&You](FScopedFighter& Target, const FCataclysmHitDelivery& Delivery)
+	{
+		const float Before = Target.Health();
+		UCataclysmSkillEffects::ApplyDirectDamage(You.Actor, Target.Actor, 8.0f, Delivery);
+		return Before - Target.Health();
+	};
+
+	// EACH MARKED BLOW REACHES HEALTH, so none is left out of the record for
+	// having dealt nothing.
+	const float TickDealt = Dealt(Ticked, Tick);
+	const float AnswerDealt = Dealt(Answered, RowsAnswer);
+	const float BlastDealt = Dealt(Blasted, OfADeath);
+	if (!TestTrue(TEXT("set-up: the tick reaches health"), TickDealt > 0.0f)
+		|| !TestTrue(TEXT("set-up: the row's blow reaches health"), AnswerDealt > 0.0f)
+		|| !TestTrue(TEXT("set-up: the blow that is a consequence of a death reaches health"),
+					 BlastDealt > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a tick is a first blow and starts the time"),
+			  Ticked.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 0.0f, 0.001f);
+	TestEqual(TEXT("a row's answer to an event does not"),
+			  Answered.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), -1.0f, 0.001f);
+	TestEqual(TEXT("and the consequence of a death does not"),
+			  Blasted.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), -1.0f, 0.001f);
+
+	World->TimeSeconds += 2.0f;
+	Dealt(Ticked, FCataclysmHitDelivery());
+	Dealt(Answered, FCataclysmHitDelivery());
+	Dealt(Blasted, FCataclysmHitDelivery());
+	TestEqual(TEXT("a plain blow 2 seconds later does not move the time the tick started"),
+			  Ticked.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 2.0f, 0.001f);
+	TestEqual(TEXT("control: it starts the time the row's blow did not"),
+			  Answered.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 0.0f, 0.001f);
+	TestEqual(TEXT("control: and the time the consequence of a death did not"),
+			  Blasted.AbilitySystem->SecondsSinceFirstStruckBy(You.AbilitySystem), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionGearFirstStruckRowSparesTheMinionTest,
+	"Cataclysm.MinionGear.AnOpponentItsSummonerFirstStruckDealsNoMoreToTheMinionAndMoreToTheSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Enemies that survive more than 5 seconds after first being hit gain 20%-40%
+ * increased damage" is the wearer's own `damage_taken` under
+ * `opponent_first_struck_by_you_seconds_ago`, so it raises what reaches the
+ * wearer and nothing else. Ruled 2026-10-12.
+ *
+ * EVERY FIGURE IS A RATIO OF TWO BLOWS FROM ONE ENEMY ON ONE CHARACTER, one
+ * before the summoner's first blow on that enemy and one more than five
+ * seconds after it. The summoner's ratio is the control: it is 1.4, which
+ * shows the row was live when the minion's ratio was read as 1.
+ */
+bool FCataclysmMinionGearFirstStruckRowSparesTheMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, SummonerWeapon);
+	FScopedFighter Enemy(World, /*AttackDamage=*/10.0f);
+
+	ACataclysmMinion* Imp = SummonImp(*this, World, Summoner.Actor);
+	if (!Imp)
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	FCataclysmStatModifier AfterFive;
+	AfterFive.Bucket = ECataclysmStatBucket::Increased;
+	AfterFive.Source = ECataclysmModifierSource::Enchantment;
+	AfterFive.Value = 40.0f;
+	AfterFive.Condition = ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo;
+	AfterFive.ConditionValue = 5.0f;
+
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line =
+		Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::DamageTakenStat));
+	Line.Base = UCataclysmDamageCalculation::NormalDamageTaken;
+	Line.Modifiers = {AfterFive};
+	Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	FCataclysmHitDelivery NoCritical;
+	NoCritical.bCannotCriticallyStrike = true;
+	const auto StruckFor = [&Enemy, &NoCritical](AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Enemy.Actor, Target, 100.0f, FGameplayTagContainer(),
+										 NoCritical, &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	const float SummonerBefore = StruckFor(Summoner.Actor);
+	const float ImpBefore = StruckFor(Imp);
+	if (!TestTrue(TEXT("set-up: both blows land for something before the first hit"),
+				  SummonerBefore > 0.0f && ImpBefore > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Summoner.Actor, Enemy.Actor, 1.0f);
+	World->TimeSeconds += 6.0f;
+
+	const float SummonerAfter = StruckFor(Summoner.Actor);
+	const float ImpAfter = StruckFor(Imp);
+	TestEqual(TEXT("control: six seconds after its first hit the summoner takes 40% more"),
+			  SummonerAfter / SummonerBefore, 1.4f, 0.001f);
+	TestEqual(TEXT("and its minion takes what it took before"),
+			  ImpAfter / ImpBefore, 1.0f, 0.001f);
 
 	return true;
 }
