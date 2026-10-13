@@ -714,6 +714,96 @@ public:
 	}
 	float PendingOverkillExplosionShare() const { return PendingOverkillExplosionSharePercent; }
 
+	/**
+	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
+	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
+	 * to execute enemies below 15% HP". See `FCataclysmPoolAction::bExecuteTarget`.
+	 */
+	struct FExecuteAsked
+	{
+		/** The character whose worn row asked, and whose kill it is. None means nothing is asked. */
+		TWeakObjectPtr<AActor> By;
+
+		/** The share of maximum health the hit must leave this character below, in per cent. */
+		float BelowPercent = 0.0f;
+
+		/** The asking row's trigger key and its trigger cooldown, started on `By` when the execute kills. */
+		FName TriggerKey;
+		float TriggerCooldownSeconds = 0.0f;
+
+		bool IsAsked() const { return By.IsValid() && BelowPercent > 0.0f; }
+	};
+
+	/**
+	 * Leave a request on this character, the one a hit has struck. Called by the striking character's row loop on
+	 * `hit_dealt`, for a row whose roll came up.
+	 *
+	 * WHY THE ROW DOES NOT KILL ANYTHING ITSELF. `hit_dealt` is raised from `UCataclysmCombatEvents::NoteBlow`, which
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls BEFORE it writes the hit's damage to health. So
+	 * while the row loop runs, this character still holds the health it held before the hit, and "below 15%" is to
+	 * be judged on the health the hit leaves. The row therefore leaves the request here, and the attribute set takes
+	 * it when `NoteBlow` has returned and acts on it once the damage is written: see `ExecuteIfLeftBelow`. By then
+	 * the striking character's row loop has returned, so the kill reaches its `kill` rows.
+	 *
+	 * THE LARGEST SHARE OF THE ROWS THAT ASKED IS KEPT, with that row's trigger. A character below the largest share
+	 * is below at least one row's share, and a character at or above it is below none.
+	 */
+	void AskToBeExecuted(AActor* By, float BelowPercent, FName TriggerKey, float TriggerCooldownSeconds);
+
+	/** What was asked of this character, read once and cleared. Nothing asked when none was. */
+	FExecuteAsked TakeExecuteAsked()
+	{
+		const FExecuteAsked Was = ExecuteAsked;
+		ExecuteAsked = FExecuteAsked();
+		return Was;
+	}
+
+	/** What is asked of this character now, without clearing it. For tests. */
+	const FExecuteAsked& ExecuteAskedNow() const { return ExecuteAsked; }
+
+	/**
+	 * Put back a request taken with `TakeExecuteAsked`. The attribute set takes what was asked before it announces
+	 * a hit and puts it back afterwards, so that it acts only on what THAT hit's announcement asked: a hit dealt to
+	 * this character from inside another hit's announcement does not take the outer hit's request.
+	 */
+	void PutBackExecuteAsked(const FExecuteAsked& Earlier) { ExecuteAsked = Earlier; }
+
+	/**
+	 * Whether a character may be executed at all: it is alive, it is not a Boss or a Cataclysm Boss, and damage
+	 * reaches it. Ruled 2026-10-12, and by the ruling of 2026-09-11 that an execute never kills a Boss or a Cataclysm
+	 * Boss. HERE AND NOT A CONDITION ON THE ROW, because an action carries one condition and the row's is the share
+	 * of health. A character that is not an enemy character is not a boss and is not refused by this.
+	 */
+	static bool CanBeExecuted(const AActor* Target);
+
+	/**
+	 * Act on a request taken from this character: if it may be executed, the last blow on its record is `Asked.By`'s
+	 * and its health is above nought and STRICTLY below the asked share of its maximum, take the health it has left
+	 * with `UCataclysmSkillEffects::ReduceHealthDirectly`, sent by `Asked.By`. Called by the attribute set after it
+	 * has written a hit's damage to health.
+	 *
+	 * A DIRECT LOSS OF THE HEALTH LEFT AND NOT A HIT. No damage formula, no evasion, block, armour or resistance, no
+	 * critical strike, no leech and no retaliation, and no `hit_dealt` of its own: nothing is announced as a blow.
+	 *
+	 * CREDITED BY THE RECORD THE HIT LEFT. The death is announced by `UCataclysmCombatEvents::NoteDeath`, which names
+	 * as the killer the attacker of the last blow on this character's record. That is the hit that asked, so the
+	 * death notice is the one a death by that hit would have carried, with two differences: its killing tags are
+	 * empty and its overkill is nought, because the hit itself was not lethal and a direct loss records no blow.
+	 * WHEN THE LAST BLOW ON RECORD IS NOT `Asked.By`'s, NOTHING IS DONE, so no execute is ever credited to another.
+	 *
+	 * AN ENEMY IN A FRIENDLY UNHOLY SIGIL IS HELD AT ONE HEALTH, as it is against every loss of health; it is not
+	 * killed and no cooldown starts.
+	 *
+	 * @return whether this character died of it. The asking row's trigger cooldown is started then, on `Asked.By`.
+	 */
+	bool ExecuteIfLeftBelow(const FExecuteAsked& Asked);
+
+	/**
+	 * Start a row's trigger cooldown on this character, the wearer, because an execute its row asked for killed.
+	 * As `NoteTriggerFired` starts any row's, and only for a row that has one.
+	 */
+	void NoteExecuteMade(FName TriggerKey, float TriggerCooldownSeconds);
+
 	/** The skill a row asked to repeat and that has not been made yet, or none. */
 	FName PendingRepeatSkill() const { return PendingRepeatName; }
 	FVector PendingRepeatAim() const { return PendingRepeatAimPoint; }
@@ -1363,6 +1453,13 @@ public:
 	 * `STRIKE_TARGET_ACTION`. See `FCataclysmPoolAction::bStrikeTarget`.
 	 */
 	static const TCHAR* StrikeTargetAction;
+
+	/**
+	 * The action that executes the enemy a hit leaves below a share of its maximum health, with the value as the
+	 * chance and the row's Condition Value as the share. Ruled 2026-10-12. `tools/generate_datatables.py` holds the
+	 * same name as `EXECUTE_TARGET_ACTION`. See `FCataclysmPoolAction::bExecuteTarget`.
+	 */
+	static const TCHAR* ExecuteTargetAction;
 
 	/**
 	 * The action that grants its wearer a temporary absorb, with the value as a percentage of the wearer's maximum
@@ -4587,6 +4684,9 @@ protected:
 
 	/** What the rows recorded for the kill in hand. See `TakePendingOverkillExplosionSharePercent`. */
 	float PendingOverkillExplosionSharePercent = 0.0f;
+
+	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
+	FExecuteAsked ExecuteAsked;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */
 	TMap<TWeakObjectPtr<const AActor>, float> ShoulderedThroughUntil;

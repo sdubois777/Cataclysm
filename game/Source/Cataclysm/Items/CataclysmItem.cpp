@@ -1514,6 +1514,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bStrikeTarget = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::StrikeTargetAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS HEALTH. Ruled
+					// 2026-10-12. The value is the chance; the share is the row's Condition Value, copied
+					// below with its Condition as for every action.
+					Action.bExecuteTarget = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ExecuteTargetAction,
+						ESearchCase::IgnoreCase);
 					// AND WHETHER IT GRANTS A TEMPORARY ABSORB. The owner, 2026-10-07: separate
 					// from the energy shield. The value is a percentage of maximum health.
 					Action.bTemporaryAbsorb = Effect->Action.Equals(
