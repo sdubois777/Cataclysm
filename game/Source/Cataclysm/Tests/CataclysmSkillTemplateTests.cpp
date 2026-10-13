@@ -23,6 +23,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For a payment of retaliation made by hand, in the tests of an enemy that has
+// become immune to one attacker.
+#include "AbilitySystem/CataclysmRetaliation.h"
 // For the weapon Buried Fire leaves standing in the ground, and for the
 // seconds it counts while it stands. Issue #1141.
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
@@ -30973,6 +30976,679 @@ bool FCataclysmHealingSkillShieldInsideTheWaitTest::RunTest(const FString&)
 	TestEqual(TEXT("control, read last: a second outside the wait adds the shield's own 100, so the shield "
 				   "regenerates and only the wait held it"),
 			  HealingShieldHeldBy(Holder), 120.0f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// AN ENEMY BECOMES IMMUNE TO ONE ATTACKER 15 SECONDS AFTER THAT ATTACKER'S FIRST HIT ON IT, UNTIL THE ATTACKER HAS
+// BEEN OUT OF COMBAT. Ruled 2026-10-12 under the owner's delegation, for "Enemies that have been alive for more than
+// 15 seconds become immune to your damage until you disengage for 3 seconds". No row is authored, so the wearer's
+// stat line is written by hand as a gear refresh would write it.
+//
+// A REAL PLAYER CHARACTER STRIKES REAL CREATURES, on the rig of the execute tests above. The player is at the origin
+// and the creatures are along +X, 4 m apart and at least 4 m from the player. A second attacker, where one is used,
+// is a bare fighter 16 m along +X.
+//
+// THE CLOCK IS THE WORLD'S, MOVED BY HAND, A SECOND OR LESS AT A TIME, and the wearer is told it dealt a blow at each
+// step. A combat lapses 3 seconds after its last event, and a lapsed combat makes nothing immune, so a test that
+// moved the clock 15 seconds in one step would read an enemy that is never immune. Nothing waits on a tick.
+//
+// EVERY FIGURE IS HEALTH LOST, READ AS A DIFFERENCE, and each kind of damage is read inside the 15 seconds first:
+// that reading is the control for the nought read after them.
+// ---------------------------------------------------------------------------
+namespace CataclysmImmuneAfterFifteenTest
+{
+	using namespace CataclysmExecuteTest;
+
+	/** The stat line of the row: enemies become immune to the wearer this many seconds after its first hit. */
+	void WearTheRow(UCataclysmAbilitySystemComponent* Wearer, float Seconds)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = Seconds;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmAbilitySystemComponent::EnemiesImmuneAfterSecondsStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Wearer->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** Move the clock on by `Seconds`, a second or less at a time, the wearer dealing a blow at each step. */
+	void FightOn(UWorld* World, UCataclysmAbilitySystemComponent* Wearer, float Seconds)
+	{
+		float Left = Seconds;
+		while (Left > 0.0f)
+		{
+			const float Step = FMath::Min(1.0f, Left);
+			World->TimeSeconds += Step;
+			Wearer->NoteHitDealt();
+			Left -= Step;
+		}
+	}
+
+	/** The five kinds of the wearer's damage that reach the place where a blow is resolved. */
+	constexpr int32 KindsOfDamage = 5;
+	const TCHAR* const KindNames[KindsOfDamage] = {
+		TEXT("a hit"), TEXT("a tick of damage over time"), TEXT("retaliation"), TEXT("a row's blow"),
+		TEXT("an explosion the wearer causes")};
+
+	/** The health `Target` loses to one blow of the wearer's of this kind. */
+	float LostTo(const FRealKiller& Wearer, ACataclysmEnemyCharacter* Target, int32 Kind)
+	{
+		const float Before = HealthOf(Target);
+		switch (Kind)
+		{
+		case 0:
+			Blow(Wearer, Target, nullptr);
+			break;
+		case 1:
+		{
+			FCataclysmHitDelivery Tick;
+			Tick.bIsDamageOverTime = true;
+			Tick.bCannotCriticallyStrike = true;
+			UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Character, Target, /*Damage=*/40.0f, Tick);
+			break;
+		}
+		case 2:
+			UCataclysmRetaliation::Pay(Wearer.AbilitySystem, Wearer.Character, Target, /*DamageTaken=*/500.0f);
+			break;
+		case 3:
+		{
+			FCataclysmHitDelivery RowsAnswer;
+			RowsAnswer.bIsARowsAnswerToAnEvent = true;
+			RowsAnswer.bCannotCriticallyStrike = true;
+			UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Character, Target, /*Damage=*/40.0f, RowsAnswer);
+			break;
+		}
+		default:
+			UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Character, Target, /*Damage=*/40.0f,
+													  AsTheExplosionDelivers());
+			break;
+		}
+		return Before - HealthOf(Target);
+	}
+
+	/** Whether `Target` is immune to the wearer's damage now. */
+	bool IsImmuneTo(ACataclysmEnemyCharacter* Target, const FRealKiller& Wearer)
+	{
+		const UCataclysmAbilitySystemComponent* Its = SystemOf(Target);
+		return Its && Its->IsImmuneToDamageOf(Wearer.AbilitySystem);
+	}
+
+	/** The seconds since the wearer's first hit of its current combat on `Target`, or -1. */
+	float EngagedFor(ACataclysmEnemyCharacter* Target, const FRealKiller& Wearer)
+	{
+		const UCataclysmAbilitySystemComponent* Its = SystemOf(Target);
+		return Its ? Its->SecondsSinceEngagedBy(Wearer.AbilitySystem) : -2.0f;
+	}
+
+	/** Whether the world's clock is at a time a float holds exactly, which a reading at exactly 15 seconds needs. */
+	bool ClockIsExact(const UWorld* World)
+	{
+		return static_cast<double>(static_cast<float>(World->GetTimeSeconds())) == World->GetTimeSeconds();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenEveryKindTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.InsideTheFifteenSecondsEveryKindOfTheWearersDamageReachesAnEnemyAndFromThemOnNoneDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin, the struck creature 4 m along +X, the creature never struck 8 m along +X, and
+ * a second attacker 16 m along +X.
+ *
+ * Five kinds of the wearer's damage, a direct loss of health in the wearer's name, and the second attacker's blow
+ * are each read at the first hit, 14.5 seconds after it and exactly 15 seconds after it.
+ */
+bool FCataclysmImmuneAfterFifteenEveryKindTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	if (!TestTrue(TEXT("set-up: the world's clock starts at a time a float holds exactly"), ClockIsExact(World)))
+	{
+		return false;
+	}
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Struck = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* NeverStruck = CreatureNumber(World, 2);
+	FScopedFighter Another(World, FVector(16 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up: the creature the wearer strikes"), Struck)
+		|| !TestNotNull(TEXT("set-up: the creature never struck"), NeverStruck)
+		|| !TestNotNull(TEXT("set-up: the second attacker"), Another.Actor))
+	{
+		return false;
+	}
+	WearTheRow(Wearer.AbilitySystem, 15.0f);
+	Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 20.0f);
+
+	const auto LostToAnother = [&Another](ACataclysmEnemyCharacter* Target)
+	{
+		const float Before = HealthOf(Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Another.Actor, Target, /*Damage=*/50.0f);
+		return Before - HealthOf(Target);
+	};
+
+	// BEFORE ANY BLOW: nothing is immune and no time stands.
+	TestFalse(TEXT("before any blow the creature is not immune to the wearer"), IsImmuneTo(Struck, Wearer));
+	TestEqual(TEXT("and holds no time for it"), EngagedFor(Struck, Wearer), -1.0f, 0.001f);
+
+	// THE FIRST HIT, AND EVERY KIND INSIDE THE 15 SECONDS. These readings are the controls.
+	const float FirstHit = LostTo(Wearer, Struck, 0);
+	if (!TestTrue(TEXT("set-up: the wearer's first hit takes health"), FirstHit > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the first hit starts the creature's time for the wearer"), EngagedFor(Struck, Wearer), 0.0f,
+			  0.001f);
+	float Inside[KindsOfDamage] = {};
+	for (int32 Kind = 0; Kind < KindsOfDamage; ++Kind)
+	{
+		Inside[Kind] = LostTo(Wearer, Struck, Kind);
+		if (!TestTrue(*FString::Printf(TEXT("control: in the instant of the first hit, %s of the wearer's takes "
+											"health: %.2f"), KindNames[Kind], Inside[Kind]),
+					  Inside[Kind] > 0.0f))
+		{
+			return false;
+		}
+	}
+	const float BeforeDirect = HealthOf(Struck);
+	TestTrue(TEXT("control: a direct loss of health in the wearer's name is taken"),
+			 UCataclysmSkillEffects::ReduceHealthDirectly(Wearer.Character, Struck, 10.0f));
+	TestEqual(TEXT("control: and it takes the 10"), BeforeDirect - HealthOf(Struck), 10.0f, 0.01f);
+	const float AnotherInside = LostToAnother(Struck);
+	if (!TestTrue(TEXT("set-up: the second attacker's blow takes health"), AnotherInside > 0.0f))
+	{
+		return false;
+	}
+
+	// 14.5 SECONDS AFTER THE FIRST HIT: every kind still reaches it.
+	FightOn(World, Wearer.AbilitySystem, 14.5f);
+	TestFalse(TEXT("14.5 seconds after the first hit the creature is not immune"), IsImmuneTo(Struck, Wearer));
+	for (int32 Kind = 0; Kind < KindsOfDamage; ++Kind)
+	{
+		TestEqual(*FString::Printf(TEXT("14.5 seconds after the first hit, %s takes what it took at the start"),
+								   KindNames[Kind]),
+				  LostTo(Wearer, Struck, Kind), Inside[Kind], 0.01f);
+	}
+
+	// EXACTLY 15 SECONDS AFTER THE FIRST HIT: nothing of the wearer's reaches it.
+	FightOn(World, Wearer.AbilitySystem, 0.5f);
+	TestEqual(TEXT("set-up: the creature's time for the wearer is exactly 15 seconds"), EngagedFor(Struck, Wearer),
+			  15.0f, 0.0f);
+	TestTrue(TEXT("exactly 15 seconds after the first hit the creature is immune to the wearer: at least, not more "
+				  "than"), IsImmuneTo(Struck, Wearer));
+	for (int32 Kind = 0; Kind < KindsOfDamage; ++Kind)
+	{
+		TestEqual(*FString::Printf(TEXT("from 15 seconds on, %s of the wearer's takes nothing"), KindNames[Kind]),
+				  LostTo(Wearer, Struck, Kind), 0.0f, 0.0f);
+	}
+	const float BeforeRefusedDirect = HealthOf(Struck);
+	TestFalse(TEXT("a direct loss of health in the wearer's name is refused"),
+			  UCataclysmSkillEffects::ReduceHealthDirectly(Wearer.Character, Struck, 10.0f));
+	TestEqual(TEXT("and takes nothing"), BeforeRefusedDirect - HealthOf(Struck), 0.0f, 0.0f);
+
+	// WHAT THE REFUSED HIT RESOLVED TO: nothing to health and nothing to a pool.
+	FCataclysmHitDelivery Plain;
+	Plain.CritChancePercent = 0.0f;
+	FCataclysmDamageResult Refused;
+	UCataclysmSkillEffects::ApplyHit(Wearer.Character, Struck, /*DamagePercent=*/100.0f, FGameplayTagContainer(),
+									 Plain, &Refused);
+	TestEqual(TEXT("the refused hit resolves to nothing dealt to health"), Refused.DealtToHealth, 0.0f, 0.0f);
+	TestEqual(TEXT("and no overkill"), Refused.Overkill, 0.0f, 0.0f);
+
+	// ANOTHER CHARACTER'S DAMAGE STILL REACHES IT.
+	TestEqual(TEXT("the second attacker's blow takes what it took at the start"), LostToAnother(Struck),
+			  AnotherInside, 0.01f);
+	TestFalse(TEXT("and the creature is not immune to the second attacker"),
+			  SystemOf(Struck)->IsImmuneToDamageOf(Another.AbilitySystem));
+
+	// AN ENEMY NEVER STRUCK IS NOT IMMUNE, however long the wearer has fought.
+	TestFalse(TEXT("the creature the wearer never struck is not immune to it"), IsImmuneTo(NeverStruck, Wearer));
+	TestEqual(TEXT("and the wearer's first hit on it takes what its first hit on the other took"),
+			  LostTo(Wearer, NeverStruck, 0), FirstHit, 0.01f);
+
+	// AND IT STAYS IMMUNE WHILE THE WEARER FIGHTS ON.
+	FightOn(World, Wearer.AbilitySystem, 30.0f);
+	TestTrue(TEXT("45 seconds after the first hit, the wearer still in combat, the creature is still immune"),
+			 IsImmuneTo(Struck, Wearer));
+	TestEqual(TEXT("and a hit of the wearer's still takes nothing"), LostTo(Wearer, Struck, 0), 0.0f, 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenExecuteTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.AnExecuteAskedByTheWearerKillsInsideTheFifteenSecondsAndDoesNothingAfterThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin and two creatures 4 m and 8 m along +X.
+ *
+ * `ExecuteIfLeftBelow` is called by hand, as `Cataclysm.Execute.TheShareIsStrictAndOnlyTheCharacterWhoseBlowIsOnRecordIsCredited`
+ * calls it, with a request of 12.5% from the wearer, on a creature held one health under that share whose last blow
+ * on record is the wearer's. The first creature is the control, executed inside its 15 seconds. The second is asked
+ * after them, and again once the wearer's combat has lapsed.
+ */
+bool FCataclysmImmuneAfterFifteenExecuteTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Early = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* Late = CreatureNumber(World, 2);
+	UCataclysmAbilitySystemComponent* EarlySystem = SystemOf(Early);
+	UCataclysmAbilitySystemComponent* LateSystem = SystemOf(Late);
+	if (!TestNotNull(TEXT("set-up: the creature executed inside its 15 seconds"), EarlySystem)
+		|| !TestNotNull(TEXT("set-up: the creature asked after them"), LateSystem))
+	{
+		return false;
+	}
+	WearTheRow(Wearer.AbilitySystem, 15.0f);
+
+	Blow(Wearer, Early, nullptr);
+	Blow(Wearer, Late, nullptr);
+	if (!TestTrue(TEXT("set-up: the wearer's blow is the last on each creature's record"),
+				  EarlySystem->GetLastBlow().IsOnRecord()
+					  && EarlySystem->GetLastBlow().Attacker.Get() == Wearer.Character
+					  && LateSystem->GetLastBlow().IsOnRecord()
+					  && LateSystem->GetLastBlow().Attacker.Get() == Wearer.Character))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent::FExecuteAsked ByTheWearer;
+	ByTheWearer.By = Wearer.Character;
+	ByTheWearer.BelowPercent = 12.5f;
+
+	// THE CONTROL: inside the 15 seconds the request kills.
+	Hold(Early, MaximumOf(Early) / 8.0f - 1.0f);
+	TestTrue(TEXT("control: inside the 15 seconds, one health under the share, the wearer's request kills"),
+			 EarlySystem->ExecuteIfLeftBelow(ByTheWearer));
+	TestTrue(TEXT("control: and the creature is dead"), IsGone(Early));
+
+	// AFTER THEM: the same request does nothing.
+	FightOn(World, Wearer.AbilitySystem, 16.0f);
+	if (!TestTrue(TEXT("set-up: 16 seconds after the first hit the second creature is immune to the wearer"),
+				  IsImmuneTo(Late, Wearer)))
+	{
+		return false;
+	}
+	const float Held = MaximumOf(Late) / 8.0f - 1.0f;
+	Hold(Late, Held);
+	TestFalse(TEXT("after the 15 seconds, one health under the share, the wearer's request does nothing"),
+			  LateSystem->ExecuteIfLeftBelow(ByTheWearer));
+	TestFalse(TEXT("and the creature lives"), IsGone(Late));
+	TestEqual(TEXT("holding what it held"), HealthOf(Late), Held, 0.0f);
+
+	// AND ONCE THE WEARER'S COMBAT HAS LAPSED THE SAME REQUEST KILLS, so the immunity was all that refused it.
+	World->TimeSeconds += 3.5f;
+	if (!TestFalse(TEXT("set-up: 3.5 seconds after the wearer's last blow the creature is not immune"),
+				   IsImmuneTo(Late, Wearer)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control, read last: with the wearer's combat lapsed the same request kills"),
+			 LateSystem->ExecuteIfLeftBelow(ByTheWearer));
+	TestTrue(TEXT("control, read last: and the creature is dead"), IsGone(Late));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenLapseTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.WhenTheWearersCombatLapsesEveryEnemyIsOpenAgainAndItsNextFirstHitStartsAFreshFifteenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin and three creatures 4 m, 8 m and 12 m along +X.
+ *
+ * The first creature is first hit at 0 seconds and the second at 5. Both are immune at 20. The wearer then does
+ * nothing: at exactly 3 seconds its combat has not lapsed, and half a second later it has. The first creature is
+ * then first struck again by a TICK and the second, two seconds later, by a hit.
+ */
+bool FCataclysmImmuneAfterFifteenLapseTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	if (!TestTrue(TEXT("set-up: the world's clock starts at a time a float holds exactly"), ClockIsExact(World)))
+	{
+		return false;
+	}
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* Second = CreatureNumber(World, 2);
+	ACataclysmEnemyCharacter* NeverStruck = CreatureNumber(World, 3);
+	if (!TestNotNull(TEXT("set-up: the first creature"), First)
+		|| !TestNotNull(TEXT("set-up: the second creature"), Second)
+		|| !TestNotNull(TEXT("set-up: the creature never struck"), NeverStruck))
+	{
+		return false;
+	}
+	WearTheRow(Wearer.AbilitySystem, 15.0f);
+
+	// THE FIRST AT 0 SECONDS, THE SECOND AT 5.
+	const float FirstHit = LostTo(Wearer, First, 0);
+	if (!TestTrue(TEXT("set-up: the wearer's hit takes health"), FirstHit > 0.0f))
+	{
+		return false;
+	}
+	FightOn(World, Wearer.AbilitySystem, 5.0f);
+	TestEqual(TEXT("the second creature's first hit, 5 seconds on, takes what the first's took"),
+			  LostTo(Wearer, Second, 0), FirstHit, 0.01f);
+
+	// AT 15 SECONDS EACH HAS ITS OWN TIME.
+	FightOn(World, Wearer.AbilitySystem, 10.0f);
+	TestTrue(TEXT("at 15 seconds the first creature is immune"), IsImmuneTo(First, Wearer));
+	TestEqual(TEXT("and the second creature's time is 10 seconds"), EngagedFor(Second, Wearer), 10.0f, 0.001f);
+	TestFalse(TEXT("so the second is not immune"), IsImmuneTo(Second, Wearer));
+
+	// AT 20 SECONDS BOTH ARE IMMUNE. The control for what the lapse undoes.
+	FightOn(World, Wearer.AbilitySystem, 5.0f);
+	if (!TestTrue(TEXT("control: at 20 seconds both creatures are immune"),
+				  IsImmuneTo(First, Wearer) && IsImmuneTo(Second, Wearer)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and the creature never struck is not"), IsImmuneTo(NeverStruck, Wearer));
+
+	// EXACTLY 3 SECONDS WITH NO BLOW DEALT OR TAKEN: the combat has not lapsed, by the game's own comparison.
+	World->TimeSeconds += 3.0f;
+	TestTrue(TEXT("set-up: exactly 3 seconds after its last blow the wearer is still in combat"),
+			 Wearer.AbilitySystem->SecondsInCombat() >= 0.0f);
+	TestTrue(TEXT("and both creatures are still immune"),
+			 IsImmuneTo(First, Wearer) && IsImmuneTo(Second, Wearer));
+
+	// HALF A SECOND MORE: the combat has lapsed and every enemy is open again.
+	World->TimeSeconds += 0.5f;
+	TestTrue(TEXT("set-up: 3.5 seconds after its last blow the wearer is out of combat"),
+			 Wearer.AbilitySystem->SecondsInCombat() < 0.0f);
+	TestFalse(TEXT("the first creature is no longer immune"), IsImmuneTo(First, Wearer));
+	TestFalse(TEXT("nor the second"), IsImmuneTo(Second, Wearer));
+	TestEqual(TEXT("and the first holds no standing time for the wearer"), EngagedFor(First, Wearer), -1.0f, 0.001f);
+
+	// THE NEXT FIRST HIT ON THE FIRST CREATURE IS A TICK, AND IT STARTS A FRESH 15 SECONDS.
+	TestTrue(TEXT("a tick of the wearer's now takes health from the first creature"),
+			 LostTo(Wearer, First, 1) > 0.0f);
+	TestEqual(TEXT("and starts its time for the wearer from nought"), EngagedFor(First, Wearer), 0.0f, 0.001f);
+
+	// THE WEARER IS IN COMBAT AGAIN, AND THE SECOND CREATURE IS STILL OPEN: its time was written in the combat that
+	// lapsed, and no time is cleared, so this is the reading that shows an old time does not come back.
+	TestTrue(TEXT("set-up: the tick put the wearer back in combat"),
+			 Wearer.AbilitySystem->SecondsInCombat() >= 0.0f);
+	TestFalse(TEXT("the second creature, struck 18.5 seconds ago in the lapsed combat, is not immune"),
+			  IsImmuneTo(Second, Wearer));
+	TestEqual(TEXT("and holds no standing time"), EngagedFor(Second, Wearer), -1.0f, 0.001f);
+
+	FightOn(World, Wearer.AbilitySystem, 2.0f);
+	TestEqual(TEXT("two seconds on, a hit on the second creature takes what a first hit takes"),
+			  LostTo(Wearer, Second, 0), FirstHit, 0.01f);
+	TestEqual(TEXT("and starts the second's time from nought"), EngagedFor(Second, Wearer), 0.0f, 0.001f);
+	TestEqual(TEXT("while the first's is 2 seconds"), EngagedFor(First, Wearer), 2.0f, 0.001f);
+
+	// 14.5 SECONDS AFTER THE TICK THE FIRST IS OPEN, AND AT 15 IT IS IMMUNE AGAIN.
+	FightOn(World, Wearer.AbilitySystem, 12.5f);
+	TestFalse(TEXT("14.5 seconds after the tick the first creature is not immune"), IsImmuneTo(First, Wearer));
+	TestTrue(TEXT("and a hit still takes health from it"), LostTo(Wearer, First, 0) > 0.0f);
+	FightOn(World, Wearer.AbilitySystem, 0.5f);
+	TestTrue(TEXT("exactly 15 seconds after the tick the first creature is immune again"), IsImmuneTo(First, Wearer));
+	TestEqual(TEXT("and a hit takes nothing from it"), LostTo(Wearer, First, 0), 0.0f, 0.0f);
+	TestFalse(TEXT("the second creature, 13 seconds after its own, is not"), IsImmuneTo(Second, Wearer));
+	FightOn(World, Wearer.AbilitySystem, 2.0f);
+	TestTrue(TEXT("and two seconds later it is"), IsImmuneTo(Second, Wearer));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenBossAndMinionTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.ABossBecomesImmuneToTheWearerAndTheWearersMinionAndAnotherCharacterStillDamageIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin, a Boss 8 m along +X, the wearer's imp 1.5 m from the Boss along +Y, and a
+ * second attacker 16 m along +X. The imp is summoned after the 15 seconds have run, so nothing of its 20 second
+ * life is spent before it swings.
+ */
+bool FCataclysmImmuneAfterFifteenBossAndMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Boss = CreatureNumber(World, 2);
+	FScopedFighter Another(World, FVector(16 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up: the Boss"), Boss) || !TestNotNull(TEXT("set-up: the second attacker"), Another.Actor))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	if (!TestTrue(TEXT("set-up: the Boss is a boss"), Boss->IsBoss()))
+	{
+		return false;
+	}
+	WearTheRow(Wearer.AbilitySystem, 15.0f);
+
+	// THE CONTROL: inside the 15 seconds the wearer's hit takes health from the Boss.
+	if (!TestTrue(TEXT("control: the wearer's first hit takes health from the Boss"), LostTo(Wearer, Boss, 0) > 0.0f))
+	{
+		return false;
+	}
+	FightOn(World, Wearer.AbilitySystem, 16.0f);
+	TestTrue(TEXT("16 seconds after the first hit the Boss is immune to the wearer"), IsImmuneTo(Boss, Wearer));
+	TestEqual(TEXT("and the wearer's hit takes nothing from it"), LostTo(Wearer, Boss, 0), 0.0f, 0.0f);
+
+	// THE WEARER'S MINION IS ANOTHER CHARACTER: its blow is its own and is not refused.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Wearer.Character, Boss->GetActorLocation() + FVector(0, 1.5f * M, 0),
+													/*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: the wearer's imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+	if (!TestFalse(TEXT("set-up: the wearer holds no Conduit, so the imp's hits are the imp's own"),
+				   ACataclysmMinion::HitsCountAsTheSummoners(Imp)))
+	{
+		return false;
+	}
+	const float BeforeTheImp = HealthOf(Boss);
+	Imp->AttackTarget(Boss);
+	TestTrue(*FString::Printf(TEXT("the imp's blow takes health from the Boss that is immune to its summoner: %.2f"),
+							  BeforeTheImp - HealthOf(Boss)),
+			 BeforeTheImp - HealthOf(Boss) > 0.0f);
+	TestTrue(TEXT("and the Boss is still immune to the wearer"), IsImmuneTo(Boss, Wearer));
+
+	// AND ANOTHER CHARACTER'S.
+	const float BeforeAnother = HealthOf(Boss);
+	UCataclysmSkillEffects::ApplyDirectDamage(Another.Actor, Boss, /*Damage=*/50.0f);
+	TestTrue(TEXT("the second attacker's blow takes health from the Boss"), BeforeAnother - HealthOf(Boss) > 0.0f);
+	TestEqual(TEXT("control, read last: at that same moment the wearer's hit still takes nothing"),
+			  LostTo(Wearer, Boss, 0), 0.0f, 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenStatusLineTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.TheStatusLineSaysImmuneToYouUnderACreatureThePlayersDamageIsRefusedBy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin, the struck creature 4 m along +X, the creature never struck 8 m along +X, and
+ * a second attacker 16 m along +X.
+ *
+ * THE TEXT IS WHAT IS TESTED. `ACataclysmHUD::DrawStatusLines` draws `StatusLineFor(Enemy, LocalPawn)` under a
+ * creature's health bar, and that call is not reached here: nothing drawn can be watched under test.
+ */
+bool FCataclysmImmuneAfterFifteenStatusLineTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+	using FOverlay = UCataclysmCombatOverlay;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Wearer(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Wearer.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Struck = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* NeverStruck = CreatureNumber(World, 2);
+	FScopedFighter Another(World, FVector(16 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up: the creature the wearer strikes"), Struck)
+		|| !TestNotNull(TEXT("set-up: the creature never struck"), NeverStruck)
+		|| !TestNotNull(TEXT("set-up: the second attacker"), Another.Actor))
+	{
+		return false;
+	}
+	WearTheRow(Wearer.AbilitySystem, 15.0f);
+	const FString Words(TEXT("Immune to you"));
+
+	// THE CONTROL, READ FIRST: no blow, no text.
+	TestEqual(TEXT("control: before any blow the text is empty"),
+			  FOverlay::ImmuneToPlayerTextFor(Struck, Wearer.Character), FString());
+	Blow(Wearer, Struck, nullptr);
+	TestEqual(TEXT("control: inside the 15 seconds the text is empty"),
+			  FOverlay::ImmuneToPlayerTextFor(Struck, Wearer.Character), FString());
+	TestFalse(TEXT("control: and the status line the player sees does not hold the words"),
+			  FOverlay::StatusLineFor(Struck, Wearer.Character).Contains(Words));
+
+	FightOn(World, Wearer.AbilitySystem, 16.0f);
+	if (!TestTrue(TEXT("set-up: 16 seconds after the first hit the creature is immune to the wearer"),
+				  IsImmuneTo(Struck, Wearer)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the text under the creature is Immune to you"),
+			  FOverlay::ImmuneToPlayerTextFor(Struck, Wearer.Character), Words);
+	TestTrue(TEXT("the status line the player sees ends with it"),
+			 FOverlay::StatusLineFor(Struck, Wearer.Character).EndsWith(Words));
+	TestFalse(TEXT("the status line asked for with no player does not hold it"),
+			  FOverlay::StatusLineFor(Struck).Contains(Words));
+	TestEqual(TEXT("with no player the text is empty"), FOverlay::ImmuneToPlayerTextFor(Struck, nullptr), FString());
+	TestEqual(TEXT("for another character looking, the text is empty"),
+			  FOverlay::ImmuneToPlayerTextFor(Struck, Another.Actor), FString());
+	TestEqual(TEXT("under the creature never struck the text is empty"),
+			  FOverlay::ImmuneToPlayerTextFor(NeverStruck, Wearer.Character), FString());
+	TestEqual(TEXT("under the player's own pawn the text is empty"),
+			  FOverlay::ImmuneToPlayerTextFor(Wearer.Character, Wearer.Character), FString());
+
+	// AND IT GOES WHEN THE WEARER'S COMBAT LAPSES.
+	World->TimeSeconds += 3.5f;
+	TestEqual(TEXT("3.5 seconds after the wearer's last blow the text is empty again"),
+			  FOverlay::ImmuneToPlayerTextFor(Struck, Wearer.Character), FString());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImmuneAfterFifteenStatCarriesTheSecondsTest,
+	"Cataclysm.ImmuneAfterFifteenSeconds.ACharacterWithoutTheRowMakesNothingImmuneAndTheStatCarriesTheSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin and one creature 4 m along +X.
+ *
+ * The player fights for 20 seconds with no row. The row is then worn at 15 seconds, then at 30, then at nought,
+ * and the creature's immunity is read after each. The time is kept by the creature whether or not a row is worn.
+ */
+bool FCataclysmImmuneAfterFifteenStatCarriesTheSecondsTest::RunTest(const FString&)
+{
+	using namespace CataclysmImmuneAfterFifteenTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRealKiller Player(World);
+	if (!TestTrue(TEXT("set-up: a player character on a player state"), Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Struck = CreatureNumber(World, 1);
+	if (!TestNotNull(TEXT("set-up: the creature"), Struck))
+	{
+		return false;
+	}
+
+	// THE CONTROL: no row, 20 seconds of fighting, nothing immune.
+	const float FirstHit = LostTo(Player, Struck, 0);
+	if (!TestTrue(TEXT("set-up: the player's hit takes health"), FirstHit > 0.0f))
+	{
+		return false;
+	}
+	FightOn(World, Player.AbilitySystem, 20.0f);
+	TestFalse(TEXT("control: with no row, 20 seconds after the first hit the creature is not immune"),
+			  IsImmuneTo(Struck, Player));
+	TestEqual(TEXT("control: and a hit takes what the first took"), LostTo(Player, Struck, 0), FirstHit, 0.01f);
+	TestEqual(TEXT("the creature's time for the player is kept with no row worn: 20 seconds"),
+			  EngagedFor(Struck, Player), 20.0f, 0.001f);
+
+	// THE ROW AT 15: the 20 seconds already run count, so the creature is immune at once.
+	WearTheRow(Player.AbilitySystem, 15.0f);
+	TestTrue(TEXT("with the row at 15 the creature, first hit 20 seconds ago, is immune at once"),
+			 IsImmuneTo(Struck, Player));
+	TestEqual(TEXT("and a hit takes nothing"), LostTo(Player, Struck, 0), 0.0f, 0.0f);
+
+	// THE ROW AT 30: not yet, and then at 30 seconds.
+	WearTheRow(Player.AbilitySystem, 30.0f);
+	TestFalse(TEXT("with the row at 30 the same creature is not immune at 20 seconds"), IsImmuneTo(Struck, Player));
+	FightOn(World, Player.AbilitySystem, 11.0f);
+	TestTrue(TEXT("and is at 31"), IsImmuneTo(Struck, Player));
+
+	// THE ROW AT NOUGHT IS NO RULE.
+	WearTheRow(Player.AbilitySystem, 0.0f);
+	TestFalse(TEXT("a stat of nought makes nothing immune"), IsImmuneTo(Struck, Player));
+	TestEqual(TEXT("and a hit takes what the first took"), LostTo(Player, Struck, 0), FirstHit, 0.01f);
 	return true;
 }
 

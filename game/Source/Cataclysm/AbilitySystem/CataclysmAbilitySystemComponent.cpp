@@ -2682,6 +2682,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// AND WHEN EACH FIRST STRUCK IT, cleared with the record it is written
 	// beside. Ruled 2026-10-12.
 	FirstStruckBy.Reset();
+	// AND WHEN EACH FIRST STRUCK IT IN ITS CURRENT COMBAT, so a revived
+	// character is immune to nobody. Ruled 2026-10-12.
+	EngagedBy.Reset();
 	// AND THE COMBAT CLOCK: a revived character starts out of combat, counted
 	// from its revival. Issue #1815.
 	LastCombatEventAtSeconds = -1.0f;
@@ -3618,6 +3621,21 @@ bool UCataclysmAbilitySystemComponent::NoteStruckBy(
 	{
 		FirstStruckBy.Add(Striker, Now);
 	}
+	// AND THE TIME OF THE STRIKER'S FIRST BLOW OF ITS CURRENT COMBAT, WRITTEN
+	// WHEN NONE STANDS. Ruled 2026-10-12, for "Enemies that have been alive for
+	// more than 15 seconds become immune to your damage until you disengage for
+	// 3 seconds". A time written in a combat of the striker's that has since
+	// lapsed no longer stands, so this blow starts a fresh one.
+	//
+	// THIS RUNS BEFORE THE STRIKER'S OWN `NoteHitDealt` FOR THE SAME BLOW, so
+	// when this blow is the one that begins the striker's combat the striker
+	// still reads as out of combat here and the time is written; the combat
+	// then begins at this same world time, and the time stands from then on.
+	const float* Engaged = EngagedBy.Find(Striker);
+	if (!Engaged || !EngagementStands(*Engaged, Striker, Now))
+	{
+		EngagedBy.Add(Striker, Now);
+	}
 	if (bCritical)
 	{
 		CriticallyStruckBy.Add(Striker);
@@ -3662,6 +3680,77 @@ float UCataclysmAbilitySystemComponent::SecondsSinceFirstStruckBy(
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::EnemiesImmuneAfterSecondsStat =
+	TEXT("enemies_immune_to_you_after_seconds");
+
+bool UCataclysmAbilitySystemComponent::EngagementStands(
+	float At, const UAbilitySystemComponent* Striker, float Now)
+{
+	const UCataclysmAbilitySystemComponent* Its =
+		Cast<const UCataclysmAbilitySystemComponent>(Striker);
+	if (!Its || At < 0.0f || Its->LastCombatEventAtSeconds < 0.0f)
+	{
+		return false;
+	}
+	// OUT OF COMBAT BY THE COMPARISON `NoteCombatEvent` AND `SecondsInCombat`
+	// MAKE, so "disengaged" here is the moment those two call the combat lapsed
+	// and no other: an event exactly the lapse after the one before is still the
+	// same combat.
+	if (Now - Its->LastCombatEventAtSeconds > CombatLapseSeconds)
+	{
+		return false;
+	}
+	// AND NOT FROM AN EARLIER COMBAT. Both figures are the world's time stored
+	// as a float, so the blow that began the combat compares equal and stands.
+	return At >= Its->CombatStartedAtSeconds;
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceEngagedBy(
+	const UAbilitySystemComponent* Striker) const
+{
+	const UWorld* World = GetWorld();
+	const float* At = Striker ? EngagedBy.Find(Striker) : nullptr;
+	if (!World || !At)
+	{
+		return -1.0f;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	if (!EngagementStands(*At, Striker, Now))
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, Now - *At);
+}
+
+bool UCataclysmAbilitySystemComponent::IsImmuneToDamageOf(
+	const UAbilitySystemComponent* Attacker) const
+{
+	// NEVER TO ITSELF. The sentence is about enemies, and a character's blow on
+	// itself writes the same records a blow on another does.
+	if (!Attacker || Attacker == this)
+	{
+		return false;
+	}
+	// THE RECORD FIRST, because it is one lookup and is empty for an attacker
+	// that has never struck this character.
+	const float Engaged = SecondsSinceEngagedBy(Attacker);
+	if (Engaged < 0.0f)
+	{
+		return false;
+	}
+	// AND THE ATTACKER'S OWN STAT CARRIES THE SECONDS. Asked with no tags and no
+	// blow: the rule is the attacker's whatever it strikes with. A fallback of
+	// nought, so a character with no row has no such rule.
+	const UCataclysmAbilitySystemComponent* Its =
+		Cast<const UCataclysmAbilitySystemComponent>(Attacker);
+	const float After = Its
+		? Its->StatForSkill(FName(EnemiesImmuneAfterSecondsStat), FGameplayTagContainer(), 0.0f)
+		: 0.0f;
+	// AT LEAST THAT LONG, so exactly 15 seconds after the first hit is immune.
+	return After > 0.0f && Engaged >= After;
 }
 
 void UCataclysmAbilitySystemComponent::NoteSupportSkillUsed()
