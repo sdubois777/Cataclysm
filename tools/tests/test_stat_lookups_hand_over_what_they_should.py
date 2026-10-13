@@ -133,6 +133,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The projectiles a row adds to a projectile skill's one added one more on
 #: 2026-10-12, asked by `UCataclysmProjectileSkill::ExtraProjectilesWithRows`
 #: where the skill fires.
+#: A share of damage taken dealt over seconds added two more on 2026-10-12,
+#: the share and the seconds, both asked of the struck character by
+#: `UCataclysmDelayedDamage::DelayShare` where a blow's damage reaches health.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -842,6 +845,18 @@ INVENTORY = {
         "(ruled 2026-10-12), asked by ExtraProjectilesWithRows with the "
         "skill's tags where it fires, before any blow exists, as the bounces "
         "a row adds are",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp',
+     'FName(SharePercentStat), FGameplayTagContainer(), 0.0f'):
+        "the share of what would reach health that is taken later instead "
+        "(ruled 2026-10-12), asked of the struck character by DelayShare "
+        "where a blow's damage reaches health; the rule is about every blow "
+        "its wearer takes, whatever struck it and with whatever, so no tags, "
+        "no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp',
+     'FName(SecondsStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds a delayed share is drained over (ruled 2026-10-12), "
+        "asked beside the share in DelayShare and for the same character; "
+        "no tags, no blow and no target, for the reason the share gives",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
