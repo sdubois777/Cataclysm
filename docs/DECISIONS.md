@@ -2,6 +2,361 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can make its wearer's retaliation skip six steps of the struck character's mitigation: a flag stat and a flag on the blow, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.h` and `.cpp` (the stat's name, the one
+function that asks it, and one line where a payment's blow is built),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (one flag on a blow's delivery, the name
+it is stamped under, and the stamp), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the
+stamp read into the hit), `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (one flag
+on the hit, and `Resolve` honouring it at six steps),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no
+attribute), `game/Source/Cataclysm/Tests/CataclysmRetaliationTests.cpp` (six tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the
+name and one refusal), `tools/tests/test_generate_datatables.py` (one class of eight tests),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Retaliation damage cannot be reduced or mitigated by the
+attacker".
+
+- **"Mitigated" is read as six steps of the struck character's, and not as its pools.** Ruled by the
+  coordinating session on 2026-10-12 under the owner's delegation. The six are evasion, block, armour,
+  resistance, damage reduction (the capped line and the multiplicative one) and `damage_taken`. The blow of a
+  wearer still meets the struck character's temporary absorb and its energy shield, which take it point for
+  point before health. So an attacker with an energy shield still loses shield to it and not health.
+- **The flag never lowers a payment. Ruled by the coordinating session on 2026-10-12, in a second ruling the
+  same day, which changed what was first built.** In its words: "the flag must never LOWER a payment. The
+  sentence says the damage 'cannot be reduced or mitigated'; skipping a negative resistance, or an increase
+  inside damage_taken, reduces it. So: resistance is skipped only when it is above nought (a negative
+  resistance, the difficulty tier's penalty inside it included, still raises the payment); and the damage_taken
+  step is skipped only when its net effect on this payment is a reduction." As first built, both steps were
+  skipped whole, so a target at `damage_taken` 150 or at a resistance of -50 took 150 of a plain payment of 100
+  and 100 of a wearer's. It now takes 150 of each. That first build is the commit before this entry's second
+  commit, and it was never compiled.
+- **Resistance is judged on the one figure the blow meets.** At the resistance step that figure is one number:
+  the target's own resistance less the difficulty tier's penalty, what a minion takes from its summoner, the
+  attacker's penetration, the floor and the target's cap are all inside it before the blow is multiplied. A
+  wearer's blow meets the smaller of that figure and nought. Penetration stops at nought and leaves a figure
+  already below nought where it is, so it never makes a resistance negative.
+- **`damage_taken` is judged on its own factor, which is in hand, so nothing is computed twice.** The step is
+  one multiplication by the target's `damage_taken` with what rides on its ailments added ("Bleeding enemies take
+  20%-40% increased damage from all sources"), floored at nought. A wearer's blow is multiplied by the larger of
+  that factor and one. The net is judged: a target with a reduction of 20 and an ailment's increase of 40 stands
+  at 120 and that raises the blow; one at 80 is not applied. The payment is not computed both ways.
+- **Damage reduction is still skipped whole, because neither of its lines can raise a blow.** Read in
+  `Resolve`: the capped line multiplies by one less a figure `EffectiveDamageReduction` holds between nought and
+  75, and the multiplicative line by one less a figure clamped between nought and 99. Each factor is at most
+  one. Evasion, block and armour are skipped as first built; none of them can raise a blow either.
+- **The order for a wearer's blow, and what follows from it.** The steps it meets, in order: a resistance below
+  nought; a `damage_taken` above 100; the Nth hit's share; the temporary absorb; the energy shield; health.
+  Each step before the pools multiplies by one or more. So before the pools the blow is never below the figure
+  sent. And on the same target it is never below what the plain payment deals: each factor the plain payment
+  meets is at most the factor the wearer's meets at the same step, and the pools take from the larger blow what
+  they take from the smaller, or more.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement below about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** No character holds the flag until the enchantment session
+  writes the row.
+- **No genre source was reached for this sentence.** No page about another game was fetched, and nothing here
+  states what another game does. The reading is the coordinating session's ruling.
+- **A wearer's retaliation is never evaded and never blocked, so the struck character's rows that answer its own
+  dodge or its own block do not fire for that blow.** The calculation does not enter either step for a blow that
+  carries the flag, and the result it records says neither happened.
+- **The flag is not a way past an immunity.** A creature that takes no damage, the no-damage window and the
+  window against one damage type are each read after the calculation, on its result, and each empties a wearer's
+  blow as it empties any other. Read at `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`: the two
+  windows at the three places `IsDamageImmune` is read, and `TakesNoDamage` after them. None reads the flag.
+- **A retaliation payment from a character that is not a creature carries no damage type, so the window against
+  one damage type never refuses it, with the flag or without.** `UCataclysmSkillEffects::DamageTypeOf` answers a
+  type only for an enemy creature, and `IsImmuneToDamageType` answers false for no type. This is how it was
+  before this change. A test reads it.
+- **Mana takes none of a retaliation payment, with the flag or without.** The one damage a mana pool takes is a
+  tick of damage over time on a character holding `damage_over_time_taken_from_mana_first`, and retaliation is
+  never a tick. The ruling says the blow still meets mana; for retaliation there is nothing to meet. A tick that
+  carries the flag does still go to mana first, and a test reads that with a tick built by hand.
+- **The amount sent is not changed.** `UCataclysmRetaliation::AmountFor` is untouched. Whatever lowers the
+  retaliating character's own damage before the blow is sent still lowers it, a debuff an attacker laid on that
+  character included. What does so was not read. The ruling names six steps of the struck character's, and this
+  is not one of them.
+- **The design document's Retaliation section does not yet state the exception.** The paragraph that begins
+  "What comes back is damage, and every increase to the character's damage reaches it." says the enemy's armour,
+  resistance, evasion and block apply to it. That stays true of every character until a row exists. The session
+  that writes the row should add the exception there with the row.
+- **The generator refuses a row on this flag whose figure is not 1.** The engine reads any value above nought
+  as yes, so 2 would work in play. It is refused because the ruling states the row flat, 1 to 1, and a flag
+  that states another number reads as a quantity. A judgement of the writing session.
+
+**What was not read:** how a worn row becomes a line of the stat line at a gear refresh; what a creature does
+when it is struck (its controller, its threat); `UCataclysmDamageConversion::ConvertIfActive` and the code of
+the Sacrificial Bond past the comments above them; what `UCataclysmSkillEffects::ApplyHit` does for a melee
+blow between reading the delivery and applying the effect; whether any creature in the shipped data holds an
+energy shield or a temporary absorb; the hit notice and the floating number for a blow that carries the flag.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | A flag stat on the retaliating character, read where retaliation is paid. The row states it flat, 1 to 1. | `UCataclysmRetaliation::CannotBeMitigatedStat`, `retaliation_cannot_be_mitigated`. `CannotBeMitigatedFor` asks it with no tags and a fallback of nought, and `Pay` calls that once for a payment. |
+| R2 | With the flag held the blow skips six: evasion, block, armour, resistance, damage reduction (both lines) and `damage_taken`. Narrowed by R7 for the fourth and the sixth. | `UCataclysmDamageCalculation::Resolve`, at each of the six, on `FCataclysmIncomingHit::bCannotBeMitigated`. See "What was built". |
+| R3 | It still meets the temporary absorb, mana and the energy shield. | Steps 6b, 7 and 8 of `Resolve` do not read the flag. |
+| R4 | It does nothing to a creature that takes no damage, and nothing inside a no-damage window or a damage-type window of the target. | Nothing in `PostGameplayEffectExecute` after the call of `Resolve` reads the flag. See "Said first". |
+| R5 | It still cannot critically strike and cannot leech. | `Pay` sets `bCannotCriticallyStrike` and `bCannotLeech` as before; neither line is changed. The Masochist's Feeding Wound still leeches by its own route, as before. |
+| R6 | A reflected melee hit, paid back as retaliation, takes the flag too. | `PayReflected` is one call of `Pay`, and the flag is read inside `Pay`. |
+| R7 | CHANGED the same day. First: an increase to damage taken that sits inside `damage_taken` is skipped with it. Then: the flag must never lower a payment; resistance is skipped only when it is above nought, and `damage_taken` only when its net effect on the payment is a reduction. | `ResistanceMet` and the line after it in `Resolve`; `DamageTakenFactor` and the put-back after it. See "Said first". |
+| R9 | The Nth hit's share is kept, and the generator refuses a figure other than 1 on the flag. Both ruled as built, in the second ruling. | `Resolve`, the line after the put-back; `refuse_a_retaliation_flag_row_the_game_cannot_read`. |
+| R8 | A flag on the blow's delivery, honoured in the damage calculation, and not a direct write of health. | `FCataclysmHitDelivery::bCannotBeMitigated`, stamped by `ApplyTypedSpec` under `UCataclysmSkillEffects::CannotBeMitigatedDataName`. The blow is still written to the Damage attribute by `ApplyDirectDamage`. |
+
+### EVERYTHING ELSE THAT RAISES OR LOWERS A BLOW, AND WHAT WAS DONE WITH EACH
+
+Read in `UCataclysmDamageCalculation::Resolve` and in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+on 2026-10-12. "Kept" means a wearer's blow meets it exactly as any blow does. Where the ruling did not settle
+one, the line says "judgement" and gives the option not taken.
+
+| What | Where | What was done, and why |
+| :-- | :-- | :-- |
+| The critical strike roll and multiplier | `Resolve`, after evasion | Kept in the calculation. It belongs to whoever is swinging. Retaliation is forbidden one by `bCannotCriticallyStrike`, as before. |
+| The share a hit keeps when its critical roll fails (`non_critical_damage`) | `Resolve` | Kept. It is asked only for a blow that may critically strike; retaliation reads 100, as before. |
+| The chance that a block removes all of a hit (`block_negation_chance`), and the share a block removes | `Resolve`, inside the block step | Skipped with the block step: both are inside it. |
+| The armour a minion takes from its summoner | `Resolve`, the armour step | Skipped with armour. Judgement: it is armour of the struck character's for that blow. The option not taken: apply the inherited share alone. |
+| The attacker's armour penetration, a piercing weapon's share, the share a critical strike ignores, the target's `armor_penetration_suppressed`, Rending Blows' share removed | `Resolve`, the armour step | Nothing to act on: each changes the armour figure, and the armour figure is not applied. The two penetration figures are still read off the retaliating character in the vital set. |
+| A resistance below nought, and the difficulty tier's resistance penalty | `Resolve`, the resistance step | Kept, as ruled (R7): a figure below nought raises a wearer's blow as it raises any other. First built the other way. |
+| The attacker's resistance penetration, the target's resistance cap, the resistance a minion takes from its summoner, a resistance a row holds at nought | `Resolve`, the resistance step | Each is inside the one figure the blow meets, and that figure is applied only when it is below nought. So none of them lowers a wearer's blow. |
+| What rides on the target's ailments as damage taken | `Resolve`, added inside the `damage_taken` line | Part of the one factor of that step. Applied when the factor as a whole is above one, and not applied otherwise, as ruled (R7). |
+| The share on top for the Nth hit of the target's worn "every Nth hit you take" row | `Resolve`, after `damage_taken` | Kept. Judgement: it is not one of the six, it is not inside `damage_taken`, and it raises a blow and never lowers one. The count of hits the target has taken advances as before. The option not taken: skip it as an increase to damage taken. |
+| `debuff_damage_suppressed` and `damage_over_time_taken` | `Resolve`, for a tick only | Kept. Retaliation is never a tick, and no blow carries both this flag and the tick flag. |
+| The energy shield's own rules: the magic sub-type's share, the target's `energy_shield_damage_taken`, the bleed rules | `Resolve`, step 8 | Kept, with the pool (R3). Retaliation carries no weapon sub-type, as before. |
+| The slashing sub-type's share against health | `Resolve`, step 9 | Kept. Retaliation carries no weapon sub-type, as before. |
+| A creature carrying Beguiling takes no direct damage from an attacker it has charmed | The vital set, before `Resolve`: the hit's damage is set to nought | Kept. Judgement: it is a rule that a blow deals nothing, like the immunities of R4, and not a reduction. The option not taken: let the flag pass it. |
+| The Sacrificial Ward: a blow that would break the energy shield destroys a minion instead and is cancelled | The vital set, after `Resolve` | Kept. Judgement: it is not among the six, and it acts on the energy shield, which the ruling keeps. The option not taken: let the flag pass it. |
+| The target's chance to absorb a spell, and its chance to reflect a melee hit | The vital set, after `Resolve` | Not reached, as before: a retaliation blow is stamped neither as a spell nor as melee, and it carries the no-retaliation tag, which refuses a reflect. |
+| The no-damage window, the window against one damage type, a creature that takes no damage | The vital set, after `Resolve` | Kept, as ruled (R4). |
+| The two saves from a lethal blow: Nothing Stops It, and the worn row that saves a blow by crossing a health threshold | The vital set, after `Resolve` | Kept. Judgement: each holds the target at one point of health and neither is among the six. The option not taken: let a wearer's blow kill through them. |
+| The Masochist's conversion of damage taken to bleeding, and the Sacrificial Bond's division among allies | The vital set, at the health write | Kept. Neither lessens the blow: the first delays it and the second divides it. |
+
+### WHAT WAS BUILT
+
+- **The stat.** `retaliation_cannot_be_mitigated`, a flag: a row sets it at a flat 1 and the code reads it as
+  above nought. No gameplay attribute and no base. It is the last name on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, so a refresh records a row's line for it. Its name in
+  code is `UCataclysmRetaliation::CannotBeMitigatedStat`.
+- **The one function that asks it.** `UCataclysmRetaliation::CannotBeMitigatedFor(const
+  UAbilitySystemComponent*)`: `StatForSkill` with the stat's name, no tags and a fallback of nought, and whether
+  the answer is above nought. False for an ability system that is not this project's. It does not go through the
+  file's helper `StatOfRetaliator`, because that helper falls back on a gameplay attribute and this stat has
+  none.
+- **The read.** In `UCataclysmRetaliation::Pay`, after the four flags the blow already carries, one line:
+  `Delivery.bCannotBeMitigated = CannotBeMitigatedFor(Defender);`. Asked once for a payment, before the loop over
+  targets, so every target of a Reprisal Wave takes the same kind of blow.
+- **The flag on the delivery and its stamp.** `FCataclysmHitDelivery::bCannotBeMitigated`, after
+  `bCannotBeEvaded`. `UCataclysmSkillEffects::ApplyTypedSpec` stamps the effect under
+  `UCataclysmSkillEffects::CannotBeMitigatedDataName`, `Cataclysm.CannotBeMitigated`, when it is set, as it
+  stamps `bCannotBeEvaded`. A blow without the flag carries no stamp.
+- **The read of the stamp.** In `PostGameplayEffectExecute`, after the read of the cannot-be-evaded stamp, the
+  stamp is read into `FCataclysmIncomingHit::bCannotBeMitigated`. Nothing else in that function reads it.
+- **The six steps in `Resolve`.** Evasion: the step's condition gains `!Hit.bCannotBeMitigated`. Block: the
+  same. Armour: the same. Resistance: the figure the blow meets is held in a local, `ResistanceMet`, and a
+  flagged blow meets the smaller of it and nought. Damage reduction and `damage_taken`: the factor of
+  `damage_taken` is held in a local, `DamageTakenFactor`, and multiplied in as before; after it, a flagged blow
+  is put back to the figure it held on arriving at step 5, multiplied by the larger of that factor and one, and
+  the figure recorded as removed by damage reduction is cleared. The three multiplications of those two steps
+  give every other blow what they gave before. No roll is made for a step that is skipped.
+- **What the second ruling changed in `Resolve`, line by line.** The line
+  `const float Resist = Hit.bCannotBeMitigated ? 0.0f : EffectiveResistanceUnderCap(` became
+  `const float ResistanceMet = EffectiveResistanceUnderCap(`, with a new line after the call,
+  `const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;`. The line
+  `Damage *= FMath::Max(0.0f,` that opens the `damage_taken` step became
+  `const float DamageTakenFactor = FMath::Max(0.0f,`, with a new line after the expression,
+  `Damage *= DamageTakenFactor;`. And `Damage = BeforeReduction;` became
+  `Damage = BeforeReduction * FMath::Max(1.0f, DamageTakenFactor);`. The conditions on evasion, block and armour
+  are as first built.
+- **The generator.** `RETALIATION_CANNOT_BE_MITIGATED_STAT` holds the name.
+  `refuse_a_retaliation_flag_row_the_game_cannot_read` refuses an enchantment's row on the stat that is not
+  `flat`, that requires a tag, or whose figure in either column is not 1. `validate_enchantment_effects` runs
+  it. A condition or a scale on the stat is refused by the two checks that already refuse those on a stat not
+  on their lists. A passive node's row is left alone.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment: Stat
+  `retaliation_cannot_be_mitigated`, Value Kind `flat`, Value Low 1, Value High 1. No Required Tags, no
+  Condition, no Scale and no Action. **With the row, that session adds the name to `FLAG_STATS`** in
+  `tools/tests/test_enchantment_effects_match_the_row_text.py`, whose check `test_every_flag_stat_is_still_used`
+  refuses a name no row grants, and adds the exception to the design document's Retaliation section.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end. The generator reads that
+  list, so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of
+  `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site of
+  `StatForSkill`, in `CataclysmRetaliation.cpp`, with its reason, as its last entry. `CALL_SITES` is left at 65,
+  the figure measured on the commit that comment names; the comment above it gains a dated sentence.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat, so no shipped row is refused.
+- `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` is NOT changed. That file reads its
+  names from `CataclysmAbilitySystemComponent.cpp`, and this name is in `CataclysmRetaliation.cpp`. The
+  comparison of the generator's name with the engine's is a test of the new class in
+  `tools/tests/test_generate_datatables.py`, which reads the name out of `CataclysmRetaliation.cpp`.
+
+### Tests
+
+Six new Unreal tests at the end of `CataclysmRetaliationTests.cpp`, in the group
+`Cataclysm.RetaliationUnmitigated.`. Two retaliators stand in each, alike but for the flag, 3 m apart, and the
+attacker 3 m from the first. Every figure is read against the same attacker struck by the retaliator without the
+flag, and that control is read first. Most payments are made by calling `UCataclysmRetaliation::Pay` with a blow
+of 500 stated, so 100 is sent whatever the attacker's own hit would resolve to. The critical strike roll and the
+block roll are pinned in every test that sends a real blow. Nothing waits on a tick.
+
+- `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences`: against an attacker with no defence
+  both payments take 100. Then, one at a time: an evasion of 200 (the plain payment is evaded and takes nothing;
+  the holder's is not evaded and takes 100); a block chance of 50 with the roll pinned to block (the plain
+  payment is blocked and takes half; the holder's is not blocked and takes 100); 5,000 armour; a resistance of
+  50; a resistance of -50, where the plain payment takes 150 and the holder's takes the same 150; a damage
+  reduction of 50; a multiplicative damage reduction of 50; `damage_taken` at 50; and `damage_taken` at 150,
+  where the plain payment takes 150 and the holder's takes the same 150. For each of those seven, the holder's
+  payment is also read to be no less than the plain one. Last, the attacker
+  strikes each retaliator with a real hit of 500 while holding 5,000 armour: the hit on the plain one sends back
+  less than 100, and the hit on the holder sends back 100.
+- `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest`: `Resolve` called directly with its three rolls
+  passed in. Evasion of 50 on a roll of 0; block of 50 on a roll of 0, with the figure recorded as blocked;
+  armour, with the figure recorded as removed by armour; a resistance of 50, which the flagged blow skips, and
+  of -50, which raises it to 150 as it raises the plain blow; both lines of damage reduction, with the figure
+  recorded as removed; `damage_taken` at 50, skipped, and at 150, which raises the flagged blow to 150 as it
+  raises the plain one; `damage_taken` at 150 under a damage reduction of 50, where the plain blow is 75 and
+  the flagged blow 150; and those two with a resistance of -50, 112.5 and 225. Then what is kept: the Nth
+  hit's share of 50 raises both blows to 150; a blow with a critical strike chance critically strikes with the
+  flag as without; and with 5,000 armour, a temporary absorb of 40 and an energy shield of 30, the flagged blow
+  of 100 puts 40 to the absorb, 30 to the shield and 30 to health.
+- `AHoldersPaymentStillMeetsTheTemporaryAbsorbAndTheEnergyShieldAndManaTakesOnlyATick`: against an attacker with
+  5,000 armour, the holder's payment empties a temporary absorb of 40 and puts 60 to health; with an energy
+  shield of 500 the shield takes the whole 100 and health none. Then, with `damage_over_time_taken_from_mana_first`
+  held by the attacker: a tick of 100 takes 100 mana and a tick carrying the flag does too; a plain payment and
+  the holder's each take no mana and 100 health.
+- `AHoldersPaymentDoesNothingToWhatTakesNoDamageOrStandsInAWindowThatRefusesIt`: a creature that can be hurt
+  takes 100 from each payment and a creature that takes no damage takes nothing from either; inside the
+  attacker's no-damage window each payment takes nothing; a direct War blow that carries the flag takes 100
+  before the window against War opens and nothing inside it; and each retaliation payment, which has no type,
+  takes 100 inside the War window.
+- `AReflectedMeleeHitFromAHolderIsPaidBackWholePastTheAttackersArmour`: both retaliators hold a melee reflect
+  chance of 100. An attacker with 5,000 armour strikes each in melee for 500. Each takes none of it. The attacker
+  takes less than 500 back from the plain one and the whole 500 back from the holder.
+- `AHoldersPaymentStillCannotCriticallyStrikeOrLeech`: with the critical strike roll pinned to succeed, a
+  holder with a chance of 100, a multiplier of 300 and a life leech of 10 critically strikes for 300 with an
+  ordinary hit and is promised leech for it; its retaliation payment does not critically strike, takes 100, and
+  promises no leech.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeRetaliationCannotBeMitigated`. Two retaliators pay for the same blow at an attacker with 5,000 armour; the
+one without the flag takes less than 99 of the 100 from it, and the one holding the flag at a flat 1 takes 100.
+
+Python, `TestRetaliationThatCannotBeMitigated` in `tools/tests/test_generate_datatables.py`, eight tests on a
+made-up sheet: the ruled row is carried through and not refused by any check; the name is a stat with no
+attribute, and a made-up name is not; the generator's name is the one `CataclysmRetaliation.cpp` holds, with
+`retaliation_leeches` read by the same pattern as the control; each wrong shape is refused once and by its own
+sentence (a kind that is not flat, a required tag, a figure of 0, of 2, of -1 and of 0.5), and both figures
+wrong is two refusals; a misspelt stat is refused by the sheet's validation; a condition or a scale is refused
+by the two checks that hold those; a passive node's row and a row on another stat are left alone; and the
+sheet's validation runs the check.
+
+**Not tested:** the flag arriving from a worn row through a gear refresh, because no row exists; a wearer that
+is a player character on a player state; a payment against a player, with the difficulty tier's penalty in its
+resistance; an evasion below 100 through a real blow, because the vital set passes the calculation no evasion
+roll, so a real blow reads an evasion of 200, which no roll reaches, and the roll of 0 against an evasion of 50
+is read only in the test that calls `Resolve`; a
+block that removes all of a hit; the armour and the resistance a minion takes from its summoner; what rides on
+the target's ailments as damage taken; a Reprisal Wave from a wearer, and a wearer that also holds Feeding
+Wound; the struck character's rows on its own dodge or block not firing; a creature carrying Beguiling struck
+by a charmed wearer; the Sacrificial Ward, the two saves from a lethal blow, the conversion to bleeding and the
+Sacrificial Bond against a wearer's payment; a wearer's payment that kills; a retaliating creature, whose blow
+would have a type; the hit notice, the floating number and the `retaliation_dealt` event for a flagged blow; a
+creature with an energy shield.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session, at the second commit. Each is a break
+in one `.cpp` file. The failed assertions are counted by reading the tests and were not measured. The prefix of
+all three is `Cataclysm.RetaliationUnmitigated.`, with its trailing dot, which is 6 tests.
+
+**All three were derived again after the second ruling.** U-I keeps its texts and loses one failed assertion.
+U-II has a new old text, because the line changed, and the same meaning. U-III has a new old text and a new new
+text, and the same meaning: resistance is not skipped at all.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| U-I, the flag is read where retaliation is paid | `game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp` | `Delivery.bCannotBeMitigated = CannotBeMitigatedFor(Defender);` | `Delivery.bCannotBeMitigated = false;` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` | `AHoldersPaymentStillMeetsTheTemporaryAbsorbAndTheEnergyShieldAndManaTakesOnlyATick` and `AReflectedMeleeHitFromAHolderIsPaidBackWholePastTheAttackersArmour` |
+| U-II, damage reduction is skipped, and `damage_taken` where it lowers | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `Damage = BeforeReduction * FMath::Max(1.0f, DamageTakenFactor);` | `Damage = Damage + 0.0f;` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` |
+| U-III, a resistance above nought is skipped | `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` | `const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;` | `const float Resist = ResistanceMet;` | `TheCalculationSkipsTheSixStepsForAFlaggedBlowAndKeepsTheRest` | `AHolderOfTheFlagSendsTheWholeAmountPastEachOfTheAttackersSixDefences` |
+
+Failed assertions in each test, by reading:
+
+- **U-I, 14 in 3 tests. It was 15.** The six-defences test 10: "the holder's payment is not evaded"; "and takes
+  what the undefended attacker took", after the evasion; "the holder's payment is not blocked"; "and takes what
+  the undefended attacker took", after the block; "the holder's payment takes what the undefended attacker
+  took", five times, for the armour, the resistance of 50, the two lines of damage reduction and `damage_taken`
+  at 50; and "and its hit on the holder sends back the whole 100". The lines for the resistance of -50 and for
+  `damage_taken` at 150 pass under the break, because there the holder's payment is the plain one's with the
+  flag or without; the line for `damage_taken` at 150 is the one that failed before and no longer does. The
+  pools test 3: "the holder's payment empties the temporary absorb of its 40"; "and the 60 left reaches
+  health"; and "the shield takes the whole 100 of the holder's payment". The reflected test 1: "and the attacker
+  takes the whole 500, past its armour". The calculation test passes, because it calls `Resolve` and not `Pay`.
+  The immunities test passes: its creatures hold no defence, and its War blow sets the flag on the delivery by
+  hand. The last test passes.
+- **U-II, 7 in 2 tests. The count is the same and the assertions are not.** With the break a flagged blow meets
+  both lines of damage reduction and the whole of `damage_taken`. The calculation test 4: "the flagged blow is
+  whole", under the two lines of damage reduction; "and leaves the flagged blow whole", under `damage_taken` at
+  50; "the flagged blow skips the reduction and keeps the increase: 150", which is 75; and "and the flagged blow
+  meets both increases and no reduction: 225", which is 112.5. The line that clears the figure recorded as
+  removed is left in, so "and nothing is recorded as removed by damage reduction" still passes. `damage_taken`
+  at 150 alone passes, because the break leaves the increase applied. The six-defences test 3: "the holder's
+  payment takes what the undefended attacker took" for the damage reduction of 50, the multiplicative damage
+  reduction of 50 and `damage_taken` at 50.
+- **U-III, 2 in 2 tests. It was 3.** With the break a flagged blow meets resistance whatever its sign. The
+  calculation test 1: "and leaves the flagged blow whole", under the resistance of 50. The six-defences test 1:
+  "the holder's payment takes what the undefended attacker took" for the resistance of 50. Every assertion at a
+  resistance of -50 passes under the break, because the figure is applied there with the break or without.
+
+**The second ruling's two rules have tests and are not among the three proofs.** A proof is limited to three a
+layer. If the coordinating session prefers either of these to U-II or U-III, each anchor was counted once:
+
+- **For "a net increase in `damage_taken` is kept":** in `CataclysmDamageCalculation.cpp`, old text
+  `FMath::Max(1.0f, DamageTakenFactor)`, new text `1.0f`. Expected by reading, 6 in 2 tests. The calculation test
+  3: "and raises the flagged blow by half too: a net increase is not skipped"; "the flagged blow skips the
+  reduction and keeps the increase: 150"; "and the flagged blow meets both increases and no reduction: 225". The
+  six-defences test 3, all for `damage_taken` at 150: "the holder's payment takes the same as the plain one, so
+  the flag does not lower it"; "and that is 1.50 of the undefended one"; "the holder's payment is never less
+  than the plain one".
+- **For "a resistance below nought is kept":** in the same file, old text `FMath::Min(ResistanceMet, 0.0f)`, new
+  text `0.0f`. Expected by reading, 5 in 2 tests. The calculation test 2: "and raises the flagged blow by half
+  too: a negative resistance is not skipped"; and "and the flagged blow meets both increases and no reduction:
+  225". The six-defences test 3, all for the resistance of -50: the same three messages as above.
+
+Messages used for more than one assertion: "and leaves the flagged blow whole" twice in the calculation test,
+under the resistance of 50 and under `damage_taken` at 50; "and takes what the undefended attacker took" twice
+in the six-defences test, after the evasion and after the block; and in that test's table of defences, each
+with the defence's name in front of it, the holder's line five times, the two lines for a figure that raises a
+blow twice each, and "the holder's payment is never less than the plain one" seven times.
+
+**Tests and no proof:** the evasion step, the block step and the armour step, each of which is one condition in
+`Resolve`; the stamp written by `ApplyTypedSpec` and its read in the vital set, which U-I's failures would
+repeat; that the pools, the immunities, the critical strike and the leech are as they were; and the two rules
+of the second ruling, unless one of the two breaks above is run in place of a proposed one.
+
+No test of another group is expected to fail under any of the three, with one exception to check in the
+window: `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` is outside the prefix, and under U-I
+its new probe would fail on its last assertion.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can execute the enemy a hit leaves below a share of its health, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (one field of `FCataclysmPoolAction`),

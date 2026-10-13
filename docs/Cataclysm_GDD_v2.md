@@ -1209,6 +1209,8 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 **What comes back is damage, and every increase to the character's damage reaches it.** It is worked out from the blow and then scaled by the same increases an ordinary attack gets, and the enemy's armour, resistance, evasion and block apply to it exactly as they apply to anything else. That is what makes retaliation worth building for rather than a number that stands still.
 
+**One enchantment is the exception.** A character wearing "Retaliation damage cannot be reduced or mitigated by the attacker" pays its retaliation past whatever of the attacker's would lower it: evasion, block, armour, a resistance above nought, damage reduction, and a net reduction in the damage the attacker takes. The enchantment never lowers a payment: a resistance below nought and a net increase in the damage the attacker takes still raise it. The attacker's temporary absorb and energy shield still take it, and a creature that takes no damage still takes none. Ruled 2026-10-12; `docs/DECISIONS.md` has the entry.
+
 
 
 **But it is still not itself a hit.** It cannot critically strike, cannot apply an ailment, does not carry the weapon's sub-type, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.

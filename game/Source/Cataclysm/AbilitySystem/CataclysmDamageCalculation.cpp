@@ -788,7 +788,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// AND A BLOW MAY REFUSE TO BE DODGED. The Perfect Aim enemy modifier
 	// reads "Attacks cannot be dodged", and evasion is rolled here on the
 	// target, so the only place an attacker can refuse it is on the blow.
-	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && Combat)
+	//
+	// AND A BLOW THE DEFENDER CANNOT MITIGATE SKIPS THIS STEP AND FIVE MORE BELOW. Ruled
+	// 2026-10-12, for "Retaliation damage cannot be reduced or mitigated by the
+	// attacker". See `FCataclysmIncomingHit::bCannotBeMitigated`, which lists the
+	// six and what is not among them. Each of the six reads the flag where it
+	// stands; no roll is made for a step that is skipped.
+	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && !Hit.bCannotBeMitigated && Combat)
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : FMath::FRandRange(0.0f, 100.0f);
@@ -854,7 +860,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	// 2. Block. Applies to area damage too, and removes half rather than all.
-	if (Combat)
+	// Not to a blow the defender cannot mitigate, which is never blocked.
+	if (Combat && !Hit.bCannotBeMitigated)
 	{
 		const float Roll = BlockRoll >= 0.0f ? BlockRoll
 											 : FMath::FRandRange(0.0f, 100.0f);
@@ -907,7 +914,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// AND FOR A MINION WITH ARMOUR FROM ITS SUMMONER, since 2026-10-08. A minion
 	// holds no combat set, so until then it never entered this step and took
 	// every blow with no armour at all.
-	if (Combat || ArmourFromSummoner > 0.0f)
+	//
+	// NOT FOR A BLOW THE DEFENDER CANNOT MITIGATE: neither its own armour nor
+	// what it takes from its summoner is applied, and nothing is recorded as
+	// removed by armour.
+	if (!Hit.bCannotBeMitigated && (Combat || ArmourFromSummoner > 0.0f))
 	{
 		// THE ATTACKER'S OWN STAT PLUS WHAT THE WEAPON IGNORES, clamped once at the
 		// end. Mirrors `Attacker.total_armor_ignored` in
@@ -999,10 +1010,22 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// 2026-10-08: the summoner's resistance to this type after the summoner's own
 	// cap, times the share. The attacker's penetration and the minion's own cap
 	// then apply to it as to any defender's resistance.
-	const float Resist = EffectiveResistanceUnderCap(
+	//
+	// THE FIGURE THE BLOW MEETS IS ONE NUMBER HERE: the defender's own
+	// resistance less the difficulty tier's penalty, what a minion takes from
+	// its summoner, the attacker's penetration, the floor and the cap are all
+	// inside `ResistanceMet`.
+	//
+	// A BLOW THE DEFENDER CANNOT MITIGATE MEETS IT ONLY WHEN IT IS BELOW NOUGHT.
+	// Ruled 2026-10-12: the flag must never lower a payment. A resistance above
+	// nought would lower the blow and is skipped. One below nought, the tier's
+	// penalty included, raises the blow and is applied as to any blow. So the
+	// smaller of the figure and nought is what a flagged blow meets.
+	const float ResistanceMet = EffectiveResistanceUnderCap(
 		ResistanceFor(Defender, Hit.DamageType, Tier)
 			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
 		Hit.ResistancePenetration, ResistanceCapOf(Defender));
+	const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;
 	Damage *= 1.0f - Resist / 100.0f;
 
 	// 5. Flat damage reduction, capped. Until issue #644 this was the one step
@@ -1113,11 +1136,45 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// AND WHAT RIDES ON THE AILMENTS IT CARRIES IS ADDED, as a pin's increase
 		// is added to the attribute read here. Issue #1833, ruled 2026-10-06:
 		// "Bleeding enemies take 20%-40% increased damage from all sources".
-		Damage *= FMath::Max(0.0f,
+		//
+		// HELD IN A LOCAL SINCE 2026-10-12, so the lines below can ask whether
+		// this step raised the blow or lowered it. One is normal. The
+		// multiplication is the one that was written here before.
+		const float DamageTakenFactor = FMath::Max(0.0f,
 			DefenderStat(Defender, DamageTakenStat,
 						 Combat->GetDamageTaken(), BlowOf(Hit))
 			+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f;
+		Damage *= DamageTakenFactor;
+
+		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS
+		// BEFORE STEP 5, AND THEN MEETS STEP 6 ONLY IF STEP 6 RAISES IT. Ruled
+		// 2026-10-12, twice. First: the blow skips damage reduction, both lines,
+		// and `damage_taken`. Then, the same day: THE FLAG MUST NEVER LOWER A
+		// PAYMENT, so `damage_taken` is skipped only when its net effect on this
+		// blow is a reduction.
+		//
+		// DAMAGE REDUCTION IS UNDONE WHOLE, BECAUSE NEITHER LINE OF IT CAN RAISE A
+		// BLOW. Read: the capped line multiplies by one less a figure
+		// `EffectiveDamageReduction` holds between nought and
+		// `DamageReductionCap`, and the multiplicative line by one less a figure
+		// clamped between nought and `MoreDamageReductionCap`. Each factor is at
+		// most one. `BeforeReduction` is the blow as it arrived at step 5.
+		//
+		// `damage_taken` IS JUDGED ON ITS OWN FIGURE, WHICH IS IN HAND. The factor
+		// above is the whole of step 6 for this blow: the defender's stat with
+		// what rides on its ailments added, floored at nought. Above one it is a
+		// net increase and is applied; at one or below it is a reduction or
+		// nothing and is not. So the larger of the factor and one multiplies the
+		// blow, and nothing is computed twice.
+		//
+		// BEFORE THE Nth HIT'S SHARE BELOW, WHICH IS KEPT: it is not one of the
+		// six, and it raises the blow and never lowers it.
+		if (Hit.bCannotBeMitigated)
+		{
+			Damage = BeforeReduction * FMath::Max(1.0f, DamageTakenFactor);
+			Result.RemovedByDamageReduction = 0.0f;
+		}
 
 		// AND THE Nth HIT OF AN "EVERY Nth HIT YOU TAKE" ROW TAKES ITS SHARE ON
 		// TOP. Issue #1833, phase 2. Nought on every other hit.
