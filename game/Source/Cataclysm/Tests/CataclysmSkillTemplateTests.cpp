@@ -93,6 +93,8 @@
 #include "Tests/CataclysmTestWorld.h"
 // For saying a half was skipped where a swing has no wind-up to interrupt.
 #include "Tests/CataclysmTestSkip.h"
+// For the movement sampler the tests of a hit moving its wearer call by hand.
+#include "AbilitySystem/CataclysmMovement.h"
 
 /**
  * Tests for what the seven shared skill templates actually do.
@@ -27235,6 +27237,648 @@ namespace CataclysmBlowDelayTest
 	{
 		Victim.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// A hit moves its wearer to a random reachable point nearby. Ruled 2026-10-12 by
+// the coordinating session under the owner's delegation, for "Teleport to a
+// random location within 4 meters when hit". One action, `teleport_randomly`,
+// on the event `hit_taken`. Engine only; no row is authored, so every row here
+// is made by hand as `UCataclysmItemModifiers` would build it from a row.
+//
+// A HIT IS A REAL BLOW in every test here, as in the tests of a hit cutting a
+// skill short above: `UCataclysmSkillEffects::ApplyHit` from another fighter,
+// resolved by the wearer's own attribute set, which is the one caller of the
+// form of `NoteHitTaken` that says whether the blow was a tick.
+//
+// WHERE THE WEARER LANDS IS PINNED by `Cataclysm.TeleportRandomlyDegrees` and
+// `Cataclysm.TeleportRandomlyShare`. A world made for an automation test has
+// no navigation system, so the random reachable point of play is never asked
+// for here; with the pin off, that same absence is the test of "no reachable
+// point".
+//
+// TIME IS SET ON THE WORLD'S CLOCK BY HAND. Nothing here waits on a tick.
+// WHERE THE ACTORS STAND is said at the top of each test; no two are within a
+// metre of each other at any time, moves included.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmTeleportWhenHitTest
+{
+	using namespace CataclysmHitCancelsTest;
+
+	/** The key the item gives the ruled row: its enchantment, its action and its event. */
+	const TCHAR* const RowKey =
+		TEXT("Positive_Teleport_to_a_random_location_within_4_meters_wh:teleport_randomly:hit_taken");
+
+	/** The row as ruled: 4 metres, on a hit taken, waiting 2 seconds after it moves its wearer. */
+	FCataclysmPoolAction TheRow(float Metres = 4.0f, float TriggerCooldownSeconds = 2.0f)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("hit_taken"));
+		Action.bTeleportRandomly = true;
+		Action.Percent = Metres;
+		Action.TriggerCooldownSeconds = TriggerCooldownSeconds;
+		Action.TriggerKey = FName(RowKey);
+		return Action;
+	}
+
+	/** Pins the direction and the share of the row's metres, at the console's priority, until it goes out of scope. */
+	struct FPinnedTeleport
+	{
+		FPinnedTeleport(float Degrees, float Share)
+			: DegreesVariable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.TeleportRandomlyDegrees")))
+			, ShareVariable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.TeleportRandomlyShare")))
+		{
+			if (Found())
+			{
+				DegreesWas = DegreesVariable->GetFloat();
+				ShareWas = ShareVariable->GetFloat();
+				Set(Degrees, Share);
+			}
+		}
+
+		~FPinnedTeleport()
+		{
+			if (Found())
+			{
+				Set(DegreesWas, ShareWas);
+			}
+		}
+
+		/** Negative degrees turn the pin off. */
+		void Set(float Degrees, float Share) const
+		{
+			if (Found())
+			{
+				DegreesVariable->Set(Degrees, ECVF_SetByConsole);
+				ShareVariable->Set(Share, ECVF_SetByConsole);
+			}
+		}
+
+		bool Found() const { return DegreesVariable && ShareVariable; }
+
+		IConsoleVariable* DegreesVariable = nullptr;
+		IConsoleVariable* ShareVariable = nullptr;
+		float DegreesWas = -1.0f;
+		float ShareWas = 1.0f;
+	};
+
+	/** How far along the ground an actor is from a point, in centimetres. */
+	float GroundCmFrom(const AActor* Who, const FVector& Where)
+	{
+		return static_cast<float>(FVector::Dist2D(Who->GetActorLocation(), Where));
+	}
+
+	/** How far an actor is from a point in every direction, in centimetres. */
+	float CmFrom(const AActor* Who, const FVector& Where)
+	{
+		return static_cast<float>(FVector::Dist(Who->GetActorLocation(), Where));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitMovesTest,
+	"Cataclysm.TeleportWhenHit.ALandedHitMovesTheWearerWithinItsRowsMetresAndIsTakenInFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A landed hit moves the wearer, by no more than its row's metres, and the hit is taken in full.
+ *
+ * THE CONTROL COMES FIRST: a fighter with no row takes the same blow, loses health and stands where it stood.
+ *
+ * THEN FOUR WEARERS, each struck once. The ruled row with the point pinned at the whole of its metres along X: the
+ * wearer stands 4 m along X, at its own height, and has lost exactly what the fighter with no row lost. The ruled
+ * row pinned at half its metres along Y: 2 m along Y. A row of 2 metres pinned at the whole, against X: 2 m against
+ * X. And the ruled row with the share pinned at 5: still 4 m, because the share is held to 1.
+ *
+ * STANDING: the fighter with no row at the origin; the four wearers 40, 80, 120 and 160 m along Y; whoever strikes
+ * them 40 m against Y. No wearer moves more than 4 m.
+ */
+bool FCataclysmTeleportWhenHitMovesTest::RunTest(const FString&)
+{
+	using namespace CataclysmTeleportWhenHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FPinnedTeleport Pin(0.0f, 1.0f);
+	if (!TestTrue(TEXT("set-up: the two console variables that pin the point were found"), Pin.Found()))
+	{
+		return false;
+	}
+
+	const FVector PlainStart(0, 0, 0);
+	const FVector WholeStart(0, 40 * M, 0);
+	const FVector HalfStart(0, 80 * M, 0);
+	const FVector ShortStart(0, 120 * M, 0);
+	const FVector OverStart(0, 160 * M, 0);
+	FScopedFighter Plain(World, PlainStart);
+	FScopedFighter Whole(World, WholeStart);
+	FScopedFighter Half(World, HalfStart);
+	FScopedFighter Short(World, ShortStart);
+	FScopedFighter Over(World, OverStart);
+	FScopedFighter Attacker(World, FVector(0, -40 * M, 0));
+	Defences(Plain, 0.0f, 0.0f);
+	Defences(Whole, 0.0f, 0.0f);
+	Defences(Half, 0.0f, 0.0f);
+	Defences(Short, 0.0f, 0.0f);
+	Defences(Over, 0.0f, 0.0f);
+	Whole.AbilitySystem->SetPoolActions({TheRow()});
+	Half.AbilitySystem->SetPoolActions({TheRow()});
+	Short.AbilitySystem->SetPoolActions({TheRow(/*Metres=*/2.0f)});
+	Over.AbilitySystem->SetPoolActions({TheRow()});
+
+	// THE CONTROL: NO ROW.
+	const bool bPlainWasHit = !BlowOn(Attacker, Plain.Actor).bEvaded;
+	const float PlainLost = Pool - Plain.Health();
+	if (!TestTrue(TEXT("set-up: the blow on the fighter with no row landed and took health"),
+				  bPlainWasHit && PlainLost > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a fighter with no row is not moved by a landed hit"),
+			  CmFrom(Plain.Actor, PlainStart), 0.0f, 0.01f);
+
+	// THE RULED ROW, THE WHOLE OF ITS METRES ALONG X.
+	if (!TestFalse(TEXT("set-up: the blow on the first wearer landed"), BlowOn(Attacker, Whole.Actor).bEvaded))
+	{
+		return false;
+	}
+	const float WholeMoved = GroundCmFrom(Whole.Actor, WholeStart);
+	TestTrue(TEXT("a landed hit moves the wearer by a distance above nought"), WholeMoved > 1.0f);
+	TestTrue(TEXT("and by no more than the row's 4 metres"), WholeMoved <= 4 * M + 0.01f);
+	TestEqual(TEXT("pinned at the whole of its metres along X, the wearer stands 4 metres along X from where it stood"),
+			  CmFrom(Whole.Actor, WholeStart + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	TestEqual(TEXT("the hit that moved the wearer is taken in full: it lost what the fighter with no row lost"),
+			  Pool - Whole.Health(), PlainLost, 0.01f);
+
+	// HALF OF ITS METRES, ALONG Y.
+	Pin.Set(90.0f, 0.5f);
+	if (!TestFalse(TEXT("set-up: the blow on the second wearer landed"), BlowOn(Attacker, Half.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("pinned at half of its metres along Y, the wearer stands 2 metres along Y from where it stood"),
+			  CmFrom(Half.Actor, HalfStart + FVector(0, 2 * M, 0)), 0.0f, 0.01f);
+
+	// A ROW OF 2 METRES, THE WHOLE, AGAINST X.
+	Pin.Set(180.0f, 1.0f);
+	if (!TestFalse(TEXT("set-up: the blow on the third wearer landed"), BlowOn(Attacker, Short.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a row of 2 metres pinned at the whole moves its wearer 2 metres and not 4"),
+			  CmFrom(Short.Actor, ShortStart + FVector(-2 * M, 0, 0)), 0.0f, 0.01f);
+
+	// A SHARE PAST THE WHOLE IS HELD TO THE WHOLE.
+	Pin.Set(0.0f, 5.0f);
+	if (!TestFalse(TEXT("set-up: the blow on the fourth wearer landed"), BlowOn(Attacker, Over.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a share pinned at five times the metres still moves the wearer 4 metres and no further"),
+			  CmFrom(Over.Actor, OverStart + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitWhichBlowsTest,
+	"Cataclysm.TeleportWhenHit.AnEvadedBlowATickAndAHitInsideTheTriggerCooldownDoNotMoveTheWearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Which blows move the wearer, and the row's 2 seconds. One wearer of the ruled row, the point pinned at the whole
+ * of its metres along X, the world's clock set by hand. What became of each blow is read back before anything is
+ * concluded from it.
+ *
+ * IN ORDER. At 100 s: a blow the wearer evades does not move it and starts no wait. One tick of a burn another
+ * fighter laid on it takes health, does not move it and starts no wait. THE CONTROL: a blow that lands moves it 4 m
+ * and starts the wait. A second landed blow in the same instant does not move it. At 101.9 s a landed blow does not
+ * move it. At 102.1 s a landed blow moves it another 4 m. At 110 s a blow the wearer blocks moves it. At 120 s a
+ * blow its energy shield takes whole, with nothing reaching health, moves it.
+ *
+ * THE BLOWS THAT MOVE IT ARE THE CONTROLS FOR THE ONES THAT DO NOT, and the other way about: it is the same wearer
+ * and the same row throughout.
+ *
+ * STANDING: the wearer at the origin, moved 4 m along X four times; whoever strikes it 40 m against Y.
+ */
+bool FCataclysmTeleportWhenHitWhichBlowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmTeleportWhenHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FPinnedTeleport Pin(0.0f, 1.0f);
+	if (!TestTrue(TEXT("set-up: the two console variables that pin the point were found"), Pin.Found()))
+	{
+		return false;
+	}
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(0, -40 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({TheRow()});
+	const FName Key(RowKey);
+	World->TimeSeconds = 100.0f;
+	FVector Stood = Wearer.Actor->GetActorLocation();
+
+	// AN EVADED BLOW.
+	Wearer.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	const bool bWasEvaded = BlowOn(Attacker, Wearer.Actor).bEvaded;
+	Wearer.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	if (!TestTrue(TEXT("set-up: the first blow was evaded"), bWasEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an evaded blow does not move the wearer"), CmFrom(Wearer.Actor, Stood), 0.0f, 0.01f);
+	TestFalse(TEXT("and starts no trigger cooldown"), Wearer.AbilitySystem->TriggerCoolingDown(Key));
+
+	// A TICK OF DAMAGE OVER TIME, laid by somebody else and taking health.
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	const float HealthBeforeTheTick = Wearer.Health();
+	if (!TestTrue(TEXT("set-up: a burn is laid on the wearer by another fighter"),
+				  UCataclysmSkillEffects::ApplyDamageOverTime(Attacker.Actor, Wearer.Actor, /*DamagePerTick=*/10.0f,
+															  /*DurationSeconds=*/4.0f, Burn,
+															  /*bScalesWithInstigator=*/false))
+		|| !TestEqual(TEXT("set-up: one tick of it runs"),
+					  Wearer.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1)
+		|| !TestTrue(TEXT("set-up: and takes health"), Wearer.Health() < HealthBeforeTheTick))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick of damage over time does not move the wearer"), CmFrom(Wearer.Actor, Stood), 0.0f, 0.01f);
+	TestFalse(TEXT("and starts no trigger cooldown"), Wearer.AbilitySystem->TriggerCoolingDown(Key));
+
+	// THE CONTROL: A LANDED HIT.
+	if (!TestFalse(TEXT("set-up: the next blow landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a landed hit moves the same wearer 4 metres along X"),
+			  CmFrom(Wearer.Actor, Stood + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	TestTrue(TEXT("and starts the row's trigger cooldown"), Wearer.AbilitySystem->TriggerCoolingDown(Key));
+	Stood = Wearer.Actor->GetActorLocation();
+
+	// INSIDE THE TWO SECONDS.
+	if (!TestFalse(TEXT("set-up: a second blow in the same instant landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a second landed hit in the same instant does not move the wearer"),
+			  CmFrom(Wearer.Actor, Stood), 0.0f, 0.01f);
+
+	World->TimeSeconds = 101.9f;
+	if (!TestFalse(TEXT("set-up: a blow 1.9 seconds after the move landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a landed hit 1.9 seconds after the move does not move the wearer"),
+			  CmFrom(Wearer.Actor, Stood), 0.0f, 0.01f);
+
+	// AND AFTER THEM.
+	World->TimeSeconds = 102.1f;
+	if (!TestFalse(TEXT("set-up: a blow 2.1 seconds after the move landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a landed hit 2.1 seconds after the move moves the wearer another 4 metres"),
+			  CmFrom(Wearer.Actor, Stood + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	Stood = Wearer.Actor->GetActorLocation();
+
+	// A BLOCKED BLOW.
+	World->TimeSeconds = 110.0f;
+	Wearer.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 100.0f);
+	const FCataclysmDamageResult Blocked = BlowOn(Attacker, Wearer.Actor);
+	Wearer.Set(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	if (!TestTrue(TEXT("set-up: the next blow was blocked and not evaded"), Blocked.bBlocked && !Blocked.bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blocked blow moves the wearer"), CmFrom(Wearer.Actor, Stood + FVector(4 * M, 0, 0)), 0.0f,
+			  0.01f);
+	Stood = Wearer.Actor->GetActorLocation();
+
+	// A BLOW THE ENERGY SHIELD TAKES WHOLE.
+	World->TimeSeconds = 120.0f;
+	Wearer.Set(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
+	Wearer.Set(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 1000.0f);
+	const FCataclysmDamageResult Shielded = BlowOn(Attacker, Wearer.Actor);
+	if (!TestTrue(TEXT("set-up: the energy shield took the whole of the last blow and none reached health"),
+				  !Shielded.bEvaded && Shielded.AbsorbedByShield > 1.0f && Shielded.DealtToHealth <= 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow the energy shield takes whole moves the wearer"),
+			  CmFrom(Wearer.Actor, Stood + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitStaysPutTest,
+	"Cataclysm.TeleportWhenHit.WithNoReachablePointTheWearerStaysPutTakesTheHitAndStartsNoTriggerCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * With no reachable point the wearer stays where it stands, the hit is still taken, and the row's wait does not
+ * start.
+ *
+ * WHAT STANDS IN FOR "NO REACHABLE POINT" is this world having no navigation system, which is checked first. With
+ * the pin off the action has nothing to ask and leaves the wearer where it is.
+ *
+ * THE CONTROL COMES FIRST: a second wearer of the same row, with the point pinned, is moved by the same blow. THEN
+ * the first wearer with the pin off: it is struck, loses health, stands where it stood and its row is not waiting.
+ * THEN the pin at a share of nought: it stands where it stood and its row is not waiting. THEN, in the same instant,
+ * the pin at the whole: it is moved, which it could not be if either blow before had started the wait.
+ *
+ * STANDING: the wearer at the origin; the control 40 m along Y; whoever strikes them 40 m against Y.
+ */
+bool FCataclysmTeleportWhenHitStaysPutTest::RunTest(const FString&)
+{
+	using namespace CataclysmTeleportWhenHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FPinnedTeleport Pin(0.0f, 1.0f);
+	if (!TestTrue(TEXT("set-up: the two console variables that pin the point were found"), Pin.Found())
+		|| !TestTrue(TEXT("set-up: this world has no navigation system"), World->GetNavigationSystem() == nullptr))
+	{
+		return false;
+	}
+
+	const FVector ControlStart(0, 40 * M, 0);
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Control(World, ControlStart);
+	FScopedFighter Attacker(World, FVector(0, -40 * M, 0));
+	Defences(Wearer, 0.0f, 0.0f);
+	Defences(Control, 0.0f, 0.0f);
+	Wearer.AbilitySystem->SetPoolActions({TheRow()});
+	Control.AbilitySystem->SetPoolActions({TheRow()});
+	const FName Key(RowKey);
+	World->TimeSeconds = 100.0f;
+	const FVector Stood = Wearer.Actor->GetActorLocation();
+
+	// THE CONTROL: PINNED, THE SAME BLOW MOVES A WEARER OF THE SAME ROW.
+	if (!TestFalse(TEXT("set-up: the blow on the control landed"), BlowOn(Attacker, Control.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with the point pinned, a wearer of the row is moved 4 metres by a landed hit"),
+			  CmFrom(Control.Actor, ControlStart + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+
+	// THE PIN OFF, AND NO NAVIGATION SYSTEM TO ASK.
+	Pin.Set(-1.0f, 1.0f);
+	if (!TestFalse(TEXT("set-up: the blow on the wearer landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with no reachable point the wearer stays where it stood"), CmFrom(Wearer.Actor, Stood), 0.0f,
+			  0.01f);
+	TestTrue(TEXT("and the hit is still taken"), Pool - Wearer.Health() > 1.0f);
+	TestFalse(TEXT("and the row's trigger cooldown has not started"), Wearer.AbilitySystem->TriggerCoolingDown(Key));
+
+	// A PINNED POINT WHERE THE WEARER ALREADY STANDS IS NO MOVE.
+	Pin.Set(0.0f, 0.0f);
+	if (!TestFalse(TEXT("set-up: a second blow on the wearer landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the point pinned where the wearer stands, it stays where it stood"),
+			  CmFrom(Wearer.Actor, Stood), 0.0f, 0.01f);
+	TestFalse(TEXT("and the row's trigger cooldown has still not started"),
+			  Wearer.AbilitySystem->TriggerCoolingDown(Key));
+
+	// AND IN THE SAME INSTANT, WITH A POINT TO MOVE TO, IT IS MOVED.
+	Pin.Set(0.0f, 1.0f);
+	if (!TestFalse(TEXT("set-up: a third blow on the wearer landed"), BlowOn(Attacker, Wearer.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a third hit in the same instant, with a point to move to, moves the wearer 4 metres"),
+			  CmFrom(Wearer.Actor, Stood + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	TestTrue(TEXT("and the row's trigger cooldown starts then"), Wearer.AbilitySystem->TriggerCoolingDown(Key));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitIsNotMovementTest,
+	"Cataclysm.TeleportWhenHit.TheMoveAddsNoDistanceMarksNothingAsMovingAndLeavesTheStandingStillClockAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The move feeds none of the movement records: the distance since the character's own attack, the total distance
+ * walked, whether it is moving, and the clock of when it last moved.
+ *
+ * TWO REAL PLAYER CHARACTERS, because the movement sampler `UCataclysmMovement::SampleStep` takes a character of
+ * this project's and a test fighter is a bare actor. The sampler is called by hand; nothing waits on its timer.
+ *
+ * THE HIT IS TOLD TO THE WEARER DIRECTLY, with `NoteHitTaken` in the form a resolved blow calls, and is not a blow
+ * resolved on the player: this test is about the records and not about which blows land.
+ *
+ * IN ORDER. At 100 s the sampler looks at both, which starts each one's clock. At 105 s: THE CONTROL is moved 4 m
+ * by hand, as a walk or an uncounted relocation would move it, and the sampler's next step counts it: moving, 4
+ * metres since its own attack, 4 metres in total, and its clock back at nought. THE WEARER is told of a tick, which
+ * does not move it, and then of a landed hit, and its row moves it 4 m. Before the sampler looks again, the place
+ * the sampler last saw it is where it now stands, and its
+ * clock still reads 5 seconds. The sampler's next step then sees no move: not moving, no metres, and the clock
+ * still at 5 seconds.
+ *
+ * STANDING: the wearer at the origin; the control 40 m along Y; the fighter named as the attacker 40 m against Y.
+ */
+bool FCataclysmTeleportWhenHitIsNotMovementTest::RunTest(const FString&)
+{
+	using namespace CataclysmTeleportWhenHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FPinnedTeleport Pin(0.0f, 1.0f);
+	if (!TestTrue(TEXT("set-up: the two console variables that pin the point were found"), Pin.Found()))
+	{
+		return false;
+	}
+
+	// A PLAYER STATE AND ITS CHARACTER, as the wind-up tests above make theirs.
+	const auto MakePlayer = [World](const FVector& Where,
+									UCataclysmAbilitySystemComponent*& OutSystem) -> ACataclysmPlayerCharacter*
+	{
+		OutSystem = nullptr;
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* System =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+		ACataclysmPlayerCharacter* Character =
+			System ? World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator) : nullptr;
+		if (!Character)
+		{
+			return nullptr;
+		}
+		Character->SetPlayerState(PlayerState);
+		Character->OnRep_PlayerState();
+		OutSystem = System;
+		return Character;
+	};
+
+	UCataclysmAbilitySystemComponent* WearerSystem = nullptr;
+	UCataclysmAbilitySystemComponent* ControlSystem = nullptr;
+	ACataclysmPlayerCharacter* Wearer = MakePlayer(FVector::ZeroVector, WearerSystem);
+	ACataclysmPlayerCharacter* Control = MakePlayer(FVector(0, 40 * M, 0), ControlSystem);
+	if (!TestTrue(TEXT("set-up: two player characters and their ability systems"),
+				  Wearer && Control && WearerSystem && ControlSystem))
+	{
+		return false;
+	}
+	FScopedFighter Attacker(World, FVector(0, -40 * M, 0));
+
+	// THE SAMPLER LOOKS AT BOTH, WHICH STARTS EACH ONE'S CLOCK.
+	World->TimeSeconds = 100.0f;
+	UCataclysmMovement::SampleStep(Wearer);
+	UCataclysmMovement::SampleStep(Control);
+	World->TimeSeconds = 105.0f;
+	const float WearerMetresBefore = WearerSystem->MetresMovedSinceOwnAttack();
+	const float WearerTotalBefore = WearerSystem->MetresWalkedTotal();
+	const float ControlMetresBefore = ControlSystem->MetresMovedSinceOwnAttack();
+	const float ControlTotalBefore = ControlSystem->MetresWalkedTotal();
+	if (!TestTrue(TEXT("set-up: the sampler has seen both, and neither is moving"),
+				  WearerSystem->HasSampledLocation() && ControlSystem->HasSampledLocation()
+					  && !WearerSystem->IsMoving() && !ControlSystem->IsMoving())
+		|| !TestEqual(TEXT("set-up: five seconds on, the wearer's clock reads 5 seconds since it moved"),
+					  WearerSystem->SecondsSinceMoved(), 5.0f, 0.01f)
+		|| !TestEqual(TEXT("set-up: and the control's reads the same"), ControlSystem->SecondsSinceMoved(), 5.0f,
+					  0.01f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: 4 METRES BY HAND IS COUNTED.
+	const FVector ControlStart = Control->GetActorLocation();
+	Control->SetActorLocation(ControlStart + FVector(4 * M, 0, 0));
+	UCataclysmMovement::SampleStep(Control);
+	TestTrue(TEXT("control: a character put 4 metres away by hand is seen as moving by the sampler's next step"),
+			 ControlSystem->IsMoving());
+	TestEqual(TEXT("control: and has 4 metres more since its own attack"),
+			  ControlSystem->MetresMovedSinceOwnAttack() - ControlMetresBefore, 4.0f, 0.01f);
+	TestEqual(TEXT("control: and 4 metres more in total"), ControlSystem->MetresWalkedTotal() - ControlTotalBefore,
+			  4.0f, 0.01f);
+	TestEqual(TEXT("control: and its clock is back at nought"), ControlSystem->SecondsSinceMoved(), 0.0f, 0.01f);
+
+	// THE WEARER: TOLD OF A TICK, THEN OF A LANDED HIT, AND MOVED BY ITS ROW.
+	const FVector WearerStart = Wearer->GetActorLocation();
+	WearerSystem->SetPoolActions({TheRow()});
+	WearerSystem->NoteHitTaken(/*bLanded=*/true, Attacker.Actor, /*bDamageOverTime=*/true);
+	TestEqual(TEXT("told of a tick, the wearer is not moved"), CmFrom(Wearer, WearerStart), 0.0f, 0.01f);
+	WearerSystem->NoteHitTaken(/*bLanded=*/true, Attacker.Actor, /*bDamageOverTime=*/false);
+	if (!TestEqual(TEXT("set-up: told of a landed hit, the wearer's row moved it 4 metres along X"),
+				   CmFrom(Wearer, WearerStart + FVector(4 * M, 0, 0)), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the place the sampler last saw the wearer is where the wearer now stands"),
+			  GroundCmFrom(Wearer, WearerSystem->SampledLocation()), 0.0f, 0.01f);
+	TestEqual(TEXT("the move leaves the wearer's clock at 5 seconds since it moved"),
+			  WearerSystem->SecondsSinceMoved(), 5.0f, 0.01f);
+	TestFalse(TEXT("and does not mark the wearer as moving"), WearerSystem->IsMoving());
+
+	UCataclysmMovement::SampleStep(Wearer);
+	TestFalse(TEXT("the sampler's next step does not see the wearer as moving"), WearerSystem->IsMoving());
+	TestEqual(TEXT("and adds no metres since its own attack"),
+			  WearerSystem->MetresMovedSinceOwnAttack() - WearerMetresBefore, 0.0f, 0.001f);
+	TestEqual(TEXT("and no metres in total"), WearerSystem->MetresWalkedTotal() - WearerTotalBefore, 0.0f, 0.001f);
+	TestEqual(TEXT("and leaves its clock at 5 seconds since it moved"), WearerSystem->SecondsSinceMoved(), 5.0f,
+			  0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTeleportWhenHitSkillsTest,
+	"Cataclysm.TeleportWhenHit.ASkillInUseIsNotEndedByTheMoveAndAWearerInALastingChargeIsNotMoved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * What the move does to a skill in use.
+ *
+ * THE CONTROL COMES FIRST: a wearer running a spin, which is a strike and not a movement skill, is struck. It is
+ * moved 4 m and the spin is still running.
+ *
+ * THEN A WEARER IN A LASTING CHARGE, the 3 second advance the tests of a hit cutting a skill short use. It is
+ * struck. It is not moved, the charge is still running, and the row's wait has not started. The clock is then put
+ * past the 2 seconds of a row that had fired, the charge is ended from outside, and the next landed hit moves it:
+ * so it was the running charge that held it.
+ *
+ * STANDING: the spinning wearer at the origin; the charging wearer 40 m along Y; whoever strikes them 40 m against
+ * Y. A spin reaches 3.5 m and the advance 2.5 m, so nobody reaches anybody.
+ */
+bool FCataclysmTeleportWhenHitSkillsTest::RunTest(const FString&)
+{
+	using namespace CataclysmTeleportWhenHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FPinnedTeleport Pin(0.0f, 1.0f);
+	if (!TestTrue(TEXT("set-up: the two console variables that pin the point were found"), Pin.Found()))
+	{
+		return false;
+	}
+
+	const FVector SpinnerStart(0, 0, 0);
+	const FVector ChargerStart(0, 40 * M, 0);
+	FScopedFighter Spinner(World, SpinnerStart);
+	FScopedFighter Charger(World, ChargerStart);
+	FScopedFighter Attacker(World, FVector(0, -40 * M, 0));
+	Defences(Spinner, 0.0f, 0.0f);
+	Defences(Charger, 0.0f, 0.0f);
+	Spinner.AbilitySystem->SetPoolActions({TheRow()});
+	Charger.AbilitySystem->SetPoolActions({TheRow()});
+	const FName Key(RowKey);
+	World->TimeSeconds = 100.0f;
+
+	UCataclysmStrikeSkill* Spin = GrantPlainSpin(Spinner, ECataclysmAbilitySlot::Heavy, TEXT("Spin"));
+	UCataclysmMovementSkill* Advance = GrantSkill<UCataclysmMovementSkill>(
+		Charger, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=3; GroundRadius=1.5; GroundDuration=4; GroundPercent=25"),
+		TEXT("Advance"));
+	if (!TestTrue(TEXT("set-up: the spin and the advance were granted"), Spin && Advance)
+		|| !TestTrue(TEXT("set-up: both are used and both are running"),
+					 Activate(Spinner, Spin) && Activate(Charger, Advance) && Spin->IsActive() && Advance->IsActive()))
+	{
+		return false;
+	}
+
+	// THE CONTROL: A STRIKE IN USE.
+	if (!TestFalse(TEXT("set-up: the blow on the spinning wearer landed"), BlowOn(Attacker, Spinner.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a wearer running a spin is moved 4 metres by a landed hit"),
+			  CmFrom(Spinner.Actor, SpinnerStart + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	TestTrue(TEXT("and the spin is still running after the move"), Spin->IsActive());
+
+	// A LASTING CHARGE IN USE.
+	if (!TestFalse(TEXT("set-up: the blow on the charging wearer landed"), BlowOn(Attacker, Charger.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a wearer in a lasting charge is not moved by a landed hit"), CmFrom(Charger.Actor, ChargerStart),
+			  0.0f, 0.01f);
+	TestTrue(TEXT("and the charge is still running"), Advance->IsActive());
+	TestFalse(TEXT("and the row's trigger cooldown has not started"), Charger.AbilitySystem->TriggerCoolingDown(Key));
+
+	// AND ONCE THE CHARGE HAS ENDED, THE NEXT HIT MOVES IT.
+	World->TimeSeconds = 103.0f;
+	CancelFromOutside(Charger.AbilitySystem, Advance);
+	if (!TestFalse(TEXT("set-up: the charge was ended from outside"), Advance->IsActive())
+		|| !TestFalse(TEXT("set-up: a second blow on that wearer landed"), BlowOn(Attacker, Charger.Actor).bEvaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the charge over, a landed hit moves that wearer 4 metres"),
+			  CmFrom(Charger.Actor, ChargerStart + FVector(4 * M, 0, 0)), 0.0f, 0.01f);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlowDelayHoldsBackTheBlowTest,
