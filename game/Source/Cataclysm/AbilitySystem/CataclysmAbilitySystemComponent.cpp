@@ -4141,6 +4141,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::UseBackfiresAction = TEXT("use_ba
 const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction =
 	TEXT("explode_victim_for_overkill");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
+const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
@@ -4399,6 +4400,15 @@ static TAutoConsoleVariable<float> CVarUseOutcomeRoll(
 static TAutoConsoleVariable<float> CVarTriggerHeldSkillRoll(
 	TEXT("Cataclysm.TriggerHeldSkillRoll"), -1.0f,
 	TEXT("Pins the 0-100 roll a trigger-held-skill enchantment makes against its chance. Negative rolls for real."),
+	ECVF_Default);
+
+/**
+ * Pins the roll an execute action makes against its chance, 0 to 100, for tests. Negative, the default, rolls for
+ * real. Ruled 2026-10-12; the same shape as `Cataclysm.StatusRoll` above.
+ */
+static TAutoConsoleVariable<float> CVarExecuteRoll(
+	TEXT("Cataclysm.ExecuteRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll an execute enchantment makes against its chance. Negative rolls for real."),
 	ECVF_Default);
 
 int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
@@ -5775,6 +5785,45 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// AN EXECUTE OF THE ENEMY THE HIT LEAVES BELOW A SHARE OF ITS HEALTH. Ruled 2026-10-12 under the owner's
+		// delegation, for "Strike skills have a 10%-20% chance to execute enemies below 15% HP". Landed only, once
+		// per row per event, only for an event that names a character other than the wearer and carries what reached
+		// its health, and only for a character that may be executed: never a Boss or a Cataclysm Boss, and never a
+		// creature no damage reaches. See `CanBeExecuted`.
+		//
+		// ONLY A HIT THAT TOOK SOMETHING FROM HEALTH. A judgement of the writing session. The death is credited by
+		// the record the hit leaves on the enemy, and a hit that took nothing from health leaves none.
+		//
+		// THE ROLL IS MADE HERE AND THE SHARE OF HEALTH IS JUDGED LATER. This loop runs before the hit's damage is
+		// written, so the enemy still holds what it held before the hit. A row whose roll comes up leaves a request
+		// on the enemy, and the enemy's attribute set acts on it when the damage is written. See `AskToBeExecuted`.
+		// The row's trigger cooldown is asked here and is started only when the execute kills.
+		if (Action.bExecuteTarget)
+		{
+			AActor* Other = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Other && Self && Other != Self && EventAmount > 0.0f
+				&& Action.Condition == ECataclysmStatCondition::TargetHealthBelowPercent
+				&& Action.ConditionValue > 0.0f && CanBeExecuted(Other)
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Pinned = CVarExecuteRoll.GetValueOnAnyThread();
+				const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+				// A CHANCE OF 100 IS ALWAYS, compared rather than rolled, because `FRandRange` can return 100 itself.
+				// Issue #2201; as a repeated skill's is above. A chance below 100 fails on a roll equal to it.
+				if (Action.Percent >= 100.0f || Roll < Action.Percent)
+				{
+					if (UCataclysmAbilitySystemComponent* Struck = Cast<UCataclysmAbilitySystemComponent>(
+							UCataclysmTargeting::AbilitySystemOf(Other)))
+					{
+						Struck->AskToBeExecuted(Self, Action.ConditionValue, Action.TriggerKey,
+												Action.TriggerCooldownSeconds);
+					}
+				}
+			}
+			continue;
+		}
 		// A REPEAT OF THE SKILL JUST USED. Mechanism B2, ruled 2026-10-05. Only when the event names a skill, once
 		// per row per event, rolled against the row's value. ONE REPEAT FOR ONE USE: every row that passes is
 		// counted here, and what is kept is the highest share among them.
@@ -6061,7 +6110,14 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 	// target. With no target it refuses, as every target condition does.
 	// Measured 2026-09-25: the one action row with a condition before this asked
 	// `health_below`, which reads the wearer, so it judges as it did.
-	if (Action.Condition != ECataclysmStatCondition::Always)
+	//
+	// AN EXECUTE ROW'S SHARE OF HEALTH IS NOT JUDGED HERE. Ruled 2026-10-12. This runs before the hit's damage is
+	// written to the enemy's health, and "below 15%" is judged on the health the hit leaves:
+	// `ExecuteIfLeftBelow` judges it, by the same strict comparison, once the damage is written. Any other
+	// condition on such a row is judged here as before; the generator accepts no other.
+	const bool bJudgedAfterTheHit = Action.bExecuteTarget
+		&& Action.Condition == ECataclysmStatCondition::TargetHealthBelowPercent;
+	if (Action.Condition != ECataclysmStatCondition::Always && !bJudgedAfterTheHit)
 	{
 		FCataclysmStatModifier Asking;
 		Asking.Condition = Action.Condition;
@@ -6080,6 +6136,90 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 		}
 	}
 	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::CanBeExecuted(const AActor* Target)
+{
+	if (!Target || UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+	// NEVER A BOSS OR A CATACLYSM BOSS, AND NOTHING IS DONE TO A CREATURE THAT TAKES NO DAMAGE. `IsBoss` is the two
+	// rungs from Boss up; a Herald is below it and may be executed. `TakesNoDamage` is The Reaper and a shrouded
+	// creature. A character that is not an enemy character is neither.
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Target);
+	return !Enemy || (!Enemy->IsBoss() && !Enemy->TakesNoDamage());
+}
+
+void UCataclysmAbilitySystemComponent::AskToBeExecuted(
+	AActor* By, float BelowPercent, FName TriggerKey, float TriggerCooldownSeconds)
+{
+	if (!By || BelowPercent <= 0.0f)
+	{
+		return;
+	}
+	// THE LARGEST SHARE ASKED IS KEPT. A second row asking a smaller share changes nothing.
+	if (ExecuteAsked.IsAsked() && ExecuteAsked.BelowPercent >= BelowPercent)
+	{
+		return;
+	}
+	ExecuteAsked.By = By;
+	ExecuteAsked.BelowPercent = BelowPercent;
+	ExecuteAsked.TriggerKey = TriggerKey;
+	ExecuteAsked.TriggerCooldownSeconds = TriggerCooldownSeconds;
+}
+
+bool UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow(const FExecuteAsked& Asked)
+{
+	AActor* Struck = GetAvatarActor();
+	AActor* By = Asked.By.Get();
+	if (!Asked.IsAsked() || !Struck || !By || !CanBeExecuted(Struck))
+	{
+		return false;
+	}
+
+	// ONLY WHEN THE DEATH WOULD BE CREDITED TO WHOEVER ASKED. `UCataclysmCombatEvents::NoteDeath` names the attacker
+	// of the last blow on this record as the killer. The hit that asked wrote that record a moment ago; this refuses
+	// if anything has written over it since.
+	if (!LastBlow.IsOnRecord() || LastBlow.Attacker.Get() != By)
+	{
+		return false;
+	}
+
+	// STRICTLY BELOW THE SHARE, OF THE HEALTH HELD NOW, judged by the pipeline's own rule for
+	// `target_health_below` and built as `WithTargetState` builds it, so the row's condition means here what it
+	// means on every other row.
+	const float Health = GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	FCataclysmStatConditions State;
+	State.TargetHealthPercent = FCataclysmStatConditions::FromHealth(
+		Health, GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())).HealthPercent;
+	if (Health <= 0.0f || !UCataclysmStatPipeline::ConditionHolds(
+			ECataclysmStatCondition::TargetHealthBelowPercent, Asked.BelowPercent, State))
+	{
+		return false;
+	}
+
+	// THE HEALTH LEFT AND NO MORE, so there is nothing past it to report as overkill.
+	UCataclysmSkillEffects::ReduceHealthDirectly(By, Struck, Health);
+	if (!UCataclysmSkillEffects::IsDead(Struck))
+	{
+		// HELD: an enemy in a friendly Unholy Sigil keeps one health.
+		return false;
+	}
+	if (UCataclysmAbilitySystemComponent* Asker = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(By)))
+	{
+		Asker->NoteExecuteMade(Asked.TriggerKey, Asked.TriggerCooldownSeconds);
+	}
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::NoteExecuteMade(FName TriggerKey, float TriggerCooldownSeconds)
+{
+	FCataclysmPoolAction Row;
+	Row.TriggerKey = TriggerKey;
+	Row.TriggerCooldownSeconds = TriggerCooldownSeconds;
+	NoteTriggerFired(Row);
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPoolAction& Action)

@@ -3386,6 +3386,144 @@ class TestStrikeTarget:
             gen.enchantment_effects(self.strike(tmp_path, {column: written}))
 
 
+class TestExecuteTarget:
+    """A row that executes the enemy a hit leaves below a share of its health.
+    Ruled 2026-10-12 under the owner's delegation: "Strike skills have a 10%-20%
+    chance to execute enemies below 15% HP". The value is the chance, the
+    Condition is `target_health_below` and its value is the share, and the
+    event is `hit_dealt` and no other."""
+
+    WORDS = "Strike skills have a 10%-20% chance to execute enemies below 15% HP"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 3, "Type.Strike, Trigger.LowLife", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def execute(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "execute_target", "Action Event": "hit_dealt",
+                  "Required Tags": "Type.Strike",
+                  "Condition": "target_health_below", "Condition Value": 15,
+                  "Value Low": 10, "Value High": 20}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "execute.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_ruled_row_is_carried_through_with_its_scope_its_share_and_no_wait(
+            self, tmp_path):
+        # `hit_dealt` IS A HIT-FIRED EVENT, AND AN EXECUTE TAKES NO DEFAULT WAIT
+        # ALL THE SAME. Ruled 2026-10-12: each enemy a strike leaves below the
+        # share rolls for itself.
+        out = gen.enchantment_effects(self.execute(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["RequiredTags"], out[0]["Condition"],
+                out[0]["ConditionValue"], out[0]["FractionOf"], out[0]["Scale"],
+                out[0]["TriggerCooldown"]) == (
+            "execute_target", "hit_dealt", 10.0, 20.0, "Type.Strike",
+            "target_health_below", 15.0, "", "", 0.0)
+
+    def test_the_control_another_action_on_the_same_event_takes_the_default_wait(
+            self, tmp_path):
+        """So the nought above is this action's and not the event's."""
+        assert "hit_dealt" in gen.HIT_FIRED_EVENTS
+        assert gen.takes_a_trigger_cooldown(gen.STRIKE_TARGET_ACTION)
+        assert gen.STRIKE_TARGET_ACTION not in gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN
+        out = gen.enchantment_effects(TestStrikeTarget().strike(
+            tmp_path, {"Action Event": "hit_dealt", "Required Tags": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_execute_is_the_one_action_with_no_default_wait_and_may_state_one(self):
+        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION,)
+        assert gen.takes_a_trigger_cooldown(gen.EXECUTE_TARGET_ACTION)
+
+    @pytest.mark.parametrize("stated", [0, 0.25, 10])
+    def test_a_stated_trigger_cooldown_is_carried_through(self, tmp_path, stated):
+        out = gen.enchantment_effects(self.execute(tmp_path, {"Trigger Cooldown": stated}))
+        assert out[0]["TriggerCooldown"] == float(stated)
+
+    def test_a_row_of_100_below_5_is_the_same_action(self, tmp_path):
+        """What another execute would state: always, below another share."""
+        words = "Enemies below 5% HP are instantly killed by your hits, 100% of the time"
+        out = gen.enchantment_effects(self.execute(
+            tmp_path, {"Value Low": 100, "Value High": 100, "Condition Value": 5,
+                       "Required Tags": None}, words=words))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["Condition"], out[0]["ConditionValue"],
+                out[0]["RequiredTags"]) == (
+            "execute_target", 100.0, 100.0, "target_health_below", 5.0, "")
+
+    def test_the_name_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Action": "execute_targets"}))
+
+    @pytest.mark.parametrize("event", ["first_hit_dealt", "critical_strike", "kill",
+                                       "hit_taken", "skill_use", "timed", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a hit dealt names the enemy"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_hit_dealt_alone(self):
+        assert gen.EXECUTE_TARGET_EVENTS == ("hit_dealt",)
+        assert set(gen.EXECUTE_TARGET_EVENTS) <= gen.granting_events()
+        assert set(gen.EXECUTE_TARGET_EVENTS) <= set(gen.EVENTS_WITH_AN_AMOUNT)
+
+    def test_the_row_with_no_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states that condition and no other"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Condition": None, "Condition Value": None}))
+
+    @pytest.mark.parametrize("condition, value", [("target_is_not_boss", None),
+                                                  ("health_below", 15),
+                                                  ("target_is_staggered", None)])
+    def test_the_row_with_any_other_condition_is_refused(self, tmp_path, condition, value):
+        with pytest.raises(gen.DataError, match="states that condition and no other"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Condition": condition, "Condition Value": value}))
+
+    def test_a_second_condition_is_refused_because_an_action_carries_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="An action carries one condition"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Condition 2": "target_is_not_boss"}))
+
+    @pytest.mark.parametrize("share", [0, 101, None])
+    def test_a_share_of_nought_or_past_the_whole_or_not_stated_is_refused(self, tmp_path, share):
+        with pytest.raises(gen.DataError, match="The share is its Condition Value, above 0"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Condition Value": share}))
+
+    def test_a_share_of_the_whole_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.execute(tmp_path, {"Condition Value": 100}))
+        assert out[0]["ConditionValue"] == 100.0
+
+    @pytest.mark.parametrize("low, high", [(0, 20), (10, 101)])
+    def test_a_chance_of_nought_or_past_100_is_refused(self, tmp_path, low, high):
+        words = self.WORDS.replace("10%-20%", f"{low}%-{high}%")
+        with pytest.raises(gen.DataError, match="A chance is above 0 and up to 100"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Value Low": low, "Value High": high}, words=words))
+
+    def test_a_chance_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Value Low": 12}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="the share of health, and nothing else"):
+            gen.enchantment_effects(self.execute(tmp_path, {column: written}))
+
+
 class TestTemporaryAbsorb:
     """A row that grants its wearer a temporary absorb. The project owner,
     2026-10-07: it is separate from the energy shield. "Every 12 seconds gain a
