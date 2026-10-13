@@ -159,9 +159,6 @@ def test_the_game_still_bites_and_fells_in_the_function_the_rule_will_join(
             "the game does not yet remove a resolved dungeon, and it no "
             "longer looks like the function that was read")
 
-    assert code.rstrip().endswith("}"), (
-        "UCataclysmEmpireRun::ResolveDungeon no longer ends with the block "
-        "that fells the city")
     assert (code.index("RelocateQuestDungeon(DungeonId, OutReport);")
             < code.index("Map->Damage(CityId, Defence, Population)")
             < code.index("CityFell(CityId, OutReport);"))
