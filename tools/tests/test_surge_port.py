@@ -169,6 +169,90 @@ class TestWhatACityFallingDoes:
         assert (flag(surge_header, "bCityFallAdvancesEscalation")
                 == model.city_fall_advances_escalation)
 
+    def test_a_fall_asks_the_flag_and_the_least_interval_in_both(
+            self, surge_header, model):
+        """The flag AND the least interval, in both halves. Issue #2380.
+
+        THE TWO TESTS ABOVE HOLD THE FLAGS EQUAL AND SAY NOTHING ABOUT WHEN A
+        FALL'S SURGE FIRES. The model has refused one inside
+        `surge_interval_min` since issue #1432; the game asked only its flag
+        until issue #2380, and nothing here noticed.
+
+        THE MODEL'S HALF IS ITS TWO LINES, quoted from `Simulation._fall` with
+        its comment lines taken out, because the comment above them names
+        `surge_interval_min` too.
+
+        THE GAME'S HALF IS READ AS CODE ONLY, in two places. The scheduler's
+        `IsDueOnCityFall` must hold the flag and the interval in one
+        expression, and `CityFell` must ask that function and nothing else
+        before it fires. A helper nobody calls would pass the first half.
+
+        THE COMPARISON'S DIRECTION IS PART OF IT, as it is for the empty
+        board: both fire AT the interval, so `>` in the game would refuse the
+        fall that comes exactly 25 days after a surge.
+
+        WHAT THIS CANNOT SAY. That a fall inside the interval really brings no
+        wave is `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStill
+        FallsAndBringsNoWave` and the three Unreal tests beside it.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        fall = "\n".join(
+            line for line in inspect.getsource(Simulation._fall).splitlines()
+            if not line.lstrip().startswith("#"))
+
+        for line in ("if (cfg.surge_on_city_fall",
+                     "and self.days_since_last_surge() >= cfg.surge_interval_min):",
+                     "self.trigger_surge(from_city_fall=True)"):
+            assert line in fall, (
+                f"Simulation._fall no longer has `{line}`. If the model's "
+                "rule for a fall's surge changed, the game's "
+                "UCataclysmSurgeScheduler::IsDueOnCityFall has to change "
+                "with it and this test with both. Issues #1432 and #2380")
+
+        assert fall.count("self.trigger_surge(") == 1, (
+            "Simulation._fall fires a surge from more than one place, so the "
+            "two lines quoted above are no longer its whole condition")
+
+        assert (number(surge_header, "LeastIntervalDays")
+                == pytest.approx(model.surge_interval_min)), (
+            "LeastIntervalDays and surge_interval_min differ, so a fall's "
+            "surge is refused for a different number of days in each half")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnCityFall(")
+
+        asked = ("return bSurgeOnCityFall "
+                 "&& DaysSinceLastSurge(Day) >= LeastIntervalDays;")
+        assert asked in due, (
+            "UCataclysmSurgeScheduler::IsDueOnCityFall no longer holds "
+            f"`{asked}`. It must ask the flag and that the last surge is at "
+            "least LeastIntervalDays behind, which are the two things "
+            "Simulation._fall asks. Issue #2380")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        fell = body_of(run, "void UCataclysmEmpireRun::CityFell(")
+
+        rule = ("if (Surges->IsDueOnCityFall(OutReport.Day)) "
+                "{ FireSurge(OutReport.Day, true, OutReport); }")
+        assert rule in fell, (
+            "UCataclysmEmpireRun::CityFell no longer asks IsDueOnCityFall "
+            "for the day on the report before it fires the fall's surge. "
+            "Issue #2380")
+
+        assert fell.count("FireSurge(") == 1, (
+            "CityFell fires a surge from more than one place, so one of them "
+            "does not ask IsDueOnCityFall")
+
+        assert "bSurgeOnCityFall" not in fell, (
+            "CityFell reads bSurgeOnCityFall itself. The flag is asked inside "
+            "IsDueOnCityFall, with the least interval beside it; asking the "
+            "bare flag here is the rule the game had before issue #2380")
+
 
 class TestWhatAnEmptyBoardDoes:
     """The game fires a surge on an empty board, as the model does.
