@@ -7713,6 +7713,51 @@ namespace CataclysmStatExemptionTest
 					  AWarHitLeavesItsTakerImmuneToWar(Test, World, {{Chance, 100.0f}, {Seconds, 5.0f}}));
 	}
 
+	/**
+	 * `retaliation_cannot_be_mitigated`, read by `UCataclysmRetaliation::CannotBeMitigatedFor` where
+	 * `UCataclysmRetaliation::Pay` builds the blow it sends. Ruled 2026-10-12, for "Retaliation damage cannot be
+	 * reduced or mitigated by the attacker". Two retaliators, each with retaliation at 20, each pay once for a blow
+	 * of 500 struck by the same attacker, which holds 5,000 armour. Only the second holds the flag, at a flat 1.
+	 * The first payment is reduced by the armour; the second takes the whole 100.
+	 *
+	 * NO ROLL IS MADE: the attacker has no evasion and no block chance, and retaliation cannot critically strike.
+	 *
+	 * STANDING: nowhere. All three are bare actors with no root component, as `HealthAfterBlows` above makes them,
+	 * so none has a body to overlap another, and retaliation with no radius searches no area.
+	 *
+	 * WHAT THIS DOES NOT REACH. Each of the six steps on its own, the pools, the immunities and a reflected hit:
+	 * `Cataclysm.RetaliationUnmitigated.` in `CataclysmRetaliationTests.cpp` holds those.
+	 */
+	void ProbeRetaliationCannotBeMitigated(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		Attacker.AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 5000.0f);
+		Plain.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		Holding.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		GrantFlats(Holding.Actor, {{FName(UCataclysmRetaliation::CannotBeMitigatedStat), 1.0f}});
+
+		const float ThroughArmour =
+			UCataclysmRetaliation::Pay(Plain.AbilitySystem, Plain.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		Test.TestTrue(*FString::Printf(TEXT("control: with no flag the attacker's armour takes a share of the 100 "
+											"sent, and not all of it: %.2f reached health"), ThroughArmour),
+					  ThroughArmour > 0.0f && ThroughArmour < 99.0f);
+
+		const float Whole =
+			UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		Test.TestEqual(TEXT("and with retaliation_cannot_be_mitigated at 1 the whole 100 reaches health, so "
+							"CannotBeMitigatedFor really reads it"),
+					   Whole, 100.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -7850,6 +7895,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("class_points_granted"), &ProbeClassPointsGranted},
 			{TEXT("damage_type_immunity_on_hit_chance"), &ProbeDamageTypeImmunityOnHitChance},
 			{TEXT("damage_type_immunity_on_hit_seconds"), &ProbeDamageTypeImmunityOnHitSeconds},
+			{TEXT("retaliation_cannot_be_mitigated"), &ProbeRetaliationCannotBeMitigated},
 		};
 		return Made;
 	}
