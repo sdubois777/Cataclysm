@@ -4394,12 +4394,10 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances
 
 			for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
 			{
-				const FGameplayAttribute Slot =
-					UCataclysmDamageCalculation::ResistanceAttributeFor(Type);
+				// AS A BLOW READS IT, since 2026-10-12: nought for a resistance a
+				// worn row is holding at nought.
 				const float Typed =
-					(Slot.IsValid() && ASC->HasAttributeSetForAttribute(Slot))
-						? ASC->GetNumericAttribute(Slot)
-						: 0.0f;
+					UCataclysmDamageCalculation::TypedResistanceOf(ASC, Type);
 
 				// WHAT A HIT WOULD ACTUALLY MEET, worked out the way
 				// UCataclysmDamageCalculation::Resolve works it out: the total

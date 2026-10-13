@@ -1209,6 +1209,23 @@ public:
 	 */
 	static FGameplayAttribute ResistanceAttributeFor(FName DamageType);
 
+	/**
+	 * What a character's per-type resistance to a damage type reads as, before
+	 * the generic figure, the difficulty tier's penalty, penetration and the cap.
+	 * Nought for an untyped hit, a type nobody has heard of, and a character
+	 * that does not hold the eight per-type figures, which is every enemy.
+	 *
+	 * THE ONE PLACE A PER-TYPE RESISTANCE IS READ FOR WHAT A BLOW MEETS, since
+	 * 2026-10-12. The mitigation order, the character sheet and
+	 * `Cataclysm.ShowResistances` all read through it. It is the attribute's
+	 * current value, except that a resistance a worn row is holding at nought
+	 * (`UCataclysmAbilitySystemComponent::ResistanceHeldAtNought`) reads as
+	 * nought when it is above nought. A held resistance under nought reads as it
+	 * is.
+	 */
+	static float TypedResistanceOf(const UAbilitySystemComponent* Defender,
+								   FName DamageType);
+
 	/** Armor as a percentage of damage removed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float ArmorReduction(float Armor, int32 Tier);
