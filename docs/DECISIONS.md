@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — The set Shard of Anarchy is built whole: its drawback and its 2-piece, 6-piece and 10-piece bonuses, five rows
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (five rows of the Enchantment Effects sheet),
+`game/Data/EnchantmentEffects.csv` and its asset, four new tests in `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmDataTableTests.cpp`, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts, the
+list of sets that have a row, and two words that state a number), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST: WHAT A WEARER GETS, AND WHAT THE OWNER SHOULD LOOK AT IN PLAY
+
+- **The four sentences are built by four mechanisms, each with an entry of its own dated 2026-10-12 below this
+  one.** This entry is the rows. What each mechanism does, what it leaves out and every judgement in it are said
+  first in its own entry and are not repeated in full here.
+- **FIRST ON THE OWNER'S PLAY-CHECK LIST: the 10-piece's clock.** "Every 30 seconds, you gain a stack" counts
+  seconds of fighting only. The count carries from one fight to the next, so three fights of ten seconds give a
+  stack; time out of combat adds nothing. The reading not taken is a clock that also runs out of combat.
+- **SECOND ON THAT LIST: three texts above the player's own bars need a person to look.** "Commander 12s" (the
+  buff held and its seconds), "Immune War 4s" (each damage type the wearer is immune to; several types share one
+  line, and with many open the line is long), and "Temporal Flux 3/5" (the stacks and their cap, shown at 0 too).
+  Each text has a test of its words. The heads-up display does not draw in the automated test runs, so nothing
+  has checked that the texts are legible or where they sit together.
+- **The 2-piece's buff is one of SIX**, by the owner's decision of 2026-10-12 (below): Mana Surge, Tactical
+  Advantage, Famished, Commander, Divine Aegis and Spellslinger. Dervish, Demonic Rage and the ten buff rows that
+  are another set's own mechanic or an enemy's are not drawn. Famished gives nothing to a wearer with no leech.
+  Spellslinger lowers the mana cost of every skill: the buff's own description says "abilities" where another
+  set's sentence says "spells", and the description was followed.
+- **Nothing fires in the first period of a wearer's first fight, and nothing fires out of combat**: no buff for
+  the first 30 seconds, no resistance held for the first 5. That is the rule of every timed row.
+- **A drawn debuff is named on screen only when it is Madness.** Cripple, Weaken, Shred and Stun are named on no
+  screen; issue [#2379](https://github.com/sdubois777/Cataclysm/issues/2379).
+- **The 6-piece makes its wearer immune to a dungeon floor rule's blows of that damage type too**, hits and
+  ticks, while the window runs. Losses of health that carry no damage type, such as Suffering Aura's, are not
+  refused. An open window is never extended in play.
+- **The 10-piece: a movement skill or a self buff spends no stack**, because no row may cast those again; the
+  stacks wait for the next skill that can be. The stacks are forgotten when any of the ten pieces comes off, at
+  death, and when the dungeon of the empire they were gained in is left. "The bonus is permanent for the rest of
+  the dungeon" is read as that; it is the least certain sentence of the set, and the reading not taken is that
+  the extra casts stay after the first use.
+- **A set is written whole or not at all.** The generator refuses any row of a set whose first bonus and drawback
+  are not both written, which is why these five rows are one layer and not four.
+
+### WHAT THE OWNER SAID
+
+On 2026-10-07, asked what the 2-piece's random buff is drawn from: "All of them." On 2026-10-12, asked with the
+coordinating session's recommendation of the six buffs a character can hold as a line of stats, with Dervish,
+Demonic Rage and the ten others named as left out: "your rec on all three, continue". The six are that
+recommendation, accepted. Every other reading in the four mechanism entries is the coordinating session's ruling
+of 2026-10-12 under the owner's delegation.
+
+### WHAT WAS BUILT
+
+| Sentence | Row |
+| :-- | :-- |
+| Every 5 seconds, one of your resistances is reduced to 0 until this triggers again (the set's drawback) | Action `apply_status_to_self`, Action Event `every_seconds`, 100, Every Seconds 5, Ailment `Random Resistance At Nought` |
+| Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to you | Action `apply_status_to_self`, Action Event `every_seconds`, 100, Every Seconds 30, Ailment `Random Buff or Debuff` |
+| Shard of Anarchy (6-Piece Bonus): When you take damage, you have a 10% chance to become immune to the damage type that hit you for 5 seconds | Two rows: `damage_type_immunity_on_hit_chance`, flat, 10; `damage_type_immunity_on_hit_seconds`, flat, 5 |
+| Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast a random number of times. The bonus is permanent for the rest of the dungeon | Action `kept_stacks_repeat_skill`, Action Event `skill_use`, 100, Every Seconds 30, Scale Max Steps 5, Ailment `Temporal Flux` |
+
+EnchantmentEffects 589 to 594, over 497 to 501 enchantments. No engine code and no generator code is changed in
+this layer.
+
+**Three changes to what a check accepts, in `tools/tests/test_enchantment_effects_match_the_row_text.py`:**
+`SETS_THAT_WORK` gains 15, so thirteen of the fourteen sets have a row and Null Emperor is the one without; on
+`apply_status_to_self` the word "reduced" states 100, beside "applied", because the drawback's sentence states no
+chance; on `kept_stacks_repeat_skill` the word "cast" states 100, because the row's value is the share of its
+damage each extra cast deals, the sentence states no share, and each cast at the whole of its damage is ruled.
+All three were approved by the coordinating session on 2026-10-12. The table of words matches single words and
+not phrases, so "reduced" could not be narrowed to "reduced to 0"; the comment beside it states that cost.
+
+**Numbers the sentences do not state, each ruled on 2026-10-12:** a drawn buff lasts 30 seconds; a buff or a
+debuff is equally likely; the 10-piece holds at most 5 stacks and draws its extra casts from 1 to the stacks
+spent, each at the whole of its damage.
+
+### Tests
+
+Four automation tests in `CataclysmEnchantmentEffectTests.cpp`, written by a second session and read line by line
+by the enchantment session. Each wears the real rows from the loaded tables on pieces that carry the set's 2-piece
+row and its real drawback, which is what a dropped piece of a set records. Each has a control wearer of ONE PIECE
+FEWER than the threshold, and every figure is read against the same wearer's own first reading. Each test first
+checks that the four row names are rows of the two sentence tables and that `EnchantmentEffects.csv` holds 1, 1, 2
+and 1 rows for them, so a failure tells "the table lacks the row" from "the asset is older than the table".
+
+- `Cataclysm.Enchantments.ShardOfAnarchysDrawbackHoldsOneResistanceAtNoughtEveryFiveSecondsFromTwoPiecesOn`: eight
+  resistances written by hand, 10 to 80. One piece: none held at 4, 5 and 10 seconds of a fight. Two pieces: none
+  at 4; at 5 the pinned one is held, reads nought, its attribute still holds the figure written, the other seven
+  read their own, and a blow of that type takes more than before; at 9, with the pin moved, the first is still
+  held; at 10 the second is held and the first reads its own figure again.
+- `...ShardOfAnarchysTwoPiecesLayAPinnedBuffOrTheMergedDrawsDebuffAfterThirtySecondsOfAFight`: pinned to a buff, two
+  pieces hold nothing at 29 seconds and Commander at 30, with 30 seconds left and 0.20 more movement speed and
+  attack speed increases; one piece holds nothing. Pinned to a debuff, two pieces carry Cripple at 30 seconds at
+  the strength the merged row "Every 15 seconds a random debuff is applied to you" lays it at, and hold no buff.
+- `...ShardOfAnarchysSixPiecesOpenAFiveSecondWindowAgainstAHitsDamageTypeOnARollUnderTen`: War hits of 1,000 that
+  cannot be evaded. Five pieces: no window on any roll. Six pieces: a roll of 10.1 opens none; a roll of 9.9 is
+  itself taken in full and opens the window against War for 5 seconds; a hit inside it and one 4 seconds on take
+  nothing; 5.5 seconds on a hit is taken in full; no window against Demonic.
+- `...ShardOfAnarchysTenPiecesGainAStackEachThirtySecondsOfFightingToFiveAndAUseSpendsThemAll`: a possessed player
+  with the skill Carom. Nine pieces: nothing gained and a use asks for no cast. Ten pieces: a first fight of 20.5
+  seconds gains none and counts 20.5; out of combat the 20.5 are kept; in the second fight the stacks held at
+  seconds 9, 10, 39, 40, 70, 100, 130, 160 and 190 are 0, 1, 1, 2, 3, 4, 5, 5 and 5; the display entry is named
+  "Temporal Flux" and holds 5 of 5; a use of Carom with the draw pinned to 3 makes three more casts and spends all
+  five.
+
+**On the asset as it was before these rows, 32 assertions of these four tests fail** (6, 6, 4 and 16), each one that
+needs the rows in the built table. The window's run records what was printed.
+
+**Not tested here:** a real drop of a set piece (the pieces are made by hand); the 6-piece against a creature's or a
+floor rule's blow; a real skill use through the player's input; the texts above the player's bars being drawn; the
+10-piece inside a dungeon of the empire and on leaving one, which the mechanism's own test reads with the dungeon's
+number written by hand. The 10-piece test wears ten pieces over the test player's starting gear and fights for
+210 seconds with the 2-piece row laying a buff every 30, which no test did before.
+
+**No guard proof is this layer's.** The eight proofs of the window are the four mechanisms' and are in their
+entries.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can gain a stack on a clock, keep it with no lifetime, and spend every one on a use of a skill to cast that skill again a drawn number of times, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (three fields on a worn action),
