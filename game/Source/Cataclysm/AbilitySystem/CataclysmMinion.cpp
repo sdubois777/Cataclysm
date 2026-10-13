@@ -839,8 +839,12 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 				Cast<UCataclysmAbilitySystemComponent>(
 					UCataclysmTargeting::AbilitySystemOf(Summoner)))
 		{
+			// AND NOT LANDED WHEN THE ENEMY REFUSED IT AS IMMUNE TO ITS ATTACKER. Ruled
+			// 2026-10-12. A machine's blow is refused that way only while its summoner
+			// holds Conduit, which makes the blow the summoner's.
 			Theirs->ActOnEvent(FName(TEXT("deployable_hit")), &TypeTags, 0.0f,
-							   /*bLanded=*/!Resolved.bEvaded, Target);
+							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker,
+							   Target);
 		}
 	}
 
