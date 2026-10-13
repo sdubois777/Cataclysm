@@ -115,6 +115,8 @@ CONSTANTS = {
     "TemporaryAbsorbAction": "temporary_absorb",
     # AND THE STATUS THAT HOLDS ONE OF THE WEARER'S RESISTANCES AT NOUGHT, ruled 2026-10-12.
     "RandomResistanceAtNoughtStatus": "Random Resistance At Nought",
+    # AND THE STATUS THAT LAYS A RANDOM BUFF OR DEBUFF ON THE WEARER, ruled 2026-10-12.
+    "RandomBuffOrDebuffStatus": "Random Buff or Debuff",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -250,9 +252,10 @@ def test_the_generator_spells_the_statuses_for_a_wearer_only_as_the_engine_does(
     in the game it would log a warning each time it fired and do nothing."""
     names = engine_names()
     assert gen.RANDOM_RESISTANCE_AT_NOUGHT_STATUS == names["RandomResistanceAtNoughtStatus"]
+    assert gen.RANDOM_BUFF_OR_DEBUFF_STATUS == names["RandomBuffOrDebuffStatus"]
     assert set(gen.APPLY_STATUSES_TO_SELF_ONLY) == {
         name for constant, name in names.items()
-        if constant in ("RandomResistanceAtNoughtStatus",)}
+        if constant in ("RandomResistanceAtNoughtStatus", "RandomBuffOrDebuffStatus")}
     # FOR A WEARER ONLY: the lists the other four status actions read hold none.
     for other in (gen.APPLY_STATUSES, gen.APPLY_STATUSES_FOR_SECONDS,
                   gen.APPLY_STATUSES_TO_SELF_FOR_SECONDS):

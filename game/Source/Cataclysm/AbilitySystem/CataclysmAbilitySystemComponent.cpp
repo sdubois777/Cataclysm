@@ -55,6 +55,8 @@
 // For the one spelling of "attack_damage" that ApplyTo records the stat under.
 // Issue #958.
 #include "Items/CataclysmItem.h"
+// For the gear refresh that writes a buff a row drew onto the stat line.
+#include "Items/CataclysmEquipmentComponent.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
@@ -2589,6 +2591,11 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// does not refill them and does not empty them. Issue #806.
 	PotionHeal = FCataclysmPotionHeal();
 
+	// AND THE BUFF A ROW DREW, with a gear refresh so the stat line is written without its lines. Ruled 2026-10-12;
+	// a judgement by the writing session, as the held resistance above is. LAST, so the refresh reads a component
+	// this function has finished with. Nothing, and no refresh, for a character holding no such buff.
+	EndHeldRandomBuff();
+
 	return Ended;
 }
 
@@ -3719,6 +3726,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSizedAction = TE
 const TCHAR* UCataclysmAbilitySystemComponent::StunStatus = TEXT("Stun");
 const TCHAR* UCataclysmAbilitySystemComponent::AppliedDotStatus = TEXT("Applied DoT");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomResistanceAtNoughtStatus = TEXT("Random Resistance At Nought");
+const TCHAR* UCataclysmAbilitySystemComponent::RandomBuffOrDebuffStatus = TEXT("Random Buff or Debuff");
 const TCHAR* UCataclysmAbilitySystemComponent::SkillEndEvent = TEXT("skill_end");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageImmunityAction = TEXT("damage_immunity");
 const TCHAR* UCataclysmAbilitySystemComponent::ReflectBlockedAction = TEXT("reflect_blocked");
@@ -4217,6 +4225,27 @@ static TAutoConsoleVariable<int32> CVarRandomResistancePick(
 	ECVF_Default);
 
 /**
+ * Pins whether `ApplyRandomBuffOrDebuff` lays a buff or a debuff, for tests. -1, the default, picks at even odds.
+ * Ruled 2026-10-12.
+ */
+static TAutoConsoleVariable<int32> CVarRandomBuffOrDebuffPick(
+	TEXT("Cataclysm.RandomBuffOrDebuffPick"), -1,
+	TEXT("Pins whether a random buff or debuff is a buff or a debuff: 0 a buff, 1 a debuff. -1 picks at random, "
+		 "each equally likely."),
+	ECVF_Default);
+
+/**
+ * Pins which buff `HoldARandomBuff` draws, by its place in `RandomBuffTable`, for tests. -1, the default, draws
+ * each equally likely. Ruled 2026-10-12. `tools/tests/test_the_random_buff_table_names_buff_rows.py` compares the
+ * places named here with the table's order.
+ */
+static TAutoConsoleVariable<int32> CVarRandomBuffPick(
+	TEXT("Cataclysm.RandomBuffPick"), -1,
+	TEXT("Pins the buff a random buff is, by its place in the table: 0 Mana Surge, 1 Tactical Advantage, "
+		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger. -1 picks at random."),
+	ECVF_Default);
+
+/**
  * Pins the roll a repeat action makes against its chance, 0 to 100, for tests. Negative, the default, rolls for
  * real. Mechanism B2; the same shape as `Cataclysm.StatusRoll` above.
  */
@@ -4470,6 +4499,14 @@ FName UCataclysmAbilitySystemComponent::TimedGrantKeyOf(const FCataclysmPoolActi
 
 void UCataclysmAbilitySystemComponent::StepTimedGrants()
 {
+	// AND A BUFF A ROW DREW ENDS WHEN ITS SECONDS HAVE PASSED, in combat or out of it. Ruled 2026-10-12. Here because
+	// this step already runs several times a second for every living character.
+	//
+	// AS THE STEP RETURNS, WHICHEVER RETURN THAT IS, AND AFTER THE ROWS HAVE FIRED. A row whose period is the buff's
+	// own length fires at the step the buff's time ends on. Fired first, a new buff takes the old one's place with
+	// one gear refresh; and ending the old one first would run a refresh of its own before the rows are read.
+	ON_SCOPE_EXIT { EndHeldRandomBuffIfItsTimeHasPassed(); };
+
 	const float InCombat = SecondsInCombat();
 
 	// A NEW COMBAT, OR NONE, STARTS EVERY COUNT AGAIN, ruled 2026-09-24.
@@ -5743,6 +5780,12 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPo
 	{
 		return HoldARandomResistanceAtNought();
 	}
+	// A RANDOM BUFF OR A RANDOM DEBUFF, AT EVEN ODDS. Ruled 2026-10-12, for "Shard of Anarchy (2-Piece Bonus): Every 30
+	// seconds, a random buff or debuff is applied to you".
+	if (Action.StatusName.Equals(RandomBuffOrDebuffStatus, ESearchCase::IgnoreCase))
+	{
+		return ApplyRandomBuffOrDebuff();
+	}
 	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Action.StatusName);
 	if (!Kind)
 	{
@@ -5800,6 +5843,225 @@ void UCataclysmAbilitySystemComponent::ReleaseHeldResistanceUnlessARowHoldsIt()
 		}
 	}
 	ResistanceHeldAtNoughtType = NAME_None;
+}
+
+const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySystemComponent::RandomBuffTable()
+{
+	// BUILT ONCE ON FIRST USE. Every line is from an enchantment, which is the source a row's own lines carry and
+	// one that may grant a "more" multiplier. Each entry's lines are what its own description in the status
+	// table states; the description is quoted above each.
+	static const TArray<FRandomBuff> Table = []
+	{
+		using EBucket = ECataclysmStatBucket;
+		using ECondition = ECataclysmStatCondition;
+		using FLine = TPair<FName, FCataclysmStatModifier>;
+
+		const auto Line = [](const TCHAR* Stat, EBucket Bucket, float Value)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Bucket = Bucket;
+			Modifier.Source = ECataclysmModifierSource::Enchantment;
+			Modifier.Value = Value;
+			return FLine(FName(Stat), Modifier);
+		};
+		const auto LineUnder = [&Line](const TCHAR* Stat, EBucket Bucket, float Value, ECondition Condition,
+									   float ConditionValue)
+		{
+			FLine Made = Line(Stat, Bucket, Value);
+			Made.Value.Condition = Condition;
+			Made.Value.ConditionValue = ConditionValue;
+			return Made;
+		};
+
+		TArray<FRandomBuff> Buffs;
+
+		// "Increases spell damage by 1% for 5 seconds for every 100 maximum mana." One increased for every full 100
+		// of maximum mana, which is the line of Mana Weaver's six-piece row. Its 5 seconds are not kept: a buff of
+		// this table is held for `RandomBuffSeconds`.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Mana Surge");
+			FLine PerHundred = Line(TEXT("spell_damage"), EBucket::Increased, 1.0f);
+			PerHundred.Value.Scale = ECataclysmStatScale::PerPointOfMaximumMana;
+			PerHundred.Value.ScaleStep = 100.0f;
+			Buff.Lines.Add(PerHundred);
+			Buffs.Add(Buff);
+		}
+
+		// "Increases movement speed and damage by 35% after using a movement ability." Damage is attack damage and
+		// spell damage, as the merged rows on that word are written. "AFTER" IS 5 SECONDS, A JUDGEMENT: the
+		// description states no length, and the one sentence that names this buff, Warlord's Will's ten-piece
+		// bonus, gives its bonus "for 5 seconds" after a movement ability.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Tactical Advantage");
+			for (const TCHAR* Stat : {TEXT("movement_speed"), UCataclysmItemModifiers::AttackDamageStat, TEXT("spell_damage")})
+			{
+				Buff.Lines.Add(LineUnder(Stat, EBucket::Increased, 35.0f, ECondition::WithinSecondsOfMovementSkill, 5.0f));
+			}
+			Buffs.Add(Buff);
+		}
+
+		// "Increases all of your leech by 5%." An increase on each of the three leech stats, as the row that names
+		// this buff is written, Starvation's ten-piece bonus.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Famished");
+			for (const TCHAR* Stat : {TEXT("life_leech"), TEXT("mana_leech"), TEXT("energy_shield_leech")})
+			{
+				Buff.Lines.Add(Line(Stat, EBucket::Increased, 5.0f));
+			}
+			Buffs.Add(Buff);
+		}
+
+		// "All nearby allies gain 20% increased movement speed and attack speed." Laid on its holder, as ruled; no
+		// ally is read.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Commander");
+			Buff.Lines.Add(Line(TEXT("movement_speed"), EBucket::Increased, 20.0f));
+			Buff.Lines.Add(Line(UCataclysmItemModifiers::AttackSpeedStat, EBucket::Increased, 20.0f));
+			Buffs.Add(Buff);
+		}
+
+		// "Gain a divine shield when below 50% HP, reducing all damage taken by 75%." 75 less damage taken while
+		// health is below half, as "While below 25% HP you take 30%-50% less damage" is written.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Divine Aegis");
+			Buff.Lines.Add(LineUnder(UCataclysmDamageCalculation::DamageTakenStat, EBucket::More, -75.0f,
+									 ECondition::HealthBelowPercent, 50.0f));
+			Buffs.Add(Buff);
+		}
+
+		// "Each stack reduces the mana cost of your abilities by 10%." One stack, as ruled. Unscoped, because the
+		// description says abilities; 10 less, as "Your spells cost 10%-20% less mana" is written.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Spellslinger");
+			Buff.Lines.Add(Line(UCataclysmSkillSlots::ManaCostStat, EBucket::More, -10.0f));
+			Buffs.Add(Buff);
+		}
+
+		return Buffs;
+	}();
+	return Table;
+}
+
+bool UCataclysmAbilitySystemComponent::ApplyRandomBuffOrDebuff()
+{
+	AActor* Wearer = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	if (!Wearer)
+	{
+		return false;
+	}
+
+	// EVEN ODDS, unless the pin says which.
+	const int32 Pinned = CVarRandomBuffOrDebuffPick.GetValueOnAnyThread();
+	const bool bDrawsABuff = Pinned == 0 || (Pinned != 1 && FMath::RandBool());
+	if (bDrawsABuff)
+	{
+		return HoldARandomBuff();
+	}
+
+	// THE MERGED DRAW, CALLED AS `RandomDebuffStatus` CALLS IT FOR A WEARER in `ApplyStatusToTheWearer`: by the
+	// wearer, on the wearer, with no blow, so a stun that is drawn lands though nothing was dealt.
+	return UCataclysmAilments::ApplyRandomDebuff(Wearer, Wearer, /*DealtToHealth=*/0.0f,
+		/*bWithoutABlow=*/true) != nullptr;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldARandomBuff()
+{
+	const UWorld* World = GetWorld();
+	const TArray<FRandomBuff>& Table = RandomBuffTable();
+	if (!World || Table.IsEmpty())
+	{
+		// NO WORLD MEANS NO CLOCK to end the buff by, so none is held.
+		return false;
+	}
+
+	// ONE NAME IS KEPT, so a new buff takes the place of the one held, and its seconds are counted from now.
+	const int32 Pinned = CVarRandomBuffPick.GetValueOnAnyThread();
+	const FRandomBuff& Drawn = Table[Table.IsValidIndex(Pinned) ? Pinned : FMath::RandRange(0, Table.Num() - 1)];
+	HeldRandomBuffName = FName(Drawn.Name);
+	HeldRandomBuffUntilSeconds = World->GetTimeSeconds() + RandomBuffSeconds;
+
+	// AND THE STAT LINE IS WRITTEN WITH IT. The refresh reads `HeldRandomBuffStatModifiers`.
+	RefreshWornStatLine();
+	return true;
+}
+
+FName UCataclysmAbilitySystemComponent::HeldRandomBuff() const
+{
+	const UWorld* World = GetWorld();
+	return !HeldRandomBuffName.IsNone() && World && World->GetTimeSeconds() < HeldRandomBuffUntilSeconds
+		? HeldRandomBuffName
+		: FName();
+}
+
+float UCataclysmAbilitySystemComponent::HeldRandomBuffSecondsLeft() const
+{
+	const UWorld* World = GetWorld();
+	return HeldRandomBuff().IsNone() || !World
+		? 0.0f
+		: FMath::Max(0.0f, HeldRandomBuffUntilSeconds - World->GetTimeSeconds());
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmAbilitySystemComponent::HeldRandomBuffStatModifiers() const
+{
+	TMap<FName, TArray<FCataclysmStatModifier>> ByStat;
+	const FName Held = HeldRandomBuff();
+	if (Held.IsNone())
+	{
+		return ByStat;
+	}
+	for (const FRandomBuff& Buff : RandomBuffTable())
+	{
+		if (Held == FName(Buff.Name))
+		{
+			for (const TPair<FName, FCataclysmStatModifier>& Laid : Buff.Lines)
+			{
+				ByStat.FindOrAdd(Laid.Key).Add(Laid.Value);
+			}
+		}
+	}
+	return ByStat;
+}
+
+void UCataclysmAbilitySystemComponent::EndHeldRandomBuff()
+{
+	if (HeldRandomBuffName.IsNone())
+	{
+		return;
+	}
+	HeldRandomBuffName = NAME_None;
+	HeldRandomBuffUntilSeconds = -1.0f;
+	RefreshWornStatLine();
+}
+
+void UCataclysmAbilitySystemComponent::EndHeldRandomBuffIfItsTimeHasPassed()
+{
+	// ASKED OF THE NAME KEPT AND NOT OF `HeldRandomBuff`, which already answers none once the time has passed: this
+	// is what clears the name then and writes the stat line without the buff's lines.
+	const UWorld* World = GetWorld();
+	if (!HeldRandomBuffName.IsNone() && World && World->GetTimeSeconds() >= HeldRandomBuffUntilSeconds)
+	{
+		EndHeldRandomBuff();
+	}
+}
+
+void UCataclysmAbilitySystemComponent::RefreshWornStatLine()
+{
+	// THE EQUIPMENT COMPONENT'S OWN REFRESH, FOUND BY CLASS ON THE AVATAR, as a planted weapon finds it
+	// (`ACataclysmPlantedWeapon::RefreshTheStatsOf`): the avatar is the pawn that wears the gear, and anything that
+	// wears equipment is served. Nothing for a character that wears none.
+	const AActor* Wearer = GetAvatarActor();
+	const UCataclysmEquipmentComponent* Equipment =
+		Wearer ? Wearer->FindComponentByClass<UCataclysmEquipmentComponent>() : nullptr;
+	if (Equipment)
+	{
+		Equipment->RefreshAttributes(this);
+	}
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction& Action,

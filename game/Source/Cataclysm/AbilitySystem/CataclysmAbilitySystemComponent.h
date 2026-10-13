@@ -1023,6 +1023,84 @@ public:
 	 */
 	FName ResistanceHeldAtNought() const { return ResistanceHeldAtNoughtType; }
 
+	/**
+	 * And one more status only `ApplyStatusToSelfAction` may name: A RANDOM BUFF OR DEBUFF, laid on the wearer.
+	 * Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a
+	 * random buff or debuff is applied to you". `tools/generate_datatables.py` holds the same name in
+	 * `RANDOM_BUFF_OR_DEBUFF_STATUS`. See `ApplyRandomBuffOrDebuff`.
+	 */
+	static const TCHAR* RandomBuffOrDebuffStatus;
+
+	/** How long a buff drawn from `RandomBuffTable` is held, in seconds. Ruled 2026-10-12. Not the row's period. */
+	static constexpr float RandomBuffSeconds = 30.0f;
+
+	/**
+	 * One buff a row may draw: the name of its row in `game/Data/StatusEffects.csv`, and the stat lines it lays on
+	 * its holder, each a stat's name and a modifier on it.
+	 */
+	struct FRandomBuff
+	{
+		const TCHAR* Name = nullptr;
+		TArray<TPair<FName, FCataclysmStatModifier>> Lines;
+	};
+
+	/**
+	 * The buffs a random buff is drawn from, in the order `Cataclysm.RandomBuffPick` counts in. Ruled 2026-10-12.
+	 *
+	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner has been asked which
+	 * buffs are in the pool. Until the answer it holds the buffs of the status table that a character can hold and
+	 * whose own description the existing stat lines and conditions can express: Mana Surge, Tactical Advantage,
+	 * Famished, Commander, Divine Aegis and Spellslinger. Each entry is the stat line its own description states.
+	 *
+	 * LEFT OUT BY THE SESSION THAT BUILT IT: Dervish, whose attack speed is for melee attacks, which no reader of
+	 * attack speed asks about; and Demonic Rage, whose ten seconds from the moment health falls below a quarter is
+	 * an event and not a condition. LEFT OUT AS RULED, PENDING THE OWNER: Warhound, Plague, Sanctified Power, Temporal
+	 * Flux, Void, Death, Warzone Control Points, Chaotic Barrier, The Ascended and Feasting, each of which describes
+	 * another set's own mechanic or an enemy's.
+	 *
+	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
+	 * holds both lists. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what
+	 * that test reads.
+	 */
+	static const TArray<FRandomBuff>& RandomBuffTable();
+
+	/**
+	 * Lay a random buff or a random debuff on this character, at even odds. Ruled 2026-10-12.
+	 *
+	 * A DEBUFF IS THE MERGED DRAW: `UCataclysmAilments::ApplyRandomDebuff`, called as `RandomDebuffStatus` calls it
+	 * for a wearer. It lasts what that debuff lasts. A BUFF IS `HoldARandomBuff`. Neither ends the other.
+	 * `Cataclysm.RandomBuffOrDebuffPick` pins which for tests: 0 a buff, 1 a debuff.
+	 *
+	 * @return whether anything was laid
+	 */
+	bool ApplyRandomBuffOrDebuff();
+
+	/**
+	 * Draw one buff from `RandomBuffTable` and hold it for `RandomBuffSeconds`, in place of the one held before.
+	 * Ruled 2026-10-12. Each entry equally likely; `Cataclysm.RandomBuffPick` pins the draw for tests, by the
+	 * entry's place in the table.
+	 *
+	 * THE NAME AND THE TIME IT ENDS ARE KEPT HERE, AND THE GEAR REFRESH READS THE LINES. A gear refresh writes the
+	 * character's whole stat line from its sources, so a line that is not from gear has to be one of the sources it
+	 * gathers. `UCataclysmEquipmentComponent::RefreshAttributes` asks `HeldRandomBuffStatModifiers` beside the
+	 * dungeon floor's modifiers, and this function runs that refresh once the buff is held.
+	 *
+	 * A CHARACTER WITH NO EQUIPMENT COMPONENT HOLDS THE NAME AND GETS NO LINE, because nothing writes it a stat
+	 * line. That is every enemy.
+	 *
+	 * @return whether a buff is now held
+	 */
+	bool HoldARandomBuff();
+
+	/** The name of the buff held, or none: none once its seconds have passed, whether or not anything has noticed. */
+	FName HeldRandomBuff() const;
+
+	/** How many seconds the held buff has left, or nought when none is held. */
+	float HeldRandomBuffSecondsLeft() const;
+
+	/** The held buff's lines, keyed by stat as every modifier map is. Empty when none is held. */
+	TMap<FName, TArray<FCataclysmStatModifier>> HeldRandomBuffStatModifiers() const;
+
 	/** The event raised when a skill's ability ends without being cancelled, with the skill's tags. */
 	static const TCHAR* SkillEndEvent;
 
@@ -3898,6 +3976,29 @@ protected:
 
 	/** Lets go of `ResistanceHeldAtNoughtType` when no action in `PoolActions` names the status that holds it. */
 	void ReleaseHeldResistanceUnlessARowHoldsIt();
+
+	/**
+	 * The buff `HoldARandomBuff` drew, by its name in `RandomBuffTable`, and the world time it ends at. None and -1
+	 * when no buff is held. Ruled 2026-10-12. NOT REPLICATED, as the lists above are not: the figures the buff
+	 * changes are replicated attributes already.
+	 */
+	FName HeldRandomBuffName;
+	float HeldRandomBuffUntilSeconds = -1.0f;
+
+	/**
+	 * Ends the held buff and writes the stat line without it. Nothing for a character holding none.
+	 * `ClearWhatDeathEnds` calls it.
+	 */
+	void EndHeldRandomBuff();
+
+	/** `EndHeldRandomBuff` once the held buff's seconds have passed. Run each time `StepTimedGrants` returns. */
+	void EndHeldRandomBuffIfItsTimeHasPassed();
+
+	/**
+	 * Runs the gear refresh of the character wearing this component, when it wears equipment at all, so that a
+	 * source of stat lines kept on this component and changed just now reaches the stat line.
+	 */
+	void RefreshWornStatLine();
 
 	/**
 	 * Leech promised and not yet paid, one entry per hit. Issue #895.
