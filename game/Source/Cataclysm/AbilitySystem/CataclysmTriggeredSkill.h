@@ -111,6 +111,33 @@ public:
 	static bool MakePendingRepeat(AActor* Character);
 
 	/**
+	 * Makes the casts a row asked for by spending its kept stacks, and clears the request: for each row that asked,
+	 * every kept stack it holds is spent and the skill used is started free, at the recorded aim, a number of times
+	 * drawn from 1 to the stacks spent, each at the row's share of its damage. Ruled 2026-10-12 under the owner's
+	 * delegation, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal Flux.' When
+	 * you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast a random number of times. The
+	 * bonus is permanent for the rest of the dungeon".
+	 *
+	 * EACH CAST IS A FREE START (`Trigger`), so it sends no skill-used notice. It therefore raises no `skill_use`:
+	 * it spends no stack, is not cast again by this row, and is not repeated by a `repeat_skill` row.
+	 *
+	 * THE DRAW is `FMath::RandRange(1, stacks held)`; `Cataclysm.KeptStackCastsDraw` pins it for a test, held to
+	 * between 1 and the stacks held.
+	 *
+	 * THE STACKS ARE SPENT HERE AND NOT AT THE USE, and only once the first cast has started. Two judgements of the
+	 * writing session follow from that order, and the ruling states neither:
+	 *   - A SKILL NO ROW MAY CAST AGAIN SPENDS NOTHING. `RepeatsFromARow` leaves out a movement skill, a self buff
+	 *     and the others Wild Magic leaves out; a use of one keeps every stack for the next skill.
+	 *   - A SKILL THAT REFUSES ITS FIRST CAST SPENDS NOTHING. A later cast that refuses is not made up for.
+	 *
+	 * ALL THE CASTS START ON THE SAME TICK, the tick after the use, at the same aim. Nothing spaces them out.
+	 *
+	 * CALLED ON THE TICK AFTER THE USE, for the reason the class comment gives, after `MakePendingRepeat`.
+	 * @return how many casts started
+	 */
+	static int32 MakePendingKeptStackCasts(AActor* Character);
+
+	/**
 	 * The basic attack the character holds, as its weapon slots built it through
 	 * `UCataclysmWeaponSkills::BasicAttackFor` and with its element tag; null when it holds none.
 	 */

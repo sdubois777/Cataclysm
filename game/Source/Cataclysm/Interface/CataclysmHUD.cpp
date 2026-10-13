@@ -704,6 +704,17 @@ void ACataclysmHUD::DrawPlayerVitals()
 		DrawTextCentred(ImmuneTo, FLinearColor::White,
 						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
 	}
+
+	// AND THE KEPT STACKS OF A WORN ROW, WITH THEIR CAP, such as "Temporal Flux 3/5". Ruled 2026-10-12 by the
+	// coordinating session, under the owner's rule that a system ships with a basic in-game display. Shown while
+	// the row is worn, at nought too. On a line of its own, as each text above is.
+	const FString KeptStacks = UCataclysmCombatOverlay::KeptStacksTextFor(Pawn);
+	if (!KeptStacks.IsEmpty())
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawTextCentred(KeptStacks, FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top, 1.0f);
+	}
 }
 
 void ACataclysmHUD::DrawOverheadBars()
