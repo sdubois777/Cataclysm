@@ -130,6 +130,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The seconds after which an enemy is immune to its attacker added one more
 #: on 2026-10-12, asked of the attacker by `IsImmuneToDamageOf` where a blow
 #: on that enemy is resolved.
+#: The projectiles a row adds to a projectile skill's one added one more on
+#: 2026-10-12, asked by `UCataclysmProjectileSkill::ExtraProjectilesWithRows`
+#: where the skill fires.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -833,6 +836,12 @@ INVENTORY = {
         "resolved; the rule is the attacker's whatever it strikes with, so "
         "no tags, and it is refused for every kind of blow alike, so no blow "
         "and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ProjectileCountStat), SkillTags, 0.0f'):
+        "the projectiles a row adds to the one a projectile skill fires "
+        "(ruled 2026-10-12), asked by ExtraProjectilesWithRows with the "
+        "skill's tags where it fires, before any blow exists, as the bounces "
+        "a row adds are",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

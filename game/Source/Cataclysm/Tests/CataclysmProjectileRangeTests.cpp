@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -16,6 +17,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Misc/ScopeExit.h"
 #include "Templates/UniquePtr.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -858,6 +860,677 @@ bool FCataclysmRicochetStrikesNoEnemyTwiceTest::RunTest(const FString&)
 		TestTrue(*FString::Printf(TEXT("enemy %d lost no more than one hit"), Index + 1),
 				 Lost[Index] <= Most + 0.01f);
 	}
+	return true;
+}
+
+/**
+ * More projectiles from a worn row. Ruled 2026-10-12 under the owner's delegation, for "Skills get +1-4 to projectile
+ * count": `projectile_count` is a whole number of projectiles added to the one a projectile skill fires. They fan 10
+ * degrees apart, centred on the aim. Each deals what a lone one deals. One enemy is landed on by at most one projectile
+ * of one use. A skill that throws repeatedly on a timer, and one that states no speed, fire what they fired before.
+ *
+ * EVERY CASE HAS ITS OWN LANE, 60 m from the next, and a user at the lane's start facing along it, as the tests of
+ * ricochets above. A skill used with no player controller is aimed its whole range along its user's facing, which is +X.
+ * NOTHING WAITS ON A TICK: each projectile is moved by calling its own `Step`, a sixtieth of a second at a time, in
+ * the order the use fired them. No enemy stands within 1 m of another or of a user.
+ */
+namespace CataclysmProjectileCountTest
+{
+	using namespace CataclysmRicochetPierceTest;
+
+	/** A bolt that pierces, 40 cm to each side of its line, measured to a body's centre. It strikes by contact alone. */
+	constexpr const TCHAR* PiercingBolt = TEXT("Range=10; Radius=0.4; Speed=2000; Pierce=99");
+
+	/** A bolt that does not pierce: it stops at the first enemy it touches and goes off in 1 m there. */
+	constexpr const TCHAR* BlastingBolt = TEXT("Range=10; Radius=1; Speed=2000");
+
+	/** The Required Tags the row will state, as the ricochet row's. */
+	constexpr const TCHAR* RowTags = TEXT("Type.Projectile");
+
+	/** Use a skill and move nothing. False when the skill did not run. */
+	bool Use(const FBody& User, UCataclysmProjectileSkill* Skill)
+	{
+		return Skill && User.AbilitySystem->TryActivateAbility(
+			Skill->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+	}
+
+	/** Step one projectile until it says it has finished. */
+	void FlyOne(ACataclysmProjectile* Shot)
+	{
+		for (int32 Steps = 0; Shot && Steps < 600 && !Shot->bFinished; ++Steps)
+		{
+			Shot->Step(1.0f / 60.0f);
+		}
+	}
+
+	/**
+	 * Step every projectile of the skill's last use, one step each in the order they were fired, until all have
+	 * finished. So the first fired is the first to reach anything that stands the same distance along two paths.
+	 */
+	void FlyAll(const UCataclysmProjectileSkill* Skill)
+	{
+		for (int32 Steps = 0; Skill && Steps < 600; ++Steps)
+		{
+			bool bAnyFlew = false;
+			for (ACataclysmProjectile* Shot : Skill->FiredThisUse)
+			{
+				if (Shot && !Shot->bFinished)
+				{
+					Shot->Step(1.0f / 60.0f);
+					bAnyFlew = true;
+				}
+			}
+			if (!bAnyFlew)
+			{
+				return;
+			}
+		}
+	}
+
+	/** Degrees between a projectile's travel and +X, the lane and the aim of every user here. */
+	float YawDegreesOf(const ACataclysmProjectile* Shot)
+	{
+		const FVector& Travel = Shot->TravelDirection();
+		return FMath::RadiansToDegrees(FMath::Atan2(Travel.Y, Travel.X));
+	}
+
+	/** How many projectiles in the world this actor fired. */
+	int32 ProjectilesFiredBy(UWorld* World, const AActor* Firer)
+	{
+		int32 Found = 0;
+		for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
+		{
+			Found += It->GetOwner() == Firer ? 1 : 0;
+		}
+		return Found;
+	}
+
+	/** The mana a character holds. */
+	float ManaOf(const FBody& Who)
+	{
+		return Who.AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountAddsTest,
+	"Cataclysm.ProjectileCount.ARowsCountIsAddedToTheOneProjectileASkillFiresAndIsRoundedToAWholeNumber",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCountAddsTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileCountTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// HOW MANY ONE USE FIRES: a user alone in its own lane, carrying this figure on the stat under these tags, or no
+	// line at all for a figure of nought. -1 when the skill could not be granted.
+	int32 LanesUsed = 0;
+	const auto FiredWith = [&](float Count, const TCHAR* LineTags, const TCHAR* SkillTagCell, bool& bOutRan) -> int32
+	{
+		FBody User(World, FVector(0.0f, LaneApart * LanesUsed++, 0.0f));
+		if (Count != 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, Count, LineTags);
+		}
+		UCataclysmProjectileSkill* Skill = User.Skill(ECataclysmAbilitySlot::Special, BlastingBolt, SkillTagCell);
+		bOutRan = Use(User, Skill);
+		const int32 Fired = Skill ? Skill->FiredThisUse.Num() : -1;
+		const int32 InTheWorld = ProjectilesFiredBy(World, User.Actor);
+		if (Fired != InTheWorld)
+		{
+			AddError(FString::Printf(TEXT("with %.2f on the stat the skill lists %d projectiles of its use and its "
+										  "user fired %d"), Count, Fired, InTheWorld));
+		}
+		FlyAll(Skill);
+		return Fired;
+	};
+
+	bool bRan = false;
+
+	// CONTROL: no line. One projectile, as before this stat existed.
+	const int32 Alone = FiredWith(0.0f, TEXT(""), AttackTags, bRan);
+	if (!TestTrue(TEXT("set-up: the control's use ran"), bRan)
+		|| !TestEqual(TEXT("control: a user with no line fires one projectile"), Alone, 1))
+	{
+		return false;
+	}
+
+	// THE ROW'S FOUR WHOLE ROLLS.
+	for (int32 Added = 1; Added <= 4; ++Added)
+	{
+		const int32 Fired = FiredWith(static_cast<float>(Added), RowTags, AttackTags, bRan);
+		TestTrue(*FString::Printf(TEXT("the use of a user carrying %d ran"), Added), bRan);
+		TestEqual(*FString::Printf(TEXT("%d on the stat: one use fires %d projectiles"), Added, 1 + Added),
+				  Fired, 1 + Added);
+	}
+
+	// THE LINE'S TAGS SCOPE IT, as they scope `projectile_bounces`. A line that names spells does not reach an attack,
+	// and a line that names projectile skills does not reach a skill that does not carry that tag.
+	TestEqual(TEXT("a line scoped to spells leaves an attack firing one"),
+			  FiredWith(2.0f, TEXT("Type.Spell"), AttackTags, bRan), 1);
+	TestTrue(TEXT("and that use ran"), bRan);
+	TestEqual(TEXT("a line scoped to projectile skills leaves a skill without that tag firing one"),
+			  FiredWith(2.0f, RowTags, TEXT("Type.Ranged"), bRan), 1);
+	TestTrue(TEXT("and that use ran"), bRan);
+
+	// ROUNDED TO THE NEAREST WHOLE NUMBER, a half upward, and never below nought.
+	TestEqual(TEXT("1.4 on the stat rounds to 1: two projectiles"), FiredWith(1.4f, RowTags, AttackTags, bRan), 2);
+	TestEqual(TEXT("1.5 on the stat rounds to 2: three projectiles"), FiredWith(1.5f, RowTags, AttackTags, bRan), 3);
+	TestEqual(TEXT("2.6 on the stat rounds to 3: four projectiles"), FiredWith(2.6f, RowTags, AttackTags, bRan), 4);
+	TestEqual(TEXT("0.4 on the stat rounds to nought: one projectile"), FiredWith(0.4f, RowTags, AttackTags, bRan), 1);
+	TestEqual(TEXT("-3 on the stat takes nothing away: one projectile"),
+			  FiredWith(-3.0f, RowTags, AttackTags, bRan), 1);
+	TestTrue(TEXT("and that use ran"), bRan);
+
+	// A SKILL NO CHARACTER HOLDS answers one, and raises no ensure for having no actor information.
+	UCataclysmProjectileSkill* Loose = NewObject<UCataclysmProjectileSkill>(GetTransientPackage());
+	Loose->Params = UCataclysmSkillShapes::ParseParams(BlastingBolt);
+	TestEqual(TEXT("with no owner, nothing is added"), Loose->ExtraProjectilesWithRows(), 0);
+	TestEqual(TEXT("and one use is one projectile"), Loose->ProjectilesOfOneUse(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountFanTest,
+	"Cataclysm.ProjectileCount.TheProjectilesOfOneUseFlyTenDegreesApartCentredOnTheAim",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCountFanTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileCountTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE DEGREES FROM THE AIM OF EACH PROJECTILE OF ONE USE, lowest first. Each is also checked to start where its
+	// user stands, to have the skill's whole 10 m to fly, and to carry the skill's own pierce and damage.
+	int32 LanesUsed = 0;
+	const auto YawsWith = [&](float Count, bool& bOutRan) -> TArray<float>
+	{
+		const FVector Start(0.0f, LaneApart * LanesUsed++, 0.0f);
+		FBody User(World, Start);
+		if (Count != 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, Count, RowTags);
+		}
+		UCataclysmProjectileSkill* Skill = User.Skill(ECataclysmAbilitySlot::Special, PiercingBolt, AttackTags);
+		bOutRan = Use(User, Skill);
+		TArray<float> Yaws;
+		if (!Skill)
+		{
+			return Yaws;
+		}
+		for (const ACataclysmProjectile* Shot : Skill->FiredThisUse)
+		{
+			if (!Shot)
+			{
+				continue;
+			}
+			Yaws.Add(YawDegreesOf(Shot));
+			TestEqual(*FString::Printf(TEXT("%.0f added: each projectile starts where its user stands"), Count),
+					  FVector::Dist(Shot->StartedAt, Start), 0.0, 0.01);
+			TestEqual(*FString::Printf(TEXT("%.0f added: each has the skill's whole 10 m to fly"), Count),
+					  Shot->RemainingRangeCm, 10.0f * Metre, 0.5f);
+			TestEqual(*FString::Printf(TEXT("%.0f added: each carries the skill's own pierce"), Count),
+					  Shot->PiercesLeft, 99);
+			TestEqual(*FString::Printf(TEXT("%.0f added: each deals the skill's own percent of weapon damage"), Count),
+					  Shot->DamagePercentOfAHit(), 100.0f, 0.01f);
+		}
+		Yaws.Sort();
+		FlyAll(Skill);
+		return Yaws;
+	};
+
+	const auto ExpectFan = [&](const TCHAR* What, const TArray<float>& Yaws, const TArray<float>& Wanted)
+	{
+		if (!TestEqual(*FString::Printf(TEXT("%s: how many are in the air"), What), Yaws.Num(), Wanted.Num()))
+		{
+			return;
+		}
+		for (int32 Index = 0; Index < Wanted.Num(); ++Index)
+		{
+			TestEqual(*FString::Printf(TEXT("%s: projectile %d of %d flies this many degrees from the aim"), What,
+									   Index + 1, Wanted.Num()),
+					  Yaws[Index], Wanted[Index], 0.01f);
+		}
+	};
+
+	bool bRan = false;
+
+	// CONTROL: a user with no line. One projectile, along the aim.
+	const TArray<float> Alone = YawsWith(0.0f, bRan);
+	if (!TestTrue(TEXT("set-up: the control's use ran"), bRan)
+		|| !TestEqual(TEXT("set-up: and fired one projectile"), Alone.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a lone projectile flies along the aim"), Alone[0], 0.0f, 0.001f);
+
+	// AN EVEN NUMBER IN THE AIR: none flies along the aim.
+	ExpectFan(TEXT("1 added, two in the air"), YawsWith(1.0f, bRan), {-5.0f, 5.0f});
+	TestTrue(TEXT("the use of a user carrying 1 ran"), bRan);
+	ExpectFan(TEXT("3 added, four in the air"), YawsWith(3.0f, bRan), {-15.0f, -5.0f, 5.0f, 15.0f});
+	TestTrue(TEXT("the use of a user carrying 3 ran"), bRan);
+
+	// AN ODD NUMBER IN THE AIR: the middle one flies along the aim.
+	ExpectFan(TEXT("2 added, three in the air"), YawsWith(2.0f, bRan), {-10.0f, 0.0f, 10.0f});
+	TestTrue(TEXT("the use of a user carrying 2 ran"), bRan);
+	ExpectFan(TEXT("4 added, five in the air"), YawsWith(4.0f, bRan), {-20.0f, -10.0f, 0.0f, 10.0f, 20.0f});
+	TestTrue(TEXT("the use of a user carrying 4 ran"), bRan);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountFullDamageTest,
+	"Cataclysm.ProjectileCount.EachProjectileOfAUseDealsWhatALoneProjectileDeals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCountFullDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileCountTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// CONTROL: a user with no line, and one enemy 9 m along the aim. The piercing bolt strikes it by contact.
+	FBody ControlUser(World, FVector::ZeroVector);
+	FBody ControlEnemy(World, FVector(9.0f * Metre, 0.0f, 0.0f));
+	UCataclysmProjectileSkill* ControlSkill =
+		ControlUser.Skill(ECataclysmAbilitySlot::Special, PiercingBolt, AttackTags);
+	if (!TestTrue(TEXT("set-up: the control's use ran"), Use(ControlUser, ControlSkill)))
+	{
+		return false;
+	}
+	FlyAll(ControlSkill);
+	const float OneHit = Pool - ControlEnemy.Health();
+	if (!TestTrue(TEXT("set-up: the control's enemy lost health"), OneHit > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WEARER, carrying 1: two projectiles, 5 degrees to either side of the aim. TWO ENEMIES, each 9 m from the
+	// user along one of the two paths: 8.97 m along the lane and 78 cm to either side of it, so 1.57 m from each
+	// other. Each stands 1.56 m from the other projectile's path, which reaches 40 cm, so each is touched by one
+	// projectile and never by the other.
+	const float LaneY = LaneApart;
+	const float Along = 9.0f * Metre * FMath::Cos(FMath::DegreesToRadians(5.0f));
+	const float Aside = 9.0f * Metre * FMath::Sin(FMath::DegreesToRadians(5.0f));
+	FBody Wearer(World, FVector(0.0f, LaneY, 0.0f));
+	FBody Left(World, FVector(Along, LaneY - Aside, 0.0f));
+	FBody Right(World, FVector(Along, LaneY + Aside, 0.0f));
+	Wearer.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, 1.0f, RowTags);
+	UCataclysmProjectileSkill* Skill = Wearer.Skill(ECataclysmAbilitySlot::Special, PiercingBolt, AttackTags);
+	if (!TestTrue(TEXT("the wearer's use ran"), Use(Wearer, Skill))
+		|| !TestEqual(TEXT("set-up: and fired two projectiles"), Skill->FiredThisUse.Num(), 2))
+	{
+		return false;
+	}
+	FlyAll(Skill);
+
+	TestEqual(TEXT("the enemy in one projectile's path lost what a lone projectile takes"),
+			  Pool - Left.Health(), OneHit, 0.01f);
+	TestEqual(TEXT("and the enemy in the other's path lost the same"), Pool - Right.Health(), OneHit, 0.01f);
+	for (const ACataclysmProjectile* Shot : Skill->FiredThisUse)
+	{
+		if (TestNotNull(TEXT("a projectile of the use"), Shot))
+		{
+			TestEqual(TEXT("each projectile struck one enemy, so neither enemy's loss came from both"),
+					  Shot->EnemiesHit, 1);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountOneHitTest,
+	"Cataclysm.ProjectileCount.OneEnemyInThePathOfTwoProjectilesOfOneUseTakesOneHitAndTheNextUseHitsItAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCountOneHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileCountTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// THE ENEMY STANDS 2 M ALONG THE AIM. Two projectiles 5 degrees to either side of the aim each pass 17 cm from
+	// its centre, inside the 40 cm either reaches.
+	const FVector Place(2.0f * Metre, 0.0f, 0.0f);
+
+	// SET-UP, READ FIRST: a lone shot fired by hand along each of the two paths, by no skill, touches an enemy
+	// standing there. So in the cases below both projectiles reach the enemy, and one hit is the rule's doing.
+	for (const float Degrees : {-5.0f, 5.0f})
+	{
+		const FVector Lane(0.0f, LaneApart * (Degrees < 0.0f ? 6.0f : 7.0f), 0.0f);
+		FBody Firer(World, Lane);
+		FBody Target(World, Lane + Place);
+		const FVector Aim = Lane + FVector(10.0f * Metre * FMath::Cos(FMath::DegreesToRadians(Degrees)),
+										   10.0f * Metre * FMath::Sin(FMath::DegreesToRadians(Degrees)), 0.0f);
+		ACataclysmProjectile* Lone = ACataclysmProjectile::Fire(
+			Firer.Actor, Lane, Aim, /*InRadiusCm=*/40.0f, /*InSpeed=*/2000.0f, /*InPierce=*/99,
+			/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+			UCataclysmSkillShapes::TagsFromCell(AttackTags), /*bInBurns=*/false);
+		if (!TestNotNull(TEXT("set-up: a lone shot"), Lone))
+		{
+			return false;
+		}
+		FlyOne(Lone);
+		if (!TestEqual(*FString::Printf(TEXT("set-up: a lone shot %.0f degrees from the aim touches an enemy 2 m "
+											 "along the aim"), Degrees), Lone->EnemiesHit, 1))
+		{
+			return false;
+		}
+	}
+
+	// A PIERCING BOLT. Control: a user with no line; its one projectile strikes the enemy once.
+	FBody ControlUser(World, FVector::ZeroVector);
+	FBody ControlEnemy(World, Place);
+	UCataclysmProjectileSkill* ControlSkill =
+		ControlUser.Skill(ECataclysmAbilitySlot::Special, PiercingBolt, AttackTags);
+	if (!TestTrue(TEXT("set-up: the control's use ran"), Use(ControlUser, ControlSkill)))
+	{
+		return false;
+	}
+	FlyAll(ControlSkill);
+	const float OneHit = Pool - ControlEnemy.Health();
+	if (!TestTrue(TEXT("set-up: the control's enemy lost health"), OneHit > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WEARER, carrying 1, with no cooldown so the same skill can be used twice.
+	const FVector WearerLane(0.0f, LaneApart, 0.0f);
+	FBody Wearer(World, WearerLane);
+	FBody Enemy(World, WearerLane + Place);
+	Wearer.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, 1.0f, RowTags);
+	UCataclysmProjectileSkill* Skill = Wearer.Skill(ECataclysmAbilitySlot::Special, PiercingBolt, AttackTags);
+	if (!TestNotNull(TEXT("the wearer's skill"), Skill))
+	{
+		return false;
+	}
+	Skill->CooldownOverride = 0.0f;
+	if (!TestTrue(TEXT("the wearer's first use ran"), Use(Wearer, Skill))
+		|| !TestEqual(TEXT("set-up: and fired two projectiles"), Skill->FiredThisUse.Num(), 2))
+	{
+		return false;
+	}
+	FlyAll(Skill);
+	const float AfterOne = Pool - Enemy.Health();
+	TestEqual(TEXT("one enemy in the path of both projectiles of one use lost one hit and not two"),
+			  AfterOne, OneHit, 0.01f);
+	TestEqual(TEXT("the projectile that reached it first struck it"), Skill->FiredThisUse[0]->EnemiesHit, 1);
+	TestEqual(TEXT("and the other struck nothing"), Skill->FiredThisUse[1]->EnemiesHit, 0);
+	TestFalse(TEXT("the use is over once both have finished"), Skill->IsActive());
+
+	// THE NEXT USE HITS IT AGAIN: what one use landed on is not kept for the next.
+	if (!TestTrue(TEXT("the wearer's second use ran"), Use(Wearer, Skill))
+		|| !TestEqual(TEXT("set-up: and fired two projectiles"), Skill->FiredThisUse.Num(), 2))
+	{
+		return false;
+	}
+	FlyAll(Skill);
+	TestEqual(TEXT("the second use took one more hit from the same enemy, and not two more"),
+			  Pool - Enemy.Health() - AfterOne, OneHit, 0.01f);
+
+	// A BOLT THAT DOES NOT PIERCE. Control: with no line it stops at the enemy and goes off there, once.
+	const FVector BlastControlLane(0.0f, 2.0f * LaneApart, 0.0f);
+	FBody BlastControlUser(World, BlastControlLane);
+	FBody BlastControlEnemy(World, BlastControlLane + Place);
+	UCataclysmProjectileSkill* BlastControlSkill =
+		BlastControlUser.Skill(ECataclysmAbilitySlot::Special, BlastingBolt, AttackTags);
+	if (!TestTrue(TEXT("set-up: the blast control's use ran"), Use(BlastControlUser, BlastControlSkill)))
+	{
+		return false;
+	}
+	FlyAll(BlastControlSkill);
+	const float OneBlast = Pool - BlastControlEnemy.Health();
+	if (!TestTrue(TEXT("set-up: the blast control's enemy lost health"), OneBlast > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WEARER OF 1: the first projectile stops at the enemy and goes off. The second passes through that enemy
+	// and flies the skill's whole 10 m, where it goes off and reaches nothing.
+	const FVector BlastLane(0.0f, 3.0f * LaneApart, 0.0f);
+	FBody BlastWearer(World, BlastLane);
+	FBody BlastEnemy(World, BlastLane + Place);
+	BlastWearer.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, 1.0f, RowTags);
+	UCataclysmProjectileSkill* BlastSkill =
+		BlastWearer.Skill(ECataclysmAbilitySlot::Special, BlastingBolt, AttackTags);
+	if (!TestTrue(TEXT("the blast wearer's use ran"), Use(BlastWearer, BlastSkill))
+		|| !TestEqual(TEXT("set-up: and fired two projectiles"), BlastSkill->FiredThisUse.Num(), 2))
+	{
+		return false;
+	}
+	FlyAll(BlastSkill);
+	TestEqual(TEXT("one enemy in the path of two projectiles that do not pierce lost one blast and not two"),
+			  Pool - BlastEnemy.Health(), OneBlast, 0.01f);
+	TestEqual(TEXT("the first projectile stopped at the enemy and struck it"),
+			  BlastSkill->FiredThisUse[0]->EnemiesHit, 1);
+	TestEqual(TEXT("the second struck nothing"), BlastSkill->FiredThisUse[1]->EnemiesHit, 0);
+	TestEqual(TEXT("and was not stopped by the enemy: it flew the skill's whole 10 m"),
+			  static_cast<float>(FVector::Dist2D(BlastSkill->FiredThisUse[1]->StartedAt,
+												 BlastSkill->FiredThisUse[1]->FurthestReached)),
+			  10.0f * Metre, 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountLeavesOthersTest,
+	"Cataclysm.ProjectileCount.ASkillThatThrowsRepeatedlyAndASkillThatStatesNoSpeedFireWhatTheyFiredBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCountLeavesOthersTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileCountTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	// A RACK OF THREE, one throw each half second, at one enemy 3 m away. The first throw leaves at once; the test
+	// asks for the other two by hand, as the rack's own tests do, and the third ends the skill. What is counted is
+	// the projectiles the user fired, in the world.
+	const TCHAR* Rack = TEXT("Range=10; Radius=1; Speed=2000; Count=3; Interval=0.5");
+	int32 LanesUsed = 0;
+	const auto ThrownByARack = [&](float Count, int32& OutAfterTheFirst, bool& bOutRan) -> int32
+	{
+		const FVector Lane(0.0f, LaneApart * LanesUsed++, 0.0f);
+		FBody User(World, Lane);
+		FBody Enemy(World, Lane + FVector(3.0f * Metre, 0.0f, 0.0f));
+		if (Count != 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, Count, RowTags);
+		}
+		UCataclysmProjectileSkill* Skill = User.Skill(ECataclysmAbilitySlot::Special, Rack, AttackTags);
+		bOutRan = Use(User, Skill);
+		OutAfterTheFirst = ProjectilesFiredBy(World, User.Actor);
+		if (Skill)
+		{
+			Skill->ThrowOne();
+			Skill->ThrowOne();
+			TestEqual(*FString::Printf(TEXT("%.0f on the stat: the rack counts three throws"), Count),
+					  Skill->ThrowsMade, 3);
+			TestEqual(*FString::Printf(TEXT("%.0f on the stat: the rack lists no projectile of a fanned use"), Count),
+					  Skill->FiredThisUse.Num(), 0);
+			TestEqual(*FString::Printf(TEXT("%.0f on the stat: one use of a rack is one projectile at a time"), Count),
+					  Skill->ProjectilesOfOneUse(), 1);
+		}
+		return ProjectilesFiredBy(World, User.Actor);
+	};
+
+	bool bRan = false;
+	int32 ControlFirst = 0;
+	const int32 ControlThrown = ThrownByARack(0.0f, ControlFirst, bRan);
+	if (!TestTrue(TEXT("set-up: the control's rack ran"), bRan)
+		|| !TestEqual(TEXT("control: a rack's first throw is one projectile"), ControlFirst, 1)
+		|| !TestEqual(TEXT("control: a rack of three throws three"), ControlThrown, 3))
+	{
+		return false;
+	}
+	int32 WearerFirst = 0;
+	const int32 WearerThrown = ThrownByARack(4.0f, WearerFirst, bRan);
+	TestTrue(TEXT("the wearer's rack ran"), bRan);
+	TestEqual(TEXT("carrying 4, a rack's first throw is still one projectile"), WearerFirst, ControlFirst);
+	TestEqual(TEXT("and a rack of three still throws three"), WearerThrown, ControlThrown);
+
+	// A BEAM, WHICH STATES NO SPEED, aimed 10 m along its lane with a 2 m radius, and one enemy where it is aimed.
+	// It lands once and puts nothing in the air.
+	const TCHAR* Beam = TEXT("Range=10; Radius=2; Speed=0");
+	const auto LostToABeam = [&](float Count, bool& bOutRan) -> float
+	{
+		const FVector Lane(0.0f, LaneApart * LanesUsed++, 0.0f);
+		FBody User(World, Lane);
+		FBody Enemy(World, Lane + FVector(10.0f * Metre, 0.0f, 0.0f));
+		if (Count != 0.0f)
+		{
+			User.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, Count, RowTags);
+		}
+		UCataclysmProjectileSkill* Skill = User.Skill(ECataclysmAbilitySlot::Special, Beam, AttackTags);
+		bOutRan = Use(User, Skill);
+		if (Skill)
+		{
+			TestEqual(*FString::Printf(TEXT("%.0f on the stat: a beam lands once"), Count), Skill->Landings, 1);
+			TestEqual(*FString::Printf(TEXT("%.0f on the stat: a beam lists no projectile"), Count),
+					  Skill->FiredThisUse.Num(), 0);
+		}
+		TestEqual(*FString::Printf(TEXT("%.0f on the stat: a beam puts no projectile in the world"), Count),
+				  ProjectilesFiredBy(World, User.Actor), 0);
+		return Pool - Enemy.Health();
+	};
+
+	const float ControlLost = LostToABeam(0.0f, bRan);
+	if (!TestTrue(TEXT("set-up: the control's beam ran"), bRan)
+		|| !TestTrue(TEXT("set-up: and the enemy where it was aimed lost health"), ControlLost > 0.0f))
+	{
+		return false;
+	}
+	const float WearerLost = LostToABeam(4.0f, bRan);
+	TestTrue(TEXT("the wearer's beam ran"), bRan);
+	TestEqual(TEXT("carrying 4, a beam takes from the enemy what the control's took, once"),
+			  WearerLost, ControlLost, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileCountOneUseTest,
+	"Cataclysm.ProjectileCount.AUseOfSeveralProjectilesCostsOnceIsAnnouncedOnceAndEndsWhenTheLastFinishes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmProjectileCountOneUseTest::RunTest(const FString&)
+{
+	using namespace CataclysmProjectileCountTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// EVERY PAID USE IS ANNOUNCED ONCE, by `UCataclysmCombatEvents::NoteSkillUsed`. A player character answers each
+	// announcement by raising `attack_use` once on its own rows. The users here are not player characters, so what
+	// is counted is the announcement.
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the world's combat events"), Events))
+	{
+		return false;
+	}
+	int32 UsesAnnounced = 0;
+	const FDelegateHandle Listening = Events->OnSkillUsed.AddLambda(
+		[&UsesAnnounced](const FCataclysmSkillUsedNotice&) { ++UsesAnnounced; });
+	ON_SCOPE_EXIT { Events->OnSkillUsed.Remove(Listening); };
+
+	// CONTROL: a user with no line. One use costs some mana, is announced once, and is over when its one projectile
+	// finishes.
+	FBody ControlUser(World, FVector::ZeroVector);
+	UCataclysmProjectileSkill* ControlSkill =
+		ControlUser.Skill(ECataclysmAbilitySlot::Special, BlastingBolt, AttackTags);
+	if (!TestNotNull(TEXT("the control's skill"), ControlSkill))
+	{
+		return false;
+	}
+	ControlSkill->ManaCostOverride = 40.0f;
+	const float ControlManaBefore = ManaOf(ControlUser);
+	if (!TestTrue(TEXT("set-up: the control's use ran"), Use(ControlUser, ControlSkill)))
+	{
+		return false;
+	}
+	const float ControlCost = ControlManaBefore - ManaOf(ControlUser);
+	if (!TestTrue(TEXT("set-up: the control's use cost mana"), ControlCost > 0.0f)
+		|| !TestEqual(TEXT("control: one use is announced once"), UsesAnnounced, 1)
+		|| !TestEqual(TEXT("set-up: the control fired one projectile"), ControlSkill->FiredThisUse.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("control: the skill is running while its projectile flies"), ControlSkill->IsActive());
+	FlyAll(ControlSkill);
+	TestFalse(TEXT("control: and is over when that projectile has finished"), ControlSkill->IsActive());
+	TestEqual(TEXT("control: one projectile finishing is one landing"), ControlSkill->Landings, 1);
+
+	// THE WEARER, carrying 2: three projectiles. The same cost, once; one announcement; and the skill runs until the
+	// third of them has finished.
+	FBody Wearer(World, FVector(0.0f, LaneApart, 0.0f));
+	Wearer.CarryFlatLine(UCataclysmProjectileSkill::ProjectileCountStat, 2.0f, RowTags);
+	UCataclysmProjectileSkill* Skill = Wearer.Skill(ECataclysmAbilitySlot::Special, BlastingBolt, AttackTags);
+	if (!TestNotNull(TEXT("the wearer's skill"), Skill))
+	{
+		return false;
+	}
+	Skill->ManaCostOverride = 40.0f;
+	const float ManaBefore = ManaOf(Wearer);
+	const int32 AnnouncedBefore = UsesAnnounced;
+	if (!TestTrue(TEXT("the wearer's use ran"), Use(Wearer, Skill))
+		|| !TestEqual(TEXT("set-up: and fired three projectiles"), Skill->FiredThisUse.Num(), 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a use of three projectiles costs what a use of one costs"),
+			  ManaBefore - ManaOf(Wearer), ControlCost, 0.01f);
+	TestEqual(TEXT("and is announced once"), UsesAnnounced - AnnouncedBefore, 1);
+
+	ACataclysmProjectile* First = Skill->FiredThisUse[0];
+	ACataclysmProjectile* Second = Skill->FiredThisUse[1];
+	ACataclysmProjectile* Third = Skill->FiredThisUse[2];
+	TestTrue(TEXT("the first fired is the one the skill names as in flight"), Skill->InFlight.Get() == First);
+
+	FlyOne(First);
+	TestTrue(TEXT("set-up: the first projectile has finished"), First->bFinished);
+	TestTrue(TEXT("with one of three finished the skill is still running"), Skill->IsActive());
+	TestEqual(TEXT("and has counted one landing"), Skill->Landings, 1);
+	TestTrue(TEXT("and names the second as in flight"), Skill->InFlight.Get() == Second);
+	TestFalse(TEXT("and a hit does not cut it short, as with one shot in the air"), Skill->CanBeInterruptedByAHit());
+
+	// OUT OF ORDER: the third before the second.
+	FlyOne(Third);
+	TestTrue(TEXT("set-up: the third projectile has finished"), Third->bFinished);
+	TestTrue(TEXT("with two of three finished the skill is still running"), Skill->IsActive());
+	TestEqual(TEXT("and has counted two landings"), Skill->Landings, 2);
+	TestTrue(TEXT("and still names the second as in flight"), Skill->InFlight.Get() == Second);
+
+	FlyOne(Second);
+	TestTrue(TEXT("set-up: the second projectile has finished"), Second->bFinished);
+	TestFalse(TEXT("when the last of the three has finished the skill is over"), Skill->IsActive());
+	TestEqual(TEXT("having counted three landings"), Skill->Landings, 3);
+	TestTrue(TEXT("and naming nothing as in flight"), Skill->InFlight.Get() == nullptr);
 	return true;
 }
 
