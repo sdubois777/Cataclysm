@@ -459,6 +459,13 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::EnemiesInReachAtLeast:
 		return EOn::Surroundings;
 
+	// THE LAST LABEL OF THIS GROUP, `OpponentFirstStruckByYouSecondsAgo`, IS A
+	// FACT OF THE BLOW BEING TAKEN, ruled 2026-10-12: how long ago its taker
+	// first struck whoever threw it. It moves with time as well, and it is
+	// classed here because it is only ever read with a blow in hand. THE
+	// COMMENT IS ABOVE THE LABELS AND NOT AMONG THEM:
+	// `tools/tests/test_a_minion_row_asks_only_what_its_read_can_answer.py`
+	// reads this group as an unbroken run of labels ending at its `return`.
 	case C::SkillHealthCostAbovePercent:
 	case C::HitIsMeleeAttack:
 	case C::HitIsRangedAttack:
@@ -487,9 +494,6 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesADot:
 	case C::TargetDamagedByYouWithinSeconds:
 	case C::TargetStandsInYourZone:
-	// A FACT OF THE BLOW BEING TAKEN, ruled 2026-10-12: how long ago its taker
-	// first struck whoever threw it. It moves with time as well, and it is
-	// classed here because it is only ever read with a blow in hand.
 	case C::OpponentFirstStruckByYouSecondsAgo:
 		return EOn::TheBlowOrSkill;
 	}
