@@ -22192,29 +22192,38 @@ bool FCataclysmExecuteJudgedByHandTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteTriggerCooldownTest,
-	"Cataclysm.Execute.TheRowsTriggerCooldownStartsWhenAnEnemyIsExecutedAndNotWhenTheRollAloneComesUp",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExecuteEachEnemyRollsForItselfTest,
+	"Cataclysm.Execute.EachEnemyLeftBelowTheShareRollsForItselfAndAStatedTriggerCooldownStartsAtAnExecute",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The row at chance 100, share 15, unscoped, with a trigger cooldown of 0.25 seconds, which is what the generator
- * writes on a `hit_dealt` row that states none. The world's clock does not move in this test.
+ * Ruled 2026-10-12 by the coordinating session: an execute takes no trigger cooldown, and each enemy a strike leaves
+ * below the share rolls for itself. The world's clock does not move in this test, so every blow here is in the same
+ * instant, as the blows of one swing are.
  *
- * THE CONTROL: before any blow the row is not waiting.
+ * THE ROW AS RULED, WITH NO TRIGGER COOLDOWN, at chance 50 and share 15, unscoped:
+ *   - the control: before any blow the row is not waiting.
+ *   - the roll pinned at 0: a blow that leaves the first creature below the share executes it.
+ *   - the roll pinned at 60, over the chance: a blow that leaves the second creature below the share does nothing.
+ *   - the roll pinned at 0 again: a blow that leaves the third creature below the share executes it, in the same
+ *     instant as the first. Two deaths are announced, and the row is not waiting after either.
+ *
+ * THEN THE SAME ROW STATING A TRIGGER COOLDOWN OF 0.25 SECONDS, which a row may state and the ruled row does not.
+ * The roll pinned at 0:
  *   - a blow that leaves a creature above the share: the roll came up and nobody was executed. The row is not
  *     waiting.
- *   - a blow that leaves a second creature below the share executes it. The row is waiting.
- *   - a blow in the same instant that leaves a third creature below the share does nothing: the row is waiting.
+ *   - a blow that leaves a creature below the share executes it. The row is waiting.
+ *   - a blow in the same instant that leaves another creature below the share does nothing: the row is waiting.
  *
- * STANDING: the player at the origin; three creatures at 4 m, 8 m and 12 m along +X; the measuring creature 30 m
+ * STANDING: the player at the origin; six creatures 4 m apart along +X from 4 m to 24 m; the measuring creature 30 m
  * along +Y.
  */
-bool FCataclysmExecuteTriggerCooldownTest::RunTest(const FString&)
+bool FCataclysmExecuteEachEnemyRollsForItselfTest::RunTest(const FString&)
 {
 	using namespace CataclysmExecuteTest;
 
 	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
-	const FExecuteRollPinned Roll(TEXT("0"));
+	FExecuteRollPinned Roll(TEXT("0"));
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("set-up: a world"), World))
 	{
@@ -22222,18 +22231,26 @@ bool FCataclysmExecuteTriggerCooldownTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
 	FRealKiller Killer(World);
-	if (!TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
+	if (!TestNotNull(TEXT("set-up: the announcements"), Events)
+		|| !TestTrue(TEXT("set-up: a possessed player character"), Killer.IsComplete()))
 	{
 		return false;
 	}
-	ACataclysmEnemyCharacter* LeftAbove = CreatureNumber(World, 1);
-	ACataclysmEnemyCharacter* First = CreatureNumber(World, 2);
-	ACataclysmEnemyCharacter* Second = CreatureNumber(World, 3);
+	ACataclysmEnemyCharacter* RolledUnder = CreatureNumber(World, 1);
+	ACataclysmEnemyCharacter* RolledOver = CreatureNumber(World, 2);
+	ACataclysmEnemyCharacter* RolledUnderToo = CreatureNumber(World, 3);
+	ACataclysmEnemyCharacter* LeftAbove = CreatureNumber(World, 4);
+	ACataclysmEnemyCharacter* First = CreatureNumber(World, 5);
+	ACataclysmEnemyCharacter* Second = CreatureNumber(World, 6);
 	ACataclysmEnemyCharacter* Far = CreatureAt(World, FVector(0, 30 * M, 0), 10000.0f);
-	if (!TestNotNull(TEXT("set-up: the creature left above the share"), LeftAbove)
-		|| !TestNotNull(TEXT("set-up: the first creature left below"), First)
-		|| !TestNotNull(TEXT("set-up: the second creature left below"), Second)
+	if (!TestNotNull(TEXT("set-up: the first creature of the swing"), RolledUnder)
+		|| !TestNotNull(TEXT("set-up: the second creature of the swing"), RolledOver)
+		|| !TestNotNull(TEXT("set-up: the third creature of the swing"), RolledUnderToo)
+		|| !TestNotNull(TEXT("set-up: the creature left above the share"), LeftAbove)
+		|| !TestNotNull(TEXT("set-up: the first creature left below with a cooldown stated"), First)
+		|| !TestNotNull(TEXT("set-up: the second creature left below with a cooldown stated"), Second)
 		|| !TestNotNull(TEXT("set-up: the measuring creature"), Far))
 	{
 		return false;
@@ -22245,33 +22262,62 @@ bool FCataclysmExecuteTriggerCooldownTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	for (ACataclysmEnemyCharacter* Creature : {RolledUnder, RolledOver, RolledUnderToo, First, Second})
+	{
+		Hold(Creature, ShareOf(Creature, 15.0f) + Taken / 2.0f);
+	}
+	Hold(LeftAbove, ShareOf(LeftAbove, 15.0f) + Taken * 2.0f);
 
+	// THE ROW AS RULED: NO TRIGGER COOLDOWN.
 	const FName Key(TEXT("Test:execute"));
-	FCataclysmPoolAction Row = AnExecuteRow(TEXT("Test:execute"), 100.0f, 15.0f, nullptr);
-	Row.TriggerCooldownSeconds = 0.25f;
-	Killer.AbilitySystem->SetPoolActions({Row});
-	if (!TestFalse(TEXT("control: before any blow the row is not waiting"),
-				   Killer.AbilitySystem->TriggerCoolingDown(Key)))
+	const FCataclysmPoolAction AsRuled = AnExecuteRow(TEXT("Test:execute"), 50.0f, 15.0f, nullptr);
+	Killer.AbilitySystem->SetPoolActions({AsRuled});
+	if (!TestEqual(TEXT("set-up: the row as the loader builds it states no trigger cooldown"),
+				   AsRuled.TriggerCooldownSeconds, 0.0f, 0.0f)
+		|| !TestFalse(TEXT("control: before any blow the row is not waiting"),
+					  Killer.AbilitySystem->TriggerCoolingDown(Key)))
 	{
 		return false;
 	}
 
-	Hold(LeftAbove, ShareOf(LeftAbove, 15.0f) + Taken * 2.0f);
+	Blow(Killer, RolledUnder, nullptr);
+	TestTrue(TEXT("roll 0 of chance 50: the first creature left below the share is executed"), IsGone(RolledUnder));
+	TestFalse(TEXT("and the row is not waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
+
+	Roll.Set(TEXT("60"));
+	Blow(Killer, RolledOver, nullptr);
+	TestFalse(TEXT("roll 60 of chance 50: the second creature lives"), IsGone(RolledOver));
+	TestTrue(TEXT("and the blow did leave it below the share"),
+			 HealthOf(RolledOver) > 0.0f && HealthOf(RolledOver) < ShareOf(RolledOver, 15.0f));
+
+	Roll.Set(TEXT("0"));
+	Blow(Killer, RolledUnderToo, nullptr);
+	TestTrue(TEXT("roll 0 again, in the same instant: the third creature left below the share is executed"),
+			 IsGone(RolledUnderToo));
+	TestEqual(TEXT("two deaths were announced: each enemy whose roll came up, and not the one whose roll did not"),
+			  static_cast<int32>(Events->DeathsSent()), 2);
+	TestFalse(TEXT("and the row is still not waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
+
+	// THE SAME ROW STATING A TRIGGER COOLDOWN.
+	FCataclysmPoolAction Stated = AnExecuteRow(TEXT("Test:execute"), 50.0f, 15.0f, nullptr);
+	Stated.TriggerCooldownSeconds = 0.25f;
+	Killer.AbilitySystem->SetPoolActions({Stated});
+
 	Blow(Killer, LeftAbove, nullptr);
-	TestFalse(TEXT("the creature left above the share lives"), IsGone(LeftAbove));
-	TestFalse(TEXT("the roll came up and nobody was executed: the row is not waiting"),
+	TestFalse(TEXT("cooldown stated: the creature left above the share lives"), IsGone(LeftAbove));
+	TestFalse(TEXT("cooldown stated: the roll came up and nobody was executed, so the row is not waiting"),
 			  Killer.AbilitySystem->TriggerCoolingDown(Key));
 
-	Hold(First, ShareOf(First, 15.0f) + Taken / 2.0f);
 	Blow(Killer, First, nullptr);
-	TestTrue(TEXT("the first creature left below the share is executed"), IsGone(First));
-	TestTrue(TEXT("and the row is waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
+	TestTrue(TEXT("cooldown stated: the first creature left below the share is executed"), IsGone(First));
+	TestTrue(TEXT("cooldown stated: and the row is waiting"), Killer.AbilitySystem->TriggerCoolingDown(Key));
 
-	Hold(Second, ShareOf(Second, 15.0f) + Taken / 2.0f);
 	Blow(Killer, Second, nullptr);
-	TestFalse(TEXT("in the same instant the second creature left below the share lives"), IsGone(Second));
-	TestTrue(TEXT("and the blow did leave it below the share"),
+	TestFalse(TEXT("cooldown stated: in the same instant the second creature left below the share lives"),
+			  IsGone(Second));
+	TestTrue(TEXT("cooldown stated: and the blow did leave it below the share"),
 			 HealthOf(Second) > 0.0f && HealthOf(Second) < ShareOf(Second, 15.0f));
+	TestEqual(TEXT("three deaths in all"), static_cast<int32>(Events->DeathsSent()), 3);
 	return true;
 }
 
