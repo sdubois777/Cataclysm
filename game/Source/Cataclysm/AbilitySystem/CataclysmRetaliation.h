@@ -65,6 +65,30 @@ public:
 	static const TCHAR* LeechesStat;
 
 	/**
+	 * `retaliation_cannot_be_mitigated`: whether whatever this character's retaliation strikes cannot reduce or
+	 * mitigate it. A flag: a row states it flat, 1 to 1, and any value above nought is yes. Ruled 2026-10-12 under
+	 * the owner's delegation, for "Retaliation damage cannot be reduced or mitigated by the attacker".
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE, so it is on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`, and
+	 * `tools/generate_datatables.py` holds the same name in `RETALIATION_CANNOT_BE_MITIGATED_STAT`. See
+	 * `CannotBeMitigatedFor`.
+	 */
+	static const TCHAR* CannotBeMitigatedStat;
+
+	/**
+	 * Whether this character's retaliation cannot be reduced or mitigated by what it strikes.
+	 *
+	 * ASKED WITH NO TAGS AND A FALLBACK OF NOUGHT, where retaliation is paid. Retaliation is not a skill and
+	 * carries no tags, as `AmountFor` says, so a row requiring a tag would never match. False for every character
+	 * with no such row and for an ability system this project did not make.
+	 *
+	 * WHAT IT CHANGES IS ONE FLAG ON THE BLOW `Pay` SENDS, `FCataclysmHitDelivery::bCannotBeMitigated`, which
+	 * lists what the struck character then does not apply and what it still does. It changes nothing about how
+	 * much is sent: `AmountFor` is untouched.
+	 */
+	static bool CannotBeMitigatedFor(const UAbilitySystemComponent* Defender);
+
+	/**
 	 * What one metre is in the centimetres Unreal measures in.
 	 *
 	 * THE ONE CONVERSION, AND IT IS HERE BECAUSE THE STAT IS IN METRES.
@@ -171,6 +195,14 @@ public:
 	 * attribute rather than the `Damage` meta attribute, so the target's
 	 * armour, resistance, evasion and block did nothing to it. It goes
 	 * through `ApplyDirectDamage` now, so all of them apply.
+	 *
+	 * UNLESS THE DEFENDER'S ROWS SAY THE STRUCK CHARACTER CANNOT MITIGATE IT. Ruled 2026-10-12. For a defender
+	 * that `CannotBeMitigatedFor` answers yes for, the blow still goes through `ApplyDirectDamage` and carries
+	 * `FCataclysmHitDelivery::bCannotBeMitigated`, and the calculation skips evasion, block, armour, resistance,
+	 * damage reduction and `damage_taken` for it, the fourth and the last only where they would lower the blow:
+	 * the flag never lowers a payment. It is not a return to `ReduceHealthDirectly`: the blow still
+	 * meets the temporary absorb and the energy shield, still does nothing to what takes no damage, and still
+	 * raises what a blow raises. A reflected hit, `PayReflected` below, is paid through here and takes the flag too.
 	 *
 	 * AND IT IS STILL NOT A HIT, WHICH IS FOUR SEPARATE FLAGS ON THE BLOW.
 	 * Going through the damage formula would otherwise make it one:

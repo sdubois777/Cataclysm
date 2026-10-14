@@ -15,6 +15,8 @@ const TCHAR* UCataclysmRetaliation::AmountStat = TEXT("retaliation");
 const TCHAR* UCataclysmRetaliation::RadiusMetresStat =
 	TEXT("retaliation_radius_metres");
 const TCHAR* UCataclysmRetaliation::LeechesStat = TEXT("retaliation_leeches");
+const TCHAR* UCataclysmRetaliation::CannotBeMitigatedStat =
+	TEXT("retaliation_cannot_be_mitigated");
 
 namespace
 {
@@ -119,6 +121,20 @@ bool UCataclysmRetaliation::LeechesFor(const UAbilitySystemComponent* Defender)
 		> 0.0f;
 }
 
+bool UCataclysmRetaliation::CannotBeMitigatedFor(
+	const UAbilitySystemComponent* Defender)
+{
+	// ANY VALUE ABOVE ZERO IS YES, as `LeechesFor` above reads its flag.
+	//
+	// ASKED OF THE STAT LINE AND NOT THROUGH `StatOfRetaliator`, because this
+	// stat has no gameplay attribute to fall back on: the fallback is nought.
+	// NO SKILL TAGS, for the reason that helper gives.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	return Asking
+		&& Asking->StatForSkill(FName(CannotBeMitigatedStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
 TArray<AActor*> UCataclysmRetaliation::TargetsOf(
 	const UAbilitySystemComponent* Defender, AActor* Attacker)
 {
@@ -200,6 +216,15 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 	Delivery.bCannotCriticallyStrike = true;
 	Delivery.bCarriesNoWeaponSubType = true;
 	Delivery.bCannotLeech = true;
+
+	// AND ONE THING THE STRUCK CHARACTER MAY NOT DO TO IT, FOR A DEFENDER WHOSE
+	// ROWS SAY SO. Ruled 2026-10-12: "Retaliation damage cannot be reduced or
+	// mitigated by the attacker". Asked once for the whole payment, so every
+	// target of a wave takes the same kind of blow. A REFLECTED HIT IS PAID
+	// THROUGH THIS FUNCTION AND TAKES THE FLAG TOO: the sentence that reflects a
+	// melee hit pays it "back as retaliation damage". See
+	// `FCataclysmHitDelivery::bCannotBeMitigated` for what is skipped.
+	Delivery.bCannotBeMitigated = CannotBeMitigatedFor(Defender);
 
 	float TakenAltogether = 0.0f;
 	for (AActor* Target : TargetsOf(Defender, Attacker))

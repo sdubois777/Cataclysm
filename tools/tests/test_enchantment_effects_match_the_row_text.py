@@ -262,7 +262,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # dungeon game mode asks whether it is above nought before the
               # rule Suffering Aura takes the player's mana. The holder only,
               # and that one rule's drain only.
-              "suffering_aura_mana_drain_immunity"}
+              "suffering_aura_mana_drain_immunity",
+              # ONE MORE JOINED with its row, issue #1833: "Retaliation damage
+              # cannot be reduced or mitigated by the attacker". Where
+              # retaliation is paid, the game asks whether it is above nought.
+              "retaliation_cannot_be_mitigated"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -846,8 +850,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-12, from 589 over 497: five rows on four enchantments.
 #: AND 595 OVER 502 SINCE THE EXECUTE ROW,
 #: issue #1833, 2026-10-12, from 594 over 501: one row on one enchantment.
-AUTHORED_ROWS = 595
-AUTHORED_ENCHANTMENTS = 502
+#: AND 596 OVER 503 SINCE THE ROW THAT MAKES RETALIATION SKIP MITIGATION,
+#: issue #1833, 2026-10-12, from 595 over 502: one row on one enchantment.
+AUTHORED_ROWS = 596
+AUTHORED_ENCHANTMENTS = 503
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
