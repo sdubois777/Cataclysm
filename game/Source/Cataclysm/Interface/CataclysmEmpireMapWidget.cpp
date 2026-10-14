@@ -238,11 +238,20 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 			: FString::Printf(TEXT("%d cities from defeat."),
 							  Run->Map->DistanceToDefeat());
 
+		// AND THE LAST HIT A DUNGEON'S TIMER LANDED, ON THE END OF THIS LABEL.
+		// An ordinary dungeon leaves after it hits, so nothing else on the
+		// screen says what took a city's defence. Appended here so that no
+		// Widget Blueprint has to gain a label; empty until the first hit.
+		// See `UCataclysmEmpireMapLayout::LastHitLine`.
+		const FString LastHit = UCataclysmEmpireMapLayout::LastHitLine(Run);
+
 		SurgeLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("%s   Next surge in %.0f days, bringing %d."),
+			TEXT("%s   Next surge in %.0f days, bringing %d.%s%s"),
 			*Threat,
 			Run->Surges->DaysUntilNextSurge(Run->Day()),
-			Run->Surges->DungeonsInNextSurge())));
+			Run->Surges->DungeonsInNextSurge(),
+			LastHit.IsEmpty() ? TEXT("") : TEXT("   "),
+			*LastHit)));
 	}
 }
 
