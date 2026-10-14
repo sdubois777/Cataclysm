@@ -145,6 +145,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: put on another character: the cut, and the Conduit flag for what a zone lays.
 #: A wearer immune to debuffs that lays none added one more on 2026-10-13,
 #: asked by `UCataclysmDebuffs::HoldsImmuneAndAppliesNone`.
+#: The chance that a damage over time ailment explodes when it ends by time
+#: added one more on 2026-10-13, asked of the applier in
+#: `CataclysmSkillEffects.cpp` where the ended effect's removal is heard.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -890,6 +893,14 @@ INVENTORY = {
         "about to be laid, and of a character at its regeneration step; the "
         "row is about every debuff whatever lays it, so no tags, and a "
         "debuff is not a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat), Granted, 0.0f'):
+        "the chance that a damage over time ailment explodes when it ends by "
+        "time (ruled 2026-10-13), asked of the applier where the ended "
+        "effect's removal is heard, with the tags that effect granted, so a "
+        "row requiring one ailment's tag reaches that ailment alone; no blow "
+        "exists yet and the stat is no modifier of one, so no blow and no "
+        "target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
