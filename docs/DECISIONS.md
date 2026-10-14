@@ -454,8 +454,34 @@ that run.
 - The balance report: `sim/experiments.py` was not run.
 - Whether the target for an undefended empire is met.
 - The Siege prose in `policies.py`: its test passes at this commit and its figures were not re-measured.
-- The words "your rec on all three, continue" also stand in the entry of 2026-10-12 with that date. This entry
-  dates them as the brief for this change does.
+- The owner typed the same sentence twice: "your rec on all three, continue" on 2026-10-12, for one set of three
+  questions, and again on 2026-10-13, for another set of three. The entry of 2026-10-12 quotes the first and this
+  entry the second.
+
+### Ruled on 2026-10-13, after the proposal: the package is accepted for the simulation
+
+Labelled judgements by the coordinating session under the owner's delegation, 2026-10-13, on the proposal made
+from this entry's figures. Where this entry says above that a test fails, or that something needs a ruling, that
+was true when it was written.
+
+- **The one failing test is changed, and it is this ruling.**
+  `sim/tests/test_quest_relocation_is_adjacent.py::TestASiegeMayNotWalkOntoABesiegedCity::test_it_stays_when_every_neighbour_is_besieged`
+  now builds its simulation with `quest_timer_hits_city=False`, and its docstring says why: it runs fifty Quest
+  timers on one Outpost, the hit fells the Outpost at the tenth, and the fall exposes a neighbour the test never
+  besieged. It is a test of where a Siege may move. Its assertions are unchanged.
+- **One rule for the tree and for a city's upgrades: investment never changes the size of a dungeon's hit.** The
+  hit is sized by the floors the dungeon was rolled with. The owner's accepted line named the tree; extending it
+  to the game's two city upgrades that add or remove floors is the coordinating session's judgement. It is built
+  in the game's layer, not here.
+- **Confirmed: a node that removes floors no longer shrinks the hit either.**
+- **The defending Explorer player's tier 1 being easier than today is acceptable** (0.93 cities lost against 3.19;
+  52.2% won against 44.8%, day cap 4,000). A further retune of tier 1 would be its own step.
+- **The three analysis scripts held at 120 days and 4 dungeons are accepted as they are**; reworking them at 90
+  and 5 is its own issue.
+- **No policy knows a Quest dungeon's hit is coming.** Recorded as the next piece of the review of the `triage`
+  policy; not part of this change.
+- **Every judgement of the writing session listed above is approved**, and the replacement sentences for the
+  design document are approved as written, to be made in the layer that puts the rules into the game.
 
 ---
 

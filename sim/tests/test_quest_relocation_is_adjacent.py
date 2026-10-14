@@ -460,8 +460,18 @@ class TestASiegeMayNotWalkOntoABesiegedCity:
 
     def test_it_stays_when_every_neighbour_is_besieged(self):
         """The other outcome the owner named: "or stay where it is if there is
-        none". A refused destination is not a licence to teleport."""
-        sim = Simulation(safe(), seed=2)
+        none". A refused destination is not a licence to teleport.
+
+        THE QUEST DUNGEON'S HIT IS SWITCHED OFF HERE, since 2026-10-13, by a
+        ruling of the coordinating session under the owner's delegation. This
+        runs fifty Quest timers on one Outpost. With the hit on, each takes an
+        ordinary dungeon's 100 defence, the Outpost falls at the tenth, and its
+        fall exposes an inward neighbour this test never besieged, so the
+        dungeon moves there and the assertion fails for a reason that is not
+        its subject. This is a test of where a Siege may move, not of the hit;
+        `test_a_quest_dungeons_timer_hits_its_host_city.py` holds the hit.
+        """
+        sim = Simulation(safe(quest_timer_hits_city=False), seed=2)
         home, neighbours = self._rim_pair(sim)
 
         for city in neighbours:
