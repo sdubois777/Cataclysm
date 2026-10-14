@@ -114,13 +114,20 @@ namespace CataclysmGadgetBehaviourTest
 		return FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
 	}
 
+	/** One row a summoner holds: a stat, a figure, and whether it is a flat figure or an increase. */
+	struct FGadgetRow
+	{
+		FName Stat;
+		float Value = 0.0f;
+		ECataclysmStatBucket Bucket = ECataclysmStatBucket::Flat;
+	};
+
 	/**
-	 * Give a summoner the stat line the proposed rows would: each of `Flats` a flat figure requiring
-	 * `Type.Deployable`, and each of `Increases` an increase requiring the same, as "Gadgets fire 20%-40% faster"
-	 * is written. REPLACES THE WHOLE STAT LINE, so everything a test's summoner holds arrives in one call.
+	 * Give a summoner the stat line the proposed rows would: each row requiring `Type.Deployable`, flat unless it
+	 * says otherwise. An increase is how "Gadgets fire 20%-40% faster" is written. Two rows on one stat are two
+	 * rows. REPLACES THE WHOLE STAT LINE, so everything a test's summoner holds arrives in one call.
 	 */
-	void GiveGadgetRows(AActor* Who, const TMap<FName, float>& Flats,
-						const TMap<FName, float>& Increases = TMap<FName, float>())
+	void GiveGadgetRows(AActor* Who, const TArray<FGadgetRow>& Rows)
 	{
 		UCataclysmAbilitySystemComponent* Theirs =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who));
@@ -130,22 +137,17 @@ namespace CataclysmGadgetBehaviourTest
 		}
 
 		TMap<FName, FCataclysmStatInputs> Stats;
-		const auto Add = [&Stats](const TMap<FName, float>& Rows, ECataclysmStatBucket Bucket)
+		for (const FGadgetRow& Each : Rows)
 		{
-			for (const TPair<FName, float>& Each : Rows)
-			{
-				FCataclysmStatModifier Row;
-				Row.Bucket = Bucket;
-				Row.Source = ECataclysmModifierSource::Enchantment;
-				Row.Value = Each.Value;
-				Row.RequiredTags.AddTag(DeployableTag());
-				FCataclysmStatInputs& Line = Stats.FindOrAdd(Each.Key);
-				Line.Base = 0.0f;
-				Line.Modifiers.Add(Row);
-			}
-		};
-		Add(Flats, ECataclysmStatBucket::Flat);
-		Add(Increases, ECataclysmStatBucket::Increased);
+			FCataclysmStatModifier Row;
+			Row.Bucket = Each.Bucket;
+			Row.Source = ECataclysmModifierSource::Enchantment;
+			Row.Value = Each.Value;
+			Row.RequiredTags.AddTag(DeployableTag());
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(Each.Stat);
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Row);
+		}
 		Theirs->SetStatInputs(MoveTemp(Stats));
 	}
 
@@ -182,15 +184,21 @@ namespace CataclysmGadgetBehaviourTest
 	 * Three enemies in a line from a gadget at `Origin`, along X: the nearest at 3 m holding 300, the middle one
 	 * holding 900 and the furthest holding 500. So the nearest, the one with the most health and the furthest are
 	 * three different enemies. A fourth holding 5,000 stands at `BeyondMetres`, outside the gadget's reach.
+	 *
+	 * WITH `Everyone` ABOVE NOUGHT ALL FOUR HOLD THAT INSTEAD, for a test that strikes them: a machine's blow
+	 * rises with its summoner's level, which for a summoner that is no player is a console variable, so a figure
+	 * that must outlast several blows is 50,000 and never a few hundred.
 	 */
 	struct FLine
 	{
-		FLine(UWorld* World, const FVector& Origin, float MiddleMetres, float FarMetres, float BeyondMetres)
+		FLine(UWorld* World, const FVector& Origin, float MiddleMetres, float FarMetres, float BeyondMetres,
+			  float Everyone = 0.0f)
 		{
-			Near = Enemy(World, Origin + FVector(3.0f * M, 0.0f, 0.0f), 300.0f);
-			Middle = Enemy(World, Origin + FVector(MiddleMetres * M, 0.0f, 0.0f), 900.0f);
-			Far = Enemy(World, Origin + FVector(FarMetres * M, 0.0f, 0.0f), 500.0f);
-			Beyond = Enemy(World, Origin + FVector(BeyondMetres * M, 0.0f, 0.0f), 5000.0f);
+			const bool bAlike = Everyone > 0.0f;
+			Near = Enemy(World, Origin + FVector(3.0f * M, 0.0f, 0.0f), bAlike ? Everyone : 300.0f);
+			Middle = Enemy(World, Origin + FVector(MiddleMetres * M, 0.0f, 0.0f), bAlike ? Everyone : 900.0f);
+			Far = Enemy(World, Origin + FVector(FarMetres * M, 0.0f, 0.0f), bAlike ? Everyone : 500.0f);
+			Beyond = Enemy(World, Origin + FVector(BeyondMetres * M, 0.0f, 0.0f), bAlike ? Everyone : 5000.0f);
 		}
 
 		bool IsWhole() const { return Near && Middle && Far && Beyond; }
@@ -200,6 +208,52 @@ namespace CataclysmGadgetBehaviourTest
 		ACataclysmEnemyCharacter* Far = nullptr;
 		ACataclysmEnemyCharacter* Beyond = nullptr;
 	};
+
+	/** How many times one event is raised on a character's ability system while this is alive. */
+	struct FEventCount
+	{
+		FEventCount(AActor* Who, const TCHAR* InEvent)
+			: System(Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who)))
+			, Event(InEvent)
+		{
+			if (System)
+			{
+				Handle = System->OnActionEvent.AddLambda([this](FName Raised)
+				{
+					Count += Raised == Event ? 1 : 0;
+				});
+			}
+		}
+		~FEventCount()
+		{
+			if (System)
+			{
+				System->OnActionEvent.Remove(Handle);
+			}
+		}
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		FName Event;
+		int32 Count = 0;
+		FDelegateHandle Handle;
+	};
+
+	/** Move the world's clock forward by hand. No timer fires and nobody thinks. */
+	void Pass(UWorld* World, float Seconds)
+	{
+		World->TimeSeconds += Seconds;
+	}
+
+	/** Run the one job a gadget has on the quarter-second step, as `RegenerationStep` calls it. */
+	void Step(ACataclysmMinion* Gadget)
+	{
+		ACataclysmMinion::GadgetStep(Gadget);
+	}
+
+	/** The health of three enemies of a line together, so a blow on any of them shows as a fall. */
+	float HealthOfThoseWithinReach(const FLine& Line)
+	{
+		return HealthOf(Line.Near) + HealthOf(Line.Middle) + HealthOf(Line.Far);
+	}
 }
 
 #define CATACLYSM_TEST(TestClass, TestName) \
@@ -444,6 +498,359 @@ CATACLYSM_TEST(FCataclysmGadgetTargetsOthersUnchangedTest,
 	TestNull(TEXT("and it is offered no target by health either"), Imp->MostHealthWithinReach());
 	TestTrue(TEXT("and a monster still chooses the nearest thing it can attack, not the one with the most health"),
 		ChoiceOf(Monster) == MonsterChoseBefore);
+	return true;
+}
+
+// ==========================================================================
+// "Gadgets fire at all enemies within range simultaneously once every 5-8
+// seconds"
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmGadgetVolleyStrikesAllTest,
+	"Cataclysm.GadgetVolley.AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// TWO SUMMONERS, ALIKE BUT FOR THE ROW, which the holder holds at 5 seconds. Each has a Bolt Turret with
+	// enemies at 3, 6 and 9 m and one at 12 m, beyond its reach, every one holding 50,000. The stations are 100 m
+	// apart. The clock is moved by hand and the gadget's step is called directly; no brain thinks, so no ordinary
+	// shot is fired unless the test fires one.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector ControlAt(0.0f, 0.0f, 0.0f);
+	const FVector HolderAt(0.0f, 100.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a control summoner"), Control) || !TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {{FName(ACataclysmMinion::GadgetVolleyEverySecondsStat), 5.0f}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), ControlAt);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), HolderAt);
+	FLine ControlLine(World, ControlAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	FLine HolderLine(World, HolderAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	if (!ControlTurret || !HolderTurret
+		|| !TestTrue(TEXT("set-up: eight enemies"), ControlLine.IsWhole() && HolderLine.IsWhole())
+		|| !TestEqual(TEXT("set-up: the holder's turret reads its row's 5 seconds"),
+			HolderTurret->VolleyEverySeconds(), 5.0f, 0.001f))
+	{
+		return false;
+	}
+	FEventCount ControlHits(Control, TEXT("deployable_hit"));
+	FEventCount HolderHits(Holder, TEXT("deployable_hit"));
+
+	// THE CONTROL'S ORDINARY BLOW, READ FIRST: one swing at its nearest enemy. Every blow of a volley below is
+	// read against it. The two turrets are of one type, their summoners are alike and neither holds a row on
+	// damage, so the holder's blow is the same figure.
+	const float NearHeld = HealthOf(ControlLine.Near);
+	ControlTurret->AttackTarget(ControlLine.Near);
+	const float OneBlow = NearHeld - HealthOf(ControlLine.Near);
+	if (!TestTrue(*FString::Printf(TEXT("control: a turret's ordinary blow takes health: %.2f"), OneBlow),
+			OneBlow > 0.0f)
+		|| !TestEqual(TEXT("control: and raises deployable_hit on its summoner once"), ControlHits.Count, 1))
+	{
+		return false;
+	}
+	const float ControlHeld = HealthOfThoseWithinReach(ControlLine);
+	const float HolderHeld = HealthOfThoseWithinReach(HolderLine);
+	const float HolderNearHeld = HealthOf(HolderLine.Near);
+	const float HolderMiddleHeld = HealthOf(HolderLine.Middle);
+	const float HolderFarHeld = HealthOf(HolderLine.Far);
+	const float HolderBeyondHeld = HealthOf(HolderLine.Beyond);
+
+	// 4.9 SECONDS AFTER THE PLACING: the clock has not come round.
+	Pass(World, 4.9f);
+	Step(ControlTurret);
+	Step(HolderTurret);
+	TestEqual(TEXT("at 4.9 seconds a holder's turret has fired no volley"), HolderTurret->VolleysFired, 0);
+	TestEqual(TEXT("and its enemies have lost nothing"), HealthOfThoseWithinReach(HolderLine), HolderHeld, 0.001f);
+
+	// 5.1 SECONDS: it has.
+	Pass(World, 0.2f);
+	Step(ControlTurret);
+	Step(HolderTurret);
+	TestEqual(TEXT("control: at 5.1 seconds the turret of a summoner holding no row has fired no volley"),
+		ControlTurret->VolleysFired, 0);
+	TestEqual(TEXT("control: and its enemies have lost nothing more"),
+		HealthOfThoseWithinReach(ControlLine), ControlHeld, 0.001f);
+	TestEqual(TEXT("control: and no further deployable_hit was raised"), ControlHits.Count, 1);
+	TestEqual(TEXT("at 5.1 seconds a holder's turret has fired one volley"), HolderTurret->VolleysFired, 1);
+	TestEqual(TEXT("the enemy at 3 m took one ordinary blow"),
+		HolderNearHeld - HealthOf(HolderLine.Near), OneBlow, 0.05f);
+	TestEqual(TEXT("the enemy at 6 m took one ordinary blow"),
+		HolderMiddleHeld - HealthOf(HolderLine.Middle), OneBlow, 0.05f);
+	TestEqual(TEXT("the enemy at 9 m took one ordinary blow"),
+		HolderFarHeld - HealthOf(HolderLine.Far), OneBlow, 0.05f);
+	TestEqual(TEXT("and the enemy beyond its reach took nothing"),
+		HealthOf(HolderLine.Beyond), HolderBeyondHeld, 0.001f);
+	TestEqual(TEXT("each blow of the volley raised deployable_hit on its summoner: three"), HolderHits.Count, 3);
+	TestEqual(TEXT("and each was an attack of the turret's own: three"), HolderTurret->AttacksMade, 3);
+
+	// A STEP AT THE SAME MOMENT FIRES NOTHING MORE.
+	Step(HolderTurret);
+	TestEqual(TEXT("a second step at the same moment fires no second volley"), HolderTurret->VolleysFired, 1);
+
+	// THE BEAT IS KEPT FROM THE PLACING: the first volley fired at 5.1 and the second is due at 10, not at 10.1.
+	Pass(World, 4.8f);
+	Step(HolderTurret);
+	TestEqual(TEXT("at 9.9 seconds the second volley has not fired"), HolderTurret->VolleysFired, 1);
+	Pass(World, 0.15f);
+	Step(HolderTurret);
+	TestEqual(TEXT("at 10.05 seconds it has, 4.95 after the first fired: the clock keeps its beat from the placing"),
+		HolderTurret->VolleysFired, 2);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetVolleyNotHurriedTest,
+	"Cataclysm.GadgetVolley.TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// THE HOLDER HOLDS THE VOLLEY AT 5 SECONDS AND "GADGETS FIRE FASTER" AT 100%: an increase of 100 on
+	// `minion_attack_speed` requiring `Type.Deployable`, which halves the time between a gadget's ordinary shots.
+	// The control summoner holds nothing, and its turret's time between shots is read first.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector HolderAt(0.0f, 100.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a control summoner"), Control) || !TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {
+		{FName(ACataclysmMinion::GadgetVolleyEverySecondsStat), 5.0f},
+		{FName(TEXT("minion_attack_speed")), 100.0f, ECataclysmStatBucket::Increased}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), FVector::ZeroVector);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), HolderAt);
+	FLine HolderLine(World, HolderAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	if (!ControlTurret || !HolderTurret || !TestTrue(TEXT("set-up: four enemies"), HolderLine.IsWhole()))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("control: a turret whose summoner holds nothing waits its whole time between shots"),
+			UCataclysmCommand::AttackIntervalScaleFor(ControlTurret, nullptr), 1.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: the holder's turret waits half of it, so Gadgets fire faster is held"),
+			UCataclysmCommand::AttackIntervalScaleFor(HolderTurret, nullptr), 0.5f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the holder's turret still reads the row's 5 seconds for its volley"),
+		HolderTurret->VolleyEverySeconds(), 5.0f, 0.001f);
+
+	// 2.6 SECONDS IS PAST HALF OF THE 5. A volley hurried as the ordinary shot is would have fired.
+	Pass(World, 2.6f);
+	Step(HolderTurret);
+	TestEqual(TEXT("at 2.6 seconds no volley has fired: the seconds are not shortened by Gadgets fire faster"),
+		HolderTurret->VolleysFired, 0);
+	Pass(World, 2.3f);
+	Step(HolderTurret);
+	TestEqual(TEXT("nor at 4.9 seconds"), HolderTurret->VolleysFired, 0);
+
+	// AN ORDINARY SHOT, AND THEN THE CLOCK COMES ROUND. `AttackOnce` is one swing at the nearest enemy in reach.
+	const float NearHeld = HealthOf(HolderLine.Near);
+	const float MiddleHeld = HealthOf(HolderLine.Middle);
+	HolderTurret->AttackOnce();
+	const float OneBlow = NearHeld - HealthOf(HolderLine.Near);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the ordinary shot took health from the nearest: %.2f"), OneBlow),
+			OneBlow > 0.0f))
+	{
+		return false;
+	}
+	Pass(World, 0.2f);
+	Step(HolderTurret);
+	TestEqual(TEXT("at 5.1 seconds the volley fires, straight after an ordinary shot"),
+		HolderTurret->VolleysFired, 1);
+	TestEqual(TEXT("the enemy the ordinary shot struck is struck by the volley as well: two blows"),
+		NearHeld - HealthOf(HolderLine.Near), OneBlow * 2.0f, 0.05f);
+	TestEqual(TEXT("and an enemy the ordinary shot did not strike takes the volley's one"),
+		MiddleHeld - HealthOf(HolderLine.Middle), OneBlow, 0.05f);
+	TestEqual(TEXT("four attacks in all: the ordinary one and the volley's three"), HolderTurret->AttacksMade, 4);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetVolleyShorterOfTwoTest,
+	"Cataclysm.GadgetVolley.TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// THREE SUMMONERS, 100 M APART, each with a Bolt Turret and a line of enemies. The first holds one row, of 8
+	// seconds, and is the control. The second holds two rows, of 8 and of 5. The third holds nothing until the
+	// clock stands at 8.1 seconds.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FName Volley(ACataclysmMinion::GadgetVolleyEverySecondsStat);
+	ACataclysmEnemyCharacter* OneRow = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* TwoRows = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	ACataclysmEnemyCharacter* Late = Summoner(World, FVector(-50.0f * M, 200.0f * M, 0.0f));
+	if (!TestTrue(TEXT("set-up: three summoners"), OneRow && TwoRows && Late))
+	{
+		return false;
+	}
+	GiveGadgetRows(OneRow, {{Volley, 8.0f}});
+	GiveGadgetRows(TwoRows, {{Volley, 8.0f}, {Volley, 5.0f}});
+	ACataclysmMinion* OneRowTurret = Place(*this, OneRow, TEXT("BoltTurret"), FVector::ZeroVector);
+	ACataclysmMinion* TwoRowsTurret = Place(*this, TwoRows, TEXT("BoltTurret"), FVector(0.0f, 100.0f * M, 0.0f));
+	ACataclysmMinion* LateTurret = Place(*this, Late, TEXT("BoltTurret"), FVector(0.0f, 200.0f * M, 0.0f));
+	FLine OneRowLine(World, FVector::ZeroVector, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	FLine TwoRowsLine(World, FVector(0.0f, 100.0f * M, 0.0f), 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	FLine LateLine(World, FVector(0.0f, 200.0f * M, 0.0f), 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	if (!OneRowTurret || !TwoRowsTurret || !LateTurret
+		|| !TestTrue(TEXT("set-up: twelve enemies"), OneRowLine.IsWhole() && TwoRowsLine.IsWhole()
+			&& LateLine.IsWhole()))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("control: one row of 8 is read as 8 seconds"),
+			OneRowTurret->VolleyEverySeconds(), 8.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("rows of 8 and 5 are read as the shorter, 5, and not as their sum"),
+		TwoRowsTurret->VolleyEverySeconds(), 5.0f, 0.001f);
+	TestEqual(TEXT("and no row is read as nought"), LateTurret->VolleyEverySeconds(), 0.0f, 0.001f);
+
+	Pass(World, 5.1f);
+	Step(OneRowTurret);
+	Step(TwoRowsTurret);
+	Step(LateTurret);
+	TestEqual(TEXT("control: at 5.1 seconds the turret under one row of 8 has fired nothing"),
+		OneRowTurret->VolleysFired, 0);
+	TestEqual(TEXT("and the turret under rows of 8 and 5 has fired its first volley"),
+		TwoRowsTurret->VolleysFired, 1);
+
+	Pass(World, 3.0f);
+	Step(OneRowTurret);
+	Step(TwoRowsTurret);
+	Step(LateTurret);
+	TestEqual(TEXT("control: at 8.1 seconds the turret under one row of 8 fires its first"),
+		OneRowTurret->VolleysFired, 1);
+	TestEqual(TEXT("and the other, whose next is due at 10, has fired no second"), TwoRowsTurret->VolleysFired, 1);
+	if (!TestEqual(TEXT("control: a turret whose summoner holds no row has fired nothing in 8.1 seconds"),
+			LateTurret->VolleysFired, 0))
+	{
+		return false;
+	}
+
+	// THE ROW ARRIVES WHEN THE GADGET HAS STOOD LONGER THAN ITS SECONDS.
+	const float LateHeld = HealthOfThoseWithinReach(LateLine);
+	GiveGadgetRows(Late, {{Volley, 5.0f}});
+	Step(LateTurret);
+	TestEqual(TEXT("a gadget that comes to hold the row after standing 8.1 seconds fires on the next step"),
+		LateTurret->VolleysFired, 1);
+	TestTrue(TEXT("and its enemies lost health to it"), HealthOfThoseWithinReach(LateLine) < LateHeld - 0.5f);
+	Step(LateTurret);
+	TestEqual(TEXT("and does not fire again at the same moment"), LateTurret->VolleysFired, 1);
+	Pass(World, 4.9f);
+	Step(LateTurret);
+	TestEqual(TEXT("nor 4.9 seconds after that volley"), LateTurret->VolleysFired, 1);
+	Pass(World, 0.2f);
+	Step(LateTurret);
+	TestEqual(TEXT("and fires its second 5.1 seconds after it: the clock counts from that volley"),
+		LateTurret->VolleysFired, 2);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetVolleyOthersTest,
+	"Cataclysm.GadgetVolley.AHoldersSpikeTrapAndImpFireNoVolleyAndAnEvadedBlowOfAVolleyTakesNothing")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// ONE HOLDER OF THE ROW AT 5 SECONDS, with a Spike Trap, an imp and a Bolt Turret, each 100 m from the next
+	// and each with enemies within its reach; and a control summoner holding nothing, with a turret and a line.
+	// The enemy at 6 m in the holder's turret's line evades every blow.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector TrapAt(0.0f, 0.0f, 0.0f);
+	const FVector ImpAt(0.0f, 100.0f * M, 0.0f);
+	const FVector TurretAt(0.0f, 200.0f * M, 0.0f);
+	const FVector ControlAt(0.0f, 300.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 300.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a holder"), Holder) || !TestNotNull(TEXT("set-up: a control summoner"), Control))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {{FName(ACataclysmMinion::GadgetVolleyEverySecondsStat), 5.0f}});
+	ACataclysmMinion* Trap = Place(*this, Holder, TEXT("SpikeTrap"), TrapAt);
+	ACataclysmEnemyCharacter* TrapNearer = Enemy(World, TrapAt + FVector(1.1f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* TrapFurther = Enemy(World, TrapAt + FVector(-1.4f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmMinion* Imp = Place(*this, Holder, TEXT("Imp"), ImpAt);
+	ACataclysmEnemyCharacter* ImpNearer = Enemy(World, ImpAt + FVector(1.1f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* ImpFurther = Enemy(World, ImpAt + FVector(-1.7f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmMinion* Turret = Place(*this, Holder, TEXT("BoltTurret"), TurretAt);
+	FLine Line(World, TurretAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), ControlAt);
+	FLine ControlLine(World, ControlAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	if (!Trap || !Imp || !Turret || !ControlTurret
+		|| !TestTrue(TEXT("set-up: the enemies"), TrapNearer && TrapFurther && ImpNearer && ImpFurther
+			&& Line.IsWhole() && ControlLine.IsWhole())
+		|| !TestEqual(TEXT("set-up: the trap has two enemies within its reach"), Trap->HostilesWithinReach().Num(), 2)
+		|| !TestEqual(TEXT("set-up: and so has the imp"), Imp->HostilesWithinReach().Num(), 2))
+	{
+		return false;
+	}
+	Line.Middle->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	const float TrapsHeld = HealthOf(TrapNearer) + HealthOf(TrapFurther);
+	const float ImpsHeld = HealthOf(ImpNearer) + HealthOf(ImpFurther);
+	const float ControlHeld = HealthOfThoseWithinReach(ControlLine);
+	const float NearHeld = HealthOf(Line.Near);
+	const float MiddleHeld = HealthOf(Line.Middle);
+	const float FarHeld = HealthOf(Line.Far);
+	FEventCount Hits(Holder, TEXT("deployable_hit"));
+
+	Pass(World, 5.1f);
+	Step(ControlTurret);
+	Step(Trap);
+	Step(Imp);
+	Step(Turret);
+
+	if (!TestEqual(TEXT("control: the turret of a summoner holding no row has fired no volley"),
+			ControlTurret->VolleysFired, 0)
+		|| !TestEqual(TEXT("control: and its enemies have lost nothing"),
+			HealthOfThoseWithinReach(ControlLine), ControlHeld, 0.001f)
+		|| !TestEqual(TEXT("set-up: the holder's turret has fired one, so the row is held"),
+			Turret->VolleysFired, 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a holder's Spike Trap fires no volley: a trap is not a gadget"), Trap->VolleysFired, 0);
+	TestEqual(TEXT("it reads no seconds for one"), Trap->VolleyEverySeconds(), 0.0f, 0.001f);
+	TestEqual(TEXT("and its two enemies have lost nothing"),
+		HealthOf(TrapNearer) + HealthOf(TrapFurther), TrapsHeld, 0.001f);
+	TestEqual(TEXT("a holder's imp fires no volley"), Imp->VolleysFired, 0);
+	TestEqual(TEXT("it reads no seconds for one"), Imp->VolleyEverySeconds(), 0.0f, 0.001f);
+	TestEqual(TEXT("and its two enemies have lost nothing"),
+		HealthOf(ImpNearer) + HealthOf(ImpFurther), ImpsHeld, 0.001f);
+
+	// EACH BLOW OF A VOLLEY IS A SINGLE BLOW AND CAN BE EVADED.
+	const float NearLost = NearHeld - HealthOf(Line.Near);
+	TestTrue(*FString::Printf(TEXT("the enemy at 3 m took the volley's blow: %.2f"), NearLost), NearLost > 0.0f);
+	TestEqual(TEXT("the enemy at 9 m took the same"), FarHeld - HealthOf(Line.Far), NearLost, 0.05f);
+	TestEqual(TEXT("and the enemy at 6 m, which evades, took nothing"), HealthOf(Line.Middle), MiddleHeld, 0.001f);
+	TestEqual(TEXT("it was struck at all the same: three attacks"), Turret->AttacksMade, 3);
+	TestEqual(TEXT("and deployable_hit was raised for each of the three, the evaded one included"), Hits.Count, 3);
 	return true;
 }
 
