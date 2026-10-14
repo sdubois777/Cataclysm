@@ -271,7 +271,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # also cannot apply them". The four functions that lay a debuff ask whether it
               # is above nought for the target, the instigator and the instigator's
               # commander.
-              "immune_to_debuffs_and_applies_none"}
+              "immune_to_debuffs_and_applies_none",
+              # ONE MORE JOINED with its row, issue #1833: "Your gadgets prioritize the
+              # highest HP enemy within their range instead of the nearest". A gadget asks
+              # its summoner whether it is above nought each time it picks a target.
+              "gadgets_target_most_health"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -877,8 +881,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 605 over 511: one row on one enchantment.
 #: AND 607 OVER 513 SINCE THE ROW ON A BURN THAT ENDS BY TIME AND MAY EXPLODE,
 #: issue #1833, 2026-10-13, from 606 over 512: one row on one enchantment.
-AUTHORED_ROWS = 607
-AUTHORED_ENCHANTMENTS = 513
+#: AND 608 OVER 514 SINCE THE ROW THAT MAKES GADGETS CHOOSE THE MOST HEALTH,
+#: issue #1833, 2026-10-13, from 607 over 513: one row on one enchantment.
+AUTHORED_ROWS = 608
+AUTHORED_ENCHANTMENTS = 514
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

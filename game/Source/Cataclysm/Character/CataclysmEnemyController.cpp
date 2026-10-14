@@ -6,6 +6,8 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFear.h"
+// For the target a gadget takes when its summoner's row says the most health. Ruled 2026-10-13.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -210,6 +212,28 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	if (AActor* Ordered = UCataclysmCommand::OrderedTargetFor(Driven))
 	{
 		return Ordered;
+	}
+
+	// AND A GADGET WHOSE SUMMONER'S ROW SAYS SO TAKES THE ENEMY WITH THE MOST HEALTH WITHIN ITS REACH. Ruled
+	// 2026-10-13 by the coordinating session under the owner's delegation, for "Your gadgets prioritize the highest
+	// HP enemy within their range instead of the nearest".
+	//
+	// AFTER THE ORDER ABOVE AND BEFORE THE SEARCH BELOW, as ruled: a Quarry mark still comes first, and with
+	// nothing within its reach the gadget does what it did before.
+	//
+	// NOTHING ELSE THIS CONTROLLER DRIVES IS CHANGED. A monster is not a minion, so the cast answers null. An imp,
+	// a mote, a Spike Trap and a gadget whose summoner holds no such row are answered null by
+	// `ACataclysmMinion::MostHealthWithinReach`, and each falls through to the lines below exactly as before.
+	//
+	// IT RETURNS HERE, AS THE ORDER DOES, and so does not pass through the draw below. That draw sends a creature
+	// to a minion of the character it would attack, where that character holds Behind the Veil; an enemy holds no
+	// passive tree, so for a player's gadget it answers null.
+	if (const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Driven))
+	{
+		if (AActor* Healthiest = Gadget->MostHealthWithinReach())
+		{
+			return Healthiest;
+		}
 	}
 
 	// `NoticesFromCm` AND NOT `SightRadiusCm`, so the floor the creature is
