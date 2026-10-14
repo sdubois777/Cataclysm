@@ -1021,7 +1021,49 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	}
 
 	++AttacksMade;
+
+	// AND A GADGET WHOSE BLOW KILLED FIRES A BURST, WHERE ITS SUMMONER'S ROW SAYS SO. Ruled 2026-10-13 by the
+	// coordinating session under the owner's delegation, for "When a gadget kills an enemy, it fires an additional
+	// burst at the nearest enemy within its range". One ordinary blow, at once, at the nearest enemy within its
+	// reach, or nothing if there is none.
+	//
+	// WHETHER THIS BLOW KILLED IS READ OFF THE ENEMY AND NOT OFF THE DEATH'S ANNOUNCEMENT. The blow reached health
+	// (`Resolved` is what the enemy made of it; a blow on a body reaches nothing), the enemy is dead now, and the
+	// record of the last blow on it, which is what a death names its killer from, says this gadget dealt it and
+	// that it was not a tick. So a kill made inside this call by something else does not count: a row of the
+	// summoner's that the `deployable_hit` above fired is dealt by the summoner, and a tick of a burn set above is
+	// a tick. Under Conduit the record's attacker is the summoner and what dealt it is still this gadget, so the
+	// kill counts.
+	//
+	// LAST IN THIS FUNCTION, so the death has been announced to every listener and the dead enemy's own
+	// `HandleDeath` has finished before the burst strikes anybody. A listener to the death that struck from inside
+	// it is what `UCataclysmCombatEvents::AfterThisDeathIsHeard` exists to order; this needs none of it.
+	//
+	// IT CALLS THIS FUNCTION AGAIN, so a kill by a burst fires another, as ruled. HOW DEEP IT CAN GO: one call for
+	// each kill in a row, and each needs a living enemy within reach that the burst then kills. The search leaves
+	// out the dead, so no enemy is struck by two bursts of one chain, and the chain is no longer than the number
+	// of enemies standing within reach when it began. It stops at the first burst that does not kill, or that
+	// finds nobody. A gadget that died in its own blow, to the retaliation it provoked, fires nothing.
+	if (Resolved.DealtToHealth > 0.0f && UCataclysmSkillEffects::IsDead(Target)
+		&& !UCataclysmSkillEffects::IsDead(this))
+	{
+		const UCataclysmAbilitySystemComponent* Killed =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+		const bool bOwnBlowKilled = Killed && Killed->GetLastBlow().IsOnRecord()
+			&& Killed->GetLastBlow().DealtBy.Get() == this && !Killed->GetLastBlow().bDamageOverTime;
+		if (bOwnBlowKilled && SummonersGadgetStat(GadgetsBurstOnKillStat) > 0.0f)
+		{
+			const TArray<AActor*> WithinReach = HostilesWithinReach();
+			if (!WithinReach.IsEmpty())
+			{
+				++BurstsFired;
+				AttackTarget(WithinReach[0]);
+			}
+		}
+	}
 }
+
+const TCHAR* ACataclysmMinion::GadgetsBurstOnKillStat = TEXT("gadgets_burst_on_kill");
 
 void ACataclysmMinion::HandleDeath()
 {
