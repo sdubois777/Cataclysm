@@ -885,8 +885,9 @@ def inherited_settings(cfg: TuningConfig) -> list[tuple[str, str]]:
     behind -- so this is not a coin flip that a rerun would land differently.
     It is a real dependency on a number chosen for an unrelated reason.
 
-    `TuningConfig.surge_dungeon_count` defaults to 4, which calibration never
-    tries. Anyone calling `exp_presets` with a raw `TuningConfig` -- which the
+    `TuningConfig.surge_dungeon_count` defaulted to 4 when this was written
+    (it is 5 since 2026-10-13, and the paragraph describes 4), which
+    calibration never tries. Anyone calling `exp_presets` with a raw `TuningConfig` -- which the
     reproduction snippet on issue #293 does -- measures the count 4 column and
     gets a different answer from the report's.
 

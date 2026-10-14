@@ -120,9 +120,14 @@ def model():
 
 
 class TestTheCadence:
+    # `IntervalDays` AND `DungeonsPerSurge` WERE THE FIRST TWO ROWS UNTIL
+    # 2026-10-13. The model went to 90 days and 5 dungeons that day and the
+    # game keeps 120 and 4 until its own layer, so the two are a recorded
+    # divergence and not an equality:
+    # `test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`.
+    # That file fails when either of the game's constants moves and says to
+    # put the rows back here.
     NUMBERS = {
-        "IntervalDays": "surge_interval_days",
-        "DungeonsPerSurge": "surge_dungeon_count",
         "IntervalDecay": "surge_interval_decay",
         "LeastIntervalDays": "surge_interval_min",
         "CountGrowthPerSurge": "surge_count_growth",
@@ -2022,11 +2027,31 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
     no longer describe anything.
     """
 
+    @staticmethod
+    def the_games_cadence() -> dict:
+        """The game's interval and surge size, read out of its header.
+
+        THE LADDERS BELOW ARE THE MODEL'S ARITHMETIC AT THE GAME'S TWO
+        STARTING NUMBERS, since 2026-10-13. Until then they were taken at
+        `TuningConfig()` and the two were the same numbers. The model now
+        ships 90 days and 5 dungeons and the game keeps 120 and 4, so a
+        ladder taken at the model's defaults would describe figures the
+        Unreal test does not assert. What this class still holds is that
+        the model's FORMULA gives the Unreal test's figures from the
+        game's own constants. When the game goes to 90 and 5 the figures
+        in `CataclysmSurgeTests.cpp` and below change together.
+        """
+        header = read(SURGE_HEADER)
+        return dict(
+            surge_interval_days=number(header, "IntervalDays"),
+            surge_dungeon_count=int(number(header, "DungeonsPerSurge")))
+
     def gap_at(self, mode, index: float) -> float:
         from cataclysm_sim.config import SurgeMode, TuningConfig
         from cataclysm_sim.engine import Simulation
 
-        simulation = Simulation(TuningConfig(surge_mode=SurgeMode(mode)), seed=0)
+        simulation = Simulation(TuningConfig(
+            surge_mode=SurgeMode(mode), **self.the_games_cadence()), seed=0)
         simulation.surge_index = index
         return simulation.surge_gap()
 
@@ -2035,7 +2060,8 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
         from cataclysm_sim.engine import Simulation
 
         simulation = Simulation(
-            TuningConfig(surge_mode=SurgeMode(mode))
+            TuningConfig(surge_mode=SurgeMode(mode),
+                         **self.the_games_cadence())
             .with_lethality(LethalityMode(lethality)), seed=0)
         simulation.surge_index = index
         return simulation.surge_count()

@@ -123,8 +123,15 @@ def _env_floats(name: str, default: tuple[float, ...]) -> tuple[float, ...]:
 #: What `development` ships, read off `TuningConfig` rather than written out, so
 #: this file cannot claim the wrong baseline after somebody moves a constant.
 SHIPPED_MIN_GAP = TuningConfig().surge_interval_min
-SHIPPED_INTERVAL = TuningConfig().surge_interval_days
-SHIPPED_COUNT = TuningConfig().surge_dungeon_count
+#: NO LONGER WHAT SHIPS, AND HELD ON PURPOSE. Since 2026-10-13 `TuningConfig`
+#: ships 5 dungeons every 90 days. This file's axes, its tables and every
+#: figure its docstring and the issues quote are those of 4 every 120, which
+#: is what shipped when they were measured, and none was re-measured. The two
+#: are written out so the file goes on measuring that world. The names are
+#: kept because the rest of the file and its tests use them. To measure what
+#: ships, read them off `TuningConfig()` again and give the axes a 5 and a 90.
+SHIPPED_INTERVAL = 120.0
+SHIPPED_COUNT = 4
 
 #: The minimum-gap axis, in days. 25 is what `TuningConfig.surge_interval_min`
 #: ships and is therefore the control; the rest bracket it in both directions so

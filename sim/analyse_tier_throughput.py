@@ -124,7 +124,15 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
 
     @param over  one setting to change, for section 4. Applied last, so it wins.
     """
-    shipped = TuningConfig()
+    # 4 EVERY 120 DAYS, HELD ON PURPOSE. Since 2026-10-13 `TuningConfig` ships
+    # 5 every 90. Every figure this file's docstring and the issues quote
+    # was measured at 4 every 120, which is what shipped then, and none was
+    # re-measured, so the two are held where they were. AT 5 EVERY 90 THE
+    # HEADLINE MOVES: `arrival_rate` gives 1.19 walk-days a day at tier 1,
+    # above the 1.0 this file's framing needs tier 1 to stay under
+    # (computed 2026-10-13 by this function with the next line removed).
+    shipped = replace(TuningConfig(), surge_interval_days=120.0,
+                      surge_dungeon_count=4)
     cfg = replace(
         shipped,
         tier=tier,

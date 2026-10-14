@@ -170,6 +170,12 @@ measures. Issue
 [#1404](https://github.com/sdubois777/Cataclysm/issues/1404) is where this was
 tracked.
 
+**MEASURED BEFORE 2026-10-13, WHEN THE MODEL'S DEFAULT SURGE WAS 4 DUNGEONS
+EVERY 120 DAYS.** It is 5 every 90 since that date. Neither this table nor any
+other figure in this file was re-measured for that, for a Quest dungeon's timer
+hitting its city, or for a hit being sized by natural floors, all three of
+2026-10-13; `docs/DECISIONS.md` of that date has what was measured.
+
 **THE CONDITIONS.** 150 campaigns per cell, the `triage` policy, static surges,
 resolve timer 1.6 days per floor, 120 days between surges, dungeon power +0.22
 per 100 days, craft 12 days for +4% of a tier width, day cap 2,500, and
@@ -452,7 +458,8 @@ There are two ways to get into one:
 
   **MEASURED 2026-09-07 OVER 6,000 CAMPAIGNS** in six disjoint blocks of
   1,000 seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days
-  x5 (`surge_dungeon_count` = 5, not the `TuningConfig` default of 4),
+  x5 (`surge_dungeon_count` = 5, not the `TuningConfig` default of 4 of that
+  date; the default is 5 every 90 days since 2026-10-13),
   resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days +4%,
   with the Siege damage live and the policies able to see one. This is the
   re-measurement issue #1358 asked for, on `a71ee1f`:
