@@ -3572,6 +3572,35 @@ public:
 	float AilmentRiderPercentFor(const FGameplayTag& Ailment,
 								 ECataclysmAilmentRider Kind) const;
 
+	/**
+	 * `Applier` is applying `Debuff` to this character, as a new effect or as a
+	 * refresh of one already running, and its row states `Percent` less damage
+	 * dealt by an enemy carrying a debuff of its. Ruled 2026-10-13. Called by
+	 * `UCataclysmDebuffs::NoteLaid`, BEFORE the debuff's tag is put on.
+	 *
+	 * THE CARRIER'S RECORD OF ONE APPLIER, PER DEBUFF, as `ReceiveAilmentRiders`
+	 * keeps one for an ailment, and it counts only while the carrier holds the
+	 * debuff's tag, which is asked when it is read. So it ends when the debuff
+	 * ends, by time, by a cleanse or by death, and a refresh keeps it.
+	 *
+	 * A FRESH APPLICATION STARTS WITH NOTHING: the record of a debuff that has
+	 * ended is still here, and is removed before anything else.
+	 *
+	 * AN APPLIER WITH NOTHING TO HANG TAKES DOWN ONLY ITS OWN, and nobody
+	 * (`Applier` null: a spread's copy, a minion's or a zone's without Conduit)
+	 * takes down nothing. Another character's application leaves the record
+	 * standing for as long as the debuff is carried.
+	 */
+	void ReceiveDebuffDamageCut(const FGameplayTag& Debuff,
+								const UCataclysmAbilitySystemComponent* Applier, float Percent);
+
+	/**
+	 * The percent less this character deals now for the debuffs it carries, 0
+	 * to 100. ONE CUT HOWEVER MANY DEBUFFS: the largest of the records whose
+	 * debuff it holds at this moment, and never their sum.
+	 */
+	float DebuffDamageCutPercentNow() const;
+
 	/** Whether a critical strike of `Striker`'s has got through to it. */
 	bool WasCriticallyStruckBy(const UAbilitySystemComponent* Striker) const;
 
@@ -4207,6 +4236,16 @@ protected:
 
 	/** The riders this character carries, by the ailment's tag. See `ReceiveAilmentRiders`. */
 	TMap<FGameplayTag, FCarriedRiders> AilmentRiders;
+
+	/** What one applier's row cuts from what this character deals while it carries one debuff. */
+	struct FDebuffDamageCut
+	{
+		TWeakObjectPtr<const UCataclysmAbilitySystemComponent> Applier;
+		float Percent = 0.0f;
+	};
+
+	/** The cuts this character carries, by the debuff's tag. See `ReceiveDebuffDamageCut`. */
+	TMap<FGameplayTag, FDebuffDamageCut> DebuffDamageCuts;
 
 	/**
 	 * Write this character's maximum health as its ailments' riders leave it:

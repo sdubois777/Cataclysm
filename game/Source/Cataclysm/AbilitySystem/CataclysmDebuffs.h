@@ -486,4 +486,79 @@ public:
 	 * @return how many creatures it held this step
 	 */
 	static int32 NowhereToRunStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Whether this tag is a debuff: one of `DebuffRootNames` or anything under
+	 * one. The question `TagsOn` asks of each tag a character owns, for a caller
+	 * holding one tag that is about to be applied.
+	 */
+	static bool IsADebuff(const FGameplayTag& Tag);
+
+	/**
+	 * `debuffed_enemies_deal_less_percent`: the percent less that a character
+	 * deals while it carries at least one debuff the holder of this stat
+	 * applied. Ruled 2026-10-13: "Applying a debuff to an enemy reduces their
+	 * damage output by 10%-20%". A flat figure with no gameplay attribute and no
+	 * base; nought or less cuts nothing.
+	 */
+	static const TCHAR* DebuffedEnemiesDealLessPercentStat;
+
+	/**
+	 * The Conduit keystone's flag, `minion_hits_count_as_yours`, as
+	 * `ACataclysmMinion::HitsCountAsTheSummoners` spells it. Asked here of a
+	 * ground zone's owner: a zone's debuff counts as its owner's for the stat
+	 * above only while the owner holds it, as ruled 2026-10-13.
+	 */
+	static const TCHAR* ZoneDebuffsCountUnderStat;
+
+	/**
+	 * `Instigator` is about to put `Debuff` on `Target`, as a new effect or as
+	 * a refresh of one already running: record on the target what the
+	 * applier's `DebuffedEnemiesDealLessPercentStat` states. Called by the four
+	 * functions of `UCataclysmSkillEffects` that put a debuff on a character:
+	 * `ApplyDamageOverTime`, `ApplyShareOfHealthOverTime`, `ApplyTagForDuration`
+	 * and `ApplyNamedEffectOnly`. A tag that is not a debuff, and one a
+	 * character puts on itself, record nothing.
+	 *
+	 * WHO THE APPLIER IS. `UCataclysmCombatEvents::AttackerOf(Instigator)`: the
+	 * instigator, and for a minion its summoner only while the summoner holds
+	 * Conduit. A ground zone lays its effects in its owner's name, so a zone
+	 * says it is laying them with `FCataclysmZoneLaying` below, and what it lays
+	 * counts only while that owner holds `ZoneDebuffsCountUnderStat`. A copy a
+	 * spread makes has no applier: nobody applied it.
+	 *
+	 * THE RECORD IS THE CARRIER'S, as an ailment's riders are; see
+	 * `UCataclysmAbilitySystemComponent::ReceiveDebuffDamageCut`.
+	 *
+	 * @param bIsASpreadCopy  set while `UCataclysmSkillEffects::ApplySpreadCopy`
+	 *                        runs
+	 */
+	static void NoteLaid(AActor* Instigator, AActor* Target, const FGameplayTag& Debuff,
+						 bool bIsASpreadCopy);
+
+	/**
+	 * The percent less this character deals now for the debuffs it carries, 0
+	 * to 100: nought for an ability system that is not this project's. Read by
+	 * `UCataclysmSkillEffects::WeaponDamageOf`.
+	 */
+	static float DealLessPercentOn(const UAbilitySystemComponent* Carrier);
+};
+
+/**
+ * Held by a ground zone while a sweep lays its effects on one character, so
+ * `UCataclysmDebuffs::NoteLaid` can tell a zone's debuff from one its owner
+ * applied by a skill: both name the owner as instigator. Ruled 2026-10-13.
+ *
+ * A COUNT AND NOT A FLAG, so one held inside another leaves the outer one
+ * standing when it ends.
+ */
+struct CATACLYSM_API FCataclysmZoneLaying
+{
+	FCataclysmZoneLaying();
+	~FCataclysmZoneLaying();
+	FCataclysmZoneLaying(const FCataclysmZoneLaying&) = delete;
+	FCataclysmZoneLaying& operator=(const FCataclysmZoneLaying&) = delete;
+
+	/** Whether any zone is laying its effects at this moment. */
+	static bool IsLaying();
 };
