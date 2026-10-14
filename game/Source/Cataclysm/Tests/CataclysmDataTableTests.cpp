@@ -821,7 +821,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 608 SINCE THE ROW THAT MAKES GADGETS CHOOSE THE MOST HEALTH, issue #1833, from 607.
 	//
 	// AND 609 SINCE THE ROW THAT MAKES GADGETS FIRE A VOLLEY, issue #1833, from 608.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    609)
+	//
+	// AND 610 SINCE THE ROW THAT MAKES A GADGET BURST ON A KILL, issue #1833, from 609.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    610)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
