@@ -279,7 +279,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # ONE MORE JOINED with its row, issue #1833: "When a gadget kills an enemy, it
               # fires an additional burst at the nearest enemy within its range". A gadget
               # asks its summoner whether it is above nought when its own blow has killed.
-              "gadgets_burst_on_kill"}
+              "gadgets_burst_on_kill",
+              # ONE MORE JOINED with its rows, issue #1833: the first half of "Your gadgets
+              # are invincible but lose 5% of their maximum HP per second passively". A
+              # gadget asks its summoner whether it is above nought on each of its steps.
+              "gadgets_take_no_damage"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -891,8 +895,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 608 over 514: one row on one enchantment.
 #: AND 610 OVER 516 SINCE THE ROW THAT MAKES A GADGET BURST ON A KILL,
 #: issue #1833, 2026-10-13, from 609 over 515: one row on one enchantment.
-AUTHORED_ROWS = 610
-AUTHORED_ENCHANTMENTS = 516
+#: AND 612 OVER 517 SINCE THE TWO ROWS THAT MAKE GADGETS TAKE NO DAMAGE AND DRAIN THEM,
+#: issue #1833, 2026-10-13, from 610 over 516: two rows on one enchantment.
+AUTHORED_ROWS = 612
+AUTHORED_ENCHANTMENTS = 517
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

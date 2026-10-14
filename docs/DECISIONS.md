@@ -2,6 +2,293 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make its wearer's gadgets take no damage and lose a percent of the maximum health they were placed with each second: two stats, the no-damage window every character has and a direct drain, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the two stats' names, one function
+that keeps the window open and takes the drain, the maximum as placed, the drain's mark, one call in `GadgetStep`
+and one call at the end of `Spawn`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two names
+on the list of stats with no attribute), `game/Source/Cataclysm/Tests/CataclysmGadgetBehaviourTests.cpp` (three
+tests), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two probes),
+`tools/generate_datatables.py` (the two names and the refusals of the pair),
+`tools/tests/test_generate_datatables.py` (one class of eight tests),
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (the words of one job). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Your gadgets are invincible but lose 5% of their maximum
+HP per second passively".
+
+- **The row acts on the Bolt Turret and the Ballista only. A Spike Trap is a trap and not a gadget.** Ruled
+  2026-10-07, in the entry headed "The Spike Trap carries the tag `Type.Trap`", under its heading "FIRST, WHAT
+  CHANGES FOR A PLAYER: A SPIKE TRAP IS NOW A TRAP AND NO LONGER A GADGET FOR `gadgets_active`". A holder's Spike
+  Trap, imp and mote are hurt as before and lose nothing to the drain.
+- **The two turret skills last 5 and 8 seconds, so without a "gadgets last longer" row the drain never ends them
+  and the row is nearly all benefit.** Ruled to be said first. At 5% a second a gadget is emptied in 20 seconds.
+- **And WITH "Gadgets last 30%-60% longer" the drain still never ends them.** Read from the data on 2026-10-13
+  and not in the ruling: that row at its best makes a Bolt Turret last 8 seconds and a Ballista 12.8, both under
+  20. The one gadget in the data that stands 20 seconds is a Ballista of Iron Fortress (`Duration=20`), whose
+  lifespan and whose drain end in the same moment; with any longer duration the drain ends it at 20 seconds.
+  Which of the two timers fires first at exactly 20 was not read. The Ritualist's Kept Longer, "+3% increased
+  duration of what you summon per point", adds to this and was not worked out. **So for the two turret skills
+  the row is all benefit: gadgets that cannot be hurt.** For the coordinating session.
+- **"Gadgets have 40%-70% increased HP" then does nothing for the wearer.** Ruled to be said first. The drain is
+  a percent of the maximum the gadget was placed with, which that row has already raised, so a gadget with more
+  health loses more each second and is emptied in the same 20 seconds; and nothing else lowers its health.
+- **"Invincible" is no damage from any blow and any tick, and nothing more.** Ruled: crowd control, displacement
+  and removal by the summon cap are unchanged, and enemies still target the gadget. A holder's gadget can be
+  stunned, is still chosen by an enemy as its target, and is still removed when a newer one needs its place.
+  **An enemy that chooses it attacks it for nothing for as long as it stands.**
+- **A blow that does nothing to it is emptied whole, as the no-damage window empties any blow**: no health, no
+  energy shield or absorb drawn, no leech for the attacker, and nothing that asks what the blow dealt hears of
+  any. The retaliation a gadget's own blow provokes is a blow and does nothing to it either.
+- **A direct loss of health still reaches it.** The drain is one. So is the Sacrificial Ward, which spends the
+  commanded creature with the least health when its holder's shield would break: a draining gadget is often
+  that creature. By reading; not tested.
+- **A gadget the drain empties dies as destroyed, and that is a minion's death in every way.** Ruled:
+  `gadget_destroyed` is raised. Also, by reading: its summoner gains what the death of a minion gives a
+  Ritualist, Shared Ruin's blast is dealt from it, and it leaves a chaos pool where its summoner's row says so.
+  Its death names nobody as its killer.
+- **The loss is counted by the clock and taken on the quarter-second step**, so health falls by a quarter of the
+  5% four times a second and not by 5% once a second. A judgement; see below.
+- **The window is open from the moment the gadget is placed, and lapses within a second of its summoner ceasing
+  to hold the row.** The drain stops at once when the row goes.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+
+**What was not read:** whether a minion regenerates health, or is healed by anything, which would slow the drain;
+`UCataclysmRegeneration::ApplyStep`; what a stun or a knockback does to a minion; the summon cap's removal past
+the comments that say it does not go through `HandleDeath`; what the heads-up display draws for a character
+inside the no-damage window; the order of a lifespan's end and a repeating timer in one frame; how a worn row
+becomes a line of the stat line at a gear refresh.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's own words, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". Each ruling below is a labelled judgement by the coordinating session under the owner's delegation.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | It acts on the Turret and the Ballista only; a Spike Trap is a trap. | Both stats are read through `ACataclysmMinion::SummonersGadgetStat`, which answers nought for everything that is not `IsGadget`; `GadgetStep` returns for it before that. |
+| R2 | A flag that makes the summoner's gadgets take no damage from any blow. | `ACataclysmMinion::StepNoDamageAndDrain`: while `gadgets_take_no_damage` is above nought, `GrantDamageImmunity(NoDamageRenewalSeconds)` on the gadget's own ability system, on every step. |
+| R3 | 5% of the gadget's maximum health AS SPAWNED lost each second as a direct loss. | The same function: `SpawnedMaxHealth`, read at the gadget's first step, times the percent, times the seconds since the last step, written to health by `ApplyModToAttribute`. |
+| R4 | Crowd control, displacement and removal by the summon cap unchanged. | No line of any of them is touched; the window is read only where a blow's damage is emptied. |
+| R5 | A gadget the drain empties dies as destroyed and raises `gadget_destroyed`. | The same function: the record of the last blow is emptied, health is written to nought and `HandleDeath` is called. |
+| R6 | Said first: the turret skills' 5 and 8 seconds; "Gadgets have increased HP" does nothing. | "Said first". |
+
+### HOW A BLOW IS EMPTIED IN THE VITAL SET, AND WHICH WAY WAS CHOSEN
+
+Read on 2026-10-13 in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. The brief asked for the two
+existing ways to be read and the least to be chosen.
+
+- **The no-damage window.** `UCataclysmAbilitySystemComponent::IsDamageImmune` is true until a time,
+  `DamageImmuneUntilSeconds`, which `GrantDamageImmunity` moves later and never earlier. It is read at three
+  places after the calculation: where a worn row may absorb or reflect the blow, where the result is emptied, and
+  where a save from a lethal blow is judged. Inside it all four figures of the result are set to nought, for a
+  hit and for a tick alike. Nothing else in the game reads it: a search of `game/Source` outside the tests finds
+  those three places and the function itself.
+- **A creature no damage reaches.** `ACataclysmEnemyCharacter::TakesNoDamage`, true for The Reaper and for a
+  shrouded creature, read once after the saves, emptying the same four figures. It is a member of the enemy
+  class, and a minion is not an enemy.
+- **Chosen: the window, held open.** It needs no line of the vital set: the gadget's step renews the window on
+  the gadget's own ability system while its summoner holds the flag. The option not taken: a third test in the
+  vital set beside the creature's, asking a minion whether its summoner holds the flag, which is one more line in
+  a function other layers of this stack also change, and one more lookup on every blow any minion takes.
+- **What the choice costs.** The window is a time and not a state, so it lapses up to a second after the row
+  goes, and it needs the step: a gadget that was never stepped would take damage. `Spawn` takes a gadget's first
+  step as it places it, so there is no first quarter of a second in which it can be hurt.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The window is renewed for one second on each step**, `NoDamageRenewalSeconds`. Four steps come in a second,
+  so three could be missed. The option not taken: half a second, which lapses sooner when the row goes and
+  allows one missed step.
+- **`Spawn` calls `GadgetStep` once as it places a minion.** For the window, and to record the maximum as placed.
+  The option not taken: leave the first step to the timer, a quarter of a second after the placing.
+- **The loss is taken pro rata on each step, by the gadget's age.** The option not taken: 5% in one write each
+  whole second. "Per second" is read as a rate, as the game's other losses and gains on that step are paid.
+- **No time before a gadget's first step, and none while its summoner does not hold the row, is charged.** The
+  mark of the drain moves on every step whether or not anything is owed.
+- **The maximum as placed is read at the first step and not stored by `Spawn` where health is set.** One line
+  less in `Spawn`; the first step is in `Spawn`, after health is set. It is the maximum after `minion_health`.
+- **A gadget is ended when what the drain would leave is a ten-thousandth of its maximum as placed or less**,
+  `DrainedToNothingShare`. Twenty steps of a twentieth do not add to exactly the whole in floating point. The
+  option not taken: end it only at nought or below, which can leave a gadget standing one more step on a
+  thousandth of a point.
+- **Killed by nobody.** The record of the last blow is emptied before the write, as the Sacrificial Ward empties
+  it for the minion it spends. The option not taken: leave it, which names as the killer whoever last hurt the
+  gadget before its summoner held the row.
+- **The generator refuses an enchantment that states one of the two stats without the other, though the game
+  reads each by itself.** Gadgets that take no damage and lose nothing is a design nobody ruled. A test shows
+  what the game does with each alone. The option not taken: accept either alone.
+- **The percent is one figure in both columns, above nought and at most 100.** The sentence states 5 and no
+  range, and which way a range of a cost inside a benefit should roll has not been ruled. The option not taken:
+  accept a range.
+
+### THE GENRE SOURCES
+
+Recorded as `genre_2026-10-13.md` of the enchantment session gives them, and nothing else was fetched.
+
+How these were read: each page was fetched through a tool that hands back a model's reading of the page and not
+the page's bytes. Each page is longer than the 100,000 characters the tool read; the rest was not read.
+
+REACHED: `poedb.tw/us/Totem` (Path of Exile), its first 100,000 of 155,748 characters, read once. SUMMARY, the
+tool's words and not a quotation: the page states no rule for how a totem chooses its target, none for a totem
+immune to damage or losing life each second, and nothing that happens when a totem kills an enemy. It gave two
+lines about several shots of one attack, which are about projectiles and not about a volley at every enemy; they
+are not recorded.
+
+So no source was reached that settles this sentence. Every reading of it is this game's own. NOT REACHED: Diablo,
+Last Epoch, Torchlight; `poewiki.net` is blocked to the tool.
+
+### WHAT WAS BUILT
+
+- **The stats.** `gadgets_take_no_damage`, a flag read as above nought, and
+  `gadget_health_lost_percent_per_second`, a flat percent. Neither has a gameplay attribute or a base. They are
+  the last two names on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Their names in code are
+  `ACataclysmMinion::GadgetsTakeNoDamageStat` and `GadgetHealthLostPercentPerSecondStat`.
+- **`ACataclysmMinion::StepNoDamageAndDrain()`.** If the flag is held, `GrantDamageImmunity` for
+  `NoDamageRenewalSeconds`, 1 second. Then the seconds since `LastDrainAtAgeSeconds` are taken and the mark is
+  moved to the gadget's age. `SpawnedMaxHealth` is read from the maximum health attribute if it is still nought.
+  If the percent, the seconds and the maximum are all above nought, the loss is their product over a hundred. If
+  what it would leave is above `DrainedToNothingShare` of the maximum as placed, it is taken from health by
+  `ApplyModToAttribute` and the function answers true. Otherwise a line is logged, the record of the last blow is
+  emptied, health is written to nought, `HandleDeath` is called, and it answers false.
+- **The call in `GadgetStep`**, first of its jobs: a gadget the drain has just ended fires no volley.
+- **The call in `Spawn`**, last before it returns: `GadgetStep(Minion)`.
+- **The generator.** `GADGETS_TAKE_NO_DAMAGE_STAT`, added to `GADGET_FLAG_STATS`;
+  `GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT`, added to `GADGET_STATS`; and
+  `MAX_GADGET_HEALTH_LOST_PERCENT_PER_SECOND`, 100. `refuse_a_gadget_row_the_game_cannot_read` holds both as it
+  holds every gadget stat (flat, Required Tags exactly `Type.Deployable`, no action; the flag 1 to 1), and also
+  refuses a percent that is a range, that is nought or less or above 100, either stat twice on one enchantment,
+  and one of the two without the other on an enchantment.
+- **The rows the enchantment session is to write** are two lines on the sentence's one enchantment. The first:
+  Stat `gadgets_take_no_damage`, Value Kind `flat`, Value Low 1, Value High 1, Required Tags `Type.Deployable`.
+  The second: Stat `gadget_health_lost_percent_per_second`, Value Kind `flat`, Value Low 5, Value High 5,
+  Required Tags `Type.Deployable`. No Condition, no Scale, no Action and no other cell on either. **With the
+  rows, that session adds `gadgets_take_no_damage` to `FLAG_STATS`** in
+  `tools/tests/test_enchantment_effects_match_the_row_text.py`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the two names, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for each, the last two entries
+  of `Probes()`.
+- `HOOKS` in `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`: the words describing
+  the job `ACataclysmMinion::GadgetStep` now name the window and the drain as well as the volley. No job is
+  added or removed.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is NOT changed: both stats are
+  asked through `SummonersGadgetStat`.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on
+  either stat.
+- **`ACataclysmMinion::Spawn` now steps every minion it places once.** For everything that is not a gadget the
+  step returns at its first line. For a gadget whose summoner holds none of the gadget stats it records the
+  maximum health as placed and does nothing else. No merged test was found to assert anything this changes; the
+  window's run is where that is shown.
+
+### Tests
+
+Three new Unreal tests in `CataclysmGadgetBehaviourTests.cpp`, in the group `Cataclysm.GadgetDrain.`. A blow is a
+direct blow struck by hand from an enemy standing 3 m from what it strikes, and is read as the health it took.
+The clock is moved by hand and the gadget's step is called after each move. Every figure of the drain is a share
+of the maximum the gadget was placed with. Every reading has a control read first.
+
+- `AHoldersTurretTakesNoDamageFromABlowFromTheMomentItIsPlacedAndIsStillChosenAsATarget`: two summoners, one
+  holding both rows. In order: a blow of 10 takes health from the control's turret; the enemy beside it chooses
+  it as its target; the holder's turret, with no step called by the test, takes nothing from a blow of 10;
+  nothing from a blow of a million; it is not dead; the enemy beside it still chooses it; after two seconds of
+  quarter-second steps a blow takes nothing; then the rows are taken away and, 1.1 seconds on, a blow takes
+  health again.
+- `AHoldersTurretLosesFivePercentOfItsMaximumAsPlacedEachSecondAndIsDestroyedWhenEmpty`: two summoners, one
+  holding both rows. In order: the holder's turret was placed with a maximum; it is full; that maximum was
+  recorded at its placing; the control's is full; after one second the control's has lost nothing; the holder's
+  has lost 5%; half a second later 7.5%; its maximum is doubled by hand and at 2 seconds it has lost 10% of the
+  maximum it was placed with; at 19 seconds it is standing; with 5% left; nothing announced; at 20 seconds it is
+  dead; `gadget_destroyed` was raised once; its death names nobody; a step on its body announces nothing more;
+  the control's turret is standing at 21 seconds; with all its health; and nothing was announced to its summoner.
+- `AHoldersSpikeTrapAndImpAreStruckAndLoseNothingToTheDrainAndEachRowWorksByItself`: three summoners. After one
+  second, in order: the turret under both rows has lost 5%; a blow of 5 takes nothing from it; the same
+  summoner's Spike Trap has lost nothing; a blow of 5 takes health from it; its imp has lost nothing; a blow
+  takes health from it; under the loss alone a turret has lost 5%; a blow takes health from it; under the flag
+  alone a turret has lost nothing; a blow takes nothing from it.
+
+Two probes join `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. `ProbeGadgetsTakeNoDamage`: the
+flag is granted after the turrets are placed and each turret is stepped once by hand; a blow of 10 takes health
+from the plain summoner's turret and none from the other's. `ProbeGadgetHealthLostPercentPerSecond`: after 2
+seconds and a step, the plain summoner's turret has all its health and the other's has lost a tenth of what it
+was placed with.
+
+Python: `TestGadgetsTakeNoDamageAndAreDrained` in `tools/tests/test_generate_datatables.py`, eight tests on a
+made-up sheet: the two rows are carried through as rows 1 and 2 of one enchantment and refused by no check; both
+names are stats with no attribute and only the first is a flag; the generator's names are the ones
+`CataclysmMinion.cpp` holds; each wrong shape of either row is refused once; one of the two without the other is
+refused, and the two on two enchantments are two refusals; a stat twice on one enchantment is refused; a
+condition or a scale on either is refused by the checks that hold those; and the sheet's validation runs the
+check.
+
+**Not tested:** crowd control and displacement on a holder's gadget; removal by the summon cap; a tick of damage
+over time on a holder's gadget, which the window empties as it empties a blow; the retaliation a gadget's own
+blow provokes; the Sacrificial Ward spending a holder's gadget; the lifespan ending a gadget in the moment the
+drain does; what a drained gadget's death sets off beyond `gadget_destroyed`; a gadget that is healed or
+regenerates; a Ballista; the steps arriving from the real timer; the rows arriving from a worn item, and the row
+coming off in play; what a player sees on the gadget's health bar; a gadget with "Gadgets have 40%-70% increased
+HP" worn, whose drain was reasoned and not run.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted once in its file by a script at this layer's commit, each is one line, and each
+new text keeps the file's brackets paired. The failed assertions are counted by reading the tests and were not
+measured. The prefix of all three is `Cataclysm.GadgetDrain.`, with its trailing dot, which is 3 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| D-I, the window is what stops a blow | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `AbilitySystemComponent->GrantDamageImmunity(NoDamageRenewalSeconds);` | `AbilitySystemComponent->GrantDamageImmunity(0.0f);` | `AHoldersTurretTakesNoDamageFromABlowFromTheMomentItIsPlacedAndIsStillChosenAsATarget` | `AHoldersSpikeTrapAndImpAreStruckAndLoseNothingToTheDrainAndEachRowWorksByItself` |
+| D-II, the percent is of the maximum as placed | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `const float Loss = SpawnedMaxHealth * Percent / 100.0f * Elapsed;` | `const float Loss = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) * Percent / 100.0f * Elapsed;` | `AHoldersTurretLosesFivePercentOfItsMaximumAsPlacedEachSecondAndIsDestroyedWhenEmpty` | none |
+| D-III, a gadget takes its first step as it is placed | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `GadgetStep(Minion);` | `Minion->AttacksMade += 0;` | `AHoldersTurretTakesNoDamageFromABlowFromTheMomentItIsPlacedAndIsStillChosenAsATarget` | `AHoldersTurretLosesFivePercentOfItsMaximumAsPlacedEachSecondAndIsDestroyedWhenEmpty` |
+
+Failed assertions in each test, by reading:
+
+- **D-I, 6 in 2 tests.** `GrantDamageImmunity` does nothing for nought seconds, so no window is ever opened. The
+  first test 5: "a holder's turret takes nothing from a blow of 10 from the moment it is placed"; "and nothing
+  from a blow of a million", which kills it; "and it is not dead"; "the enemy beside it still chooses it as its
+  target", because a body is not chosen; and the last line, "1.1 seconds after its summoner stops holding the
+  row a blow takes health again", because a blow on a body takes nothing. Its line "two seconds on, stepped as
+  the game steps it, it still takes nothing from a blow" passes for the same reason. The third test 1: "control:
+  and a blow of 5 takes nothing from it, so both rows are held", after which the test returns. The drain test
+  passes: nothing strikes anybody in it.
+- **D-II, 4 in 1 test.** With the break the loss is a percent of the maximum the gadget holds now. Until its
+  maximum is doubled nothing differs. Then the half second takes 5% of the maximum as placed and not 2.5%, so
+  "with its maximum doubled since, it has lost 10% of the maximum it was PLACED with at 2 seconds" fails at
+  12.5%; each second after takes 10%, and the turret is ended at 11 seconds, so "at 19 seconds it is still
+  standing", "with 5% of the maximum it was placed with left" and "and nothing has been announced as destroyed"
+  fail. The lines at 20 and 21 seconds pass: it is dead and was announced once.
+- **D-III, 6 in 2 tests.** With the break a gadget is not stepped as it is placed. The first test 5, the same
+  five as under D-I: the window is not open at the placing, the blow of a million kills the turret, and every
+  later line reads a body. The drain test 1: "set-up: and that maximum was recorded at its placing", after which
+  the test returns. The third test passes: it steps each minion by hand before it strikes anything, and that
+  step is then each gadget's first.
+
+**Tests of another group expected to fail, to check in the window:** under D-I the probe
+`ProbeGadgetsTakeNoDamage` fails on its last assertion. Under D-II and D-III both probes pass: each steps its
+turrets by hand, and neither changes a maximum.
+
+**Tests and no proof:** that the drain's last step ends the gadget and empties the record, which has a test for
+the death and the record and no break here (a write that takes health to nought ends a character through the
+attribute hook with the last branch or without it); that a trap and an imp are left alone; that the window
+lapses when the row goes; that each row works by itself.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A row can make its wearer's gadget strike the nearest enemy once more when a blow of its own kills: a flag stat read at the end of the gadget's blow, with no row event and no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the stat's name, a count of

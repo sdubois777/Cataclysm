@@ -8323,6 +8323,99 @@ namespace CataclysmStatExemptionTest
 					  FGadgetProbe::HealthOf(Probe.Near[FGadgetProbe::Granted]) < 8999.0f);
 	}
 
+	/**
+	 * `gadgets_take_no_damage`, a flag on a summoner, read by `ACataclysmMinion::StepNoDamageAndDrain` on the
+	 * gadget's step. Ruled 2026-10-13: "Your gadgets are invincible but lose 5% of their maximum HP per second
+	 * passively". The flag is granted after the turrets are placed, so each turret's step is called once by hand,
+	 * as the quarter-second step would call it. Then each turret's nearer enemy strikes it with a direct blow of
+	 * 10. The plain summoner's turret loses health; the turret of the one holding the flag at a flat 1 loses none.
+	 *
+	 * WHAT THIS DOES NOT REACH. The window from the moment of placing, its renewal, its lapse when the row goes,
+	 * and a trap and an imp still being hurt: `Cataclysm.GadgetDrain.` in `CataclysmGadgetBehaviourTests.cpp`
+	 * holds those.
+	 */
+	void ProbeGadgetsTakeNoDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FGadgetProbe Probe(World, /*NearHealth=*/9000.0f, /*FarHealth=*/9000.0f);
+		if (!Probe.IsWhole(Test))
+		{
+			return;
+		}
+		GrantFlat(Probe.Summoners[FGadgetProbe::Granted], ACataclysmMinion::GadgetsTakeNoDamageStat, 1.0f);
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Plain]);
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Granted]);
+
+		const auto Taken = [&Probe](int32 Index)
+		{
+			const float Held = FGadgetProbe::HealthOf(Probe.Turrets[Index]);
+			UCataclysmSkillEffects::ApplyDirectDamage(Probe.Near[Index], Probe.Turrets[Index], 10.0f);
+			return Held - FGadgetProbe::HealthOf(Probe.Turrets[Index]);
+		};
+		const float PlainTook = Taken(FGadgetProbe::Plain);
+		if (!Test.TestTrue(*FString::Printf(TEXT("control: a blow of 10 takes health from the turret of a summoner "
+												 "holding no flag: %.2f"), PlainTook), PlainTook > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("and none from the turret of one holding gadgets_take_no_damage at 1, so "
+							"StepNoDamageAndDrain really reads it"),
+					   Taken(FGadgetProbe::Granted), 0.0f, 0.001f);
+	}
+
+	/**
+	 * `gadget_health_lost_percent_per_second`, read in the same function. Ruled the same day, for the same
+	 * sentence. Each turret's step is called once at its placing's moment, the world's clock is moved 2 seconds by
+	 * hand, and each step is called again. The plain summoner's turret holds all its health; the turret of the
+	 * one holding the stat at a flat 5 has lost a tenth of the maximum it was placed with.
+	 *
+	 * WHAT THIS DOES NOT REACH. The maximum as placed against a later one, the death at the end and what it
+	 * announces: `Cataclysm.GadgetDrain.` holds those.
+	 */
+	void ProbeGadgetHealthLostPercentPerSecond(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FGadgetProbe Probe(World, /*NearHealth=*/9000.0f, /*FarHealth=*/9000.0f);
+		if (!Probe.IsWhole(Test))
+		{
+			return;
+		}
+		GrantFlat(Probe.Summoners[FGadgetProbe::Granted],
+				  ACataclysmMinion::GadgetHealthLostPercentPerSecondStat, 5.0f);
+		const float PlainPlaced = FGadgetProbe::HealthOf(Probe.Turrets[FGadgetProbe::Plain]);
+		const float GrantedPlaced = FGadgetProbe::HealthOf(Probe.Turrets[FGadgetProbe::Granted]);
+		if (!Test.TestTrue(TEXT("set-up: both turrets were placed with health"),
+						   PlainPlaced > 0.0f && GrantedPlaced > 0.0f))
+		{
+			return;
+		}
+
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Plain]);
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Granted]);
+		World->TimeSeconds += 2.0f;
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Plain]);
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Granted]);
+
+		Test.TestEqual(TEXT("control: after 2 seconds the turret of a summoner holding no row has all its health"),
+					   FGadgetProbe::HealthOf(Probe.Turrets[FGadgetProbe::Plain]), PlainPlaced, 0.001f);
+		Test.TestEqual(TEXT("and the turret of one holding gadget_health_lost_percent_per_second at 5 has lost a "
+							"tenth of the maximum it was placed with, so StepNoDamageAndDrain really reads it"),
+					   GrantedPlaced - FGadgetProbe::HealthOf(Probe.Turrets[FGadgetProbe::Granted]),
+					   GrantedPlaced * 0.10f, GrantedPlaced * 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8473,6 +8566,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("gadgets_target_most_health"), &ProbeGadgetsTargetMostHealth},
 			{TEXT("gadget_volley_every_seconds"), &ProbeGadgetVolleyEverySeconds},
 			{TEXT("gadgets_burst_on_kill"), &ProbeGadgetsBurstOnKill},
+			{TEXT("gadgets_take_no_damage"), &ProbeGadgetsTakeNoDamage},
+			{TEXT("gadget_health_lost_percent_per_second"), &ProbeGadgetHealthLostPercentPerSecond},
 		};
 		return Made;
 	}
