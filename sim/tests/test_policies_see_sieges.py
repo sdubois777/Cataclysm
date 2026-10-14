@@ -101,8 +101,10 @@ def a_reachable_siege(sim, city, **kw):
     covering the reachable case the first time the roll changed.
 
     THAT WAS ACUTE WHEN THE MARGIN WAS ONE DAY AND IT IS STILL TRUE NOW THAT IT
-    IS NOT. At tier 1 the median walk is 14 days to an Outpost and 37 to a
-    Sanctuary, against the 25 and 55 a fresh Siege has left since the owner cut
+    IS NOT. At tier 1 the median walk is 14 days to an Outpost and 34 to a
+    Sanctuary (37 until 2026-10-12, when an ordinary dungeon began to leave
+    after it hits its city), against the 25 and 55 a fresh Siege has left
+    since the owner cut
     the growth on issue #1349 on 2026-09-06; it left 14 and 34 before that, and
     the median player arrived as the city fell. Both medians rose by issue
     #1357, which changed when a campaign ends rather than anything about a walk;
@@ -234,11 +236,16 @@ class TestItIsSilentAboutEverythingElse:
 
 
 class TestTheWindowToAnswerOneOpensAndCloses:
-    """AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY -- 25 days for an Outpost, 70
-    for the Pillar since the owner cut the growth on issue #1349 -- so "will
-    this city die?" is settled before a policy is asked. The only live question
-    is whether the player can still get there, and that is what the urgency
-    answers.
+    """AN UNATTENDED SIEGE EMPTIES ITS CITY IF IT STANDS LONG ENOUGH -- 25 days
+    for an Outpost, 70 for the Pillar since the owner cut the growth on issue
+    #1349 -- and the urgency treats "will this city die?" as settled before a
+    policy is asked. The only question it asks is whether the player can still
+    get there.
+
+    THIS SAID "ALWAYS KILLS ITS CITY" UNTIL 2026-10-12. An ordinary dungeon
+    now leaves when its timer runs out and takes its Siege with it, which can
+    be before the city is empty; `siege_urgency` has the measurement. The
+    urgency was not changed, and neither was any assertion below.
     """
 
     def test_a_siege_the_player_can_still_reach_is_worth_the_fatal_weight(self):

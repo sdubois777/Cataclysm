@@ -169,6 +169,21 @@ def base_config() -> TuningConfig:
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
+        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
+        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
+        # leaves after it hits its city. Every figure this file's docstring
+        # and the issues quote was measured with the dungeon staying, and none
+        # has been re-measured, so the setting is held where it was. Remove
+        # this line to measure the shipped rule; the figures then move.
+        dungeon_persists_after_resolve=True,
+        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
+        # Quest dungeon's timer hit its city. This file's figures were
+        # measured with that timer costing the city nothing, and none
+        # was re-measured. Remove this line to measure the shipped rule.
+        quest_timer_hits_city=False,
+        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
+        # of a dungeon's floors, the tree's included.
+        hit_scales_with_natural_floors=False,
     ).with_tree(TREE_NONE)
 
 

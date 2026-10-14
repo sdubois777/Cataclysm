@@ -2,6 +2,954 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — In the simulation a Quest dungeon's timer hits its city, a surge is 5 dungeons every 90 days, and a hit is sized by natural floors; the game has none of the three
+
+**Said first: the game has NONE of these three rules, and the two halves differ on purpose.** This change is the
+simulation, its tests and this entry only. No file under `game/` changed, and `docs/Cataclysm_GDD_v2.md` was not
+edited. Nothing was compiled and nothing was run in Unreal. `sim/experiments.py` was not run. Each difference has
+a check in `tools/tests` that fails when the game's half changes and says what to do then:
+
+| Rule in the simulation | The game today | The check |
+|---|---|---|
+| A Quest dungeon's timer running out hits its host city | `UCataclysmEmpireRun::ResolveDungeon` sends a Quest dungeon to `RelocateQuestDungeon` and returns before any damage | `test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py` |
+| A surge is 5 dungeons every 90 days | `UCataclysmSurgeScheduler::IntervalDays` is 120 and `DungeonsPerSurge` is 4 | `test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py` |
+| A hit is sized by a dungeon's natural floors | `FCataclysmDungeon::BiteScale` divides `Floors`, which two city upgrades move after the roll | `test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py` |
+
+**One existing test fails at this commit and was not changed, because it states another rule.**
+`sim/tests/test_quest_relocation_is_adjacent.py::TestASiegeMayNotWalkOntoABesiegedCity::test_it_stays_when_every_neighbour_is_besieged`
+prints: "AssertionError: a Quest dungeon carrying a Siege moved although every city adjacent to Outpost (-3,0)
+already had one. It must stay where it is; issue #1371". The rule it states is not broken. The test runs fifty
+Quest timers on one Outpost. Each now takes 100 defence, so the Outpost falls at the tenth; a fallen city exposes
+its inward neighbour, which the test did not besiege, and the dungeon moves there. The test needs a set-up in
+which the home city stands (for example `quest_timer_hits_city=False` in its configuration). That is for the
+coordinating session to decide.
+
+**The reading taken for the size of a Quest dungeon's hit is the ordinary row at a scale of 1.0.** The other
+reading multiplies it by the Quest dungeon's floors over the midpoint of the ordinary row's floor range, which
+makes it about 2.2 times an ordinary hit on an Outpost at the middle of both ranges. Its figures are row (d) of
+every table below. For the defending Explorer `triage` player at tier 1, day cap 4,000, 500 campaigns: 1.24
+cities lost (standard error 0.07) and 50.4% won under the other reading, against 0.93 (0.05) and 52.2% under the
+reading taken.
+
+**A consequence the ruling's words imply and did not spell out: an empire-tree node that REMOVES floors no longer
+shrinks a dungeon's hit.** The hit is sized by natural floors, so `Exclusionary Mapping` (-1 floor a point, 10
+points) and any preset with a negative `floor_delta` (`TREE_EXPLORER_VIA_FLOORS`, -25) still make a dungeon
+shorter to walk, poorer and sooner to come due, and no longer make it hit less. This is a second change of
+behaviour. It is for the coordinating session to confirm.
+
+**The game does have floors that a player's investment adds, and they are not the empire tree's.** The game has
+no empire tree. It has two city upgrades, `DungeonFloorsMore` and `DungeonFloorsFewer`, which
+`UCataclysmSurgeScheduler::MakeDungeon` applies after the roll, and `BiteScale` reads `Floors` after them. So the
+game's hit already uses natural floors only in a city that holds neither upgrade. Whether a city upgrade's floors
+are natural is not ruled.
+
+**Nothing was retuned beyond 90 days and 5 dungeons.** No damage figure, timer, city health or share changed.
+
+**Four analysis scripts were not re-measured and now hold the model where their figures were taken.**
+`analyse_surge_cadence.py`, `analyse_board_empty_surge.py` and `analyse_tier_throughput.py` read the cadence
+that ships; they now hold 4 dungeons every 120 days by name. At 5 every 90, `analyse_tier_throughput.arrival_rate`
+gives 1.19 walk-days of dungeon a day at tier 1, and that file's own test says of a figure above 1.0: "the board
+cannot be kept clear even there and this script's whole framing is wrong". That finding is recorded here and
+nowhere re-measured. Those three and `analyse_siege_dose.py` also hold `quest_timer_hits_city=False` and
+`hit_scales_with_natural_floors=False`, beside the line that already held an ordinary dungeon staying.
+
+### The decisions, and who said what
+
+The owner, 2026-10-08, verbatim: "Ordinary dungeons will do their city/population damage, and then despawn.
+Quest dungeons will do their city/population damage, and either refresh their timer and stay on that city, or
+potentially move to an adjacent city. Fallen city dungeons don't have a resolution timer as they're the enemies
+now."
+
+The owner, 2026-10-09, verbatim: "your rec on all the open questions". One recommendation it accepted, in the
+coordinating session's words and not the owner's: a Quest dungeon costs its city nothing.
+
+The owner, typed in the coordinating session on 2026-10-13, verbatim: "your rec on all three, continue".
+
+The two recommendations that sentence accepts which concern this change, in the coordinating session's words and
+not the owner's: (1) a Quest dungeon HITS its city when its timer runs out, at the size of an ordinary dungeon's
+hit for that city, then refreshes or moves as before; surges every 90 days of 5 dungeons. (2) a dungeon's hit is
+sized by its NATURAL floors, not the floors the Explorer tree adds.
+
+**For Quest dungeons, 2026-10-13 supersedes both earlier lines.** It reverses the line of 2026-10-09 and returns
+to the owner's sentence of 2026-10-08.
+
+The size in (1), "an ordinary dungeon's size", is the accepted recommendation. It is not a new formula, and no
+source on how shipped games do it was read.
+
+### What was read before writing
+
+- `sim/cataclysm_sim/engine.py`: `Simulation._resolve` whole, `Dungeon.resolves`, `_make_dungeon`, `_fall`,
+  `_resolve_on_death`, `_apply_siege_damage`, `step`, `run`, `surge_count`, `surge_gap`.
+- `sim/cataclysm_sim/config.py`: `DUNGEON_SPECS` (the Quest rows carry 0.0 damage), `quest_relocates`,
+  `quest_move_chance`, `EmpireTree.floors_added`, `TREE_EXPLORER_AS_DESIGNED` (+20 floors and +20 a Cataclysm).
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `ResolveDungeon` and `RelocateQuestDungeon`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`: `BiteScale`, and `MakeDungeon` where the roll and the
+  two city upgrades set `Dungeon.Floors`. `CataclysmSurge.h`: `IntervalDays`, `DungeonsPerSurge`, `Resolves`.
+- A search of `game/Source` for an empire tree found none.
+- `tools/tests/test_surge_port.py`, and the divergence check written on 2026-10-12.
+
+**How each half knows natural floors.** Before this change the model did not: `_make_dungeon` rolled a depth,
+multiplied it by the pattern's `floors_mult`, added `cfg.tree.floors_added(...)`, and kept only the total. The
+total was read by the walk, the resolve timer, the power, the death chance, the reward and the hit. The game
+keeps one `Floors` as well.
+
+### How each change is built
+
+**(ii) A Quest dungeon's timer hits its host.** `TuningConfig.quest_timer_hits_city`, default True. In
+`_resolve`, the Quest branch calls `Simulation._quest_hit` when the setting is on and the city stands, before the
+timer is refreshed and before the move. `_quest_hit` takes the ordinary (`BASIC`) row of the HOST city's tier at
+the moment of the hit, times the tree's `damage_taken`, and fells the city at nought. False is the model as it
+was; no line of the hit runs and the random stream is unchanged. `quest_hit_scales_with_depth`, default False, is
+the other reading.
+
+**(iii) 90 days and 5 dungeons.** `surge_interval_days` 120 to 90, `surge_dungeon_count` 4 to 5.
+
+**(iv) Natural floors.** `Dungeon.tree_floors` holds what the tree added (negative when it removed), set once in
+`_make_dungeon`. `Dungeon.natural_floors` is `floors - tree_floors`. `Simulation._hit_floors` returns it, and
+`_resolve` and the other reading of the Quest hit divide it by the row's midpoint.
+`hit_scales_with_natural_floors`, default True; False is the old scale. With no tree the two give the same
+campaign bit for bit, which a test holds on one seed.
+
+### The writing session's judgements, for the coordinating session to confirm
+
+Each is a judgement by the writing session where the rulings did not settle the point.
+
+1. **The Quest dungeon's own rows stay at 0.0.** The hit reads the ordinary row of the host's tier. Changing the
+   Quest rows would have broken the specification table's equality with the game's `SpecFor` and would have
+   sized the hit from the tier the dungeon was rolled on. Not taken: non-zero Quest rows.
+2. **The host is the city the dungeon stands on when the hit lands**, not `Dungeon.city_tier`, which is the tier
+   its depth was rolled from and does not move when it relocates.
+3. **No scale by depth**, as said above.
+4. **The hit is counted in a new tally, `quest_hits`, and not in `resolved`.** `RunResult.dungeons_resolved`
+   goes on meaning ordinary dungeons, as in every earlier figure, and still equals the game's
+   `DungeonsDetonated`. `Dungeon.times_resolved` is not raised for a Quest dungeon, as it never was. Not taken:
+   counting the hit in `resolved`; a test of issue #1373 (`test_the_old_arithmetic_really_did_count_more`) would
+   then have compared two tallies that no longer nest.
+5. **A hit that fells the city has the fall absorb the Quest dungeon**, with every other dungeon on the city, as
+   when an ordinary dungeon fells a city a Quest dungeon stands on. It is not refreshed and not moved, and no
+   draw is taken. Not taken: the Quest dungeon surviving its own city's fall.
+6. **The Quest dungeon the player is inside is spared by the fall**, as `_fall` has always spared the dungeon
+   being walked; its timer is then refreshed and it may move. Reached only with `timer_ticks_while_running` on.
+7. **A Quest dungeon on a city already fallen hits nothing** and is not counted.
+8. **`Dungeon.resolves` stays "ordinary and nothing else".** A death, `_urgent` and the policies read it. So a
+   death inside a Quest dungeon still resolves nothing, and no policy treats a Quest dungeon as urgent. No
+   policy was changed.
+9. **Natural floors include the Cataclysm pattern's `floors_mult`**, because the pattern is part of what the
+   dungeon is.
+10. **Natural floors are `floors - tree_floors` and not a second stored depth.** The brief asked for the rolled
+    figure in a new field. A stored copy does not move when a depth is changed after the dungeon is made, which
+    two tests in `test_city_health_lever.py` do to pin the scale at 1.0; they state another rule and would have
+    failed. Stored this way, only the tree's part is left out of a hit. Not taken: a stored `natural_floors`.
+11. **The three analysis scripts hold 120 and 4 by name**, rather than being left to fail or being re-measured.
+12. **The Unreal test's ladders are held against the model's formula at the game's two constants**, read from
+    the header, so `TestTheHandWorkedFiguresInTheUnrealTest` still passes while the constants differ.
+
+### Existing tests that changed, each with what it asserted and what it asserts now
+
+- `sim/tests/test_resolved_counts_a_detonation.py::test_a_quest_dungeon_is_not_counted`: asserted `not bit` and
+  `moved == 0`. Asserts `bit`, `sim.quest_hits == 1` and `moved == 0`. A control was added beside it,
+  `test_with_the_hit_switched_off_a_quest_dungeon_takes_nothing`.
+- `sim/tests/test_an_ordinary_dungeon_leaves_after_it_hits_its_city.py::test_a_quest_dungeon_stays_with_its_timer_full`:
+  no assertion changed; a comment says the hit is counted elsewhere.
+- `tools/tests/test_surge_port.py::TestWhatAQuestDungeonIs::test_it_takes_nothing_from_the_city_in_either` is
+  renamed `test_its_own_rows_carry_no_damage_in_the_model`. Its assertions are unchanged: the Quest rows are 0.0.
+- `...::test_neither_lets_one_bite_its_host_when_the_timer_runs_out` is renamed
+  `test_both_single_it_out_by_kind_and_only_the_game_lets_it_off`. Its assertions are unchanged.
+- `tools/tests/test_surge_port.py::TestTheCadence::NUMBERS` lost its rows `IntervalDays` and `DungeonsPerSurge`,
+  which are now the recorded divergence. The other four rows are still held equal.
+- `...::TestTheHandWorkedFiguresInTheUnrealTest`: `gap_at` and `count_at` built `TuningConfig()`; they now set
+  the interval and the surge size to the game's constants. The asserted figures are unchanged.
+- `sim/tests/test_a_quest_dungeons_timer_hits_its_host_city.py`, written for (ii), lost three lines in (iv) that
+  set a `natural_floors` attribute which became a property.
+
+### The measurements
+
+Made on 2026-10-13 by `measure.py` in the writing session's scratch folder, against a `git archive` copy of the
+commit that holds change (iv). 500 campaigns a cell, seeds 0 to 499, 8 processes, raw `TuningConfig()` of that
+copy except what a row sets by name. Row (a) is the model as on `development`: dungeons stay, a Quest dungeon
+costs nothing, 120 days and 4 dungeons, the old hit scale. Row (b) is the package. Rows (c1) to (c4) are the
+package with one of the four changes switched back. Row (d) is the package with the other reading of the Quest
+hit. The last column of each printed line is seconds since the script began.
+
+Row (a) undefended gives 606 / 883 / 1224 at tier 1, the same three days the entry of 2026-10-12's scratch run
+printed for the old rule, which is a check that row (a) is the earlier model.
+
+Rows (b) and (c4) agree in every cell with no tree, as they must: with no tree the two scales are one number.
+
+```
+raw defaults of the copy: persists False | quest hits True | quest hit by depth False | natural floors True | interval 90.0 | count 5 | max_days 2500 | death resolves True
+  row a  development: {'dungeon_persists_after_resolve': True, 'quest_timer_hits_city': False, 'surge_interval_days': 120.0, 'surge_dungeon_count': 4, 'hit_scales_with_natural_floors': False}
+  row b  the package: nothing set
+  row c1 package, dungeons stay: {'dungeon_persists_after_resolve': True}
+  row c2 package, Quest costs 0: {'quest_timer_hits_city': False}
+  row c3 package, 120 days x4: {'surge_interval_days': 120.0, 'surge_dungeon_count': 4}
+  row c4 package, old hit scale: {'hit_scales_with_natural_floors': False}
+  row d  package, Quest hit x depth: {'quest_hit_scales_with_depth': True}
+
+UNDEFENDED: no tree, nobody enters a dungeon, day cap 8000, 500 campaigns a tier, seeds 0 to 499. Lost = the path to the Pillar is open (the Last Stand opens).
+row | tier | % lost by day 2000 | by 4000 | by 8000 | day of the loss p10 p50 p90
+a  development                | T1 | 100.0 | 100.0 | 100.0 |  606  883 1224 | 2s
+a  development                | T2 | 100.0 | 100.0 | 100.0 |  450  641  833 | 3s
+a  development                | T3 | 100.0 | 100.0 | 100.0 |  369  510  663 | 3s
+a  development                | T4 | 100.0 | 100.0 | 100.0 |  315  448  573 | 4s
+b  the package                | T1 |  98.4 | 100.0 | 100.0 |  760 1240 1704 | 6s
+b  the package                | T2 | 100.0 | 100.0 | 100.0 |  512  804 1061 | 7s
+b  the package                | T3 | 100.0 | 100.0 | 100.0 |  414  644  834 | 8s
+b  the package                | T4 | 100.0 | 100.0 | 100.0 |  353  530  684 | 9s
+c1 package, dungeons stay     | T1 | 100.0 | 100.0 | 100.0 |  428  648  889 | 10s
+c1 package, dungeons stay     | T2 | 100.0 | 100.0 | 100.0 |  325  464  588 | 11s
+c1 package, dungeons stay     | T3 | 100.0 | 100.0 | 100.0 |  292  395  485 | 11s
+c1 package, dungeons stay     | T4 | 100.0 | 100.0 | 100.0 |  247  346  427 | 12s
+c2 package, Quest costs 0     | T1 |  37.2 | 100.0 | 100.0 | 1127 2224 3163 | 15s
+c2 package, Quest costs 0     | T2 |  96.8 | 100.0 | 100.0 |  661 1335 1809 | 17s
+c2 package, Quest costs 0     | T3 | 100.0 | 100.0 | 100.0 |  516 1014 1421 | 19s
+c2 package, Quest costs 0     | T4 | 100.0 | 100.0 | 100.0 |  478  836 1117 | 20s
+c3 package, 120 days x4       | T1 |  70.2 | 100.0 | 100.0 | 1022 1730 2440 | 22s
+c3 package, 120 days x4       | T2 |  99.0 | 100.0 | 100.0 |  705 1169 1605 | 24s
+c3 package, 120 days x4       | T3 | 100.0 | 100.0 | 100.0 |  530  874 1194 | 25s
+c3 package, 120 days x4       | T4 | 100.0 | 100.0 | 100.0 |  461  729  988 | 26s
+c4 package, old hit scale     | T1 |  98.4 | 100.0 | 100.0 |  760 1240 1704 | 28s
+c4 package, old hit scale     | T2 | 100.0 | 100.0 | 100.0 |  512  804 1061 | 29s
+c4 package, old hit scale     | T3 | 100.0 | 100.0 | 100.0 |  414  644  834 | 30s
+c4 package, old hit scale     | T4 | 100.0 | 100.0 | 100.0 |  353  530  684 | 31s
+d  package, Quest hit x depth | T1 |  98.8 | 100.0 | 100.0 |  653 1121 1557 | 32s
+d  package, Quest hit x depth | T2 | 100.0 | 100.0 | 100.0 |  445  722  980 | 33s
+d  package, Quest hit x depth | T3 | 100.0 | 100.0 | 100.0 |  352  576  766 | 34s
+d  package, Quest hit x depth | T4 | 100.0 | 100.0 | 100.0 |  304  473  639 | 35s
+
+DEFENDED, day cap 4000, 500 campaigns a cell, seeds 0 to 499.
+row | policy | tree | tier | won% lost% | cities lost (s.e.) | day of a win p10 p50 p90 | day of a loss p10 p50 p90 | % not decided by day 2000 | % open at the cap | cleared | deaths | surges | from empty board | from a fall | Quest hits
+a  development                | triage     | Explorer | T1 |  44.8  53.0 |  3.19 (0.11) |  665 1402 2970 |  576 1565 3018 |  35.2 |   2.2 |   61.9 |  9.18 |  19.1 |   3.0 |   7.5 |   0.0 | 39s
+a  development                | triage     | Explorer | T2 |   2.2  96.0 | 15.78 (0.19) |  469  749 1143 |  624  964 1346 |   1.8 |   1.8 |   28.3 | 12.69 |  14.2 |   0.0 |  10.2 |   0.0 | 42s
+a  development                | triage     | Explorer | T3 |   0.4  97.8 | 16.85 (0.18) |  373  742  742 |  527  771 1014 |   1.8 |   1.8 |   13.3 |  7.09 |  12.2 |   0.0 |   9.0 |   0.0 | 47s
+a  development                | triage     | Explorer | T4 |   0.0 100.0 | 17.71 (0.18) |    -    -    - |  474  681  818 |   0.0 |   0.0 |    1.8 |  1.86 |  10.8 |   0.0 |   8.1 |   0.0 | 64s
+a  development                | triage     | no tree  | T1 |  30.0  69.2 |  6.36 (0.21) |  572 1291 2495 |  651 1602 2886 |  29.6 |   0.8 |   57.9 |  6.94 |  19.6 |   8.6 |   4.7 |   0.0 | 67s
+a  development                | triage     | no tree  | T2 |   8.4  91.6 | 18.29 (0.29) |  480  810 1286 |  752 1409 1862 |   4.4 |   0.0 |   46.8 |  9.38 |  17.1 |   1.0 |   9.4 |   0.0 | 70s
+a  development                | triage     | no tree  | T3 |   0.6  99.4 | 23.05 (0.12) |  419  995 1065 |  916 1149 1353 |   0.0 |   0.0 |   37.8 |  8.80 |  16.0 |   0.1 |  10.9 |   0.0 | 73s
+a  development                | triage     | no tree  | T4 |   0.2  99.8 | 23.54 (0.08) |  805  805  805 |  806  985 1138 |   0.0 |   0.0 |   31.0 |  7.64 |  14.5 |   0.0 |  10.5 |   0.0 | 77s
+a  development                | lane_aware | Explorer | T1 |  46.2  50.2 |  3.04 (0.11) |  669 1662 2909 |  615 1567 2915 |  36.4 |   3.6 |   64.4 |  8.72 |  19.7 |   2.9 |   7.8 |   0.0 | 81s
+a  development                | lane_aware | Explorer | T2 |   2.0  96.8 | 15.91 (0.18) |  462  851 1160 |  684 1017 1330 |   1.2 |   1.2 |   29.4 | 13.41 |  14.8 |   0.0 |  10.9 |   0.0 | 84s
+a  development                | lane_aware | Explorer | T3 |   0.2  98.4 | 16.86 (0.18) |  742  742  742 |  541  781 1033 |   1.4 |   1.4 |   13.7 |  7.30 |  12.4 |   0.0 |   9.2 |   0.0 | 89s
+a  development                | lane_aware | Explorer | T4 |   0.0 100.0 | 17.68 (0.18) |    -    -    - |  474  679  815 |   0.0 |   0.0 |    1.8 |  1.86 |  10.7 |   0.0 |   8.0 |   0.0 | 105s
+a  development                | lane_aware | no tree  | T1 |  29.8  67.2 |  5.47 (0.22) |  646 1370 2975 |  721 1641 3084 |  35.6 |   3.0 |   65.2 |  7.45 |  21.2 |   9.1 |   4.7 |   0.0 | 108s
+a  development                | lane_aware | no tree  | T2 |   5.4  94.6 | 19.39 (0.28) |  489 1069 2135 |  950 1597 2054 |  12.4 |   0.0 |   54.3 | 11.06 |  19.8 |   1.0 |  11.0 |   0.0 | 112s
+a  development                | lane_aware | no tree  | T3 |   0.6  99.4 | 23.08 (0.11) |  806 1023 1176 | 1008 1218 1424 |   0.0 |   0.0 |   40.5 |  9.62 |  17.2 |   0.1 |  11.8 |   0.0 | 116s
+a  development                | lane_aware | no tree  | T4 |   0.2  99.8 | 23.46 (0.10) |  439  439  439 |  861 1050 1211 |   0.0 |   0.0 |   34.2 |  8.24 |  15.4 |   0.0 |  11.1 |   0.0 | 119s
+b  the package                | triage     | Explorer | T1 |  52.2  47.6 |  0.93 (0.05) |  572 1113 2130 |  495 1146 2414 |  15.4 |   0.2 |   38.2 |  5.11 |  15.3 |   1.9 |   0.6 |  12.3 | 121s
+b  the package                | triage     | Explorer | T2 |   6.8  91.8 | 11.07 (0.28) |  387  726 1156 |  616 1251 1769 |   4.2 |   1.4 |   31.4 | 14.56 |  17.0 |   0.0 |   5.8 |  60.8 | 125s
+b  the package                | triage     | Explorer | T3 |   0.2  99.2 | 14.48 (0.21) | 1049 1049 1049 |  614  912 1203 |   0.6 |   0.6 |   12.4 |  6.98 |  14.0 |   0.0 |   6.6 |  77.2 | 132s
+b  the package                | triage     | Explorer | T4 |   0.0 100.0 | 15.10 (0.21) |    -    -    - |  451  719  936 |   0.0 |   0.0 |    1.9 |  1.92 |  11.5 |   0.0 |   5.8 |  79.5 | 150s
+b  the package                | triage     | no tree  | T1 |  39.4  60.6 |  2.09 (0.08) |  362  815 1752 |  360  784 1743 |   6.4 |   0.0 |   26.9 |  3.93 |  16.1 |  10.0 |   1.4 |   7.9 | 151s
+b  the package                | triage     | no tree  | T2 |  23.4  76.6 |  8.20 (0.30) |  387  644 1245 |  428  838 1762 |   3.0 |   0.0 |   24.4 |  6.12 |  15.0 |   4.7 |   4.1 |  21.9 | 153s
+b  the package                | triage     | no tree  | T3 |   2.0  98.0 | 20.48 (0.23) |  636  926 1191 |  848 1286 1630 |   0.8 |   0.0 |   31.3 |  9.86 |  20.3 |   3.0 |   9.3 |  49.8 | 155s
+b  the package                | triage     | no tree  | T4 |   0.8  99.2 | 22.48 (0.16) |  624  967 1247 |  815 1104 1308 |   0.0 |   0.0 |   25.4 |  8.65 |  17.5 |   1.9 |   9.2 |  53.4 | 158s
+b  the package                | lane_aware | Explorer | T1 |  50.4  45.8 |  1.50 (0.05) |  529 1311 2931 |  584 1320 2926 |  30.0 |   3.8 |   51.5 |  5.76 |  19.5 |   1.9 |   2.0 |  33.9 | 161s
+b  the package                | lane_aware | Explorer | T2 |   4.4  94.8 | 11.73 (0.27) |  456  706 1086 |  625 1278 1756 |   3.2 |   0.8 |   33.4 | 14.97 |  17.4 |   0.0 |   6.5 |  70.5 | 165s
+b  the package                | lane_aware | Explorer | T3 |   0.2  99.0 | 14.74 (0.21) | 1201 1201 1201 |  618  920 1238 |   0.8 |   0.8 |   12.8 |  7.04 |  14.3 |   0.0 |   6.7 |  80.0 | 172s
+b  the package                | lane_aware | Explorer | T4 |   0.0 100.0 | 15.16 (0.21) |    -    -    - |  452  721  938 |   0.0 |   0.0 |    1.9 |  1.90 |  11.6 |   0.0 |   5.9 |  79.8 | 192s
+b  the package                | lane_aware | no tree  | T1 |  36.4  62.8 |  3.01 (0.12) |  443  933 2164 |  484 1028 2296 |  15.0 |   0.8 |   38.2 |  5.12 |  18.9 |   8.8 |   2.5 |  23.9 | 194s
+b  the package                | lane_aware | no tree  | T2 |  16.0  84.0 | 11.29 (0.36) |  421  646 1363 |  531 1142 1823 |   4.6 |   0.0 |   32.5 |  7.42 |  17.4 |   3.5 |   6.2 |  44.8 | 196s
+b  the package                | lane_aware | no tree  | T3 |   2.2  97.8 | 21.55 (0.19) |  786 1226 1295 |  915 1282 1650 |   0.8 |   0.0 |   35.2 | 10.22 |  20.5 |   2.0 |  10.3 |  68.7 | 200s
+b  the package                | lane_aware | no tree  | T4 |   0.2  99.8 | 22.54 (0.16) | 1014 1014 1014 |  820 1082 1303 |   0.0 |   0.0 |   28.3 |  8.71 |  17.2 |   1.1 |   9.6 |  66.5 | 203s
+c1 package, dungeons stay     | triage     | Explorer | T1 |  39.8  59.0 |  2.59 (0.13) |  525 1118 2313 |  469 1163 2395 |  18.0 |   1.2 |   59.9 |  7.64 |  16.5 |   0.5 |   2.5 |  10.3 | 207s
+c1 package, dungeons stay     | triage     | Explorer | T2 |   3.2  95.0 | 14.75 (0.26) |  269  543  830 |  614 1051 1309 |   1.8 |   1.8 |   36.9 | 14.63 |  15.6 |   0.0 |   7.3 |  48.9 | 212s
+c1 package, dungeons stay     | triage     | Explorer | T3 |   0.2  98.0 | 16.07 (0.21) |  812  812  812 |  599  860 1089 |   1.8 |   1.8 |   21.5 |  9.36 |  13.8 |   0.0 |   7.0 |  69.8 | 217s
+c1 package, dungeons stay     | triage     | Explorer | T4 |   0.0  99.8 | 15.97 (0.22) |    -    -    - |  462  728  910 |   0.2 |   0.2 |    4.1 |  2.85 |  11.6 |   0.0 |   6.1 |  76.6 | 251s
+c1 package, dungeons stay     | triage     | no tree  | T1 |  17.2  82.8 | 15.66 (0.33) |  498  801 1551 |  639 1417 2007 |   8.8 |   0.0 |   45.0 |  6.27 |  18.8 |   1.4 |   7.9 |  17.0 | 254s
+c1 package, dungeons stay     | triage     | no tree  | T2 |   5.0  95.0 | 22.68 (0.15) |  446  597 1165 |  721 1021 1176 |   0.0 |   0.0 |   31.7 |  5.92 |  15.5 |   0.0 |  10.0 |  27.3 | 257s
+c1 package, dungeons stay     | triage     | no tree  | T3 |   0.6  99.4 | 23.92 (0.04) |  751  828  914 |  763  877  983 |   0.0 |   0.0 |   25.9 |  5.53 |  13.8 |   0.0 |   9.7 |  30.4 | 260s
+c1 package, dungeons stay     | triage     | no tree  | T4 |   0.2  99.8 | 24.00 (0.03) |  770  770  770 |  700  803  892 |   0.0 |   0.0 |   22.7 |  5.14 |  12.5 |   0.0 |   9.0 |  31.3 | 262s
+c1 package, dungeons stay     | lane_aware | Explorer | T1 |  34.0  57.4 |  4.15 (0.16) |  611 1229 2556 |  697 1485 2724 |  32.4 |   8.6 |   82.3 |  9.87 |  22.8 |   0.5 |   6.4 |  39.7 | 268s
+c1 package, dungeons stay     | lane_aware | Explorer | T2 |   1.4  97.4 | 14.97 (0.21) |  535  627 1358 |  706 1065 1351 |   1.2 |   1.2 |   38.7 | 15.34 |  16.3 |   0.0 |   8.0 |  60.0 | 274s
+c1 package, dungeons stay     | lane_aware | Explorer | T3 |   0.2  97.6 | 16.12 (0.21) | 1078 1078 1078 |  572  875 1083 |   2.2 |   2.2 |   21.6 |  9.21 |  13.8 |   0.0 |   7.1 |  71.9 | 280s
+c1 package, dungeons stay     | lane_aware | Explorer | T4 |   0.0  99.8 | 15.96 (0.22) |    -    -    - |  462  727  913 |   0.2 |   0.2 |    4.1 |  2.89 |  11.6 |   0.0 |   6.1 |  76.9 | 309s
+c1 package, dungeons stay     | lane_aware | no tree  | T1 |  11.0  89.0 | 17.98 (0.32) |  573 1110 1779 |  729 1558 2116 |  12.8 |   0.0 |   52.4 |  6.76 |  21.9 |   1.4 |  10.6 |  44.9 | 314s
+c1 package, dungeons stay     | lane_aware | no tree  | T2 |   1.6  98.4 | 23.62 (0.09) |  505  972 1109 |  917 1066 1223 |   0.0 |   0.0 |   34.7 |  6.30 |  16.6 |   0.0 |  11.0 |  47.7 | 319s
+c1 package, dungeons stay     | lane_aware | no tree  | T3 |   0.8  99.2 | 23.93 (0.05) |  633  806  848 |  791  896 1006 |   0.0 |   0.0 |   27.5 |  5.63 |  14.3 |   0.0 |  10.1 |  47.8 | 324s
+c1 package, dungeons stay     | lane_aware | no tree  | T4 |   0.4  99.6 | 24.02 (0.03) |  730  877  877 |  721  816  912 |   0.0 |   0.0 |   23.9 |  5.55 |  12.8 |   0.0 |   9.3 |  45.2 | 328s
+c2 package, Quest costs 0     | triage     | Explorer | T1 |  52.2  47.2 |  0.83 (0.05) |  546 1158 2400 |  495 1110 2136 |  15.6 |   0.6 |   37.6 |  5.06 |  15.2 |   1.7 |   0.3 |   0.0 | 331s
+c2 package, Quest costs 0     | triage     | Explorer | T2 |  10.6  89.2 |  7.22 (0.25) |  502  981 2112 |  564 1322 2247 |  17.8 |   0.2 |   32.7 | 15.34 |  17.3 |   0.0 |   3.1 |   0.0 | 338s
+c2 package, Quest costs 0     | triage     | Explorer | T3 |   1.0  97.8 | 12.97 (0.23) |  709 1055 2016 |  672 1317 1801 |   5.4 |   1.2 |   15.0 |  8.12 |  17.7 |   0.0 |   5.6 |   0.0 | 360s
+c2 package, Quest costs 0     | triage     | Explorer | T4 |   0.2  99.8 | 13.11 (0.22) |  431  431  431 |  467  930 1424 |   0.2 |   0.0 |    2.2 |  2.06 |  13.6 |   0.0 |   4.6 |   0.0 | 405s
+c2 package, Quest costs 0     | triage     | no tree  | T1 |  39.4  60.6 |  1.77 (0.08) |  358  812 1650 |  363  791 1813 |   6.8 |   0.0 |   27.0 |  3.94 |  16.1 |  10.1 |   1.2 |   0.0 | 408s
+c2 package, Quest costs 0     | triage     | no tree  | T2 |  23.4  76.6 |  5.76 (0.23) |  378  688 1557 |  425  859 1668 |   4.2 |   0.0 |   24.2 |  6.08 |  14.2 |   4.8 |   2.8 |   0.0 | 410s
+c2 package, Quest costs 0     | triage     | no tree  | T3 |   4.4  95.6 | 18.13 (0.29) |  786 1319 1659 |  882 1532 2065 |  12.4 |   0.0 |   37.6 | 12.20 |  22.9 |   3.1 |   8.2 |   0.0 | 415s
+c2 package, Quest costs 0     | triage     | no tree  | T4 |   1.2  98.8 | 20.13 (0.24) |  675 1192 1490 |  838 1294 1669 |   0.6 |   0.0 |   30.2 | 10.53 |  19.6 |   1.9 |   8.3 |   0.0 | 420s
+c2 package, Quest costs 0     | lane_aware | Explorer | T1 |  52.4  46.8 |  0.89 (0.05) |  553 1314 2370 |  584 1327 2349 |  22.0 |   0.8 |   43.8 |  5.16 |  16.7 |   1.6 |   0.3 |   0.0 | 425s
+c2 package, Quest costs 0     | lane_aware | Explorer | T2 |  11.2  88.6 |  7.16 (0.25) |  464  798 1600 |  625 1359 2311 |  18.2 |   0.2 |   34.9 | 15.32 |  17.4 |   0.0 |   3.1 |   0.0 | 431s
+c2 package, Quest costs 0     | lane_aware | Explorer | T3 |   1.0  97.6 | 12.96 (0.23) |  497  950 2016 |  642 1308 1812 |   6.4 |   1.4 |   15.3 |  8.30 |  17.6 |   0.0 |   5.6 |   0.0 | 449s
+c2 package, Quest costs 0     | lane_aware | Explorer | T4 |   0.2  99.8 | 13.08 (0.23) |  431  431  431 |  465  927 1424 |   0.2 |   0.0 |    2.2 |  2.05 |  13.6 |   0.0 |   4.6 |   0.0 | 498s
+c2 package, Quest costs 0     | lane_aware | no tree  | T1 |  43.4  56.6 |  1.68 (0.08) |  461 1029 1951 |  456  995 2021 |  10.0 |   0.0 |   35.7 |  4.46 |  17.0 |   8.6 |   1.1 |   0.0 | 500s
+c2 package, Quest costs 0     | lane_aware | no tree  | T2 |  22.0  78.0 |  6.72 (0.27) |  501  855 1617 |  512  981 2094 |  10.8 |   0.0 |   32.6 |  7.75 |  16.0 |   3.4 |   3.3 |   0.0 | 504s
+c2 package, Quest costs 0     | lane_aware | no tree  | T3 |   2.0  98.0 | 18.24 (0.28) |  648 1032 1527 |  985 1622 2150 |  18.2 |   0.0 |   43.8 | 13.79 |  23.5 |   2.0 |   8.4 |   0.0 | 510s
+c2 package, Quest costs 0     | lane_aware | no tree  | T4 |   1.4  98.6 | 20.66 (0.24) |  732  921 1382 |  880 1376 1738 |   1.2 |   0.0 |   36.0 | 11.75 |  20.3 |   1.1 |   8.5 |   0.0 | 515s
+c3 package, 120 days x4       | triage     | Explorer | T1 |  45.6  53.4 |  0.73 (0.04) |  697 1631 2907 |  582 1472 3037 |  34.0 |   1.0 |   46.1 |  5.98 |  18.0 |  11.6 |   1.3 |  13.0 | 519s
+c3 package, 120 days x4       | triage     | Explorer | T2 |   8.4  89.8 |  9.67 (0.28) |  452  914 1606 |  893 1748 2879 |  38.2 |   1.8 |   36.7 | 15.73 |  18.7 |   0.4 |   6.0 |  63.3 | 527s
+c3 package, 120 days x4       | triage     | Explorer | T3 |   1.4  98.0 | 14.43 (0.21) |  485 1103 1427 |  769 1213 1576 |   1.0 |   0.6 |   10.5 |  5.88 |  14.4 |   0.0 |   7.3 |  79.8 | 548s
+c3 package, 120 days x4       | triage     | Explorer | T4 |   0.2  99.6 | 14.50 (0.22) |  574  574  574 |  563  911 1252 |   0.2 |   0.2 |    1.2 |  1.61 |  11.6 |   0.0 |   6.6 |  81.7 | 580s
+c3 package, 120 days x4       | triage     | no tree  | T1 |  40.6  59.4 |  1.24 (0.06) |  408  946 1820 |  433  976 1961 |   8.0 |   0.0 |   33.1 |  4.35 |  18.5 |  14.7 |   1.2 |   5.1 | 583s
+c3 package, 120 days x4       | triage     | no tree  | T2 |  25.6  74.4 |  4.57 (0.21) |  405  734 1528 |  523 1003 2245 |  13.8 |   0.0 |   31.4 |  7.52 |  16.6 |   9.1 |   3.1 |  15.0 | 586s
+c3 package, 120 days x4       | triage     | no tree  | T3 |   2.8  97.2 | 17.24 (0.28) |  634 1423 1903 | 1142 1752 2407 |  30.0 |   0.0 |   43.0 | 14.26 |  23.9 |   6.0 |   9.5 |  49.9 | 591s
+c3 package, 120 days x4       | triage     | no tree  | T4 |   1.8  98.2 | 19.97 (0.24) |  874 1203 1557 |  958 1423 1785 |   3.2 |   0.0 |   32.8 | 11.38 |  19.8 |   3.6 |   9.7 |  56.7 | 597s
+c3 package, 120 days x4       | lane_aware | Explorer | T1 |  47.2  47.6 |  0.90 (0.05) |  670 1616 3170 |  647 1562 3210 |  38.8 |   5.2 |   52.0 |  6.30 |  19.6 |  11.5 |   1.7 |  23.6 | 602s
+c3 package, 120 days x4       | lane_aware | Explorer | T2 |   7.6  91.4 | 10.28 (0.27) |  607 1154 2322 |  925 1882 2882 |  42.2 |   1.0 |   40.4 | 17.43 |  19.8 |   0.4 |   7.1 |  76.3 | 610s
+c3 package, 120 days x4       | lane_aware | Explorer | T3 |   0.4  99.4 | 14.25 (0.22) |  484  830  830 |  761 1207 1591 |   0.8 |   0.2 |   10.7 |  5.98 |  14.3 |   0.0 |   7.2 |  79.9 | 632s
+c3 package, 120 days x4       | lane_aware | Explorer | T4 |   0.2  99.6 | 14.56 (0.22) |  574  574  574 |  556  915 1256 |   0.2 |   0.2 |    1.2 |  1.59 |  11.6 |   0.0 |   6.6 |  82.2 | 669s
+c3 package, 120 days x4       | lane_aware | no tree  | T1 |  43.2  56.0 |  1.52 (0.07) |  524 1051 2406 |  489 1172 2387 |  16.4 |   0.8 |   43.5 |  5.27 |  20.0 |  14.8 |   1.6 |  15.5 | 672s
+c3 package, 120 days x4       | lane_aware | no tree  | T2 |  18.6  80.4 |  5.75 (0.24) |  495  874 1607 |  593 1257 2575 |  21.0 |   1.0 |   40.8 |  9.67 |  18.6 |   8.2 |   4.4 |  31.1 | 676s
+c3 package, 120 days x4       | lane_aware | no tree  | T3 |   2.6  97.4 | 17.84 (0.27) |  780 1465 2196 | 1225 1762 2367 |  30.2 |   0.0 |   47.4 | 14.76 |  23.9 |   4.9 |  10.3 |  63.1 | 683s
+c3 package, 120 days x4       | lane_aware | no tree  | T4 |   0.6  99.4 | 20.37 (0.23) |  708  860 1209 | 1021 1415 1752 |   1.8 |   0.0 |   35.7 | 11.49 |  19.4 |   2.8 |   9.9 |  68.3 | 688s
+c4 package, old hit scale     | triage     | Explorer | T1 |  43.4  54.6 |  3.46 (0.13) |  544 1179 2600 |  435 1245 2801 |  26.0 |   2.0 |   53.9 |  7.80 |  19.3 |   1.8 |   4.7 |  12.5 | 692s
+c4 package, old hit scale     | triage     | Explorer | T2 |   3.4  95.4 | 16.19 (0.19) |  286  488  681 |  488  772 1018 |   1.2 |   1.2 |   22.9 | 11.09 |  13.8 |   0.0 |   9.1 |  33.7 | 696s
+c4 package, old hit scale     | triage     | Explorer | T3 |   0.4  98.0 | 17.37 (0.18) |  486  672  672 |  460  620  794 |   1.6 |   1.6 |   11.1 |  6.14 |  11.8 |   0.0 |   8.1 |  41.5 | 701s
+c4 package, old hit scale     | triage     | Explorer | T4 |   0.2  99.2 | 17.82 (0.18) |  369  369  369 |  398  548  666 |   0.6 |   0.6 |    1.8 |  1.82 |  10.2 |   0.0 |   6.8 |  46.2 | 717s
+c4 package, old hit scale     | triage     | no tree  | T1 |  39.4  60.6 |  2.09 (0.08) |  362  815 1752 |  360  784 1743 |   6.4 |   0.0 |   26.9 |  3.93 |  16.1 |  10.0 |   1.4 |   7.9 | 719s
+c4 package, old hit scale     | triage     | no tree  | T2 |  23.4  76.6 |  8.20 (0.30) |  387  644 1245 |  428  838 1762 |   3.0 |   0.0 |   24.4 |  6.12 |  15.0 |   4.7 |   4.1 |  21.9 | 721s
+c4 package, old hit scale     | triage     | no tree  | T3 |   2.0  98.0 | 20.48 (0.23) |  636  926 1191 |  848 1286 1630 |   0.8 |   0.0 |   31.3 |  9.86 |  20.3 |   3.0 |   9.3 |  49.8 | 724s
+c4 package, old hit scale     | triage     | no tree  | T4 |   0.8  99.2 | 22.48 (0.16) |  624  967 1247 |  815 1104 1308 |   0.0 |   0.0 |   25.4 |  8.65 |  17.5 |   1.9 |   9.2 |  53.4 | 727s
+c4 package, old hit scale     | lane_aware | Explorer | T1 |  45.2  48.2 |  4.08 (0.14) |  536 1345 3046 |  574 1443 3079 |  36.8 |   6.6 |   68.9 |  9.70 |  23.4 |   1.7 |   7.1 |  26.5 | 732s
+c4 package, old hit scale     | lane_aware | Explorer | T2 |   1.2  98.0 | 16.40 (0.17) |  346  699  845 |  552  786 1015 |   0.8 |   0.8 |   24.5 | 11.14 |  14.4 |   0.0 |   9.5 |  41.7 | 736s
+c4 package, old hit scale     | lane_aware | Explorer | T3 |   0.4  98.4 | 17.49 (0.17) |  424  486  486 |  471  617  809 |   1.2 |   1.2 |   11.1 |  6.22 |  11.8 |   0.0 |   8.1 |  42.6 | 740s
+c4 package, old hit scale     | lane_aware | Explorer | T4 |   0.2  99.2 | 17.80 (0.18) |  369  369  369 |  398  547  666 |   0.6 |   0.6 |    1.8 |  1.83 |  10.2 |   0.0 |   6.8 |  46.2 | 756s
+c4 package, old hit scale     | lane_aware | no tree  | T1 |  36.4  62.8 |  3.01 (0.12) |  443  933 2164 |  484 1028 2296 |  15.0 |   0.8 |   38.2 |  5.12 |  18.9 |   8.8 |   2.5 |  23.9 | 759s
+c4 package, old hit scale     | lane_aware | no tree  | T2 |  16.0  84.0 | 11.29 (0.36) |  421  646 1363 |  531 1142 1823 |   4.6 |   0.0 |   32.5 |  7.42 |  17.4 |   3.5 |   6.2 |  44.8 | 761s
+c4 package, old hit scale     | lane_aware | no tree  | T3 |   2.2  97.8 | 21.55 (0.19) |  786 1226 1295 |  915 1282 1650 |   0.8 |   0.0 |   35.2 | 10.22 |  20.5 |   2.0 |  10.3 |  68.7 | 765s
+c4 package, old hit scale     | lane_aware | no tree  | T4 |   0.2  99.8 | 22.54 (0.16) | 1014 1014 1014 |  820 1082 1303 |   0.0 |   0.0 |   28.3 |  8.71 |  17.2 |   1.1 |   9.6 |  66.5 | 768s
+d  package, Quest hit x depth | triage     | Explorer | T1 |  50.4  46.0 |  1.24 (0.07) |  537 1193 2457 |  506 1141 2304 |  20.0 |   3.6 |   43.4 |  5.55 |  17.3 |   2.2 |   1.4 |  10.6 | 771s
+d  package, Quest hit x depth | triage     | Explorer | T2 |   5.4  93.6 | 12.38 (0.27) |  271  667 1399 |  627 1160 1617 |   2.2 |   1.0 |   30.4 | 14.26 |  16.6 |   0.0 |   7.2 |  41.8 | 776s
+d  package, Quest hit x depth | triage     | Explorer | T3 |   0.6  98.8 | 15.01 (0.22) |  420  739 1157 |  530  811 1072 |   0.6 |   0.6 |   12.3 |  6.77 |  13.4 |   0.0 |   7.3 |  52.5 | 782s
+d  package, Quest hit x depth | triage     | Explorer | T4 |   0.0  99.8 | 16.24 (0.20) |    -    -    - |  435  639  859 |   0.2 |   0.2 |    1.8 |  1.86 |  11.3 |   0.0 |   6.7 |  55.3 | 801s
+d  package, Quest hit x depth | triage     | no tree  | T1 |  42.0  57.6 |  2.96 (0.11) |  388  897 2020 |  359  806 1904 |   9.6 |   0.4 |   28.7 |  4.22 |  17.3 |  10.1 |   2.3 |   7.3 | 803s
+d  package, Quest hit x depth | triage     | no tree  | T2 |  19.2  80.8 | 10.31 (0.33) |  377  631 1406 |  425  888 1715 |   2.4 |   0.0 |   24.8 |  6.32 |  15.8 |   4.7 |   5.3 |  18.2 | 805s
+d  package, Quest hit x depth | triage     | no tree  | T3 |   2.0  98.0 | 21.02 (0.21) |  563 1051 1462 |  852 1190 1544 |   0.0 |   0.0 |   29.6 |  9.28 |  19.7 |   3.0 |   9.6 |  36.2 | 808s
+d  package, Quest hit x depth | triage     | no tree  | T4 |   0.8  99.2 | 22.74 (0.15) |  526  922 1051 |  773 1010 1245 |   0.0 |   0.0 |   23.6 |  7.97 |  16.9 |   1.9 |   9.7 |  38.6 | 811s
+d  package, Quest hit x depth | lane_aware | Explorer | T1 |  46.2  38.6 |  1.77 (0.08) |  541 1339 3099 |  561 1250 3250 |  41.4 |  15.2 |   64.7 |  6.93 |  24.7 |   2.4 |   4.2 |  25.4 | 816s
+d  package, Quest hit x depth | lane_aware | Explorer | T2 |   5.0  93.6 | 13.21 (0.26) |  349  796 1452 |  613 1177 1616 |   3.0 |   1.4 |   32.1 | 14.58 |  17.4 |   0.0 |   8.0 |  48.2 | 821s
+d  package, Quest hit x depth | lane_aware | Explorer | T3 |   0.6  98.8 | 15.21 (0.21) |  420  765  960 |  524  804 1060 |   0.6 |   0.6 |   12.4 |  6.73 |  13.4 |   0.0 |   7.5 |  52.8 | 827s
+d  package, Quest hit x depth | lane_aware | Explorer | T4 |   0.0  99.8 | 16.27 (0.20) |    -    -    - |  435  641  867 |   0.2 |   0.2 |    1.9 |  1.87 |  11.4 |   0.0 |   6.7 |  55.6 | 849s
+d  package, Quest hit x depth | lane_aware | no tree  | T1 |  35.2  62.0 |  4.79 (0.18) |  444  957 2721 |  493 1105 2678 |  26.4 |   2.8 |   44.9 |  6.07 |  23.1 |   9.1 |   5.8 |  22.1 | 852s
+d  package, Quest hit x depth | lane_aware | no tree  | T2 |  12.8  87.2 | 14.23 (0.36) |  411  611 1112 |  554 1166 1738 |   3.2 |   0.0 |   31.8 |  7.49 |  18.3 |   3.4 |   8.3 |  35.5 | 855s
+d  package, Quest hit x depth | lane_aware | no tree  | T3 |   2.8  97.2 | 21.98 (0.17) |  559  972 1323 |  848 1170 1488 |   0.2 |   0.0 |   32.3 |  8.94 |  19.5 |   2.1 |  10.8 |  49.0 | 859s
+d  package, Quest hit x depth | lane_aware | no tree  | T4 |   1.4  98.6 | 22.95 (0.14) |  739  955 1174 |  732  972 1186 |   0.0 |   0.0 |   25.0 |  7.59 |  16.3 |   1.1 |   9.9 |  48.4 | 862s
+
+DEFENDED, day cap 2500, 500 campaigns a cell, seeds 0 to 499.
+row | policy | tree | tier | won% lost% | cities lost (s.e.) | day of a win p10 p50 p90 | day of a loss p10 p50 p90 | % not decided by day 2000 | % open at the cap | cleared | deaths | surges | from empty board | from a fall | Quest hits
+a  development                | triage     | Explorer | T1 |  35.0  43.0 |  2.97 (0.12) |  584 1222 2147 |  542 1323 2235 |  35.2 |  22.0 |   57.1 |  8.51 |  17.6 |   2.8 |   6.7 |   0.0 | 866s
+a  development                | triage     | Explorer | T2 |   2.2  96.0 | 15.77 (0.19) |  469  749 1143 |  624  964 1346 |   1.8 |   1.8 |   28.0 | 12.49 |  14.0 |   0.0 |  10.2 |   0.0 | 869s
+a  development                | triage     | Explorer | T3 |   0.4  97.8 | 16.85 (0.18) |  373  742  742 |  527  771 1014 |   1.8 |   1.8 |   13.3 |  7.09 |  12.2 |   0.0 |   9.0 |   0.0 | 873s
+a  development                | triage     | Explorer | T4 |   0.0 100.0 | 17.71 (0.18) |    -    -    - |  474  681  818 |   0.0 |   0.0 |    1.8 |  1.86 |  10.8 |   0.0 |   8.1 |   0.0 | 891s
+a  development                | triage     | no tree  | T1 |  27.6  56.4 |  5.32 (0.19) |  562 1244 2112 |  611 1325 2168 |  29.6 |  16.0 |   56.2 |  6.52 |  18.4 |   8.5 |   4.0 |   0.0 | 894s
+a  development                | triage     | no tree  | T2 |   8.4  91.6 | 18.29 (0.29) |  480  810 1286 |  752 1409 1862 |   4.4 |   0.0 |   46.8 |  9.38 |  17.1 |   1.0 |   9.4 |   0.0 | 897s
+a  development                | triage     | no tree  | T3 |   0.6  99.4 | 23.05 (0.12) |  419  995 1065 |  916 1149 1353 |   0.0 |   0.0 |   37.8 |  8.80 |  16.0 |   0.1 |  10.9 |   0.0 | 901s
+a  development                | triage     | no tree  | T4 |   0.2  99.8 | 23.54 (0.08) |  805  805  805 |  806  985 1138 |   0.0 |   0.0 |   31.0 |  7.64 |  14.5 |   0.0 |  10.5 |   0.0 | 904s
+a  development                | lane_aware | Explorer | T1 |  36.6  40.2 |  2.89 (0.11) |  618 1433 2281 |  564 1301 2117 |  36.4 |  23.2 |   59.4 |  8.21 |  18.1 |   2.7 |   7.0 |   0.0 | 908s
+a  development                | lane_aware | Explorer | T2 |   2.0  96.8 | 15.91 (0.18) |  462  851 1160 |  684 1017 1330 |   1.2 |   1.2 |   29.2 | 13.29 |  14.7 |   0.0 |  10.9 |   0.0 | 912s
+a  development                | lane_aware | Explorer | T3 |   0.2  98.4 | 16.86 (0.18) |  742  742  742 |  541  781 1033 |   1.4 |   1.4 |   13.7 |  7.30 |  12.4 |   0.0 |   9.2 |   0.0 | 916s
+a  development                | lane_aware | Explorer | T4 |   0.0 100.0 | 17.68 (0.18) |    -    -    - |  474  679  815 |   0.0 |   0.0 |    1.8 |  1.86 |  10.7 |   0.0 |   8.0 |   0.0 | 932s
+a  development                | lane_aware | no tree  | T1 |  24.8  51.8 |  4.11 (0.18) |  606 1166 2059 |  651 1319 2243 |  35.6 |  23.4 |   61.4 |  6.76 |  19.2 |   9.0 |   3.6 |   0.0 | 935s
+a  development                | lane_aware | no tree  | T2 |   5.4  93.0 | 19.35 (0.28) |  489 1069 2135 |  946 1594 2017 |  12.4 |   1.6 |   54.3 | 11.04 |  19.8 |   1.0 |  11.0 |   0.0 | 939s
+a  development                | lane_aware | no tree  | T3 |   0.6  99.4 | 23.08 (0.11) |  806 1023 1176 | 1008 1218 1424 |   0.0 |   0.0 |   40.5 |  9.62 |  17.2 |   0.1 |  11.8 |   0.0 | 943s
+a  development                | lane_aware | no tree  | T4 |   0.2  99.8 | 23.46 (0.10) |  439  439  439 |  861 1050 1211 |   0.0 |   0.0 |   34.2 |  8.24 |  15.4 |   0.0 |  11.1 |   0.0 | 947s
+b  the package                | triage     | Explorer | T1 |  49.4  43.6 |  0.89 (0.05) |  546 1071 1922 |  483 1061 2004 |  15.4 |   7.0 |   37.3 |  5.00 |  14.9 |   1.8 |   0.6 |  12.1 | 949s
+b  the package                | triage     | Explorer | T2 |   6.8  91.6 | 11.07 (0.28) |  387  726 1156 |  616 1251 1757 |   4.2 |   1.6 |   31.1 | 14.43 |  16.8 |   0.0 |   5.7 |  60.5 | 953s
+b  the package                | triage     | Explorer | T3 |   0.2  99.2 | 14.48 (0.21) | 1049 1049 1049 |  614  912 1203 |   0.6 |   0.6 |   12.4 |  6.98 |  14.0 |   0.0 |   6.6 |  77.2 | 961s
+b  the package                | triage     | Explorer | T4 |   0.0 100.0 | 15.10 (0.21) |    -    -    - |  451  719  936 |   0.0 |   0.0 |    1.9 |  1.92 |  11.5 |   0.0 |   5.8 |  79.5 | 981s
+b  the package                | triage     | no tree  | T1 |  38.6  59.2 |  2.04 (0.08) |  362  805 1608 |  359  773 1679 |   6.4 |   2.2 |   26.7 |  3.89 |  16.0 |  10.0 |   1.3 |   7.8 | 983s
+b  the package                | triage     | no tree  | T2 |  23.4  76.0 |  8.18 (0.30) |  387  644 1245 |  428  834 1749 |   3.0 |   0.6 |   24.4 |  6.11 |  15.0 |   4.7 |   4.1 |  21.8 | 985s
+b  the package                | triage     | no tree  | T3 |   2.0  98.0 | 20.48 (0.23) |  636  926 1191 |  848 1286 1630 |   0.8 |   0.0 |   31.3 |  9.86 |  20.3 |   3.0 |   9.3 |  49.8 | 988s
+b  the package                | triage     | no tree  | T4 |   0.8  99.2 | 22.48 (0.16) |  624  967 1247 |  815 1104 1308 |   0.0 |   0.0 |   25.4 |  8.65 |  17.5 |   1.9 |   9.2 |  53.4 | 991s
+b  the package                | lane_aware | Explorer | T1 |  41.8  39.4 |  1.32 (0.06) |  494 1110 2117 |  575 1148 2168 |  30.0 |  18.8 |   47.1 |  5.46 |  17.8 |   1.8 |   1.7 |  31.8 | 995s
+b  the package                | lane_aware | Explorer | T2 |   4.4  94.8 | 11.74 (0.27) |  456  706 1086 |  625 1278 1756 |   3.2 |   0.8 |   33.3 | 14.90 |  17.3 |   0.0 |   6.5 |  70.4 | 1000s
+b  the package                | lane_aware | Explorer | T3 |   0.2  99.0 | 14.74 (0.21) | 1201 1201 1201 |  618  920 1238 |   0.8 |   0.8 |   12.8 |  7.04 |  14.3 |   0.0 |   6.7 |  80.0 | 1008s
+b  the package                | lane_aware | Explorer | T4 |   0.0 100.0 | 15.16 (0.21) |    -    -    - |  452  721  938 |   0.0 |   0.0 |    1.9 |  1.90 |  11.6 |   0.0 |   5.9 |  79.8 | 1029s
+b  the package                | lane_aware | no tree  | T1 |  34.4  58.4 |  2.76 (0.11) |  433  913 1785 |  473  990 1961 |  15.0 |   7.2 |   37.4 |  4.96 |  18.2 |   8.7 |   2.3 |  23.1 | 1032s
+b  the package                | lane_aware | no tree  | T2 |  16.0  83.2 | 11.24 (0.35) |  421  646 1363 |  523 1137 1818 |   4.6 |   0.8 |   32.5 |  7.42 |  17.3 |   3.5 |   6.2 |  44.8 | 1034s
+b  the package                | lane_aware | no tree  | T3 |   2.2  97.8 | 21.55 (0.19) |  786 1226 1295 |  915 1282 1650 |   0.8 |   0.0 |   35.2 | 10.22 |  20.5 |   2.0 |  10.3 |  68.7 | 1038s
+b  the package                | lane_aware | no tree  | T4 |   0.2  99.8 | 22.54 (0.16) | 1014 1014 1014 |  820 1082 1303 |   0.0 |   0.0 |   28.3 |  8.71 |  17.2 |   1.1 |   9.6 |  66.5 | 1041s
+```
+
+**The cost limit, for row (b).** The coordinating session's limit is that the defending Explorer `triage` player
+at tier 1 loses no more than double the cities, and wins no more than 5 points fewer, than under row (a)
+measured the same way. At a day cap of 4,000, 500 campaigns, seeds 0 to 499: row (a) loses 3.19 cities (standard
+error 0.11) and wins 44.8%; row (b) loses 0.93 (0.05) and wins 52.2%. Double row (a) is 6.38 cities and 5 points
+under it is 39.8%. Row (b) is inside both: it loses fewer cities than row (a), not more, and wins 7.4 points
+more. At the default cap of 2,500 the same two cells read 2.97 (0.12) and 35.0% for row (a), 0.89 (0.05) and
+49.4% for row (b).
+
+**Which change does that.** Row (c4), the package on the old hit scale, loses 3.46 cities (0.13) and wins 43.4%
+in that cell. So sizing a hit by natural floors is what lowers the Explorer player's losses; the Explorer preset
+adds 40 floors at tier 1.
+
+**The target, "an undefended empire loses within the span of a campaign": the figures, with no verdict.** Under
+row (b) with nobody entering a dungeon and no tree, the path to the Pillar is lost by day 2,000 in 98.4% of
+campaigns at tier 1 and in 100.0% at tiers 2, 3 and 4, and by day 4,000 in 100.0% at every tier. The median day
+of that loss is 1,240 / 804 / 644 / 530 at tiers 1 to 4. The defended campaigns of row (b), `triage`, Explorer,
+day cap 4,000, end at a median day of 1,113 for a win and 1,146 for a loss at tier 1, and 726 and 1,251 at tier
+2. With no tree the tier 1 medians are 815 and 784. Whether that meets the target is not decided here.
+
+**What each of the other changes buys, undefended, tier 1, median day of the loss:** 1,240 for the package; 648
+with dungeons staying; 2,224 with a Quest dungeon costing nothing (37.2% lost by day 2,000); 1,730 at 120 days
+and 4 dungeons (70.2% lost by day 2,000).
+
+### Tests
+
+- `sim/tests/test_a_quest_dungeons_timer_hits_its_host_city.py`: 23 tests. The size (the ordinary row of the
+  host; an ordinary dungeon at the middle of its range; no scale by depth, with the other reading as its
+  control; the tree's reduction), whose tier sizes it, the refresh and the move unchanged, the counts, the hit
+  that fells the city, the dungeon the player is inside, a city already fallen, a death, a Siege, and a campaign.
+- `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`: 6 tests.
+- `tools/tests/test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`: 6 tests.
+- `sim/tests/test_a_hit_is_sized_by_natural_floors.py`: 18 tests. What natural floors are, a dungeon with
+  tree-added floors hitting as its twin without them, floors removed, the old scale as the control of each, the
+  walk, the timer and the power still reading the total, and a campaign with no tree unchanged bit for bit.
+- `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`: 6 tests.
+
+### Run
+
+- The whole fast suite before, on 4a855bb8, in the worktree: "6044 passed, 7 skipped in 271.87s (0:04:31)";
+  JUnit tests 6051, failures 0, errors 0, skipped 7.
+- After (ii), in a `git archive` copy: "12 failed, 6056 passed, 13 skipped in 430.85s (0:07:10)". Eleven of the
+  twelve are tests that ask git, in three files, and the copy was not a repository; after `git init` and a
+  commit in the copy those three files gave "31 passed". The twelfth is the test named at the top.
+- After (iii), in the worktree: "1 failed, 6079 passed, 7 skipped in 306.90s (0:05:06)"; JUnit tests 6087,
+  failures 1, errors 0, skipped 7.
+- After (iv), in the worktree: "1 failed, 6103 passed, 7 skipped in 302.01s (0:05:02)"; JUnit tests 6111,
+  failures 1, errors 0, skipped 7. The one failure in each is the test named at the top.
+- `python -m ruff check .` before each commit: "All checks passed!".
+- The suite was not run for this entry before it was written.
+
+Nine breaks with `tools/prove_guard.py`, three a change, each in a `git archive` copy of that change's commit.
+Every `result.proved` was true.
+
+| Break | Printed | Tests that failed |
+|---|---|---|
+| (ii) the call to `_quest_hit` taken out of `_resolve` | `PROVED: 13 failed, 51 passed in 1.18s \| restored: 64 passed in 1.13s` | eleven of the new simulation tests, `test_the_model_hits_before_it_refreshes_and_before_the_move`, `test_a_quest_dungeon_is_not_counted` |
+| (ii) the hit sized by `d.city_tier` | `PROVED: 2 failed, 62 passed in 1.06s \| restored: 64 passed in 0.97s` | `test_it_is_the_tier_of_the_city_it_stands_on_when_the_hit_lands`, `test_the_models_hit_reads_the_ordinary_row_of_the_host` |
+| (ii) the game's `ResolveDungeon`, in the copy, given a `Map->Damage` call before `RelocateQuestDungeon` | `PROVED: 1 failed, 63 passed in 1.48s \| restored: 64 passed in 1.00s` | `test_the_game_does_not_hit_a_city_for_a_quest_dungeon_yet` |
+| (iii) the model's interval put back to 120 | `PROVED: 2 failed, 131 passed in 5.21s \| restored: 133 passed in 4.75s` | `test_the_model_ships_90_days_and_5_dungeons[surge_interval_days]`, `test_the_two_really_do_differ[IntervalDays]` |
+| (iii) the game's `DungeonsPerSurge`, in the copy, set to 5 | `PROVED: 3 failed, 130 passed in 4.64s \| restored: 133 passed in 4.83s` | `test_the_swelling_ladder_still_holds`, `test_the_game_still_has_120_days_and_4_dungeons[DungeonsPerSurge]`, `test_the_two_really_do_differ[DungeonsPerSurge]` |
+| (iii) the game's `IntervalDays`, in the copy, set to 90 | `PROVED: 3 failed, 130 passed in 8.58s \| restored: 133 passed in 6.27s` | `test_the_accelerating_ladder_still_holds`, `test_the_game_still_has_120_days_and_4_dungeons[IntervalDays]`, `test_the_two_really_do_differ[IntervalDays]` |
+| (iv) `_hit_floors` returning `d.floors` | `PROVED: 7 failed, 61 passed in 0.39s \| restored: 68 passed in 0.25s` | six of the new simulation tests and `test_the_model_divides_natural_floors_by_the_rows_midpoint` |
+| (iv) `tree_floors` recorded as 0 | `PROVED: 10 failed, 58 passed in 0.39s \| restored: 68 passed in 0.34s` | nine of the new simulation tests and `test_the_model_takes_the_trees_floors_after_the_natural_depth` |
+| (iv) the game's `BiteScale`, in the copy, dividing `NaturalFloors` | `PROVED: 2 failed, 66 passed in 0.37s \| restored: 68 passed in 0.33s` | `test_the_game_divides_floors_by_the_same_midpoint`, `test_the_games_floors_include_what_a_city_upgrade_moved` |
+
+The second break of (iv) first stopped on an anchor that was not in the file (the break text was written before
+the field was renamed `tree_floors`); the text was corrected and the three were run again, and the line above is
+that run.
+
+### Not covered
+
+- The game. None of the three rules is in it.
+- `docs/Cataclysm_GDD_v2.md` still says a Quest dungeon's timer costs its host city nothing, and its paragraph
+  "The project owner spoke to this twice" still ends "the second supersedes the first". The coordinating session
+  ruled the document gains the rule in the layer that puts it into the game.
+- No policy was changed, so no policy sees a Quest dungeon's hit coming: `Dungeon.resolves` is still false for
+  it, and `_urgent` and the policies' urgency read that. The defended figures above are for players who do not
+  hurry to a Quest dungeon because of its timer.
+- No figure in `sim/README.md`, in the comments of `config.py`, `engine.py` and `policies.py`, or in the
+  docstrings of the analysis scripts was re-measured. A dated sentence in `config.py` beside the two constants,
+  two in `engine.py`, one in `policies.py` and two in `sim/README.md` say which numbers they were taken at. The
+  docstrings of `analyse_quest_move_chance.py` and `analyse_siege_dose.py` still say "5 and not the default of
+  4"; those scripts set their own values and were left.
+- The balance report: `sim/experiments.py` was not run.
+- Whether the target for an undefended empire is met.
+- The Siege prose in `policies.py`: its test passes at this commit and its figures were not re-measured.
+- The owner typed the same sentence twice: "your rec on all three, continue" on 2026-10-12, for one set of three
+  questions, and again on 2026-10-13, for another set of three. The entry of 2026-10-12 quotes the first and this
+  entry the second.
+
+### Ruled on 2026-10-13, after the proposal: the package is accepted for the simulation
+
+Labelled judgements by the coordinating session under the owner's delegation, 2026-10-13, on the proposal made
+from this entry's figures. Where this entry says above that a test fails, or that something needs a ruling, that
+was true when it was written.
+
+- **The one failing test is changed, and it is this ruling.**
+  `sim/tests/test_quest_relocation_is_adjacent.py::TestASiegeMayNotWalkOntoABesiegedCity::test_it_stays_when_every_neighbour_is_besieged`
+  now builds its simulation with `quest_timer_hits_city=False`, and its docstring says why: it runs fifty Quest
+  timers on one Outpost, the hit fells the Outpost at the tenth, and the fall exposes a neighbour the test never
+  besieged. It is a test of where a Siege may move. Its assertions are unchanged.
+- **One rule for the tree and for a city's upgrades: investment never changes the size of a dungeon's hit.** The
+  hit is sized by the floors the dungeon was rolled with. The owner's accepted line named the tree; extending it
+  to the game's two city upgrades that add or remove floors is the coordinating session's judgement. It is built
+  in the game's layer, not here.
+- **Confirmed: a node that removes floors no longer shrinks the hit either.**
+- **The defending Explorer player's tier 1 being easier than today is acceptable** (0.93 cities lost against 3.19;
+  52.2% won against 44.8%, day cap 4,000). A further retune of tier 1 would be its own step.
+- **The three analysis scripts held at 120 days and 4 dungeons are accepted as they are**; reworking them at 90
+  and 5 is issue [#2396](https://github.com/sdubois777/Cataclysm/issues/2396).
+- **No policy knows a Quest dungeon's hit is coming.** Recorded as the next piece of the review of the `triage`
+  policy; not part of this change.
+- **Every judgement of the writing session listed above is approved**, and the replacement sentences for the
+  design document are approved as written, to be made in the layer that puts the rules into the game.
+
+**The whole fast suite after that ruling.** With the one test changed, on `development` 841671d8: "6283 passed,
+7 skipped in 320.69s (0:05:20)"; JUnit tests 6290, failures 0, errors 0, skipped 7. Moved onto `development`
+fdfdefc4, before this paragraph was written: "6298 passed, 7 skipped in 291.00s (0:04:50)"; JUnit tests 6305,
+failures 0, errors 0, skipped 7; ruff "All checks passed!". Both runs were made by the registering session. Where
+the Run section above says one test fails, that was before the ruling.
+
+---
+
+## 2026-10-12 — In the simulation an ordinary dungeon leaves the map after it hits its city; the game does not have the rule yet
+
+**Said first: the game does NOT have this rule, and the two differ on purpose.** This change is the simulation,
+its tests and documents only. No file under `game/` changed. In the game an ordinary dungeon still stays on the
+map after it hits its city, with its timer full again.
+`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py` records the difference and
+fails when `UCataclysmEmpireRun::ResolveDungeon` gains a `RemoveDungeon` call. Nothing was compiled and nothing
+was run in Unreal.
+
+**Said first: nothing was retuned, and with the rule on an empire nobody defends no longer always loses.**
+Measured here at the raw `TuningConfig()` defaults, nobody entering any dungeon, 500 campaigns a tier, 2,000
+days: the path to the Pillar is lost in 100.0% of campaigns at each of difficulty tiers 1 to 4 with the dungeon
+staying, and in 15.0%, 37.6%, 81.0% and 95.8% with it leaving. No constant moved. `sim/experiments.py` was not
+run.
+
+**Said first: no test that states a rule other than this one fails, and that is because the simulation's suite
+has no test that an undefended empire loses.** The whole fast suite passes at this change (the figures are
+under "Run"). The statement "an unattended empire always loses the path to the Pillar" is held only by the
+game's Unreal test `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar`, which was not run and
+which this change cannot move, because the game is unchanged. The retune's target is therefore written down
+here and in the measurement, and is not a failing test.
+
+**Said first: two measured sentences in `sim/cataclysm_sim/policies.py` are not true at the new default, and
+they were left as they are.** The Siege prose there states a Sanctuary median walk of 37 days and that 79% of
+Sieges sit on a Basic dungeon. At the new default, at the report settings that prose names: 34 to 35 days over
+three blocks of 320 campaigns (seeds 1000 to 1959), and 82.3% over seeds 0 to 319. The test that re-measures
+that prose now holds `dungeon_persists_after_resolve` True, so it measures what the prose was measured on. The
+policy was not changed.
+
+**Corrected on 2026-10-12, in a second change made after this entry was written. The paragraph above is no
+longer the state of the branch, and neither are four other places in this entry: judgement 4, the row for the
+Siege prose test under "Existing tests that changed", the line on the Siege prose under "Not covered", and the
+words "the proof was not run again" under "Run".** The coordinating session ruled, as a labelled judgement
+under the owner's delegation, 2026-10-12: a change must not ship beside a statement it knows is false. Every
+figure below was printed by a script of the correcting session on a `git archive` copy of b5d49e81, before
+this paragraph was written.
+
+- The prose in `sim/cataclysm_sim/policies.py` was re-measured at the new default and rewritten; each sentence
+  says how it was measured and what it said before. Docstrings and comments only: no line of code in
+  `policies.py` changed, so `triage` and `lane_aware` do what they did. The method is the prose test's own:
+  the report settings, no tree, `triage`, every dungeon recorded when it is made, 10,000 campaigns, seeds 0 to
+  9999, 754,158 dungeons. The control, the same seeds with the dungeon staying, made 891,123 dungeons and gave
+  the medians on record, 14 / 24 / 37 / 123; the record of 2026-09-16 has 890,790 dungeons, on code that has
+  changed since.
+- The median walk is now 14 / 22 / 34 / 123 days (was 14 / 24 / 37 / 123). Against a median walk of 14 / 22 /
+  34 days to an Outpost, Bulwark and Sanctuary and the 25 / 39 / 55 days a fresh Siege leaves, the slack is
+  eleven, seventeen and twenty-one days (was eleven, fifteen and eighteen). The Outpost shares at 13 and 14
+  days or fewer are 48.17% and 56.35% (were 47.3% and 54.9%); the prose test asks for the second to be under
+  58%, and one of ten disjoint blocks of 320 campaigns, seeds 2240 to 2559, gave 58.16%. The test reads seeds
+  0 to 319, which give 56.49%.
+- The Siege mix is now 55,361 Sieges at 83% Basic, 11% Quest, 4% Fallen City and 1% Cataclysm, about 5.54 a
+  campaign (was 65,636 at 79 / 11 / 10 / 1 and 6.56). Fallen City dungeons made fell from 95,660 to 37,679.
+- "At the larger city sizes the medians differ by more than the day of wobble" between four and five dungeons
+  a surge was false when measured: 10,000 campaigns at four give 14 / 22 / 34 / 123 as well, over 720,044
+  dungeons. With the dungeon staying, four gives 14 / 24 / 38 / 124.
+- "AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY" is rewritten. One ordinary dungeon carrying a Siege on a city at
+  full defence, nothing else on it, nobody entering, no tree, 10,000 dungeons a city size (seeds 0 to 9999).
+  At the shipped defaults the city fell in 86.1% of cases on an Outpost, 79.0% on a Bulwark and 86.7% on a
+  Sanctuary; in the rest the dungeon left first and the city stood. At the report settings, where the timer is
+  longer, 97.0%, 96.8% and 99.8%. With the dungeon staying, the control, all 10,000 at each size. A city
+  already damaged was not measured. `siege_urgency` still weighs a reachable Siege as certain to kill its
+  city; that is code and was not changed.
+- `sim/tests/test_the_siege_prose_in_policies_is_true.py` no longer sets `dungeon_persists_after_resolve`, so
+  it measures the default. `CAMPAIGNS` went from 250 to 320: ten disjoint blocks of 250 made 17,996 to 19,664
+  dungeons, under the 20,000 its fixture asks for, and ten blocks of 320 made 23,152 to 25,213. One pinned
+  sentence changed with the prose, the two Outpost shares. No tolerance changed and no other assertion changed.
+- The copy of the median walk in `sim/cataclysm_sim/config.py`, on `siege_damage_growth_per_day`, follows.
+  Two docstrings in `sim/tests/test_policies_see_sieges.py` that repeated the old sentences follow. The older
+  entries of this file that quote 14 / 24 / 37 are dated records and were left; the two checks that read this
+  file for the median walk and the slack are met by this paragraph.
+- Not re-measured: the dated history paragraphs of that prose, and "it moved the acceptance ratio from 1.01
+  to 1.03" over 600 campaigns, which describes a version of `siege_urgency` that no longer exists.
+- The fourth guard proof under "Run" was run again, on a fresh `git archive` copy of b5d49e81, over the same
+  six test files. It printed `PROVED: 1 failed, 107 passed in 2.08s | restored: 108 passed in 1.94s`, and the
+  one name in `result.named_failures` was
+  `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py::test_the_game_does_not_remove_a_resolved_dungeon_yet`.
+  The control no longer fails with it.
+- The whole fast suite had not been run on this correction when this paragraph was written. It has been run
+  since, on the correction as committed (9cfae879): `6044 passed, 7 skipped in 378.20s (0:06:18)`; JUnit
+  `tests="6051" failures="0" errors="0" skipped="7"`; ruff `All checks passed!`.
+
+**Said first: every campaign figure on record before this date was measured with the dungeon staying.** That
+is every table in `sim/README.md` below its new first section, every campaign figure in the entries of this
+file below this one, and the figures in `docs/Cataclysm_GDD_v2.md`. Four analysis scripts hold the old rule in
+their `base_config` so their quoted figures stay what their commands print; the others now run at the new
+default and were not re-measured.
+
+### The decision, and who said what
+
+The owner, 2026-10-08, verbatim: "Ordinary dungeons will do their city/population damage, and then despawn.
+Quest dungeons will do their city/population damage, and either refresh their timer and stay on that city, or
+potentially move to an adjacent city. Fallen city dungeons don't have a resolution timer as they're the enemies
+now."
+
+The owner, typed in the coordinating session on 2026-10-12, verbatim: "your rec on all three, continue".
+
+The recommendation that sentence accepts, in the coordinating session's words and not the owner's: ordinary
+dungeons leave after they hit their city, and an undefended empire must still lose; the simulation is retuned
+first (surge size and timing, and dungeon damage if needed) until an undefended empire loses again; the rule
+goes into the game only with the retuned numbers.
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-12.
+
+1. A dungeon removed by resolving does not count toward the Cataclysm boss's floors.
+2. The dungeon whose resolve fells its city is absorbed by the fall, as today.
+3. An ordinary dungeon carrying a Siege leaves when its timer runs out.
+4. Quest dungeons and fallen-city dungeons do not change.
+5. The rule is not a kind-blind flip that a port test would force onto the game's day clock.
+
+### What was read before writing
+
+- `TuningConfig.dungeon_persists_after_resolve` in `sim/cataclysm_sim/config.py`, and its one read: the last
+  statement of `Simulation._resolve` in `sim/cataclysm_sim/engine.py`. Above it `_resolve` returns for a Quest
+  dungeon (after the relocation), and returns at `if not d.resolves or city.fallen:` for a Fallen City
+  dungeon, a Cataclysm dungeon and any dungeon on a city already fallen. `_fall` runs before the read. So the
+  read is reached only for an ordinary dungeon on a city that was standing when the hit landed.
+- `Simulation._fall`: it removes every dungeon on the city but the one the player is inside.
+- `Simulation._resolve_on_death` and the death branch of `_finish_current`: the death calls `_resolve`, so
+  what becomes of the dungeon is the same setting.
+- `Simulation.step`: the dungeon being walked does not tick (`timer_ticks_while_running` is False), so it
+  cannot leave by its timer under the player.
+- `UCataclysmEmpireRun::ResolveDungeon` in `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: it
+  ends with `Map->Damage` and `CityFell` and removes nothing.
+- `UCataclysmDayClock::AdvanceDay` and `bDungeonPersistsAfterResolve` in
+  `game/Source/CataclysmEmpire/DayClock/`: the constant is true, and its false branch removes every timer that
+  ran out, whatever the kind.
+- `tools/tests/test_day_clock_port.py`: `test_a_resolved_dungeon_persists_in_both` held the clock's constant
+  equal to the model's setting. It was the only Python check that compared this setting with the game's C++.
+- The history of `test_the_game_has_no_board_empty_trigger_yet` in `tools/tests/test_surge_port.py`, added in
+  1cecb680 and removed in 9463a971, as the model for a check that records a divergence.
+- `sim/tests` and three port checks of `tools/tests` (`test_day_clock_port.py`, `test_surge_port.py`,
+  `test_a_death_resolves_in_the_model_as_in_the_game.py`) with only the default flipped, in a copy of the tree,
+  before any other edit: "10 failed, 1903 passed, 2 skipped, 9 errors". All nineteen are under "Existing tests
+  that changed". The rest of `tools/tests` was not run in that state.
+
+No source outside the repository was read. The shape of the rule is the owner's sentence and no formula is new.
+
+### How it is built
+
+- `dungeon_persists_after_resolve` now defaults to False. The name and the read are unchanged, so True is the
+  model as it was and both can be measured. No line of code in `engine.py` changed; its comments did.
+- An ordinary dungeon that hits a standing city is popped from `Simulation.dungeons` by the last statement of
+  `_resolve`. A timer and a death both reach it.
+- The hit that fells the city: `_fall` has already removed the dungeon, and the pop finds nothing.
+- A Siege is a sub-type on the dungeon, so its daily damage stops when the dungeon is gone.
+- A removal is not a clear: `cleared`, `basic_cleared`, the empire points and the materials are raised only in
+  `_finish_current`.
+- The last dungeon leaving empties the board, and `_maybe_surge_on_empty_board`, which already ran after the
+  day's resolves, fires the next wave when `surge_interval_min` allows.
+- The port check is repointed and not deleted. `test_day_clock_port.py` now asserts the clock's constant is
+  true on its own and that the model's default is False. The new file
+  `test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py` asserts the model's default, the
+  order of the kind question, the fall, the setting and the removal in `_resolve`, and that the game's
+  `ResolveDungeon` holds no `RemoveDungeon(` in a line of code. Its failure message says what to do when the
+  game gains the rule, and names where the rule goes: one `RemoveDungeon(DungeonId)` call at the end of
+  `UCataclysmEmpireRun::ResolveDungeon`, not the day clock's constant.
+
+### Existing tests that changed, each with what it asserted and what it asserts now
+
+None of these states a rule other than "a resolved ordinary dungeon stays". Each pinned that behaviour, a
+default, or a sample measured under it.
+
+| Test | Asserted | Asserts now |
+|---|---|---|
+| `tools/tests/test_day_clock_port.py::TestTheTwoStructuralRules::test_a_resolved_dungeon_persists_in_both` | the clock's `bDungeonPersistsAfterResolve` equals the model's setting | renamed `test_the_clock_refills_every_timer_and_is_not_held_to_the_model`: the clock's constant is true, and the model's default is False |
+| `sim/tests/test_a_death_resolves_an_ordinary_dungeon.py::TestADeathInAnOrdinaryDungeon::test_its_timer_is_full_afterwards_and_it_stays` | at the default, after a death the dungeon is on the map with a full timer | the same, with `dungeon_persists_after_resolve=True` set by name |
+| the same file, `test_it_is_gone_afterwards_when_a_resolved_dungeon_does_not_stay` | with the setting False the dungeon is gone | the same, and that False is the default |
+| the same file, `TestTheDaysADeathCosts::test_the_consequence_lands_before_the_days_pass` | at the default, the hit lands at once, no day passes, the days are still owed, the timer is full | the same, with the setting True by name |
+| the same file, `TestTheDaysADeathCosts::test_the_full_timer_counts_down_through_the_days` | at the default, the full timer counts down through the death's days and the city pays once | the same, with the setting True by name |
+| `sim/tests/test_surge_when_the_board_empties.py::TestTheTriggerFires::test_a_dungeon_detonating_undefeated_fires_it_too` | with the setting set False by hand, a hit empties the board and a surge follows | the same at the default, and that the default is False |
+| the same file, `test_a_detonation_does_not_empty_the_board_at_the_shipped_setting` | at the default a hit leaves the dungeon on the board and no surge fires | renamed `..._when_a_resolved_dungeon_stays`: the same, with the setting True by name |
+| the same file, `TestOverWholeCampaigns::test_at_the_shipped_settings_a_clear_is_what_empties_the_board` | at the default, over four campaigns every empty-board surge follows a clear | renamed `test_with_a_resolved_dungeon_staying_a_clear_is_what_empties_the_board`: the same, with the setting True by name. A new test beside it, `test_at_the_shipped_settings_a_hit_empties_the_board_too`, asserts that at the default some empty-board surge does not follow a clear (45 fired, 43 after a clear, when written; the counts are not pinned) |
+| `sim/tests/test_quest_relocation_is_adjacent.py::TestWhatARelocatedDungeonKeeps`, the `relocations` fixture | 20 campaigns; its control needs more than 5 relocations that cross a tier boundary | 60 campaigns. At the new default 20 campaigns give 4 of 49, against 27 of 51 with the dungeon staying; 60 give 16 of 137. No assertion changed |
+| `sim/tests/test_the_siege_prose_in_policies_is_true.py`, `REPORT_SETTINGS` | the prose in `policies.py` re-measured at the report settings, which inherited the default | the same with `dungeon_persists_after_resolve=True` added. At the new default 250 campaigns made 18,654 dungeons, under the 20,000 its fixture demands, and with 320 two stated figures are not met (said first, above) |
+| `sim/tests/test_analysis_scripts.py`: `test_the_two_readings_of_won_per_last_stand_are_not_the_same`, `test_the_player_is_outpaced_rather_than_too_weak`, `test_every_lever_changes_exactly_one_setting` | unchanged | unchanged. The scripts they read (`analyse_siege_dose.py`, `analyse_tier_throughput.py`) now hold the setting True in `base_config`; so do `analyse_surge_cadence.py` and `analyse_board_empty_surge.py`, whose `base_config` two existing tests hold equal to the others' |
+
+### Sentences that stated the old behaviour, and what was done to each
+
+- `config.py`, the comment on `dungeon_persists_after_resolve` ("Staying is what lets an ignored city actually
+  die."): rewritten; the old sentence is quoted in the new comment.
+- `config.py`, the comment on `surge_on_empty_board` ("AT THESE DEFAULTS THE TWO RULES ARE THE SAME RULE", "a
+  detonation therefore cannot empty the board", "does not exist here today"): rewritten. One more clause dates
+  the 60-campaign measurement below it to 2026-09-07.
+- `config.py`, the comment on `death_resolves_dungeon` ("its timer is set back to full"): rewritten.
+- `engine.py`: a comment added above the read in `_resolve`; the comment in `_finish_current` ("the days below
+  then run against a full timer") rewritten.
+- `sim/README.md`: a new first section with the measurements; the death section's sentence on the full timer;
+  a new bullet under "Fixed rules"; the paragraph "AT THESE DEFAULTS THE BROAD AND NARROW VERSIONS BEHAVE
+  IDENTICALLY" rewritten.
+- `sim/analyse_tier_throughput.py`: a dated paragraph at the head of its Conditions section. Its step 2,
+  "nothing removes a dungeon but a clear", is true of the setting the file holds and no longer of the default.
+- This file: one dated sentence added beside each of three older statements, in the entries of 2026-09-07 (the
+  surge on an empty board), 2026-10-09 (dying inside a dungeon) and 2026-10-12 (the simulation resolves a
+  dungeon on a death). No sentence of an older entry was rewritten.
+- Not edited: `docs/Cataclysm_GDD_v2.md`, whose sentences on resolving do not say the dungeon stays; the game's
+  comments in `CataclysmEmpireRun.h` and `CataclysmDayClock.h`, which describe the game and are still true of it.
+
+### The measurements
+
+All were made by this session on 2026-10-12 with `measure.py` in its scratch folder, on a `git archive` copy
+of `sim/` at 9463a971, with `dungeon_persists_after_resolve` set by name in every cell. The engine's code at
+this change is that copy's; part (a) was run again on a `git archive` copy of the code commit 0507c5c0 and printed the same eight rows. Shares carry a 95% Wilson interval. Seeds
+are 0 to N-1 in every cell, so cells are paired. Everything not named is raw `TuningConfig()`: surge every 120
+days, 4 dungeons a surge, resolve floor ratio 1.6, STATIC surges, Standard lethality.
+
+**a. Nobody enters any dungeon.** 500 campaigns a cell, no empire tree, 2,000 days. This is the game's
+`AnUnattendedEmpireAlwaysLosesThePathToThePillar` in the model: a policy that returns nothing, and "lost" is the
+first day `Empire.pillar_exposed()` answers true. Cities lost are counted on that day, or on day 2,000 where it
+never came. "Hits" are the times a dungeon took from a city.
+
+| tier | rule | path to the Pillar lost (95% interval) | day lost: median | quartiles | cities lost | surges | from an empty board | hits |
+|---:|---|---|---:|---|---:|---:|---:|---:|
+| 1 | stays | 100.0% (99.2 to 100.0) | 883 | 746 to 1036 | 17.63 | 14.23 | 0.00 | 189.07 |
+| 1 | leaves | 15.0% (12.1 to 18.4) | 1443 | 1046 to 1734 | 5.56 | 18.29 | 1.08 | 58.58 |
+| 2 | stays | 100.0% (99.2 to 100.0) | 641 | 542 to 732 | 17.93 | 11.62 | 0.00 | 196.54 |
+| 2 | leaves | 37.6% (33.5 to 41.9) | 1516 | 1112 to 1799 | 9.70 | 18.26 | 0.43 | 92.26 |
+| 3 | stays | 100.0% (99.2 to 100.0) | 510 | 438 to 582 | 17.92 | 10.24 | 0.00 | 190.99 |
+| 3 | leaves | 81.0% (77.3 to 84.2) | 1435 | 1108 to 1707 | 13.03 | 17.05 | 0.27 | 108.82 |
+| 4 | stays | 100.0% (99.2 to 100.0) | 447 | 378 to 515 | 18.14 | 9.55 | 0.00 | 192.03 |
+| 4 | leaves | 95.8% (93.7 to 97.2) | 1260 | 963 to 1539 | 14.13 | 15.39 | 0.18 | 117.47 |
+
+With the dungeon leaving, the least day on which the path was lost is 55 at tiers 1, 3 and 4 and 113 at tier 2;
+the greatest are 1,991, 1,999, 1,994 and 1,998, so some campaigns were still being lost at the 2,000-day cap and
+a longer cap would raise these shares. That was not measured.
+
+**b. A player.** 300 campaigns a cell, the day cap of 2,500. Explorer is `TREE_EXPLORER_AS_DESIGNED`. "Lost"
+includes a death in the earned Cataclysm dungeon. "Idle days" are free days on which the policy entered nothing.
+Cities lost carry one standard error.
+
+The `triage` policy:
+
+| tree | tier | rule | won (95% interval) | lost | cities lost | dungeons cleared | hits | deaths | surges | from an empty board | days | idle days (share of free days) | Last Stand reached |
+|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| Explorer | 1 | stays | 36.3% (31.1 to 41.9) | 44.0% | 3.05 +/- 0.16 | 55.99 | 34.20 | 8.60 | 17.24 | 2.64 | 1538 | 0.15 (0.2%) | 5.7% |
+| Explorer | 1 | leaves | 38.0% (32.7 to 43.6) | 40.3% | 1.55 +/- 0.08 | 44.30 | 20.27 | 6.15 | 17.06 | 8.81 | 1542 | 0.15 (0.2%) | 2.3% |
+| Explorer | 2 | stays | 1.7% (0.7 to 3.8) | 96.0% | 15.75 +/- 0.24 | 27.60 | 40.54 | 12.41 | 14.02 | 0.04 | 1000 | 0.88 (0.5%) | 90.7% |
+| Explorer | 2 | leaves | 4.3% (2.5 to 7.3) | 94.7% | 14.03 +/- 0.29 | 27.28 | 37.53 | 12.63 | 15.11 | 0.19 | 1220 | 26.76 (5.4%) | 84.0% |
+| Explorer | 3 | stays | 0.3% (0.1 to 1.9) | 98.3% | 16.44 +/- 0.25 | 13.19 | 32.26 | 6.98 | 11.97 | 0.01 | 780 | 31.55 (6.5%) | 100.0% |
+| Explorer | 3 | leaves | 0.3% (0.1 to 1.9) | 99.0% | 16.69 +/- 0.23 | 11.05 | 33.55 | 6.29 | 12.68 | 0.01 | 869 | 110.77 (31.0%) | 100.0% |
+| Explorer | 4 | stays | 0.0% (0.0 to 1.3) | 100.0% | 17.91 +/- 0.22 | 1.77 | 24.89 | 1.84 | 10.82 | 0.00 | 662 | 435.48 (81.8%) | 100.0% |
+| Explorer | 4 | leaves | 0.0% (0.0 to 1.3) | 99.7% | 17.70 +/- 0.23 | 1.28 | 24.79 | 1.53 | 10.85 | 0.00 | 685 | 486.39 (90.0%) | 100.0% |
+| none | 1 | stays | 27.0% (22.3 to 32.3) | 58.0% | 5.27 +/- 0.24 | 56.29 | 89.34 | 6.39 | 18.20 | 8.63 | 1499 | 0.04 (0.1%) | 7.3% |
+| none | 1 | leaves | 40.3% (34.9 to 46.0) | 57.3% | 1.00 +/- 0.07 | 31.59 | 35.74 | 4.11 | 17.60 | 14.02 | 1019 | 0.18 (0.7%) | 1.0% |
+| none | 2 | stays | 8.7% (6.0 to 12.4) | 91.3% | 18.27 +/- 0.37 | 46.71 | 185.01 | 9.35 | 17.09 | 0.99 | 1316 | 0.00 (0.0%) | 73.3% |
+| none | 2 | leaves | 25.7% (21.1 to 30.9) | 68.0% | 3.00 +/- 0.17 | 29.44 | 62.05 | 7.18 | 15.34 | 8.85 | 1094 | 11.46 (5.0%) | 7.0% |
+| none | 3 | stays | 1.0% (0.3 to 2.9) | 99.0% | 23.10 +/- 0.16 | 37.74 | 219.19 | 8.79 | 16.05 | 0.11 | 1138 | 0.00 (0.0%) | 100.0% |
+| none | 3 | leaves | 3.3% (1.8 to 6.0) | 56.7% | 12.05 +/- 0.35 | 50.04 | 132.75 | 16.26 | 24.34 | 6.09 | 2018 | 194.77 (49.0%) | 54.7% |
+| none | 4 | stays | 0.0% (0.0 to 1.3) | 100.0% | 23.53 +/- 0.11 | 30.82 | 221.40 | 7.52 | 14.51 | 0.03 | 973 | 0.00 (0.0%) | 100.0% |
+| none | 4 | leaves | 1.0% (0.3 to 2.9) | 85.7% | 17.58 +/- 0.36 | 41.22 | 147.30 | 14.24 | 22.68 | 3.58 | 1836 | 306.68 (69.4%) | 90.7% |
+
+The `lane_aware` policy:
+
+| tree | tier | rule | won (95% interval) | lost | cities lost | dungeons cleared | hits | deaths | surges | from an empty board | days | idle days (share of free days) | Last Stand reached |
+|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| Explorer | 1 | stays | 39.7% (34.3 to 45.3) | 37.7% | 2.96 +/- 0.15 | 59.15 | 33.71 | 8.24 | 17.95 | 2.63 | 1613 | 0.07 (0.1%) | 3.3% |
+| Explorer | 1 | leaves | 42.3% (36.9 to 48.0) | 35.0% | 1.36 +/- 0.09 | 45.75 | 18.06 | 5.81 | 16.96 | 8.23 | 1557 | 0.14 (0.2%) | 1.7% |
+| Explorer | 2 | stays | 2.3% (1.1 to 4.7) | 97.0% | 15.80 +/- 0.23 | 28.50 | 41.91 | 13.01 | 14.43 | 0.04 | 1003 | 0.00 (0.0%) | 95.7% |
+| Explorer | 2 | leaves | 3.0% (1.6 to 5.6) | 95.7% | 14.92 +/- 0.28 | 30.05 | 40.20 | 13.53 | 16.21 | 0.16 | 1286 | 22.61 (4.4%) | 84.0% |
+| Explorer | 3 | stays | 0.0% (0.0 to 1.3) | 98.7% | 16.69 +/- 0.24 | 13.61 | 33.55 | 7.26 | 12.24 | 0.01 | 796 | 32.24 (6.5%) | 100.0% |
+| Explorer | 3 | leaves | 0.7% (0.2 to 2.4) | 99.0% | 16.78 +/- 0.23 | 11.81 | 34.00 | 6.37 | 12.91 | 0.01 | 873 | 100.54 (29.7%) | 100.0% |
+| Explorer | 4 | stays | 0.0% (0.0 to 1.3) | 100.0% | 17.96 +/- 0.21 | 1.78 | 24.96 | 1.84 | 10.85 | 0.00 | 664 | 435.67 (82.0%) | 100.0% |
+| Explorer | 4 | leaves | 0.0% (0.0 to 1.3) | 99.7% | 17.73 +/- 0.23 | 1.28 | 24.83 | 1.53 | 10.88 | 0.00 | 686 | 486.66 (90.0%) | 100.0% |
+| none | 1 | stays | 25.0% (20.4 to 30.2) | 50.7% | 4.14 +/- 0.24 | 62.77 | 78.06 | 6.75 | 19.34 | 9.27 | 1627 | 0.00 (0.0%) | 4.7% |
+| none | 1 | leaves | 36.7% (31.4 to 42.3) | 59.3% | 0.96 +/- 0.07 | 40.44 | 29.08 | 4.61 | 18.14 | 13.81 | 1170 | 0.18 (0.4%) | 1.7% |
+| none | 2 | stays | 5.0% (3.1 to 8.1) | 93.3% | 19.23 +/- 0.37 | 54.38 | 193.70 | 10.92 | 19.75 | 1.01 | 1530 | 0.00 (0.0%) | 82.3% |
+| none | 2 | leaves | 17.3% (13.5 to 22.0) | 73.0% | 3.00 +/- 0.20 | 37.83 | 56.87 | 8.33 | 15.95 | 8.52 | 1253 | 14.75 (6.5%) | 7.0% |
+| none | 3 | stays | 1.0% (0.3 to 2.9) | 99.0% | 23.08 +/- 0.14 | 40.32 | 220.18 | 9.60 | 17.16 | 0.11 | 1205 | 0.00 (0.0%) | 100.0% |
+| none | 3 | leaves | 2.7% (1.4 to 5.2) | 50.3% | 12.36 +/- 0.34 | 55.78 | 128.93 | 17.52 | 24.58 | 5.13 | 2091 | 189.32 (47.4%) | 52.7% |
+| none | 4 | stays | 0.3% (0.1 to 1.9) | 99.7% | 23.47 +/- 0.14 | 34.56 | 220.52 | 8.33 | 15.40 | 0.03 | 1042 | 0.00 (0.0%) | 100.0% |
+| none | 4 | leaves | 1.7% (0.7 to 3.8) | 79.0% | 17.61 +/- 0.35 | 47.11 | 143.92 | 15.26 | 22.98 | 2.77 | 1938 | 319.53 (67.7%) | 89.3% |
+
+What these say, and no more:
+
+- Without a tree the rule is a large easing: at tier 2 on `triage`, cities lost go from 18.27 to 3.00 and
+  campaigns won from 8.7% to 25.7%.
+- With the Explorer tree it is small above tier 1: at tier 2 on `triage`, cities lost 15.75 to 14.03 and won
+  1.7% to 4.3%, whose intervals overlap. At tier 1, cities lost 3.05 to 1.55 and won 36.3% to 38.0%.
+- **With the rule on, the Explorer player loses far more cities than the player with no tree at tier 2: 14.03
+  against 3.00.** Why was not established. By its comment in `config.py` this preset adds 40 floors to every dungeon at tier 1
+  and more above it, and its deaths are 12.63 a campaign against 7.18.
+- Surges from an empty board rise at the low tiers (no tree, tier 1: 8.63 to 14.02 a campaign).
+- **Whether the policy walks dungeons that would have left anyway was not measured.** The two figures asked
+  for: dungeons cleared fall (no tree, tier 1: 56.29 to 31.59; Explorer, tier 1: 55.99 to 44.30), and idle days
+  stay under one a campaign at tier 1. At tiers 3 and 4 without a tree the player is idle on 49.0% and 69.4% of
+  free days with the rule on and 0.0% with it off: fewer dungeons stand, and those left are ones `triage`
+  refuses as too dangerous. `triage` and `lane_aware` were written for dungeons that stay, and neither ever
+  lets a cheap hit land on purpose. Neither was changed.
+
+**c. A first look at what would make the undefended empire lose again. NOT A RETUNE.** With the rule on, one
+constant moved at a time from the defaults; 300 campaigns a cell; the undefended empire as in (a); beside it the
+Explorer `triage` player as in (b) at tiers 1 and 2. The first three constants are the ones section 0 of
+`sim/experiments.py` (`exp_calibrate`) sweeps, over wider grids than its own (ratio 1.2, 1.6, 2.0; interval 75,
+90, 120; count 5, 6, 7). The dungeon's damage is every ordinary dungeon's defence and population damage in
+`DUNGEON_SPECS` multiplied by the value. `surge_interval_min` is a fifth, added by the writing session.
+`surge_dungeon_count` 16 is held to 14 by `surge_count_max`.
+
+| constant | value | undefended, path lost: tier 1 | tier 2 | tier 3 | tier 4 | Explorer triage won: tier 1 (95% interval) | tier 2 | its cities lost: tier 1 | tier 2 |
+|---|---:|---:|---:|---:|---:|---|---|---:|---:|
+| `surge_interval_days` | 120.0 (shipped) | 15.0% | 38.7% | 80.0% | 96.3% | 38.0% (32.7 to 43.6) | 4.3% (2.5 to 7.3) | 1.55 | 14.03 |
+| `surge_interval_days` | 90.0 | 19.7% | 67.3% | 98.0% | 100.0% | 44.7% (39.1 to 50.3) | 2.3% (1.1 to 4.7) | 1.69 | 15.39 |
+| `surge_interval_days` | 75.0 | 36.3% | 90.3% | 100.0% | 100.0% | 49.3% (43.7 to 55.0) | 5.0% (3.1 to 8.1) | 2.09 | 14.98 |
+| `surge_interval_days` | 60.0 | 48.0% | 99.3% | 100.0% | 100.0% | 46.3% (40.8 to 52.0) | 5.0% (3.1 to 8.1) | 3.15 | 15.44 |
+| `surge_interval_days` | 45.0 | 79.7% | 100.0% | 100.0% | 100.0% | 38.3% (33.0 to 43.9) | 5.3% (3.3 to 8.5) | 4.29 | 16.15 |
+| `surge_interval_days` | 30.0 | 99.0% | 100.0% | 100.0% | 100.0% | 40.0% (34.6 to 45.6) | 4.7% (2.8 to 7.7) | 7.78 | 17.12 |
+| `surge_dungeon_count` | 4 (shipped) | 15.0% | 38.7% | 80.0% | 96.3% | 38.0% (32.7 to 43.6) | 4.3% (2.5 to 7.3) | 1.55 | 14.03 |
+| `surge_dungeon_count` | 5 | 18.7% | 70.3% | 97.7% | 100.0% | 45.0% (39.5 to 50.7) | 2.7% (1.4 to 5.2) | 2.25 | 15.22 |
+| `surge_dungeon_count` | 6 | 30.0% | 91.3% | 100.0% | 100.0% | 43.3% (37.8 to 49.0) | 5.3% (3.3 to 8.5) | 3.07 | 15.96 |
+| `surge_dungeon_count` | 7 | 46.7% | 98.7% | 100.0% | 100.0% | 38.0% (32.7 to 43.6) | 2.7% (1.4 to 5.2) | 4.35 | 16.29 |
+| `surge_dungeon_count` | 8 | 67.3% | 100.0% | 100.0% | 100.0% | 37.7% (32.4 to 43.3) | 2.7% (1.4 to 5.2) | 5.72 | 16.34 |
+| `surge_dungeon_count` | 10 | 92.3% | 100.0% | 100.0% | 100.0% | 38.0% (32.7 to 43.6) | 2.7% (1.4 to 5.2) | 7.81 | 16.89 |
+| `surge_dungeon_count` | 12 | 99.7% | 100.0% | 100.0% | 100.0% | 35.3% (30.1 to 40.9) | 3.7% (2.1 to 6.4) | 10.06 | 17.51 |
+| `surge_dungeon_count` | 16 | 100.0% | 100.0% | 100.0% | 100.0% | 21.7% (17.4 to 26.7) | 2.7% (1.4 to 5.2) | 11.84 | 17.84 |
+| `resolve_floor_ratio` | 1.6 (shipped) | 15.0% | 38.7% | 80.0% | 96.3% | 38.0% (32.7 to 43.6) | 4.3% (2.5 to 7.3) | 1.55 | 14.03 |
+| `resolve_floor_ratio` | 1.2 | 10.7% | 29.0% | 68.7% | 91.0% | 38.0% (32.7 to 43.6) | 4.3% (2.5 to 7.3) | 1.97 | 15.07 |
+| `resolve_floor_ratio` | 2.0 | 15.7% | 43.3% | 82.3% | 98.0% | 38.7% (33.3 to 44.3) | 2.0% (0.9 to 4.3) | 1.25 | 14.12 |
+| ordinary dungeon's damage, times | 1.0 (shipped) | 15.0% | 38.7% | 80.0% | 96.3% | 38.0% (32.7 to 43.6) | 4.3% (2.5 to 7.3) | 1.55 | 14.03 |
+| ordinary dungeon's damage, times | 1.5 | 21.0% | 76.0% | 100.0% | 100.0% | 40.3% (34.9 to 46.0) | 3.3% (1.8 to 6.0) | 3.10 | 15.02 |
+| ordinary dungeon's damage, times | 2.0 | 32.7% | 98.7% | 100.0% | 100.0% | 36.7% (31.4 to 42.3) | 3.3% (1.8 to 6.0) | 3.61 | 15.58 |
+| ordinary dungeon's damage, times | 3.0 | 84.3% | 100.0% | 100.0% | 100.0% | 31.0% (26.0 to 36.4) | 3.0% (1.6 to 5.6) | 6.18 | 15.03 |
+| ordinary dungeon's damage, times | 4.0 | 99.3% | 100.0% | 100.0% | 100.0% | 26.3% (21.7 to 31.6) | 3.3% (1.8 to 6.0) | 8.35 | 14.77 |
+| ordinary dungeon's damage, times | 6.0 | 100.0% | 100.0% | 100.0% | 100.0% | 27.0% (22.3 to 32.3) | 4.7% (2.8 to 7.7) | 7.22 | 13.96 |
+| ordinary dungeon's damage, times | 10.0 | 100.0% | 100.0% | 100.0% | 100.0% | 29.0% (24.2 to 34.4) | 2.7% (1.4 to 5.2) | 6.22 | 13.55 |
+| `surge_interval_min` | 25.0 (shipped) | 15.0% | 38.7% | 80.0% | 96.3% | 38.0% (32.7 to 43.6) | 4.3% (2.5 to 7.3) | 1.55 | 14.03 |
+| `surge_interval_min` | 10.0 | 18.0% | 71.3% | 98.0% | 100.0% | 39.3% (34.0 to 45.0) | 5.7% (3.6 to 8.9) | 2.02 | 15.20 |
+| `surge_interval_min` | 1.0 | 18.3% | 87.3% | 100.0% | 100.0% | 46.3% (40.8 to 52.0) | 5.7% (3.6 to 8.9) | 3.05 | 16.15 |
+
+Which single constants reach "the undefended empire loses in at least 95% of campaigns":
+
+- At tier 4 the shipped numbers already do in this run (96.3%, interval 93.6 to 97.9; 95.8% over the 500
+  campaigns of (a), interval 93.7 to 97.2). At tier 3 they do not (80.0%).
+- At every one of tiers 1 to 4, three single constants do: a surge every 30 days (tier 1: 99.0%), 12 dungeons
+  a surge (99.7%; 10 gives 92.3%), or four times the damage (99.3%; three times gives 84.3%).
+- At tiers 2 to 4 and not at tier 1, milder values do: a surge every 60 days (tier 2: 99.3%), 7 dungeons a
+  surge (98.7%), or twice the damage (98.7%).
+- `resolve_floor_ratio` does not at any value tried, and nor does `surge_interval_min`. A shorter timer makes
+  the undefended empire lose less often, not more (ratio 1.2, tier 1: 10.7%).
+- What the tier 1 values do to the defending Explorer player at tier 1: campaigns won are 40.0% at a 30-day
+  interval and 35.3% at 12 dungeons, against 38.0% shipped, all inside one another's intervals, while cities
+  lost go from 1.55 to 7.78 and 10.06. Four times the damage lowers campaigns won to 26.3% (interval 21.7 to
+  31.6, below the shipped interval) with 8.35 cities lost. At tier 2 this player wins 2% to 6% in every row,
+  which is too near nought to show a cost.
+- So the difficulty tier matters more than any one of these constants: one value cannot hold tier 1 and tier 4
+  to the same share. A tier 1 wave is 4 dungeons and a tier 4 wave about 11, the figure
+  `sim/analyse_tier_throughput.py` states.
+
+Not measured in (c): two constants moved together; city health; the Siege's constants; the `health` score that
+`exp_calibrate` ranks by; the player with no tree; `lane_aware`; any tier above 4.
+
+### For the owner's play-check
+
+Nothing changes in the game with this entry. When the rule reaches the game, a player will see: a dungeon they
+ignore hits its city once and is gone from the map; a dungeon they die in hits once and is gone; a city under a
+Siege carried by an ordinary dungeon stops losing health when that dungeon's timer runs out; at the lowest
+tiers the map is often empty and a new wave follows. No number was judged here; none was changed.
+
+### The writing session's judgements, for the coordinating session to confirm
+
+1. **The existing setting's default was flipped; no new setting was added.** Its one read is reached only for
+   an ordinary dungeon on a standing city, which is the rule's whole extent. The name
+   `dungeon_persists_after_resolve` was kept so older records still name a real setting.
+2. **An ordinary dungeon standing on a city that has already fallen is not removed when its timer runs out.**
+   It hits nothing, so the rule "does its damage, and then despawns" does not reach it; its timer refills as
+   before, and the game returns at the same place. It is reachable only for a dungeon the player was inside
+   when the city fell.
+3. **Four analysis scripts hold the old rule in `base_config`** (`analyse_tier_throughput.py`,
+   `analyse_surge_cadence.py`, `analyse_board_empty_surge.py`, `analyse_siege_dose.py`), because three existing
+   tests of two of them fail at the new default and two more tests hold the three `base_config` copies equal.
+   Their quoted figures were not re-measured. The alternative not taken: re-measure and rewrite those files.
+4. **The Siege prose test holds the old rule, and the prose in `policies.py` was left.** The alternative not
+   taken: re-measure the prose at the new default and rewrite it, which changes a docstring of the policy file.
+5. **The quest relocation fixture runs 60 campaigns in place of 20.**
+6. **"Undefended" is a policy that returns nothing, and "lost" is the Last Stand opening**, within 2,000 days,
+   after the game's test.
+7. **Old tests were pinned to the old setting by name and kept**, so "with the setting on 'stays' everything is
+   as before" is held by the tests that held it before. Three were renamed.
+8. **Part (c) uses grids wider than `exp_calibrate`'s**, adds `surge_interval_min`, and scales defence and
+   population damage together at every city tier.
+9. **`docs/Cataclysm_GDD_v2.md` was not edited.** The rule is the owner's and is not in the game; whether the
+   design document states it now or when the game has it was not ruled.
+
+### Tests
+
+`sim/tests/test_an_ordinary_dungeon_leaves_after_it_hits_its_city.py`, 21 tests. Each case builds its board
+by hand with no wave due, and each has a control with the setting on "stays" from the same seed.
+
+- The default is False.
+- An ordinary dungeon on a standing city, nobody entering it, over two of its timers: it takes one hit's
+  defence and is gone, with one detonation counted. Control: staying, it takes two hits' and is still there.
+  The same for population. With "stays" the timer is full again after the hit.
+- No other city pays and no other dungeon leaves.
+- Leaving is not a clear: `cleared`, `basic_cleared`, floors, empire points and materials stay at nought.
+  Control: a clear raises `basic_cleared` and `cleared`.
+- The dungeon being walked does not leave by its timer.
+- A Quest dungeon and a Fallen City dungeon: after the timer runs out, every city, the dungeon's place and
+  timer, the tallies, the list of dungeons and the state of the random stream are equal under the two settings,
+  and the dungeon is on the map with a full timer. The same for an ordinary dungeon on a fallen city.
+- The hit that fells the city, under each setting: the city has fallen, the dungeon and two others on it are
+  gone, one Fallen City dungeon stands there. The two settings leave the same board.
+- A Siege on an ordinary dungeon: after its timer runs out it is gone, no Siege stands on the city, and the
+  city's defence is the same three days later. Control: staying, the defence falls in those days with one
+  detonation counted.
+- A Heretic death (15 days) in a dungeon whose full timer is 3 days: one hit at the death, the dungeon gone,
+  and the city has lost the same amount when the days end. Control: staying, it loses more and more than one
+  detonation is counted.
+- The only dungeon on the map hits its city 999 days after the last wave: one surge from an empty board fires
+  and lands dungeons. Control: staying, none fires and one dungeon stands.
+
+`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`, 4 tests: the model's
+default; the order in `Simulation._resolve`; the game's `ResolveDungeon` holds no `RemoveDungeon(`; and a
+control that the function read still holds its three calls in order.
+
+### Run
+
+Made by the writing session on 2026-10-12, in the worktree, on the code commit 0507c5c0 and its parent.
+
+- The whole fast suite before, on 9463a971: "6018 passed, 7 skipped in 436.42s (0:07:16)"; JUnit tests 6025,
+  failures 0, errors 0, skipped 7.
+- The whole fast suite at the code change, before this entry was written: "6044 passed, 7 skipped in 292.05s
+  (0:04:52)"; JUnit tests 6051, failures 0, errors 0, skipped 7. The 26 more are the 21 and 4 new tests and
+  the one added beside a renamed test. The suite was not run for this entry before it was written.
+- `python -m ruff check .`: "All checks passed!".
+- `sim/experiments.py` was not run.
+
+Five breaks with `tools/prove_guard.py`, in a `git archive` copy of 0507c5c0, each run over six test files
+(the two new files, `test_day_clock_port.py`, `test_a_death_resolves_an_ordinary_dungeon.py`,
+`test_surge_when_the_board_empties.py`, `test_a_death_resolves_in_the_model_as_in_the_game.py`). Every
+`result.proved` was true.
+
+| Break | Printed | Tests that failed |
+|---|---|---|
+| the removal at the end of `_resolve` replaced by a refill | `PROVED: 12 failed, 96 passed in 2.88s \| restored: 108 passed in 1.99s` | seven of the new simulation tests (hits once; people once; no other dungeon leaves; not a clear; the Siege; the death; the empty-board surge), `test_the_model_removes_it_last_and_only_after_the_citys_fall`, and four older ones |
+| the default put back to True | `PROVED: 6 failed, 102 passed in 2.57s \| restored: 108 passed in 1.96s` | the two default tests, the day clock test, and three older ones |
+| the guard in `_resolve` no longer returns for a city already fallen | `PROVED: 3 failed, 105 passed in 2.00s \| restored: 108 passed in 2.00s` | `test_an_ordinary_dungeon_on_a_fallen_city_is_not_removed`, the order test, and `test_an_ordinary_dungeon_on_a_city_already_fallen_takes_nothing` |
+| the game's `ResolveDungeon`, in the copy, given a `RemoveDungeon(DungeonId);` last line | `PROVED: 2 failed, 106 passed in 2.01s \| restored: 108 passed in 1.98s` | `test_the_game_does_not_remove_a_resolved_dungeon_yet`, and its control, which then asserted that the function ends with the block that fells the city. That assertion was taken out of the control after this proof, so the control no longer fails for the change the first test exists to report; the proof was not run again |
+| the day clock's constant, in the copy, set false | `PROVED: 1 failed, 107 passed in 2.03s \| restored: 108 passed in 1.95s` | `test_the_clock_refills_every_timer_and_is_not_held_to_the_model` |
+
+Not proved by a break: the Quest dungeon and Fallen City dungeon tests (no single line was found whose break
+they alone catch), and the test that the hit which fells the city leaves the same board under both settings.
+
+### Not covered
+
+- The game. No C++ changed, nothing was built, and no Unreal test was run.
+- The retune. No constant moved, and `sim/experiments.py` was not run.
+- Whether `triage` and `lane_aware` are the right players to measure the rule with.
+- How many empty-board surges follow a hit and how many a clear, over more than four campaigns.
+- The Last Stand and the earned Cataclysm dungeon: how often each is reached and won under the rule, beyond
+  the "Last Stand reached" column above.
+- Lethality modes other than Standard, and difficulty tiers above 4.
+- The figures in the four analysis scripts that hold the old rule, and in the four that do not
+  (`analyse_explorer_rate.py`, `analyse_explorer_shape.py`, `analyse_lethality_modes.py`,
+  `analyse_quest_move_chance.py`): none was re-measured.
+- The Siege prose in `policies.py` at the new default.
+- No test in the simulation's suite fails when an undefended empire stops losing. One could be written once
+  the retune names the share it must reach.
+
+---
+
 ## 2026-10-12 — Seven sentences are given their rows: execute, unmitigated retaliation, enemies that survive a first hit, enemies immune after fifteen seconds, added projectiles, teleport when hit, and damage taken dealt over seconds
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (eight rows of the Enchantment Effects sheet, on seven
@@ -4447,6 +5395,11 @@ A labelled judgement by the coordinating session under the owner's delegation, 2
 "a death resolves the dungeon" first, as its own change, before any change to whether a resolved dungeon
 stays, so the two rules can be measured apart. `dungeon_persists_after_resolve` is left at True.
 
+**Added 2026-10-12, by a later change the same day:** `dungeon_persists_after_resolve` now defaults to False,
+so in the simulation a dungeon the player dies in hits its city once and leaves the map. The figures in this
+entry were measured with it True. The tests this entry lists that read a full timer after a death now set it
+True by name. See the entry of 2026-10-12 headed "In the simulation an ordinary dungeon leaves the map after it hits its city".
+
 ### What was read before writing
 
 - `UCataclysmEmpireRun::ResolveDungeonOnDeath` and `ResolveDungeon`, and
@@ -6320,6 +7273,8 @@ second time inside those days. Three things the code adds to the figures in the 
   despawn." An ordinary dungeon still stays on the map after it resolves, by its timer or by a death, with its
   timer full again. It is a later piece of work. All of a death's resolve goes through one function of the
   empire run, so that piece changes the empire layer and nothing in the game module.
+  **Added 2026-10-12:** the simulation has this rule now and the game still does not, on purpose; in the game
+  everything this entry says still holds. See the entry of 2026-10-12 headed "In the simulation an ordinary dungeon leaves the map after it hits its city".
 - The equipment a death costs in Hardcore and Heretic.
 - Anything on screen that says what the death cost. One log line says it.
 - Co-operative play, when one of several players dies. The game mode acts on any player character that stands
@@ -75394,6 +76349,12 @@ cannot empty the board at the shipped settings. Measured over 20 campaigns on th
 `triage` policy: **126 board-empty surges fired and all 126 followed the player
 clearing the last dungeon** — none followed a detonation, and none followed a
 city falling and absorbing the last dungeons.
+
+**Corrected on 2026-10-12: in the simulation this is no longer so.**
+`dungeon_persists_after_resolve` is now `False` there: an ordinary dungeon leaves
+after it hits its city, and the last one leaving empties the board. The stalling
+trade the next paragraph calls unavailable is then available, and the broad rule
+is what answers it. The game still keeps the dungeon. See the entry of 2026-10-12 headed "In the simulation an ordinary dungeon leaves the map after it hits its city".
 
 **So a reason given for the broad rule on the issue does not hold**: the stalling
 trade — let the last dungeon detonate instead of clearing it, pay one city's

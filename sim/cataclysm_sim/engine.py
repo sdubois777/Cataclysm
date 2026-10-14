@@ -70,6 +70,8 @@ def cataclysm_order_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
     raw default of 4. Unpaired -- two cells on different seeds -- it is 1.7
     against 1.7 at surge 5 and 2.7 against 1.9 at surge 4. So only the unpaired
     floor moves, only at the surge size `exp_calibrate` rejected.
+    (WRITTEN WHEN THE RAW DEFAULT WAS 4 DUNGEONS EVERY 120 DAYS. Since
+    2026-10-13 it is 5 every 90. These figures were not re-measured.)
 
     `random.Random` seeds from a string via SHA-512, so this is stable across
     processes and Python versions in a way `hash()` is not.
@@ -129,11 +131,40 @@ class Dungeon:
     is_last_stand: bool = False
     source: str = ""            # which Cataclysm sent it
     times_resolved: int = 0
+    #: Of `floors`, how many the empire tree added. Negative when the tree
+    #: removed floors. Set once by `Simulation._make_dungeon`; 0 for a
+    #: dungeon built by hand and for a campaign with no tree.
+    tree_floors: int = 0
+
+    @property
+    def natural_floors(self) -> int:
+        """The depth this dungeon has without the empire tree.
+
+        WHAT A HIT IS SIZED BY, since 2026-10-13: the depth rolled from the
+        dungeon's row, times its Cataclysm pattern's multiplier, and not
+        the floors the tree added or removed. `floors` is still the depth
+        for the walk, the timer, the power, the death chance and the
+        reward.
+
+        `floors - tree_floors` AND NOT A SECOND STORED DEPTH, so a depth
+        changed after the dungeon was made, as the Last Stand and the
+        earned boss do and as tests do, moves this with it, and only the
+        tree's part is left out.
+        """
+        return self.floors - self.tree_floors
 
     @property
     def resolves(self) -> bool:
-        """Quest dungeons refresh instead of resolving; Fallen City and
-        Cataclysm dungeons have already done their damage."""
+        """Only an ordinary dungeon resolves; Fallen City and Cataclysm
+        dungeons have already done their damage.
+
+        A QUEST DUNGEON ANSWERS False AND STILL HITS ITS CITY, since
+        2026-10-13. Its timer running out takes an ordinary dungeon's hit
+        from its host through `Simulation._quest_hit`, and that path does
+        not ask this property. This one is read by a death, which resolves
+        an ordinary dungeon and no other kind, by `_urgent`, and by the
+        policies, and none of the three changed on that date.
+        """
         return self.dtype is DungeonType.BASIC
 
 
@@ -191,6 +222,10 @@ class RunResult:
     #: total across every active Cataclysm: `_maybe_open_cataclysm` opens the
     #: capital once `cataclysms_required()` of these are finished. Issue #1436.
     cataclysms_finished: int
+    #: Times a Quest dungeon's timer ran out and hit a standing city. NOT
+    #: PART OF `dungeons_resolved`. 0 with `quest_timer_hits_city` off,
+    #: which is what every figure measured before 2026-10-13 describes.
+    quest_hits: int = 0
 
     @property
     def triage_pressure(self) -> float:
@@ -290,6 +325,9 @@ class Simulation:
         #: Floors the earned boss gained from `basic_cleared` when it opened.
         self.cataclysm_floors_earned = 0
         self.resolved = 0
+        #: Times a Quest dungeon's timer ran out and hit a standing city.
+        #: NOT PART OF `resolved`, which counts ordinary dungeons alone.
+        self.quest_hits = 0
         self.floors_cleared = 0     # loot proxy: reward scales with depth
         self.empire_points = 0.0
         #: The same awards WITHOUT the population multiplier. Carried so a run
@@ -312,9 +350,16 @@ class Simulation:
         lo, hi = spec.floors
         floors = max(1, int(round(self.rng.randint(lo, hi) * floors_mult)))
 
+        # THE NATURAL DEPTH, kept apart from what the tree does next. The
+        # Cataclysm pattern's `floors_mult` is inside it: the pattern is part
+        # of what the dungeon is, which is a labelled judgement of
+        # 2026-10-13. A hit is sized by this; see `_hit_floors`.
+        natural = floors
+
         # Floor deltas from the tree change depth, and because this model charges
         # one day a floor they change run time and reward at the same time. The
-        # game can separate the two; this model cannot.
+        # game can separate the two; this model cannot. Until 2026-10-13 they
+        # changed the size of the dungeon's hit as well.
         floors = max(1, int(round(
             floors + cfg.tree.floors_added(cfg.active_cataclysm_count()))))
 
@@ -338,8 +383,10 @@ class Simulation:
             jitter = 1.0 + self.rng.uniform(-cfg.resolve_jitter, cfg.resolve_jitter)
             resolve = base * jitter + cfg.tree.resolve_bonus_days
         else:
-            # Quest dungeons relocate, Fallen Cities and the Cataclysm have
-            # already done their damage. None of them detonate.
+            # A Quest dungeon's timer is flat and is not rolled from its
+            # depth. Fallen Cities and the Cataclysm have already done their
+            # damage and do not detonate. Since 2026-10-13 a Quest dungeon's
+            # timer running out hits its host; see `_quest_hit`.
             resolve = spec.resolve_days[0]
 
         d = Dungeon(
@@ -348,6 +395,7 @@ class Simulation:
             city_id=city.cid,
             city_tier=city.tier,
             floors=floors,
+            tree_floors=floors - natural,
             # Cow Level: "time to complete is doubled and cannot be reduced".
             run_days=self._walk_days(floors, subtype),
             resolve_max=int(resolve),
@@ -688,7 +736,13 @@ class Simulation:
         cfg = self.cfg
         city = self.empire.cities[d.city_id]
 
-        # A quest dungeon does not detonate; it picks up and moves.
+        # A QUEST DUNGEON HITS ITS HOST CITY, THEN ITS TIMER IS FULL AGAIN,
+        # THEN IT MAY MOVE. The hit is `_quest_hit`, in the model since
+        # 2026-10-13 and asked by `cfg.quest_timer_hits_city`. Until that
+        # date the timer cost the city nothing and this comment began "A
+        # quest dungeon does not detonate; it picks up and moves". The
+        # paragraphs below are about the refresh and the move, and they
+        # read as they did.
         #
         # TO AN ADJACENT CITY, AND ONLY AN ADJACENT ONE. This used to draw from
         # `exposed_cities()` -- anywhere on the map -- which contradicts the
@@ -746,6 +800,11 @@ class Simulation:
         # rows: a dungeon that drifted inward onto a bigger city read as
         # shallower than it is and one that drifted outward read as deeper.
         #
+        # SINCE 2026-10-13 A QUEST DUNGEON'S HIT DOES NOT READ `city_tier`
+        # EITHER. `_quest_hit` reads the ordinary row of the tier of the
+        # city the dungeon STANDS ON when the hit lands, which is the
+        # host's tier and not this field.
+        #
         # IT COST NOTHING AND NOTHING WOULD HAVE FAILED WHEN IT DID. A Quest
         # dungeon returns above without ever reaching the scale, so the wrong
         # row was never read; it would have become a live wrong number the
@@ -760,6 +819,19 @@ class Simulation:
         # different number of days and over a different list, so the whole
         # stream diverges from the day the first quest timer fires.
         if d.dtype is DungeonType.QUEST:
+            # THE HIT FIRST. A city already fallen is hit by nothing, as for
+            # an ordinary dungeon.
+            if cfg.quest_timer_hits_city and not city.fallen:
+                self._quest_hit(d, city)
+
+                # THE HIT FELLED THE CITY AND THE FALL ABSORBED THIS DUNGEON
+                # with every other dungeon on it, so nothing is left to
+                # refresh or to move, and no draw is taken. `_fall` spares
+                # the dungeon the player is inside; that one is still on
+                # the map and goes on to the refresh and the move below.
+                if d.did not in self.dungeons:
+                    return
+
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
                 targets = self.empire.adjacent_exposed_cities(city)
@@ -800,9 +872,11 @@ class Simulation:
 
         # Bigger dungeons hit harder. Scale the bite by how deep this one is
         # relative to a typical dungeon of its type on this tier.
+        #
+        # BY ITS NATURAL DEPTH, since 2026-10-13: `_hit_floors`.
         lo, hi = cfg.spec(d.dtype, d.city_tier).floors
         typical = (lo + hi) / 2.0
-        scale = d.floors / typical
+        scale = self._hit_floors(d) / typical
 
         # ABSOLUTE POINTS. `city.max_defense` is deliberately absent: while the
         # damage was a fraction of it, it divided out of how many resolves the
@@ -816,10 +890,129 @@ class Simulation:
         if city.defense <= 0:
             self._fall(city)
 
+        # IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of
+        # 2026-10-08, verbatim: "Ordinary dungeons will do their
+        # city/population damage, and then despawn." The setting is False
+        # since 2026-10-12; True is the model as it was, the dungeon staying
+        # with its timer full again.
+        #
+        # ONLY AN ORDINARY DUNGEON ON A CITY THAT WAS STANDING GETS HERE. A
+        # Quest dungeon returned at the top and a Fallen City dungeon, or any
+        # dungeon on a city already fallen, returned at the guard.
+        #
+        # THE FALL COMES FIRST, SO THE DUNGEON THAT FELLS ITS CITY IS ABSORBED
+        # AND NOT REMOVED HERE. `_fall` above has already taken every dungeon
+        # on the city off the map, and the `pop` finds nothing. The one it
+        # spares is the dungeon the player is inside, which reaches this line
+        # by a death, or by its timer when `timer_ticks_while_running` is on,
+        # and then leaves by it.
+        #
+        # NOT A CLEAR. Nothing is added to `cleared`, `basic_cleared`, the
+        # empire points or the materials, so a dungeon that leaves adds no
+        # floor to the Cataclysm boss.
+        #
+        # THE GAME DOES NOT DO THIS YET.
+        # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
+        # reads this function and `UCataclysmEmpireRun::ResolveDungeon`.
         if cfg.dungeon_persists_after_resolve:
             d.resolve_in = float(d.resolve_max)
         else:
             self.dungeons.pop(d.did, None)
+
+    def _hit_floors(self, d: Dungeon) -> float:
+        """The depth a dungeon's hit is sized by.
+
+        ITS NATURAL FLOORS, SINCE 2026-10-13. The owner accepted the
+        coordinating session's recommendation that day, in that session's
+        words: a dungeon's hit is sized by its NATURAL floors, not the
+        floors the Explorer tree adds. Until then this was `d.floors`, so
+        the Explorer preset's 40 extra floors at difficulty tier 1 made an
+        ordinary dungeon on an Outpost hit about 4.5 times as hard: 51.5
+        floors over a typical 11.5.
+
+        A TREE THAT REMOVES FLOORS DOES NOT SHRINK THE HIT EITHER, which the
+        ruling's words imply and did not spell out. `Exclusionary Mapping`
+        (-1 floor a point) and a preset with a negative `floor_delta`, such
+        as `TREE_EXPLORER_VIA_FLOORS`, still make a dungeon shorter to walk,
+        poorer and quicker to come due. They no longer make it hit less.
+
+        ONLY THE HIT. The walk, the resolve timer, the power, the death
+        chance and the reward all still read `d.floors`.
+
+        `cfg.hit_scales_with_natural_floors` False is the model as it was.
+        With no tree the two are the same number and nothing changes.
+
+        THE GAME: `FCataclysmDungeon::BiteScale` divides `Floors`. It has no
+        empire tree; it has two city upgrades that move `Floors`.
+        `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`.
+        """
+        cfg = self.cfg
+        return d.natural_floors if cfg.hit_scales_with_natural_floors else d.floors
+
+    def _quest_hit(self, d: Dungeon, city: City) -> None:
+        """A Quest dungeon's timer ran out on a standing city: the city is hit.
+
+        THE OWNER, 2026-10-08, VERBATIM: "Quest dungeons will do their
+        city/population damage, and either refresh their timer and stay on
+        that city, or potentially move to an adjacent city." The model had
+        the opposite until 2026-10-13: the timer cost the city nothing,
+        which a recommendation accepted on 2026-10-09 had kept. The
+        recommendation accepted on 2026-10-13 reverses that one and returns
+        to the sentence above. `docs/DECISIONS.md`, 2026-10-13.
+
+        THE SIZE IS AN ORDINARY DUNGEON'S HIT FOR THE CITY IT STANDS ON.
+        That is the accepted recommendation's wording. In code it is the
+        ordinary (`BASIC`) row of the HOST city's tier at the moment of the
+        hit. It is not the tier the Quest dungeon's depth was rolled from
+        (`d.city_tier`), which a relocation does not move. The Quest rows
+        of `DUNGEON_SPECS` still carry 0.0 and `d.defense_damage` is still
+        0.0: nothing reads them for this, and leaving them keeps the
+        specification table equal to the game's `SpecFor`.
+
+        NO SCALE BY DEPTH, WHICH IS A READING. A Quest dungeon is deeper
+        than an ordinary one of the same city (20 to 30 floors on an
+        Outpost against 8 to 15), so dividing its floors by the ordinary
+        midpoint would make every Quest hit about twice an ordinary one.
+        "An ordinary dungeon's size" is read as the row at a scale of 1.0.
+        `cfg.quest_hit_scales_with_depth` is the other reading, kept so the
+        two can be measured side by side.
+
+        THE TREE'S DAMAGE REDUCTION APPLIES as it does to any hit.
+
+        COUNTED IN `quest_hits` AND NOT IN `resolved`. `resolved` goes on
+        counting ordinary dungeons alone, so `RunResult.dungeons_resolved`
+        means what it meant in every earlier figure and still equals the
+        game's `DungeonsDetonated`. `Dungeon.times_resolved` is not raised
+        for a Quest dungeon either, as it never was.
+
+        A FALL IS A FALL. `_fall` absorbs every dungeon on the city, this
+        one included unless the player is inside it, exactly as when an
+        ordinary dungeon fells a city that a Quest dungeon stands on.
+
+        NO DRAW IS TAKEN HERE, so with the city left standing the random
+        stream is where it would have been without the hit.
+
+        THE GAME DOES NOT HAVE THIS RULE.
+        `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`
+        reads this and `UCataclysmEmpireRun::ResolveDungeon`.
+        """
+        cfg = self.cfg
+        ordinary = cfg.spec(DungeonType.BASIC, city.tier)
+
+        scale = 1.0
+        if cfg.quest_hit_scales_with_depth:
+            lo, hi = ordinary.floors
+            scale = self._hit_floors(d) / ((lo + hi) / 2.0)
+
+        self.quest_hits += 1
+
+        taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+        city.defense -= ordinary.defense_damage * scale * taken
+        city.population -= ordinary.population_damage * scale * taken
+        city.population = max(0.0, city.population)
+
+        if city.defense <= 0:
+            self._fall(city)
 
     def _apply_siege_damage(self) -> None:
         """Every standing Siege takes its daily share of the city it sits on.
@@ -995,8 +1188,11 @@ class Simulation:
             # RESOLVE, LEAVE, CHARGE THE DAYS, in the order the game uses:
             # `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, ruled on
             # 2026-10-09. The dungeon resolves while the player is still
-            # inside it, and the days below then run against a full timer
-            # that counts down again because nobody is standing in it.
+            # inside it. Since 2026-10-12 it then leaves the map, so nothing
+            # of it is left to hit during the days below. With
+            # `dungeon_persists_after_resolve` on it stays, as in the game
+            # today, and those days run against a full timer that counts down
+            # again because nobody is standing in it.
             # `tools/tests/test_a_death_resolves_in_the_model_as_in_the_game.py`
             # holds the order in both files.
             if cfg.death_resolves_dungeon:
@@ -1141,7 +1337,9 @@ class Simulation:
         Cataclysm dungeon from rolling Cow Level and so changed the draw this
         fight is built from. 2,000 campaigns in two disjoint blocks of 1,000
         seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days x5
-        (`surge_dungeon_count=5`, not the default of 4), resolve ratio 2.0,
+        (`surge_dungeon_count=5`, not the default of 4 that the model had
+        until 2026-10-13, and 120 days, not the 90 it has since), resolve
+        ratio 2.0,
         escalation 0.10 per 100 days, craft 12 days +4%, **with the Siege damage
         settings live**:
 
@@ -1465,4 +1663,5 @@ class Simulation:
             free_days=self.free_days,
             overcommitted=self.overcommitted,
             cataclysms_finished=len(self.cataclysms_complete()),
+            quest_hits=self.quest_hits,
         )

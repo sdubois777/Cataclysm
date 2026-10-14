@@ -53,6 +53,16 @@ completes 3.31 quest objectives against a requirement of at least ten.
 
 ## Conditions
 
+**THIS FILE DESCRIBES THE MODEL AS IT WAS BEFORE 2026-10-12, WHEN AN ORDINARY
+DUNGEON STAYED ON THE MAP AFTER IT HIT ITS CITY.** That day
+`TuningConfig.dungeon_persists_after_resolve` became False by default, by the
+owner's ruling of 2026-10-08 that such a dungeon does its damage and then
+despawns. Step 2 above, "nothing removes a dungeon but a clear", is no longer
+true of the shipped model. `base_config` holds the setting True so that every
+figure here is still what the command below prints, and the section 4 row
+"detonated dungeon leaves" is the shipped rule, not a counterfactual. No figure
+here was re-measured under the shipped rule.
+
 Every campaign figure runs under `triage`, STATIC surges at the shipped
 `surge_dungeon_count` and `surge_interval_days`, resolve floor ratio 2.0, dungeon
 power escalation 0.10 per 100 days, and craft 12 days for +4% of a tier width --
@@ -114,7 +124,15 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
 
     @param over  one setting to change, for section 4. Applied last, so it wins.
     """
-    shipped = TuningConfig()
+    # 4 EVERY 120 DAYS, HELD ON PURPOSE. Since 2026-10-13 `TuningConfig` ships
+    # 5 every 90. Every figure this file's docstring and the issues quote
+    # was measured at 4 every 120, which is what shipped then, and none was
+    # re-measured, so the two are held where they were. AT 5 EVERY 90 THE
+    # HEADLINE MOVES: `arrival_rate` gives 1.19 walk-days a day at tier 1,
+    # above the 1.0 this file's framing needs tier 1 to stay under
+    # (computed 2026-10-13 by this function with the next line removed).
+    shipped = replace(TuningConfig(), surge_interval_days=120.0,
+                      surge_dungeon_count=4)
     cfg = replace(
         shipped,
         tier=tier,
@@ -126,6 +144,21 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
+        # THE MODEL AS IT WAS WHEN THIS FILE'S FIGURES WERE MEASURED. Since
+        # 2026-10-12 `TuningConfig` ships this False: an ordinary dungeon
+        # leaves after it hits its city. Every figure this file's docstring
+        # and the issues quote was measured with the dungeon staying, and none
+        # has been re-measured, so the setting is held where it was. Remove
+        # this line to measure the shipped rule; the figures then move.
+        dungeon_persists_after_resolve=True,
+        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
+        # Quest dungeon's timer hit its city. This file's figures were
+        # measured with that timer costing the city nothing, and none
+        # was re-measured. Remove this line to measure the shipped rule.
+        quest_timer_hits_city=False,
+        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
+        # of a dungeon's floors, the tree's included.
+        hit_scales_with_natural_floors=False,
     ).with_tree(tree)
     return replace(cfg, **over) if over else cfg
 
