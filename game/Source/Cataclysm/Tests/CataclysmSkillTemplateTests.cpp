@@ -32547,4 +32547,607 @@ bool FCataclysmImmuneAfterFifteenStatCarriesTheSecondsTest::RunTest(const FStrin
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A row makes its wearer's auras more effective. Ruled 2026-10-13 under the owner's delegation, for "Your auras
+// are 20%-50% more effective". One stat, `aura_effect`, a `more` row, read by `UCataclysmAuraSkill::MoreEffective`
+// for five figures of an aura skill: its pulse damage, the magnitude of the named debuff it lays, its ally damage
+// bonus, the health Living Pyre returns for a hit taken, and its growth for a hit taken. Engine only; no row is
+// authored, so every row here is made by hand in the shape `docs/DECISIONS.md` of that day gives.
+//
+// EVERY FIGHTER HERE IS A PLAIN TEST FIGHTER with a weapon dealing 100, 100,000 maximum health, 1,000 mana and no
+// stat line but the one the test writes. A pulse is `Pulse` called by the test. A blow on Living Pyre's holder is
+// `NoteBlowTaken` called with a figure, as the Living Pyre tests above do it. Only the test of the duration moves
+// the world's clock, by `CataclysmTestWorld::RunClock`; nothing else waits.
+//
+// EACH FIGURE WITH THE ROW IS COMPARED WITH THE SAME FIGURE READ WITHOUT IT, as a ratio. Where two casters are
+// used, the one with no row stands at the origin and the wearer 100 m along X, so neither ring reaches the other.
+// WHERE THE ACTORS STAND is said at the top of each test.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmAuraEffectTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Conflagration's row and tags, as `game/Data/WeaponSkills.csv` states them. */
+	const TCHAR* const AuraEffectConflagrationParams =
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8");
+	const TCHAR* const AuraEffectConflagrationTags = TEXT("Element.Demonic, Type.AOE.Aura, Slot.Aura");
+
+	/** Living Pyre's row and three of its tags. It carries `Type.AOE.Aura` and not `Slot.Aura`. */
+	const TCHAR* const AuraEffectLivingPyreParams =
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25");
+	const TCHAR* const AuraEffectLivingPyreTags = TEXT("Element.Demonic, Type.AOE.Aura, Slot.Ultimate");
+
+	/** A `more` row on `aura_effect`, as a worn enchantment writes one, under one required tag when one is named. */
+	FCataclysmStatModifier AuraEffectRow(float MorePercent, const TCHAR* RequiredTag = nullptr)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::More;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = MorePercent;
+		if (RequiredTag)
+		{
+			Row.RequiredTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+				FName(RequiredTag), /*ErrorIfNotFound=*/false));
+		}
+		return Row;
+	}
+
+	/** Wear these rows on `aura_effect` and nothing else. Replaces whatever the fighter wore. */
+	void WearAuraEffectRows(FScopedFighter& Who, const TArray<FCataclysmStatModifier>& Rows)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatInputs Line;
+		Line.Base = 0.0f;
+		Line.Modifiers = Rows;
+		Stats.Add(FName(UCataclysmAuraSkill::AuraEffectStat), Line);
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** Take every row off a fighter. */
+	void WearNoAuraEffectRow(FScopedFighter& Who)
+	{
+		Who.AbilitySystem->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
+	}
+
+	/** Grant Conflagration to a fighter, worth 100% of its weapon a second, and switch it on. Null on a failure. */
+	UCataclysmAuraSkill* SwitchOnAuraEffectConflagration(FScopedFighter& Caster)
+	{
+		UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+			Caster, ECataclysmAbilitySlot::Aura, AuraEffectConflagrationParams, TEXT("Conflagration"),
+			AuraEffectConflagrationTags);
+		if (Aura)
+		{
+			Aura->DamagePercentOverride = 100.0f;
+		}
+		return Aura && Activate(Caster, Aura) ? Aura : nullptr;
+	}
+
+	/** Grant Living Pyre to a fighter, worth 100% of its weapon a second, and light it. Null on a failure. */
+	UCataclysmAuraSkill* LightAuraEffectLivingPyre(FScopedFighter& Holder)
+	{
+		Holder.GiveFervourForUltimates(1);
+		UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+			Holder, ECataclysmAbilitySlot::Ultimate, AuraEffectLivingPyreParams, TEXT("Living Pyre"),
+			AuraEffectLivingPyreTags);
+		if (Pyre)
+		{
+			Pyre->DamagePercentOverride = 100.0f;
+		}
+		return Pyre && Activate(Holder, Pyre) ? Pyre : nullptr;
+	}
+
+	/** One pulse of an aura, and the health it took from one fighter. */
+	float AuraEffectPulseLoss(UCataclysmAuraSkill* Aura, const FScopedFighter& Struck)
+	{
+		const float Before = Struck.Health();
+		Aura->Pulse();
+		return Before - Struck.Health();
+	}
+
+	/** The whole duration of the one running effect on a fighter that grants this tag; -1 for none or several. */
+	float AuraEffectDurationOf(const FScopedFighter& Who, const FGameplayTag& Tag)
+	{
+		const TArray<float> Found = Who.AbilitySystem->GetActiveEffectsDuration(
+			FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Tag)));
+		return Found.Num() == 1 ? Found[0] : -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectPulseDamageTest,
+	"Cataclysm.AuraEffect.ARowMultipliesAPulsesDamageAsAMoreLineOfItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE FIRST FIGURE: the pulse's damage. The control is the same aura's pulse before its caster wears a row. With a
+ * `more` row of 50 a pulse takes one and a half times that; with rows of 50 and 20, 1.8 times; and with a 100% More
+ * line of another kind on the caster's damage, the row multiplies with it and does not add to it.
+ *
+ * STANDING: the caster at the origin and one enemy 2 m along X. The enemy has no resistance, so the Shred the
+ * first pulse lays changes nothing a later pulse takes.
+ */
+bool FCataclysmAuraEffectPulseDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmAuraSkill* Aura = SwitchOnAuraEffectConflagration(Caster);
+	if (!TestNotNull(TEXT("set-up: Conflagration is granted and switched on"), Aura))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	const float Plain = AuraEffectPulseLoss(Aura, Enemy);
+	if (!TestTrue(TEXT("control: with no row a pulse takes health from the enemy inside"), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and a second pulse with no row takes what the first took"),
+			  AuraEffectPulseLoss(Aura, Enemy), Plain, 0.01f);
+
+	// THE ROW.
+	WearAuraEffectRows(Caster, {AuraEffectRow(50.0f)});
+	TestEqual(TEXT("with a more row of 50 a pulse takes one and a half times what it took with no row"),
+			  AuraEffectPulseLoss(Aura, Enemy), Plain * 1.5f, 0.01f);
+
+	// TWO ROWS MULTIPLY, as two More lines do.
+	WearAuraEffectRows(Caster, {AuraEffectRow(50.0f), AuraEffectRow(20.0f)});
+	TestEqual(TEXT("with more rows of 50 and of 20 a pulse takes 1.8 times, not 1.7 times"),
+			  AuraEffectPulseLoss(Aura, Enemy), Plain * 1.8f, 0.01f);
+
+	// AND IT MULTIPLIES WITH ANOTHER MORE LINE ON THE CASTER'S DAMAGE: the kind a running self buff grants.
+	WearNoAuraEffectRow(Caster);
+	FCataclysmStatModifier Doubling;
+	Doubling.Bucket = ECataclysmStatBucket::More;
+	Doubling.Source = ECataclysmModifierSource::SkillBuff;
+	Doubling.Value = 100.0f;
+	if (!TestTrue(TEXT("set-up: the caster is given a 100% More line on its damage"),
+				  Caster.AbilitySystem->AddStatModifier(Doubling) != 0)
+		|| !TestEqual(TEXT("set-up: with that line and no row a pulse takes twice what it took"),
+					  AuraEffectPulseLoss(Aura, Enemy), Plain * 2.0f, 0.01f))
+	{
+		return false;
+	}
+	WearAuraEffectRows(Caster, {AuraEffectRow(50.0f)});
+	TestEqual(TEXT("and with the row of 50 as well it takes three times: the two multiply"),
+			  AuraEffectPulseLoss(Aura, Enemy), Plain * 3.0f, 0.02f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectNamedDebuffTest,
+	"Cataclysm.AuraEffect.ARowRaisesTheNamedDebuffsMagnitudeAndLeavesItsSecondsAndTheBurnAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE SECOND FIGURE: the magnitude of the named debuff. Conflagration lays Shred at 15. The control is a caster
+ * with no row, whose pulse cuts an enemy's Demonic resistance. A wearer of a `more` row of 50 cuts one and a half
+ * times that. SHRED'S OWN RULE HOLDS: an enemy with 20 resistance is cut to nought and not below. The Shred's
+ * seconds, and the burn the same pulse sets, are what the control's are. A second pulse does not stack the cut. And
+ * with the row taken off, an enemy still in the ring keeps the larger cut, because a weaker application of an
+ * effect only renews the stronger one running.
+ *
+ * STANDING: the caster with no row at the origin, its enemy 4 m along X. The wearer 100 m along X, one enemy 4 m
+ * further along X and one 4 m along Y from the wearer. Each enemy has 70 Demonic resistance but the last, with 20.
+ */
+bool FCataclysmAuraEffectNamedDebuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+	const FGameplayAttribute Demonic = UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter PlainEnemy(World, FVector(4 * M, 0, 0));
+	FScopedFighter Wearer(World, FVector(100 * M, 0, 0));
+	FScopedFighter WearerEnemy(World, FVector(104 * M, 0, 0));
+	FScopedFighter LowEnemy(World, FVector(100 * M, 4 * M, 0));
+	PlainEnemy.Set(Demonic, 70.0f);
+	WearerEnemy.Set(Demonic, 70.0f);
+	LowEnemy.Set(Demonic, 20.0f);
+	WearAuraEffectRows(Wearer, {AuraEffectRow(50.0f)});
+
+	UCataclysmAuraSkill* PlainAura = SwitchOnAuraEffectConflagration(Plain);
+	UCataclysmAuraSkill* WornAura = SwitchOnAuraEffectConflagration(Wearer);
+	if (!TestNotNull(TEXT("set-up: the caster with no row switches Conflagration on"), PlainAura)
+		|| !TestNotNull(TEXT("set-up: the wearer switches Conflagration on"), WornAura))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	PlainAura->Pulse();
+	const float PlainCut = 70.0f - DemonicResistance(PlainEnemy);
+	const float PlainShredSeconds = AuraEffectDurationOf(PlainEnemy, StatusTag(TEXT("Shred")));
+	const float PlainBurnSeconds = AuraEffectDurationOf(PlainEnemy, UCataclysmSkillEffects::BurnTag());
+	const float PlainBurnPerTick = CataclysmNextUseTest::BurnPerTickOn(PlainEnemy);
+	if (!TestTrue(TEXT("control: with no row a pulse cuts the Demonic resistance of the enemy inside"), PlainCut > 0.0f)
+		|| !TestTrue(TEXT("control: and the Shred it lays has seconds to run"), PlainShredSeconds > 0.0f)
+		|| !TestTrue(TEXT("control: and the burn it sets has seconds to run"), PlainBurnSeconds > 0.0f)
+		|| !TestTrue(TEXT("control: and that burn deals something a tick"), PlainBurnPerTick > 0.0f))
+	{
+		return false;
+	}
+
+	// THE ROW.
+	WornAura->Pulse();
+	TestEqual(TEXT("with a more row of 50 the pulse cuts one and a half times the resistance"),
+			  70.0f - DemonicResistance(WearerEnemy), PlainCut * 1.5f, 0.01f);
+	TestEqual(TEXT("the Shred lasts what it lasts with no row"),
+			  AuraEffectDurationOf(WearerEnemy, StatusTag(TEXT("Shred"))), PlainShredSeconds, 0.001f);
+	TestEqual(TEXT("the burn the pulse sets lasts what it lasts with no row"),
+			  AuraEffectDurationOf(WearerEnemy, UCataclysmSkillEffects::BurnTag()), PlainBurnSeconds, 0.001f);
+	TestEqual(TEXT("and deals a tick what it deals with no row"),
+			  CataclysmNextUseTest::BurnPerTickOn(WearerEnemy), PlainBurnPerTick, 0.001f);
+
+	// SHRED'S OWN RULE, UNCHANGED: no resistance is taken below nought.
+	TestTrue(TEXT("the enemy with 20 resistance carries the Shred"), Carries(LowEnemy, TEXT("Shred")));
+	TestEqual(TEXT("and is cut to nought and not below, though the raised figure is more than 20"),
+			  DemonicResistance(LowEnemy), 0.0f, 0.001f);
+
+	// A SECOND PULSE RENEWS AND DOES NOT STACK.
+	WornAura->Pulse();
+	TestEqual(TEXT("a second pulse leaves the cut at one and a half times, not three times"),
+			  70.0f - DemonicResistance(WearerEnemy), PlainCut * 1.5f, 0.01f);
+
+	// WITH THE ROW OFF, AN ENEMY STILL INSIDE KEEPS THE LARGER CUT.
+	WearNoAuraEffectRow(Wearer);
+	WornAura->Pulse();
+	TestEqual(TEXT("with the row taken off, a pulse leaves the enemy inside at the larger cut it already carried"),
+			  70.0f - DemonicResistance(WearerEnemy), PlainCut * 1.5f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectAllyBonusTest,
+	"Cataclysm.AuraEffect.ARowRaisesTheAllyDamageBonusWhenAnAllyIsGivenIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE THIRD FIGURE: the allies' damage bonus. The control is the modifier an ally of a caster with no row carries
+ * after a pulse. An ally of a wearer of a `more` row of 50 carries one and a half times that, still as an increase.
+ * THE FIGURE IS SETTLED WHEN THE ALLY IS GIVEN IT: with the row taken off, an ally still inside keeps what it was
+ * given; one that walks out and back is given the figure of that moment.
+ *
+ * STANDING: the caster with no row at the origin and its ally 4 m along X. The wearer 100 m along X and its ally 4
+ * m further. Each ally is owned by its caster, which is what makes it an ally.
+ */
+bool FCataclysmAuraEffectAllyBonusTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter PlainAlly(World, FVector(4 * M, 0, 0));
+	FScopedFighter Wearer(World, FVector(100 * M, 0, 0));
+	FScopedFighter WearerAlly(World, FVector(104 * M, 0, 0));
+	PlainAlly.Actor->SetOwner(Plain.Actor);
+	WearerAlly.Actor->SetOwner(Wearer.Actor);
+	WearAuraEffectRows(Wearer, {AuraEffectRow(50.0f)});
+
+	UCataclysmAuraSkill* PlainAura = SwitchOnAuraEffectConflagration(Plain);
+	UCataclysmAuraSkill* WornAura = SwitchOnAuraEffectConflagration(Wearer);
+	if (!TestNotNull(TEXT("set-up: the caster with no row switches Conflagration on"), PlainAura)
+		|| !TestNotNull(TEXT("set-up: the wearer switches Conflagration on"), WornAura))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	PlainAura->Pulse();
+	const TArray<FCataclysmStatModifier>& OnPlainAlly = PlainAlly.AbilitySystem->GetStatModifiers();
+	if (!TestEqual(TEXT("control: the ally of the caster with no row carries one modifier"), OnPlainAlly.Num(), 1)
+		|| !TestTrue(TEXT("control: and it is worth something"), OnPlainAlly[0].Value > 0.0f))
+	{
+		return false;
+	}
+	const float PlainBonus = OnPlainAlly[0].Value;
+
+	// THE ROW.
+	WornAura->Pulse();
+	const TArray<FCataclysmStatModifier>& OnWearerAlly = WearerAlly.AbilitySystem->GetStatModifiers();
+	if (!TestEqual(TEXT("the wearer's ally carries one modifier"), OnWearerAlly.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with a more row of 50 it is one and a half times the bonus"),
+			  OnWearerAlly[0].Value, PlainBonus * 1.5f, 0.001f);
+	TestEqual(TEXT("and it is still an increase, the bucket the skill's row names"),
+			  static_cast<int32>(OnWearerAlly[0].Bucket), static_cast<int32>(ECataclysmStatBucket::Increased));
+
+	// SETTLED WHEN GIVEN: the row comes off and the ally stays inside.
+	WearNoAuraEffectRow(Wearer);
+	WornAura->Pulse();
+	if (!TestEqual(TEXT("with the row taken off, the ally still inside carries one modifier"),
+				   WearerAlly.AbilitySystem->GetStatModifiers().Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it keeps the raised figure it was given"),
+			  WearerAlly.AbilitySystem->GetStatModifiers()[0].Value, PlainBonus * 1.5f, 0.001f);
+
+	// AND GIVEN AFRESH AT THE FIGURE OF THE MOMENT: out of the ring, then back in.
+	WearerAlly.Actor->SetActorLocation(FVector(140 * M, 0, 0));
+	WornAura->Pulse();
+	if (!TestEqual(TEXT("set-up: walked 40 m out, the ally carries nothing"),
+				   WearerAlly.AbilitySystem->GetStatModifiers().Num(), 0))
+	{
+		return false;
+	}
+	WearerAlly.Actor->SetActorLocation(FVector(104 * M, 0, 0));
+	WornAura->Pulse();
+	if (!TestEqual(TEXT("walked back in, the ally carries one modifier again"),
+				   WearerAlly.AbilitySystem->GetStatModifiers().Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and with no row worn now it is the bonus the caster with no row gives"),
+			  WearerAlly.AbilitySystem->GetStatModifiers()[0].Value, PlainBonus, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectLivingPyreTest,
+	"Cataclysm.AuraEffect.ARowRaisesTheLivingPyresHealthReturnedAndItsGrowthForAHitTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE FOURTH AND FIFTH FIGURES, both Living Pyre's: the health returned for a hit taken, and the growth of the
+ * pulse for a hit taken. The controls are read from the same pyre before its holder wears a row: a cold pulse, the
+ * health one blow of 400 returns, and the pulse after that one blow, which gives the growth for a hit. With a
+ * `more` row of 50 the same blow returns one and a half times the health; and the pulse after one blow, and after
+ * two, is the cold pulse multiplied by one and a half times the growth for each blow and then by one and a half.
+ *
+ * STANDING: the holder at the origin, at half health so every return fits, and one enemy 2 m along X.
+ */
+bool FCataclysmAuraEffectLivingPyreTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+	UCataclysmAuraSkill* Pyre = LightAuraEffectLivingPyre(Holder);
+	if (!TestNotNull(TEXT("set-up: Living Pyre is granted and lit"), Pyre))
+	{
+		return false;
+	}
+
+	// THE CONTROLS: NO ROW.
+	const float Cold = AuraEffectPulseLoss(Pyre, Enemy);
+	const float PlainReturn = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	const float OneBlow = AuraEffectPulseLoss(Pyre, Enemy);
+	if (!TestTrue(TEXT("control: with no row a cold pulse takes health from the enemy inside"), Cold > 0.0f)
+		|| !TestTrue(TEXT("control: a blow of 400 on the holder returns health"), PlainReturn > 0.0f)
+		|| !TestTrue(TEXT("control: and the pulse after that one blow takes more than the cold pulse"), OneBlow > Cold))
+	{
+		return false;
+	}
+	const float Growth = OneBlow / Cold - 1.0f;
+
+	// THE ROW.
+	WearAuraEffectRows(Holder, {AuraEffectRow(50.0f)});
+	TestEqual(TEXT("with a more row of 50, the pulse after one blow is the cold pulse, grown by one and a half "
+				   "times the growth for a blow, times one and a half"),
+			  AuraEffectPulseLoss(Pyre, Enemy), Cold * (1.0f + 1.5f * Growth) * 1.5f, 0.05f);
+	TestEqual(TEXT("a second blow of 400 returns one and a half times the health the first returned"),
+			  Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f), PlainReturn * 1.5f, 0.01f);
+	if (!TestEqual(TEXT("set-up: the pyre has counted two blows"), Pyre->BlowsTaken, 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the pulse after two blows is the cold pulse, grown by one and a half times the growth for "
+				   "each of the two, times one and a half"),
+			  AuraEffectPulseLoss(Pyre, Enemy), Cold * (1.0f + 2.0f * 1.5f * Growth) * 1.5f, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectRadiusAndUpkeepTest,
+	"Cataclysm.AuraEffect.ARowLeavesAnAurasRadiusAndItsUpkeepAsTheyWere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * TWO OF THE THINGS RULED OUT: the radius and the upkeep. The control is a caster with no row: its Conflagration
+ * has a radius, and a pulse takes mana from it. A wearer of a `more` row of 50 has the same radius and pays the
+ * same mana for a pulse; its pulse reaches an enemy 9 m away and not one 12 m away, the ring being 10 m.
+ *
+ * STANDING: the caster with no row at the origin. The wearer 100 m along X, one enemy 9 m further along X and one
+ * 12 m along Y from the wearer.
+ */
+bool FCataclysmAuraEffectRadiusAndUpkeepTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(100 * M, 0, 0));
+	FScopedFighter Near(World, FVector(109 * M, 0, 0));
+	FScopedFighter Far(World, FVector(100 * M, 12 * M, 0));
+	WearAuraEffectRows(Wearer, {AuraEffectRow(50.0f)});
+
+	UCataclysmAuraSkill* PlainAura = SwitchOnAuraEffectConflagration(Plain);
+	UCataclysmAuraSkill* WornAura = SwitchOnAuraEffectConflagration(Wearer);
+	if (!TestNotNull(TEXT("set-up: the caster with no row switches Conflagration on"), PlainAura)
+		|| !TestNotNull(TEXT("set-up: the wearer switches Conflagration on"), WornAura))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	const float PlainRadius = PlainAura->ScaledRadiusCm();
+	const float PlainManaBefore = Plain.Mana();
+	PlainAura->Pulse();
+	const float PlainUpkeep = PlainManaBefore - Plain.Mana();
+	if (!TestTrue(TEXT("control: with no row the aura has a radius"), PlainRadius > 0.0f)
+		|| !TestTrue(TEXT("control: and a pulse takes mana from its caster"), PlainUpkeep > 0.0f))
+	{
+		return false;
+	}
+
+	// THE ROW.
+	TestEqual(TEXT("with a more row of 50 the radius is what it is with no row"),
+			  WornAura->ScaledRadiusCm(), PlainRadius, 0.001f);
+	const float NearBefore = Near.Health();
+	const float FarBefore = Far.Health();
+	const float WornManaBefore = Wearer.Mana();
+	WornAura->Pulse();
+	TestEqual(TEXT("and a pulse takes the mana it takes with no row"),
+			  WornManaBefore - Wearer.Mana(), PlainUpkeep, 0.001f);
+	TestTrue(TEXT("the pulse reaches the enemy 9 m away"), NearBefore - Near.Health() > 0.0f);
+	TestEqual(TEXT("and takes nothing from the enemy 12 m away"), FarBefore - Far.Health(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectDurationTest,
+	"Cataclysm.AuraEffect.ARowLeavesATimedAurasDurationAsItWas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE THIRD THING RULED OUT: the duration. Living Pyre lasts 6 seconds. The control is a holder with no row: its
+ * pyre is still up 5.5 seconds after it was lit and has ended 6.5 seconds after. A wearer of a `more` row of 50
+ * lit at the same moment is the same at both times.
+ *
+ * THE WORLD'S CLOCK IS MOVED BY `RunClock`, which fires the pyres' own timers. Each time read is half a second
+ * from the end, between two of the clock's steps.
+ *
+ * STANDING: the holder with no row at the origin and the wearer 100 m along X. Nobody else.
+ */
+bool FCataclysmAuraEffectDurationTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(100 * M, 0, 0));
+	WearAuraEffectRows(Wearer, {AuraEffectRow(50.0f)});
+	UCataclysmAuraSkill* PlainPyre = LightAuraEffectLivingPyre(Plain);
+	UCataclysmAuraSkill* WornPyre = LightAuraEffectLivingPyre(Wearer);
+	if (!TestNotNull(TEXT("set-up: the holder with no row lights Living Pyre"), PlainPyre)
+		|| !TestNotNull(TEXT("set-up: the wearer lights Living Pyre"), WornPyre))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 5.5f);
+	if (!TestTrue(TEXT("control: with no row the pyre is still up 5.5 seconds after it was lit"), PlainPyre->IsHeld()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("with a more row of 50 the pyre is still up 5.5 seconds after it was lit"), WornPyre->IsHeld());
+
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	if (!TestFalse(TEXT("control: with no row the pyre has ended 6.5 seconds after it was lit"), PlainPyre->IsHeld()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("with a more row of 50 the pyre has ended 6.5 seconds after it was lit"), WornPyre->IsHeld());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectShapeTest,
+	"Cataclysm.AuraEffect.TheStatIsAskedByEveryAuraWithItsTagsAndByNoOtherSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * WHO READS THE STAT. One fighter holds Conflagration, which carries `Slot.Aura`, and Living Pyre, which does not;
+ * neither is switched on, and `MoreEffective` is asked directly. The control: with no row each hands 100 back as
+ * 100. With the ruled row, which requires no tag, each hands back 150. With a row requiring `Slot.Aura`,
+ * Conflagration hands back 150 and Living Pyre 100, WHICH IS WHY THE RULED ROW CARRIES NO REQUIRED TAGS. A figure
+ * of nought is handed back as nought.
+ *
+ * AND NO OTHER SKILL READS IT: a strike by a wearer of the row takes what a strike by a caster with no row takes.
+ *
+ * STANDING: the fighter holding the two auras at the origin. The striker with no row 100 m along X and its enemy
+ * 2 m further; the striker wearing the row 200 m along X and its enemy 2 m further.
+ */
+bool FCataclysmAuraEffectShapeTest::RunTest(const FString&)
+{
+	using namespace CataclysmAuraEffectTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	const UCataclysmAuraSkill* Ring = GrantSkill<UCataclysmAuraSkill>(
+		Holder, ECataclysmAbilitySlot::Aura, AuraEffectConflagrationParams, TEXT("Conflagration"),
+		AuraEffectConflagrationTags);
+	const UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Holder, ECataclysmAbilitySlot::Ultimate, AuraEffectLivingPyreParams, TEXT("Living Pyre"),
+		AuraEffectLivingPyreTags);
+	const FGameplayTag SlotAura = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Slot.Aura")), /*ErrorIfNotFound=*/false);
+	if (!TestNotNull(TEXT("set-up: Conflagration is granted"), Ring)
+		|| !TestNotNull(TEXT("set-up: Living Pyre is granted"), Pyre)
+		|| !TestTrue(TEXT("set-up: Slot.Aura is a tag the game knows"), SlotAura.IsValid())
+		|| !TestTrue(TEXT("set-up: Conflagration carries Slot.Aura"), Ring->SkillTags.HasTag(SlotAura))
+		|| !TestFalse(TEXT("set-up: Living Pyre does not carry Slot.Aura"), Pyre->SkillTags.HasTag(SlotAura)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NO ROW.
+	TestEqual(TEXT("control: with no row Conflagration hands 100 back as 100"),
+			  Ring->MoreEffective(100.0f), 100.0f, 0.001f);
+	TestEqual(TEXT("control: with no row Living Pyre hands 100 back as 100"),
+			  Pyre->MoreEffective(100.0f), 100.0f, 0.001f);
+
+	// THE RULED ROW, WHICH REQUIRES NO TAG.
+	WearAuraEffectRows(Holder, {AuraEffectRow(50.0f)});
+	TestEqual(TEXT("with a more row of 50 requiring no tag Conflagration hands 100 back as 150"),
+			  Ring->MoreEffective(100.0f), 150.0f, 0.001f);
+	TestEqual(TEXT("and Living Pyre hands 100 back as 150"), Pyre->MoreEffective(100.0f), 150.0f, 0.001f);
+	TestEqual(TEXT("and a figure of nought is handed back as nought"),
+			  Ring->MoreEffective(0.0f), 0.0f, 0.0f);
+
+	// A ROW REQUIRING Slot.Aura LEAVES LIVING PYRE OUT.
+	WearAuraEffectRows(Holder, {AuraEffectRow(50.0f, TEXT("Slot.Aura"))});
+	TestEqual(TEXT("with a row requiring Slot.Aura Conflagration hands 100 back as 150"),
+			  Ring->MoreEffective(100.0f), 150.0f, 0.001f);
+	TestEqual(TEXT("and Living Pyre, which does not carry that tag, hands 100 back as 100"),
+			  Pyre->MoreEffective(100.0f), 100.0f, 0.001f);
+
+	// NO OTHER SKILL READS THE STAT.
+	FScopedFighter PlainStriker(World, FVector(100 * M, 0, 0));
+	FScopedFighter PlainStruck(World, FVector(102 * M, 0, 0));
+	FScopedFighter WornStriker(World, FVector(200 * M, 0, 0));
+	FScopedFighter WornStruck(World, FVector(202 * M, 0, 0));
+	WearAuraEffectRows(WornStriker, {AuraEffectRow(50.0f)});
+	UCataclysmStrikeSkill* PlainSwing = GrantSkill<UCataclysmStrikeSkill>(
+		PlainStriker, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("Molten Cleave"),
+		TEXT("Element.Demonic"));
+	UCataclysmStrikeSkill* WornSwing = GrantSkill<UCataclysmStrikeSkill>(
+		WornStriker, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"), TEXT("Molten Cleave"),
+		TEXT("Element.Demonic"));
+	const float PlainStruckBefore = PlainStruck.Health();
+	const float WornStruckBefore = WornStruck.Health();
+	if (!TestTrue(TEXT("set-up: the striker with no row swings"), Activate(PlainStriker, PlainSwing))
+		|| !TestTrue(TEXT("set-up: the striker wearing the row swings"), Activate(WornStriker, WornSwing))
+		|| !TestTrue(TEXT("control: with no row the strike takes health from its enemy"),
+					 PlainStruckBefore - PlainStruck.Health() > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a strike by a wearer of the row takes what a strike with no row takes"),
+			  WornStruckBefore - WornStruck.Health(), PlainStruckBefore - PlainStruck.Health(), 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
