@@ -279,7 +279,24 @@ a row on `buff_potency`.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-13 and 2026-10-14, on development e421ff65 (The Labrynth's merge), in one window for eleven layers stacked in this order: the two saves judged after the delayed share; auras; buffs; the debuff cut; the debuff immunity; the Burn that may explode; and the four gadget layers, each with its rows; then the nine tests that wear the real rows and the log's entry for them. The suite and Python were run at the top of the eleven, which holds all of them. Until this window no line of the eleven layers had been compiled.
+
+- **Taken before the dungeon session's last two layers merged, on the enchantment session's judgement.** Those two had passed their own window and waited only for pull requests that the coordinating session opens, while that session was away; the dungeon session needed no window and neither granted nor objected.
+- **Build:** "Build: Succeeded - 35 actions, 32 files compiled". All eleven layers compiled at the first attempt.
+- **The enchantments group on the assets as merged, before the rebuild:** "339 tests performed, 330 succeeded, 9 failed", registered 339, 330 and 9. The nine are the tests that wear the real rows, each on its one check that the row reached the wearer: nine failed assertions, registered nine.
+- **The editor rebuilt the effect table's asset nine times**, once for each row layer: 603, 604, 605, 606, 607, 608, 609, 610 and 612 rows, as registered. The positive sentences' asset was rebuilt from the volley's layer upward, because that layer marks the sentence's range as rolling down. Each layer carries its own assets in a commit of its own, and the tree ids matched.
+- **The whole Unreal suite:** "3713 tests performed, 3713 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3713 tests in the tree at 4f195e6c; 3713 performed, gap 0". Registered: 3713 and 0 (3650 measured before, one test of The Labrynth's, and 62 added by name).
+- **Python:** "6364 passed, 8 skipped"; JUnit tests 6372, failures 0, errors 0, skipped 8. Lint: "All checks passed!". The figure registered on 2026-10-13 was 6286; the simulation's retune merged in between added the rest, and the moved top measured 6372 with the one asset failure before the window.
+- **How the proofs were registered.** For each proof the set of tests that fail with the break in was the stop condition, by the beginnings of their names. The count of failed assertions had been read from the code and was reported beside what was measured. In all nineteen proofs of the window the set was as registered and the measured count equalled the count read.
+- **Not shown by any run:** anything in a dungeon level, with a floor, walls or navigation; anything drawn by the heads-up display; any row worn by a player in play.
+- **Two guard proofs for this layer**, prefix `Cataclysm.BuffPotency.` (6 tests), each "PROVED": failed with the break in, and every test of the prefix passed with the break out.
+
+| Proof | The break | Tests that failed with the break in | Failed assertions, read and measured |
+|---|---|---|---|
+| B1 | a self buff's More damage is not raised | `ARowMultipliesTheMoreDamageASelfBuffGrantsItsCaster`, `ABuffAlreadyRunningKeepsItsFigureUntilItIsGrantedAgain` and `TheCopyGivenToAnAllyIsTheCastersRaisedFigureAndTheAllysOwnRowIsNotApplied` | 8 and 8 |
+| B2 | an aura's ally bonus is not raised by buff potency | `OnAnAurasAllyDamageBonusTheTwoRowsBothApplyAndMultiply` | 2 and 2 |
+
+**No proof is possible** that an ally's own row is not applied again: the code asks the ally nothing.
 
 ---
 
