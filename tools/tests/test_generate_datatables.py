@@ -7519,3 +7519,118 @@ class TestADebuffOfTheWearersCutsWhatItsCarrierDeals:
             {"Keyword.DoT"})
         assert any("under a required tag" in problem and self.STAT in problem
                    for problem in problems), problems
+
+
+class TestAWearerImmuneToDebuffsThatAppliesNone:
+    """`immune_to_debuffs_and_applies_none`, ruled 2026-10-13 and built ahead
+    of its row, for "You are immune to debuffs but also cannot apply them".
+    One flag at a flat 1 with no Required Tags, no Condition, no Scale and no
+    Action: `UCataclysmDebuffs::HoldsImmuneAndAppliesNone` asks whether it is
+    above nought where a debuff is about to be put on a character.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one. The real row is the enchantment session's to write; this shows that
+    the generator carries the ruled row through and refuses the wrong ones.
+    """
+
+    WORDS = "You are immune to debuffs but also cannot apply them"
+    STAT = "immune_to_debuffs_and_applies_none"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_debuff_immunity_flag_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def carried(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert row["Stat"] == self.STAT
+        return row
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "")]
+        assert out[0]["Enchantment"] == gen.row_name("Negative", self.WORDS[:48])
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.IMMUNE_TO_DEBUFFS_AND_APPLIES_NONE_STAT == self.STAT
+        listed = gen.stats_with_no_attribute()
+        assert self.STAT in listed
+        assert "immune_to_debuffs" not in listed
+
+    def test_the_generator_holds_the_name_the_engine_has(self):
+        """As the same test of the stat before this one, with the same
+        control: the pattern also finds a name that file held before."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmDebuffs.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmDebuffs::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)', source))
+        assert names.get("DurationStat") == "debuff_duration_taken"
+        assert names.get("ImmuneAndAppliesNoneStat") == self.STAT
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        row = self.carried(tmp_path)
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "removed"}, "value kind 'removed'"),
+                ({"RequiredTags": "Keyword.DoT"}, "under a required tag"),
+                ({"Action": "cleanse"}, "with the action 'cleanse'"),
+                ({"ValueLow": 1.0, "ValueHigh": 2.0}, "states 1 to 2"),
+                ({"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 to 0"),
+                ({"ValueLow": 100.0, "ValueHigh": 100.0}, "states 100 to 100")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """A row that made the wearer immune only some of the time is not
+        what was ruled, and the game asks the flag where no condition's state
+        is handed over."""
+        row = self.carried(tmp_path)
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="debuffs_carried")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "ailment_immunity",
+                               "ValueKind": "flat", "ValueLow": 1.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Keyword.DoT.Bleed"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        row = self.carried(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [row]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(row, ValueLow=1.0, ValueHigh=2.0)]},
+            set())
+        assert any("states 1 to 2" in problem and self.STAT in problem
+                   for problem in problems), problems
