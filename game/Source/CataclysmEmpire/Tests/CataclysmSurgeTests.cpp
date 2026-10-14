@@ -577,10 +577,10 @@ bool FCataclysmSurgeDungeonDepthTest::RunTest(const FString& Parameters)
 					  ECataclysmDungeonType::Cataclysm, Lesser).IsBuilt());
 	}
 
-	// EVERY NEW KIND BITES NOTHING, asserted rather than assumed. A Quest
-	// dungeon never resolves; a Fallen City and a Cataclysm stand on a city
-	// whose damage is already done. A non-zero here would mean a city taking
-	// damage from a dungeon the design says takes none.
+	// EVERY NEW KIND'S OWN ROW CARRIES NO DAMAGE, asserted rather than assumed.
+	// A Fallen City and a Cataclysm stand on a city whose damage is already
+	// done. A Quest dungeon's timer does hit its host since 2026-10-13, and
+	// that hit is the ORDINARY row of the host's tier, not this row.
 	for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Quest,
 											  ECataclysmDungeonType::FallenCity,
 											  ECataclysmDungeonType::Cataclysm })
@@ -2792,13 +2792,15 @@ bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
 				Made.Floors >= Quest.LeastFloors
 				&& Made.Floors <= Quest.MostFloors);
 
-			// A FLAT TIMER, NOT ONE DRAWN FROM ITS DEPTH. It is a relocation
-			// clock rather than a bite schedule; see `QuestResolveDays`.
+			// A FLAT TIMER, NOT ONE DRAWN FROM ITS DEPTH. Since 2026-10-13 it
+			// also hits the host city when it runs out; see `QuestResolveDays`.
 			TestEqual(TEXT("its timer is the flat relocation clock"),
 					  Made.ResolveDays,
 					  UCataclysmSurgeScheduler::QuestResolveDays);
 
-			// AND IT TAKES NOTHING WHEN THAT CLOCK RUNS OUT.
+			// AND ITS OWN ROW CARRIES NO DAMAGE. What its timer takes from the
+			// host is the ordinary row of the host's tier, which is
+			// `Cataclysm.EmpireRun.AQuestDungeonsTimerTakesTheOrdinaryRowOfTheCityItStandsOn`.
 			TestEqual(TEXT("it takes no defence"), Made.DefenceDamage, 0.0f);
 			TestEqual(TEXT("and no population"), Made.PopulationDamage, 0.0f);
 			TestFalse(TEXT("so it is not a kind that detonates"),
