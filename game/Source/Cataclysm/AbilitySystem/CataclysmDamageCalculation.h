@@ -464,6 +464,10 @@ struct CATACLYSM_API FCataclysmDamageResult
 	 * that. It writes nothing here, so a bonded creature's kill records the whole blow less its health, not its
 	 * kept share less its health.
 	 *
+	 * AND A SECOND STEP THERE READS IT, since 2026-10-12, in the same way and just above the bond's: the share of a
+	 * blow that a worn row takes later instead of now (`UCataclysmDelayedDamage::DelayShare`) is a share of the
+	 * whole blow, which is what reached health and this figure together. It writes nothing here either.
+	 *
 	 * IT IS NOT BY ITSELF A SIGN THAT THE BLOW KILLED. `UCataclysmVitalAttributeSet` empties it for a blow that
 	 * no longer empties health once its own steps have run (an immune, absorbing or reflecting wearer, a blow
 	 * saved at one point, a creature no damage reaches), but two later steps there leave `DealtToHealth` as it
