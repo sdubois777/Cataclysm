@@ -78,11 +78,11 @@ bool FCataclysmSurgeStaticTest::RunTest(const FString& Parameters)
 	for (const int32 Index : { 0, 1, 5, 20, 100 })
 	{
 		TestEqual(FString::Printf(
-			TEXT("surge %d still brings four dungeons"), Index),
-			CountAtIndex(Scheduler, Index), 4);
+			TEXT("surge %d still brings five dungeons"), Index),
+			CountAtIndex(Scheduler, Index), 5);
 		TestEqual(FString::Printf(
-			TEXT("and the gap after surge %d is still 120 days"), Index),
-			GapAtIndex(Scheduler, Index), 120.0f, 0.001f);
+			TEXT("and the gap after surge %d is still 90 days"), Index),
+			GapAtIndex(Scheduler, Index), 90.0f, 0.001f);
 	}
 
 	return true;
@@ -99,21 +99,26 @@ bool FCataclysmSurgeAcceleratingTest::RunTest(const FString& Parameters)
 	UCataclysmSurgeScheduler* Scheduler =
 		MakeScheduler(ECataclysmSurgeMode::Accelerating);
 
-	// HAND-WORKED FROM `Simulation.surge_gap`: 120 x 0.88 to the power of the
+	// HAND-WORKED FROM `Simulation.surge_gap`: 90 x 0.88 to the power of the
 	// surge index, floored at 25.
-	TestEqual(TEXT("the first gap is the full 120 days"),
-			  GapAtIndex(Scheduler, 0), 120.0f, 0.001f);
-	TestEqual(TEXT("the second is 105.6"),
-			  GapAtIndex(Scheduler, 1), 105.6f, 0.01f);
-	TestEqual(TEXT("the third is 92.928"),
-			  GapAtIndex(Scheduler, 2), 92.928f, 0.01f);
-	TestEqual(TEXT("the fourth is 81.7766"),
-			  GapAtIndex(Scheduler, 3), 81.7766f, 0.01f);
+	TestEqual(TEXT("the first gap is the full 90 days"),
+			  GapAtIndex(Scheduler, 0), 90.0f, 0.001f);
+	TestEqual(TEXT("the second is 79.2"),
+			  GapAtIndex(Scheduler, 1), 79.2f, 0.01f);
+	TestEqual(TEXT("the third is 69.696"),
+			  GapAtIndex(Scheduler, 2), 69.696f, 0.01f);
+	TestEqual(TEXT("the fourth is 61.3325"),
+			  GapAtIndex(Scheduler, 3), 61.3325f, 0.01f);
 
 	// AND IT STOPS. Without a floor an accelerating run ends in a surge every
 	// day, which is arithmetic running away rather than difficulty.
-	TestEqual(TEXT("by the thirteenth it is 25.88, just above the floor"),
-			  GapAtIndex(Scheduler, 12), 25.8805f, 0.01f);
+	//
+	// AT 90 DAYS THE FLOOR IS FIRST REACHED AT INDEX 11: 90 x 0.88 to the 11th
+	// is 22.06. At 120 days it was first reached at index 13.
+	TestEqual(TEXT("by the eleventh it is 25.07, just above the floor"),
+			  GapAtIndex(Scheduler, 10), 25.0651f, 0.01f);
+	TestEqual(TEXT("the twelfth is the floor itself"),
+			  GapAtIndex(Scheduler, 11), 25.0f, 0.001f);
 	TestEqual(TEXT("the fourteenth is the floor itself"),
 			  GapAtIndex(Scheduler, 13), 25.0f, 0.001f);
 	TestEqual(TEXT("and it never goes below it"),
@@ -124,10 +129,10 @@ bool FCataclysmSurgeAcceleratingTest::RunTest(const FString& Parameters)
 	// THE WAVE ITSELF DOES NOT GROW IN THIS MODE. That is the whole difference
 	// between accelerating and swelling, and a test that only checked the gap
 	// would pass if the two modes had been swapped.
-	TestEqual(TEXT("an accelerating surge still brings four dungeons"),
-			  CountAtIndex(Scheduler, 0), 4);
-	TestEqual(TEXT("and still four after twenty surges"),
-			  CountAtIndex(Scheduler, 20), 4);
+	TestEqual(TEXT("an accelerating surge still brings five dungeons"),
+			  CountAtIndex(Scheduler, 0), 5);
+	TestEqual(TEXT("and still five after twenty surges"),
+			  CountAtIndex(Scheduler, 20), 5);
 
 	return true;
 }
@@ -144,16 +149,19 @@ bool FCataclysmSurgeSwellingTest::RunTest(const FString& Parameters)
 		MakeScheduler(ECataclysmSurgeMode::Swelling);
 
 	// HALF A DUNGEON PER SURGE, TRUNCATED, so it grows every other surge rather
-	// than every one. 4, 4.5, 5, 5.5, 6 as a real number.
-	TestEqual(TEXT("the first wave is four"), CountAtIndex(Scheduler, 0), 4);
-	TestEqual(TEXT("the second is still four"), CountAtIndex(Scheduler, 1), 4);
-	TestEqual(TEXT("the third is five"), CountAtIndex(Scheduler, 2), 5);
-	TestEqual(TEXT("the fourth is still five"), CountAtIndex(Scheduler, 3), 5);
-	TestEqual(TEXT("the fifth is six"), CountAtIndex(Scheduler, 4), 6);
+	// than every one. 5, 5.5, 6, 6.5, 7 as a real number.
+	TestEqual(TEXT("the first wave is five"), CountAtIndex(Scheduler, 0), 5);
+	TestEqual(TEXT("the second is still five"), CountAtIndex(Scheduler, 1), 5);
+	TestEqual(TEXT("the third is six"), CountAtIndex(Scheduler, 2), 6);
+	TestEqual(TEXT("the fourth is still six"), CountAtIndex(Scheduler, 3), 6);
+	TestEqual(TEXT("the fifth is seven"), CountAtIndex(Scheduler, 4), 7);
 
-	// AND IT STOPS AT FOURTEEN.
-	TestEqual(TEXT("by the twentieth it is thirteen"),
-			  CountAtIndex(Scheduler, 19), 13);
+	// AND IT STOPS AT FOURTEEN. From 5 the ceiling is first reached at index
+	// 18: 5 + 0.5 x 18 is 14. From 4 it was first reached at index 20.
+	TestEqual(TEXT("by the eighteenth it is thirteen"),
+			  CountAtIndex(Scheduler, 17), 13);
+	TestEqual(TEXT("the nineteenth is the ceiling"),
+			  CountAtIndex(Scheduler, 18), 14);
 	TestEqual(TEXT("the twenty-first is the ceiling"),
 			  CountAtIndex(Scheduler, 20), 14);
 	TestEqual(TEXT("and it never goes above it"),
@@ -162,8 +170,8 @@ bool FCataclysmSurgeSwellingTest::RunTest(const FString& Parameters)
 			  CountAtIndex(Scheduler, 100), 14);
 
 	// THE GAP DOES NOT SHORTEN IN THIS MODE.
-	TestEqual(TEXT("a swelling surge still comes every 120 days"),
-			  GapAtIndex(Scheduler, 20), 120.0f, 0.001f);
+	TestEqual(TEXT("a swelling surge still comes every 90 days"),
+			  GapAtIndex(Scheduler, 20), 90.0f, 0.001f);
 
 	return true;
 }
@@ -181,11 +189,11 @@ bool FCataclysmSurgeBothTest::RunTest(const FString& Parameters)
 	// THE SAME FIGURES AS EACH MODE ON ITS OWN. A fourth mode that quietly did
 	// only one of the two would look like escalation and be half of it.
 	TestEqual(TEXT("the gap shortens like an accelerating surge"),
-			  GapAtIndex(Scheduler, 1), 105.6f, 0.01f);
+			  GapAtIndex(Scheduler, 1), 79.2f, 0.01f);
 	TestEqual(TEXT("down to the same floor"),
 			  GapAtIndex(Scheduler, 13), 25.0f, 0.001f);
 	TestEqual(TEXT("and the wave grows like a swelling one"),
-			  CountAtIndex(Scheduler, 4), 6);
+			  CountAtIndex(Scheduler, 4), 7);
 	TestEqual(TEXT("up to the same ceiling"),
 			  CountAtIndex(Scheduler, 20), 14);
 
@@ -216,10 +224,14 @@ bool FCataclysmSurgeHereticTest::RunTest(const FString& Parameters)
 	UCataclysmSurgeScheduler* Heretic =
 		MakeScheduler(ECataclysmSurgeMode::Static, 2);
 
-	TestEqual(TEXT("Standard brings four"), Standard->DungeonsInNextSurge(), 4);
-	TestEqual(TEXT("Hardcore brings four as well"),
-			  Hardcore->DungeonsInNextSurge(), 4);
-	TestEqual(TEXT("and Heretic brings five"), Heretic->DungeonsInNextSurge(), 5);
+	// SIX IS A FIFTH MORE THAN FIVE AND NOT A QUARTER. trunc(5 x 1.25) is 6.
+	// At a wave of four it was trunc(5.0) = 5, exactly a quarter more. The
+	// design document says "25% more dungeons"; this is on the owner's
+	// play-check list in `docs/DECISIONS.md`, 2026-10-13.
+	TestEqual(TEXT("Standard brings five"), Standard->DungeonsInNextSurge(), 5);
+	TestEqual(TEXT("Hardcore brings five as well"),
+			  Hardcore->DungeonsInNextSurge(), 5);
+	TestEqual(TEXT("and Heretic brings six"), Heretic->DungeonsInNextSurge(), 6);
 
 	// THE ORDER IS THE WHOLE POINT, AND THIS IS THE ASSERTION THAT PROVES IT.
 	// The ceiling is 14. Multiplying by 1.25 BEFORE the ceiling gives
@@ -270,21 +282,21 @@ bool FCataclysmSurgeScheduleTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("one has fired"), Scheduler->SurgesFired, 1);
 	TestEqual(TEXT("and it counts towards escalation"), Scheduler->SurgeIndex, 1);
-	TestEqual(TEXT("the next is due on day 120"),
-			  Scheduler->NextSurgeDay, 120.0f, 0.001f);
+	TestEqual(TEXT("the next is due on day 90"),
+			  Scheduler->NextSurgeDay, 90.0f, 0.001f);
 
 	TestFalse(TEXT("nothing is due on day 1"), Scheduler->IsDue(1));
-	TestEqual(TEXT("with 119 days to wait"),
-			  Scheduler->DaysUntilNextSurge(1), 119.0f, 0.001f);
-	TestFalse(TEXT("nor on day 119"), Scheduler->IsDue(119));
-	TestTrue(TEXT("and it is due on day 120"), Scheduler->IsDue(120));
+	TestEqual(TEXT("with 89 days to wait"),
+			  Scheduler->DaysUntilNextSurge(1), 89.0f, 0.001f);
+	TestFalse(TEXT("nor on day 89"), Scheduler->IsDue(89));
+	TestTrue(TEXT("and it is due on day 90"), Scheduler->IsDue(90));
 
 	// A LATE CALLER IS NOT PUNISHED FOR BEING LATE. The next surge is set from
 	// the day it actually fired, not from the day it was due, so a run that
 	// skipped several days at once does not immediately owe several surges.
 	Scheduler->RecordSurge(130);
-	TestEqual(TEXT("firing late puts the next one 120 days after the firing"),
-			  Scheduler->NextSurgeDay, 250.0f, 0.001f);
+	TestEqual(TEXT("firing late puts the next one 90 days after the firing"),
+			  Scheduler->NextSurgeDay, 220.0f, 0.001f);
 
 	return true;
 }
@@ -345,7 +357,7 @@ bool FCataclysmSurgeFrontierTest::RunTest(const FString& Parameters)
 
 	FRandomStream Stream(12345);
 
-	// FIVE HUNDRED ROLLS, NOT FIVE. A wave of four could miss a sealed city by
+	// FIVE HUNDRED ROLLS, NOT FIVE. A wave of five could miss a sealed city by
 	// luck; the point is that it cannot reach one at all.
 	const TArray<int32> Landed = Scheduler->PickTargets(*Map, 500, Stream);
 
@@ -426,7 +438,7 @@ bool FCataclysmSurgeSeedTest::RunTest(const FString& Parameters)
 	const TArray<FCataclysmDungeon> WaveElse =
 		Scheduler->RollWave(*Map, 0, 0, Different);
 
-	if (!TestEqual(TEXT("a static wave is four dungeons"), WaveOne.Num(), 4))
+	if (!TestEqual(TEXT("a static wave is five dungeons"), WaveOne.Num(), 5))
 	{
 		return false;
 	}
