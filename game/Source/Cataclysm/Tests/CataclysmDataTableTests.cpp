@@ -809,7 +809,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 602 SINCE THE TWO ROWS THAT DEAL A SHARE OF DAMAGE TAKEN OVER SECONDS, issue #1833, from 600.
 	//
 	// AND 603 SINCE THE ROW THAT MAKES AURAS MORE EFFECTIVE, issue #1833, from 602.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    603)
+	//
+	// AND 604 SINCE THE ROW THAT MAKES BUFFS MORE POTENT, issue #1833, from 603.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    604)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
