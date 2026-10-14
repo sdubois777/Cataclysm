@@ -2615,6 +2615,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	AilmentRiders.Empty();
 	RewriteMaximumHealthForAilments();
 
+	// AND THE CUTS THE DEBUFFS IT CARRIED HELD ON WHAT IT DEALS. Ruled 2026-10-13.
+	DebuffDamageCuts.Empty();
+
 	// AND EVERY "EVERY Nth" COUNT, ruled 2026-09-24. Issue #1833, phase 2.
 	NthCounts.Empty();
 
@@ -4268,6 +4271,51 @@ float UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
 	return Cataclysm ? Cataclysm->AilmentRiderPercentNow(Kind) : 0.0f;
+}
+
+void UCataclysmAbilitySystemComponent::ReceiveDebuffDamageCut(
+	const FGameplayTag& Debuff, const UCataclysmAbilitySystemComponent* Applier, float Percent)
+{
+	if (!Debuff.IsValid() || Applier == this)
+	{
+		return;
+	}
+	// A FRESH APPLICATION STARTS WITH NOTHING, as an ailment's riders do: nothing
+	// announces a debuff ending, so the record of one that has ended is taken
+	// down here, whoever is applying it now.
+	if (!HasMatchingGameplayTag(Debuff))
+	{
+		DebuffDamageCuts.Remove(Debuff);
+	}
+	if (!Applier || Percent <= 0.0f)
+	{
+		// AN APPLIER WITH NOTHING TO HANG TAKES DOWN ONLY ITS OWN, and nobody
+		// takes down nothing.
+		const FDebuffDamageCut* Held = DebuffDamageCuts.Find(Debuff);
+		if (Applier && Held && Held->Applier.Get() == Applier)
+		{
+			DebuffDamageCuts.Remove(Debuff);
+		}
+		return;
+	}
+	FDebuffDamageCut& Now = DebuffDamageCuts.FindOrAdd(Debuff);
+	Now.Applier = Applier;
+	Now.Percent = Percent;
+}
+
+float UCataclysmAbilitySystemComponent::DebuffDamageCutPercentNow() const
+{
+	// ONE CUT HOWEVER MANY DEBUFFS, ruled 2026-10-13: the largest and not the sum.
+	float Largest = 0.0f;
+	for (const TPair<FGameplayTag, FDebuffDamageCut>& Held : DebuffDamageCuts)
+	{
+		// WHILE IT CARRIES THE DEBUFF, asked now and not remembered.
+		if (HasMatchingGameplayTag(Held.Key))
+		{
+			Largest = FMath::Max(Largest, Held.Value.Percent);
+		}
+	}
+	return FMath::Clamp(Largest, 0.0f, 100.0f);
 }
 const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction = TEXT("kept_stacks_repeat_skill");

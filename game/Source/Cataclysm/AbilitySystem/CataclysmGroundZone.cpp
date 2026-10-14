@@ -467,6 +467,12 @@ void ACataclysmGroundZone::Sweep()
 													  ThisSweep, Delivery);
 		}
 
+		// WHAT THE ZONE LAYS FROM HERE ON IS SAID TO BE A ZONE'S. Ruled 2026-10-13: a zone's debuff counts as its
+		// owner's, for a row that cuts what a debuffed enemy deals, only while the owner holds Conduit, and every
+		// call below names the owner as instigator. AFTER THE DAMAGE, so a debuff a row of the owner's lays when
+		// that blow lands is still the owner's own. See `UCataclysmDebuffs::NoteLaid`.
+		const FCataclysmZoneLaying LaidByAZone;
+
 		// AND THE CURSE, IF THIS ZONE CARRIES ONE. The Wand's Foul Wake: "the
 		// ground you fled ... strips the Demonic resistance of anything that
 		// walks into it". Laid on every sweep, which refreshes rather than
