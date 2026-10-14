@@ -817,7 +817,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 606 SINCE THE ROW THAT MAKES ITS WEARER IMMUNE TO DEBUFFS AND LAY NONE, issue #1833, from 605.
 	//
 	// AND 607 SINCE THE ROW ON A BURN THAT ENDS BY TIME AND MAY EXPLODE, issue #1833, from 606.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    607)
+	//
+	// AND 608 SINCE THE ROW THAT MAKES GADGETS CHOOSE THE MOST HEALTH, issue #1833, from 607.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    608)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
