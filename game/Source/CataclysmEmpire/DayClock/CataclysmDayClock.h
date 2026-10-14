@@ -215,9 +215,15 @@ public:
 	 * Whether a dungeon that resolves undefeated stays on the map.
 	 * `config.dungeon_persists_after_resolve`.
 	 *
-	 * TRUE. It is what lets an ignored city actually die: the same dungeon bites
-	 * it again every time the refreshed timer runs out, rather than one bite and
-	 * gone.
+	 * TRUE, AND IT NOW MEANS ONLY THAT THE CLOCK REFILLS EVERY TIMER THAT RAN
+	 * OUT. Since 2026-10-13 an ordinary dungeon does hit once and leave: that
+	 * rule is in `UCataclysmEmpireRun::ResolveDungeon`, which removes the
+	 * dungeon and its timer after the hit. It is not here, because the false
+	 * branch of this constant removes the timer of every kind of dungeon, and
+	 * a Quest dungeon and a Dungeon City keep theirs. Until that date this
+	 * comment said the constant "is what lets an ignored city actually die".
+	 * The model's `dungeon_persists_after_resolve` is False and is no longer
+	 * the same question.
 	 */
 	static constexpr bool bDungeonPersistsAfterResolve = true;
 

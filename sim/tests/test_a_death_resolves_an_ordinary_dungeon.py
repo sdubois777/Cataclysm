@@ -179,7 +179,7 @@ class TestADeathInAnOrdinaryDungeon:
 
     def test_its_timer_is_full_afterwards_and_it_stays(self):
         """With a resolved dungeon staying, which was the default until
-        2026-10-12 and is what the game still does. At the default now the
+        2026-10-12 and in the game until 2026-10-13. At the default now the
         dungeon leaves: the test below, and
         `test_an_ordinary_dungeon_leaves_after_it_hits_its_city.py`."""
         sim = simulation(True, dungeon_persists_after_resolve=True)
