@@ -475,6 +475,23 @@ struct CATACLYSM_API FCataclysmDamageResult
 	float Overkill = 0.0f;
 
 	/**
+	 * Whether the blow was emptied because the character struck has become immune to the one attacker that threw
+	 * it. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune to your
+	 * damage until you disengage for 3 seconds".
+	 *
+	 * THE CALCULATION NEVER SETS IT. `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` sets it where it
+	 * empties such a blow, after `Resolve` has returned, and nothing else does. A blow emptied by the no-damage
+	 * window, by a window against its damage type or by a creature no damage reaches does not carry it.
+	 *
+	 * THREE READERS. `UCataclysmCombatEvents::NoteBlow` copies it to the hit's announcement, where the player's
+	 * on-hit rows refuse the blow. `ACataclysmMinion::AttackTarget` reads it to tell its summoner's
+	 * `deployable_hit` rows the blow did not land. `UCataclysmCombatOverlay::TextFor` prints the words the status
+	 * line uses in place of a figure.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bRefusedByImmunityToAttacker = false;
+
+	/**
 	 * How much of the hit the armour step took away, and how much the two
 	 * damage reduction lines took away between them: each is the damage before
 	 * its own step less the damage after it. Issue #1515, for Nothing Wasted,
