@@ -692,6 +692,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// immune to debuffs but also cannot apply them". A flag. No gameplay
 		// attribute and no base.
 		TEXT("immune_to_debuffs_and_applies_none"),
+		// The chance, in percent, that a damage over time ailment this character
+		// applied explodes when it ends by time, read where such an effect is
+		// removed, in UCataclysmSkillEffects, with the tags the ended effect
+		// granted. Ruled 2026-10-13: "Your burn effects have a 20%-40% chance to
+		// explode for double their remaining damage when they expire". Flat;
+		// nought is no chance. No gameplay attribute and no base.
+		TEXT("dot_explodes_at_expiry_chance"),
 	};
 	return Stats;
 }

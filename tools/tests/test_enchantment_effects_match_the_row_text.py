@@ -875,8 +875,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 604 over 510: one row on one enchantment.
 #: AND 606 OVER 512 SINCE THE ROW THAT MAKES ITS WEARER IMMUNE TO DEBUFFS AND LAY NONE,
 #: issue #1833, 2026-10-13, from 605 over 511: one row on one enchantment.
-AUTHORED_ROWS = 606
-AUTHORED_ENCHANTMENTS = 512
+#: AND 607 OVER 513 SINCE THE ROW ON A BURN THAT ENDS BY TIME AND MAY EXPLODE,
+#: issue #1833, 2026-10-13, from 606 over 512: one row on one enchantment.
+AUTHORED_ROWS = 607
+AUTHORED_ENCHANTMENTS = 513
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -974,6 +974,15 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// NOR THE EXPLOSION AN AILMENT OF THIS CHARACTER'S MADE WHEN IT ENDED BY TIME. Ruled 2026-10-13 under the project
+	// owner's delegation, for "Your burn effects have a 20%-40% chance to explode for double their remaining damage
+	// when they expire": the explosion is not a blow this character struck, so it raises none of the three events
+	// below, as an overkill explosion raises none. The kill such a blow makes is still this character's kill.
+	if (Notice.bExplosionAtAnAilmentsEnd)
+	{
+		return;
+	}
+
 	UCataclysmAbilitySystemComponent* Acting =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 	if (!Acting)

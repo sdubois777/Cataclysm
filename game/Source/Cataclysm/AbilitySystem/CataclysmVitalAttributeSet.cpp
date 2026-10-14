@@ -1629,7 +1629,15 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				const bool bARowsAnswerToAnEvent = Data.EffectSpec.GetSetByCallerMagnitude(
 					FName(UCataclysmSkillEffects::RowsAnswerToAnEventDataName),
 					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
-				UCataclysmAbilitySystemComponent* Struck = bConsequenceOfADeath || bARowsAnswerToAnEvent
+				// NOR THE EXPLOSION AN AILMENT MADE WHEN IT ENDED BY TIME. Ruled 2026-10-13: it is not a blow
+				// its applier struck, as an overkill explosion is not, so the applier's next real hit on a
+				// character it caught is still its first. The stamp is
+				// `UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName`.
+				const bool bExplosionAtAnAilmentsEnd = Data.EffectSpec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName),
+					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+				UCataclysmAbilitySystemComponent* Struck =
+					bConsequenceOfADeath || bARowsAnswerToAnEvent || bExplosionAtAnAilmentsEnd
 					? nullptr
 					: Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 				if (Struck)
