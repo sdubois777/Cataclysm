@@ -6,6 +6,7 @@ Each sentence is one row, a `more` row rolled between the sentence's two
 figures, with no Required Tags, no Condition and no Scale:
 
     "Your auras are 20%-50% more effective"             `aura_effect`
+    "Buff effects you apply are 20%-40% more potent"    `buff_potency`
 
 THE ROWS HERE ARE ON A MADE-UP SHEET holding the real sentences, as the
 generator's other tests of a stat built ahead of its row are. No row of
@@ -16,7 +17,8 @@ row name the hand-back gives the session that writes rows.
 WHY A ROW REQUIRING A TAG IS REFUSED. The game asks for each stat with the tags
 of the skill whose figure it multiplies. "Your auras" is every skill of the
 Aura shape, and Living Pyre is one that does not carry `Slot.Aura`; a row
-requiring that tag would leave it out.
+requiring that tag would leave it out. "Buff effects you apply" covers an
+aura's damage bonus to allies, and Conflagration does not carry `Type.Buff`.
 
 THE ENGINE'S NAME IS READ OUT OF THE SOURCE, with comment lines left out, so a
 name spelled differently on the two sides fails here and not in play.
@@ -57,6 +59,9 @@ HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
 RULED = {
     "aura_effect": ("Your auras are 20%-50% more effective", 20.0, 50.0,
                     "UCataclysmAuraSkill", "AuraEffectStat", "Slot.Aura"),
+    "buff_potency": ("Buff effects you apply are 20%-40% more potent", 20.0,
+                     40.0, "UCataclysmSelfBuffSkill", "BuffPotencyStat",
+                     "Type.Buff"),
 }
 
 
