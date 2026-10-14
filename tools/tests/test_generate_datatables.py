@@ -7361,3 +7361,171 @@ class TestAShareOfDamageTakenIsDealtOverSeconds:
             set())
         assert any(f"and not {self.SECONDS!r}" in problem
                    for problem in flat), flat
+
+
+class GadgetRowsOnAMadeUpSheet:
+    """What the classes below share: a made-up Enchantments sheet holding one
+    real sentence about gadgets on its Positive side, with the tag the real
+    sentence carries and a `Rolls Down` cell, and the effect rows written
+    under it. Not a test class: its name does not begin with `Test`.
+
+    THE SHEETS ARE MADE UP. The real rows are the enchantment session's to
+    write; these show that the generator carries each proposed row through
+    and refuses the shapes the game would give a gadget nothing for.
+    """
+
+    HEADER = TestScaleStepHigh.HEADER
+    TAG = "Type.Deployable"
+
+    def out(self, tmp_path, words, rows, rolls_down=None):
+        name = gen.row_name("Positive", words[:48])
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": name, "Effect": words}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [
+            ["Positives", "Type", "Weight", "Column 4", "Rolls Down",
+             "Negatives", "Type", "Weight", "Tags", "Rolls Down"],
+            [words, "Generic", 4, self.TAG, rolls_down,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life", None],
+        ]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "gadgets.xlsx",
+            {"Enchantments": sentences, "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_gadget_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows):
+        """What the generator's check of the finished sheet says of these
+        rows, told that `Type.Deployable` is a tag the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {self.TAG})
+
+    @staticmethod
+    def names_in_the_engine():
+        """Every `ACataclysmMinion::...Stat` name `CataclysmMinion.cpp`
+        defines, by its C++ name."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmMinion.cpp").read_text(encoding="utf-8")
+        return dict(re.findall(
+            r'ACataclysmMinion::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)', source))
+
+
+class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_target_most_health`, ruled 2026-10-13 and built ahead of its
+    row, for "Your gadgets prioritize the highest HP enemy within their range
+    instead of the nearest". One flag at a flat 1, scoped to
+    `Type.Deployable`: `ACataclysmMinion::MostHealthWithinReach` asks whether
+    it is above nought each time the shared brain chooses a gadget's target.
+    """
+
+    WORDS = ("Your gadgets prioritize the highest HP enemy within their range "
+             "instead of the nearest")
+    STAT = "gadgets_target_most_health"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+        # AND THE CONTROL OF THAT LAST LINE: told of no such tag, the sheet's
+        # validation refuses the row for its tag, so it does read the row.
+        assert any("undefined tag Type.Deployable" in problem
+                   for problem in gen.validate_enchantment_effects(
+                       {"EnchantmentEffects": out}, set()))
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_TARGET_MOST_HEALTH_STAT == self.STAT
+        assert self.STAT in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadgets_target_highest_hp" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """A name spelt differently on the two sides would be refused by
+        neither and read by nothing. THE CONTROL is
+        `minion_death_blast_radius_metres`, read by the same pattern from the
+        same file, so a pattern that found nothing would fail there first."""
+        names = self.names_in_the_engine()
+        assert names["DeathBlastRadiusMetresStat"] == (
+            "minion_death_blast_radius_metres")
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line: the row unchanged is
+        not refused."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Trap"},
+                 "under the required tags 'Type.Trap'"),
+                ({"RequiredTags": "Type.Deployable, Minion.Projectile"},
+                 "under the required tags"),
+                ({"Action": "health"}, "with the action 'health'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # BOTH FIGURES WRONG IS TWO REFUSALS, one for each column.
+        assert len(self.refusals([dict(row, ValueLow=2.0, ValueHigh=4.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale. The control is the
+        row unchanged."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_gadget_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "minion_health",
+                               "ValueKind": "increased", "ValueLow": 40.0,
+                               "ValueHigh": 70.0,
+                               "RequiredTags": "Type.Trap"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """The row unchanged gives the sheet's validation nothing to say; the
+        row with no required tag is refused there, in this check's words."""
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.validation(out) == []
+        problems = self.validation([dict(out[0], RequiredTags="")])
+        assert any("under the required tags ''" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems

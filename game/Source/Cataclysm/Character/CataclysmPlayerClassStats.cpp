@@ -664,6 +664,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute and no base.
 		TEXT("damage_taken_delayed_percent"),
 		TEXT("damage_taken_delayed_seconds"),
+		// The flag by which a summoner's gadgets choose the enemy with the most
+		// health within their reach, read by
+		// ACataclysmMinion::MostHealthWithinReach where the shared brain chooses
+		// a target, with the gadget's type tags. Ruled 2026-10-13: "Your gadgets
+		// prioritize the highest HP enemy within their range instead of the
+		// nearest". A flag. No gameplay attribute and no base.
+		TEXT("gadgets_target_most_health"),
 	};
 	return Stats;
 }
