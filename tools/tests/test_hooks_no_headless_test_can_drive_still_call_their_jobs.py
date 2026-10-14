@@ -76,10 +76,13 @@ HOOKS = {
             "ACataclysmMinion::GadgetStep":
                 "what a summoner's rows make a gadget do because time "
                 "passed, ruled 2026-10-13: the clock of the volley a gadget "
-                "fires at every enemy within its reach is looked at here. "
-                "Deleting it leaves every gadget with the row firing no "
-                "volley at all, while each test of it, which calls the step "
-                "directly, still passes",
+                "fires at every enemy within its reach is looked at here, "
+                "the window in which a gadget takes no damage is renewed "
+                "here, and the health a gadget loses each second is taken "
+                "here. Deleting it leaves every gadget with those rows "
+                "firing no volley, taking damage a second after it is "
+                "placed and losing nothing, while each test of them, which "
+                "calls the step directly, still passes",
             "UCataclysmFervour::GainPerSecondStep":
                 "the Fervour that arrives from the passage of time",
             "UCataclysmFervour::DecayStep":

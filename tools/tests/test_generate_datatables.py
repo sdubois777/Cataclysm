@@ -8231,3 +8231,141 @@ class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
             "EnchantmentEffects", [row]) == []
         assert gen.refuse_a_scale_nothing_asks_for(
             "EnchantmentEffects", [row]) == []
+
+
+class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_take_no_damage` and `gadget_health_lost_percent_per_second`,
+    ruled 2026-10-13 and built ahead of their rows, for "Your gadgets are
+    invincible but lose 5% of their maximum HP per second passively". One
+    sentence is two rows on one enchantment, both flat and scoped to
+    `Type.Deployable`: the flag 1 to 1 and the percent 5 to 5.
+    `ACataclysmMinion::StepNoDamageAndDrain` reads both on the gadget's step.
+    """
+
+    WORDS = ("Your gadgets are invincible but lose 5% of their maximum HP per "
+             "second passively")
+    NO_DAMAGE = "gadgets_take_no_damage"
+    DRAIN = "gadget_health_lost_percent_per_second"
+    FLAG_ROW = {"Stat": NO_DAMAGE, "Value Kind": "flat", "Value Low": 1,
+                "Value High": 1, "Required Tags": "Type.Deployable"}
+    DRAIN_ROW = {"Stat": DRAIN, "Value Kind": "flat", "Value Low": 5,
+                 "Value High": 5, "Required Tags": "Type.Deployable"}
+
+    def pair(self, tmp_path):
+        return self.out(tmp_path, self.WORDS, [self.FLAG_ROW, self.DRAIN_ROW])
+
+    def test_the_two_ruled_rows_are_carried_through_and_are_not_refused(
+            self, tmp_path):
+        out = self.pair(tmp_path)
+        assert [(row["Name"].rsplit("#", 1)[1], row["Stat"], row["ValueKind"],
+                 row["ValueLow"], row["ValueHigh"], row["RequiredTags"],
+                 row["Condition"], row["Scale"], row["Action"])
+                for row in out] == [
+            ("1", self.NO_DAMAGE, "flat", 1.0, 1.0, "Type.Deployable", "", "",
+             ""),
+            ("2", self.DRAIN, "flat", 5.0, 5.0, "Type.Deployable", "", "",
+             "")]
+        assert out[0]["Enchantment"] == out[1]["Enchantment"]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_both_are_stats_with_no_attribute_and_only_the_first_is_a_flag(
+            self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_TAKE_NO_DAMAGE_STAT == self.NO_DAMAGE
+        assert gen.GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT == self.DRAIN
+        assert self.NO_DAMAGE in gen.GADGET_FLAG_STATS
+        assert self.DRAIN not in gen.GADGET_FLAG_STATS
+        assert {self.NO_DAMAGE, self.DRAIN} <= set(gen.GADGET_STATS)
+        assert {self.NO_DAMAGE, self.DRAIN} <= gen.stats_with_no_attribute()
+        assert "gadgets_are_invincible" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_names_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the first gadget layer, read by the
+        same pattern from the same file. The second name's definition is
+        broken over two lines in the engine's file, which the pattern
+        allows for."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetsTakeNoDamageStat"] == (
+            gen.GADGETS_TAKE_NO_DAMAGE_STAT)
+        assert names["GadgetHealthLostPercentPerSecondStat"] == (
+            gen.GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to one of the two carried rows at a time, each refused
+        once and by its own sentence. The control is the first line: the pair
+        unchanged is not refused."""
+        flag, drain = self.pair(tmp_path)
+        assert self.refusals([flag, drain]) == []
+        for which, change, said in (
+                ("flag", {"ValueKind": "increased"}, "value kind 'increased'"),
+                ("flag", {"RequiredTags": ""}, "under the required tags ''"),
+                ("flag", {"ValueHigh": 2.0}, "states 2 on"),
+                ("flag", {"Action": "health"}, "with the action 'health'"),
+                ("drain", {"ValueKind": "more"}, "value kind 'more'"),
+                ("drain", {"RequiredTags": "Type.Trap"},
+                 "under the required tags 'Type.Trap'"),
+                ("drain", {"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 on"),
+                ("drain", {"ValueLow": 101.0, "ValueHigh": 101.0},
+                 "states 101 on"),
+                ("drain", {"ValueLow": -5.0, "ValueHigh": -5.0},
+                 "states -5 on"),
+                ("drain", {"ValueHigh": 8.0}, "states ONE figure")):
+            rows = [dict(flag, **change) if which == "flag" else flag,
+                    dict(drain, **change) if which == "drain" else drain]
+            problems = self.refusals(rows)
+            assert len(problems) == 1, (which, change, problems)
+            assert said in problems[0], (which, change, problems)
+
+    def test_one_of_the_two_without_the_other_is_refused(self, tmp_path):
+        """The game would read either alone; the generator refuses it,
+        because the sentence gives both and one alone is a design nobody
+        ruled. The control is the pair. Each stat alone is one refusal that
+        names both; and the two on two different enchantments are two."""
+        flag, drain = self.pair(tmp_path)
+        assert self.refusals([flag, drain]) == []
+        for alone, missing in ((flag, self.DRAIN), (drain, self.NO_DAMAGE)):
+            problems = self.refusals([alone])
+            assert len(problems) == 1, problems
+            assert f"and not {missing!r}" in problems[0]
+            assert repr(alone["Stat"]) in problems[0]
+        apart = self.refusals(
+            [flag, dict(drain, Name="Positive_Another#1",
+                        Enchantment="Positive_Another")])
+        assert len(apart) == 2, apart
+
+    def test_either_stat_twice_on_one_enchantment_is_refused(self, tmp_path):
+        flag, drain = self.pair(tmp_path)
+        again = dict(drain, Name=drain["Enchantment"] + "#3")
+        problems = self.refusals([flag, drain, again])
+        assert len(problems) == 1, problems
+        assert "on more than one row" in problems[0]
+        assert repr(self.DRAIN) in problems[0]
+
+    def test_a_condition_or_a_scale_on_either_is_refused_elsewhere(
+            self, tmp_path):
+        for row in self.pair(tmp_path):
+            assert gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [row]) == []
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+            assert len(conditioned) == 1 and row["Stat"] in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+            assert len(scaled) == 1 and row["Stat"] in scaled[0]
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """The pair gives the sheet's validation nothing to say; the flag
+        alone is refused there, in this check's words."""
+        flag, drain = self.pair(tmp_path)
+        assert self.validation([flag, drain]) == []
+        problems = self.validation([flag])
+        assert any(f"and not {self.DRAIN!r}" in problem
+                   for problem in problems), problems
