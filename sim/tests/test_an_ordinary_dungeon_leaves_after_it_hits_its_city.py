@@ -275,6 +275,9 @@ class TestTheKindsThatDoNotChange:
             "a Quest dungeon left the map when its timer ran out. Only an "
             "ordinary dungeon leaves")
         assert leaves["full"]
+        # NOT COUNTED AS AN ORDINARY DETONATION. Since 2026-10-13 the timer
+        # does hit the city; that is counted in `quest_hits` and tested in
+        # `test_a_quest_dungeons_timer_hits_its_host_city.py`.
         assert leaves["resolved"] == 0
 
     def test_a_fallen_city_dungeon_stays_with_its_timer_full(self):

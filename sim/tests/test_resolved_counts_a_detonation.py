@@ -106,18 +106,42 @@ class TestWhatOneTimerRunningOutCounts:
             "before anything is taken. Issue #1373")
 
     def test_a_quest_dungeon_is_not_counted(self):
-        """It relocates rather than detonating, and always did return above the
-        tally. Kept so a rewrite of `_resolve` cannot lose that."""
+        """It always did return above the tally. Kept so a rewrite of
+        `_resolve` cannot lose that.
+
+        SINCE 2026-10-13 ITS TIMER DOES HIT THE CITY, and this used to
+        assert `not bit`. The hit is counted in `quest_hits` and not in
+        `resolved`, so the tally this file is about still does not move.
+        """
         sim = Simulation(TuningConfig(), seed=1)
         city = a_standing_city(sim)
 
         moved, bit = resolve_and_report(
             sim, sim._make_dungeon(DungeonType.QUEST, city))
 
-        assert not bit
+        assert bit, (
+            "a Quest dungeon's timer ran out on a standing city and took "
+            "nothing. Since 2026-10-13 it takes an ordinary dungeon's hit; "
+            "see Simulation._quest_hit")
+        assert sim.quest_hits == 1
         assert moved == 0, (
-            "a Quest dungeon's timer running out was counted as a detonation. "
-            "It picks up and moves; see the comment in Simulation._resolve")
+            "a Quest dungeon's timer running out was counted in `resolved`. "
+            "That tally is for ordinary dungeons; a Quest dungeon's hit is "
+            "counted in `quest_hits`")
+
+    def test_with_the_hit_switched_off_a_quest_dungeon_takes_nothing(self):
+        """**THE CONTROL**, and the model as it was before 2026-10-13."""
+        import dataclasses
+
+        sim = Simulation(dataclasses.replace(
+            TuningConfig(), quest_timer_hits_city=False), seed=1)
+        city = a_standing_city(sim)
+
+        moved, bit = resolve_and_report(
+            sim, sim._make_dungeon(DungeonType.QUEST, city))
+
+        assert not bit
+        assert moved == 0 and sim.quest_hits == 0
 
     def test_the_dungeon_keeps_its_own_timer_count_either_way(self):
         """`Dungeon.times_resolved` counts timers and is a different quantity.

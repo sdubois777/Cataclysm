@@ -489,9 +489,11 @@ class TestWhatADungeonIs:
     # is the fraction it replaced multiplied by that tier's base maximum:
     # 10% of 1,000, 9% of 3,000, 8% of 8,000 and 6% of 20,000 for defence.
     #
-    # THE THREE NON-BASIC KINDS ALL TAKE NOTHING and that is the design rather
-    # than a gap: a Quest dungeon never resolves, and a Fallen City and a
-    # Cataclysm stand on a city whose damage is already done.
+    # THE THREE NON-BASIC KINDS ALL CARRY NO DAMAGE IN THEIR OWN ROWS. A
+    # Fallen City and a Cataclysm stand on a city whose damage is already
+    # done. A Quest dungeon, in the model since 2026-10-13, hits its host with
+    # the BASIC row of the host's tier and its own rows stay zero; in the
+    # game it takes nothing yet.
     #
     # THE CATACLYSM HAS ONE ROW. `config.DUNGEON_SPECS` holds it only for the
     # Pillar and `TuningConfig.spec` raises when asked for another, so there are
@@ -1170,8 +1172,17 @@ class TestWhatAQuestDungeonIs:
                 f"{tier}: the model gives a Quest dungeon "
                 f"{spec.resolve_days[0]} days, the game gives {unreal}")
 
-    def test_it_takes_nothing_from_the_city_in_either(self, model):
-        """It destroys nothing at any tier, in either half.
+    def test_its_own_rows_carry_no_damage_in_the_model(self, model):
+        """A Quest row holds no damage at any tier.
+
+        THIS WAS `test_it_takes_nothing_from_the_city_in_either` UNTIL
+        2026-10-13, AND THE NAME BECAME FALSE FOR THE MODEL. A Quest
+        dungeon's timer running out now hits its host in the model, with
+        the ORDINARY row of the host's tier, and the game does not have the
+        rule. The Quest rows themselves are still zero in both halves:
+        `test_every_dungeon_spec_matches_in_the_game` holds that. The
+        divergence is recorded in
+        `test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`.
 
         ZERO IS ZERO IN EITHER UNIT, so this survived issue #1327 turning the
         model's damage from a fraction of the city's maximum into a number of
@@ -1184,8 +1195,18 @@ class TestWhatAQuestDungeonIs:
             assert spec.defense_damage == 0.0, tier
             assert spec.population_damage == 0.0, tier
 
-    def test_neither_lets_one_bite_its_host_when_the_timer_runs_out(self):
-        """Both halves refuse on the KIND, not on the damage being zero.
+    def test_both_single_it_out_by_kind_and_only_the_game_lets_it_off(self):
+        """Both halves decide on the KIND, not on the damage being zero.
+
+        THIS WAS `test_neither_lets_one_bite_its_host_when_the_timer_runs_out`
+        UNTIL 2026-10-13. The model now hits the host and the game does
+        not; that divergence, and what to do when the game gains the rule,
+        is in
+        `test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`.
+        What this still holds in BOTH halves: `resolves` / `Resolves` is
+        "ordinary and nothing else", and each resolve function asks the
+        kind before anything is taken. The paragraph below was written
+        when neither half hit, and is kept for its reasoning.
 
         WHY THAT DISTINCTION IS WORTH A TEST. All four Quest rows carry zero
         damage today, so a check of the numbers would give the same answer for
