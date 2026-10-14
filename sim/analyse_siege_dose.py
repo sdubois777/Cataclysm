@@ -176,6 +176,11 @@ def base_config() -> TuningConfig:
         # has been re-measured, so the setting is held where it was. Remove
         # this line to measure the shipped rule; the figures then move.
         dungeon_persists_after_resolve=True,
+        # THE SAME, FOR THE RULE OF 2026-10-13. `TuningConfig` now has a
+        # Quest dungeon's timer hit its city. This file's figures were
+        # measured with that timer costing the city nothing, and none
+        # was re-measured. Remove this line to measure the shipped rule.
+        quest_timer_hits_city=False,
     ).with_tree(TREE_NONE)
 
 
