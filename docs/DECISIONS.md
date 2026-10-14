@@ -12,7 +12,7 @@ field of the hit notice and the line that fills it),
 `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the blow is not recorded as a first hit),
 `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the blow raises no on-hit event),
 `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute),
-`game/Source/Cataclysm/Tests/CataclysmBurnExplodesTests.cpp` (new: eight tests),
+`game/Source/Cataclysm/Tests/CataclysmBurnExplodesTests.cpp` (new: nine tests),
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the
 name, the tags allowed, one bound and one refusal), `tools/tests/test_generate_datatables.py` (one class of 11
 tests), `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory).
@@ -108,6 +108,15 @@ double their remaining damage when they expire". It stays in the workbook as wri
   laid, so a Burn of 25 a tick for 4 seconds that was refreshed twice and ran ten seconds still explodes for 200.
   The option not taken: count every tick it dealt over its extended life, which is the reading the ruling set
   aside as "twice what its ticks took".
+- **A REFRESHED BURN EXPLODES ONCE, AT ITS MOVED END.** Asked by the coordinating session on 2026-10-13 and read
+  again then. The listener is added on the last lines of `ApplyDamageOverTime`. An application that is not
+  stronger than the running effect leaves that function earlier, at the `return true` under "THE STRONGEST
+  APPLICATION WINS HERE TOO", after `RefreshRunningApplication`, and never reaches those lines. So a handle that
+  already holds the listener is never given it a second time. A copy a spread makes goes through the same
+  function and the same early return. `RefreshOtherDamageOverTime`, which the row
+  `dot_application_refreshes_others` calls, moves each effect's start with `ModifyActiveEffectStartTime` and
+  calls `ApplyDamageOverTime` for none of them. A stronger application removes the running effect and lays a new
+  one, whose handle is new. No code was changed for this; a test was added.
 - **THE APPLIER AT THE END.** `UCataclysmCombatEvents::AttackerOf` of the ended effect's own context, the function
   every other credit uses. For a Burn a character laid it is that character. For a minion's Burn it is the
   minion, and the summoner only while the summoner holds Conduit (`minion_hits_count_as_yours`), ruled
@@ -294,7 +303,7 @@ The coordinating session rules on each.
 
 ### Tests
 
-Eight new Unreal tests in the new file `CataclysmBurnExplodesTests.cpp`, in the group `Cataclysm.BurnExplodes.`,
+Nine new Unreal tests in the new file `CataclysmBurnExplodesTests.cpp`, in the group `Cataclysm.BurnExplodes.`,
 beside `Cataclysm.RemainingDamage.` and on the rig of its test of a death: a real player character on a player state and real creatures
 of the monsters' team. The Burn is laid by `ApplyDamageOverTime`, ten a tick for four seconds with none of the
 applier's stats applied, so its whole is 40 and its explosion a blow of 80. The wearer's stat line is written by
@@ -351,6 +360,15 @@ those. The wearer stands 20 m from every creature, and each scene checks that it
 - `AMinionsBurnIsTheMinionsAndExplodesOnlyForASummonerHoldingConduit`: a Burn laid in a minion's name, the
   summoner holding a chance of 100. Without Conduit nothing explodes (the control). With Conduit two blows are
   announced as the explosion and each is credited to the summoner. Only announcements are counted.
+- `ABurnRefreshedTwiceExplodesOnceAtItsMovedEndAndNotAtItsFirst`, added on 2026-10-13 at the coordinating
+  session's request, with a chance of 100. A Burn never refreshed has exploded by four and a half seconds, on the
+  carrier and the bystander; it has ended; nothing more explodes after; its bystander takes what a blow of 80
+  takes (the control). A Burn applied again at the same strength a second and a half in and three seconds in:
+  past its first end, at four and a half seconds, nothing has exploded and it still burns; past the end its
+  first refresh gave it, at six seconds, the same; at seven and a half seconds it has ended, two blows are
+  announced as the explosion, and its bystander has taken what one blow of 80 takes. Every assertion is expected
+  to pass on the code as first written: the test records that a refresh adds no second listener, and no proof is
+  proposed for it.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
 `ProbeDotExplodesAtExpiryChance`. A Burn of one a tick for four seconds, run to its end on a bare fighter, takes
@@ -369,7 +387,8 @@ on another stat are left alone; the sheet's validation runs the check; and a mis
 
 **Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; a Burn laid by
 a real skill, by `ApplyBurn` or by a blow; the applier's three damage over time stats in the whole; an interval
-that does not divide the duration, on a real effect; a Burn that was refreshed before it ran out; a copy a
+that does not divide the duration, on a real effect; a Burn refreshed by a WEAKER application, or by the row that refreshes the applier's other
+effects; a copy a
 spread made; a damage type on the explosion, since a player's Burn has none; that the explosion cannot be
 retaliated against and does not leech; that the applier itself takes nothing from it, which is not read
 because the test does not say what a creature does to the wearer while the clock runs; that it is a combat event, which the Burn's own ticks already are for
@@ -383,7 +402,7 @@ one enemy; a client that is not the server; anything in a dungeon level.
 Not run. Each anchor was counted exactly once in its file by a script of the writing session, and each new text
 nought times; the brackets of each old and new text balance. Each is a break in one `.cpp` file that does not
 stop that file compiling alone: each removes a term of a condition or puts `false &&` before one. The prefix of
-all three is `Cataclysm.BurnExplodes.`, with its trailing dot, which is 8 tests. The failed assertions are
+all three is `Cataclysm.BurnExplodes.`, with its trailing dot, which is 9 tests. The failed assertions are
 counted by reading the tests and were not measured. The Python suite must not run while one is run.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
