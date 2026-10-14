@@ -148,6 +148,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The chance that a damage over time ailment explodes when it ends by time
 #: added one more on 2026-10-13, asked of the applier in
 #: `CataclysmSkillEffects.cpp` where the ended effect's removal is heard.
+#: The stats a summoner's row gives its gadgets added one more on 2026-10-13,
+#: asked by the one helper `ACataclysmMinion::SummonersGadgetStat` with the
+#: gadget's type tags; the first stat it is asked for is the flag by which a
+#: gadget chooses the enemy with the most health.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -901,6 +905,13 @@ INVENTORY = {
         "row requiring one ailment's tag reaches that ailment alone; no blow "
         "exists yet and the stat is no modifier of one, so no blow and no "
         "target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), TypeTags, 0.0f'):
+        "a stat a summoner's row gives its gadgets (ruled 2026-10-13), asked "
+        "of the summoner by SummonersGadgetStat with the gadget's own type "
+        "tags, so a row scoped to Type.Deployable matches; each is a flag or "
+        "a figure of the gadget's own behaviour, read when the gadget "
+        "chooses a target or on its step, with no blow and no target in hand",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

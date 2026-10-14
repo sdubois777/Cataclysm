@@ -9592,6 +9592,103 @@ def refuse_an_exploding_ailment_row_the_game_cannot_read(
     return problems
 
 
+#: The tag a row about "your gadgets" is scoped by, as the merged gadget rows
+#: are: "Gadgets have 40%-70% increased HP", "Gadgets fire 20%-40% faster".
+#:
+#: A SPIKE TRAP CARRIES THIS TAG TOO AND IS NOT A GADGET. It also carries
+#: `Type.Trap` (ruled 2026-10-07), and the game answers every stat below
+#: nought for it: `ACataclysmMinion::SummonersGadgetStat` asks
+#: `ACataclysmMinion::IsGadget` before it asks the summoner anything. So the
+#: tag scopes the row to placed machines and the code leaves the trap out.
+GADGET_ROW_TAG = "Type.Deployable"
+
+#: The flag by which a summoner's gadgets choose the enemy with the most
+#: current health within their reach. Ruled 2026-10-13 by the coordinating
+#: session under the owner's delegation, for "Your gadgets prioritize the
+#: highest HP enemy within their range instead of the nearest".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, Required Tags `Type.Deployable`,
+#: with no Condition, no Scale and no Action.
+#: `ACataclysmMinion::GadgetsTargetMostHealthStat` holds the same name, and
+#: `TestGadgetsChooseTheMostHealth` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+GADGETS_TARGET_MOST_HEALTH_STAT = "gadgets_target_most_health"
+
+#: The stats a summoner's row gives its gadgets that are flags: a flat 1, read
+#: as above nought.
+GADGET_FLAG_STATS = (
+    GADGETS_TARGET_MOST_HEALTH_STAT,
+)
+
+#: Every stat `ACataclysmMinion::SummonersGadgetStat` is asked for. Each is
+#: read off the summoner with the gadget's own type tags and no base.
+GADGET_STATS = GADGET_FLAG_STATS
+
+
+def refuse_a_gadget_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `GADGET_STATS` is one its reader takes as it stands.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE. The game reads each of these
+    stats in one place, `ACataclysmMinion::SummonersGadgetStat`: the figure
+    itself, off the summoner, with the gadget's type tags. So a row of any
+    kind but `flat` works on a base of nought, and a row on an action states
+    no stat line. Each refusal names what the reader would do with the row.
+
+    THE REQUIRED TAGS ARE `GADGET_ROW_TAG` AND NOTHING ELSE. A row with no tag
+    would work in the game, because the reader answers nought for everything
+    that is not a gadget whatever the row requires. It is refused so that
+    every row about gadgets states its scope the way the merged ones do: a
+    labelled judgement of the writing session. A row requiring a tag a Bolt
+    Turret and a Ballista do not both carry would reach one of them or
+    neither, and is refused for that.
+
+    A FLAG STATES 1 AND NOTHING ELSE, as
+    `refuse_a_retaliation_flag_row_the_game_cannot_read` holds its flag, and
+    for its reason.
+
+    A CONDITION OR A SCALE ON ANY OF THESE STATS IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    none is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as that function leaves one.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in GADGET_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself off the summoner, so the row "
+                f"must be 'flat'; any other kind works on a base of nought "
+                f"and gives a gadget NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags != GADGET_ROW_TAG:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. A "
+                f"row about gadgets requires {GADGET_ROW_TAG!r} and nothing "
+                f"else, as the merged gadget rows do; the game leaves a Spike "
+                f"Trap out by itself.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The stat is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"give a gadget NOTHING.")
+        if stat in GADGET_FLAG_STATS:
+            for column in ("ValueLow", "ValueHigh"):
+                value = float(row.get(column) or 0.0)
+                if value != 1.0:
+                    problems.append(
+                        f"{who}: states {value:g} on {stat!r}, and a row on "
+                        f"this flag states 1 and nothing else.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9955,6 +10052,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE CHANCE THAT AN AILMENT EXPLODES WHEN IT ENDS BY TIME IS ONE FLAT
     # ROW THAT NAMES ITS AILMENT BY ITS ONE REQUIRED TAG. Ruled 2026-10-13.
     problems.extend(refuse_an_exploding_ailment_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW ON A STAT A SUMMONER'S GADGETS ARE ASKED FOR IS FLAT AND
+    # SCOPED TO `Type.Deployable`. Ruled 2026-10-13.
+    problems.extend(refuse_a_gadget_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
