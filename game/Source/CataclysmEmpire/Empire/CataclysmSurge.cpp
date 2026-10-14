@@ -506,11 +506,23 @@ bool UCataclysmSurgeScheduler::IsDueOnEmptyBoard(int32 Day,
 		&& DaysSinceLastSurge(Day) >= LeastIntervalDays;
 }
 
+bool UCataclysmSurgeScheduler::IsDueOnCityFall(int32 Day) const
+{
+	// THE SAME BRAKE THE EMPTY BOARD HAS, AND THE SAME COMPARISON. The model
+	// fires when the gap is at or above `surge_interval_min`, so `>` here
+	// would refuse the fall that comes exactly 25 days after a surge.
+	//
+	// ON ONE LINE, so the port check in `tools/tests/test_surge_port.py` and
+	// a guard proof can each name the whole condition as one line of text.
+	return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;
+}
+
 void UCataclysmSurgeScheduler::RecordSurge(int32 Day, bool bFromCityFall)
 {
 	++SurgesFired;
 
-	// WHAT `IsDueOnEmptyBoard` MEASURES ITS INTERVAL FROM. See `LastSurgeDay`.
+	// WHAT `IsDueOnEmptyBoard` AND `IsDueOnCityFall` MEASURE THEIR INTERVAL
+	// FROM. See `LastSurgeDay`.
 	LastSurgeDay = Day;
 
 	// THE GAP IS READ BEFORE THE COUNTER MOVES, which is the order

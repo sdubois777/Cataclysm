@@ -175,7 +175,8 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *      host city's defence and population, and its own timer is set back to
  *      full.
  *   7. A city whose defence reached zero falls. Every dungeon standing on it is
- *      absorbed, and its fall fires a surge of its own.
+ *      absorbed, and its fall fires a surge of its own when the last surge is
+ *      at least 25 days behind. A fall sooner than that fires none.
  *   8. If a Sanctuary has fallen, the Cataclysm can reach the Pillar.
  *   9. If nothing at all stands on the map, the Pillar cannot be reached and
  *      the last surge is at least 25 days behind, the next wave lands now.
@@ -911,8 +912,9 @@ public:
 	 *
 	 * @return what happened, in the shape a day's report has. `Day` is the
 	 *         clock's day, which did not move. `Resolved` holds this dungeon when
-	 *         it resolved and is empty otherwise. `Fallen`, `Absorbed`, `Spawned`
-	 *         and `bSurged` are filled when the resolve felled the city. Empty
+	 *         it resolved and is empty otherwise. `Fallen`, `Absorbed` and
+	 *         `Spawned` are filled when the resolve felled the city, and
+	 *         `bSurged` is true when that fall also fired its surge. Empty
 	 *         when the run has not begun or no dungeon has that number.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
@@ -1120,7 +1122,9 @@ private:
 
 	/**
 	 * A city fell: its dungeons are absorbed into the one it becomes, and its
-	 * fall fires a surge.
+	 * fall fires a surge when `UCataclysmSurgeScheduler::IsDueOnCityFall` says
+	 * one is due. A fall inside the least interval fires none and is not asked
+	 * about again. Issue #2380.
 	 */
 	void CityFell(int32 CityId, FCataclysmDayReport& OutReport);
 

@@ -2,6 +2,377 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — The game's surge when a city falls waits for the 25-day least interval, as the simulation's does (#2380)
+
+**Said first: with this layer, 20 unattended campaigns made 687 dungeons where they made 1,580 before it.** Both
+figures are one Unreal test's own log line, `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`, in
+two runs of 2026-10-12. That test runs 20 campaigns of up to 600 days each with nobody clearing anything and
+counts every dungeon a surge made. Before the layer the line read "20 campaigns, 12000 days in all, 1580 dungeons
+made". With this layer and the two layers under it on the branch, which do not touch surges, it read "20
+campaigns, 12000 days in all, 687 dungeons made". The writing session did not make either run; the coordinating
+session reported both lines on 2026-10-13. The simulation has had this rule since pull request #1928 (issue
+#1432), so the game moves to where the model already is.
+
+**Said first: two cities falling on one day bring one wave.** Before this layer they brought two. The first
+city's fall fires its surge, the surge is recorded as today's, and the second city's fall is then nought days
+after a surge and fires nothing. The second city still falls and still becomes a Dungeon City.
+
+**Said first: a fall inside 25 days of any surge brings no wave.** "Any surge" is the clock's, an empty
+board's or an earlier fall's. Every run's first wave is on day 1, so a city that falls on day 25 or earlier
+brings none, and a city that falls on a day the clock has already surged brings none. A refused fall is not
+tried again on a later day.
+
+**Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ and its four Unreal
+tests were written and read, not built. Every day number in the tests is arithmetic done by hand. The Python
+checks were run, and the new one was proved in a copy of the tree; what they printed is below.
+
+**Said first: existing Unreal tests are expected to change, none was run, and no assertion in any of them was
+edited.** Every test that can reach `UCataclysmEmpireRun::CityFell` was read before anything was written. Each
+line below awaits a ruling by the coordinating session.
+
+- **Becomes false, by reading (1 assertion).**
+  `Cataclysm.EmpireRun.ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind`, the assertion "the
+  report says a surge fired exactly when a city's fall fires one",
+  `Report.bSurged == UCataclysmSurgeScheduler::bSurgeOnCityFall`. The death is on day 1, the day of the opening
+  wave, so the fall is nought days after a surge. `bSurged` is false and the flag is true. Its other assertions
+  do not read the surge.
+- **Cannot be told without a run, and the assertion reads a fall's surge (2 tests).**
+  `Cataclysm.EmpireRun.ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons`: "the day it fell also surged" and
+  "at least one surge fired on the day %d cities fell" are asserted on the first three days a city falls in an
+  unattended run from seed 1. Each is false on a fall day fewer than 25 days after the last surge, and the
+  second is false on any day two cities fall. The days cannot be read.
+  `Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave`: "a schedule that forgot how far it had escalated
+  rolls a wave of a different size" needs an escalation counter of 2 or more when its run stops; at 1 a Heretic
+  wave is five dungeons, the same as at nought. Fewer fall surges lower the counter.
+- **Cannot be told without a run; whole campaigns whose closing counts may move (17 tests).** None asserts
+  anything about a surge. Each runs past its first fall, and after a refused fall surge the run holds fewer
+  dungeons. In `Cataclysm.EmpireRun.`: `ADungeonResolvingTakesExactlyItsPointsOfDefence`,
+  `AnIgnoredDungeonBitesTheSameCityAgainAndAgain`, `AnUnattendedEmpireAlwaysLosesThePathToThePillar` (five
+  seeds must each lose the path inside 2000 days with fewer than 24 cities lost),
+  `TheSameSeedGivesTheSameRunAndADifferentOneDoesNot`, `ACityNeverHoldsTwoSieges`,
+  `AQuestDungeonRefreshesInsteadOfBitingItsCity`, `AQuestDungeonMovesToAnAdjacentCity` (more than 200 Quest
+  timers with a choice), `ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice`,
+  `OnlyAResolveThatCostACitySomethingIsCounted`, `DescribeSaysWhatWasClearedAndWhichDungeonIsAQuest`. In
+  `Cataclysm.Surge.`: `NoDungeonACampaignMakesComesOutWithoutASubType` (at least 1000 dungeons over 20
+  campaigns; its comment measured 1,925 with every fall firing) and `ACampaignActuallyLandsQuestDungeons` (at
+  least 500). And `Cataclysm.Roster.EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt`,
+  `Cataclysm.DungeonModifiers.TheSameSeedDrawsTheSameModifiers`,
+  `Cataclysm.DungeonModifiers.ASacrificialDungeonInARunReallyGetsDouble`,
+  `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`,
+  `Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime`.
+- **Two tests fell a city inside the interval and are read as still passing**, because no assertion in them
+  reads a surge: `Cataclysm.DungeonMode.ADeathWhoseResolveFellsTheCityTouchesNoDungeonThatIsGone` (the fall is on
+  day 2) and `Cataclysm.CityUpgrade.ClearingADungeonRepairsTheCityButAbsorbingOneDoesNot` (day 1).
+
+**A fact the reading turned up: a Siege in a run's opening wave fells its Outpost by day 25.** An Outpost has
+1000 defence and a Siege takes 10 a day plus 2.5 for each day it has stood, which is 1000 on day 25; the Siege
+dungeon's own resolve brings the day forward. So in any unattended run whose opening wave holds a Siege, the
+first fall is inside the interval and now brings no wave. Which seeds those are cannot be read.
+
+**Said first: the entry of 2026-10-12 for issue #1414, directly below, says twice that the game's fall surge
+has no least interval.** That was true when it was written and this layer makes it out of date. That entry was
+not edited.
+
+### The ruling
+
+The game's surge on a city's fall gets the simulation's least interval. Built on issue #2380, citing issue
+#1432 and pull request #1928. A labelled judgement by the coordinating session under the owner's delegation,
+2026-10-12.
+
+Every existing test that fells a city before day 26 and asserts a surge is listed, by reading, before anything
+is written, and each changed assertion is ruled one by one by the coordinating session; the writing session
+changes none. A labelled judgement by the coordinating session under the owner's delegation, 2026-10-12.
+
+"Two cities falling on one day bring one wave" is said first in this entry. A labelled judgement by the
+coordinating session under the owner's delegation, 2026-10-12.
+
+The rule it copies was ruled on issue #1432 on 2026-09-14, relayed under the owner's delegation of that date:
+"yes, the city-fall surge respects surge_interval_min like the empty-board trigger."
+
+### What was read before writing
+
+- Issue #2380 whole, and issue #1432 with its two comments.
+- `sim/cataclysm_sim/engine.py`: `_fall` (884 to 918) and `days_since_last_surge` (621 on).
+  `sim/tests/test_a_city_fall_respects_the_minimum_surge_gap.py` whole.
+- The commit for issue #1414, 9463a971, and its entry below.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`: `bSurgeOnCityFall`, `LeastIntervalDays`,
+  `LastSurgeDay`, `DaysSinceLastSurge`, `IsDueOnEmptyBoard`, `RecordSurge`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `Begin`, `AdvanceDay`, `SpendFloorTime`,
+  `FireSurge`, `ResolveDungeon`, `ApplySiegeDamage`, `CityFell`, `AddFallenCityDungeon`,
+  `ResolveDungeonOnDeath`. `CityFell` has two callers, `ResolveDungeon` and `ApplySiegeDamage`.
+- `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp` whole, 4,438 lines.
+  `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp` whole. Every test that advances a run in
+  `CataclysmSurgeTests.cpp`, `CataclysmRosterTests.cpp`, `CataclysmCityUpgradeTests.cpp`,
+  `CataclysmDungeonModifierTests.cpp`, `CataclysmSaveWriterTests.cpp`, `CataclysmEmpireScreenTests.cpp`,
+  `CataclysmEmpireRunTierTests.cpp`, and each test that hands a game mode a run in
+  `CataclysmDungeonGameModeTests.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`,
+  `CataclysmDungeonModifierTableTests.cpp`, `CataclysmFloorBriefTests.cpp` and `CataclysmPotionsTests.cpp`.
+- `tools/tests/test_surge_port.py` to line 385, and by search after it.
+
+**`Begin` fires no surge.** The first day advanced is day 1 and fires the opening wave, which writes
+`LastSurgeDay = 1`. A city felled before any day is advanced is nought days after "day 0" and brings no wave.
+
+### How it is built
+
+- `UCataclysmSurgeScheduler::IsDueOnCityFall(int32 Day) const`, beside `IsDueOnEmptyBoard`. Its body is one
+  line: `return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;`. It does not ask what stands
+  on the board. It decides and does not act.
+- `UCataclysmEmpireRun::CityFell` asks `Surges->IsDueOnCityFall(OutReport.Day)` in place of the bare flag, and
+  fires `FireSurge(OutReport.Day, true, OutReport)` when it answers yes. Nothing else in `CityFell` changed: the
+  dungeons standing on the city are absorbed and the Dungeon City is added before the surge is asked about.
+- **No second number.** The brake is the `LeastIntervalDays` (25) the scheduler already held.
+- **Two cities on one day.** `FireSurge` ends by calling `RecordSurge`, which writes today into
+  `LastSurgeDay`. The second fall then asks with nought days behind it and is refused.
+- **A fall whose wave found no city to land on is still recorded.** `FireSurge` calls `RecordSurge` whether
+  or not anything landed. So that fall moves the last surge's day to today, moves the clock's next surge on and
+  advances both counters, and a second fall inside 25 days of it brings none although nothing landed. The
+  simulation logs nothing when nothing lands, so there the second fall would fire. The two differ only when no
+  city can be landed on.
+- **What the interval is measured from.** The simulation measures from the last surge that landed; the game
+  from the last surge recorded. Judgement 2 of the entry for issue #1414 below covers this and is not changed.
+- Seven comments that the change made false or incomplete were corrected, all in the four files above: on
+  `bSurgeOnCityFall`, on `LastSurgeDay`, in `RecordSurge`, on the day's step 7 at the head of
+  `CataclysmEmpireRun.h`, on `CityFell`'s declaration, on what `ResolveDungeonOnDeath` returns, and in
+  `ResolveDungeonOnDeath` on what a city it fells lands. The comment inside `CityFell` was rewritten with
+  its code.
+- Nothing in the `Cataclysm` module changed, nothing under `sim/` changed, and no file under `game/Data/`.
+
+### For the owner's play-check
+
+- Lose a city within 25 days of a wave arriving: the city becomes a Dungeon City and no new wave comes with it.
+  Before this layer four more dungeons arrived that day.
+- Lose two cities on one day, 25 days or more after the last wave: one wave of four arrives, not two.
+- Lose a city 25 days or more after the last wave: a wave of four arrives that day, as before, and the "next
+  surge" count restarts at 120 from that day.
+- A wave that was refused does not arrive later. The 120-day clock is not moved by a refused fall.
+- Nothing on screen says a fall's wave was withheld.
+- **The one judged number is none.** 25 days is the simulation's.
+
+### The writing session's judgements
+
+Each a judgement by the writing session, for the coordinating session to confirm.
+
+1. **The condition is written on one line**, so the port check and a guard proof can each name it whole.
+   `IsDueOnEmptyBoard` wraps its condition over three lines.
+2. **Comments beside assertions that await a ruling were not edited.** In
+   `ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons` the comment "A CITY FALLING FIRES A SURGE OF ITS OWN,
+   one per city lost" is no longer so, and neither is the test's name. Both go with the two assertions under
+   them. The name of `Cataclysm.Surge.ACityFallingFiresASurgeAndPermanentlySpeedsTheRunUp` now leaves out a
+   condition; that test records a surge on a bare scheduler and still holds.
+3. **One measurement in a comment is now stale and was not corrected**, because correcting it needs a run:
+   "22 and 22, measured over a run like this one" in
+   `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheSurgeSchedule`.
+4. **The helper is a `BlueprintPure` function**, as `IsDueOnEmptyBoard` beside it is.
+5. **The tests fell a city with a hand-placed dungeon carrying 5000 points of defence damage**, five times an
+   Outpost's 1000. `Cataclysm.CityUpgrade.ClearingADungeonRepairsTheCityButAbsorbingOneDoesNot` uses the same
+   figure. The reading not taken: weaken the city to 10 defence first, as the death tests do.
+6. **Nothing tells a fall's surge from the clock's in a test today.** `bCityFallAdvancesEscalation` is true, so
+   both advance the escalation counter. The test asserts the counter moved by what that flag says.
+7. **No research into other games was done; no source was read.** The shape is the simulation's, ruled on
+   issue #1432.
+
+### Tests
+
+Four Unreal tests appended to `CataclysmEmpireRunTests.cpp`, none run. No actor is spawned in any of them; a run
+is an object with no world. Every fall is made by hand on a run whose opening wave was taken off: two ordinary
+dungeons are placed on an Outpost, neither with a timer that runs out, and the one carrying the damage is given
+one day on the day before the fall.
+
+- `Cataclysm.EmpireRun.TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed`: the scheduler alone.
+  Day 24 not due and day 25 due; day 1000 answers what the flag says; after a surge on day 100, day 100 and
+  day 124 not due and day 125 due; after a fall's surge on day 110, day 134 not due and day 135 due.
+- `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`: two runs a day apart. The
+  fall on day 25 records no surge, moves neither counter nor the clock, and brings one dungeon, the Dungeon
+  City; the city is down, its two dungeons are absorbed and off the clock, and the Dungeon City has two bosses.
+  No surge on days 26 to 29. The control is the fall on day 26, which brings five.
+- `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`: the same two runs from the
+  other side. The fall on day 26 records one surge, advances the escalation counter as the flag says, moves the
+  clock's next surge from day 121 to day 146 and brings five dungeons. The control is the fall on day 25.
+- `Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringOneWave`: two runs alike until day 25, each with two
+  Outposts set to fall. In one both fall on day 26: one surge is recorded and six dungeons arrive, four of one
+  wave and the two Dungeon Cities. In the control the falls are on day 26 and day 51: two surges.
+
+`tools/tests/test_surge_port.py`, class `TestWhatACityFallingDoes`, one new check,
+`test_a_fall_asks_the_flag_and_the_least_interval_in_both`. No existing check was changed.
+
+- **The model's half**, from `inspect.getsource(Simulation._fall)` with comment lines removed:
+  `if (cfg.surge_on_city_fall`, `and self.days_since_last_surge() >= cfg.surge_interval_min):` and
+  `self.trigger_surge(from_city_fall=True)`, and `trigger_surge(` once.
+- **The same interval:** `LeastIntervalDays` equals `surge_interval_min`.
+- **The game's half**, with comments removed: `IsDueOnCityFall` holds
+  `return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;`; `CityFell` holds
+  `if (Surges->IsDueOnCityFall(OutReport.Day)) { FireSurge(OutReport.Day, true, OutReport); }`, calls
+  `FireSurge(` once, and does not read `bSurgeOnCityFall` itself.
+
+**Guard proofs of the Python check, run by the writing session with `tools/prove_guard.py` in a copy of the
+tree made with `git archive` of the staged tree, each PROVED: failed with the break in and passed with it out.**
+The named failure of each is `test_a_fall_asks_the_flag_and_the_least_interval_in_both`.
+
+| The break | Printed |
+|---|---|
+| `>=` becomes `>` in `IsDueOnCityFall`, `CataclysmSurge.cpp` | `PROVED: 1 failed, 58 passed in 0.27s \| restored: 59 passed in 0.15s` |
+| `CityFell` asks `UCataclysmSurgeScheduler::bSurgeOnCityFall` again, `CataclysmEmpireRun.cpp` | `PROVED: 1 failed, 58 passed in 0.19s \| restored: 59 passed in 0.15s` |
+| `>= cfg.surge_interval_min` becomes `>= 0.0` in `Simulation._fall`, `engine.py` | `PROVED: 1 failed, 58 passed in 0.20s \| restored: 59 passed in 0.16s` |
+
+### Not covered
+
+- Anything in Unreal: the build, the four new tests, and the whole suite with this rule on.
+- Every existing test listed at the top of this entry.
+- A fall caused by a Siege's daily damage. Both callers reach the same `CityFell`; the tests fell a city by a
+  resolve.
+- A fall caused by a death's resolve, `ResolveDungeonOnDeath`, inside or outside the interval. The existing
+  test of it is the one read as becoming false.
+- A fall on a day the clock has surged, and a fall whose wave found no city to land on. The scheduler test
+  covers the first by day numbers only.
+- The escalating surge modes. The tests use static surges, as the simulation's tests of this rule do.
+- A save. `LastSurgeDay` is not written to the save (issue #753), so a restored run would measure from day 0
+  and a fall soon after a restore could bring a wave the interval should have refused. Nothing restores a run
+  today.
+- How campaigns play with fewer waves. Issue #1432 measured the simulation's change; the game was not measured.
+
+### Guard proofs proposed for the C++
+
+None was run. Each break is one line that counts once in its file and leaves the file compiling.
+
+| | File | Before | After | Test | Predicted |
+|---|---|---|---|---|---|
+| 1 | `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp` | `	return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;` | `	return bSurgeOnCityFall && DaysSinceLastSurge(Day) > LeastIntervalDays;` | `TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed` | 3 failed assertions: day 25, day 125 and day 135 are each asserted to fire one and answer none. |
+| 2 | `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp` | `	if (Surges->IsDueOnCityFall(OutReport.Day))` | `	if (UCataclysmSurgeScheduler::bSurgeOnCityFall)` | `TwoCitiesFallingOnOneDayBringOneWave` | 3 failed assertions: the second fall fires too, so surges fired read 3 and not 2, the escalation counter advanced by 2 and not 1, and 10 dungeons arrived and not 6. |
+
+The test prefix for each is `Cataclysm.EmpireRun.` followed by the test's name. Break 1 also fails
+`ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave` and
+`ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave` under a wider prefix, because their fall on day 26
+would then bring nothing.
+
+### Ruled after this entry was written: the one assertion that became false
+
+On 2026-10-12 the coordinating session ruled, a labelled judgement under the owner's delegation, on the one
+existing assertion this entry lists as becoming false. In
+`Cataclysm.EmpireRun.ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind` the assertion "the
+report says a surge fired exactly when a city's fall fires one" compared `Report.bSurged` with the flag
+`bSurgeOnCityFall`. It now reads "the report says a surge fired exactly when the scheduler said a fall's was due"
+and compares `Report.bSurged` with what `Surges->IsDueOnCityFall` answered when asked before the fall. A set-up
+assertion beside it says that on day 1, the day of the opening wave, a fall's surge is not due. The case where the
+answer is yes is `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`, named in the
+test's comment. Where this entry says above that the assertion was left failing, that was true when it was
+written. Every other test this entry lists is unchanged; the run finds out. Not compiled or run when this was
+written.
+
+### Ruled on 2026-10-13: two existing tests changed after the Unreal run of 2026-10-12
+
+**Neither change was compiled or run when this was written.** The writing session made no Unreal run. What the
+run of 2026-10-12 printed is given here as the coordinating session reported it on 2026-10-13.
+
+**What the run found.** At this layer's head the whole suite printed "3602 tests performed, 3600 succeeded, 2
+failed". The two failures are two of the tests this entry lists above as "cannot be told without a run".
+
+**Ruling A, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.** The test
+asks the scheduler before each day whether a fall's surge is due, and asserts the surge only on a fall day where
+the answer was yes.
+
+- **The test was renamed.** Old name: `Cataclysm.EmpireRun.ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons`,
+  class `FCataclysmEmpireRunFallTest`. New name:
+  `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`, class
+  `FCataclysmEmpireRunFallMaySurgeTest`. Where this entry uses the old name above, that was its name when those
+  lines were written. No file under `tools/` named it and no other file under `game/Source` did.
+- **What failed.** "Expected 'the day it fell also surged' to be true." and "Expected 'at least one surge fired on
+  the day 1 cities fell' to be true.", each once.
+- **What the assertions were.** On every day a city fell: `Report.bSurged`, with the message "the day it fell also
+  surged"; and `Run->Surges->SurgesFired >= SurgesBefore + Report.Fallen.Num()`, with the message "at least one
+  surge fired on the day %d cities fell".
+- **What they are.** Before each `AdvanceDay` the test asks `Run->Surges->IsDueOnCityFall(Run->Day() + 1)`, which
+  is the day the report will carry. On a day a city fell and the answer was yes: `Report.bSurged`, with the
+  message "the day a city fell with a fall's surge due also surged"; and
+  `Run->Surges->SurgesFired >= SurgesBefore + 1`, with the message "at least one surge fired on the day %d cities
+  fell with a fall's surge due". On a day a city fell and the answer was no, nothing is asserted about the surge.
+- **One assertion was added at the end:** `FallDaysDueThatSurged >= 1`, with the message "%d of the %d days a city
+  fell had a fall's surge due and surged". It counts the fall days where the answer was yes and the report says a
+  surge fired.
+- **Why the count asserts one and not one per city.** Two cities can fall on one day. The first fall's surge is
+  recorded as today's, and the second fall is then nought days behind a surge and fires none. The question asked
+  before the day is about the day's first fall.
+- **Whether the added assertion holds on seed 1 is not known.** It cannot be read from the code. If the failed run
+  watched three fall days and one of them failed, the report said a surge fired on the other two; whether the
+  answer before those two days was yes was not measured.
+- **The comment and the header were corrected.** The comment "A CITY FALLING FIRES A SURGE OF ITS OWN, one per
+  city lost" now says a fall fires one only when one is due. The test has a header comment that says the rule and
+  names the test that holds the refused case,
+  `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
+
+**Ruling B, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.** In
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` the floor of 1,000 dungeons is kept and the
+number of campaigns is raised from 20 to 40.
+
+- **What failed.** "Expected 'enough dungeons were made to compare' to be true." The run made 687 dungeons in 20
+  campaigns.
+- **What the assertion was and is.** `Total >= 1000`, with the message "enough dungeons were made to compare". It
+  is unchanged. `constexpr int32 Campaigns = 20;` in that test became `constexpr int32 Campaigns = 40;`.
+- **The neighbouring test has its own constant and was not changed.**
+  `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons` declares its own `Campaigns = 20`.
+- **The comment was rewritten** to say what was measured and when: 1,925 dungeons in the entry of 2026-09-06, and
+  the two log lines of 2026-10-12, all at 20 campaigns. The figure at 40 campaigns had not been measured when
+  this was written.
+
+**A judgement by the writing session, for the coordinating session to confirm.** By reading, the clock's surge
+and a "no" from `IsDueOnCityFall` can share a day only on day 1. `RecordSurge` writes the last surge's day and the
+next surge's day together, and the next is at least 25 days on, so on any later day the clock's surge is due only
+when a fall's is due as well. An empty board's surge asks for the same 25 days. So on a fall day after day 1 with
+the answer no, `Report.bSurged` would be false by reading. The test does not assert that; the ruling says to
+assert nothing there.
+
+**Added on 2026-10-13, by a second ruling of the coordinating session:** the renamed test also asserts that on a
+day a city fell after day 1 with no fall's surge due, the day did not surge at all ("day %d, a day a city fell
+with no fall's surge due, did not surge"). The reason no other cause can fire then is in the test's comment: the
+clock's next surge and the empty-board surge both wait at least the same 25 days. Where this entry says above
+that nothing is asserted on such a day, that was true of the first version. Not compiled or run when written.
+
+### Run
+
+Two Unreal windows were run for the stack of three layers this entry belongs to (The Labrynth marked Built; the
+seeded cell picker, issue #2342; the fall surge's least interval, issue #2380). Every build, run and measurement
+was made by the registering session, holding the editor lock. Every figure is a line a run printed. Before each
+lock, development's own runs at its head had printed success, no build or editor process was running, and no pull
+request that changes a game file was open.
+
+**The first window, 2026-10-12, at 277c2ce5 on development 55f09115 (lock void-zones-w22), stopped at the whole
+suite**: `3602 tests performed, 3600 succeeded, 2 failed`. Both failures were existing tests and both came from
+the fall-surge layer; that layer's entry has them and the rulings that followed. No proof was run in it.
+
+**The second window, 2026-10-13, at 2604b2d3 on development fdfdefc4 (lock void-zones-w23):**
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| Whole Unreal suite | 3658 performed | `3658 tests performed, 3658 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3658 tests in the tree at 2604b2d3; 3658 performed, gap 0` |
+| Whole Python suite | 6220 collected | `6212 passed, 8 skipped in 346.65s (0:05:46)`; JUnit `errors="0" failures="0" skipped="8" tests="6220"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,650 development's own total, given by the coordinating session, plus the eight
+tests the three layers add. The pull request of the simulation's package, which changes no game file, was open
+during this window and merged before it ended; the three layers were moved onto that merge afterwards with no
+change to any game file, and this section was written after the move.
+
+**The two tests that failed in the first window pass in the second, as ruled.**
+`Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`, the renamed test, passed with
+its closing assertion and the assertion that a fall day with no fall's surge due did not surge.
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` passed at 40 campaigns; its own log line reads
+`40 campaigns, 24000 days in all, 1488 dungeons made: 0 with no sub-type (0.0%), 108 Cow Levels, 125 Sieges`, and
+that figure is now in the test's comment. No other test this entry lists failed in either window.
+
+**This layer's two guard proofs, each PROVED: the named test failed with the break in and passed with it out.**
+The counts are of failed assertions, read from the engine's log of the run with the break in.
+
+| Break | Test | Predicted | Printed |
+|---|---|---|---|
+| `>=` to `>` in `IsDueOnCityFall` | `TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed` | 3 | 3: "a city falling on day 25 with no surge yet fires one"; "and a fall on day 125 fires one"; "and a fall on day 135 fires one". Restored `1 tests performed, 1 succeeded, 0 failed` |
+| `if (Surges->IsDueOnCityFall(OutReport.Day))` to `if (UCataclysmSurgeScheduler::bSurgeOnCityFall)` | `TwoCitiesFallingOnOneDayBringOneWave` | 3 | 3: surges fired read 3 where 2 was expected; the escalation counter read 2 where 1; ten dungeons arrived where six. Restored `1 tests performed, 1 succeeded, 0 failed` |
+
+**Not settled.** Nothing was tried in play. What the layer does to an unattended game is known only through the
+one test's dungeon count: 687 in 20 campaigns in the first window where 1,580 were made before the layer, and
+1,488 in 40 campaigns in the second.
+
+---
+
 ## 2026-10-12 — The cell picker for floor rules' objects shuffles on a seeded stream, so one dungeon seed and floor give each rule the same cells (#2342)
 
 **Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ was written and read. Three
@@ -281,6 +652,46 @@ twenty metres, five cells, of the entrance. That leaves about 176 candidates or 
 that many agree on their first five cells about once in the fifth power of that count. On a floor with a handful
 of candidates this proof would pass by chance some of the time; the first test logs how many rifts each seed gave,
 not how many candidates there were.
+
+### Run
+
+Two Unreal windows were run for the stack of three layers this entry belongs to (The Labrynth marked Built; the
+seeded cell picker, issue #2342; the fall surge's least interval, issue #2380). Every build, run and measurement
+was made by the registering session, holding the editor lock. Every figure is a line a run printed. Before each
+lock, development's own runs at its head had printed success, no build or editor process was running, and no pull
+request that changes a game file was open.
+
+**The first window, 2026-10-12, at 277c2ce5 on development 55f09115 (lock void-zones-w22), stopped at the whole
+suite**: `3602 tests performed, 3600 succeeded, 2 failed`. Both failures were existing tests and both came from
+the fall-surge layer; that layer's entry has them and the rulings that followed. No proof was run in it.
+
+**The second window, 2026-10-13, at 2604b2d3 on development fdfdefc4 (lock void-zones-w23):**
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| Whole Unreal suite | 3658 performed | `3658 tests performed, 3658 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3658 tests in the tree at 2604b2d3; 3658 performed, gap 0` |
+| Whole Python suite | 6220 collected | `6212 passed, 8 skipped in 346.65s (0:05:46)`; JUnit `errors="0" failures="0" skipped="8" tests="6220"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,650 development's own total, given by the coordinating session, plus the eight
+tests the three layers add. The pull request of the simulation's package, which changes no game file, was open
+during this window and merged before it ended; the three layers were moved onto that merge afterwards with no
+change to any game file, and this section was written after the move.
+
+**No existing test this entry lists as at risk failed in either window.** Every test that searches dungeon seeds
+for a cell the picker gives passed on the fixed cells, in both whole-suite runs.
+
+**This layer's two guard proofs, each PROVED: the named test failed with the break in and passed with it out.**
+The counts are of failed assertions, read from the engine's log of the run with the break in.
+
+| Break | Test | Predicted | Printed |
+|---|---|---|---|
+| `SeedForFloor(Plan.Seed, Salt)` to `SeedForFloor(Plan.Seed, 0)` | `TheObjectPickerGivesNoTwoPlacingRulesTheSameCellsInTheSameOrder` | 3 | 3: "no two placing rules' salts give the same cells in the same order" read 276 pairs alike; "and another rule's salt answers other cells beside a wall"; "the floor's light zones are not its first rifts' cells in the same order". Restored `1 tests performed, 1 succeeded, 0 failed` |
+| `CellsStream.RandRange(0, Index)` to `FMath::RandRange(0, Index)` | `TheObjectPickerGivesARuleTheSameCellsOnTheSameSeedAndFloorAndOthersOnAnotherSeed` | 3 | 3: "and the same cells in the same order"; "the picker asked twice of one floor with one salt answers the same cells in the same order"; "the floor's rifts are the first cells the picker answers for Reality Rifts' own salt". Restored `1 tests performed, 1 succeeded, 0 failed` |
+
+**Not settled.** Nothing was tried in play. Only the call sites of Reality Rifts and Shadowy Enemies are shown by
+a test to pass their own salt.
 
 ---
 
@@ -4157,6 +4568,41 @@ are predicted to fail: "The Labrynth is built", "The Labrynth's name line is its
 line with its count". Its controls and its last assertion are predicted to hold. Other tests under the same prefix
 would fail too, the gated-shortcut figures test and the two tests that walk the rule list among them. A break that
 returns the row to Partly needs two lines changed, so none is proposed.
+
+### Run
+
+Two Unreal windows were run for the stack of three layers this entry belongs to (The Labrynth marked Built; the
+seeded cell picker, issue #2342; the fall surge's least interval, issue #2380). Every build, run and measurement
+was made by the registering session, holding the editor lock. Every figure is a line a run printed. Before each
+lock, development's own runs at its head had printed success, no build or editor process was running, and no pull
+request that changes a game file was open.
+
+**The first window, 2026-10-12, at 277c2ce5 on development 55f09115 (lock void-zones-w22), stopped at the whole
+suite**: `3602 tests performed, 3600 succeeded, 2 failed`. Both failures were existing tests and both came from
+the fall-surge layer; that layer's entry has them and the rulings that followed. No proof was run in it.
+
+**The second window, 2026-10-13, at 2604b2d3 on development fdfdefc4 (lock void-zones-w23):**
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| Whole Unreal suite | 3658 performed | `3658 tests performed, 3658 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3658 tests in the tree at 2604b2d3; 3658 performed, gap 0` |
+| Whole Python suite | 6220 collected | `6212 passed, 8 skipped in 346.65s (0:05:46)`; JUnit `errors="0" failures="0" skipped="8" tests="6220"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,650 development's own total, given by the coordinating session, plus the eight
+tests the three layers add. The pull request of the simulation's package, which changes no game file, was open
+during this window and merged before it ended; the three layers were moved onto that merge afterwards with no
+change to any game file, and this section was written after the move.
+
+**This layer's guard proof, PROVED: the named test failed with the break in and passed with it out.** The break
+`|| RowKey == FName(LabrynthKey)` to `|| RowKey == FName(RealityRiftsKey)`, test
+`TheLabrynthIsMarkedBuiltAndItsPanelLineNoLongerSaysPartlyBuilt`: predicted 3 failed assertions, printed 3 ("The
+Labrynth is built" read 0, which is not built; its name line read "The Labrynth (not built yet: it does
+nothing)"; its name line with its count read the same mark). Restored: `1 tests performed, 1 succeeded, 0 failed`.
+
+**Not settled.** Nothing was tried in play. The floor panel still shows the row's own sentence, which says rooms
+rearrange.
 
 ---
 

@@ -848,10 +848,26 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	// `ClearDungeon` is where retaking happens.
 	AddFallenCityDungeon(CityId, Standing.Num(), OutReport);
 
-	// AND THE FALL IS ITSELF A SURGE. The design document says a city falling
-	// triggers one; `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation` is
-	// what makes it also speed the rest of the run up.
-	if (UCataclysmSurgeScheduler::bSurgeOnCityFall)
+	// AND THE FALL FIRES A SURGE OF ITS OWN, WHEN ONE IS DUE. The design
+	// document says a city falling triggers one;
+	// `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation` is what makes it
+	// also speed the rest of the run up.
+	//
+	// NOT INSIDE THE LEAST INTERVAL. `IsDueOnCityFall` asks the flag and that
+	// the last surge is at least `LeastIntervalDays` (25) behind, which is
+	// what `Simulation._fall` has asked since issue #1432. Issue #2380. So a
+	// fall the day after a wave brings none, and of two cities falling on one
+	// day only the first brings one: its `RecordSurge` writes today as the
+	// last surge's day, and the second is then nought days behind it.
+	//
+	// A REFUSED FALL IS NOT TRIED AGAIN. The fall is a moment and not a
+	// standing state like an empty board, and the clock's wave still comes.
+	// Everything above this line has already happened either way: the city is
+	// down, its dungeons are absorbed and its Dungeon City stands.
+	//
+	// THE DAY ON THE REPORT, which is today in `AdvanceDay` and the day it
+	// already is in `ResolveDungeonOnDeath`.
+	if (Surges->IsDueOnCityFall(OutReport.Day))
 	{
 		FireSurge(OutReport.Day, /* bFromCityFall */ true, OutReport);
 	}
@@ -1092,8 +1108,8 @@ FCataclysmDayReport UCataclysmEmpireRun::ResolveDungeonOnDeath(int32 DungeonId)
 	}
 
 	// NO DAY PASSES HERE, so the report carries the day it already is. A city
-	// this fells lands its surge and its Dungeon City on that day, which is
-	// what `CityFell` reads off the report.
+	// this fells lands its Dungeon City on that day, and its surge when one is
+	// due on that day, which is what `CityFell` reads off the report.
 	Report.Day = Clock->Day;
 
 	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
