@@ -4095,6 +4095,26 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 					Parts.Add(FString::Printf(TEXT("%d dungeons resolved"),
 											  Report.Resolved.Num()));
 				}
+
+				// WHICH CITY EACH HIT LANDED ON, one part a hit. An ordinary
+				// dungeon hits once and leaves; a Quest dungeon's timer hits
+				// its host and the dungeon stays or moves. Since 2026-10-13.
+				for (const int32 HitCityId : Report.HitAndLeft)
+				{
+					const FCataclysmCity* HitCity = Run->Map
+						? Run->Map->Find(HitCityId) : nullptr;
+					Parts.Add(FString::Printf(
+						TEXT("a dungeon hit %s and left"),
+						HitCity ? *HitCity->Name : TEXT("a city")));
+				}
+				for (const int32 HitCityId : Report.QuestHits)
+				{
+					const FCataclysmCity* HitCity = Run->Map
+						? Run->Map->Find(HitCityId) : nullptr;
+					Parts.Add(FString::Printf(
+						TEXT("a Quest dungeon's timer hit %s"),
+						HitCity ? *HitCity->Name : TEXT("a city")));
+				}
 				for (const int32 CityId : Report.Fallen)
 				{
 					const FCataclysmCity* City = Run->Map
