@@ -671,6 +671,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// auras are 20%-50% more effective". A more row. No gameplay attribute
 		// and no base.
 		TEXT("aura_effect"),
+		// How much more potent a buff a skill of the character's lays is, read
+		// by UCataclysmSelfBuffSkill::MorePotent with that skill's tags: where a
+		// self buff grants its More damage, and where an aura gives its allies
+		// their damage bonus. Ruled 2026-10-13: "Buff effects you apply are
+		// 20%-40% more potent". A more row. No gameplay attribute and no base.
+		TEXT("buff_potency"),
 	};
 	return Stats;
 }
