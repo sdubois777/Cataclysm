@@ -510,6 +510,41 @@ public:
 	bool bBlockedByGeometry = false;
 
 	/**
+	 * Make this one of the several projectiles one use of a skill fired. Ruled 2026-10-12 under the owner's
+	 * delegation, for "Skills get +1-4 to projectile count": ONE ENEMY IS LANDED ON BY AT MOST ONE PROJECTILE OF ONE
+	 * USE.
+	 *
+	 * THE PROJECTILES OF A USE SHARE ONE RECORD: for each enemy, the number of the projectile that first landed on
+	 * it. `UCataclysmProjectileSkill` makes the record when a use fires more than one, hands the same one to each,
+	 * and gives each its own number. A projectile fired alone, by a skill or by anything else, holds no record, and
+	 * nothing below does anything for it.
+	 *
+	 * WHAT "LANDED ON" IS: the blow was sent and was not evaded, the test `LandedContacts` counts by. An enemy that
+	 * evaded one projectile of a use may be struck by another of it.
+	 *
+	 * WHAT A PROJECTILE DOES ABOUT AN ENEMY ANOTHER OF ITS USE LANDED ON: nothing. It does not strike it, does not
+	 * stop at it, does not glance from it or toward it, and leaves it out of its blast. `HitAlongStep`,
+	 * `GlanceOnwardFrom` and `Finish` each ask `WasLandedOnByAnotherOfItsUse`.
+	 *
+	 * AN ENEMY THIS PROJECTILE ITSELF LANDED ON is not refused by this. Whether its own return pass or its own later
+	 * glance may strike that enemy again is `AlreadyHit`'s rule, which is unchanged.
+	 *
+	 * @param InLandedOnInItsUse the record the projectiles of the use share
+	 * @param InNumberInItsUse   this projectile's own number in the use, different for each
+	 */
+	void JoinsAUse(const TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>>& InLandedOnInItsUse,
+				   int32 InNumberInItsUse);
+
+	/** Whether another projectile of the use that fired this one has landed on this enemy. False for one fired alone. */
+	bool WasLandedOnByAnotherOfItsUse(AActor* Target) const;
+
+	/** This projectile's number among those its use fired. Nought for one fired alone. Read by tests. */
+	int32 NumberInItsUse = 0;
+
+	/** The record `JoinsAUse` describes, or null for a projectile fired alone. */
+	TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>> LandedOnInItsUse;
+
+	/**
 	 * A stand-in for the flying object, sized to BodyRadiusCm when it is fired.
 	 *
 	 * WITHOUT THIS EVERY PROJECTILE IN THE GAME IS INVISIBLE, and every one of

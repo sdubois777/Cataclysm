@@ -856,8 +856,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-12, from 596 over 503: one row on one enchantment.
 #: AND 598 OVER 505 SINCE THE ROW THAT MAKES ENEMIES IMMUNE FIFTEEN SECONDS AFTER A FIRST HIT,
 #: issue #1833, 2026-10-12, from 597 over 504: one row on one enchantment.
-AUTHORED_ROWS = 598
-AUTHORED_ENCHANTMENTS = 505
+#: AND 599 OVER 506 SINCE THE ROW THAT ADDS PROJECTILES TO A SKILL,
+#: issue #1833, 2026-10-12, from 598 over 505: one row on one enchantment.
+AUTHORED_ROWS = 599
+AUTHORED_ENCHANTMENTS = 506
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

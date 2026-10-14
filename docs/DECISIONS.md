@@ -2,6 +2,404 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-12 — A row can add projectiles to one use of a projectile skill: a fan of 10 degrees, and one enemy landed on by at most one of them, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (one stat's name, one
+figure, four functions, two lists, the firing of the rest of a use's projectiles, and what a finished projectile
+does to the use), `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp` (one record shared by
+the projectiles of a use, two functions, one write and three places that ask),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no
+attribute), `game/Source/Cataclysm/Tests/CataclysmProjectileRangeTests.cpp` (six tests and two includes),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Skills get +1-4 to projectile count".
+
+- **This row goes on the owner's play-check list.** Nothing here was played.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** NOT COMPILED AND NOT
+  RUN. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** The enchantment session writes the row. Its shape is
+  under "What was built".
+- **A wearer whose row rolled 1 or 3 no longer has a projectile on the exact line it aimed.** Ruled: the
+  projectiles of one use fan 10 degrees apart, centred on the aim. With 1 added, two fly, 5 degrees to either
+  side of the aim. With 3 added, four fly, at 5 and 15 degrees to either side. With 2 or 4 added the number in
+  the air is odd and the middle one flies along the aim. The option not taken: the first always on the aim and
+  the rest alternating to either side of it.
+- **The row does nothing for twelve skills that carry the tag `Type.Projectile`, because nothing of theirs
+  flies.** Ruled. The row will require `Type.Projectile`, and the stat is read only by the Projectile shape.
+  The twelve, by the script under "The skills, by script": Siege Bolt, Armor Piercing Bolt, Spinning Axe,
+  Sundering Throw, Catapult Stone, Thrown Axe, Bolt Turret, Bolas, Ballista, Skirmish, Artillery Strike and
+  Artillery Barrage. Ten have no shape and two are Deployable.
+- **It does nothing for Butcher's Bill and nothing for Compel.** Ruled. Butcher's Bill throws repeatedly on a
+  timer and its count is its own. Compel states a speed of nought: it is a beam and puts nothing in the air.
+- **So today the row changes seven skills:** Carom, Harrower, Emberhurl, Blood Pyre, Skewer, Malefice and
+  Tether. All seven are Demonic.
+- **The brief said two skills with the Projectile shape state a speed of nought. The script found one,
+  Compel.** No row named Infernal Lance has the Projectile shape in `game/Data/WeaponSkills.csv` as read on
+  2026-10-12.
+- **One enemy is landed on by at most one projectile of one use, and that rule is built.** The condition the
+  coordinating session attached was that the projectile code can cheaply know the other projectiles of its
+  use. It can: the projectiles of one use share one record, made where the skill fires them. What the rule
+  means, each read from the code:
+  - **Against one enemy the added projectiles add no damage.** If every projectile of a use would reach the
+    same enemy, the first to land on it strikes it and the others do nothing to it. The row adds damage only
+    where there are several enemies for the fan to reach.
+  - **"Landed on" is: the blow was sent and was not evaded.** This is the test the projectile's own count of
+    landed contacts uses, by the ruling of 2026-09-04 that an evaded contact never connected. So an enemy that
+    evades one projectile of a use can be struck by another of the same use, and is rolled against once for
+    each that reaches it. This is a judgement of the writing session. The option not taken: the first
+    projectile to touch an enemy keeps it whether or not the blow is evaded.
+  - **A projectile passes through an enemy another of its use has landed on.** It does not strike it, does not
+    stop at it, does not glance from it, and does not count it as hit. A projectile that does not pierce
+    therefore flies on past such an enemy to the next thing it touches or to the end of its range, and goes
+    off there. The option not taken: it stops at that enemy and deals nothing.
+  - **Its blast leaves such an enemy out.** A projectile that goes off in a radius strikes the enemies in the
+    radius that no other projectile of its use has landed on.
+  - **It does not glance toward such an enemy.** A glance looks for the nearest enemy this projectile has not
+    hit and no other of its use has landed on.
+  - **Whether a projectile's own later contact may strike an enemy its own earlier contact struck is the
+    existing rule and is not changed.** Emberhurl's axe hits once going out and once coming back; with the
+    row, the one axe of the use that landed on an enemy going out strikes it again coming back, and the other
+    axes strike it on neither leg.
+  - **Which projectile lands first on an enemy two of them reach in the same frame is the order the engine
+    ticks the two actors, which was not read.**
+  - **The next use starts a fresh record.** A test reads a second use striking the same enemy.
+- **Each projectile deals full damage.** Ruled. `poedb.tw/us/Greater_Multiple_Projectiles_Support` (Path of
+  Exile, a support gem), reached on 2026-10-12 by the enchantment session: "fire 4 additional Projectiles" and
+  "(26—35)% less Projectile Damage". That settles that added projectiles are a count added to a skill's own.
+  It does not settle full damage for each: that game pays for the count with less damage, and the sentence
+  here states no cost. Full damage is the coordinating session's ruling.
+- **That one enemy takes at most one projectile of a use is the coordinating session's ruling, and no source
+  states it as a general rule.** `poedb.tw/us/Projectile` (its first 100,000 characters), reached on
+  2026-10-12 by the enchantment session, states no general rule on whether several projectiles of one use may
+  hit one enemy. It names two skills as exceptions: "Enemies can be hit by multiple arrows from the same
+  attack" and "Multiple of these projectiles can hit the same target". The general rule was not found stated
+  on that page.
+- **`poewiki.net` was not reached: it was blocked.** Nothing is stated here about another game beyond the
+  quotes above.
+- **Each projectile carries the skill's own bounces, pierce and later-hit count, as if it were the only one.**
+  Ruled. Carom with 4 added is five axes, each glancing up to three times and each returning.
+  `projectile_later_hit_damage` lowers the second and later landed contacts of each projectile counted on its
+  own, so the first enemy each projectile lands on takes its full figure. The option not taken: one count for
+  the whole use.
+- **Each projectile, when it finishes, leaves what a lone one leaves. This is a judgement, and it multiplies
+  what a use leaves on the ground.** Blood Pyre with 4 added leaves up to five pyres. Harrower leaves an axe
+  in the last enemy each of its axes touched, so up to five buried axes. Malefice copies curses outward from
+  what each of its bolts struck. A worn row that leaves a zone at a projectile's impact point leaves one at
+  the end of each projectile's flight. A piercing skill that leaves ground, as Emberhurl's text says it does,
+  leaves it along each projectile's path. The option not taken: only the first projectile of the use leaves
+  anything. It is for the coordinating session to rule.
+- **Tether binds once.** The burning line is bound when the use releases, before anything is fired, and is not
+  a thing a projectile does.
+- **The use is one use.** One cost, one cooldown, one health cost, one count towards a worn "every Nth attack"
+  row, and one announcement of the use, from which a player character raises `skill_use` and `attack_use`
+  once each. All of that happens in `UCataclysmSkillTemplate::CommitAndBegin`, before anything is fired, and
+  is not changed.
+- **What a use spent from next-use charges goes to every projectile of it.** `ACataclysmProjectile::Fire`
+  copies the increase and the multiplier the use spent onto each projectile it makes. So a "next attack deals
+  more" charge raises every projectile of the fan, and a use a worn row made deal no damage deals none with
+  any of them. This was not ruled and follows from each projectile being fired as the first is.
+- **What an on-hit row sees: each projectile's landed contact is its own hit, as each contact of one
+  projectile is today.** Each goes through `ACataclysmProjectile::HitOne` and `ApplyHit`, earns its own
+  Fervour, tells the firer's running buffs, and is repeated by Chorus.
+- **The skill ends when the last of the use's projectiles has finished, and not before.** A skill that throws
+  once has always stayed active until its shot finished. A use of several keeps that: until the last has
+  finished the skill reads as running, and a hit does not cut it short, as with one shot in the air. Each
+  projectile leaves its ground through the skill as it finishes, whether or not the skill is still running.
+- **Nothing fired by anything other than a projectile skill gets the extras.** The stat is read in one place,
+  `UCataclysmProjectileSkill::ExtraProjectilesWithRows`, from the stat lines of the character holding the
+  skill. The four creatures that fire projectiles (the Brute, the Succubus, the Gatekeeper and the Corrupted
+  Sentinel) and the game mode's Infernal Rain call `ACataclysmProjectile::Fire` themselves and read no stat.
+  `CataclysmMinion.cpp` does not name the projectile class at all, so a minion fires none, and a gadget here
+  is a type of minion.
+- **A projectile skill that a worn row starts fans as a pressed one does.** It runs the same
+  `ActivateAbility`. This was read and not tested.
+- **The stat is rounded to the nearest whole number, a half upward, and is never below nought.** As
+  `projectile_bounces` is. 1.4 adds 1 and 1.5 adds 2. A negative total adds nothing and takes nothing away.
+- **Nothing caps the count.** Flat rows on one stat are added together, so two worn rows of 4 are nine
+  projectiles over 80 degrees. At 35 added the fan is a full circle. The option not taken: a cap. None was
+  ruled and none was invented.
+- **A use aimed at the user's own feet lands once, as before, and fans nothing.** With no path to fly along
+  `Fire` makes no projectile, and the skill resolves one landing where it stands.
+- **One thing changes for a user with no row.** When a projectile of an EARLIER use finishes after that use
+  was cut short and the skill has been used again, it no longer ends the later use. Before this it set the
+  skill's `InFlight` to null and ended the skill, whichever use the finishing projectile belonged to. No case
+  in which this happens in play was looked for.
+- **The generator refuses nothing new.** A row on the stat of a value kind other than `flat` works on a base
+  of nought and adds nothing, and nothing says so, as for `projectile_bounces`.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-12 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | One stat, an added count, read as `projectile_bounces` is read. Flat, rounded to a whole number. | `UCataclysmProjectileSkill::ProjectileCountStat`, `projectile_count`, asked by `ExtraProjectilesWithRows` with the skill's tags. |
+| R2 | A fan: 10 degrees between neighbours, centred on the aim. | `FanDegreesBetweenProjectiles`, `FanDegreesFor` and `FanAim`; the first is fired where `ActivateAbility` always fired one, and the rest directly after it. |
+| R3 | Each projectile deals full damage. | Each is fired with the arguments the first is fired with. |
+| R4 | One enemy is hit by at most one projectile of one use. | The record `ACataclysmProjectile::LandedOnInItsUse`, shared through `JoinsAUse`, written in `HitOne`, and asked by `WasLandedOnByAnotherOfItsUse` in `HitAlongStep`, `GlanceOnwardFrom` and `Finish`. |
+| R5 | Not the skill that throws repeatedly, and not a projectile of speed 0. | `ProjectilesOfOneUse` answers one for both. `ThrowOne` is not changed. |
+| R6 | A skill tagged `Type.Projectile` with no Projectile shape gets nothing. | Nothing outside `UCataclysmProjectileSkill` reads the stat. |
+| R7 | Cost and cooldown unchanged, one use; on-use rows and events see one use. | `CommitAndBegin` is not changed, and runs once before anything is fired. |
+| R8 | The ability ends when the last projectile of the use finishes. | `OnProjectileFinished`, with `InFlight` and `AlsoInFlight`. |
+| R9 | Each projectile's hit is its own hit for on-hit rows. | `HitOne` is not changed in what it sends. |
+| R10 | Later-hit damage, bounces and pierce: each projectile carries its own. | `LetItGlance` and `PierceWithRows` are applied to each; `LandedContacts` is each projectile's own. |
+
+### THE SKILLS, BY SCRIPT
+
+Run on 2026-10-12 against `game/Data/WeaponSkills.csv` at the head this change stands on. The script:
+
+```python
+import csv
+import sys
+
+with open(sys.argv[1], newline="", encoding="utf-8") as handle:
+    rows = list(csv.DictReader(handle))
+
+
+def params(row):
+    cell = row.get("ShapeParams") or ""
+    pairs = (part.split("=", 1) for part in cell.split(";") if "=" in part)
+    return {key.strip(): value.strip() for key, value in pairs}
+
+
+def tags(row):
+    return {tag.strip() for tag in (row.get("Tags") or "").split(",") if tag.strip()}
+
+
+shaped = [row for row in rows if (row.get("Shape") or "").strip() == "Projectile"]
+tagged = [row for row in rows if "Type.Projectile" in tags(row)]
+
+print(f"{len(rows)} rows; {len(shaped)} with Shape Projectile; {len(tagged)} tagged Type.Projectile")
+print()
+print("SHAPE PROJECTILE:")
+for row in shaped:
+    p = params(row)
+    speed = float(p.get("Speed", 0) or 0)
+    rack = float(p.get("Count", 1) or 1) > 1 and float(p.get("Interval", 0) or 0) > 0
+    arc = float(p.get("Arc", 0) or 0)
+    has_tag = "Type.Projectile" in tags(row)
+    if rack:
+        verdict = "NO EXTRAS: throws repeatedly on a timer"
+    elif speed <= 0 and arc <= 0:
+        verdict = "NO EXTRAS: speed 0, a beam"
+    elif not has_tag:
+        verdict = "NO EXTRAS FROM A ROW REQUIRING Type.Projectile: the skill does not carry the tag"
+    else:
+        verdict = "gets the extras"
+    print(f"  {row.get('SkillName') or '(unnamed)'} [{row['Name']}]: Speed={p.get('Speed', '-')}, "
+          f"Pierce={p.get('Pierce', '-')}, Bounces={p.get('Bounces', '-')}, Returns={p.get('Returns', '-')}, "
+          f"Type.Projectile tag={'yes' if has_tag else 'no'}: {verdict}")
+print()
+print("TAGGED Type.Projectile WITH NO PROJECTILE SHAPE (the row does nothing for these):")
+for row in tagged:
+    if (row.get("Shape") or "").strip() != "Projectile":
+        print(f"  {row.get('SkillName') or '(unnamed)'} [{row['Name']}]: "
+              f"Shape={(row.get('Shape') or '').strip() or '(none)'}")
+```
+
+What it printed:
+
+```
+403 rows; 9 with Shape Projectile; 21 tagged Type.Projectile
+
+SHAPE PROJECTILE:
+  Carom [Demonic_Axe_Heavy]: Speed=2000, Pierce=-, Bounces=3, Returns=1, Type.Projectile tag=yes: gets the extras
+  Butcher's Bill [Demonic_Axe_Ultimate]: Speed=2000, Pierce=-, Bounces=-, Returns=-, Type.Projectile tag=yes: NO EXTRAS: throws repeatedly on a timer
+  Harrower [Demonic_Axe_Special]: Speed=2200, Pierce=-, Bounces=-, Returns=-, Type.Projectile tag=yes: gets the extras
+  Emberhurl [Demonic_Greataxe_Special]: Speed=1800, Pierce=99, Bounces=-, Returns=1, Type.Projectile tag=yes: gets the extras
+  Blood Pyre [Demonic_Fist_Special]: Speed=1400, Pierce=-, Bounces=-, Returns=-, Type.Projectile tag=yes: gets the extras
+  Skewer [Demonic_Spear_Special]: Speed=1800, Pierce=99, Bounces=-, Returns=-, Type.Projectile tag=yes: gets the extras
+  Malefice [Demonic_Wand_Heavy]: Speed=2600, Pierce=-, Bounces=-, Returns=-, Type.Projectile tag=yes: gets the extras
+  Compel [Demonic_Staff_Heavy]: Speed=0, Pierce=0, Bounces=-, Returns=-, Type.Projectile tag=yes: NO EXTRAS: speed 0, a beam
+  Tether [Demonic_Whip_Special]: Speed=2000, Pierce=-, Bounces=-, Returns=-, Type.Projectile tag=yes: gets the extras
+
+TAGGED Type.Projectile WITH NO PROJECTILE SHAPE (the row does nothing for these):
+  Siege Bolt [War_2H_Crossbow_Heavy]: Shape=(none)
+  Armor Piercing Bolt [War_Crossbow_Heavy]: Shape=(none)
+  Spinning Axe [War_Greataxe_Special]: Shape=(none)
+  Sundering Throw [War_Greatsword_Special]: Shape=(none)
+  Catapult Stone [War_Warhammer_Special]: Shape=(none)
+  Thrown Axe [War_Axe_Special]: Shape=(none)
+  Bolt Turret [War_Crossbow_Special]: Shape=Deployable
+  Bolas [War_Fist_Special]: Shape=(none)
+  Ballista [War_Spear_Special]: Shape=Deployable
+  Skirmish [War_Sword_Special]: Shape=(none)
+  Artillery Strike [War_2H_Crossbow_Ultimate]: Shape=(none)
+  Artillery Barrage [War_Crossbow_Ultimate]: Shape=(none)
+```
+
+The script's verdicts are the writing session's reading of the ruling and are not the engine's answer: the
+engine decides by `ThrowsRepeatedly()` and by the skill's scaled speed. No row of the table writes `Arc=`, so
+no player skill lobs, and the script's reading of an arc changes no line above.
+
+### WHAT WAS BUILT
+
+- **The stat.** `projectile_count`: a number of projectiles, flat. No gameplay attribute and no base. It is the
+  last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Its name in code is
+  `UCataclysmProjectileSkill::ProjectileCountStat`.
+- **The two counts.** `ExtraProjectilesWithRows()` asks the stat with `StatForSkill`, the skill's tags and a
+  fallback of nought, rounds it and holds it at nought or more. `ProjectilesOfOneUse()` answers one for a
+  skill that throws repeatedly and for one whose scaled speed is nought or less, and otherwise one plus the
+  first figure.
+- **The fan.** `FanDegreesBetweenProjectiles` is 10. `FanDegreesFor(Index, Total)` is the index less half of
+  one fewer than the total, times 10: for two, -5 and 5; for three, -10, 0 and 10. `FanAim(From, To, Degrees)`
+  turns the aimed point about the place the shot leaves from, on the ground plane, and keeps the aimed
+  point's height. At nought degrees it answers the aimed point itself, so a use of one projectile is aimed
+  where it was.
+- **The firing.** `ActivateAbility` fires the first projectile where it always fired one, aimed at the first
+  place of the fan. When the use has more than one it then makes the shared record, gives it to the first,
+  and fires each of the rest with the same arguments but its own aim; each is given the record and its own
+  number, told to glance as the first was, and hooked to `OnProjectileFinished`. `FiredThisUse` lists every
+  projectile of the last use in the order fired. `AlsoInFlight` lists those still in the air beside
+  `InFlight`.
+- **The end of the use.** `OnProjectileFinished` takes the finished projectile out: when it is `InFlight`, the
+  first of `AlsoInFlight` becomes `InFlight`; otherwise it is removed from `AlsoInFlight`. What the finished
+  projectile leaves is done as before. Then the skill ends only when `InFlight` is null. For a use of one
+  projectile this is what it did before.
+- **The record.** `ACataclysmProjectile::LandedOnInItsUse` is a shared map from an enemy to the number of the
+  projectile of the use that first landed on it; `NumberInItsUse` is the projectile's own. `JoinsAUse` sets
+  both. `HitOne` writes the enemy with its own number when the blow was sent and not evaded and the enemy is
+  not already in the record. `WasLandedOnByAnotherOfItsUse` is true when the enemy is in the record under
+  another number. A projectile fired alone holds no record and the function answers false.
+- **The three places that ask.** `HitAlongStep` skips such an enemy before it is added to `AlreadyHit`, so the
+  projectile neither strikes it nor stops at it. `GlanceOnwardFrom` skips it as a place to glance to. The
+  blast in `Finish` skips it.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment: Stat
+  `projectile_count`, Value Kind `flat`, Value Low 1, Value High 4, Required Tags `Type.Projectile`. No
+  Condition, no Scale and no Action. It is the shape of the row for "Projectiles ricochet 1-4 times". Whether
+  `tools/tests/test_enchantment_effects_match_the_row_text.py` accepts it was not checked.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end. The generator reads that
+  list, so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of
+  `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site of
+  `StatForSkill`, in `CataclysmSkillTemplates.cpp`, with its reason, as its last entry. `CALL_SITES` is left at
+  65; the comment above it gains a dated sentence.
+- `tools/generate_datatables.py` is not changed.
+
+### Tests
+
+Six new Unreal tests at the end of `CataclysmProjectileRangeTests.cpp`, in the group
+`Cataclysm.ProjectileCount.`, on the rig of the ricochet tests in that file: bare characters with 100 attack
+damage, each case in a lane 60 m from the next, the user at the lane's start facing +X, which is where a skill
+used with no player controller is aimed. The stat line is written by hand. Nothing waits on a tick: each
+projectile is moved by calling its own `Step`, a sixtieth of a second at a time, in the order the use fired
+them. No enemy stands within 1 m of another or of a user. No critical strike is rolled where damage is read.
+
+- `ARowsCountIsAddedToTheOneProjectileASkillFiresAndIsRoundedToAWholeNumber`: with no line one use fires one
+  projectile (the control). With 1, 2, 3 and 4 on the stat it fires 2, 3, 4 and 5. A line scoped to spells
+  leaves an attack at one, and a line scoped to projectile skills leaves a skill without that tag at one. 1.4
+  fires two, 1.5 three, 2.6 four, 0.4 one and -3 one. In every case the number the skill lists is the number
+  of projectiles its user fired that are in the world. A skill no character holds adds nothing.
+- `TheProjectilesOfOneUseFlyTenDegreesApartCentredOnTheAim`: a lone projectile flies along the aim (the
+  control). With 1 added the two fly at -5 and 5 degrees; with 3, at -15, -5, 5 and 15; with 2, at -10, 0 and
+  10; with 4, at -20, -10, 0, 10 and 20. Each starts where its user stands, has the skill's whole 10 m to fly,
+  and carries the skill's pierce of 99 and its 100 percent.
+- `EachProjectileOfAUseDealsWhatALoneProjectileDeals`: a lone piercing bolt takes a figure from an enemy 9 m
+  along the aim (the control). With 1 added, two enemies stand 9 m along the two paths, 1.57 m apart, each
+  1.56 m from the other path, which reaches 40 cm. Each loses that figure, and each projectile struck one
+  enemy.
+- `OneEnemyInThePathOfTwoProjectilesOfOneUseTakesOneHitAndTheNextUseHitsItAgain`: first, a lone shot fired by
+  hand along each of the two paths touches an enemy 2 m along the aim, so both projectiles of a use reach it.
+  A lone piercing bolt takes one hit from such an enemy (the control). With 1 added the enemy loses one hit,
+  the first projectile fired struck it and the second struck nothing. The same skill used again takes one
+  more hit, not two. Then a bolt that does not pierce: alone it goes off at the enemy once (the control); with
+  1 added the enemy loses one blast, the second projectile struck nothing and flew the skill's whole 10 m.
+- `ASkillThatThrowsRepeatedlyAndASkillThatStatesNoSpeedFireWhatTheyFiredBefore`: a rack of three with no line
+  puts one projectile in the world at its first throw and three after two more are asked for (the control);
+  with 4 on the stat it puts the same one and the same three. A beam with no line lands once, puts no
+  projectile in the world and takes a figure from the enemy where it is aimed (the control); with 4 on the
+  stat it does the same and takes the same figure.
+- `AUseOfSeveralProjectilesCostsOnceIsAnnouncedOnceAndEndsWhenTheLastFinishes`: a use with no line costs some
+  mana, is announced once, is running while its projectile flies and is over when it has finished (the
+  control). With 2 added, the use of three projectiles costs the same mana and is announced once. With the
+  first finished the skill is running, has counted one landing, names the second as in flight and is not cut
+  short by a hit. With the third finished next, it is still running and still names the second. When the
+  second finishes the skill is over, with three landings and nothing in flight.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeProjectileCount`. A
+character holding a projectile skill that states a speed adds nothing and fires one with nothing granted, and
+adds 2 and fires three with 2 flat granted. It asks the two counts and fires nothing.
+
+No Python test was added. The inventory of `StatForSkill` call sites gained its one entry.
+
+**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; `attack_use`
+and `skill_use` on a player character (the users here are bare characters, so what is counted is the one
+announcement a player character raises them from); the cooldown, the health cost and the count towards an
+"every Nth attack" row being taken once; next-use charges going to every projectile; two projectiles ticked
+by the engine in one frame (the tests step them in the order fired); an enemy that evades one projectile of a
+use and is struck by another; a glance that does not turn toward an enemy another projectile landed on; a
+blast that leaves such an enemy out while striking others in its radius; a returning projectile striking, on
+its way back, an enemy it landed on going out while the others pass it; `projectile_later_hit_damage` counted
+by each projectile; bounces and pierce given by a row together with added projectiles; the ground, the pyre,
+the row zone, the buried axe and the spread curses each projectile leaves; Tether; a lobbed shot fanned; a
+use aimed at the user's own feet; a wall; a pulling zone; a projectile skill a worn row starts; a projectile
+of an earlier use finishing during a later one; more than 4 added; any of the seven designed skills by its
+own row, and any skill on a player character.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by the writing session. Each is a break in one `.cpp` file.
+The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
+`Cataclysm.ProjectileCount.`, with its trailing dot, which is 6 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| P-I, the rows' count is added to the one | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` | `return 1 + ExtraProjectilesWithRows();` | `return 1;` | `ARowsCountIsAddedToTheOneProjectileASkillFiresAndIsRoundedToAWholeNumber` | `TheProjectilesOfOneUseFlyTenDegreesApartCentredOnTheAim`, `EachProjectileOfAUseDealsWhatALoneProjectileDeals`, `OneEnemyInThePathOfTwoProjectilesOfOneUseTakesOneHitAndTheNextUseHitsItAgain` and `AUseOfSeveralProjectilesCostsOnceIsAnnouncedOnceAndEndsWhenTheLastFinishes` |
+| P-II, a projectile ignores an enemy another of its use landed on | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `return LandedBy && *LandedBy != NumberInItsUse;` | `return LandedBy && *LandedBy != NumberInItsUse && false;` | `OneEnemyInThePathOfTwoProjectilesOfOneUseTakesOneHitAndTheNextUseHitsItAgain` | none |
+| P-III, the fan is centred on the aim | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` | `static_cast<float>(Total - 1) * 0.5f` | `static_cast<float>(Total - 1) * 0.0f` | `TheProjectilesOfOneUseFlyTenDegreesApartCentredOnTheAim` | `EachProjectileOfAUseDealsWhatALoneProjectileDeals` |
+
+Failed assertions in each test, by reading:
+
+- **P-I, 14 in 5 tests.** The count test 7: "one use fires N projectiles" four times, for 1, 2, 3 and 4; and
+  the rounding lines for 1.4, 1.5 and 2.6. Its lines for a scoped line, for 0.4, for -3 and for a skill no
+  character holds pass. The fan test 4: "how many are in the air", once for each of the four fans, after which
+  that fan's degrees are not read. The full damage test 1: "set-up: and fired two projectiles", after which
+  the test returns. The one hit test 1: the same set-up line, at the wearer's first use. The one use test 1:
+  "set-up: and fired three projectiles". The test of the rack and the beam passes.
+- **P-II, 6 in 1 test.** "one enemy in the path of both projectiles of one use lost one hit and not two";
+  "and the other struck nothing"; "the second use took one more hit from the same enemy, and not two more";
+  "one enemy in the path of two projectiles that do not pierce lost one blast and not two", because the
+  second then stops at the enemy and goes off too; "the second struck nothing"; and "and was not stopped by
+  the enemy: it flew the skill's whole 10 m".
+- **P-III, 18 in 2 tests.** The fan test 14: every degree line of the four fans, 2, 4, 3 and 5 of them. The
+  break makes the fan run from the aim to one side, and no projectile of any of the four fans is then at the
+  degrees the test states, whichever side the engine's rotation turns to. The full damage test 4: "the enemy
+  in one projectile's path lost what a lone projectile takes"; "and the enemy in the other's path lost the
+  same"; and "each projectile struck one enemy", twice, because the two paths are then along the aim and 10
+  degrees from it, and each enemy stands 78 cm from both. The one hit test passes: the enemy 2 m along the aim
+  is 35 cm from a path 10 degrees off, inside the 40 cm it reaches, so both projectiles still reach it.
+
+Among the messages above, these are used for more than one assertion: the count test's "one use fires" line,
+four times, each with its numbers in it; the fan test's "how many are in the air" and its degree line, each
+with the fan's name in it; "set-up: and fired two projectiles", once in the full damage test and three times
+in the one hit test; "each projectile struck one enemy", once for each projectile; "the second struck
+nothing", whose wording differs from "and the other struck nothing" by which bolt it is about.
+
+**Tests and no proof:** that a rack and a beam are left alone; that the skill ends at the last projectile and
+not the first; that the cost is paid once; the rounding, apart from what P-I shows of it; the write of the
+record only for a blow that was sent and not evaded.
+
+One test outside the prefix is expected to fail under P-I:
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, on its new probe's last assertion, "and one
+use is three projectiles". No other test of another group is expected to fail under any of the three.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — A row can make every enemy immune to its wearer's damage 15 seconds after the wearer's first hit on it, until the wearer has been out of combat, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one stat's name,
