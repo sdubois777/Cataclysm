@@ -9239,6 +9239,88 @@ def refuse_a_delayed_damage_row_the_game_cannot_read(
     return problems
 
 
+#: The stat of "Applying a debuff to an enemy reduces their damage output by
+#: 10%-20%", ruled 2026-10-13: the percent less a character deals while it
+#: carries a debuff the wearer applied.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS, `UCataclysmDebuffs::NoteLaid`,
+#: where a debuff is put on another character, and records nothing when it is
+#: nought or less. So a row requiring a tag matches nowhere, and a row of any
+#: kind but `flat` works on a base of nought. The figure is a percent taken off
+#: what the carrier's attacks are worth, which the game holds to 100.
+DEBUFFED_ENEMIES_DEAL_LESS_PERCENT_STAT = "debuffed_enemies_deal_less_percent"
+MAX_DEBUFFED_ENEMIES_DEAL_LESS_PERCENT = 100.0
+
+
+def refuse_a_debuff_cut_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `DEBUFFED_ENEMIES_DEAL_LESS_PERCENT_STAT` is one figure its one
+    reader takes as it stands, and an enchantment states it once.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant
+    above gives. Each refusal names what the reader would do with the row.
+
+    A RANGE IS ALLOWED AND MUST RISE, as the sentence's does: more is better
+    for the wearer, and the game rolls from the first column to the second.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_a_delayed_damage_row_the_game_cannot_read` leaves one.
+    """
+    problems = []
+    stat = DEBUFFED_ENEMIES_DEAL_LESS_PERCENT_STAT
+    top = MAX_DEBUFFED_ENEMIES_DEAL_LESS_PERCENT
+    stated: dict[str, int] = {}
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        owner = str(row.get("Enchantment") or row["Name"])
+        stated[owner] = stated.get(owner, 0) + 1
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; "
+                f"any other kind works on a base of nought and cuts NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, where a debuff is put "
+                f"on another character, so a row requiring a tag matches "
+                f"nowhere: this one would cut NOTHING and say nothing.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the lowest roll is the first column, and "
+                f"a larger cut is the better roll.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= top:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0 and at most {top:g}. Nought or less "
+                    f"cuts nothing.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The stat is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"cut NOTHING.")
+    for owner, count in stated.items():
+        if count > 1:
+            problems.append(
+                f"{sheet}/{owner}: states {stat!r} on more than one row. "
+                f"Flat rows on one stat are added together, so the game "
+                f"would read the SUM of them: state it once.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9582,6 +9664,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE SHARE OF DAMAGE TAKEN THAT IS DELAYED AND ITS SECONDS ARE TWO
     # FLAT ROWS OF ONE ENCHANTMENT, EACH STATED ONCE. Ruled 2026-10-12.
     problems.extend(refuse_a_delayed_damage_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE PERCENT LESS A DEBUFFED ENEMY DEALS IS ONE FLAT ROW WITH NO TAGS.
+    # Ruled 2026-10-13.
+    problems.extend(refuse_a_debuff_cut_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

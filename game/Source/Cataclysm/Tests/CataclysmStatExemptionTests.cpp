@@ -7917,6 +7917,55 @@ namespace CataclysmStatExemptionTest
 							"really reads it"), With, Without * 0.5f, 0.01f);
 	}
 
+	/**
+	 * `debuffed_enemies_deal_less_percent`, read by `UCataclysmDebuffs::NoteLaid` where a debuff is put on another
+	 * character. Ruled 2026-10-13: "Applying a debuff to an enemy reduces their damage output by 10%-20%". Two
+	 * appliers, the second holding the stat at a flat 20, each lay Cripple on a carrier of its own for 5 seconds
+	 * through `ApplyTagForDuration`. Read as what each carrier's attacks are worth, `WeaponDamageOf`, as a share
+	 * of what they were worth before: the whole for the plain applier's carrier and four fifths for the other's.
+	 *
+	 * STANDING: the plain applier at the origin and its carrier 3 m along X; the holder 100 m along Y and its
+	 * carrier 3 m along X from it.
+	 */
+	void ProbeDebuffedEnemiesDealLessPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger PlainsCarrier(World, FVector(3 * M, 0, 0));
+		FScopedSwinger Holder(World, FVector(0, 100 * M, 0));
+		FScopedSwinger HoldersCarrier(World, FVector(3 * M, 100 * M, 0));
+		GrantFlat(Holder.Actor, UCataclysmDebuffs::DebuffedEnemiesDealLessPercentStat, 20.0f);
+
+		const float PlainBefore = UCataclysmSkillEffects::WeaponDamageOf(PlainsCarrier.AbilitySystem);
+		const float HeldBefore = UCataclysmSkillEffects::WeaponDamageOf(HoldersCarrier.AbilitySystem);
+		const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+		if (!Test.TestTrue(TEXT("set-up: both carriers' attacks are worth something, and the vocabulary has Cripple"),
+						   PlainBefore > 0.0f && HeldBefore > 0.0f && Cripple.IsValid())
+			|| !Test.TestTrue(TEXT("set-up: the plain applier's Cripple lands"),
+							  UCataclysmSkillEffects::ApplyTagForDuration(Plain.Actor, PlainsCarrier.Actor, Cripple,
+																		  5.0f))
+			|| !Test.TestTrue(TEXT("set-up: the holder's Cripple lands"),
+							  UCataclysmSkillEffects::ApplyTagForDuration(Holder.Actor, HoldersCarrier.Actor, Cripple,
+																		  5.0f)))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("control: crippled by a character with no row, its attacks are worth what they were"),
+					   UCataclysmSkillEffects::WeaponDamageOf(PlainsCarrier.AbilitySystem) / PlainBefore, 1.0f,
+					   0.0005f);
+		Test.TestEqual(TEXT("and crippled by one carrying debuffed_enemies_deal_less_percent at 20 they are worth "
+							"four fifths, so NoteLaid really reads it"),
+					   UCataclysmSkillEffects::WeaponDamageOf(HoldersCarrier.AbilitySystem) / HeldBefore, 0.8f,
+					   0.0005f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8059,6 +8108,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
 			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
+			{TEXT("debuffed_enemies_deal_less_percent"), &ProbeDebuffedEnemiesDealLessPercent},
 		};
 		return Made;
 	}

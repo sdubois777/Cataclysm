@@ -364,9 +364,14 @@ float UCataclysmSkillEffects::WeaponDamageOf(const UAbilitySystemComponent* Abil
 		UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
 			AbilitySystem, ECataclysmAilmentRider::DamageDealt),
 		0.0f, 100.0f);
+	// AND LESS AGAIN WHILE IT CARRIES A DEBUFF OF A CHARACTER WHOSE ROW SAYS SO.
+	// Ruled 2026-10-13: "Applying a debuff to an enemy reduces their damage
+	// output by 10%-20%". One cut however many debuffs, and a multiplier of its
+	// own, so it multiplies with the poison rider above and with Weaken.
+	const float DebuffCut = UCataclysmDebuffs::DealLessPercentOn(AbilitySystem);
 	return AbilitySystem->GetNumericAttribute(
 			   UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
-		* (1.0f - Cut / 100.0f);
+		* (1.0f - Cut / 100.0f) * (1.0f - DebuffCut / 100.0f);
 }
 
 FGameplayTag UCataclysmSkillEffects::SpellTag()
@@ -1986,6 +1991,12 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// AND A DEBUFF OF THE APPLIER'S MAY CUT WHAT ITS CARRIER DEALS. Ruled
+	// 2026-10-13. Beside the riders and before the two branches below, so a
+	// refresh records it as a new effect does. A copy a spread makes records
+	// nobody. See `UCataclysmDebuffs::NoteLaid`.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, bApplyingASpreadCopy);
+
 	// A ROW MAY MAKE THIS APPLICATION REFRESH THE INSTIGATOR'S OTHER DAMAGE OVER
 	// TIME EFFECTS ON THE TARGET. See `DotApplicationRefreshesOthersStat`. Not for
 	// a copy a spread makes, which nobody applied, and asked of the instigator's
@@ -2235,6 +2246,10 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 				EffectTag, Cast<UCataclysmAbilitySystemComponent>(Source));
 		}
 	}
+
+	// AND A DEBUFF OF THE APPLIER'S MAY CUT WHAT ITS CARRIER DEALS, as
+	// `ApplyDamageOverTime` records it. Ruled 2026-10-13.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, bApplyingASpreadCopy);
 
 	// A ROW MAY MAKE THIS APPLICATION REFRESH THE INSTIGATOR'S OTHER DAMAGE OVER
 	// TIME EFFECTS ON THE TARGET. See `DotApplicationRefreshesOthersStat`. Not for
@@ -4083,6 +4098,13 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 		return false;
 	}
 
+	// AND A DEBUFF OF THE INSTIGATOR'S MAY CUT WHAT ITS CARRIER DEALS. Ruled
+	// 2026-10-13. Before the two branches below, so a refresh records it as a new
+	// effect does. A tag that is not a debuff records nothing: a stagger, a pin,
+	// a knockdown, a fear and every buff pass through here too. NEVER A SPREAD'S
+	// COPY: `ApplySpreadCopy` copies damage over time, which is not applied here.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, /*bIsASpreadCopy=*/false);
+
 	// AN EFFECT THAT IS ONLY A TAG IS COMPARED BY HOW LONG IT LASTS. Issue #1576,
 	// a judgement the coordinating session approved on 2026-09-11 for the
 	// owner's review list. It states no other figure, so the stronger of two
@@ -4372,6 +4394,12 @@ bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 	// long it runs, never shortening it.
 	const float Stated =
 		FMath::Max(0.0f, Size) * static_cast<float>(Held.Num());
+
+	// AND A DEBUFF OF THE INSTIGATOR'S MAY CUT WHAT ITS CARRIER DEALS, as
+	// `ApplyTagForDuration` records it for an effect that is only a tag. Ruled
+	// 2026-10-13. Before the refresh below, so a weaker application records it.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, /*bIsASpreadCopy=*/false);
+
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
 	if (Running.bFound && Running.Stated >= Stated)
 	{

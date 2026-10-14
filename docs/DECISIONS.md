@@ -2,6 +2,380 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make an enemy deal less while it carries a debuff its wearer applied: one stat, and a record on the carrier by the debuff's tag, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (two stat names, four functions
+and one small struct), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the
+record, two functions, and its clearing where a death's effects are cleared),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (the cut in `WeaponDamageOf`, and one call in each
+of the four functions that put a debuff on a character),
+`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.cpp` (one line in a sweep),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no
+attribute), `game/Source/Cataclysm/Tests/CataclysmDebuffCutsDamageTests.cpp` (new: seven tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the
+name, one bound and one refusal), `tools/tests/test_generate_datatables.py` (one class of 9 tests),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites added to its inventory). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Applying a debuff to an enemy reduces their damage
+output by 10%-20%".
+
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** NOT COMPILED AND NOT
+  RUN. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** The enchantment session writes the row. Its shape is under
+  "What was built".
+- **THIS SENTENCE WAS HELD ON 2026-10-06.** The entry of that day headed "A worn row can hang a number on an
+  ailment: five sentences that change an enemy while it carries the wearer's bleed, burn, disease or poison"
+  has the line "| Applying a debuff to an enemy reduces their damage output by 10%-20% | HELD: it names no
+  ailment and no duration |". The ruling of 2026-10-13 answers the two reasons. No ailment: it is ANY debuff on
+  the game's list, `UCataclysmDebuffs::DebuffRootNames`, that the wearer applied: every damage over time, a
+  stun, and every named curse under `Status.Debuff`. No duration: the cut has none of its own; it lasts while
+  the enemy carries at least one of the wearer's debuffs and ends with the last of them.
+- **NOT EVERY BLOW OF AN ENEMY IS CUT.** The cut is in `UCataclysmSkillEffects::WeaponDamageOf`, where the
+  poison rider's cut is. A search made for this entry by a read-only helper of the writing session found 11
+  calls of that function outside the tests, in 7 files; the search of 2026-10-12 had counted 12. The writing
+  session read the function, its call in `ApplyHit` and the two loose-tag sites, and did NOT itself open each
+  enemy's file, so the two lists below are that helper's reading and are for the enchantment session to check.
+  - **Cut, read when the blow lands:** every blow an enemy deals through `ApplyHit`: its basic attack, a
+    charge, the Brute's stomp and thrown rock, the Abyssal Warden's Molten Roar, the Gatekeeper's cleave and its
+    Soulfall projectile, the Corrupted Sentinel's two projectiles and the Succubus's Soulfire. A projectile
+    stores a percent when it is fired and reads what its firer's attacks are worth when it lands, so a debuff
+    laid while it is in flight cuts it.
+  - **Cut only if the debuff was already carried when the ground was laid:** the Gatekeeper's Soulfall burning
+    ground, the Hellhound's Hellrush lane and the Inferno Charge modifier's path of fire. Each reads
+    `WeaponDamageOf` once, when the zone is laid, and the zone then deals that figure every sweep.
+  - **NOT cut:** an enemy's damage over time (a burn from a burning projectile or from the Hellfire Aura
+    modifier is the burn row's flat figure); the Infernal Brand explosion, which reads the attack damage
+    attribute and not `WeaponDamageOf` (`CataclysmEnemyModifiers.cpp`); an enemy's retaliation or reflection,
+    which is a share of the damage it took; and two floor rules in `CataclysmDungeonGameMode.cpp` that read a
+    creature's attack damage attribute themselves, Holy Repercussions' burst and the Hellfire death explosion.
+    The spell part `ApplyHit` adds for a skill tagged as a spell is not cut either; whether any enemy holds
+    spell damage was not read.
+  - Weaken is different: it is a modifier on the attack damage ATTRIBUTE, so it cuts the three readers of the
+    attribute that this cut and the poison rider miss.
+- **It lowers what the enemy's attacks are worth to everybody**, as the merged rider "Poisoned enemies deal
+  2%-4% less damage" does: the player, its minions and anything else the enemy strikes.
+- **ONE CUT HOWEVER MANY DEBUFFS.** Ruled. An enemy carrying three of the wearer's debuffs deals the row's
+  percent less once. The largest record counts, never a sum.
+- **It multiplies with Weaken and with the poison rider.** Ruled. At 20 with a Weaken of 20 an enemy deals 64%;
+  at 20 with the poison rider at 4 it deals 76.8%.
+- **A refresh keeps it, and an application that only refreshes a stronger running debuff counts.** The wearer's
+  weaker bleed on an enemy already bleeding harder from somebody else lengthens that bleed and gives the cut,
+  as it hands over the wearer's ailment riders today.
+- **Bosses take it in full.** Ruled. Nothing in the code asks whether the carrier is a boss. A boss cannot be
+  stunned, so a stun never gives the cut on one; a damage over time or a curse does.
+- **A minion's debuff counts only while its summoner holds Conduit.** Ruled. That is the rule
+  `UCataclysmCombatEvents::AttackerOf` keeps for whose a minion's blow is.
+- **A ZONE'S DEBUFF COUNTS ONLY WHILE THE ZONE'S OWNER HOLDS CONDUIT, AND THAT IS NEW.** Ruled. Until this
+  change nothing told a zone's application from its owner's: a ground zone lays its curse, its slow and its
+  ailment with its owner as instigator, and the owner's `dot_applied` rows and ailment riders already treat
+  those as the owner's own, with or without Conduit. They still do. Only this cut asks. A zone now says it is
+  laying its effects (`FCataclysmZoneLaying`, held in `ACataclysmGroundZone::Sweep`), and this cut is not
+  recorded for what it lays unless the owner holds `minion_hits_count_as_yours`.
+- **A copy a spread makes does not count.** Ruled. That is `UCataclysmSkillEffects::ApplySpreadCopy`: the copy a
+  dying enemy's ailment leaves on those near it, and the copy "Burn effects you apply spread to 1-2 nearby
+  enemies" makes. See the first judgement below for what is NOT treated as a spread's copy.
+- **A debuff a row of the wearer's lays on an enemy counts.** Ruled. The random debuff of "Strike skills have a
+  15%-30% chance to apply a random debuff on hit" is laid with the wearer as instigator through the same
+  functions.
+- **A stagger, a pin, a knockdown and a fear give nothing.** They are not on the game's list of debuffs.
+- **The two loose-tag sites in `CataclysmDungeonGameMode.cpp` are NOT touched**, as ruled: Raw Sewage's
+  `Keyword.DoT.Disease` at line 5818 and Blood Price's `Keyword.DoT.Bleed` at line 12430 of that file as read.
+  Both put a tag on the PLAYER, and the cut is recorded on a character somebody else debuffed, so neither
+  could give a cut to anything.
+- **With the item taken off, an enemy already debuffed keeps the cut for the rest of that debuff**, unless the
+  wearer applies that same debuff to it again, which takes the cut down. That is what the merged ailment
+  riders do.
+- **Nothing is shown on screen.** No text and no icon says an enemy is dealing less.
+- **The record is not replicated.** It is held on the ability system as the ailment riders are.
+
+**What was not read:** each enemy's own file (see above); `CataclysmContagion.cpp` beyond `SpreadOne`;
+`CataclysmCurseSpread.cpp` beyond its one call of `CopyDebuffsTo`; what a gameplay effect made in the editor
+could grant (the search for places a tag is put on a character read C++ only: no asset under `game/Content`
+was opened); how a worn row becomes a line of the stat line at a gear refresh.
+
+### What the owner said, and who ruled
+
+The owner, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three, continue". The
+rulings below are labelled judgements of the coordinating session under that delegation, as received by the
+enchantment session and handed to the writing session in `rulings_2026-10-13.md`, section R2, item 3.
+
+### EVERY PLACE A DEBUFF IS PUT ON A CHARACTER
+
+Found by sweeping `game/Source` outside `Tests` for every way a gameplay tag reaches a character
+(`AddLooseGameplayTag`, `SetLooseGameplayTagCount`, `AddReplicatedLooseGameplayTag`, `DynamicGrantedTags`,
+`UTargetTagsGameplayEffectComponent`, `SetAndApplyTargetTagChanges`, `InheritableOwnedTags`, `UpdateTagMap`) and
+reading each hit. C++ only.
+
+| Where | What it puts on | A debuff? |
+| :-- | :-- | :-- |
+| `UCataclysmSkillEffects::ApplyDamageOverTime` (`TagAndReplaceAnyExisting`) | the ailment's `Keyword.DoT.*` tag, with the damage | yes |
+| `UCataclysmSkillEffects::ApplyShareOfHealthOverTime` (`TagAndReplaceAnyExisting`) | Void Splinter | yes |
+| `UCataclysmSkillEffects::ApplyTagForDuration` (`TagAndReplaceAnyExisting`) | any tag for seconds: a stun, Cripple, a curse that moves no stat; also buffs, stagger, pin, knockdown, fear and immunities | when the tag is under a root |
+| `UCataclysmSkillEffects::ApplyNamedEffectOnly` (`TagAndReplaceAnyExisting`) | a `Status.*` effect that moves a stat: Weaken, Shred, Abyssal Aura | when the tag is under a root |
+| `UCataclysmSkillEffects::ApplyPin` (`TagAndReplaceAnyExisting`) | `State.Pinned` | no |
+| `UCataclysmSkillEffects::DealRemainingDamageOverTime` (`DynamicGrantedTags`) | the tags of an ailment on an INSTANT effect, a burst of what was left | no: an instant effect leaves no tag |
+| `UCataclysmSkillEffects` at the death of a character (`AddLooseGameplayTag`) | the dead tag | no |
+| `UCataclysmGameplayAbility::ApplyCooldownEffect` | a cooldown tag | no |
+| `CataclysmDungeonGameMode.cpp` line 5818 (`AddLooseGameplayTag`) | `Keyword.DoT.Disease` on the player while it holds Raw Sewage stacks | yes. NOT TOUCHED |
+| `CataclysmDungeonGameMode.cpp` line 12430 (`AddLooseGameplayTag`) | `Keyword.DoT.Bleed` on the player while it holds Blood Price stacks | yes. NOT TOUCHED |
+
+Everything else that applies a debuff calls one of the first four: `ApplyBurn`, `ApplyStun`, `ApplyNamedEffect`,
+`CopyDebuffsTo`, `ApplySpreadCopy`, `UCataclysmAilments::Apply` and `ApplyRandomDebuff`,
+`UCataclysmContagion::SpreadOne`, and the callers of those in the skill templates, the minion, the projectile,
+the tether, the buried weapon, the ground zone, the enemy modifiers, the Brute, the Succubus, the worn rows
+(`apply_status` and `apply_status_to_self` in `CataclysmAbilitySystemComponent.cpp`), the damage conversion, the
+bleed a critical strike lays in `CataclysmVitalAttributeSet.cpp`, and four calls in
+`CataclysmDungeonGameMode.cpp` (lines 3647, 9040, 9048 and 20150 as read). So the four functions are where this
+layer records an application.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Each was ruled on 2026-10-13 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | An enemy carrying at least one debuff the wearer applied deals 10% to 20% less while it carries one. | `UCataclysmDebuffs::NoteLaid` records the applier's stat on the carrier by the debuff's tag; `UCataclysmAbilitySystemComponent::DebuffDamageCutPercentNow` counts a record only while the carrier holds that tag. |
+| R2 | One reduction however many. | `DebuffDamageCutPercentNow` takes the largest record and not the sum. |
+| R3 | It multiplies with Weaken. | `WeaponDamageOf` multiplies the attack damage attribute, which holds Weaken, by one less the cut. |
+| R4 | It lowers what the enemy's attacks are worth to everybody, as the poison rider does. | The cut is in `WeaponDamageOf`, beside the rider's. |
+| R5 | Bosses take it in full. | Nothing asks whether the carrier is a boss. |
+| R6 | A minion's or a zone's debuff counts only under Conduit. | `NoteLaid` takes the applier from `UCataclysmCombatEvents::AttackerOf`, and asks the applier for `minion_hits_count_as_yours` while `FCataclysmZoneLaying::IsLaying()`. |
+| R7 | A spread copy does not count. | `ApplyDamageOverTime` and `ApplyShareOfHealthOverTime` hand `NoteLaid` the flag `ApplySpreadCopy` sets, and a copy records no applier. |
+| R8 | The two loose-tag sites in the dungeon game mode's file are not touched. | `CataclysmDungeonGameMode.cpp` is not edited. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **How it is carried: a record of its own on the carrier, by the debuff's tag, and not the ailment riders
+  widened.** The brief named both. The merged rider `ailment_damage_dealt` could not carry this as it stands
+  for three reasons read in the code. A rider is found by the ailment its row names
+  (`Action.Ailment == Ailment`), and this row names none. The riders of one kind are SUMMED over the ailments
+  a carrier holds (`AilmentRiderPercentNow`), and this cut is one however many. And a rider is an action row,
+  where a stat row is enough here. What is kept from the riders is their rule, word for word: the carrier's
+  record of one applier for each tag, counted only while the tag is carried, a fresh application starting with
+  nothing, and an applier with nothing to hang taking down only its own. The option not taken: no record at
+  all, and `WeaponDamageOf` walking the carrier's running effects for one whose instigator holds the stat. It
+  was not taken because a weaker application only refreshes a stronger running effect and leaves that
+  effect's instigator as it was, so the wearer's application would not count; and because a spread's copy
+  names the wearer as its instigator, so it would count.
+- **"A spread copy" is what the merged code calls one, `ApplySpreadCopy`, and nothing wider.** Two other things
+  pass a debuff on. `UCataclysmSkillEffects::CopyDebuffsTo` copies an enemy's named curses onto others when a
+  skill of the caster's says so, and `UCataclysmContagion::SpreadOne` puts a debuff the Masochist carries on
+  an enemy. Both lay the debuff through the ordinary functions with the character as instigator, the second
+  raises that character's `dot_applied` today, and both COUNT here. The option not taken: mark those two as
+  copies too. It needs a flag set in `CopyDebuffsTo` and in `SpreadOne`; it is for the coordinating session to
+  rule.
+- **Two wearers of the row on one enemy give one cut, the larger.** The ruling says one reduction however
+  many debuffs and does not say whose. The option not taken: one cut for each wearer, multiplied.
+- **Another character's application does not take the wearer's cut down, even when it replaces the wearer's
+  effect with a stronger one.** One tag is one effect on a target whoever applied it, so "the bleed" the enemy
+  carries is then the other character's effect; the record stands for as long as the bleed is carried. That
+  is what the merged riders do, and `Cataclysm.Enchantments.TheBleedingRowRaisesWhatAnEnemyTakesOnlyWhileItCarriesTheWearersBleed`
+  holds it for them. The option not taken: take the record down when another character's stronger application
+  replaces the effect.
+- **Whether the target is hostile is not asked.** A debuff a holder puts on any OTHER character is recorded,
+  as a rider is handed over. One a character puts on itself is not. The option not taken: ask
+  `UCataclysmTargeting::IsHostileTo`, as `ApplyTagForDuration` does for `debuff_duration`. No call in the game
+  was found that puts a debuff-root tag on an ally.
+- **An enemy immune to the wearer's damage still deals less.** The ruling of 2026-10-12 says the wearer's
+  ailments and their riders take nothing from an enemy immune to the wearer; in the code that is asked for the
+  rider that lowers maximum health and not for the rider that lowers damage dealt. This cut follows the damage
+  dealt rider. The option not taken: ask `IsImmuneToDamageOf` where the cut is read.
+- **A thrall's debuff is the thrall's.** `AttackerOf` changes the answer for a minion actor only, and a thrall
+  is a taken enemy character. The ruling names minions and zones.
+- **The generator's bounds.** Above 0 and at most 100, flat, no Required Tags, no Action, once for each
+  enchantment, and a range that rises.
+
+### GENRE SOURCE
+
+Copied as it stands from the enchantment session's `genre_2026-10-13.md`. The writing session fetched nothing
+and states nothing else about another game.
+
+HOW THESE WERE READ, WHICH EVERY ENTRY MUST SAY: each page was fetched twice through a tool that hands back a
+model's reading of the page and not the page's bytes. The second fetch asked for the lines character for
+character. A line below in a code block is one the second fetch gave as copied exactly. Anything marked SUMMARY is
+the tool's own words about the page and must be recorded as a summary and never inside quotation marks. Each page
+is longer than the 100,000 characters the tool read; the rest was not read. Record only what is here. State nothing
+else about any other game.
+
+REACHED: `poedb.tw/us/Enfeeble` (Path of Exile; the page's title reads "Enfeeble - PoEDB, Path of Exile Wiki").
+The gem's lines, given as copied exactly:
+
+```
+Curses all targets in an area, reducing their accuracy and making them deal less damage.
+Base duration is (8—11.8) seconds
++(0—1) metre to radius
+Cursed enemies have (10—19)% reduced Accuracy Rating
+Cursed Normal or Magic enemies deal (15—29)% less Damage
+Cursed Rare or Unique enemies deal (9—18)% less Damage
+```
+
+What it settles: a debuff that makes its carrier deal less damage while it lasts, in the "less" (multiplying)
+form, weaker on stronger enemies. What is this game's own and judged: that ANY debuff of the wearer's gives the
+cut, that it is one cut however many debuffs, and that bosses take it in full.
+
+NOT REACHED: any source for "immune to debuffs but cannot apply them" in any game. No search was made for one.
+
+### WHAT WAS BUILT
+
+- **The stat.** `debuffed_enemies_deal_less_percent`, flat, a percent, with no gameplay attribute and no base,
+  the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code:
+  `UCataclysmDebuffs::DebuffedEnemiesDealLessPercentStat`. Nought or less cuts nothing.
+- **`UCataclysmDebuffs::IsADebuff(Tag)`.** Whether a tag is one of the three roots or under one.
+- **`UCataclysmDebuffs::NoteLaid(Instigator, Target, Debuff, bIsASpreadCopy)`.** Does nothing for a tag that
+  is not a debuff, for a character's own application to itself, and for a target whose ability system is not
+  this project's. Otherwise it finds the applier (nobody for a spread's copy; `AttackerOf(Instigator)`
+  otherwise; nobody again while a zone is laying and that applier does not hold Conduit), asks the applier's
+  stat with `StatForSkill`, no tags and a fallback of nought, and hands the carrier the tag, the applier and
+  the percent.
+- **The four calls.** In `ApplyDamageOverTime` and `ApplyShareOfHealthOverTime`, directly after the ailment
+  riders are handed over and before the branch that only refreshes a stronger running effect. In
+  `ApplyTagForDuration`, after the refusal of a duration taken to nothing and before its refresh branch. In
+  `ApplyNamedEffectOnly`, before its refresh branch; its three hand-overs to `ApplyTagForDuration` are recorded
+  there.
+- **The record.** `UCataclysmAbilitySystemComponent::DebuffDamageCuts`, a map from the debuff's tag to the
+  applier and the percent. `ReceiveDebuffDamageCut(Debuff, Applier, Percent)` first removes the record of a
+  tag the carrier does not hold; with an applier and a percent above nought it writes the record; with an
+  applier and no percent it removes the record only if it is that applier's; with nobody it removes nothing.
+  `DebuffDamageCutPercentNow()` is the largest percent among the records whose tag the carrier holds now, held
+  to 0 and 100. `ClearWhatDeathEnds` empties the map beside the ailment riders.
+- **The cut.** `UCataclysmSkillEffects::WeaponDamageOf` multiplies by one less
+  `UCataclysmDebuffs::DealLessPercentOn(AbilitySystem)` over a hundred, after the poison rider's factor.
+- **The zone.** `FCataclysmZoneLaying`, a counted scope in `CataclysmDebuffs.h`.
+  `ACataclysmGroundZone::Sweep` holds one for each character it reaches, from after that character's damage to
+  the end of the effects laid on it: the curse, the slow, the stagger and the zone's own ailment. It is not
+  held while the sweep's damage is dealt, so a debuff a row of the owner's lays when that blow lands is the
+  owner's own. `UCataclysmDebuffs::ZoneDebuffsCountUnderStat` is `minion_hits_count_as_yours`.
+- **The generator.** `DEBUFFED_ENEMIES_DEAL_LESS_PERCENT_STAT` holds the name and
+  `MAX_DEBUFFED_ENEMIES_DEAL_LESS_PERCENT`, 100, the bound. `refuse_a_debuff_cut_row_the_game_cannot_read`
+  refuses an enchantment's row on the stat that is not `flat`, that requires a tag, whose range falls, whose
+  figure is not above 0 and at most 100, or that names an action, and an enchantment that states it on more
+  than one row. `validate_enchantment_effects` runs it. A condition or a scale on the stat is refused by the
+  two checks that already refuse those on a stat not on their lists.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment (the name the
+  generator gives "Applying a debuff to an enemy reduces their damage output by 10%-20%" on the Positive
+  sheet): Stat `debuffed_enemies_deal_less_percent`, Value Kind `flat`, Value Low 10, Value High 20. No
+  Required Tags, no Condition, no Scale, no Action, and every other cell empty. The option not taken: an
+  action row beside `ailment_damage_dealt` with a new word in the Ailment cell for "any debuff". It was not
+  taken because it needs a new action name and a new ailment word in the generator and the engine, and a stat
+  line carries the one figure with neither.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the name, at its end. The generator reads that
+  list, so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains one probe, the last entry of
+  `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains two call sites of
+  `StatForSkill`, both in `CataclysmDebuffs.cpp`, each with its reason, as its last two entries. `CALL_SITES`
+  is left at 65; the comment above it gains a dated sentence.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat, so no shipped row is refused.
+- No merged test's assertion was changed.
+
+### Tests
+
+Seven new Unreal tests in the new file `CataclysmDebuffCutsDamageTests.cpp`, in the group
+`Cataclysm.DebuffCutsDamage.`, on the rig of `CataclysmDebuffTests.cpp`: a plain actor holding an ability
+system, a vital set and a combat set, with attacks worth 100. A plain actor has no root component and no body.
+The wearer's stat line is written by hand at 20. Every figure is what a carrier's attacks are worth,
+`WeaponDamageOf`, as a share of what they were worth before anything was laid on it.
+
+- `AnEnemyCarryingOneOrTwoOfTheWearersDebuffsDealsTheRowsPercentLessOnce`: an enemy with no debuff deals what
+  it dealt (the control); one carrying the wearer's Cripple deals four fifths; one carrying the wearer's
+  Cripple and bleed carries two debuffs and deals four fifths; the wearer's own attacks are worth 100.
+- `TheCutEndsWhenTheLastOfTheWearersDebuffsLeavesAndARefreshKeepsIt`: nothing before (the control); four
+  fifths with two; four fifths with the bleed removed and the Cripple left; four fifths after the Cripple is
+  applied again; the whole once a cleanse ends the Cripple; four fifths under a Cripple of 2 seconds (the
+  control), and the whole when the clock has been moved 2.5 seconds and it has run out.
+- `TheCutMultipliesWithWeakenAndWithThePoisonRider`: a Weaken of 20 from a character with no row leaves four
+  fifths (the control, which also shows the status effect table loaded); the same Weaken from the wearer
+  leaves 0.64; with the poison rider written by hand at 4 the wearer's poison leaves 0.768; with the row gone
+  and the poison applied again the rider alone leaves 0.96 (the control).
+- `ACopyASpreadMakesDoesNotCount`: the enemy the wearer bled deals four fifths (the control); an enemy carrying
+  only the copy `ApplySpreadCopy` makes in the wearer's name is bleeding and deals what it dealt; a copy
+  landing on the bleed the wearer applied leaves that enemy at four fifths.
+- `AnotherCharactersDebuffDoesNotCountAndTheWearersOwnIsTakenDownOnlyByTheWearer`: two debuffs of another
+  character's cut nothing; the wearer's weaker bleed, which only refreshes, gives four fifths (the control);
+  the other character bleeding it again leaves four fifths; with the row gone the wearer's Cripple leaves the
+  bleed's cut standing, and its next bleed takes the cut down; the wearer's Cripple alone gives four fifths
+  (the control) and, once cleansed, another character's Cripple does not bring the cut back; a Cripple the
+  wearer puts on itself cuts nothing of its own.
+- `AMinionsOrAZonesDebuffCountsOnlyWhileTheWearerHoldsConduit`: no zone is laying (the control); a Cripple laid
+  in the wearer's name while a `FCataclysmZoneLaying` is held cuts nothing; a real Imp's bleed cuts nothing;
+  the wearer's own Cripple then gives four fifths (the control); cleansed, the whole. With the Conduit flag
+  written beside the row the Imp's bleed gives four fifths, and so does a Cripple laid while a zone is laying.
+- `AStaggerAPinAndAKnockdownAreNotDebuffsAndCutNothing`: each of the three tags is not a debuff by
+  `IsADebuff`, lands through `ApplyTagForDuration` from the wearer, and leaves the enemy dealing what it dealt;
+  Cripple and a stun are debuffs; the wearer's stun tag gives four fifths (the control).
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeDebuffedEnemiesDealLessPercent`. Crippled by a character with no row, a carrier's attacks are worth what
+they were (the control); crippled by one holding the stat at 20, four fifths.
+
+Python, `TestADebuffOfTheWearersCutsWhatItsCarrierDeals` in `tools/tests/test_generate_datatables.py`, 9 tests
+on a made-up sheet holding the real sentence: the ruled row is carried through, its range is the one the
+sentence states, and no check refuses it; the name is a stat with no attribute and a made-up name is not; the
+generator's name is the one `CataclysmDebuffs.cpp` holds, read by a pattern that also finds an older name there
+(the control); each wrong shape is refused once and by its own sentence (a kind that is not flat, a required
+tag, an action); a figure of 0, of -10 or of 101 is refused, 100 is accepted, and a range that falls is
+refused; the stat stated twice on one enchantment is refused; a condition or a scale is refused by the two
+checks that hold those; a passive node's row and a row on another stat are left alone; and the sheet's
+validation runs the check.
+
+**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; any enemy's
+real attack, projectile or zone dealing less (every figure here is `WeaponDamageOf` read by the test); a real
+ground zone holding `FCataclysmZoneLaying` in its sweep (the test holds the scope itself); a boss; a real
+player as the wearer, whose ability system belongs to its player state; the random debuff of a worn row; a
+stun laid by `ApplyStun` with its three rules (the tests lay the stun's tag); Void Splinter through
+`ApplyShareOfHealthOverTime` and a curse through `CopyDebuffsTo` or `SpreadOne`; two wearers on one enemy; a
+death of the carrier and its revival; a thrall; a client that is not the server.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted in its file by a script of the writing session, and each count printed 1.
+Each is a break in one `.cpp` file and the new text keeps the brackets of the old. The failed assertions are
+counted by reading the tests and were not measured. The prefix of all three is `Cataclysm.DebuffCutsDamage.`,
+with its trailing dot, which is 7 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| C-I, one cut however many debuffs | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Largest = FMath::Max(Largest, Held.Value.Percent);` | `Largest += Held.Value.Percent;` | `AnEnemyCarryingOneOrTwoOfTheWearersDebuffsDealsTheRowsPercentLessOnce` | `TheCutEndsWhenTheLastOfTheWearersDebuffsLeavesAndARefreshKeepsIt` |
+| C-II, a spread's copy does not count | `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp` | `Applier = bIsASpreadCopy` | `Applier = false && bIsASpreadCopy` | `ACopyASpreadMakesDoesNotCount` | None |
+| C-III, a zone's debuff counts only under Conduit | `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp` | `if (Applier && FCataclysmZoneLaying::IsLaying()` | `if (Applier && false && FCataclysmZoneLaying::IsLaying()` | `AMinionsOrAZonesDebuffCountsOnlyWhileTheWearerHoldsConduit` | None |
+
+Failed assertions in each test, by reading:
+
+- **C-I, 2 in 2 tests.** With the break an enemy carrying two of the wearer's debuffs deals 40% less. The first
+  test 1: "and one carrying two deals 20% less, the same cut and not two of them". The ending test 1: "with
+  two of the wearer's debuffs it deals 20% less"; every later line of it reads an enemy carrying one debuff or
+  none. No other test of the prefix has an enemy holding two tags that each carry a record of the wearer's.
+- **C-II, 1 in 1 test.** "an enemy carrying only a spread's copy deals what it dealt", which would read four
+  fifths. The control above it and the line after it read four fifths with the break in or out.
+- **C-III, 2 in 1 test.** "a zone's debuff does not count without Conduit", which would read four fifths; and
+  "and a minion's debuff does not count without Conduit", which reads the same enemy, still carrying the
+  Cripple's record. The control after them reads four fifths either way, and every line after the cleanse is
+  read with Conduit held or with nothing carried.
+
+**Tests and no proof:** that a debuff of the wearer's cuts anything at all (six of the seven tests fail
+without it, and the probe); that the cut ends with the last debuff; that it multiplies with Weaken and the
+rider; that another character's debuff does not count; the minion's half of the Conduit rule, which is
+`AttackerOf`'s and merged; that a stagger, a pin and a knockdown give nothing.
+
+No test outside the prefix is expected to fail under any of the three: the probe's carrier holds one debuff,
+no spread's copy and no zone.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — Seven sentences are given their rows: execute, unmitigated retaliation, enemies that survive a first hit, enemies immune after fifteen seconds, added projectiles, teleport when hit, and damage taken dealt over seconds
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (eight rows of the Enchantment Effects sheet, on seven
