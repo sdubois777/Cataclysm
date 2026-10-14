@@ -137,9 +137,11 @@ TArray<int32> UCataclysmDayClock::AdvanceDay()
 		++Timer.TimesResolved;
 		Resolved.Add(Timer.DungeonId);
 
-		// AND IT STAYS, WITH ITS TIMER FULL AGAIN. See
-		// `bDungeonPersistsAfterResolve`: a dungeon that vanished after biting
-		// once would mean an ignored city could never actually die.
+		// ITS TIMER IS FULL AGAIN, WHATEVER KIND OF DUNGEON IT IS. Whether the
+		// dungeon then stays is not decided here: `UCataclysmEmpireRun::
+		// ResolveDungeon` removes an ordinary dungeon after it hits its city,
+		// timer and all, and leaves a Quest dungeon and a Dungeon City with the
+		// timer this line refilled. See `bDungeonPersistsAfterResolve`.
 		Timer.DaysUntilResolve = Timer.ResolveDays;
 	}
 

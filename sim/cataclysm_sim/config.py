@@ -491,9 +491,10 @@ class TuningConfig:
     # entry of 2026-10-12 has the tables and what a first look at the surge
     # constants found.
     #
-    # THE GAME DOES NOT HAVE THIS RULE YET AND DIFFERS ON PURPOSE.
-    # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
-    # records that. `UCataclysmDayClock::bDungeonPersistsAfterResolve` is NOT
+    # THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
+    # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`
+    # holds the two together.
+    # `UCataclysmDayClock::bDungeonPersistsAfterResolve` is NOT
     # this setting and must not follow it: its false branch removes every
     # timer that ran out, whatever the kind of dungeon.
     dungeon_persists_after_resolve: bool = False
@@ -502,9 +503,9 @@ class TuningConfig:
     # does, since 2026-10-10 (issue #41): the dungeon's consequence lands on
     # its city exactly as when its timer runs out, the player leaves the
     # dungeon, and `death_day_cost` days are then charged. What becomes of the
-    # dungeon is the setting above: in this model it leaves the map since
-    # 2026-10-12, and in the game, which does not have that rule yet, its timer
-    # is set back to full. A Quest dungeon and a Fallen City dungeon never
+    # dungeon is the setting above: it leaves the map, in this model since
+    # 2026-10-12 and in the game since 2026-10-13. A Quest dungeon and a
+    # Fallen City dungeon never
     # resolve, so a
     # death in one costs the days and takes nothing from any city. A death in
     # the Cataclysm dungeon ends the run whatever this is set to.
@@ -808,8 +809,8 @@ class TuningConfig:
     # the dungeon may move, and no city pays. With False no line of the hit
     # runs, so a campaign draws the stream it drew before.
     #
-    # THE GAME DOES NOT HAVE THIS RULE AND DIFFERS ON PURPOSE.
-    # `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`.
+    # THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
+    # `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`.
     quest_timer_hits_city: bool = True
 
     # THE OTHER READING OF THE SIZE, FOR MEASUREMENT ONLY. True multiplies
