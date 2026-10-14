@@ -7634,3 +7634,216 @@ class TestAWearerImmuneToDebuffsThatAppliesNone:
             set())
         assert any("states 1 to 2" in problem and self.STAT in problem
                    for problem in problems), problems
+
+
+class TestABurnThatEndsByTimeMayExplode:
+    """`dot_explodes_at_expiry_chance`, ruled 2026-10-13 and built ahead of
+    its row, for "Your burn effects have a 20%-40% chance to explode for
+    double their remaining damage when they expire". One stat at a flat 20 to
+    40 under the one Required Tag `Keyword.DoT.Burn`, with no Condition, no
+    Scale and no Action: the game asks the applier for it in
+    `CataclysmSkillEffects.cpp` when a damage over time effect ends by time,
+    with the tags that effect granted.
+
+    THE REQUIRED TAG IS HOW THE ROW NAMES ITS AILMENT, so it is the one cell
+    this class is strictest about: none, two, and any tag but the Burn's are
+    each refused by a sentence of their own.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Positive
+    one, with the tags its real row of the Enchantments sheet carries. The
+    real effect row is the enchantment session's to write; this shows that
+    the generator carries the proposed row through and refuses the wrong
+    ones.
+    """
+
+    WORDS = ("Your burn effects have a 20%-40% chance to explode for double "
+             "their remaining damage when they expire")
+    STAT = "dot_explodes_at_expiry_chance"
+    BURN = "Keyword.DoT.Burn"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 20,
+           "Value High": 40, "Required Tags": BURN}
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+    KNOWN = {BURN, "Keyword.DoT.Poison", "Type.AOE.PointBlank"}
+
+    def out(self, tmp_path, rows):
+        """The generator's rows for the Positive sentence and these effect
+        rows, each a dict of columns. As `out` of
+        `TestAShareOfDamageTakenIsDealtOverSeconds`."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Positive", self.WORDS[:48]),
+                      "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [self.WORDS, "Generic", 3,
+                     "Keyword.DoT.Burn, Type.AOE.PointBlank", None,
+                     "You have 20% less hp", "Generic", 1,
+                     "Stat.Defense.Health"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "burn.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_an_exploding_ailment_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_proposed_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Name"], row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["Ailment"])
+                for row in out] == [
+            ("Positive_Your_burn_effects_have_a_20_40_chance_to_explo#1",
+             self.STAT, "flat", 20.0, 40.0, self.BURN, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, self.KNOWN) == []
+
+    def test_the_range_is_the_one_the_sentence_states(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.enchantment_ranges(self.WORDS) == [(20.0, 40.0)]
+        assert (row["ValueLow"], row["ValueHigh"]) == (20.0, 40.0)
+
+    def test_the_stat_has_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "dot_explodes_at_expiry" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_the_name_and_the_tag_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks
+        the applier's stat line for the name in `CataclysmSkillEffects.cpp`.
+        THE CONTROL is the flag of Plague Doctor's six-piece bonus, read by
+        the same pattern from the same file. And the one tag the generator
+        allows is the tag the engine's `BurnTag` asks for by name."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmSkillEffects.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmSkillEffects::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["DotApplicationRefreshesOthersStat"] == (
+            "dot_application_refreshes_others")
+        assert names["DotExplodesAtExpiryChanceStat"] == (
+            gen.DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT)
+        (burn,) = re.findall(
+            r'FGameplayTag UCataclysmSkillEffects::BurnTag\(\)\s*\{.*?'
+            r'FName\(TEXT\("([^"]+)"\)\)', source, flags=re.S)
+        assert gen.EXPLODING_AILMENT_TAGS == (burn,) == (self.BURN,)
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": ""}, "under no required tag"),
+                ({"RequiredTags": "Keyword.DoT.Poison"},
+                 "under the required tag 'Keyword.DoT.Poison'"),
+                ({"RequiredTags": "Keyword.DoT"},
+                 "under the required tag 'Keyword.DoT'"),
+                ({"RequiredTags": "Keyword.DoT.Burn, Type.AOE.PointBlank"},
+                 "under 2 required tags"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -5.0}, "states -5 on"),
+                ({"ValueHigh": 101.0}, "states 101 on"),
+                ({"ValueLow": 40.0, "ValueHigh": 20.0}, "the range must rise"),
+                ({"Action": "health"}, "with the action 'health'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # THE BOUND IS INCLUDED AT ITS TOP, AND A SINGLE FIGURE IS A ROW.
+        assert self.refusals([dict(row, ValueHigh=100.0)]) == []
+        assert self.refusals([dict(row, ValueLow=30.0, ValueHigh=30.0)]) == []
+
+    def test_a_row_with_no_tag_is_told_it_would_reach_every_ailment(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        (problem,) = self.refusals([dict(row, RequiredTags="")])
+        assert "EVERY damage over time ailment" in problem
+        assert self.BURN in problem
+
+    def test_a_second_row_on_the_stat_is_refused(self, tmp_path):
+        """Two flat rows on one stat are added together, so a second row of
+        20 to 40 would make the chance 40 to 80. One refusal for the
+        enchantment, however many rows it has; rows of two enchantments are
+        not counted together."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        second = dict(row, Name=row["Name"].replace("#1", "#2"))
+        third = dict(row, Name=row["Name"].replace("#1", "#3"))
+        for rows in ([row, second], [row, second, third]):
+            problems = self.refusals(rows)
+            assert len(problems) == 1, problems
+            assert "on more than one row" in problems[0]
+        other = dict(row, Name="Positive_Made_up#1",
+                     Enchantment="Positive_Made_up")
+        assert self.refusals([row, other]) == []
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="seconds_in_combat")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "dot_damage",
+                               "ValueKind": "increased", "ValueLow": 30.0,
+                               "ValueHigh": 60.0,
+                               "RequiredTags": "Keyword.DoT.Poison"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, self.KNOWN) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="")]},
+            self.KNOWN)
+        assert any("EVERY damage over time ailment" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+        poison = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0],
+                                         RequiredTags="Keyword.DoT.Poison")]},
+            self.KNOWN)
+        assert any("only these are ruled to explode" in problem
+                   for problem in poison), poison
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """As the same test of the stats before this one does it: the name
+        one letter off, with a kind that is not flat. The control is the row
+        spelt right.
+
+        WHAT THIS DOES NOT SHOW. A misspelt name on a FLAT row is carried
+        through and the sheet's validation says nothing of it; that was
+        measured for an earlier stat on 2026-10-12 and is not changed
+        here."""
+        good = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, self.KNOWN) == []
+        misspelt = "dot_explodes_at_expiry_chanc"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased")]},
+            self.KNOWN)
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
