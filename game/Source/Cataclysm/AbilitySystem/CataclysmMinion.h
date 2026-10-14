@@ -301,6 +301,9 @@ public:
 	 *
 	 * AFTER THE FIRST, the clock does not wait for anything: a volley that comes round while the gadget cannot
 	 * act is lost, and one that comes round with nobody within reach is fired at nobody.
+	 *
+	 * AND BEFORE THE VOLLEY, `StepNoDamageAndDrain`, since the layer that built it. `Spawn` also calls this once
+	 * as it places a minion, so a gadget's first step is at an age of nought.
 	 */
 	static void GadgetStep(AActor* Character);
 
@@ -348,6 +351,68 @@ public:
 
 	/** How many bursts it has fired on a kill. Read by tests. */
 	int32 BurstsFired = 0;
+
+	/**
+	 * The two stats of "Your gadgets are invincible but lose 5% of their maximum HP per second passively". Ruled
+	 * 2026-10-13 by the coordinating session under the owner's delegation. Both are asked of the summoner with
+	 * the gadget's type tags, both are flat, and neither has a gameplay attribute or a base.
+	 *
+	 * THE FIRST IS A FLAG: at a flat 1 the summoner's gadgets take no damage from any blow. THE SECOND IS A
+	 * PERCENT: that share of the gadget's maximum health AS IT WAS PLACED is lost each second, as a direct loss
+	 * that no defence and no immunity meets. Each works without the other; the one sentence states both, as two
+	 * rows of one enchantment.
+	 */
+	static const TCHAR* GadgetsTakeNoDamageStat;
+	static const TCHAR* GadgetHealthLostPercentPerSecondStat;
+
+	/**
+	 * How long the no-damage window is opened for each time a holder's gadget is stepped, in seconds. The step
+	 * comes every quarter of a second, so the window is renewed four times before it could lapse; and a gadget
+	 * whose summoner stops holding the flag can be hurt again a second after its last renewal at the latest.
+	 */
+	static constexpr float NoDamageRenewalSeconds = 1.0f;
+
+	/**
+	 * The share of its maximum health as placed below which the drain's next step ends a gadget, as a fraction.
+	 * Twenty steps of a twentieth each do not add up to exactly the whole in floating point; this is the
+	 * allowance for that, a ten-thousandth of the maximum.
+	 */
+	static constexpr float DrainedToNothingShare = 0.0001f;
+
+	/**
+	 * Keep this gadget's no-damage window open if its summoner's row says so, and take what the drain owes for
+	 * the time since the last step. Called by `GadgetStep`, first of its jobs.
+	 *
+	 * NO DAMAGE IS THE WINDOW EVERY CHARACTER ALREADY HAS, `UCataclysmAbilitySystemComponent::GrantDamageImmunity`
+	 * on the gadget's own ability system, renewed on each step while the flag is held. It was chosen as the least
+	 * change: `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` already empties every blow and every tick
+	 * inside it, and nothing in that file is touched. The window empties DAMAGE and nothing else: a stun, a
+	 * knockback, the summon cap removing the gadget and an enemy choosing it as a target do not read it.
+	 *
+	 * THE DRAIN IS A DIRECT WRITE OF HEALTH, as the delayed share of damage taken is drained
+	 * (`UCataclysmDelayedDamage::DrainStep`), so the window above does not stop it. It is counted by the gadget's
+	 * age, so a step that arrives late takes what the late time owes, and no time before the first step is
+	 * charged. THE MAXIMUM IS THE ONE THE GADGET WAS PLACED WITH, read at its first step, which `Spawn` takes as
+	 * it places it; what raises or lowers the maximum afterwards does not move the drain.
+	 *
+	 * A GADGET THE DRAIN EMPTIES DIES AS DESTROYED: its health is written to nought and `HandleDeath` is called,
+	 * so `gadget_destroyed` is raised and everything a minion's death sets off is set off. KILLED BY NOBODY: the
+	 * record of the last blow on it is emptied first, as the Sacrificial Ward empties it, or the death would name
+	 * whoever last hurt it before the row was held.
+	 *
+	 * @return whether the gadget is still standing
+	 */
+	bool StepNoDamageAndDrain();
+
+	/**
+	 * Its maximum health as it was placed, which the drain takes its percent of. Nought until its first step.
+	 * AFTER `minion_health`, which `Spawn` applies before the first step: "Gadgets have 40%-70% increased HP" makes
+	 * this larger and the drain larger with it, so the gadget is emptied in the same time.
+	 */
+	float SpawnedMaxHealth = 0.0f;
+
+	/** The age, in seconds since it was placed, at which the drain was last counted. */
+	float LastDrainAtAgeSeconds = 0.0f;
 
 	/**
 	 * Percent of its type's own health the skill that deployed it asked for, or
