@@ -253,6 +253,79 @@ public:
 	AActor* MostHealthWithinReach() const;
 
 	/**
+	 * How many seconds apart a summoner's gadgets fire at every enemy within their reach. Ruled 2026-10-13 by the
+	 * coordinating session under the owner's delegation, for "Gadgets fire at all enemies within range
+	 * simultaneously once every 5-8 seconds". A row states it flat, scoped to `Type.Deployable`; nought or less is
+	 * no such rule. No gameplay attribute and no base.
+	 *
+	 * THE ROW ROLLS DOWN: 5 is its best figure, by the owner's rule of 2026-10-05 that a better roll gives the
+	 * better outcome.
+	 */
+	static const TCHAR* GadgetVolleyEverySecondsStat;
+
+	/**
+	 * The seconds between this gadget's volleys, or nought for none: the SHORTEST figure among its summoner's flat
+	 * rows on `GadgetVolleyEverySecondsStat` that match this gadget's type tags.
+	 *
+	 * THE SHORTEST AND NOT THE SUM, ruled 2026-10-13. The stat pipeline adds flat rows together, which for two
+	 * rows of 5 and 8 seconds would make a volley every 13; so this reads the rows themselves and not
+	 * `StatForSkill`. A row that is not flat, or that states nought or less, is passed over. A condition on a row
+	 * is judged with nothing known and so refused; the generator refuses such a row.
+	 *
+	 * NOT SHORTENED BY `minion_attack_speed`, ruled the same day: "Gadgets fire 20%-40% faster" is the time
+	 * between a gadget's ordinary shots and is not read here.
+	 *
+	 * NOUGHT FOR EVERYTHING THAT IS NOT A GADGET, as `SummonersGadgetStat` is.
+	 */
+	float VolleyEverySeconds() const;
+
+	/**
+	 * What a gadget does because time passed. Called by `ACataclysmCharacterBase::RegenerationStep` for every
+	 * character, every quarter of a second; it does nothing for a character that is not a minion, for a minion
+	 * that is not a gadget, and for a dead one.
+	 *
+	 * THE VOLLEY'S CLOCK IS STEPPED HERE, AND IT IS THE GADGET'S OWN. THE FIRST VOLLEY COMES ON THE FIRST STEP
+	 * THAT FINDS AN ENEMY WITHIN THE GADGET'S REACH, the coordinating session's judgement of 2026-10-13; after
+	 * it, one each time the row's seconds have passed. The seconds run from the first volley and the beat is
+	 * kept from it: the gadget's age is compared with the age at which the clock last came round, and a volley
+	 * that fires late does not make the next one later. What was first built waited the row's whole seconds
+	 * from the placing, under which a Bolt Turret, which stands 5 seconds, fired at most once as it left.
+	 *
+	 * A STEP THAT FINDS NOBODY WITHIN REACH BEFORE THE FIRST VOLLEY COSTS NOTHING: it fires nothing and starts
+	 * no clock. A GADGET THAT CANNOT ACT, stunned or knocked down, DOES NOT LOSE ITS FIRST VOLLEY: it comes on
+	 * the first step that finds an enemy within reach while the gadget can act. A gadget that comes to hold the
+	 * row late is under the same rule.
+	 *
+	 * A VOLLEY CAN FIRE UP TO A QUARTER OF A SECOND LATE, because this is where the clock is looked at and this
+	 * runs four times a second.
+	 *
+	 * AFTER THE FIRST, the clock does not wait for anything: a volley that comes round while the gadget cannot
+	 * act is lost, and one that comes round with nobody within reach is fired at nobody.
+	 */
+	static void GadgetStep(AActor* Character);
+
+	/**
+	 * Deal this minion's ordinary blow, `AttackTarget`, to every enemy within its reach, now. Each is a single
+	 * blow that can be evaded, and each raises `deployable_hit`. No limit on how many. In addition to its
+	 * ordinary fire: the brain's own time between shots is not read and not moved.
+	 *
+	 * AN ENEMY THAT DIES BEFORE ITS TURN IS PASSED OVER, and a gadget that dies part way through, to the
+	 * retaliation its own blow provoked, strikes nobody after that.
+	 *
+	 * @return how many enemies it struck
+	 */
+	int32 FireVolley();
+
+	/** How many volleys it has fired. Read by tests. */
+	int32 VolleysFired = 0;
+
+	/** Whether it has fired its first volley. Until it has, its clock is not running. */
+	bool bHasFiredAVolley = false;
+
+	/** The age, in seconds since it was placed, at which its volley clock last came round. Nought until it has. */
+	float LastVolleyAtAgeSeconds = 0.0f;
+
+	/**
 	 * Percent of its type's own health the skill that deployed it asked for, or
 	 * zero for that type's health unchanged.
 	 *

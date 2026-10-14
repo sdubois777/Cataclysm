@@ -61,7 +61,7 @@ Positive_When_a_gadget_kills_an_enemy_it_fires_an_additi,"When a gadget kills an
 Positive_Gadgets_deal_bonus_damage_equal_to_3_6_of_your,Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit,Generic,3.0,"Type.Deployable, Stat.Defense.Life",False,
 Positive_Your_gadgets_prioritize_the_highest_HP_enemy_wit,Your gadgets prioritize the highest HP enemy within their range instead of the nearest,Generic,4.0,Type.Deployable,False,
 Positive_When_any_of_your_gadgets_is_destroyed_all_remai,"When any of your gadgets is destroyed, all remaining gadgets gain 30%-50% increased damage for 5 seconds",Generic,4.0,Type.Deployable,False,
-Positive_Gadgets_fire_at_all_enemies_within_range_simulta,Gadgets fire at all enemies within range simultaneously once every 5-8 seconds,Generic,3.0,Type.Deployable,False,
+Positive_Gadgets_fire_at_all_enemies_within_range_simulta,Gadgets fire at all enemies within range simultaneously once every 5-8 seconds,Generic,3.0,Type.Deployable,False,1
 Positive_When_a_trap_is_triggered_near_an_active_gadget,"When a trap is triggered near an active gadget, the gadget fires an immediate bonus shot at the triggering enemy",Generic,4.0,"Type.Trap, Type.Deployable",False,
 Positive_When_a_gadget_is_destroyed_it_arms_all_traps_wit,When a gadget is destroyed it arms all traps within 12 meters instantly,Generic,4.0,"Type.Trap, Type.Deployable",False,
 Positive_Your_heavy_attack_is_converted_into_a_placeable,"Your heavy attack is converted into a placeable trap. When triggered, it fires your heavy attack at the nearest enemy. Scales off trap damage. All placed copies share the heavy attack cooldown.",Generic,3.0,"Type.Trap, Slot.Heavy",False,

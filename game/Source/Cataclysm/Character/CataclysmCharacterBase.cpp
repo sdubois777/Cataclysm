@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
+// For what a gadget does because time passed. Ruled 2026-10-13.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
@@ -171,6 +173,22 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// ITS RETURN VALUE IS DROPPED. Nought is the answer for every character holding no parcel, and it is returned
 	// for tests.
 	UCataclysmDelayedDamage::DrainStep(this);
+
+	// AND A GADGET DOES WHAT ITS SUMMONER'S ROWS MAKE IT DO BECAUSE TIME PASSED, ON THE SAME TIMER. Ruled
+	// 2026-10-13, for "Gadgets fire at all enemies within range simultaneously once every 5-8 seconds": the clock
+	// of a gadget's volley is looked at here, so a volley can fire up to a quarter of a second late.
+	//
+	// EVERY CHARACTER COMES THROUGH HERE AND ALL BUT A GADGET ARE ANSWERED AT ONCE. The call does nothing for a
+	// character that is not a minion, for a minion that is not a gadget, and for a gadget whose summoner holds no
+	// such row.
+	//
+	// A JOB ON THIS STEP RATHER THAN A TIMER ON EACH GADGET, for the reason the health debt gives above: this
+	// already runs four times a second, and a timer for each gadget is one more thing to cancel when one is
+	// destroyed. A test moves the world's clock by hand and calls this job directly.
+	//
+	// BEFORE THE GUARD BELOW, as the drain above is, because what a gadget's step does may end the gadget. It
+	// refuses a corpse itself.
+	ACataclysmMinion::GadgetStep(this);
 
 	// AND FERVOUR MAY ARRIVE FROM THE PASSAGE OF TIME ALONE. Issue #1008. The
 	// Masochist's Low Life keystone reads "While at or below 35% health you gain
