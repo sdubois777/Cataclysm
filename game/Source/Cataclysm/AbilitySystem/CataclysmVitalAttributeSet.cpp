@@ -578,6 +578,28 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.AttackerDebuffs = UCataclysmDebuffs::TagsOnActor(
 				Data.EffectSpec.GetContext().GetEffectCauser());
 
+			// AND HOW LONG AGO THIS CHARACTER FIRST GOT A BLOW THROUGH TO IT, for
+			// "Enemies that survive more than 5 seconds after first being hit gain
+			// 20%-40% increased damage". Ruled 2026-10-12 under the owner's
+			// delegation. The same causer the three lines above read, and outside
+			// the creature cast for their reason: the record is kept by every
+			// character.
+			//
+			// THE CAUSER'S RECORD, ASKED ABOUT THIS CHARACTER'S ABILITY SYSTEM,
+			// which is the key `NoteStruckBy` writes for a blow of this
+			// character's. A causer this character has never struck, or one that
+			// is not a character of this project, leaves -1 and the condition
+			// refuses. THE CAUSER OF A MINION'S BLOW IS THE MINION, so a summoner
+			// struck ten seconds ago does not make its minion's blow one of these.
+			if (const UCataclysmAbilitySystemComponent* Thrower =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(
+							Data.EffectSpec.GetContext().GetEffectCauser())))
+			{
+				Hit.SecondsSinceDefenderFirstStruckAttacker =
+					Thrower->SecondsSinceFirstStruckBy(GetOwningAbilitySystemComponent());
+			}
+
 			// AND HOW FAR APART THE TWO CHARACTERS STOOD, for "You take 25% less
 			// damage from enemies more than 6 metres away from you".
 			//
