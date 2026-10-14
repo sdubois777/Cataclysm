@@ -1412,6 +1412,8 @@ bool FCataclysmSaveWriterWritesTheDungeons::RunTest(const FString&)
 		TestEqual(TEXT("its number"), Saved.DungeonId, Live.DungeonId);
 		TestEqual(TEXT("which city it assaults"), Saved.CityId, Live.CityId);
 		TestEqual(TEXT("how deep it is"), Saved.Floors, Live.Floors);
+		TestEqual(TEXT("how many of those floors a city upgrade moved"),
+				  Saved.UpgradeFloors, Live.UpgradeFloors);
 		TestEqual(TEXT("what it does differently"),
 				  static_cast<uint8>(Saved.SubType),
 				  static_cast<uint8>(Live.SubType));

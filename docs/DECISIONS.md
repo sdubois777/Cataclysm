@@ -2,6 +2,172 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — In the game a dungeon's hit is sized by the floors it was rolled with; the two city upgrades that move floors no longer change it
+
+**Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
+No Unreal test was run. The first build and run belong to a later session.
+
+**Said first: two city upgrades do less than they did.** `DungeonFloorsFewer` no longer shrinks the hit of
+dungeons on its city, and `DungeonFloorsMore` no longer enlarges it. Both still move the depth, the days the
+dungeon takes to walk and its resolve timer. Before this change a city holding `DungeonFloorsFewer` took smaller
+hits, so a player who bought it for that reason gets less from it now. This is on the owner's play-check list
+below.
+
+**Said first: the owner's accepted line names the empire tree, and the game has no empire tree.** Applying the
+line to the two city upgrades is a judgement of the coordinating session, labelled below. It is not the owner's
+sentence.
+
+This is layer 1 of a stack of three written the same day. Layer 2 changes a surge to 5 dungeons every 90 days.
+Layer 3 makes an ordinary dungeon leave after it hits and makes a Quest dungeon's timer hit its city. Each has
+its own entry above this one.
+
+### The decision, and who said what
+
+The owner, typed in the coordinating session on 2026-10-13, verbatim: "your rec on all three, continue".
+
+The recommendation that sentence accepts which concerns this layer, in the coordinating session's words and not
+the owner's: a dungeon's hit is sized by its NATURAL floors, not the floors the Explorer tree adds.
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.
+
+- Ruling 1: "The rule-4 field is UpgradeFloors (what the upgrades moved, taken after the clamp at 1); BiteScale
+  reads Floors minus UpgradeFloors."
+- Ruling 6: "ONE STACK OF THREE LAYERS IN ONE WINDOW, merged one directly after the other the same day: rule 4;
+  rule 3; rules 1 and 2. Keep the three-way split of commits so a failure reads by layer."
+- Extending the owner's accepted line from the empire tree to the two city upgrades `DungeonFloorsMore` and
+  `DungeonFloorsFewer`: a labelled judgement by the coordinating session under the owner's delegation,
+  2026-10-13. The owner's accepted line names the tree. The reading not taken leaves the game's hit sized by the
+  total floors, upgrades included, because the game has no tree for the line to apply to.
+
+### What was read before writing
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`: `FCataclysmDungeon::BiteScale` whole;
+  `UCataclysmSurgeScheduler::MakeDungeon` whole; `MakeFallenCityDungeon`, where the third assignment of
+  `Dungeon.Floors` is.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`: `FCataclysmDungeon` from `CityTier` to `Resolves`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `ResolveDungeon`, the one caller of `BiteScale`
+  in game code, and `RelocateQuestDungeon`.
+- `game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp`:
+  `Cataclysm.Surge.ADeeperDungeonTakesABiggerBiteOutOfItsCity`,
+  `Cataclysm.Surge.AFloorUpgradeMovesTheDepthAndTheTimerTogether` and
+  `Cataclysm.Surge.AQuickerDungeonKeepsItsFloorsItsRewardAndItsTimer`.
+- `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp`:
+  `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`.
+- `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py` whole.
+- `sim/cataclysm_sim/engine.py`: `Simulation._hit_floors`.
+- The plan for this stack listed the existing tests that build a dungeon by hand and read its hit. That list was
+  not read again test by test for this layer.
+
+### How it is built
+
+- `FCataclysmDungeon::UpgradeFloors`, an `int32` that starts at 0 and is a `SaveGame` field. It holds how many
+  floors the host city's two floor upgrades added, negative when they removed floors.
+- `UCataclysmSurgeScheduler::MakeDungeon` rolls the depth, keeps the roll in a local, applies the upgrades with
+  the clamp at one floor as before, and then stores `Dungeon.Floors - Rolled`. It does not store "more less
+  fewer": an upgrade of 500 fewer floors on a 12 floor dungeon moved 11 floors, and 11 is what is stored.
+- `FCataclysmDungeon::BiteScale` returns `(Floors - UpgradeFloors) / Typical`. `Typical` is the midpoint of the
+  floor range of `SpecFor(Type, CityTier)`, unchanged.
+- The walk and the resolve timer still read `Dungeon.Floors`, after the upgrades.
+- A dungeon nobody set the field on has 0 there: one built by hand in a test, a Fallen City dungeon, and one
+  read from a save written before the field existed. Each is sized by all of its floors, as before. That is why
+  no existing Unreal assertion changes in this layer.
+- The save. A dungeon is written whole, every `SaveGame` field, so the field is written with no other change. No
+  schema version was raised: a comment in `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` says "A field added
+  with a sensible default is not a schema version bump" and cites `docs/Save_System_Design.md` section 5. That
+  document was not read for this layer. The plan for this stack says nothing loads a save yet; that was not
+  checked again here.
+- The random stream is not touched. The roll is the same draw it was, so no seeded campaign changes.
+
+### For the owner's play-check
+
+- **A city holding `DungeonFloorsFewer` no longer takes smaller hits.** Its dungeons are still shallower,
+  quicker to walk, worth less and sooner to come due. The reading not taken: the upgrade keeps shrinking the hit.
+- **A city holding `DungeonFloorsMore` no longer takes bigger hits.** Its dungeons are still deeper, slower to
+  walk, worth more and later to come due. The reading not taken: the upgrade keeps enlarging the hit.
+- Nothing on screen says what a dungeon's hit will be, before or after this change. The city screen's line for a
+  dungeon gives its floors and the days until it bites.
+
+### The writing session's judgements, for the coordinating session to confirm
+
+1. A judgement by the writing session, for the coordinating session to confirm: the new test adds a fifth case
+   the brief did not name, an upgrade of 500 fewer floors, because the ruling says the field is taken after the
+   clamp at 1 and only a clamped dungeon can tell that from "more less fewer".
+2. A judgement by the writing session, for the coordinating session to confirm: "the three stored values" in the
+   brief was read as `UpgradeFloors` on the three upgraded dungeons (5, -5 and 3).
+3. A judgement by the writing session, for the coordinating session to confirm: one comment that this layer
+   makes imprecise was left alone because its test must not be edited before the run. It is in
+   `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity` and says `BiteScale` divides `Floors` by the midpoint.
+4. A judgement by the writing session, for the coordinating session to confirm: one sentence in
+   `sim/cataclysm_sim/engine.py` (the docstring of `Simulation._hit_floors`) said the game divides `Floors`. It
+   now says the game divides `Floors` less `UpgradeFloors`. No simulation behaviour and no simulation test
+   changed.
+
+### Tests
+
+**No existing Unreal assertion was changed.** One existing test gained an assertion:
+
+- `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons` gains "how many of those floors a city
+  upgrade moved", comparing `UpgradeFloors` on the dungeon read from the file with the live one. No campaign in
+  that test buys a floor upgrade, so both are 0 and the assertion can show only that the field is written and
+  read.
+
+**One new Unreal test,** `Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes`, headless. It makes five
+dungeons from five streams at one seed on five Outposts: no upgrade, five floors more, five fewer, both (five
+more and two fewer), and 500 fewer.
+
+- Set-up: five Outposts were found; the plain dungeon has more than 6 floors; its row has a floor range and
+  takes defence.
+- "the plain dungeon's scale is its floors over its row's midpoint", the midpoint read from `SpecFor`; "and no
+  upgrade moved its floors" (0).
+- Controls, that the upgrades did move something: the depths are the plain depth plus 5, minus 5 and plus 3,
+  and 1 for the clamped one; the deeper dungeon's walk and timer are longer than the plain one's and the
+  shallower one's are shorter.
+- `UpgradeFloors` is 5, -5, 3, and 1 less the plain depth for the clamped one.
+- `BiteScale()` of each of the four upgraded dungeons equals the plain one's.
+
+### Python checks
+
+`tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`. Its three cases about the model are
+unchanged. Its cases about the game:
+
+- `test_the_game_divides_floors_by_the_same_midpoint` became
+  `test_the_game_divides_the_rolled_floors_by_the_same_midpoint`: `BiteScale` returns
+  `(Floors - UpgradeFloors) / Typical` over the same midpoint, and does not divide the total.
+- `test_the_games_floors_include_what_a_city_upgrade_moved`, which recorded the difference, became
+  `test_the_game_keeps_the_rolled_depth_apart_from_what_an_upgrade_moved`: `MakeDungeon` rolls, keeps the roll,
+  applies the upgrades and stores the difference, in that order, once each; the field starts at 0.
+- New, `test_in_the_game_the_walk_and_the_timer_still_read_the_total_floors`.
+- `test_nothing_else_in_the_game_moves_a_dungeons_floors` is unchanged and still counts three assignments.
+
+The two halves cannot be compared by a figure: the game has no empire tree and the model has no city upgrades.
+The check compares the two formulas and the order each is built in.
+
+### Not covered
+
+- No test makes a campaign in which a city holds a floor upgrade and a dungeon on it hits. The new test reads
+  `BiteScale()` on dungeons the scheduler made; `ResolveDungeon` multiplying by it is covered by the existing
+  `Cataclysm.EmpireRun.ADungeonResolvingTakesExactlyItsPointsOfDefence`, which buys no upgrade.
+- The save test's new assertion compares 0 with 0.
+- No test reads a save file written before the field existed. Nothing loads a save yet.
+- Whether a player would rather the two upgrades kept moving the hit was not measured. The model has no city
+  upgrades, so no simulation figure speaks to it.
+
+### Guard proofs proposed for the C++
+
+None was run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`, counted once in
+the file at this commit. The test for all three is
+`Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes`.
+
+| | The line | Becomes | Predicted |
+|---|---|---|---|
+| a | `return Typical <= 0.0f ? 1.0f : (Floors - UpgradeFloors) / Typical;` | `return Typical <= 0.0f ? 1.0f : Floors / Typical;` | 4 fail: the four "hits at the plain one's scale" |
+| b | `Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;` | `Dungeon.UpgradeFloors = 0;` | 8 fail: the four stored values and the four "hits at the plain one's scale" |
+| c | `Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;` | `Dungeon.UpgradeFloors = Deeper - Shallower;` | 2 fail: "the clamped one stores what was removed and not five hundred" and "the one-floor dungeon hits at the plain one's scale" |
+
+---
+
 ## 2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for nothing (#2414)
 
 **Not built and not run, when written; the Run section below has the run.** Nothing was compiled and nothing was run in Unreal. The C++ change and its one new
