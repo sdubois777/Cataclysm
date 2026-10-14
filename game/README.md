@@ -197,8 +197,10 @@ by `git add` with no error and no warning. Guarded by
   it brings, which cities they land on and how deep each one is (issue
   [#1083](https://github.com/sdubois777/Cataclysm/issues/1083)).
   `UCataclysmEmpireRun` owns those three and advances a day: a wave lands, timers
-  move, every Siege takes its daily share, a dungeon that runs out takes a share
-  of its host city, a city whose defence reaches zero falls, and its fall opens
+  move, every Siege takes its daily share, an ordinary dungeon that runs out
+  takes points off its host city and leaves the map, a Quest dungeon that runs
+  out takes an ordinary dungeon's hit off its host and then refreshes and may
+  move, a city whose defence reaches zero falls, and its fall opens
   the lane behind it (issue
   [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). The module also
   holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
@@ -414,7 +416,8 @@ by `git add` with no error and no warning. Guarded by
   while already standing in `L_Dungeon`, and clearing one leaves the player
   standing on the floor they beat. **Only walking a dungeon, dying in one and the
   console commands move the day**: a death inside a dungeon of the empire costs
-  5, 10 or 15 days by lethality mode, resolves an ordinary dungeon at once, and
+  5, 10 or 15 days by lethality mode, resolves an ordinary dungeon at once so
+  that it hits its city and leaves the map, and
   leaves the player on the floor they died on with no dungeon bound (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)). The equipment a
   death costs in Hardcore and Heretic is not built, and there is no forge to

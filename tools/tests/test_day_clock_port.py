@@ -132,11 +132,12 @@ class TestTheTwoStructuralRules:
         timers of Quest dungeons and Dungeon Cities while those dungeons stay
         listed, so a Quest dungeon would never relocate again.
 
-        THE GAME DOES NOT HAVE THE RULE YET, ON PURPOSE, and when it gains it
-        the rule goes at the end of `UCataclysmEmpireRun::ResolveDungeon` as
-        one `RemoveDungeon(DungeonId)` call.
-        `test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
-        records the divergence and fails when the game gains the rule.
+        THE GAME HAS THE RULE SINCE ITS LAYER OF 2026-10-13, AND NOT THROUGH
+        THIS CONSTANT. It is at the end of
+        `UCataclysmEmpireRun::ResolveDungeon` as one `RemoveDungeon(DungeonId)`
+        call, which takes the dungeon and its timer off together.
+        `test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`
+        holds the two halves together.
         """
         unreal = constant(clock_source, "bDungeonPersistsAfterResolve",
                           r"true|false")
@@ -153,9 +154,9 @@ class TestTheTwoStructuralRules:
         assert model.dungeon_persists_after_resolve is False, (
             "The model keeps a resolved ordinary dungeon again. If that was "
             "done to make the model match the clock's constant, undo it: the "
-            "two differ on purpose, and "
-            "test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_"
-            "game.py says what ends the difference.")
+            "two are different questions, and "
+            "test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py "
+            "holds the rule in both halves.")
 
 
 class TestWhatDyingCosts:

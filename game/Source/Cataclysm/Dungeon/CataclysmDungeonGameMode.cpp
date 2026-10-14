@@ -21866,25 +21866,27 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 
 	// 1. IT RESOLVES, IF IT IS THE KIND THAT DOES, WHILE THE PLAYER IS STILL
 	// INSIDE. Every part of that is the empire's: the consequence on the city,
-	// the timer set back to full, and doing nothing at all for a Quest dungeon
-	// or a Dungeon City.
+	// the dungeon leaving the map after it, and doing nothing at all for a
+	// Quest dungeon or a Dungeon City.
 	const FCataclysmDayReport WhatTheDeathResolved =
 		Run->ResolveDungeonOnDeath(DiedInDungeon);
 
-	// 2. THE WALK ENDS, as clearing the last floor ends it, except that the
-	// dungeon is still on the map. Its timer counts again from here.
+	// 2. THE WALK ENDS, as clearing the last floor ends it. An ordinary
+	// dungeon is off the map already: it hit its city in step 1 and left, and
+	// the empire told the clock the player was out of it. A Quest dungeon or a
+	// Dungeon City is still on the map and its timer counts again from here.
 	LeaveEmpireDungeon();
 
 	// 3. AND THE DAYS ARE PAID, whole days through the same call every other
 	// run of days goes through, so a surge, a repair and a resolve that fall
 	// inside them happen on their own days.
 	//
-	// THE DUNGEON'S OWN TIMER RUNS THROUGH THESE DAYS, full from step 1. On
-	// Heretic that is 15 days against a full timer of 10 plus 1.6 a floor, so a
-	// dungeon whose full timer is 15 days or fewer resolves once more inside
-	// them: three floors or fewer, 14.8 days at three, before the 15% either
-	// way a surge rolls onto a timer. Accepted as it falls, by ruling;
-	// `docs/DECISIONS.md` has the figures.
+	// AN ORDINARY DUNGEON HAS NO TIMER LEFT TO RUN THROUGH THESE DAYS. It left
+	// the map in step 1. Until 2026-10-13 it stayed with a full timer, and on
+	// Heretic a dungeon of three floors or fewer resolved a second time inside
+	// the 15 days; that cannot happen now. A QUEST DUNGEON'S TIMER DOES RUN
+	// THROUGH THEM, untouched by the death, and hits its host city if it runs
+	// out inside them.
 	const int32 DaysTheDeathCost = Run->DeathDayCost();
 	Run->AdvanceDays(DaysTheDeathCost);
 

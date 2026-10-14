@@ -23,10 +23,10 @@ fall, as before. A dungeon carrying a Siege leaves like any other and its daily
 damage stops. A dungeon the player dies in hits once and leaves. A dungeon that
 leaves is not a clear and adds nothing to the Cataclysm boss's floors.
 
-**THE GAME DOES NOT HAVE THIS RULE YET AND DIFFERS ON PURPOSE.** It goes into
-the game only with retuned numbers.
-`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
-records the difference and fails when the game gains the rule.
+**THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.** It went into the
+game together with the retuned surge, 5 dungeons every 90 days.
+`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`
+holds the two halves together.
 
 **NOTHING HAS BEEN RETUNED, AND AN EMPIRE NOBODY DEFENDS NO LONGER ALWAYS
 LOSES.** No constant moved with the default. `experiments.py` has not been run
@@ -362,7 +362,7 @@ on what evidence at the time.
   or by a death. The owner ruled it on 2026-10-08.
   `TuningConfig.dungeon_persists_after_resolve` is `False`; `True` keeps the
   dungeon with its timer full again, which was the rule here until 2026-10-12
-  and is what the game still does. No sweep moves it. A Quest dungeon and a
+  and in the game until 2026-10-13. No sweep moves it. A Quest dungeon and a
   Fallen City dungeon stay as they were.
 - **A city falling triggers a surge**, and optionally advances the escalation.
 - **An empty board triggers a surge too, however it emptied.** The project owner

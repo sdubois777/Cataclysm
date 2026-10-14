@@ -2,6 +2,521 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — In the game an ordinary dungeon leaves the map after it hits its city, and a Quest dungeon's timer hits its host city
+
+**Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
+No Unreal test was run, changed or new. The first build and run belong to a later session.
+
+**Said first: what a player sees differently.**
+
+- An ordinary dungeon whose timer runs out takes its points from its city once and is then gone from the map.
+  Before this change it stayed, its timer went back to full, and it took the same points again each time.
+- A Quest dungeon whose timer runs out now takes points from the city it stands on. The amount is what an
+  ordinary dungeon of typical depth takes from a city of that tier (the ordinary row of the table for the host's
+  tier). The Quest dungeon's own depth does not change it. Before this change the city paid nothing. The dungeon
+  then has a full timer again and may move to an adjacent city, as before. Its timer is 25 days at every depth,
+  so a Quest dungeon nobody clears takes that amount from its host every 25 days.
+- If a Quest dungeon's hit fells its city, the Quest dungeon is absorbed into the fallen city with every other
+  dungeon on it. It does not refresh and does not move.
+- Dying in an ordinary dungeon still makes it hit its city at once. It then leaves the map. On Heretic a dungeon
+  of three floors or fewer used to hit a second time inside the 15 days the death costs; it cannot now.
+- A Siege carried by an ordinary dungeon ends when that dungeon's timer runs out and it leaves.
+- The empire screen's second line gains the last hit, for example "Day 37: a dungeon hit <city> and left." or
+  "Day 37: a Quest dungeon's timer hit <city>." The console command `Cataclysm.EmpireAdvance` names each city
+  hit on each day, and the run's printed description counts both kinds of hit.
+
+**Said first: existing tests were left unedited whose outcome under these rules is not known.** The rulings say
+they are not edited before the run. Each is named here with what the plan for this stack found could make it
+fail. None of this was run.
+
+Expected to fail, or at real risk (13):
+
+1. `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar`: five seeds, 2,000 days. Ruling 5: keep
+   it and see the run; if a seed does not lose, stop and report.
+2. `Cataclysm.EmpireRun.AnIgnoredDungeonBitesTheSameCityAgainAndAgain`: an ordinary dungeon can no longer hit
+   twice. A Quest dungeon's 25-day timer can, so "resolved more than once" may still be true for a reason that is
+   not the test's rule. Its name and comments state the removed rule. Not renamed, by ruling.
+3. `Cataclysm.EmpireRun.ADungeonResolvingTakesExactlyItsPointsOfDefence`: it expects nought from a Quest
+   dungeon's timer, and the city now loses the ordinary row.
+4. `Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice`: needs a city retaken and
+   dungeons absorbed over 20 campaigns.
+5. `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`: needs 1,000 dungeons made in 40 campaigns.
+6. `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`: needs 500 dungeons rolled in 20 campaigns.
+7. `Cataclysm.DungeonModifiers.ASacrificialDungeonInARunReallyGetsDouble`: needs a city to fall inside 400 days
+   on seed 3.
+8. `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`: it counts a dungeon that is gone as
+   absorbed, and dungeons of the wave now leave while the player walks the others.
+9. `Cataclysm.DungeonMode.ReachingTheBottomTakesTheDungeonOffTheMap`: "dungeon %d was left alone" is false if
+   other ordinary dungeons leave during the walk.
+10. `Cataclysm.DungeonModifierEffects.ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor`: "the
+    dungeon is still on the map" is false when the dungeon it enters rolled ordinary.
+11. `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`.
+12. `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself`.
+13. `Cataclysm.EmpireRun.ClearingAFallenCityTakesTheCityBackAtHalf`.
+
+Near-certain to pass, but dependent on what a seed rolls (15):
+`Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`,
+`Cataclysm.EmpireRun.OnlyAResolveThatCostACitySomethingIsCounted` (its label was corrected by ruling g; its
+counts over campaigns were not),
+`Cataclysm.EmpireRun.DescribeSaysWhatWasClearedAndWhichDungeonIsAQuest`,
+`Cataclysm.EmpireRun.ACityNeverHoldsTwoSieges`,
+`Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone`,
+`Cataclysm.EmpireRun.TheSameSeedGivesTheSameRunAndADifferentOneDoesNot`,
+`Cataclysm.Roster.EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt`,
+`Cataclysm.DungeonMode.WalkingADungeonCarriesItsSubTypeIn`,
+`Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`,
+`Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave`,
+`Cataclysm.Surge.AWaveRollsASubTypePerDungeon`,
+`Cataclysm.Surge.AWaveWillNotPutASiegeOnACityThatHasOne`,
+`Cataclysm.Surge.OneWaveNeverPutsTwoSiegesOnOneCity`,
+`Cataclysm.DungeonModifiers.TheSameSeedDrawsTheSameModifiers`,
+`Cataclysm.EmpireRun.ARelocatingSiegeRefusesACityThatAlreadyHasOne`.
+
+**Said first: one changed test was made stricter in a way the rulings did not spell out.**
+`Cataclysm.EmpireRun.AQuestDungeonHitsItsCityAndThenRefreshes` (ruling e) drives 20 campaigns. Its two
+assertions became amounts. To make an amount exact it now also skips a city a Siege bit that day and a city
+that had fallen before that day, multiplies the row by how many Quest timers ran out on the city that day, and
+lets population stop at nought. Each is a judgement of the writing session, listed below.
+
+**Said first: three standing differences between the game and the simulation are not changed here.**
+
+- A city's fall absorbs the dungeon the player is inside in the game; the simulation spares it. A Quest
+  dungeon's hit can now fell a city, so this is reached more often. By ruling it is not changed in this stack,
+  and the registering session files its issue.
+- The game has no Last Stand. Once the Pillar can be reached the game sends no empty-board wave, and with
+  ordinary dungeons leaving the board empties more often.
+- `UCataclysmSurgeScheduler::LastSurgeDay` is not saved, and the empty-board rule measures from it.
+
+### The decision, and who said what
+
+The owner, 2026-10-08, verbatim: "resolve means what happens when a dungeon ticks down it's timer. Ordinary
+dungeons will do their city/population damage, and then despawn. Quest dungeons will do their city/population
+damage, and either refresh their timer and stay on that city, or potentially move to an adjacent city. Fallen
+city dungeons don't have a resolution timer as they're the enemies now."
+
+The owner, 2026-10-09, verbatim: "your rec on all the open questions". One recommendation it accepted, in the
+coordinating session's words and not the owner's: a Quest dungeon costs its city nothing.
+
+The owner, typed in the coordinating session on 2026-10-13, verbatim: "your rec on all three, continue".
+
+The recommendation that sentence accepts which concerns this layer, in the coordinating session's words and not
+the owner's: a Quest dungeon HITS its city when its timer runs out, at the size of an ordinary dungeon's hit for
+that city, then refreshes or moves as before.
+
+For Quest dungeons, 2026-10-13 supersedes both earlier lines. It reverses the line of 2026-10-09 and returns to
+the owner's sentence of 2026-10-08.
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.
+
+- Ruling 2: "A Quest hit is counted in a new QuestHits and not in DungeonsDetonated."
+- Ruling 3: "Keep the refill in ResolveDungeonOnDeath and its Python check; say in a comment what case it still
+  serves."
+- Ruling 4: "Telling the player: all four as proposed (the day report's two lists; the console command's two
+  lines; ONE line on the empire screen through a new static on UCataclysmEmpireMapLayout; Describe's tail). The
+  owner's standing rule is that every system has a basic interface."
+- Ruling 5: "AnUnattendedEmpireAlwaysLosesThePathToThePillar: keep 2,000 days and five seeds and see the run. If
+  a seed does not lose, STOP and report with the day each seed did or did not lose; then measure the game's own
+  share over more seeds before any number changes. Do not change the test to pass."
+- Ruling 6: one stack of three layers in one window, this one third.
+- Ruling 7: "The two Python checks change with the design document, each named in the entry; "Does not resolve"
+  leaves the Quest row because it stops being true."
+- The test changes a to g, each quoted under "Tests changed" below.
+- "AnIgnoredDungeonBitesTheSameCityAgainAndAgain: do NOT rename it before the run. Report what it does; then the
+  coordinating session rules."
+- "The 13 at real risk and the 15 near-certain: NOT edited before the window. If one fails, stop at the suite and
+  report against the list."
+- "One issue is filed (by the registering session) for the standing difference that a city's fall absorbs the
+  dungeon the player is inside in the game and spares it in the model; it is NOT changed in this stack."
+
+No source on how shipped games do either rule was read. Neither is a new formula: the size of a Quest hit is an
+existing row of the table, and leaving after a hit removes a dungeon.
+
+### What was read before writing
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `Begin`, `AdvanceDay`, `ResolveDungeon`,
+  `RelocateQuestDungeon` (its code, without most of its comments), `CityFell`, `RemoveDungeon`,
+  `ResolveDungeonOnDeath`, the end of `ClearDungeon`, and `Describe` from its day line to its dungeon list.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`: `FCataclysmDayReport` whole, the tallies, and the
+  comments on `ResolveDungeonOnDeath`, `ResolveDungeon`, `RelocateQuestDungeon` and `RemoveDungeon`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp`: `Damage`.
+- `game/Source/CataclysmEmpire/DayClock/CataclysmDayClock.cpp`: where a timer that ran out is refilled, and
+  `SetResolveDays`.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `EndTheDungeonForADeath` and
+  `LeaveEmpireDungeon`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the `Cataclysm.EmpireAdvance` command.
+- `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h` and `.cpp` (`ProgressLine`), and
+  `CataclysmEmpireMapWidget.cpp` where it writes the two labels.
+- `sim/cataclysm_sim/engine.py`: `Simulation._resolve` whole.
+- The tests changed: a, b, d, e and f whole, with the helpers they call; c and g where the changed assertion
+  is.
+- The two Python checks that recorded the differences, whole; the parts of `test_surge_port.py`,
+  `test_day_clock_port.py`, `test_quest_relocation_is_stated.py` and `test_a_death_ends_the_dungeon.py` named
+  below.
+- **Not read:** the 28 unedited tests above were not read again for this layer; what is said of them is the
+  plan's. `CataclysmDungeonModifierEffectsTests.cpp` was not opened.
+
+### How it is built
+
+**An ordinary dungeon leaves.** At the end of `UCataclysmEmpireRun::ResolveDungeon`, after the damage and the
+possible `CityFell`, one call: `RemoveDungeon(DungeonId)`. When it removes the dungeon the city is added to the
+day report's `HitAndLeft`. When the hit felled the city the fall has already absorbed the dungeon,
+`RemoveDungeon` answers false, and the dungeon is in `Absorbed` and not in `HitAndLeft`. It is `RemoveDungeon`
+and not `ClearDungeon`, so nothing is counted as cleared, no objective is earned and no city is repaired. An
+ordinary dungeon on a city that had already fallen takes nothing and stays, as in the simulation.
+
+Both resolve paths reach that line: a timer running out, and a death through `ResolveDungeonOnDeath`.
+`RemoveDungeon` also tells the clock the player has left when the dungeon is the one the player is inside, so
+after a death in an ordinary dungeon the clock no longer holds the player inside before the game mode's own
+`LeaveEmpireDungeon` runs.
+
+**The refill in `ResolveDungeonOnDeath` is kept, by ruling 3.** It now finds a timer in one case only: an
+ordinary dungeon standing on a city that had already fallen, which takes nothing and stays. Its comment says so.
+A test places such a dungeon by hand. Whether play can put one there was not established.
+
+**The day clock is not changed.** `UCataclysmDayClock::bDungeonPersistsAfterResolve` stays true: the clock
+refills every timer that ran out, which a Quest dungeon and a Dungeon City need, and the run removes the
+ordinary dungeon and its timer afterwards.
+
+**A Quest dungeon's timer hits.** Inside the `if (!Dungeon->Resolves())` block of `ResolveDungeon`, for a
+dungeon whose `Type` is Quest and whose host city is on the map and has not fallen: the host takes
+`SpecFor(Basic, Host->Tier)`'s defence and population through `Map->Damage`. `Host->Tier` is the tier of the city
+the dungeon stands on now, not `Dungeon->CityTier`, which is the tier its depth was rolled on. `BiteScale` is not
+used. The hit raises the run's new `QuestHits` and adds the city to the day report's `QuestHits`;
+`DungeonsDetonated` is not raised. If the hit fells the city, `CityFell` runs and the function returns: no
+refresh is needed, no move is made and no draw is taken. Otherwise `RelocateQuestDungeon` runs as before.
+`FCataclysmDungeon::Resolves` still answers true for an ordinary dungeon and nothing else, so a death in a Quest
+dungeon still resolves nothing.
+
+**Telling the player, the four places of ruling 4.**
+
+1. `FCataclysmDayReport::HitAndLeft` and `FCataclysmDayReport::QuestHits`: city numbers, one entry a hit.
+2. `Cataclysm.EmpireAdvance` prints "a dungeon hit %s and left" and "a Quest dungeon's timer hit %s" for each.
+3. `UCataclysmEmpireMapLayout::LastHitLine`, a new static, builds one line from three unsaved fields the run
+   keeps for its last hit (`LastHitDay`, `LastHitCityId`, `bLastHitWasAQuestTimer`). The empire screen appends it
+   to its existing surge label, so no Widget Blueprint changes. `ProgressLine` is not changed.
+4. `Describe` ends "%d ordinary dungeons have hit a city. %d Quest dungeon timers have hit one."
+
+**The save.** `QuestHits` and the three last-hit fields are not saved, like the tallies beside them. No saved
+field was added in this layer.
+
+### For the owner's play-check
+
+- **An ordinary dungeon hits once and leaves.** The reading not taken: it stays and hits again, which the game
+  did.
+- **A Quest dungeon's hit is the ordinary row of the host's tier at a scale of 1.0**: 100 defence and 250
+  population on an Outpost as the table stands, read from the table by the code. The reading not taken
+  multiplies it by the Quest dungeon's floors over the midpoint of the ordinary row's floor range, about 2.2
+  times as much on an Outpost at the middle of both ranges; the simulation's entry of 2026-10-13 has its
+  figures.
+- **A Quest dungeon hits every 25 days whatever its depth.** `CLAUDE.md` says resolve timers scale with depth.
+  The comment on `QuestResolveDays` used to argue the flat timer did not break that rule because the dungeon
+  "takes nothing whenever its timer runs out". That argument is gone and the comment is rewritten. Whether a
+  Quest dungeon's timer should follow its depth is not ruled and is open. The model and the game both keep 25.
+- **An unattended Quest dungeon fells an Outpost at full defence on its tenth timer**: 1,000 defence at 100 a
+  hit, which is the simulation entry's own figure.
+- **The line on the empire screen names the last hit only**, and an ordinary dungeon whose hit felled its city
+  gets no line (the screen already counts the city lost). The reading not taken is a list of the day's events
+  on the screen.
+- **A death in an ordinary dungeon now removes it.** The player is left as before: on the floor they died on,
+  with no dungeon bound.
+- **The city screen still prints "%d floors, %.0f days until it bites" for every kind.** It is now true of a
+  Quest dungeon as well. Not changed.
+
+### The seven design-document sentences, as approved
+
+Recorded as the rulings give them. Each was written into `docs/Cataclysm_GDD_v2.md` in this layer.
+
+1. The table row "| Quest | Does not resolve — refreshes and may move to adjacent city." becomes: "| Quest |
+   When its timer runs out it hits its host city with an ordinary dungeon's hit for that city, then its timer
+   refreshes and it may move to an adjacent city. Required to challenge the Cataclysm. |"
+2. "A Quest dungeon's timer running out costs its host city nothing. The timer refreshes to full and the dungeon
+   **may move to an adjacent city**..." becomes: "A Quest dungeon's timer running out hits its host city. The
+   city takes what an ordinary dungeon's hit takes from a city of its tier, whatever the Quest dungeon's own
+   depth and whatever tier it was first placed on. If that hit fells the city, the Quest dungeon is absorbed
+   into the fallen city with every other dungeon on it. Otherwise the timer refreshes to full and the dungeon
+   **may move to an adjacent city** ..." (the rest unchanged).
+3. The paragraph beginning "**The project owner spoke to this twice, and the second answer stands.**" and ending
+   "For Quest dungeons the second supersedes the first." becomes: "**The project owner spoke to this three
+   times, and 2026-10-13 supersedes both earlier lines.** On 2026-10-08, verbatim: "resolve means what happens
+   when a dungeon ticks down it's timer. Ordinary dungeons will do their city/population damage, and then
+   despawn. Quest dungeons will do their city/population damage, and either refresh their timer and stay on that
+   city, or potentially move to an adjacent city. Fallen city dungeons don't have a resolution timer as they're
+   the enemies now." On 2026-10-09 the coordinating session recommended that a Quest dungeon cost its city
+   nothing when its timer runs out, and the owner accepted that with the words "your rec on all the open
+   questions". On 2026-10-13 the coordinating session recommended that a Quest dungeon hit its city when its
+   timer runs out, at the size of an ordinary dungeon's hit for that city, then refresh or move as before, and
+   the owner accepted that with the words "your rec on all three, continue". 2026-10-13 supersedes both: it
+   reverses 2026-10-09 and returns to the sentence of 2026-10-08."
+4. In the bullet beginning "**Dying in an ordinary dungeon also resolves it at once**": "A Quest dungeon and a
+   Dungeon City never resolve, so this does not reach them ... A Quest dungeon's city pays nothing for the death"
+   becomes: "A death resolves an ordinary dungeon and no other kind: dying in a Quest dungeon or a Dungeon City
+   costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing
+   for the death; its timer is not touched by the death, runs on through the days paid, and hits the city when it
+   runs out."
+5. Beside "**Half the coin is not half the timers...** ... roughly **38% of its timers**" and beside the later
+   sentence "measured over 926 quest timers in 30 campaigns": one dated sentence each: "Measured before
+   2026-10-13, when a Quest dungeon's timer cost its city nothing; with the hit a city can fall under the
+   dungeon, and this was not re-measured."
+6. Beside "**Measured in the simulation on 2026-09-07 over 6,000 campaigns** ... static surges every 120 days
+   for 5 dungeons" and the sentence containing "the triage policy, and static surges of five dungeons every
+   120": one dated sentence: "The simulation's default is 5 dungeons every 90 days since 2026-10-13; these
+   figures are at 5 every 120 and were not re-measured."
+7. New sentences the game layer adds: the cadence (5 dungeons every 90 days), that a hit is sized by the floors
+   a dungeon was rolled with, and that a floor-adding or floor-removing upgrade does not change the hit.
+
+**How each was written.** 1 to 4 are in the document word for word. 5 and 6 are each in the two places named, at
+the end of the paragraph. For 7 and for D1 to D8 of the plan, the words are the writing session's:
+
+- Beside "A Surge is triggered at run start and recurs after a fixed number of days or when a city falls.":
+  "Before any escalation a Surge brings 5 dungeons and the next comes 90 days after the last; until 2026-10-13 it
+  was 4 dungeons every 120 days. Every measured figure in this document that is dated before 2026-10-13 was
+  taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city
+  nothing, and a surge came every 120 days at the size each passage states. None of them was measured again."
+  (7's cadence, and D8's dated sentence.)
+- After "...different choices rather than one written twice.": "Neither changes what the dungeon takes from its
+  city: the hit is sized by the floors the dungeon was rolled with, so an upgrade that adds floors to a city's
+  dungeons does not make them hit harder and one that removes floors does not make them hit less." (7 and D5.)
+- D1: "An unattended Siege now empties a city in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47"
+  became "A Siege left standing empties a city in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47",
+  its closing clause kept, followed by: "One carried by an ordinary dungeon ends when that dungeon's timer runs
+  out and it leaves the map: measured in the simulation on 2026-10-12 over 10,000 dungeons a city size on a city
+  at full defence, the city fell in 86.1% of cases on an Outpost, 79.0% on a Bulwark and 86.7% on a Sanctuary."
+  The three figures were copied from the simulation's entry of 2026-10-12 and were not measured again.
+- D2: the paragraph headed "**And its depth still counts against the city it was raised for.**" became: "**What
+  its timer costs is set by the city it stands on.** When a Quest dungeon's timer runs out, its host pays what
+  an ordinary dungeon of typical depth takes from a city of the host's tier, whatever the Quest dungeon's own
+  floor count. An ordinary dungeon's hit scales by the floors it was rolled with against a typical dungeon of
+  its kind **on the tier of city that spawned it**; floors a city upgrade added or removed are not counted. A
+  dungeon that moves is not re-measured: it is as deep as it always was."
+- D3: "If a dungeon resolves undefeated, its listed consequence occurs ..." gains "An ordinary dungeon hits its
+  city once and then leaves the map."
+- D4: "Dying in an ordinary dungeon also resolves that dungeon, at once, and its consequence lands on its city"
+  gains ", and the dungeon then leaves the map."
+- D6: the Basic row gains "Hits its city once when its timer runs out, then leaves."
+- D7: the Heretic row's "Surges spawn 25% more dungeons." became "Surges spawn 25% more dungeons, rounded down:
+  6 where a Surge brings 5."
+
+### The writing session's judgements, for the coordinating session to confirm
+
+Each is a judgement by the writing session, for the coordinating session to confirm.
+
+1. Rulings a and b say the count of the dungeon's resolves is "what the code now gives". The count lived on the
+   dungeon's timer, and the timer leaves with the dungeon, so no count is kept. In the empire test (a) there is
+   no call that reads a count without a timer; the assertion became that the clock holds no timer at all (the
+   dungeon was the only one). In the game-mode tests (b and d) the existing helper `TimesResolvedOf` answers -1
+   for a dungeon with no timer, and -1 is asserted, with the label saying what -1 means.
+2. In (a) the two assertions on the timer's figures ("back at its full thirty days", "still refills to thirty")
+   cannot be asked of a timer that is gone. They became two assertions on the report's `HitAndLeft`.
+3. In (d) the four-floor case is kept beside the three-floor case and is no longer labelled CONTROL, because
+   both depths now come out alike. What makes "once" able to fail is that three floors used to give two. Each
+   case also gained "the dungeon is off the map".
+4. In (e) the test also skips a city a Siege bit that day and a city fallen before that day, multiplies the row
+   by the number of Quest timers that ran out on the city that day (counted from the morning's positions, not
+   from the report's `QuestHits`), and takes population as stopping at nought. One set-up assertion was added,
+   that the Outpost row takes something.
+5. In (f) the Quest dungeon has 12 of its 25 days left, where it had 3. The control "its clock ran out on the
+   third day and has run two since" (23) became "its timer ran the five days and did not run out" (7), and the
+   label "the relocation clock is what the days alone make it" became "its timer is what the days alone make
+   it". The ruling names the set-up; these two follow from it.
+6. The names chosen for the four renamed tests, and for the two renamed Python files and one renamed Python
+   test, are the writing session's.
+7. The last-hit line on the empire screen is not set by an ordinary dungeon whose hit felled its city.
+8. Comments that these rules make false were corrected in game code and in the tests that were changed. Three
+   were left alone because their test is not to be edited before the run: in
+   `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`, a comment naming the old test name
+   `AQuestDungeonRefreshesInsteadOfBitingItsCity`, a comment saying a Quest dungeon "has zero city damage ... so
+   nothing ever calls `BiteScale` on one", and the header's quotation of the old Quest row. The header of
+   `Cataclysm.Surge.AQuestDungeonRelocatesOnlyToAnAdjacentExposedCity` also quotes the old Quest row and was
+   left, as a quotation of what the document said when that rule was made.
+9. Three comments were corrected in two surge tests that are not on the unedited list, and no label or
+   assertion: two in `Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithAFlatTimer`, whose label "its timer
+   is the flat relocation clock" still names the timer by its old role, and one in
+   `Cataclysm.Surge.ABiggerCityBreedsADeeperDungeon` ("EVERY NEW KIND BITES NOTHING"). One comment was also
+   corrected in `Cataclysm.EmpireRun.ADeathResolvesNothingInAQuestDungeonADungeonCityOrADungeonThatIsNotThere`,
+   which called a Quest dungeon's timer a relocation clock.
+10. The messages of the two checks that recorded the differences ask for a dated sentence in the simulation's
+    entries of 2026-10-12 and 2026-10-13. None was added to those entries; this entry is the record.
+11. Sentences in `sim/` that said the game lacks these rules, or that named a renamed check, were corrected:
+    comments in `sim/cataclysm_sim/config.py` and `engine.py`, two sentences of `sim/README.md`, and three test
+    docstrings. No simulation behaviour and no simulation test assertion changed.
+
+### Tests changed, each with the old and the new name and assertion
+
+**(a)** Ruling: "ADeathResolvesAnOrdinaryDungeonAtOnceAndSetsItsTimerBackToFull: renamed to say the dungeon hits
+once and leaves. Its seven assertions become: the dungeon has no timer; it is off the map; the clock does not
+hold the player inside it; the count of that dungeon's resolves is what the code now gives (say what); the rest
+as they follow. Its damage, count and report assertions stay."
+`Cataclysm.EmpireRun.ADeathResolvesAnOrdinaryDungeonAtOnceAndSetsItsTimerBackToFull` is now
+`Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap`.
+
+| Old | New |
+|---|---|
+| "the dungeon still has its timer" (not null) | "the dungeon has no timer" (null) |
+| "the timer is back at its full thirty days" (30) | "the report names one city as hit by a dungeon that left" (1) |
+| "and still refills to thirty" (30) | "and it is this dungeon's city" (true) |
+| "the clock counts one resolve of that dungeon" (1) | "the clock keeps no count of that dungeon's resolves: no timer is left on it" (0 timers) |
+| "the dungeon is still on the map" (not null) | "the dungeon is off the map" (null) |
+| "the clock still holds the player inside it" (the dungeon) | "the clock does not hold the player inside it" (none) |
+| "the timer has run those five days from full" (25) | "five days later no timer counts down for it" (-1) |
+
+**(b)** Ruling: "ADeathInAnOrdinaryDungeonResolvesItOnceAndItsTimerStartsAgainFromFull: renamed the same way;
+its three assertions become "off the map", "no timer", and the resolve count as built."
+`Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonResolvesItOnceAndItsTimerStartsAgainFromFull` is now
+`Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonHitsItsCityOnceAndTheDungeonLeavesTheMap`.
+
+| Old | New |
+|---|---|
+| "the clock counts one resolve of that dungeon" (1) | "the clock keeps no count of that dungeon's resolves: -1, which is what a dungeon with no timer reads" (-1) |
+| "the dungeon is still on the map" (not null) | "the dungeon is off the map" (null) |
+| "the timer was set to full at the death and has run the five days since" (35) | "no timer counts down for it after the five days" (-1) |
+
+**(c)** Ruling: "AfterADeathThePlayerIsOutOfTheDungeon...: the one assertion becomes that the dungeon is off the
+map, as a cleared one is." In
+`Cataclysm.DungeonMode.AfterADeathThePlayerIsOutOfTheDungeonAsAClearedOneLeavesThemAndStandsUpWhole`, "unlike a
+cleared dungeon, this one is still on the map" (not null) became "like a cleared dungeon, this one is off the
+map" (null). Not renamed.
+
+**(d)** Ruling: "OnHereticADeathInAThreeFloorDungeon...: becomes that on Heretic a death in a three-floor dungeon
+hits ONCE and nothing more lands in the fifteen days; renamed to say so."
+`Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonResolvesItAtTheDeathAndAgainFromTheDaysCharged` is now
+`Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonHitsItsCityOnceAndNothingMoreLandsInTheDaysCharged`.
+
+| Old | New |
+|---|---|
+| "CONTROL, four floors: the death cost 15 days" (15) | "four floors: the death cost 15 days" (15) |
+| "CONTROL, four floors: one resolve cost the city, at the death" (1) | "four floors: one resolve cost the city, at the death" (1) |
+| "CONTROL, four floors: the clock counts one resolve" (1) | "four floors: the clock keeps no count for it: -1, which is what a dungeon with no timer reads" (-1) |
+| "CONTROL, four floors: one resolve is a real amount" | "four floors: one resolve is a real amount" |
+| "CONTROL, four floors: the city lost one resolve's defence" | "four floors: the city lost one resolve's defence" |
+| "CONTROL, four floors: its timer has 1.4 of its 16.4 days left" (1.4) | "four floors: no timer counts down for it after the fifteen days" (-1) |
+| | added: "four floors: the dungeon is off the map" |
+| "three floors: two resolves cost the city, one at the death and one from the days charged" (2) | "three floors: one resolve cost the city, at the death, and none from the days charged" (1) |
+| "three floors: the clock counts two resolves" (2) | "three floors: the clock keeps no count for it: -1, which is what a dungeon with no timer reads" (-1) |
+| "three floors: the city lost two resolves' defence" (2 hits) | "three floors: the city lost one resolve's defence and no more in the fifteen days" (1 hit) |
+| "three floors: its timer ran out on the fifteenth day and is full again" (14.8) | "three floors: no timer counts down for it after the fifteen days" (-1) |
+| | added: "three floors: the dungeon is off the map" |
+
+**(e)** Ruling: "AQuestDungeonRefreshesInsteadOfBitingItsCity: renamed to say it hits its city and then
+refreshes; the two assertions become the ordinary row's figures for the host city's tier, read from the table
+and not typed." `Cataclysm.EmpireRun.AQuestDungeonRefreshesInsteadOfBitingItsCity` is now
+`Cataclysm.EmpireRun.AQuestDungeonHitsItsCityAndThenRefreshes`.
+
+| Old | New |
+|---|---|
+| "%s lost no defence to the quest dungeon standing on it" (the city's defence equals the morning's) | "%s lost the defence an ordinary dungeon's hit takes from a city of its tier, for each quest timer that ran out on it" (the morning's less now equals `SpecFor(Basic, the city's tier).DefenceDamage` times the Quest timers on it) |
+| "%s lost nobody to it either" | "%s lost that hit's population as well" (the row's population, or all the city had) |
+| | added: "set-up: the ordinary row of an Outpost takes defence and population" |
+
+**(f)** Ruling: "ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing: its control is kept true by
+set-up: give the Quest dungeon a timer longer than the days charged, with a comment saying why. The test is
+about the death." The Quest dungeon has 12 days left of 25, where it had 3. "CONTROL, Quest: its clock ran out
+on the third day and has run two since" (23) became "CONTROL, Quest: its timer ran the five days and did not run
+out" (7). "Quest: the relocation clock is what the days alone make it" became "Quest: its timer is what the
+days alone make it", the same comparison. Not renamed.
+
+**(g)** Ruling: "OnlyAResolveThatCostACitySomethingIsCounted: correct the label." "seed %d day %d: %d timers ran
+out and every one of them was a kind that does not detonate, so the empire paid nothing" became "seed %d day %d:
+%d timers ran out and none was an ordinary dungeon's, so the count of ordinary dungeons that hit a city did not
+move". The assertion is unchanged.
+
+### New tests
+
+All are headless: a run, a map and a clock, with no world and no actor. Each starts from a run whose opening
+wave was taken off, so the day advanced is day 2 and no wave can come.
+
+- `Cataclysm.EmpireRun.AnOrdinaryDungeonHitsItsCityOnceAndIsGone`. One ordinary dungeon, one Quest dungeon and
+  one dungeon of the Fallen City kind on three Outposts, each with one day left. Asserts: the ordinary dungeon's
+  timer ran out; its city lost one hit's defence; one ordinary dungeon has hit; it is off the map and off the
+  clock; the report names its city once as hit and left, not as absorbed; no city fell; nothing is counted as
+  cleared; five days later the city has lost nothing more and the count is still one. Controls: the Quest
+  dungeon and the Dungeon City ran out the same day, are still on the map with full timers, the Dungeon City
+  took nothing, and two dungeons stand where three did.
+- `Cataclysm.EmpireRun.TheDungeonWhoseHitFellsItsCityIsAbsorbedAndNotReportedAsLeft`. Asserts: the city fell;
+  the dungeon and the one beside it are absorbed; it is off the map; `HitAndLeft` is empty; the run keeps no
+  last hit; one hit is counted; a Dungeon City stands. Control, the same dungeon with a hit the city survives:
+  no fall, `HitAndLeft` names the city, the dungeon is not absorbed and is off the map, the one beside it
+  stands, and the last hit is day 2.
+- `Cataclysm.EmpireRun.AQuestDungeonsTimerTakesTheOrdinaryRowOfTheCityItStandsOn`. A Quest dungeon rolled on an
+  Outpost and moved by hand onto a Bulwark, and a second on the Outpost. Asserts the Bulwark lost exactly the
+  defence and the population of the ordinary row of a Bulwark, read from `SpecFor`. Control: the Outpost lost
+  exactly the Outpost row's. Set-up: the rows differ, each city can pay, the Quest dungeon's own row is nought.
+  Both dungeons are still on the map and the first has a full timer.
+- `Cataclysm.EmpireRun.AQuestHitThatFellsItsCityAbsorbsTheQuestDungeonWithNoRefreshAndNoMove`. An Outpost taken
+  down to half an ordinary hit. Asserts: the city fell; the Quest dungeon and the one beside it are absorbed;
+  it is off the map, has no timer and is not named as relocated; a Dungeon City stands; one Quest hit is
+  counted. Control, at full defence: no fall, the Outpost lost one ordinary hit, the dungeon stands with a full
+  timer and is not absorbed.
+- `Cataclysm.EmpireRun.AQuestDungeonOnAFallenCityHitsNothing`. Asserts: the timer ran out; the report names no
+  Quest hit; none is counted; no city lost defence or population; the dungeon is still on the map. Control, the
+  same dungeon on the same city standing: one Quest hit, and the map lost defence.
+- `Cataclysm.EmpireRun.AQuestHitIsCountedInQuestHitsAndNotInDungeonsDetonated`. Asserts: after the Quest hit,
+  `QuestHits` is 1 and `DungeonsDetonated` 0; the report's `QuestHits` names the city and `HitAndLeft` is empty;
+  the last hit is day 2 and a Quest timer's. Control, an ordinary hit the next day: `DungeonsDetonated` 1,
+  `QuestHits` still 1, the report's lists the other way round, the last hit day 3 and not a Quest timer's.
+  `Describe` holds "1 ordinary dungeons have hit a city. 1 Quest dungeon timers have hit one."
+- `Cataclysm.EmpireScreen.TheScreenNamesTheLastCityADungeonsTimerHit`. Asserts `LastHitLine` is empty for no
+  run, a run not begun and (control) a run with no hit; equals "Day 2: a dungeon hit <name> and left." after an
+  ordinary dungeon the run resolved; equals "Day 3: a Quest dungeon's timer hit <name>." after a Quest timer; is
+  empty again after `Begin`. The names are read from the map.
+
+The declared count of Unreal tests is 3666: 3659 after layer 2 and these seven.
+
+### Python checks
+
+- `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py` is renamed
+  `test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`. Its
+  `test_the_game_does_not_remove_a_resolved_dungeon_yet` became
+  `test_the_game_removes_it_last_and_only_after_the_citys_fall`: the removal is there once, after the count, the
+  damage and `CityFell`, both early returns come before it and none after the count, it is not `ClearDungeon`,
+  and the model's default is False. Its control is renamed
+  `test_the_game_still_bites_and_fells_in_the_function_the_rule_joined`.
+- `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py` is renamed
+  `test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`. Its
+  `test_the_game_does_not_hit_a_city_for_a_quest_dungeon_yet` became
+  `test_the_game_hits_a_standing_host_before_the_move_and_a_fall_ends_it` and
+  `test_the_games_hit_reads_the_ordinary_row_of_the_host`.
+  `test_the_game_still_answers_ordinary_and_nothing_else` stays.
+- `tools/tests/test_surge_port.py`: `test_both_single_it_out_by_kind_and_only_the_game_lets_it_off` is renamed
+  `test_both_single_it_out_by_kind_before_anything_is_taken`; its assertions are unchanged.
+- `tools/tests/test_day_clock_port.py`: the docstring of
+  `test_the_clock_refills_every_timer_and_is_not_held_to_the_model` no longer says the game lacks the rule.
+- **The two checks that pin design-document phrases, changed with the document (ruling 7):**
+  `tools/tests/test_quest_relocation_is_stated.py`: the control phrase "Does not resolve" became "When its timer
+  runs out it hits its host city". `tools/tests/test_a_death_ends_the_dungeon.py`, in
+  `test_the_design_document_says_what_dying_in_a_quest_dungeon_does`: "dying in one costs the same days" became
+  "dying in a Quest dungeon or a Dungeon City costs the same days".
+
+### Not covered
+
+- Nothing here was run against the game.
+- No test drives the console command's two new lines, or reads the widget's label; the line's text is tested
+  through `LastHitLine`.
+- No test covers an ordinary dungeon on a city that had already fallen leaving or staying after its timer; the
+  existing death test for that case was not changed.
+- No test covers a Quest hit on a city that holds a damage-resisting upgrade.
+- The share of campaigns an unattended empire loses in the game under these rules is not known. The simulation's
+  figures are with attack patterns the game does not have.
+- Every measured figure in the design document and in code comments that predates 2026-10-13 was taken under the
+  old rules. The document now says so; none was measured again.
+
+### Guard proofs proposed for the C++
+
+None was run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, counted
+once in the file at this commit.
+
+| | The line | Becomes | The test | Predicted |
+|---|---|---|---|---|
+| a | `if (RemoveDungeon(DungeonId))` | `if (RemoveDungeon(INDEX_NONE))` | `Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap` | 7 fail: "the dungeon has no timer", "the dungeon is off the map", "the clock keeps no count of that dungeon's resolves: no timer is left on it", "the report names one city as hit by a dungeon that left", "and it is this dungeon's city", "the clock does not hold the player inside it", "five days later no timer counts down for it" |
+| b | `if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage))` | `if (Map->Damage(HostId, 0.0f * Ordinary.DefenceDamage, 0.0f * Ordinary.PopulationDamage))` | `Cataclysm.EmpireRun.AQuestDungeonsTimerTakesTheOrdinaryRowOfTheCityItStandsOn` | 4 fail: the Bulwark's defence and population, and the control Outpost's defence and population |
+| c | `UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, Host->Tier);` | `UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, Dungeon->CityTier);` | the same test | 2 fail: "the Bulwark lost exactly the defence of the ordinary row of a Bulwark" and "and exactly that row's population". The control Outpost's two still pass |
+
+Break b multiplies by nought rather than writing nought, so that `Ordinary` is still read and the file compiles
+without a warning for an unused variable.
+
+---
+
 ## 2026-10-13 — In the game a surge is 5 dungeons every 90 days, as in the simulation; it was 4 every 120
 
 **Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
