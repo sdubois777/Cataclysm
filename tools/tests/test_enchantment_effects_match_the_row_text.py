@@ -866,8 +866,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 602 over 508: one row on one enchantment.
 #: AND 604 OVER 510 SINCE THE ROW THAT MAKES BUFFS MORE POTENT,
 #: issue #1833, 2026-10-13, from 603 over 509: one row on one enchantment.
-AUTHORED_ROWS = 604
-AUTHORED_ENCHANTMENTS = 510
+#: AND 605 OVER 511 SINCE THE ROW ON A DEBUFF THAT CUTS WHAT ITS CARRIER DEALS,
+#: issue #1833, 2026-10-13, from 604 over 510: one row on one enchantment.
+AUTHORED_ROWS = 605
+AUTHORED_ENCHANTMENTS = 511
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
