@@ -714,6 +714,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 5-8 seconds". Nought is no such rule. No gameplay attribute and no
 		// base.
 		TEXT("gadget_volley_every_seconds"),
+		// The flag by which a summoner's gadget that kills an enemy with a blow
+		// of its own strikes once more, at the nearest enemy within its reach,
+		// read at the end of ACataclysmMinion::AttackTarget with the gadget's
+		// type tags. Ruled 2026-10-13: "When a gadget kills an enemy, it fires
+		// an additional burst at the nearest enemy within its range". A flag.
+		// No gameplay attribute and no base.
+		TEXT("gadgets_burst_on_kill"),
 	};
 	return Stats;
 }
