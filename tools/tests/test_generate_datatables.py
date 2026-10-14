@@ -7361,3 +7361,161 @@ class TestAShareOfDamageTakenIsDealtOverSeconds:
             set())
         assert any(f"and not {self.SECONDS!r}" in problem
                    for problem in flat), flat
+
+
+class TestADebuffOfTheWearersCutsWhatItsCarrierDeals:
+    """`debuffed_enemies_deal_less_percent`, ruled 2026-10-13 and built ahead
+    of its row, for "Applying a debuff to an enemy reduces their damage output
+    by 10%-20%". One flat row, 10 to 20, with no Required Tags, no Condition,
+    no Scale and no Action: `UCataclysmDebuffs::NoteLaid` asks the applier for
+    it where a debuff is put on another character.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Positive
+    one. The real row is the enchantment session's to write; this shows that
+    the generator carries the ruled row through and refuses the wrong ones.
+    """
+
+    WORDS = ("Applying a debuff to an enemy reduces their damage output by "
+             "10%-20%")
+    STAT = "debuffed_enemies_deal_less_percent"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 10,
+           "Value High": 20}
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+
+    def out(self, tmp_path, rows):
+        """The generator's rows for the Positive sentence and these effect
+        rows, each a dict of columns. As `out` of
+        `TestAShareOfDamageTakenIsDealtOverSeconds`."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Positive", self.WORDS[:48]),
+                      "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [self.WORDS, "Generic", 3, "Keyword.DoT.Generic", None,
+                     "You have 20% less hp", "Generic", 1,
+                     "Stat.Defense.Health"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "debuffcut.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_debuff_cut_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def carried(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert row["Stat"] == self.STAT
+        return row
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 10.0, 20.0, "", "", "", "")]
+        assert gen.enchantment_ranges(self.WORDS) == [(10.0, 20.0)]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_stat_has_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DEBUFFED_ENEMIES_DEAL_LESS_PERCENT_STAT == self.STAT
+        listed = gen.stats_with_no_attribute()
+        assert self.STAT in listed
+        assert "debuffed_enemies_deal_less" not in listed
+
+    def test_the_generator_holds_the_name_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks the
+        applier's stat line for the name in `CataclysmDebuffs.cpp`. THE CONTROL
+        is the second line: the same pattern finds a name that has been in
+        that file since before this stat, so a pattern that found nothing
+        would fail there and not pass here by finding nothing."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmDebuffs.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmDebuffs::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)', source))
+        assert names.get("DurationStat") == "debuff_duration_taken"
+        assert names.get("DebuffedEnemiesDealLessPercentStat") == self.STAT
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        row = self.carried(tmp_path)
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Keyword.DoT"}, "under a required tag"),
+                ({"Action": "ailment_damage_dealt"},
+                 "with the action 'ailment_damage_dealt'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_figure_outside_its_bounds_or_a_falling_range_is_refused(
+            self, tmp_path):
+        """Above 0 and at most 100, the top included. A range written 20 to 10
+        would give the larger cut to the lowest roll."""
+        row = self.carried(tmp_path)
+        for low, high, said in ((0.0, 20.0, "states 0 on"),
+                                (-10.0, 20.0, "states -10 on"),
+                                (10.0, 101.0, "states 101 on")):
+            problems = self.refusals([dict(row, ValueLow=low, ValueHigh=high)])
+            assert len(problems) == 1, (low, high, problems)
+            assert said in problems[0]
+        assert self.refusals([dict(row, ValueLow=10.0, ValueHigh=100.0)]) == []
+        falling = self.refusals([dict(row, ValueLow=20.0, ValueHigh=10.0)])
+        assert len(falling) == 1, falling
+        assert "states 20 to 10 on" in falling[0]
+        assert "the range must rise" in falling[0]
+
+    def test_the_stat_stated_twice_on_one_enchantment_is_refused(
+            self, tmp_path):
+        """Two flat rows on one stat are added together: a second row of 10 to
+        20 would make the cut 20 to 40."""
+        row = self.carried(tmp_path)
+        again = dict(row, Name=row["Name"].split("#")[0] + "#2")
+        problems = self.refusals([row, again])
+        assert len(problems) == 1, problems
+        assert "on more than one row" in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        row = self.carried(tmp_path)
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="target_debuffs")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "debuff_duration",
+                               "ValueKind": "increased", "ValueLow": 30.0,
+                               "ValueHigh": 60.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        row = self.carried(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [row]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(row, RequiredTags="Keyword.DoT")]},
+            {"Keyword.DoT"})
+        assert any("under a required tag" in problem and self.STAT in problem
+                   for problem in problems), problems

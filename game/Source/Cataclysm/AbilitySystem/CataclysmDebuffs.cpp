@@ -597,3 +597,81 @@ int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)
 
 	return Held;
 }
+
+bool UCataclysmDebuffs::IsADebuff(const FGameplayTag& Tag)
+{
+	// THIS TAG OR ONE OF ITS PARENTS IS A ROOT, the direction `TagsOn` asks in.
+	return Tag.IsValid() && Tag.MatchesAny(DebuffRoots());
+}
+
+const TCHAR* UCataclysmDebuffs::DebuffedEnemiesDealLessPercentStat =
+	TEXT("debuffed_enemies_deal_less_percent");
+const TCHAR* UCataclysmDebuffs::ZoneDebuffsCountUnderStat =
+	TEXT("minion_hits_count_as_yours");
+
+namespace
+{
+	/** How many `FCataclysmZoneLaying` are held now. */
+	int32 CataclysmZonesLaying = 0;
+}
+
+FCataclysmZoneLaying::FCataclysmZoneLaying()
+{
+	++CataclysmZonesLaying;
+}
+
+FCataclysmZoneLaying::~FCataclysmZoneLaying()
+{
+	--CataclysmZonesLaying;
+}
+
+bool FCataclysmZoneLaying::IsLaying()
+{
+	return CataclysmZonesLaying > 0;
+}
+
+void UCataclysmDebuffs::NoteLaid(AActor* Instigator, AActor* Target, const FGameplayTag& Debuff,
+								 bool bIsASpreadCopy)
+{
+	// ONE A CHARACTER PUTS ON ITSELF IS NOT APPLYING ONE TO AN ENEMY, the test
+	// `ApplyDamageOverTime` makes before it raises `dot_applied`.
+	if (!Instigator || Instigator == Target || !IsADebuff(Debuff))
+	{
+		return;
+	}
+	UCataclysmAbilitySystemComponent* Carrier =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!Carrier)
+	{
+		return;
+	}
+
+	// WHOSE APPLICATION IT IS. A minion's is the minion's unless its summoner
+	// holds Conduit, the rule `UCataclysmCombatEvents::AttackerOf` keeps for a
+	// blow. A copy a spread makes is nobody's.
+	const UCataclysmAbilitySystemComponent* Applier = bIsASpreadCopy
+		? nullptr
+		: Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(
+			  UCataclysmCombatEvents::AttackerOf(Instigator)));
+
+	// AND A ZONE'S IS ITS OWNER'S ONLY UNDER CONDUIT. Ruled 2026-10-13. A zone
+	// names its owner as instigator, so the zone says so itself.
+	if (Applier && FCataclysmZoneLaying::IsLaying()
+		&& Applier->StatForSkill(FName(ZoneDebuffsCountUnderStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		Applier = nullptr;
+	}
+
+	// NO TAGS: the row is about every debuff its wearer applies, with whatever.
+	const float Percent = Applier
+		? Applier->StatForSkill(FName(DebuffedEnemiesDealLessPercentStat), FGameplayTagContainer(), 0.0f)
+		: 0.0f;
+	Carrier->ReceiveDebuffDamageCut(Debuff, Applier, Percent);
+}
+
+float UCataclysmDebuffs::DealLessPercentOn(const UAbilitySystemComponent* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
+	return Cataclysm ? Cataclysm->DebuffDamageCutPercentNow() : 0.0f;
+}
