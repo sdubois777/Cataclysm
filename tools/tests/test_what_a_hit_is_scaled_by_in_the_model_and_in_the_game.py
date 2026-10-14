@@ -1,33 +1,29 @@
 """What a dungeon's hit is scaled by, in the model and in the game.
 
-THE RULE, IN THE MODEL SINCE 2026-10-13. The owner accepted the coordinating
-session's recommendation that day, in that session's words: a dungeon's hit is
-sized by its NATURAL floors, not the floors the Explorer tree adds.
-`Simulation._resolve` scales by `Dungeon.natural_floors`, which is `floors`
-minus `tree_floors`, the floors the empire tree added or removed.
+THE RULE, IN THE MODEL SINCE 2026-10-13 AND IN THE GAME SINCE THE LAYER THAT
+ADDED `FCataclysmDungeon::UpgradeFloors`. The owner accepted the coordinating
+session's recommendation on 2026-10-13, in that session's words: a dungeon's
+hit is sized by its NATURAL floors, not the floors the Explorer tree adds.
 
-WHAT THE GAME DOES, READ ON 2026-10-13.
+BOTH HALVES NOW HOLD THE SAME RULE, AND THIS FILE HOLDS THEM TOGETHER.
 
-  * `FCataclysmDungeon::BiteScale` divides `Floors` by the midpoint of the
-    floor range of `SpecFor(Type, CityTier)`. The model divides by the same
-    midpoint of the same row.
-  * THE GAME HAS NO EMPIRE TREE, so nothing in it adds the floors the ruling
-    names. In a city with no floor upgrade, `Floors` is the rolled depth and
-    the two halves scale by the same thing.
-  * THE GAME DOES HAVE TWO CITY UPGRADES THAT MOVE A DUNGEON'S FLOORS AFTER
-    THE ROLL, `DungeonFloorsMore` and `DungeonFloorsFewer`, in
-    `UCataclysmSurgeScheduler::MakeDungeon`. `BiteScale` reads `Floors` after
-    them. So in a city holding either, the game sizes a hit by floors a
-    player's investment moved, which is what the model stopped doing. The
-    model has no city upgrades.
+  * THE MODEL. `Simulation._resolve` scales by `Dungeon.natural_floors`, which
+    is `floors` minus `tree_floors`, the floors the empire tree added or
+    removed.
+  * THE GAME. `FCataclysmDungeon::BiteScale` divides `Floors` less
+    `UpgradeFloors` by the midpoint of the floor range of
+    `SpecFor(Type, CityTier)`. `UCataclysmSurgeScheduler::MakeDungeon` rolls
+    the depth, keeps it, applies the city's two floor upgrades, and stores the
+    difference in `UpgradeFloors`, after the clamp at one floor.
+  * IN BOTH, the total floors still set the walk and the resolve timer.
 
-SO THE TWO HALVES AGREE TODAY ONLY WHERE NO UPGRADE MOVED THE FLOORS, AND
-THAT IS RECORDED HERE RATHER THAN HELD EQUAL. Whether a city upgrade's floors
-are "natural" is not ruled: the ruling names the tree. It is for the layer that
-takes the rule into the game.
-
-THIS FILE FAILS WHEN EITHER HALF CHANGES WHAT IT SCALES BY. Each failure
-message says what to do.
+WHERE THE HALVES DIFFER, AND WHY THAT IS NOT HELD EQUAL. The game has no
+empire tree and the model has no city upgrades. The floors the game sets aside
+are the ones `DungeonFloorsMore` and `DungeonFloorsFewer` moved. The ruling
+names the tree; extending it to the two city upgrades is a labelled judgement
+of the coordinating session, 2026-10-13, recorded in `docs/DECISIONS.md`. So
+this file compares the two formulas and the order each is built in. It cannot
+compare a figure.
 
 A LINE THAT IS A COMMENT DOES NOT COUNT, in either language.
 """
@@ -46,17 +42,12 @@ SURGE_CPP = EMPIRE / "CataclysmSurge.cpp"
 SURGE_HEADER = EMPIRE / "CataclysmSurge.h"
 
 WHEN_THE_GAME_CHANGES = (
-    "The game's half of what a hit is scaled by has changed. If the game now "
-    "keeps a dungeon's natural floors apart from floors a player's "
-    "investment added, do these things: (1) replace the three tests about "
-    "the game in this file with ones that hold the halves together: both "
-    "scale a hit by the natural floors over the midpoint of the row the "
-    "depth was rolled from, and in both the total floors still set the walk "
-    "and the timer; (2) the ruling of 2026-10-13 names the empire tree's "
-    "floors and the game's floor changes come from two CITY upgrades, "
-    "DungeonFloorsMore and DungeonFloorsFewer: say in docs/DECISIONS.md "
-    "which reading the game took for them; (3) add a dated sentence to the "
-    "docs/DECISIONS.md entry of 2026-10-13.")
+    "The game's half of what a hit is scaled by has changed. Both halves are "
+    "held to one rule: a hit is scaled by the floors a dungeon was rolled "
+    "with, over the midpoint of the row the depth was rolled from, and the "
+    "total floors still set the walk and the timer. If the game's half was "
+    "changed on purpose, say so in docs/DECISIONS.md, change the model or "
+    "record the difference, and change this check with it.")
 
 
 def cpp_code(path: pathlib.Path) -> str:
@@ -132,7 +123,7 @@ def test_the_model_takes_the_trees_floors_after_the_natural_depth() -> None:
 
 # ------------------------------------------------------------------- the game
 
-def test_the_game_divides_floors_by_the_same_midpoint() -> None:
+def test_the_game_divides_the_rolled_floors_by_the_same_midpoint() -> None:
     code = cpp_code(SURGE_CPP)
 
     start = code.index("float FCataclysmDungeon::BiteScale() const")
@@ -141,33 +132,87 @@ def test_the_game_divides_floors_by_the_same_midpoint() -> None:
     assert "UCataclysmSurgeScheduler::SpecFor(Type, CityTier)" in body
     assert ("const float Typical = (Spec.LeastFloors + Spec.MostFloors) "
             "/ 2.0f;") in body
-    assert "return Typical <= 0.0f ? 1.0f : Floors / Typical;" in body, (
-        "FCataclysmDungeon::BiteScale no longer returns Floors / Typical. "
-        + WHEN_THE_GAME_CHANGES)
+    assert ("return Typical <= 0.0f ? 1.0f : (Floors - UpgradeFloors) "
+            "/ Typical;") in body, (
+        "FCataclysmDungeon::BiteScale no longer returns "
+        "(Floors - UpgradeFloors) / Typical. " + WHEN_THE_GAME_CHANGES)
+    assert ": Floors / Typical" not in body, (
+        "FCataclysmDungeon::BiteScale divides the total floors again, which "
+        "include what a city upgrade moved. " + WHEN_THE_GAME_CHANGES)
 
 
-def test_the_games_floors_include_what_a_city_upgrade_moved() -> None:
-    """**THE RECORDED DIFFERENCE.** After the roll, `MakeDungeon` adds and
-    removes floors for the city's upgrades, into the same `Floors` that
-    `BiteScale` reads."""
+def test_the_game_keeps_the_rolled_depth_apart_from_what_an_upgrade_moved(
+) -> None:
+    """`MakeDungeon` rolls, keeps the roll, applies the two city upgrades,
+    and stores the difference AFTER the clamp at one floor. The model's
+    `_make_dungeon` does the same four things in the same order for the
+    tree's floors; `test_the_model_takes_the_trees_floors_after_the_natural_depth`
+    above is its half."""
     code = cpp_code(SURGE_CPP)
 
     roll = ("Dungeon.Floors = FMath::Max(1, Stream.RandRange("
             "Spec.LeastFloors, Spec.MostFloors));")
+    kept = "const int32 Rolled = Dungeon.Floors;"
     moved = "Dungeon.Floors = FMath::Max(1, Dungeon.Floors + Deeper - Shallower);"
-    for mark in (roll, moved,
-                 "ECataclysmCityUpgradeEffect::DungeonFloorsMore",
-                 "ECataclysmCityUpgradeEffect::DungeonFloorsFewer"):
+    stored = "Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;"
+    marks = (roll, kept, moved, stored)
+    for mark in marks + ("ECataclysmCityUpgradeEffect::DungeonFloorsMore",
+                         "ECataclysmCityUpgradeEffect::DungeonFloorsFewer"):
         assert code.count(mark) == 1, (
             f"CataclysmSurge.cpp holds {mark!r} {code.count(mark)} times; "
             "this check expects one. " + WHEN_THE_GAME_CHANGES)
-    assert code.index(roll) < code.index(moved)
+    places = [code.index(mark) for mark in marks]
+    assert places == sorted(places), (
+        "MakeDungeon no longer rolls the depth, keeps it, applies the city's "
+        "floor upgrades, and then stores the difference, in that order. "
+        + WHEN_THE_GAME_CHANGES)
+    assert code.count("Dungeon.UpgradeFloors =") == 1, (
+        "Something else in CataclysmSurge.cpp sets UpgradeFloors. "
+        + WHEN_THE_GAME_CHANGES)
+    assert "Dungeon.UpgradeFloors = Deeper - Shallower" not in code, (
+        "UpgradeFloors is taken before the clamp at one floor, so a clamped "
+        "dungeon's hit is no longer sized by the floors it rolled.")
 
     header = cpp_code(SURGE_HEADER)
-    for name in ("NaturalFloors", "RolledFloors", "TreeFloors",
-                 "UpgradeFloors"):
+    assert header.count("int32 UpgradeFloors = 0;") == 1, (
+        "FCataclysmDungeon::UpgradeFloors is gone or no longer starts at "
+        "nought. Nought is what makes a hand-built dungeon, a Fallen City "
+        "and an old save sized by all of their floors. "
+        + WHEN_THE_GAME_CHANGES)
+    for name in ("NaturalFloors", "RolledFloors", "TreeFloors"):
         assert name not in header and name not in code, (
-            f"The game now has {name}. " + WHEN_THE_GAME_CHANGES)
+            f"The game now has {name} beside UpgradeFloors. "
+            + WHEN_THE_GAME_CHANGES)
+
+
+def test_in_the_game_the_walk_and_the_timer_still_read_the_total_floors(
+) -> None:
+    """ONLY THE HIT. The model's walk and timer read `d.floors`; the game's
+    read `Dungeon.Floors`, after the upgrades."""
+    code = cpp_code(SURGE_CPP)
+
+    stored = code.index("Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;")
+    walk = "Dungeon.Floors * UCataclysmDayClock::DaysPerFloor"
+    timer = "UCataclysmDayClock::ResolveDaysFor(Dungeon.Floors)"
+    assert code.count(walk) == 2, (
+        f"MakeDungeon works the walk from {walk!r} {code.count(walk)} times "
+        "and two were read on 2026-10-13: a Cow Level and every other "
+        "dungeon. " + WHEN_THE_GAME_CHANGES)
+    assert code.count(timer) == 1, WHEN_THE_GAME_CHANGES
+    assert code.index(walk) > stored and code.index(timer) > stored, (
+        "The walk or the timer is worked before the city's floor upgrades "
+        "are applied. " + WHEN_THE_GAME_CHANGES)
+
+    made = code[code.index(
+        "Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;"):]
+    assert "Rolled *" not in made and "ResolveDaysFor(Rolled)" not in made, (
+        "The walk or the timer now reads the rolled depth. Only the hit "
+        "does. " + WHEN_THE_GAME_CHANGES)
+
+    from cataclysm_sim.engine import Simulation
+
+    model = python_code_of(Simulation._make_dungeon)
+    assert "natural" in model and "tree_floors=floors - natural" in model
 
 
 def test_nothing_else_in_the_game_moves_a_dungeons_floors() -> None:
