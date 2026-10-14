@@ -70,6 +70,8 @@ def cataclysm_order_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
     raw default of 4. Unpaired -- two cells on different seeds -- it is 1.7
     against 1.7 at surge 5 and 2.7 against 1.9 at surge 4. So only the unpaired
     floor moves, only at the surge size `exp_calibrate` rejected.
+    (WRITTEN WHEN THE RAW DEFAULT WAS 4 DUNGEONS EVERY 120 DAYS. Since
+    2026-10-13 it is 5 every 90. These figures were not re-measured.)
 
     `random.Random` seeds from a string via SHA-512, so this is stable across
     processes and Python versions in a way `hash()` is not.
@@ -1274,7 +1276,9 @@ class Simulation:
         Cataclysm dungeon from rolling Cow Level and so changed the draw this
         fight is built from. 2,000 campaigns in two disjoint blocks of 1,000
         seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days x5
-        (`surge_dungeon_count=5`, not the default of 4), resolve ratio 2.0,
+        (`surge_dungeon_count=5`, not the default of 4 that the model had
+        until 2026-10-13, and 120 days, not the 90 it has since), resolve
+        ratio 2.0,
         escalation 0.10 per 100 days, craft 12 days +4%, **with the Siege damage
         settings live**:
 

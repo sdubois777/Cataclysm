@@ -22,9 +22,11 @@ Issue #1438 found five of the six cells it re-checked had moved, and the report
 no longer prints them; see the comment on `PRESET_SECOND_SURGE_SIZE`.
 
 The ordering differed from the calibrated 5 at every other value, at both tiers.
-`TuningConfig.surge_dungeon_count` defaults to 4, which `exp_calibrate` never
+`TuningConfig.surge_dungeon_count` defaulted to 4, which `exp_calibrate` never
 tries -- it sweeps 5, 6 and 7 -- so anyone calling `exp_presets` with a raw config
-measures a different world from the report's.
+measured a different world from the report's. SINCE 2026-10-13 THE DEFAULT IS
+5, AND THE DEFAULT INTERVAL IS 90 DAYS WHERE THE REPORT USES 120, so a raw
+config is still a different world from the report's, by the interval.
 
 SO THE SURGE SIZE IS NO LONGER ON THE INHERITED LIST. Issue #1297: the project
 owner chose to add a second surge size rather than leave the section on one, so

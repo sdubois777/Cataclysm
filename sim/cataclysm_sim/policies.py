@@ -299,7 +299,9 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     dungeons at the new rule and its fixture asks for more than 20,000.
 
     THE SETTINGS ARE PART OF THE FIGURE. Five dungeons a surge is what the
-    balance report uses and NOT `TuningConfig.surge_dungeon_count`, which is 4.
+    balance report uses and NOT `TuningConfig.surge_dungeon_count`, which was 4
+    when this was measured. Since 2026-10-13 that default is 5 and the
+    default interval is 90 days; the figures here are at 5 every 120.
     The two are different worlds. THE FOUR MEDIANS ARE THE SAME IN BOTH SINCE
     2026-10-12, and the samples are not: measured that day over 10,000
     campaigns each (seeds 0 to 9999) with the dungeon leaving, four a surge
