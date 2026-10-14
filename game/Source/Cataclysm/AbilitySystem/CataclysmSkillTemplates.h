@@ -2072,6 +2072,40 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float HealthReturned = 0.0f;
 
+	/**
+	 * `aura_effect`: how much more effective this character's auras are, as a
+	 * multiplier of its own. Ruled 2026-10-13 under the owner's delegation, for
+	 * "Your auras are 20%-50% more effective": a `more` row of 20 to 50.
+	 *
+	 * "YOUR AURAS" IS THIS SHAPE. Every skill of this class reads the stat,
+	 * whatever tags it carries: Conflagration in the aura slot and Living Pyre
+	 * in the Ultimate slot. Nothing else reads it, so it does nothing for an
+	 * aura-slot row that has no shape, for the Masochist's debuff aura, or for
+	 * a set bonus whose sentence says "aura".
+	 *
+	 * FIVE FIGURES ARE MULTIPLIED, AND NOTHING ELSE. `MoreEffective` is called
+	 * for each: the pulse's damage and its growth for a hit taken, in `Pulse`;
+	 * the magnitude of the named debuff the pulse lays, in `Pulse`; the allies'
+	 * damage bonus, in `HelpAlliesInside`; and the health returned for a hit
+	 * taken, in `NoteBlowTaken`. The radius, the upkeep, the duration, the burn
+	 * a pulse sets and an immunity are not multiplied.
+	 *
+	 * ASKED OF THE AURA'S HOLDER WITH THIS SKILL'S TAGS. It has no gameplay
+	 * attribute and no base, so it is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* AuraEffectStat;
+
+	/**
+	 * One of this aura's five figures after the rows on `AuraEffectStat` its
+	 * holder carries. 100 with a `more` row of 50 is 150.
+	 *
+	 * THE FIGURE IS HANDED BACK UNCHANGED for a holder with no such row, for an
+	 * ability system that is not this project's own, and for a figure of nought
+	 * or less. Never below nought. Public so a test can ask it.
+	 */
+	float MoreEffective(float Figure) const;
+
 private:
 	/** Pulse's return value is for tests; a timer can only call a void. */
 	void PulseTick();

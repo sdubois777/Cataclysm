@@ -2,6 +2,316 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make its wearer's auras more effective: one stat, a More of its own on five figures of an aura skill, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (the stat's name, one
+function, and four places in `UCataclysmAuraSkill` that call it),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no
+attribute), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (seven tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (one
+list and one refusal), `tools/tests/test_aura_effect_and_buff_potency_rows.py` (new: ten tests). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Your auras are 20%-50% more effective".
+
+- **NOT COMPILED AND NOT RUN.** Nothing here was compiled and no Unreal test was run by the session that wrote
+  it. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** The enchantment session writes the row. Its shape is under
+  "What was built".
+- **Two aura skills are built, and the row does something for those two only.** "Your auras" is the Aura shape:
+  every skill of the class `UCataclysmAuraSkill`. Counted by script in `game/Data/WeaponSkills.csv` (403 rows):
+  two rows have `Shape=Aura`, `Demonic_All_Aura` (Conflagration) and `Demonic_Fist_Ultimate` (Living Pyre).
+- **Nothing for seven aura-slot skills, which is one more than the ruling's six.** By the same script, eight rows
+  carry the tag `Slot.Aura` and one of them has a shape. The seven with none are `Celestial_All_Aura`,
+  `Pestilence_All_Aura`, `Void_All_Aura`, `Death_All_Aura`, `Chaos_All_Aura` and `Famine_All_Aura`, which have
+  no name, no description and no parameters, and `War_All_Aura` (Blood and Iron), which has a name and a
+  description of 250 characters and no shape. A character whose aura slot holds any of the seven gets nothing
+  from the row. The same is true of `War_Whip_Ultimate` (Whirlwind of Steel), which carries `Type.AOE.Aura` and
+  has no shape.
+- **Nothing for the Masochist's debuff aura.** "You radiate an aura that applies a random debuff to enemies
+  within 6 metres every 3 seconds" is `UCataclysmContagion::AuraStep` and not an aura skill. Ruled.
+- **Nothing for the set bonuses whose sentences say "aura".** Ruled. Three sentences of the table say it,
+  counted by script: Mana Weaver's six-piece and Brute's Heart's six-piece, whose merged rows are plain stats on
+  the wearer, and Null Emperor's ten-piece, which has no row.
+- **Nothing for an aura an enemy holds.** The stat is asked of the aura's holder, and a creature has no stat
+  line. Read: `StatAppliedTo` hands the figure back when nothing is recorded for the stat.
+- **Five figures are multiplied, and what each is worth with the row at its two ends.**
+  - *Conflagration's pulse damage*, and Living Pyre's: 20% to 50% more of what a pulse deals.
+  - *The magnitude of the named debuff*: Conflagration's Shred of 15 becomes 18 to 22.5.
+  - *The allies' damage bonus*: Conflagration's 8% increased fire damage becomes 9.6% to 12%.
+  - *The health Living Pyre returns for a hit taken*: 25% of the blow becomes 30% to 37.5%.
+  - *Living Pyre's growth for a hit taken*: 8% more a hit becomes 9.6% to 12% more a hit.
+- **Living Pyre's pulse is raised twice over, and that is the ruling read as written.** Its pulse damage and its
+  growth are two of the five. With the row at 50 and ten hits taken a pulse is 3.3 times a cold pulse with no
+  row (1.5 times 2.2), where with no row it is 1.8 times.
+- **NOT multiplied, ruled:** the radius, the upkeep, the duration, the burn a pulse sets, and an immunity.
+  Radius, upkeep, duration and the burn are each shown unchanged by a test. An immunity has no figure.
+- **The rows that already reach an aura by tag are untouched.** The merged rows on `area_of_effect` and
+  `mana_cost` that require `Slot.Aura` are other stats, and this stat is not read for a radius or a cost.
+- **Shred's raised magnitude follows Shred's own rule unchanged.** Read in
+  `UCataclysmSkillEffects::ApplyNamedEffectOnly` and in the Shred row of `game/Data/StatusEffects.csv`
+  ("Magnitude raises the reduction until that resistance reaches zero, then extends the duration instead").
+  - *What a wearer sees when the raised magnitude passes the point where the resistance reaches nought.* The
+    resistance stops at nought. The part of the figure past that is thrown away. The duration is not
+    lengthened: the second half of the row's sentence is not built, as the comment at that place says, and
+    issue #1144 carries it. So against an enemy with 15 Demonic resistance or less the row changes nothing a
+    player can see of the Shred. Tested with an enemy of 20 resistance: cut to nought and not below.
+  - *The Shred still states the whole raised figure.* The rule of 2026-09-09 compares two applications by what
+    they state, before the target's resistance. So a wearer's Shred of 22.5 stands against another source's
+    Shred of 20 where an unraised 15 would not, including on an enemy with no resistance left.
+  - *A pulse renews and does not stack.* Tested: a second pulse leaves the cut where the first put it.
+- **Changing the row while an aura runs.** Read, and three of the four tested.
+  - *Pulse damage, the health returned and the growth* use the figure of the moment, at the next pulse or the
+    next blow taken. Tested for all three, by putting the row on a running aura.
+  - *An ally already helped keeps the bonus it was given.* `HelpAlliesInside` gives a modifier to an ally that
+    arrives and leaves one already carried alone. So an ally standing in the ring keeps the raised figure after
+    the row comes off, and keeps the plain figure after the row goes on, until it leaves the ring or the aura
+    ends. Tested for the row coming off. The option not taken: change a carried modifier in place every pulse, as
+    `UCataclysmSharedBuffs::Step` does for a copy. It was not taken because it changes what the merged aura
+    code does at every pulse for every aura, which this ruling did not ask for.
+  - *An enemy standing in the ring keeps the larger Shred after the row comes off.* A weaker application only
+    renews the stronger one running, and each pulse renews it. It loses the larger cut when it has been out of
+    the ring for the Shred's seconds. Tested.
+  - *An enemy standing in the ring takes the larger Shred at the next pulse after the row goes on.* Read from
+    the same rule: the stronger application replaces the one running. Not tested.
+- **With "Healing skills restore 30%-60% more HP" worn as well, both multiply.** Living Pyre's share returned is
+  raised first and the healing row multiplies the amount: 25% at 50 more and 60 more is 60% of the blow. Read;
+  not tested with both.
+- **The enchantment's own tags are not Required Tags.** The sentence's Tags cell in the table of sentences is
+  `Type.AOE.Aura, Slot.Aura`. That cell says which items the sentence may roll on. The effect row carries no
+  Required Tags; see judgement 5.
+- **A second piece carrying the same benefit, and the hover text, were not read for this stat.**
+
+**What was not read:** how a worn row becomes a line of the stat line at a gear refresh; whether
+`tools/tests/test_enchantment_effects_match_the_row_text.py` and the other checks of authored rows accept the
+row; the body of `UCataclysmSkillEffects::ApplyDamageOverTime`; which stat a damage row scoped by a tag would
+have to be on to raise an aura's pulse; whether such a row would raise the burn a pulse sets;
+`UCataclysmContagion::AuraStep`; any enemy's aura; anything a client that is not the server sees.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+The owner's sentence, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". Each ruling below is a labelled judgement of the coordinating session under that delegation, received
+by the enchantment session on 2026-10-13.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | One stat, in the More bucket. | `UCataclysmAuraSkill::AuraEffectStat`, "aura_effect". `UCataclysmAuraSkill::MoreEffective(Figure)` hands the figure to `StatAppliedTo` with the aura's tags, so a `more` row multiplies it. |
+| R2 | Read in `UCataclysmAuraSkill::Pulse` and what it calls. | Two calls in `Pulse`, one in `HelpAlliesInside`, which `Pulse` calls, and one in `NoteBlowTaken`, which the damage pipeline calls for a blow on the holder. |
+| R3 | The pulse damage. | `Pulse`: `const float Percent = MoreEffective(ScaledDamagePercent(...))`, the percent of weapon damage handed to `HitTargets`. |
+| R4 | The magnitude of the named debuff it lays. | `Pulse`: `TGuardValue<float> Raised(Params.EffectMagnitude, MoreEffective(Params.EffectMagnitude))` around the loop that calls `ApplyNamedEffectsTo`. |
+| R5 | Its ally damage bonus. | `HelpAlliesInside`: `Modifier.Value = MoreEffective(Params.AllyIncreasedDamage)`. |
+| R6 | Living Pyre's health returned for a hit taken. | `NoteBlowTaken`: `DealtToHealth * MoreEffective(Params.HealthFromHitTaken) / 100.0f`. |
+| R7 | Its growth for a hit taken. | `Pulse`: `ScaledDamagePercent(bGrowsByHitsTaken ? MoreEffective(Units) : Units)`. |
+| R8 | "Your auras" is the Aura shape, Living Pyre included. | The stat is read by `UCataclysmAuraSkill` and by nothing else, whatever tags the skill carries. |
+| R9 | Not scaled: radius, upkeep, duration, the burn it sets, an immunity. | No call of `MoreEffective` at `ScaledRadiusCm`, at `ManaCostFor`, in `ActivateAbility` where the duration's timer is set, at `ApplyBurn` in `HitTargets`, or in `ShareImmunitiesWithAlliesInside`. |
+| R10 | Shred's raised magnitude follows Shred's own rule unchanged. | `ApplyNamedEffectOnly` is not changed. |
+
+### JUDGEMENTS OF THE WRITING SESSION
+
+1. **The pulse damage is multiplied in the aura, by the stat, and not by a damage row scoped to a tag.** An
+   aura's pulse does pass through the stat pipeline: `Pulse` calls `HitTargets`, which calls
+   `UCataclysmSkillEffects::ApplyHit` with the skill's tags, and the caster's increases and More lines apply to
+   the result. So a More row on a damage stat requiring `Type.AOE.Aura`, which both built auras carry, would
+   raise the pulse of both with no new code for that one figure. The option not taken. Why: the ruling is one
+   stat for five figures and four of them are not damage, so the stat is needed in any case; a tag is not the
+   shape, and the ruling is the shape; and whether a tag-scoped damage row would also raise the burn the pulse
+   sets, which is ruled out, was not traced.
+2. **How it combines with the caster's other More lines: it multiplies with each.** The stat multiplies the
+   percent of weapon damage the pulse is worth before `ApplyHit` has it, and `ApplyHit` applies every other
+   line to the result. Two rows on the stat multiply with each other, as More lines do in the pipeline. Tested:
+   rows of 50 and 20 give 1.8 times, and a 100% More line of the kind a self buff grants with a row of 50 gives
+   three times.
+3. **The pulse damage is multiplied after a ceiling the skill's row states.** `ScaledDamagePercent` holds the
+   percent to `MaxDamagePercent` when a row states one. The stat multiplies what comes out. Why: the ceiling is
+   on what the row's own growth may reach, and no other More line of the caster's is held by it. The option not
+   taken: multiply first, so the ceiling holds the raised figure. No built aura states a ceiling, so no player
+   can see the difference today.
+4. **The growth is raised by multiplying the hits counted, and only for `ScalingSource=HitTaken`.** The ruling
+   names the growth for a hit taken. 8% a hit with 50 more is 12% a hit, whichever bucket the row's growth is
+   written in. An aura row growing by another source is not raised. The option not taken: raise the growth of
+   any source. No built aura grows by another source.
+5. **The row carries no Required Tags, and the generator refuses one that does.** The stat is asked with the
+   aura's own tags, as the brief asked, so a row requiring a tag would reach only the auras carrying it. A row
+   requiring `Slot.Aura` would leave Living Pyre out: it carries `Type.AOE.Aura` and `Slot.Ultimate`. A test
+   shows that. The option not taken: accept a required tag, for a later sentence about one kind of aura.
+6. **A row naming an effect and no magnitude is not raised.** `ApplyNamedEffectOnly` takes the Status Effects
+   sheet's figure when the skill states none, and nothing of the aura's is in hand to multiply there. No aura
+   is such a row: Conflagration states 15. The option not taken: a new parameter on
+   `UCataclysmSkillTemplate::ApplyNamedEffectsTo`, which every shape calls.
+7. **`StatAppliedTo` and not `StatForSkill`.** The figure is the skill's and not the character's, which is what
+   `StatAppliedTo` is for, and `UCataclysmRegeneration::HealingSkillAmount` asks its `more` row the same way.
+   So `tools/tests/test_stat_lookups_hand_over_what_they_should.py`, which lists calls of `StatForSkill`, gains
+   nothing and is not changed.
+8. **The generator's bounds are the sentence's figures, 20 to 50.** As the healing rows' bounds are.
+
+### The genre source
+
+Fetched by the enchantment session on 2026-10-13. The writing session fetched nothing. HOW IT WAS READ: the page
+was fetched twice through a tool that hands back a model's reading of the page and not the page's bytes. The
+second fetch asked for the lines character for character. A line below in a code block is one the second fetch
+gave as copied exactly. The page is longer than the 100,000 characters the tool read; the rest was not read.
+
+REACHED: `poedb.tw/us/Aura` (Path of Exile), its first 100,000 of 167,483 characters. Lines given as copied
+exactly, each with the group the page lists it under:
+
+```
+Item mods > Suffix "of Redemption": (15—20)% increased effect of Non-Curse Auras from your Skills
+Item mods > WeaponTree (Anger): Anger has 20% increased Aura Effect
+Item mods > WeaponTree (Anger): Anger has 25% increased Reservation
+Support Gem Quality > Arrogance Support: Supported Skills have (0—5)% increased Aura effect
+Support Gem Quality > Generosity Support: Supported Skills have (0—40)% increased Aura Area of Effect
+```
+
+What it settles: in that game an aura's effect, its reservation (its cost) and its area are three separate stats.
+What it does NOT settle: the page was not found to say which numbers of an aura "effect" scales. The list of
+figures scaled here is this game's own and judged.
+
+NOT REACHED: any source for "buff effects are more potent" in any game. No search was made for one.
+
+### WHAT WAS BUILT
+
+- **The stat.** `aura_effect`, with no gameplay attribute and no base, the last name on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code: `UCataclysmAuraSkill::AuraEffectStat`.
+- **The function.** `UCataclysmAuraSkill::MoreEffective(Figure)`, public and const. A figure of nought or less
+  is handed back. Otherwise the holder's ability system is asked `StatAppliedTo(aura_effect, the skill's tags,
+  Figure)` and the answer is held to nought or more. A holder with no row, and a holder whose ability system is
+  not this project's, is handed its figure back.
+- **`Pulse`, the damage and the growth.** The hits counted are read once into `Units`. For a row whose
+  `ScalingSource` is `HitTaken` they are multiplied by the stat before `ScaledDamagePercent` has them. What
+  `ScaledDamagePercent` answers is multiplied by the stat and handed to `HitTargets`.
+- **`Pulse`, the named debuff.** For the loop that calls `ApplyNamedEffectsTo` on each enemy inside,
+  `Params.EffectMagnitude` holds the raised figure, by a `TGuardValue` that puts the row's own figure back when
+  the loop ends. The pulse's blow, which reads the same field for a pin, is dealt before the loop.
+- **`HelpAlliesInside`.** The modifier an arriving ally is given is the raised figure, in the bucket and with
+  the scope it had.
+- **`NoteBlowTaken`.** The share of the blow returned is the raised figure. The healing row's multiplier, the
+  healing ceiling and every other rule of that heal apply to the amount as before.
+- **The generator.** `AURA_AND_BUFF_EFFECT_STATS` holds `aura_effect` as a `more` row of 20 to 50.
+  `refuse_an_aura_or_buff_effect_row_the_game_cannot_read` refuses an enchantment's row on the stat that is not
+  `more`, that requires a tag, or whose figure is outside 20 to 50. `validate_enchantment_effects` runs it. A
+  condition or a scale on the stat is refused by the two checks that already refuse those on a stat not on
+  their lists.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment,
+  `Positive_Your_auras_are_20_50_more_effective`: Stat `aura_effect`, Value Kind `more`, Value Low 20, Value
+  High 50. No Required Tags, no Condition, no Scale and no Action.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the name, at its end. The generator reads that
+  list, so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry
+  of `Probes()`.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat, so no shipped row is refused.
+- `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is NOT changed; see judgement 7.
+
+### Tests
+
+Seven new Unreal tests in `CataclysmSkillTemplateTests.cpp`, at its end, in the group `Cataclysm.AuraEffect.`,
+on the rig of the aura tests above them: plain test fighters with a weapon dealing 100, 100,000 health and no
+stat line but the one the test writes. A pulse is `Pulse` called by the test. No blow can be a critical strike.
+Where a test has two casters they stand 100 m apart. Every figure with the row is compared with the same figure
+read with no row.
+
+- `ARowMultipliesAPulsesDamageAsAMoreLineOfItsOwn`. Conflagration and one enemy 2 m away. With no row a pulse
+  takes health, and a second pulse takes the same (the controls). With a row of 50 a pulse takes 1.5 times
+  that. With rows of 50 and 20 it takes 1.8 times. With no row and a 100% More line on the caster's damage it
+  takes twice (set-up), and with the row of 50 as well three times.
+- `ARowRaisesTheNamedDebuffsMagnitudeAndLeavesItsSecondsAndTheBurnAlone`. A caster with no row cuts its enemy's
+  Demonic resistance, and the Shred and the burn it lays have seconds and the burn a figure a tick (the
+  controls). A wearer of a row of 50 cuts 1.5 times as much; its Shred's seconds, its burn's seconds and its
+  burn's figure a tick are the control's. An enemy with 20 resistance carries the Shred and is at nought. A
+  second pulse leaves the cut at 1.5 times. With the row off, a third pulse leaves it at 1.5 times.
+- `ARowRaisesTheAllyDamageBonusWhenAnAllyIsGivenIt`. The ally of a caster with no row carries one modifier
+  worth something (the control). The ally of a wearer of a row of 50 carries one worth 1.5 times that, in the
+  Increased bucket. With the row off and the ally still inside it keeps that figure. Walked 40 m out it carries
+  nothing; walked back it carries the control's figure.
+- `ARowRaisesTheLivingPyresHealthReturnedAndItsGrowthForAHitTaken`. One pyre. With no row: a cold pulse, the
+  health a blow of 400 returns, and the pulse after that blow, which is more than the cold pulse (the
+  controls); the growth for a hit is their ratio less one. With a row of 50: the pulse after one blow is the
+  cold pulse times one plus 1.5 times the growth, times 1.5; a second blow of 400 returns 1.5 times the health;
+  the pulse after two blows is the cold pulse times one plus twice 1.5 times the growth, times 1.5.
+- `ARowLeavesAnAurasRadiusAndItsUpkeepAsTheyWere`. A caster with no row has a radius and a pulse takes mana
+  from it (the controls). A wearer of a row of 50 has the same radius and pays the same mana for a pulse; the
+  pulse takes health from an enemy 9 m away and none from one 12 m away.
+- `ARowLeavesATimedAurasDurationAsItWas`. Two Living Pyres lit at one moment, one holder with no row and one
+  wearing a row of 50. The world's clock is moved by `RunClock`. At 5.5 seconds both are up; at 6.5 seconds
+  both have ended. The holder with no row is the control at each time.
+- `TheStatIsAskedByEveryAuraWithItsTagsAndByNoOtherSkill`. One fighter holds Conflagration and Living Pyre,
+  neither switched on. With no row each hands 100 back as 100 (the control). With a row of 50 requiring no tag
+  each hands back 150, and nought is handed back as nought. With a row requiring `Slot.Aura`, Conflagration
+  hands back 150 and Living Pyre 100. A strike by a wearer of the row takes what a strike by a fighter with no
+  row takes.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeAuraEffect`. An aura
+granted to a plain fighter and not switched on hands 100 back as 100 (the control), and as 150 with the stat
+granted at 50.
+
+Python, `tools/tests/test_aura_effect_and_buff_potency_rows.py`, ten tests on a made-up sheet holding the real
+sentence: the generator's list holds the stat with its kind and bounds; the ruled row is carried through and
+not refused by any check; its enchantment's name is the one `EnchantmentsPositive.csv` holds for the sentence,
+which holds it once; the stat is one with no attribute and a made-up name is not; the generator's name is the
+one `CataclysmSkillTemplates.cpp` gives the engine's constant; each wrong shape is refused once and by its own
+sentence (increased, flat, a required tag, 19, 51); a narrower pair and the bounds themselves are accepted; a
+condition or a scale is refused by the two checks that hold those; a passive node's row and a row on another
+stat are left alone; and the sheet's validation runs the check.
+
+**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; a pulse fired
+by the aura's own timer, except in the test of the duration, where nothing stands in the ring; a real blow on
+Living Pyre's holder (the blow is `NoteBlowTaken` called with a figure); the row with the healing row worn as
+well; a row putting a larger Shred on an enemy already carrying the aura's smaller one; a wearer's Shred against
+another source's Shred; a skill row that states a ceiling, or grows by another source, or names an effect and
+no magnitude, because no aura is such a row; an ally's blow with the raised bonus (the modifier is read);
+minions as the allies; an immunity; anything in a dungeon level; any real player character.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by a script of the writing session, which printed 1 for each.
+Each is a break in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`, and each new text was
+read in place for its brackets. The failed assertions are counted by reading the tests and were not measured.
+The prefix of all three is `Cataclysm.AuraEffect.`, with its trailing dot, which is 7 tests.
+
+| Proof | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|
+| A-I, the pulse's damage is multiplied | `const float Percent = MoreEffective(` | `const float Percent = (` | `ARowMultipliesAPulsesDamageAsAMoreLineOfItsOwn` | `ARowRaisesTheLivingPyresHealthReturnedAndItsGrowthForAHitTaken` |
+| A-II, the named debuff's magnitude is multiplied | `MoreEffective(Params.EffectMagnitude));` | `Params.EffectMagnitude);` | `ARowRaisesTheNamedDebuffsMagnitudeAndLeavesItsSecondsAndTheBurnAlone` | None |
+| A-III, the growth for a hit taken is multiplied | `bGrowsByHitsTaken ? MoreEffective(Units) : Units` | `bGrowsByHitsTaken ? Units : Units` | `ARowRaisesTheLivingPyresHealthReturnedAndItsGrowthForAHitTaken` | None |
+
+Failed assertions in each test, by reading:
+
+- **A-I, 5 in 2 tests.** The pulse test 3: "with a more row of 50 a pulse takes one and a half times what it took
+  with no row", which would take the same; "with more rows of 50 and of 20 a pulse takes 1.8 times, not 1.7
+  times"; and "and with the row of 50 as well it takes three times: the two multiply", which would take twice.
+  Its controls and its set-up pass. The Living Pyre test 2: "with a more row of 50, the pulse after one blow is
+  the cold pulse, grown by one and a half times the growth for a blow, times one and a half" and "and the pulse
+  after two blows is the cold pulse, grown by one and a half times the growth for each of the two, times one
+  and a half", each of which would lack the last multiplier. Its line about the health returned passes.
+- **A-II, 4 in 1 test.** "with a more row of 50 the pulse cuts one and a half times the resistance", which
+  would cut what the control cuts; "and is cut to nought and not below, though the raised figure is more than
+  20", which would leave 5; "a second pulse leaves the cut at one and a half times, not three times"; and "with
+  the row taken off, a pulse leaves the enemy inside at the larger cut it already carried". The lines about the
+  seconds and the burn pass, and so does "the enemy with 20 resistance carries the Shred".
+- **A-III, 2 in 1 test.** The two lines of the Living Pyre test quoted under A-I: with the break the pulse after
+  one blow is 1.5 times the control's pulse after one blow, and the expected figure is more.
+
+**Tests and no proof:** the allies' damage bonus and the health returned, each of which one test of the prefix
+reads; that nothing else of an aura moves; that the stat is asked with the aura's tags.
+
+No test outside the prefix is expected to fail under any of the three. The probe of the stat asks
+`MoreEffective` directly, and none of the three breaks that function.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — Seven sentences are given their rows: execute, unmitigated retaliation, enemies that survive a first hit, enemies immune after fifteen seconds, added projectiles, teleport when hit, and damage taken dealt over seconds
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (eight rows of the Enchantment Effects sheet, on seven
