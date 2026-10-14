@@ -15,11 +15,16 @@ float FCataclysmDungeon::BiteScale() const
 
 	// A TYPICAL DUNGEON OF THIS KIND ON THIS TIER, which is the midpoint of its
 	// floor range. `Simulation._resolve` scales the same way, and it is what
-	// makes a deep dungeon hurt more than a shallow one on the same city rather
-	// than only taking longer to walk.
+	// makes a dungeon rolled deep hurt more than one rolled shallow on the same
+	// city rather than only taking longer to walk.
 	const float Typical = (Spec.LeastFloors + Spec.MostFloors) / 2.0f;
 
-	return Typical <= 0.0f ? 1.0f : Floors / Typical;
+	// THE FLOORS IT WAS ROLLED WITH, which is `Floors` less what the city's two
+	// floor upgrades moved. Investment changes how deep a dungeon is, how long
+	// it takes to walk and when its timer runs out; it does not change the size
+	// of the hit. `UpgradeFloors` is nought on a dungeon nobody set it on, so a
+	// dungeon built by hand is sized by all of its floors.
+	return Typical <= 0.0f ? 1.0f : (Floors - UpgradeFloors) / Typical;
 }
 
 float FCataclysmDungeon::WalkDaysPerFloor() const
@@ -874,6 +879,10 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	Dungeon.Floors = FMath::Max(1, Stream.RandRange(Spec.LeastFloors,
 													Spec.MostFloors));
 
+	// KEPT, because the hit is sized by this and not by what the upgrades
+	// below make of it. See `FCataclysmDungeon::UpgradeFloors`.
+	const int32 Rolled = Dungeon.Floors;
+
 	// AND THEN THE CITY'S OWN UPGRADES MOVE IT. Both are read and the difference
 	// applied once, so a city holding both ends up with the net change rather
 	// than with whichever happened to be checked second.
@@ -890,6 +899,11 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// A MINIMUM OF ONE, which is what "to a minimum of 1" in the sheet says and
 	// what a dungeon with no floors would otherwise be: unwalkable.
 	Dungeon.Floors = FMath::Max(1, Dungeon.Floors + Deeper - Shallower);
+
+	// WHAT THE UPGRADES MOVED, TAKEN AFTER THE CLAMP. Not `Deeper - Shallower`:
+	// where the clamp at one floor stopped the change short, the two differ,
+	// and `BiteScale` must get back exactly the floors that were rolled.
+	Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;
 
 	// AND WHAT IT DOES DIFFERENTLY. Rolled after the depth so the depth is drawn
 	// from the same place in the stream it always was, and before the walk cost
@@ -937,7 +951,10 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// on the same day. See `ResolveJitter`.
 	//
 	// SO THE FLOOR UPGRADES MOVE THE TIMER TOO, and that is the point rather
-	// than a side effect. Depth and reward are the same axis, which `CLAUDE.md`
+	// than a side effect. They do not move the size of the hit: `BiteScale`
+	// reads the floors that were rolled.
+	//
+	// Depth and reward are the same axis, which `CLAUDE.md`
 	// states: a deeper dungeon is worth more and slower to bite, and a shallower
 	// one is poorer and bites sooner. Adjusting the timer separately would break
 	// the trade the whole strategy layer rests on.
