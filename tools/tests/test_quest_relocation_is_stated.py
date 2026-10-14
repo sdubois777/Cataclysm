@@ -98,7 +98,11 @@ def decisions() -> str:
 #: this issue. THE POSITIVE CONTROL on every search below: if one of these goes
 #: missing the search is broken, not the design.
 CONTROLS = (
-    "Does not resolve",
+    # "Does not resolve" stood here until 2026-10-13. It was in the document
+    # only in the Quest row of the dungeon-type table, and that row stopped
+    # being true when a Quest dungeon's timer began to hit its host city. The
+    # row's new opening words take its place.
+    "When its timer runs out it hits its host city",
     "Required to challenge the Cataclysm",
     "diamond lattice of 25 cities",
     "Distance is counted in rings",

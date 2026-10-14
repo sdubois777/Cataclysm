@@ -1267,11 +1267,12 @@ class TestWhatAQuestDungeonIs:
         THIS WAS `test_it_takes_nothing_from_the_city_in_either` UNTIL
         2026-10-13, AND THE NAME BECAME FALSE FOR THE MODEL. A Quest
         dungeon's timer running out now hits its host in the model, with
-        the ORDINARY row of the host's tier, and the game does not have the
-        rule. The Quest rows themselves are still zero in both halves:
-        `test_every_dungeon_spec_matches_in_the_game` holds that. The
-        divergence is recorded in
-        `test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`.
+        the ORDINARY row of the host's tier, and since its layer of
+        2026-10-13 the game does the same. The Quest rows themselves are
+        still zero in both halves:
+        `test_every_dungeon_spec_matches_in_the_game` holds that. The hit is
+        held together in
+        `test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`.
 
         ZERO IS ZERO IN EITHER UNIT, so this survived issue #1327 turning the
         model's damage from a fraction of the city's maximum into a number of
@@ -1284,14 +1285,15 @@ class TestWhatAQuestDungeonIs:
             assert spec.defense_damage == 0.0, tier
             assert spec.population_damage == 0.0, tier
 
-    def test_both_single_it_out_by_kind_and_only_the_game_lets_it_off(self):
+    def test_both_single_it_out_by_kind_before_anything_is_taken(self):
         """Both halves decide on the KIND, not on the damage being zero.
 
         THIS WAS `test_neither_lets_one_bite_its_host_when_the_timer_runs_out`
-        UNTIL 2026-10-13. The model now hits the host and the game does
-        not; that divergence, and what to do when the game gains the rule,
-        is in
-        `test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`.
+        UNTIL 2026-10-13, AND THEN
+        `test_both_single_it_out_by_kind_and_only_the_game_lets_it_off` while
+        the model hit the host and the game did not. Both hit it now; the hit
+        is held together in
+        `test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`.
         What this still holds in BOTH halves: `resolves` / `Resolves` is
         "ordinary and nothing else", and each resolve function asks the
         kind before anything is taken. The paragraph below was written
@@ -1330,8 +1332,9 @@ class TestWhatAQuestDungeonIs:
 
         assert "if (!Dungeon->Resolves())" in body, (
             "UCataclysmEmpireRun::ResolveDungeon no longer asks whether the "
-            "dungeon is a kind that detonates, so a Quest dungeon now bites "
-            "the city it is standing on. Issue #1324 slice 3")
+            "dungeon is an ordinary one, so a Quest dungeon now takes its own "
+            "row scaled by its depth and leaves the map like an ordinary "
+            "dungeon. Issue #1324 slice 3")
 
         header = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.h")
