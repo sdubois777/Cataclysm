@@ -190,6 +190,69 @@ public:
 	bool IsTrap() const;
 
 	/**
+	 * Whether this machine is a gadget: a placed machine that is not a trap. A Bolt Turret and a Ballista are; a
+	 * Spike Trap, which carries `Type.Trap`, is a trap and not a gadget (ruled 2026-10-07).
+	 *
+	 * THE TEST THE COUNT `gadgets_active` MAKES, stated once so the two cannot differ:
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions` counts a gadget by calling this. Every behaviour a
+	 * summoner's row gives "your gadgets" asks it too.
+	 */
+	bool IsGadget() const;
+
+	/**
+	 * The flag by which a summoner's gadgets choose the enemy with the most health. Ruled 2026-10-13 by the
+	 * coordinating session under the owner's delegation, for "Your gadgets prioritize the highest HP enemy within
+	 * their range instead of the nearest". A row sets it at a flat 1, scoped to `Type.Deployable`, and it is read
+	 * as above nought. No gameplay attribute and no base.
+	 */
+	static const TCHAR* GadgetsTargetMostHealthStat;
+
+	/**
+	 * What one stat of this gadget's summoner stands at for this gadget, or nought.
+	 *
+	 * NOUGHT FOR EVERYTHING THAT IS NOT A GADGET, before the summoner is asked anything: an imp, a mote, a Spike
+	 * Trap and a minion with no type row. So a row that says "your gadgets" reaches the Bolt Turret and the
+	 * Ballista and nothing else, whatever tags the row requires.
+	 *
+	 * ASKED WITH THIS GADGET'S OWN TYPE TAGS, as `UCataclysmCommand::SummonerMultiplierFor` asks a multiplier, so
+	 * a row scoped to `Type.Deployable` matches. `StatForSkill` and not a multiplier, because these stats are
+	 * flat figures with no base: a flag at 1, or a number of seconds or a percent.
+	 *
+	 * NOUGHT FOR A SUMMONER WITH NO STAT LINE, which is every enemy summoner, and for a summoner that is gone.
+	 */
+	float SummonersGadgetStat(const TCHAR* Stat) const;
+
+	/**
+	 * How far past its reach a body may measure and still be within it, in centimetres. A body placed at exactly
+	 * the reach can measure a hair beyond it in floating point; this is far inside the 2 cm the brain already
+	 * allows a creature in contact (`ACataclysmEnemyController::ContactToleranceCm`).
+	 */
+	static constexpr float ReachAllowanceCm = 0.01f;
+
+	/**
+	 * Every living character this minion is hostile to within its reach, nearest first.
+	 *
+	 * "WITHIN ITS REACH" IS THE BRAIN'S OWN MEASURE: the distance along the floor between the two actors, centre
+	 * to centre, no more than `ReachCm`. `ACataclysmEnemyController::Think` attacks a target at that distance and
+	 * walks toward one beyond it, and a gadget does not walk. The search itself is the sphere `AttackOnce` uses,
+	 * which also finds a body whose edge reaches in while its centre is outside; those are dropped here, or a
+	 * gadget could choose a target it then never fires at.
+	 */
+	TArray<AActor*> HostilesWithinReach() const;
+
+	/**
+	 * The enemy within this gadget's reach holding the most health now, or null. Null for everything that is not
+	 * a gadget of a summoner holding `GadgetsTargetMostHealthStat`, and null when nothing is within reach.
+	 *
+	 * CURRENT HEALTH, AS A FIGURE AND NOT AS A SHARE, ruled 2026-10-13. Two holding the same: the nearer, a
+	 * judgement of the writing session.
+	 *
+	 * CALLED BY `ACataclysmEnemyController::ChooseTarget` ON EVERY PASS, after the Quarry mark and before the
+	 * search for the nearest, so the choice is made again each time the gadget picks a target.
+	 */
+	AActor* MostHealthWithinReach() const;
+
+	/**
 	 * Percent of its type's own health the skill that deployed it asked for, or
 	 * zero for that type's health unchanged.
 	 *
