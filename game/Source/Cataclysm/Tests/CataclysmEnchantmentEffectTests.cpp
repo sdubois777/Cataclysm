@@ -45,6 +45,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
@@ -25091,6 +25092,1552 @@ bool FCataclysmDamageOverSecondsRowTest::RunTest(const FString&)
 	TestEqual(TEXT("at 50% over 8 seconds: 8 seconds after the blow nothing is owed"), AtHigh.OwedAfter[7], 0.0f, 0.0f);
 	TestEqual(TEXT("at 50% over 8 seconds: the blow has cost in all what it cost the wearer without the rows"),
 		AtHigh.LostInAll, Whole, Tolerated);
+	return true;
+}
+
+// NINE MORE ROWS OF ISSUE #1833, EACH WORN FROM THE LOADED TABLES. Each mechanism has tests of its own that build the
+// row by hand: `Cataclysm.AuraEffect.`, `Cataclysm.BuffPotency.`, `Cataclysm.DebuffCutsDamage.`,
+// `Cataclysm.DebuffImmune.`, `Cataclysm.BurnExplodes.`, `Cataclysm.GadgetTargets.`, `Cataclysm.GadgetVolley.`,
+// `Cataclysm.GadgetBurst.` and `Cataclysm.GadgetDrain.`. None of them wears a row. The nine tests below wear the
+// authored rows and read what reaches a character. They stand on the helpers of `CataclysmFourSingleRowsTest` and
+// `CataclysmThreeMoreSingleRowsTest` above and add only what those lack.
+//
+// EVERY TEST READS A WEARER WITHOUT ITS ROW FIRST, wearing `HelmWithNoRow`, as the seven tests above do.
+//
+// WHICH WEARER EACH TEST USES, AND WHAT DIFFERS FROM THE MECHANISM'S OWN TESTS.
+// - The aura, the self buff and the two debuff rows are driven by `CataclysmEnchantmentEffectTest::FWearer`, a bare
+//   actor with an equipment component. Their mechanisms' tests use a bare fighter that cannot wear gear. The aura's
+//   caster and its enemy are each given the sphere `StandAt` gives, which is the sphere the mechanism's fighter has,
+//   because a pulse searches an area. A BARE ACTOR HAS NO SIDE, AND HAVING NO SIDE IS HOSTILE TO EVERYTHING: that is
+//   why a bare caster's pulse strikes a bare enemy, in the mechanism's tests and here.
+// - The Burn is driven by `FRowStriker`, a player character on a player state, as the mechanism's tests drive it.
+// - The four gadget rows are driven by `FRowStriker` as the summoner. THE MECHANISM'S TESTS USE AN ENEMY CHARACTER
+//   PUT ON THE PLAYERS' SIDE, WHICH CANNOT WEAR GEAR. A summoner has to have a side, because a minion takes its
+//   summoner's side, so a bare wearer will not do. A player character is on the players' side. What differs: a
+//   machine's blow and health rise with its summoner's level, and the summoner here is a refreshed player character.
+//   So no figure of a turret's is stated outright: each is a difference from, or a share of, what is read off the
+//   same or the control's turret.
+//
+// A REFRESHED WEARER IS A LEVEL 20 RAVAGER WITH CLASS LINES OF ITS OWN, so every figure is a difference from, or a
+// ratio to, the wearer without the row.
+//
+// EACH TEST HAS ONE GATED SET-UP CHECK THAT THE ROW REACHED ITS WEARERS, carrying `RowDidNotArrive`. On a
+// DT_EnchantmentEffects older than the rows that check fails and ends the test, and nothing after it is asserted.
+//
+// THE NINE NAMES WERE PRINTED BY `row_name(kind, sentence[:48])` OF `tools/generate_datatables.py` and compared with
+// the two enchantment CSVs, `EnchantmentEffects.csv` and this file by a script, not typed. Each test looks its own
+// up again as set-up.
+//
+// NOT COMPILED AND NOT RUN BY THE SESSION THAT WROTE IT.
+namespace CataclysmNineMoreRowsTest
+{
+	using namespace CataclysmThreeMoreSingleRowsTest;
+
+	const TCHAR* const AuraEffectBenefit = TEXT("Positive_Your_auras_are_20_50_more_effective");
+	const TCHAR* const BuffPotencyBenefit = TEXT("Positive_Buff_effects_you_apply_are_20_40_more_potent");
+	const TCHAR* const DebuffCutBenefit = TEXT("Positive_Applying_a_debuff_to_an_enemy_reduces_their_dama");
+	const TCHAR* const DebuffImmuneDrawback = TEXT("Negative_You_are_immune_to_debuffs_but_also_cannot_apply");
+	const TCHAR* const BurnExplodesBenefit = TEXT("Positive_Your_burn_effects_have_a_20_40_chance_to_explo");
+	const TCHAR* const MostHealthBenefit = TEXT("Positive_Your_gadgets_prioritize_the_highest_HP_enemy_wit");
+	const TCHAR* const VolleyBenefit = TEXT("Positive_Gadgets_fire_at_all_enemies_within_range_simulta");
+	const TCHAR* const BurstOnKillBenefit = TEXT("Positive_When_a_gadget_kills_an_enemy_it_fires_an_additi");
+	const TCHAR* const NoDamageAndDrainBenefit = TEXT("Positive_Your_gadgets_are_invincible_but_lose_5_of_their");
+
+	/** Conflagration's row and tags, as the tests of `Cataclysm.AuraEffect.` state them. */
+	const TCHAR* const NineRowsConflagrationParams =
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8");
+	const TCHAR* const NineRowsConflagrationTags = TEXT("Element.Demonic, Type.AOE.Aura, Slot.Aura");
+
+	/** Butcher's Heat's row, as the tests of `Cataclysm.BuffPotency.` state it: 1% more damage for each kill. */
+	const TCHAR* const NineRowsButchersHeatParams =
+		TEXT("Duration=8; MoreDamagePer=1; DurationPer=1; ScalingSource=Kill");
+
+	/** The console variable that pins the roll of an ailment's explosion at its end. */
+	const TCHAR* const NineRowsExplosionRollName = TEXT("Cataclysm.DotExplodesAtExpiryRoll");
+
+	/** A tag by its name, not valid when the vocabulary lacks it. */
+	FGameplayTag NineRowsTag(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	/**
+	 * SET-UP: the CSV row is a stat line of this stat and kind, with these Required Tags, these two numbers in the
+	 * order written, and no condition or action.
+	 */
+	bool IsWrittenAsAStat(FAutomationTestBase& Test, const FWrittenRow& Written, const TCHAR* Stat, const TCHAR* Kind,
+		const TCHAR* Tags, float First, float Second)
+	{
+		return Test.TestTrue(*FString::Printf(TEXT("set-up: the CSV row is %s, %s, Required Tags '%s', with no "
+					"condition and no action: '%s', '%s', '%s', '%s', '%s'"), Stat, Kind, Tags, *Written.Stat,
+					*Written.ValueKind, *Written.RequiredTags, *Written.Condition, *Written.Action),
+				Written.Stat == Stat && Written.ValueKind == Kind && Written.RequiredTags == Tags
+					&& Written.Condition.IsEmpty() && Written.Action.IsEmpty())
+			&& Test.TestEqual(*FString::Printf(TEXT("set-up: the first number of the CSV row on %s"), Stat),
+				Written.ValueLow, First)
+			&& Test.TestEqual(*FString::Printf(TEXT("set-up: the second number of the CSV row on %s"), Stat),
+				Written.ValueHigh, Second);
+	}
+
+	/**
+	 * Three checks of one line a row wrote: what it is worth, its bucket, and that it has no condition and requires
+	 * `Scope` alone, or no tag at all when `Scope` is not a valid tag.
+	 */
+	void LineIs(FAutomationTestBase& Test, const TCHAR* Whose, const FCataclysmStatModifier& Line, float Value,
+		ECataclysmStatBucket Bucket, const FGameplayTag& Scope)
+	{
+		Test.TestEqual(*FString::Printf(TEXT("%s: the line is worth %.0f"), Whose, Value), Line.Value, Value, 0.001f);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the line's bucket"), Whose), static_cast<int32>(Line.Bucket),
+			static_cast<int32>(Bucket));
+		Test.TestTrue(*FString::Printf(TEXT("%s: the line has no condition and %s"), Whose,
+				Scope.IsValid() ? TEXT("requires that one tag alone") : TEXT("requires no tag")),
+			Line.Condition == ECataclysmStatCondition::Always
+				&& (Scope.IsValid() ? (Line.RequiredTags.Num() == 1 && Line.RequiredTags.HasTagExact(Scope))
+					: Line.RequiredTags.IsEmpty()));
+	}
+
+	/** 1,000 mana of a maximum of 1,000 and an attack damage of 100, written after a wearer's refresh. */
+	void GiveManaAndAWeapon(UCataclysmAbilitySystemComponent* System)
+	{
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	}
+
+	/**
+	 * Conflagration granted into the aura slot of a wearer, worth 100% of its weapon a pulse. Not switched on.
+	 * `CataclysmProjectileRangeRowsTest::SkillOn` grants into the special slot, so this is written beside it.
+	 */
+	UCataclysmAuraSkill* ConflagrationOn(UCataclysmAbilitySystemComponent* System, AActor* Avatar)
+	{
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+			UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura, /*Level=*/1, Avatar);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmAuraSkill* Aura = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Aura)
+		{
+			Aura->SkillName = TEXT("Conflagration");
+			Aura->Params = UCataclysmSkillShapes::ParseParams(NineRowsConflagrationParams);
+			Aura->SkillTags = UCataclysmSkillShapes::TagsFromCell(NineRowsConflagrationTags);
+			Aura->DamagePercentOverride = 100.0f;
+		}
+		return Aura;
+	}
+
+	/** Where a summoner's turret stands: 50 m along +X from the summoner, which is at the origin of its world. */
+	constexpr float TurretAlongCm = 5000.0f;
+
+	/** The point this many metres along +X from a summoner's turret. */
+	FVector AlongFromTheTurret(float Metres)
+	{
+		return FVector(TurretAlongCm + Metres * 100.0f, 0.0f, 0.0f);
+	}
+
+	/**
+	 * A real creature of the monsters' side holding `Health` of a maximum of 100,000, with no armour, evasion, block
+	 * or resistance, dealing nothing: the creature `CataclysmGadgetBehaviourTest::Stand` makes.
+	 */
+	ACataclysmEnemyCharacter* EnemyStandingAt(UWorld* World, const FVector& Where, float Health)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		UAbilitySystemComponent* Its = Made ? Made->GetAbilitySystemComponent() : nullptr;
+		if (!Its)
+		{
+			return nullptr;
+		}
+		Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Made->SetHealth(100000.0f);
+		Made->SetArmour(0.0f);
+		Made->SetAttackDamage(0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		return Made;
+	}
+
+	/**
+	 * A Bolt Turret of this summoner's standing for ten minutes at `AlongFromTheTurret(0)`, or null with the reason
+	 * already reported: the type row is missing, or what was placed is not a gadget.
+	 */
+	ACataclysmMinion* TurretPlacedBy(FAutomationTestBase& Test, const FRowStriker& Summoner, const TCHAR* Who)
+	{
+		ACataclysmMinion* Made = ACataclysmMinion::Spawn(Summoner.Character, AlongFromTheTurret(0.0f),
+			/*Lifetime=*/600.0f, /*bBurns=*/false, FString(TEXT("BoltTurret")));
+		if (!Made || Made->TypeName != FString(TEXT("BoltTurret")))
+		{
+			Test.AddError(FString::Printf(TEXT("set-up, %s: DT_MinionTypes could not supply the BoltTurret row. Run "
+				"tools/generate_datatable_assets.py"), Who));
+			return nullptr;
+		}
+		return Test.TestTrue(*FString::Printf(TEXT("set-up, %s: the Bolt Turret is a gadget"), Who), Made->IsGadget())
+			? Made : nullptr;
+	}
+
+	/** Move a world's clock on by hand and run a gadget's quarter-second job once, as the mechanisms' tests do. */
+	void PassAndStep(UWorld* World, float Seconds, ACataclysmMinion* Gadget)
+	{
+		World->TimeSeconds += Seconds;
+		ACataclysmMinion::GadgetStep(Gadget);
+	}
+
+	/** The creatures of the volley test, and the steps at which its turrets are read. */
+	constexpr int32 VolleyCreatures = 4;
+	constexpr int32 VolleyReadings = 5;
+
+	/** Counts the blows announced as the explosion at an ailment's end, in one world, while it is in scope. */
+	struct FExplosionsHeard
+	{
+		FExplosionsHeard(UCataclysmCombatEvents* InEvents, const AActor* InCarrier)
+			: Events(InEvents), Carrier(InCarrier)
+		{
+			if (Events)
+			{
+				Handle = Events->OnHit.AddLambda([this](const FCataclysmHitNotice& Notice)
+				{
+					if (Notice.bExplosionAtAnAilmentsEnd)
+					{
+						++Explosions;
+						OnTheCarrier += Notice.Target == Carrier ? 1 : 0;
+					}
+				});
+			}
+		}
+
+		~FExplosionsHeard()
+		{
+			if (Events)
+			{
+				Events->OnHit.Remove(Handle);
+			}
+		}
+
+		FExplosionsHeard(const FExplosionsHeard&) = delete;
+		FExplosionsHeard& operator=(const FExplosionsHeard&) = delete;
+
+		UCataclysmCombatEvents* Events = nullptr;
+		const AActor* Carrier = nullptr;
+		FDelegateHandle Handle;
+		int32 Explosions = 0;
+		int32 OnTheCarrier = 0;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornAuraEffectRowTest,
+	"Cataclysm.Enchantments.TheAuraEffectRowMultipliesAConflagrationPulseByItsRolledTwentyToFiftyPercentMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your auras are 20%-50% more effective". One row: `aura_effect`, more, 20 to 50, with no Required Tags.
+ *
+ * THREE CASTERS IN ONE WORLD, each a bare actor given a sphere, 100 m apart along +X, each made, read and removed
+ * before the next: one without the row, the control; one whose helm rolled the bottom of the range, 20; and one
+ * whose helm rolled the top, 50. Each has one enemy 2 m along +X from it: a bare actor with the same sphere, 100,000
+ * health and an armour, an evasion and a block chance of 0, which wears nothing and is never refreshed.
+ *
+ * EACH CASTER IS GIVEN 1,000 MANA AND 100 ATTACK DAMAGE AFTER ITS REFRESH, is granted Conflagration into the aura
+ * slot at 100% of its weapon a pulse, and switches it on. ONE PULSE IS `Pulse` CALLED BY THE TEST, as the
+ * mechanism's tests call it, and is read as the health the enemy lost. Nothing waits and the clock is not moved.
+ *
+ * WHAT THIS TEST READS IS THE PULSE'S DAMAGE ALONE. The other four figures the stat reaches (the named debuff's
+ * magnitude, the ally damage bonus, and Living Pyre's two) are the mechanism's.
+ */
+bool FCataclysmWornAuraEffectRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = UCataclysmAuraSkill::AuraEffectStat;
+	const FWrittenRow Written = WrittenFor(AuraEffectBenefit, /*bBenefit=*/true);
+	if (!IsWrittenOnce(*this, AuraEffectBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("more"), TEXT(""), 20.0f, 50.0f))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	struct FPulseRead
+	{
+		TArray<FCataclysmStatModifier> Lines;
+		bool bSwitchedOn = false;
+		float Took = 0.0f;
+	};
+	int32 StationsUsed = 0;
+	const auto Ask = [&](const FCataclysmItem& Helm, FPulseRead& Out)
+	{
+		const FVector At(10000.0f * static_cast<float>(StationsUsed++), 0.0f, 0.0f);
+		FBareWearer Caster(World);
+		FBareWearer Enemy(World);
+		StandAt(Caster, At);
+		StandAt(Enemy, At + FVector(200.0f, 0.0f, 0.0f));
+		WearAndRefresh(Caster, Helm);
+		GiveManaAndAWeapon(Caster.AbilitySystem);
+		FourRowsGiveHealth(Enemy.AbilitySystem, 100000.0f);
+		Enemy.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Enemy.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Enemy.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+
+		// WHAT THE REFRESH WROTE ON THE STAT.
+		Out.Lines = EnchantmentModifiersOn(Caster.AbilitySystem, Stat);
+
+		UCataclysmAuraSkill* Aura = ConflagrationOn(Caster.AbilitySystem, Caster.Actor);
+		Out.bSwitchedOn = Aura && Caster.AbilitySystem->TryActivateAbility(
+			Aura->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		if (!Out.bSwitchedOn)
+		{
+			return;
+		}
+		const FGameplayAttribute HealthHeld = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Before = Enemy.AbilitySystem->GetNumericAttribute(HealthHeld);
+		Aura->Pulse();
+		Out.Took = Before - Enemy.AbilitySystem->GetNumericAttribute(HealthHeld);
+	};
+
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	FPulseRead Plain;
+	FPulseRead Low;
+	FPulseRead High;
+	Ask(HelmWithNoRow(), Plain);
+	Ask(HelmCarrying(AuraEffectBenefit, NoEffect, /*PositiveRoll=*/0.0f), Low);
+	Ask(HelmCarrying(AuraEffectBenefit, NoEffect, /*PositiveRoll=*/1.0f), High);
+
+	// SET-UP: EACH CASTER'S AURA WAS GRANTED AND SWITCHED ON.
+	if (!TestTrue(TEXT("set-up, no row: Conflagration is granted and switched on"), Plain.bSwitchedOn)
+		|| !TestTrue(TEXT("set-up, the row at 20: Conflagration is granted and switched on"), Low.bSwitchedOn)
+		|| !TestTrue(TEXT("set-up, the row at 50: Conflagration is granted and switched on"), High.bSwitchedOn))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW THE CASTER HOLDS NO LINE AND ITS PULSE TAKES HEALTH.
+	if (!TestEqual(TEXT("control: the caster without the row holds no enchantment line on aura_effect"),
+			Plain.Lines.Num(), 0)
+		|| !TestTrue(*FString::Printf(TEXT("control: a pulse of the caster without the row takes health from the enemy "
+				"inside: %.2f"), Plain.Took), Plain.Took > 1.0f))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED THE TWO CASTERS OF IT.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the caster of the row at the bottom of its range and the caster of "
+				"the row at the top each hold one enchantment line on aura_effect: %d and %d."), Low.Lines.Num(),
+				High.Lines.Num()) + RowDidNotArrive),
+			Low.Lines.Num() == 1 && High.Lines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINES THE ROW WROTE ARE THE ROW'S, EACH AT ITS OWN ROLL.
+	LineIs(*this, TEXT("the helm rolled at the bottom"), Low.Lines[0], 20.0f, ECataclysmStatBucket::More,
+		FGameplayTag());
+	LineIs(*this, TEXT("the helm rolled at the top"), High.Lines[0], 50.0f, ECataclysmStatBucket::More,
+		FGameplayTag());
+
+	// THE ROW: A PULSE TAKES 1.2 TIMES AND 1.5 TIMES WHAT THE CONTROL'S TAKES.
+	TestEqual(*FString::Printf(TEXT("at 20, a pulse takes 1.2 times what the pulse of the caster without the row "
+			"takes: %.2f against %.2f"), Low.Took, Plain.Took), Low.Took / Plain.Took, 1.2f, 0.001f);
+	TestEqual(*FString::Printf(TEXT("at 50, a pulse takes 1.5 times what the pulse of the caster without the row "
+			"takes: %.2f against %.2f"), High.Took, Plain.Took), High.Took / Plain.Took, 1.5f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornBuffPotencyRowTest,
+	"Cataclysm.Enchantments.TheBuffPotencyRowMultipliesTheMoreDamageASelfBuffGrantsByItsRolledTwentyToFortyPercentMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Buff effects you apply are 20%-40% more potent". One row: `buff_potency`, more, 20 to 40, with no Required Tags.
+ *
+ * THREE CASTERS IN ONE WORLD, each a bare actor, each made, read and removed before the next: one without the row,
+ * the control; one whose helm rolled the bottom of the range, 20; and one whose helm rolled the top, 40. No enemy
+ * stands anywhere, and nothing here searches an area or reads a distance.
+ *
+ * EACH CASTER IS GIVEN 1,000 MANA AFTER ITS REFRESH, runs Butcher's Heat, which states 1% more damage for each kill
+ * while it lasts, and is told of five kills by `UCataclysmSkillTemplate::NoteKill`, the route the mechanism's tests
+ * use. The skill is granted by `CataclysmProjectileRangeRowsTest::SkillOn` with no tags, so the More line it grants
+ * is scoped to nothing. Nothing waits and the clock is not moved.
+ *
+ * THE MORE DAMAGE IS READ TWICE: the figure the buff says it grants, and what a blow of 100 with no tags comes to
+ * through the caster's own modifiers after the five kills, as a share of what it came to before the buff ran. A
+ * refreshed caster holds lines of its own, so the second is a ratio and never 100.
+ */
+bool FCataclysmWornBuffPotencyRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = UCataclysmSelfBuffSkill::BuffPotencyStat;
+	const FWrittenRow Written = WrittenFor(BuffPotencyBenefit, /*bBenefit=*/true);
+	if (!IsWrittenOnce(*this, BuffPotencyBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("more"), TEXT(""), 20.0f, 40.0f))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	struct FBuffRead
+	{
+		TArray<FCataclysmStatModifier> Lines;
+		bool bRan = false;
+		float Granted = 0.0f;
+		float BlowBefore = 0.0f;
+		float BlowAfter = 0.0f;
+	};
+	const auto Ask = [&](const FCataclysmItem& Helm, FBuffRead& Out)
+	{
+		FBareWearer Caster(World);
+		WearAndRefresh(Caster, Helm);
+		UCataclysmAbilitySystemComponent* System = Caster.AbilitySystem;
+		GiveManaAndAWeapon(System);
+
+		// WHAT THE REFRESH WROTE ON THE STAT.
+		Out.Lines = EnchantmentModifiersOn(System, Stat);
+
+		Out.BlowBefore = UCataclysmSkillEffects::ModifiedDamage(System, 100.0f, FGameplayTagContainer());
+		UCataclysmSelfBuffSkill* Heat = CataclysmProjectileRangeRowsTest::SkillOn<UCataclysmSelfBuffSkill>(
+			System, Caster.Actor, NineRowsButchersHeatParams, TEXT(""));
+		if (!Heat)
+		{
+			return;
+		}
+		Heat->SkillName = TEXT("Butcher's Heat");
+		Out.bRan = System->TryActivateAbility(Heat->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		if (!Out.bRan)
+		{
+			return;
+		}
+		for (int32 Kill = 0; Kill < 5; ++Kill)
+		{
+			UCataclysmSkillTemplate::NoteKill(Caster.Actor);
+		}
+		Out.Granted = Heat->GrantedIncrease;
+		Out.BlowAfter = UCataclysmSkillEffects::ModifiedDamage(System, 100.0f, FGameplayTagContainer());
+	};
+
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	FBuffRead Plain;
+	FBuffRead Low;
+	FBuffRead High;
+	Ask(HelmWithNoRow(), Plain);
+	Ask(HelmCarrying(BuffPotencyBenefit, NoEffect, /*PositiveRoll=*/0.0f), Low);
+	Ask(HelmCarrying(BuffPotencyBenefit, NoEffect, /*PositiveRoll=*/1.0f), High);
+
+	// SET-UP: EACH CASTER'S BUFF WAS GRANTED AND RAN, AND ITS BLOW OF 100 CAME TO SOMETHING BEFORE IT.
+	const auto Ran = [this](const TCHAR* Who, const FBuffRead& Read)
+	{
+		return TestTrue(*FString::Printf(TEXT("set-up, %s: Butcher's Heat is granted and runs"), Who), Read.bRan)
+			&& TestTrue(*FString::Printf(TEXT("set-up, %s: before the buff a blow of 100 comes to something: %.2f"),
+				Who, Read.BlowBefore), Read.BlowBefore > 1.0f);
+	};
+	if (!Ran(TEXT("no row"), Plain) || !Ran(TEXT("the row at 20"), Low) || !Ran(TEXT("the row at 40"), High))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW FIVE KILLS GRANT MORE DAMAGE AND A BLOW COMES TO MORE.
+	const float PlainGain = Plain.BlowAfter / Plain.BlowBefore - 1.0f;
+	if (!TestEqual(TEXT("control: the caster without the row holds no enchantment line on buff_potency"),
+			Plain.Lines.Num(), 0)
+		|| !TestTrue(*FString::Printf(TEXT("control: five kills grant the caster without the row More damage: %.3f"),
+				Plain.Granted), Plain.Granted > 0.0f)
+		|| !TestTrue(*FString::Printf(TEXT("control: and its blow of 100 comes to more than it did before the buff: "
+				"%.3f against %.3f"), Plain.BlowAfter, Plain.BlowBefore), PlainGain > 0.001f))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED THE TWO CASTERS OF IT.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the caster of the row at the bottom of its range and the caster of "
+				"the row at the top each hold one enchantment line on buff_potency: %d and %d."), Low.Lines.Num(),
+				High.Lines.Num()) + RowDidNotArrive),
+			Low.Lines.Num() == 1 && High.Lines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINES THE ROW WROTE ARE THE ROW'S, EACH AT ITS OWN ROLL.
+	LineIs(*this, TEXT("the helm rolled at the bottom"), Low.Lines[0], 20.0f, ECataclysmStatBucket::More,
+		FGameplayTag());
+	LineIs(*this, TEXT("the helm rolled at the top"), High.Lines[0], 40.0f, ECataclysmStatBucket::More,
+		FGameplayTag());
+
+	// THE ROW: THE SAME FIVE KILLS GRANT 1.2 TIMES AND 1.4 TIMES THE MORE DAMAGE.
+	TestEqual(*FString::Printf(TEXT("at 20, the buff grants 1.2 times the More damage it grants the caster without the "
+			"row: %.3f against %.3f"), Low.Granted, Plain.Granted), Low.Granted / Plain.Granted, 1.2f, 0.001f);
+	TestEqual(*FString::Printf(TEXT("at 40, the buff grants 1.4 times the More damage it grants the caster without the "
+			"row: %.3f against %.3f"), High.Granted, Plain.Granted), High.Granted / Plain.Granted, 1.4f, 0.001f);
+	TestEqual(TEXT("at 20, a blow of 100 gains 1.2 times what it gains for the caster without the row"),
+		(Low.BlowAfter / Low.BlowBefore - 1.0f) / PlainGain, 1.2f, 0.005f);
+	TestEqual(TEXT("at 40, a blow of 100 gains 1.4 times what it gains for the caster without the row"),
+		(High.BlowAfter / High.BlowBefore - 1.0f) / PlainGain, 1.4f, 0.005f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornDebuffCutRowTest,
+	"Cataclysm.Enchantments.TheDebuffCutRowLowersWhatAnEnemyCarryingItsWearersDebuffIsWorthByItsRolledTenToTwenty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Applying a debuff to an enemy reduces their damage output by 10%-20%". One row:
+ * `debuffed_enemies_deal_less_percent`, flat, 10 to 20, with no Required Tags.
+ *
+ * THREE WEARERS AND FOUR ENEMIES IN ONE WORLD, each a bare actor: `Plain` without the row, the control; `Low`, whose
+ * helm rolled the bottom of the range, 10; and `High`, whose helm rolled the top, 20. Each enemy wears nothing, is
+ * never refreshed and is given 10,000 health and an attack damage of 100. One enemy is left alone and each of the
+ * other three is given a Cripple of 20 seconds by one wearer, through `ApplyTagForDuration`, as the mechanism's tests
+ * lay it. A bare actor has no root component, and nothing here searches an area or reads a distance.
+ *
+ * WHAT AN ENEMY IS WORTH IS `UCataclysmSkillEffects::WeaponDamageOf`, read before anything is laid on it and after,
+ * and every figure is the second as a share of the first. Nothing waits and the clock is not moved.
+ */
+bool FCataclysmWornDebuffCutRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = UCataclysmDebuffs::DebuffedEnemiesDealLessPercentStat;
+	const FWrittenRow Written = WrittenFor(DebuffCutBenefit, /*bBenefit=*/true);
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!IsWrittenOnce(*this, DebuffCutBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT(""), 10.0f, 20.0f)
+		|| !TestTrue(TEXT("set-up: the vocabulary has Cripple"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	constexpr int32 Wearers = 3;
+	constexpr int32 PlainOne = 0;
+	constexpr int32 LowOne = 1;
+	constexpr int32 HighOne = 2;
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	FBareWearer Plain(World);
+	FBareWearer Low(World);
+	FBareWearer High(World);
+	FBareWearer CarriesPlains(World);
+	FBareWearer CarriesLows(World);
+	FBareWearer CarriesHighs(World);
+	FBareWearer CarriesNone(World);
+	WearAndRefresh(Plain, HelmWithNoRow());
+	WearAndRefresh(Low, HelmCarrying(DebuffCutBenefit, NoEffect, /*PositiveRoll=*/0.0f));
+	WearAndRefresh(High, HelmCarrying(DebuffCutBenefit, NoEffect, /*PositiveRoll=*/1.0f));
+	FBareWearer* const Wearing[Wearers] = {&Plain, &Low, &High};
+	FBareWearer* const Carriers[Wearers] = {&CarriesPlains, &CarriesLows, &CarriesHighs};
+	for (FBareWearer* Each : {&CarriesPlains, &CarriesLows, &CarriesHighs, &CarriesNone})
+	{
+		FourRowsGiveHealth(Each->AbilitySystem, 10000.0f);
+		Each->AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	}
+
+	// WHAT THE REFRESH WROTE ON THE STAT, AND WHAT EACH ENEMY IS WORTH BEFORE ANYTHING IS LAID ON IT.
+	TArray<FCataclysmStatModifier> Lines[Wearers];
+	float Before[Wearers] = {};
+	float After[Wearers] = {};
+	bool bLaid[Wearers] = {};
+	bool bCarried[Wearers] = {};
+	for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+	{
+		Lines[Wearer] = EnchantmentModifiersOn(Wearing[Wearer]->AbilitySystem, Stat);
+		Before[Wearer] = UCataclysmSkillEffects::WeaponDamageOf(Carriers[Wearer]->AbilitySystem);
+	}
+	const float NoneBefore = UCataclysmSkillEffects::WeaponDamageOf(CarriesNone.AbilitySystem);
+
+	// EACH WEARER'S CRIPPLE ON ITS OWN ENEMY.
+	for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+	{
+		bLaid[Wearer] = UCataclysmSkillEffects::ApplyTagForDuration(
+			Wearing[Wearer]->Actor, Carriers[Wearer]->Actor, Cripple, /*DurationSeconds=*/20.0f);
+		bCarried[Wearer] = Carriers[Wearer]->AbilitySystem->HasMatchingGameplayTag(Cripple);
+		After[Wearer] = UCataclysmSkillEffects::WeaponDamageOf(Carriers[Wearer]->AbilitySystem);
+	}
+	const float NoneAfter = UCataclysmSkillEffects::WeaponDamageOf(CarriesNone.AbilitySystem);
+
+	// SET-UP: EVERY ENEMY IS WORTH SOMETHING, AND EACH WEARER'S CRIPPLE LANDED.
+	const TCHAR* const Rolled[Wearers] = {TEXT("no row"), TEXT("the row at 10"), TEXT("the row at 20")};
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the enemy left alone is worth something: %.2f"), NoneBefore),
+			NoneBefore > 1.0f))
+	{
+		return false;
+	}
+	for (int32 Wearer = 0; Wearer < Wearers; ++Wearer)
+	{
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: its enemy is worth something before the Cripple: %.2f"),
+				Rolled[Wearer], Before[Wearer]), Before[Wearer] > 1.0f)
+			|| !TestTrue(*FString::Printf(TEXT("set-up, %s: the wearer's Cripple lands on its enemy, which carries it"),
+				Rolled[Wearer]), bLaid[Wearer] && bCarried[Wearer]))
+		{
+			return false;
+		}
+	}
+
+	// THE CONTROL, READ FIRST: AN ENEMY LEFT ALONE, AND ONE CARRYING THE DEBUFF OF THE WEARER WITHOUT THE ROW, ARE
+	// EACH WORTH WHAT THEY WERE.
+	if (!TestEqual(TEXT("control: the wearer without the row holds no enchantment line on the stat"),
+			Lines[PlainOne].Num(), 0)
+		|| !TestEqual(TEXT("control: an enemy carrying no debuff is worth what it was"), NoneAfter / NoneBefore, 1.0f,
+			0.0005f)
+		|| !TestEqual(TEXT("control: an enemy carrying the Cripple of the wearer without the row is worth what it was"),
+			After[PlainOne] / Before[PlainOne], 1.0f, 0.0005f))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED THE TWO WEARERS OF IT.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the wearer of the row at the bottom of its range and the wearer of "
+				"the row at the top each hold one enchantment line on debuffed_enemies_deal_less_percent: %d and %d."),
+				Lines[LowOne].Num(), Lines[HighOne].Num()) + RowDidNotArrive),
+			Lines[LowOne].Num() == 1 && Lines[HighOne].Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINES THE ROW WROTE ARE THE ROW'S, EACH AT ITS OWN ROLL.
+	LineIs(*this, TEXT("the helm rolled at the bottom"), Lines[LowOne][0], 10.0f, ECataclysmStatBucket::Flat,
+		FGameplayTag());
+	LineIs(*this, TEXT("the helm rolled at the top"), Lines[HighOne][0], 20.0f, ECataclysmStatBucket::Flat,
+		FGameplayTag());
+
+	// THE ROW: AN ENEMY CARRYING THE WEARER'S DEBUFF IS WORTH 0.9 AND 0.8 OF WHAT IT WAS.
+	TestEqual(*FString::Printf(TEXT("at 10, an enemy carrying the wearer's Cripple is worth 0.9 of what it was: %.2f "
+			"of %.2f"), After[LowOne], Before[LowOne]), After[LowOne] / Before[LowOne], 0.9f, 0.0005f);
+	TestEqual(*FString::Printf(TEXT("at 20, an enemy carrying the wearer's Cripple is worth 0.8 of what it was: %.2f "
+			"of %.2f"), After[HighOne], Before[HighOne]), After[HighOne] / Before[HighOne], 0.8f, 0.0005f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornDebuffImmunityRowTest,
+	"Cataclysm.Enchantments.TheDebuffImmunityRowRefusesADebuffLaidOnItsWearerAndADebuffItsWearerLays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You are immune to debuffs but also cannot apply them". One row, a drawback: the flag stat
+ * `immune_to_debuffs_and_applies_none`, flat, 1 to 1, with no Required Tags.
+ *
+ * TWO WEARERS AND THREE OTHERS IN ONE WORLD, each a bare actor: `Plain` without the row, the control, and `Holder`
+ * with it. `Other` lays a Cripple on each wearer; `PlainsEnemy` and `HoldersEnemy` are each laid a Cripple by one
+ * wearer. The three others wear nothing, are never refreshed and are given 10,000 health. A bare actor has no root
+ * component, and nothing here searches an area or reads a distance.
+ *
+ * THE DEBUFF IS A CRIPPLE OF 20 SECONDS THROUGH `ApplyTagForDuration`, one of the five calls the mechanism's tests
+ * make. The other four, a holder's minion, what a holder already carries and a converted bleed are the mechanism's
+ * and are not read here. Nothing waits and the clock is not moved.
+ */
+bool FCataclysmWornDebuffImmunityRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = UCataclysmDebuffs::ImmuneAndAppliesNoneStat;
+	const FWrittenRow Written = WrittenFor(DebuffImmuneDrawback, /*bBenefit=*/false);
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!IsWrittenOnce(*this, DebuffImmuneDrawback, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT(""), 1.0f, 1.0f)
+		|| !TestTrue(TEXT("set-up: the vocabulary has Cripple"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FBareWearer Plain(World);
+	FBareWearer Holder(World);
+	FBareWearer Other(World);
+	FBareWearer PlainsEnemy(World);
+	FBareWearer HoldersEnemy(World);
+	WearAndRefresh(Plain, HelmWithNoRow());
+	WearAndRefresh(Holder, HelmCarrying(CataclysmEnchantmentEffectTest::BenefitWithNoEffect, DebuffImmuneDrawback));
+	for (FBareWearer* Each : {&Other, &PlainsEnemy, &HoldersEnemy})
+	{
+		FourRowsGiveHealth(Each->AbilitySystem, 10000.0f);
+	}
+
+	// WHAT THE REFRESH WROTE ON THE FLAG.
+	const int32 LinesOnPlain = EnchantmentModifiersOn(Plain.AbilitySystem, Stat).Num();
+	const TArray<FCataclysmStatModifier> LinesOnHolder = EnchantmentModifiersOn(Holder.AbilitySystem, Stat);
+
+	const auto Lay = [&Cripple](FBareWearer& By, FBareWearer& On)
+	{
+		return UCataclysmSkillEffects::ApplyTagForDuration(By.Actor, On.Actor, Cripple, /*DurationSeconds=*/20.0f);
+	};
+	const auto Carries = [&Cripple](const FBareWearer& Who)
+	{
+		return Who.AbilitySystem->HasMatchingGameplayTag(Cripple);
+	};
+
+	// FOUR CRIPPLES: one laid on each wearer, and one laid by each wearer.
+	const bool bLaidOnPlain = Lay(Other, Plain);
+	const bool bPlainCarries = Carries(Plain);
+	const bool bLaidOnHolder = Lay(Other, Holder);
+	const bool bHolderCarries = Carries(Holder);
+	const int32 DebuffsOnHolder = UCataclysmDebuffs::CountOn(Holder.AbilitySystem);
+	const bool bLaidByPlain = Lay(Plain, PlainsEnemy);
+	const bool bPlainsEnemyCarries = Carries(PlainsEnemy);
+	const bool bLaidByHolder = Lay(Holder, HoldersEnemy);
+	const bool bHoldersEnemyCarries = Carries(HoldersEnemy);
+	const int32 DebuffsOnHoldersEnemy = UCataclysmDebuffs::CountOn(HoldersEnemy.AbilitySystem);
+
+	// THE CONTROL, READ FIRST: THE WEARER WITHOUT THE ROW TAKES A DEBUFF AND LAYS ONE.
+	if (!TestEqual(TEXT("control: the wearer without the row holds no enchantment line on the flag"), LinesOnPlain, 0)
+		|| !TestTrue(TEXT("control: a Cripple laid on the wearer without the row lands, and it carries it"),
+			bLaidOnPlain && bPlainCarries)
+		|| !TestTrue(TEXT("control: a Cripple the wearer without the row lays on an enemy lands, and the enemy "
+				"carries it"), bLaidByPlain && bPlainsEnemyCarries))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED ITS WEARER.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the wearer of the row holds one enchantment line on "
+				"immune_to_debuffs_and_applies_none: %d."), LinesOnHolder.Num()) + RowDidNotArrive),
+			LinesOnHolder.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINE THE ROW WROTE IS THE ROW'S.
+	LineIs(*this, TEXT("the wearer of the row"), LinesOnHolder[0], 1.0f, ECataclysmStatBucket::Flat, FGameplayTag());
+
+	// THE ROW: A DEBUFF LAID ON THE WEARER IS REFUSED, AND SO IS ONE THE WEARER LAYS.
+	TestFalse(TEXT("a Cripple laid on the wearer of the row is refused"), bLaidOnHolder);
+	TestFalse(TEXT("and the wearer does not carry it"), bHolderCarries);
+	TestEqual(TEXT("and the wearer carries no debuff at all"), DebuffsOnHolder, 0);
+	TestFalse(TEXT("a Cripple the wearer of the row lays on an enemy is refused"), bLaidByHolder);
+	TestFalse(TEXT("and the enemy does not carry it"), bHoldersEnemyCarries);
+	TestEqual(TEXT("and the enemy carries no debuff at all"), DebuffsOnHoldersEnemy, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornBurnExplodesRowTest,
+	"Cataclysm.Enchantments.TheBurnExplodesRowExplodesABurnThatRunsOutAtARollUnderItsRolledChanceAndNeverAPoison",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your burn effects have a 20%-40% chance to explode for double their remaining damage when they expire". One row:
+ * `dot_explodes_at_expiry_chance`, flat, 20 to 40, Required Tags `Keyword.DoT.Burn`.
+ *
+ * SEVEN SCENES, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin, with one creature 20 m along +X: the
+ * carrier, holding 10,000 health, no armour, evasion or block, and dealing nothing. 20 m so that nothing here depends
+ * on what a player character or a creature does at close range, as the mechanism's tests stand theirs.
+ *
+ *   - the wearer without the row, a Burn, the roll pinned at 0: the control.
+ *   - the row at the bottom of its range, a chance of 20: a Burn at a roll of 19.9, a Burn at a roll of 20, and a
+ *     Poison at a roll of 0.
+ *   - the row at the top, a chance of 40: a Burn at a roll of 39.9, a Burn at a roll of 40, and a Poison at 0.
+ *
+ * THE ROLL IS PINNED BY `Cataclysm.DotExplodesAtExpiryRoll`. A roll under the chance explodes and a roll equal to it
+ * does not. A roll of 0 is under every chance above nought.
+ *
+ * THE AILMENT IS REAL AND SO IS ITS END, as in the mechanism's tests: ten a tick for four seconds through
+ * `ApplyDamageOverTime` with none of the applier's stats applied, and the clock moved by
+ * `CataclysmTestWorld::RunClock`, which fires the engine's own period and duration timers. 3.5 seconds pass, the
+ * carrier's health is read, one more second passes and it is read again. Nothing calls the explosion.
+ *
+ * WHAT IS COUNTED is the blows announced as the explosion at an ailment's end, by the world's combat events. For a
+ * Burn the health the carrier lost in the second in which it ended is read too, against one of its own first ticks.
+ * WHAT THIS TEST DOES NOT READ: how much the explosion takes, whom else it reaches, and a Burn ended by anything but
+ * time. Those are the mechanism's.
+ */
+bool FCataclysmWornBurnExplodesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat;
+	const FWrittenRow Written = WrittenFor(BurnExplodesBenefit, /*bBenefit=*/true);
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	const FGameplayTag Poison = NineRowsTag(TEXT("Keyword.DoT.Poison"));
+	if (!IsWrittenOnce(*this, BurnExplodesBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Keyword.DoT.Burn"), 20.0f, 40.0f)
+		|| !TestTrue(TEXT("set-up: the Burn tag and the Poison tag exist and are two tags"),
+			Burn.IsValid() && Poison.IsValid() && Burn != Poison)
+		|| !TestTrue(TEXT("set-up: the Burn tag is the tag the CSV row requires"),
+			Burn == NineRowsTag(TEXT("Keyword.DoT.Burn"))))
+	{
+		return false;
+	}
+
+	constexpr int32 PlaceOfTheCarrier = 5;
+	constexpr float PerTick = 10.0f;
+	constexpr float AilmentSeconds = 4.0f;
+	struct FEndRead
+	{
+		TArray<FCataclysmStatModifier> Lines;
+		float HeldForABurn = -1.0f;
+		float HeldForAPoison = -1.0f;
+		float Tick = 0.0f;
+		float LostAtTheEnd = 0.0f;
+		int32 Explosions = -1;
+		int32 OnTheCarrier = -1;
+	};
+	const auto Run = [&](const FCataclysmItem& Helm, const TCHAR* Who, const FGameplayTag& Ailment, float RollPinned,
+		FEndRead& Out) -> bool
+	{
+		FRowStriker Wearer(Helm);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: a player character wearing its helm, in a world"), Who),
+				Wearer.Ready()))
+		{
+			return false;
+		}
+		const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+		CataclysmShardOfAnarchyRowsTest::FRollPin Roll(NineRowsExplosionRollName, RollPinned);
+		ACataclysmEnemyCharacter* Carrier = Wearer.CreatureNumber(PlaceOfTheCarrier);
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: the pin for the explosion's roll"), Who), Roll.Variable)
+			|| !TestNotNull(*FString::Printf(TEXT("set-up, %s: the carrier"), Who), Carrier))
+		{
+			return false;
+		}
+
+		// WHAT THE WEARER HOLDS OF THE ROW: its enchantment lines on the stat, and the stat asked for each ailment.
+		Out.Lines = EnchantmentModifiersOn(Wearer.ASC, Stat);
+		Out.HeldForABurn = Wearer.ASC->StatForSkill(FName(Stat), FGameplayTagContainer(Burn), 0.0f);
+		Out.HeldForAPoison = Wearer.ASC->StatForSkill(FName(Stat), FGameplayTagContainer(Poison), 0.0f);
+
+		FExplosionsHeard Heard(UCataclysmCombatEvents::In(Wearer.World), Carrier);
+		const float AtFirst = FourRowsHealthOf(Carrier);
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: the world's combat events"), Who), Heard.Events)
+			|| !TestTrue(*FString::Printf(TEXT("set-up, %s: the ailment is laid"), Who),
+				UCataclysmSkillEffects::ApplyDamageOverTime(Wearer.Character, Carrier, PerTick, AilmentSeconds,
+					Ailment, /*bScalesWithInstigator=*/false)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(Wearer.World, 3.5f);
+		const float BeforeTheEnd = FourRowsHealthOf(Carrier);
+		Out.Tick = (AtFirst - BeforeTheEnd) / 3.0f;
+		CataclysmTestWorld::RunClock(Wearer.World, 1.0f);
+		Out.LostAtTheEnd = BeforeTheEnd - FourRowsHealthOf(Carrier);
+		Out.Explosions = Heard.Explosions;
+		Out.OnTheCarrier = Heard.OnTheCarrier;
+		return TestFalse(*FString::Printf(TEXT("set-up, %s: 4.5 seconds on the ailment has ended on a carrier still "
+					"standing"), Who), FourRowsIsGone(Carrier) || UCataclysmSkillEffects::HasTag(Carrier, Ailment))
+			&& TestFalse(*FString::Printf(TEXT("set-up, %s: the wearer is alive at the end"), Who),
+				FourRowsIsGone(Wearer.Character));
+	};
+
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	const FCataclysmItem LowHelm = HelmCarrying(BurnExplodesBenefit, NoEffect, /*PositiveRoll=*/0.0f);
+	const FCataclysmItem HighHelm = HelmCarrying(BurnExplodesBenefit, NoEffect, /*PositiveRoll=*/1.0f);
+	FEndRead Unworn;
+	FEndRead LowUnder;
+	FEndRead LowAt;
+	FEndRead LowPoison;
+	FEndRead HighUnder;
+	FEndRead HighAt;
+	FEndRead HighPoison;
+	if (!Run(HelmWithNoRow(), TEXT("no row, a Burn, roll 0"), Burn, 0.0f, Unworn)
+		|| !Run(LowHelm, TEXT("the row at 20, a Burn, roll 19.9"), Burn, 19.9f, LowUnder)
+		|| !Run(LowHelm, TEXT("the row at 20, a Burn, roll 20"), Burn, 20.0f, LowAt)
+		|| !Run(LowHelm, TEXT("the row at 20, a Poison, roll 0"), Poison, 0.0f, LowPoison)
+		|| !Run(HighHelm, TEXT("the row at 40, a Burn, roll 39.9"), Burn, 39.9f, HighUnder)
+		|| !Run(HighHelm, TEXT("the row at 40, a Burn, roll 40"), Burn, 40.0f, HighAt)
+		|| !Run(HighHelm, TEXT("the row at 40, a Poison, roll 0"), Poison, 0.0f, HighPoison))
+	{
+		return false;
+	}
+
+	// SET-UP: IN EACH SCENE OF A BURN ITS FIRST THREE TICKS TOOK SOMETHING.
+	const auto Ticked = [this](const TCHAR* Who, const FEndRead& Read)
+	{
+		return TestTrue(*FString::Printf(TEXT("set-up, %s: each of the Burn's first three ticks took something: %.2f"),
+			Who, Read.Tick), Read.Tick > 0.0f);
+	};
+	if (!Ticked(TEXT("no row, roll 0"), Unworn) || !Ticked(TEXT("the row at 20, roll 19.9"), LowUnder)
+		|| !Ticked(TEXT("the row at 20, roll 20"), LowAt) || !Ticked(TEXT("the row at 40, roll 39.9"), HighUnder)
+		|| !Ticked(TEXT("the row at 40, roll 40"), HighAt))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW A BURN THAT RUNS OUT AT A ROLL OF 0 DOES NOT EXPLODE.
+	if (!TestEqual(TEXT("control: the wearer without the row holds no enchantment line on the stat"),
+			Unworn.Lines.Num(), 0)
+		|| !TestEqual(TEXT("control, no row, a Burn, roll 0: no explosion is announced"), Unworn.Explosions, 0)
+		|| !TestEqual(TEXT("control, no row, a Burn, roll 0: the second in which it ended took one tick and no more"),
+			Unworn.LostAtTheEnd, Unworn.Tick, 0.05f))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED THE TWO WEARERS OF IT.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the wearer of the row at the bottom of its range and the wearer of "
+				"the row at the top each hold one enchantment line on dot_explodes_at_expiry_chance: %d and %d."),
+				LowUnder.Lines.Num(), HighUnder.Lines.Num()) + RowDidNotArrive),
+			LowUnder.Lines.Num() == 1 && HighUnder.Lines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINES THE ROW WROTE ARE THE ROW'S, EACH AT ITS OWN ROLL, AND THE STAT IS HELD FOR A BURN ALONE.
+	LineIs(*this, TEXT("the helm rolled at the bottom"), LowUnder.Lines[0], 20.0f, ECataclysmStatBucket::Flat, Burn);
+	LineIs(*this, TEXT("the helm rolled at the top"), HighUnder.Lines[0], 40.0f, ECataclysmStatBucket::Flat, Burn);
+	TestEqual(TEXT("at 20, the stat asked for a Burn is 20 above the wearer without the row"),
+		LowUnder.HeldForABurn - Unworn.HeldForABurn, 20.0f, 0.001f);
+	TestEqual(TEXT("at 40, the stat asked for a Burn is 40 above the wearer without the row"),
+		HighUnder.HeldForABurn - Unworn.HeldForABurn, 40.0f, 0.001f);
+	TestEqual(TEXT("at 20, the stat asked for a Poison is what the wearer without the row holds"),
+		LowUnder.HeldForAPoison - Unworn.HeldForAPoison, 0.0f, 0.001f);
+	TestEqual(TEXT("at 40, the stat asked for a Poison is what the wearer without the row holds"),
+		HighUnder.HeldForAPoison - Unworn.HeldForAPoison, 0.0f, 0.001f);
+
+	// THE ROW: A BURN THAT RUNS OUT EXPLODES AT A ROLL UNDER THE CHANCE, AND NOT AT A ROLL EQUAL TO IT.
+	const auto Exploded = [this](const TCHAR* Who, const FEndRead& Read)
+	{
+		TestEqual(*FString::Printf(TEXT("%s: one explosion is announced"), Who), Read.Explosions, 1);
+		TestEqual(*FString::Printf(TEXT("%s: and it is on the carrier"), Who), Read.OnTheCarrier, 1);
+		TestTrue(*FString::Printf(TEXT("%s: and the second in which the Burn ended took more than one tick: %.2f "
+				"against %.2f"), Who, Read.LostAtTheEnd, Read.Tick), Read.LostAtTheEnd > Read.Tick + 1.0f);
+	};
+	const auto DidNotExplode = [this](const TCHAR* Who, const FEndRead& Read)
+	{
+		TestEqual(*FString::Printf(TEXT("%s: no explosion is announced"), Who), Read.Explosions, 0);
+		TestEqual(*FString::Printf(TEXT("%s: and the second in which the Burn ended took one tick and no more"), Who),
+			Read.LostAtTheEnd, Read.Tick, 0.05f);
+	};
+	Exploded(TEXT("the row at 20, a Burn, roll 19.9"), LowUnder);
+	DidNotExplode(TEXT("the row at 20, a Burn, roll 20"), LowAt);
+	Exploded(TEXT("the row at 40, a Burn, roll 39.9"), HighUnder);
+	DidNotExplode(TEXT("the row at 40, a Burn, roll 40"), HighAt);
+
+	// AND A POISON THAT RUNS OUT DOES NOT, AT A ROLL UNDER EVERY CHANCE.
+	TestEqual(TEXT("the row at 20, a Poison, roll 0: no explosion is announced"), LowPoison.Explosions, 0);
+	TestEqual(TEXT("the row at 40, a Poison, roll 0: no explosion is announced"), HighPoison.Explosions, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornMostHealthRowTest,
+	"Cataclysm.Enchantments.TheMostHealthRowMakesItsWearersTurretChooseTheEnemyWithTheMostHealthWithinItsReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your gadgets prioritize the highest HP enemy within their range instead of the nearest". One row: the flag stat
+ * `gadgets_target_most_health`, flat, 1 to 1, Required Tags `Type.Deployable`.
+ *
+ * TWO SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the row, the control, and
+ * one with it. Each places a Bolt Turret 50 m along +X, and four creatures stand along +X from the turret, as the
+ * mechanism's test stands them: 3 m away holding 300 health, 6 m away holding 900, 9 m away holding 500, and 12 m
+ * away, beyond the turret's reach, holding 5,000. So the nearest, the one with the most health within reach and the
+ * furthest within reach are three creatures.
+ *
+ * A TARGET IS CHOSEN BY CALLING THE TURRET'S OWN BRAIN, `ACataclysmEnemyController::ChooseTarget`, as the mechanism's
+ * tests call it. Nothing waits, no brain thinks and nothing is struck.
+ */
+bool FCataclysmWornMostHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = ACataclysmMinion::GadgetsTargetMostHealthStat;
+	const FWrittenRow Written = WrittenFor(MostHealthBenefit, /*bBenefit=*/true);
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	if (!IsWrittenOnce(*this, MostHealthBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Deployable"), 1.0f, 1.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+	{
+		return false;
+	}
+
+	constexpr int32 Stood = 4;
+	constexpr int32 TheNearest = 0;
+	constexpr int32 TheMostHealth = 1;
+	constexpr int32 Nobody = -1;
+	constexpr int32 SomebodyElse = -2;
+	struct FChoiceRead
+	{
+		TArray<FCataclysmStatModifier> Lines;
+		int32 Chosen = -3;
+		int32 OfferedByHealth = -3;
+	};
+	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* Who, FChoiceRead& Out) -> bool
+	{
+		FRowStriker Summoner(Helm);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: a player character wearing its helm, in a world"), Who),
+				Summoner.Ready()))
+		{
+			return false;
+		}
+		ACataclysmMinion* Turret = TurretPlacedBy(*this, Summoner, Who);
+		if (!Turret)
+		{
+			return false;
+		}
+		const float MetresAway[Stood] = {3.0f, 6.0f, 9.0f, 12.0f};
+		const float Holding[Stood] = {300.0f, 900.0f, 500.0f, 5000.0f};
+		const ACataclysmEnemyCharacter* Line[Stood] = {};
+		for (int32 Place = 0; Place < Stood; ++Place)
+		{
+			Line[Place] = EnemyStandingAt(Summoner.World, AlongFromTheTurret(MetresAway[Place]), Holding[Place]);
+			if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: the creature %.0f m from the turret"), Who,
+					MetresAway[Place]), Line[Place]))
+			{
+				return false;
+			}
+		}
+		const ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Turret->GetController());
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: the turret has the shared brain"), Who), Brain))
+		{
+			return false;
+		}
+		const auto PlaceOf = [&](const AActor* Picked) -> int32
+		{
+			if (!Picked)
+			{
+				return Nobody;
+			}
+			for (int32 Place = 0; Place < Stood; ++Place)
+			{
+				if (Line[Place] == Picked)
+				{
+					return Place;
+				}
+			}
+			return SomebodyElse;
+		};
+
+		// WHAT THE SUMMONER HOLDS OF THE ROW, AND WHAT ITS TURRET CHOOSES.
+		Out.Lines = EnchantmentModifiersOn(Summoner.ASC, Stat);
+		Out.Chosen = PlaceOf(Brain->ChooseTarget());
+		Out.OfferedByHealth = PlaceOf(Turret->MostHealthWithinReach());
+		return true;
+	};
+
+	FChoiceRead Unworn;
+	FChoiceRead Worn;
+	if (!Ask(HelmWithNoRow(), TEXT("no row"), Unworn)
+		|| !Ask(HelmCarrying(MostHealthBenefit, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect), TEXT("the row"),
+			Worn))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW THE TURRET CHOOSES THE NEAREST AND IS OFFERED NOBODY BY HEALTH.
+	if (!TestEqual(TEXT("control: the summoner without the row holds no enchantment line on the flag"),
+			Unworn.Lines.Num(), 0)
+		|| !TestEqual(TEXT("control: the turret of the summoner without the row chooses the nearest creature, the one "
+				"3 m from it"), Unworn.Chosen, TheNearest)
+		|| !TestEqual(TEXT("control: and it is offered no target by health"), Unworn.OfferedByHealth, Nobody))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED ITS WEARER.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the summoner wearing the row holds one enchantment line on "
+				"gadgets_target_most_health: %d."), Worn.Lines.Num()) + RowDidNotArrive), Worn.Lines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINE THE ROW WROTE IS THE ROW'S.
+	LineIs(*this, TEXT("the summoner wearing the row"), Worn.Lines[0], 1.0f, ECataclysmStatBucket::Flat, Deployable);
+
+	// THE ROW: THE TURRET CHOOSES THE 900 AT 6 M, WHICH IS NEITHER THE NEAREST NOR THE 5,000 BEYOND ITS REACH.
+	TestEqual(TEXT("the turret of the summoner wearing the row is offered the creature with the most health within "
+			"its reach, the one 6 m from it"), Worn.OfferedByHealth, TheMostHealth);
+	TestEqual(TEXT("and that creature is what its brain chooses"), Worn.Chosen, TheMostHealth);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornVolleyRowTest,
+	"Cataclysm.Enchantments.TheVolleyRowFiresAVolleyEveryFiveSecondsAtItsBestRollAndEveryEightAtItsWorst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Gadgets fire at all enemies within range simultaneously once every 5-8 seconds". One row:
+ * `gadget_volley_every_seconds`, flat, WRITTEN 8 TO 5, Required Tags `Type.Deployable`.
+ *
+ * THE RANGE ROLLS DOWN. Ruled 2026-10-05: a roll of 1 gives a benefit its best figure. An item's roll of 0 gives the
+ * first number of a row and a roll of 1 the second, which is how `HelmCarrying` states it and how
+ * `TheResummonRowBringsALostImpBackAfterThreeSeconds` reads a row written 6 to 3 as 3 at a roll of 1. So the row is
+ * written 8 to 5, a roll of 1 reads 5 seconds, the shortest wait and the best, and a roll of 0 reads 8, the worst.
+ *
+ * THREE SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the row, the control;
+ * one whose helm rolled 1, the best; and one whose helm rolled 0, the worst. Each places a Bolt Turret 50 m along +X,
+ * and four creatures stand along +X from the turret, each holding 50,000 health: 3, 6 and 9 m away, and 12 m away,
+ * beyond the turret's reach.
+ *
+ * THE FIRST VOLLEY COMES ON THE TURRET'S FIRST STEP THAT FINDS AN ENEMY WITHIN ITS REACH, AND THE ROW'S SECONDS RUN
+ * FROM IT. The coordinating session's judgement of 2026-10-13, which changed what was first built: the first volley
+ * one whole period after the placing. The creatures are stood after the turret is placed, so the step a tenth of a
+ * second after the placing is the first that finds anybody.
+ *
+ * THE CLOCK IS THE WORLD'S, MOVED BY HAND, AND THE GADGET'S STEP IS CALLED DIRECTLY, as the mechanism's tests do:
+ * `ACataclysmMinion::GadgetStep` a tenth of a second after the placing, which is the first volley, and then 4.9,
+ * 5.1, 7.9 and 8.1 seconds after that volley. No brain thinks, so no ordinary shot is fired. Nothing waits on a tick.
+ *
+ * WHAT A VOLLEY TAKES IS NOT STATED: a turret's blow rises with its summoner's level. Each creature within reach is
+ * read as having lost health to the volley, and the three as having lost the same.
+ */
+bool FCataclysmWornVolleyRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = ACataclysmMinion::GadgetVolleyEverySecondsStat;
+	const FWrittenRow Written = WrittenFor(VolleyBenefit, /*bBenefit=*/true);
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	if (!IsWrittenOnce(*this, VolleyBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Deployable"), 8.0f, 5.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+	{
+		return false;
+	}
+
+	constexpr int32 Stood = VolleyCreatures;
+	constexpr int32 WithinReach = 3;
+	constexpr int32 TheOneBeyond = 3;
+	constexpr int32 Readings = VolleyReadings;
+	constexpr int32 AtTheFirstStep = 0;
+	constexpr int32 AtFivePointOne = 2;
+	constexpr int32 AtEightPointOne = 4;
+	const float SecondsOnBefore[Readings] = {0.1f, 4.9f, 0.2f, 2.8f, 0.2f};
+	const TCHAR* const ReadWhen[Readings] = {TEXT("the first step with a creature within reach"),
+		TEXT("4.9 seconds after the first volley"), TEXT("5.1 seconds after the first volley"),
+		TEXT("7.9 seconds after the first volley"), TEXT("8.1 seconds after the first volley")};
+	struct FVolleyRead
+	{
+		TArray<FCataclysmStatModifier> Lines;
+		float SecondsRead = -1.0f;
+		int32 Volleys[VolleyReadings] = {-1, -1, -1, -1, -1};
+		float Lost[VolleyReadings][VolleyCreatures] = {};
+	};
+	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* Who, FVolleyRead& Out) -> bool
+	{
+		FRowStriker Summoner(Helm);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: a player character wearing its helm, in a world"), Who),
+				Summoner.Ready()))
+		{
+			return false;
+		}
+		const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+		ACataclysmMinion* Turret = TurretPlacedBy(*this, Summoner, Who);
+		if (!Turret)
+		{
+			return false;
+		}
+		const float MetresAway[Stood] = {3.0f, 6.0f, 9.0f, 12.0f};
+		ACataclysmEnemyCharacter* Line[Stood] = {};
+		float Held[Stood] = {};
+		for (int32 Place = 0; Place < Stood; ++Place)
+		{
+			Line[Place] = EnemyStandingAt(Summoner.World, AlongFromTheTurret(MetresAway[Place]), 50000.0f);
+			if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: the creature %.0f m from the turret"), Who,
+					MetresAway[Place]), Line[Place]))
+			{
+				return false;
+			}
+			Held[Place] = FourRowsHealthOf(Line[Place]);
+		}
+
+		// WHAT THE SUMMONER HOLDS OF THE ROW, AND THE SECONDS ITS TURRET READS.
+		Out.Lines = EnchantmentModifiersOn(Summoner.ASC, Stat);
+		Out.SecondsRead = Turret->VolleyEverySeconds();
+
+		// FIVE STEPS, the clock moved on before each. What each creature has lost since the step before is kept.
+		for (int32 Reading = 0; Reading < Readings; ++Reading)
+		{
+			PassAndStep(Summoner.World, SecondsOnBefore[Reading], Turret);
+			Out.Volleys[Reading] = Turret->VolleysFired;
+			for (int32 Place = 0; Place < Stood; ++Place)
+			{
+				const float Now = FourRowsHealthOf(Line[Place]);
+				Out.Lost[Reading][Place] = Held[Place] - Now;
+				Held[Place] = Now;
+			}
+		}
+		return TestFalse(*FString::Printf(TEXT("set-up, %s: the turret is standing at the end"), Who),
+			FourRowsIsGone(Turret));
+	};
+
+	const TCHAR* const NoEffect = CataclysmEnchantmentEffectTest::DrawbackWithNoEffect;
+	FVolleyRead Unworn;
+	FVolleyRead Best;
+	FVolleyRead Worst;
+	if (!Ask(HelmWithNoRow(), TEXT("no row"), Unworn)
+		|| !Ask(HelmCarrying(VolleyBenefit, NoEffect, /*PositiveRoll=*/1.0f), TEXT("the row at a roll of 1"), Best)
+		|| !Ask(HelmCarrying(VolleyBenefit, NoEffect, /*PositiveRoll=*/0.0f), TEXT("the row at a roll of 0"), Worst))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW THE TURRET READS NO SECONDS, FIRES NO VOLLEY AND NOBODY LOSES HEALTH.
+	bool bControlHolds = TestEqual(TEXT("control: the summoner without the row holds no enchantment line on the stat"),
+			Unworn.Lines.Num(), 0)
+		&& TestEqual(TEXT("control: and its turret reads no seconds for a volley"), Unworn.SecondsRead, 0.0f, 0.0f);
+	for (int32 Reading = 0; Reading < Readings; ++Reading)
+	{
+		bControlHolds &= TestEqual(*FString::Printf(TEXT("control, no row, %s: the turret has fired no volley"),
+			ReadWhen[Reading]), Unworn.Volleys[Reading], 0);
+		for (int32 Place = 0; Place < Stood; ++Place)
+		{
+			bControlHolds &= TestEqual(*FString::Printf(TEXT("control, no row, %s: creature %d has lost nothing"),
+				ReadWhen[Reading], Place + 1), Unworn.Lost[Reading][Place], 0.0f, 0.001f);
+		}
+	}
+	if (!bControlHolds)
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED THE TWO WEARERS OF IT.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the summoner wearing the row at a roll of 1 and the summoner wearing "
+				"it at a roll of 0 each hold one enchantment line on gadget_volley_every_seconds: %d and %d."),
+				Best.Lines.Num(), Worst.Lines.Num()) + RowDidNotArrive),
+			Best.Lines.Num() == 1 && Worst.Lines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINES THE ROW WROTE ARE THE ROW'S, AND THE RANGE ROLLS DOWN: 5 AT THE BEST ROLL AND 8 AT THE WORST.
+	LineIs(*this, TEXT("the helm rolled at 1, the best roll"), Best.Lines[0], 5.0f, ECataclysmStatBucket::Flat,
+		Deployable);
+	LineIs(*this, TEXT("the helm rolled at 0, the worst roll"), Worst.Lines[0], 8.0f, ECataclysmStatBucket::Flat,
+		Deployable);
+	TestEqual(TEXT("at the best roll the turret reads 5 seconds"), Best.SecondsRead, 5.0f, 0.001f);
+	TestEqual(TEXT("at the worst roll the turret reads 8 seconds"), Worst.SecondsRead, 8.0f, 0.001f);
+
+	// THE FIRST VOLLEY ON THE FIRST STEP WITH A CREATURE WITHIN REACH, THE SECOND AT THE SECONDS READ AFTER IT, AND
+	// NONE JUST BEFORE. `SecondAt` is the reading at which the second volley is due.
+	const auto FiresSecondAt = [&](const TCHAR* Who, const FVolleyRead& Read, int32 SecondAt)
+	{
+		for (int32 Reading = 0; Reading < Readings; ++Reading)
+		{
+			TestEqual(*FString::Printf(TEXT("%s, %s: the volleys the turret has fired"), Who, ReadWhen[Reading]),
+				Read.Volleys[Reading], Reading < SecondAt ? 1 : 2);
+			if (Reading == AtTheFirstStep || Reading == SecondAt)
+			{
+				for (int32 Place = 0; Place < WithinReach; ++Place)
+				{
+					TestTrue(*FString::Printf(TEXT("%s, %s: the volley took health from creature %d, within reach: "
+							"%.2f"), Who, ReadWhen[Reading], Place + 1, Read.Lost[Reading][Place]),
+						Read.Lost[Reading][Place] > 0.5f);
+					TestEqual(*FString::Printf(TEXT("%s, %s: and from creature %d what it took from the nearest"), Who,
+						ReadWhen[Reading], Place + 1), Read.Lost[Reading][Place], Read.Lost[Reading][0], 0.05f);
+				}
+				TestEqual(*FString::Printf(TEXT("%s, %s: the creature beyond the turret's reach lost nothing"), Who,
+					ReadWhen[Reading]), Read.Lost[Reading][TheOneBeyond], 0.0f, 0.001f);
+				continue;
+			}
+			for (int32 Place = 0; Place < Stood; ++Place)
+			{
+				TestEqual(*FString::Printf(TEXT("%s, %s: creature %d has lost nothing since the step before"), Who,
+					ReadWhen[Reading], Place + 1), Read.Lost[Reading][Place], 0.0f, 0.001f);
+			}
+		}
+	};
+	FiresSecondAt(TEXT("the best roll, 5 seconds"), Best, AtFivePointOne);
+	FiresSecondAt(TEXT("the worst roll, 8 seconds"), Worst, AtEightPointOne);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornBurstOnKillRowTest,
+	"Cataclysm.Enchantments.TheBurstOnKillRowMakesItsWearersTurretThatKillsStrikeTheNearestEnemyWithinReachOnceMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range". One row: the
+ * flag stat `gadgets_burst_on_kill`, flat, 1 to 1, Required Tags `Type.Deployable`.
+ *
+ * TWO SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the row, the control, and
+ * one with it. Each places a Bolt Turret 50 m along +X, and three creatures stand along +X from the turret, as the
+ * mechanism's test stands them: 3 m and 9 m away holding 50,000 health, and 6 m away holding 1, which dies to any
+ * blow. Each turret is told to strike the one 6 m away, by `AttackTarget`, as the mechanism's test tells it.
+ *
+ * THEN ONE ORDINARY BLOW OF THE SAME TURRET IS MEASURED, on the creature 9 m away, which does not die of it: a blow
+ * that does not kill fires nothing. The burst is read against that blow, of the same turret, and not against a
+ * figure: a turret's blow rises with its summoner's level. Nothing here moves the clock.
+ */
+bool FCataclysmWornBurstOnKillRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const Stat = ACataclysmMinion::GadgetsBurstOnKillStat;
+	const FWrittenRow Written = WrittenFor(BurstOnKillBenefit, /*bBenefit=*/true);
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	if (!IsWrittenOnce(*this, BurstOnKillBenefit, Written)
+		|| !IsWrittenAsAStat(*this, Written, Stat, TEXT("flat"), TEXT("Type.Deployable"), 1.0f, 1.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+	{
+		return false;
+	}
+
+	struct FBurstRead
+	{
+		TArray<FCataclysmStatModifier> Lines;
+		bool bKilled = false;
+		int32 Bursts = -1;
+		int32 Attacks = -1;
+		float NearLost = 0.0f;
+		float FarLost = 0.0f;
+		float OneBlow = 0.0f;
+		bool bFarLivedThroughTheBlow = false;
+		int32 BurstsAfterTheBlow = -1;
+	};
+	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* Who, FBurstRead& Out) -> bool
+	{
+		FRowStriker Summoner(Helm);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: a player character wearing its helm, in a world"), Who),
+				Summoner.Ready()))
+		{
+			return false;
+		}
+		const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+		ACataclysmMinion* Turret = TurretPlacedBy(*this, Summoner, Who);
+		if (!Turret)
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Near = EnemyStandingAt(Summoner.World, AlongFromTheTurret(3.0f), 50000.0f);
+		ACataclysmEnemyCharacter* Weak = EnemyStandingAt(Summoner.World, AlongFromTheTurret(6.0f), 1.0f);
+		ACataclysmEnemyCharacter* Far = EnemyStandingAt(Summoner.World, AlongFromTheTurret(9.0f), 50000.0f);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: three creatures"), Who), Near && Weak && Far))
+		{
+			return false;
+		}
+
+		// WHAT THE SUMMONER HOLDS OF THE ROW.
+		Out.Lines = EnchantmentModifiersOn(Summoner.ASC, Stat);
+
+		// THE BLOW THAT KILLS.
+		const float NearHeld = FourRowsHealthOf(Near);
+		const float FarHeld = FourRowsHealthOf(Far);
+		Turret->AttackTarget(Weak);
+		Out.bKilled = FourRowsIsGone(Weak);
+		Out.Bursts = Turret->BurstsFired;
+		Out.Attacks = Turret->AttacksMade;
+		Out.NearLost = NearHeld - FourRowsHealthOf(Near);
+		Out.FarLost = FarHeld - FourRowsHealthOf(Far);
+
+		// ONE ORDINARY BLOW OF THE SAME TURRET, which does not kill.
+		const float FarHeldNow = FourRowsHealthOf(Far);
+		Turret->AttackTarget(Far);
+		Out.OneBlow = FarHeldNow - FourRowsHealthOf(Far);
+		Out.bFarLivedThroughTheBlow = !FourRowsIsGone(Far);
+		Out.BurstsAfterTheBlow = Turret->BurstsFired;
+		return true;
+	};
+
+	FBurstRead Unworn;
+	FBurstRead Worn;
+	if (!Ask(HelmWithNoRow(), TEXT("no row"), Unworn)
+		|| !Ask(HelmCarrying(BurstOnKillBenefit, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect),
+			TEXT("the row"), Worn))
+	{
+		return false;
+	}
+
+	// SET-UP, FOR EACH: THE BLOW KILLED, AND THE ORDINARY BLOW TOOK HEALTH FROM A CREATURE THAT LIVED THROUGH IT.
+	const auto IsSetUp = [this](const TCHAR* Who, const FBurstRead& Read)
+	{
+		return TestTrue(*FString::Printf(TEXT("set-up, %s: the turret's blow kills the creature 6 m from it"), Who),
+				Read.bKilled)
+			&& TestTrue(*FString::Printf(TEXT("set-up, %s: an ordinary blow of the turret takes health from a creature "
+				"that lives through it: %.2f"), Who, Read.OneBlow),
+				Read.OneBlow > 0.5f && Read.bFarLivedThroughTheBlow);
+	};
+	if (!IsSetUp(TEXT("no row"), Unworn) || !IsSetUp(TEXT("the row"), Worn))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROW A KILL IS FOLLOWED BY NOTHING.
+	if (!TestEqual(TEXT("control: the summoner without the row holds no enchantment line on the flag"),
+			Unworn.Lines.Num(), 0)
+		|| !TestEqual(TEXT("control: the turret of the summoner without the row fires no burst when it kills"),
+			Unworn.Bursts, 0)
+		|| !TestEqual(TEXT("control: it has made the one attack"), Unworn.Attacks, 1)
+		|| !TestEqual(TEXT("control: and its nearest creature has lost nothing"), Unworn.NearLost, 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// SET-UP: THE ROW REACHED ITS WEARER.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the summoner wearing the row holds one enchantment line on "
+				"gadgets_burst_on_kill: %d."), Worn.Lines.Num()) + RowDidNotArrive), Worn.Lines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINE THE ROW WROTE IS THE ROW'S.
+	LineIs(*this, TEXT("the summoner wearing the row"), Worn.Lines[0], 1.0f, ECataclysmStatBucket::Flat, Deployable);
+
+	// THE ROW: THE KILL IS FOLLOWED BY ONE MORE BLOW, AT THE NEAREST CREATURE WITHIN REACH.
+	TestEqual(TEXT("the turret of the summoner wearing the row fires one burst when it kills"), Worn.Bursts, 1);
+	TestEqual(TEXT("two attacks: the blow that killed and the burst"), Worn.Attacks, 2);
+	TestEqual(*FString::Printf(TEXT("the nearest creature within reach took one ordinary blow of that turret's: %.2f "
+			"against %.2f"), Worn.NearLost, Worn.OneBlow), Worn.NearLost, Worn.OneBlow, 0.05f);
+	TestEqual(TEXT("the creature 9 m away, within reach and not the nearest, took nothing from the burst"),
+		Worn.FarLost, 0.0f, 0.001f);
+	TestEqual(TEXT("and a blow that does not kill fires no further burst"), Worn.BurstsAfterTheBlow, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornNoDamageAndDrainRowsTest,
+	"Cataclysm.Enchantments.TheNoDamageAndDrainRowsLetNoBlowHurtItsWearersTurretAndTakeFivePercentOfItsMaximumASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your gadgets are invincible but lose 5% of their maximum HP per second passively". Two rows: the flag stat
+ * `gadgets_take_no_damage`, flat, 1 to 1, and `gadget_health_lost_percent_per_second`, flat, 5 to 5, each with
+ * Required Tags `Type.Deployable`.
+ *
+ * TWO SUMMONERS, EACH A PLAYER CHARACTER IN A WORLD OF ITS OWN, at the origin: one without the rows, the control, and
+ * one with them. Each places a Bolt Turret 50 m along +X, and one creature stands 3 m along +X from the turret.
+ *
+ * THE BLOW IS A DIRECT BLOW OF 10 BY THE CREATURE ON THE TURRET, dealt by hand as the mechanism's test deals it, in
+ * the instant the turret is placed: no step has been called by this test. THEN THE WORLD'S CLOCK IS MOVED ON ONE
+ * SECOND BY HAND and the turret's step is called once, `ACataclysmMinion::GadgetStep`, as the mechanism's tests call
+ * it. Nothing waits on a tick.
+ *
+ * EVERY FIGURE OF A TURRET IS A SHARE OF THE MAXIMUM HEALTH IT WAS PLACED WITH, read off that turret: a machine's
+ * health rises with its summoner's level. WHAT THIS TEST DOES NOT READ: a second step, the window's lapse when the
+ * rows leave, the turret emptied by the drain, and each row by itself. Those are the mechanism's.
+ */
+bool FCataclysmWornNoDamageAndDrainRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmNineMoreRowsTest;
+
+	const TCHAR* const NoDamageStat = ACataclysmMinion::GadgetsTakeNoDamageStat;
+	const TCHAR* const DrainStat = ACataclysmMinion::GadgetHealthLostPercentPerSecondStat;
+	const FGameplayTag Deployable = NineRowsTag(TEXT("Type.Deployable"));
+	int32 RowsOfTheEnchantment = 0;
+	int32 RowsCountedAgain = 0;
+	const FWrittenRow WrittenNoDamage = WrittenForStat(NoDamageAndDrainBenefit, NoDamageStat, RowsOfTheEnchantment);
+	const FWrittenRow WrittenDrain = WrittenForStat(NoDamageAndDrainBenefit, DrainStat, RowsCountedAgain);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: %s is a row of its enchantment CSV"), NoDamageAndDrainBenefit),
+			WrittenNoDamage.bNamed)
+		|| !TestEqual(TEXT("set-up: the rows of EnchantmentEffects.csv that name the enchantment"),
+			RowsOfTheEnchantment, 2)
+		|| !TestEqual(TEXT("set-up: of them, the rows on gadgets_take_no_damage"), WrittenNoDamage.EffectRows, 1)
+		|| !TestEqual(TEXT("set-up: and the rows on gadget_health_lost_percent_per_second"), WrittenDrain.EffectRows, 1)
+		|| !IsWrittenAsAStat(*this, WrittenNoDamage, NoDamageStat, TEXT("flat"), TEXT("Type.Deployable"), 1.0f, 1.0f)
+		|| !IsWrittenAsAStat(*this, WrittenDrain, DrainStat, TEXT("flat"), TEXT("Type.Deployable"), 5.0f, 5.0f)
+		|| !TestTrue(TEXT("set-up: the tag Type.Deployable is registered"), Deployable.IsValid()))
+	{
+		return false;
+	}
+
+	struct FDrainRead
+	{
+		TArray<FCataclysmStatModifier> NoDamageLines;
+		TArray<FCataclysmStatModifier> DrainLines;
+		float Placed = 0.0f;
+		float RecordedAtPlacing = 0.0f;
+		float HeldAtFirst = 0.0f;
+		float BlowTook = 0.0f;
+		float LostToASecond = 0.0f;
+		bool bStandingAtTheEnd = false;
+	};
+	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* Who, FDrainRead& Out) -> bool
+	{
+		FRowStriker Summoner(Helm);
+		if (!TestTrue(*FString::Printf(TEXT("set-up, %s: a player character wearing its helm, in a world"), Who),
+				Summoner.Ready()))
+		{
+			return false;
+		}
+		const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+		ACataclysmMinion* Turret = TurretPlacedBy(*this, Summoner, Who);
+		if (!Turret)
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Attacker = EnemyStandingAt(Summoner.World, AlongFromTheTurret(3.0f), 50000.0f);
+		if (!TestNotNull(*FString::Printf(TEXT("set-up, %s: the creature 3 m from the turret"), Who), Attacker))
+		{
+			return false;
+		}
+
+		// WHAT THE SUMMONER HOLDS OF THE TWO ROWS, AND THE TURRET AS IT WAS PLACED.
+		Out.NoDamageLines = EnchantmentModifiersOn(Summoner.ASC, NoDamageStat);
+		Out.DrainLines = EnchantmentModifiersOn(Summoner.ASC, DrainStat);
+		Out.Placed = FourRowsMaximumOf(Turret);
+		Out.RecordedAtPlacing = Turret->SpawnedMaxHealth;
+		Out.HeldAtFirst = FourRowsHealthOf(Turret);
+
+		// THE BLOW, in the instant of the placing.
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Turret, /*Damage=*/10.0f);
+		const float AfterTheBlow = FourRowsHealthOf(Turret);
+		Out.BlowTook = Out.HeldAtFirst - AfterTheBlow;
+
+		// ONE SECOND, AND ONE STEP.
+		PassAndStep(Summoner.World, 1.0f, Turret);
+		Out.LostToASecond = AfterTheBlow - FourRowsHealthOf(Turret);
+		Out.bStandingAtTheEnd = !FourRowsIsGone(Turret);
+		return true;
+	};
+
+	FDrainRead Unworn;
+	FDrainRead Worn;
+	if (!Ask(HelmWithNoRow(), TEXT("no rows"), Unworn)
+		|| !Ask(HelmCarrying(NoDamageAndDrainBenefit, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect),
+			TEXT("the rows"), Worn))
+	{
+		return false;
+	}
+
+	// SET-UP, FOR EACH: THE TURRET WAS PLACED FULL, WITH A MAXIMUM, AND IS STANDING AT THE END.
+	const auto IsSetUp = [this](const TCHAR* Who, const FDrainRead& Read)
+	{
+		return TestTrue(*FString::Printf(TEXT("set-up, %s: the turret was placed with a maximum health: %.2f"), Who,
+				Read.Placed), Read.Placed > 1.0f)
+			&& TestEqual(*FString::Printf(TEXT("set-up, %s: and full"), Who), Read.HeldAtFirst, Read.Placed, 0.001f)
+			&& TestTrue(*FString::Printf(TEXT("set-up, %s: and it is standing one second on"), Who),
+				Read.bStandingAtTheEnd);
+	};
+	if (!IsSetUp(TEXT("no rows"), Unworn) || !IsSetUp(TEXT("the rows"), Worn))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: WITHOUT THE ROWS THE BLOW HURTS THE TURRET AND A SECOND TAKES NOTHING FROM IT.
+	if (!TestEqual(TEXT("control: the summoner without the rows holds no enchantment line on either stat"),
+			Unworn.NoDamageLines.Num() + Unworn.DrainLines.Num(), 0)
+		|| !TestTrue(*FString::Printf(TEXT("control: a blow of 10 takes health from the turret of the summoner without "
+				"the rows: %.2f"), Unworn.BlowTook), Unworn.BlowTook > 0.0f)
+		|| !TestEqual(TEXT("control: and one second on it has lost nothing more"), Unworn.LostToASecond, 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// SET-UP: THE TWO ROWS REACHED THEIR WEARER.
+	if (!TestTrue(*(FString::Printf(TEXT("set-up: the summoner wearing the rows holds one enchantment line on "
+				"gadgets_take_no_damage and one on gadget_health_lost_percent_per_second: %d and %d."),
+				Worn.NoDamageLines.Num(), Worn.DrainLines.Num()) + RowDidNotArrive),
+			Worn.NoDamageLines.Num() == 1 && Worn.DrainLines.Num() == 1))
+	{
+		return false;
+	}
+
+	// THE LINES THE ROWS WROTE ARE THE ROWS'.
+	LineIs(*this, TEXT("the summoner wearing the rows, gadgets_take_no_damage"), Worn.NoDamageLines[0], 1.0f,
+		ECataclysmStatBucket::Flat, Deployable);
+	LineIs(*this, TEXT("the summoner wearing the rows, gadget_health_lost_percent_per_second"), Worn.DrainLines[0],
+		5.0f, ECataclysmStatBucket::Flat, Deployable);
+
+	// THE ROWS: THE BLOW TAKES NOTHING, AND ONE SECOND TAKES 5% OF THE MAXIMUM THE TURRET WAS PLACED WITH.
+	TestEqual(TEXT("the turret of the summoner wearing the rows takes nothing from a blow of 10 in the instant it is "
+			"placed"), Worn.BlowTook, 0.0f, 0.001f);
+	TestEqual(TEXT("the maximum it was placed with was recorded at its placing"), Worn.RecordedAtPlacing, Worn.Placed,
+		0.001f);
+	TestEqual(*FString::Printf(TEXT("one second after it was placed it has lost 5%% of that maximum: %.2f of %.2f"),
+			Worn.LostToASecond, Worn.Placed), Worn.LostToASecond, Worn.Placed * 0.05f, Worn.Placed * 0.001f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS
