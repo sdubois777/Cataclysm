@@ -512,9 +512,16 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 		// earlier is the clock's, at the top of `AdvanceDay`. In both cases the
 		// day surged and the count rose by at least one.
 		//
-		// WHEN THE ANSWER WAS NO, NOTHING IS ASSERTED ABOUT THE SURGE, because
-		// the clock's own surge may fire the same day and `bSurged` is one flag
-		// for every cause. The refused case is held by
+		// WHEN THE ANSWER WAS NO AND THE DAY IS AFTER DAY 1, THE DAY DID NOT
+		// SURGE AT ALL. `bSurged` is one flag for every cause, so this rests on
+		// no other cause being able to fire then: every surge moves the clock's
+		// next day on by `GapAfterThisSurge`, which is never below
+		// `LeastIntervalDays`, and the empty-board surge asks for the same
+		// interval, so inside the interval neither is due. Day 1 is the one
+		// exception, where the opening wave fires with no surge behind it, and
+		// nothing is asserted there. Ruled by the coordinating session on
+		// 2026-10-13, after this test's first version asserted nothing on a no.
+		// The refused case is also held, on a fall made by hand, by
 		// `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
 		//
 		// THE COUNT ASSERTS ONE AND NOT ONE PER CITY. Two cities can fall on one
@@ -536,6 +543,13 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 			{
 				++FallDaysDueThatSurged;
 			}
+		}
+		else if (DayAboutToBegin > 1)
+		{
+			TestFalse(FString::Printf(
+				TEXT("day %d, a day a city fell with no fall's surge due, did not surge"),
+				DayAboutToBegin),
+				Report.bSurged);
 		}
 	}
 
