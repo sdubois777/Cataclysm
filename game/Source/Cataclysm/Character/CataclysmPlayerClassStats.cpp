@@ -677,6 +677,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// their damage bonus. Ruled 2026-10-13: "Buff effects you apply are
 		// 20%-40% more potent". A more row. No gameplay attribute and no base.
 		TEXT("buff_potency"),
+		// The percent less that a character deals while it carries at least one
+		// debuff the holder of this stat applied. Read by
+		// UCataclysmDebuffs::NoteLaid where a debuff is put on another character,
+		// and kept on that character for UCataclysmSkillEffects::WeaponDamageOf.
+		// Ruled 2026-10-13: "Applying a debuff to an enemy reduces their damage
+		// output by 10%-20%". Flat; nought cuts nothing. No gameplay attribute
+		// and no base.
+		TEXT("debuffed_enemies_deal_less_percent"),
 	};
 	return Stats;
 }
