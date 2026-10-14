@@ -7917,6 +7917,40 @@ namespace CataclysmStatExemptionTest
 							"really reads it"), With, Without * 0.5f, 0.01f);
 	}
 
+	/**
+	 * `aura_effect`, read by `UCataclysmAuraSkill::MoreEffective`. Ruled 2026-10-13, for "Your auras are 20%-50%
+	 * more effective". A figure of 100 handed to that function on an aura a plain character holds comes back 100;
+	 * with the holder granted 50% on the stat it comes back 150.
+	 *
+	 * THE FUNCTION IS OBSERVED AND NOT A PULSE. The aura is granted and never switched on.
+	 * `Cataclysm.AuraEffect.` in `CataclysmSkillTemplateTests.cpp` reads the five figures the function multiplies.
+	 */
+	void ProbeAuraEffect(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+		const FGameplayAbilitySpecHandle Handle = Holder.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura, /*Level=*/1, Holder.Actor);
+		FGameplayAbilitySpec* Spec = Holder.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		const UCataclysmAuraSkill* Aura = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("an aura"), Aura))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("control: nothing granted, a figure of 100 comes back 100"),
+					   Aura->MoreEffective(100.0f), 100.0f, 0.01f);
+		GrantIncrease(Holder, UCataclysmAuraSkill::AuraEffectStat, 50.0f);
+		Test.TestEqual(TEXT("and with aura_effect granted at 50 it comes back 150, so MoreEffective really reads it"),
+					   Aura->MoreEffective(100.0f), 150.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8059,6 +8093,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
 			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
+			{TEXT("aura_effect"), &ProbeAuraEffect},
 		};
 		return Made;
 	}
