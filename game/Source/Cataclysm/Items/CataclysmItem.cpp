@@ -1421,6 +1421,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bDamageImmunity = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::DamageImmunityAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT MOVES THE WEARER TO A RANDOM REACHABLE POINT NEARBY. Ruled 2026-10-12. The
+					// value is the furthest it may be moved, in metres.
+					Action.bTeleportRandomly = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TeleportRandomlyAction,
+						ESearchCase::IgnoreCase);
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
 					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(

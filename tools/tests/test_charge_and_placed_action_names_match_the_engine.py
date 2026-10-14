@@ -128,6 +128,9 @@ CONSTANTS = {
     # AND THE ONE THAT EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS
     # HEALTH, ruled 2026-10-12.
     "ExecuteTargetAction": "execute_target",
+    # AND THE ONE THAT MOVES ITS WEARER TO A RANDOM REACHABLE POINT NEARBY WHEN
+    # IT IS HIT, ruled 2026-10-12.
+    "TeleportRandomlyAction": "teleport_randomly",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -356,6 +359,27 @@ def test_the_generator_accepts_exactly_the_trigger_held_names_the_engine_has() -
 def test_the_generator_accepts_exactly_the_damage_immunity_name_the_engine_has() -> None:
     """Issue #1833 group E part 2."""
     assert gen.DAMAGE_IMMUNITY_ACTION == engine_names()["DamageImmunityAction"]
+
+
+def test_the_generator_accepts_exactly_the_teleport_randomly_name_the_engine_has() -> None:
+    """Ruled 2026-10-12. And the three lines of code the action needs are in the
+    engine as code and not only named in a comment: the item sets the flag from
+    the name, the row loop asks the flag and whether the blow was a tick, and
+    `NoteHitTaken` says whether it was for the length of its call."""
+    assert gen.TELEPORT_RANDOMLY_ACTION == engine_names()["TeleportRandomlyAction"]
+    assert gen.TELEPORT_RANDOMLY_ACTION not in gen.POOL_ACTIONS
+    source = SOURCE.read_text(encoding="utf-8")
+    code = "\n".join(line for line in source.splitlines()
+                     if not line.lstrip().startswith(("//", "*", "/*")))
+    assert re.search(
+        r"if \(Action\.bTeleportRandomly\)\s*\{\s*"
+        r"if \(bLanded && !bHitBeingAnnouncedIsATick && ", code)
+    assert ("TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);"
+            in code)
+    item = (SOURCE.parents[1] / "Items" / "CataclysmItem.cpp").read_text(encoding="utf-8")
+    assert re.search(
+        r"Action\.bTeleportRandomly = Effect->Action\.Equals\(\s*"
+        r"UCataclysmAbilitySystemComponent::TeleportRandomlyAction,", item)
 
 
 def test_the_generator_holds_exactly_the_damage_type_immunity_stats_the_engine_reads() -> None:
