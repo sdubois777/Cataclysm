@@ -156,6 +156,9 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
         # measured with that timer costing the city nothing, and none
         # was re-measured. Remove this line to measure the shipped rule.
         quest_timer_hits_city=False,
+        # AND THE SAME FOR THE OTHER RULE OF THAT DATE: a hit sized by all
+        # of a dungeon's floors, the tree's included.
+        hit_scales_with_natural_floors=False,
     ).with_tree(tree)
     return replace(cfg, **over) if over else cfg
 

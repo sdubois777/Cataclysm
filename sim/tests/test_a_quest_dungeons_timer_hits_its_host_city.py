@@ -166,8 +166,6 @@ class TestTheHit:
         ordinary = twin._make_dungeon(DungeonType.BASIC, city)
         lo, hi = ordinary_row(twin, city).floors
         ordinary.floors = (lo + hi) / 2.0
-        if hasattr(ordinary, "natural_floors"):
-            ordinary.natural_floors = (lo + hi) / 2.0
         before = (city.defense, city.population)
         twin._resolve(ordinary)
 
@@ -181,8 +179,6 @@ class TestTheHit:
             city = a_city(sim)
             d = a_quest_dungeon(sim, city)
             d.floors = floors
-            if hasattr(d, "natural_floors"):
-                d.natural_floors = floors
             before = city.defense
             sim._resolve(d)
             taken.append(before - city.defense)
@@ -201,8 +197,6 @@ class TestTheHit:
             city = a_city(sim)
             d = a_quest_dungeon(sim, city)
             d.floors = floors
-            if hasattr(d, "natural_floors"):
-                d.natural_floors = floors
             before = city.defense
             sim._resolve(d)
             taken.append(before - city.defense)
