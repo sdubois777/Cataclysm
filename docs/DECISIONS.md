@@ -738,6 +738,19 @@ once every 5-8 seconds".
   2026-10-07, in the entry headed "The Spike Trap carries the tag `Type.Trap`", under its heading "FIRST, WHAT
   CHANGES FOR A PLAYER: A SPIKE TRAP IS NOW A TRAP AND NO LONGER A GADGET FOR `gadgets_active`". A holder's Spike
   Trap, imp and mote fire no volley.
+- **CHANGED ON 2026-10-13 BY THE COORDINATING SESSION'S JUDGEMENT, AFTER THIS LAYER WAS FIRST BUILT: A GADGET'S
+  FIRST VOLLEY COMES ON ITS FIRST STEP THAT FINDS AN ENEMY WITHIN ITS REACH; after that, one every 5 to 8 seconds
+  as the row rolls.** So every placed gadget of a holder gives at least one volley if an enemy comes within its
+  reach while it stands. **The reading not taken is the one first built: the first volley one whole period after
+  the placing.** Why it was not taken: a Bolt Turret stands 5 seconds and the row's seconds are 5 to 8, so as
+  first built the row did nothing for the gadget most players place. What follows from the change, each a
+  judgement of the writing session set out under the judgements below: the row's seconds run from the first
+  volley; a step that finds nobody within reach fires nothing and starts no clock; a gadget that cannot act does
+  not lose its first volley; and a gadget that comes to hold the row late is under the same rule.
+- **Until its first volley a holder's gadget searches its reach on every step, four times a second.** That is the
+  physics sphere search that issue [#1547](https://github.com/sdubois777/Cataclysm/issues/1547) took out of the
+  brain's choice of target because of what it cost in a crowd. Only a gadget of a summoner holding this row makes
+  it, and it stops at the first volley. Not measured; the owner has parked performance.
 - **With the on-hit gadget rows worn, a volley applies them to every enemy it strikes, within those rows' own
   cooldowns.** Ruled to be said first. Each blow of a volley is the gadget's ordinary blow and raises
   `deployable_hit`. So "Gadgets apply a 15%-25% armor reduction to enemies they hit for 3 seconds", which has no
@@ -745,13 +758,25 @@ once every 5-8 seconds".
   they hit, once every 5 seconds" staggers one enemy of a volley, the first struck while its cooldown is ready,
   which is the nearest. By reading; no test here wears those rows.
 - **A Bolt Turret lasts 5 seconds and a Ballista 8, and the row's seconds are 5 to 8. So without "Gadgets last
-  30%-60% longer" a Bolt Turret fires at most one volley, in the last moment of its life, and may fire none; a
-  Ballista fires one, or none at a row rolled near 8.** Read from `game/Data/WeaponSkills.csv`: Bolt Turret
-  `Duration=5`, Ballista `Duration=8`, and Iron Fortress, whose ballistae last 20 seconds and fire two to four
-  volleys. A gadget's lifespan and its step are two timers, and which fires first when both fall due at 5 seconds
-  was not read. **This is the same shortness of life the ruling asks to be said first of the drain row**, and it
-  makes this row worth little on the two turret skills without the duration row. Not ruled on; it is for the
-  coordinating session.
+  30%-60% longer" a Bolt Turret fires one volley, as soon as an enemy is within its reach, and a second only in
+  the case below; a Ballista fires one, and a second if an enemy was within reach early enough for the row's
+  seconds to pass before its 8 are up.** Read from `game/Data/WeaponSkills.csv`: Bolt Turret `Duration=5`,
+  Ballista `Duration=8`, and Iron Fortress, whose ballistae last 20 seconds. As first built a Bolt Turret fired
+  at most one volley, as it left, and that is what the change above answers.
+- **Which of the lifespan and the step comes first at exactly 5 seconds, for a Bolt Turret: read, and not settled
+  by reading.** `AActor::SetLifeSpan` sets a timer that fires once, on the world's timer manager, and its
+  function calls `Destroy`. The quarter-second step is a looping timer on the same manager, set when the gadget
+  begins play, which is inside the same call of `Spawn` that sets the lifespan a few lines later. The manager
+  fires a timer in the first frame whose time is PAST its expiry, and takes due timers earliest expiry first.
+  The twentieth step and a lifespan of 5 seconds expire at the same time, so both fall due in the same frame;
+  between two timers of exactly the same expiry the manager's order is the order of its heap, which its
+  comparison does not decide and which was not traced further. A lifespan that is not a whole number of quarter
+  seconds, which is any lifespan under "Gadgets last longer" or the Ritualist's Kept Longer, does not tie.
+  **What a player would see either way:** it matters only to a Bolt Turret whose first volley came at the moment
+  of its placing, at a row rolled to exactly 5 seconds, with no longer duration. If the step comes first the
+  turret fires a second volley in the frame it disappears; if the lifespan comes first the turret is destroyed,
+  its step's timer is cleared with it, and there is no second volley. In every other case the second volley is
+  due after the turret's 5 seconds and never comes.
 - **The row rolls DOWN: 5 seconds is its best figure.** Ruled, by the owner's rule of 2026-10-05 in the entry
   headed "A better roll gives the better outcome: a roll of 1 is a benefit's best figure and a drawback's
   harshest, so seven sentences mark a range that rolls down", which says of this sentence that it "takes its
@@ -767,23 +792,29 @@ once every 5-8 seconds".
 - **Each blow of a volley is a single blow, so it can be evaded, and it is not area damage.** Ruled.
 - **"Within range" is the gadget's reach, measured as the layer before this one measures it**: along the floor,
   centre to centre, no more than `ReachCm`.
-- **The clock is the gadget's own and starts when it is placed.** Two turrets placed a second apart fire their
-  volleys a second apart. It is looked at on the quarter-second step every character has, so **a volley can fire
-  up to a quarter of a second late**; the clock keeps its beat from the placing, so a late volley does not make
-  the next one later.
+- **The clock is the gadget's own and starts at its first volley.** Each gadget fires its first volley when an
+  enemy first comes within its own reach, so two turrets do not fire together unless that happens to both at
+  once. It is looked at on the quarter-second step every character has, so **a volley can fire up to a quarter
+  of a second late**; the clock keeps its beat from the first volley, so a late volley does not make the next
+  one later.
+- **A gadget placed among enemies fires its first volley within a quarter of a second of its placing**, on its
+  first step. Since the layer that makes gadgets take no damage, `Spawn` steps a gadget once as it places it, so
+  from that layer on the first volley of a gadget placed among enemies is fired in the moment it is placed.
 - **Two rows on the stat: the shorter seconds, and not their sum.** Ruled. The game does not grant one benefit
   twice, so two rows arise only from two different sources; no second source exists today.
-- **A gadget that comes to hold the row when it has already stood longer than the row's seconds fires on the
-  next step, and counts from then.** A judgement; see below.
-- **A gadget that cannot act when its clock comes round, stunned or knocked down, fires nothing and that volley
-  is lost.** A judgement; see below.
+- **A gadget that comes to hold the row late fires on its first step that finds an enemy within reach, as any
+  gadget does, and counts from then.** A judgement; see below.
+- **A gadget that cannot act, stunned or knocked down, does not lose its FIRST volley: it comes on the first step
+  that finds an enemy within reach while the gadget can act. A LATER volley that comes round while it cannot act
+  is lost, and one that comes round with nobody within reach is fired at nobody; the beat goes on.** Judgements;
+  see below.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
   the code, the tests and this entry under the enchantment session's brief. Every statement about what the
   engine does was read from the code when it was written.
 - **No row is authored, so a player sees no change.**
 
-**What was not read:** the order in which an actor's lifespan and a repeating timer fire when both fall due in
-one frame; whether anything in the game stuns or knocks down a minion; what `AttackTarget` draws for each blow of
+**What was not read:** the order of the timer manager's heap between two timers of exactly the same expiry;
+whether anything in the game stuns or knocks down a minion; what `AttackTarget` draws for each blow of
 a volley, and whether the projectile a turret's ordinary shot shows is drawn at all for a blow struck this way;
 how a worn row becomes a line of the stat line at a gear refresh; the item text of a range marked in `Rolls Down`.
 
@@ -797,7 +828,7 @@ continue". Each ruling below is a labelled judgement by the coordinating session
 | | Ruling | Where it is |
 | :-- | :-- | :-- |
 | R1 | It acts on the Turret and the Ballista only; a Spike Trap is a trap. | `ACataclysmMinion::VolleyEverySeconds` answers nought for everything that is not `IsGadget`, and `GadgetStep` returns for it. |
-| R2 | A clock of the gadget's own from when it is placed. | `ACataclysmMinion::GadgetStep`: the gadget's age, `GetGameTimeSinceCreation`, against `LastVolleyAtAgeSeconds`, which starts at nought. |
+| R2 | A clock of the gadget's own from when it is placed. CHANGED by the coordinating session's judgement of 2026-10-13: the first volley on the first step that finds a hostile within reach, and after that one every 5 to 8 seconds. | `ACataclysmMinion::GadgetStep`: until `bHasFiredAVolley`, a step that finds the gadget able to act and `HostilesWithinReach` not empty fires and sets `LastVolleyAtAgeSeconds` to the gadget's age, `GetGameTimeSinceCreation`; after it, the age against that mark. |
 | R3 | Its ordinary blow to every hostile within reach, each a single blow, each raising `deployable_hit`. | `ACataclysmMinion::FireVolley`: `AttackTarget` for each of `HostilesWithinReach`. |
 | R4 | In addition to its ordinary fire. | `FireVolley` is called from the step and not from the brain; nothing of the brain's is read or written. |
 | R5 | No cap on targets. | The list is not cut. |
@@ -813,14 +844,29 @@ continue". Each ruling below is a labelled judgement by the coordinating session
   each gadget, which fires on time but is one more thing to cancel when a gadget is destroyed, and which a test
   could only reach by running the timer manager. A minion's actor never ticks, so "the minion's own tick" does
   not exist.
-- **The clock keeps its beat from the placing.** When it comes round the mark moves on by the row's seconds and
-  not to the moment of firing. The option not taken: count from the moment of firing, under which every volley's
-  lateness is added to all that follow.
-- **A mark a whole period behind is brought to now.** That is a gadget that came to hold the row late, or whose
-  row grew shorter. It fires once and counts from then. The option not taken: fire one volley on each step until
-  the mark catches up.
-- **A gadget that cannot act fires nothing and the volley is lost.** `UCataclysmSkillEffects::CannotAct` is the
-  test the brain makes before an ordinary shot. The option not taken: hold the volley until the gadget can act.
+- **The row's seconds run from the first volley, and the beat is kept from it.** Written with the change of
+  2026-10-13; the coordinating session proposed it. When the clock comes round the mark moves on by the row's
+  seconds and not to the moment of firing. The options not taken: run the seconds from the placing, under which
+  a second volley could follow the first by less than the row's seconds; and count each time from the moment of
+  firing, under which every volley's lateness is added to all that follow.
+- **A step that finds nobody within reach before the first volley costs nothing.** It fires nothing, counts no
+  volley and starts no clock, however long the gadget has stood. The coordinating session required that it not
+  start the clock. The option not taken: let the first volley fall due at the placing and be spent on nobody.
+- **A gadget that comes to hold the row late is under the same rule.** It has fired no volley, so its first comes
+  on its first step that finds an enemy within reach. The option not taken, which is what was first built: fire
+  on the next step whether or not anybody is within reach.
+- **A gadget that cannot act does not lose its first volley.** `UCataclysmSkillEffects::CannotAct` is the test
+  the brain makes before an ordinary shot; while it holds, the first volley waits, and the gadget fires on its
+  first step that finds an enemy within reach and can act. The coordinating session proposed it. The option not
+  taken: count the first volley as fired and lost.
+- **After the first, the clock waits for nothing.** A later volley that comes round while the gadget cannot act
+  is lost, as first built. A later volley that comes round with nobody within reach is fired at nobody: it is
+  counted, it strikes no one, and the beat goes on. The option not taken: hold each volley until the gadget can
+  act and an enemy is within reach, which makes every volley a first volley and the row's seconds a least wait
+  and no longer a beat. The ruling's words are "after that, one every 5 to 8 seconds".
+- **A mark a whole period behind is brought to now.** That is a gadget whose row grew shorter, or that lost the
+  row after its first volley and came to hold it again. It fires once and counts from then. The option not
+  taken: fire one volley on each step until the mark catches up.
 - **The list of enemies is taken once, before the first blow.** An enemy that dies before its turn is passed
   over, and a gadget that dies part way through, to the retaliation its own blow provoked, strikes nobody after
   that. The option not taken: search again before each blow.
@@ -859,9 +905,12 @@ Last Epoch, Torchlight; `poewiki.net` is blocked to the tool.
   Otherwise the least `Value` among the summoner's rows on the stat that are flat, above nought, and match this
   gadget's `TypeTags` by `UCataclysmStatPipeline::ModifierApplies`.
 - **`ACataclysmMinion::GadgetStep(AActor*)`**, static. It returns for anything that is not a living gadget, and
-  for a gadget whose seconds are nought. If the gadget's age less `LastVolleyAtAgeSeconds` is under the seconds
-  it returns. Otherwise the mark moves on by the seconds, and to the gadget's age if it is still a whole period
-  behind; then, unless the gadget cannot act, `FireVolley`.
+  for a gadget whose seconds are nought. Until `bHasFiredAVolley`: it returns if the gadget cannot act or
+  `HostilesWithinReach` is empty; otherwise it sets the flag, sets `LastVolleyAtAgeSeconds` to the gadget's age,
+  calls `FireVolley` and returns. After that: if the gadget's age less `LastVolleyAtAgeSeconds` is under the
+  seconds it returns. Otherwise the mark moves on by the seconds, and to the gadget's age if it is still a whole
+  period behind; then, unless the gadget cannot act, `FireVolley`.
+- **`ACataclysmMinion::bHasFiredAVolley`.** False until the first volley. Added with the change of 2026-10-13.
 - **`ACataclysmMinion::FireVolley()`.** Counts the volley in `VolleysFired`, takes `HostilesWithinReach` once,
   and calls `AttackTarget` for each that is still alive while the gadget itself is. It answers how many it
   struck.
@@ -904,34 +953,46 @@ clock is moved by hand and the gadget's step is called directly, so no brain thi
 unless the test fires one. Every enemy that is struck holds 50,000, because a machine's blow rises with a level
 that a test's summoner takes from a console variable. Every figure is read against a control read first.
 
+**All four were rewritten for the change of 2026-10-13; their names are as they were.** In each the gadgets are
+placed before any enemy is stood, so no step before the one the test calls finds anybody.
+
 - `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond`: two summoners, the holder
   with the row at 5 seconds, each with a Bolt Turret and enemies at 3, 6, 9 and 12 m. In order: the holder's
   turret reads 5 seconds; the control turret's one ordinary blow takes health and raises `deployable_hit` once;
-  at 4.9 seconds the holder's turret has fired no volley and its enemies have lost nothing; at 5.1 the control
-  turret has fired none, its enemies have lost nothing more and no further event was raised; the holder's has
-  fired one; the enemies at 3, 6 and 9 m each lost one ordinary blow; the one at 12 m lost nothing; the event was
-  raised three times; the turret made three attacks; a second step at the same moment fires nothing; at 9.9
-  seconds no second volley; at 10.05 the second, 4.95 seconds after the first fired.
+  then, on a step a twentieth of a second after the placing: the control turret fires no volley, its enemies
+  have lost nothing more and no further event was raised; the holder's turret fires its first volley; the
+  enemies at 3, 6 and 9 m each lost one ordinary blow; the one at 12 m lost nothing; the event was raised three
+  times; the turret made three attacks; a second step at the same moment fires nothing; 4.9 seconds after the
+  first volley no second has fired; 5.1 seconds after it the second has; the three within reach have lost two
+  blows each; 9.9 seconds after the first the third has not fired; 10.05 after the first it has, 4.95 seconds
+  after the second fired.
 - `TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot`: the holder also holds
   `minion_attack_speed` increased by 100 for `Type.Deployable`. In order: the control turret's time between shots
-  is whole and the holder's is half; the holder's turret reads 5 seconds; at 2.6 seconds no volley; at 4.9 none;
-  an ordinary shot takes health from the nearest; at 5.1 the volley fires; the nearest has taken two blows; the
-  enemy at 6 m one; four attacks in all.
+  is whole and the holder's is half; the holder's turret reads 5 seconds; it fires its first volley on its first
+  step; 2.6 seconds after it no second; 4.9 seconds after it none; an ordinary shot takes health from the
+  nearest; 5.1 seconds after the first the second volley fires; the nearest has taken two blows since the
+  ordinary shot was read; the enemy at 6 m one; seven attacks in all.
 - `TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep`: three summoners, holding one row of 8, rows of
-  8 and 5, and nothing. In order: one row reads 8; two read 5; none reads nought; at 5.1 seconds the first has
-  fired nothing and the second one volley; at 8.1 the first fires its first and the second has fired no second;
+  8 and 5, and nothing. In order: one row reads 8; two read 5; none reads nought; each of the two holders'
+  turrets fires its first volley on its first step; 5.1 seconds after, the first has fired no second and the
+  second has fired its second; 8.1 seconds after, the first fires its second and the second has fired no third;
   the third has fired nothing; the third is given a row of 5 and fires on the next step; its enemies lost health;
   it does not fire again at the same moment, nor 4.9 seconds later, and fires its second 5.1 seconds after.
 - `AHoldersSpikeTrapAndImpFireNoVolleyAndAnEvadedBlowOfAVolleyTakesNothing`: a holder's Spike Trap, imp and
-  turret, each with enemies within reach, and a control summoner's turret. At 5.1 seconds: the control fired
-  none and its enemies lost nothing; the holder's turret fired one; the trap fired none, reads no seconds, and
-  its two enemies lost nothing; the imp the same; the turret's enemy at 3 m lost health, the one at 9 m the
-  same, and the one at 6 m, which evades, nothing; three attacks; `deployable_hit` three times.
+  turret, each with enemies within reach, a second turret of the holder's with its one enemy 12 m from it, and a
+  control summoner's turret. On a step a tenth of a second after the placing: the control fired none and its
+  enemies lost nothing; the holder's turret fired one; the trap fired none, reads no seconds, and its two
+  enemies lost nothing; the imp the same; the turret's enemy at 3 m lost health, the one at 9 m the same, and
+  the one at 6 m, which evades, nothing; three attacks; `deployable_hit` three times. Then the second turret:
+  it fired nothing on its first step; nothing on a step 6.1 seconds after its placing; an enemy is stood 3 m
+  from it and it fires its first volley on the next step; that enemy lost health; the one 12 m away took
+  nothing; 4.9 seconds after that volley no second; 5.1 seconds after it the second.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
 `ProbeGadgetVolleyEverySeconds`. After 5.1 seconds and one step each, the turret of the summoner holding nothing
 has fired no volley and its nearer enemy holds what it held; the turret of the one holding the stat at a flat 5
-has fired one and both its enemies lost health.
+has fired one and both its enemies lost health. It was not changed by the change of 2026-10-13: that step is
+each turret's first with an enemy within reach, and one volley is what it fires under either rule.
 
 Python: `TestGadgetsFireAVolley` in `tools/tests/test_generate_datatables.py`, eight tests on a made-up sheet:
 the row with its mark is carried through as 8 to 5 and refused by no check; the same row without the mark is
@@ -944,20 +1005,27 @@ case of `test_the_hook_runs_this_job` for the new job.
 
 **Not tested:** the step arriving from the real timer, because a test's world is not ticked; the lifespan ending
 a Bolt Turret at the moment its clock comes round; the on-hit gadget rows applied by a volley, and the stagger
-row's cooldown across one; a gadget that cannot act; a gadget that dies of retaliation part way through a volley;
+row's cooldown across one; a gadget that cannot act, for its first volley waiting and for a later one being
+lost; a later volley that comes round with nobody within reach; a gadget placed with an enemy already within its
+reach, which from the layer that steps a gadget at its placing fires inside `Spawn`; a gadget that loses the row
+and holds it again; a gadget that dies of retaliation part way through a volley;
 an enemy that dies before its turn; a volley beside the brain's own shots under a running clock; a Ballista's
 volley; a row that removes the stat; the row arriving from a worn item; a gadget in a dungeon level; what a
 player sees of a volley.
 
 ### GUARD PROOFS PROPOSED
 
-Not run. Each old text was counted once in its file by a script at this layer's commit, each is one line, and each
-new text keeps the file's brackets paired. The failed assertions are counted by reading the tests and were not
-measured. The prefix of all three is `Cataclysm.GadgetVolley.`, with its trailing dot, which is 4 tests.
+Not run. Restated on 2026-10-13 after the first volley was changed. Each old text was counted once in its file
+by a script, each is one line, and each new text keeps the file's brackets paired. The failed assertions are
+counted by reading the rewritten tests and were not measured. The prefix of all is `Cataclysm.GadgetVolley.`, with
+its trailing dot, which is 4 tests. **Two were registered for this layer, V-I and V-II. V-N is proposed IN PLACE OF
+V-I**, because it breaks the rule the change made and V-I breaks a line the change left as it was; the
+enchantment session chooses. V-III was proposed and not registered.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| V-I, the row's seconds are waited whole | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds)` | `if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds * 0.5f)` | `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond` | `TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot` and `TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep` |
+| V-N, the first volley does not wait a period from the placing | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (UCataclysmSkillEffects::CannotAct(Gadget) \|\| Gadget->HostilesWithinReach().IsEmpty())` | `if (Age < Seconds \|\| UCataclysmSkillEffects::CannotAct(Gadget) \|\| Gadget->HostilesWithinReach().IsEmpty())` | `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond` | the other three |
+| V-I, the row's seconds are waited whole | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds)` | `if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds * 0.5f)` | `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond` | the other three |
 | V-II, of two rows the shorter | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `Seconds = Seconds <= 0.0f ? Row.Value : FMath::Min(Seconds, Row.Value);` | `Seconds = Seconds <= 0.0f ? Row.Value : FMath::Max(Seconds, Row.Value);` | `TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep` | none |
 | V-III, every enemy within reach and not the nearest alone | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (!IsValid(Each) \|\| UCataclysmSkillEffects::IsDead(Each))` | `if (Struck > 0 \|\| !IsValid(Each) \|\| UCataclysmSkillEffects::IsDead(Each))` | `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond` | `TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot` and `AHoldersSpikeTrapAndImpFireNoVolleyAndAnEvadedBlowOfAVolleyTakesNothing` |
 
@@ -965,43 +1033,64 @@ In the table each `\|\|` stands for the two upright bars of the code; the backsl
 
 Failed assertions in each test, by reading:
 
-- **V-I, 12 in 3 tests.** With the break a volley fires once half the row's seconds have passed since the mark,
-  and the mark still moves on by the whole seconds. The first test 3: the volley fires at 4.9 seconds, so "at
-  4.9 seconds a holder's turret has fired no volley" and "and its enemies have lost nothing" fail; the mark is
-  then at 5, nothing fires at 5.1, and every line read at 5.1 passes on the volley of 4.9; at 9.9 a second fires,
-  so "at 9.9 seconds the second volley has not fired" fails; at 10.05 the count is the 2 expected. The second
-  test 4: a volley fires at 2.6, so "at 2.6 seconds no volley has fired: the seconds are not shortened by
-  Gadgets fire faster" and "nor at 4.9 seconds" fail; none fires at 5.1, where the count is the 1 expected, so
-  "the enemy the ordinary shot struck is struck by the volley as well: two blows" and "and an enemy the ordinary
-  shot did not strike takes the volley's one" fail; the four attacks are the early volley's three and the
-  ordinary one, and pass. The third test 5: under one row of 8 the turret fires at 5.1, so "control: at 5.1
-  seconds the turret under one row of 8 has fired nothing" fails, and at 8.1 its count is the 1 expected; under
-  rows of 8 and 5 a second fires at 8.1, so "and the other, whose next is due at 10, has fired no second" fails;
-  the late turret fires on its first step with its mark left at 5, fires again on the step at the same moment,
-  and again 4.9 seconds on, so "and does not fire again at the same moment", "nor 4.9 seconds after that volley"
-  and "and fires its second 5.1 seconds after it: the clock counts from that volley" fail, with counts of 2, 3
-  and 3. The fourth test passes: its one read is at 5.1 seconds, when one volley has fired with the break or
-  without.
-- **V-II, 2 in 1 test.** "rows of 8 and 5 are read as the shorter, 5, and not as their sum", which reads 8; and
-  "and the turret under rows of 8 and 5 has fired its first volley", at 5.1 seconds. At 8.1 that turret fires
-  its first and the line expecting a count of 1 passes.
-- **V-III, 9 in 3 tests.** With the break a volley strikes the first enemy of its list, which is the nearest,
-  and passes over the rest. The first test 4: "the enemy at 6 m took one ordinary blow"; "the enemy at 9 m took
-  one ordinary blow"; "each blow of the volley raised deployable_hit on its summoner: three"; "and each was an
-  attack of the turret's own: three". The second test 2: "and an enemy the ordinary shot did not strike takes
-  the volley's one"; "four attacks in all: the ordinary one and the volley's three". The fourth test 3: "the
-  enemy at 9 m took the same"; "it was struck at all the same: three attacks"; "and deployable_hit was raised
-  for each of the three, the evaded one included". The third test passes: it reads counts of volleys, and that a
-  line's health fell.
+- **V-N, 15 in 4 tests.** With the break a gadget's first volley waits until the gadget has stood the row's
+  seconds, which is what was first built. The first test 12: on the step a twentieth of a second after the
+  placing nothing fires, so "a holder's turret fires its first volley on its first step with an enemy within
+  reach", the three lines "the enemy at 3 m took one ordinary blow", "the enemy at 6 m took one ordinary blow"
+  and "the enemy at 9 m took one ordinary blow", "each blow of the volley raised deployable_hit on its summoner:
+  three" and "and each was an attack of the turret's own: three" fail; "a second step at the same moment fires
+  no second volley" fails, expecting a count of 1 and reading 0; "4.9 seconds after the first volley no second
+  has fired" fails the same way, the turret having stood 4.95 seconds; at 5.15 seconds the first volley fires,
+  so "5.1 seconds after the first volley the second has fired" fails with a count of 1, and "and the three
+  enemies within reach have now lost two blows each" fails; "9.9 seconds after the first volley the third has
+  not fired" fails with a count of 1 where 2 is expected; and the last line fails with a count of 1 where 3 is
+  expected, the second volley being due 5 seconds after 5.15. The second test 1: "set-up: the holder's turret
+  fires its first volley on its first step", after which the test returns. The third test 1: "set-up: each
+  turret whose summoner holds a row fires its first volley on its first step", after which it returns. The
+  fourth test 1: "set-up: the holder's turret has fired one, so the row is held", after which it returns.
+- **V-I, 10 in 4 tests. It was 12 in 3.** With the break a later volley fires once half the row's seconds have
+  passed since the mark, and the mark still moves on by the whole seconds; the first volley is not touched. The
+  first test 2: a second volley fires 4.9 seconds after the first, so "4.9 seconds after the first volley no
+  second has fired" fails; the mark is then 5 seconds after the first, nothing fires at 5.1, and the lines read
+  there pass on that early volley; a third fires at 9.9, so "9.9 seconds after the first volley the third has
+  not fired" fails; the last line reads the 3 expected. The second test 4: a second fires 2.6 seconds after the
+  first, so "2.6 seconds after the first no second has fired: the seconds are not shortened by Gadgets fire
+  faster" and "nor 4.9 seconds after it" fail; none fires at 5.1, where the count is the 2 expected, so "the
+  enemy the ordinary shot struck is struck by the volley as well: two blows" and "and an enemy the ordinary shot
+  did not strike takes the volley's one" fail; the seven attacks are two volleys and the ordinary shot, and
+  pass. The third test 3: under one row of 8 a second fires at 5.1, so "control: 5.1 seconds after its first the
+  turret under one row of 8 has fired no second" fails, and at 8.1 its count is the 2 expected; under rows of 8
+  and 5 a third fires at 8.1, so "and the other, whose next is due at 10, has fired no third" fails; the late
+  turret's first volley and the step at the same moment are as they should be, a second fires 4.9 seconds on,
+  so "nor 4.9 seconds after that volley" fails, and the last line reads the 2 expected. The fourth test 1: the
+  second turret fires again 4.9 seconds after its first, so "4.9 seconds after that first volley it has fired no
+  second" fails, and the line after reads the 2 expected.
+- **V-II, 2 in 1 test, as registered.** "rows of 8 and 5 are read as the shorter, 5, and not as their sum",
+  which reads 8; and "and the turret under rows of 8 and 5 has fired its second volley", 5.1 seconds after its
+  first. At 8.1 that turret fires its second and the line expecting a count of 2 passes.
+- **V-III, 10 in 3 tests. It was 9.** With the break a volley strikes the first enemy of its list, which is the
+  nearest, and passes over the rest. The first test 5: "the enemy at 6 m took one ordinary blow"; "the enemy at
+  9 m took one ordinary blow"; "each blow of the volley raised deployable_hit on its summoner: three"; "and each
+  was an attack of the turret's own: three"; and "and the three enemies within reach have now lost two blows
+  each", which reads two blows in all. The second test 2: "and an enemy the ordinary shot did not strike takes
+  the volley's one"; "seven attacks in all: two volleys of three and the ordinary one", which reads 3. The
+  fourth test 3: "the enemy at 9 m took the same"; "it was struck at all the same: three attacks"; "and
+  deployable_hit was raised for each of the three, the evaded one included". The third test passes: it reads
+  counts of volleys, and that a line's health fell.
 
 **Tests of another group expected to fail, to check in the window:** under V-III the probe
 `ProbeGadgetVolleyEverySeconds` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails on its
-last assertion, "and both its enemies lost health to it". Under V-I and V-II it passes.
+last assertion, "and both its enemies lost health to it". Under V-N, V-I and V-II it passes: its one step is 5.1
+seconds after the placing. For the same reason the test of a kill by a volley's blow in `Cataclysm.GadgetBurst.`
+passes under all four, and no assertion of it was moved by the change. The test that wears the real row,
+`Cataclysm.Enchantments.TheVolleyRowFiresAVolleyEveryFiveSecondsAtItsBestRollAndEveryEightAtItsWorst`, is
+expected to fail under V-N and under V-I; it was not counted.
 
 **Tests and no proof:** that a trap and an imp fire none, which the layer before this one's T-III would also
 show; that the seconds are not shortened by `minion_attack_speed`, which is shown by no line of code that could
-be broken, since the reader asks for one stat; that the beat is kept from the placing; that a row held late
-fires at once.
+be broken, since the reader asks for one stat; that the beat is kept from the first volley; that a step which
+finds nobody starts no clock; that a row held late fires at once. If V-N is taken in place of V-I, that the
+row's seconds are waited whole has tests and no proof.
 
 ### THE WINDOW'S RUN
 
@@ -1069,6 +1158,12 @@ range instead of the nearest".
 - **Every creature's brain now does one more thing on each pass: a cast of the body it drives to a minion.** For
   a monster the cast answers null and nothing more is done. For a minion, `IsGadget` is asked, which is two tag
   comparisons, and only a gadget asks its summoner for the stat. Not measured.
+- **And a holder's gadget makes one physics search of its reach on every pass of its brain, four times a second.**
+  `MostHealthWithinReach` asks `FindEnemiesInSphere`, which is the sphere search issue
+  [#1547](https://github.com/sdubois777/Cataclysm/issues/1547) took out of `ChooseTarget` because of what it cost
+  in a crowd. Only a gadget whose summoner holds this row makes it; every other body's choice is the listed
+  search as before. Not measured, and accepted as built by the coordinating session on 2026-10-13, the owner
+  having parked performance.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
   the code, the tests and this entry under the enchantment session's brief. Every statement about what the
   engine does was read from the code when it was written.

@@ -606,23 +606,19 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyStrikesAllTest,
 	const float HolderFarHeld = HealthOf(HolderLine.Far);
 	const float HolderBeyondHeld = HealthOf(HolderLine.Beyond);
 
-	// 4.9 SECONDS AFTER THE PLACING: the clock has not come round.
-	Pass(World, 4.9f);
+	// THE FIRST STEP WITH AN ENEMY WITHIN REACH, a twentieth of a second after the placing: the first volley, at
+	// once. The coordinating session's judgement of 2026-10-13. The enemies were stood after the turrets were
+	// placed, so no step before this one found anybody.
+	Pass(World, 0.05f);
 	Step(ControlTurret);
 	Step(HolderTurret);
-	TestEqual(TEXT("at 4.9 seconds a holder's turret has fired no volley"), HolderTurret->VolleysFired, 0);
-	TestEqual(TEXT("and its enemies have lost nothing"), HealthOfThoseWithinReach(HolderLine), HolderHeld, 0.001f);
-
-	// 5.1 SECONDS: it has.
-	Pass(World, 0.2f);
-	Step(ControlTurret);
-	Step(HolderTurret);
-	TestEqual(TEXT("control: at 5.1 seconds the turret of a summoner holding no row has fired no volley"),
+	TestEqual(TEXT("control: the turret of a summoner holding no row fires no volley on its step"),
 		ControlTurret->VolleysFired, 0);
 	TestEqual(TEXT("control: and its enemies have lost nothing more"),
 		HealthOfThoseWithinReach(ControlLine), ControlHeld, 0.001f);
 	TestEqual(TEXT("control: and no further deployable_hit was raised"), ControlHits.Count, 1);
-	TestEqual(TEXT("at 5.1 seconds a holder's turret has fired one volley"), HolderTurret->VolleysFired, 1);
+	TestEqual(TEXT("a holder's turret fires its first volley on its first step with an enemy within reach"),
+		HolderTurret->VolleysFired, 1);
 	TestEqual(TEXT("the enemy at 3 m took one ordinary blow"),
 		HolderNearHeld - HealthOf(HolderLine.Near), OneBlow, 0.05f);
 	TestEqual(TEXT("the enemy at 6 m took one ordinary blow"),
@@ -638,14 +634,25 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyStrikesAllTest,
 	Step(HolderTurret);
 	TestEqual(TEXT("a second step at the same moment fires no second volley"), HolderTurret->VolleysFired, 1);
 
-	// THE BEAT IS KEPT FROM THE PLACING: the first volley fired at 5.1 and the second is due at 10, not at 10.1.
+	// THE ROW'S 5 SECONDS RUN FROM THE FIRST VOLLEY: none 4.9 seconds after it, the second 5.1 after it.
+	Pass(World, 4.9f);
+	Step(HolderTurret);
+	TestEqual(TEXT("4.9 seconds after the first volley no second has fired"), HolderTurret->VolleysFired, 1);
+	Pass(World, 0.2f);
+	Step(HolderTurret);
+	TestEqual(TEXT("5.1 seconds after the first volley the second has fired"), HolderTurret->VolleysFired, 2);
+	TestEqual(TEXT("and the three enemies within reach have now lost two blows each"),
+		HolderHeld - HealthOfThoseWithinReach(HolderLine), OneBlow * 6.0f, 0.3f);
+
+	// THE BEAT IS KEPT FROM THE FIRST VOLLEY: the second fired a tenth of a second late, and the third is due 10
+	// seconds after the first, not 5 after the second.
 	Pass(World, 4.8f);
 	Step(HolderTurret);
-	TestEqual(TEXT("at 9.9 seconds the second volley has not fired"), HolderTurret->VolleysFired, 1);
+	TestEqual(TEXT("9.9 seconds after the first volley the third has not fired"), HolderTurret->VolleysFired, 2);
 	Pass(World, 0.15f);
 	Step(HolderTurret);
-	TestEqual(TEXT("at 10.05 seconds it has, 4.95 after the first fired: the clock keeps its beat from the placing"),
-		HolderTurret->VolleysFired, 2);
+	TestEqual(TEXT("10.05 seconds after the first it has, 4.95 after the second fired: the beat is kept from the first"),
+		HolderTurret->VolleysFired, 3);
 	return true;
 }
 
@@ -691,14 +698,22 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyNotHurriedTest,
 	TestEqual(TEXT("the holder's turret still reads the row's 5 seconds for its volley"),
 		HolderTurret->VolleyEverySeconds(), 5.0f, 0.001f);
 
-	// 2.6 SECONDS IS PAST HALF OF THE 5. A volley hurried as the ordinary shot is would have fired.
+	// THE FIRST VOLLEY, on the turret's first step with an enemy within reach. The seconds run from it.
+	Step(HolderTurret);
+	if (!TestEqual(TEXT("set-up: the holder's turret fires its first volley on its first step"),
+			HolderTurret->VolleysFired, 1))
+	{
+		return false;
+	}
+
+	// 2.6 SECONDS AFTER IT IS PAST HALF OF THE 5. A volley hurried as the ordinary shot is would have fired.
 	Pass(World, 2.6f);
 	Step(HolderTurret);
-	TestEqual(TEXT("at 2.6 seconds no volley has fired: the seconds are not shortened by Gadgets fire faster"),
-		HolderTurret->VolleysFired, 0);
+	TestEqual(TEXT("2.6 seconds after the first no second has fired: the seconds are not shortened by Gadgets "
+				   "fire faster"), HolderTurret->VolleysFired, 1);
 	Pass(World, 2.3f);
 	Step(HolderTurret);
-	TestEqual(TEXT("nor at 4.9 seconds"), HolderTurret->VolleysFired, 0);
+	TestEqual(TEXT("nor 4.9 seconds after it"), HolderTurret->VolleysFired, 1);
 
 	// AN ORDINARY SHOT, AND THEN THE CLOCK COMES ROUND. `AttackOnce` is one swing at the nearest enemy in reach.
 	const float NearHeld = HealthOf(HolderLine.Near);
@@ -712,13 +727,13 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyNotHurriedTest,
 	}
 	Pass(World, 0.2f);
 	Step(HolderTurret);
-	TestEqual(TEXT("at 5.1 seconds the volley fires, straight after an ordinary shot"),
-		HolderTurret->VolleysFired, 1);
+	TestEqual(TEXT("5.1 seconds after the first the second volley fires, straight after an ordinary shot"),
+		HolderTurret->VolleysFired, 2);
 	TestEqual(TEXT("the enemy the ordinary shot struck is struck by the volley as well: two blows"),
 		NearHeld - HealthOf(HolderLine.Near), OneBlow * 2.0f, 0.05f);
 	TestEqual(TEXT("and an enemy the ordinary shot did not strike takes the volley's one"),
 		MiddleHeld - HealthOf(HolderLine.Middle), OneBlow, 0.05f);
-	TestEqual(TEXT("four attacks in all: the ordinary one and the volley's three"), HolderTurret->AttacksMade, 4);
+	TestEqual(TEXT("seven attacks in all: two volleys of three and the ordinary one"), HolderTurret->AttacksMade, 7);
 	return true;
 }
 
@@ -768,29 +783,39 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyShorterOfTwoTest,
 		TwoRowsTurret->VolleyEverySeconds(), 5.0f, 0.001f);
 	TestEqual(TEXT("and no row is read as nought"), LateTurret->VolleyEverySeconds(), 0.0f, 0.001f);
 
+	// EACH HOLDER'S FIRST VOLLEY, on its first step with an enemy within reach. The seconds run from it.
+	Step(OneRowTurret);
+	Step(TwoRowsTurret);
+	Step(LateTurret);
+	if (!TestTrue(TEXT("set-up: each turret whose summoner holds a row fires its first volley on its first step"),
+			OneRowTurret->VolleysFired == 1 && TwoRowsTurret->VolleysFired == 1))
+	{
+		return false;
+	}
+
 	Pass(World, 5.1f);
 	Step(OneRowTurret);
 	Step(TwoRowsTurret);
 	Step(LateTurret);
-	TestEqual(TEXT("control: at 5.1 seconds the turret under one row of 8 has fired nothing"),
-		OneRowTurret->VolleysFired, 0);
-	TestEqual(TEXT("and the turret under rows of 8 and 5 has fired its first volley"),
-		TwoRowsTurret->VolleysFired, 1);
+	TestEqual(TEXT("control: 5.1 seconds after its first the turret under one row of 8 has fired no second"),
+		OneRowTurret->VolleysFired, 1);
+	TestEqual(TEXT("and the turret under rows of 8 and 5 has fired its second volley"),
+		TwoRowsTurret->VolleysFired, 2);
 
 	Pass(World, 3.0f);
 	Step(OneRowTurret);
 	Step(TwoRowsTurret);
 	Step(LateTurret);
-	TestEqual(TEXT("control: at 8.1 seconds the turret under one row of 8 fires its first"),
-		OneRowTurret->VolleysFired, 1);
-	TestEqual(TEXT("and the other, whose next is due at 10, has fired no second"), TwoRowsTurret->VolleysFired, 1);
+	TestEqual(TEXT("control: 8.1 seconds after its first the turret under one row of 8 fires its second"),
+		OneRowTurret->VolleysFired, 2);
+	TestEqual(TEXT("and the other, whose next is due at 10, has fired no third"), TwoRowsTurret->VolleysFired, 2);
 	if (!TestEqual(TEXT("control: a turret whose summoner holds no row has fired nothing in 8.1 seconds"),
 			LateTurret->VolleysFired, 0))
 	{
 		return false;
 	}
 
-	// THE ROW ARRIVES WHEN THE GADGET HAS STOOD LONGER THAN ITS SECONDS.
+	// THE ROW ARRIVES LATE. The same rule: the first step that finds an enemy within reach.
 	const float LateHeld = HealthOfThoseWithinReach(LateLine);
 	GiveGadgetRows(Late, {{Volley, 5.0f}});
 	Step(LateTurret);
@@ -862,11 +887,23 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyOthersTest,
 	const float FarHeld = HealthOf(Line.Far);
 	FEventCount Hits(Holder, TEXT("deployable_hit"));
 
-	Pass(World, 5.1f);
+	// A SECOND TURRET OF THE HOLDER'S WITH NOBODY WITHIN ITS REACH: its one enemy stands 12 m from it.
+	const FVector LonelyAt(0.0f, 400.0f * M, 0.0f);
+	ACataclysmMinion* Lonely = Place(*this, Holder, TEXT("BoltTurret"), LonelyAt);
+	ACataclysmEnemyCharacter* OutOfReach = Enemy(World, LonelyAt + FVector(12.0f * M, 0.0f, 0.0f), 50000.0f);
+	if (!Lonely || !TestNotNull(TEXT("set-up: an enemy 12 m from the second turret"), OutOfReach)
+		|| !TestEqual(TEXT("set-up: the second turret has nobody within its reach"),
+			Lonely->HostilesWithinReach().Num(), 0))
+	{
+		return false;
+	}
+
+	Pass(World, 0.1f);
 	Step(ControlTurret);
 	Step(Trap);
 	Step(Imp);
 	Step(Turret);
+	Step(Lonely);
 
 	if (!TestEqual(TEXT("control: the turret of a summoner holding no row has fired no volley"),
 			ControlTurret->VolleysFired, 0)
@@ -894,6 +931,30 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyOthersTest,
 	TestEqual(TEXT("and the enemy at 6 m, which evades, took nothing"), HealthOf(Line.Middle), MiddleHeld, 0.001f);
 	TestEqual(TEXT("it was struck at all the same: three attacks"), Turret->AttacksMade, 3);
 	TestEqual(TEXT("and deployable_hit was raised for each of the three, the evaded one included"), Hits.Count, 3);
+
+	// A STEP THAT FINDS NOBODY WITHIN REACH COSTS NOTHING, however long the gadget has stood; and the seconds run
+	// from the first volley, not from the placing.
+	TestEqual(TEXT("the turret with nobody within its reach fired nothing on its first step"), Lonely->VolleysFired, 0);
+	Pass(World, 6.0f);
+	Step(Lonely);
+	TestEqual(TEXT("nor on a step 6.1 seconds after its placing, past the row's 5"), Lonely->VolleysFired, 0);
+	ACataclysmEnemyCharacter* Arrived = Enemy(World, LonelyAt + FVector(3.0f * M, 0.0f, 0.0f), 50000.0f);
+	if (!TestNotNull(TEXT("set-up: an enemy stood 3 m from it"), Arrived))
+	{
+		return false;
+	}
+	Step(Lonely);
+	TestEqual(TEXT("it fires its first volley on its first step that finds an enemy within reach"),
+		Lonely->VolleysFired, 1);
+	TestTrue(TEXT("and that enemy lost health to it"), HealthOf(Arrived) < 50000.0f - 0.5f);
+	TestEqual(TEXT("and the enemy 12 m from it took nothing"), HealthOf(OutOfReach), 50000.0f, 0.001f);
+	Pass(World, 4.9f);
+	Step(Lonely);
+	TestEqual(TEXT("4.9 seconds after that first volley it has fired no second"), Lonely->VolleysFired, 1);
+	Pass(World, 0.2f);
+	Step(Lonely);
+	TestEqual(TEXT("and 5.1 seconds after it, it has: the seconds run from the first volley"),
+		Lonely->VolleysFired, 2);
 	return true;
 }
 
