@@ -266,7 +266,12 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # ONE MORE JOINED with its row, issue #1833: "Retaliation damage
               # cannot be reduced or mitigated by the attacker". Where
               # retaliation is paid, the game asks whether it is above nought.
-              "retaliation_cannot_be_mitigated"}
+              "retaliation_cannot_be_mitigated",
+              # ONE MORE JOINED with its row, issue #1833: "You are immune to debuffs but
+              # also cannot apply them". The four functions that lay a debuff ask whether it
+              # is above nought for the target, the instigator and the instigator's
+              # commander.
+              "immune_to_debuffs_and_applies_none"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -868,8 +873,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 603 over 509: one row on one enchantment.
 #: AND 605 OVER 511 SINCE THE ROW ON A DEBUFF THAT CUTS WHAT ITS CARRIER DEALS,
 #: issue #1833, 2026-10-13, from 604 over 510: one row on one enchantment.
-AUTHORED_ROWS = 605
-AUTHORED_ENCHANTMENTS = 511
+#: AND 606 OVER 512 SINCE THE ROW THAT MAKES ITS WEARER IMMUNE TO DEBUFFS AND LAY NONE,
+#: issue #1833, 2026-10-13, from 605 over 511: one row on one enchantment.
+AUTHORED_ROWS = 606
+AUTHORED_ENCHANTMENTS = 512
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
