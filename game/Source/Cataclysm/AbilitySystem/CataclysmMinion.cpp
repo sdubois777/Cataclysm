@@ -486,6 +486,128 @@ AActor* ACataclysmMinion::MostHealthWithinReach() const
 	return Most;
 }
 
+const TCHAR* ACataclysmMinion::GadgetVolleyEverySecondsStat = TEXT("gadget_volley_every_seconds");
+
+float ACataclysmMinion::VolleyEverySeconds() const
+{
+	if (!IsGadget() || !IsValid(Summoner))
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner));
+	const FCataclysmStatInputs* Line =
+		Theirs ? Theirs->GetStatInputs(FName(GadgetVolleyEverySecondsStat)) : nullptr;
+	if (!Line)
+	{
+		return 0.0f;
+	}
+
+	// THE SHORTEST OF THE ROWS THAT REACH THIS GADGET. The header says why the rows are read and not their sum.
+	// `ModifierApplies` is the pipeline's own test of a row's required tags, asked with this gadget's.
+	float Seconds = 0.0f;
+	for (const FCataclysmStatModifier& Row : Line->Modifiers)
+	{
+		if (Row.Bucket != ECataclysmStatBucket::Flat || Row.Value <= 0.0f
+			|| !UCataclysmStatPipeline::ModifierApplies(Row, TypeTags, FCataclysmStatConditions()))
+		{
+			continue;
+		}
+		Seconds = Seconds <= 0.0f ? Row.Value : FMath::Min(Seconds, Row.Value);
+	}
+	return Seconds;
+}
+
+void ACataclysmMinion::GadgetStep(AActor* Character)
+{
+	ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Character);
+	if (!Gadget || !Gadget->IsGadget() || UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		return;
+	}
+
+	// THE VOLLEY'S CLOCK. Nothing for a gadget whose summoner holds no such row, which is every gadget until a
+	// row is written.
+	const float Seconds = Gadget->VolleyEverySeconds();
+	if (Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Age = Gadget->GetGameTimeSinceCreation();
+
+	// THE FIRST VOLLEY COMES ON THE FIRST STEP THAT FINDS AN ENEMY WITHIN REACH, AND THE SECONDS RUN FROM IT.
+	// The coordinating session's judgement of 2026-10-13, changing what was first built, which waited the row's
+	// whole seconds from the placing: a Bolt Turret stands 5 seconds, so it fired at most once, as it left.
+	//
+	// A STEP THAT FINDS NOBODY COSTS NOTHING: no volley is counted and no clock is started, however long the
+	// gadget has stood. AND A GADGET THAT CANNOT ACT WAITS: its first volley is not lost, it comes on the first
+	// step that finds an enemy within reach while the gadget can act. A gadget that comes to hold the row late
+	// is under the same rule, because it has fired no volley yet.
+	//
+	// THIS IS ONE SEARCH OF ITS REACH ON EVERY STEP UNTIL THE FIRST VOLLEY, four a second, for a gadget of a
+	// holder and for no other. It is the physics sphere issue #1547 took out of the brain's choice of target.
+	if (!Gadget->bHasFiredAVolley)
+	{
+		if (UCataclysmSkillEffects::CannotAct(Gadget) || Gadget->HostilesWithinReach().IsEmpty())
+		{
+			return;
+		}
+		Gadget->bHasFiredAVolley = true;
+		Gadget->LastVolleyAtAgeSeconds = Age;
+		Gadget->FireVolley();
+		return;
+	}
+
+	if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds)
+	{
+		return;
+	}
+
+	// IT HAS COME ROUND AGAIN. The beat is kept from the first volley: the mark moves on by the row's seconds
+	// and not to now, so a step that arrives late does not push the next volley back. A mark that is still a
+	// whole period behind is brought to now; that is a gadget whose row grew shorter or was lost and held again.
+	Gadget->LastVolleyAtAgeSeconds += Seconds;
+	if (Age - Gadget->LastVolleyAtAgeSeconds >= Seconds)
+	{
+		Gadget->LastVolleyAtAgeSeconds = Age;
+	}
+
+	// A GADGET THAT CANNOT ACT FIRES NOTHING, as the brain fires nothing for it, and THIS volley is lost: only
+	// the first one waits. A volley that comes round with nobody within reach is fired at nobody and the beat
+	// goes on.
+	if (UCataclysmSkillEffects::CannotAct(Gadget))
+	{
+		return;
+	}
+	Gadget->FireVolley();
+}
+
+int32 ACataclysmMinion::FireVolley()
+{
+	++VolleysFired;
+
+	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST BLOW, which is what "simultaneously" means here: everybody within
+	// reach as the volley begins.
+	int32 Struck = 0;
+	for (AActor* Each : HostilesWithinReach())
+	{
+		// ONE STRUCK EARLIER IN THIS VOLLEY MAY HAVE ENDED THIS ONE, or ended the gadget: a blow can set off
+		// something that kills a neighbour, and a gadget takes the retaliation its own blow provokes.
+		if (UCataclysmSkillEffects::IsDead(this))
+		{
+			break;
+		}
+		if (!IsValid(Each) || UCataclysmSkillEffects::IsDead(Each))
+		{
+			continue;
+		}
+		AttackTarget(Each);
+		++Struck;
+	}
+	return Struck;
+}
+
 ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
 										  float Lifetime, bool bBurns,
 										  const FString& InTypeName,
