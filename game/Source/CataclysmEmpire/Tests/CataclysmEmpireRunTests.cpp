@@ -363,17 +363,46 @@ bool FCataclysmEmpireRunPersistTest::RunTest(const FString& Parameters)
 // A city falling
 // ---------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallTest,
-	"Cataclysm.EmpireRun.ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons",
+/**
+ * A city falling opens the lane behind it, absorbs its dungeons, and may fire
+ * a surge.
+ *
+ * AN UNATTENDED RUN FROM SEED 1, watched until a city has fallen on three
+ * separate days or 600 days have passed.
+ *
+ * EVERY FALL OPENS THE LANE AND ABSORBS THE DUNGEONS. Those are asserted on
+ * every city that falls.
+ *
+ * NOT EVERY FALL FIRES A SURGE. Since issue #2380 a fall fires one only when
+ * the last surge is at least 25 days behind, which is what
+ * `UCataclysmSurgeScheduler::IsDueOnCityFall` answers. This test asks that
+ * before each day and asserts the surge only on a fall day where the answer
+ * was yes. Until 2026-10-13 it was named
+ * `ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons` and asserted a
+ * surge on every fall day.
+ *
+ * THE REFUSED CASE IS HELD BY ANOTHER TEST,
+ * `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
+ * This one asserts nothing about the surge on a day the answer was no.
+ *
+ * WHERE EVERYTHING STANDS: nowhere. No actor and no world; a run is an object.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallMaySurgeTest,
+	"Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmEmpireRunFallTest::RunTest(const FString& Parameters)
+bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmEmpireRunTest;
 
 	UCataclysmEmpireRun* Run = MakeRun();
 
 	int32 FallsSeen = 0;
+
+	// HOW MANY OF THOSE DAYS HAD A FALL'S SURGE DUE AND DID SURGE. Counted for
+	// the closing assertion, so three fall days that were all inside the least
+	// interval do not pass this test having checked no surge at all.
+	int32 FallDaysDueThatSurged = 0;
 
 	for (int32 Days = 0; Days < 600 && FallsSeen < 3; ++Days)
 	{
@@ -385,6 +414,15 @@ bool FCataclysmEmpireRunFallTest::RunTest(const FString& Parameters)
 		}
 
 		const int32 SurgesBefore = Run->Surges->SurgesFired;
+
+		// WHETHER A CITY FALLING TODAY WOULD FIRE A SURGE, ASKED BEFORE THE DAY.
+		// `AdvanceDay` reports the clock's day plus one, and `CityFell` asks the
+		// scheduler about the day on the report, so that is the day asked about
+		// here. Asked before and not after, because the day's own surges move
+		// what the interval is measured from.
+		const int32 DayAboutToBegin = Run->Day() + 1;
+		const bool bAFallsSurgeIsDue =
+			Run->Surges->IsDueOnCityFall(DayAboutToBegin);
 
 		const FCataclysmDayReport Report = Run->AdvanceDay();
 
@@ -462,17 +500,56 @@ bool FCataclysmEmpireRunFallTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// A CITY FALLING FIRES A SURGE OF ITS OWN, one per city lost.
-		TestTrue(TEXT("the day it fell also surged"), Report.bSurged);
-		TestTrue(FString::Printf(
-			TEXT("at least one surge fired on the day %d cities fell"),
-			Report.Fallen.Num()),
-			Run->Surges->SurgesFired >= SurgesBefore + Report.Fallen.Num());
+		// A CITY FALLING FIRES A SURGE OF ITS OWN ONLY WHEN ONE IS DUE: the last
+		// surge has to be at least 25 days behind. Issue #2380. Until then this
+		// comment said every fall fired one, one per city lost, and the two
+		// assertions below ran on every fall day.
+		//
+		// ASSERTED ONLY WHEN THE SCHEDULER SAID YES BEFORE THE DAY. A labelled
+		// judgement by the coordinating session under the owner's delegation,
+		// 2026-10-13. A yes before the day stays a yes for the day's first fall
+		// unless a surge fires earlier in the same day, and the only one asked
+		// earlier is the clock's, at the top of `AdvanceDay`. In both cases the
+		// day surged and the count rose by at least one.
+		//
+		// WHEN THE ANSWER WAS NO, NOTHING IS ASSERTED ABOUT THE SURGE, because
+		// the clock's own surge may fire the same day and `bSurged` is one flag
+		// for every cause. The refused case is held by
+		// `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
+		//
+		// THE COUNT ASSERTS ONE AND NOT ONE PER CITY. Two cities can fall on one
+		// day. The first fall's surge is recorded as today's, so the second fall
+		// is nought days behind a surge and fires none. The question before the
+		// day is therefore about the day's first fall only, and one surge is all
+		// a day with any number of falls is certain to bring.
+		// `Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringOneWave` holds that.
+		if (bAFallsSurgeIsDue)
+		{
+			TestTrue(TEXT("the day a city fell with a fall's surge due also surged"),
+					 Report.bSurged);
+			TestTrue(FString::Printf(
+				TEXT("at least one surge fired on the day %d cities fell with a fall's surge due"),
+				Report.Fallen.Num()),
+				Run->Surges->SurgesFired >= SurgesBefore + 1);
+
+			if (Report.bSurged)
+			{
+				++FallDaysDueThatSurged;
+			}
+		}
 	}
 
 	TestTrue(FString::Printf(
 		TEXT("%d cities fell within six hundred unattended days"), FallsSeen),
 		FallsSeen >= 1);
+
+	// AND AT LEAST ONE OF THE DAYS WATCHED HAD A SURGE DUE AND SURGED. Without
+	// this, a seed whose three fall days were all inside the least interval
+	// would pass with the surge never looked at.
+	TestTrue(FString::Printf(
+		TEXT("%d of the %d days a city fell had a fall's surge due and surged"),
+		FallDaysDueThatSurged, FallsSeen),
+		FallDaysDueThatSurged >= 1);
 
 	return true;
 }
