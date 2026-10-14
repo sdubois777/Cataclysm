@@ -813,7 +813,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 604 SINCE THE ROW THAT MAKES BUFFS MORE POTENT, issue #1833, from 603.
 	//
 	// AND 605 SINCE THE ROW ON A DEBUFF THAT CUTS WHAT ITS CARRIER DEALS, issue #1833, from 604.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    605)
+	//
+	// AND 606 SINCE THE ROW THAT MAKES ITS WEARER IMMUNE TO DEBUFFS AND LAY NONE, issue #1833, from 605.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    606)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
