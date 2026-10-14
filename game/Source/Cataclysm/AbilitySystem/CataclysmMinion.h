@@ -326,6 +326,30 @@ public:
 	float LastVolleyAtAgeSeconds = 0.0f;
 
 	/**
+	 * The flag by which a summoner's gadget that kills an enemy with a blow of its own strikes once more. Ruled
+	 * 2026-10-13 by the coordinating session under the owner's delegation, for "When a gadget kills an enemy, it
+	 * fires an additional burst at the nearest enemy within its range". A row sets it at a flat 1, scoped to
+	 * `Type.Deployable`, and it is read as above nought. No gameplay attribute and no base.
+	 *
+	 * READ AT THE END OF `AttackTarget`, WHICH IS WHERE THE BURST IS. The burst is one ordinary blow, at once, at
+	 * the nearest enemy within the gadget's reach, or nothing if there is none. It is `AttackTarget` again, so a
+	 * kill by a burst fires another.
+	 *
+	 * WHAT COUNTS AS THE GADGET'S KILL: a blow dealt by `AttackTarget` that reached the enemy's health and left
+	 * it dead, where the record of the last blow on that enemy names this gadget as what dealt it and is not a
+	 * tick. That is the gadget's ordinary shot, a blow of a volley and a burst. It is not a burn the gadget set,
+	 * which is a tick; not its death explosion, which is not `AttackTarget`; and not a row its hit fired, which
+	 * the summoner deals. Under Conduit the kill is credited to the summoner and the record still names the
+	 * gadget as what dealt it, so it counts.
+	 *
+	 * NO ROW EVENT IS RAISED FOR THE KILL, ruled: the action is kept on the gadget.
+	 */
+	static const TCHAR* GadgetsBurstOnKillStat;
+
+	/** How many bursts it has fired on a kill. Read by tests. */
+	int32 BurstsFired = 0;
+
+	/**
 	 * Percent of its type's own health the skill that deployed it asked for, or
 	 * zero for that type's health unchanged.
 	 *
