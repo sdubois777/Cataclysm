@@ -4740,6 +4740,32 @@ void UCataclysmAuraSkill::ActivateAbility(
 	}
 }
 
+const TCHAR* UCataclysmAuraSkill::AuraEffectStat = TEXT("aura_effect");
+
+float UCataclysmAuraSkill::MoreEffective(float Figure) const
+{
+	if (Figure <= 0.0f)
+	{
+		return Figure;
+	}
+
+	// THE FIGURE IS WHAT THE ROWS APPLY TO, as
+	// `UCataclysmRegeneration::HealingSkillAmount` hands its stat the amount it
+	// was offered. So the stat needs no base, and a holder with no row is handed
+	// its figure back.
+	//
+	// WITH THIS SKILL'S TAGS, so a row scoped to a tag would reach only the
+	// auras that carry it. The ruled row carries none and reaches every aura.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	if (!Asking)
+	{
+		return Figure;
+	}
+	return FMath::Max(0.0f, Asking->StatAppliedTo(FName(AuraEffectStat), SkillTags, Figure));
+}
+
 int32 UCataclysmAuraSkill::Pulse()
 {
 	AActor* Self = Avatar();
@@ -4827,9 +4853,25 @@ int32 UCataclysmAuraSkill::Pulse()
 	//
 	// NO CEILING BINDS UNLESS THE ROW STATES ONE, and Living Pyre states none
 	// because its own sentence says "with no cap".
+	//
+	// AND A ROW MAY MAKE THE AURA MORE EFFECTIVE. Ruled 2026-10-13: "Your auras
+	// are 20%-50% more effective". TWO OF ITS FIVE FIGURES ARE HERE.
+	//
+	// THE GROWTH FOR A HIT TAKEN. The hits counted are multiplied before the
+	// growth is worked out, so 8% a hit with 50% more is 12% a hit. `HitTaken`
+	// ONLY: growth a row counts by anything else is not one of the five.
+	//
+	// AND THE PULSE'S DAMAGE, multiplied last, AFTER any ceiling the row states.
+	// The ceiling is on what the row's own growth may reach, and this is a More
+	// line of the holder's, which multiplies what the skill is worth as every
+	// other More line of its does.
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
-	const float Percent = ScaledDamagePercent(
-		ScalingUnits(/*ConsumedCount=*/0, /*bThisTargetConsumed=*/false));
+	const float Units =
+		ScalingUnits(/*ConsumedCount=*/0, /*bThisTargetConsumed=*/false);
+	const bool bGrowsByHitsTaken =
+		Params.ScalingSource.Equals(TEXT("HitTaken"), ESearchCase::IgnoreCase);
+	const float Percent = MoreEffective(
+		ScaledDamagePercent(bGrowsByHitsTaken ? MoreEffective(Units) : Units));
 	{
 		// A PULSE COMES AFTER THE CAST, so Chorus does not repeat it.
 		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
@@ -4856,9 +4898,23 @@ int32 UCataclysmAuraSkill::Pulse()
 	//
 	// INERT FOR AN AURA NAMING NO EFFECT, which is every other aura in the
 	// sheet: `NamedEffectTags` answers an empty list.
-	for (AActor* Target : Inside)
+	//
+	// AT THE MAGNITUDE A ROW MAKING THE AURA MORE EFFECTIVE RAISES IT TO. Ruled
+	// 2026-10-13. `ApplyNamedEffectsTo` reads `Params.EffectMagnitude`, so the
+	// raised figure stands in that field for this loop and no longer; the
+	// pulse's blow above, which reads the same field for a pin, has been dealt.
+	// The effect's own rule then takes the raised figure as it would any other:
+	// Shred cuts no resistance below nought, and states the whole figure.
+	//
+	// A ROW NAMING AN EFFECT AND NO MAGNITUDE is laid at the Status Effects
+	// sheet's figure, which is not raised. No aura is such a row.
 	{
-		ApplyNamedEffectsTo(Target);
+		TGuardValue<float> Raised(Params.EffectMagnitude,
+								  MoreEffective(Params.EffectMagnitude));
+		for (AActor* Target : Inside)
+		{
+			ApplyNamedEffectsTo(Target);
+		}
 	}
 
 	// AND THE ALLIES INSIDE ARE HELPED. Conflagration: "allies within it deal 8%
@@ -4946,9 +5002,15 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 	// skill. The amount offered is multiplied before `TopUp` has it, so every
 	// rule above still applies to the larger amount: 25% of a blow with 60%
 	// more is 40% of it. Asked of this aura's holder.
+	//
+	// AND A ROW MAY MAKE THE AURA MORE EFFECTIVE. Ruled 2026-10-13: "Your auras
+	// are 20%-50% more effective". The share returned is one of the five figures
+	// that row multiplies: 25% with 50% more is 37.5% of the blow. It is settled
+	// before the healing row above multiplies the amount, so a holder of both
+	// rows has both: 37.5% with 60% more is 60% of the blow.
 	using Vitals = UCataclysmVitalAttributeSet;
 	const float Before = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
-	const float Returned = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
+	const float Returned = DealtToHealth * MoreEffective(Params.HealthFromHitTaken) / 100.0f;
 	const float Offered = UCataclysmRegeneration::HealingSkillAmount(*AbilitySystem, Returned);
 	UCataclysmRegeneration::TopUp(*AbilitySystem, Vitals::GetHealthAttribute(),
 								  Vitals::GetMaxHealthAttribute(), Offered);
@@ -5070,7 +5132,11 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		FCataclysmStatModifier Modifier;
 		Modifier.Bucket = ECataclysmStatBucket::Increased;
 		Modifier.Source = ECataclysmModifierSource::SkillBuff;
-		Modifier.Value = Params.AllyIncreasedDamage;
+		// MORE OF IT WHEN A ROW MAKES THE CASTER'S AURAS MORE EFFECTIVE. Ruled
+		// 2026-10-13. Settled when the ally is given the bonus: an ally already
+		// carrying it keeps the figure it was given until it leaves the ring or
+		// the aura ends.
+		Modifier.Value = MoreEffective(Params.AllyIncreasedDamage);
 
 		// SCOPED TO THE AURA'S OWN ELEMENT, so "increased FIRE damage" is data.
 		// Conflagration carries `Element.Demonic`, which is this project's fire.

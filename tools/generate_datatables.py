@@ -8824,6 +8824,83 @@ def refuse_a_healing_skill_row_the_game_cannot_read(sheet: str,
     return problems
 
 
+#: The stats by which a row multiplies a figure of a skill of its wearer's:
+#: each with the one value kind its reader gives a meaning to and the least and
+#: the most its two figures may state. Ruled 2026-10-13 under the owner's
+#: delegation.
+#:
+#: `aura_effect` IS A `more` ROW OF 20 TO 50, for "Your auras are 20%-50% more
+#: effective". `UCataclysmAuraSkill::MoreEffective` applies it to five figures
+#: of an aura skill: its pulse damage, the magnitude of the named debuff it
+#: lays, its ally damage bonus, the health Living Pyre returns for a hit taken
+#: and its growth for a hit taken. `UCataclysmAuraSkill::AuraEffectStat` holds
+#: the same name, and
+#: `tools/tests/test_aura_effect_and_buff_potency_rows.py` compares them.
+#:
+#: THE BOUNDS ARE THE FIGURES THE SENTENCE STATES. A figure outside them is a
+#: design decision, and this is where it is made. A labelled judgement of
+#: 2026-10-13.
+#:
+#: "YOUR AURAS" IS THE AURA SHAPE, WHATEVER TAGS THE SKILL CARRIES. The game
+#: asks for the stat with the aura skill's own tags, so a row requiring a tag
+#: would reach only the auras that carry it: one requiring `Slot.Aura` would
+#: leave Living Pyre out, which the ruling includes. So a row requiring any tag
+#: is refused. A labelled judgement of 2026-10-13.
+AURA_AND_BUFF_EFFECT_STATS: dict[str, tuple[str, float, float]] = {
+    "aura_effect": ("more", 20.0, 50.0),
+}
+
+
+def refuse_an_aura_or_buff_effect_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of the stats of `AURA_AND_BUFF_EFFECT_STATS` is one its
+    reader gives the meaning its sentence has.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons that list gives.
+    Each refusal names what the reader would do with the row.
+
+    A CONDITION OR A SCALE ON ANY OF THEM IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    none of them is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_a_healing_skill_row_the_game_cannot_read` leaves one: it states a
+    value per point and no pair of figures, and no ruled sentence is a passive
+    node's. A row built with a `Node` key is a passive effect row.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in AURA_AND_BUFF_EFFECT_STATS or "Node" in row:
+            continue
+        wanted, least, most = AURA_AND_BUFF_EFFECT_STATS[stat]
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != wanted:
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"ruled sentence makes it a {wanted!r} row: the game applies "
+                f"the stat to a figure of the skill's own, and any other kind "
+                f"changes that figure by an amount the sentence does not "
+                f"state.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with the tags of the skill whose "
+                f"figure it is, so the row would reach only the skills "
+                f"carrying that tag, and the ruled sentence reaches every one "
+                f"of them whatever its tags.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not least <= value <= most:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row may state "
+                    f"from {least:g} to {most:g}, the figures its ruled "
+                    f"sentence states.")
+    return problems
+
+
 #: The two stats by which a hit may make its wearer immune to that hit's damage
 #: type for a time, each with the least its two figures may state, not included,
 #: and the most, included. Ruled 2026-10-12 under the owner's delegation, for
@@ -9582,6 +9659,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE SHARE OF DAMAGE TAKEN THAT IS DELAYED AND ITS SECONDS ARE TWO
     # FLAT ROWS OF ONE ENCHANTMENT, EACH STATED ONCE. Ruled 2026-10-12.
     problems.extend(refuse_a_delayed_damage_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW ON A STAT THAT MULTIPLIES A FIGURE OF A SKILL OF ITS WEARER'S
+    # IS ONE ITS READER GIVES ITS SENTENCE'S MEANING. Ruled 2026-10-13.
+    problems.extend(refuse_an_aura_or_buff_effect_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

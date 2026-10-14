@@ -664,6 +664,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute and no base.
 		TEXT("damage_taken_delayed_percent"),
 		TEXT("damage_taken_delayed_seconds"),
+		// How much more effective an aura skill's five figures are, read by
+		// UCataclysmAuraSkill::MoreEffective with the aura's tags: where a pulse
+		// deals its damage, lays its named debuff and helps its allies, and
+		// where a blow its holder takes returns health. Ruled 2026-10-13: "Your
+		// auras are 20%-50% more effective". A more row. No gameplay attribute
+		// and no base.
+		TEXT("aura_effect"),
 	};
 	return Stats;
 }
