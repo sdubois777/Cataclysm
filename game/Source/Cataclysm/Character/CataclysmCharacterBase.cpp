@@ -301,6 +301,14 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// frame between steps.
 	UCataclysmDebuffs::NowhereToRunStep(this, UCataclysmRegeneration::StepSeconds);
 
+	// AND A CHARACTER A ROW MAKES IMMUNE TO DEBUFFS LOSES THE ONES IT ALREADY
+	// CARRIES. Ruled 2026-10-13, "You are immune to debuffs but also cannot apply
+	// them"; that what was carried when the row was put on is removed is a
+	// judgement recorded in `docs/DECISIONS.md`. On this step because nothing
+	// announces a row being put on. It refuses a corpse itself, and its return
+	// value, zero for every character without the row, is for tests.
+	UCataclysmDebuffs::ImmunityStep(this);
+
 	// AND A SECOND SELF IS CHOSEN AND GIVEN THIS CHARACTER'S MAXIMUM HEALTH AND
 	// SPELL DAMAGE. Issue #1515. The same step, so the maximum follows live and
 	// the next longest-held is chosen within one step of the last one's end.

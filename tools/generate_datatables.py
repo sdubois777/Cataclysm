@@ -9408,6 +9408,71 @@ def refuse_a_debuff_cut_row_the_game_cannot_read(
     return problems
 
 
+#: The flag of "You are immune to debuffs but also cannot apply them", ruled
+#: 2026-10-13, reading A: its holder is given no debuff and lays none.
+#:
+#: THE GAME ASKS WHETHER IT IS ABOVE NOUGHT, WITH NO TAGS,
+#: `UCataclysmDebuffs::HoldsImmuneAndAppliesNone`, where a debuff is about to be
+#: put on a character. So a row requiring a tag matches nowhere, and a row of
+#: any kind but `flat` works on a base of nought.
+IMMUNE_TO_DEBUFFS_AND_APPLIES_NONE_STAT = "immune_to_debuffs_and_applies_none"
+
+
+def refuse_a_debuff_immunity_flag_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `IMMUNE_TO_DEBUFFS_AND_APPLIES_NONE_STAT` is a flag: flat, 1
+    to 1, with no required tag and no action.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant
+    above gives. Each refusal names what the reader would do with the row.
+
+    A FIGURE OTHER THAN 1 IS REFUSED though the game reads any value above
+    nought as yes, as `refuse_a_retaliation_flag_row_the_game_cannot_read`
+    refuses one: a flag that states another number reads as a quantity.
+
+    A CONDITION OR A SCALE ON THE FLAG IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the flag is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_a_debuff_cut_row_the_game_cannot_read` leaves one.
+    """
+    problems = []
+    stat = IMMUNE_TO_DEBUFFS_AND_APPLIES_NONE_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game asks whether the flag is above nought, so the row "
+                f"must be 'flat'; any other kind works on a base of nought "
+                f"and refuses NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this flag with no tags, where a debuff is "
+                f"about to be laid, so a row requiring a tag matches "
+                f"nowhere: this one would refuse NOTHING and say nothing.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if (low, high) != (1.0, 1.0):
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and a flag "
+                f"is 1 to 1. The game reads any figure above nought as yes, "
+                f"so another figure reads as a quantity and is none.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The flag is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"refuse NOTHING.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9761,6 +9826,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE PERCENT LESS A DEBUFFED ENEMY DEALS IS ONE FLAT ROW WITH NO TAGS.
     # Ruled 2026-10-13.
     problems.extend(refuse_a_debuff_cut_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FLAG THAT MAKES A WEARER IMMUNE TO DEBUFFS AND UNABLE TO LAY ANY
+    # IS FLAT, 1 TO 1, WITH NO TAGS. Ruled 2026-10-13.
+    problems.extend(refuse_a_debuff_immunity_flag_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

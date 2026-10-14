@@ -6,6 +6,8 @@
 // rather than reading the attribute. Issue #1033.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+// For whom a minion or a thrall follows, which `RefusedByARow` asks.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFear.h"
 // For the attribute the duration stat is folded into. Issue #1033.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -674,4 +676,87 @@ float UCataclysmDebuffs::DealLessPercentOn(const UAbilitySystemComponent* Carrie
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
 	return Cataclysm ? Cataclysm->DebuffDamageCutPercentNow() : 0.0f;
+}
+
+const TCHAR* UCataclysmDebuffs::ImmuneAndAppliesNoneStat = TEXT("immune_to_debuffs_and_applies_none");
+
+bool UCataclysmDebuffs::HoldsImmuneAndAppliesNone(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Holder =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought. NO TAGS: the row is about every debuff,
+	// whatever lays it.
+	return Holder && Holder->StatForSkill(FName(ImmuneAndAppliesNoneStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+bool UCataclysmDebuffs::RefusedByARow(const AActor* Instigator, const AActor* Target,
+									  const FGameplayTag& Debuff)
+{
+	// THE TAG FIRST, because most of what the four functions lay is asked here
+	// too and is no debuff: every buff, a stagger, a pin, a knockdown, a fear.
+	if (!IsADebuff(Debuff))
+	{
+		return false;
+	}
+	// IMMUNE, AND LAYS NONE. Ruled 2026-10-13.
+	if (HoldsImmuneAndAppliesNone(Target) || HoldsImmuneAndAppliesNone(Instigator))
+	{
+		return true;
+	}
+	// AND WHAT FOLLOWS A HOLDER LAYS NONE: its minion and its thrall, with or
+	// without Conduit. Null for anything that follows nobody.
+	const AActor* Commander = UCataclysmCommand::CommanderOf(Instigator);
+	return Commander && HoldsImmuneAndAppliesNone(Commander);
+}
+
+int32 UCataclysmDebuffs::ImmunityStep(AActor* Character)
+{
+	// A CORPSE IS SKIPPED, as every job on the per-character step skips one.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Character);
+	if (!AbilitySystem || !HoldsImmuneAndAppliesNone(Character))
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT THE ROW. Asked before the effects
+		// are gathered, because gathering them is the expensive half.
+		return 0;
+	}
+
+	// AN EMPTY CONTAINER WOULD MATCH EVERY EFFECT, buffs included, for the
+	// reason `HoldStep` gives.
+	const FGameplayTagContainer Roots = DebuffRoots();
+	if (Roots.IsEmpty())
+	{
+		return 0;
+	}
+
+	// A copy of the handles, since removing one changes the container they
+	// were read from.
+	int32 Removed = 0;
+	const TArray<FActiveGameplayEffectHandle> Handles =
+		AbilitySystem->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Roots));
+	for (const FActiveGameplayEffectHandle& Handle : Handles)
+	{
+		const FActiveGameplayEffect* Effect = AbilitySystem->GetActiveGameplayEffect(Handle);
+		if (!Effect)
+		{
+			continue;
+		}
+		// CONVERTED DAMAGE NOT YET TAKEN IS KEPT, as `Cleanse` keeps it: it is
+		// damage already taken and stored, and removing it would delete it.
+		const float ConvertedStamp = Effect->Spec.GetSetByCallerMagnitude(
+			FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f);
+		if (ConvertedStamp > 0.0f)
+		{
+			continue;
+		}
+		if (AbilitySystem->RemoveActiveGameplayEffect(Handle))
+		{
+			++Removed;
+		}
+	}
+	return Removed;
 }

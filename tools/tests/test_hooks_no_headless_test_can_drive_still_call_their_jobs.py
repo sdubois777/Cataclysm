@@ -94,6 +94,12 @@ HOOKS = {
             "UCataclysmDebuffs::NowhereToRunStep":
                 "the creatures near a character being held from moving away, "
                 "Nowhere to Run, issue #1515",
+            "UCataclysmDebuffs::ImmunityStep":
+                "the debuffs a character already carried being removed once a "
+                "worn row makes it immune to debuffs, ruled 2026-10-13 for "
+                "'You are immune to debuffs but also cannot apply them'. "
+                "Deleting it leaves what was carried when the row was put on "
+                "to run out, or to stay for ever under Ceaseless Penance",
             "UCataclysmSecondSelf::Step":
                 "A Second Self choosing the character's longest-held minion "
                 "or thrall and giving it the character's maximum health and "
