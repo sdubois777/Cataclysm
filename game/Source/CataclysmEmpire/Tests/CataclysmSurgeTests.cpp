@@ -2333,7 +2333,10 @@ bool FCataclysmSurgePlainIsAnExceptionTest::RunTest(const FString& Parameters)
 	//     campaign and under the floor, which is why twenty stopped being
 	//     enough.
 	//
-	// The figure at 40 campaigns had not been measured when this was written.
+	// MEASURED AT 40 CAMPAIGNS on 2026-10-13, in the Unreal window at 2604b2d3, with the
+	// fall surge's least interval in: "40 campaigns, 24000 days in all, 1488 dungeons
+	// made: 0 with no sub-type (0.0%), 108 Cow Levels, 125 Sieges". This comment said
+	// the figure had not been measured until that run.
 	constexpr int32 Campaigns = 40;
 	constexpr int32 MostDays = 600;
 
