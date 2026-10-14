@@ -2,6 +2,167 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — Nine sentences are given their rows: auras, buffs, two on debuffs, burns that explode, and four on gadgets
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (ten rows of the Enchantment Effects sheet on nine enchantments,
+and one Rolls Down cell of the Enchantments sheet), `game/Data/EnchantmentEffects.csv`,
+`game/Data/EnchantmentsPositive.csv` and their assets,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (nine tests that wear the real rows),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (the row counts, four names on the list of on-or-off
+stats, and the two counts of sentences that roll down), `docs/README.md`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+Each row was written in a commit of its own, directly above the commit that built its mechanism. This entry is
+the one record of all nine sentences' rows. Each mechanism has an entry of its own, dated the same day, which holds
+its rulings, its judgements, its tests and its guard proofs; this entry does not repeat them and says where each
+is.
+
+### SAID FIRST: WHAT A PERSON MUST PLAY, AND WHAT EACH ROW DOES THAT ITS SENTENCE DOES NOT SAY
+
+**Every one of the nine rows is on the owner's play-check list. No row here was played by anybody.** The tests
+show figures on test characters in worlds with no floor, no walls and no navigation.
+
+1. **"Your auras are 20%-50% more effective".** It multiplies five figures of a skill of the Aura shape: its
+   pulse damage, the magnitude of the debuff it lays, its ally damage bonus, and Living Pyre's health returned and
+   growth for a hit taken. Radius, upkeep, duration and the burn it sets are not changed. **It does nothing for
+   the seven aura-slot skills that are not built, for the Masochist's debuff aura, or for the three set bonuses
+   whose sentences say "aura".** A row put on or taken off while an aura runs is not followed everywhere: an ally
+   keeps the bonus it was given until it leaves the ring. Living Pyre's growth is raised and the grown pulse is
+   then raised again.
+2. **"Buff effects you apply are 20%-40% more potent".** A buff a SKILL of the wearer's lays: a self buff's More
+   damage, the copy of it given to allies, and an aura's ally damage bonus. The copy carries the caster's raised
+   figure; an ally's own row is not applied again. **It does nothing for the five self buffs whose effect has no
+   number, for the six random buffs of Shard of Anarchy's two-piece bonus, for stacks a row grants, or for the
+   row "Nearby allies gain more damage".** On an aura's ally bonus this row and the auras row both apply and
+   multiply. A buff already running keeps the figure of its cast.
+3. **"Applying a debuff to an enemy reduces their damage output by 10%-20%".** Held on 2026-10-06 and ruled in a
+   narrow form on 2026-10-13: an enemy carrying at least one debuff the wearer applied deals the row's percent
+   less while it carries one, one cut however many debuffs. **Not every enemy blow is cut**: not its damage over
+   time, the Infernal Brand explosion, its retaliation, the floor rules Holy Repercussions and the Hellfire death
+   explosion, nor ground it laid before it carried the debuff. A copy made by a spread does not count; a skill
+   that copies curses and the Masochist passing on a debuff do. A minion's or a zone's debuff counts only under
+   Conduit. Bosses take it in full.
+4. **"You are immune to debuffs but also cannot apply them".** A drawback, read as written. The wearer takes no
+   debuff that is laid through the game's applying functions, and its own skills, rows, minions and zones lay
+   none; the damage of a refused damage over time is lost. **For a damage-over-time build it removes most of the
+   build, and three skills whose whole purpose is a debuff do nothing.** **On the floor rules Raw Sewage and
+   Blood Price the wearer still reads as carrying a debuff although immune**, because those rules put their tag
+   on the player directly; seventeen Masochist passive rows read that. The damage floor rules deal by their own
+   stacks is not a debuff and is not refused. Stagger, pin and knockdown are untouched both ways.
+5. **"Your burn effects have a 20%-40% chance to explode for double their remaining damage when they expire".**
+   **At expiry nothing remains, so "remaining" is read as the whole**: a Burn that ends by time may explode for
+   twice the damage it was laid to deal, to every enemy within 5 metres of its carrier, the carrier included. A
+   Burn ended by a cleanse, a replacement, the burst that ends it or its carrier's death does not explode. The
+   explosion lays no Burn and fires none of the wearer's on-hit rows; a kill by it is the wearer's. A refreshed
+   Burn explodes once, at its moved end.
+6. **The four gadget rows act on the Bolt Turret and the Ballista only. A Spike Trap is a trap and not a
+   gadget.**
+   - **"Your gadgets prioritize the highest HP enemy within their range instead of the nearest".** The most
+     current health among enemies within reach, chosen again each time; a Quarry mark still comes first. The
+     Ballista's text says it picks the furthest; the game picks the nearest today
+     ([#2397](https://github.com/sdubois777/Cataclysm/issues/2397)), and this row overrides either.
+   - **"Gadgets fire at all enemies within range simultaneously once every 5-8 seconds".** **The range rolls
+     down: 5 seconds is the best roll.** **A gadget's first volley comes on its first step that finds an enemy
+     within its reach, and after that one every 5 to 8 seconds as the row rolls: the coordinating session's
+     judgement of 2026-10-13, which changed what was first built.** The reading not taken was the first volley
+     one whole period after the placing; a Bolt Turret lasts 5 seconds and a Ballista 8, so under it a turret
+     fired at most one volley and might fire none. Now every placed gadget fires one volley if an enemy comes
+     within its reach while it stands. Without "Gadgets last longer" a Bolt Turret fires that one and, at most,
+     a second in the moment it disappears; a Ballista fires a second if an enemy was within reach early enough
+     for the row's seconds to pass. "Gadgets fire faster" does not shorten
+     the seconds. With the on-hit gadget rows worn a volley applies them to every enemy struck.
+   - **"When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range".** One
+     ordinary blow at once; a kill by a burst fires another.
+   - **"Your gadgets are invincible but lose 5% of their maximum HP per second passively".** No blow hurts the
+     gadget; it loses 5% of its maximum as placed each second and is destroyed when empty, which takes 20
+     seconds. **For the two turret skills the row is all benefit, even with "Gadgets last longer"; only Iron
+     Fortress's Ballistae, which last 20 seconds, reach the drain.** "Gadgets have increased HP" then does
+     nothing for the wearer.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's words, typed on 2026-10-13: "your rec on all three, continue". For these rows that accepted the
+coordinating session's recommendation on the burns: when a Burn ends by time it has a 20% to 40% chance to explode
+for double the damage that Burn dealt over its whole duration. Every other reading above is the coordinating
+session's ruling of 2026-10-13 under the owner's delegation, except where a mechanism's entry says it is a
+judgement of the session that wrote it. One more gadget sentence, "Gadgets copy the last skill you used and fire
+it at their target once every 2 seconds", has no row: it is held for the owner, and no part of it is built.
+
+### WHAT WAS BUILT
+
+| Sentence | Row or rows |
+| :-- | :-- |
+| Your auras are 20%-50% more effective | `aura_effect`, more, 20 to 50 |
+| Buff effects you apply are 20%-40% more potent | `buff_potency`, more, 20 to 40 |
+| Applying a debuff to an enemy reduces their damage output by 10%-20% | `debuffed_enemies_deal_less_percent`, flat, 10 to 20 |
+| You are immune to debuffs but also cannot apply them | `immune_to_debuffs_and_applies_none`, flat, 1 to 1 |
+| Your burn effects have a 20%-40% chance to explode for double their remaining damage when they expire | `dot_explodes_at_expiry_chance`, flat, 20 to 40, Required Tags `Keyword.DoT.Burn` |
+| Your gadgets prioritize the highest HP enemy within their range instead of the nearest | `gadgets_target_most_health`, flat, 1 to 1, Required Tags `Type.Deployable` |
+| Gadgets fire at all enemies within range simultaneously once every 5-8 seconds | `gadget_volley_every_seconds`, flat, written 8 to 5, Required Tags `Type.Deployable`; the sentence's Rolls Down cell is 1 |
+| When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range | `gadgets_burst_on_kill`, flat, 1 to 1, Required Tags `Type.Deployable` |
+| Your gadgets are invincible but lose 5% of their maximum HP per second passively | `gadgets_take_no_damage`, flat, 1 to 1, and `gadget_health_lost_percent_per_second`, flat, 5 to 5, each Required Tags `Type.Deployable` |
+
+EnchantmentEffects 602 to 612 rows, over 508 to 517 enchantments. Four names joined `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, each an on-or-off stat whose row states 1:
+`immune_to_debuffs_and_applies_none`, `gadgets_target_most_health`, `gadgets_burst_on_kill` and
+`gadgets_take_no_damage`. In the same file `SENTENCES_MARKING_A_RANGE` went from 7 to 8 and
+`PAIRS_WRITTEN_BACKWARDS` from 8 to 9, for the volley sentence.
+
+Each mechanism's entry is headed "2026-10-13 —" and begins: "A row can make its wearer's auras more effective";
+"A row can make the buffs its wearer's skills lay more potent"; "A row can make an enemy deal less while it
+carries a debuff its wearer applied"; "A row can make its wearer immune to debuffs and unable to lay any"; "A
+damage over time ailment that ends by time may explode for double what it was laid to deal"; "A row can make its
+wearer's gadgets choose the enemy with the most health within their reach"; "A row can make its wearer's gadgets
+fire at every enemy within their reach each time a clock of the gadget's own comes round"; "A row can make its
+wearer's gadget strike the nearest enemy once more when a blow of its own kills"; "A row can make its wearer's
+gadgets take no damage and lose a percent of the maximum health they were placed with each second".
+
+### Tests
+
+Nine automation tests in the group `Cataclysm.Enchantments.`, in `CataclysmEnchantmentEffectTests.cpp`, written
+by a second session. **The enchantment session read these nine by the second session's ordered list of their
+assertions and not line by line.** Each wears the real row from the loaded tables on a helm, beside a control
+wearer whose helm carries no such row. Each first checks that the row's name and figures are in the CSV files,
+then makes ONE check that the row reached the wearer, which ends the test when the data table asset is older than
+the rows, then reads the figures the wearer holds, then one behaviour in play:
+
+- `TheAuraEffectRowMultipliesAConflagrationPulseByItsRolledTwentyToFiftyPercentMore`: a pulse takes 1.2 and 1.5
+  times the control's. Only the pulse's damage is read, not the other four figures.
+- `TheBuffPotencyRowMultipliesTheMoreDamageASelfBuffGrantsByItsRolledTwentyToFortyPercentMore`: Butcher's Heat
+  grants 1.2 and 1.4 times the control's.
+- `TheDebuffCutRowLowersWhatAnEnemyCarryingItsWearersDebuffIsWorthByItsRolledTenToTwenty`: an enemy carrying the
+  wearer's Cripple is worth 0.9 and 0.8 of what it was; one carrying the control's is unchanged.
+- `TheDebuffImmunityRowRefusesADebuffLaidOnItsWearerAndADebuffItsWearerLays`: a Cripple is refused both ways.
+- `TheBurnExplodesRowExplodesABurnThatRunsOutAtARollUnderItsRolledChanceAndNeverAPoison`: at chances of 20 and
+  40 a Burn explodes at a roll just under the chance and not at a roll equal to it; a Poison never explodes. The
+  explosion's size is not read here.
+- `TheMostHealthRowMakesItsWearersTurretChooseTheEnemyWithTheMostHealthWithinItsReach`.
+- `TheVolleyRowFiresAVolleyEveryFiveSecondsAtItsBestRollAndEveryEightAtItsWorst`: the wearer reads 5 seconds at
+  the item's best roll and 8 at its worst; the first volley comes on the turret's first step with a creature
+  within its reach, and the second at the seconds read after the first and not just before. Rewritten on
+  2026-10-13 for the change to the first volley; it read no volley 4.9 seconds after the placing and one at 5.1.
+- `TheBurstOnKillRowMakesItsWearersTurretThatKillsStrikeTheNearestEnemyWithinReachOnceMore`.
+- `TheNoDamageAndDrainRowsLetNoBlowHurtItsWearersTurretAndTakeFivePercentOfItsMaximumASecond`.
+
+**In the four gadget tests the summoner is a player character**, where the mechanisms' own tests use an enemy
+character put on the players' side. The second session did not verify that a player's turret in that test world
+has the same brain and reach; the first run shows it.
+
+**Predicted on the data table assets as merged, before they are rebuilt:** nine tests fail, each on its one
+check that the row reached the wearer.
+
+**Not tested by these nine:** any row in a dungeon level; a row worn by a player in play; anything listed as not
+tested in each mechanism's own entry.
+
+**No guard proof is this entry's.** The proofs are the mechanisms' and are in their entries.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A row can make its wearer's gadgets take no damage and lose a percent of the maximum health they were placed with each second: two stats, the no-damage window every character has and a direct drain, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the two stats' names, one function
