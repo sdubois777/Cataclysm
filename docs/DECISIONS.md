@@ -477,11 +477,17 @@ was true when it was written.
 - **The defending Explorer player's tier 1 being easier than today is acceptable** (0.93 cities lost against 3.19;
   52.2% won against 44.8%, day cap 4,000). A further retune of tier 1 would be its own step.
 - **The three analysis scripts held at 120 days and 4 dungeons are accepted as they are**; reworking them at 90
-  and 5 is its own issue.
+  and 5 is issue [#2396](https://github.com/sdubois777/Cataclysm/issues/2396).
 - **No policy knows a Quest dungeon's hit is coming.** Recorded as the next piece of the review of the `triage`
   policy; not part of this change.
 - **Every judgement of the writing session listed above is approved**, and the replacement sentences for the
   design document are approved as written, to be made in the layer that puts the rules into the game.
+
+**The whole fast suite after that ruling.** With the one test changed, on `development` 841671d8: "6283 passed,
+7 skipped in 320.69s (0:05:20)"; JUnit tests 6290, failures 0, errors 0, skipped 7. Moved onto `development`
+fdfdefc4, before this paragraph was written: "6298 passed, 7 skipped in 291.00s (0:04:50)"; JUnit tests 6305,
+failures 0, errors 0, skipped 7; ruff "All checks passed!". Both runs were made by the registering session. Where
+the Run section above says one test fails, that was before the ruling.
 
 ---
 
