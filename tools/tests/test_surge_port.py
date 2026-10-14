@@ -120,14 +120,14 @@ def model():
 
 
 class TestTheCadence:
-    # `IntervalDays` AND `DungeonsPerSurge` WERE THE FIRST TWO ROWS UNTIL
-    # 2026-10-13. The model went to 90 days and 5 dungeons that day and the
-    # game keeps 120 and 4 until its own layer, so the two are a recorded
-    # divergence and not an equality:
-    # `test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`.
-    # That file fails when either of the game's constants moves and says to
-    # put the rows back here.
+    # `IntervalDays` AND `DungeonsPerSurge` ARE HELD EQUAL AGAIN. The model
+    # went to 90 days and 5 dungeons on 2026-10-13 and the game kept 120 and
+    # 4 until its own layer, with the difference recorded in a file of its
+    # own. The game's layer moved both constants and deleted that file, as
+    # the file said to. `docs/DECISIONS.md`, 2026-10-13.
     NUMBERS = {
+        "IntervalDays": "surge_interval_days",
+        "DungeonsPerSurge": "surge_dungeon_count",
         "IntervalDecay": "surge_interval_decay",
         "LeastIntervalDays": "surge_interval_min",
         "CountGrowthPerSurge": "surge_count_growth",
@@ -2116,14 +2116,14 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
         """The game's interval and surge size, read out of its header.
 
         THE LADDERS BELOW ARE THE MODEL'S ARITHMETIC AT THE GAME'S TWO
-        STARTING NUMBERS, since 2026-10-13. Until then they were taken at
-        `TuningConfig()` and the two were the same numbers. The model now
-        ships 90 days and 5 dungeons and the game keeps 120 and 4, so a
-        ladder taken at the model's defaults would describe figures the
-        Unreal test does not assert. What this class still holds is that
+        STARTING NUMBERS, since 2026-10-13. Both halves are 90 days and 5
+        dungeons since the game's layer of that day, and `TestTheCadence`
+        holds them equal, so this is also the ladder at `TuningConfig()`.
+        It is still read from the header: what this class holds is that
         the model's FORMULA gives the Unreal test's figures from the
-        game's own constants. When the game goes to 90 and 5 the figures
-        in `CataclysmSurgeTests.cpp` and below change together.
+        game's own constants. The figures in `CataclysmSurgeTests.cpp` and
+        below were taken at 120 and 4 until that layer and changed
+        together.
         """
         header = read(SURGE_HEADER)
         return dict(
@@ -2151,18 +2151,32 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
         return simulation.surge_count()
 
     def test_the_accelerating_ladder_still_holds(self):
-        assert self.gap_at("accelerating", 1) == pytest.approx(105.6, abs=0.01)
-        assert self.gap_at("accelerating", 2) == pytest.approx(92.928, abs=0.01)
-        assert self.gap_at("accelerating", 3) == pytest.approx(81.7766, abs=0.01)
-        assert self.gap_at("accelerating", 12) == pytest.approx(25.8805, abs=0.01)
+        assert self.gap_at("accelerating", 0) == pytest.approx(90.0, abs=0.01)
+        assert self.gap_at("accelerating", 1) == pytest.approx(79.2, abs=0.01)
+        assert self.gap_at("accelerating", 2) == pytest.approx(69.696, abs=0.01)
+        assert self.gap_at("accelerating", 3) == pytest.approx(61.3325, abs=0.01)
+        assert self.gap_at("accelerating", 10) == pytest.approx(25.0651, abs=0.01)
+        assert self.gap_at("accelerating", 11) == pytest.approx(25.0, abs=0.01)
         assert self.gap_at("accelerating", 13) == pytest.approx(25.0, abs=0.01)
 
     def test_the_swelling_ladder_still_holds(self):
-        assert self.count_at("swelling", "standard", 0) == 4
-        assert self.count_at("swelling", "standard", 2) == 5
-        assert self.count_at("swelling", "standard", 4) == 6
-        assert self.count_at("swelling", "standard", 19) == 13
+        assert self.count_at("swelling", "standard", 0) == 5
+        assert self.count_at("swelling", "standard", 1) == 5
+        assert self.count_at("swelling", "standard", 2) == 6
+        assert self.count_at("swelling", "standard", 3) == 6
+        assert self.count_at("swelling", "standard", 4) == 7
+        assert self.count_at("swelling", "standard", 17) == 13
+        assert self.count_at("swelling", "standard", 18) == 14
         assert self.count_at("swelling", "standard", 20) == 14
+
+    def test_heretic_brings_six_where_standard_brings_five(self):
+        """trunc(5 x 1.25). Six is a fifth more than five; at a wave of four
+        the same multiplier gave five, a quarter more. The design document
+        says "25% more dungeons", and that is on the owner's play-check
+        list in `docs/DECISIONS.md`, 2026-10-13."""
+        assert self.count_at("static", "standard", 0) == 5
+        assert self.count_at("static", "hardcore", 0) == 5
+        assert self.count_at("static", "heretic", 0) == 6
 
     def test_heretic_at_the_ceiling_is_still_seventeen(self):
         """The figure the ordering argument turns on. If it ever equals the
@@ -2174,7 +2188,7 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
     def test_the_unreal_test_carries_those_same_figures(self):
         text = read(SURGE_TESTS)
 
-        for figure in ("105.6f", "92.928f", "81.7766f", "25.8805f"):
+        for figure in ("79.2f", "69.696f", "61.3325f", "25.0651f"):
             assert figure in text, (
                 f"CataclysmSurgeTests.cpp no longer asserts {figure}; the "
                 "accelerating ladder there and the model's have parted")

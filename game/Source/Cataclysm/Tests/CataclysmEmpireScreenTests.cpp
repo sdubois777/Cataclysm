@@ -755,8 +755,8 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("an accelerating run escalates"),
 			 Heretic->Surges->Mode == ECataclysmSurgeMode::Accelerating);
-	TestEqual(TEXT("and a Heretic run brings five dungeons rather than four"),
-			  Heretic->Surges->DungeonsInNextSurge(), 5);
+	TestEqual(TEXT("and a Heretic run brings six dungeons rather than five"),
+			  Heretic->Surges->DungeonsInNextSurge(), 6);
 
 	// `GetOrBeginEmpireRun` KEEPS WHAT IS THERE. It is what a console command
 	// asking to see the empire calls, and it must not restart a campaign.
