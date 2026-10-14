@@ -326,6 +326,51 @@ with no fall's surge due, did not surge"). The reason no other cause can fire th
 clock's next surge and the empty-board surge both wait at least the same 25 days. Where this entry says above
 that nothing is asserted on such a day, that was true of the first version. Not compiled or run when written.
 
+### Run
+
+Two Unreal windows were run for the stack of three layers this entry belongs to (The Labrynth marked Built; the
+seeded cell picker, issue #2342; the fall surge's least interval, issue #2380). Every build, run and measurement
+was made by the registering session, holding the editor lock. Every figure is a line a run printed. Before each
+lock, development's own runs at its head had printed success, no build or editor process was running, and no pull
+request that changes a game file was open.
+
+**The first window, 2026-10-12, at 277c2ce5 on development 55f09115 (lock void-zones-w22), stopped at the whole
+suite**: `3602 tests performed, 3600 succeeded, 2 failed`. Both failures were existing tests and both came from
+the fall-surge layer; that layer's entry has them and the rulings that followed. No proof was run in it.
+
+**The second window, 2026-10-13, at 2604b2d3 on development fdfdefc4 (lock void-zones-w23):**
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| Whole Unreal suite | 3658 performed | `3658 tests performed, 3658 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3658 tests in the tree at 2604b2d3; 3658 performed, gap 0` |
+| Whole Python suite | 6220 collected | `6212 passed, 8 skipped in 346.65s (0:05:46)`; JUnit `errors="0" failures="0" skipped="8" tests="6220"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,650 development's own total, given by the coordinating session, plus the eight
+tests the three layers add. The pull request of the simulation's package, which changes no game file, was open
+during this window and merged before it ended; the three layers were moved onto that merge afterwards with no
+change to any game file, and this section was written after the move.
+
+**The two tests that failed in the first window pass in the second, as ruled.**
+`Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`, the renamed test, passed with
+its closing assertion and the assertion that a fall day with no fall's surge due did not surge.
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` passed at 40 campaigns; its own log line reads
+`40 campaigns, 24000 days in all, 1488 dungeons made: 0 with no sub-type (0.0%), 108 Cow Levels, 125 Sieges`, and
+that figure is now in the test's comment. No other test this entry lists failed in either window.
+
+**This layer's two guard proofs, each PROVED: the named test failed with the break in and passed with it out.**
+The counts are of failed assertions, read from the engine's log of the run with the break in.
+
+| Break | Test | Predicted | Printed |
+|---|---|---|---|
+| `>=` to `>` in `IsDueOnCityFall` | `TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed` | 3 | 3: "a city falling on day 25 with no surge yet fires one"; "and a fall on day 125 fires one"; "and a fall on day 135 fires one". Restored `1 tests performed, 1 succeeded, 0 failed` |
+| `if (Surges->IsDueOnCityFall(OutReport.Day))` to `if (UCataclysmSurgeScheduler::bSurgeOnCityFall)` | `TwoCitiesFallingOnOneDayBringOneWave` | 3 | 3: surges fired read 3 where 2 was expected; the escalation counter read 2 where 1; ten dungeons arrived where six. Restored `1 tests performed, 1 succeeded, 0 failed` |
+
+**Not settled.** Nothing was tried in play. What the layer does to an unattended game is known only through the
+one test's dungeon count: 687 in 20 campaigns in the first window where 1,580 were made before the layer, and
+1,488 in 40 campaigns in the second.
+
 ---
 
 ## 2026-10-12 — The cell picker for floor rules' objects shuffles on a seeded stream, so one dungeon seed and floor give each rule the same cells (#2342)
@@ -607,6 +652,46 @@ twenty metres, five cells, of the entrance. That leaves about 176 candidates or 
 that many agree on their first five cells about once in the fifth power of that count. On a floor with a handful
 of candidates this proof would pass by chance some of the time; the first test logs how many rifts each seed gave,
 not how many candidates there were.
+
+### Run
+
+Two Unreal windows were run for the stack of three layers this entry belongs to (The Labrynth marked Built; the
+seeded cell picker, issue #2342; the fall surge's least interval, issue #2380). Every build, run and measurement
+was made by the registering session, holding the editor lock. Every figure is a line a run printed. Before each
+lock, development's own runs at its head had printed success, no build or editor process was running, and no pull
+request that changes a game file was open.
+
+**The first window, 2026-10-12, at 277c2ce5 on development 55f09115 (lock void-zones-w22), stopped at the whole
+suite**: `3602 tests performed, 3600 succeeded, 2 failed`. Both failures were existing tests and both came from
+the fall-surge layer; that layer's entry has them and the rulings that followed. No proof was run in it.
+
+**The second window, 2026-10-13, at 2604b2d3 on development fdfdefc4 (lock void-zones-w23):**
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| Whole Unreal suite | 3658 performed | `3658 tests performed, 3658 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3658 tests in the tree at 2604b2d3; 3658 performed, gap 0` |
+| Whole Python suite | 6220 collected | `6212 passed, 8 skipped in 346.65s (0:05:46)`; JUnit `errors="0" failures="0" skipped="8" tests="6220"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,650 development's own total, given by the coordinating session, plus the eight
+tests the three layers add. The pull request of the simulation's package, which changes no game file, was open
+during this window and merged before it ended; the three layers were moved onto that merge afterwards with no
+change to any game file, and this section was written after the move.
+
+**No existing test this entry lists as at risk failed in either window.** Every test that searches dungeon seeds
+for a cell the picker gives passed on the fixed cells, in both whole-suite runs.
+
+**This layer's two guard proofs, each PROVED: the named test failed with the break in and passed with it out.**
+The counts are of failed assertions, read from the engine's log of the run with the break in.
+
+| Break | Test | Predicted | Printed |
+|---|---|---|---|
+| `SeedForFloor(Plan.Seed, Salt)` to `SeedForFloor(Plan.Seed, 0)` | `TheObjectPickerGivesNoTwoPlacingRulesTheSameCellsInTheSameOrder` | 3 | 3: "no two placing rules' salts give the same cells in the same order" read 276 pairs alike; "and another rule's salt answers other cells beside a wall"; "the floor's light zones are not its first rifts' cells in the same order". Restored `1 tests performed, 1 succeeded, 0 failed` |
+| `CellsStream.RandRange(0, Index)` to `FMath::RandRange(0, Index)` | `TheObjectPickerGivesARuleTheSameCellsOnTheSameSeedAndFloorAndOthersOnAnotherSeed` | 3 | 3: "and the same cells in the same order"; "the picker asked twice of one floor with one salt answers the same cells in the same order"; "the floor's rifts are the first cells the picker answers for Reality Rifts' own salt". Restored `1 tests performed, 1 succeeded, 0 failed` |
+
+**Not settled.** Nothing was tried in play. Only the call sites of Reality Rifts and Shadowy Enemies are shown by
+a test to pass their own salt.
 
 ---
 
@@ -4483,6 +4568,41 @@ are predicted to fail: "The Labrynth is built", "The Labrynth's name line is its
 line with its count". Its controls and its last assertion are predicted to hold. Other tests under the same prefix
 would fail too, the gated-shortcut figures test and the two tests that walk the rule list among them. A break that
 returns the row to Partly needs two lines changed, so none is proposed.
+
+### Run
+
+Two Unreal windows were run for the stack of three layers this entry belongs to (The Labrynth marked Built; the
+seeded cell picker, issue #2342; the fall surge's least interval, issue #2380). Every build, run and measurement
+was made by the registering session, holding the editor lock. Every figure is a line a run printed. Before each
+lock, development's own runs at its head had printed success, no build or editor process was running, and no pull
+request that changes a game file was open.
+
+**The first window, 2026-10-12, at 277c2ce5 on development 55f09115 (lock void-zones-w22), stopped at the whole
+suite**: `3602 tests performed, 3600 succeeded, 2 failed`. Both failures were existing tests and both came from
+the fall-surge layer; that layer's entry has them and the rulings that followed. No proof was run in it.
+
+**The second window, 2026-10-13, at 2604b2d3 on development fdfdefc4 (lock void-zones-w23):**
+
+| Step | Predicted | Printed |
+|---|---|---|
+| Build of the editor | | `Build: Succeeded - 39 actions, 34 files compiled` |
+| Whole Unreal suite | 3658 performed | `3658 tests performed, 3658 succeeded, 0 failed. 40 skipped part of what they check`; `Declared: 3658 tests in the tree at 2604b2d3; 3658 performed, gap 0` |
+| Whole Python suite | 6220 collected | `6212 passed, 8 skipped in 346.65s (0:05:46)`; JUnit `errors="0" failures="0" skipped="8" tests="6220"` |
+| Ruff | | `All checks passed!` |
+
+The Unreal prediction was the 3,650 development's own total, given by the coordinating session, plus the eight
+tests the three layers add. The pull request of the simulation's package, which changes no game file, was open
+during this window and merged before it ended; the three layers were moved onto that merge afterwards with no
+change to any game file, and this section was written after the move.
+
+**This layer's guard proof, PROVED: the named test failed with the break in and passed with it out.** The break
+`|| RowKey == FName(LabrynthKey)` to `|| RowKey == FName(RealityRiftsKey)`, test
+`TheLabrynthIsMarkedBuiltAndItsPanelLineNoLongerSaysPartlyBuilt`: predicted 3 failed assertions, printed 3 ("The
+Labrynth is built" read 0, which is not built; its name line read "The Labrynth (not built yet: it does
+nothing)"; its name line with its count read the same mark). Restored: `1 tests performed, 1 succeeded, 0 failed`.
+
+**Not settled.** Nothing was tried in play. The floor panel still shows the row's own sentence, which says rooms
+rearrange.
 
 ---
 
