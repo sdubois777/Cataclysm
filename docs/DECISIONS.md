@@ -2,6 +2,456 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A damage over time ailment that ends by time may explode for double what it was laid to deal: one stat, a listener at the effect's removal and a mark on the blow, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (one flag of
+`FCataclysmHitDelivery`, the stat's name, the stamp's name, two constants, two functions, one console variable,
+the function that hears an effect's removal, the stamp in `ApplyTypedSpec`, the listener added at the end of
+`ApplyDamageOverTime`, one include), `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (one
+field of the hit notice and the line that fills it),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the blow is not recorded as a first hit),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the blow raises no on-hit event),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute),
+`game/Source/Cataclysm/Tests/CataclysmBurnExplodesTests.cpp` (new: nine tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the
+name, the tags allowed, one bound and one refusal), `tools/tests/test_generate_datatables.py` (one class of 11
+tests), `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory).
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Your burn effects have a 20%-40% chance to explode for
+double their remaining damage when they expire". It stays in the workbook as written.
+
+- **NOT COMPILED AND NOT RUN.** Nothing here was compiled and no Unreal test was run by the session that wrote it.
+  A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from source on 2026-10-13: the project's, and Unreal 5.8's
+  `GameplayEffect.cpp`, `GameplayEffectTypes.h` and `AbilitySystemComponent.cpp`.
+- **No row is authored, so a player sees no change.** The enchantment session writes the row. Its cells are under
+  "What was built".
+- **THE ROW GOES ON THE OWNER'S PLAY-CHECK LIST.** Nothing here was played.
+- **NOTHING REMAINS WHEN A BURN EXPIRES, SO "REMAINING" IS READ AS THE WHOLE.** By the owner's accepted
+  recommendation of 2026-10-13: when a Burn ends by time it has a 20% to 40% chance to explode for double the
+  damage that Burn dealt over its whole duration.
+- **"DEALT" IS READ AS WHAT THE BURN WAS LAID TO DEAL.** Ruled. The amount is twice the Burn's whole stated damage:
+  its figure a tick times the ticks of its full duration, before its carrier's mitigation. The option not taken:
+  twice what its ticks really took from the carrier. So a carrier whose armour or energy shield swallowed most of
+  the ticks is still struck for double the stated whole, and each enemy struck then meets the blow with its own
+  mitigation.
+- **WHAT THAT IS FOR THE BURN THE GAME LAYS.** `game/Data/StatusEffects.csv` states Burn at 25 a tick for 4 seconds
+  at one tick a second: four ticks, a whole of 100, and an explosion of 200, before the applier's three damage
+  over time stats. Those three are already in the figures the Burn was laid with, so each raises the explosion:
+  more damage a tick, more ticks in the same time, and a longer duration. The applier's other increases do not
+  scale the explosion's blow.
+- **WHAT A PLAYER WOULD NOTICE.**
+  - *Nothing is drawn or played for the explosion.* No effect, no sound and no shape on the ground was built. What
+    shows is what any blow shows on each enemy it strikes. How the floating number is drawn for it was not read.
+  - *A Burn that is kept refreshed never explodes.* An application that is not stronger than the running Burn
+    only gives it more time, so a player who goes on setting the same enemy alight keeps one Burn running. It
+    may explode only once it is left to run out.
+  - *An enemy that dies while it burns explodes nothing.* The row does nothing against enemies that do not
+    outlive a Burn, which at four seconds is most of a pack.
+  - *The five metres are counted from the burning enemy and not from the player.*
+  - *The explosion can kill, and the kill is the player's.* The player's `kill` rows fire for it, a row that
+    explodes a slain enemy for its overkill among them.
+- **ITEM 1, WHAT THE ENGINE TELLS A LISTENER WHEN A DURATION EFFECT IS REMOVED.** Two delegates. The first is one
+  for each ability system, `UAbilitySystemComponent::OnAnyGameplayEffectRemovedDelegate()`, which hands over the
+  `FActiveGameplayEffect` and says nothing of why. The second is one for each active effect,
+  `FActiveGameplayEffectEvents::OnEffectRemoved`, reached by
+  `UAbilitySystemComponent::OnGameplayEffectRemoved_InfoDelegate(Handle)`. It hands over an
+  `FGameplayEffectRemovalInfo`: `bPrematureRemoval`, `bPredictionRejected`, `StackCount`, `EffectContext`,
+  `OwningASC` and `ActiveEffect`, a pointer to the effect being removed. Both are broadcast from
+  `FActiveGameplayEffectsContainer::InternalOnActiveGameplayEffectRemoved`, the per-effect one first, after the
+  effect's granted tags have been taken off its carrier.
+  - **THE ENGINE DOES TELL AN END BY TIME, SO NO CLOCK IS COMPARED.** `InternalRemoveActiveGameplayEffect` is
+    called with `bPrematureRemoval` false from two lines, both in `CheckDuration`, which is the duration running
+    out. It is called with true from `RemoveActiveGameplayEffect` and from `RemoveActiveEffects`. The comparison
+    of the world's clock with the effect's end, which the ruling allowed, is not used.
+  - **THE ORDER: THE LAST TICK FIRST, THEN THE NOTICE.** When the duration has run out, `CheckDuration` asks
+    whether the period timer is due (`PeriodTimeRemaining <= KINDA_SMALL_NUMBER`), runs that tick itself if so,
+    stops without removing the effect if the tick caused the effect's removal, and only then removes the effect,
+    which broadcasts the notice. The explosion is made inside that notice, so it comes after the last tick and
+    in the same call.
+  - **WHAT THE COMMENT AT `DamageOverTimeTicksLeft` MEANS FOR A 4 SECOND BURN.** That comment says the last tick
+    runs only if the period timer is due as the duration ends. A Burn ticks once a second, so its period timer
+    is due at 4 seconds exactly as its duration ends. Whichever of the two timers the timer manager runs first,
+    four ticks land and the notice follows: if the period timer runs first it ticks and `CheckDuration` then
+    finds the next tick a second away; if the duration timer runs first `CheckDuration` runs the tick itself. A
+    Burn whose applier's frequency stat gives an interval that does not divide its duration has no tick at its
+    end, and the ticks counted for its whole are the ones it has: 4 seconds at one every 0.75 is five.
+    `Cataclysm.RemainingDamage.ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration` measured the tick at
+    the end for a whole multiple on 2026-10-01.
+- **EACH WAY A BURN ENDS THAT DOES NOT EXPLODE, AND BY WHAT THE NOTICE DIFFERS.**
+
+  | How it ends | What removes it | What the listener is told |
+  | :-- | :-- | :-- |
+  | A cleanse | `UCataclysmDebuffs::Cleanse` calls `RemoveActiveGameplayEffect` | `bPrematureRemoval` true |
+  | The burst that ends it (`DealRemainingDamageOverTime` with `bEndEach`) | `RemoveActiveGameplayEffect` | `bPrematureRemoval` true |
+  | A replacement by a stronger Burn | `TagAndReplaceAnyExisting` calls `RemoveEffectsGranting`, which calls `RemoveActiveEffectsWithGrantedTags` | `bPrematureRemoval` true for the one replaced. The new one is listened to and may explode at its own end |
+  | A removal by the tag it grants | `RemoveEffectsGranting` | `bPrematureRemoval` true |
+  | The carrier's death | NOTHING REMOVES IT. `MarkDead` leaves a dead character's effects in place, and an enemy's body is kept for the length of its death clip. A Burn can run out on a body, and a Burn's own last tick can be what kills | `bPrematureRemoval` FALSE: the engine calls it an end by time. The listener asks whether the carrier is dead and does nothing for one that is |
+  | The carrier's body is destroyed | `FActiveGameplayEffectsContainer::Uninitialize` clears the effect's two timers | No notice at all |
+  | The carrier's revival | Not read. Only a player is revived, and see the last point of this list for a Burn on a player |
+
+  "THE STRONGEST APPLICATION WINS": an application that is not stronger than the running Burn removes nothing. It
+  moves the running effect's start, the effect goes on under the same handle with the same listener, and it
+  explodes, if it does, when it finally runs out. Nothing in the project shortens a running damage over time
+  effect: the one call that moves a start backwards shortens cooldowns.
+- **WHERE THE FIGURE A TICK AND THE TICKS OF THE FULL DURATION ARE READ AT THE END.** Both off the effect the
+  notice hands over, which is still whole when the notice arrives: the figure a tick as
+  `RemainingDamageOverTime` reads it, the effect's modifiers on the Damage attribute, and the ticks from
+  `GetPeriod()` and `GetDuration()`. Nothing had to be kept when the Burn was laid. `RunningAilmentOn` and
+  `RemainingDamageOverTime` are not asked: the first answers false for an effect with no time left, and the
+  second counts the ticks left on the two timers, which is none. Neither was run at that moment by anybody.
+- **A REFRESHED BURN'S WHOLE IS STILL ONE DURATION'S WORTH.** A judgement of the writing session, from the ruling's
+  words "the ticks of its full duration". A refresh moves the effect's start and leaves its duration as it was
+  laid, so a Burn of 25 a tick for 4 seconds that was refreshed twice and ran ten seconds still explodes for 200.
+  The option not taken: count every tick it dealt over its extended life, which is the reading the ruling set
+  aside as "twice what its ticks took".
+- **A REFRESHED BURN EXPLODES ONCE, AT ITS MOVED END.** Asked by the coordinating session on 2026-10-13 and read
+  again then. The listener is added on the last lines of `ApplyDamageOverTime`. An application that is not
+  stronger than the running effect leaves that function earlier, at the `return true` under "THE STRONGEST
+  APPLICATION WINS HERE TOO", after `RefreshRunningApplication`, and never reaches those lines. So a handle that
+  already holds the listener is never given it a second time. A copy a spread makes goes through the same
+  function and the same early return. `RefreshOtherDamageOverTime`, which the row
+  `dot_application_refreshes_others` calls, moves each effect's start with `ModifyActiveEffectStartTime` and
+  calls `ApplyDamageOverTime` for none of them. A stronger application removes the running effect and lays a new
+  one, whose handle is new. No code was changed for this; a test was added.
+- **THE APPLIER AT THE END.** `UCataclysmCombatEvents::AttackerOf` of the ended effect's own context, the function
+  every other credit uses. For a Burn a character laid it is that character. For a minion's Burn it is the
+  minion, and the summoner only while the summoner holds Conduit (`minion_hits_count_as_yours`), ruled
+  2026-09-17. A minion has no stat line, so a minion's Burn explodes for nobody without Conduit. "Dead or gone":
+  the context's instigator is held weakly, so an applier that has been destroyed reads as nobody, and one that
+  is marked dead is refused by `UCataclysmSkillEffects::IsDead`. Either way nothing explodes. The row is read
+  from the applier at that moment: one put on after the Burn was laid counts, and one taken off does not.
+- **WHAT THE EXPLOSION'S BLOW IS.** `UCataclysmSkillEffects::ExplodeForOverkill`'s delivery, flag for flag: area
+  damage, so it is not evaded; never retaliated against; never a critical strike; no weapon sub-type; no leech.
+  Three differences. It is NOT marked the consequence of a death. It says outright that it carries no chance to
+  apply an ailment. And it carries the ended Burn's own damage type, read off the tags its ticks carried.
+  - **HOW IT IS KEPT FROM RAISING THE THREE ON-HIT EVENTS: A MARK OF ITS OWN. A judgement of the writing session.**
+    `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`, stamped on the effect, carried on the hit notice as
+    `bExplosionAtAnAilmentsEnd`, and refused by `ACataclysmPlayerCharacter::OnSomethingWasHit` beside the three
+    refusals already there. The blow is still announced, is still a combat event for both characters, and a
+    kill by it is still the applier's: none of those reads the mark. The option not taken: set
+    `bIsConsequenceOfADeath`, which needs no new line and reads the same in the two places that read it today.
+    It was not taken because nothing died, and whatever reads that mark next would be told something untrue of
+    this blow.
+  - **IT IS NOT RECORDED AS THE APPLIER'S FIRST HIT ON WHAT IT STRIKES.** The attribute set skips `NoteStruckBy`
+    for it, as it does for the overkill explosion. So the applier's next real hit on a bystander still raises
+    `first_hit_dealt`, and the explosion starts neither the count towards the immunity of 2026-10-12 nor the
+    clock of "survive more than 5 seconds after first being hit". A judgement of the writing session, following
+    the ruling's "as the two merged explosions cannot". The option not taken: record it, which would use up a
+    "first hit against each enemy" row on a blow the player did not strike.
+  - **THE APPLIER'S PENETRATION STILL MEETS IT.** The overkill explosion does not set the flag that forbids
+    penetration and this does not either.
+- **THE EXPLOSION MEETS ITS CARRIER AFTER THE BURN IS GONE.** The engine takes the Burn's tag off the carrier
+  before it broadcasts the notice. So what a worn row hangs on a burning enemy, "Enemies affected by your burn
+  effects have 10%-20% reduced armor" for one, no longer counts on the carrier when the explosion lands on it.
+  Not tested.
+- **THE EXPLOSION IS DEALT INSIDE THE ENGINE'S OWN REMOVAL OF THE EFFECT.** The first blow lands on the carrier
+  while `CheckDuration` still holds the container's scope lock, and it may kill the carrier. A Burn's lethal
+  tick already kills from inside that lock. Everything the explosion needs is read off the ended effect before
+  the first blow. The option not taken: make the explosion on the next tick of the world, which would put a
+  frame between the last tick and the explosion and let the applier's row change between the two.
+- **WHO IS STRUCK.** The carrier, by name, when it is an enemy of the applier and alive; then every other enemy of
+  the applier the sphere search finds within 5 metres of where the carrier stands. The carrier is struck by name
+  so that a carrier the search would miss is still struck once. The search is by the overlap of bodies, as every
+  skill's is, so an enemy whose body reaches into the sphere is found.
+- **A BURN A CHARACTER HAS ON ITSELF DOES NOT EXPLODE. A judgement of the writing session.** "Your burn effects"
+  are read as the ones laid on somebody else, as `dot_applied` and the riders of an ailment read "apply". The
+  option not taken: explode around the wearer.
+- **A COPY A SPREAD MAKES IS THE APPLIER'S BURN AND MAY EXPLODE AT ITS OWN END.** A copy is laid for what the
+  source dealt a second over the seconds the source had left, so its whole is what was left. Not tested.
+- **ONE BURN ON ONE ENEMY, WHOEVER LAID IT.** Two characters burning one enemy still make one Burn. When the
+  second application is not stronger it only refreshes the first, which stays the first applier's: the chance
+  asked at its end is the first applier's.
+- **AN ENEMY IMMUNE TO THE APPLIER TAKES NOTHING.** The row of 2026-10-12 refuses every blow of that attacker
+  where the blow is resolved, and the explosion is a blow of the applier's. Nothing was built for it.
+- **THE GAME READS THE STAT FOR ANY AILMENT, AND THE GENERATOR ALLOWS BURN ALONE.** The listener is added to every
+  effect `ApplyDamageOverTime` lays on another character, and the chance is asked with the tag the ended effect
+  granted. A row requiring `Keyword.DoT.Burn` therefore reaches a Burn and nothing else. The generator refuses
+  a row on this stat under any other tag or under none. An ailment that takes a share of health, Void Splinter,
+  is laid by another function and is not listened to.
+- **AN ENEMY'S BURN ON THE PLAYER.** Its applier is the enemy. An enemy's ability system is given no stat line, so
+  the lookup answers its fallback of nought and nothing explodes. Were an enemy ever to hold the stat, the
+  explosion would be centred on the player and strike the enemy's enemies within 5 metres of it, the player
+  first. Not tested.
+
+**What was not read:** how a real skill reaches `ApplyBurn` (the function itself was read); every caller of
+`ApplyDamageOverTime`; whether `ApplyDamageOverTime` runs on a client that is not the server, and what a client
+would do with the listener; how the floating number is drawn; what a player's death does to the damage over
+time effects it has on enemies (`Cataclysm.BurnExplodes.` reads only that nothing explodes); a player's
+revival; what `UCataclysmItemModifiers::AccumulateEnchantmentsInto` does with two pieces carrying this benefit;
+whether `tools/tests/test_enchantment_effects_match_the_row_text.py` accepts the row.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's own words, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". That sentence accepted the coordinating session's recommended reading of this sentence. The ten
+rulings below are the coordinating session's, under the owner's delegation, as received by the enchantment
+session. A second session wrote the code under the enchantment session's brief.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| 1 | An end by time only. Read the engine's removal information first; say whether the last tick has been dealt; make the explosion come after it. Not a cleanse, the burst that ends it, a replacement, a removal by a granted tag, the carrier's death or its revival. | `ExplodeWhenADamageOverTimeEndsByTime` in `CataclysmSkillEffects.cpp`, added to each effect's `OnEffectRemoved` at the end of `ApplyDamageOverTime`. Its first line refuses `bPrematureRemoval`; its second refuses a dead carrier. |
+| 2 | Twice the Burn's whole stated damage as laid, before the carrier's mitigation. Each enemy struck meets its own mitigation. | `WholeStatedDamageOverTime` times `ExplosionAtAnAilmentsEndMultiple`, sent by `ApplyDirectDamage`. |
+| 3 | Every enemy of the applier within 5 metres of the carrier, the carrier included. | `ExplodeAtAnAilmentsEnd`; `ExplosionAtAnAilmentsEndRadiusCm` is `OverkillExplosionRadiusCm`. |
+| 4 | The Burn's own damage type, read from the effect that ended. | The ended effect's asset tags, through `UCataclysmDamageCalculation::DamageTypeFromTags`, onto `FCataclysmHitDelivery::DamageType`. An element carried for colour only is no type. |
+| 5 | No ailment and none of `hit_dealt`, `first_hit_dealt`, `critical_strike`. A combat event; a kill is the applier's. No critical strike, no leech, no retaliation. | The delivery's flags in `ExplodeAtAnAilmentsEnd`; the refusal in `ACataclysmPlayerCharacter::OnSomethingWasHit`; the skip of `NoteStruckBy` in `UCataclysmVitalAttributeSet`. |
+| 6 | The applier's row, read when the Burn ends. Dead or gone: nothing. A minion's Burn is the minion's unless the summoner holds Conduit. | `UCataclysmCombatEvents::AttackerOf(Removal.EffectContext)`, then `StatForSkill` on that character. |
+| 7 | One roll for each Burn that ends by time, with a console variable to pin it. No trigger cooldown. | `Cataclysm.DotExplodesAtExpiryRoll`. A chance of 100 or more is compared and not rolled; a roll equal to a lower chance fails. |
+| 8 | An enemy immune to the wearer takes nothing. | Nothing new: `UCataclysmVitalAttributeSet` refuses the blow. |
+| 9 | One row on the sentence, 20 to 40, naming the ailment Burn. | See "What was built". |
+| 10 | Tests as the plan listed; up to three proofs. | Below. |
+
+### The genre source
+
+HOW THIS WAS READ. The enchantment session fetched each page twice on 2026-10-13, through a tool that hands back a
+model's reading of the page and not the page's bytes. The second fetch asked for the lines character for
+character. A line below in a code block is one the second fetch gave as copied exactly. Anything marked SUMMARY
+is the tool's own words about the page and is recorded as a summary and not as a quotation. Each page is longer
+than the 100,000 characters the tool read; the rest was not read. The writing session fetched nothing.
+
+REACHED: `poe2db.tw/us/Ignite` (Path of Exile 2), its first 100,000 of 149,444 characters.
+
+```
+Ignite is an Ailment that deals Fire damage over time, and lasts for 4 seconds by default.
+```
+```
+Targets affected by a Spectral Fire Debuff do not take damage from Ignite.
+```
+```
+Attack Hits inflict Spectral Fire for 8 seconds
+```
+(the last is a modifier of the item Fairgraves' Curse)
+
+SUMMARY, the tool's words and not the page's: the damage that would have been Ignite damage is stored instead;
+when the debuff expires or the target dies, the stored damage explodes in a 1.8 metre radius, hitting nearby
+enemies including the affected target; damage modifiers do not apply to the explosion. THE FIRST FETCH GAVE TWO OF
+THOSE CLAUSES AS QUOTATIONS AND THE SECOND FETCH WOULD NOT REPRODUCE THEM, so they are not recorded as quotations.
+
+What it settles: a burning effect that ends in an explosion at its expiry, in a stated radius, the affected
+target included, for a figure tied to the burning's damage. What is this game's own and judged: the chance, double,
+5 metres, the Burn's stated whole in place of a stored tally, and that a death does not explode here.
+
+NOT REACHED: any source for Diablo, Last Epoch or Torchlight. One web search for Path of Exile returned a guide
+repeated across unrelated domains, which is not relied on and not recorded.
+
+### WHAT WAS BUILT
+
+- **The stat.** `dot_explodes_at_expiry_chance`, a chance in percent, flat, with no gameplay attribute and no base,
+  the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code:
+  `UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat`.
+- **The listener.** `ExplodeWhenADamageOverTimeEndsByTime`, a function of `CataclysmSkillEffects.cpp` alone. At the
+  end of `ApplyDamageOverTime`, for an effect laid on another character that is not converted damage, the effect
+  just applied is found by its tag and the function is added to its `OnEffectRemoved`. An application that only
+  refreshed a running effect has returned before that line, so an effect is listened to once. The function
+  returns at once for a premature removal; for a carrier that is gone or dead; for an applier that is gone, dead
+  or the carrier itself; for an applier with no chance; and for an effect whose whole is nought. Then it rolls
+  once, reads the damage type, and calls `ExplodeAtAnAilmentsEnd`.
+- **`WholeStatedDamageOverTime(DamagePerTick, SecondsPerTick, DurationSeconds)`.** The figure a tick times
+  `DamageOverTimeTicksLeft(SecondsPerTick, SecondsPerTick, DurationSeconds)`: the first tick a whole interval in
+  and the one due as the duration ends included.
+- **`ExplodeAtAnAilmentsEnd(Applier, Carrier, At, Damage, DamageType)`.** The delivery and the two searches
+  described above. It rolls nothing and returns how many enemies a blow was sent at.
+- **Two constants.** `ExplosionAtAnAilmentsEndMultiple`, 2, and `ExplosionAtAnAilmentsEndRadiusCm`, which is
+  `OverkillExplosionRadiusCm`, 500.
+- **The mark.** `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`; `ApplyTypedSpec` stamps the effect under
+  `ExplosionAtAnAilmentsEndDataName`, "Cataclysm.ExplosionAtAnAilmentsEnd"; `UCataclysmCombatEvents::NoteBlow`
+  copies it to `FCataclysmHitNotice::bExplosionAtAnAilmentsEnd`; `OnSomethingWasHit` returns for it;
+  `UCataclysmVitalAttributeSet` reads the stamp and skips `NoteStruckBy`.
+- **One console variable.** `Cataclysm.DotExplodesAtExpiryRoll`, default -1, which rolls for real.
+- **The generator.** `DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT` holds the name, `EXPLODING_AILMENT_TAGS` the one tag
+  allowed, `Keyword.DoT.Burn`, and `MAX_DOT_EXPLODES_AT_EXPIRY_CHANCE` the bound, 100.
+  `refuse_an_exploding_ailment_row_the_game_cannot_read` refuses an enchantment's row on the stat that is not
+  `flat`, that requires no tag, two tags or a tag that is not allowed, whose range falls, whose figure is not
+  above 0 and at most 100, or that names an action; and an enchantment that states the stat on more than one
+  row. `validate_enchantment_effects` runs it. A condition or a scale on the stat is refused by the two checks
+  that already refuse those on a stat not on their lists.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment,
+  `Positive_Your_burn_effects_have_a_20_40_chance_to_explo`: Stat `dot_explodes_at_expiry_chance`, Value Kind
+  `flat`, Value Low 20, Value High 40, Required Tags `Keyword.DoT.Burn`. Every other cell is empty: no Condition,
+  no Scale, no Action, no Action Event, no Ailment, no Trigger Cooldown. The Required Tag is how the row names
+  the ailment.
+- **WHY A STAT AND NOT A RIDER ON THE AILMENT OR A NEW ACTION. A judgement of the writing session.** A stat row
+  under a required tag is the shape "Burn effects you apply deal 30%-60% increased damage per second" already
+  has, and the game already asks a stat with an ailment's tag where a damage over time effect is applied
+  (`dot_application_refreshes_others`). It needed one name on one list and no new reader of the worn rows. The
+  first option not taken: an eleventh rider on an ailment, `ailment_explodes_when_it_ends`, with the Ailment cell
+  naming Burn. It needs a new value of `ECataclysmAilmentRider`, a new action name in the engine and in the
+  generator, and a merged Python test that pins the number of rider actions at 10 moved to 11; and every rider is
+  copied onto the carrier when the ailment is applied, where nothing would read this one. The second option not
+  taken: a new action on a new event raised when an ailment ends, which needs the event, its name in the
+  generator, and a reader in the row loop.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the name, at its end. The generator reads that list,
+  so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of
+  `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site of
+  `StatForSkill`, in `CataclysmSkillEffects.cpp`, with its reason, as its last entry. `CALL_SITES` is left at 65;
+  the comment above it gains a dated sentence.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat, so no shipped row is refused.
+- No merged test's assertion is changed.
+
+### Tests
+
+Nine new Unreal tests in the new file `CataclysmBurnExplodesTests.cpp`, in the group `Cataclysm.BurnExplodes.`,
+beside `Cataclysm.RemainingDamage.` and on the rig of its test of a death: a real player character on a player state and real creatures
+of the monsters' team. The Burn is laid by `ApplyDamageOverTime`, ten a tick for four seconds with none of the
+applier's stats applied, so its whole is 40 and its explosion a blow of 80. The wearer's stat line is written by
+hand: one flat line requiring `Keyword.DoT.Burn`. The clock is moved by `CataclysmTestWorld::RunClock`, which
+fires the engine's own period and duration timers; nothing waits on a tick and nothing calls the explosion. What
+a blow of the explosion's size takes from a creature is measured first, on a creature 40 m from everything, and
+what a tick takes is read off the carrier's own first ticks; every expected figure is a difference from one of
+those. The wearer stands 20 m from every creature, and each scene checks that it is alive at its end.
+
+- `ABurnThatRunsOutExplodesForTwiceItsStatedWholeAtARollUnderItsChanceAndNotAtARollEqualToIt`: the arithmetic of
+  `WholeStatedDamageOverTime` at four ticks, at five (an interval of 0.75), at eight, and nought for a duration
+  shorter than an interval, for no interval and for no figure; the multiple is 2 and the reach is the overkill
+  explosion's. With no row the carrier's last second takes one tick, no explosion is announced and the Burn has
+  ended (the control). With a chance of 30 and the roll pinned at 29.9 the last second takes one tick and what a
+  blow of 80 takes, one explosion is announced and the Burn has ended. At a roll of exactly 30 it takes one tick
+  and no explosion is announced. With a chance of 100 and the roll pinned at 100 it explodes.
+- `TheExplosionStrikesTheCarrierAndEveryEnemyWithinFiveMetresOfItAndNobodyBeyond`: with no row the carrier's last
+  second takes one tick, the two creatures 3 m from it lose nothing and no explosion is announced (the control).
+  With the row the carrier's last second takes one tick and what a blow of 80 takes; each of the two creatures
+  3 m from the carrier, 17 m and 23 m from the wearer, takes what a blow of 80 takes; the creature 8 m from the
+  carrier and the creature 40 m away take nothing; three blows are announced as the explosion, each
+  credited to the wearer, each area damage, none a critical strike and none a tick.
+- `TheExplosionComesAfterTheBurnsLastTick`: every blow announced on the carrier is written down in order. With
+  no row: four ticks and nothing else (the control). With the row: the same four ticks and then the explosion.
+- `ABurnEndedByACleanseAReplacementTheBurstThatEndsItOrItsCarriersDeathDoesNotExplode`: with a chance of 100 in
+  every scene. Left to run out, nothing has exploded a second and a half in, and then the Burn explodes on the
+  carrier and the bystander, which takes what a blow of 80 takes (the control). A cleanse: no explosion as it
+  ends the Burn, none after, and the bystander loses nothing. A stronger Burn laid over it: no explosion as it
+  replaces the first; the new one explodes once at its own end, and the bystander takes what a blow of 160
+  takes and no 80 before it. The burst that ends the Burn: none then, none after, the bystander loses nothing.
+  A blow that kills the carrier: none then, none when the Burn would have run out, the bystander loses nothing.
+  A carrier made with three and a half ticks' worth of health: the Burn's own last tick kills it, no explosion
+  is announced and the bystander loses nothing.
+- `TheExplosionLaysNoBurnRaisesNoneOfTheThreeOnHitEventsAndAKillByItIsTheAppliers`: the wearer holds four
+  hand-made rows, each a stack granted on one event, and every blow it strikes is given a critical strike chance
+  of 100 with the critical strike roll pinned to nought after the world is made. A blow the wearer struck raises
+  `hit_dealt`, `first_hit_dealt` and `critical_strike` once each and no `kill` (the control). The Burn's ticks
+  and its explosion, which strikes three creatures, raise none of the three again. The explosion kills the
+  creature that held 1 health; its death names the wearer as the killer; the wearer's `kill` row acted once.
+  Neither the carrier nor the creature struck and left alive burns afterwards. The wearer's real blow on that
+  creature then raises all three: the explosion was not recorded as a first blow.
+- `AnEnemyImmuneToTheApplierTakesNothingFromTheExplosion`: without the immunity row the carrier is not immune,
+  its last second takes one tick and what a blow of 80 takes, the bystander takes what a blow of 80 takes, the
+  carrier has the wearer's first hit on record and the bystander has none (the control, and the last of them is
+  the reading that the explosion is not recorded as a first hit). With the immunity row at 2 seconds the carrier
+  is immune before the Burn ends; its last second takes nothing, neither the tick nor the explosion; the
+  bystander, never struck by the wearer, takes what a blow of 80 takes and has no first hit on record.
+- `TheRowIsTheAppliersAndIsReadWhenTheBurnEnds`: the count is of blows announced as the explosion. Held
+  throughout: two, and the bystander loses health (the control). Never held: none, and the bystander loses
+  nothing. Put on two seconds after the Burn was laid: two, for what the control's bystander lost. Taken off
+  two seconds in: none. The wearer killed two seconds in: none. A Poison of the same figures under the row that
+  requires the Burn's tag: none. A Burn the wearer has on itself, with a creature 3 m from it: none; for that
+  scene only the announcements are counted.
+- `AMinionsBurnIsTheMinionsAndExplodesOnlyForASummonerHoldingConduit`: a Burn laid in a minion's name, the
+  summoner holding a chance of 100. Without Conduit nothing explodes (the control). With Conduit two blows are
+  announced as the explosion and each is credited to the summoner. Only announcements are counted.
+- `ABurnRefreshedTwiceExplodesOnceAtItsMovedEndAndNotAtItsFirst`, added on 2026-10-13 at the coordinating
+  session's request, with a chance of 100. A Burn never refreshed has exploded by four and a half seconds, on the
+  carrier and the bystander; it has ended; nothing more explodes after; its bystander takes what a blow of 80
+  takes (the control). A Burn applied again at the same strength a second and a half in and three seconds in:
+  past its first end, at four and a half seconds, nothing has exploded and it still burns; past the end its
+  first refresh gave it, at six seconds, the same; at seven and a half seconds it has ended, two blows are
+  announced as the explosion, and its bystander has taken what one blow of 80 takes. Every assertion is expected
+  to pass on the code as first written: the test records that a refresh adds no second listener, and no proof is
+  proposed for it.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeDotExplodesAtExpiryChance`. A Burn of one a tick for four seconds, run to its end on a bare fighter, takes
+four from a plain applier (the control) and eight more from an applier holding the stat at 100.
+
+Python, `TestABurnThatEndsByTimeMayExplode` in `tools/tests/test_generate_datatables.py`, 11 tests on a made-up
+sheet holding the real sentence with the tags its real row carries: the proposed row is carried through under the
+real enchantment's name and is not refused by any check; its range is the one the sentence states; the name is
+a stat with no attribute, and a made-up name is not; the generator's name is the one `CataclysmSkillEffects.cpp`
+holds and its one allowed tag is the tag `BurnTag` asks for; each wrong shape is refused once and by its own
+sentence (a kind that is not flat, no tag, another ailment's tag, the parent tag, two tags, a figure of nought,
+below nought or above 100, a range that falls, an action), and a top of 100 and a single figure are accepted; a
+row with no tag is told it would reach every ailment; a second row on the stat is refused once for the
+enchantment; a condition or a scale is refused by the two checks that hold those; a passive node's row and a row
+on another stat are left alone; the sheet's validation runs the check; and a misspelt name is refused.
+
+**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; a Burn laid by
+a real skill, by `ApplyBurn` or by a blow; the applier's three damage over time stats in the whole; an interval
+that does not divide the duration, on a real effect; a Burn refreshed by a WEAKER application, or by the row that refreshes the applier's other
+effects; a copy a
+spread made; a damage type on the explosion, since a player's Burn has none; that the explosion cannot be
+retaliated against and does not leech; that the applier itself takes nothing from it, which is not read
+because the test does not say what a creature does to the wearer while the clock runs; that it is a combat event, which the Burn's own ticks already are for
+the same wearer; the applier's penetration; a row hung on a burning enemy at the moment of the explosion; a
+chain of explosions; a body that outlives its Burn, since a creature with no art is destroyed on the next tick;
+an applier that was destroyed rather than killed; a Burn of an enemy's on a player; two characters' Burns on
+one enemy; a client that is not the server; anything in a dungeon level.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted exactly once in its file by a script of the writing session, and each new text
+nought times; the brackets of each old and new text balance. Each is a break in one `.cpp` file that does not
+stop that file compiling alone: each removes a term of a condition or puts `false &&` before one. The prefix of
+all three is `Cataclysm.BurnExplodes.`, with its trailing dot, which is 9 tests. The failed assertions are
+counted by reading the tests and were not measured. The Python suite must not run while one is run.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| B-I, only an end by time explodes | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `if (Removal.bPrematureRemoval \|\| !Removal.ActiveEffect \|\| !Removal.OwningASC)` | `if (!Removal.ActiveEffect \|\| !Removal.OwningASC)` | `ABurnEndedByACleanseAReplacementTheBurstThatEndsItOrItsCarriersDeathDoesNotExplode` | None |
+| B-II, a dead carrier explodes nothing | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `if (!IsValid(Carrier) \|\| UCataclysmSkillEffects::IsDead(Carrier) \|\| !Ended.Spec.Def)` | `if (!IsValid(Carrier) \|\| !Ended.Spec.Def)` | `ABurnEndedByACleanseAReplacementTheBurstThatEndsItOrItsCarriersDeathDoesNotExplode` | None |
+| B-III, the explosion raises no on-hit event | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `if (Notice.bExplosionAtAnAilmentsEnd)` | `if (false && Notice.bExplosionAtAnAilmentsEnd)` | `TheExplosionLaysNoBurnRaisesNoneOfTheThreeOnHitEventsAndAKillByItIsTheAppliers` | None |
+
+The script's print, for each: old text counted 1 time, new text counted 0 times; brackets open and close, old
+then new: B-I (1, 1) and (1, 1); B-II (3, 3) and (2, 2); B-III (1, 1) and (1, 1).
+
+Failed assertions in each test, by reading:
+
+- **B-I, 9 in 1 test.** A cleanse, a replacement and the burst each remove the Burn with a notice the break no
+  longer refuses, so each explodes at once on the carrier and the bystander. For the cleanse 3: "a cleanse
+  explodes nothing as it ends the Burn", which would read 2; "and nothing after it"; and "and the bystander of a
+  cleansed Burn loses nothing". For the replacement 3: "a stronger Burn laid over it explodes nothing as it
+  replaces the first"; "the new Burn explodes once at its own end, on the carrier and on the bystander", which
+  would read 4; and "and for its own whole: the bystander takes what a blow of 160 takes, and no 80 before it".
+  For the burst 3: "the burst that ends the Burn explodes nothing as it ends it"; "and nothing after it"; and
+  "and the bystander of a Burn burst and ended loses nothing". The control passes. The carrier killed by a blow
+  passes: a death removes no effect and the body's destruction sends no notice. The carrier killed by its last
+  tick passes: the second term refuses it.
+- **B-II, 2 in 1 test.** The Burn's last tick kills the carrier, the engine reports an end by time, and with the
+  break the explosion is made: the dead carrier is not struck and the bystander is. "and a Burn whose last tick
+  kills its carrier explodes nothing", which would read 1; and "and the bystander of that carrier loses
+  nothing". Every other scene of the test passes.
+- **B-III, 2 in 1 test.** The explosion strikes three creatures and each blow raises `hit_dealt`. "the Burn's
+  ticks and its explosion raise no hit_dealt: still one", which would read 4; and "the wearer's real blow on
+  the creature the explosion struck raises hit_dealt: two now", which would read 5. The two assertions on
+  `first_hit_dealt` pass, because the attribute set still does not record the blow as a first hit, and the two
+  on `critical_strike` pass, because the blow cannot be one.
+
+The message "and nothing after it" is used for two assertions and is counted twice under B-I. No other message
+counted is used twice.
+
+**Tests and no proof:** the roll and a roll equal to the chance; the amount; who is struck and the five metres;
+the order after the last tick; the immune enemy; whose row is read and when; the minion and Conduit; that the
+blow is not recorded as a first hit; the kill credit; the generator's refusals.
+
+No test outside the prefix is expected to fail under any of the three. The probe of the stat ends its Burn by
+time on a living fighter and reads no on-hit event.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A row can make its wearer immune to debuffs and unable to lay any: one flag asked in the four functions that put a debuff on a character, and a step that removes what the wearer already carries, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (the flag's name, three

@@ -48,6 +48,8 @@
 #include "TimerManager.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "GameplayTagsManager.h"
+// For the console variable that pins the roll of an ailment exploding at its end. Ruled 2026-10-13.
+#include "HAL/IConsoleManager.h"
 
 namespace
 {
@@ -1206,6 +1208,198 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 	return Struck;
 }
 
+const TCHAR* UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat = TEXT("dot_explodes_at_expiry_chance");
+const TCHAR* UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName = TEXT("Cataclysm.ExplosionAtAnAilmentsEnd");
+
+/**
+ * Pins the roll made against the chance that a damage over time ailment explodes when it ends by time, 0 to 100,
+ * for tests. Negative, the default, rolls for real. Ruled 2026-10-13; the same shape as `Cataclysm.ExecuteRoll`. A
+ * chance of 100 or more is not compared with the roll at all.
+ */
+static TAutoConsoleVariable<float> CVarDotExplodesAtExpiryRoll(
+	TEXT("Cataclysm.DotExplodesAtExpiryRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll made against the chance that a damage over time ailment explodes when it ends by "
+		 "time. Negative rolls for real."),
+	ECVF_Default);
+
+float UCataclysmSkillEffects::WholeStatedDamageOverTime(float DamagePerTick, float SecondsPerTick,
+														 float DurationSeconds)
+{
+	if (DamagePerTick <= 0.0f || SecondsPerTick <= 0.0f || DurationSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// THE FIRST TICK IS A WHOLE INTERVAL IN, because no damage over time effect here ticks as it is applied, and
+	// the last is the one due as the duration ends. `DamageOverTimeTicksLeft` holds that rule and its tolerance.
+	return DamagePerTick
+		* static_cast<float>(DamageOverTimeTicksLeft(SecondsPerTick, SecondsPerTick, DurationSeconds));
+}
+
+int32 UCataclysmSkillEffects::ExplodeAtAnAilmentsEnd(AActor* Applier, AActor* Carrier, const FVector& At,
+													 float Damage, FName DamageType)
+{
+	if (!IsValid(Applier) || Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE CARRIER FIRST AND BY NAME, THEN WHOEVER ELSE THE SEARCH FINDS. Ruled 2026-10-13: "every enemy of the
+	// applier within 5 metres of the carrier, the carrier included". `IsHostileTo` refuses a carrier that is dead
+	// or on the applier's side.
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Applier->GetWorld(), Applier, At, ExplosionAtAnAilmentsEndRadiusCm);
+	Caught.Remove(Carrier);
+	if (IsValid(Carrier) && UCataclysmTargeting::IsHostileTo(Carrier, Applier))
+	{
+		Caught.Insert(Carrier, 0);
+	}
+
+	// THE OVERKILL EXPLOSION'S DELIVERY, flag for flag, with three differences. It is marked as what it is and not
+	// as the consequence of a death, it says outright that it carries no chance to apply an ailment, and it
+	// carries a damage type, below. See `ExplodeForOverkill` for each of the others.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	Delivery.bCarriesNoAilmentChance = true;
+	Delivery.bIsAnExplosionAtAnAilmentsEnd = true;
+	// THE AILMENT'S OWN TYPE, which the caller read off the effect that ended. `NAME_None` asks the applier, as
+	// the ailment's own ticks did when it was laid with none.
+	Delivery.DamageType = DamageType;
+
+	int32 Struck = 0;
+	for (AActor* Target : Caught)
+	{
+		// ASKED AGAIN, because a blow earlier in this loop may have killed it through a chain.
+		if (!IsValid(Target) || IsDead(Target))
+		{
+			continue;
+		}
+		if (ApplyDirectDamage(Applier, Target, Damage, Delivery))
+		{
+			++Struck;
+		}
+	}
+	return Struck;
+}
+
+namespace
+{
+	/**
+	 * What a damage over time effect applied by `ApplyDamageOverTime` is told when it is removed. Ruled 2026-10-13
+	 * under the owner's delegation: when it ended BY TIME, it has its applier's chance to explode for double what
+	 * it was laid to deal over its whole duration.
+	 *
+	 * WHAT THE ENGINE SAYS, read in UE 5.8's GameplayEffect.cpp. Every active effect carries
+	 * `FActiveGameplayEffectEvents::OnEffectRemoved`, broadcast from `InternalOnActiveGameplayEffectRemoved` with
+	 * an `FGameplayEffectRemovalInfo`. Its `bPrematureRemoval` is false from exactly one place,
+	 * `FActiveGameplayEffectsContainer::CheckDuration`, which is the duration running out, and true from
+	 * `RemoveActiveGameplayEffect` and `RemoveActiveEffects`, which are every other removal this project makes: a
+	 * cleanse, the burst that ends an effect, a replacement by a stronger application and a removal by the tag
+	 * granted. So the engine tells an end by time and no clock is compared here.
+	 *
+	 * THE LAST TICK HAS BEEN DEALT WHEN THIS IS CALLED. `CheckDuration` runs the tick that is due as the duration
+	 * ends before it removes the effect, and stops without removing it if that tick caused the effect's removal.
+	 * So the explosion below comes after the last tick, in the same call.
+	 *
+	 * A CARRIER THAT IS DEAD DOES NOT EXPLODE, AND THAT IS ASKED HERE BECAUSE THE ENGINE DOES NOT SAY IT. A death
+	 * removes none of the dead character's effects: `MarkDead` leaves them in place, and an enemy's body is kept
+	 * for the length of its death clip. A Burn can run out on a body, and a Burn's last tick can be what kills,
+	 * and the engine reports each as an end by time.
+	 *
+	 * THE APPLIER IS WHOEVER THE EFFECT'S BLOWS ARE CREDITED TO, by `UCataclysmCombatEvents::AttackerOf`: a
+	 * minion's ailment is the minion's, and its summoner's only while the summoner holds Conduit. An applier that
+	 * is gone or dead explodes nothing. THE CHANCE IS ASKED OF IT NOW, so a row put on after the ailment was laid
+	 * counts and one taken off does not.
+	 *
+	 * EVERYTHING IS READ OFF THE ENDED EFFECT BEFORE ANY BLOW IS DEALT. The first blow lands on the carrier,
+	 * inside the engine's own removal of this effect, and may kill it.
+	 */
+	void ExplodeWhenADamageOverTimeEndsByTime(const FGameplayEffectRemovalInfo& Removal)
+	{
+		if (Removal.bPrematureRemoval || !Removal.ActiveEffect || !Removal.OwningASC)
+		{
+			return;
+		}
+		const FActiveGameplayEffect& Ended = *Removal.ActiveEffect;
+		AActor* Carrier = Removal.OwningASC->GetAvatarActor();
+		if (!IsValid(Carrier) || UCataclysmSkillEffects::IsDead(Carrier) || !Ended.Spec.Def)
+		{
+			return;
+		}
+
+		// NOT AN AILMENT A CHARACTER HAS ON ITSELF. "Your burn effects" are the ones laid on somebody else, as the
+		// riders of an ailment and `dot_applied` read it. `ApplyDamageOverTime` does not listen for one, and this
+		// asks again because Conduit can make a minion's ailment on its own summoner the summoner's.
+		AActor* Applier = UCataclysmCombatEvents::AttackerOf(Removal.EffectContext);
+		if (!IsValid(Applier) || Applier == Carrier || UCataclysmSkillEffects::IsDead(Applier))
+		{
+			return;
+		}
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
+		if (!Its)
+		{
+			return;
+		}
+
+		// ASKED WITH WHAT THE ENDED EFFECT GRANTED, which is its ailment's tag, so a row requiring
+		// `Keyword.DoT.Burn` reaches a Burn alone. A fallback of nought: a character with no row has no chance.
+		FGameplayTagContainer Granted;
+		Ended.Spec.GetAllGrantedTags(Granted);
+		const float Chance = Its->StatForSkill(
+			FName(UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat), Granted, 0.0f);
+		if (Chance <= 0.0f)
+		{
+			return;
+		}
+
+		// WHAT IT WAS LAID TO DEAL: its figure a tick, as `RemainingDamageOverTime` reads one, over the ticks of
+		// its own full duration. The duration is the one the effect was applied with, which a refresh does not
+		// change: a refresh moves the effect's start.
+		float PerTick = 0.0f;
+		const TArray<FGameplayModifierInfo>& Modifiers = Ended.Spec.Def->Modifiers;
+		for (int32 Index = 0; Index < Modifiers.Num(); ++Index)
+		{
+			if (Modifiers[Index].Attribute == UCataclysmVitalAttributeSet::GetDamageAttribute())
+			{
+				PerTick += Ended.Spec.GetModifierMagnitude(Index);
+			}
+		}
+		const float Whole = UCataclysmSkillEffects::WholeStatedDamageOverTime(
+			PerTick, Ended.GetPeriod(), Ended.GetDuration());
+		if (Whole <= 0.0f)
+		{
+			return;
+		}
+
+		// ONE ROLL FOR ONE AILMENT THAT ENDED BY TIME, and no trigger cooldown. A CHANCE OF 100 IS ALWAYS, compared
+		// rather than rolled, because `FRandRange` can return 100 itself; as an execute's is. A chance below 100
+		// fails on a roll equal to it.
+		const float Pinned = CVarDotExplodesAtExpiryRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (Chance < 100.0f && Roll >= Chance)
+		{
+			return;
+		}
+
+		// THE AILMENT'S OWN DAMAGE TYPE, off the tags its ticks carried. An element carried for colour only is not
+		// a type, as the attribute set reads it.
+		FGameplayTagContainer AssetTags;
+		Ended.Spec.GetAllAssetTags(AssetTags);
+		const FName DamageType =
+			AssetTags.HasTag(UCataclysmDamageCalculation::ElementIsForColourOnlyTag())
+				? FName(NAME_None)
+				: UCataclysmDamageCalculation::DamageTypeFromTags(AssetTags);
+
+		UCataclysmSkillEffects::ExplodeAtAnAilmentsEnd(
+			Applier, Carrier, Carrier->GetActorLocation(),
+			Whole * UCataclysmSkillEffects::ExplosionAtAnAilmentsEndMultiple, DamageType);
+	}
+}
+
 const TCHAR* UCataclysmSkillEffects::PointBlankAreaTagName =
 	TEXT("Type.AOE.PointBlank");
 const TCHAR* UCataclysmSkillEffects::SpellTagName = TEXT("Type.Spell");
@@ -1471,6 +1665,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsARowsAnswerToAnEvent)
 	{
 		Spec.SetSetByCallerMagnitude(FName(RowsAnswerToAnEventDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS THE EXPLOSION AT AN AILMENT'S END, which fires none of its applier's on-hit rows and is not
+	// recorded as a first blow. Ruled 2026-10-13.
+	if (Delivery.bIsAnExplosionAtAnAilmentsEnd)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void
@@ -2116,6 +2317,27 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	Delivery.DamageType = DamageType;
 	Delivery.bIsConvertedDamage = bIsConvertedDamage;
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
+
+	// AND ITS END IS LISTENED FOR, because one that ends by time may explode. Ruled 2026-10-13. See
+	// `ExplodeWhenADamageOverTimeEndsByTime`, which asks the applier's row when the effect ends and does nothing
+	// for an applier with none.
+	//
+	// THE EFFECT JUST APPLIED IS THE ONE RUNNING UNDER THIS TAG: `TagAndReplaceAnyExisting` took every other one
+	// off. None is found when the target refused the application, and then nothing is listened for.
+	//
+	// NOT AN AILMENT A CHARACTER LAYS ON ITSELF, and not converted damage, which nobody applied.
+	//
+	// AN APPLICATION THAT ONLY REFRESHED A RUNNING EFFECT RETURNED ABOVE, so a running effect is listened to once.
+	if (EffectTag.IsValid() && Instigator != Target && !bIsConvertedDamage)
+	{
+		const FRunningApplication Laid = RunningApplicationOf(Defender, EffectTag);
+		FOnActiveGameplayEffectRemoved_Info* WhenRemoved =
+			Laid.bFound ? Defender->OnGameplayEffectRemoved_InfoDelegate(Laid.Handle) : nullptr;
+		if (WhenRemoved)
+		{
+			WhenRemoved->AddStatic(&ExplodeWhenADamageOverTimeEndsByTime);
+		}
+	}
 
 	return true;
 }

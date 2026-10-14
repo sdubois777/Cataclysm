@@ -9473,6 +9473,125 @@ def refuse_a_debuff_immunity_flag_row_the_game_cannot_read(
     return problems
 
 
+#: The chance, in percent, that a damage over time ailment its wearer applied
+#: explodes when it ends by time. Ruled 2026-10-13 under the owner's
+#: delegation, for "Your burn effects have a 20%-40% chance to explode for
+#: double their remaining damage when they expire".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 20 to 40, Required Tags
+#: `Keyword.DoT.Burn`, with no Condition, no Scale and no Action.
+#: `UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat` holds the same
+#: name, and `TestABurnThatEndsByTimeMayExplode` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE REQUIRED TAG IS HOW THE ROW NAMES ITS AILMENT. The game asks the
+#: applier for this stat in one place, in `CataclysmSkillEffects.cpp`, when a
+#: damage over time effect ends by time, with the tags that effect granted:
+#: its ailment's tag and nothing else. So a row requiring `Keyword.DoT.Burn`
+#: reaches a Burn alone. A row requiring no tag would reach EVERY ailment
+#: laid as a fixed amount a tick, and a row requiring any other tag would
+#: reach another ailment or none: only Burn is ruled, and
+#: `EXPLODING_AILMENT_TAGS` holds what is.
+#:
+#: THE BOUNDS. Above nought and at most 100: the game compares a chance of
+#: 100 or more and does not roll it. The range rises, because the higher
+#: roll of an item is the better one and a higher chance is better for the
+#: wearer.
+DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT = "dot_explodes_at_expiry_chance"
+EXPLODING_AILMENT_TAGS = ("Keyword.DoT.Burn",)
+MAX_DOT_EXPLODES_AT_EXPIRY_CHANCE = 100.0
+
+
+def refuse_an_exploding_ailment_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT` is a chance its one
+    reader takes as it stands, for the one ailment its required tag names.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants
+    above give. Each refusal names what the reader would do with the row.
+
+    EXACTLY ONE REQUIRED TAG, AND IT IS ONE OF `EXPLODING_AILMENT_TAGS`. No
+    tag is refused because the row would then make every ailment explode,
+    and two tags because the ended effect grants one ailment's tag and the
+    row would match nothing.
+
+    A RANGE IS ALLOWED AND MUST RISE. An enchantment states the stat on ONE
+    row: two flat rows are added together by the stat pipeline, so a second
+    row of 20 to 40 would make the chance 40 to 80 and say nothing.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as
+    `refuse_an_enemies_immune_row_the_game_cannot_read` leaves one.
+    """
+    problems = []
+    stat = DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT
+    allowed = ", ".join(EXPLODING_AILMENT_TAGS)
+    rows_of: dict[str, int] = {}
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        owner = str(row.get("Enchantment") or row["Name"])
+        rows_of[owner] = rows_of.get(owner, 0) + 1
+        if rows_of[owner] == 2:
+            problems.append(
+                f"{sheet}/{owner}: states {stat!r} on more than one row. Flat "
+                f"rows on one stat are added together, so the ailment would "
+                f"explode at the SUM of their chances: state it once.")
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself as the chance, so the row "
+                f"must be 'flat'; any other kind works on a base of nought "
+                f"and explodes NOTHING.")
+        tags = [tag.strip()
+                for tag in str(row.get("RequiredTags") or "").split(",")
+                if tag.strip()]
+        if not tags:
+            problems.append(
+                f"{who}: states {stat!r} under no required tag. The game "
+                f"asks for this stat with the tag of the ailment that ended, "
+                f"so a row requiring none would make EVERY damage over time "
+                f"ailment explode. Only these are ruled: {allowed}.")
+        elif len(tags) > 1:
+            problems.append(
+                f"{who}: states {stat!r} under {len(tags)} required tags, "
+                f"{', '.join(tags)!r}. The game asks with the one tag the "
+                f"ended ailment granted, so a row requiring two matches "
+                f"nowhere: this one would explode NOTHING and say nothing.")
+        elif tags[0] not in EXPLODING_AILMENT_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tag "
+                f"{tags[0]!r}. The row names its ailment by that tag, and "
+                f"only these are ruled to explode: {allowed}.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise. The game rolls from the first column to "
+                f"the second and the higher roll is the better one, so the "
+                f"lowest chance is the first column.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= MAX_DOT_EXPLODES_AT_EXPIRY_CHANCE:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the chance "
+                    f"must be above 0 and at most "
+                    f"{MAX_DOT_EXPLODES_AT_EXPIRY_CHANCE:g}. Nought or less "
+                    f"is no chance.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The stat is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"explode NOTHING.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -9831,6 +9950,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE FLAG THAT MAKES A WEARER IMMUNE TO DEBUFFS AND UNABLE TO LAY ANY
     # IS FLAT, 1 TO 1, WITH NO TAGS. Ruled 2026-10-13.
     problems.extend(refuse_a_debuff_immunity_flag_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE CHANCE THAT AN AILMENT EXPLODES WHEN IT ENDS BY TIME IS ONE FLAT
+    # ROW THAT NAMES ITS AILMENT BY ITS ONE REQUIRED TAG. Ruled 2026-10-13.
+    problems.extend(refuse_an_exploding_ailment_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

@@ -222,6 +222,9 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	// have disagreed about one strike. Issue #1581 was that fault one layer up.
 	// AND WHETHER THE TARGET REFUSED IT AS IMMUNE TO THIS ATTACKER. Ruled 2026-10-12.
 	Notice.bRefusedByImmunityToAttacker = Outcome.bRefusedByImmunityToAttacker;
+	// AND WHETHER IT IS THE EXPLOSION AT AN AILMENT'S END, by the stamp its delivery left. Ruled 2026-10-13.
+	Notice.bExplosionAtAnAilmentsEnd = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 	Notice.DistanceMetres = UCataclysmTargeting::MetresBetween(DealtBy, Target);
 	Notice.Location = Target->GetActorLocation();
 	Notice.EffectTags = &EffectTags;
