@@ -204,7 +204,8 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * off the map with `Map->Find(CityId)->Tier` instead.
 	 *
 	 * WHY IT MUST NOT MOVE. `BiteScale` is the only thing that reads it, and it
-	 * divides `Floors` by the midpoint of `SpecFor(Type, CityTier)`. Both halves
+	 * divides the floors the dungeon was rolled with (`Floors` less
+	 * `UpgradeFloors`) by the midpoint of `SpecFor(Type, CityTier)`. Both halves
 	 * of that division have to name the same specification row, and `Floors`
 	 * does not move. `RelocateQuestDungeon` used to assign the new host's tier
 	 * here, which made a relocated dungeon read as shallower or deeper than it
@@ -226,6 +227,30 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Floors = 1;
+
+	/**
+	 * How many of those floors the host city's two floor upgrades added, or
+	 * removed when it is negative.
+	 *
+	 * WHAT IT IS FOR. `BiteScale` sizes a dungeon's hit by `Floors` less this,
+	 * which is the depth the dungeon was rolled with. So `DungeonFloorsMore`
+	 * and `DungeonFloorsFewer` move the depth, the walk and the resolve timer,
+	 * and neither changes what the dungeon takes from its city. The model's
+	 * field is `Dungeon.tree_floors` in `sim/cataclysm_sim/engine.py`.
+	 *
+	 * WHAT THE UPGRADES MOVED AND NOT A SECOND DEPTH, so that nought is right
+	 * for every dungeon nobody set it on: one built by hand in a test, a Fallen
+	 * City, and one read from a save written before this field existed. Each
+	 * of those is sized by all of its floors, as it was before.
+	 *
+	 * TAKEN AFTER THE CLAMP AT ONE FLOOR. `MakeDungeon` stores the floors it
+	 * ended with less the floors it rolled, and not "more less fewer": an
+	 * upgrade that would take 500 floors off a 12 floor dungeon moved 11.
+	 *
+	 * Rulings of 2026-10-13, `docs/DECISIONS.md`.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 UpgradeFloors = 0;
 
 	/** Days from spawning until it resolves undefeated, jitter included. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -340,10 +365,17 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	/**
 	 * How much of its type's damage this particular dungeon actually deals.
 	 *
-	 * A DEEPER DUNGEON HITS HARDER, in proportion to how deep it is against a
-	 * typical one of its kind on that tier of city. `Simulation._resolve`
-	 * computes it as `floors / ((least + most) / 2)`, so a dungeon of exactly
+	 * A DUNGEON ROLLED DEEPER HITS HARDER, in proportion to how deep it was
+	 * rolled against a typical one of its kind on that tier of city.
+	 * `Simulation._resolve` computes it as
+	 * `natural_floors / ((least + most) / 2)`, so a dungeon rolled at exactly
 	 * typical depth scales by one.
+	 *
+	 * THE FLOORS A CITY UPGRADE ADDED OR REMOVED ARE NOT COUNTED. It reads
+	 * `Floors` less `UpgradeFloors`. A dungeon made deeper by
+	 * `DungeonFloorsMore` hits as hard as it would have without the upgrade,
+	 * and one made shallower by `DungeonFloorsFewer` hits no less. Rulings of
+	 * 2026-10-13, `docs/DECISIONS.md`.
 	 *
 	 * IT SCALES POINTS AND NOT A SHARE, since issue #1331. The name is the
 	 * event -- a dungeon biting a city -- rather than the old fraction.
