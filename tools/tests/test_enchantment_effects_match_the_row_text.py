@@ -883,8 +883,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 606 over 512: one row on one enchantment.
 #: AND 608 OVER 514 SINCE THE ROW THAT MAKES GADGETS CHOOSE THE MOST HEALTH,
 #: issue #1833, 2026-10-13, from 607 over 513: one row on one enchantment.
-AUTHORED_ROWS = 608
-AUTHORED_ENCHANTMENTS = 514
+#: AND 609 OVER 515 SINCE THE ROW THAT MAKES GADGETS FIRE A VOLLEY,
+#: issue #1833, 2026-10-13, from 608 over 514: one row on one enchantment.
+AUTHORED_ROWS = 609
+AUTHORED_ENCHANTMENTS = 515
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1199,8 +1201,12 @@ def test_a_range_is_one_the_words_state(effects, enchantments):
 #: maximum health cap, the critical chance cap, the floor-start health, the
 #: lifetime kill step); the weapon kill sentence has two rows. WITHOUT THESE
 #: THE TEST BELOW PASSES ON TABLES THAT MARK NOTHING.
-SENTENCES_MARKING_A_RANGE = 7
-PAIRS_WRITTEN_BACKWARDS = 8
+#: 8 AND 9 SINCE 2026-10-13, from 7 and 8: a fourth benefit, "Gadgets fire at all
+#: enemies within range simultaneously once every 5-8 seconds", whose one range
+#: rolls down because 5 seconds is the better figure. Ruled that day under the
+#: owner's rule of 2026-10-05; its row is written 8 to 5. Issue #1833.
+SENTENCES_MARKING_A_RANGE = 8
+PAIRS_WRITTEN_BACKWARDS = 9
 
 #: Each ranged pair a row can carry, as (first column, second column). The
 #: value pair is compared as the sentence shows it, which the test below works

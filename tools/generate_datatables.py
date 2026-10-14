@@ -9620,9 +9620,36 @@ GADGET_FLAG_STATS = (
     GADGETS_TARGET_MOST_HEALTH_STAT,
 )
 
-#: Every stat `ACataclysmMinion::SummonersGadgetStat` is asked for. Each is
-#: read off the summoner with the gadget's own type tags and no base.
-GADGET_STATS = GADGET_FLAG_STATS
+#: How many seconds apart a summoner's gadgets fire at every enemy within
+#: their reach. Ruled 2026-10-13 by the coordinating session under the
+#: owner's delegation, for "Gadgets fire at all enemies within range
+#: simultaneously once every 5-8 seconds".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, Required Tags `Type.Deployable`, with no
+#: Condition, no Scale and no Action. THE SHEET STATES IT AS THE SENTENCE DOES,
+#: Value Low 5 and Value High 8, AND THE SENTENCE IS MARKED `1` IN ITS
+#: `Rolls Down` CELL, so the pair leaves `enchantment_effects` as 8 to 5 and a
+#: roll of 1 is the shorter wait: a better roll gives the better outcome, the
+#: owner's rule of 2026-10-05. `ACataclysmMinion::GadgetVolleyEverySecondsStat`
+#: holds the same name, and `TestGadgetsFireAVolley` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME READS THE ROWS THEMSELVES AND TAKES THE SHORTEST,
+#: `ACataclysmMinion::VolleyEverySeconds`, and not the sum the stat pipeline
+#: would make of them. So a second row on one enchantment would do nothing.
+#:
+#: THE BOUND. Above nought and up to 60 seconds, the bound of the seconds
+#: conditions: a labelled judgement of the writing session.
+GADGET_VOLLEY_EVERY_SECONDS_STAT = "gadget_volley_every_seconds"
+MAX_GADGET_VOLLEY_EVERY_SECONDS = 60.0
+
+#: Every stat a summoner's row gives its gadgets. Each is read off the
+#: summoner with the gadget's own type tags and no base, by
+#: `ACataclysmMinion::SummonersGadgetStat` or, for the volley's seconds, by
+#: `ACataclysmMinion::VolleyEverySeconds`.
+GADGET_STATS = GADGET_FLAG_STATS + (
+    GADGET_VOLLEY_EVERY_SECONDS_STAT,
+)
 
 
 def refuse_a_gadget_row_the_game_cannot_read(
@@ -9630,10 +9657,12 @@ def refuse_a_gadget_row_the_game_cannot_read(
     """A row on one of `GADGET_STATS` is one its reader takes as it stands.
 
     THE ROW IS ACCEPTED AND DEAD OTHERWISE. The game reads each of these
-    stats in one place, `ACataclysmMinion::SummonersGadgetStat`: the figure
-    itself, off the summoner, with the gadget's type tags. So a row of any
-    kind but `flat` works on a base of nought, and a row on an action states
-    no stat line. Each refusal names what the reader would do with the row.
+    stats as the figure itself, off the summoner, with the gadget's type
+    tags: `ACataclysmMinion::SummonersGadgetStat`, and for the volley's
+    seconds `ACataclysmMinion::VolleyEverySeconds`, which passes over a row
+    that is not flat. So a row of any kind but `flat` gives nothing, and a
+    row on an action states no stat line. Each refusal names what the reader
+    would do with the row.
 
     THE REQUIRED TAGS ARE `GADGET_ROW_TAG` AND NOTHING ELSE. A row with no tag
     would work in the game, because the reader answers nought for everything
@@ -9647,6 +9676,13 @@ def refuse_a_gadget_row_the_game_cannot_read(
     `refuse_a_retaliation_flag_row_the_game_cannot_read` holds its flag, and
     for its reason.
 
+    THE VOLLEY'S SECONDS FALL AS THE ROLL RISES, and are stated once. The
+    game rolls from the first column to the second, and a roll of 1 must be
+    the shorter wait, so the first column is not below the second: a pair
+    that rises is a sentence whose range was not marked in `Rolls Down`. An
+    enchantment states the seconds on ONE row, because the game takes the
+    shortest of the rows and a second one would do nothing.
+
     A CONDITION OR A SCALE ON ANY OF THESE STATS IS REFUSED ELSEWHERE, by
     `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
     none is on the lists those two read.
@@ -9654,11 +9690,37 @@ def refuse_a_gadget_row_the_game_cannot_read(
     A PASSIVE NODE'S ROW IS LEFT ALONE, as that function leaves one.
     """
     problems = []
+    volley_rows_of: dict[str, int] = {}
     for row in rows:
         stat = str(row.get("Stat") or "").strip()
         if stat not in GADGET_STATS or "Node" in row:
             continue
         who = f"{sheet}/{row['Name']}"
+        if stat == GADGET_VOLLEY_EVERY_SECONDS_STAT:
+            owner = str(row.get("Enchantment") or row["Name"])
+            volley_rows_of[owner] = volley_rows_of.get(owner, 0) + 1
+            if volley_rows_of[owner] == 2:
+                problems.append(
+                    f"{sheet}/{owner}: states {stat!r} on more than one row. "
+                    f"The game takes the SHORTEST of the rows, so every row "
+                    f"but that one would do nothing: state the seconds once.")
+            low = float(row.get("ValueLow") or 0.0)
+            high = float(row.get("ValueHigh") or 0.0)
+            if low < high:
+                problems.append(
+                    f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                    f"pair must fall. A roll of 1 gives the second figure, "
+                    f"and the best roll is the SHORTEST wait: mark the "
+                    f"sentence's range in the Rolls Down column of the "
+                    f"Enchantments sheet, which writes the pair the other "
+                    f"way round.")
+            for value in sorted({low, high}):
+                if not 0.0 < value <= MAX_GADGET_VOLLEY_EVERY_SECONDS:
+                    problems.append(
+                        f"{who}: states {value:g} on {stat!r}, and the "
+                        f"seconds must be above 0 and at most "
+                        f"{MAX_GADGET_VOLLEY_EVERY_SECONDS:g}. Nought or less "
+                        f"is read as no such rule.")
         kind = str(row.get("ValueKind") or "").strip().lower()
         if kind != "flat":
             problems.append(
