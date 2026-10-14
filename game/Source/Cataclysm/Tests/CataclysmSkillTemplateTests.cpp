@@ -33150,4 +33150,401 @@ bool FCataclysmAuraEffectShapeTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A row makes the buffs its wearer's skills lay more potent. Ruled 2026-10-13 under the owner's delegation, for
+// "Buff effects you apply are 20%-40% more potent". One stat, `buff_potency`, a `more` row, read by
+// `UCataclysmSelfBuffSkill::MorePotent` for two figures: the More damage a self buff grants its caster, which is
+// also the figure `UCataclysmSharedBuffs::Step` copies to allies, and an aura's damage bonus to allies, where it
+// multiplies with `aura_effect`. Engine only; no row is authored, so every row here is made by hand in the shape
+// `docs/DECISIONS.md` of that day gives.
+//
+// THE RIG IS THE ONE THE AURA TESTS ABOVE USE: plain test fighters with no stat line but the one the test writes.
+// A kill is `UCataclysmSkillTemplate::NoteKill` called by the test, and a pulse is `Pulse` called by the test.
+// Nothing waits. THE COPY GIVEN TO ALLIES is tested in `CataclysmBuffPotencySharedTests.cpp`, on the rig of the
+// shared-buff tests, in the same group.
+//
+// EACH FIGURE WITH THE ROW IS COMPARED WITH THE SAME FIGURE READ WITHOUT IT, as a ratio. Casters stand 100 m apart
+// along X. WHERE THE ACTORS STAND is said at the top of each test.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmBuffPotencyTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Butcher's Heat's row: 1% more damage for each kill while it lasts. */
+	const TCHAR* const BuffPotencyButchersHeatParams =
+		TEXT("Duration=8; MoreDamagePer=1; DurationPer=1; ScalingSource=Kill");
+
+	/** Burning Wrath's row without its own burn: 4% more damage for each enemy burning within 15 m at the cast. */
+	const TCHAR* const BuffPotencyBurningWrathParams =
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning");
+
+	/** Conflagration's row and tags, as `game/Data/WeaponSkills.csv` states them. */
+	const TCHAR* const BuffPotencyConflagrationParams =
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8");
+	const TCHAR* const BuffPotencyConflagrationTags = TEXT("Element.Demonic, Type.AOE.Aura, Slot.Aura");
+
+	/**
+	 * Wear a `more` row on `buff_potency`, a `more` row on `aura_effect`, both or neither, as worn enchantments
+	 * write them. A figure of nought leaves that row off. Replaces whatever the fighter wore.
+	 */
+	void WearBuffPotencyRows(FScopedFighter& Who, float PotencyMore, float AuraMore)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		const auto Add = [&Stats](const TCHAR* Stat, float MorePercent)
+		{
+			if (MorePercent == 0.0f)
+			{
+				return;
+			}
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::More;
+			Row.Source = ECataclysmModifierSource::Enchantment;
+			Row.Value = MorePercent;
+			FCataclysmStatInputs Line;
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Row);
+			Stats.Add(FName(Stat), Line);
+		};
+		Add(UCataclysmSelfBuffSkill::BuffPotencyStat, PotencyMore);
+		Add(UCataclysmAuraSkill::AuraEffectStat, AuraMore);
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** Grant a self buff of this row into a slot, with no element, and use it. Null on a failure. */
+	UCataclysmSelfBuffSkill* UseBuffPotencyBuff(FScopedFighter& Caster, ECataclysmAbilitySlot Slot,
+												const TCHAR* ParamText, const TCHAR* Name)
+	{
+		UCataclysmSelfBuffSkill* Skill = GrantSkill<UCataclysmSelfBuffSkill>(Caster, Slot, ParamText, Name);
+		return Skill && Activate(Caster, Skill) ? Skill : nullptr;
+	}
+
+	/** Tell a fighter's running buffs of this many kills, by the route the enemy death path uses. */
+	void TellOfBuffPotencyKills(FScopedFighter& Caster, int32 Kills)
+	{
+		for (int32 Kill = 0; Kill < Kills; ++Kill)
+		{
+			UCataclysmSkillTemplate::NoteKill(Caster.Actor);
+		}
+	}
+
+	/** What a blow of 100 with no tags comes to through a fighter's own modifiers. */
+	float BuffPotencyBlowOf100(const FScopedFighter& Who)
+	{
+		return UCataclysmSkillEffects::ModifiedDamage(Who.AbilitySystem, 100.0f, FGameplayTagContainer());
+	}
+
+	/**
+	 * Switch Conflagration on for a caster, pulse it once, and answer the value of the one modifier its ally then
+	 * carries. -1 when the aura could not be granted or switched on, or the ally carries none or several.
+	 */
+	float BuffPotencyAllyBonusAfterAPulse(FScopedFighter& Caster, const FScopedFighter& Ally)
+	{
+		UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+			Caster, ECataclysmAbilitySlot::Aura, BuffPotencyConflagrationParams, TEXT("Conflagration"),
+			BuffPotencyConflagrationTags);
+		if (!Aura || !Activate(Caster, Aura))
+		{
+			return -1.0f;
+		}
+		Aura->Pulse();
+		const TArray<FCataclysmStatModifier>& Carried = Ally.AbilitySystem->GetStatModifiers();
+		return Carried.Num() == 1 && Carried[0].Bucket == ECataclysmStatBucket::Increased
+			? Carried[0].Value
+			: -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffPotencySelfBuffTest,
+	"Cataclysm.BuffPotency.ARowMultipliesTheMoreDamageASelfBuffGrantsItsCaster",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE FIRST FIGURE: a self buff's More damage. Two casters each run Butcher's Heat and are told of five kills.
+ * The control is the caster with no row: its buff grants something, it carries one More modifier of that figure,
+ * and a blow of 100 comes to more than 100. The wearer of a `more` row of 40 is granted 1.4 times that, carries
+ * one More modifier of the raised figure, and its blow of 100 gains 1.4 times what the control's gains. The
+ * buff's seconds are the control's.
+ *
+ * AND `aura_effect` IS NOT THIS STAT: a third caster wearing only a `more` row of 50 on `aura_effect` is granted
+ * what the control is.
+ *
+ * STANDING: the caster with no row at the origin, the wearer 100 m along X, the third 200 m along X. No enemy.
+ */
+bool FCataclysmBuffPotencySelfBuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBuffPotencyTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Wearer(World, FVector(100 * M, 0, 0));
+	FScopedFighter AuraWearer(World, FVector(200 * M, 0, 0));
+	WearBuffPotencyRows(Wearer, /*PotencyMore=*/40.0f, /*AuraMore=*/0.0f);
+	WearBuffPotencyRows(AuraWearer, /*PotencyMore=*/0.0f, /*AuraMore=*/50.0f);
+
+	UCataclysmSelfBuffSkill* PlainHeat = UseBuffPotencyBuff(
+		Plain, ECataclysmAbilitySlot::Support, BuffPotencyButchersHeatParams, TEXT("Butcher's Heat"));
+	UCataclysmSelfBuffSkill* WornHeat = UseBuffPotencyBuff(
+		Wearer, ECataclysmAbilitySlot::Support, BuffPotencyButchersHeatParams, TEXT("Butcher's Heat"));
+	UCataclysmSelfBuffSkill* AuraWornHeat = UseBuffPotencyBuff(
+		AuraWearer, ECataclysmAbilitySlot::Support, BuffPotencyButchersHeatParams, TEXT("Butcher's Heat"));
+	if (!TestNotNull(TEXT("set-up: the caster with no row runs Butcher's Heat"), PlainHeat)
+		|| !TestNotNull(TEXT("set-up: the wearer runs Butcher's Heat"), WornHeat)
+		|| !TestNotNull(TEXT("set-up: the wearer of the aura row runs Butcher's Heat"), AuraWornHeat))
+	{
+		return false;
+	}
+	TellOfBuffPotencyKills(Plain, 5);
+	TellOfBuffPotencyKills(Wearer, 5);
+	TellOfBuffPotencyKills(AuraWearer, 5);
+
+	// THE CONTROL: NO ROW.
+	const float PlainGranted = PlainHeat->GrantedIncrease;
+	const float PlainGain = BuffPotencyBlowOf100(Plain) - 100.0f;
+	if (!TestTrue(TEXT("control: with no row five kills grant More damage"), PlainGranted > 0.0f)
+		|| !TestEqual(TEXT("control: the caster carries one modifier"),
+					  Plain.AbilitySystem->GetStatModifiers().Num(), 1)
+		|| !TestEqual(TEXT("control: and it is the figure the buff says it grants"),
+					  Plain.AbilitySystem->GetStatModifiers()[0].Value, PlainGranted, 0.001f)
+		|| !TestTrue(TEXT("control: and a blow of 100 comes to more than 100"), PlainGain > 0.0f))
+	{
+		return false;
+	}
+
+	// THE ROW.
+	TestEqual(TEXT("with a more row of 40 the same five kills grant 1.4 times the More damage"),
+			  WornHeat->GrantedIncrease, PlainGranted * 1.4f, 0.001f);
+	if (!TestEqual(TEXT("the wearer carries one modifier"), Wearer.AbilitySystem->GetStatModifiers().Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the raised figure"),
+			  Wearer.AbilitySystem->GetStatModifiers()[0].Value, PlainGranted * 1.4f, 0.001f);
+	TestEqual(TEXT("still in the More bucket"),
+			  static_cast<int32>(Wearer.AbilitySystem->GetStatModifiers()[0].Bucket),
+			  static_cast<int32>(ECataclysmStatBucket::More));
+	TestEqual(TEXT("and a blow of 100 gains 1.4 times what it gains with no row"),
+			  BuffPotencyBlowOf100(Wearer) - 100.0f, PlainGain * 1.4f, 0.01f);
+	TestEqual(TEXT("the buff lasts what it lasts with no row"),
+			  WornHeat->TotalDuration, PlainHeat->TotalDuration, 0.001f);
+
+	// AND THE AURA STAT IS NOT THIS ONE.
+	TestEqual(TEXT("a caster wearing only a more row of 50 on aura_effect is granted what a caster with no row is"),
+			  AuraWornHeat->GrantedIncrease, PlainGranted, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffPotencyAuraAllyBonusTest,
+	"Cataclysm.BuffPotency.OnAnAurasAllyDamageBonusTheTwoRowsBothApplyAndMultiply",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE SECOND FIGURE: an aura's damage bonus to allies, on which BOTH rows apply. Four casters each switch
+ * Conflagration on beside one ally and pulse once. The control is the caster with no row: its ally carries one
+ * increase worth something. Beside a wearer of a `more` row of 50 on `aura_effect` the ally's is 1.5 times that;
+ * beside a wearer of a `more` row of 40 on `buff_potency`, 1.4 times; beside a wearer of both, 2.1 times, which is
+ * 1.5 times 1.4 and not 1.9.
+ *
+ * STANDING: the four casters at the origin and 100, 200 and 300 m along X, each with its ally 4 m further along X.
+ * Each ally is owned by its caster, which is what makes it an ally.
+ */
+bool FCataclysmBuffPotencyAuraAllyBonusTest::RunTest(const FString&)
+{
+	using namespace CataclysmBuffPotencyTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter PlainAlly(World, FVector(4 * M, 0, 0));
+	FScopedFighter AuraWearer(World, FVector(100 * M, 0, 0));
+	FScopedFighter AuraWearerAlly(World, FVector(104 * M, 0, 0));
+	FScopedFighter PotencyWearer(World, FVector(200 * M, 0, 0));
+	FScopedFighter PotencyWearerAlly(World, FVector(204 * M, 0, 0));
+	FScopedFighter BothWearer(World, FVector(300 * M, 0, 0));
+	FScopedFighter BothWearerAlly(World, FVector(304 * M, 0, 0));
+	PlainAlly.Actor->SetOwner(Plain.Actor);
+	AuraWearerAlly.Actor->SetOwner(AuraWearer.Actor);
+	PotencyWearerAlly.Actor->SetOwner(PotencyWearer.Actor);
+	BothWearerAlly.Actor->SetOwner(BothWearer.Actor);
+	WearBuffPotencyRows(AuraWearer, /*PotencyMore=*/0.0f, /*AuraMore=*/50.0f);
+	WearBuffPotencyRows(PotencyWearer, /*PotencyMore=*/40.0f, /*AuraMore=*/0.0f);
+	WearBuffPotencyRows(BothWearer, /*PotencyMore=*/40.0f, /*AuraMore=*/50.0f);
+
+	// THE CONTROL: NO ROW.
+	const float PlainBonus = BuffPotencyAllyBonusAfterAPulse(Plain, PlainAlly);
+	if (!TestTrue(TEXT("control: the ally of a caster with no row carries one increase worth something"),
+				  PlainBonus > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("beside a wearer of a more row of 50 on aura_effect the ally's increase is 1.5 times that"),
+			  BuffPotencyAllyBonusAfterAPulse(AuraWearer, AuraWearerAlly), PlainBonus * 1.5f, 0.001f);
+	TestEqual(TEXT("beside a wearer of a more row of 40 on buff_potency it is 1.4 times"),
+			  BuffPotencyAllyBonusAfterAPulse(PotencyWearer, PotencyWearerAlly), PlainBonus * 1.4f, 0.001f);
+	TestEqual(TEXT("and beside a wearer of both it is 2.1 times: the two multiply"),
+			  BuffPotencyAllyBonusAfterAPulse(BothWearer, BothWearerAlly), PlainBonus * 2.1f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffPotencyRunningBuffTest,
+	"Cataclysm.BuffPotency.ABuffAlreadyRunningKeepsItsFigureUntilItIsGrantedAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * WHAT HAPPENS TO A BUFF ALREADY RUNNING WHEN THE ROW GOES ON OR COMES OFF. The figure is settled each time the
+ * buff grants its bonus: at the cast, and again at each kill for a buff that counts kills. One caster runs
+ * Burning Wrath, which counts once at the cast, and Butcher's Heat, which counts kills, and has been told of two.
+ * The controls are the two figures granted with no row. With a `more` row of 40 put on, neither moves. The next
+ * kill grants Butcher's Heat 1.4 times three kills' worth, and Burning Wrath still does not move. With the row
+ * taken off, Butcher's Heat keeps that figure until the next kill, which grants four kills' worth with no row.
+ *
+ * STANDING: the caster at the origin and one enemy 3 m along X, set alight before the cast.
+ */
+bool FCataclysmBuffPotencyRunningBuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBuffPotencyTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Burning(World, FVector(3 * M, 0, 0));
+	SetAlight(Caster, Burning);
+
+	UCataclysmSelfBuffSkill* Wrath = UseBuffPotencyBuff(
+		Caster, ECataclysmAbilitySlot::Support, BuffPotencyBurningWrathParams, TEXT("Burning Wrath"));
+	UCataclysmSelfBuffSkill* Heat = UseBuffPotencyBuff(
+		Caster, ECataclysmAbilitySlot::Special, BuffPotencyButchersHeatParams, TEXT("Butcher's Heat"));
+	if (!TestNotNull(TEXT("set-up: Burning Wrath runs"), Wrath)
+		|| !TestNotNull(TEXT("set-up: Butcher's Heat runs"), Heat))
+	{
+		return false;
+	}
+	TellOfBuffPotencyKills(Caster, 2);
+
+	// THE CONTROLS: NO ROW.
+	const float PlainWrath = Wrath->GrantedIncrease;
+	const float PlainHeatOfTwo = Heat->GrantedIncrease;
+	if (!TestTrue(TEXT("control: with no row Burning Wrath grants More damage for the one burning enemy"),
+				  PlainWrath > 0.0f)
+		|| !TestTrue(TEXT("control: with no row Butcher's Heat grants More damage for two kills"),
+					 PlainHeatOfTwo > 0.0f))
+	{
+		return false;
+	}
+
+	// THE ROW GOES ON, AND NOTHING MOVES UNTIL A BUFF GRANTS AGAIN.
+	WearBuffPotencyRows(Caster, /*PotencyMore=*/40.0f, /*AuraMore=*/0.0f);
+	TestEqual(TEXT("with a more row of 40 put on, Burning Wrath still grants what it granted at its cast"),
+			  Wrath->GrantedIncrease, PlainWrath, 0.001f);
+	TestEqual(TEXT("and Butcher's Heat still grants what two kills granted"),
+			  Heat->GrantedIncrease, PlainHeatOfTwo, 0.001f);
+
+	TellOfBuffPotencyKills(Caster, 1);
+	TestEqual(TEXT("the next kill grants Butcher's Heat 1.4 times three kills' worth"),
+			  Heat->GrantedIncrease, PlainHeatOfTwo / 2.0f * 3.0f * 1.4f, 0.001f);
+	TestEqual(TEXT("and Burning Wrath, which counts once at its cast, has still not moved"),
+			  Wrath->GrantedIncrease, PlainWrath, 0.001f);
+
+	// THE ROW COMES OFF, AND THE RAISED FIGURE STANDS UNTIL THE NEXT GRANT.
+	WearBuffPotencyRows(Caster, /*PotencyMore=*/0.0f, /*AuraMore=*/0.0f);
+	TestEqual(TEXT("with the row taken off, Butcher's Heat keeps the raised figure"),
+			  Heat->GrantedIncrease, PlainHeatOfTwo / 2.0f * 3.0f * 1.4f, 0.001f);
+	TellOfBuffPotencyKills(Caster, 1);
+	TestEqual(TEXT("and the next kill grants four kills' worth with no row"),
+			  Heat->GrantedIncrease, PlainHeatOfTwo * 2.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffPotencyLeftAloneTest,
+	"Cataclysm.BuffPotency.ARowLeavesAloneABuffWithNoNumberABuffsSecondsAndAnAurasOwnFigures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * WHAT THE ROW DOES NOT MOVE. The control is a caster with no row; the other wears a `more` row of 40. A SELF
+ * BUFF WHOSE ROW STATES NO MORE DAMAGE, as five of the nine built ones do, grants nothing on either and leaves no
+ * modifier on either. ITS SECONDS are the same on both. AN AURA'S OWN FIGURES are not this stat's: the wearer's
+ * aura hands 100 back as 100 from `MoreEffective`, and its pulse cuts an enemy's resistance by what the control's
+ * pulse cuts. And `MorePotent` itself hands nought back as nought.
+ *
+ * STANDING: the caster with no row at the origin and its enemy 4 m along X; the wearer 100 m along X and its enemy
+ * 4 m further. Each enemy has 70 Demonic resistance.
+ */
+bool FCataclysmBuffPotencyLeftAloneTest::RunTest(const FString&)
+{
+	using namespace CataclysmBuffPotencyTest;
+	const FGameplayAttribute Demonic = UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter PlainEnemy(World, FVector(4 * M, 0, 0));
+	FScopedFighter Wearer(World, FVector(100 * M, 0, 0));
+	FScopedFighter WearerEnemy(World, FVector(104 * M, 0, 0));
+	PlainEnemy.Set(Demonic, 70.0f);
+	WearerEnemy.Set(Demonic, 70.0f);
+	WearBuffPotencyRows(Wearer, /*PotencyMore=*/40.0f, /*AuraMore=*/0.0f);
+
+	// THE FUNCTION ITSELF, read first so the rest means something.
+	if (!TestEqual(TEXT("control: for a caster with no row a figure of 100 is handed back as 100"),
+				   UCataclysmSelfBuffSkill::MorePotent(Plain.Actor, FGameplayTagContainer(), 100.0f), 100.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: for the wearer of a more row of 40 it is handed back as 140"),
+					  UCataclysmSelfBuffSkill::MorePotent(Wearer.Actor, FGameplayTagContainer(), 100.0f), 140.0f,
+					  0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a figure of nought is handed back as nought"),
+			  UCataclysmSelfBuffSkill::MorePotent(Wearer.Actor, FGameplayTagContainer(), 0.0f), 0.0f, 0.0f);
+
+	// A SELF BUFF WITH NO NUMBER, AND ITS SECONDS. Slipstream's row without its two keys about rear hits.
+	UCataclysmSelfBuffSkill* PlainBuff = UseBuffPotencyBuff(
+		Plain, ECataclysmAbilitySlot::Support, TEXT("Duration=8"), TEXT("Slipstream"));
+	UCataclysmSelfBuffSkill* WornBuff = UseBuffPotencyBuff(
+		Wearer, ECataclysmAbilitySlot::Support, TEXT("Duration=8"), TEXT("Slipstream"));
+	if (!TestNotNull(TEXT("set-up: the caster with no row runs a self buff stating no More damage"), PlainBuff)
+		|| !TestNotNull(TEXT("set-up: the wearer runs the same self buff"), WornBuff)
+		|| !TestTrue(TEXT("control: with no row that buff has seconds to run"), PlainBuff->TotalDuration > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with no row that buff grants nothing"), PlainBuff->GrantedIncrease, 0.0f, 0.0f);
+	TestEqual(TEXT("with the row it grants nothing either"), WornBuff->GrantedIncrease, 0.0f, 0.0f);
+	TestEqual(TEXT("and leaves no modifier on the wearer"), Wearer.AbilitySystem->GetStatModifiers().Num(), 0);
+	TestEqual(TEXT("and lasts what it lasts with no row"), WornBuff->TotalDuration, PlainBuff->TotalDuration, 0.001f);
+
+	// AN AURA'S OWN FIGURES. Conflagration lays Shred at 15.
+	UCataclysmAuraSkill* PlainAura = GrantSkill<UCataclysmAuraSkill>(
+		Plain, ECataclysmAbilitySlot::Aura, BuffPotencyConflagrationParams, TEXT("Conflagration"),
+		BuffPotencyConflagrationTags);
+	UCataclysmAuraSkill* WornAura = GrantSkill<UCataclysmAuraSkill>(
+		Wearer, ECataclysmAbilitySlot::Aura, BuffPotencyConflagrationParams, TEXT("Conflagration"),
+		BuffPotencyConflagrationTags);
+	if (!TestTrue(TEXT("set-up: the caster with no row switches Conflagration on"),
+				  PlainAura && Activate(Plain, PlainAura))
+		|| !TestTrue(TEXT("set-up: the wearer switches Conflagration on"), WornAura && Activate(Wearer, WornAura)))
+	{
+		return false;
+	}
+	PlainAura->Pulse();
+	WornAura->Pulse();
+	const float PlainCut = 70.0f - DemonicResistance(PlainEnemy);
+	if (!TestTrue(TEXT("control: with no row a pulse cuts the Demonic resistance of the enemy inside"),
+				  PlainCut > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with the row a pulse cuts what it cuts with no row"),
+			  70.0f - DemonicResistance(WearerEnemy), PlainCut, 0.001f);
+	TestEqual(TEXT("and the wearer's aura hands 100 back as 100: buff_potency is not the stat an aura's figures read"),
+			  WornAura->MoreEffective(100.0f), 100.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

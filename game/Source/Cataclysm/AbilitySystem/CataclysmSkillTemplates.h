@@ -920,6 +920,45 @@ public:
 	FGameplayTag GrantedScope;
 
 	/**
+	 * `buff_potency`: how much more potent the buffs this character's skills
+	 * lay are, as a multiplier of its own. Ruled 2026-10-13 under the owner's
+	 * delegation, for "Buff effects you apply are 20%-40% more potent": a `more`
+	 * row of 20 to 40.
+	 *
+	 * THE FIGURE OF A BUFF A SKILL OF THE CHARACTER'S LAYS, AND NOTHING ELSE.
+	 * `MorePotent` is called at two places: `GrantIncrease`, for the More damage
+	 * a self buff grants its caster, and `UCataclysmAuraSkill::HelpAlliesInside`,
+	 * for an aura's damage bonus to allies, where it multiplies with
+	 * `UCataclysmAuraSkill::AuraEffectStat`.
+	 *
+	 * THE CASTER'S POTENCY TRAVELS WITH THE COPY. `UCataclysmSharedBuffs::Step`
+	 * gives allies `GrantedIncrease` as it stands, which is the raised figure,
+	 * and asks the ally nothing, so an ally's own row is not applied again.
+	 *
+	 * NOT RAISED: a buff a row lays (the six random buffs, stacks a row grants,
+	 * the standing `nearby_allies_more_damage`), a `Status.Buff` tag, and a self
+	 * buff whose row states no `MoreDamagePer`.
+	 *
+	 * ASKED OF THE CASTER WITH THE TAGS OF THE SKILL THAT LAYS THE BUFF. It has
+	 * no gameplay attribute and no base, so it is in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* BuffPotencyStat;
+
+	/**
+	 * A buff's figure after the rows on `BuffPotencyStat` its caster carries.
+	 * 10 with a `more` row of 40 is 14.
+	 *
+	 * THE FIGURE IS HANDED BACK UNCHANGED for a caster with no such row, for an
+	 * ability system that is not this project's own, and for a figure of nought
+	 * or less. Never below nought.
+	 *
+	 * @param Caster  whose skill lays the buff
+	 * @param Tags    that skill's tags
+	 */
+	static float MorePotent(const AActor* Caster, const FGameplayTagContainer& Tags, float Figure);
+
+	/**
 	 * How many enemies have been killed since this buff went up.
 	 *
 	 * THE AXE'S BUTCHER'S HEAT: "every enemy you kill while it lasts grants 1%

@@ -2329,6 +2329,28 @@ void UCataclysmSelfBuffSkill::Finish()
 			   GetCurrentActivationInfo(), true, false);
 }
 
+const TCHAR* UCataclysmSelfBuffSkill::BuffPotencyStat = TEXT("buff_potency");
+
+float UCataclysmSelfBuffSkill::MorePotent(const AActor* Caster, const FGameplayTagContainer& Tags, float Figure)
+{
+	if (Figure <= 0.0f)
+	{
+		return Figure;
+	}
+
+	// THE FIGURE IS WHAT THE ROWS APPLY TO, as `UCataclysmAuraSkill::
+	// MoreEffective` hands its stat a figure of the aura's. So the stat needs no
+	// base, and a caster with no row is handed its figure back.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Caster));
+	if (!Asking)
+	{
+		return Figure;
+	}
+	return FMath::Max(0.0f, Asking->StatAppliedTo(FName(BuffPotencyStat), Tags, Figure));
+}
+
 void UCataclysmSelfBuffSkill::GrantIncrease()
 {
 	GrantedIncrease = 0.0f;
@@ -2365,10 +2387,18 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	// rather than joining the additive sum. In the additive bucket the buff
 	// competed with every gear affix the character wore, which is what made a
 	// kill-fed or count-fed ramp feel like nothing.
+	//
+	// AND MORE OF IT WHEN A ROW MAKES THE CASTER'S BUFFS MORE POTENT. Ruled
+	// 2026-10-13: "Buff effects you apply are 20%-40% more potent". Settled each
+	// time the bonus is granted: at the cast, and again at each kill or second
+	// that moves it. A buff already running when the row goes on or comes off
+	// keeps its figure until then. `GrantedIncrease` below is the raised figure,
+	// so the copy `UCataclysmSharedBuffs::Step` gives allies is the caster's
+	// raised figure, and that step asks the ally nothing.
 	FCataclysmStatModifier Modifier;
 	Modifier.Bucket = ECataclysmStatBucket::More;
 	Modifier.Source = ECataclysmModifierSource::SkillBuff;
-	Modifier.Value = Params.MoreDamagePer * Units;
+	Modifier.Value = MorePotent(Avatar(), SkillTags, Params.MoreDamagePer * Units);
 
 	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
 	// here. Burning Wrath carries Element.Demonic, which is this project's fire,
@@ -5136,7 +5166,13 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 		// 2026-10-13. Settled when the ally is given the bonus: an ally already
 		// carrying it keeps the figure it was given until it leaves the ring or
 		// the aura ends.
-		Modifier.Value = MoreEffective(Params.AllyIncreasedDamage);
+		//
+		// AND MORE AGAIN WHEN A ROW MAKES THE CASTER'S BUFFS MORE POTENT. Ruled
+		// 2026-10-13: this bonus is a buff a skill of the caster's lays on its
+		// allies, so both rows apply to it and multiply. 8 with 50% more
+		// effective and 40% more potent is 16.8.
+		const float Effective = MoreEffective(Params.AllyIncreasedDamage);
+		Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);
 
 		// SCOPED TO THE AURA'S OWN ELEMENT, so "increased FIRE damage" is data.
 		// Conflagration carries `Element.Demonic`, which is this project's fire.

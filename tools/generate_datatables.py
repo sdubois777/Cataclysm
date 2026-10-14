@@ -8846,8 +8846,18 @@ def refuse_a_healing_skill_row_the_game_cannot_read(sheet: str,
 #: would reach only the auras that carry it: one requiring `Slot.Aura` would
 #: leave Living Pyre out, which the ruling includes. So a row requiring any tag
 #: is refused. A labelled judgement of 2026-10-13.
+#:
+#: `buff_potency` IS A `more` ROW OF 20 TO 40, for "Buff effects you apply are
+#: 20%-40% more potent". `UCataclysmSelfBuffSkill::MorePotent` applies it to the
+#: figure of a buff a skill of the wearer's lays: the More damage a self buff
+#: grants, which is also what is copied to allies, and an aura's ally damage
+#: bonus. `UCataclysmSelfBuffSkill::BuffPotencyStat` holds the same name, and
+#: the same test file compares them. ITS ROW REQUIRES NO TAG EITHER: an aura's
+#: ally bonus is one of its figures, and Conflagration does not carry
+#: `Type.Buff`, so a row requiring that tag would leave it out.
 AURA_AND_BUFF_EFFECT_STATS: dict[str, tuple[str, float, float]] = {
     "aura_effect": ("more", 20.0, 50.0),
+    "buff_potency": ("more", 20.0, 40.0),
 }
 
 
