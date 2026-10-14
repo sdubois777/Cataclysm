@@ -25284,7 +25284,7 @@ namespace CataclysmNineMoreRowsTest
 
 	/** The creatures of the volley test, and the steps at which its turrets are read. */
 	constexpr int32 VolleyCreatures = 4;
-	constexpr int32 VolleyReadings = 4;
+	constexpr int32 VolleyReadings = 5;
 
 	/** Counts the blows announced as the explosion at an ailment's end, in one world, while it is in scope. */
 	struct FExplosionsHeard
@@ -26173,9 +26173,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornVolleyRowTest,
  * and four creatures stand along +X from the turret, each holding 50,000 health: 3, 6 and 9 m away, and 12 m away,
  * beyond the turret's reach.
  *
+ * THE FIRST VOLLEY COMES ON THE TURRET'S FIRST STEP THAT FINDS AN ENEMY WITHIN ITS REACH, AND THE ROW'S SECONDS RUN
+ * FROM IT. The coordinating session's judgement of 2026-10-13, which changed what was first built: the first volley
+ * one whole period after the placing. The creatures are stood after the turret is placed, so the step a tenth of a
+ * second after the placing is the first that finds anybody.
+ *
  * THE CLOCK IS THE WORLD'S, MOVED BY HAND, AND THE GADGET'S STEP IS CALLED DIRECTLY, as the mechanism's tests do:
- * `ACataclysmMinion::GadgetStep` at 4.9, 5.1, 7.9 and 8.1 seconds after the placing. No brain thinks, so no ordinary
- * shot is fired. Nothing waits on a tick.
+ * `ACataclysmMinion::GadgetStep` a tenth of a second after the placing, which is the first volley, and then 4.9,
+ * 5.1, 7.9 and 8.1 seconds after that volley. No brain thinks, so no ordinary shot is fired. Nothing waits on a tick.
  *
  * WHAT A VOLLEY TAKES IS NOT STATED: a turret's blow rises with its summoner's level. Each creature within reach is
  * read as having lost health to the volley, and the three as having lost the same.
@@ -26198,17 +26203,18 @@ bool FCataclysmWornVolleyRowTest::RunTest(const FString&)
 	constexpr int32 WithinReach = 3;
 	constexpr int32 TheOneBeyond = 3;
 	constexpr int32 Readings = VolleyReadings;
-	constexpr int32 AtFivePointOne = 1;
-	constexpr int32 AtEightPointOne = 3;
-	const float SecondsOnBefore[Readings] = {4.9f, 0.2f, 2.8f, 0.2f};
-	const TCHAR* const ReadWhen[Readings] = {TEXT("4.9 seconds after the placing"),
-		TEXT("5.1 seconds after the placing"), TEXT("7.9 seconds after the placing"),
-		TEXT("8.1 seconds after the placing")};
+	constexpr int32 AtTheFirstStep = 0;
+	constexpr int32 AtFivePointOne = 2;
+	constexpr int32 AtEightPointOne = 4;
+	const float SecondsOnBefore[Readings] = {0.1f, 4.9f, 0.2f, 2.8f, 0.2f};
+	const TCHAR* const ReadWhen[Readings] = {TEXT("the first step with a creature within reach"),
+		TEXT("4.9 seconds after the first volley"), TEXT("5.1 seconds after the first volley"),
+		TEXT("7.9 seconds after the first volley"), TEXT("8.1 seconds after the first volley")};
 	struct FVolleyRead
 	{
 		TArray<FCataclysmStatModifier> Lines;
 		float SecondsRead = -1.0f;
-		int32 Volleys[VolleyReadings] = {-1, -1, -1, -1};
+		int32 Volleys[VolleyReadings] = {-1, -1, -1, -1, -1};
 		float Lost[VolleyReadings][VolleyCreatures] = {};
 	};
 	const auto Ask = [&](const FCataclysmItem& Helm, const TCHAR* Who, FVolleyRead& Out) -> bool
@@ -26243,7 +26249,7 @@ bool FCataclysmWornVolleyRowTest::RunTest(const FString&)
 		Out.Lines = EnchantmentModifiersOn(Summoner.ASC, Stat);
 		Out.SecondsRead = Turret->VolleyEverySeconds();
 
-		// FOUR STEPS, the clock moved on before each. What each creature has lost since the step before is kept.
+		// FIVE STEPS, the clock moved on before each. What each creature has lost since the step before is kept.
 		for (int32 Reading = 0; Reading < Readings; ++Reading)
 		{
 			PassAndStep(Summoner.World, SecondsOnBefore[Reading], Turret);
@@ -26306,15 +26312,26 @@ bool FCataclysmWornVolleyRowTest::RunTest(const FString&)
 	TestEqual(TEXT("at the best roll the turret reads 5 seconds"), Best.SecondsRead, 5.0f, 0.001f);
 	TestEqual(TEXT("at the worst roll the turret reads 8 seconds"), Worst.SecondsRead, 8.0f, 0.001f);
 
-	// A VOLLEY AT THE SECONDS READ AND NONE JUST BEFORE. `FiredAt` is the reading at which the first volley is due.
-	const auto FiresFirstAt = [&](const TCHAR* Who, const FVolleyRead& Read, int32 FiredAt)
+	// THE FIRST VOLLEY ON THE FIRST STEP WITH A CREATURE WITHIN REACH, THE SECOND AT THE SECONDS READ AFTER IT, AND
+	// NONE JUST BEFORE. `SecondAt` is the reading at which the second volley is due.
+	const auto FiresSecondAt = [&](const TCHAR* Who, const FVolleyRead& Read, int32 SecondAt)
 	{
 		for (int32 Reading = 0; Reading < Readings; ++Reading)
 		{
 			TestEqual(*FString::Printf(TEXT("%s, %s: the volleys the turret has fired"), Who, ReadWhen[Reading]),
-				Read.Volleys[Reading], Reading < FiredAt ? 0 : 1);
-			if (Reading == FiredAt)
+				Read.Volleys[Reading], Reading < SecondAt ? 1 : 2);
+			if (Reading == AtTheFirstStep || Reading == SecondAt)
 			{
+				for (int32 Place = 0; Place < WithinReach; ++Place)
+				{
+					TestTrue(*FString::Printf(TEXT("%s, %s: the volley took health from creature %d, within reach: "
+							"%.2f"), Who, ReadWhen[Reading], Place + 1, Read.Lost[Reading][Place]),
+						Read.Lost[Reading][Place] > 0.5f);
+					TestEqual(*FString::Printf(TEXT("%s, %s: and from creature %d what it took from the nearest"), Who,
+						ReadWhen[Reading], Place + 1), Read.Lost[Reading][Place], Read.Lost[Reading][0], 0.05f);
+				}
+				TestEqual(*FString::Printf(TEXT("%s, %s: the creature beyond the turret's reach lost nothing"), Who,
+					ReadWhen[Reading]), Read.Lost[Reading][TheOneBeyond], 0.0f, 0.001f);
 				continue;
 			}
 			for (int32 Place = 0; Place < Stood; ++Place)
@@ -26323,18 +26340,9 @@ bool FCataclysmWornVolleyRowTest::RunTest(const FString&)
 					ReadWhen[Reading], Place + 1), Read.Lost[Reading][Place], 0.0f, 0.001f);
 			}
 		}
-		for (int32 Place = 0; Place < WithinReach; ++Place)
-		{
-			TestTrue(*FString::Printf(TEXT("%s, %s: the volley took health from creature %d, within reach: %.2f"), Who,
-				ReadWhen[FiredAt], Place + 1, Read.Lost[FiredAt][Place]), Read.Lost[FiredAt][Place] > 0.5f);
-			TestEqual(*FString::Printf(TEXT("%s, %s: and from creature %d what it took from the nearest"), Who,
-				ReadWhen[FiredAt], Place + 1), Read.Lost[FiredAt][Place], Read.Lost[FiredAt][0], 0.05f);
-		}
-		TestEqual(*FString::Printf(TEXT("%s, %s: the creature beyond the turret's reach lost nothing"), Who,
-			ReadWhen[FiredAt]), Read.Lost[FiredAt][TheOneBeyond], 0.0f, 0.001f);
 	};
-	FiresFirstAt(TEXT("the best roll, 5 seconds"), Best, AtFivePointOne);
-	FiresFirstAt(TEXT("the worst roll, 8 seconds"), Worst, AtEightPointOne);
+	FiresSecondAt(TEXT("the best roll, 5 seconds"), Best, AtFivePointOne);
+	FiresSecondAt(TEXT("the worst roll, 8 seconds"), Worst, AtEightPointOne);
 	return true;
 }
 

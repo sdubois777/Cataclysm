@@ -63,8 +63,14 @@ show figures on test characters in worlds with no floor, no walls and no navigat
      Ballista's text says it picks the furthest; the game picks the nearest today
      ([#2397](https://github.com/sdubois777/Cataclysm/issues/2397)), and this row overrides either.
    - **"Gadgets fire at all enemies within range simultaneously once every 5-8 seconds".** **The range rolls
-     down: 5 seconds is the best roll.** A Bolt Turret lasts 5 seconds and a Ballista 8, so **without "Gadgets
-     last longer" a turret fires at most one volley and may fire none.** "Gadgets fire faster" does not shorten
+     down: 5 seconds is the best roll.** **A gadget's first volley comes on its first step that finds an enemy
+     within its reach, and after that one every 5 to 8 seconds as the row rolls: the coordinating session's
+     judgement of 2026-10-13, which changed what was first built.** The reading not taken was the first volley
+     one whole period after the placing; a Bolt Turret lasts 5 seconds and a Ballista 8, so under it a turret
+     fired at most one volley and might fire none. Now every placed gadget fires one volley if an enemy comes
+     within its reach while it stands. Without "Gadgets last longer" a Bolt Turret fires that one and, at most,
+     a second in the moment it disappears; a Ballista fires a second if an enemy was within reach early enough
+     for the row's seconds to pass. "Gadgets fire faster" does not shorten
      the seconds. With the on-hit gadget rows worn a volley applies them to every enemy struck.
    - **"When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range".** One
      ordinary blow at once; a kill by a burst fires another.
@@ -133,7 +139,9 @@ the rows, then reads the figures the wearer holds, then one behaviour in play:
   explosion's size is not read here.
 - `TheMostHealthRowMakesItsWearersTurretChooseTheEnemyWithTheMostHealthWithinItsReach`.
 - `TheVolleyRowFiresAVolleyEveryFiveSecondsAtItsBestRollAndEveryEightAtItsWorst`: the wearer reads 5 seconds at
-  the item's best roll and 8 at its worst, and a volley comes at the seconds read and not just before.
+  the item's best roll and 8 at its worst; the first volley comes on the turret's first step with a creature
+  within its reach, and the second at the seconds read after the first and not just before. Rewritten on
+  2026-10-13 for the change to the first volley; it read no volley 4.9 seconds after the placing and one at 5.1.
 - `TheBurstOnKillRowMakesItsWearersTurretThatKillsStrikeTheNearestEnemyWithinReachOnceMore`.
 - `TheNoDamageAndDrainRowsLetNoBlowHurtItsWearersTurretAndTakeFivePercentOfItsMaximumASecond`.
 
