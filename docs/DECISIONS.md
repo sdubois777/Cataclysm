@@ -2,6 +2,281 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make its wearer's gadget strike the nearest enemy once more when a blow of its own kills: a flag stat read at the end of the gadget's blow, with no row event and no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the stat's name, a count of
+bursts, and one block at the end of `AttackTarget`),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute),
+`game/Source/Cataclysm/Tests/CataclysmGadgetBehaviourTests.cpp` (four tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the
+name, added to the flags), `tools/tests/test_generate_datatables.py` (one class of five tests). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "When a gadget kills an enemy, it fires an additional
+burst at the nearest enemy within its range".
+
+- **The row acts on the Bolt Turret and the Ballista only. A Spike Trap is a trap and not a gadget.** Ruled
+  2026-10-07, in the entry headed "The Spike Trap carries the tag `Type.Trap`", under its heading "FIRST, WHAT
+  CHANGES FOR A PLAYER: A SPIKE TRAP IS NOW A TRAP AND NO LONGER A GADGET FOR `gadgets_active`". A holder's Spike
+  Trap, imp and mote that kill fire nothing.
+- **A "burst" is one ordinary blow of the gadget, at once.** Ruled. It is the gadget's `AttackTarget`, so it can
+  be evaded, it raises `deployable_hit`, and the on-hit gadget rows reach the enemy it strikes within their own
+  cooldowns.
+- **A kill by a burst fires another, with no limit but the enemies standing within reach.** Ruled: "it runs only
+  through real kills". Against a pack of enemies each of which one blow kills, one shot of a holder's gadget
+  kills every one of them within its reach in the same instant. With the volley row of the layer before this
+  one also held, each kill of a volley fires its own burst.
+- **What counts as the gadget's kill is its own blow, a blow of a volley and a burst.** Ruled. **A burn the gadget
+  set, its death explosion and a row its hit fired do not count.** So where a summoner's on-hit row finishes an
+  enemy the gadget's blow had nearly killed, no burst is fired.
+- **Under Conduit the kill is credited to the summoner and still counts.** Ruled.
+- **No row event is raised for a gadget's kill.** Ruled: the action is kept on the gadget. Nothing else can be
+  hung on a gadget's kill until an event is ruled.
+- **The nearest is the nearest to the gadget, within its reach as the two layers before this one measure it.**
+  With nobody within reach nothing is fired.
+- **A burst does not move the time between the gadget's ordinary shots**, which the brain keeps.
+- **A gadget that died in its own blow, to the retaliation it provoked, fires nothing.** A judgement.
+- **Anything that makes a gadget strike through `AttackTarget` counts as its own blow.** The brain's ordinary
+  shot, a volley, a burst, and an ordered strike by its commander all go through that function. The ordered
+  strike was not read past the test that names it.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+
+**What was not read:** whether the Bolt Turret skill's `Effect=Bleed` reaches its turret's blows, which the
+reconnaissance of 2026-10-12 also left unread; a bleed's tick is a tick and would not count. Whether
+`UCataclysmSkillEffects::ApplyBurn` deals anything at the moment it is applied. What `ACataclysmEnemyCharacter::
+HandleDeath` does between marking the creature dead and removing its body, past the lines the reconnaissance
+quotes. The order of a blow's record and its announcement inside `UCataclysmCombatEvents::NoteBlow` was read; what
+the vital set does between that and the write of health was not.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's own words, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". Each ruling below is a labelled judgement by the coordinating session under the owner's delegation.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | It acts on the Turret and the Ballista only; a Spike Trap is a trap. | The flag is read through `ACataclysmMinion::SummonersGadgetStat`, which answers nought for everything that is not `IsGadget`. |
+| R2 | One ordinary blow at once to the nearest hostile within reach. | The block at the end of `ACataclysmMinion::AttackTarget`: `AttackTarget` of the first of `HostilesWithinReach`, which answers nearest first. |
+| R3 | A kill by a burst fires another. | The burst is `AttackTarget`, and the block is inside `AttackTarget`. |
+| R4 | The gadget's own blow, a volley's blow and a burst count. | All three are `AttackTarget`. |
+| R5 | A burn it set, its death explosion and a row its hit fired do not. | The record of the last blow on the dead enemy must name this gadget as what dealt it and must not be a tick; the explosion is not `AttackTarget`. See below. |
+| R6 | Under Conduit it still counts. | The record's `DealtBy` is the gadget whoever the blow is credited to. |
+| R7 | Keep the action on the gadget; no new row event. | No event is raised; nothing in `tools/generate_datatables.py` gains an event. |
+
+### HOW THE CODE KNOWS A BLOW KILLED, AND WHOSE IT WAS
+
+Read on 2026-10-13. The brief asked for the burst "where a death is announced". It is not there; it is at the end
+of the gadget's own blow, and reads the record a death is announced from. This is a judgement and the reasons are
+these.
+
+- **`AttackTarget` has the blow's result in hand.** `UCataclysmSkillEffects::ApplyDirectDamage` hands back what
+  the enemy made of the blow. A blow that reached no health killed nobody; a blow on a body reaches none.
+- **A death happens inside that call.** The enemy's health is written, its `HandleDeath` runs, it is marked dead
+  and its death is announced to every listener, all before `ApplyDirectDamage` returns. So after the call
+  `UCataclysmSkillEffects::IsDead` answers whether the enemy died, and its body is still there: an enemy's body
+  is removed by a timer.
+- **The record of the last blow says what dealt it.** `UCataclysmCombatEvents::NoteBlow` keeps on the struck
+  character the blow that last reached its health: whom it is credited to, what dealt it, and whether it was a
+  tick. A death names its killer from that record. For a minion's blow, what dealt it is the minion; whom it is
+  credited to is the minion, or its summoner under Conduit. So the test is: this blow reached health, the enemy
+  is dead, and the record says this gadget dealt the last blow and that it was not a tick.
+- **So a kill made inside the gadget's attack by something else is not the gadget's.** `AttackTarget` raises
+  `deployable_hit` on the summoner after its blow, and a row answering it may strike the same enemy. That blow is
+  the summoner's and the record then names the summoner. A test does this by hand.
+- **Why not a listener to the announcement.** A listener that strikes from inside a death's announcement makes a
+  second death heard before every listener has heard the first; `UCataclysmCombatEvents::AfterThisDeathIsHeard`
+  exists to order exactly that, and its header says eight of the dungeon's rules give a different result
+  otherwise. At the end of `AttackTarget` the first death has been announced in full and the dead creature's own
+  `HandleDeath` has finished. The option not taken: bind every gadget to `OnDeath` and hand the burst to
+  `AfterThisDeathIsHeard`.
+- **How deep the chain can go, and what stops it.** One call of `AttackTarget` inside another for each kill in a
+  row. Each burst needs a living enemy within reach, and the search leaves out the dead, so no enemy is struck by
+  two bursts of one chain and the chain is no longer than the number of enemies standing within reach when it
+  began. It stops at the first burst that does not kill or finds nobody. Nothing counts the depth.
+- **One case where the record can mislead, not tested.** If something struck the enemy from inside the
+  announcement of the gadget's own blow, before the death, the record would name that striker though the gadget's
+  blow was the lethal one, and no burst would fire. Whether anything does so was not read.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The burst is fired at the end of the blow and not at the announcement of the death.** Above.
+- **A gadget that is dead when its blow ends fires nothing.** The option not taken: let a gadget killed by the
+  retaliation to its own blow fire the burst that blow earned.
+- **Nobody within reach: nothing, and the kill is not kept for later.** The sentence says "at the nearest enemy
+  within its range". The option not taken: hold the burst until an enemy comes within reach.
+- **The row requires `Type.Deployable` alone, though the sentence's own tags are `Type.Deployable,
+  Trigger.OnKill`.** The game asks with the gadget's type tags, and no gadget carries `Trigger.OnKill`; a row
+  requiring both would match no gadget. The generator refuses it.
+- **A count of bursts on the minion, `BurstsFired`, read by tests**, beside `AttacksMade` and `VolleysFired`.
+
+### THE GENRE SOURCES
+
+Recorded as `genre_2026-10-13.md` of the enchantment session gives them, and nothing else was fetched.
+
+How these were read: each page was fetched through a tool that hands back a model's reading of the page and not
+the page's bytes. Each page is longer than the 100,000 characters the tool read; the rest was not read.
+
+REACHED: `poedb.tw/us/Totem` (Path of Exile), its first 100,000 of 155,748 characters, read once. SUMMARY, the
+tool's words and not a quotation: the page states no rule for how a totem chooses its target, none for a totem
+immune to damage or losing life each second, and nothing that happens when a totem kills an enemy. It gave two
+lines about several shots of one attack, which are about projectiles and not about a volley at every enemy; they
+are not recorded.
+
+So no source was reached that settles this sentence. Every reading of it is this game's own. NOT REACHED: Diablo,
+Last Epoch, Torchlight; `poewiki.net` is blocked to the tool.
+
+### WHAT WAS BUILT
+
+- **The stat.** `gadgets_burst_on_kill`, a flag: a row sets it at a flat 1 and the code reads it as above nought.
+  No gameplay attribute and no base. It is the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+  Its name in code is `ACataclysmMinion::GadgetsBurstOnKillStat`.
+- **The block at the end of `ACataclysmMinion::AttackTarget`**, after `++AttacksMade`. If this blow reached
+  health, the enemy is dead and this minion is not: the enemy's record of its last blow is read, and if it is on
+  record, names this minion as what dealt it and is not a tick, and `SummonersGadgetStat` of the flag is above
+  nought, then `HostilesWithinReach` is asked, and if it holds anybody `BurstsFired` is counted and
+  `AttackTarget` is called for its first.
+- **`ACataclysmMinion::BurstsFired`.** A count, read by tests.
+- **The generator.** `GADGETS_BURST_ON_KILL_STAT`, added to `GADGET_FLAG_STATS`, so
+  `refuse_a_gadget_row_the_game_cannot_read` holds it as it holds the first flag: `flat`, 1 to 1, Required Tags
+  exactly `Type.Deployable`, no action.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment: Stat
+  `gadgets_burst_on_kill`, Value Kind `flat`, Value Low 1, Value High 1, Required Tags `Type.Deployable`. No
+  Condition, no Scale, no Action, NO ACTION EVENT and no other cell. **With the row, that session adds the name
+  to `FLAG_STATS`** in `tools/tests/test_enchantment_effects_match_the_row_text.py`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of
+  `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is NOT changed: the flag is asked
+  through `SummonersGadgetStat`, whose one call of `StatForSkill` the first gadget layer listed.
+- The generator refuses the same shapes on one more stat. No shipped row is on it.
+- No merged test asserts anything different. A merged test that has a gadget kill an enemy is unchanged unless
+  its summoner holds the flag, and no shipped row grants it.
+
+### Tests
+
+Four new Unreal tests in `CataclysmGadgetBehaviourTests.cpp`, in the group `Cataclysm.GadgetBurst.`. A blow is
+struck by calling the gadget's `AttackTarget`. An enemy meant to die holds 1 and every other holds 50,000. Every
+figure is read against a control read first.
+
+- `AHoldersTurretThatKillsStrikesTheNearestEnemyWithinItsReachOnceMore`: two summoners, one holding the flag,
+  each with a Bolt Turret and enemies at 3, 6, 9 and 12 m, the one at 6 m holding 1. In order: the control's
+  blow kills the one at 6 m; it fires no burst; its nearest has lost nothing; it has made one attack; an ordinary
+  blow of it takes health; the holder's blow kills the one at 6 m; it fires one burst; the nearest took one
+  ordinary blow; the one at 9 m took nothing; the one at 12 m took nothing; two attacks; `deployable_hit` twice;
+  a blow on the one at 9 m does not kill it; that fires no burst; the nearest took nothing from it; then the two
+  within reach are removed and an enemy holding 1 is stood 6 m to the side; it dies; no burst is fired; the one
+  at 12 m still took nothing.
+- `AKillByABurstFiresAnotherAndTheChainEndsAtTheFirstEnemyThatLives`: each turret has enemies at 3, 5 and 7 m
+  holding 1, one at 9 m holding 50,000 and one at 12 m. Each strikes the one at 7 m. In order: the control's
+  dies; its two others holding 1 are alive; it fired no burst; the holder's dies; the one at 3 m is dead; the
+  one at 5 m is dead; three bursts; four attacks; the one at 9 m lost health; it is alive; the one at 12 m took
+  nothing; one more ordinary blow on the one at 9 m takes what the burst took.
+- `AKillByAVolleysBlowFiresABurstAndUnderConduitAKillCreditedToTheSummonerStillCounts`: three summoners. The
+  first holds the volley's row at 5 seconds, the second that and the flag; each turret has enemies at 3 m
+  holding 1 and at 6 and 9 m. At 5.1 seconds, in order: the control fired one volley; it killed the one at 3 m;
+  it fired no burst; its enemy at 6 m lost a blow; the one at 9 m the same; the holder's volley killed its one at
+  3 m; one burst; its enemy at 6 m lost two blows; the one at 9 m one; four attacks. The third summoner holds
+  the flag and `minion_hits_count_as_yours` with no required tag; its turret strikes an enemy at 6 m holding 1.
+  In order: it dies; the record credits the summoner; the record says the turret dealt it; one burst; the enemy
+  at 3 m lost health.
+- `AKillByWhatAGadgetsHitSetOffFiresNoBurstAndNeitherDoesATrapsOrAnImpsKill`: one holder. In order: its first
+  turret kills and fires a burst, so the flag is held. For its second turret the summoner is made to strike the
+  turret's target for ten million at the moment `deployable_hit` is raised, which is when a row would: the
+  summoner struck; the enemy is dead when the turret's attack ends; the record says the summoner dealt the last
+  blow; the turret fired no burst; the other enemy within its reach took nothing. Then its Spike Trap kills an
+  enemy at 1.1 m; it fires no burst; the enemy at 1.4 m took nothing. Then its imp the same, with the second
+  enemy at 1.7 m.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeGadgetsBurstOnKill`.
+Each turret strikes its further enemy, which holds 1 and dies. The turret of the summoner holding nothing fires
+no burst and its nearer enemy keeps its 9,000; the turret of the one holding the flag at a flat 1 fires one and
+its nearer enemy loses health.
+
+Python: `TestGadgetsBurstOnAKill` in `tools/tests/test_generate_datatables.py`, five tests on a made-up sheet
+whose sentence carries its two real tags: the ruled row is carried through with no action and no action event
+and refused by no check; the name is a flag and a stat with no attribute; the generator's name is the one
+`CataclysmMinion.cpp` holds; each wrong shape is refused once (a kind that is not flat, no tag, the sentence's
+own two tags, an action, a figure of 0 and of 2); a condition or a scale is refused by the checks that hold
+those.
+
+**Not tested:** a kill by a burn the gadget set, and a kill by a tick of any kind, which the code leaves out by
+the record's tick flag and no test reaches; a gadget's death explosion, which no gadget has today, since the
+deployable skills tell their machines no explosion radius; a gadget that dies in its own blow; a burst that is
+evaded; the on-hit gadget rows applied by a burst; a chain longer than three; a Ballista; a kill by the brain's
+own shot under a running clock, which is the same function; a kill by an ordered strike; a summoner that is a
+player character, and the `kill` event that a player holding Conduit is raised for the gadget's kill; the flag
+arriving from a worn row; the case under "How the code knows" where the record can mislead.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted once in its file by a script at this layer's commit, each is one line, and each
+new text keeps the file's brackets paired. The new text of K-II is the tail of its old text, so it is found once
+in the file before the break, inside the old text. The failed assertions are counted by reading the tests and
+were not measured. The prefix of all three is `Cataclysm.GadgetBurst.`, with its trailing dot, which is 4 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| K-I, the flag is read | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (bOwnBlowKilled && SummonersGadgetStat(GadgetsBurstOnKillStat) > 0.0f)` | `if (bOwnBlowKilled && SummonersGadgetStat(GadgetsBurstOnKillStat) > 1.0f)` | `AHoldersTurretThatKillsStrikesTheNearestEnemyWithinItsReachOnceMore` | the other three |
+| K-II, the blow that killed must be the gadget's own | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `&& Killed->GetLastBlow().DealtBy.Get() == this && !Killed->GetLastBlow().bDamageOverTime;` | `&& !Killed->GetLastBlow().bDamageOverTime;` | `AKillByWhatAGadgetsHitSetOffFiresNoBurstAndNeitherDoesATrapsOrAnImpsKill` | none |
+| K-III, the burst goes to the nearest | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `AttackTarget(WithinReach[0]);` | `AttackTarget(WithinReach.Last());` | `AHoldersTurretThatKillsStrikesTheNearestEnemyWithinItsReachOnceMore` | `AKillByABurstFiresAnotherAndTheChainEndsAtTheFirstEnemyThatLives` and `AKillByAVolleysBlowFiresABurstAndUnderConduitAKillCreditedToTheSummonerStillCounts` |
+
+Failed assertions in each test, by reading:
+
+- **K-I, 18 in 4 tests.** With the break no burst is ever fired. The first test 6: "a holder's turret that kills
+  fires one burst"; "the nearest enemy within its reach took one ordinary blow"; "two attacks: the blow that
+  killed and the burst"; "and each raised deployable_hit on its summoner"; "a blow that does not kill fires no
+  burst", which expects the count to stand at 1 and reads 0; and "a kill with no other enemy within reach fires
+  no burst", the same. The chain test 6: "the burst kills the nearest, at 3 m"; "and the burst that kill fires
+  kills the next nearest, at 5 m"; "three bursts in all: one for each kill"; "four attacks: the first blow and
+  the three bursts"; "the third burst struck the enemy at 9 m"; and "the burst took one ordinary blow's worth
+  from it and no more", which compares nought with a blow. The volley and Conduit test 5: "a kill by a blow of a
+  volley fires one burst"; "the enemy at 6 m took the burst and then the volley's own blow: two"; "four attacks:
+  the volley's three and the burst"; "a kill credited to the summoner under Conduit still fires the burst"; and
+  "and the nearest enemy within reach took it". The fourth test 1: "control: and fires a burst, so the flag is
+  held", after which the test returns.
+- **K-II, 2 in 1 test.** With the break the enemy the summoner finished counts as the turret's kill, and the
+  turret strikes the other enemy within its reach: "a kill by what the gadget's hit set off fires no burst" and
+  "and the other enemy within its reach took nothing", the first of the three lines of that wording. Every other
+  kill in the four tests is the gadget's own and is unchanged.
+- **K-III, 8 in 3 tests.** With the break a burst goes to the furthest enemy within reach. The first test 2:
+  "the nearest enemy within its reach took one ordinary blow" and "the enemy at 9 m, within reach and not the
+  nearest, took nothing". The chain test 4: the one burst goes to the enemy at 9 m, which lives, so "the burst
+  kills the nearest, at 3 m", "and the burst that kill fires kills the next nearest, at 5 m", "three bursts in
+  all: one for each kill" and "four attacks: the first blow and the three bursts" fail; the lines about the enemy
+  at 9 m pass. The volley and Conduit test 2: "the enemy at 6 m took the burst and then the volley's own blow:
+  two", which took one, and "and the enemy at 9 m took the volley's one", which took two; its Conduit half
+  passes, because one enemy is within reach there. The fourth test passes: each burst in it has one enemy to go
+  to.
+
+Messages used for more than one assertion: "and the other enemy within its reach took nothing", three times in
+the fourth test, for the second turret, the trap and the imp.
+
+**Tests of another group expected to fail, to check in the window:** under K-I the probe
+`ProbeGadgetsBurstOnKill` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails on its last
+two assertions. Under K-II and K-III it passes.
+
+**Tests and no proof:** that a tick does not count, which has no test either; that a trap and an imp fire
+nothing; that Conduit still counts, which K-II would not show, since the record names the gadget with Conduit or
+without.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A row can make its wearer's gadgets fire at every enemy within their reach each time a clock of the gadget's own comes round: one stat of seconds, read as the shortest of its rows, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the stat's name, the reader of its
