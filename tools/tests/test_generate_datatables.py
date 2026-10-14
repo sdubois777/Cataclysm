@@ -7529,3 +7529,128 @@ class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
         assert any("under the required tags ''" in problem
                    and repr(self.STAT) in problem
                    for problem in problems), problems
+
+
+class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
+    """`gadget_volley_every_seconds`, ruled 2026-10-13 and built ahead of its
+    row, for "Gadgets fire at all enemies within range simultaneously once
+    every 5-8 seconds". One flat row scoped to `Type.Deployable`.
+
+    THE ROW ROLLS DOWN, ruled: 5 seconds is the better figure. The sheet
+    states the pair as the sentence does, 5 to 8, and the sentence's one
+    range is marked `1` in its `Rolls Down` cell, so the generator writes the
+    pair 8 to 5 and a roll of 1 is 5 seconds.
+    """
+
+    WORDS = ("Gadgets fire at all enemies within range simultaneously once "
+             "every 5-8 seconds")
+    STAT = "gadget_volley_every_seconds"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 5, "Value High": 8,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_with_its_mark_is_carried_through_falling(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 8.0, 5.0, "Type.Deployable", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_same_row_without_the_mark_rises_and_is_refused(
+            self, tmp_path):
+        """What the enchantment session must not forget: with the `Rolls
+        Down` cell empty the pair is written 5 to 8, a roll of 1 would wait
+        the longest, and the row is refused once, in words that name the
+        column. The control is the test above, the same row with the mark."""
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (5.0, 8.0)
+        problems = self.refusals(out)
+        assert len(problems) == 1, problems
+        assert "the pair must fall" in problems[0]
+        assert "Rolls Down" in problems[0]
+        assert repr(self.STAT) in problems[0]
+        assert any("the pair must fall" in problem
+                   for problem in self.validation(out))
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGET_VOLLEY_EVERY_SECONDS_STAT == self.STAT
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT not in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadget_volley_seconds" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the layer before, read by the same
+        pattern from the same file."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetVolleyEverySecondsStat"] == (
+            gen.GADGET_VOLLEY_EVERY_SECONDS_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line. A single figure in
+        both columns is allowed: it neither rises nor falls."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert self.refusals([row]) == []
+        assert self.refusals([dict(row, ValueLow=6.0, ValueHigh=6.0)]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Minion"},
+                 "under the required tags 'Type.Minion'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 5.0, "ValueHigh": 8.0}, "the pair must fall"),
+                ({"ValueHigh": 0.0}, "states 0 on"),
+                ({"ValueHigh": -5.0}, "states -5 on"),
+                ({"ValueLow": 61.0}, "states 61 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_second_row_of_seconds_on_one_enchantment_is_refused(
+            self, tmp_path):
+        """The game takes the shortest of the rows, so a second row would do
+        nothing. The control is one row; and the same stat on two different
+        enchantments is not refused, because each states it once."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert self.refusals([row]) == []
+        second = dict(row, Name=row["Enchantment"] + "#2")
+        problems = self.refusals([row, second])
+        assert len(problems) == 1, problems
+        assert "on more than one row" in problems[0]
+        assert "SHORTEST" in problems[0]
+        other = dict(row, Name="Positive_Another#1", Enchantment="Positive_Another")
+        assert self.refusals([row, other]) == []
+
+    def test_a_condition_or_a_scale_on_the_seconds_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_is_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_gadget_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []

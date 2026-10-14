@@ -2,6 +2,298 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make its wearer's gadgets fire at every enemy within their reach each time a clock of the gadget's own comes round: one stat of seconds, read as the shortest of its rows, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the stat's name, the reader of its
+seconds, the gadget's step, the volley, a count of volleys and the mark of the clock),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one include and one call in `RegenerationStep`),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute),
+`game/Source/Cataclysm/Tests/CataclysmGadgetBehaviourTests.cpp` (four tests, and the helper that grants rows now
+takes a list), `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe),
+`tools/generate_datatables.py` (the name and three more refusals), `tools/tests/test_generate_datatables.py` (one
+class of eight tests), `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (one job
+added to the hook `RegenerationStep`). Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Gadgets fire at all enemies within range simultaneously
+once every 5-8 seconds".
+
+- **The row acts on the Bolt Turret and the Ballista only. A Spike Trap is a trap and not a gadget.** Ruled
+  2026-10-07, in the entry headed "The Spike Trap carries the tag `Type.Trap`", under its heading "FIRST, WHAT
+  CHANGES FOR A PLAYER: A SPIKE TRAP IS NOW A TRAP AND NO LONGER A GADGET FOR `gadgets_active`". A holder's Spike
+  Trap, imp and mote fire no volley.
+- **With the on-hit gadget rows worn, a volley applies them to every enemy it strikes, within those rows' own
+  cooldowns.** Ruled to be said first. Each blow of a volley is the gadget's ordinary blow and raises
+  `deployable_hit`. So "Gadgets apply a 15%-25% armor reduction to enemies they hit for 3 seconds", which has no
+  cooldown, is laid on every enemy within reach by one volley; and "Gadgets apply a 1-2 second stagger to enemies
+  they hit, once every 5 seconds" staggers one enemy of a volley, the first struck while its cooldown is ready,
+  which is the nearest. By reading; no test here wears those rows.
+- **A Bolt Turret lasts 5 seconds and a Ballista 8, and the row's seconds are 5 to 8. So without "Gadgets last
+  30%-60% longer" a Bolt Turret fires at most one volley, in the last moment of its life, and may fire none; a
+  Ballista fires one, or none at a row rolled near 8.** Read from `game/Data/WeaponSkills.csv`: Bolt Turret
+  `Duration=5`, Ballista `Duration=8`, and Iron Fortress, whose ballistae last 20 seconds and fire two to four
+  volleys. A gadget's lifespan and its step are two timers, and which fires first when both fall due at 5 seconds
+  was not read. **This is the same shortness of life the ruling asks to be said first of the drain row**, and it
+  makes this row worth little on the two turret skills without the duration row. Not ruled on; it is for the
+  coordinating session.
+- **The row rolls DOWN: 5 seconds is its best figure.** Ruled, by the owner's rule of 2026-10-05 in the entry
+  headed "A better roll gives the better outcome: a roll of 1 is a benefit's best figure and a drawback's
+  harshest, so seven sentences mark a range that rolls down", which says of this sentence that it "takes its
+  direction when it is built". **What the enchantment session must set in the workbook:** on the Enchantments
+  sheet, `1` in the `Rolls Down` cell of this sentence's row, which is the fifth column of the Positive table;
+  and on the Enchantment Effects sheet the row's Value Low 5 and Value High 8, as the sentence states them. The
+  generator then writes the pair 8 to 5, and the item text rolls the range from its second number to its first.
+  Without the mark the generator now refuses the row.
+- **"Gadgets fire 20%-40% faster" does not shorten the seconds.** Ruled. That row is `minion_attack_speed`, the
+  time between a gadget's ordinary shots, and the volley's reader does not ask for it.
+- **The volley is in addition to the gadget's ordinary fire, and has no limit on how many it strikes.** Ruled.
+  The brain's time between shots is not read and not moved by a volley.
+- **Each blow of a volley is a single blow, so it can be evaded, and it is not area damage.** Ruled.
+- **"Within range" is the gadget's reach, measured as the layer before this one measures it**: along the floor,
+  centre to centre, no more than `ReachCm`.
+- **The clock is the gadget's own and starts when it is placed.** Two turrets placed a second apart fire their
+  volleys a second apart. It is looked at on the quarter-second step every character has, so **a volley can fire
+  up to a quarter of a second late**; the clock keeps its beat from the placing, so a late volley does not make
+  the next one later.
+- **Two rows on the stat: the shorter seconds, and not their sum.** Ruled. The game does not grant one benefit
+  twice, so two rows arise only from two different sources; no second source exists today.
+- **A gadget that comes to hold the row when it has already stood longer than the row's seconds fires on the
+  next step, and counts from then.** A judgement; see below.
+- **A gadget that cannot act when its clock comes round, stunned or knocked down, fires nothing and that volley
+  is lost.** A judgement; see below.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+
+**What was not read:** the order in which an actor's lifespan and a repeating timer fire when both fall due in
+one frame; whether anything in the game stuns or knocks down a minion; what `AttackTarget` draws for each blow of
+a volley, and whether the projectile a turret's ordinary shot shows is drawn at all for a blow struck this way;
+how a worn row becomes a line of the stat line at a gear refresh; the item text of a range marked in `Rolls Down`.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's own words, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". Each ruling below is a labelled judgement by the coordinating session under the owner's delegation.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | It acts on the Turret and the Ballista only; a Spike Trap is a trap. | `ACataclysmMinion::VolleyEverySeconds` answers nought for everything that is not `IsGadget`, and `GadgetStep` returns for it. |
+| R2 | A clock of the gadget's own from when it is placed. | `ACataclysmMinion::GadgetStep`: the gadget's age, `GetGameTimeSinceCreation`, against `LastVolleyAtAgeSeconds`, which starts at nought. |
+| R3 | Its ordinary blow to every hostile within reach, each a single blow, each raising `deployable_hit`. | `ACataclysmMinion::FireVolley`: `AttackTarget` for each of `HostilesWithinReach`. |
+| R4 | In addition to its ordinary fire. | `FireVolley` is called from the step and not from the brain; nothing of the brain's is read or written. |
+| R5 | No cap on targets. | The list is not cut. |
+| R6 | The row rolls down, 5 is best. | The generator: `refuse_a_gadget_row_the_game_cannot_read` refuses a pair that rises on this stat. See "Said first" for the workbook. |
+| R7 | "Gadgets fire faster" does not shorten the seconds. | `VolleyEverySeconds` reads the one stat and nothing else. |
+| R8 | Two rows: the shorter seconds. | `VolleyEverySeconds` reads the rows of the stat and keeps the least. |
+| R9 | Said first: the on-hit gadget rows. | "Said first". |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The clock is stepped on the per-character quarter-second step, `ACataclysmCharacterBase::RegenerationStep`,
+  by one new job, `ACataclysmMinion::GadgetStep`.** The brief named two places. The option not taken: a timer on
+  each gadget, which fires on time but is one more thing to cancel when a gadget is destroyed, and which a test
+  could only reach by running the timer manager. A minion's actor never ticks, so "the minion's own tick" does
+  not exist.
+- **The clock keeps its beat from the placing.** When it comes round the mark moves on by the row's seconds and
+  not to the moment of firing. The option not taken: count from the moment of firing, under which every volley's
+  lateness is added to all that follow.
+- **A mark a whole period behind is brought to now.** That is a gadget that came to hold the row late, or whose
+  row grew shorter. It fires once and counts from then. The option not taken: fire one volley on each step until
+  the mark catches up.
+- **A gadget that cannot act fires nothing and the volley is lost.** `UCataclysmSkillEffects::CannotAct` is the
+  test the brain makes before an ordinary shot. The option not taken: hold the volley until the gadget can act.
+- **The list of enemies is taken once, before the first blow.** An enemy that dies before its turn is passed
+  over, and a gadget that dies part way through, to the retaliation its own blow provoked, strikes nobody after
+  that. The option not taken: search again before each blow.
+- **The rows are read themselves, and not through `StatForSkill`.** The stat pipeline adds flat rows together,
+  and the ruling asks for the shorter. `VolleyEverySeconds` walks the summoner's recorded rows on the stat and
+  asks the pipeline's own `ModifierApplies` whether each matches the gadget's tags, with no state of the
+  character known. So a condition on such a row is refused, and a row that removes the stat is not honoured; the
+  generator refuses a condition on the stat. The option not taken: read the sum and have the generator forbid a
+  second row anywhere, which a second source could not be held to.
+- **The seconds are bounded above nought and up to 60 in the generator**, the bound of the seconds conditions.
+- **An enchantment states the seconds on one row.** A second row on one enchantment would do nothing, so it is
+  refused.
+
+### THE GENRE SOURCES
+
+Recorded as `genre_2026-10-13.md` of the enchantment session gives them, and nothing else was fetched.
+
+How these were read: each page was fetched through a tool that hands back a model's reading of the page and not
+the page's bytes. Each page is longer than the 100,000 characters the tool read; the rest was not read.
+
+REACHED: `poedb.tw/us/Totem` (Path of Exile), its first 100,000 of 155,748 characters, read once. SUMMARY, the
+tool's words and not a quotation: the page states no rule for how a totem chooses its target, none for a totem
+immune to damage or losing life each second, and nothing that happens when a totem kills an enemy. It gave two
+lines about several shots of one attack, which are about projectiles and not about a volley at every enemy; they
+are not recorded.
+
+So no source was reached that settles this sentence. Every reading of it is this game's own. NOT REACHED: Diablo,
+Last Epoch, Torchlight; `poewiki.net` is blocked to the tool.
+
+### WHAT WAS BUILT
+
+- **The stat.** `gadget_volley_every_seconds`, flat seconds; nought or less is no such rule. No gameplay
+  attribute and no base. It is the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Its name in
+  code is `ACataclysmMinion::GadgetVolleyEverySecondsStat`.
+- **`ACataclysmMinion::VolleyEverySeconds()`.** Nought unless this minion is a gadget with a living summoner.
+  Otherwise the least `Value` among the summoner's rows on the stat that are flat, above nought, and match this
+  gadget's `TypeTags` by `UCataclysmStatPipeline::ModifierApplies`.
+- **`ACataclysmMinion::GadgetStep(AActor*)`**, static. It returns for anything that is not a living gadget, and
+  for a gadget whose seconds are nought. If the gadget's age less `LastVolleyAtAgeSeconds` is under the seconds
+  it returns. Otherwise the mark moves on by the seconds, and to the gadget's age if it is still a whole period
+  behind; then, unless the gadget cannot act, `FireVolley`.
+- **`ACataclysmMinion::FireVolley()`.** Counts the volley in `VolleysFired`, takes `HostilesWithinReach` once,
+  and calls `AttackTarget` for each that is still alive while the gadget itself is. It answers how many it
+  struck.
+- **The call.** `ACataclysmCharacterBase::RegenerationStep` calls `ACataclysmMinion::GadgetStep(this)` after the
+  delayed damage's drain and before the guard on a corpse. `CataclysmCharacterBase.cpp` gains the include of
+  `CataclysmMinion.h`.
+- **The generator.** `GADGET_VOLLEY_EVERY_SECONDS_STAT`, on `GADGET_STATS` and not on `GADGET_FLAG_STATS`, and
+  `MAX_GADGET_VOLLEY_EVERY_SECONDS`, 60. `refuse_a_gadget_row_the_game_cannot_read` refuses, on this stat, what
+  it refuses on every gadget stat (a kind that is not flat, Required Tags that are not exactly `Type.Deployable`,
+  an action) and also a pair that rises, a figure of nought or less or above 60, and a second row on one
+  enchantment.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment: Stat
+  `gadget_volley_every_seconds`, Value Kind `flat`, Value Low 5, Value High 8, Required Tags `Type.Deployable`.
+  No Condition, no Scale, no Action and no other cell. **And `1` in the sentence's `Rolls Down` cell on the
+  Enchantments sheet.** The effect row then leaves the generator as 8 to 5. The pin of how many sentences mark a
+  range in `tools/tests/test_enchantment_effects_match_the_row_text.py` moves with it; this session did not read
+  that pin.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of
+  `Probes()`.
+- `HOOKS` in `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` gains one job of
+  `ACataclysmCharacterBase::RegenerationStep`, `ACataclysmMinion::GadgetStep`, so a deleted call fails a test.
+  That file's check that a hook runs no job it does not know of matches calls that begin `UCataclysm` only, so
+  it would not have asked for this entry; the entry is added so the call is guarded as the others are.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is NOT changed: this layer adds no
+  call of `StatForSkill`. The seconds are read from the recorded rows by `GetStatInputs`.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat.
+- No merged test asserts anything different.
+
+### Tests
+
+Four new Unreal tests in `CataclysmGadgetBehaviourTests.cpp`, in the group `Cataclysm.GadgetVolley.`. The world's
+clock is moved by hand and the gadget's step is called directly, so no brain thinks and no ordinary shot is fired
+unless the test fires one. Every enemy that is struck holds 50,000, because a machine's blow rises with a level
+that a test's summoner takes from a console variable. Every figure is read against a control read first.
+
+- `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond`: two summoners, the holder
+  with the row at 5 seconds, each with a Bolt Turret and enemies at 3, 6, 9 and 12 m. In order: the holder's
+  turret reads 5 seconds; the control turret's one ordinary blow takes health and raises `deployable_hit` once;
+  at 4.9 seconds the holder's turret has fired no volley and its enemies have lost nothing; at 5.1 the control
+  turret has fired none, its enemies have lost nothing more and no further event was raised; the holder's has
+  fired one; the enemies at 3, 6 and 9 m each lost one ordinary blow; the one at 12 m lost nothing; the event was
+  raised three times; the turret made three attacks; a second step at the same moment fires nothing; at 9.9
+  seconds no second volley; at 10.05 the second, 4.95 seconds after the first fired.
+- `TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot`: the holder also holds
+  `minion_attack_speed` increased by 100 for `Type.Deployable`. In order: the control turret's time between shots
+  is whole and the holder's is half; the holder's turret reads 5 seconds; at 2.6 seconds no volley; at 4.9 none;
+  an ordinary shot takes health from the nearest; at 5.1 the volley fires; the nearest has taken two blows; the
+  enemy at 6 m one; four attacks in all.
+- `TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep`: three summoners, holding one row of 8, rows of
+  8 and 5, and nothing. In order: one row reads 8; two read 5; none reads nought; at 5.1 seconds the first has
+  fired nothing and the second one volley; at 8.1 the first fires its first and the second has fired no second;
+  the third has fired nothing; the third is given a row of 5 and fires on the next step; its enemies lost health;
+  it does not fire again at the same moment, nor 4.9 seconds later, and fires its second 5.1 seconds after.
+- `AHoldersSpikeTrapAndImpFireNoVolleyAndAnEvadedBlowOfAVolleyTakesNothing`: a holder's Spike Trap, imp and
+  turret, each with enemies within reach, and a control summoner's turret. At 5.1 seconds: the control fired
+  none and its enemies lost nothing; the holder's turret fired one; the trap fired none, reads no seconds, and
+  its two enemies lost nothing; the imp the same; the turret's enemy at 3 m lost health, the one at 9 m the
+  same, and the one at 6 m, which evades, nothing; three attacks; `deployable_hit` three times.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeGadgetVolleyEverySeconds`. After 5.1 seconds and one step each, the turret of the summoner holding nothing
+has fired no volley and its nearer enemy holds what it held; the turret of the one holding the stat at a flat 5
+has fired one and both its enemies lost health.
+
+Python: `TestGadgetsFireAVolley` in `tools/tests/test_generate_datatables.py`, eight tests on a made-up sheet:
+the row with its mark is carried through as 8 to 5 and refused by no check; the same row without the mark is
+written 5 to 8 and refused once, in words that name the column; the name is a stat with no attribute and not a
+flag; the generator's name is the one `CataclysmMinion.cpp` holds; each wrong shape is refused once (a kind that
+is not flat, no tag, another tag, an action, a pair that rises, a figure of 0, of -5 and of 61), and one figure
+in both columns is allowed; a second row on one enchantment is refused and the stat on two enchantments is not; a
+condition or a scale is refused by the checks that hold those; a passive node's row is left alone. And one more
+case of `test_the_hook_runs_this_job` for the new job.
+
+**Not tested:** the step arriving from the real timer, because a test's world is not ticked; the lifespan ending
+a Bolt Turret at the moment its clock comes round; the on-hit gadget rows applied by a volley, and the stagger
+row's cooldown across one; a gadget that cannot act; a gadget that dies of retaliation part way through a volley;
+an enemy that dies before its turn; a volley beside the brain's own shots under a running clock; a Ballista's
+volley; a row that removes the stat; the row arriving from a worn item; a gadget in a dungeon level; what a
+player sees of a volley.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted once in its file by a script at this layer's commit, each is one line, and each
+new text keeps the file's brackets paired. The failed assertions are counted by reading the tests and were not
+measured. The prefix of all three is `Cataclysm.GadgetVolley.`, with its trailing dot, which is 4 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| V-I, the row's seconds are waited whole | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds)` | `if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds * 0.5f)` | `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond` | `TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot` and `TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep` |
+| V-II, of two rows the shorter | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `Seconds = Seconds <= 0.0f ? Row.Value : FMath::Min(Seconds, Row.Value);` | `Seconds = Seconds <= 0.0f ? Row.Value : FMath::Max(Seconds, Row.Value);` | `TwoRowsGiveTheShorterSecondsAndARowHeldLateFiresOnTheNextStep` | none |
+| V-III, every enemy within reach and not the nearest alone | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (!IsValid(Each) \|\| UCataclysmSkillEffects::IsDead(Each))` | `if (Struck > 0 \|\| !IsValid(Each) \|\| UCataclysmSkillEffects::IsDead(Each))` | `AHoldersTurretStrikesEveryEnemyWithinItsReachWhenItsClockComesRoundAndNoneBeyond` | `TheVolleyIsNotHurriedByGadgetsFireFasterAndComesInAdditionToAnOrdinaryShot` and `AHoldersSpikeTrapAndImpFireNoVolleyAndAnEvadedBlowOfAVolleyTakesNothing` |
+
+In the table each `\|\|` stands for the two upright bars of the code; the backslashes are there for the table only.
+
+Failed assertions in each test, by reading:
+
+- **V-I, 12 in 3 tests.** With the break a volley fires once half the row's seconds have passed since the mark,
+  and the mark still moves on by the whole seconds. The first test 3: the volley fires at 4.9 seconds, so "at
+  4.9 seconds a holder's turret has fired no volley" and "and its enemies have lost nothing" fail; the mark is
+  then at 5, nothing fires at 5.1, and every line read at 5.1 passes on the volley of 4.9; at 9.9 a second fires,
+  so "at 9.9 seconds the second volley has not fired" fails; at 10.05 the count is the 2 expected. The second
+  test 4: a volley fires at 2.6, so "at 2.6 seconds no volley has fired: the seconds are not shortened by
+  Gadgets fire faster" and "nor at 4.9 seconds" fail; none fires at 5.1, where the count is the 1 expected, so
+  "the enemy the ordinary shot struck is struck by the volley as well: two blows" and "and an enemy the ordinary
+  shot did not strike takes the volley's one" fail; the four attacks are the early volley's three and the
+  ordinary one, and pass. The third test 5: under one row of 8 the turret fires at 5.1, so "control: at 5.1
+  seconds the turret under one row of 8 has fired nothing" fails, and at 8.1 its count is the 1 expected; under
+  rows of 8 and 5 a second fires at 8.1, so "and the other, whose next is due at 10, has fired no second" fails;
+  the late turret fires on its first step with its mark left at 5, fires again on the step at the same moment,
+  and again 4.9 seconds on, so "and does not fire again at the same moment", "nor 4.9 seconds after that volley"
+  and "and fires its second 5.1 seconds after it: the clock counts from that volley" fail, with counts of 2, 3
+  and 3. The fourth test passes: its one read is at 5.1 seconds, when one volley has fired with the break or
+  without.
+- **V-II, 2 in 1 test.** "rows of 8 and 5 are read as the shorter, 5, and not as their sum", which reads 8; and
+  "and the turret under rows of 8 and 5 has fired its first volley", at 5.1 seconds. At 8.1 that turret fires
+  its first and the line expecting a count of 1 passes.
+- **V-III, 9 in 3 tests.** With the break a volley strikes the first enemy of its list, which is the nearest,
+  and passes over the rest. The first test 4: "the enemy at 6 m took one ordinary blow"; "the enemy at 9 m took
+  one ordinary blow"; "each blow of the volley raised deployable_hit on its summoner: three"; "and each was an
+  attack of the turret's own: three". The second test 2: "and an enemy the ordinary shot did not strike takes
+  the volley's one"; "four attacks in all: the ordinary one and the volley's three". The fourth test 3: "the
+  enemy at 9 m took the same"; "it was struck at all the same: three attacks"; "and deployable_hit was raised
+  for each of the three, the evaded one included". The third test passes: it reads counts of volleys, and that a
+  line's health fell.
+
+**Tests of another group expected to fail, to check in the window:** under V-III the probe
+`ProbeGadgetVolleyEverySeconds` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails on its
+last assertion, "and both its enemies lost health to it". Under V-I and V-II it passes.
+
+**Tests and no proof:** that a trap and an imp fire none, which the layer before this one's T-III would also
+show; that the seconds are not shortened by `minion_attack_speed`, which is shown by no line of code that could
+be broken, since the reader asks for one stat; that the beat is kept from the placing; that a row held late
+fires at once.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A row can make its wearer's gadgets choose the enemy with the most health within their reach: a flag stat and one block in the shared brain, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (what a gadget is, the stat's name,

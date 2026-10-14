@@ -671,6 +671,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// prioritize the highest HP enemy within their range instead of the
 		// nearest". A flag. No gameplay attribute and no base.
 		TEXT("gadgets_target_most_health"),
+		// How many seconds apart a summoner's gadgets fire at every enemy
+		// within their reach, read by ACataclysmMinion::VolleyEverySeconds on
+		// the gadget's step: the shortest of the summoner's flat rows that
+		// match the gadget's type tags, and not their sum. Ruled 2026-10-13:
+		// "Gadgets fire at all enemies within range simultaneously once every
+		// 5-8 seconds". Nought is no such rule. No gameplay attribute and no
+		// base.
+		TEXT("gadget_volley_every_seconds"),
 	};
 	return Stats;
 }

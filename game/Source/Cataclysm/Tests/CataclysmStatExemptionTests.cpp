@@ -8030,6 +8030,50 @@ namespace CataclysmStatExemptionTest
 						  == Probe.Far[FGadgetProbe::Granted]);
 	}
 
+	/**
+	 * `gadget_volley_every_seconds`, the seconds between a gadget's volleys, read by
+	 * `ACataclysmMinion::VolleyEverySeconds` on the gadget's step, `ACataclysmMinion::GadgetStep`. Ruled
+	 * 2026-10-13: "Gadgets fire at all enemies within range simultaneously once every 5-8 seconds". Each turret's
+	 * two enemies hold 9,000. The world's clock is moved 5.1 seconds by hand and each turret's step is called
+	 * once. The plain summoner's turret fires no volley and its enemies lose nothing; the turret of the one
+	 * holding the stat at a flat 5 fires one, and both its enemies lose health.
+	 *
+	 * WHAT THIS DOES NOT REACH. That every blow is the ordinary one, the enemy beyond reach, the beat of the
+	 * clock, two rows, and a trap and an imp firing none: `Cataclysm.GadgetVolley.` in
+	 * `CataclysmGadgetBehaviourTests.cpp` holds those.
+	 */
+	void ProbeGadgetVolleyEverySeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FGadgetProbe Probe(World, /*NearHealth=*/9000.0f, /*FarHealth=*/9000.0f);
+		if (!Probe.IsWhole(Test))
+		{
+			return;
+		}
+		GrantFlat(Probe.Summoners[FGadgetProbe::Granted], ACataclysmMinion::GadgetVolleyEverySecondsStat, 5.0f);
+
+		World->TimeSeconds += 5.1f;
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Plain]);
+		ACataclysmMinion::GadgetStep(Probe.Turrets[FGadgetProbe::Granted]);
+
+		Test.TestEqual(TEXT("control: the turret of a summoner holding no row fires no volley in 5.1 seconds"),
+					   Probe.Turrets[FGadgetProbe::Plain]->VolleysFired, 0);
+		Test.TestEqual(TEXT("control: and its nearer enemy has lost nothing"),
+					   FGadgetProbe::HealthOf(Probe.Near[FGadgetProbe::Plain]), 9000.0f, 0.001f);
+		Test.TestEqual(TEXT("the turret of one holding gadget_volley_every_seconds at 5 fires one, so "
+							"VolleyEverySeconds really reads it"),
+					   Probe.Turrets[FGadgetProbe::Granted]->VolleysFired, 1);
+		Test.TestTrue(TEXT("and both its enemies lost health to it"),
+					  FGadgetProbe::HealthOf(Probe.Near[FGadgetProbe::Granted]) < 8999.0f
+						  && FGadgetProbe::HealthOf(Probe.Far[FGadgetProbe::Granted]) < 8999.0f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8173,6 +8217,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
 			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
 			{TEXT("gadgets_target_most_health"), &ProbeGadgetsTargetMostHealth},
+			{TEXT("gadget_volley_every_seconds"), &ProbeGadgetVolleyEverySeconds},
 		};
 		return Made;
 	}
