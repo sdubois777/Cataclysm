@@ -1871,6 +1871,9 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		FCataclysmHitDelivery Delivery;
 		Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
 		Delivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
+		// AND WHERE IT WAS THROWN FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
+		Delivery.bStruckFromAPoint = bFreeRepeatHasOrigin;
+		Delivery.StruckFromPoint = From;
 
 		FCataclysmDamageResult Resolved;
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(

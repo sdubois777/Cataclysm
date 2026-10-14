@@ -21,6 +21,8 @@
 // forward-declares this class, so including it here does not make a circle.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For the row a summoner's gadgets copy, kept as it was used. Ruled 2026-10-14.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "CataclysmAbilitySystemComponent.generated.h"
 
 struct FGameplayTag;
@@ -940,9 +942,13 @@ public:
 	TArray<FHeldKeptStacks> KeptStacksForDisplay() const;
 
 	/**
-	 * The last skill this character used that its gadgets may copy, by name, or none. Ruled 2026-10-14 by the
-	 * coordinating session, for "Gadgets copy the last skill you used and fire it at their target once every 2
-	 * seconds". Written by `NoteSkillGadgetsCopy` and read by `ACataclysmMinion::CopySummonersLastSkill`.
+	 * The row of the last skill this character used that its gadgets may copy, AS IT WAS WHEN USED, or null. Ruled
+	 * 2026-10-14 by the coordinating session, for "Gadgets copy the last skill you used and fire it at their target
+	 * once every 2 seconds". Written by `NoteSkillGadgetsCopy` and read by `ACataclysmMinion::CopySummonersLastSkill`.
+	 *
+	 * THE ROW AND NOT A NAME TO FIND AGAIN, the coordinating session's ruling of 2026-10-14 (option B), so a skill
+	 * used with one weapon is still copied after the character has changed to another. A copy casts the row with the
+	 * character's numbers AT THE COPY: the weapon held then, its damage and stats.
 	 *
 	 * A LASTING RECORD, kept whether or not the character holds the row, so a row put on later finds the skill used
 	 * before it. THE LAST SKILL WHOSE USE SENT THE SKILL-USED NOTICE AND THAT
@@ -955,10 +961,10 @@ public:
 	 * as it was written, and this answers none for a record of another. A NEW FLOOR of the same dungeon changes
 	 * nothing. NOT REPLICATED: only the authority's gadgets read it.
 	 */
-	FName SkillGadgetsCopy() const;
+	const FCataclysmWeaponSkill* SkillGadgetsCopy() const;
 
-	/** Write the record `SkillGadgetsCopy` reads: this name, in the dungeon being walked now. */
-	void NoteSkillGadgetsCopy(FName SkillName);
+	/** Write the record `SkillGadgetsCopy` reads: this row, in the dungeon being walked now. */
+	void NoteSkillGadgetsCopy(const FCataclysmWeaponSkill& Skill);
 
 	/**
 	 * How many stacks of one row's own this character holds now: nought once
@@ -4999,8 +5005,9 @@ protected:
 	 */
 	void StepKeptStackClocks(float InCombat);
 
-	/** The last skill this character's gadgets copy, and `DungeonBeingWalked` as it was used. See `SkillGadgetsCopy`. */
-	FName SkillGadgetsCopyName;
+	/** The row this character's gadgets copy, whether one is held, and `DungeonBeingWalked` as it was used. */
+	FCataclysmWeaponSkill SkillGadgetsCopyRow;
+	bool bHoldsSkillGadgetsCopy = false;
 	int32 SkillGadgetsCopyDungeonId = INDEX_NONE;
 
 	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */

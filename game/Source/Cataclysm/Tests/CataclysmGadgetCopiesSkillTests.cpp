@@ -166,10 +166,24 @@ namespace CataclysmGadgetCopiesSkillTest
 												  /*bHasCooldown=*/true);
 		}
 
-		/** The skill the gadgets would copy now. */
+		/** The name of the row the gadgets would copy now, or none. */
 		FName Record() const
 		{
-			return System->SkillGadgetsCopy();
+			const FCataclysmWeaponSkill* Row = System->SkillGadgetsCopy();
+			return Row ? FName(*Row->Name) : NAME_None;
+		}
+
+		/** Hold a weapon of another type and damage type, as `FillAbilitySlotsFromWornWeapon` refills the slots. */
+		void Holds(const TCHAR* DamageType, const TCHAR* WeaponType) const
+		{
+			Slots->SetDamageType(DamageType);
+			Slots->EquipWeaponType(WeaponType);
+		}
+
+		/** The row of a skill held now, by name, or an empty row and false. */
+		bool HeldRow(const TCHAR* Name, FCataclysmWeaponSkill& Out) const
+		{
+			return UCataclysmTriggeredSkill::HeldSkillNamed(Player, FName(Name), Out);
 		}
 
 		/** An increase a test's player holds beside the flag, requiring `Type.Deployable`. */
@@ -185,8 +199,20 @@ namespace CataclysmGadgetCopiesSkillTest
 		 */
 		void HoldTheFlag(const TArray<FIncrease>& MoreIncreases = TArray<FIncrease>()) const
 		{
+			HoldTheFlagAnd(MoreIncreases, NAME_None, FCataclysmStatModifier());
+		}
+
+		/** `HoldTheFlag`, and one more row of any shape on `Stat` when it is not none. */
+		void HoldTheFlagAnd(const TArray<FIncrease>& MoreIncreases, FName Stat, const FCataclysmStatModifier& Other) const
+		{
 			TMap<FName, FCataclysmStatInputs> Stats;
-			const auto Add = [&Stats](FName Stat, float Value, ECataclysmStatBucket Bucket)
+			if (!Stat.IsNone())
+			{
+				FCataclysmStatInputs& Line = Stats.FindOrAdd(Stat);
+				Line.Base = 0.0f;
+				Line.Modifiers.Add(Other);
+			}
+			const auto Add = [&Stats](FName Named, float Value, ECataclysmStatBucket Bucket)
 			{
 				FCataclysmStatModifier Row;
 				Row.Bucket = Bucket;
@@ -194,7 +220,7 @@ namespace CataclysmGadgetCopiesSkillTest
 				Row.Value = Value;
 				Row.RequiredTags.AddTag(
 					FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false));
-				FCataclysmStatInputs& Line = Stats.FindOrAdd(Stat);
+				FCataclysmStatInputs& Line = Stats.FindOrAdd(Named);
 				Line.Base = 0.0f;
 				Line.Modifiers.Add(Row);
 			};
@@ -940,6 +966,179 @@ CATACLYSM_TEST(FCataclysmGadgetCopiesSkillHitIsTheSummonersTest,
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
 	TestTrue(TEXT("and the blow on record on the target is credited to the summoner"),
 		Struck && Struck->GetLastBlow().IsOnRecord() && Struck->GetLastBlow().Attacker.Get() == Rig.Player);
+	return true;
+}
+
+// ==========================================================================
+// 10. The row as it was used, after a change of weapon
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmGadgetCopiesSkillAfterAWeaponChangeTest,
+	"Cataclysm.GadgetCopiesSkill.AfterAChangeOfWeaponTheGadgetStandsAndCopiesTheSkillUsedAtTheNewWeaponsNumbers")
+{
+	using namespace CataclysmGadgetCopiesSkillTest;
+
+	// THE COORDINATING SESSION'S RULING OF 2026-10-14 (OPTION B): THE RECORD IS THE ROW AS IT WAS USED. A War wearer
+	// with a Shield uses Shield Bash, its turret stands, and it changes to a Crossbow. The change is made with
+	// `UCataclysmWeaponSlotsComponent::EquipWeaponType`, the call `FillAbilitySlotsFromWornWeapon` makes when the worn
+	// weapon changes, and NOT through `OnEquipmentChanged`: that refreshes attributes from worn items, which this
+	// rig does not wear. So the new weapon's damage is written by hand, from 100 to 200, as the refresh would write
+	// the worn weapon's. The turret is placed with `ACataclysmMinion::Spawn` and not by the Crossbow's skill.
+	//
+	// THE PLAYER AT THE ORIGIN, ITS TURRET 20 M ALONG Y WITH A TARGET 2 M ALONG X FROM IT, within Shield Bash's
+	// 2.5 m; and a control enemy 2 m along X from the player. Every enemy holds 50,000.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	FRig Rig(World, FVector::ZeroVector);
+	if (!Rig.IsUsable(*this))
+	{
+		return false;
+	}
+	Rig.Holds(TEXT("War"), TEXT("Shield"));
+	FCataclysmWeaponSkill Bash;
+	if (!TestTrue(TEXT("set-up: a War Shield gives Shield Bash"), Rig.HeldRow(TEXT("Shield Bash"), Bash)))
+	{
+		return false;
+	}
+	const FVector TurretAt(0.0f, 20.0f * M, 0.0f);
+	ACataclysmMinion* Turret = Place(*this, Rig.Player, TEXT("BoltTurret"), TurretAt);
+	ACataclysmEnemyCharacter* Target = Enemy(World, TurretAt + FVector(2.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* Control = Enemy(World, FVector(2.0f * M, 0.0f, 0.0f), 50000.0f);
+	if (!Turret || !TestTrue(TEXT("set-up: two enemies"), Target && Control))
+	{
+		return false;
+	}
+	Rig.Uses(Bash, Target->GetActorLocation());
+	Rig.HoldTheFlag();
+	if (!TestEqual(TEXT("set-up: Shield Bash is on record"), Rig.Record(), FName(TEXT("Shield Bash"))))
+	{
+		return false;
+	}
+
+	// THE CONTROL, BEFORE THE CHANGE: the first copy, at a weapon damage of 100.
+	Step(Turret);
+	const float Before = 50000.0f - HealthOf(Target);
+	if (!TestEqual(TEXT("set-up: the turret casts its first copy"), Turret->SkillCopiesMade, 1)
+		|| !TestTrue(*FString::Printf(TEXT("control: the first copy struck its target: %.2f"), Before), Before > 0.0f))
+	{
+		return false;
+	}
+
+	// THE CHANGE OF WEAPON.
+	Rig.Holds(TEXT("War"), TEXT("Crossbow"));
+	Rig.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 200.0f);
+	FCataclysmWeaponSkill Unused;
+	TestFalse(TEXT("after the change Shield Bash is no longer held"), Rig.HeldRow(TEXT("Shield Bash"), Unused));
+	TestTrue(TEXT("and the Crossbow's Bolt Turret is"), Rig.HeldRow(TEXT("Bolt Turret"), Unused));
+	TestTrue(TEXT("the turret is still standing after the change"),
+		IsValid(Turret) && !UCataclysmSkillEffects::IsDead(Turret));
+	TestEqual(TEXT("and Shield Bash is still on record"), Rig.Record(), FName(TEXT("Shield Bash")));
+
+	// THE COPY AFTER IT, 2.1 seconds on: the skill used, at the numbers of the weapon held now.
+	const float HeldBefore = HealthOf(Target);
+	Pass(World, 2.1f);
+	Step(Turret);
+	if (!TestEqual(TEXT("the turret casts the second copy after the change"), Turret->SkillCopiesMade, 2))
+	{
+		return false;
+	}
+	const float After = HeldBefore - HealthOf(Target);
+	TestTrue(*FString::Printf(TEXT("the copy after the change takes more than the one before it: %.2f against %.2f"),
+		After, Before), After > Before);
+
+	// AND WHAT THE SUMMONER'S OWN START OF THE SAME RECORDED ROW TAKES NOW, from its own place at the control enemy.
+	if (!TestTrue(TEXT("set-up: the summoner's own start of the recorded row starts"),
+			Rig.CastsFromItsOwnPlace(Bash, Control->GetActorLocation())))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the copy after the change took what that start takes at the new weapon's numbers"),
+		After, 50000.0f - HealthOf(Control), 0.01f);
+	return true;
+}
+
+// ==========================================================================
+// 11. A copy's distance to its target is measured from the gadget
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmGadgetCopiesSkillDistanceTest,
+	"Cataclysm.GadgetCopiesSkill.ACopysTargetDistanceIsMeasuredFromTheGadgetForATargetWithinMetresRow")
+{
+	using namespace CataclysmGadgetCopiesSkillTest;
+
+	// THE PLAYER HOLDS A DEMONIC WAND, whose Special skill Whisper of Madness is a curse that strikes one enemy within
+	// 15 m for the Special slot's damage, and A MADE-UP ROW OF THE SHAPE OF THE SHIPPED
+	// `Negative_Ranged_skills_deal_15_30_less_damage_at_close#2`: `spell_damage`, More, -30, Required Tags
+	// `Type.Ranged`, Condition `target_within_metres` 5. Two turrets: the NEAR one 12 m along Y from the player,
+	// with its target 1 m from it and so about 12 m from the player; the FAR one 60 m along X, with its target 8 m
+	// from it and 68 m from the player, the control far from both. Every enemy holds 50,000.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	FRig Rig(World, FVector::ZeroVector);
+	if (!Rig.IsUsable(*this))
+	{
+		return false;
+	}
+	Rig.Holds(TEXT("Demonic"), TEXT("Wand"));
+	FCataclysmWeaponSkill Whisper;
+	if (!TestTrue(TEXT("set-up: a Demonic Wand gives Whisper of Madness"), Rig.HeldRow(TEXT("Whisper of Madness"), Whisper))
+		|| !TestTrue(TEXT("set-up: and a row may cast it again"), UCataclysmTriggeredSkill::RepeatsFromARow(Whisper)))
+	{
+		return false;
+	}
+	const FVector NearAt(0.0f, 12.0f * M, 0.0f);
+	const FVector FarAt(60.0f * M, 0.0f, 0.0f);
+	ACataclysmMinion* NearTurret = Place(*this, Rig.Player, TEXT("BoltTurret"), NearAt);
+	ACataclysmMinion* FarTurret = Place(*this, Rig.Player, TEXT("BoltTurret"), FarAt);
+	ACataclysmEnemyCharacter* NearTarget = Enemy(World, NearAt + FVector(1.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* FarTarget = Enemy(World, FarAt + FVector(8.0f * M, 0.0f, 0.0f), 50000.0f);
+	if (!NearTurret || !FarTurret || !TestTrue(TEXT("set-up: two enemies"), NearTarget && FarTarget))
+	{
+		return false;
+	}
+	Rig.Uses(Whisper, NearTarget->GetActorLocation());
+
+	FCataclysmStatModifier Close;
+	Close.Bucket = ECataclysmStatBucket::More;
+	Close.Source = ECataclysmModifierSource::Enchantment;
+	Close.Value = -30.0f;
+	Close.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Ranged")), /*ErrorIfNotFound=*/false));
+	Close.Condition = ECataclysmStatCondition::TargetWithinMetres;
+	Close.ConditionValue = 5.0f;
+	Rig.HoldTheFlagAnd(TArray<FCataclysmGadgetCopiesSkillTest::FRig::FIncrease>(), FName(TEXT("spell_damage")), Close);
+	if (!TestTrue(TEXT("set-up: each turret's brain chooses its own target"),
+			NearTurret->SkillCopyTarget() == NearTarget && FarTurret->SkillCopyTarget() == FarTarget))
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST: the far turret's copy, at a target 8 m from the gadget and 68 m from the player.
+	Step(FarTurret);
+	const float FarTook = 50000.0f - HealthOf(FarTarget);
+	if (!TestEqual(TEXT("set-up: the far turret casts one copy"), FarTurret->SkillCopiesMade, 1)
+		|| !TestTrue(*FString::Printf(TEXT("control: the copy far from both struck its target: %.2f"), FarTook),
+			FarTook > 0.0f))
+	{
+		return false;
+	}
+
+	// THE NEAR TURRET'S COPY: 1 m from the gadget and about 12 m from the player, so near by the gadget's measure.
+	Step(NearTurret);
+	const float NearTook = 50000.0f - HealthOf(NearTarget);
+	if (!TestEqual(TEXT("set-up: the near turret casts one copy"), NearTurret->SkillCopiesMade, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the copy 1 m from the gadget and 12 m from the player counts as within 5 m: it took 30% less "
+				   "than the copy far from both"), NearTook, FarTook * 0.7f, FarTook * 0.001f);
 	return true;
 }
 

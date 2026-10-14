@@ -43,6 +43,7 @@
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -8452,7 +8453,14 @@ namespace CataclysmStatExemptionTest
 		Slots->SetDamageType(TEXT("Demonic"));
 		Slots->EquipWeaponType(TEXT("Whip"));
 		System->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), 100.0f);
-		System->NoteSkillGadgetsCopy(FName(TEXT("Searing Lash")));
+		FCataclysmWeaponSkill Lash;
+		if (!Test.TestTrue(TEXT("set-up: the whip's Searing Lash is held. If not, DT_WeaponSkills may be older than "
+								 "game/Data/WeaponSkills.csv: run tools/generate_datatable_assets.py"),
+						   UCataclysmTriggeredSkill::HeldSkillNamed(Player, FName(TEXT("Searing Lash")), Lash)))
+		{
+			return;
+		}
+		System->NoteSkillGadgetsCopy(Lash);
 
 		ACataclysmMinion* Turret = ACataclysmMinion::Spawn(
 			Player, FVector(20.0f * M, 0.0f, 0.0f), /*Lifetime=*/600.0f, /*bBurns=*/false, TEXT("BoltTurret"));

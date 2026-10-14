@@ -2744,7 +2744,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	PotionHeal = FCataclysmPotionHeal();
 
 	// AND THE LAST SKILL ITS GADGETS COPY. Ruled 2026-10-14: a death clears the record. See `SkillGadgetsCopy`.
-	SkillGadgetsCopyName = NAME_None;
+	bHoldsSkillGadgetsCopy = false;
 
 	// AND THE BUFF A ROW DREW, with a gear refresh so the stat line is written without its lines. Ruled 2026-10-12;
 	// a judgement by the writing session, as the held resistance above is. LAST, so the refresh reads a component
@@ -5419,15 +5419,16 @@ int32 UCataclysmAbilitySystemComponent::DungeonBeingWalked() const
 	return Mode ? Mode->EmpireDungeonId : INDEX_NONE;
 }
 
-FName UCataclysmAbilitySystemComponent::SkillGadgetsCopy() const
+const FCataclysmWeaponSkill* UCataclysmAbilitySystemComponent::SkillGadgetsCopy() const
 {
 	// NONE FOR A RECORD OF ANOTHER DUNGEON, the comparison a kept stack makes. Ruled 2026-10-14.
-	return SkillGadgetsCopyDungeonId == DungeonBeingWalked() ? SkillGadgetsCopyName : NAME_None;
+	return bHoldsSkillGadgetsCopy && SkillGadgetsCopyDungeonId == DungeonBeingWalked() ? &SkillGadgetsCopyRow : nullptr;
 }
 
-void UCataclysmAbilitySystemComponent::NoteSkillGadgetsCopy(FName SkillName)
+void UCataclysmAbilitySystemComponent::NoteSkillGadgetsCopy(const FCataclysmWeaponSkill& Skill)
 {
-	SkillGadgetsCopyName = SkillName;
+	SkillGadgetsCopyRow = Skill;
+	bHoldsSkillGadgetsCopy = true;
 	SkillGadgetsCopyDungeonId = DungeonBeingWalked();
 }
 

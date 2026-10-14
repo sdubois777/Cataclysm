@@ -2232,6 +2232,11 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// Carried on the effect context; see `FCataclysmHitDelivery::Skill`.
 	Delivery.Skill = this;
 
+	// AND WHERE THIS USE WAS CAST FROM, when a free start was given a place: a gadget's copy. Ruled 2026-10-14. The
+	// distance to the target is then measured from there; see `FCataclysmHitDelivery::bStruckFromAPoint`.
+	Delivery.bStruckFromAPoint = bFreeRepeatHasOrigin;
+	Delivery.StruckFromPoint = FreeRepeatOrigin;
+
 	// AND HOW MANY ENEMIES THIS ATTACK STRUCK TOGETHER, with any damage it bought
 	// with Fervour. Issue #1515. Begun here only when no attack is already in
 	// progress -- `HitScaled` begins one for a whole Consume split -- so every

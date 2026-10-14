@@ -790,9 +790,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// A BLOW THAT CARRIES NO TARGET DISTANCE REPORTS -1, WHICH REFUSES. That
 	// is a minion's blow: see `bCarriesNoTargetDistance` for why the reading
 	// is refused rather than measured from the summoner.
+	//
+	// AND A BLOW STRUCK FROM A POINT IS MEASURED FROM THE POINT, as `MetresFromWhereItWasStruck` measures it for the
+	// announcement and the defender, so the three still agree. Ruled 2026-10-14: a gadget's copy.
 	const float TargetDistanceMetres = Delivery.bCarriesNoTargetDistance
 		? -1.0f
-		: UCataclysmTargeting::MetresBetween(Instigator, Target);
+		: (Delivery.bStruckFromAPoint && Target
+			? static_cast<float>(FVector::Dist(Delivery.StruckFromPoint, Target->GetActorLocation()) / 100.0f)
+			: UCataclysmTargeting::MetresBetween(Instigator, Target));
 
 	// AND WHETHER THAT TARGET IS STAGGERED, read once for this blow beside the
 	// distance above and given to the same three lookups. Issue #45.
@@ -1210,6 +1215,26 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 
 const TCHAR* UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat = TEXT("dot_explodes_at_expiry_chance");
 const TCHAR* UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName = TEXT("Cataclysm.ExplosionAtAnAilmentsEnd");
+
+const TCHAR* UCataclysmSkillEffects::StruckFromSetDataName = TEXT("Cataclysm.StruckFromSet");
+const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.StruckFromX");
+const TCHAR* UCataclysmSkillEffects::StruckFromYDataName = TEXT("Cataclysm.StruckFromY");
+const TCHAR* UCataclysmSkillEffects::StruckFromZDataName = TEXT("Cataclysm.StruckFromZ");
+
+float UCataclysmSkillEffects::MetresFromWhereItWasStruck(const FGameplayEffectSpec& Spec, const AActor* From,
+														 const AActor* To)
+{
+	// THE STAMP WHEN THE BLOW CARRIES ONE, measured as `MetresBetween` measures, in three dimensions. Ruled
+	// 2026-10-14: a gadget's copy is measured from the gadget.
+	if (To && Spec.GetSetByCallerMagnitude(FName(StruckFromSetDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+	{
+		const FVector At(Spec.GetSetByCallerMagnitude(FName(StruckFromXDataName), /*WarnIfNotFound=*/false, 0.0f),
+						 Spec.GetSetByCallerMagnitude(FName(StruckFromYDataName), /*WarnIfNotFound=*/false, 0.0f),
+						 Spec.GetSetByCallerMagnitude(FName(StruckFromZDataName), /*WarnIfNotFound=*/false, 0.0f));
+		return static_cast<float>(FVector::Dist(At, To->GetActorLocation()) / 100.0f);
+	}
+	return UCataclysmTargeting::MetresBetween(From, To);
+}
 
 /**
  * Pins the roll made against the chance that a damage over time ailment explodes when it ends by time, 0 to 100,
@@ -1672,6 +1697,17 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsAnExplosionAtAnAilmentsEnd)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
+	}
+
+	// AND WHERE IT WAS STRUCK FROM, WHEN THAT WAS NOT ITS INSTIGATOR'S PLACE: a gadget's copy of its summoner's
+	// skill. Ruled 2026-10-14. The hit announcement and the defender read it through `MetresFromWhereItWasStruck`.
+	// Not stamped otherwise, so every other blow is as it was.
+	if (Delivery.bStruckFromAPoint)
+	{
+		Spec.SetSetByCallerMagnitude(FName(StruckFromSetDataName), 1.0f);
+		Spec.SetSetByCallerMagnitude(FName(StruckFromXDataName), static_cast<float>(Delivery.StruckFromPoint.X));
+		Spec.SetSetByCallerMagnitude(FName(StruckFromYDataName), static_cast<float>(Delivery.StruckFromPoint.Y));
+		Spec.SetSetByCallerMagnitude(FName(StruckFromZDataName), static_cast<float>(Delivery.StruckFromPoint.Z));
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void

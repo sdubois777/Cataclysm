@@ -644,6 +644,10 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
 	Delivery.Skill = FiringSkill;
 
+	// AND WHERE ITS USE WAS CAST FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
+	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
+	Delivery.StruckFromPoint = StrikesFromPoint;
+
 	// AND WHAT ITS USE SPENT FROM NEXT-USE CHARGES. Issue #1833, phase 2.
 	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
 	Delivery.DamageMultiplierSpent = SpentMoreMultiplier;

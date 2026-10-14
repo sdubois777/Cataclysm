@@ -67,7 +67,8 @@ public:
 
 	/**
 	 * The row of the skill of this name the character HOLDS, from its weapon slots, copied into `Out`. Ruled
-	 * 2026-10-14 for "the last skill you used", which a gadget copies only while its summoner still holds it.
+	 * 2026-10-14 for "the last skill you used": the record is written only for a skill the character holds as it
+	 * is used. A gadget's copy does not ask it; it casts the row as it was recorded.
 	 * The basic attack is among what is held. @return whether one was found; false for a character with no weapon
 	 * slots and for a name of none.
 	 */

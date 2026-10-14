@@ -1093,8 +1093,9 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 		// AND THE LAST SKILL ITS GADGETS COPY IS RECORDED. Ruled 2026-10-14, for "Gadgets copy the last skill you
 		// used and fire it at their target once every 2 seconds": the last skill whose use sent this notice and that
 		// a row may cast again, `UCataclysmTriggeredSkill::RepeatsFromARow`, found among the skills this character
-		// HOLDS. A use of any other leaves the record as it was. Only a paid use sends this notice, so no free cast
-		// reaches here. See `UCataclysmAbilitySystemComponent::SkillGadgetsCopy`.
+		// HOLDS, and kept AS ITS ROW, so a change of weapon afterwards does not lose it (the coordinating session's
+		// ruling of 2026-10-14). A use of any other leaves the record as it was. Only a paid use sends this notice, so
+		// no free cast reaches here. See `UCataclysmAbilitySystemComponent::SkillGadgetsCopy`.
 		//
 		// NOT THE BASIC ATTACK, ruled by the coordinating session on 2026-10-14 by the ruling of 2026-09-14 above:
 		// the basic attack is not a skill use. Otherwise the record would be the basic attack almost always.
@@ -1102,7 +1103,7 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 		if (!bBasicAttack && UCataclysmTriggeredSkill::HeldSkillNamed(this, Notice.SkillName, Used)
 			&& UCataclysmTriggeredSkill::RepeatsFromARow(Used))
 		{
-			Acting->NoteSkillGadgetsCopy(Notice.SkillName);
+			Acting->NoteSkillGadgetsCopy(Used);
 		}
 	}
 }
