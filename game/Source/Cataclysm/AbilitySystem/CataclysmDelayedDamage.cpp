@@ -28,17 +28,24 @@ float UCataclysmDelayedDamage::AmountDelayed(float ToHealth, float SharePercent,
 	return ToHealth * FMath::Clamp(SharePercent, 0.0f, 100.0f) / 100.0f;
 }
 
-float UCataclysmDelayedDamage::DelayShare(UAbilitySystemComponent* AbilitySystem, float ToHealth,
-										  bool bIsDamageOverTime)
+float UCataclysmDelayedDamage::ShareThatWouldBeDelayed(UAbilitySystemComponent* AbilitySystem, float ToHealth,
+													   bool bIsDamageOverTime, float* OutSeconds)
 {
+	if (OutSeconds)
+	{
+		*OutSeconds = 0.0f;
+	}
+
 	// A TICK IS NOT DELAYED, ruled 2026-10-12. Damage already spread over seconds is not spread again.
 	if (bIsDamageOverTime || ToHealth <= 0.0f)
 	{
 		return 0.0f;
 	}
 
+	// NO WORLD, NO PARCEL, AND SO NO SHARE: `HoldDelayedDamage` refuses a parcel it has no clock for, and this
+	// answers what `DelayShare` would really take.
 	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	if (!Cataclysm)
+	if (!Cataclysm || !Cataclysm->GetWorld())
 	{
 		return 0.0f;
 	}
@@ -51,9 +58,22 @@ float UCataclysmDelayedDamage::DelayShare(UAbilitySystemComponent* AbilitySystem
 		return 0.0f;
 	}
 	const float Seconds = Cataclysm->StatForSkill(FName(SecondsStat), FGameplayTagContainer(), 0.0f);
+	if (OutSeconds)
+	{
+		*OutSeconds = Seconds;
+	}
+	return AmountDelayed(ToHealth, SharePercent, Seconds);
+}
 
-	const float Amount = AmountDelayed(ToHealth, SharePercent, Seconds);
-	if (Amount <= 0.0f || !Cataclysm->HoldDelayedDamage(Amount, Seconds))
+float UCataclysmDelayedDamage::DelayShare(UAbilitySystemComponent* AbilitySystem, float ToHealth,
+										  bool bIsDamageOverTime)
+{
+	// THE FIGURE THE TWO SAVES FROM A LETHAL BLOW WERE GIVEN, FROM THE SAME FUNCTION, so what a save judged and
+	// what is taken here cannot come apart.
+	float Seconds = 0.0f;
+	const float Amount = ShareThatWouldBeDelayed(AbilitySystem, ToHealth, bIsDamageOverTime, &Seconds);
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (Amount <= 0.0f || !Cataclysm || !Cataclysm->HoldDelayedDamage(Amount, Seconds))
 	{
 		return 0.0f;
 	}
