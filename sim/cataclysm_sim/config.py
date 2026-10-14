@@ -822,6 +822,28 @@ class TuningConfig:
     # is the reading taken: a labelled judgement, 2026-10-13.
     quest_hit_scales_with_depth: bool = False
 
+    # Is a dungeon's hit sized by its natural floors, or by all its floors?
+    #
+    # BY ITS NATURAL FLOORS, SINCE 2026-10-13. The owner accepted the
+    # coordinating session's recommendation that day, in that session's
+    # words: a dungeon's hit is sized by its NATURAL floors, not the floors
+    # the Explorer tree adds. Natural floors are the depth rolled from the
+    # dungeon's row times its Cataclysm pattern's multiplier. The floors
+    # the tree adds (`EmpireTree.floors_added`) are left out of the hit and
+    # of nothing else: the walk, the timer, the power and the reward still
+    # read the total.
+    #
+    # A TREE THAT REMOVES FLOORS NO LONGER SHRINKS THE HIT, by the same
+    # sentence. That is a second change of behaviour the ruling's words
+    # imply and did not spell out. It touches `Exclusionary Mapping` and
+    # the presets with a negative `floor_delta`.
+    #
+    # False IS THE MODEL AS IT WAS: the hit is scaled by `floors`, tree
+    # floors included. With no tree the two give the same campaign, bit for
+    # bit. EVERY FIGURE RECORDED BEFORE 2026-10-13 FOR A TREE THAT MOVES
+    # FLOORS WAS MEASURED WITH False.
+    hit_scales_with_natural_floors: bool = True
+
     #: The chance a Quest dungeon with somewhere adjacent to go actually goes.
     #:
     #: **THE DESIGN'S "MAY" IS A DIE ROLL AND NOT ONLY THE MAP.** Slice 4 of

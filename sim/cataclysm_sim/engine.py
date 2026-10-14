@@ -131,6 +131,27 @@ class Dungeon:
     is_last_stand: bool = False
     source: str = ""            # which Cataclysm sent it
     times_resolved: int = 0
+    #: Of `floors`, how many the empire tree added. Negative when the tree
+    #: removed floors. Set once by `Simulation._make_dungeon`; 0 for a
+    #: dungeon built by hand and for a campaign with no tree.
+    tree_floors: int = 0
+
+    @property
+    def natural_floors(self) -> int:
+        """The depth this dungeon has without the empire tree.
+
+        WHAT A HIT IS SIZED BY, since 2026-10-13: the depth rolled from the
+        dungeon's row, times its Cataclysm pattern's multiplier, and not
+        the floors the tree added or removed. `floors` is still the depth
+        for the walk, the timer, the power, the death chance and the
+        reward.
+
+        `floors - tree_floors` AND NOT A SECOND STORED DEPTH, so a depth
+        changed after the dungeon was made, as the Last Stand and the
+        earned boss do and as tests do, moves this with it, and only the
+        tree's part is left out.
+        """
+        return self.floors - self.tree_floors
 
     @property
     def resolves(self) -> bool:
@@ -329,9 +350,16 @@ class Simulation:
         lo, hi = spec.floors
         floors = max(1, int(round(self.rng.randint(lo, hi) * floors_mult)))
 
+        # THE NATURAL DEPTH, kept apart from what the tree does next. The
+        # Cataclysm pattern's `floors_mult` is inside it: the pattern is part
+        # of what the dungeon is, which is a labelled judgement of
+        # 2026-10-13. A hit is sized by this; see `_hit_floors`.
+        natural = floors
+
         # Floor deltas from the tree change depth, and because this model charges
         # one day a floor they change run time and reward at the same time. The
-        # game can separate the two; this model cannot.
+        # game can separate the two; this model cannot. Until 2026-10-13 they
+        # changed the size of the dungeon's hit as well.
         floors = max(1, int(round(
             floors + cfg.tree.floors_added(cfg.active_cataclysm_count()))))
 
@@ -367,6 +395,7 @@ class Simulation:
             city_id=city.cid,
             city_tier=city.tier,
             floors=floors,
+            tree_floors=floors - natural,
             # Cow Level: "time to complete is doubled and cannot be reduced".
             run_days=self._walk_days(floors, subtype),
             resolve_max=int(resolve),
@@ -843,9 +872,11 @@ class Simulation:
 
         # Bigger dungeons hit harder. Scale the bite by how deep this one is
         # relative to a typical dungeon of its type on this tier.
+        #
+        # BY ITS NATURAL DEPTH, since 2026-10-13: `_hit_floors`.
         lo, hi = cfg.spec(d.dtype, d.city_tier).floors
         typical = (lo + hi) / 2.0
-        scale = d.floors / typical
+        scale = self._hit_floors(d) / typical
 
         # ABSOLUTE POINTS. `city.max_defense` is deliberately absent: while the
         # damage was a fraction of it, it divided out of how many resolves the
@@ -887,6 +918,36 @@ class Simulation:
             d.resolve_in = float(d.resolve_max)
         else:
             self.dungeons.pop(d.did, None)
+
+    def _hit_floors(self, d: Dungeon) -> float:
+        """The depth a dungeon's hit is sized by.
+
+        ITS NATURAL FLOORS, SINCE 2026-10-13. The owner accepted the
+        coordinating session's recommendation that day, in that session's
+        words: a dungeon's hit is sized by its NATURAL floors, not the
+        floors the Explorer tree adds. Until then this was `d.floors`, so
+        the Explorer preset's 40 extra floors at difficulty tier 1 made an
+        ordinary dungeon on an Outpost hit about 4.5 times as hard: 51.5
+        floors over a typical 11.5.
+
+        A TREE THAT REMOVES FLOORS DOES NOT SHRINK THE HIT EITHER, which the
+        ruling's words imply and did not spell out. `Exclusionary Mapping`
+        (-1 floor a point) and a preset with a negative `floor_delta`, such
+        as `TREE_EXPLORER_VIA_FLOORS`, still make a dungeon shorter to walk,
+        poorer and quicker to come due. They no longer make it hit less.
+
+        ONLY THE HIT. The walk, the resolve timer, the power, the death
+        chance and the reward all still read `d.floors`.
+
+        `cfg.hit_scales_with_natural_floors` False is the model as it was.
+        With no tree the two are the same number and nothing changes.
+
+        THE GAME: `FCataclysmDungeon::BiteScale` divides `Floors`. It has no
+        empire tree; it has two city upgrades that move `Floors`.
+        `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`.
+        """
+        cfg = self.cfg
+        return d.natural_floors if cfg.hit_scales_with_natural_floors else d.floors
 
     def _quest_hit(self, d: Dungeon, city: City) -> None:
         """A Quest dungeon's timer ran out on a standing city: the city is hit.
@@ -941,7 +1002,7 @@ class Simulation:
         scale = 1.0
         if cfg.quest_hit_scales_with_depth:
             lo, hi = ordinary.floors
-            scale = d.floors / ((lo + hi) / 2.0)
+            scale = self._hit_floors(d) / ((lo + hi) / 2.0)
 
         self.quest_hits += 1
 
