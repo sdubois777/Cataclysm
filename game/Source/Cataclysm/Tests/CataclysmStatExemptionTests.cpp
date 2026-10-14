@@ -8275,6 +8275,54 @@ namespace CataclysmStatExemptionTest
 						  && FGadgetProbe::HealthOf(Probe.Far[FGadgetProbe::Granted]) < 8999.0f);
 	}
 
+	/**
+	 * `gadgets_burst_on_kill`, a flag on a summoner, read at the end of `ACataclysmMinion::AttackTarget` when a
+	 * blow of the gadget's own has killed. Ruled 2026-10-13: "When a gadget kills an enemy, it fires an additional
+	 * burst at the nearest enemy within its range". Each turret's nearer enemy holds 9,000 and its further one 1.
+	 * Each turret strikes its further enemy, which dies. The plain summoner's turret fires no burst and its nearer
+	 * enemy keeps its health; the turret of the one holding the flag at a flat 1 fires one, and its nearer enemy
+	 * loses health.
+	 *
+	 * WHAT THIS DOES NOT REACH. A chain of kills, a kill by a volley, Conduit, a kill the gadget's hit set off,
+	 * and a trap and an imp firing none: `Cataclysm.GadgetBurst.` in `CataclysmGadgetBehaviourTests.cpp` holds
+	 * those.
+	 */
+	void ProbeGadgetsBurstOnKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FGadgetProbe Probe(World, /*NearHealth=*/9000.0f, /*FarHealth=*/1.0f);
+		if (!Probe.IsWhole(Test))
+		{
+			return;
+		}
+		GrantFlat(Probe.Summoners[FGadgetProbe::Granted], ACataclysmMinion::GadgetsBurstOnKillStat, 1.0f);
+
+		Probe.Turrets[FGadgetProbe::Plain]->AttackTarget(Probe.Far[FGadgetProbe::Plain]);
+		Probe.Turrets[FGadgetProbe::Granted]->AttackTarget(Probe.Far[FGadgetProbe::Granted]);
+		if (!Test.TestTrue(TEXT("set-up: each turret's blow killed its further enemy"),
+						   UCataclysmSkillEffects::IsDead(Probe.Far[FGadgetProbe::Plain])
+							   && UCataclysmSkillEffects::IsDead(Probe.Far[FGadgetProbe::Granted])))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("control: the turret of a summoner holding no flag fires no burst for its kill"),
+					   Probe.Turrets[FGadgetProbe::Plain]->BurstsFired, 0);
+		Test.TestEqual(TEXT("control: and its nearer enemy keeps its health"),
+					   FGadgetProbe::HealthOf(Probe.Near[FGadgetProbe::Plain]), 9000.0f, 0.001f);
+		Test.TestEqual(TEXT("the turret of one holding gadgets_burst_on_kill at 1 fires one, so AttackTarget "
+							"really reads it"),
+					   Probe.Turrets[FGadgetProbe::Granted]->BurstsFired, 1);
+		Test.TestTrue(TEXT("and its nearer enemy lost health to the burst"),
+					  FGadgetProbe::HealthOf(Probe.Near[FGadgetProbe::Granted]) < 8999.0f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8424,6 +8472,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("dot_explodes_at_expiry_chance"), &ProbeDotExplodesAtExpiryChance},
 			{TEXT("gadgets_target_most_health"), &ProbeGadgetsTargetMostHealth},
 			{TEXT("gadget_volley_every_seconds"), &ProbeGadgetVolleyEverySeconds},
+			{TEXT("gadgets_burst_on_kill"), &ProbeGadgetsBurstOnKill},
 		};
 		return Made;
 	}
