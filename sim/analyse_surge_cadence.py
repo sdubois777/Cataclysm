@@ -362,8 +362,15 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
 
 #: What `development` ships, read off `TuningConfig` rather than written out so
 #: this file cannot claim the wrong baseline after somebody moves the constant.
-SHIPPED_COUNT = TuningConfig().surge_dungeon_count
-SHIPPED_INTERVAL = TuningConfig().surge_interval_days
+#: NO LONGER WHAT SHIPS, AND HELD ON PURPOSE. Since 2026-10-13 `TuningConfig`
+#: ships 5 dungeons every 90 days. This file's axes, its tables and every
+#: figure its docstring and the issues quote are those of 4 every 120, which
+#: is what shipped when they were measured, and none was re-measured. The two
+#: are written out so the file goes on measuring that world. The names are
+#: kept because the rest of the file and its tests use them. To measure what
+#: ships, read them off `TuningConfig()` again and give the axes a 5 and a 90.
+SHIPPED_COUNT = 4
+SHIPPED_INTERVAL = 120.0
 SHIPPED_COUNT_CAP = TuningConfig().surge_count_max
 def surge_count_for(tier: int, count: int, cap: int | None = None) -> int:
     """What `Simulation.surge_count` returns for this knob, at this cap.

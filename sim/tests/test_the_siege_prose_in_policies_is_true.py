@@ -92,7 +92,9 @@ TIERS = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY,
 #: prints it above its own tables.
 #:
 #: FIVE DUNGEONS A SURGE IS THE BALANCE REPORT'S SETTING AND NOT
-#: `TuningConfig.surge_dungeon_count`, which is 4. This comment said that at
+#: `TuningConfig.surge_dungeon_count`, which was 4 until 2026-10-13 and is 5
+#: since. THE INTERVAL BELOW IS 120 DAYS AND THE DEFAULT IS 90 SINCE THAT
+#: DATE, so this block is still not the default. This comment said that at
 #: four the Sanctuary median is 37 rather than 34, measured over 1,000
 #: campaigns at each. Measured on 2026-10-12 over 10,000 campaigns at each
 #: (seeds 0 to 9999), the four medians are 14 / 22 / 34 / 123 at four and at

@@ -308,8 +308,32 @@ class TuningConfig:
 
     # UNKNOWN #2 -- surge cadence, and how it escalates.
     surge_mode: SurgeMode = SurgeMode.STATIC
-    surge_interval_days: float = 120.0
-    surge_dungeon_count: int = 4
+    #
+    # 90 DAYS AND 5 DUNGEONS SINCE 2026-10-13. They were 120 and 4. The
+    # owner accepted the coordinating session's recommendation that day,
+    # in that session's words "surges every 90 days of 5 dungeons"; it is
+    # part of the package that also has an ordinary dungeon leave after it
+    # hits and a Quest dungeon's timer hit. `docs/DECISIONS.md`, 2026-10-13,
+    # has the measurement. Nothing else was retuned for them.
+    #
+    # EVERY CAMPAIGN FIGURE RECORDED BEFORE 2026-10-13 THAT WAS TAKEN AT
+    # THE RAW DEFAULTS WAS MEASURED AT 120 AND 4. That includes the figures
+    # in the comments of this file and of `engine.py` that say "the raw
+    # default of 4" or "`TuningConfig()` defaults". None was re-measured.
+    # Set both by name to reproduce one.
+    #
+    # THE GAME KEEPS 120 AND 4 AND DIFFERS ON PURPOSE:
+    # `UCataclysmSurgeScheduler::IntervalDays` and `DungeonsPerSurge`.
+    # `tools/tests/test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`
+    # records that and fails when either of the game's constants moves.
+    #
+    # THREE ANALYSIS SCRIPTS READ THESE AS "WHAT SHIPS" AND WERE BUILT
+    # AROUND 120 AND 4: `analyse_surge_cadence.py`,
+    # `analyse_board_empty_surge.py` and `analyse_tier_throughput.py`. Each
+    # now holds 120 and 4 by name, because its axes and its recorded
+    # figures are those of that cadence.
+    surge_interval_days: float = 90.0
+    surge_dungeon_count: int = 5
 
     # Heretic spawns 25% more dungeons per surge. Set by the lethality mode.
     surge_dungeon_multiplier: float = 1.0
