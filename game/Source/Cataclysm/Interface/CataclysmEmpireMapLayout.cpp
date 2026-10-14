@@ -153,3 +153,25 @@ FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 
 	return FString::Printf(TEXT("%s, %s"), *ClearedPart, *ObjectivePart);
 }
+
+FString UCataclysmEmpireMapLayout::LastHitLine(const UCataclysmEmpireRun* Run)
+{
+	// NOTHING TO SAY: no run, a run that has not begun, or no hit yet. Day 0 is
+	// what `UCataclysmEmpireRun::Begin` writes, and no day of a run is day 0.
+	if (Run == nullptr || Run->Map == nullptr || Run->LastHitDay <= 0)
+	{
+		return FString();
+	}
+
+	// THE CITY IS NAMED AS THE MAP NAMES IT. A number nobody can look up says
+	// nothing, and a city that cannot be found is still a hit worth a line.
+	const FCataclysmCity* HitCity = Run->Map->Find(Run->LastHitCityId);
+	const FString HitCityName = HitCity != nullptr
+		? HitCity->Name : FString(TEXT("a city"));
+
+	return Run->bLastHitWasAQuestTimer
+		? FString::Printf(TEXT("Day %d: a Quest dungeon's timer hit %s."),
+						  Run->LastHitDay, *HitCityName)
+		: FString::Printf(TEXT("Day %d: a dungeon hit %s and left."),
+						  Run->LastHitDay, *HitCityName);
+}

@@ -155,6 +155,7 @@ def test_the_design_document_says_what_dying_in_a_quest_dungeon_does() -> None:
     assert "what dying in one does is undecided" not in design, (
         "docs/Cataclysm_GDD_v2.md still says what dying in a Quest dungeon or a "
         "Dungeon City does is undecided. It was decided on 2026-10-09 and built.")
-    assert "dying in one costs the same days" in design, (
+    assert ("dying in a Quest dungeon or a Dungeon City costs the same days"
+            in design), (
         "docs/Cataclysm_GDD_v2.md no longer says dying in a Quest dungeon or a "
         "Dungeon City costs the same days. That is what the game mode does.")
