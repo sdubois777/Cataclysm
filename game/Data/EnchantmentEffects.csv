@@ -601,3 +601,4 @@ Positive_Skills_get_1_4_to_projectile_count#1,Positive_Skills_get_1_4_to_project
 Positive_Teleport_to_a_random_location_within_4_meters_wh#1,Positive_Teleport_to_a_random_location_within_4_meters_wh,,,4.0,4.0,,,0.0,,0.0,teleport_randomly,hit_taken,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,2.0,0.0,,0.0
 Positive_25_50_of_damage_taken_is_dealt_over_4_8_second#1,Positive_25_50_of_damage_taken_is_dealt_over_4_8_second,damage_taken_delayed_percent,flat,25.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_25_50_of_damage_taken_is_dealt_over_4_8_second#2,Positive_25_50_of_damage_taken_is_dealt_over_4_8_second,damage_taken_delayed_seconds,flat,4.0,8.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_auras_are_20_50_more_effective#1,Positive_Your_auras_are_20_50_more_effective,aura_effect,more,20.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
