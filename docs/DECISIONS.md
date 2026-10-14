@@ -4,6 +4,15 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-12 — The game's surge when a city falls waits for the 25-day least interval, as the simulation's does (#2380)
 
+**Said first: with this layer, 20 unattended campaigns made 687 dungeons where they made 1,580 before it.** Both
+figures are one Unreal test's own log line, `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`, in
+two runs of 2026-10-12. That test runs 20 campaigns of up to 600 days each with nobody clearing anything and
+counts every dungeon a surge made. Before the layer the line read "20 campaigns, 12000 days in all, 1580 dungeons
+made". With this layer and the two layers under it on the branch, which do not touch surges, it read "20
+campaigns, 12000 days in all, 687 dungeons made". The writing session did not make either run; the coordinating
+session reported both lines on 2026-10-13. The simulation has had this rule since pull request #1928 (issue
+#1432), so the game moves to where the model already is.
+
 **Said first: two cities falling on one day bring one wave.** Before this layer they brought two. The first
 city's fall fires its surge, the surge is recorded as today's, and the second city's fall is then nought days
 after a surge and fires nothing. The second city still falls and still becomes a Dungeon City.
@@ -248,6 +257,68 @@ answer is yes is `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurg
 test's comment. Where this entry says above that the assertion was left failing, that was true when it was
 written. Every other test this entry lists is unchanged; the run finds out. Not compiled or run when this was
 written.
+
+### Ruled on 2026-10-13: two existing tests changed after the Unreal run of 2026-10-12
+
+**Neither change was compiled or run when this was written.** The writing session made no Unreal run. What the
+run of 2026-10-12 printed is given here as the coordinating session reported it on 2026-10-13.
+
+**What the run found.** At this layer's head the whole suite printed "3602 tests performed, 3600 succeeded, 2
+failed". The two failures are two of the tests this entry lists above as "cannot be told without a run".
+
+**Ruling A, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.** The test
+asks the scheduler before each day whether a fall's surge is due, and asserts the surge only on a fall day where
+the answer was yes.
+
+- **The test was renamed.** Old name: `Cataclysm.EmpireRun.ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons`,
+  class `FCataclysmEmpireRunFallTest`. New name:
+  `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`, class
+  `FCataclysmEmpireRunFallMaySurgeTest`. Where this entry uses the old name above, that was its name when those
+  lines were written. No file under `tools/` named it and no other file under `game/Source` did.
+- **What failed.** "Expected 'the day it fell also surged' to be true." and "Expected 'at least one surge fired on
+  the day 1 cities fell' to be true.", each once.
+- **What the assertions were.** On every day a city fell: `Report.bSurged`, with the message "the day it fell also
+  surged"; and `Run->Surges->SurgesFired >= SurgesBefore + Report.Fallen.Num()`, with the message "at least one
+  surge fired on the day %d cities fell".
+- **What they are.** Before each `AdvanceDay` the test asks `Run->Surges->IsDueOnCityFall(Run->Day() + 1)`, which
+  is the day the report will carry. On a day a city fell and the answer was yes: `Report.bSurged`, with the
+  message "the day a city fell with a fall's surge due also surged"; and
+  `Run->Surges->SurgesFired >= SurgesBefore + 1`, with the message "at least one surge fired on the day %d cities
+  fell with a fall's surge due". On a day a city fell and the answer was no, nothing is asserted about the surge.
+- **One assertion was added at the end:** `FallDaysDueThatSurged >= 1`, with the message "%d of the %d days a city
+  fell had a fall's surge due and surged". It counts the fall days where the answer was yes and the report says a
+  surge fired.
+- **Why the count asserts one and not one per city.** Two cities can fall on one day. The first fall's surge is
+  recorded as today's, and the second fall is then nought days behind a surge and fires none. The question asked
+  before the day is about the day's first fall.
+- **Whether the added assertion holds on seed 1 is not known.** It cannot be read from the code. If the failed run
+  watched three fall days and one of them failed, the report said a surge fired on the other two; whether the
+  answer before those two days was yes was not measured.
+- **The comment and the header were corrected.** The comment "A CITY FALLING FIRES A SURGE OF ITS OWN, one per
+  city lost" now says a fall fires one only when one is due. The test has a header comment that says the rule and
+  names the test that holds the refused case,
+  `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
+
+**Ruling B, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.** In
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` the floor of 1,000 dungeons is kept and the
+number of campaigns is raised from 20 to 40.
+
+- **What failed.** "Expected 'enough dungeons were made to compare' to be true." The run made 687 dungeons in 20
+  campaigns.
+- **What the assertion was and is.** `Total >= 1000`, with the message "enough dungeons were made to compare". It
+  is unchanged. `constexpr int32 Campaigns = 20;` in that test became `constexpr int32 Campaigns = 40;`.
+- **The neighbouring test has its own constant and was not changed.**
+  `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons` declares its own `Campaigns = 20`.
+- **The comment was rewritten** to say what was measured and when: 1,925 dungeons in the entry of 2026-09-06, and
+  the two log lines of 2026-10-12, all at 20 campaigns. The figure at 40 campaigns had not been measured when
+  this was written.
+
+**A judgement by the writing session, for the coordinating session to confirm.** By reading, the clock's surge
+and a "no" from `IsDueOnCityFall` can share a day only on day 1. `RecordSurge` writes the last surge's day and the
+next surge's day together, and the next is at least 25 days on, so on any later day the clock's surge is due only
+when a fall's is due as well. An empty board's surge asks for the same 25 days. So on a fall day after day 1 with
+the answer no, `Report.bSurged` would be false by reading. The test does not assert that; the ruling says to
+assert nothing there.
 
 ---
 
