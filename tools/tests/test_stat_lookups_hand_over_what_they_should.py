@@ -139,6 +139,8 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: A debuff of the wearer's cutting what its carrier deals added two more on
 #: 2026-10-13, both asked by `UCataclysmDebuffs::NoteLaid` where a debuff is
 #: put on another character: the cut, and the Conduit flag for what a zone lays.
+#: A wearer immune to debuffs that lays none added one more on 2026-10-13,
+#: asked by `UCataclysmDebuffs::HoldsImmuneAndAppliesNone`.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -873,6 +875,14 @@ INVENTORY = {
         "asked of the owner by NoteLaid just before the stat above, only "
         "while a zone is laying its effects; a flag of the character's, so "
         "no tags, no blow and no target",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(ImmuneAndAppliesNoneStat), FGameplayTagContainer(), 0.0f'):
+        "whether a character is given no debuff and lays none (ruled "
+        "2026-10-13), asked by HoldsImmuneAndAppliesNone of the target, of "
+        "the instigator and of whom the instigator follows where a debuff is "
+        "about to be laid, and of a character at its regeneration step; the "
+        "row is about every debuff whatever lays it, so no tags, and a "
+        "debuff is not a blow, so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

@@ -7966,6 +7966,44 @@ namespace CataclysmStatExemptionTest
 					   0.0005f);
 	}
 
+	/**
+	 * `immune_to_debuffs_and_applies_none`, read by `UCataclysmDebuffs::HoldsImmuneAndAppliesNone`, which is what
+	 * `UCataclysmDebuffs::RefusedByARow` asks where a debuff is put on a character. Ruled 2026-10-13: "You are
+	 * immune to debuffs but also cannot apply them". One applier lays Cripple for 5 seconds, through
+	 * `ApplyTagForDuration`, on two characters, the second holding the flag at a flat 1: it lands on the plain
+	 * one and is refused on the holder.
+	 *
+	 * STANDING: the applier at the origin, the plain character 3 m along X, and the holder 100 m along Y.
+	 */
+	void ProbeImmuneToDebuffsAndAppliesNone(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Applier(World, FVector::ZeroVector);
+		FScopedSwinger Plain(World, FVector(3 * M, 0, 0));
+		FScopedSwinger Holder(World, FVector(0, 100 * M, 0));
+		GrantFlat(Holder.Actor, UCataclysmDebuffs::ImmuneAndAppliesNoneStat, 1.0f);
+
+		const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+		if (!Test.TestTrue(TEXT("set-up: the vocabulary has Cripple"), Cripple.IsValid()))
+		{
+			return;
+		}
+
+		Test.TestTrue(TEXT("control: a Cripple lands on a character with no row"),
+					  UCataclysmSkillEffects::ApplyTagForDuration(Applier.Actor, Plain.Actor, Cripple, 5.0f)
+						  && Plain.AbilitySystem->HasMatchingGameplayTag(Cripple));
+		Test.TestFalse(TEXT("and is refused on one carrying immune_to_debuffs_and_applies_none at 1"),
+					   UCataclysmSkillEffects::ApplyTagForDuration(Applier.Actor, Holder.Actor, Cripple, 5.0f));
+		Test.TestFalse(TEXT("which does not carry it, so HoldsImmuneAndAppliesNone really reads the flag"),
+					   Holder.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8109,6 +8147,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
 			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
 			{TEXT("debuffed_enemies_deal_less_percent"), &ProbeDebuffedEnemiesDealLessPercent},
+			{TEXT("immune_to_debuffs_and_applies_none"), &ProbeImmuneToDebuffsAndAppliesNone},
 		};
 		return Made;
 	}

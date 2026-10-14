@@ -672,6 +672,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// output by 10%-20%". Flat; nought cuts nothing. No gameplay attribute
 		// and no base.
 		TEXT("debuffed_enemies_deal_less_percent"),
+		// Whether this character is given no debuff and lays none, read by
+		// UCataclysmDebuffs::HoldsImmuneAndAppliesNone for the refusal the four
+		// functions that put a debuff on a character make, and for the step that
+		// removes what a holder already carries. Ruled 2026-10-13: "You are
+		// immune to debuffs but also cannot apply them". A flag. No gameplay
+		// attribute and no base.
+		TEXT("immune_to_debuffs_and_applies_none"),
 	};
 	return Stats;
 }
