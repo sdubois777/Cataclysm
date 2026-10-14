@@ -840,6 +840,13 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// three by three cells off the floor's plan, entered and left only by a rift of its own, holding one drop roll
 		// as an Elite kill's. The pairs and the gift were built on 2026-09-26; see the key. Issues #1820 and #41.
 		|| RowKey == FName(RealityRiftsKey)
+		// THE LABRYNTH, BUILT SINCE 2026-10-12 WITH NO CHANGE TO WHAT IT DOES. THE ROOMS DO NOT MOVE and the floor is
+		// not carved again. Gated shortcuts opening and closing in turn ARE the row: a path walked a moment ago is
+		// blocked and another has opened, which is the row's "blocked or redirected". Until that day the row answered
+		// Partly, for "rooms rearrange". WHY IT MOVED: the coordinating session recommended that The Labrynth be
+		// accepted as blocked and redirected paths and marked Built, and the owner answered on 2026-10-12 "your rec on
+		// all three, continue". See the key. Issues #1820 and #41.
+		|| RowKey == FName(LabrynthKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
 		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
@@ -864,10 +871,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		RowKey == FName(InsanityBurstsKey)
 		// REALITY RIFTS WAS HERE UNTIL 2026-10-10, for "access hidden areas"; it is built and answers above.
 		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
-		// THE LABRYNTH. Gated shortcuts open and close in turn, so cleared paths are blocked and others open; "rooms
-		// rearrange" does nothing, because the rooms do not move. Issues #1820 and #41.
+		// THE LABRYNTH WAS HERE UNTIL 2026-10-12, for "rooms rearrange". The rooms still do not move; the row was
+		// accepted as blocked and redirected paths, and it answers above.
 		// LIGHTFORGED WALLS WAS HERE UNTIL 2026-10-08, for "sections"; it is built and answers above.
-		|| RowKey == FName(LabrynthKey))
+		)
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
