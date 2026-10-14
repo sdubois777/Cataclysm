@@ -9278,11 +9278,39 @@ GADGETS_TARGET_MOST_HEALTH_STAT = "gadgets_target_most_health"
 #: compares the two.
 GADGETS_BURST_ON_KILL_STAT = "gadgets_burst_on_kill"
 
+#: The flag by which a summoner's gadgets take no damage from any blow, and
+#: the percent of a gadget's maximum health as it was placed that it loses
+#: each second. Ruled 2026-10-13 by the coordinating session under the
+#: owner's delegation, for "Your gadgets are invincible but lose 5% of their
+#: maximum HP per second passively".
+#:
+#: ONE SENTENCE IS TWO ROWS ON ONE ENCHANTMENT, both `flat` with Required Tags
+#: `Type.Deployable`, no Condition, no Scale and no Action: the flag 1 to 1,
+#: and the percent 5 to 5. `ACataclysmMinion::GadgetsTakeNoDamageStat` and
+#: `GadgetHealthLostPercentPerSecondStat` hold the same names, and
+#: `TestGadgetsTakeNoDamageAndAreDrained` in
+#: `tools/tests/test_generate_datatables.py` compares them.
+#:
+#: THE GAME READS EACH BY ITSELF, in `ACataclysmMinion::StepNoDamageAndDrain`,
+#: so either would work alone. AN ENCHANTMENT THAT STATES ONE WITHOUT THE OTHER
+#: IS REFUSED ALL THE SAME: gadgets that take no damage and lose nothing is a
+#: design nobody ruled, and a drain with nothing for it is a drawback written
+#: among the benefits. A labelled judgement of the writing session.
+#:
+#: THE PERCENT IS ONE FIGURE, above nought and at most 100. The sentence
+#: states 5 and no range, and which way a range of a cost inside a benefit
+#: should roll has not been ruled.
+GADGETS_TAKE_NO_DAMAGE_STAT = "gadgets_take_no_damage"
+GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT = (
+    "gadget_health_lost_percent_per_second")
+MAX_GADGET_HEALTH_LOST_PERCENT_PER_SECOND = 100.0
+
 #: The stats a summoner's row gives its gadgets that are flags: a flat 1, read
 #: as above nought.
 GADGET_FLAG_STATS = (
     GADGETS_TARGET_MOST_HEALTH_STAT,
     GADGETS_BURST_ON_KILL_STAT,
+    GADGETS_TAKE_NO_DAMAGE_STAT,
 )
 
 #: How many seconds apart a summoner's gadgets fire at every enemy within
@@ -9311,9 +9339,11 @@ MAX_GADGET_VOLLEY_EVERY_SECONDS = 60.0
 #: Every stat a summoner's row gives its gadgets. Each is read off the
 #: summoner with the gadget's own type tags and no base, by
 #: `ACataclysmMinion::SummonersGadgetStat` or, for the volley's seconds, by
-#: `ACataclysmMinion::VolleyEverySeconds`.
+#: `ACataclysmMinion::VolleyEverySeconds`. The loss each second is not a flag
+#: and is read by the first of those.
 GADGET_STATS = GADGET_FLAG_STATS + (
     GADGET_VOLLEY_EVERY_SECONDS_STAT,
+    GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT,
 )
 
 
@@ -9348,6 +9378,10 @@ def refuse_a_gadget_row_the_game_cannot_read(
     enchantment states the seconds on ONE row, because the game takes the
     shortest of the rows and a second one would do nothing.
 
+    NO DAMAGE AND THE LOSS EACH SECOND ARE STATED TOGETHER, ONCE EACH, ON ONE
+    ENCHANTMENT, and the loss is one figure above nought and at most 100, for
+    the reasons `GADGETS_TAKE_NO_DAMAGE_STAT` gives.
+
     A CONDITION OR A SCALE ON ANY OF THESE STATS IS REFUSED ELSEWHERE, by
     `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
     none is on the lists those two read.
@@ -9356,6 +9390,10 @@ def refuse_a_gadget_row_the_game_cannot_read(
     """
     problems = []
     volley_rows_of: dict[str, int] = {}
+    no_damage = GADGETS_TAKE_NO_DAMAGE_STAT
+    drain = GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT
+    pair = (no_damage, drain)
+    pair_rows_of: dict[str, dict[str, int]] = {}
     for row in rows:
         stat = str(row.get("Stat") or "").strip()
         if stat not in GADGET_STATS or "Node" in row:
@@ -9413,6 +9451,38 @@ def refuse_a_gadget_row_the_game_cannot_read(
                     problems.append(
                         f"{who}: states {value:g} on {stat!r}, and a row on "
                         f"this flag states 1 and nothing else.")
+        if stat in pair:
+            owner = str(row.get("Enchantment") or row["Name"])
+            pair_rows_of.setdefault(
+                owner, {name: 0 for name in pair})[stat] += 1
+        if stat == drain:
+            low = float(row.get("ValueLow") or 0.0)
+            high = float(row.get("ValueHigh") or 0.0)
+            if low != high:
+                problems.append(
+                    f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                    f"row states ONE figure in both value columns. Which way "
+                    f"a range of this loss should roll has not been ruled.")
+            for value in sorted({low, high}):
+                if not 0.0 < value <= MAX_GADGET_HEALTH_LOST_PERCENT_PER_SECOND:
+                    problems.append(
+                        f"{who}: states {value:g} on {stat!r}, and the "
+                        f"percent must be above 0 and at most "
+                        f"{MAX_GADGET_HEALTH_LOST_PERCENT_PER_SECOND:g}. "
+                        f"Nought or less drains nothing.")
+    for owner, held in pair_rows_of.items():
+        for stat, other in ((no_damage, drain), (drain, no_damage)):
+            if held[stat] > 1:
+                problems.append(
+                    f"{sheet}/{owner}: states {stat!r} on more than one row. "
+                    f"Flat rows on one stat are added together, so the game "
+                    f"would read the SUM of them: state it once.")
+            if held[stat] and not held[other]:
+                problems.append(
+                    f"{sheet}/{owner}: states {stat!r} and not {other!r}. "
+                    f"The sentence gives its gadgets both, no damage and a "
+                    f"loss each second, as two rows of ONE enchantment; one "
+                    f"without the other is a design nobody ruled.")
     return problems
 
 

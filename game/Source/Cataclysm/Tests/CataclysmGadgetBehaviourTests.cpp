@@ -276,6 +276,20 @@ namespace CataclysmGadgetBehaviourTest
 		return Its && Its->GetLastBlow().IsOnRecord() ? Its->GetLastBlow().DealtBy.Get() : nullptr;
 	}
 
+	float MaxHealthOf(const AActor* Who)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who);
+		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f;
+	}
+
+	/** The health one direct blow of `Damage` from `From` takes from `On`, read as a difference. */
+	float BlowTakes(AActor* From, AActor* On, float Damage)
+	{
+		const float Held = HealthOf(On);
+		UCataclysmSkillEffects::ApplyDirectDamage(From, On, Damage);
+		return Held - HealthOf(On);
+	}
+
 	/** Whom the last blow on record on this character is credited to, or null. */
 	AActor* WhoIsCreditedWithTheLastBlowOn(const AActor* Who)
 	{
@@ -1255,6 +1269,272 @@ CATACLYSM_TEST(FCataclysmGadgetBurstNotCountedTest,
 	TestEqual(TEXT("a holder's imp that kills fires no burst"), Imp->BurstsFired, 0);
 	TestEqual(TEXT("and the other enemy within its reach took nothing"),
 		HealthOf(ImpBystander), ImpBystanderHeld, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// "Your gadgets are invincible but lose 5% of their maximum HP per second
+// passively"
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmGadgetNoDamageTest,
+	"Cataclysm.GadgetDrain.AHoldersTurretTakesNoDamageFromABlowFromTheMomentItIsPlacedAndIsStillChosenAsATarget")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// TWO SUMMONERS, ALIKE BUT FOR THE TWO ROWS: the flag at 1 and the loss at 5. Each has a Bolt Turret and an
+	// enemy 3 m from it that strikes it by hand, with a direct blow, so no brain has to think. The stations are
+	// 100 m apart. Every blow is read as the health it took.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector ControlAt(0.0f, 0.0f, 0.0f);
+	const FVector HolderAt(0.0f, 100.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a control summoner"), Control) || !TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {
+		{FName(ACataclysmMinion::GadgetsTakeNoDamageStat), 1.0f},
+		{FName(ACataclysmMinion::GadgetHealthLostPercentPerSecondStat), 5.0f}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), ControlAt);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), HolderAt);
+	ACataclysmEnemyCharacter* ControlAttacker = Enemy(World, ControlAt + FVector(3.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* HolderAttacker = Enemy(World, HolderAt + FVector(3.0f * M, 0.0f, 0.0f), 50000.0f);
+	if (!ControlTurret || !HolderTurret
+		|| !TestTrue(TEXT("set-up: two enemies"), ControlAttacker && HolderAttacker)
+		|| !TestTrue(TEXT("set-up: each enemy has the shared brain"),
+			HasABrain(ControlAttacker) && HasABrain(HolderAttacker)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: a blow of 10 takes health from a turret whose summoner holds nothing, and its enemy chooses it.
+	const float ControlTook = BlowTakes(ControlAttacker, ControlTurret, 10.0f);
+	if (!TestTrue(*FString::Printf(TEXT("control: a blow of 10 takes health from a plain turret: %.2f"),
+			ControlTook), ControlTook > 0.0f)
+		|| !TestTrue(TEXT("control: and the enemy beside it chooses it as its target"),
+			ChoiceOf(ControlAttacker) == ControlTurret))
+	{
+		return false;
+	}
+
+	// THE HOLDER'S TURRET, AS IT IS PLACED: no step has been called by this test. A blow of 10 takes nothing, and
+	// neither does one of a million.
+	TestEqual(TEXT("a holder's turret takes nothing from a blow of 10 from the moment it is placed"),
+		BlowTakes(HolderAttacker, HolderTurret, 10.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("and nothing from a blow of a million"),
+		BlowTakes(HolderAttacker, HolderTurret, 1000000.0f), 0.0f, 0.001f);
+	TestFalse(TEXT("and it is not dead"), IsDead(HolderTurret));
+	TestTrue(TEXT("the enemy beside it still chooses it as its target"),
+		ChoiceOf(HolderAttacker) == HolderTurret);
+
+	// TWO SECONDS OF STEPS, a quarter of a second apart as the game's are. The window is renewed on each.
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		Pass(World, 0.25f);
+		Step(HolderTurret);
+	}
+	TestEqual(TEXT("two seconds on, stepped as the game steps it, it still takes nothing from a blow"),
+		BlowTakes(HolderAttacker, HolderTurret, 10.0f), 0.0f, 0.001f);
+
+	// THE ROWS ARE TAKEN AWAY. The window was last renewed at 2 seconds and is open for one more.
+	GiveGadgetRows(Holder, TArray<FGadgetRow>());
+	Step(HolderTurret);
+	Pass(World, 1.1f);
+	Step(HolderTurret);
+	const float TookAfter = BlowTakes(HolderAttacker, HolderTurret, 10.0f);
+	TestTrue(*FString::Printf(TEXT("1.1 seconds after its summoner stops holding the row a blow takes health "
+								   "again: %.2f"), TookAfter), TookAfter > 0.0f);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetDrainTest,
+	"Cataclysm.GadgetDrain.AHoldersTurretLosesFivePercentOfItsMaximumAsPlacedEachSecondAndIsDestroyedWhenEmpty")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// TWO SUMMONERS, ALIKE BUT FOR THE TWO ROWS, each with a Bolt Turret, 100 m apart. Nothing strikes anybody.
+	// The clock is moved by hand and each turret's step is called after each move. Every figure of the holder's
+	// turret is a share of the maximum it was placed with, and the control's is read beside it.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a control summoner"), Control) || !TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {
+		{FName(ACataclysmMinion::GadgetsTakeNoDamageStat), 1.0f},
+		{FName(ACataclysmMinion::GadgetHealthLostPercentPerSecondStat), 5.0f}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), FVector::ZeroVector);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), FVector(0.0f, 100.0f * M, 0.0f));
+	if (!ControlTurret || !HolderTurret)
+	{
+		return false;
+	}
+	const float Placed = MaxHealthOf(HolderTurret);
+	const float ControlPlaced = MaxHealthOf(ControlTurret);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the holder's turret was placed with a maximum: %.2f"), Placed),
+			Placed > 0.0f)
+		|| !TestEqual(TEXT("set-up: and full"), HealthOf(HolderTurret), Placed, 0.001f)
+		|| !TestEqual(TEXT("set-up: and that maximum was recorded at its placing"),
+			HolderTurret->SpawnedMaxHealth, Placed, 0.001f)
+		|| !TestEqual(TEXT("set-up: the control's turret is full too"),
+			HealthOf(ControlTurret), ControlPlaced, 0.001f))
+	{
+		return false;
+	}
+	FEventCount Destroyed(Holder, TEXT("gadget_destroyed"));
+	FEventCount ControlDestroyed(Control, TEXT("gadget_destroyed"));
+	const float Allowed = Placed * 0.001f;
+	const auto Advance = [World, ControlTurret, HolderTurret](float Seconds)
+	{
+		Pass(World, Seconds);
+		Step(ControlTurret);
+		Step(HolderTurret);
+	};
+
+	Advance(1.0f);
+	if (!TestEqual(TEXT("control: after one second a turret whose summoner holds nothing has lost nothing"),
+			HealthOf(ControlTurret), ControlPlaced, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("after one second a holder's turret has lost 5% of the maximum it was placed with"),
+		Placed - HealthOf(HolderTurret), Placed * 0.05f, Allowed);
+
+	// COUNTED BY THE CLOCK AND NOT BY THE STEP: half a second is half of 5%.
+	Advance(0.5f);
+	TestEqual(TEXT("half a second later it has lost 7.5%"),
+		Placed - HealthOf(HolderTurret), Placed * 0.075f, Allowed);
+
+	// THE MAXIMUM AS PLACED: its maximum is doubled by hand, and the next half second still takes 2.5% of the
+	// maximum it was placed with.
+	UCataclysmTargeting::AbilitySystemOf(HolderTurret)->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Placed * 2.0f);
+	Advance(0.5f);
+	TestEqual(TEXT("with its maximum doubled since, it has lost 10% of the maximum it was PLACED with at 2 seconds"),
+		Placed - HealthOf(HolderTurret), Placed * 0.10f, Allowed);
+
+	// SEVENTEEN MORE SECONDS, one at a time.
+	for (int32 Index = 0; Index < 17; ++Index)
+	{
+		Advance(1.0f);
+	}
+	TestFalse(TEXT("at 19 seconds it is still standing"), IsDead(HolderTurret));
+	TestEqual(TEXT("with 5% of the maximum it was placed with left"),
+		HealthOf(HolderTurret), Placed * 0.05f, Allowed);
+	TestEqual(TEXT("and nothing has been announced as destroyed"), Destroyed.Count, 0);
+
+	Advance(1.0f);
+	TestTrue(TEXT("at 20 seconds the drain has emptied it and it is dead"), IsDead(HolderTurret));
+	TestEqual(TEXT("and its summoner was told once that a gadget was destroyed"), Destroyed.Count, 1);
+	TestNull(TEXT("and its death names nobody as what dealt the last blow"), WhatDealtTheLastBlowOn(HolderTurret));
+
+	Advance(1.0f);
+	TestEqual(TEXT("a step on its body tells nothing more"), Destroyed.Count, 1);
+	TestFalse(TEXT("control: the turret of a summoner holding nothing is standing at 21 seconds"),
+		IsDead(ControlTurret));
+	TestEqual(TEXT("control: with all the health it was placed with"),
+		HealthOf(ControlTurret), ControlPlaced, 0.001f);
+	TestEqual(TEXT("control: and nothing was announced to its summoner"), ControlDestroyed.Count, 0);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetDrainOthersTest,
+	"Cataclysm.GadgetDrain.AHoldersSpikeTrapAndImpAreStruckAndLoseNothingToTheDrainAndEachRowWorksByItself")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// THREE SUMMONERS, 100 M APART. The first holds both rows and has a Bolt Turret, a Spike Trap and an imp, each
+	// 20 m from the next with an enemy beside it that strikes it by hand. The second holds the loss alone and
+	// the third the flag alone; each has a Bolt Turret and an enemy beside it.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FName NoDamage(ACataclysmMinion::GadgetsTakeNoDamageStat);
+	const FName Drain(ACataclysmMinion::GadgetHealthLostPercentPerSecondStat);
+	const FVector TurretAt(0.0f, 0.0f, 0.0f);
+	const FVector TrapAt(20.0f * M, 0.0f, 0.0f);
+	const FVector ImpAt(40.0f * M, 0.0f, 0.0f);
+	const FVector DrainOnlyAt(0.0f, 100.0f * M, 0.0f);
+	const FVector FlagOnlyAt(0.0f, 200.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Both = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* DrainOnly = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	ACataclysmEnemyCharacter* FlagOnly = Summoner(World, FVector(-50.0f * M, 200.0f * M, 0.0f));
+	if (!TestTrue(TEXT("set-up: three summoners"), Both && DrainOnly && FlagOnly))
+	{
+		return false;
+	}
+	GiveGadgetRows(Both, {{NoDamage, 1.0f}, {Drain, 5.0f}});
+	GiveGadgetRows(DrainOnly, {{Drain, 5.0f}});
+	GiveGadgetRows(FlagOnly, {{NoDamage, 1.0f}});
+	ACataclysmMinion* Turret = Place(*this, Both, TEXT("BoltTurret"), TurretAt);
+	ACataclysmMinion* Trap = Place(*this, Both, TEXT("SpikeTrap"), TrapAt);
+	ACataclysmMinion* Imp = Place(*this, Both, TEXT("Imp"), ImpAt);
+	ACataclysmMinion* DrainOnlyTurret = Place(*this, DrainOnly, TEXT("BoltTurret"), DrainOnlyAt);
+	ACataclysmMinion* FlagOnlyTurret = Place(*this, FlagOnly, TEXT("BoltTurret"), FlagOnlyAt);
+	ACataclysmEnemyCharacter* AtTurret = Enemy(World, TurretAt + FVector(0.0f, 3.0f * M, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* AtTrap = Enemy(World, TrapAt + FVector(0.0f, 3.0f * M, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* AtImp = Enemy(World, ImpAt + FVector(0.0f, 3.0f * M, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* AtDrainOnly = Enemy(World, DrainOnlyAt + FVector(0.0f, 3.0f * M, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* AtFlagOnly = Enemy(World, FlagOnlyAt + FVector(0.0f, 3.0f * M, 0.0f), 50000.0f);
+	if (!Turret || !Trap || !Imp || !DrainOnlyTurret || !FlagOnlyTurret
+		|| !TestTrue(TEXT("set-up: five enemies"), AtTurret && AtTrap && AtImp && AtDrainOnly && AtFlagOnly))
+	{
+		return false;
+	}
+	const float TurretPlaced = MaxHealthOf(Turret);
+	const float TrapPlaced = HealthOf(Trap);
+	const float ImpPlaced = HealthOf(Imp);
+	const float DrainOnlyPlaced = MaxHealthOf(DrainOnlyTurret);
+	const float FlagOnlyPlaced = HealthOf(FlagOnlyTurret);
+
+	Pass(World, 1.0f);
+	for (ACataclysmMinion* Each : {Turret, Trap, Imp, DrainOnlyTurret, FlagOnlyTurret})
+	{
+		Step(Each);
+	}
+
+	// THE CONTROL: the turret of the summoner holding both rows has lost its 5% and takes nothing from a blow.
+	if (!TestEqual(TEXT("control: after one second the turret under both rows has lost 5% of its maximum"),
+			TurretPlaced - HealthOf(Turret), TurretPlaced * 0.05f, TurretPlaced * 0.001f)
+		|| !TestEqual(TEXT("control: and a blow of 5 takes nothing from it, so both rows are held"),
+			BlowTakes(AtTurret, Turret, 5.0f), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the same summoner's Spike Trap has lost nothing to the drain: a trap is not a gadget"),
+		HealthOf(Trap), TrapPlaced, 0.001f);
+	TestTrue(TEXT("and a blow of 5 takes health from it"), BlowTakes(AtTrap, Trap, 5.0f) > 0.0f);
+	TestEqual(TEXT("the same summoner's imp has lost nothing to the drain"), HealthOf(Imp), ImpPlaced, 0.001f);
+	TestTrue(TEXT("and a blow of 5 takes health from it"), BlowTakes(AtImp, Imp, 5.0f) > 0.0f);
+
+	// EACH ROW BY ITSELF. The generator refuses an enchantment that states one without the other; the game reads
+	// each alone, and this is what it does with it.
+	TestEqual(TEXT("under the loss alone a turret has lost 5% of its maximum after one second"),
+		DrainOnlyPlaced - HealthOf(DrainOnlyTurret), DrainOnlyPlaced * 0.05f, DrainOnlyPlaced * 0.001f);
+	TestTrue(TEXT("and a blow of 5 takes health from it: the loss does not make it take no damage"),
+		BlowTakes(AtDrainOnly, DrainOnlyTurret, 5.0f) > 0.0f);
+	TestEqual(TEXT("under the flag alone a turret has lost nothing after one second"),
+		HealthOf(FlagOnlyTurret), FlagOnlyPlaced, 0.001f);
+	TestEqual(TEXT("and a blow of 5 takes nothing from it"),
+		BlowTakes(AtFlagOnly, FlagOnlyTurret, 5.0f), 0.0f, 0.001f);
 	return true;
 }
 

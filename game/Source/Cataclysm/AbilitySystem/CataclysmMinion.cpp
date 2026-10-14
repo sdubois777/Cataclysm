@@ -527,6 +527,14 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 		return;
 	}
 
+	// NO DAMAGE AND THE DRAIN FIRST, because the drain can end the gadget and one it has just ended fires
+	// nothing on this step. Ruled 2026-10-13, for "Your gadgets are invincible but lose 5% of their maximum HP
+	// per second passively".
+	if (!Gadget->StepNoDamageAndDrain())
+	{
+		return;
+	}
+
 	// THE VOLLEY'S CLOCK. Nothing for a gadget whose summoner holds no such row, which is every gadget until a
 	// row is written.
 	const float Seconds = Gadget->VolleyEverySeconds();
@@ -580,6 +588,65 @@ int32 ACataclysmMinion::FireVolley()
 		++Struck;
 	}
 	return Struck;
+}
+
+const TCHAR* ACataclysmMinion::GadgetsTakeNoDamageStat = TEXT("gadgets_take_no_damage");
+const TCHAR* ACataclysmMinion::GadgetHealthLostPercentPerSecondStat =
+	TEXT("gadget_health_lost_percent_per_second");
+
+bool ACataclysmMinion::StepNoDamageAndDrain()
+{
+	// THE WINDOW IS RENEWED ON EVERY STEP WHILE THE FLAG IS HELD, and left to lapse when it is not. `Spawn`
+	// takes a gadget's first step as it places it, so the window is open from the first moment.
+	if (AbilitySystemComponent && SummonersGadgetStat(GadgetsTakeNoDamageStat) > 0.0f)
+	{
+		AbilitySystemComponent->GrantDamageImmunity(NoDamageRenewalSeconds);
+	}
+
+	// AND THE DRAIN. The time since the last step is taken off the clock whether or not anything is owed for it,
+	// so a gadget that comes to hold the row late is charged from then and not from its placing.
+	const float Age = GetGameTimeSinceCreation();
+	const float Elapsed = Age - LastDrainAtAgeSeconds;
+	LastDrainAtAgeSeconds = Age;
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!AbilitySystemComponent || !AbilitySystemComponent->HasAttributeSetForAttribute(Health))
+	{
+		return true;
+	}
+	if (SpawnedMaxHealth <= 0.0f)
+	{
+		SpawnedMaxHealth =
+			AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+
+	const float Percent = SummonersGadgetStat(GadgetHealthLostPercentPerSecondStat);
+	if (Percent <= 0.0f || Elapsed <= 0.0f || SpawnedMaxHealth <= 0.0f)
+	{
+		return true;
+	}
+
+	const float Loss = SpawnedMaxHealth * Percent / 100.0f * Elapsed;
+	const float Current = AbilitySystemComponent->GetNumericAttribute(Health);
+	if (Current - Loss > SpawnedMaxHealth * DrainedToNothingShare)
+	{
+		// A DIRECT WRITE TO HEALTH, as the delayed share of damage taken is drained. It is not a blow, so the
+		// no-damage window above does not meet it.
+		AbilitySystemComponent->ApplyModToAttribute(Health, EGameplayModOp::Additive, -Loss);
+		return true;
+	}
+
+	// AND THIS STEP TAKES THE LAST OF IT. Ruled 2026-10-13: a gadget the drain empties dies as destroyed.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s lost the last %.1f of its health to its summoner's drain and was destroyed."),
+		   *GetName(), Current);
+
+	// KILLED BY NOBODY, then health to nought and `HandleDeath`, the pair the delayed damage's drain uses. The
+	// write reaches the death through the attribute hook, and `HandleDeath` refuses a second time.
+	AbilitySystemComponent->RecordLastBlow(FCataclysmLastBlow());
+	AbilitySystemComponent->SetNumericAttributeBase(Health, 0.0f);
+	HandleDeath();
+	return false;
 }
 
 ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
@@ -783,6 +850,13 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	const float Duration =
 		Lifetime * UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
 	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
+
+	// AND A GADGET TAKES ITS FIRST STEP AS IT IS PLACED. Ruled 2026-10-13. The step every character has comes a
+	// quarter of a second after the spawn, and a gadget whose summoner's row says it takes no damage would take
+	// damage until then. It does nothing for anything that is not a gadget, and at an age of nought the drain is
+	// owed nothing and no volley's clock has come round; it is here for the window, and it records the maximum
+	// health the gadget was placed with.
+	GadgetStep(Minion);
 
 	return Minion;
 }
