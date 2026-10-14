@@ -697,8 +697,8 @@ bool ACataclysmMinion::CopySummonersLastSkill()
 	}
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Caster));
-	const FName Named = Theirs ? Theirs->SkillGadgetsCopy() : NAME_None;
-	if (Named.IsNone())
+	const FCataclysmWeaponSkill* Recorded = Theirs ? Theirs->SkillGadgetsCopy() : nullptr;
+	if (!Recorded)
 	{
 		return false;
 	}
@@ -708,11 +708,11 @@ bool ACataclysmMinion::CopySummonersLastSkill()
 		return false;
 	}
 
-	// THE ROW AS THE SUMMONER HOLDS IT NOW, and still one a row may cast again. One it no longer holds casts nothing,
-	// and the record is kept. A judgement of the enchantment session, built as judged.
-	FCataclysmWeaponSkill Skill;
-	if (!UCataclysmTriggeredSkill::HeldSkillNamed(Caster, Named, Skill)
-		|| !UCataclysmTriggeredSkill::RepeatsFromARow(Skill))
+	// THE ROW AS IT WAS USED, whether or not the summoner still holds it: the coordinating session's ruling of
+	// 2026-10-14 (option B). Copied, because starting a skill may change what the record holds. Asked once more
+	// whether a row may cast it again, which it was when it was recorded.
+	const FCataclysmWeaponSkill Skill = *Recorded;
+	if (!UCataclysmTriggeredSkill::RepeatsFromARow(Skill))
 	{
 		return false;
 	}

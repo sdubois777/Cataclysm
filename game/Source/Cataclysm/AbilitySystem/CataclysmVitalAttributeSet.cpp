@@ -633,8 +633,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// "MEASURED FROM THE AVATAR AND NOT FROM THIS COMPONENT'S OWNER". The
 			// owner is kept only for a set with no avatar, and for an enemy or a
 			// minion the two are the same actor.
-			Hit.OpponentDistanceMetres = UCataclysmTargeting::MetresBetween(
-				Data.EffectSpec.GetContext().GetEffectCauser(),
+			//
+			// AND FROM WHERE THE BLOW WAS STRUCK when its effect says it was
+			// struck from a point: a gadget's copy of its summoner's skill.
+			// Ruled 2026-10-14. See `MetresFromWhereItWasStruck`.
+			Hit.OpponentDistanceMetres = UCataclysmSkillEffects::MetresFromWhereItWasStruck(
+				Data.EffectSpec, Data.EffectSpec.GetContext().GetEffectCauser(),
 				CataclysmDefendingBody(*this));
 
 			// AND WHETHER IT WAS STRUCK IN MELEE, FROM RANGE, OR AS A SPELL.

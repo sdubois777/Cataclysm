@@ -376,11 +376,12 @@ public:
 	 *
 	 * THE TARGET IS THE ONE THIS GADGET'S BRAIN CHOOSES, `ACataclysmEnemyController::ChooseTarget`, while it stands
 	 * within this gadget's reach; anything else is no target. THE SKILL IS THE SUMMONER'S RECORD,
-	 * `UCataclysmAbilitySystemComponent::SkillGadgetsCopy`, found again among the skills the summoner holds now and
-	 * still one a row may cast again; one it no longer holds is not cast and the record is kept.
+	 * `UCataclysmAbilitySystemComponent::SkillGadgetsCopy`, the row AS IT WAS USED, cast whether or not the summoner
+	 * still holds it: the coordinating session's ruling of 2026-10-14. So after a change of weapon the copy is the
+	 * skill of the weapon held before, at the numbers of the weapon held now.
 	 *
 	 * @return whether a copy started. False, casting nothing, for anything that is not a gadget, for a gadget that
-	 *         cannot act, for a summoner that is gone or dead, with no record, no target or no such skill held, and
+	 *         cannot act, for a summoner that is gone or dead, with no record or no target, and
 	 *         when the skill refuses itself or the engine defers its grant.
 	 */
 	bool CopySummonersLastSkill();
