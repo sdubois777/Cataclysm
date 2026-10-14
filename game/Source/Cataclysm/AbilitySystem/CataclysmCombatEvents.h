@@ -118,6 +118,13 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bRefusedByImmunityToAttacker = false;
 
 	/**
+	 * Whether the blow is the explosion a damage over time ailment made when it ended by time, and not a blow its
+	 * attacker struck. Ruled 2026-10-13. See `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`. The attacker
+	 * and the kill credit are as for any blow; only the player's on-hit rows read this.
+	 */
+	bool bExplosionAtAnAilmentsEnd = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.

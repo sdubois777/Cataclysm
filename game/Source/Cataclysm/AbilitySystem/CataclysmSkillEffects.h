@@ -152,6 +152,24 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsARowsAnswerToAnEvent = false;
 
 	/**
+	 * Whether this blow is the explosion a damage over time ailment makes when it ends by time: the blow
+	 * `UCataclysmSkillEffects::ExplodeAtAnAilmentsEnd` deals. Ruled 2026-10-13, for "Your burn effects have a
+	 * 20%-40% chance to explode for double their remaining damage when they expire".
+	 *
+	 * IT IS NOT A BLOW ITS APPLIER STRUCK. The effect is stamped with
+	 * `UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName`, the hit announcement carries it as
+	 * `FCataclysmHitNotice::bExplosionAtAnAilmentsEnd`, and `ACataclysmPlayerCharacter::OnSomethingWasHit` raises
+	 * none of `hit_dealt`, `first_hit_dealt` and `critical_strike` for it. `UCataclysmVitalAttributeSet` skips
+	 * `NoteStruckBy` for it, so it is not recorded as its applier's first blow on what it strikes. It changes
+	 * nothing else: the blow is announced, it is a combat event for both sides, and a kill it makes is its
+	 * applier's.
+	 *
+	 * A MARK OF ITS OWN, and not `bIsConsequenceOfADeath`: nothing died. That mark would read the same to the two
+	 * places that read it today, and would say of this blow something that is not so to whatever reads it next.
+	 */
+	bool bIsAnExplosionAtAnAilmentsEnd = false;
+
+	/**
 	 * The blow was struck in melee. Issue #1032.
 	 *
 	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
@@ -1043,6 +1061,74 @@ public:
 	 */
 	static int32 ExplodeForOverkill(AActor* Killer, const AActor* Victim, const FVector& At, float Overkill,
 									float SharePercent);
+
+	/**
+	 * The chance, in percent, that a damage over time ailment this character applied explodes when it ends by
+	 * time. Ruled 2026-10-13 under the owner's delegation, for "Your burn effects have a 20%-40% chance to explode
+	 * for double their remaining damage when they expire". Flat, with no gameplay attribute and no base.
+	 * `DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT` in `tools/generate_datatables.py` holds the same name.
+	 *
+	 * ASKED OF THE APPLIER WHEN THE AILMENT ENDS, with the tags the ended effect granted, so a row requiring
+	 * `Keyword.DoT.Burn` reaches a Burn and no other ailment. A row put on after the ailment was laid counts, and
+	 * one taken off before it ends does not.
+	 */
+	static const TCHAR* DotExplodesAtExpiryChanceStat;
+
+	/**
+	 * The name an effect is stamped under when its blow is the explosion at an ailment's end, with any value
+	 * above nought. Ruled 2026-10-13. A plain name and no gameplay tag, as `ConsequenceOfADeathDataName` is. Read
+	 * by `UCataclysmCombatEvents::NoteBlow` and by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` where it
+	 * records who struck the target. See `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`.
+	 */
+	static const TCHAR* ExplosionAtAnAilmentsEndDataName;
+
+	/**
+	 * How far the explosion at an ailment's end reaches from its carrier, in centimetres. Ruled 2026-10-13: five
+	 * metres, because that is the overkill explosion's reach.
+	 */
+	static constexpr float ExplosionAtAnAilmentsEndRadiusCm = OverkillExplosionRadiusCm;
+
+	/** What the ailment's whole stated damage is multiplied by for its explosion. "Double", ruled 2026-10-13. */
+	static constexpr float ExplosionAtAnAilmentsEndMultiple = 2.0f;
+
+	/**
+	 * What a damage over time effect was laid to deal over one full duration, before its carrier's mitigation:
+	 * the figure a tick times the ticks of that duration. Ruled 2026-10-13: this is what "remaining damage" is
+	 * read as at an ailment's end, where nothing remains.
+	 *
+	 * THE TICKS ARE COUNTED BY THE ENGINE'S RULE, which `DamageOverTimeTicksLeft` holds: the first a whole
+	 * interval in, then one each interval, the one due as the duration ends included. Four seconds at one a
+	 * second is four ticks; four seconds at one every 0.75 is five.
+	 *
+	 * ONE DURATION, however long the effect really ran. An application that only refreshed it gave it more time
+	 * and more ticks, and those are not counted: the figure is what the effect was laid to deal.
+	 *
+	 * @return nought for a figure, an interval or a duration of nought or less, and for a duration shorter than
+	 *         one interval
+	 */
+	static float WholeStatedDamageOverTime(float DamagePerTick, float SecondsPerTick, float DurationSeconds);
+
+	/**
+	 * The explosion a damage over time ailment makes when it ends by time. Ruled 2026-10-13.
+	 *
+	 * `Carrier`, when it is an enemy of `Applier` and alive, and every other enemy OF THE APPLIER within
+	 * `ExplosionAtAnAilmentsEndRadiusCm` of `At`, takes `Damage` as one direct blow dealt by the applier. THE
+	 * DELIVERY IS THE OVERKILL EXPLOSION'S: area damage, so it is not evaded; never retaliated against; never a
+	 * critical strike; carrying no weapon sub-type; and it does not leech. It also carries no chance to apply an
+	 * ailment, and it is marked `bIsAnExplosionAtAnAilmentsEnd` where the overkill explosion is marked the
+	 * consequence of a death. The applier's increases do not scale it. Each enemy's own block, armour, damage
+	 * reduction and energy shield meet it, and an enemy immune to the applier's damage takes nothing.
+	 *
+	 * THE CARRIER IS STRUCK FIRST AND BY NAME, and not because the search found it, so a carrier the search
+	 * would miss is still struck once.
+	 *
+	 * NOTHING ROLLS HERE. The chance was rolled by whoever calls this.
+	 *
+	 * @param DamageType  the ended ailment's own damage type, or NAME_None for the applier's
+	 * @return how many enemies a blow was sent at
+	 */
+	static int32 ExplodeAtAnAilmentsEnd(AActor* Applier, AActor* Carrier, const FVector& At, float Damage,
+										FName DamageType);
 
 	/**
 	 * Set a target alight, for the duration and share the DoTs sheet states.
