@@ -1111,4 +1111,419 @@ bool FCataclysmDelayedDamageTextTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The two saves from a lethal blow, on a wearer of the row
+// ---------------------------------------------------------------------------
+
+/**
+ * The two saves from a lethal blow judge the blow after the delayed share is taken off. Ruled 2026-10-13 by the
+ * coordinating session under the owner's delegation: a save is never spent on a blow that would not have killed.
+ *
+ * THE TWO SAVES. Nothing Stops It, the Ravager's Final Onslaught option, held as its two stats: it cuts a hit that
+ * would empty health to leave one point, and spends its twenty seconds and opens two seconds in which no damage is
+ * taken. And a worn row that heals as health falls below a share of its maximum, Archon's Aegis, held as one action
+ * built by hand as `CataclysmHealthThresholdTests.cpp` builds it: it cuts a blow that would empty health to leave
+ * one point, and the fall to that point is what fires the heal and spends the row's cooldown.
+ *
+ * EVERY FIGURE IS READ FROM A TWIN FIRST: what the blow takes from a character wearing nothing, what it does to a
+ * wearer of the save alone, and what it does to a wearer of the delayed-damage row alone.
+ */
+namespace CataclysmDelayedDamageSaveTest
+{
+	using namespace CataclysmDelayedDamageTest;
+
+	/**
+	 * The blow of the healing row's halves, before the struck character's mitigation. Large, so that four fifths
+	 * and three tenths of what it is worth are both above a tenth of `HealthPool`, the share the healing row here
+	 * watches: a wearer set to hold either has not already fallen below it.
+	 */
+	constexpr float LargeBlowDamage = 8000.0f;
+
+	/** The share of maximum health the healing row here watches, in percent, as Archon's Aegis states it. */
+	constexpr float HealBelowPercent = 10.0f;
+
+	/** The key the healing row's cooldown is kept under. */
+	const TCHAR* const HealTriggerKey = TEXT("A_row:health:health_falls_below");
+
+	/**
+	 * Nothing Stops It, saved once every 20 seconds and then 2 of nothing, as `CataclysmLethalHitTests.cpp` holds
+	 * it: two flat figures from a keystone. And the delayed-damage row at 50% over 4 seconds when asked, as
+	 * `WearTheRow` writes it.
+	 *
+	 * IT REPLACES THE WHOLE STAT LINE, as `SetStatInputs` does, which is why the two are written by one call.
+	 */
+	void HoldNothingStopsIt(const FScopedTaker& Taker, bool bWithTheRow)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		const auto Add = [&Inputs](const TCHAR* Stat, float Value, ECataclysmModifierSource Source)
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = Source;
+			Flat.Value = Value;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		};
+		Add(FSystem::LethalHitSurvivedEverySecondsStat, 20.0f, ECataclysmModifierSource::PassiveKeystone);
+		Add(FSystem::ImmuneAfterLethalHitSecondsStat, 2.0f, ECataclysmModifierSource::PassiveKeystone);
+		if (bWithTheRow)
+		{
+			Add(FDelayed::SharePercentStat, 50.0f, ECataclysmModifierSource::Enchantment);
+			Add(FDelayed::SecondsStat, 4.0f, ECataclysmModifierSource::Enchantment);
+		}
+		Taker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * "When your health falls below 10%, you are instantly healed to 100% of your maximum health. (10 minute cd)",
+	 * as one action. WORN AFTER THE WEARER'S HEALTH IS SET, so that setting it is not a fall the row answers.
+	 */
+	void WearTheHealingRow(const FScopedTaker& Taker)
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(TEXT("health_falls_below"));
+		Action.Pool = FName(TEXT("health"));
+		Action.Percent = 100.0f;
+		Action.EventValue = HealBelowPercent;
+		Action.TriggerCooldownSeconds = 600.0f;
+		Action.TriggerKey = FName(HealTriggerKey);
+		Taker.AbilitySystem->SetPoolActions({Action});
+	}
+
+	/** Whether the healing row has fired and is waiting out its ten minutes. */
+	bool HealingRowIsSpent(const FScopedTaker& Taker)
+	{
+		return Taker.AbilitySystem->TriggerCoolingDown(FName(HealTriggerKey));
+	}
+
+	/**
+	 * The lowest health a character reaches while this is alive, heard on the component's own value-change
+	 * delegate, as `CataclysmHealthThresholdTests.cpp` hears it: a saved blow leaves one point and the heal then
+	 * overwrites it, so the end value alone cannot show the save.
+	 */
+	struct FLowestHealth
+	{
+		explicit FLowestHealth(UAbilitySystemComponent* InSystem)
+			: System(InSystem)
+		{
+			Handle = System->GetGameplayAttributeValueChangeDelegate(Vital::GetHealthAttribute()).AddLambda(
+				[this](const FOnAttributeChangeData& Change)
+				{
+					Lowest = FMath::Min(Lowest, Change.NewValue);
+				});
+		}
+
+		~FLowestHealth()
+		{
+			System->GetGameplayAttributeValueChangeDelegate(Vital::GetHealthAttribute()).Remove(Handle);
+		}
+
+		float Lowest = TNumericLimits<float>::Max();
+		UAbilitySystemComponent* System = nullptr;
+		FDelegateHandle Handle;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDelayedDamageNothingStopsItNotSpentTest,
+	"Cataclysm.DelayedDamage.NothingStopsItIsNotSpentOnABlowThatLessItsDelayedShareWouldNotHaveKilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: nowhere. Every character is a plain actor with no root component, so none has a body to overlap
+ * another.
+ *
+ * Three characters each hold four fifths of what the blow is worth: one holding Nothing Stops It alone, one wearing
+ * the row at 50% over 4 seconds alone, and one holding both. The whole blow reaches the health each holds; half of
+ * it does not.
+ */
+bool FCataclysmDelayedDamageNothingStopsItNotSpentTest::RunTest(const FString&)
+{
+	using namespace CataclysmDelayedDamageSaveTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedTaker Attacker(World);
+	FScopedTaker Measure(World);
+	FScopedTaker SaveOnly(World);
+	FScopedTaker RowOnly(World);
+	FScopedTaker Both(World);
+	HoldNothingStopsIt(SaveOnly, /*bWithTheRow=*/false);
+	RowOnly.Wear(50.0f, 4.0f);
+	HoldNothingStopsIt(Both, /*bWithTheRow=*/true);
+
+	const float Whole = Strike(Attacker, Measure.Actor, BlowDamage);
+	if (!TestTrue(TEXT("set-up: the blow takes health from a character wearing nothing"), Whole > 0.0f))
+	{
+		return false;
+	}
+	SaveOnly.SetHealth(Whole * 0.8f);
+	RowOnly.SetHealth(Whole * 0.8f);
+	Both.SetHealth(Whole * 0.8f);
+
+	// THE FIRST CONTROL: the same blow on a holder of the save alone spends the save, as it always has.
+	const float StruckAt = World->GetTimeSeconds();
+	Strike(Attacker, SaveOnly.Actor, BlowDamage);
+	bool bControls = TestEqual(TEXT("control: with the save alone the blow leaves one point of health"),
+							   SaveOnly.Health(), 1.0f, Tolerance);
+	bControls &= TestEqual(TEXT("control: and the save is spent, its next twenty seconds away"),
+						   SaveOnly.AbilitySystem->LethalHitSurvivalAllowedAt() - StruckAt, 20.0f, Tolerance);
+	bControls &= TestTrue(TEXT("control: and its two seconds of no damage are open"),
+						  SaveOnly.AbilitySystem->IsDamageImmune());
+
+	// THE SECOND CONTROL: the same blow on a wearer of the row alone leaves it alive, owing half of the whole blow.
+	const float RowOnlyAtOnce = Strike(Attacker, RowOnly.Actor, BlowDamage);
+	bControls &= TestEqual(TEXT("control: with the row alone half of the whole blow lands at once"), RowOnlyAtOnce,
+						   Whole * 0.5f, Tolerance);
+	bControls &= TestEqual(TEXT("control: and half of the whole blow is owed"), RowOnly.Owed(), Whole * 0.5f,
+						   Tolerance);
+	bControls &= TestTrue(TEXT("control: and it lives"), RowOnly.Health() > 0.0f);
+	if (!bControls)
+	{
+		return false;
+	}
+
+	// THE HOLDER OF BOTH: the blow less its share would not have killed, so the save is not spent, and the blow is
+	// taken as the wearer of the row alone took it.
+	const float BothAtOnce = Strike(Attacker, Both.Actor, BlowDamage);
+	TestTrue(TEXT("with both, the save is not spent: no lethal hit has been survived"),
+			 Both.AbilitySystem->LethalHitSurvivalAllowedAt() < 0.0f);
+	TestFalse(TEXT("with both, no two seconds of no damage are opened"), Both.AbilitySystem->IsDamageImmune());
+	TestEqual(TEXT("with both, the blow lands at once as it did on the wearer of the row alone"), BothAtOnce,
+			  RowOnlyAtOnce, Tolerance);
+	TestEqual(TEXT("with both, the health left is what the wearer of the row alone was left"), Both.Health(),
+			  RowOnly.Health(), Tolerance);
+	TestEqual(TEXT("with both, what is owed is what the wearer of the row alone owes"), Both.Owed(), RowOnly.Owed(),
+			  Tolerance);
+	TestTrue(TEXT("with both, the wearer lives"), Both.Health() > 0.0f);
+
+	// AND A BLOW A SECOND LATER IS TAKEN, because no window was opened. A tenth of the first blow, on both.
+	World->TimeSeconds += 1.0f;
+	const float RowOnlyNext = Strike(Attacker, RowOnly.Actor, BlowDamage * 0.1f);
+	if (!TestTrue(TEXT("control: a second later a small blow takes health from the wearer of the row alone"),
+				  RowOnlyNext > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with both, a small blow a second later takes what it took from the wearer of the row alone"),
+			  Strike(Attacker, Both.Actor, BlowDamage * 0.1f), RowOnlyNext, Tolerance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDelayedDamageHealingRowNotCutTest,
+	"Cataclysm.DelayedDamage.AHealingRowOnAFallBelowDoesNotCutABlowThatLessItsDelayedShareWouldNotHaveKilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: nowhere, as above.
+ *
+ * Three characters each hold four fifths of what the large blow is worth: one wearing the healing row alone, one
+ * wearing the delayed-damage row at 50% over 4 seconds alone, and one wearing both. THIS SAVE SPENDS NOTHING WHEN
+ * IT CUTS A BLOW: its cooldown is spent by the heal, which fires on the fall to the one point. So what is read on
+ * the wearer of both is the cut itself, in the health left and in what is owed.
+ */
+bool FCataclysmDelayedDamageHealingRowNotCutTest::RunTest(const FString&)
+{
+	using namespace CataclysmDelayedDamageSaveTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedTaker Attacker(World);
+	FScopedTaker Measure(World);
+	FScopedTaker SaveOnly(World);
+	FScopedTaker RowOnly(World);
+	FScopedTaker Both(World);
+	RowOnly.Wear(50.0f, 4.0f);
+	Both.Wear(50.0f, 4.0f);
+
+	const float Whole = Strike(Attacker, Measure.Actor, LargeBlowDamage);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the large blow takes health from a character wearing nothing and "
+										"leaves it alive: %.2f"), Whole),
+				  Whole > 0.0f && Whole < HealthPool)
+		|| !TestTrue(TEXT("set-up: three tenths of what it is worth is above the share of health the row watches"),
+					 Whole * 0.3f > HealthPool * HealBelowPercent / 100.0f + 1.0f))
+	{
+		return false;
+	}
+	SaveOnly.SetHealth(Whole * 0.8f);
+	RowOnly.SetHealth(Whole * 0.8f);
+	Both.SetHealth(Whole * 0.8f);
+	WearTheHealingRow(SaveOnly);
+	WearTheHealingRow(Both);
+
+	// THE FIRST CONTROL: the same blow on a wearer of the healing row alone is cut to leave one point, and the fall
+	// to it fires the heal and spends the row.
+	bool bControls = true;
+	{
+		const FLowestHealth Watching(SaveOnly.AbilitySystem);
+		Strike(Attacker, SaveOnly.Actor, LargeBlowDamage);
+		bControls &= TestEqual(TEXT("control: with the healing row alone the blow never takes health below one point"),
+							   Watching.Lowest, 1.0f, Tolerance);
+	}
+	bControls &= TestEqual(TEXT("control: and the wearer is healed to full"), SaveOnly.Health(), HealthPool, Tolerance);
+	bControls &= TestTrue(TEXT("control: and the row is spent"), HealingRowIsSpent(SaveOnly));
+
+	// THE SECOND CONTROL: the same blow on a wearer of the delayed-damage row alone leaves it alive, owing half.
+	Strike(Attacker, RowOnly.Actor, LargeBlowDamage);
+	bControls &= TestEqual(TEXT("control: with the delayed-damage row alone three tenths of the blow's worth is left"),
+						   RowOnly.Health(), Whole * 0.3f, Tolerance);
+	bControls &= TestEqual(TEXT("control: and half of the whole blow is owed"), RowOnly.Owed(), Whole * 0.5f,
+						   Tolerance);
+	if (!bControls)
+	{
+		return false;
+	}
+
+	// THE WEARER OF BOTH: the blow less its share would not have killed, so it is not cut, and it is taken as the
+	// wearer of the delayed-damage row alone took it.
+	{
+		const FLowestHealth Watching(Both.AbilitySystem);
+		Strike(Attacker, Both.Actor, LargeBlowDamage);
+		TestEqual(TEXT("with both, the lowest health reached is what the wearer of the delayed-damage row alone was "
+					   "left"), Watching.Lowest, RowOnly.Health(), Tolerance);
+	}
+	TestEqual(TEXT("with both, the health left is what the wearer of the delayed-damage row alone was left"),
+			  Both.Health(), RowOnly.Health(), Tolerance);
+	TestEqual(TEXT("with both, what is owed is what the wearer of the delayed-damage row alone owes"), Both.Owed(),
+			  RowOnly.Owed(), Tolerance);
+	TestFalse(TEXT("with both, the healing row is not spent"), HealingRowIsSpent(Both));
+	TestTrue(TEXT("with both, the wearer was not healed to full"), Both.Health() < HealthPool - 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDelayedDamageSavedBlowDelaysNothingTest,
+	"Cataclysm.DelayedDamage.ASaveThatFiresOnABlowStillLethalLessItsShareLeavesOnePointAndDelaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: nowhere, as above.
+ *
+ * Each character holds two fifths of what its blow is worth, so the blow less its half still reaches the health
+ * held. FIRST Nothing Stops It, on the blow of `BlowDamage`; THEN the healing row, on the large blow. In each half:
+ * a wearer of the delayed-damage row alone is emptied, a holder of the save alone is left one point, and a holder of
+ * both is left that one point and owes nothing. A plain actor has no death to die, so health at nought is what is
+ * read for the wearer of the row alone.
+ */
+bool FCataclysmDelayedDamageSavedBlowDelaysNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmDelayedDamageSaveTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedTaker Attacker(World);
+
+	// NOTHING STOPS IT.
+	{
+		FScopedTaker Measure(World);
+		FScopedTaker RowOnly(World);
+		FScopedTaker SaveOnly(World);
+		FScopedTaker Both(World);
+		RowOnly.Wear(50.0f, 4.0f);
+		HoldNothingStopsIt(SaveOnly, /*bWithTheRow=*/false);
+		HoldNothingStopsIt(Both, /*bWithTheRow=*/true);
+
+		const float Whole = Strike(Attacker, Measure.Actor, BlowDamage);
+		if (!TestTrue(TEXT("set-up: the blow takes health from a character wearing nothing"), Whole > 0.0f))
+		{
+			return false;
+		}
+		RowOnly.SetHealth(Whole * 0.4f);
+		SaveOnly.SetHealth(Whole * 0.4f);
+		Both.SetHealth(Whole * 0.4f);
+
+		// THE CONTROLS: the blow less its share still empties health, and the save alone leaves one point.
+		Strike(Attacker, RowOnly.Actor, BlowDamage);
+		Strike(Attacker, SaveOnly.Actor, BlowDamage);
+		bool bControls = TestEqual(TEXT("control: holding two fifths of the blow's worth and the row alone, the blow "
+										"less its half still empties health"), RowOnly.Health(), 0.0f, Tolerance);
+		bControls &= TestEqual(TEXT("control: with Nothing Stops It alone the blow leaves one point"),
+							   SaveOnly.Health(), 1.0f, Tolerance);
+		if (!bControls)
+		{
+			return false;
+		}
+
+		const float StruckAt = World->GetTimeSeconds();
+		Strike(Attacker, Both.Actor, BlowDamage);
+		TestEqual(TEXT("with Nothing Stops It and the row, the blow leaves one point of health"), Both.Health(), 1.0f,
+				  Tolerance);
+		TestEqual(TEXT("with Nothing Stops It and the row, nothing of the saved blow is owed"), Both.Owed(), 0.0f, 0.0f);
+		TestEqual(TEXT("with Nothing Stops It and the row, the save is spent, its next twenty seconds away"),
+				  Both.AbilitySystem->LethalHitSurvivalAllowedAt() - StruckAt, 20.0f, Tolerance);
+		TestTrue(TEXT("with Nothing Stops It and the row, the two seconds of no damage are open"),
+				 Both.AbilitySystem->IsDamageImmune());
+	}
+
+	// THE HEALING ROW.
+	{
+		FScopedTaker Measure(World);
+		FScopedTaker RowOnly(World);
+		FScopedTaker SaveOnly(World);
+		FScopedTaker Both(World);
+		RowOnly.Wear(50.0f, 4.0f);
+		Both.Wear(50.0f, 4.0f);
+
+		const float Whole = Strike(Attacker, Measure.Actor, LargeBlowDamage);
+		if (!TestTrue(TEXT("set-up: the large blow takes health from a character wearing nothing and leaves it alive"),
+					  Whole > 0.0f && Whole < HealthPool)
+			|| !TestTrue(TEXT("set-up: two fifths of what it is worth is above the share of health the row watches"),
+						 Whole * 0.4f > HealthPool * HealBelowPercent / 100.0f + 1.0f))
+		{
+			return false;
+		}
+		RowOnly.SetHealth(Whole * 0.4f);
+		SaveOnly.SetHealth(Whole * 0.4f);
+		Both.SetHealth(Whole * 0.4f);
+		WearTheHealingRow(SaveOnly);
+		WearTheHealingRow(Both);
+
+		// THE CONTROLS, as in the half above.
+		Strike(Attacker, RowOnly.Actor, LargeBlowDamage);
+		bool bControls = TestEqual(TEXT("control: holding two fifths of the large blow's worth and the delayed-damage "
+										"row alone, the blow less its half still empties health"),
+								   RowOnly.Health(), 0.0f, Tolerance);
+		{
+			const FLowestHealth Watching(SaveOnly.AbilitySystem);
+			Strike(Attacker, SaveOnly.Actor, LargeBlowDamage);
+			bControls &= TestEqual(TEXT("control: with the healing row alone the large blow never takes health below "
+										"one point"), Watching.Lowest, 1.0f, Tolerance);
+		}
+		bControls &= TestEqual(TEXT("control: and that wearer is healed to full"), SaveOnly.Health(), HealthPool,
+							   Tolerance);
+		if (!bControls)
+		{
+			return false;
+		}
+
+		{
+			const FLowestHealth Watching(Both.AbilitySystem);
+			Strike(Attacker, Both.Actor, LargeBlowDamage);
+			TestEqual(TEXT("with the healing row and the delayed-damage row, the lowest health reached is one point"),
+					  Watching.Lowest, 1.0f, Tolerance);
+		}
+		TestEqual(TEXT("with the healing row and the delayed-damage row, the wearer is healed to full"), Both.Health(),
+				  HealthPool, Tolerance);
+		TestEqual(TEXT("with the healing row and the delayed-damage row, nothing of the saved blow is owed"),
+				  Both.Owed(), 0.0f, 0.0f);
+		TestTrue(TEXT("with the healing row and the delayed-damage row, the healing row is spent"),
+				 HealingRowIsSpent(Both));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

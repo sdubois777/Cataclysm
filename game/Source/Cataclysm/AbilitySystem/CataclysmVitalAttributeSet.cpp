@@ -1272,10 +1272,46 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// Masochist's conversion below may turn some of a blow into bleeding
 			// first, but a Ravager has none to hold, so the order is stated
 			// rather than felt.
+			//
+			// AND, FOR A WEARER OF "25%-50% of damage taken is dealt over 4-8 seconds", LESS THE SHARE THAT WILL BE
+			// DELAYED. Ruled 2026-10-13 by the coordinating session under the owner's delegation: the two saves
+			// below judge the blow after the delayed share is taken off, so that a save is never spent on a blow
+			// that would not have killed. The share is taken far below, where the blow is written to health, so
+			// each save asks `EmptiesHealthLessTheDelayedShare` what it will be.
+			//
+			// WHETHER ONE OF THE TWO SAVES CUT THIS BLOW TO LEAVE ONE POINT. Read where the share is taken:
+			// NOTHING OF A SAVED BLOW IS DELAYED, a judgement of the writing session. A save promises its holder the
+			// one point, and the heal of the second save fires on the fall to it. The option not taken: take the
+			// share of the cut figure, as was done until 2026-10-13, which leaves a wearer of the second save well
+			// above the share of health its heal watches and so not healed by the blow the row cut for it.
+			bool bSavedFromALethalBlow = false;
 			if (UCataclysmAbilitySystemComponent* Guarded =
 					Cast<UCataclysmAbilitySystemComponent>(
 						GetOwningAbilitySystemComponent()))
 			{
+				// WHETHER THE BLOW STILL EMPTIES HEALTH ONCE ITS DELAYED SHARE IS TAKEN OFF. Asked by each save below
+				// as the LAST of its conditions, so only of a blow whose resolved figure reaches the health held and
+				// only for a holder of a save that is ready. A character holding no save is asked nothing new.
+				//
+				// THE FIGURE THE SHARE IS LATER TAKEN OF: what the blow dealt to health and its overkill together,
+				// which the lines far below call `WholeBeforeDelay`. The three pools were given theirs by the
+				// calculation, so `Resolved.DealtToHealth` is already what is left after them. And the same
+				// comparison those lines make before the write to health, so the two cannot disagree.
+				//
+				// YES WITHOUT THE COMPARISON WHEN NO SHARE WOULD BE DELAYED, so for a character with no such row each
+				// save does exactly what it did. NO SHARE IS ASKED FOR WHILE THE BREAKING POINT'S WINDOW IS OPEN:
+				// that conversion takes the whole blow first and nothing is then delayed, so the saves read the
+				// whole blow, as they did.
+				const auto EmptiesHealthLessTheDelayedShare = [this, Guarded, &Resolved, &Hit]() -> bool
+				{
+					const float WholeToHealth = Resolved.DealtToHealth + Resolved.Overkill;
+					const float DelayedLater = Guarded->IsConvertingDamageToBleeding()
+						? 0.0f
+						: UCataclysmDelayedDamage::ShareThatWouldBeDelayed(
+							Guarded, WholeToHealth, Hit.bIsDamageOverTime);
+					return DelayedLater <= 0.0f || WholeToHealth - DelayedLater >= GetHealth();
+				};
+
 				// A WORN ROW'S CHANCE THAT THIS BLOW DOES NOTHING TO ITS WEARER. Ruled 2026-10-06. "Spells that
 				// hit you have a 15%-30% chance to be absorbed dealing no damage", and "Melee attacks that hit you
 				// have a 10%-20% chance to be reflected back as retaliation damage": the wearer takes none of a
@@ -1333,8 +1369,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					const FName ImmuneForStat(UGuarded::ImmuneAfterLethalHitSecondsStat);
 					const float Every = Guarded->StatForSkill(
 						SurvivedEveryStat, FGameplayTagContainer(), 0.0f);
-					if (Every > 0.0f && Guarded->MaySurviveLethalHit())
+					if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
 					{
+						bSavedFromALethalBlow = true;
 						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 						Guarded->NoteLethalHitSurvived(Every, Guarded->StatForSkill(
 							ImmuneForStat, FGameplayTagContainer(), 0.0f));
@@ -1351,8 +1388,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				if (!Guarded->IsDamageImmune() && !Guarded->IsImmuneToDamageType(Hit.DamageType)
 					&& GetHealth() > 1.0f
 					&& GetMaxHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
-					&& Guarded->SavesLethalBlowByCrossing(GetHealth() / GetMaxHealth() * 100.0f))
+					&& Guarded->SavesLethalBlowByCrossing(GetHealth() / GetMaxHealth() * 100.0f)
+					&& EmptiesHealthLessTheDelayedShare())
 				{
+					bSavedFromALethalBlow = true;
 					Resolved.DealtToHealth = GetHealth() - 1.0f;
 				}
 			}
@@ -1839,16 +1878,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// not taken: take the share first and turn only the rest into bleeding. It was not taken because that
 			// conversion turns a blow whole or not at all and every line below is written on that.
 			//
-			// AFTER THE TWO SAVES FROM A LETHAL BLOW, which sit above and read the blow before any share is taken.
-			// So a blow whose whole figure reaches the health held is saved, and its save spent, though with the
-			// share taken off it would not have killed. The share is then taken of the figure the save left.
+			// AFTER THE TWO SAVES FROM A LETHAL BLOW, WHICH SIT ABOVE AND HAVE ALREADY ASKED WHAT THIS SHARE WILL BE.
+			// Until 2026-10-13 they read the blow before any share was taken, so a blow whose whole figure reached
+			// the health held was saved, and its save spent, though with the share taken off it would not have
+			// killed. Ruled that day: a save judges the blow less this share. See
+			// `EmptiesHealthLessTheDelayedShare` above. AND NOTHING OF A BLOW A SAVE DID CUT IS DELAYED, which is
+			// what `bSavedFromALethalBlow` says: the save leaves its holder the one point and no store.
 			//
 			// `Outcome` IS NOT CHANGED, as for the bond: whoever struck leeches from the whole blow and is told of
 			// the whole blow, and the number drawn over the character is the whole blow.
 			//
 			// NOUGHT FOR A TICK AND FOR A CHARACTER WITH NO SUCH ROW, so every line below reads what it read.
 			const float WholeBeforeDelay = Arriving + Outcome.Overkill;
-			const float Delayed = Arriving > 0.0f
+			const float Delayed = Arriving > 0.0f && !bSavedFromALethalBlow
 				? UCataclysmDelayedDamage::DelayShare(
 					GetOwningAbilitySystemComponent(), WholeBeforeDelay, Hit.bIsDamageOverTime)
 				: 0.0f;

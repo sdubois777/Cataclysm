@@ -87,6 +87,24 @@ public:
 	static float DelayShare(UAbilitySystemComponent* AbilitySystem, float ToHealth, bool bIsDamageOverTime);
 
 	/**
+	 * What `DelayShare` would take off `ToHealth`, WITH NOTHING HELD. `DelayShare` is written on it.
+	 *
+	 * FOR THE TWO SAVES FROM A LETHAL BLOW, ruled 2026-10-13 by the coordinating session under the owner's
+	 * delegation: with the row worn, a save judges the blow after the delayed share is taken off, so that it is
+	 * never spent on a blow that would not have killed. The saves stand in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` far above the place the share is taken, so they ask
+	 * here what it will be. A BLOW A SAVE DID CUT IS NOT HANDED TO `DelayShare` AT ALL: nothing of it is delayed.
+	 *
+	 * NOUGHT WHERE `DelayShare` TAKES NOTHING: a tick, nothing arriving, a character without both stats, and a
+	 * component with no world, for which no parcel can be held.
+	 *
+	 * @param OutSeconds when given, the seconds the row states, and nought when the share was not asked for
+	 * @return how much `DelayShare` would take off and hold
+	 */
+	static float ShareThatWouldBeDelayed(UAbilitySystemComponent* AbilitySystem, float ToHealth,
+										 bool bIsDamageOverTime, float* OutSeconds = nullptr);
+
+	/**
 	 * Drain what the character's parcels owe by now out of its health. Called every regeneration step.
 	 *
 	 * A DIRECT LOSS OF HEALTH. It is written to the health attribute and not sent as damage, so it meets no
