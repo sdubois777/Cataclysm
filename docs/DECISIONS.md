@@ -2,6 +2,275 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make its wearer's gadgets choose the enemy with the most health within their reach: a flag stat and one block in the shared brain, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (what a gadget is, the stat's name,
+the one function that asks a summoner for a gadget's stat, the list of enemies within reach and the choice by
+health), `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (one include and one block in
+`ChooseTarget`), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the count
+`gadgets_active` now calls the one test of what a gadget is),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no attribute),
+`game/Source/Cataclysm/Tests/CataclysmGadgetBehaviourTests.cpp` (a new file, three tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one fixture and one probe),
+`tools/generate_datatables.py` (the name and one refusal), `tools/tests/test_generate_datatables.py` (one shared
+sheet and one class of seven tests), `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site
+added to its inventory). Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Your gadgets prioritize the highest HP enemy within their
+range instead of the nearest".
+
+- **The row acts on the Bolt Turret and the Ballista only. A Spike Trap is a trap and not a gadget.** Ruled
+  2026-10-07, in the entry headed "The Spike Trap carries the tag `Type.Trap`", under its heading "FIRST, WHAT
+  CHANGES FOR A PLAYER: A SPIKE TRAP IS NOW A TRAP AND NO LONGER A GADGET FOR `gadgets_active`". A holder's Spike
+  Trap, imp and mote choose as they did before.
+- **Nothing acts on the minion type table's `TargetMode` column, so the Ballista picks the nearest enemy today and
+  not the furthest.** Read on 2026-10-13 and NOT fixed here; the enchantment session files the issue. The column
+  is `FCataclysmMinionTypeRow::TargetMode` (`CataclysmDataRows.h`), "Nearest" on four rows of
+  `game/Data/MinionTypes.csv` and "Furthest" on the Ballista's. A row of that table is reached in one way,
+  `ACataclysmMinion::FindType`, which has two callers. `ACataclysmMinion::Spawn` reads `Family`, `Tags`, `ReachCm`,
+  `NoticeRadiusCm`, `AttackIntervalSeconds`, `MoveSpeed`, `BaseDamage`, `DamagePerLevel`,
+  `ExplosionPercentOfOwnDamage`, `BaseHealth` and `HealthPerLevel`. `ThreatDrawnBy` in `CataclysmCommand.cpp` reads
+  `ThreatPercent`. Neither reads `TargetMode`. The two other things that say `TargetMode` in `game/Source` are a
+  skill's own shape parameter (`CataclysmSkillShape.cpp`, `CataclysmSkillTemplates.cpp`), which is a different
+  field of a different struct. No other file under `game/Source` names the row struct or the table. Among the
+  tracked files of `game/Content` the word is found in two, `DT_MinionTypes.uasset` and `DT_WeaponSkills.uasset`,
+  which are the tables themselves. The Ballista's skill text says "automatically fires massive bolts at the
+  furthest enemy within 15 meters", and `ACataclysmEnemyController::ChooseTarget` answers the nearest for every
+  minion. **What was not read:** any Blueprint that is not tracked in git, and the Paragon art, which is not in a
+  worktree.
+- **A holder's gadget overrides that column whether or not it is ever acted on**, as ruled: the block is before
+  the search for the nearest, which is where a furthest choice would also have to go.
+- **"Highest HP" is the most CURRENT health, as a figure and not as a share of the maximum.** Ruled. An enemy at
+  900 of 100,000 is chosen over one at 500 of 500.
+- **"Within their range" is the gadget's REACH, measured as the brain measures it**: along the floor, centre to
+  centre, no more than `ReachCm`, with 0.01 cm allowed for float rounding. For the Bolt Turret and the Ballista
+  the reach and the notice distance are the same figure (10 m and 15 m), and both are lengthened together by
+  "Gadgets have 20%-40% increased attack range".
+- **The choice is made again on every pass of the brain, four times a second, so a holder's gadget changes target
+  in the middle of a fight** whenever another enemy within reach comes to hold more health than the one it is
+  firing at. Its time between shots is kept on the brain and is not reset by a change of target. Against two
+  enemies of near-equal health it can go back and forth between them as each is struck.
+- **A Quarry mark still comes first**, as ruled.
+- **With nothing within its reach a holder's gadget does what it did before**: the search for the nearest within
+  its notice distance.
+- **A holder's gadget's choice by health does not pass through the Behind the Veil draw.** It returns from
+  `ChooseTarget` where the Quarry order does. That draw redirects a creature to a minion of the character it
+  would attack, where that character holds the keystone; an enemy holds no passive tree, so for a player's gadget
+  the draw answers null and nothing is lost. A judgement; see below.
+- **Every creature's brain now does one more thing on each pass: a cast of the body it drives to a minion.** For
+  a monster the cast answers null and nothing more is done. For a minion, `IsGadget` is asked, which is two tag
+  comparisons, and only a gadget asks its summoner for the stat. Not measured.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote
+  the code, the tests and this entry under the enchantment session's brief. Every statement about what the
+  engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** No character holds the flag until the enchantment session
+  writes the row.
+
+**What was not read:** `UCataclysmTargetCandidates::NearestHostile` past its header; how `FindEnemiesInSphere`
+orders two bodies at the same distance; `UCataclysmCommand::QuarryOf` past its header; what a maddened gadget
+finds; how a worn row becomes a line of the stat line at a gear refresh.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's own words, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". Each ruling below is a labelled judgement by the coordinating session under the owner's delegation.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | It acts on the Turret and the Ballista only; a Spike Trap is a trap. | `ACataclysmMinion::IsGadget`, `IsDeployable() && !IsTrap()`. `SummonersGadgetStat` answers nought for everything else before the summoner is asked. |
+| R2 | The most CURRENT health among hostiles within reach. | `ACataclysmMinion::MostHealthWithinReach`, over `HostilesWithinReach`. |
+| R3 | Chosen again each time the gadget picks a target. | The block in `ACataclysmEnemyController::ChooseTarget`, which `Think` calls on every pass. Nothing is remembered between passes. |
+| R4 | A Quarry mark still comes first. | The block is after the `OrderedTargetFor` return and before the search. |
+| R5 | It overrides the Ballista's "furthest" whether or not that is acted on today. | The block is before the search for the nearest; see "Said first". |
+| R6 | Read whether anything acts on `TargetMode`; it is not fixed in this stack. | Nothing does; see "Said first". No line of this layer reads the column. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **Two enemies holding the same health: the nearer.** The brief asked for the rule to be stated. The option not
+  taken: whichever the search answers first, which is the same enemy in the cases read and is not written down
+  anywhere.
+- **Within reach is the brain's measure and not the search's alone.** The sphere search also finds a body whose
+  edge reaches into the sphere while its centre is outside the reach. `Think` attacks only within the reach plus
+  its 2 cm contact tolerance and otherwise orders a walk, and a gadget does not walk; so a gadget that chose such
+  an enemy would fire at nothing while an enemy it can hit stood nearer. Those bodies are dropped. The option not
+  taken: the sphere `AttackOnce` uses, as it stands.
+- **One function asks a summoner for a gadget's stat, `ACataclysmMinion::SummonersGadgetStat`, with the gadget's
+  type tags.** The three layers that follow this one ask it for their stats. The option not taken:
+  `UCataclysmCommand::SummonerMultiplierFor`, which answers a multiplier from increases and would read a flat 1
+  as no change.
+- **One definition of a gadget, a new function, and the count `gadgets_active` now calls it.** The brief asked for
+  the function that says what a gadget is for that count; there was none, the test was written inline in
+  `UCataclysmAbilitySystemComponent::CurrentConditions`. `IsGadget` states it, and that line now reads
+  `Minion && Minion->IsGadget()`. It answers what the line computed before: `IsTrap` is `IsDeployable` and the
+  trap tag, so not a trap and deployable is the same test. The option not taken: leave the count's line as it was
+  and write the test a second time.
+- **The choice returns at once and does not pass through the draw.** See "Said first". The option not taken:
+  restructure the lines below the block so the health choice is passed to `MinionDrawingEnemyFrom`, which would
+  change lines this layer does not otherwise touch.
+- **The generator refuses a row on the flag with no required tag, though the game would read it.** So that every
+  row about gadgets states its scope as the merged ones do. The option not taken: accept an untagged row.
+- **The generator refuses a figure other than 1 on the flag**, as the retaliation flag's check does and for its
+  reason. The option not taken: accept any figure above nought.
+
+### THE GENRE SOURCES
+
+Recorded as `genre_2026-10-13.md` of the enchantment session gives them, and nothing else was fetched.
+
+How these were read: each page was fetched through a tool that hands back a model's reading of the page and not
+the page's bytes. Each page is longer than the 100,000 characters the tool read; the rest was not read.
+
+REACHED: `poedb.tw/us/Totem` (Path of Exile), its first 100,000 of 155,748 characters, read once. SUMMARY, the
+tool's words and not a quotation: the page states no rule for how a totem chooses its target, none for a totem
+immune to damage or losing life each second, and nothing that happens when a totem kills an enemy. It gave two
+lines about several shots of one attack, which are about projectiles and not about a volley at every enemy; they
+are not recorded.
+
+So no source was reached that settles this sentence. Every reading of it is this game's own. NOT REACHED: Diablo,
+Last Epoch, Torchlight; `poewiki.net` is blocked to the tool.
+
+### WHAT WAS BUILT
+
+- **The stat.** `gadgets_target_most_health`, a flag: a row sets it at a flat 1 and the code reads it as above
+  nought. No gameplay attribute and no base. It is the last name on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. Its name in code is
+  `ACataclysmMinion::GadgetsTargetMostHealthStat`.
+- **`ACataclysmMinion::IsGadget()`.** `IsDeployable() && !IsTrap()`.
+- **`ACataclysmMinion::SummonersGadgetStat(const TCHAR*)`.** Nought unless this minion is a gadget with a living
+  summoner; otherwise `StatForSkill` on the summoner's ability system with the stat's name, this gadget's
+  `TypeTags` and a fallback of nought.
+- **`ACataclysmMinion::HostilesWithinReach()`.** `FindEnemiesInSphere` from the minion with its `ReachCm`, which
+  answers nearest first and leaves out the dead, less every body further than `ReachCm + ReachAllowanceCm` along
+  the floor. `ReachAllowanceCm` is 0.01.
+- **`ACataclysmMinion::MostHealthWithinReach()`.** Null unless `SummonersGadgetStat` of the flag is above nought.
+  Otherwise the enemy of that list whose Health attribute is highest, and of two the same the one at the smaller
+  distance along the floor.
+- **The block in `ACataclysmEnemyController::ChooseTarget`.** After the Quarry order's return: if the body is a
+  minion and `MostHealthWithinReach` answers an enemy, that enemy is returned. `CataclysmEnemyController.cpp`
+  gains the include of `CataclysmMinion.h`.
+- **The count.** `State.GadgetsActive` in `CurrentConditions` is counted by `IsGadget`.
+- **The generator.** `GADGETS_TARGET_MOST_HEALTH_STAT`, `GADGET_FLAG_STATS`, `GADGET_STATS` and `GADGET_ROW_TAG`.
+  `refuse_a_gadget_row_the_game_cannot_read` refuses an enchantment's row on one of `GADGET_STATS` that is not
+  `flat`, whose Required Tags are not exactly `Type.Deployable`, that states an action, or, for a flag, whose
+  figure in either column is not 1. `validate_enchantment_effects` runs it. A condition or a scale on the stat
+  is refused by the two checks that already refuse those on a stat not on their lists. A passive node's row is
+  left alone.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment: Stat
+  `gadgets_target_most_health`, Value Kind `flat`, Value Low 1, Value High 1, Required Tags `Type.Deployable`. No
+  Condition, no Scale, no Action and no other cell. **With the row, that session adds the name to `FLAG_STATS`**
+  in `tools/tests/test_enchantment_effects_match_the_row_text.py`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end. The generator reads that
+  list, so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of
+  `Probes()`.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site of
+  `StatForSkill`, in `CataclysmMinion.cpp`, with its reason, as its last entry. `CALL_SITES` is left at 65; the
+  comment above it gains a dated sentence.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat, so no shipped row is refused.
+- No merged test asserts anything different. The one merged line of game code that was reworded, the count of
+  `gadgets_active`, answers what it answered.
+
+### Tests
+
+Three new Unreal tests in a new file, `CataclysmGadgetBehaviourTests.cpp`, in the group `Cataclysm.GadgetTargets.`.
+Each summoner is a real creature on the players' side holding its rows by hand as flat figures requiring
+`Type.Deployable`. A target is read by calling the gadget's brain, `ChooseTarget`. Nothing waits on a tick and no
+blow is struck. Stations are 100 m apart and nobody stands nearer than 1 m to anybody.
+
+- `AHoldersTurretAndBallistaChooseTheMostHealthWithinReachAndTheNearerOfTwoAlike`: two summoners, one holding the
+  flag, each with a Bolt Turret and a Ballista. Each turret has enemies at 3, 6 and 9 m holding 300, 900 and 500,
+  and one at 12 m, beyond its reach, holding 5,000; each ballista the same at 3, 7 and 13 m and at 18 m. In
+  order: the control turret chooses the nearest; it is offered no target by health; the holder's turret chooses
+  the 900; it does not choose the 5,000 beyond its reach; the 900 is lowered to 100 and the next choice is the
+  500 at 9 m; the nearest is raised to 500 and of the two at 500 the nearer is chosen; the holder's ballista
+  chooses its 900; the control ballista does not choose its 900; then the three within each turret's reach are
+  destroyed, and the holder's turret is offered no target by health; its choice and the control's are alike (each
+  its own enemy beyond reach, or each nothing); and neither chooses anything else.
+- `AQuarryMarkStillComesBeforeTheMostHealth`: one holder and one turret with the same line. With no mark the
+  turret chooses the 900. The holder marks the 300 at 3 m as its quarry; the mark lands and the turret is ordered
+  onto it; and the turret's choice is the marked enemy.
+- `AHoldersSpikeTrapAndImpAndAMonsterChooseAsTheyDidBefore`: one summoner read before it holds the flag and
+  after. A Spike Trap with enemies at 1.1 m holding 100 and at 1.4 m holding 900; an imp with enemies at 1.1 m
+  and 1.7 m the same; a Bolt Turret with the line above; and a monster with a second turret of the summoner's
+  3 m from it and a creature of the players' side 6 m from it holding 100,000. In order: a Spike Trap is not a
+  gadget; neither is an imp; before the row the trap chooses the nearer, the imp the nearer, the turret the
+  nearest and the monster the turret beside it; with the row the turret chooses the 900, so the row is held; the
+  trap's choice is what it was; it is offered no target by health; the imp's choice is what it was; it is offered
+  none either; and the monster's choice is what it was.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeGadgetsTargetMostHealth`,
+with a fixture the later gadget layers share, `FGadgetProbe`. Two summoners each with a Bolt Turret and enemies at
+3 m holding 300 and at 6 m holding 900. The turret of the summoner holding nothing is offered no target by
+health, and the turret of the one holding the flag at a flat 1 is offered the further enemy.
+
+Python, in `tools/tests/test_generate_datatables.py`: `GadgetRowsOnAMadeUpSheet`, which is not a test class and
+builds a made-up sheet for the classes of the gadget layers, and `TestGadgetsChooseTheMostHealth`, seven tests:
+the ruled row is carried through and refused by no check, and the sheet's validation told of no such tag does
+refuse it, so that validation reads the row; the name is a stat with no attribute, and a made-up name is not; the
+generator's name is the one `CataclysmMinion.cpp` holds, with `minion_death_blast_radius_metres` read by the same
+pattern as the control; each wrong shape is refused once and by its own sentence (a kind that is not flat, no
+required tag, `Type.Trap`, two tags, an action, a figure of 0 and of 2), and both figures wrong is two refusals;
+a condition or a scale is refused by the two checks that hold those; a passive node's row and a row on another
+stat are left alone; and the sheet's validation runs the check.
+
+**Not tested:** the flag arriving from a worn row through a gear refresh, because no row exists; a summoner that
+is a player character on a player state; a gadget in a dungeon level, with a floor, walls and navigation; a
+gadget firing at what it chose, because no test here strikes a blow; the time between shots across a change of
+target; a body found by the sphere search whose centre is beyond the reach; a gadget with its reach lengthened
+by "Gadgets have 20%-40% increased attack range"; a maddened gadget or a maddened enemy; a holder's mote; a
+thrall; the Behind the Veil draw beside a holder's gadget; the cost of the cast on each pass of each brain.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted once in its file by a script at this layer's commit, and each new text keeps
+the file's brackets paired. The failed assertions are counted by reading the tests and were not measured. The
+prefix of all three is `Cataclysm.GadgetTargets.`, with its trailing dot, which is 3 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| T-I, the brain asks a gadget for its choice by health | `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` | `if (const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Driven))` | `if (const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(GetOwner()))` | `AHoldersTurretAndBallistaChooseTheMostHealthWithinReachAndTheNearerOfTwoAlike` | `AQuarryMarkStillComesBeforeTheMostHealth` and `AHoldersSpikeTrapAndImpAndAMonsterChooseAsTheyDidBefore` |
+| T-II, of two holding the same health the nearer | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `(Health == MostHealth && DistanceSquared < MostDistanceSquared)` | `(Health == MostHealth && DistanceSquared > MostDistanceSquared)` | `AHoldersTurretAndBallistaChooseTheMostHealthWithinReachAndTheNearerOfTwoAlike` | none |
+| T-III, a trap is not a gadget | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `return IsDeployable() && !IsTrap();` | `return IsDeployable();` | `AHoldersSpikeTrapAndImpAndAMonsterChooseAsTheyDidBefore` | none |
+
+Failed assertions in each test, by reading:
+
+- **T-I, 5 in 3 tests.** With the break the cast is of the controller's owner, which is no minion, so the block
+  is never entered and a holder's gadget chooses as a control's does. The first test 3: "a holder's turret
+  chooses the enemy with the most health within its reach"; "when that enemy's health falls below another's, the
+  next choice is the other"; and "a holder's ballista chooses the enemy with the most health within its reach".
+  Its line "of two enemies holding the same health it chooses the nearer" passes, because the nearer of those two
+  is also the nearest enemy. The Quarry test 1: "control: with no mark a holder's turret chooses the enemy with
+  the most health", after which the test returns. The third test 1: "set-up: with the row the summoner's turret
+  chooses the most health, so the row is held", after which the test returns. The probe is outside the prefix and
+  passes, because it calls `MostHealthWithinReach` and not the brain.
+- **T-II, 1 in 1 test.** "of two enemies holding the same health it chooses the nearer": the one at 9 m is chosen.
+- **T-III, 3 in 1 test.** "a Spike Trap is not a gadget"; "a holder's Spike Trap still chooses the nearer enemy,
+  with one holding more health in reach", because the trap now takes the 900 at 1.4 m; and "and it is offered no
+  target by health: a trap is not a gadget".
+
+**Tests of another group expected to fail under T-III, to check in the window:** the tests of
+`CataclysmEnchantmentEffectTests.cpp` that count `gadgets_active` with a Spike Trap standing, because the count
+now calls `IsGadget`. They were not counted by reading. No test of another group is expected to fail under T-I or
+T-II.
+
+**Tests and no proof:** that the flag is read as above nought, which the probe holds; that a Quarry mark comes
+first; that an enemy beyond reach is not chosen; that an imp and a monster choose as before.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A damage over time ailment that ends by time may explode for double what it was laid to deal: one stat, a listener at the effect's removal and a mark on the blow, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (one flag of

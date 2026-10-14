@@ -8118,6 +8118,119 @@ namespace CataclysmStatExemptionTest
 					   TakenByTheEnd(true) - Without, 8.0f, 0.01f);
 	}
 
+	/**
+	 * What the probes of a summoner's gadget stats share. Ruled 2026-10-13. Two summoners, each a real creature on
+	 * the players' side, because a gadget takes its summoner's side and a bare actor has none: with no side a
+	 * gadget would find its own summoner when it searches for enemies. Each has one Bolt Turret, which reaches
+	 * 10 m, and two enemies with no defence that leaves a blow to chance: one 3 m from the turret holding
+	 * `NearHealth` and one 6 m from it holding `FarHealth`.
+	 *
+	 * STANDING: the plain summoner's turret at the origin and the granted one's 100 m along Y; each summoner 50 m
+	 * behind its turret along X. Nobody stands nearer than 3 m to anybody.
+	 */
+	struct FGadgetProbe
+	{
+		FGadgetProbe(UWorld* World, float NearHealth, float FarHealth)
+		{
+			const auto Stand = [World](const FVector& Where, ECataclysmTeam Team, float Health)
+			{
+				ACataclysmEnemyCharacter* Made =
+					World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+				UAbilitySystemComponent* Its = Made ? Made->GetAbilitySystemComponent() : nullptr;
+				if (Its)
+				{
+					Made->SetGenericTeamId(UCataclysmTeams::IdFor(Team));
+					Made->SetHealth(TargetHealthPool);
+					Made->SetArmour(0.0f);
+					Made->SetAttackDamage(0.0f);
+					Its->SetNumericAttributeBase(Combat::GetArmorAttribute(), 0.0f);
+					Its->SetNumericAttributeBase(Combat::GetEvasionAttribute(), 0.0f);
+					Its->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 0.0f);
+					Its->SetNumericAttributeBase(
+						UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+					Its->SetNumericAttributeBase(Vital::GetHealthAttribute(), Health);
+				}
+				return Made;
+			};
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				const FVector At(0.0f, Index * 100.0f * M, 0.0f);
+				Summoners[Index] = Stand(At + FVector(-50.0f * M, 0.0f, 0.0f), ECataclysmTeam::Players,
+										 TargetHealthPool);
+				Turrets[Index] = Summoners[Index]
+					? ACataclysmMinion::Spawn(Summoners[Index], At, /*Lifetime=*/600.0f, /*bBurns=*/false,
+											  TEXT("BoltTurret"))
+					: nullptr;
+				Near[Index] = Stand(At + FVector(3.0f * M, 0.0f, 0.0f), ECataclysmTeam::Monsters, NearHealth);
+				Far[Index] = Stand(At + FVector(6.0f * M, 0.0f, 0.0f), ECataclysmTeam::Monsters, FarHealth);
+			}
+		}
+
+		/** Whether everything was made, and both turrets came from the Bolt Turret row. Reports why not. */
+		bool IsWhole(FAutomationTestBase& Test) const
+		{
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				if (!Summoners[Index] || !Turrets[Index] || !Near[Index] || !Far[Index]
+					|| Turrets[Index]->TypeName != FString(TEXT("BoltTurret")) || !Turrets[Index]->IsGadget())
+				{
+					Test.AddError(TEXT("set-up: two summoners, each with a Bolt Turret and two enemies. If a turret "
+									   "is missing, DT_MinionTypes could not supply the BoltTurret row: run "
+									   "tools/generate_datatable_assets.py"));
+					return false;
+				}
+			}
+			return true;
+		}
+
+		static float HealthOf(const AActor* Who)
+		{
+			const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who);
+			return Its ? Its->GetNumericAttribute(Vital::GetHealthAttribute()) : -1.0f;
+		}
+
+		/** Index 0 holds nothing; a probe grants index 1 its stat. */
+		static constexpr int32 Plain = 0;
+		static constexpr int32 Granted = 1;
+		ACataclysmEnemyCharacter* Summoners[2] = {nullptr, nullptr};
+		ACataclysmMinion* Turrets[2] = {nullptr, nullptr};
+		ACataclysmEnemyCharacter* Near[2] = {nullptr, nullptr};
+		ACataclysmEnemyCharacter* Far[2] = {nullptr, nullptr};
+	};
+
+	/**
+	 * `gadgets_target_most_health`, a flag on a summoner, read by `ACataclysmMinion::MostHealthWithinReach` each
+	 * time the shared brain chooses a gadget's target. Ruled 2026-10-13: "Your gadgets prioritize the highest HP
+	 * enemy within their range instead of the nearest". The nearer enemy holds 300 and the further 900. The plain
+	 * summoner's turret is offered no target by health; the granted one's is offered the further enemy.
+	 *
+	 * WHAT THIS DOES NOT REACH. The brain's use of the answer, a tie, the Quarry mark, and a trap, an imp and a
+	 * monster choosing as before: `Cataclysm.GadgetTargets.` in `CataclysmGadgetBehaviourTests.cpp` holds those.
+	 */
+	void ProbeGadgetsTargetMostHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FGadgetProbe Probe(World, /*NearHealth=*/300.0f, /*FarHealth=*/900.0f);
+		if (!Probe.IsWhole(Test))
+		{
+			return;
+		}
+		GrantFlat(Probe.Summoners[FGadgetProbe::Granted], ACataclysmMinion::GadgetsTargetMostHealthStat, 1.0f);
+
+		Test.TestNull(TEXT("control: the turret of a summoner holding no flag is offered no target by health"),
+					  Probe.Turrets[FGadgetProbe::Plain]->MostHealthWithinReach());
+		Test.TestTrue(TEXT("and the turret of one holding gadgets_target_most_health at 1 is offered the further "
+						   "enemy, which holds the most, so MostHealthWithinReach really reads it"),
+					  Probe.Turrets[FGadgetProbe::Granted]->MostHealthWithinReach()
+						  == Probe.Far[FGadgetProbe::Granted]);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8265,6 +8378,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("debuffed_enemies_deal_less_percent"), &ProbeDebuffedEnemiesDealLessPercent},
 			{TEXT("immune_to_debuffs_and_applies_none"), &ProbeImmuneToDebuffsAndAppliesNone},
 			{TEXT("dot_explodes_at_expiry_chance"), &ProbeDotExplodesAtExpiryChance},
+			{TEXT("gadgets_target_most_health"), &ProbeGadgetsTargetMostHealth},
 		};
 		return Made;
 	}
