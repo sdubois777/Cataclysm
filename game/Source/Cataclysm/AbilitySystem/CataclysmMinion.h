@@ -284,16 +284,23 @@ public:
 	 * character, every quarter of a second; it does nothing for a character that is not a minion, for a minion
 	 * that is not a gadget, and for a dead one.
 	 *
-	 * THE VOLLEY'S CLOCK IS STEPPED HERE. It is the gadget's own and starts when the gadget is placed: the
-	 * gadget's age is compared with the age at which the clock last came round. It keeps its beat from the
-	 * placing and does not drift: a volley that fires late does not make the next one later.
+	 * THE VOLLEY'S CLOCK IS STEPPED HERE, AND IT IS THE GADGET'S OWN. THE FIRST VOLLEY COMES ON THE FIRST STEP
+	 * THAT FINDS AN ENEMY WITHIN THE GADGET'S REACH, the coordinating session's judgement of 2026-10-13; after
+	 * it, one each time the row's seconds have passed. The seconds run from the first volley and the beat is
+	 * kept from it: the gadget's age is compared with the age at which the clock last came round, and a volley
+	 * that fires late does not make the next one later. What was first built waited the row's whole seconds
+	 * from the placing, under which a Bolt Turret, which stands 5 seconds, fired at most once as it left.
+	 *
+	 * A STEP THAT FINDS NOBODY WITHIN REACH BEFORE THE FIRST VOLLEY COSTS NOTHING: it fires nothing and starts
+	 * no clock. A GADGET THAT CANNOT ACT, stunned or knocked down, DOES NOT LOSE ITS FIRST VOLLEY: it comes on
+	 * the first step that finds an enemy within reach while the gadget can act. A gadget that comes to hold the
+	 * row late is under the same rule.
 	 *
 	 * A VOLLEY CAN FIRE UP TO A QUARTER OF A SECOND LATE, because this is where the clock is looked at and this
 	 * runs four times a second.
 	 *
-	 * A GADGET THAT COMES TO HOLD THE ROW WHEN IT HAS ALREADY STOOD LONGER THAN THE ROW'S SECONDS fires its first
-	 * volley on the next step and counts from then. A gadget that cannot act when its clock comes round, stunned
-	 * or knocked down, fires nothing, and that volley is lost: the clock does not wait for it.
+	 * AFTER THE FIRST, the clock does not wait for anything: a volley that comes round while the gadget cannot
+	 * act is lost, and one that comes round with nobody within reach is fired at nobody.
 	 */
 	static void GadgetStep(AActor* Character);
 
@@ -311,6 +318,9 @@ public:
 
 	/** How many volleys it has fired. Read by tests. */
 	int32 VolleysFired = 0;
+
+	/** Whether it has fired its first volley. Until it has, its clock is not running. */
+	bool bHasFiredAVolley = false;
 
 	/** The age, in seconds since it was placed, at which its volley clock last came round. Nought until it has. */
 	float LastVolleyAtAgeSeconds = 0.0f;
