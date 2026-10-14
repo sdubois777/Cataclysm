@@ -604,3 +604,4 @@ Positive_25_50_of_damage_taken_is_dealt_over_4_8_second#2,Positive_25_50_of_dama
 Positive_Your_auras_are_20_50_more_effective#1,Positive_Your_auras_are_20_50_more_effective,aura_effect,more,20.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Buff_effects_you_apply_are_20_40_more_potent#1,Positive_Buff_effects_you_apply_are_20_40_more_potent,buff_potency,more,20.0,40.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Applying_a_debuff_to_an_enemy_reduces_their_dama#1,Positive_Applying_a_debuff_to_an_enemy_reduces_their_dama,debuffed_enemies_deal_less_percent,flat,10.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Negative_You_are_immune_to_debuffs_but_also_cannot_apply#1,Negative_You_are_immune_to_debuffs_but_also_cannot_apply,immune_to_debuffs_and_applies_none,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

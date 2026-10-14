@@ -1875,6 +1875,19 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		}
 	}
 
+	// AND A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT. Ruled
+	// 2026-10-13: "You are immune to debuffs but also cannot apply them". Here,
+	// before the applier's event, its spread, its riders and the refresh, so
+	// nothing is done for a refused application and ITS DAMAGE IS LOST.
+	//
+	// CONVERTED DAMAGE TOO, unlike the refusal above. The Masochist's converted
+	// bleed is a debuff on its own character; `UCataclysmDamageConversion` takes
+	// the blow off health at once when this answers false, so none is deleted.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
+	{
+		return false;
+	}
+
 	// THE ATTACKER'S THREE STATS, AND UNTIL ISSUE #895 NONE OF THEM WAS READ.
 	// All three attributes existed, were clamped and were replicated, and the
 	// comment that used to stand here said the frequency stat "is not wired in
@@ -2162,6 +2175,14 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
 	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
 	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT, as
+	// `ApplyDamageOverTime` asks. Ruled 2026-10-13. Before the detonation and
+	// the riders below, so nothing is done for a refused application.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
 	{
 		return false;
 	}
@@ -4067,6 +4088,15 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 		return false;
 	}
 
+	// A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT. Ruled
+	// 2026-10-13. Asked with the tag about to be laid, so only a tag under a
+	// debuff root is refused: a stun and a named curse are, and a stagger, a
+	// pin, a knockdown, a fear, an immunity and every buff are not.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
+	{
+		return false;
+	}
+
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS. Issue
 	// #1033. Two Masochist nodes lengthen the harmful effects on the
 	// character itself, because eleven nodes in that branch pay it for each
@@ -4336,6 +4366,14 @@ bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 	float DurationSeconds, float Magnitude, FName DamageType)
 {
 	if (!EffectTag.IsValid() || DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT. Ruled
+	// 2026-10-13. First, so a refused application takes no running effect off
+	// to replace it.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
 	{
 		return false;
 	}

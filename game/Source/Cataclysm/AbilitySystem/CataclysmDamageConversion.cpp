@@ -157,10 +157,19 @@ float UCataclysmDamageConversion::ConvertIfActive(
 		// NOTHING WAS CONVERTED, SO THE CALLER STILL TAKES IT OFF HEALTH. The
 		// alternative -- reporting it converted anyway -- would delete the
 		// damage outright and make the node an immunity.
-		UE_LOG(LogCataclysm, Warning,
-			   TEXT("%s should have turned %.1f damage into Bleeding and could "
-					"not, so it is being taken off health instead."),
-			   *GetNameSafe(Character), ToHealth);
+		//
+		// SILENT WHEN A ROW REFUSED THE BLEED. Ruled 2026-10-13: a character a
+		// row makes immune to debuffs is refused its own converted bleed, which
+		// is expected and is not a fault. The same question the refusal itself
+		// asked, of the same character and the same tag. Every other reason
+		// still warns.
+		if (!UCataclysmDebuffs::RefusedByARow(Character, Character, UCataclysmDebuffs::BleedTag()))
+		{
+			UE_LOG(LogCataclysm, Warning,
+				   TEXT("%s should have turned %.1f damage into Bleeding and could "
+						"not, so it is being taken off health instead."),
+				   *GetNameSafe(Character), ToHealth);
+		}
 		return 0.0f;
 	}
 
