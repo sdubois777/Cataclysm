@@ -320,6 +320,12 @@ when a fall's is due as well. An empty board's surge asks for the same 25 days. 
 the answer no, `Report.bSurged` would be false by reading. The test does not assert that; the ruling says to
 assert nothing there.
 
+**Added on 2026-10-13, by a second ruling of the coordinating session:** the renamed test also asserts that on a
+day a city fell after day 1 with no fall's surge due, the day did not surge at all ("day %d, a day a city fell
+with no fall's surge due, did not surge"). The reason no other cause can fire then is in the test's comment: the
+clock's next surge and the empty-board surge both wait at least the same 25 days. Where this entry says above
+that nothing is asserted on such a day, that was true of the first version. Not compiled or run when written.
+
 ---
 
 ## 2026-10-12 — The cell picker for floor rules' objects shuffles on a seeded stream, so one dungeon seed and floor give each rule the same cells (#2342)
