@@ -1391,4 +1391,133 @@ bool FCataclysmBurnExplodesMinionTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBurnExplodesRefreshedOnceTest,
+	"Cataclysm.BurnExplodes.ABurnRefreshedTwiceExplodesOnceAtItsMovedEndAndNotAtItsFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * STANDING: the wearer at the origin, the carrier 20 m along +X, a bystander 3 m beyond it and the measured creature
+ * 40 m along +Y. The wearer holds a chance of 100.
+ *
+ * WHY THIS TEST EXISTS. The listener for an effect's removal is added at the end of `ApplyDamageOverTime`. An
+ * application that is not stronger than the running Burn returns before that line, so a refreshed Burn is
+ * listened to once. Were that line reached for a refresh, the same effect would hold the listener once for each
+ * application and would explode that many times at its end. Asked by the coordinating session on 2026-10-13.
+ *
+ * THE CONTROL IS A BURN NEVER REFRESHED, in a world of its own: it has exploded by four and a half seconds, on
+ * the carrier and the bystander, and the bystander has taken what a blow of 80 takes.
+ *
+ * The refreshed Burn is laid at nought and applied again, at the same ten a tick, a second and a half in and three
+ * seconds in. Each application gives it four seconds from that moment, so it ends at seven seconds. At four and a
+ * half seconds, past its first end, nothing has exploded and it still burns. At six seconds, past the end the
+ * first refresh gave it, the same. At seven and a half it has ended and exploded ONCE: two blows are announced,
+ * and the bystander has taken what ONE blow of 80 takes, which is also the reading that a refreshed Burn's whole
+ * is one duration's worth and not the seven seconds it ran.
+ */
+bool FCataclysmBurnExplodesRefreshedOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmBurnExplodesTest;
+
+	struct FRead
+	{
+		bool bSetUp = false;
+		float SuchABlowTakes = 0.0f;
+		/** Explosions announced, and whether the carrier burns, at 4.5, at 6 and at 7.5 seconds. */
+		int32 ExplosionsPastTheFirstEnd = 0;
+		bool bBurnsPastTheFirstEnd = false;
+		int32 ExplosionsPastTheSecondEnd = 0;
+		bool bBurnsPastTheSecondEnd = false;
+		int32 ExplosionsInAll = 0;
+		bool bBurnsAtTheLast = true;
+		float BystanderLost = 0.0f;
+	};
+
+	const auto Run = [this](const TCHAR* Who, bool bRefreshed) -> FRead
+	{
+		FRead Read;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a world"), Who), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FRollPin Pin(RollName, 0.0f);
+
+		FWearer Wearer(World);
+		ACataclysmEnemyCharacter* Carrier = CreatureAt(World, CarrierAt);
+		ACataclysmEnemyCharacter* Bystander = CreatureAt(World, NearAt);
+		ACataclysmEnemyCharacter* Measured = CreatureAt(World, MeasuredAt);
+		if (!TestTrue(*FString::Printf(TEXT("%s: set-up: a player character on a player state"), Who),
+					  Wearer.IsComplete())
+			|| !TestTrue(*FString::Printf(TEXT("%s: set-up: the three creatures"), Who),
+						 Carrier && Bystander && Measured))
+		{
+			return Read;
+		}
+		Read.SuchABlowTakes = WhatSuchABlowTakes(Wearer, Measured, Explosion);
+		Hold(Wearer.AbilitySystem, 100.0f);
+		FListening Heard(UCataclysmCombatEvents::In(World), Carrier, Wearer.Character);
+		const float BystanderAtFirst = HealthOf(Bystander);
+
+		bool bApplied = TestTrue(*FString::Printf(TEXT("%s: set-up: the Burn is laid"), Who),
+								 LayBurn(Wearer.Character, Carrier));
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		if (bRefreshed)
+		{
+			bApplied = TestTrue(*FString::Printf(TEXT("%s: set-up: it is applied again a second and a half in"), Who),
+								LayBurn(Wearer.Character, Carrier)) && bApplied;
+		}
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		if (bRefreshed)
+		{
+			bApplied = TestTrue(*FString::Printf(TEXT("%s: set-up: and again three seconds in"), Who),
+								LayBurn(Wearer.Character, Carrier)) && bApplied;
+		}
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		Read.ExplosionsPastTheFirstEnd = Heard.Explosions;
+		Read.bBurnsPastTheFirstEnd = Burns(Carrier);
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		Read.ExplosionsPastTheSecondEnd = Heard.Explosions;
+		Read.bBurnsPastTheSecondEnd = Burns(Carrier);
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		Read.ExplosionsInAll = Heard.Explosions;
+		Read.bBurnsAtTheLast = Burns(Carrier);
+		Read.BystanderLost = BystanderAtFirst - HealthOf(Bystander);
+		Read.bSetUp = bApplied
+			&& TestTrue(*FString::Printf(TEXT("%s: set-up: a blow of 80 takes something, %.2f"), Who,
+										 Read.SuchABlowTakes), Read.SuchABlowTakes > 0.0f)
+			&& TestFalse(*FString::Printf(TEXT("%s: set-up: the carrier is alive at the end"), Who), IsGone(Carrier))
+			&& TestTrue(*FString::Printf(TEXT("%s: set-up: the wearer is alive at the end"), Who), Wearer.IsAlive());
+		return Read;
+	};
+
+	const FRead Control = Run(TEXT("never refreshed"), false);
+	const FRead Refreshed = Run(TEXT("refreshed twice"), true);
+	if (!Control.bSetUp || !Refreshed.bSetUp)
+	{
+		return false;
+	}
+
+	// THE CONTROL: left alone, the Burn has ended and exploded by four and a half seconds, once.
+	TestEqual(TEXT("control: a Burn never refreshed has exploded by four and a half seconds, on the carrier and "
+				   "the bystander"), Control.ExplosionsPastTheFirstEnd, 2);
+	TestFalse(TEXT("control: and has ended"), Control.bBurnsPastTheFirstEnd);
+	TestEqual(TEXT("control: and nothing more explodes after that"), Control.ExplosionsInAll, 2);
+	TestEqual(TEXT("control: and its bystander takes what a blow of 80 takes"), Control.BystanderLost,
+			  Control.SuchABlowTakes, 0.05f);
+
+	TestEqual(TEXT("past its first end the refreshed Burn has exploded nothing"),
+			  Refreshed.ExplosionsPastTheFirstEnd, 0);
+	TestTrue(TEXT("and still burns"), Refreshed.bBurnsPastTheFirstEnd);
+	TestEqual(TEXT("past the end its first refresh gave it, it has exploded nothing"),
+			  Refreshed.ExplosionsPastTheSecondEnd, 0);
+	TestTrue(TEXT("and still burns there too"), Refreshed.bBurnsPastTheSecondEnd);
+	TestFalse(TEXT("at seven and a half seconds it has ended"), Refreshed.bBurnsAtTheLast);
+	TestEqual(TEXT("and has exploded once: two blows are announced, the carrier and the bystander, and not six"),
+			  Refreshed.ExplosionsInAll, 2);
+	TestEqual(TEXT("and its bystander takes what one blow of 80 takes: one explosion, for one duration's worth"),
+			  Refreshed.BystanderLost, Refreshed.SuchABlowTakes, 0.05f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
