@@ -2,6 +2,463 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — In the simulation a Quest dungeon's timer hits its city, a surge is 5 dungeons every 90 days, and a hit is sized by natural floors; the game has none of the three
+
+**Said first: the game has NONE of these three rules, and the two halves differ on purpose.** This change is the
+simulation, its tests and this entry only. No file under `game/` changed, and `docs/Cataclysm_GDD_v2.md` was not
+edited. Nothing was compiled and nothing was run in Unreal. `sim/experiments.py` was not run. Each difference has
+a check in `tools/tests` that fails when the game's half changes and says what to do then:
+
+| Rule in the simulation | The game today | The check |
+|---|---|---|
+| A Quest dungeon's timer running out hits its host city | `UCataclysmEmpireRun::ResolveDungeon` sends a Quest dungeon to `RelocateQuestDungeon` and returns before any damage | `test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py` |
+| A surge is 5 dungeons every 90 days | `UCataclysmSurgeScheduler::IntervalDays` is 120 and `DungeonsPerSurge` is 4 | `test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py` |
+| A hit is sized by a dungeon's natural floors | `FCataclysmDungeon::BiteScale` divides `Floors`, which two city upgrades move after the roll | `test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py` |
+
+**One existing test fails at this commit and was not changed, because it states another rule.**
+`sim/tests/test_quest_relocation_is_adjacent.py::TestASiegeMayNotWalkOntoABesiegedCity::test_it_stays_when_every_neighbour_is_besieged`
+prints: "AssertionError: a Quest dungeon carrying a Siege moved although every city adjacent to Outpost (-3,0)
+already had one. It must stay where it is; issue #1371". The rule it states is not broken. The test runs fifty
+Quest timers on one Outpost. Each now takes 100 defence, so the Outpost falls at the tenth; a fallen city exposes
+its inward neighbour, which the test did not besiege, and the dungeon moves there. The test needs a set-up in
+which the home city stands (for example `quest_timer_hits_city=False` in its configuration). That is for the
+coordinating session to decide.
+
+**The reading taken for the size of a Quest dungeon's hit is the ordinary row at a scale of 1.0.** The other
+reading multiplies it by the Quest dungeon's floors over the midpoint of the ordinary row's floor range, which
+makes it about 2.2 times an ordinary hit on an Outpost at the middle of both ranges. Its figures are row (d) of
+every table below. For the defending Explorer `triage` player at tier 1, day cap 4,000, 500 campaigns: 1.24
+cities lost (standard error 0.07) and 50.4% won under the other reading, against 0.93 (0.05) and 52.2% under the
+reading taken.
+
+**A consequence the ruling's words imply and did not spell out: an empire-tree node that REMOVES floors no longer
+shrinks a dungeon's hit.** The hit is sized by natural floors, so `Exclusionary Mapping` (-1 floor a point, 10
+points) and any preset with a negative `floor_delta` (`TREE_EXPLORER_VIA_FLOORS`, -25) still make a dungeon
+shorter to walk, poorer and sooner to come due, and no longer make it hit less. This is a second change of
+behaviour. It is for the coordinating session to confirm.
+
+**The game does have floors that a player's investment adds, and they are not the empire tree's.** The game has
+no empire tree. It has two city upgrades, `DungeonFloorsMore` and `DungeonFloorsFewer`, which
+`UCataclysmSurgeScheduler::MakeDungeon` applies after the roll, and `BiteScale` reads `Floors` after them. So the
+game's hit already uses natural floors only in a city that holds neither upgrade. Whether a city upgrade's floors
+are natural is not ruled.
+
+**Nothing was retuned beyond 90 days and 5 dungeons.** No damage figure, timer, city health or share changed.
+
+**Four analysis scripts were not re-measured and now hold the model where their figures were taken.**
+`analyse_surge_cadence.py`, `analyse_board_empty_surge.py` and `analyse_tier_throughput.py` read the cadence
+that ships; they now hold 4 dungeons every 120 days by name. At 5 every 90, `analyse_tier_throughput.arrival_rate`
+gives 1.19 walk-days of dungeon a day at tier 1, and that file's own test says of a figure above 1.0: "the board
+cannot be kept clear even there and this script's whole framing is wrong". That finding is recorded here and
+nowhere re-measured. Those three and `analyse_siege_dose.py` also hold `quest_timer_hits_city=False` and
+`hit_scales_with_natural_floors=False`, beside the line that already held an ordinary dungeon staying.
+
+### The decisions, and who said what
+
+The owner, 2026-10-08, verbatim: "Ordinary dungeons will do their city/population damage, and then despawn.
+Quest dungeons will do their city/population damage, and either refresh their timer and stay on that city, or
+potentially move to an adjacent city. Fallen city dungeons don't have a resolution timer as they're the enemies
+now."
+
+The owner, 2026-10-09, verbatim: "your rec on all the open questions". One recommendation it accepted, in the
+coordinating session's words and not the owner's: a Quest dungeon costs its city nothing.
+
+The owner, typed in the coordinating session on 2026-10-13, verbatim: "your rec on all three, continue".
+
+The two recommendations that sentence accepts which concern this change, in the coordinating session's words and
+not the owner's: (1) a Quest dungeon HITS its city when its timer runs out, at the size of an ordinary dungeon's
+hit for that city, then refreshes or moves as before; surges every 90 days of 5 dungeons. (2) a dungeon's hit is
+sized by its NATURAL floors, not the floors the Explorer tree adds.
+
+**For Quest dungeons, 2026-10-13 supersedes both earlier lines.** It reverses the line of 2026-10-09 and returns
+to the owner's sentence of 2026-10-08.
+
+The size in (1), "an ordinary dungeon's size", is the accepted recommendation. It is not a new formula, and no
+source on how shipped games do it was read.
+
+### What was read before writing
+
+- `sim/cataclysm_sim/engine.py`: `Simulation._resolve` whole, `Dungeon.resolves`, `_make_dungeon`, `_fall`,
+  `_resolve_on_death`, `_apply_siege_damage`, `step`, `run`, `surge_count`, `surge_gap`.
+- `sim/cataclysm_sim/config.py`: `DUNGEON_SPECS` (the Quest rows carry 0.0 damage), `quest_relocates`,
+  `quest_move_chance`, `EmpireTree.floors_added`, `TREE_EXPLORER_AS_DESIGNED` (+20 floors and +20 a Cataclysm).
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `ResolveDungeon` and `RelocateQuestDungeon`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`: `BiteScale`, and `MakeDungeon` where the roll and the
+  two city upgrades set `Dungeon.Floors`. `CataclysmSurge.h`: `IntervalDays`, `DungeonsPerSurge`, `Resolves`.
+- A search of `game/Source` for an empire tree found none.
+- `tools/tests/test_surge_port.py`, and the divergence check written on 2026-10-12.
+
+**How each half knows natural floors.** Before this change the model did not: `_make_dungeon` rolled a depth,
+multiplied it by the pattern's `floors_mult`, added `cfg.tree.floors_added(...)`, and kept only the total. The
+total was read by the walk, the resolve timer, the power, the death chance, the reward and the hit. The game
+keeps one `Floors` as well.
+
+### How each change is built
+
+**(ii) A Quest dungeon's timer hits its host.** `TuningConfig.quest_timer_hits_city`, default True. In
+`_resolve`, the Quest branch calls `Simulation._quest_hit` when the setting is on and the city stands, before the
+timer is refreshed and before the move. `_quest_hit` takes the ordinary (`BASIC`) row of the HOST city's tier at
+the moment of the hit, times the tree's `damage_taken`, and fells the city at nought. False is the model as it
+was; no line of the hit runs and the random stream is unchanged. `quest_hit_scales_with_depth`, default False, is
+the other reading.
+
+**(iii) 90 days and 5 dungeons.** `surge_interval_days` 120 to 90, `surge_dungeon_count` 4 to 5.
+
+**(iv) Natural floors.** `Dungeon.tree_floors` holds what the tree added (negative when it removed), set once in
+`_make_dungeon`. `Dungeon.natural_floors` is `floors - tree_floors`. `Simulation._hit_floors` returns it, and
+`_resolve` and the other reading of the Quest hit divide it by the row's midpoint.
+`hit_scales_with_natural_floors`, default True; False is the old scale. With no tree the two give the same
+campaign bit for bit, which a test holds on one seed.
+
+### The writing session's judgements, for the coordinating session to confirm
+
+Each is a judgement by the writing session where the rulings did not settle the point.
+
+1. **The Quest dungeon's own rows stay at 0.0.** The hit reads the ordinary row of the host's tier. Changing the
+   Quest rows would have broken the specification table's equality with the game's `SpecFor` and would have
+   sized the hit from the tier the dungeon was rolled on. Not taken: non-zero Quest rows.
+2. **The host is the city the dungeon stands on when the hit lands**, not `Dungeon.city_tier`, which is the tier
+   its depth was rolled from and does not move when it relocates.
+3. **No scale by depth**, as said above.
+4. **The hit is counted in a new tally, `quest_hits`, and not in `resolved`.** `RunResult.dungeons_resolved`
+   goes on meaning ordinary dungeons, as in every earlier figure, and still equals the game's
+   `DungeonsDetonated`. `Dungeon.times_resolved` is not raised for a Quest dungeon, as it never was. Not taken:
+   counting the hit in `resolved`; a test of issue #1373 (`test_the_old_arithmetic_really_did_count_more`) would
+   then have compared two tallies that no longer nest.
+5. **A hit that fells the city has the fall absorb the Quest dungeon**, with every other dungeon on the city, as
+   when an ordinary dungeon fells a city a Quest dungeon stands on. It is not refreshed and not moved, and no
+   draw is taken. Not taken: the Quest dungeon surviving its own city's fall.
+6. **The Quest dungeon the player is inside is spared by the fall**, as `_fall` has always spared the dungeon
+   being walked; its timer is then refreshed and it may move. Reached only with `timer_ticks_while_running` on.
+7. **A Quest dungeon on a city already fallen hits nothing** and is not counted.
+8. **`Dungeon.resolves` stays "ordinary and nothing else".** A death, `_urgent` and the policies read it. So a
+   death inside a Quest dungeon still resolves nothing, and no policy treats a Quest dungeon as urgent. No
+   policy was changed.
+9. **Natural floors include the Cataclysm pattern's `floors_mult`**, because the pattern is part of what the
+   dungeon is.
+10. **Natural floors are `floors - tree_floors` and not a second stored depth.** The brief asked for the rolled
+    figure in a new field. A stored copy does not move when a depth is changed after the dungeon is made, which
+    two tests in `test_city_health_lever.py` do to pin the scale at 1.0; they state another rule and would have
+    failed. Stored this way, only the tree's part is left out of a hit. Not taken: a stored `natural_floors`.
+11. **The three analysis scripts hold 120 and 4 by name**, rather than being left to fail or being re-measured.
+12. **The Unreal test's ladders are held against the model's formula at the game's two constants**, read from
+    the header, so `TestTheHandWorkedFiguresInTheUnrealTest` still passes while the constants differ.
+
+### Existing tests that changed, each with what it asserted and what it asserts now
+
+- `sim/tests/test_resolved_counts_a_detonation.py::test_a_quest_dungeon_is_not_counted`: asserted `not bit` and
+  `moved == 0`. Asserts `bit`, `sim.quest_hits == 1` and `moved == 0`. A control was added beside it,
+  `test_with_the_hit_switched_off_a_quest_dungeon_takes_nothing`.
+- `sim/tests/test_an_ordinary_dungeon_leaves_after_it_hits_its_city.py::test_a_quest_dungeon_stays_with_its_timer_full`:
+  no assertion changed; a comment says the hit is counted elsewhere.
+- `tools/tests/test_surge_port.py::TestWhatAQuestDungeonIs::test_it_takes_nothing_from_the_city_in_either` is
+  renamed `test_its_own_rows_carry_no_damage_in_the_model`. Its assertions are unchanged: the Quest rows are 0.0.
+- `...::test_neither_lets_one_bite_its_host_when_the_timer_runs_out` is renamed
+  `test_both_single_it_out_by_kind_and_only_the_game_lets_it_off`. Its assertions are unchanged.
+- `tools/tests/test_surge_port.py::TestTheCadence::NUMBERS` lost its rows `IntervalDays` and `DungeonsPerSurge`,
+  which are now the recorded divergence. The other four rows are still held equal.
+- `...::TestTheHandWorkedFiguresInTheUnrealTest`: `gap_at` and `count_at` built `TuningConfig()`; they now set
+  the interval and the surge size to the game's constants. The asserted figures are unchanged.
+- `sim/tests/test_a_quest_dungeons_timer_hits_its_host_city.py`, written for (ii), lost three lines in (iv) that
+  set a `natural_floors` attribute which became a property.
+
+### The measurements
+
+Made on 2026-10-13 by `measure.py` in the writing session's scratch folder, against a `git archive` copy of the
+commit that holds change (iv). 500 campaigns a cell, seeds 0 to 499, 8 processes, raw `TuningConfig()` of that
+copy except what a row sets by name. Row (a) is the model as on `development`: dungeons stay, a Quest dungeon
+costs nothing, 120 days and 4 dungeons, the old hit scale. Row (b) is the package. Rows (c1) to (c4) are the
+package with one of the four changes switched back. Row (d) is the package with the other reading of the Quest
+hit. The last column of each printed line is seconds since the script began.
+
+Row (a) undefended gives 606 / 883 / 1224 at tier 1, the same three days the entry of 2026-10-12's scratch run
+printed for the old rule, which is a check that row (a) is the earlier model.
+
+Rows (b) and (c4) agree in every cell with no tree, as they must: with no tree the two scales are one number.
+
+```
+raw defaults of the copy: persists False | quest hits True | quest hit by depth False | natural floors True | interval 90.0 | count 5 | max_days 2500 | death resolves True
+  row a  development: {'dungeon_persists_after_resolve': True, 'quest_timer_hits_city': False, 'surge_interval_days': 120.0, 'surge_dungeon_count': 4, 'hit_scales_with_natural_floors': False}
+  row b  the package: nothing set
+  row c1 package, dungeons stay: {'dungeon_persists_after_resolve': True}
+  row c2 package, Quest costs 0: {'quest_timer_hits_city': False}
+  row c3 package, 120 days x4: {'surge_interval_days': 120.0, 'surge_dungeon_count': 4}
+  row c4 package, old hit scale: {'hit_scales_with_natural_floors': False}
+  row d  package, Quest hit x depth: {'quest_hit_scales_with_depth': True}
+
+UNDEFENDED: no tree, nobody enters a dungeon, day cap 8000, 500 campaigns a tier, seeds 0 to 499. Lost = the path to the Pillar is open (the Last Stand opens).
+row | tier | % lost by day 2000 | by 4000 | by 8000 | day of the loss p10 p50 p90
+a  development                | T1 | 100.0 | 100.0 | 100.0 |  606  883 1224 | 2s
+a  development                | T2 | 100.0 | 100.0 | 100.0 |  450  641  833 | 3s
+a  development                | T3 | 100.0 | 100.0 | 100.0 |  369  510  663 | 3s
+a  development                | T4 | 100.0 | 100.0 | 100.0 |  315  448  573 | 4s
+b  the package                | T1 |  98.4 | 100.0 | 100.0 |  760 1240 1704 | 6s
+b  the package                | T2 | 100.0 | 100.0 | 100.0 |  512  804 1061 | 7s
+b  the package                | T3 | 100.0 | 100.0 | 100.0 |  414  644  834 | 8s
+b  the package                | T4 | 100.0 | 100.0 | 100.0 |  353  530  684 | 9s
+c1 package, dungeons stay     | T1 | 100.0 | 100.0 | 100.0 |  428  648  889 | 10s
+c1 package, dungeons stay     | T2 | 100.0 | 100.0 | 100.0 |  325  464  588 | 11s
+c1 package, dungeons stay     | T3 | 100.0 | 100.0 | 100.0 |  292  395  485 | 11s
+c1 package, dungeons stay     | T4 | 100.0 | 100.0 | 100.0 |  247  346  427 | 12s
+c2 package, Quest costs 0     | T1 |  37.2 | 100.0 | 100.0 | 1127 2224 3163 | 15s
+c2 package, Quest costs 0     | T2 |  96.8 | 100.0 | 100.0 |  661 1335 1809 | 17s
+c2 package, Quest costs 0     | T3 | 100.0 | 100.0 | 100.0 |  516 1014 1421 | 19s
+c2 package, Quest costs 0     | T4 | 100.0 | 100.0 | 100.0 |  478  836 1117 | 20s
+c3 package, 120 days x4       | T1 |  70.2 | 100.0 | 100.0 | 1022 1730 2440 | 22s
+c3 package, 120 days x4       | T2 |  99.0 | 100.0 | 100.0 |  705 1169 1605 | 24s
+c3 package, 120 days x4       | T3 | 100.0 | 100.0 | 100.0 |  530  874 1194 | 25s
+c3 package, 120 days x4       | T4 | 100.0 | 100.0 | 100.0 |  461  729  988 | 26s
+c4 package, old hit scale     | T1 |  98.4 | 100.0 | 100.0 |  760 1240 1704 | 28s
+c4 package, old hit scale     | T2 | 100.0 | 100.0 | 100.0 |  512  804 1061 | 29s
+c4 package, old hit scale     | T3 | 100.0 | 100.0 | 100.0 |  414  644  834 | 30s
+c4 package, old hit scale     | T4 | 100.0 | 100.0 | 100.0 |  353  530  684 | 31s
+d  package, Quest hit x depth | T1 |  98.8 | 100.0 | 100.0 |  653 1121 1557 | 32s
+d  package, Quest hit x depth | T2 | 100.0 | 100.0 | 100.0 |  445  722  980 | 33s
+d  package, Quest hit x depth | T3 | 100.0 | 100.0 | 100.0 |  352  576  766 | 34s
+d  package, Quest hit x depth | T4 | 100.0 | 100.0 | 100.0 |  304  473  639 | 35s
+
+DEFENDED, day cap 4000, 500 campaigns a cell, seeds 0 to 499.
+row | policy | tree | tier | won% lost% | cities lost (s.e.) | day of a win p10 p50 p90 | day of a loss p10 p50 p90 | % not decided by day 2000 | % open at the cap | cleared | deaths | surges | from empty board | from a fall | Quest hits
+a  development                | triage     | Explorer | T1 |  44.8  53.0 |  3.19 (0.11) |  665 1402 2970 |  576 1565 3018 |  35.2 |   2.2 |   61.9 |  9.18 |  19.1 |   3.0 |   7.5 |   0.0 | 39s
+a  development                | triage     | Explorer | T2 |   2.2  96.0 | 15.78 (0.19) |  469  749 1143 |  624  964 1346 |   1.8 |   1.8 |   28.3 | 12.69 |  14.2 |   0.0 |  10.2 |   0.0 | 42s
+a  development                | triage     | Explorer | T3 |   0.4  97.8 | 16.85 (0.18) |  373  742  742 |  527  771 1014 |   1.8 |   1.8 |   13.3 |  7.09 |  12.2 |   0.0 |   9.0 |   0.0 | 47s
+a  development                | triage     | Explorer | T4 |   0.0 100.0 | 17.71 (0.18) |    -    -    - |  474  681  818 |   0.0 |   0.0 |    1.8 |  1.86 |  10.8 |   0.0 |   8.1 |   0.0 | 64s
+a  development                | triage     | no tree  | T1 |  30.0  69.2 |  6.36 (0.21) |  572 1291 2495 |  651 1602 2886 |  29.6 |   0.8 |   57.9 |  6.94 |  19.6 |   8.6 |   4.7 |   0.0 | 67s
+a  development                | triage     | no tree  | T2 |   8.4  91.6 | 18.29 (0.29) |  480  810 1286 |  752 1409 1862 |   4.4 |   0.0 |   46.8 |  9.38 |  17.1 |   1.0 |   9.4 |   0.0 | 70s
+a  development                | triage     | no tree  | T3 |   0.6  99.4 | 23.05 (0.12) |  419  995 1065 |  916 1149 1353 |   0.0 |   0.0 |   37.8 |  8.80 |  16.0 |   0.1 |  10.9 |   0.0 | 73s
+a  development                | triage     | no tree  | T4 |   0.2  99.8 | 23.54 (0.08) |  805  805  805 |  806  985 1138 |   0.0 |   0.0 |   31.0 |  7.64 |  14.5 |   0.0 |  10.5 |   0.0 | 77s
+a  development                | lane_aware | Explorer | T1 |  46.2  50.2 |  3.04 (0.11) |  669 1662 2909 |  615 1567 2915 |  36.4 |   3.6 |   64.4 |  8.72 |  19.7 |   2.9 |   7.8 |   0.0 | 81s
+a  development                | lane_aware | Explorer | T2 |   2.0  96.8 | 15.91 (0.18) |  462  851 1160 |  684 1017 1330 |   1.2 |   1.2 |   29.4 | 13.41 |  14.8 |   0.0 |  10.9 |   0.0 | 84s
+a  development                | lane_aware | Explorer | T3 |   0.2  98.4 | 16.86 (0.18) |  742  742  742 |  541  781 1033 |   1.4 |   1.4 |   13.7 |  7.30 |  12.4 |   0.0 |   9.2 |   0.0 | 89s
+a  development                | lane_aware | Explorer | T4 |   0.0 100.0 | 17.68 (0.18) |    -    -    - |  474  679  815 |   0.0 |   0.0 |    1.8 |  1.86 |  10.7 |   0.0 |   8.0 |   0.0 | 105s
+a  development                | lane_aware | no tree  | T1 |  29.8  67.2 |  5.47 (0.22) |  646 1370 2975 |  721 1641 3084 |  35.6 |   3.0 |   65.2 |  7.45 |  21.2 |   9.1 |   4.7 |   0.0 | 108s
+a  development                | lane_aware | no tree  | T2 |   5.4  94.6 | 19.39 (0.28) |  489 1069 2135 |  950 1597 2054 |  12.4 |   0.0 |   54.3 | 11.06 |  19.8 |   1.0 |  11.0 |   0.0 | 112s
+a  development                | lane_aware | no tree  | T3 |   0.6  99.4 | 23.08 (0.11) |  806 1023 1176 | 1008 1218 1424 |   0.0 |   0.0 |   40.5 |  9.62 |  17.2 |   0.1 |  11.8 |   0.0 | 116s
+a  development                | lane_aware | no tree  | T4 |   0.2  99.8 | 23.46 (0.10) |  439  439  439 |  861 1050 1211 |   0.0 |   0.0 |   34.2 |  8.24 |  15.4 |   0.0 |  11.1 |   0.0 | 119s
+b  the package                | triage     | Explorer | T1 |  52.2  47.6 |  0.93 (0.05) |  572 1113 2130 |  495 1146 2414 |  15.4 |   0.2 |   38.2 |  5.11 |  15.3 |   1.9 |   0.6 |  12.3 | 121s
+b  the package                | triage     | Explorer | T2 |   6.8  91.8 | 11.07 (0.28) |  387  726 1156 |  616 1251 1769 |   4.2 |   1.4 |   31.4 | 14.56 |  17.0 |   0.0 |   5.8 |  60.8 | 125s
+b  the package                | triage     | Explorer | T3 |   0.2  99.2 | 14.48 (0.21) | 1049 1049 1049 |  614  912 1203 |   0.6 |   0.6 |   12.4 |  6.98 |  14.0 |   0.0 |   6.6 |  77.2 | 132s
+b  the package                | triage     | Explorer | T4 |   0.0 100.0 | 15.10 (0.21) |    -    -    - |  451  719  936 |   0.0 |   0.0 |    1.9 |  1.92 |  11.5 |   0.0 |   5.8 |  79.5 | 150s
+b  the package                | triage     | no tree  | T1 |  39.4  60.6 |  2.09 (0.08) |  362  815 1752 |  360  784 1743 |   6.4 |   0.0 |   26.9 |  3.93 |  16.1 |  10.0 |   1.4 |   7.9 | 151s
+b  the package                | triage     | no tree  | T2 |  23.4  76.6 |  8.20 (0.30) |  387  644 1245 |  428  838 1762 |   3.0 |   0.0 |   24.4 |  6.12 |  15.0 |   4.7 |   4.1 |  21.9 | 153s
+b  the package                | triage     | no tree  | T3 |   2.0  98.0 | 20.48 (0.23) |  636  926 1191 |  848 1286 1630 |   0.8 |   0.0 |   31.3 |  9.86 |  20.3 |   3.0 |   9.3 |  49.8 | 155s
+b  the package                | triage     | no tree  | T4 |   0.8  99.2 | 22.48 (0.16) |  624  967 1247 |  815 1104 1308 |   0.0 |   0.0 |   25.4 |  8.65 |  17.5 |   1.9 |   9.2 |  53.4 | 158s
+b  the package                | lane_aware | Explorer | T1 |  50.4  45.8 |  1.50 (0.05) |  529 1311 2931 |  584 1320 2926 |  30.0 |   3.8 |   51.5 |  5.76 |  19.5 |   1.9 |   2.0 |  33.9 | 161s
+b  the package                | lane_aware | Explorer | T2 |   4.4  94.8 | 11.73 (0.27) |  456  706 1086 |  625 1278 1756 |   3.2 |   0.8 |   33.4 | 14.97 |  17.4 |   0.0 |   6.5 |  70.5 | 165s
+b  the package                | lane_aware | Explorer | T3 |   0.2  99.0 | 14.74 (0.21) | 1201 1201 1201 |  618  920 1238 |   0.8 |   0.8 |   12.8 |  7.04 |  14.3 |   0.0 |   6.7 |  80.0 | 172s
+b  the package                | lane_aware | Explorer | T4 |   0.0 100.0 | 15.16 (0.21) |    -    -    - |  452  721  938 |   0.0 |   0.0 |    1.9 |  1.90 |  11.6 |   0.0 |   5.9 |  79.8 | 192s
+b  the package                | lane_aware | no tree  | T1 |  36.4  62.8 |  3.01 (0.12) |  443  933 2164 |  484 1028 2296 |  15.0 |   0.8 |   38.2 |  5.12 |  18.9 |   8.8 |   2.5 |  23.9 | 194s
+b  the package                | lane_aware | no tree  | T2 |  16.0  84.0 | 11.29 (0.36) |  421  646 1363 |  531 1142 1823 |   4.6 |   0.0 |   32.5 |  7.42 |  17.4 |   3.5 |   6.2 |  44.8 | 196s
+b  the package                | lane_aware | no tree  | T3 |   2.2  97.8 | 21.55 (0.19) |  786 1226 1295 |  915 1282 1650 |   0.8 |   0.0 |   35.2 | 10.22 |  20.5 |   2.0 |  10.3 |  68.7 | 200s
+b  the package                | lane_aware | no tree  | T4 |   0.2  99.8 | 22.54 (0.16) | 1014 1014 1014 |  820 1082 1303 |   0.0 |   0.0 |   28.3 |  8.71 |  17.2 |   1.1 |   9.6 |  66.5 | 203s
+c1 package, dungeons stay     | triage     | Explorer | T1 |  39.8  59.0 |  2.59 (0.13) |  525 1118 2313 |  469 1163 2395 |  18.0 |   1.2 |   59.9 |  7.64 |  16.5 |   0.5 |   2.5 |  10.3 | 207s
+c1 package, dungeons stay     | triage     | Explorer | T2 |   3.2  95.0 | 14.75 (0.26) |  269  543  830 |  614 1051 1309 |   1.8 |   1.8 |   36.9 | 14.63 |  15.6 |   0.0 |   7.3 |  48.9 | 212s
+c1 package, dungeons stay     | triage     | Explorer | T3 |   0.2  98.0 | 16.07 (0.21) |  812  812  812 |  599  860 1089 |   1.8 |   1.8 |   21.5 |  9.36 |  13.8 |   0.0 |   7.0 |  69.8 | 217s
+c1 package, dungeons stay     | triage     | Explorer | T4 |   0.0  99.8 | 15.97 (0.22) |    -    -    - |  462  728  910 |   0.2 |   0.2 |    4.1 |  2.85 |  11.6 |   0.0 |   6.1 |  76.6 | 251s
+c1 package, dungeons stay     | triage     | no tree  | T1 |  17.2  82.8 | 15.66 (0.33) |  498  801 1551 |  639 1417 2007 |   8.8 |   0.0 |   45.0 |  6.27 |  18.8 |   1.4 |   7.9 |  17.0 | 254s
+c1 package, dungeons stay     | triage     | no tree  | T2 |   5.0  95.0 | 22.68 (0.15) |  446  597 1165 |  721 1021 1176 |   0.0 |   0.0 |   31.7 |  5.92 |  15.5 |   0.0 |  10.0 |  27.3 | 257s
+c1 package, dungeons stay     | triage     | no tree  | T3 |   0.6  99.4 | 23.92 (0.04) |  751  828  914 |  763  877  983 |   0.0 |   0.0 |   25.9 |  5.53 |  13.8 |   0.0 |   9.7 |  30.4 | 260s
+c1 package, dungeons stay     | triage     | no tree  | T4 |   0.2  99.8 | 24.00 (0.03) |  770  770  770 |  700  803  892 |   0.0 |   0.0 |   22.7 |  5.14 |  12.5 |   0.0 |   9.0 |  31.3 | 262s
+c1 package, dungeons stay     | lane_aware | Explorer | T1 |  34.0  57.4 |  4.15 (0.16) |  611 1229 2556 |  697 1485 2724 |  32.4 |   8.6 |   82.3 |  9.87 |  22.8 |   0.5 |   6.4 |  39.7 | 268s
+c1 package, dungeons stay     | lane_aware | Explorer | T2 |   1.4  97.4 | 14.97 (0.21) |  535  627 1358 |  706 1065 1351 |   1.2 |   1.2 |   38.7 | 15.34 |  16.3 |   0.0 |   8.0 |  60.0 | 274s
+c1 package, dungeons stay     | lane_aware | Explorer | T3 |   0.2  97.6 | 16.12 (0.21) | 1078 1078 1078 |  572  875 1083 |   2.2 |   2.2 |   21.6 |  9.21 |  13.8 |   0.0 |   7.1 |  71.9 | 280s
+c1 package, dungeons stay     | lane_aware | Explorer | T4 |   0.0  99.8 | 15.96 (0.22) |    -    -    - |  462  727  913 |   0.2 |   0.2 |    4.1 |  2.89 |  11.6 |   0.0 |   6.1 |  76.9 | 309s
+c1 package, dungeons stay     | lane_aware | no tree  | T1 |  11.0  89.0 | 17.98 (0.32) |  573 1110 1779 |  729 1558 2116 |  12.8 |   0.0 |   52.4 |  6.76 |  21.9 |   1.4 |  10.6 |  44.9 | 314s
+c1 package, dungeons stay     | lane_aware | no tree  | T2 |   1.6  98.4 | 23.62 (0.09) |  505  972 1109 |  917 1066 1223 |   0.0 |   0.0 |   34.7 |  6.30 |  16.6 |   0.0 |  11.0 |  47.7 | 319s
+c1 package, dungeons stay     | lane_aware | no tree  | T3 |   0.8  99.2 | 23.93 (0.05) |  633  806  848 |  791  896 1006 |   0.0 |   0.0 |   27.5 |  5.63 |  14.3 |   0.0 |  10.1 |  47.8 | 324s
+c1 package, dungeons stay     | lane_aware | no tree  | T4 |   0.4  99.6 | 24.02 (0.03) |  730  877  877 |  721  816  912 |   0.0 |   0.0 |   23.9 |  5.55 |  12.8 |   0.0 |   9.3 |  45.2 | 328s
+c2 package, Quest costs 0     | triage     | Explorer | T1 |  52.2  47.2 |  0.83 (0.05) |  546 1158 2400 |  495 1110 2136 |  15.6 |   0.6 |   37.6 |  5.06 |  15.2 |   1.7 |   0.3 |   0.0 | 331s
+c2 package, Quest costs 0     | triage     | Explorer | T2 |  10.6  89.2 |  7.22 (0.25) |  502  981 2112 |  564 1322 2247 |  17.8 |   0.2 |   32.7 | 15.34 |  17.3 |   0.0 |   3.1 |   0.0 | 338s
+c2 package, Quest costs 0     | triage     | Explorer | T3 |   1.0  97.8 | 12.97 (0.23) |  709 1055 2016 |  672 1317 1801 |   5.4 |   1.2 |   15.0 |  8.12 |  17.7 |   0.0 |   5.6 |   0.0 | 360s
+c2 package, Quest costs 0     | triage     | Explorer | T4 |   0.2  99.8 | 13.11 (0.22) |  431  431  431 |  467  930 1424 |   0.2 |   0.0 |    2.2 |  2.06 |  13.6 |   0.0 |   4.6 |   0.0 | 405s
+c2 package, Quest costs 0     | triage     | no tree  | T1 |  39.4  60.6 |  1.77 (0.08) |  358  812 1650 |  363  791 1813 |   6.8 |   0.0 |   27.0 |  3.94 |  16.1 |  10.1 |   1.2 |   0.0 | 408s
+c2 package, Quest costs 0     | triage     | no tree  | T2 |  23.4  76.6 |  5.76 (0.23) |  378  688 1557 |  425  859 1668 |   4.2 |   0.0 |   24.2 |  6.08 |  14.2 |   4.8 |   2.8 |   0.0 | 410s
+c2 package, Quest costs 0     | triage     | no tree  | T3 |   4.4  95.6 | 18.13 (0.29) |  786 1319 1659 |  882 1532 2065 |  12.4 |   0.0 |   37.6 | 12.20 |  22.9 |   3.1 |   8.2 |   0.0 | 415s
+c2 package, Quest costs 0     | triage     | no tree  | T4 |   1.2  98.8 | 20.13 (0.24) |  675 1192 1490 |  838 1294 1669 |   0.6 |   0.0 |   30.2 | 10.53 |  19.6 |   1.9 |   8.3 |   0.0 | 420s
+c2 package, Quest costs 0     | lane_aware | Explorer | T1 |  52.4  46.8 |  0.89 (0.05) |  553 1314 2370 |  584 1327 2349 |  22.0 |   0.8 |   43.8 |  5.16 |  16.7 |   1.6 |   0.3 |   0.0 | 425s
+c2 package, Quest costs 0     | lane_aware | Explorer | T2 |  11.2  88.6 |  7.16 (0.25) |  464  798 1600 |  625 1359 2311 |  18.2 |   0.2 |   34.9 | 15.32 |  17.4 |   0.0 |   3.1 |   0.0 | 431s
+c2 package, Quest costs 0     | lane_aware | Explorer | T3 |   1.0  97.6 | 12.96 (0.23) |  497  950 2016 |  642 1308 1812 |   6.4 |   1.4 |   15.3 |  8.30 |  17.6 |   0.0 |   5.6 |   0.0 | 449s
+c2 package, Quest costs 0     | lane_aware | Explorer | T4 |   0.2  99.8 | 13.08 (0.23) |  431  431  431 |  465  927 1424 |   0.2 |   0.0 |    2.2 |  2.05 |  13.6 |   0.0 |   4.6 |   0.0 | 498s
+c2 package, Quest costs 0     | lane_aware | no tree  | T1 |  43.4  56.6 |  1.68 (0.08) |  461 1029 1951 |  456  995 2021 |  10.0 |   0.0 |   35.7 |  4.46 |  17.0 |   8.6 |   1.1 |   0.0 | 500s
+c2 package, Quest costs 0     | lane_aware | no tree  | T2 |  22.0  78.0 |  6.72 (0.27) |  501  855 1617 |  512  981 2094 |  10.8 |   0.0 |   32.6 |  7.75 |  16.0 |   3.4 |   3.3 |   0.0 | 504s
+c2 package, Quest costs 0     | lane_aware | no tree  | T3 |   2.0  98.0 | 18.24 (0.28) |  648 1032 1527 |  985 1622 2150 |  18.2 |   0.0 |   43.8 | 13.79 |  23.5 |   2.0 |   8.4 |   0.0 | 510s
+c2 package, Quest costs 0     | lane_aware | no tree  | T4 |   1.4  98.6 | 20.66 (0.24) |  732  921 1382 |  880 1376 1738 |   1.2 |   0.0 |   36.0 | 11.75 |  20.3 |   1.1 |   8.5 |   0.0 | 515s
+c3 package, 120 days x4       | triage     | Explorer | T1 |  45.6  53.4 |  0.73 (0.04) |  697 1631 2907 |  582 1472 3037 |  34.0 |   1.0 |   46.1 |  5.98 |  18.0 |  11.6 |   1.3 |  13.0 | 519s
+c3 package, 120 days x4       | triage     | Explorer | T2 |   8.4  89.8 |  9.67 (0.28) |  452  914 1606 |  893 1748 2879 |  38.2 |   1.8 |   36.7 | 15.73 |  18.7 |   0.4 |   6.0 |  63.3 | 527s
+c3 package, 120 days x4       | triage     | Explorer | T3 |   1.4  98.0 | 14.43 (0.21) |  485 1103 1427 |  769 1213 1576 |   1.0 |   0.6 |   10.5 |  5.88 |  14.4 |   0.0 |   7.3 |  79.8 | 548s
+c3 package, 120 days x4       | triage     | Explorer | T4 |   0.2  99.6 | 14.50 (0.22) |  574  574  574 |  563  911 1252 |   0.2 |   0.2 |    1.2 |  1.61 |  11.6 |   0.0 |   6.6 |  81.7 | 580s
+c3 package, 120 days x4       | triage     | no tree  | T1 |  40.6  59.4 |  1.24 (0.06) |  408  946 1820 |  433  976 1961 |   8.0 |   0.0 |   33.1 |  4.35 |  18.5 |  14.7 |   1.2 |   5.1 | 583s
+c3 package, 120 days x4       | triage     | no tree  | T2 |  25.6  74.4 |  4.57 (0.21) |  405  734 1528 |  523 1003 2245 |  13.8 |   0.0 |   31.4 |  7.52 |  16.6 |   9.1 |   3.1 |  15.0 | 586s
+c3 package, 120 days x4       | triage     | no tree  | T3 |   2.8  97.2 | 17.24 (0.28) |  634 1423 1903 | 1142 1752 2407 |  30.0 |   0.0 |   43.0 | 14.26 |  23.9 |   6.0 |   9.5 |  49.9 | 591s
+c3 package, 120 days x4       | triage     | no tree  | T4 |   1.8  98.2 | 19.97 (0.24) |  874 1203 1557 |  958 1423 1785 |   3.2 |   0.0 |   32.8 | 11.38 |  19.8 |   3.6 |   9.7 |  56.7 | 597s
+c3 package, 120 days x4       | lane_aware | Explorer | T1 |  47.2  47.6 |  0.90 (0.05) |  670 1616 3170 |  647 1562 3210 |  38.8 |   5.2 |   52.0 |  6.30 |  19.6 |  11.5 |   1.7 |  23.6 | 602s
+c3 package, 120 days x4       | lane_aware | Explorer | T2 |   7.6  91.4 | 10.28 (0.27) |  607 1154 2322 |  925 1882 2882 |  42.2 |   1.0 |   40.4 | 17.43 |  19.8 |   0.4 |   7.1 |  76.3 | 610s
+c3 package, 120 days x4       | lane_aware | Explorer | T3 |   0.4  99.4 | 14.25 (0.22) |  484  830  830 |  761 1207 1591 |   0.8 |   0.2 |   10.7 |  5.98 |  14.3 |   0.0 |   7.2 |  79.9 | 632s
+c3 package, 120 days x4       | lane_aware | Explorer | T4 |   0.2  99.6 | 14.56 (0.22) |  574  574  574 |  556  915 1256 |   0.2 |   0.2 |    1.2 |  1.59 |  11.6 |   0.0 |   6.6 |  82.2 | 669s
+c3 package, 120 days x4       | lane_aware | no tree  | T1 |  43.2  56.0 |  1.52 (0.07) |  524 1051 2406 |  489 1172 2387 |  16.4 |   0.8 |   43.5 |  5.27 |  20.0 |  14.8 |   1.6 |  15.5 | 672s
+c3 package, 120 days x4       | lane_aware | no tree  | T2 |  18.6  80.4 |  5.75 (0.24) |  495  874 1607 |  593 1257 2575 |  21.0 |   1.0 |   40.8 |  9.67 |  18.6 |   8.2 |   4.4 |  31.1 | 676s
+c3 package, 120 days x4       | lane_aware | no tree  | T3 |   2.6  97.4 | 17.84 (0.27) |  780 1465 2196 | 1225 1762 2367 |  30.2 |   0.0 |   47.4 | 14.76 |  23.9 |   4.9 |  10.3 |  63.1 | 683s
+c3 package, 120 days x4       | lane_aware | no tree  | T4 |   0.6  99.4 | 20.37 (0.23) |  708  860 1209 | 1021 1415 1752 |   1.8 |   0.0 |   35.7 | 11.49 |  19.4 |   2.8 |   9.9 |  68.3 | 688s
+c4 package, old hit scale     | triage     | Explorer | T1 |  43.4  54.6 |  3.46 (0.13) |  544 1179 2600 |  435 1245 2801 |  26.0 |   2.0 |   53.9 |  7.80 |  19.3 |   1.8 |   4.7 |  12.5 | 692s
+c4 package, old hit scale     | triage     | Explorer | T2 |   3.4  95.4 | 16.19 (0.19) |  286  488  681 |  488  772 1018 |   1.2 |   1.2 |   22.9 | 11.09 |  13.8 |   0.0 |   9.1 |  33.7 | 696s
+c4 package, old hit scale     | triage     | Explorer | T3 |   0.4  98.0 | 17.37 (0.18) |  486  672  672 |  460  620  794 |   1.6 |   1.6 |   11.1 |  6.14 |  11.8 |   0.0 |   8.1 |  41.5 | 701s
+c4 package, old hit scale     | triage     | Explorer | T4 |   0.2  99.2 | 17.82 (0.18) |  369  369  369 |  398  548  666 |   0.6 |   0.6 |    1.8 |  1.82 |  10.2 |   0.0 |   6.8 |  46.2 | 717s
+c4 package, old hit scale     | triage     | no tree  | T1 |  39.4  60.6 |  2.09 (0.08) |  362  815 1752 |  360  784 1743 |   6.4 |   0.0 |   26.9 |  3.93 |  16.1 |  10.0 |   1.4 |   7.9 | 719s
+c4 package, old hit scale     | triage     | no tree  | T2 |  23.4  76.6 |  8.20 (0.30) |  387  644 1245 |  428  838 1762 |   3.0 |   0.0 |   24.4 |  6.12 |  15.0 |   4.7 |   4.1 |  21.9 | 721s
+c4 package, old hit scale     | triage     | no tree  | T3 |   2.0  98.0 | 20.48 (0.23) |  636  926 1191 |  848 1286 1630 |   0.8 |   0.0 |   31.3 |  9.86 |  20.3 |   3.0 |   9.3 |  49.8 | 724s
+c4 package, old hit scale     | triage     | no tree  | T4 |   0.8  99.2 | 22.48 (0.16) |  624  967 1247 |  815 1104 1308 |   0.0 |   0.0 |   25.4 |  8.65 |  17.5 |   1.9 |   9.2 |  53.4 | 727s
+c4 package, old hit scale     | lane_aware | Explorer | T1 |  45.2  48.2 |  4.08 (0.14) |  536 1345 3046 |  574 1443 3079 |  36.8 |   6.6 |   68.9 |  9.70 |  23.4 |   1.7 |   7.1 |  26.5 | 732s
+c4 package, old hit scale     | lane_aware | Explorer | T2 |   1.2  98.0 | 16.40 (0.17) |  346  699  845 |  552  786 1015 |   0.8 |   0.8 |   24.5 | 11.14 |  14.4 |   0.0 |   9.5 |  41.7 | 736s
+c4 package, old hit scale     | lane_aware | Explorer | T3 |   0.4  98.4 | 17.49 (0.17) |  424  486  486 |  471  617  809 |   1.2 |   1.2 |   11.1 |  6.22 |  11.8 |   0.0 |   8.1 |  42.6 | 740s
+c4 package, old hit scale     | lane_aware | Explorer | T4 |   0.2  99.2 | 17.80 (0.18) |  369  369  369 |  398  547  666 |   0.6 |   0.6 |    1.8 |  1.83 |  10.2 |   0.0 |   6.8 |  46.2 | 756s
+c4 package, old hit scale     | lane_aware | no tree  | T1 |  36.4  62.8 |  3.01 (0.12) |  443  933 2164 |  484 1028 2296 |  15.0 |   0.8 |   38.2 |  5.12 |  18.9 |   8.8 |   2.5 |  23.9 | 759s
+c4 package, old hit scale     | lane_aware | no tree  | T2 |  16.0  84.0 | 11.29 (0.36) |  421  646 1363 |  531 1142 1823 |   4.6 |   0.0 |   32.5 |  7.42 |  17.4 |   3.5 |   6.2 |  44.8 | 761s
+c4 package, old hit scale     | lane_aware | no tree  | T3 |   2.2  97.8 | 21.55 (0.19) |  786 1226 1295 |  915 1282 1650 |   0.8 |   0.0 |   35.2 | 10.22 |  20.5 |   2.0 |  10.3 |  68.7 | 765s
+c4 package, old hit scale     | lane_aware | no tree  | T4 |   0.2  99.8 | 22.54 (0.16) | 1014 1014 1014 |  820 1082 1303 |   0.0 |   0.0 |   28.3 |  8.71 |  17.2 |   1.1 |   9.6 |  66.5 | 768s
+d  package, Quest hit x depth | triage     | Explorer | T1 |  50.4  46.0 |  1.24 (0.07) |  537 1193 2457 |  506 1141 2304 |  20.0 |   3.6 |   43.4 |  5.55 |  17.3 |   2.2 |   1.4 |  10.6 | 771s
+d  package, Quest hit x depth | triage     | Explorer | T2 |   5.4  93.6 | 12.38 (0.27) |  271  667 1399 |  627 1160 1617 |   2.2 |   1.0 |   30.4 | 14.26 |  16.6 |   0.0 |   7.2 |  41.8 | 776s
+d  package, Quest hit x depth | triage     | Explorer | T3 |   0.6  98.8 | 15.01 (0.22) |  420  739 1157 |  530  811 1072 |   0.6 |   0.6 |   12.3 |  6.77 |  13.4 |   0.0 |   7.3 |  52.5 | 782s
+d  package, Quest hit x depth | triage     | Explorer | T4 |   0.0  99.8 | 16.24 (0.20) |    -    -    - |  435  639  859 |   0.2 |   0.2 |    1.8 |  1.86 |  11.3 |   0.0 |   6.7 |  55.3 | 801s
+d  package, Quest hit x depth | triage     | no tree  | T1 |  42.0  57.6 |  2.96 (0.11) |  388  897 2020 |  359  806 1904 |   9.6 |   0.4 |   28.7 |  4.22 |  17.3 |  10.1 |   2.3 |   7.3 | 803s
+d  package, Quest hit x depth | triage     | no tree  | T2 |  19.2  80.8 | 10.31 (0.33) |  377  631 1406 |  425  888 1715 |   2.4 |   0.0 |   24.8 |  6.32 |  15.8 |   4.7 |   5.3 |  18.2 | 805s
+d  package, Quest hit x depth | triage     | no tree  | T3 |   2.0  98.0 | 21.02 (0.21) |  563 1051 1462 |  852 1190 1544 |   0.0 |   0.0 |   29.6 |  9.28 |  19.7 |   3.0 |   9.6 |  36.2 | 808s
+d  package, Quest hit x depth | triage     | no tree  | T4 |   0.8  99.2 | 22.74 (0.15) |  526  922 1051 |  773 1010 1245 |   0.0 |   0.0 |   23.6 |  7.97 |  16.9 |   1.9 |   9.7 |  38.6 | 811s
+d  package, Quest hit x depth | lane_aware | Explorer | T1 |  46.2  38.6 |  1.77 (0.08) |  541 1339 3099 |  561 1250 3250 |  41.4 |  15.2 |   64.7 |  6.93 |  24.7 |   2.4 |   4.2 |  25.4 | 816s
+d  package, Quest hit x depth | lane_aware | Explorer | T2 |   5.0  93.6 | 13.21 (0.26) |  349  796 1452 |  613 1177 1616 |   3.0 |   1.4 |   32.1 | 14.58 |  17.4 |   0.0 |   8.0 |  48.2 | 821s
+d  package, Quest hit x depth | lane_aware | Explorer | T3 |   0.6  98.8 | 15.21 (0.21) |  420  765  960 |  524  804 1060 |   0.6 |   0.6 |   12.4 |  6.73 |  13.4 |   0.0 |   7.5 |  52.8 | 827s
+d  package, Quest hit x depth | lane_aware | Explorer | T4 |   0.0  99.8 | 16.27 (0.20) |    -    -    - |  435  641  867 |   0.2 |   0.2 |    1.9 |  1.87 |  11.4 |   0.0 |   6.7 |  55.6 | 849s
+d  package, Quest hit x depth | lane_aware | no tree  | T1 |  35.2  62.0 |  4.79 (0.18) |  444  957 2721 |  493 1105 2678 |  26.4 |   2.8 |   44.9 |  6.07 |  23.1 |   9.1 |   5.8 |  22.1 | 852s
+d  package, Quest hit x depth | lane_aware | no tree  | T2 |  12.8  87.2 | 14.23 (0.36) |  411  611 1112 |  554 1166 1738 |   3.2 |   0.0 |   31.8 |  7.49 |  18.3 |   3.4 |   8.3 |  35.5 | 855s
+d  package, Quest hit x depth | lane_aware | no tree  | T3 |   2.8  97.2 | 21.98 (0.17) |  559  972 1323 |  848 1170 1488 |   0.2 |   0.0 |   32.3 |  8.94 |  19.5 |   2.1 |  10.8 |  49.0 | 859s
+d  package, Quest hit x depth | lane_aware | no tree  | T4 |   1.4  98.6 | 22.95 (0.14) |  739  955 1174 |  732  972 1186 |   0.0 |   0.0 |   25.0 |  7.59 |  16.3 |   1.1 |   9.9 |  48.4 | 862s
+
+DEFENDED, day cap 2500, 500 campaigns a cell, seeds 0 to 499.
+row | policy | tree | tier | won% lost% | cities lost (s.e.) | day of a win p10 p50 p90 | day of a loss p10 p50 p90 | % not decided by day 2000 | % open at the cap | cleared | deaths | surges | from empty board | from a fall | Quest hits
+a  development                | triage     | Explorer | T1 |  35.0  43.0 |  2.97 (0.12) |  584 1222 2147 |  542 1323 2235 |  35.2 |  22.0 |   57.1 |  8.51 |  17.6 |   2.8 |   6.7 |   0.0 | 866s
+a  development                | triage     | Explorer | T2 |   2.2  96.0 | 15.77 (0.19) |  469  749 1143 |  624  964 1346 |   1.8 |   1.8 |   28.0 | 12.49 |  14.0 |   0.0 |  10.2 |   0.0 | 869s
+a  development                | triage     | Explorer | T3 |   0.4  97.8 | 16.85 (0.18) |  373  742  742 |  527  771 1014 |   1.8 |   1.8 |   13.3 |  7.09 |  12.2 |   0.0 |   9.0 |   0.0 | 873s
+a  development                | triage     | Explorer | T4 |   0.0 100.0 | 17.71 (0.18) |    -    -    - |  474  681  818 |   0.0 |   0.0 |    1.8 |  1.86 |  10.8 |   0.0 |   8.1 |   0.0 | 891s
+a  development                | triage     | no tree  | T1 |  27.6  56.4 |  5.32 (0.19) |  562 1244 2112 |  611 1325 2168 |  29.6 |  16.0 |   56.2 |  6.52 |  18.4 |   8.5 |   4.0 |   0.0 | 894s
+a  development                | triage     | no tree  | T2 |   8.4  91.6 | 18.29 (0.29) |  480  810 1286 |  752 1409 1862 |   4.4 |   0.0 |   46.8 |  9.38 |  17.1 |   1.0 |   9.4 |   0.0 | 897s
+a  development                | triage     | no tree  | T3 |   0.6  99.4 | 23.05 (0.12) |  419  995 1065 |  916 1149 1353 |   0.0 |   0.0 |   37.8 |  8.80 |  16.0 |   0.1 |  10.9 |   0.0 | 901s
+a  development                | triage     | no tree  | T4 |   0.2  99.8 | 23.54 (0.08) |  805  805  805 |  806  985 1138 |   0.0 |   0.0 |   31.0 |  7.64 |  14.5 |   0.0 |  10.5 |   0.0 | 904s
+a  development                | lane_aware | Explorer | T1 |  36.6  40.2 |  2.89 (0.11) |  618 1433 2281 |  564 1301 2117 |  36.4 |  23.2 |   59.4 |  8.21 |  18.1 |   2.7 |   7.0 |   0.0 | 908s
+a  development                | lane_aware | Explorer | T2 |   2.0  96.8 | 15.91 (0.18) |  462  851 1160 |  684 1017 1330 |   1.2 |   1.2 |   29.2 | 13.29 |  14.7 |   0.0 |  10.9 |   0.0 | 912s
+a  development                | lane_aware | Explorer | T3 |   0.2  98.4 | 16.86 (0.18) |  742  742  742 |  541  781 1033 |   1.4 |   1.4 |   13.7 |  7.30 |  12.4 |   0.0 |   9.2 |   0.0 | 916s
+a  development                | lane_aware | Explorer | T4 |   0.0 100.0 | 17.68 (0.18) |    -    -    - |  474  679  815 |   0.0 |   0.0 |    1.8 |  1.86 |  10.7 |   0.0 |   8.0 |   0.0 | 932s
+a  development                | lane_aware | no tree  | T1 |  24.8  51.8 |  4.11 (0.18) |  606 1166 2059 |  651 1319 2243 |  35.6 |  23.4 |   61.4 |  6.76 |  19.2 |   9.0 |   3.6 |   0.0 | 935s
+a  development                | lane_aware | no tree  | T2 |   5.4  93.0 | 19.35 (0.28) |  489 1069 2135 |  946 1594 2017 |  12.4 |   1.6 |   54.3 | 11.04 |  19.8 |   1.0 |  11.0 |   0.0 | 939s
+a  development                | lane_aware | no tree  | T3 |   0.6  99.4 | 23.08 (0.11) |  806 1023 1176 | 1008 1218 1424 |   0.0 |   0.0 |   40.5 |  9.62 |  17.2 |   0.1 |  11.8 |   0.0 | 943s
+a  development                | lane_aware | no tree  | T4 |   0.2  99.8 | 23.46 (0.10) |  439  439  439 |  861 1050 1211 |   0.0 |   0.0 |   34.2 |  8.24 |  15.4 |   0.0 |  11.1 |   0.0 | 947s
+b  the package                | triage     | Explorer | T1 |  49.4  43.6 |  0.89 (0.05) |  546 1071 1922 |  483 1061 2004 |  15.4 |   7.0 |   37.3 |  5.00 |  14.9 |   1.8 |   0.6 |  12.1 | 949s
+b  the package                | triage     | Explorer | T2 |   6.8  91.6 | 11.07 (0.28) |  387  726 1156 |  616 1251 1757 |   4.2 |   1.6 |   31.1 | 14.43 |  16.8 |   0.0 |   5.7 |  60.5 | 953s
+b  the package                | triage     | Explorer | T3 |   0.2  99.2 | 14.48 (0.21) | 1049 1049 1049 |  614  912 1203 |   0.6 |   0.6 |   12.4 |  6.98 |  14.0 |   0.0 |   6.6 |  77.2 | 961s
+b  the package                | triage     | Explorer | T4 |   0.0 100.0 | 15.10 (0.21) |    -    -    - |  451  719  936 |   0.0 |   0.0 |    1.9 |  1.92 |  11.5 |   0.0 |   5.8 |  79.5 | 981s
+b  the package                | triage     | no tree  | T1 |  38.6  59.2 |  2.04 (0.08) |  362  805 1608 |  359  773 1679 |   6.4 |   2.2 |   26.7 |  3.89 |  16.0 |  10.0 |   1.3 |   7.8 | 983s
+b  the package                | triage     | no tree  | T2 |  23.4  76.0 |  8.18 (0.30) |  387  644 1245 |  428  834 1749 |   3.0 |   0.6 |   24.4 |  6.11 |  15.0 |   4.7 |   4.1 |  21.8 | 985s
+b  the package                | triage     | no tree  | T3 |   2.0  98.0 | 20.48 (0.23) |  636  926 1191 |  848 1286 1630 |   0.8 |   0.0 |   31.3 |  9.86 |  20.3 |   3.0 |   9.3 |  49.8 | 988s
+b  the package                | triage     | no tree  | T4 |   0.8  99.2 | 22.48 (0.16) |  624  967 1247 |  815 1104 1308 |   0.0 |   0.0 |   25.4 |  8.65 |  17.5 |   1.9 |   9.2 |  53.4 | 991s
+b  the package                | lane_aware | Explorer | T1 |  41.8  39.4 |  1.32 (0.06) |  494 1110 2117 |  575 1148 2168 |  30.0 |  18.8 |   47.1 |  5.46 |  17.8 |   1.8 |   1.7 |  31.8 | 995s
+b  the package                | lane_aware | Explorer | T2 |   4.4  94.8 | 11.74 (0.27) |  456  706 1086 |  625 1278 1756 |   3.2 |   0.8 |   33.3 | 14.90 |  17.3 |   0.0 |   6.5 |  70.4 | 1000s
+b  the package                | lane_aware | Explorer | T3 |   0.2  99.0 | 14.74 (0.21) | 1201 1201 1201 |  618  920 1238 |   0.8 |   0.8 |   12.8 |  7.04 |  14.3 |   0.0 |   6.7 |  80.0 | 1008s
+b  the package                | lane_aware | Explorer | T4 |   0.0 100.0 | 15.16 (0.21) |    -    -    - |  452  721  938 |   0.0 |   0.0 |    1.9 |  1.90 |  11.6 |   0.0 |   5.9 |  79.8 | 1029s
+b  the package                | lane_aware | no tree  | T1 |  34.4  58.4 |  2.76 (0.11) |  433  913 1785 |  473  990 1961 |  15.0 |   7.2 |   37.4 |  4.96 |  18.2 |   8.7 |   2.3 |  23.1 | 1032s
+b  the package                | lane_aware | no tree  | T2 |  16.0  83.2 | 11.24 (0.35) |  421  646 1363 |  523 1137 1818 |   4.6 |   0.8 |   32.5 |  7.42 |  17.3 |   3.5 |   6.2 |  44.8 | 1034s
+b  the package                | lane_aware | no tree  | T3 |   2.2  97.8 | 21.55 (0.19) |  786 1226 1295 |  915 1282 1650 |   0.8 |   0.0 |   35.2 | 10.22 |  20.5 |   2.0 |  10.3 |  68.7 | 1038s
+b  the package                | lane_aware | no tree  | T4 |   0.2  99.8 | 22.54 (0.16) | 1014 1014 1014 |  820 1082 1303 |   0.0 |   0.0 |   28.3 |  8.71 |  17.2 |   1.1 |   9.6 |  66.5 | 1041s
+```
+
+**The cost limit, for row (b).** The coordinating session's limit is that the defending Explorer `triage` player
+at tier 1 loses no more than double the cities, and wins no more than 5 points fewer, than under row (a)
+measured the same way. At a day cap of 4,000, 500 campaigns, seeds 0 to 499: row (a) loses 3.19 cities (standard
+error 0.11) and wins 44.8%; row (b) loses 0.93 (0.05) and wins 52.2%. Double row (a) is 6.38 cities and 5 points
+under it is 39.8%. Row (b) is inside both: it loses fewer cities than row (a), not more, and wins 7.4 points
+more. At the default cap of 2,500 the same two cells read 2.97 (0.12) and 35.0% for row (a), 0.89 (0.05) and
+49.4% for row (b).
+
+**Which change does that.** Row (c4), the package on the old hit scale, loses 3.46 cities (0.13) and wins 43.4%
+in that cell. So sizing a hit by natural floors is what lowers the Explorer player's losses; the Explorer preset
+adds 40 floors at tier 1.
+
+**The target, "an undefended empire loses within the span of a campaign": the figures, with no verdict.** Under
+row (b) with nobody entering a dungeon and no tree, the path to the Pillar is lost by day 2,000 in 98.4% of
+campaigns at tier 1 and in 100.0% at tiers 2, 3 and 4, and by day 4,000 in 100.0% at every tier. The median day
+of that loss is 1,240 / 804 / 644 / 530 at tiers 1 to 4. The defended campaigns of row (b), `triage`, Explorer,
+day cap 4,000, end at a median day of 1,113 for a win and 1,146 for a loss at tier 1, and 726 and 1,251 at tier
+2. With no tree the tier 1 medians are 815 and 784. Whether that meets the target is not decided here.
+
+**What each of the other changes buys, undefended, tier 1, median day of the loss:** 1,240 for the package; 648
+with dungeons staying; 2,224 with a Quest dungeon costing nothing (37.2% lost by day 2,000); 1,730 at 120 days
+and 4 dungeons (70.2% lost by day 2,000).
+
+### Tests
+
+- `sim/tests/test_a_quest_dungeons_timer_hits_its_host_city.py`: 23 tests. The size (the ordinary row of the
+  host; an ordinary dungeon at the middle of its range; no scale by depth, with the other reading as its
+  control; the tree's reduction), whose tier sizes it, the refresh and the move unchanged, the counts, the hit
+  that fells the city, the dungeon the player is inside, a city already fallen, a death, a Siege, and a campaign.
+- `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`: 6 tests.
+- `tools/tests/test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`: 6 tests.
+- `sim/tests/test_a_hit_is_sized_by_natural_floors.py`: 18 tests. What natural floors are, a dungeon with
+  tree-added floors hitting as its twin without them, floors removed, the old scale as the control of each, the
+  walk, the timer and the power still reading the total, and a campaign with no tree unchanged bit for bit.
+- `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`: 6 tests.
+
+### Run
+
+- The whole fast suite before, on 4a855bb8, in the worktree: "6044 passed, 7 skipped in 271.87s (0:04:31)";
+  JUnit tests 6051, failures 0, errors 0, skipped 7.
+- After (ii), in a `git archive` copy: "12 failed, 6056 passed, 13 skipped in 430.85s (0:07:10)". Eleven of the
+  twelve are tests that ask git, in three files, and the copy was not a repository; after `git init` and a
+  commit in the copy those three files gave "31 passed". The twelfth is the test named at the top.
+- After (iii), in the worktree: "1 failed, 6079 passed, 7 skipped in 306.90s (0:05:06)"; JUnit tests 6087,
+  failures 1, errors 0, skipped 7.
+- After (iv), in the worktree: "1 failed, 6103 passed, 7 skipped in 302.01s (0:05:02)"; JUnit tests 6111,
+  failures 1, errors 0, skipped 7. The one failure in each is the test named at the top.
+- `python -m ruff check .` before each commit: "All checks passed!".
+- The suite was not run for this entry before it was written.
+
+Nine breaks with `tools/prove_guard.py`, three a change, each in a `git archive` copy of that change's commit.
+Every `result.proved` was true.
+
+| Break | Printed | Tests that failed |
+|---|---|---|
+| (ii) the call to `_quest_hit` taken out of `_resolve` | `PROVED: 13 failed, 51 passed in 1.18s \| restored: 64 passed in 1.13s` | eleven of the new simulation tests, `test_the_model_hits_before_it_refreshes_and_before_the_move`, `test_a_quest_dungeon_is_not_counted` |
+| (ii) the hit sized by `d.city_tier` | `PROVED: 2 failed, 62 passed in 1.06s \| restored: 64 passed in 0.97s` | `test_it_is_the_tier_of_the_city_it_stands_on_when_the_hit_lands`, `test_the_models_hit_reads_the_ordinary_row_of_the_host` |
+| (ii) the game's `ResolveDungeon`, in the copy, given a `Map->Damage` call before `RelocateQuestDungeon` | `PROVED: 1 failed, 63 passed in 1.48s \| restored: 64 passed in 1.00s` | `test_the_game_does_not_hit_a_city_for_a_quest_dungeon_yet` |
+| (iii) the model's interval put back to 120 | `PROVED: 2 failed, 131 passed in 5.21s \| restored: 133 passed in 4.75s` | `test_the_model_ships_90_days_and_5_dungeons[surge_interval_days]`, `test_the_two_really_do_differ[IntervalDays]` |
+| (iii) the game's `DungeonsPerSurge`, in the copy, set to 5 | `PROVED: 3 failed, 130 passed in 4.64s \| restored: 133 passed in 4.83s` | `test_the_swelling_ladder_still_holds`, `test_the_game_still_has_120_days_and_4_dungeons[DungeonsPerSurge]`, `test_the_two_really_do_differ[DungeonsPerSurge]` |
+| (iii) the game's `IntervalDays`, in the copy, set to 90 | `PROVED: 3 failed, 130 passed in 8.58s \| restored: 133 passed in 6.27s` | `test_the_accelerating_ladder_still_holds`, `test_the_game_still_has_120_days_and_4_dungeons[IntervalDays]`, `test_the_two_really_do_differ[IntervalDays]` |
+| (iv) `_hit_floors` returning `d.floors` | `PROVED: 7 failed, 61 passed in 0.39s \| restored: 68 passed in 0.25s` | six of the new simulation tests and `test_the_model_divides_natural_floors_by_the_rows_midpoint` |
+| (iv) `tree_floors` recorded as 0 | `PROVED: 10 failed, 58 passed in 0.39s \| restored: 68 passed in 0.34s` | nine of the new simulation tests and `test_the_model_takes_the_trees_floors_after_the_natural_depth` |
+| (iv) the game's `BiteScale`, in the copy, dividing `NaturalFloors` | `PROVED: 2 failed, 66 passed in 0.37s \| restored: 68 passed in 0.33s` | `test_the_game_divides_floors_by_the_same_midpoint`, `test_the_games_floors_include_what_a_city_upgrade_moved` |
+
+The second break of (iv) first stopped on an anchor that was not in the file (the break text was written before
+the field was renamed `tree_floors`); the text was corrected and the three were run again, and the line above is
+that run.
+
+### Not covered
+
+- The game. None of the three rules is in it.
+- `docs/Cataclysm_GDD_v2.md` still says a Quest dungeon's timer costs its host city nothing, and its paragraph
+  "The project owner spoke to this twice" still ends "the second supersedes the first". The coordinating session
+  ruled the document gains the rule in the layer that puts it into the game.
+- No policy was changed, so no policy sees a Quest dungeon's hit coming: `Dungeon.resolves` is still false for
+  it, and `_urgent` and the policies' urgency read that. The defended figures above are for players who do not
+  hurry to a Quest dungeon because of its timer.
+- No figure in `sim/README.md`, in the comments of `config.py`, `engine.py` and `policies.py`, or in the
+  docstrings of the analysis scripts was re-measured. A dated sentence in `config.py` beside the two constants,
+  two in `engine.py`, one in `policies.py` and two in `sim/README.md` say which numbers they were taken at. The
+  docstrings of `analyse_quest_move_chance.py` and `analyse_siege_dose.py` still say "5 and not the default of
+  4"; those scripts set their own values and were left.
+- The balance report: `sim/experiments.py` was not run.
+- Whether the target for an undefended empire is met.
+- The Siege prose in `policies.py`: its test passes at this commit and its figures were not re-measured.
+- The words "your rec on all three, continue" also stand in the entry of 2026-10-12 with that date. This entry
+  dates them as the brief for this change does.
+
+---
+
 ## 2026-10-12 — In the simulation an ordinary dungeon leaves the map after it hits its city; the game does not have the rule yet
 
 **Said first: the game does NOT have this rule, and the two differ on purpose.** This change is the simulation,
