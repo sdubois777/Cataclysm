@@ -9261,10 +9261,28 @@ GADGET_ROW_TAG = "Type.Deployable"
 #: `tools/tests/test_generate_datatables.py` compares the two.
 GADGETS_TARGET_MOST_HEALTH_STAT = "gadgets_target_most_health"
 
+#: The flag by which a summoner's gadget that kills an enemy with a blow of
+#: its own strikes once more, at the nearest enemy within its reach. Ruled
+#: 2026-10-13 by the coordinating session under the owner's delegation, for
+#: "When a gadget kills an enemy, it fires an additional burst at the nearest
+#: enemy within its range".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, Required Tags `Type.Deployable`,
+#: with no Condition, no Scale, NO ACTION AND NO ACTION EVENT. The sentence's
+#: own tags are `Type.Deployable, Trigger.OnKill`; the row requires the first
+#: alone, because the game asks with the gadget's type tags and no gadget
+#: carries `Trigger.OnKill`. No row event is raised for a gadget's kill: the
+#: burst is the gadget's own act, in `ACataclysmMinion::AttackTarget`.
+#: `ACataclysmMinion::GadgetsBurstOnKillStat` holds the same name, and
+#: `TestGadgetsBurstOnAKill` in `tools/tests/test_generate_datatables.py`
+#: compares the two.
+GADGETS_BURST_ON_KILL_STAT = "gadgets_burst_on_kill"
+
 #: The stats a summoner's row gives its gadgets that are flags: a flat 1, read
 #: as above nought.
 GADGET_FLAG_STATS = (
     GADGETS_TARGET_MOST_HEALTH_STAT,
+    GADGETS_BURST_ON_KILL_STAT,
 )
 
 #: How many seconds apart a summoner's gadgets fire at every enemy within

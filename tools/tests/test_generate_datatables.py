@@ -7376,6 +7376,9 @@ class GadgetRowsOnAMadeUpSheet:
 
     HEADER = TestScaleStepHigh.HEADER
     TAG = "Type.Deployable"
+    #: What the sentence's own Tags cell holds. A class whose real sentence
+    #: carries more than the one tag says so.
+    SENTENCE_TAGS = TAG
 
     def out(self, tmp_path, words, rows, rolls_down=None):
         name = gen.row_name("Positive", words[:48])
@@ -7387,7 +7390,7 @@ class GadgetRowsOnAMadeUpSheet:
         sentences = [
             ["Positives", "Type", "Weight", "Column 4", "Rolls Down",
              "Negatives", "Type", "Weight", "Tags", "Rolls Down"],
-            [words, "Generic", 4, self.TAG, rolls_down,
+            [words, "Generic", 4, self.SENTENCE_TAGS, rolls_down,
              "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life", None],
         ]
         return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
@@ -7654,3 +7657,91 @@ class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
                     "ValuePerPoint": 1.0}
         assert gen.refuse_a_gadget_row_the_game_cannot_read(
             "PassiveEffects", [node_row]) == []
+
+
+class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_burst_on_kill`, ruled 2026-10-13 and built ahead of its row,
+    for "When a gadget kills an enemy, it fires an additional burst at the
+    nearest enemy within its range". One flag at a flat 1, scoped to
+    `Type.Deployable`, with no action and no action event:
+    `ACataclysmMinion::AttackTarget` asks whether it is above nought when a
+    blow of the gadget's own has killed.
+
+    THE SENTENCE'S OWN TAGS ARE TWO, `Type.Deployable, Trigger.OnKill`, and
+    the row requires the first alone.
+    """
+
+    WORDS = ("When a gadget kills an enemy, it fires an additional burst at "
+             "the nearest enemy within its range")
+    STAT = "gadgets_burst_on_kill"
+    SENTENCE_TAGS = "Type.Deployable, Trigger.OnKill"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_BURST_ON_KILL_STAT == self.STAT
+        assert self.STAT in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadget_kill_fires_burst" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the first gadget layer, read by the
+        same pattern from the same file."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetsBurstOnKillStat"] == (
+            gen.GADGETS_BURST_ON_KILL_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line. THE SENTENCE'S OWN
+        TWO TAGS AS THE ROW'S REQUIRED TAGS ARE REFUSED: a gadget carries no
+        `Trigger.OnKill`, so that row would match no gadget."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Deployable, Trigger.OnKill"},
+                 "under the required tags 'Type.Deployable, Trigger.OnKill'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []

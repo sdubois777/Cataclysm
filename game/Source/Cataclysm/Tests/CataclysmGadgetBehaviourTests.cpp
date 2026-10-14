@@ -114,17 +114,22 @@ namespace CataclysmGadgetBehaviourTest
 		return FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
 	}
 
-	/** One row a summoner holds: a stat, a figure, and whether it is a flat figure or an increase. */
+	/**
+	 * One row a summoner holds: a stat, a figure, whether it is a flat figure or an increase, and whether it
+	 * requires `Type.Deployable`. A row that is not scoped is how a passive keystone's flag is held: Conduit's
+	 * `minion_hits_count_as_yours` is asked with no tags, and a row requiring one would not match.
+	 */
 	struct FGadgetRow
 	{
 		FName Stat;
 		float Value = 0.0f;
 		ECataclysmStatBucket Bucket = ECataclysmStatBucket::Flat;
+		bool bScoped = true;
 	};
 
 	/**
-	 * Give a summoner the stat line the proposed rows would: each row requiring `Type.Deployable`, flat unless it
-	 * says otherwise. An increase is how "Gadgets fire 20%-40% faster" is written. Two rows on one stat are two
+	 * Give a summoner the stat line the proposed rows would: each row requiring `Type.Deployable` and flat unless
+	 * it says otherwise. An increase is how "Gadgets fire 20%-40% faster" is written. Two rows on one stat are two
 	 * rows. REPLACES THE WHOLE STAT LINE, so everything a test's summoner holds arrives in one call.
 	 */
 	void GiveGadgetRows(AActor* Who, const TArray<FGadgetRow>& Rows)
@@ -143,7 +148,10 @@ namespace CataclysmGadgetBehaviourTest
 			Row.Bucket = Each.Bucket;
 			Row.Source = ECataclysmModifierSource::Enchantment;
 			Row.Value = Each.Value;
-			Row.RequiredTags.AddTag(DeployableTag());
+			if (Each.bScoped)
+			{
+				Row.RequiredTags.AddTag(DeployableTag());
+			}
 			FCataclysmStatInputs& Line = Stats.FindOrAdd(Each.Stat);
 			Line.Base = 0.0f;
 			Line.Modifiers.Add(Row);
@@ -253,6 +261,27 @@ namespace CataclysmGadgetBehaviourTest
 	float HealthOfThoseWithinReach(const FLine& Line)
 	{
 		return HealthOf(Line.Near) + HealthOf(Line.Middle) + HealthOf(Line.Far);
+	}
+
+	bool IsDead(const AActor* Who)
+	{
+		return UCataclysmSkillEffects::IsDead(Who);
+	}
+
+	/** What dealt the last blow on record on this character, or null: what a death names its killer's blow by. */
+	AActor* WhatDealtTheLastBlowOn(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who));
+		return Its && Its->GetLastBlow().IsOnRecord() ? Its->GetLastBlow().DealtBy.Get() : nullptr;
+	}
+
+	/** Whom the last blow on record on this character is credited to, or null. */
+	AActor* WhoIsCreditedWithTheLastBlowOn(const AActor* Who)
+	{
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who));
+		return Its && Its->GetLastBlow().IsOnRecord() ? Its->GetLastBlow().Attacker.Get() : nullptr;
 	}
 }
 
@@ -851,6 +880,381 @@ CATACLYSM_TEST(FCataclysmGadgetVolleyOthersTest,
 	TestEqual(TEXT("and the enemy at 6 m, which evades, took nothing"), HealthOf(Line.Middle), MiddleHeld, 0.001f);
 	TestEqual(TEXT("it was struck at all the same: three attacks"), Turret->AttacksMade, 3);
 	TestEqual(TEXT("and deployable_hit was raised for each of the three, the evaded one included"), Hits.Count, 3);
+	return true;
+}
+
+// ==========================================================================
+// "When a gadget kills an enemy, it fires an additional burst at the nearest
+// enemy within its range"
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmGadgetBurstOnAKillTest,
+	"Cataclysm.GadgetBurst.AHoldersTurretThatKillsStrikesTheNearestEnemyWithinItsReachOnceMore")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// TWO SUMMONERS, ALIKE BUT FOR THE FLAG, each with a Bolt Turret and a line: enemies at 3, 6 and 9 m and one
+	// at 12 m beyond its reach, each holding 50,000 but the one at 6 m, which holds 1 and dies to any blow. Each
+	// turret is told to strike the one at 6 m. Nothing here moves the clock.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector ControlAt(0.0f, 0.0f, 0.0f);
+	const FVector HolderAt(0.0f, 100.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a control summoner"), Control) || !TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {{FName(ACataclysmMinion::GadgetsBurstOnKillStat), 1.0f}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), ControlAt);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), HolderAt);
+	FLine ControlLine(World, ControlAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	FLine HolderLine(World, HolderAt, 6.0f, 9.0f, 12.0f, /*Everyone=*/50000.0f);
+	if (!ControlTurret || !HolderTurret
+		|| !TestTrue(TEXT("set-up: eight enemies"), ControlLine.IsWhole() && HolderLine.IsWhole()))
+	{
+		return false;
+	}
+	SetHealthOf(ControlLine.Middle, 1.0f);
+	SetHealthOf(HolderLine.Middle, 1.0f);
+	FEventCount HolderHits(Holder, TEXT("deployable_hit"));
+
+	// THE CONTROL: its blow kills and nothing follows. Then one ordinary blow at its nearest enemy, to read what
+	// a blow of this turret takes; the two turrets and their summoners are alike but for the flag.
+	const float ControlNearHeld = HealthOf(ControlLine.Near);
+	ControlTurret->AttackTarget(ControlLine.Middle);
+	if (!TestTrue(TEXT("control: the blow of a turret whose summoner holds no flag kills the enemy at 6 m"),
+			IsDead(ControlLine.Middle))
+		|| !TestEqual(TEXT("control: and it fires no burst"), ControlTurret->BurstsFired, 0)
+		|| !TestEqual(TEXT("control: its nearest enemy has lost nothing"),
+			HealthOf(ControlLine.Near), ControlNearHeld, 0.001f)
+		|| !TestEqual(TEXT("control: and it has made the one attack"), ControlTurret->AttacksMade, 1))
+	{
+		return false;
+	}
+	ControlTurret->AttackTarget(ControlLine.Near);
+	const float OneBlow = ControlNearHeld - HealthOf(ControlLine.Near);
+	if (!TestTrue(*FString::Printf(TEXT("control: an ordinary blow takes health: %.2f"), OneBlow), OneBlow > 0.0f))
+	{
+		return false;
+	}
+
+	// THE HOLDER'S TURRET: the same blow, and one more at the nearest.
+	const float NearHeld = HealthOf(HolderLine.Near);
+	const float FarHeld = HealthOf(HolderLine.Far);
+	const float BeyondHeld = HealthOf(HolderLine.Beyond);
+	HolderTurret->AttackTarget(HolderLine.Middle);
+	if (!TestTrue(TEXT("set-up: the holder's turret kills the enemy at 6 m"), IsDead(HolderLine.Middle)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a holder's turret that kills fires one burst"), HolderTurret->BurstsFired, 1);
+	TestEqual(TEXT("the nearest enemy within its reach took one ordinary blow"),
+		NearHeld - HealthOf(HolderLine.Near), OneBlow, 0.05f);
+	TestEqual(TEXT("the enemy at 9 m, within reach and not the nearest, took nothing"),
+		HealthOf(HolderLine.Far), FarHeld, 0.001f);
+	TestEqual(TEXT("and the enemy beyond its reach took nothing"),
+		HealthOf(HolderLine.Beyond), BeyondHeld, 0.001f);
+	TestEqual(TEXT("two attacks: the blow that killed and the burst"), HolderTurret->AttacksMade, 2);
+	TestEqual(TEXT("and each raised deployable_hit on its summoner"), HolderHits.Count, 2);
+
+	// A BLOW THAT DOES NOT KILL FIRES NOTHING.
+	const float NearHeldNow = HealthOf(HolderLine.Near);
+	HolderTurret->AttackTarget(HolderLine.Far);
+	TestFalse(TEXT("set-up: a blow on an enemy holding 50,000 does not kill it"), IsDead(HolderLine.Far));
+	TestEqual(TEXT("a blow that does not kill fires no burst"), HolderTurret->BurstsFired, 1);
+	TestEqual(TEXT("and the nearest enemy took nothing from it"), HealthOf(HolderLine.Near), NearHeldNow, 0.001f);
+
+	// A KILL WITH NOBODY LEFT WITHIN REACH FIRES NOTHING. The two still within reach are removed, and a new
+	// enemy holding 1 is stood 6 m away; the one 12 m away is beyond reach.
+	HolderLine.Near->Destroy();
+	HolderLine.Far->Destroy();
+	ACataclysmEnemyCharacter* Alone = Enemy(World, HolderAt + FVector(0.0f, 6.0f * M, 0.0f), 1.0f);
+	if (!TestNotNull(TEXT("set-up: one more enemy, 6 m to the side"), Alone))
+	{
+		return false;
+	}
+	HolderTurret->AttackTarget(Alone);
+	TestTrue(TEXT("set-up: it dies"), IsDead(Alone));
+	TestEqual(TEXT("a kill with no other enemy within reach fires no burst"), HolderTurret->BurstsFired, 1);
+	TestEqual(TEXT("and the enemy beyond reach still took nothing"),
+		HealthOf(HolderLine.Beyond), BeyondHeld, 0.001f);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetBurstChainTest,
+	"Cataclysm.GadgetBurst.AKillByABurstFiresAnotherAndTheChainEndsAtTheFirstEnemyThatLives")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// EACH TURRET HAS ENEMIES AT 3, 5 AND 7 M HOLDING 1, one at 9 m holding 50,000 and one at 12 m, beyond its
+	// reach. Each is told to strike the one at 7 m. For the holder that kill fires a burst at the nearest, 3 m,
+	// which dies; that fires one at the nearest left, 5 m, which dies; and that fires one at 9 m, which lives.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	struct FChain
+	{
+		FChain(UWorld* InWorld, const FVector& At)
+		{
+			AtThree = Enemy(InWorld, At + FVector(3.0f * M, 0.0f, 0.0f), 1.0f);
+			AtFive = Enemy(InWorld, At + FVector(5.0f * M, 0.0f, 0.0f), 1.0f);
+			AtSeven = Enemy(InWorld, At + FVector(7.0f * M, 0.0f, 0.0f), 1.0f);
+			AtNine = Enemy(InWorld, At + FVector(9.0f * M, 0.0f, 0.0f), 50000.0f);
+			Beyond = Enemy(InWorld, At + FVector(12.0f * M, 0.0f, 0.0f), 50000.0f);
+		}
+		bool IsWhole() const { return AtThree && AtFive && AtSeven && AtNine && Beyond; }
+		ACataclysmEnemyCharacter* AtThree = nullptr;
+		ACataclysmEnemyCharacter* AtFive = nullptr;
+		ACataclysmEnemyCharacter* AtSeven = nullptr;
+		ACataclysmEnemyCharacter* AtNine = nullptr;
+		ACataclysmEnemyCharacter* Beyond = nullptr;
+	};
+	const FVector ControlAt(0.0f, 0.0f, 0.0f);
+	const FVector HolderAt(0.0f, 100.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a control summoner"), Control) || !TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {{FName(ACataclysmMinion::GadgetsBurstOnKillStat), 1.0f}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), ControlAt);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), HolderAt);
+	FChain ControlChain(World, ControlAt);
+	FChain HolderChain(World, HolderAt);
+	if (!ControlTurret || !HolderTurret
+		|| !TestTrue(TEXT("set-up: ten enemies"), ControlChain.IsWhole() && HolderChain.IsWhole()))
+	{
+		return false;
+	}
+
+	// THE CONTROL: one kill and no more.
+	ControlTurret->AttackTarget(ControlChain.AtSeven);
+	if (!TestTrue(TEXT("control: the enemy at 7 m dies"), IsDead(ControlChain.AtSeven))
+		|| !TestTrue(TEXT("control: and the two others holding 1 are alive: no burst followed"),
+			!IsDead(ControlChain.AtThree) && !IsDead(ControlChain.AtFive))
+		|| !TestEqual(TEXT("control: no burst was fired"), ControlTurret->BurstsFired, 0))
+	{
+		return false;
+	}
+
+	const float NineHeld = HealthOf(HolderChain.AtNine);
+	const float BeyondHeld = HealthOf(HolderChain.Beyond);
+	HolderTurret->AttackTarget(HolderChain.AtSeven);
+	if (!TestTrue(TEXT("set-up: the enemy at 7 m dies"), IsDead(HolderChain.AtSeven)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the burst kills the nearest, at 3 m"), IsDead(HolderChain.AtThree));
+	TestTrue(TEXT("and the burst that kill fires kills the next nearest, at 5 m"), IsDead(HolderChain.AtFive));
+	TestEqual(TEXT("three bursts in all: one for each kill"), HolderTurret->BurstsFired, 3);
+	TestEqual(TEXT("four attacks: the first blow and the three bursts"), HolderTurret->AttacksMade, 4);
+	const float NineLost = NineHeld - HealthOf(HolderChain.AtNine);
+	TestTrue(*FString::Printf(TEXT("the third burst struck the enemy at 9 m: %.2f"), NineLost), NineLost > 0.0f);
+	TestFalse(TEXT("which lived, so the chain ended there"), IsDead(HolderChain.AtNine));
+	TestEqual(TEXT("and the enemy beyond reach took nothing"), HealthOf(HolderChain.Beyond), BeyondHeld, 0.001f);
+
+	// AND IT WAS STRUCK ONCE: one more ordinary blow takes what the burst took.
+	const float NineHeldNow = HealthOf(HolderChain.AtNine);
+	HolderTurret->AttackTarget(HolderChain.AtNine);
+	TestEqual(TEXT("the burst took one ordinary blow's worth from it and no more"),
+		NineLost, NineHeldNow - HealthOf(HolderChain.AtNine), 0.05f);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetBurstVolleyAndConduitTest,
+	"Cataclysm.GadgetBurst.AKillByAVolleysBlowFiresABurstAndUnderConduitAKillCreditedToTheSummonerStillCounts")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// THREE SUMMONERS, 100 M APART. The first holds the volley's row at 5 seconds and no flag, and is the
+	// control. The second holds the row and the flag. Each has a turret with enemies at 3 m holding 1 and at 6
+	// and 9 m holding 50,000. The third holds the flag and Conduit, `minion_hits_count_as_yours`, as a keystone
+	// holds it, with no required tag; its turret has an enemy at 6 m holding 1 and one at 3 m holding 50,000.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FName Volley(ACataclysmMinion::GadgetVolleyEverySecondsStat);
+	const FName Burst(ACataclysmMinion::GadgetsBurstOnKillStat);
+	const FVector ControlAt(0.0f, 0.0f, 0.0f);
+	const FVector HolderAt(0.0f, 100.0f * M, 0.0f);
+	const FVector ConduitAt(0.0f, 200.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Control = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 100.0f * M, 0.0f));
+	ACataclysmEnemyCharacter* WithConduit = Summoner(World, FVector(-50.0f * M, 200.0f * M, 0.0f));
+	if (!TestTrue(TEXT("set-up: three summoners"), Control && Holder && WithConduit))
+	{
+		return false;
+	}
+	GiveGadgetRows(Control, {{Volley, 5.0f}});
+	GiveGadgetRows(Holder, {{Volley, 5.0f}, {Burst, 1.0f}});
+	GiveGadgetRows(WithConduit, {
+		{Burst, 1.0f},
+		{FName(TEXT("minion_hits_count_as_yours")), 1.0f, ECataclysmStatBucket::Flat, /*bScoped=*/false}});
+	ACataclysmMinion* ControlTurret = Place(*this, Control, TEXT("BoltTurret"), ControlAt);
+	ACataclysmMinion* HolderTurret = Place(*this, Holder, TEXT("BoltTurret"), HolderAt);
+	ACataclysmMinion* ConduitTurret = Place(*this, WithConduit, TEXT("BoltTurret"), ConduitAt);
+	ACataclysmEnemyCharacter* ControlWeak = Enemy(World, ControlAt + FVector(3.0f * M, 0.0f, 0.0f), 1.0f);
+	ACataclysmEnemyCharacter* ControlSix = Enemy(World, ControlAt + FVector(6.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* ControlNine = Enemy(World, ControlAt + FVector(9.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* HolderWeak = Enemy(World, HolderAt + FVector(3.0f * M, 0.0f, 0.0f), 1.0f);
+	ACataclysmEnemyCharacter* HolderSix = Enemy(World, HolderAt + FVector(6.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* HolderNine = Enemy(World, HolderAt + FVector(9.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* ConduitSturdy = Enemy(World, ConduitAt + FVector(3.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* ConduitWeak = Enemy(World, ConduitAt + FVector(6.0f * M, 0.0f, 0.0f), 1.0f);
+	if (!ControlTurret || !HolderTurret || !ConduitTurret
+		|| !TestTrue(TEXT("set-up: eight enemies"), ControlWeak && ControlSix && ControlNine && HolderWeak
+			&& HolderSix && HolderNine && ConduitSturdy && ConduitWeak))
+	{
+		return false;
+	}
+
+	// THE VOLLEY. At 5.1 seconds each turret's clock comes round. The control's volley kills the enemy at 3 m and
+	// strikes the other two once each. The holder's does the same, and the kill fires a burst at the nearest
+	// left, at 6 m, before the volley reaches it: two blows there.
+	Pass(World, 5.1f);
+	Step(ControlTurret);
+	Step(HolderTurret);
+	const float ControlSixLost = 50000.0f - HealthOf(ControlSix);
+	if (!TestEqual(TEXT("control: the turret holding the volley alone fired one"), ControlTurret->VolleysFired, 1)
+		|| !TestTrue(TEXT("control: its volley killed the enemy at 3 m"), IsDead(ControlWeak))
+		|| !TestEqual(TEXT("control: and fired no burst for it"), ControlTurret->BurstsFired, 0)
+		|| !TestTrue(*FString::Printf(TEXT("control: its enemy at 6 m took the volley's one blow: %.2f"),
+				ControlSixLost), ControlSixLost > 0.0f)
+		|| !TestEqual(TEXT("control: and the one at 9 m the same"),
+			50000.0f - HealthOf(ControlNine), ControlSixLost, 0.05f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the holder's volley killed its enemy at 3 m"), IsDead(HolderWeak));
+	TestEqual(TEXT("a kill by a blow of a volley fires one burst"), HolderTurret->BurstsFired, 1);
+	TestEqual(TEXT("the enemy at 6 m took the burst and then the volley's own blow: two"),
+		50000.0f - HealthOf(HolderSix), ControlSixLost * 2.0f, 0.1f);
+	TestEqual(TEXT("and the enemy at 9 m took the volley's one"),
+		50000.0f - HealthOf(HolderNine), ControlSixLost, 0.05f);
+	TestEqual(TEXT("four attacks: the volley's three and the burst"), HolderTurret->AttacksMade, 4);
+
+	// CONDUIT. The kill is credited to the summoner, and what dealt the blow is still the turret.
+	ConduitTurret->AttackTarget(ConduitWeak);
+	if (!TestTrue(TEXT("set-up: under Conduit the turret's blow kills the enemy at 6 m"), IsDead(ConduitWeak))
+		|| !TestTrue(TEXT("set-up: the kill is credited to the summoner, so Conduit is held"),
+			WhoIsCreditedWithTheLastBlowOn(ConduitWeak) == WithConduit)
+		|| !TestTrue(TEXT("set-up: and the record says the turret dealt it"),
+			WhatDealtTheLastBlowOn(ConduitWeak) == ConduitTurret))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill credited to the summoner under Conduit still fires the burst"),
+		ConduitTurret->BurstsFired, 1);
+	TestTrue(TEXT("and the nearest enemy within reach took it"), HealthOf(ConduitSturdy) < 50000.0f - 0.5f);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmGadgetBurstNotCountedTest,
+	"Cataclysm.GadgetBurst.AKillByWhatAGadgetsHitSetOffFiresNoBurstAndNeitherDoesATrapsOrAnImpsKill")
+{
+	using namespace CataclysmGadgetBehaviourTest;
+
+	// ONE HOLDER OF THE FLAG. Four stations 100 m apart: a Bolt Turret whose kill shows the flag is held; a
+	// second Bolt Turret, for the kill that is not the gadget's own; a Spike Trap; and an imp.
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector FirstAt(0.0f, 0.0f, 0.0f);
+	const FVector SecondAt(0.0f, 100.0f * M, 0.0f);
+	const FVector TrapAt(0.0f, 200.0f * M, 0.0f);
+	const FVector ImpAt(0.0f, 300.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Holder = Summoner(World, FVector(-50.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a holder"), Holder))
+	{
+		return false;
+	}
+	GiveGadgetRows(Holder, {{FName(ACataclysmMinion::GadgetsBurstOnKillStat), 1.0f}});
+	ACataclysmMinion* First = Place(*this, Holder, TEXT("BoltTurret"), FirstAt);
+	ACataclysmEnemyCharacter* FirstBystander = Enemy(World, FirstAt + FVector(3.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* FirstWeak = Enemy(World, FirstAt + FVector(6.0f * M, 0.0f, 0.0f), 1.0f);
+	ACataclysmMinion* Second = Place(*this, Holder, TEXT("BoltTurret"), SecondAt);
+	ACataclysmEnemyCharacter* SecondBystander = Enemy(World, SecondAt + FVector(3.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmEnemyCharacter* SecondSturdy = Enemy(World, SecondAt + FVector(6.0f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmMinion* Trap = Place(*this, Holder, TEXT("SpikeTrap"), TrapAt);
+	ACataclysmEnemyCharacter* TrapWeak = Enemy(World, TrapAt + FVector(1.1f * M, 0.0f, 0.0f), 1.0f);
+	ACataclysmEnemyCharacter* TrapBystander = Enemy(World, TrapAt + FVector(-1.4f * M, 0.0f, 0.0f), 50000.0f);
+	ACataclysmMinion* Imp = Place(*this, Holder, TEXT("Imp"), ImpAt);
+	ACataclysmEnemyCharacter* ImpWeak = Enemy(World, ImpAt + FVector(1.1f * M, 0.0f, 0.0f), 1.0f);
+	ACataclysmEnemyCharacter* ImpBystander = Enemy(World, ImpAt + FVector(-1.7f * M, 0.0f, 0.0f), 50000.0f);
+	UCataclysmAbilitySystemComponent* HolderSystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Holder));
+	if (!First || !Second || !Trap || !Imp || !TestNotNull(TEXT("set-up: the holder's ability system"), HolderSystem)
+		|| !TestTrue(TEXT("set-up: eight enemies"), FirstBystander && FirstWeak && SecondBystander && SecondSturdy
+			&& TrapWeak && TrapBystander && ImpWeak && ImpBystander))
+	{
+		return false;
+	}
+
+	// THE CONTROL: the holder's turret does fire a burst for a kill of its own.
+	First->AttackTarget(FirstWeak);
+	if (!TestTrue(TEXT("control: the holder's first turret kills"), IsDead(FirstWeak))
+		|| !TestEqual(TEXT("control: and fires a burst, so the flag is held"), First->BurstsFired, 1))
+	{
+		return false;
+	}
+
+	// A KILL BY WHAT THE GADGET'S HIT SET OFF. No row exists to do it, so the summoner does it by hand at the
+	// moment a row would: when `deployable_hit` is raised for the second turret's blow, the summoner strikes the
+	// same enemy for far more than it holds. The turret's blow reached health and the enemy is dead when the
+	// turret's attack ends, but the blow that killed is the summoner's.
+	bool bStruckByHand = false;
+	const FDelegateHandle ByHand = HolderSystem->OnActionEvent.AddLambda(
+		[&bStruckByHand, Holder, SecondSturdy](FName Raised)
+		{
+			if (!bStruckByHand && Raised == FName(TEXT("deployable_hit")))
+			{
+				bStruckByHand = true;
+				UCataclysmSkillEffects::ApplyDirectDamage(Holder, SecondSturdy, 10000000.0f);
+			}
+		});
+	const float SecondBystanderHeld = HealthOf(SecondBystander);
+	Second->AttackTarget(SecondSturdy);
+	HolderSystem->OnActionEvent.Remove(ByHand);
+	if (!TestTrue(TEXT("set-up: the summoner struck when deployable_hit was raised"), bStruckByHand)
+		|| !TestTrue(TEXT("set-up: the enemy is dead when the turret's attack ends"), IsDead(SecondSturdy))
+		|| !TestTrue(TEXT("set-up: and the blow that killed it was the summoner's, not the turret's"),
+			WhatDealtTheLastBlowOn(SecondSturdy) == Holder))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill by what the gadget's hit set off fires no burst"), Second->BurstsFired, 0);
+	TestEqual(TEXT("and the other enemy within its reach took nothing"),
+		HealthOf(SecondBystander), SecondBystanderHeld, 0.001f);
+
+	// A SPIKE TRAP AND AN IMP OF THE HOLDER KILL AND FIRE NOTHING.
+	const float TrapBystanderHeld = HealthOf(TrapBystander);
+	Trap->AttackTarget(TrapWeak);
+	TestTrue(TEXT("set-up: the holder's Spike Trap kills"), IsDead(TrapWeak));
+	TestEqual(TEXT("a holder's Spike Trap that kills fires no burst: a trap is not a gadget"), Trap->BurstsFired, 0);
+	TestEqual(TEXT("and the other enemy within its reach took nothing"),
+		HealthOf(TrapBystander), TrapBystanderHeld, 0.001f);
+	const float ImpBystanderHeld = HealthOf(ImpBystander);
+	Imp->AttackTarget(ImpWeak);
+	TestTrue(TEXT("set-up: the holder's imp kills"), IsDead(ImpWeak));
+	TestEqual(TEXT("a holder's imp that kills fires no burst"), Imp->BurstsFired, 0);
+	TestEqual(TEXT("and the other enemy within its reach took nothing"),
+		HealthOf(ImpBystander), ImpBystanderHeld, 0.001f);
 	return true;
 }
 
