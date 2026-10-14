@@ -721,6 +721,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// an additional burst at the nearest enemy within its range". A flag.
 		// No gameplay attribute and no base.
 		TEXT("gadgets_burst_on_kill"),
+		// The flag by which a summoner's gadgets take no damage from any blow,
+		// and the percent of a gadget's maximum health as placed that it loses
+		// each second. Both read by ACataclysmMinion::StepNoDamageAndDrain on
+		// the gadget's step, with the gadget's type tags. Ruled 2026-10-13:
+		// "Your gadgets are invincible but lose 5% of their maximum HP per
+		// second passively". Flat; each at nought does nothing. No gameplay
+		// attribute and no base.
+		TEXT("gadgets_take_no_damage"),
+		TEXT("gadget_health_lost_percent_per_second"),
 	};
 	return Stats;
 }
