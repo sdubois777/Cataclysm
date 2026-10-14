@@ -57,9 +57,21 @@ public:
 	 * @return whether the skill started. False leaves nothing behind: for a row with no shape, for a character with
 	 *         no ability system, when called inside another ability's activation, and when the skill itself refuses
 	 *         (locked skills, an unmet `Requires`).
+	 *
+	 * @param CastFrom  where the skill is cast FROM, or null for the character's own place. Ruled 2026-10-14, for
+	 *                  a gadget's copy of its summoner's skill, which is the only caller that gives one: see
+	 *                  `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`.
 	 */
 	static bool Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-						float DamageShare = 1.0f, bool bPaysCost = false);
+						float DamageShare = 1.0f, bool bPaysCost = false, const FVector* CastFrom = nullptr);
+
+	/**
+	 * The row of the skill of this name the character HOLDS, from its weapon slots, copied into `Out`. Ruled
+	 * 2026-10-14 for "the last skill you used", which a gadget copies only while its summoner still holds it.
+	 * The basic attack is among what is held. @return whether one was found; false for a character with no weapon
+	 * slots and for a name of none.
+	 */
+	static bool HeldSkillNamed(const AActor* Character, FName Named, FCataclysmWeaponSkill& Out);
 
 	/**
 	 * The skills a row may trigger for a character that has just used `UsedSkill`: the skills it HOLDS, less the one

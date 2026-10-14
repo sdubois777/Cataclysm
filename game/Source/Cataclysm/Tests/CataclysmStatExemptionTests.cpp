@@ -30,6 +30,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
@@ -8416,6 +8417,78 @@ namespace CataclysmStatExemptionTest
 					   GrantedPlaced * 0.10f, GrantedPlaced * 0.001f);
 	}
 
+	/**
+	 * `gadgets_copy_your_last_skill`, a flag on a summoner, read by `ACataclysmMinion::StepSkillCopy` on the
+	 * gadget's step. Ruled 2026-10-14: "Gadgets copy the last skill you used and fire it at their target once every
+	 * 2 seconds". ONE SUMMONER, A PLAYER CHARACTER, because only a player holds a skill to copy: it holds a Demonic
+	 * Whip, a weapon damage of 100 and Searing Lash on record, and its Bolt Turret stands 20 m from it with one enemy
+	 * 3 m beyond the turret, out of the whip's 5 m from the player. THE CONTROL IS THE SAME TURRET'S STEP BEFORE
+	 * THE FLAG IS GRANTED: no copy and the enemy keeps its health. Granted at a flat 1, the next step casts one
+	 * copy and the enemy loses health.
+	 *
+	 * WHAT THIS DOES NOT REACH. The record, the clock, what a copy costs and raises, whose hits they are, and a
+	 * trap and an imp casting none: `Cataclysm.GadgetCopiesSkill.` in `CataclysmGadgetCopiesSkillTests.cpp`.
+	 */
+	void ProbeGadgetsCopyYourLastSkill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Player = SpawnPotionHolder(World);
+		UCataclysmAbilitySystemComponent* System = Player
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player))
+			: nullptr;
+		UCataclysmWeaponSlotsComponent* Slots =
+			Player ? Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a player character with an ability system"), System)
+			|| !Test.TestNotNull(TEXT("set-up: and weapon slots"), Slots))
+		{
+			return;
+		}
+		Slots->SetDamageType(TEXT("Demonic"));
+		Slots->EquipWeaponType(TEXT("Whip"));
+		System->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), 100.0f);
+		System->NoteSkillGadgetsCopy(FName(TEXT("Searing Lash")));
+
+		ACataclysmMinion* Turret = ACataclysmMinion::Spawn(
+			Player, FVector(20.0f * M, 0.0f, 0.0f), /*Lifetime=*/600.0f, /*bBurns=*/false, TEXT("BoltTurret"));
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(23.0f * M, 0.0f, 0.0f), FRotator::ZeroRotator);
+		UAbilitySystemComponent* Its = Enemy ? Enemy->GetAbilitySystemComponent() : nullptr;
+		if (!Turret || !Turret->IsGadget() || !Its)
+		{
+			Test.AddError(TEXT("set-up: a Bolt Turret and an enemy. If the turret is missing, DT_MinionTypes could not "
+							   "supply the BoltTurret row: run tools/generate_datatable_assets.py"));
+			return;
+		}
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Enemy->SetHealth(TargetHealthPool);
+		Enemy->SetArmour(0.0f);
+		Enemy->SetAttackDamage(0.0f);
+		Its->SetNumericAttributeBase(Combat::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(Combat::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(Vital::GetHealthAttribute(), 9000.0f);
+
+		ACataclysmMinion::GadgetStep(Turret);
+		Test.TestEqual(TEXT("control: the turret of a summoner holding no flag casts no copy"), Turret->SkillCopiesMade, 0);
+		Test.TestEqual(TEXT("control: and its enemy keeps its health"),
+					   Its->GetNumericAttribute(Vital::GetHealthAttribute()), 9000.0f, 0.001f);
+
+		GrantFlat(Player, ACataclysmMinion::GadgetsCopyYourLastSkillStat, 1.0f);
+		ACataclysmMinion::GadgetStep(Turret);
+		Test.TestEqual(TEXT("with gadgets_copy_your_last_skill at 1 the next step casts one copy, so StepSkillCopy "
+							"really reads it"),
+					   Turret->SkillCopiesMade, 1);
+		Test.TestTrue(TEXT("and its enemy lost health to the copy"),
+					  Its->GetNumericAttribute(Vital::GetHealthAttribute()) < 8999.0f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8568,6 +8641,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("gadgets_burst_on_kill"), &ProbeGadgetsBurstOnKill},
 			{TEXT("gadgets_take_no_damage"), &ProbeGadgetsTakeNoDamage},
 			{TEXT("gadget_health_lost_percent_per_second"), &ProbeGadgetHealthLostPercentPerSecond},
+			{TEXT("gadgets_copy_your_last_skill"), &ProbeGadgetsCopyYourLastSkill},
 		};
 		return Made;
 	}

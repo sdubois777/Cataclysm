@@ -3100,6 +3100,19 @@ bool UCataclysmSkillEffects::IsBehind(const AActor* Attacker,
 		return false;
 	}
 
+	// FROM THE ATTACKER'S OWN PLACE, through the one body below. Ruled
+	// 2026-10-14; see `IsBehindFrom`.
+	return IsBehindFrom(Attacker->GetActorLocation(), Target);
+}
+
+bool UCataclysmSkillEffects::IsBehindFrom(const FVector& AttackerAt,
+										  const AActor* Target)
+{
+	if (!IsValid(Target))
+	{
+		return false;
+	}
+
 	// THE TARGET'S FACING, FLATTENED. Both reasons are in the header: what makes
 	// a blow a blow in the back is that the creature taking it was looking the
 	// other way, and a ledge above a creature is behind it or not for the same
@@ -3107,8 +3120,7 @@ bool UCataclysmSkillEffects::IsBehind(const AActor* Attacker,
 	FVector Facing = Target->GetActorForwardVector();
 	Facing.Z = 0.0f;
 
-	FVector ToAttacker =
-		Attacker->GetActorLocation() - Target->GetActorLocation();
+	FVector ToAttacker = AttackerAt - Target->GetActorLocation();
 	ToAttacker.Z = 0.0f;
 
 	// `Normalize` ANSWERS FALSE FOR A VECTOR TOO SHORT TO HAVE A DIRECTION, and
@@ -3470,8 +3482,22 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
+	// FROM THE INSTIGATOR'S OWN PLACE, through the one body below. Ruled
+	// 2026-10-14; see `ApplyKnockbackFrom`.
+	return ApplyKnockbackFrom(Instigator, Target, Instigator->GetActorLocation(),
+							  DistanceCm);
+}
+
+bool UCataclysmSkillEffects::ApplyKnockbackFrom(AActor* Instigator, AActor* Target,
+												const FVector& From, float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
 	// Away from whatever hit it, along the ground.
-	FVector Away = Target->GetActorLocation() - Instigator->GetActorLocation();
+	FVector Away = Target->GetActorLocation() - From;
 	Away.Z = 0.0f;
 	if (Away.IsNearlyZero())
 	{
@@ -3545,9 +3571,23 @@ bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
+	// TOWARD THE INSTIGATOR'S OWN PLACE, through the one body below. Ruled
+	// 2026-10-14; see `ApplyPullFrom`.
+	return ApplyPullFrom(Instigator, Target, Instigator->GetActorLocation(),
+						 DistanceCm);
+}
+
+bool UCataclysmSkillEffects::ApplyPullFrom(AActor* Instigator, AActor* Target,
+										   const FVector& From, float DistanceCm)
+{
+	if (!IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
 	// Toward whatever hauled it, along the ground. The opposite of a knockback's
 	// direction and nothing else about it differs.
-	FVector Toward = Instigator->GetActorLocation() - Target->GetActorLocation();
+	FVector Toward = From - Target->GetActorLocation();
 	Toward.Z = 0.0f;
 	if (Toward.IsNearlyZero())
 	{

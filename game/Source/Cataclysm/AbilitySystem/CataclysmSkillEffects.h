@@ -2898,6 +2898,20 @@ public:
 	static bool IsBehind(const AActor* Attacker, const AActor* Target);
 
 	/**
+	 * `IsBehind`, `ApplyKnockback` and `ApplyPull` measured from a POINT rather than from the instigator's own
+	 * place. Ruled 2026-10-14, for "Gadgets copy the last skill you used and fire it at their target once every 2
+	 * seconds": the copy is the summoner's blow, so the summoner is still the instigator, and it is struck from the
+	 * gadget's place, so that place is what is behind the target, what the target is shoved away from and what it is
+	 * hauled toward.
+	 *
+	 * THE ONE BODY OF EACH. The three above are these, asked with the instigator's location, so a blow from a point
+	 * and a blow from a character cannot be judged by two rules.
+	 */
+	static bool IsBehindFrom(const FVector& AttackerAt, const AActor* Target);
+	static bool ApplyKnockbackFrom(AActor* Instigator, AActor* Target, const FVector& From, float DistanceCm);
+	static bool ApplyPullFrom(AActor* Instigator, AActor* Target, const FVector& From, float DistanceCm);
+
+	/**
 	 * Whether this actor's health has reached zero.
 	 *
 	 * A TAG RATHER THAN A FLAG, for the reason a stun is one: the two controllers

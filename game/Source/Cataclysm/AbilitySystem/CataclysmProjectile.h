@@ -545,6 +545,15 @@ public:
 	TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>> LandedOnInItsUse;
 
 	/**
+	 * Where the use that fired this was cast from, when that was not its firer's own place: read while
+	 * `bStrikesFromAPoint` is set. Ruled 2026-10-14, for a gadget's copy of its summoner's skill: the firer is the
+	 * summoner and the shot leaves the gadget. Set by `UCataclysmProjectileSkill` just after `Fire`. Only whether a
+	 * contact is FROM BEHIND reads it; everything else a contact does is the firer's, as for any shot.
+	 */
+	bool bStrikesFromAPoint = false;
+	FVector StrikesFromPoint = FVector::ZeroVector;
+
+	/**
 	 * A stand-in for the flying object, sized to BodyRadiusCm when it is fired.
 	 *
 	 * WITHOUT THIS EVERY PROJECTILE IN THE GAME IS INVISIBLE, and every one of

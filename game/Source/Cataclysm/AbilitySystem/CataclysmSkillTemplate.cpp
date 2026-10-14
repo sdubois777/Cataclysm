@@ -434,7 +434,12 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// the effect type's cull distance, outside the view frustum, and in every
 	// automation test, which runs with -nullrhi. None of those is a reason not
 	// to use the skill.
-	if (AActor* Self = Avatar())
+	//
+	// NONE OF IT FOR A USE CAST FROM ANOTHER PLACE. Ruled 2026-10-14: a gadget's copy of its summoner's skill starts
+	// from the gadget, and the summoner did not swing, so the summoner is not turned, plays no attack clip and has no
+	// burst drawn at its feet. See `bFreeRepeatHasOrigin`.
+	AActor* const SwingingAvatar = bFreeRepeatHasOrigin ? nullptr : Avatar();
+	if (AActor* Self = SwingingAvatar)
 	{
 		// THE CHARACTER TURNS TO FACE WHAT IT IS HITTING. Decided by the project
 		// owner on 2026-09-01, after seeing the first attack animations: a skill
@@ -531,8 +536,11 @@ float UCataclysmSkillTemplate::SecondsUntilTheSwingConnects() const
 	//
 	// ZERO FOR ANYTHING THAT IS NOT ONE OF OUR CHARACTERS, which is the same
 	// answer as "no animation played" and means the blow lands now.
+	//
+	// AND NOUGHT FOR A USE CAST FROM ANOTHER PLACE, ruled 2026-10-14: `CommitAndBegin` played no clip for it, so the
+	// figure the character holds is its last swing's and not this one's. The row's delay below is still added.
 	const ACataclysmCharacterBase* Character =
-		Cast<ACataclysmCharacterBase>(Avatar());
+		bFreeRepeatHasOrigin ? nullptr : Cast<ACataclysmCharacterBase>(Avatar());
 	const float WindUp = Character ? Character->SecondsUntilTheSwingConnects() : 0.0f;
 
 	// AND THE CAST DELAY A WORN ROW ADDS, AT THIS ONE PLACE. Ruled 2026-10-08,
@@ -705,6 +713,9 @@ void UCataclysmSkillTemplate::EndAbility(
 	bFreeRepeat = false;
 	bFreeRepeatPaysCost = false;
 	FreeRepeatDamageShare = 1.0f;
+	// AND THE PLACE A USE WAS CAST FROM, ruled 2026-10-14. Only a one-use grant ever holds one, and it is removed as
+	// it ends; cleared all the same, so nothing that outlives the use can read it.
+	bFreeRepeatHasOrigin = false;
 }
 
 bool UCataclysmSkillTemplate::CanActivateAbility(
@@ -2069,6 +2080,17 @@ AActor* UCataclysmSkillTemplate::Avatar() const
 	return Info ? Info->AvatarActor.Get() : nullptr;
 }
 
+FVector UCataclysmSkillTemplate::CastOrigin() const
+{
+	// THE PLACE A FREE START WAS GIVEN, and otherwise where the caster stands. Ruled 2026-10-14.
+	if (bFreeRepeatHasOrigin)
+	{
+		return FreeRepeatOrigin;
+	}
+	const AActor* Self = Avatar();
+	return Self ? Self->GetActorLocation() : FVector::ZeroVector;
+}
+
 FVector UCataclysmSkillTemplate::AimPoint() const
 {
 	// FOLLOW THROUGH'S REPEAT IS AIMED AT THE ENEMY IT WAS MADE FOR, never at the
@@ -2111,7 +2133,9 @@ FVector UCataclysmSkillTemplate::AimDirection() const
 		return FVector::ForwardVector;
 	}
 
-	FVector Direction = AimPoint() - Self->GetActorLocation();
+	// FROM WHERE THE USE IS CAST, which is the caster's own place unless a free start was given another. Ruled
+	// 2026-10-14. The fallback below is still the caster's own facing.
+	FVector Direction = AimPoint() - CastOrigin();
 	Direction.Z = 0.0f;
 
 	// Nearly zero means the cursor is on the caster, or there is no cursor at
@@ -2135,7 +2159,8 @@ FVector UCataclysmSkillTemplate::AimedPointWithin(float RangeCm) const
 		return FVector::ZeroVector;
 	}
 
-	const FVector Origin = Self->GetActorLocation();
+	// FROM WHERE THE USE IS CAST, ruled 2026-10-14: see `CastOrigin`.
+	const FVector Origin = CastOrigin();
 	if (RangeCm <= 0.0f)
 	{
 		return Origin;
@@ -2270,8 +2295,11 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// player managed to stand. Making it merely likely -- by teleporting to
 		// the far side and then measuring -- would leave the row's own sentence
 		// depending on which way each creature happened to turn.
-		const bool bFromBehind =
-			Params.bRearHits || UCataclysmSkillEffects::IsBehind(Self, Target);
+		//
+		// MEASURED FROM WHERE THE USE IS CAST, ruled 2026-10-14: a gadget's copy strikes from the gadget's place.
+		const bool bFromBehind = Params.bRearHits
+			|| (bFreeRepeatHasOrigin ? UCataclysmSkillEffects::IsBehindFrom(FreeRepeatOrigin, Target)
+									 : UCataclysmSkillEffects::IsBehind(Self, Target));
 
 		// AND A ROW MAY ASK FOR MORE DAMAGE WHEN IT IS. The Dagger's Emberpierce:
 		// "the strike deals 40% more damage from behind."
@@ -2665,6 +2693,13 @@ void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) con
 	// C++ on the creature rather than a skill template, so the Brute's Stomp and
 	// the Abyssal Warden's Stampede had no way to reach any of it. Issue #625
 	// moved it out; there is one definition of a shove and both directions use it.
+	//
+	// AWAY FROM WHERE THE USE IS CAST, ruled 2026-10-14: a gadget's copy shoves away from the gadget.
+	if (bFreeRepeatHasOrigin)
+	{
+		UCataclysmSkillEffects::ApplyKnockbackFrom(Self, Target, FreeRepeatOrigin, Params.KnockbackCm);
+		return;
+	}
 	UCataclysmSkillEffects::ApplyKnockback(Self, Target, Params.KnockbackCm);
 }
 
@@ -2702,8 +2737,17 @@ bool UCataclysmSkillTemplate::ApplyForcedMovementTo(AActor* Self, AActor* Target
 	// cannot rise for 2 seconds."
 	if (ForcedMovementNames(TEXT("Pull")) || ForcedMovementNames(TEXT("Drag")))
 	{
-		UCataclysmSkillEffects::ApplyPull(Self, Target,
-										  Params.ForcedMovementDistanceCm);
+		// TOWARD WHERE THE USE IS CAST, ruled 2026-10-14: a gadget's copy hauls its catch to the gadget.
+		if (bFreeRepeatHasOrigin)
+		{
+			UCataclysmSkillEffects::ApplyPullFrom(Self, Target, FreeRepeatOrigin,
+												  Params.ForcedMovementDistanceCm);
+		}
+		else
+		{
+			UCataclysmSkillEffects::ApplyPull(Self, Target,
+											  Params.ForcedMovementDistanceCm);
+		}
 	}
 
 	if (ForcedMovementNames(TEXT("Launch")))

@@ -281,11 +281,15 @@ void UCataclysmStrikeSkill::ActivateAbility(
 			// Under the caster's own feet. Molten Cleave drags its slag from
 			// where the swing started; Pyroclasm leaves "the ground within 5
 			// meters".
-			LeaveGroundAt(Self->GetActorLocation());
+			//
+			// "THE CASTER'S FEET" ARE WHERE THE USE IS CAST FROM, here and for the
+			// zone and the terrain below: a gadget's copy leaves them at the
+			// gadget. Ruled 2026-10-14; see `CastOrigin`.
+			LeaveGroundAt(CastOrigin());
 
 			// AND THE ZONE A ROW GIVES A STRIKE THAT STATES NO GROUND, in the same place: "your spells leave a
 			// persistent AOE zone at the impact point". Ruled 2026-10-06. Nothing for a character with no row.
-			LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Self->GetActorLocation());
+			LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, CastOrigin());
 
 			// AND THE TERRAIN, WHICH IS A DIFFERENT THING FROM THE GROUND ABOVE.
 			// Three Strike rows leave some: the Spear's Thicket raises spears
@@ -303,13 +307,17 @@ void UCataclysmStrikeSkill::ActivateAbility(
 			// THE SWING'S OWN FACING, taken at the moment the weapon connects
 			// rather than when the ability began, so a player who turned during
 			// the wind-up raises the ridge where they are pointing now.
-			const FVector Feet = Self->GetActorLocation();
+			//
+			// A USE CAST FROM ANOTHER PLACE RUNS ITS RIDGE ALONG ITS AIM, because
+			// it turned nobody to face it. Ruled 2026-10-14.
+			const FVector Feet = CastOrigin();
+			const FVector Ahead = bFreeRepeatHasOrigin ? AimDirection() : Self->GetActorForwardVector();
 			const bool bIsWall = ACataclysmTerrain::KindFromCell(Params.Terrain)
 				== ECataclysmTerrainKind::Wall;
 			LeaveTerrainAlong(
 				Feet,
 				bIsWall
-					? Feet + Self->GetActorForwardVector() * Params.TerrainSizeCm
+					? Feet + Ahead * Params.TerrainSizeCm
 					: Feet);
 		}
 
@@ -419,12 +427,16 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// AND A STRIKE A ROW GIVES A LEAST ARC HAS NO TARGET LIMIT. Ruled
 	// 2026-10-07: "hits ALL enemies in a 180 degree arc". Nought is how
 	// `FindEnemiesInCone` is told there is no limit.
+	//
+	// THE APEX IS WHERE THE USE IS CAST FROM, the caster's own place unless a free start was given another: a
+	// gadget's copy swings from the gadget. Ruled 2026-10-14; see `CastOrigin`.
 	const int32 MostTargets = ArcAtLeastDegrees() > 0.0f ? 0 : Params.MaxTargets;
+	const FVector Apex = CastOrigin();
 	const TArray<AActor*> Targets = ThisUseHitsAllWithinCm > 0.0f
 		? UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Self, Self->GetActorLocation(), FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+			GetWorld(), Self, Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
 		: UCataclysmTargeting::FindEnemiesInCone(
-			GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
+			GetWorld(), Self, Apex, AimDirection(),
 			ScaledRadiusCm(), ArcDegrees(), MostTargets);
 
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
@@ -508,7 +520,8 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// player swing white -- which is what every other effect in the project
 	// still does. Issue #803. `ElementTag` is the skill's own `Element.*` tag
 	// out of the Weapon Skills sheet.
-	UCataclysmStrikeEffect::PlayAt(Self, Self->GetActorLocation(), AimDirection(),
+	// DRAWN WHERE THE SWING WAS MADE, the apex above. Ruled 2026-10-14.
+	UCataclysmStrikeEffect::PlayAt(Self, Apex, AimDirection(),
 								   UCataclysmStrikeEffect::DamageTypeFor(
 									   Self, ElementTag()),
 								   ScaledRadiusCm());
@@ -1226,8 +1239,11 @@ ACataclysmTether* UCataclysmProjectileSkill::BindTether(AActor* Caster)
 	// its bolt is -- and, now, how close something must come to the line to be
 	// burned by it -- while the range is how far the whip is thrown. Asking the
 	// wrong one would look for two enemies inside a metre and a half.
+	//
+	// WITHIN THAT RANGE OF WHERE THE USE IS CAST, which is the caster's own place unless a free start was given
+	// another. Ruled 2026-10-14; see `CastOrigin`.
 	TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Caster, Caster->GetActorLocation(), ScaledRangeCm(),
+		GetWorld(), Caster, CastOrigin(), ScaledRangeCm(),
 		Params.TetherTargets);
 
 	if (Found.Num() < Params.TetherTargets)
@@ -1402,7 +1418,10 @@ void UCataclysmProjectileSkill::ActivateAbility(
 			return;
 		}
 
-		Origin = Caster->GetActorLocation();
+		// FROM WHERE THE USE IS CAST: the caster's own place, or the gadget's for a gadget's copy. Ruled 2026-10-14;
+		// see `CastOrigin`. Everything below that reads `Origin` -- the throw, the lob, a beam's line, a return's
+		// way back, the ground along the flight -- reads it from there.
+		Origin = CastOrigin();
 
 		// A LINE BOUND BETWEEN TWO ENEMIES, IF THE ROW ASKS FOR ONE. The Whip's
 		// Tether: "bind two enemies within 12 meters together with a burning
@@ -1490,6 +1509,10 @@ void UCataclysmProjectileSkill::ActivateAbility(
 			return;
 		}
 
+		// AND IT IS TOLD WHERE ITS USE WAS CAST FROM, for whether a contact is from behind. Ruled 2026-10-14.
+		InFlight->bStrikesFromAPoint = bFreeRepeatHasOrigin;
+		InFlight->StrikesFromPoint = Origin;
+
 		// AND IT GLANCES ONWARD IF THE ROW SAYS SO. The Axe's Carom: "it glances
 		// from them to the next nearest and onward through three more ... every
 		// enemy it touches after the first adds 20% to its damage."
@@ -1553,6 +1576,8 @@ void UCataclysmProjectileSkill::ActivateAbility(
 					// the ones it has.
 					continue;
 				}
+				Shot->bStrikesFromAPoint = bFreeRepeatHasOrigin;
+				Shot->StrikesFromPoint = Origin;
 				Shot->JoinsAUse(LandedOn, Index);
 				LetItGlance(Shot);
 				Shot->OnFinished.AddUObject(
@@ -1744,8 +1769,10 @@ AActor* UCataclysmProjectileSkill::NextThrowTarget()
 	// ASKED AFRESH FOR EVERY THROW. A rack empties over ten seconds and the
 	// enemies move and die during it, so a list gathered once would go on
 	// throwing at corpses and at places nobody is standing any more.
+	//
+	// WITHIN RANGE OF WHERE THE USE IS CAST, ruled 2026-10-14: a gadget's copy throws from the gadget.
 	const TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Self, Self->GetActorLocation(), ScaledRangeCm());
+		GetWorld(), Self, CastOrigin(), ScaledRangeCm());
 	if (InRange.IsEmpty())
 	{
 		return nullptr;
@@ -1797,7 +1824,10 @@ bool UCataclysmProjectileSkill::ThrowOne()
 
 	// FROM WHERE THE CHARACTER IS NOW, not from where the rack started. Ten
 	// seconds is long enough to walk across a room.
-	const FVector From = Self->GetActorLocation();
+	//
+	// OR FROM WHERE THE USE IS CAST, when a free start was given another place: a gadget's copy throws its rack
+	// from the gadget, which does not move. Ruled 2026-10-14.
+	const FVector From = CastOrigin();
 
 	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
 		Self, From, Target->GetActorLocation(), ScaledRadiusCm(),
@@ -1805,6 +1835,11 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		GetDamagePercent(), SkillTags, Params.bBurns,
 		/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
 		CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
+	if (Axe)
+	{
+		Axe->bStrikesFromAPoint = bFreeRepeatHasOrigin;
+		Axe->StrikesFromPoint = From;
+	}
 
 	// AND EACH AXE OF A RACK GLANCES AS A SINGLE THROW DOES, when the row states bounces or a row of the
 	// user's adds them: "Projectiles ricochet 1-4 times" names no kind of projectile. Ruled 2026-10-07.
@@ -1826,7 +1861,10 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// #1515: the Ravager's starting node pays for each enemy a blow lands on,
 		// and `Dealt` is what was sent, so only the result says whether it landed.
 		// WHICH SIDE, ASKED BEFORE THE HIT as a fired contact asks it. Issue #1938.
-		const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Self, Target);
+		// FROM WHERE THE AXE WAS THROWN when that was another place than the caster's, ruled 2026-10-14.
+		const bool bFromBehind = bFreeRepeatHasOrigin
+			? UCataclysmSkillEffects::IsBehindFrom(From, Target)
+			: UCataclysmSkillEffects::IsBehind(Self, Target);
 
 		// AND WHAT THIS USE SPENT FROM NEXT-USE CHARGES, as a fired axe carries
 		// it. Issue #1833, phase 2.
@@ -5368,8 +5406,11 @@ void UCataclysmDebuffSkill::ActivateAbility(
 		// player pointing roughly at an enemy takes that enemy, and pointing at
 		// nothing takes the nearest, which is what a single-target curse should
 		// do.
+		//
+		// IN RANGE OF WHERE THE USE IS CAST, the caster's own place unless a free start was given another: a
+		// gadget's copy curses within its range of the gadget. Ruled 2026-10-14; see `CastOrigin`.
 		TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Caster, Caster->GetActorLocation(), ScaledRangeCm());
+			GetWorld(), Caster, CastOrigin(), ScaledRangeCm());
 
 		const FVector Aim = AimPoint();
 		InRange.Sort([&Aim](const AActor& A, const AActor& B)
