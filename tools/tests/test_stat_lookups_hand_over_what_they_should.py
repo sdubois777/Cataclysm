@@ -140,6 +140,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: `UCataclysmDelayedDamage::ShareThatWouldBeDelayed`, which `DelayShare`
 #: calls and which the two saves from a lethal blow also ask. They moved and
 #: none was added, so the count did not change.
+#: A debuff of the wearer's cutting what its carrier deals added two more on
+#: 2026-10-13, both asked by `UCataclysmDebuffs::NoteLaid` where a debuff is
+#: put on another character: the cut, and the Conduit flag for what a zone lays.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -864,6 +867,19 @@ INVENTORY = {
         "asked beside the share in ShareThatWouldBeDelayed and for the same "
         "character; "
         "no tags, no blow and no target, for the reason the share gives",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(DebuffedEnemiesDealLessPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the percent less an enemy deals while it carries a debuff of this "
+        "character's (ruled 2026-10-13), asked of the applier by NoteLaid "
+        "where a debuff is put on another character; the row is about every "
+        "debuff its wearer applies with whatever, so no tags, and a debuff "
+        "is not a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(ZoneDebuffsCountUnderStat), FGameplayTagContainer(), 0.0f'):
+        "whether a ground zone's owner holds Conduit (ruled 2026-10-13), "
+        "asked of the owner by NoteLaid just before the stat above, only "
+        "while a zone is laying its effects; a flag of the character's, so "
+        "no tags, no blow and no target",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
