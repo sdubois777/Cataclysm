@@ -275,7 +275,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # ONE MORE JOINED with its row, issue #1833: "Your gadgets prioritize the
               # highest HP enemy within their range instead of the nearest". A gadget asks
               # its summoner whether it is above nought each time it picks a target.
-              "gadgets_target_most_health"}
+              "gadgets_target_most_health",
+              # ONE MORE JOINED with its row, issue #1833: "When a gadget kills an enemy, it
+              # fires an additional burst at the nearest enemy within its range". A gadget
+              # asks its summoner whether it is above nought when its own blow has killed.
+              "gadgets_burst_on_kill"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -885,8 +889,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 607 over 513: one row on one enchantment.
 #: AND 609 OVER 515 SINCE THE ROW THAT MAKES GADGETS FIRE A VOLLEY,
 #: issue #1833, 2026-10-13, from 608 over 514: one row on one enchantment.
-AUTHORED_ROWS = 609
-AUTHORED_ENCHANTMENTS = 515
+#: AND 610 OVER 516 SINCE THE ROW THAT MAKES A GADGET BURST ON A KILL,
+#: issue #1833, 2026-10-13, from 609 over 515: one row on one enchantment.
+AUTHORED_ROWS = 610
+AUTHORED_ENCHANTMENTS = 516
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
