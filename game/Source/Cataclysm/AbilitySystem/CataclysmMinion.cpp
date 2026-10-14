@@ -14,6 +14,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+// For the copy of its summoner's last skill a gadget casts. Ruled 2026-10-14.
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
@@ -535,6 +538,15 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 		return;
 	}
 
+	// THE COPY OF THE SUMMONER'S LAST SKILL, ON ITS OWN CLOCK, BEFORE THE VOLLEY, which returns early for a gadget
+	// whose summoner holds no volley row. Ruled 2026-10-14. A copy's blows are the summoner's and do not come back on
+	// the gadget, but a gadget a copy has somehow ended fires no volley on this step.
+	Gadget->StepSkillCopy();
+	if (UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		return;
+	}
+
 	// THE VOLLEY'S CLOCK. Nothing for a gadget whose summoner holds no such row, which is every gadget until a
 	// row is written.
 	const float Seconds = Gadget->VolleyEverySeconds();
@@ -614,6 +626,106 @@ int32 ACataclysmMinion::FireVolley()
 		++Struck;
 	}
 	return Struck;
+}
+
+const TCHAR* ACataclysmMinion::GadgetsCopyYourLastSkillStat = TEXT("gadgets_copy_your_last_skill");
+
+bool ACataclysmMinion::StepSkillCopy()
+{
+	// NOTHING FOR A GADGET WHOSE SUMMONER HOLDS NO ROW, and nothing for anything that is not a gadget: an imp, a
+	// mote and a Spike Trap are answered nought before their summoner is asked.
+	if (SummonersGadgetStat(GadgetsCopyYourLastSkillStat) <= 0.0f)
+	{
+		return false;
+	}
+	const float Age = GetGameTimeSinceCreation();
+
+	// BEFORE THE FIRST COPY, EVERY STEP TRIES, and the clock starts on the first copy that starts. See the header.
+	if (!bHasCopiedASkill)
+	{
+		if (!CopySummonersLastSkill())
+		{
+			return false;
+		}
+		bHasCopiedASkill = true;
+		LastSkillCopyAtAgeSeconds = Age;
+		return true;
+	}
+
+	if (Age - LastSkillCopyAtAgeSeconds < SecondsBetweenSkillCopies)
+	{
+		return false;
+	}
+
+	// IT HAS COME ROUND AGAIN, and the beat is kept as the volley's is: the mark moves on by the 2 seconds and not to
+	// now, and a mark still a whole period behind is brought to now. A BEAT THAT CASTS NOTHING IS PASSED OVER: the mark
+	// has moved on all the same, so the next copy is 2 seconds later and not at the next step that could cast one.
+	LastSkillCopyAtAgeSeconds += SecondsBetweenSkillCopies;
+	if (Age - LastSkillCopyAtAgeSeconds >= SecondsBetweenSkillCopies)
+	{
+		LastSkillCopyAtAgeSeconds = Age;
+	}
+	return CopySummonersLastSkill();
+}
+
+AActor* ACataclysmMinion::SkillCopyTarget() const
+{
+	// THE BRAIN'S OWN CHOICE, so "Your gadgets prioritize the highest HP enemy" and a Quarry mark reach the copy as
+	// they reach the gadget's shot. Ruled 2026-10-14.
+	const ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(GetController());
+	AActor* Chosen = Brain ? Brain->ChooseTarget() : nullptr;
+	if (!IsValid(Chosen) || UCataclysmSkillEffects::IsDead(Chosen))
+	{
+		return nullptr;
+	}
+
+	// AND ONLY WHILE IT STANDS WITHIN THIS GADGET'S REACH, BY THE BRAIN'S OWN MEASURE: a choice beyond it is one the
+	// gadget does not fire at either, because a gadget does not walk. See `HostilesWithinReach`.
+	return FVector::Dist2D(GetActorLocation(), Chosen->GetActorLocation()) <= ReachCm + ReachAllowanceCm
+		? Chosen
+		: nullptr;
+}
+
+bool ACataclysmMinion::CopySummonersLastSkill()
+{
+	// A GADGET, standing and able to act, OF A SUMMONER THAT IS STILL HERE AND ALIVE.
+	AActor* const Caster = Summoner.Get();
+	if (!IsGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Caster) || UCataclysmSkillEffects::IsDead(Caster))
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Caster));
+	const FName Named = Theirs ? Theirs->SkillGadgetsCopy() : NAME_None;
+	if (Named.IsNone())
+	{
+		return false;
+	}
+	AActor* Target = SkillCopyTarget();
+	if (!Target)
+	{
+		return false;
+	}
+
+	// THE ROW AS THE SUMMONER HOLDS IT NOW, and still one a row may cast again. One it no longer holds casts nothing,
+	// and the record is kept. A judgement of the enchantment session, built as judged.
+	FCataclysmWeaponSkill Skill;
+	if (!UCataclysmTriggeredSkill::HeldSkillNamed(Caster, Named, Skill)
+		|| !UCataclysmTriggeredSkill::RepeatsFromARow(Skill))
+	{
+		return false;
+	}
+
+	// GRANTED TO THE SUMMONER FOR ONE USE, FREE, FROM HERE, AT THE TARGET, AT THE WHOLE OF ITS DAMAGE.
+	const FVector From = GetActorLocation();
+	if (!UCataclysmTriggeredSkill::Trigger(Caster, Skill, Target->GetActorLocation(), /*DamageShare=*/1.0f,
+										   /*bPaysCost=*/false, &From))
+	{
+		return false;
+	}
+	++SkillCopiesMade;
+	return true;
 }
 
 const TCHAR* ACataclysmMinion::GadgetsTakeNoDamageStat = TEXT("gadgets_take_no_damage");

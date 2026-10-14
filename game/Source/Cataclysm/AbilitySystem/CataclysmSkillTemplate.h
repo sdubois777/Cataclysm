@@ -48,6 +48,21 @@ public:
 	 */
 	FVector FreeRepeatAim = FVector::ZeroVector;
 
+	/**
+	 * Where a free start is cast FROM, when that is not its avatar's own place: `FreeRepeatOrigin`, read while
+	 * `bFreeRepeatHasOrigin` is set. Ruled 2026-10-14, for "Gadgets copy the last skill you used and fire it at their
+	 * target once every 2 seconds": the copy is the summoner's own skill, started from the gadget's place. SET ONLY
+	 * BY `UCataclysmTriggeredSkill::Trigger` WHEN ITS CALLER GIVES A PLACE, which `ACataclysmMinion` alone does, on a
+	 * one-use grant whose instance nothing else holds. Cleared when the use ends.
+	 *
+	 * EVERY READ OF THE CASTER'S PLACE ON THE THREE SHAPES A ROW MAY CAST AGAIN asks `CastOrigin`, which answers this
+	 * when it is set and the avatar's location otherwise; `docs/DECISIONS.md`, 2026-10-14, lists each read and each
+	 * read that was left. AND WITH A PLACE SET, `CommitAndBegin` turns nobody, plays no attack clip and draws no cast
+	 * burst, and the summoner's wind-up is not waited for: the summoner did not swing.
+	 */
+	bool bFreeRepeatHasOrigin = false;
+	FVector FreeRepeatOrigin = FVector::ZeroVector;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FString SkillDescription;
 
@@ -853,6 +868,12 @@ protected:
 
 	/** The actor doing the hitting: the avatar, not the player state. */
 	AActor* Avatar() const;
+
+	/**
+	 * Where this use is cast from: `FreeRepeatOrigin` while `bFreeRepeatHasOrigin` is set, and the avatar's own
+	 * location otherwise, or the world origin with no avatar. Ruled 2026-10-14; see `bFreeRepeatHasOrigin`.
+	 */
+	FVector CastOrigin() const;
 
 	/** Where the player is pointing, or the avatar's location if unknown. */
 	FVector AimPoint() const;
