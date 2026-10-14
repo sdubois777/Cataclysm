@@ -758,9 +758,45 @@ class TuningConfig:
     # active Cataclysms, rounded up, have had their own count met. See
     # `cataclysms_required` and `Simulation._maybe_open_cataclysm`.
     quest_objectives_required: int = 8
-    # A quest dungeon that reaches the end of its timer relocates instead of
-    # detonating (GDD VIII: "does not resolve -- refreshes and may move").
+    # A quest dungeon that reaches the end of its timer may relocate (GDD
+    # VIII: "refreshes and may move"). Since 2026-10-13 it hits its host
+    # first; that is `quest_timer_hits_city` below and not this setting.
     quest_relocates: bool = True
+
+    # Does a Quest dungeon's timer running out hit the city it stands on?
+    #
+    # IT DOES, SINCE 2026-10-13. The owner, 2026-10-08, verbatim: "Quest
+    # dungeons will do their city/population damage, and either refresh
+    # their timer and stay on that city, or potentially move to an adjacent
+    # city." On 2026-10-09 the owner accepted a recommendation that a Quest
+    # dungeon costs its city nothing, and the model kept that. On 2026-10-13
+    # the owner accepted the coordinating session's recommendation, in that
+    # session's words: a Quest dungeon HITS its city when its timer runs
+    # out, at the size of an ordinary dungeon's hit for that city, then
+    # refreshes or moves as before. That reverses the 2026-10-09 line.
+    #
+    # THE SIZE is the ordinary row of the host city's tier at a scale of
+    # 1.0, times the tree's damage reduction. `Simulation._quest_hit` has
+    # the readings taken. A city already fallen is hit by nothing. A death
+    # inside a Quest dungeon still resolves nothing.
+    #
+    # False IS THE MODEL AS IT WAS BEFORE 2026-10-13: the timer refreshes,
+    # the dungeon may move, and no city pays. With False no line of the hit
+    # runs, so a campaign draws the stream it drew before.
+    #
+    # THE GAME DOES NOT HAVE THIS RULE AND DIFFERS ON PURPOSE.
+    # `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`.
+    quest_timer_hits_city: bool = True
+
+    # THE OTHER READING OF THE SIZE, FOR MEASUREMENT ONLY. True multiplies
+    # a Quest dungeon's hit by its floors over the midpoint of the ordinary
+    # row's floor range, which is how an ordinary dungeon's hit is scaled.
+    # A Quest dungeon is deeper than an ordinary one of the same city, so
+    # True makes its hit larger than an ordinary one: about 2.2 times on an
+    # Outpost at the middle of both ranges (25 floors over 11.5). The
+    # accepted recommendation says "an ordinary dungeon's size" and False
+    # is the reading taken: a labelled judgement, 2026-10-13.
+    quest_hit_scales_with_depth: bool = False
 
     #: The chance a Quest dungeon with somewhere adjacent to go actually goes.
     #:
@@ -864,8 +900,13 @@ class TuningConfig:
             (DungeonType.BASIC, CityTier.PILLAR):
                 DungeonSpec((40, 60),  (30, 50), 1_200.0, 4_500.0),
 
-            # Quest dungeons never resolve (GDD VIII) -- they refresh and may
-            # move. Bites are zero; the timer is a relocation clock.
+            # A Quest dungeon's OWN rows carry no damage, and the game's
+            # `SpecFor` holds the same zeros. Until 2026-10-13 this said
+            # "Quest dungeons never resolve (GDD VIII) -- they refresh and
+            # may move. Bites are zero; the timer is a relocation clock."
+            # Since that date its timer running out hits its host with the
+            # ORDINARY row of the host's tier, above, and these rows are not
+            # read for it. `quest_timer_hits_city`.
             (DungeonType.QUEST, CityTier.OUTPOST):
                 DungeonSpec((20, 30),  (25, 40), 0.0, 0.0),
             (DungeonType.QUEST, CityTier.BULWARK):

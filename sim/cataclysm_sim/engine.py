@@ -132,8 +132,16 @@ class Dungeon:
 
     @property
     def resolves(self) -> bool:
-        """Quest dungeons refresh instead of resolving; Fallen City and
-        Cataclysm dungeons have already done their damage."""
+        """Only an ordinary dungeon resolves; Fallen City and Cataclysm
+        dungeons have already done their damage.
+
+        A QUEST DUNGEON ANSWERS False AND STILL HITS ITS CITY, since
+        2026-10-13. Its timer running out takes an ordinary dungeon's hit
+        from its host through `Simulation._quest_hit`, and that path does
+        not ask this property. This one is read by a death, which resolves
+        an ordinary dungeon and no other kind, by `_urgent`, and by the
+        policies, and none of the three changed on that date.
+        """
         return self.dtype is DungeonType.BASIC
 
 
@@ -191,6 +199,10 @@ class RunResult:
     #: total across every active Cataclysm: `_maybe_open_cataclysm` opens the
     #: capital once `cataclysms_required()` of these are finished. Issue #1436.
     cataclysms_finished: int
+    #: Times a Quest dungeon's timer ran out and hit a standing city. NOT
+    #: PART OF `dungeons_resolved`. 0 with `quest_timer_hits_city` off,
+    #: which is what every figure measured before 2026-10-13 describes.
+    quest_hits: int = 0
 
     @property
     def triage_pressure(self) -> float:
@@ -290,6 +302,9 @@ class Simulation:
         #: Floors the earned boss gained from `basic_cleared` when it opened.
         self.cataclysm_floors_earned = 0
         self.resolved = 0
+        #: Times a Quest dungeon's timer ran out and hit a standing city.
+        #: NOT PART OF `resolved`, which counts ordinary dungeons alone.
+        self.quest_hits = 0
         self.floors_cleared = 0     # loot proxy: reward scales with depth
         self.empire_points = 0.0
         #: The same awards WITHOUT the population multiplier. Carried so a run
@@ -338,8 +353,10 @@ class Simulation:
             jitter = 1.0 + self.rng.uniform(-cfg.resolve_jitter, cfg.resolve_jitter)
             resolve = base * jitter + cfg.tree.resolve_bonus_days
         else:
-            # Quest dungeons relocate, Fallen Cities and the Cataclysm have
-            # already done their damage. None of them detonate.
+            # A Quest dungeon's timer is flat and is not rolled from its
+            # depth. Fallen Cities and the Cataclysm have already done their
+            # damage and do not detonate. Since 2026-10-13 a Quest dungeon's
+            # timer running out hits its host; see `_quest_hit`.
             resolve = spec.resolve_days[0]
 
         d = Dungeon(
@@ -688,7 +705,13 @@ class Simulation:
         cfg = self.cfg
         city = self.empire.cities[d.city_id]
 
-        # A quest dungeon does not detonate; it picks up and moves.
+        # A QUEST DUNGEON HITS ITS HOST CITY, THEN ITS TIMER IS FULL AGAIN,
+        # THEN IT MAY MOVE. The hit is `_quest_hit`, in the model since
+        # 2026-10-13 and asked by `cfg.quest_timer_hits_city`. Until that
+        # date the timer cost the city nothing and this comment began "A
+        # quest dungeon does not detonate; it picks up and moves". The
+        # paragraphs below are about the refresh and the move, and they
+        # read as they did.
         #
         # TO AN ADJACENT CITY, AND ONLY AN ADJACENT ONE. This used to draw from
         # `exposed_cities()` -- anywhere on the map -- which contradicts the
@@ -746,6 +769,11 @@ class Simulation:
         # rows: a dungeon that drifted inward onto a bigger city read as
         # shallower than it is and one that drifted outward read as deeper.
         #
+        # SINCE 2026-10-13 A QUEST DUNGEON'S HIT DOES NOT READ `city_tier`
+        # EITHER. `_quest_hit` reads the ordinary row of the tier of the
+        # city the dungeon STANDS ON when the hit lands, which is the
+        # host's tier and not this field.
+        #
         # IT COST NOTHING AND NOTHING WOULD HAVE FAILED WHEN IT DID. A Quest
         # dungeon returns above without ever reaching the scale, so the wrong
         # row was never read; it would have become a live wrong number the
@@ -760,6 +788,19 @@ class Simulation:
         # different number of days and over a different list, so the whole
         # stream diverges from the day the first quest timer fires.
         if d.dtype is DungeonType.QUEST:
+            # THE HIT FIRST. A city already fallen is hit by nothing, as for
+            # an ordinary dungeon.
+            if cfg.quest_timer_hits_city and not city.fallen:
+                self._quest_hit(d, city)
+
+                # THE HIT FELLED THE CITY AND THE FALL ABSORBED THIS DUNGEON
+                # with every other dungeon on it, so nothing is left to
+                # refresh or to move, and no draw is taken. `_fall` spares
+                # the dungeon the player is inside; that one is still on
+                # the map and goes on to the refresh and the move below.
+                if d.did not in self.dungeons:
+                    return
+
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
                 targets = self.empire.adjacent_exposed_cities(city)
@@ -844,6 +885,71 @@ class Simulation:
             d.resolve_in = float(d.resolve_max)
         else:
             self.dungeons.pop(d.did, None)
+
+    def _quest_hit(self, d: Dungeon, city: City) -> None:
+        """A Quest dungeon's timer ran out on a standing city: the city is hit.
+
+        THE OWNER, 2026-10-08, VERBATIM: "Quest dungeons will do their
+        city/population damage, and either refresh their timer and stay on
+        that city, or potentially move to an adjacent city." The model had
+        the opposite until 2026-10-13: the timer cost the city nothing,
+        which a recommendation accepted on 2026-10-09 had kept. The
+        recommendation accepted on 2026-10-13 reverses that one and returns
+        to the sentence above. `docs/DECISIONS.md`, 2026-10-13.
+
+        THE SIZE IS AN ORDINARY DUNGEON'S HIT FOR THE CITY IT STANDS ON.
+        That is the accepted recommendation's wording. In code it is the
+        ordinary (`BASIC`) row of the HOST city's tier at the moment of the
+        hit. It is not the tier the Quest dungeon's depth was rolled from
+        (`d.city_tier`), which a relocation does not move. The Quest rows
+        of `DUNGEON_SPECS` still carry 0.0 and `d.defense_damage` is still
+        0.0: nothing reads them for this, and leaving them keeps the
+        specification table equal to the game's `SpecFor`.
+
+        NO SCALE BY DEPTH, WHICH IS A READING. A Quest dungeon is deeper
+        than an ordinary one of the same city (20 to 30 floors on an
+        Outpost against 8 to 15), so dividing its floors by the ordinary
+        midpoint would make every Quest hit about twice an ordinary one.
+        "An ordinary dungeon's size" is read as the row at a scale of 1.0.
+        `cfg.quest_hit_scales_with_depth` is the other reading, kept so the
+        two can be measured side by side.
+
+        THE TREE'S DAMAGE REDUCTION APPLIES as it does to any hit.
+
+        COUNTED IN `quest_hits` AND NOT IN `resolved`. `resolved` goes on
+        counting ordinary dungeons alone, so `RunResult.dungeons_resolved`
+        means what it meant in every earlier figure and still equals the
+        game's `DungeonsDetonated`. `Dungeon.times_resolved` is not raised
+        for a Quest dungeon either, as it never was.
+
+        A FALL IS A FALL. `_fall` absorbs every dungeon on the city, this
+        one included unless the player is inside it, exactly as when an
+        ordinary dungeon fells a city that a Quest dungeon stands on.
+
+        NO DRAW IS TAKEN HERE, so with the city left standing the random
+        stream is where it would have been without the hit.
+
+        THE GAME DOES NOT HAVE THIS RULE.
+        `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`
+        reads this and `UCataclysmEmpireRun::ResolveDungeon`.
+        """
+        cfg = self.cfg
+        ordinary = cfg.spec(DungeonType.BASIC, city.tier)
+
+        scale = 1.0
+        if cfg.quest_hit_scales_with_depth:
+            lo, hi = ordinary.floors
+            scale = d.floors / ((lo + hi) / 2.0)
+
+        self.quest_hits += 1
+
+        taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+        city.defense -= ordinary.defense_damage * scale * taken
+        city.population -= ordinary.population_damage * scale * taken
+        city.population = max(0.0, city.population)
+
+        if city.defense <= 0:
+            self._fall(city)
 
     def _apply_siege_damage(self) -> None:
         """Every standing Siege takes its daily share of the city it sits on.
@@ -1492,4 +1598,5 @@ class Simulation:
             free_days=self.free_days,
             overcommitted=self.overcommitted,
             cataclysms_finished=len(self.cataclysms_complete()),
+            quest_hits=self.quest_hits,
         )
