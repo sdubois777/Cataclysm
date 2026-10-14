@@ -613,9 +613,11 @@ public:
  * WHAT IS STILL ABSENT, and this is the corrected list:
  *
  *   - **What the player has achieved this run.** `DungeonsCleared`,
- *     `BasicDungeonsCleared`, `QuestObjectives` and `DungeonsDetonated` on
- *     `UCataclysmEmpireRun` are not written here, so a restored run would forget
- *     every quest objective earned and every dungeon beaten. Issue
+ *     `BasicDungeonsCleared`, `QuestObjectives`, `DungeonsDetonated` and
+ *     `QuestHits` on `UCataclysmEmpireRun` are not written here, so a restored
+ *     run would forget every quest objective earned and every dungeon beaten.
+ *     Nor are `LastHitDay` and the two fields beside it, so a restored run's
+ *     empire screen names no last hit until the next one. Issue
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
  *   - **What tier the run is played at, and which Cataclysms it faces.**
  *     `UCataclysmEmpireRun::DifficultyTier` and `ActiveCataclysms` are not
@@ -736,9 +738,14 @@ public:
 	 * The dungeons standing on the map.
 	 *
 	 * THE ONE THING IN A SAVED EMPIRE WITH NO HARD CEILING. Everything else has
-	 * one: 25 cities, at most three upgrades each. A dungeon that resolves
-	 * undefeated does not go away, so this list only shrinks when the player
-	 * clears one or a city falls and absorbs what stood on it.
+	 * one: 25 cities, at most three upgrades each. This list shrinks when the
+	 * player clears a dungeon, when a city falls and absorbs what stood on it,
+	 * and, since 2026-10-13, when an ordinary dungeon hits its city and leaves.
+	 *
+	 * THE FIGURES BELOW WERE MEASURED BEFORE 2026-10-13, with a resolved
+	 * dungeon staying on the map and surges of 4 every 120 days. They were not
+	 * measured again. With ordinary dungeons leaving, fewer should stand at
+	 * once; that is a reading and not a measurement.
 	 *
 	 * WHAT IT ACTUALLY REACHES, measured over 200 campaigns each in the model
 	 * this layer is a port of: about 13 standing at once in ordinary play,

@@ -1830,16 +1830,25 @@ bool FCataclysmEmpireRunRetakeTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 /**
- * A Quest dungeon's timer runs out and its host city pays nothing.
+ * A Quest dungeon's timer runs out, its host city takes an ordinary dungeon's
+ * hit for that city's tier, and the timer is full again.
  *
- * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not resolve --
- * refreshes and may move to adjacent city". So the timer running out is a real
- * event -- it appears in the day's report and it is what the move hangs on --
- * and the city must be untouched by it.
+ * UNTIL 2026-10-13 THIS TEST HELD THE OPPOSITE, under the name
+ * `AQuestDungeonRefreshesInsteadOfBitingItsCity`: the city paid nothing. The
+ * owner, 2026-10-08, verbatim: "Quest dungeons will do their city/population
+ * damage, and either refresh their timer and stay on that city, or potentially
+ * move to an adjacent city." `docs/DECISIONS.md`, 2026-10-13.
+ *
+ * WHAT THE CITY PAYS IS READ FROM THE TABLE AND NOT TYPED: the ordinary row of
+ * `SpecFor` for the tier of the city the dungeon stood on that morning.
+ *
+ * THE PARAGRAPH AT THE END, ABOUT TWO BREAKS, DESCRIBES THE OLD RULE. With the
+ * hit built it no longer describes what this test guards. It is kept because
+ * it records a proof that was run.
  *
  * IT DRIVES REAL CAMPAIGNS RATHER THAN BUILDING A DUNGEON BY HAND, because the
- * thing that could go wrong is `UCataclysmEmpireRun::ResolveDungeon` biting on a
- * kind it should not, and that is reached only through the day loop. A
+ * thing that could go wrong is `UCataclysmEmpireRun::ResolveDungeon` taking the
+ * wrong amount, and that is reached only through the day loop. A
  * hand-built dungeon inserted into the run's arrays would also have to be
  * inserted into the clock's, which is the corruption `DungeonsAgreeWithTimers`
  * exists to catch.
@@ -1863,7 +1872,7 @@ bool FCataclysmEmpireRunRetakeTest::RunTest(const FString& Parameters)
  * only one of the nineteen under `Cataclysm.EmpireRun` that fails when it is.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestRefreshTest,
-	"Cataclysm.EmpireRun.AQuestDungeonRefreshesInsteadOfBitingItsCity",
+	"Cataclysm.EmpireRun.AQuestDungeonHitsItsCityAndThenRefreshes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
@@ -1914,10 +1923,15 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 			// from `Dungeons`.
 			TMap<int32, float> DefenceWas;
 			TMap<int32, float> PopulationWas;
+			TSet<int32> FallenWas;
 			for (const FCataclysmCity& City : Run->Map->Cities)
 			{
 				DefenceWas.Add(City.CityId, City.Defence);
 				PopulationWas.Add(City.CityId, City.Population);
+				if (City.bFallen)
+				{
+					FallenWas.Add(City.CityId);
+				}
 			}
 
 			// WHICH CITIES COULD BE HURT BY SOMETHING THAT IS NOT A QUEST. Every
@@ -2017,11 +2031,16 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 				const int32 CityId = CityOf.FindRef(DungeonId);
 
 				if (CitiesWithABiter.Contains(CityId)
-					|| Report.Fallen.Contains(CityId))
+					|| Report.Fallen.Contains(CityId)
+					|| Report.Besieged.Contains(CityId)
+					|| FallenWas.Contains(CityId))
 				{
 					// SOMETHING ELSE COULD HAVE HURT THIS CITY TODAY, so it
 					// says nothing about the quest dungeon. Skipped rather than
-					// asserted loosely.
+					// asserted loosely. `Besieged` covers a Siege that landed
+					// today, which the morning's list cannot. A city that fell
+					// today is skipped because its defence stops at the fall,
+					// and one that had fallen before today is hit by nothing.
 					continue;
 				}
 
@@ -2033,14 +2052,42 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 
 				++CleanDaysChecked;
 
-				TestEqual(FString::Printf(
-					TEXT("%s lost no defence to the quest dungeon standing on "
-						 "it"), *City->Name),
-					City->Defence, DefenceWas.FindRef(CityId), 0.001f);
+				// HOW MANY QUEST TIMERS RAN OUT ON THIS CITY TODAY, counted
+				// from the morning's positions and not from the report's own
+				// `QuestHits`, so a hit the code failed to make is not also
+				// missing from what is expected. Two on one city is two hits.
+				int32 QuestTimersHere = 0;
+				for (const int32 OtherId : Report.Resolved)
+				{
+					if (KindOf.FindRef(OtherId) == ECataclysmDungeonType::Quest
+						&& CityOf.FindRef(OtherId) == CityId)
+					{
+						++QuestTimersHere;
+					}
+				}
+
+				// THE ORDINARY ROW OF THE HOST'S TIER, READ FROM THE TABLE.
+				// Population stops at nought, so a city with fewer people
+				// left than the row takes loses what it had.
+				const FCataclysmDungeonSpec OrdinaryRow =
+					UCataclysmSurgeScheduler::SpecFor(
+						ECataclysmDungeonType::Basic, City->Tier);
+				const float DefenceExpected =
+					OrdinaryRow.DefenceDamage * QuestTimersHere;
+				const float PopulationExpected = FMath::Min(
+					PopulationWas.FindRef(CityId),
+					OrdinaryRow.PopulationDamage * QuestTimersHere);
 
 				TestEqual(FString::Printf(
-					TEXT("%s lost nobody to it either"), *City->Name),
-					City->Population, PopulationWas.FindRef(CityId), 0.001f);
+					TEXT("%s lost the defence an ordinary dungeon's hit takes "
+						 "from a city of its tier, for each quest timer that "
+						 "ran out on it"), *City->Name),
+					DefenceWas.FindRef(CityId) - City->Defence,
+					DefenceExpected, 0.01f);
+				TestEqual(FString::Printf(
+					TEXT("%s lost that hit's population as well"), *City->Name),
+					PopulationWas.FindRef(CityId) - City->Population,
+					PopulationExpected, 0.01f);
 			}
 
 			CountQuests(*Run);
@@ -2063,6 +2110,14 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and their timers actually ran out"), TimersChecked > 0);
 	TestTrue(TEXT("and some did so on a day nothing else hurt the city"),
 			 CleanDaysChecked > 0);
+
+	// SET-UP FOR THE TWO AMOUNTS ABOVE: the ordinary row of an Outpost takes
+	// something. A row of nought would make "lost the row" true of a city that
+	// lost nothing.
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	TestTrue(TEXT("set-up: the ordinary row of an Outpost takes defence and population"),
+			 OutpostRow.DefenceDamage > 0.0f && OutpostRow.PopulationDamage > 0.0f);
 
 	return true;
 }
@@ -3032,18 +3087,21 @@ bool FCataclysmEmpireRunDetonationCountTest::RunTest(const FString& Parameters)
 				return false;
 			}
 
-			// A DAY WHOSE TIMERS ALL BELONGED TO A KIND THAT DOES NOT BITE MUST
-			// HAVE COST NOTHING. This is the assertion a counter that just
-			// followed `Resolved` would fail.
+			// A DAY WHOSE TIMERS ALL BELONGED TO A KIND THAT IS NOT ORDINARY
+			// MUST NOT HAVE MOVED `DungeonsDetonated`. This is the assertion a
+			// counter that just followed `Resolved` would fail. THE EMPIRE MAY
+			// STILL HAVE PAID THAT DAY, since 2026-10-13: a Quest dungeon's
+			// timer hits its host, and that is counted in `QuestHits` and not
+			// here. The label used to say "so the empire paid nothing".
 			if (CouldBite == 0 && UnknownResolves == 0
 				&& !Report.Resolved.IsEmpty())
 			{
 				++QuietDaysChecked;
 
 				TestEqual(FString::Printf(
-					TEXT("seed %d day %d: %d timers ran out and every one of "
-						 "them was a kind that does not detonate, so the "
-						 "empire paid nothing"),
+					TEXT("seed %d day %d: %d timers ran out and none was an "
+						 "ordinary dungeon's, so the count of ordinary "
+						 "dungeons that hit a city did not move"),
 					Seed, Report.Day, Report.Resolved.Num()),
 					DetonatedToday, 0);
 			}
@@ -3602,7 +3660,7 @@ namespace CataclysmEmpireRunTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDeathResolvesTest,
-	"Cataclysm.EmpireRun.ADeathResolvesAnOrdinaryDungeonAtOnceAndSetsItsTimerBackToFull",
+	"Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunDeathResolvesTest::RunTest(const FString& Parameters)
@@ -3621,6 +3679,8 @@ bool FCataclysmEmpireRunDeathResolvesTest::RunTest(const FString& Parameters)
 	// The two days run out and the timer resolves the dungeon. This is what the
 	// last check below is measured against: without it, "no second resolve in
 	// five days" would be true of a dungeon whose timer could not have run out.
+	// Since 2026-10-13 that dungeon then leaves the map, so one is also the
+	// most it can ever be.
 	{
 		UCataclysmEmpireRun* Run = MakeEmptyRun(1);
 		const int32 CityId = FirstStandingOutpost(*Run);
@@ -3700,26 +3760,35 @@ bool FCataclysmEmpireRunDeathResolvesTest::RunTest(const FString& Parameters)
 			  Report.Day, DayBefore);
 	TestEqual(TEXT("and the run's day did not move"), Run->Day(), DayBefore);
 
-	// ITS TIMER IS FULL AGAIN AND IT STAYS ON THE MAP.
-	const FCataclysmDungeonTimer* Counting = Run->Clock->FindTimer(DiedIn);
-	if (!TestNotNull(TEXT("the dungeon still has its timer"), Counting))
-	{
-		return false;
-	}
-	TestEqual(TEXT("the timer is back at its full thirty days"),
-			  Counting->DaysUntilResolve, FullTimer, 0.001f);
-	TestEqual(TEXT("and still refills to thirty"),
-			  Counting->ResolveDays, FullTimer, 0.001f);
-	TestEqual(TEXT("the clock counts one resolve of that dungeon"),
-			  Counting->TimesResolved, 1);
-	TestNotNull(TEXT("the dungeon is still on the map"), Run->FindDungeon(DiedIn));
+	// IT HIT ITS CITY, SO IT IS OFF THE MAP AND OFF THE CLOCK. Until 2026-10-13
+	// this test held the opposite: the dungeon stayed with its timer back at
+	// thirty days. The owner's rule of 2026-10-08, verbatim: "Ordinary dungeons
+	// will do their city/population damage, and then despawn."
+	TestNull(TEXT("the dungeon has no timer"), Run->Clock->FindTimer(DiedIn));
+	TestNull(TEXT("the dungeon is off the map"), Run->FindDungeon(DiedIn));
 
-	// IT DID NOT LEAVE THE DUNGEON. That is the caller's step.
-	TestEqual(TEXT("the clock still holds the player inside it"),
-			  Run->Clock->CurrentDungeonId, DiedIn);
+	// THE COUNT OF THAT DUNGEON'S RESOLVES IS NOT KEPT ANYWHERE NOW. It lived on
+	// the dungeon's timer, `FCataclysmDungeonTimer::TimesResolved`, and the
+	// timer left with the dungeon. This was the one dungeon on the board, so
+	// the clock holds no timer at all. The run's own count, one, is asserted
+	// above.
+	TestEqual(TEXT("the clock keeps no count of that dungeon's resolves: no timer is left on it"),
+			  Run->Clock->Timers.Num(), 0);
 
-	// AND THE OLD TWO DAYS CANNOT RESOLVE IT AGAIN. The caller leaves, and five
-	// days pass, as a Standard death charges.
+	// THE REPORT NAMES THE CITY IT HIT AND LEFT, AND NOTHING AS ABSORBED.
+	TestEqual(TEXT("the report names one city as hit by a dungeon that left"),
+			  Report.HitAndLeft.Num(), 1);
+	TestTrue(TEXT("and it is this dungeon's city"),
+			 Report.HitAndLeft.Contains(CityId));
+
+	// THE CLOCK NO LONGER HOLDS THE PLAYER INSIDE IT. Removing the dungeon tells
+	// the clock so; the caller still leaves, which then changes nothing here.
+	TestEqual(TEXT("the clock does not hold the player inside it"),
+			  Run->Clock->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
+
+	// AND NOTHING MORE LANDS. The caller leaves, and five days pass, as a
+	// Standard death charges. The board is empty for them; the last surge was
+	// day 1, so no empty-board wave is due before day 26.
 	Run->Clock->LeaveDungeon();
 	Run->AdvanceDays(5);
 
@@ -3727,8 +3796,8 @@ bool FCataclysmEmpireRunDeathResolvesTest::RunTest(const FString& Parameters)
 			  Run->DungeonsDetonated, 1);
 	TestEqual(TEXT("and the city has lost nothing more"),
 			  DefenceBefore - City->Defence, DefenceBite, 0.01f);
-	TestEqual(TEXT("the timer has run those five days from full"),
-			  Run->Clock->DaysUntilResolveFor(DiedIn), FullTimer - 5.0f, 0.001f);
+	TestEqual(TEXT("five days later no timer counts down for it"),
+			  Run->Clock->DaysUntilResolveFor(DiedIn), -1.0f, 0.001f);
 
 	return true;
 }
@@ -3748,7 +3817,9 @@ bool FCataclysmEmpireRunDeathSparesOtherKindsTest::RunTest(const FString& Parame
 	// in the game; here each is given 100 and 40 so a mistaken resolve shows.
 	//
 	// THREE DAYS LEFT ON A TIMER OF TWENTY-FIVE, which is a Quest dungeon's
-	// relocation clock. Each kind is then run on for five days twice, once
+	// timer. Since 2026-10-13 that timer hits the host city when it runs out;
+	// it does so in both passes alike, so the comparison below is unchanged.
+	// Each kind is then run on for five days twice, once
 	// after the call and once without it, and the two must agree: the call
 	// moved no timer and drew nothing from the run's chance, so the move a
 	// Quest dungeon makes when its clock runs out comes out the same.
@@ -5161,6 +5232,631 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 			  DaysApart->Surges->SurgesFired, 3);
 	TestEqual(TEXT("CONTROL: six dungeons arrived on day 51, a wave of five and the Dungeon City"),
 			  SecondFall.Spawned.Num(), 6);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// An ordinary dungeon leaves after it hits, and a Quest dungeon's timer hits
+// ---------------------------------------------------------------------------
+//
+// The two rules of 2026-10-13, `docs/DECISIONS.md`. The owner, 2026-10-08,
+// verbatim: "Ordinary dungeons will do their city/population damage, and then
+// despawn. Quest dungeons will do their city/population damage, and either
+// refresh their timer and stay on that city, or potentially move to an adjacent
+// city."
+//
+// EVERY TEST BELOW IS HEADLESS: a run, a map and a clock. No world and no
+// actor, so nothing stands anywhere.
+//
+// EVERY ONE STARTS FROM `MakeEmptyRun`, so the last surge was day 1, the day
+// advanced is day 2 and no city's fall or empty board can bring a wave: the
+// least interval of 25 days has not passed.
+
+namespace CataclysmEmpireRunTest
+{
+	/** The first Bulwark of the map that has not fallen, or `INDEX_NONE`. */
+	int32 FirstStandingBulwark(const UCataclysmEmpireRun& Run)
+	{
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.Tier == ECataclysmCityTier::Bulwark && !City.bFallen)
+			{
+				return City.CityId;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/** Every city's defence added up. */
+	float DefenceOfTheWholeMap(const UCataclysmEmpireRun& Run)
+	{
+		float Total = 0.0f;
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			Total += City.Defence;
+		}
+		return Total;
+	}
+
+	/** Every city's population added up. */
+	float PopulationOfTheWholeMap(const UCataclysmEmpireRun& Run)
+	{
+		float Total = 0.0f;
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			Total += City.Population;
+		}
+		return Total;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHitsOnceAndLeavesTest,
+	"Cataclysm.EmpireRun.AnOrdinaryDungeonHitsItsCityOnceAndIsGone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHitsOnceAndLeavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 OrdinaryId = 9701;
+	const int32 QuestId = 9702;
+	const int32 DungeonCityId = 9703;
+	const float FullTimer = 30.0f;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	// THREE OUTPOSTS, ONE DUNGEON ON EACH, EVERY TIMER WITH ONE DAY LEFT. The
+	// ordinary dungeon is the case. The Quest dungeon and the dungeon of the
+	// Fallen City kind are the controls: their timers run out on the same day
+	// and they stay. The Fallen City kind is put on a standing city by hand so
+	// that a mistaken hit from it would show on that city.
+	const TArray<int32> Outposts = StandingOutposts(*Run, 3);
+	if (!TestEqual(TEXT("set-up: the map has three Outposts standing"),
+				   Outposts.Num(), 3))
+	{
+		return false;
+	}
+
+	PlaceDungeon(*Run, OrdinaryId, ECataclysmDungeonType::Basic,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(Outposts[0]),
+				 FullTimer);
+	GiveDamageAndDaysLeft(*Run, OrdinaryId, 100.0f, 40.0f, 1.0f);
+
+	PlaceDungeon(*Run, QuestId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(Outposts[1]),
+				 FullTimer);
+	GiveDamageAndDaysLeft(*Run, QuestId, 0.0f, 0.0f, 1.0f);
+
+	PlaceDungeon(*Run, DungeonCityId, ECataclysmDungeonType::FallenCity,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(Outposts[2]),
+				 FullTimer);
+	GiveDamageAndDaysLeft(*Run, DungeonCityId, 100.0f, 40.0f, 1.0f);
+
+	const FCataclysmDungeon* Placed = Run->FindDungeon(OrdinaryId);
+	const FCataclysmCity* HitCity = Run->Map->Find(Outposts[0]);
+	const FCataclysmCity* DungeonCityHost = Run->Map->Find(Outposts[2]);
+	if (!TestNotNull(TEXT("set-up: the ordinary dungeon is on the map"), Placed)
+		|| !TestNotNull(TEXT("set-up: and so is its city"), HitCity)
+		|| !TestNotNull(TEXT("set-up: and the third Outpost"), DungeonCityHost))
+	{
+		return false;
+	}
+
+	// WHAT ONE HIT TAKES, worked out the way `ResolveDungeon` does.
+	const float OneHit = Placed->DefenceDamage * Placed->BiteScale();
+	const float DefenceBefore = HitCity->Defence;
+	const float ThirdDefenceBefore = DungeonCityHost->Defence;
+
+	if (!TestTrue(TEXT("set-up: one hit is a real amount the city can pay several times"),
+				  OneHit > 1.0f && DefenceBefore > 3.0f * OneHit)
+		|| !TestEqual(TEXT("set-up: no ordinary dungeon has hit a city yet"),
+					  Run->DungeonsDetonated, 0))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	TestEqual(TEXT("set-up: the day advanced is day 2"), Report.Day, 2);
+	TestFalse(TEXT("set-up: and it brought no wave"), Report.bSurged);
+	TestTrue(TEXT("the ordinary dungeon's timer ran out"),
+			 Report.Resolved.Contains(OrdinaryId));
+
+	// IT HIT, ONCE.
+	TestEqual(TEXT("its city lost one hit's defence"),
+			  DefenceBefore - HitCity->Defence, OneHit, 0.01f);
+	TestEqual(TEXT("one ordinary dungeon has hit a city"),
+			  Run->DungeonsDetonated, 1);
+
+	// AND IT IS GONE.
+	TestNull(TEXT("the ordinary dungeon is off the map"),
+			 Run->FindDungeon(OrdinaryId));
+	TestNull(TEXT("and off the clock"), Run->Clock->FindTimer(OrdinaryId));
+	TestEqual(TEXT("the report names one city as hit by a dungeon that left"),
+			  Report.HitAndLeft.Num(), 1);
+	TestTrue(TEXT("and it is that dungeon's city"),
+			 Report.HitAndLeft.Contains(Outposts[0]));
+
+	// IT LEFT; NOBODY BEAT IT AND NO CITY ABSORBED IT.
+	TestFalse(TEXT("the report does not name it as absorbed"),
+			  Report.Absorbed.Contains(OrdinaryId));
+	TestEqual(TEXT("no city fell"), Report.Fallen.Num(), 0);
+	TestEqual(TEXT("no dungeon is counted as cleared"), Run->DungeonsCleared, 0);
+	TestEqual(TEXT("nor an ordinary one"), Run->BasicDungeonsCleared, 0);
+
+	// THE CONTROLS: THE SAME DAY, THE SAME ONE DAY LEFT, AND THEY STAY.
+	TestTrue(TEXT("CONTROL: the Quest dungeon's timer ran out the same day"),
+			 Report.Resolved.Contains(QuestId));
+	TestNotNull(TEXT("CONTROL: the Quest dungeon is still on the map"),
+				Run->FindDungeon(QuestId));
+	TestEqual(TEXT("CONTROL: and its timer is full again"),
+			  Run->Clock->DaysUntilResolveFor(QuestId), FullTimer, 0.001f);
+	TestTrue(TEXT("CONTROL: the Dungeon City's timer ran out the same day"),
+			 Report.Resolved.Contains(DungeonCityId));
+	TestNotNull(TEXT("CONTROL: the Dungeon City is still on the map"),
+				Run->FindDungeon(DungeonCityId));
+	TestEqual(TEXT("CONTROL: and its timer is full again"),
+			  Run->Clock->DaysUntilResolveFor(DungeonCityId), FullTimer, 0.001f);
+	TestEqual(TEXT("CONTROL: the Dungeon City took nothing from the city it was put on"),
+			  DungeonCityHost->Defence, ThirdDefenceBefore, 0.001f);
+	TestEqual(TEXT("CONTROL: two dungeons stand where three did"),
+			  Run->DungeonCount(), 2);
+
+	// AND NOTHING MORE LANDS ON THAT CITY. Five more days; the two timers that
+	// were refilled have thirty days and cannot run out in them.
+	Run->AdvanceDays(5);
+
+	TestEqual(TEXT("five days later the city has lost nothing more"),
+			  DefenceBefore - HitCity->Defence, OneHit, 0.01f);
+	TestEqual(TEXT("and still one ordinary dungeon has hit a city"),
+			  Run->DungeonsDetonated, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFellerIsAbsorbedTest,
+	"Cataclysm.EmpireRun.TheDungeonWhoseHitFellsItsCityIsAbsorbedAndNotReportedAsLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunFellerIsAbsorbedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 FellerId = 9711;
+	const int32 BystanderId = 9712;
+
+	// TWO RUNS FROM ONE SEED. In each the first Outpost carries two ordinary
+	// dungeons and one of them resolves on day 2. In `Felled` its hit is 5,000
+	// points, five times an Outpost's whole defence. In `Stood`, the control,
+	// the same dungeon takes 100 before scaling and the city stands.
+	UCataclysmEmpireRun* Felled = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Stood = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Felled);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+				  CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Stood), CityId))
+	{
+		return false;
+	}
+
+	PlaceAFellerAndABystander(*Felled, CityId, FellerId, BystanderId);
+	ResolveOnTheNextDay(*Felled, FellerId);
+
+	PlaceAFellerAndABystander(*Stood, CityId, FellerId, BystanderId);
+	GiveDamageAndDaysLeft(*Stood, FellerId, 100.0f, 0.0f, 1.0f);
+
+	const FCataclysmDayReport FellReport = Felled->AdvanceDay();
+	const FCataclysmDayReport StoodReport = Stood->AdvanceDay();
+
+	// THE FALL ABSORBED IT.
+	TestTrue(TEXT("the city fell"), FellReport.Fallen.Contains(CityId));
+	TestTrue(TEXT("the dungeon that felled it is named as absorbed"),
+			 FellReport.Absorbed.Contains(FellerId));
+	TestTrue(TEXT("and so is the one beside it"),
+			 FellReport.Absorbed.Contains(BystanderId));
+	TestNull(TEXT("the dungeon that felled it is off the map"),
+			 Felled->FindDungeon(FellerId));
+	TestEqual(TEXT("the report names no city as hit by a dungeon that left"),
+			  FellReport.HitAndLeft.Num(), 0);
+	TestEqual(TEXT("and the run keeps no last hit for the empire screen"),
+			  Felled->LastHitDay, 0);
+	TestEqual(TEXT("its hit is still counted as one ordinary dungeon hitting a city"),
+			  Felled->DungeonsDetonated, 1);
+	TestNotNull(TEXT("a Dungeon City stands on the fallen city"),
+				DungeonCityOn(*Felled, CityId));
+
+	// THE CONTROL: THE SAME DUNGEON WITH A HIT THE CITY SURVIVES LEAVES.
+	TestEqual(TEXT("CONTROL: no city fell"), StoodReport.Fallen.Num(), 0);
+	TestEqual(TEXT("CONTROL: the report names one city as hit by a dungeon that left"),
+			  StoodReport.HitAndLeft.Num(), 1);
+	TestTrue(TEXT("CONTROL: and it is this city"),
+			 StoodReport.HitAndLeft.Contains(CityId));
+	TestFalse(TEXT("CONTROL: the dungeon is not named as absorbed"),
+			  StoodReport.Absorbed.Contains(FellerId));
+	TestNull(TEXT("CONTROL: it is off the map all the same"),
+			 Stood->FindDungeon(FellerId));
+	TestNotNull(TEXT("CONTROL: the dungeon beside it still stands"),
+				Stood->FindDungeon(BystanderId));
+	TestEqual(TEXT("CONTROL: and the run keeps day 2 as the last hit"),
+			  Stood->LastHitDay, 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestHitRowTest,
+	"Cataclysm.EmpireRun.AQuestDungeonsTimerTakesTheOrdinaryRowOfTheCityItStandsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestHitRowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 OnTheBulwarkId = 9721;
+	const int32 OnTheOutpostId = 9722;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const int32 OutpostId = FirstStandingOutpost(*Run);
+	const int32 BulwarkId = FirstStandingBulwark(*Run);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+				  OutpostId != INDEX_NONE)
+		|| !TestTrue(TEXT("set-up: and a Bulwark"), BulwarkId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// THE TWO ROWS, READ FROM THE TABLE AND NOT TYPED.
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const FCataclysmDungeonSpec BulwarkRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Bulwark);
+
+	// TWO QUEST DUNGEONS, BOTH ROLLED ON AN OUTPOST. `PlaceDungeon` writes the
+	// tier of the city it is given into `CityTier`, so both carry Outpost
+	// there. One is then moved by hand to stand on a Bulwark, as a relocation
+	// leaves a dungeon: `CityId` moves and `CityTier` does not. The other stays
+	// on the Outpost and is the control.
+	PlaceDungeon(*Run, OnTheBulwarkId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(OutpostId), 25.0f);
+	PlaceDungeon(*Run, OnTheOutpostId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(OutpostId), 25.0f);
+
+	for (FCataclysmDungeon& Standing : Run->Dungeons)
+	{
+		if (Standing.DungeonId == OnTheBulwarkId)
+		{
+			Standing.CityId = BulwarkId;
+		}
+	}
+
+	ResolveOnTheNextDay(*Run, OnTheBulwarkId);
+	ResolveOnTheNextDay(*Run, OnTheOutpostId);
+
+	const FCataclysmDungeon* Moved = Run->FindDungeon(OnTheBulwarkId);
+	const FCataclysmCity* Outpost = Run->Map->Find(OutpostId);
+	const FCataclysmCity* Bulwark = Run->Map->Find(BulwarkId);
+	if (!TestNotNull(TEXT("set-up: the moved Quest dungeon is on the map"), Moved)
+		|| !TestNotNull(TEXT("set-up: the Outpost is on the map"), Outpost)
+		|| !TestNotNull(TEXT("set-up: the Bulwark is on the map"), Bulwark))
+	{
+		return false;
+	}
+
+	const float OutpostDefenceBefore = Outpost->Defence;
+	const float OutpostPopulationBefore = Outpost->Population;
+	const float BulwarkDefenceBefore = Bulwark->Defence;
+	const float BulwarkPopulationBefore = Bulwark->Population;
+
+	if (!TestEqual(TEXT("set-up: the moved dungeon stands on the Bulwark"),
+				   Moved->CityId, BulwarkId)
+		|| !TestTrue(TEXT("set-up: and still carries the Outpost tier its depth was rolled on"),
+					 Moved->CityTier == ECataclysmCityTier::Outpost)
+		|| !TestTrue(TEXT("set-up: the two ordinary rows take something and differ in defence and in population"),
+					 OutpostRow.DefenceDamage > 0.0f
+						 && OutpostRow.PopulationDamage > 0.0f
+						 && BulwarkRow.DefenceDamage != OutpostRow.DefenceDamage
+						 && BulwarkRow.PopulationDamage != OutpostRow.PopulationDamage)
+		|| !TestTrue(TEXT("set-up: each city can pay its row and stand"),
+					 OutpostDefenceBefore > OutpostRow.DefenceDamage
+						 && OutpostPopulationBefore > OutpostRow.PopulationDamage
+						 && BulwarkDefenceBefore > BulwarkRow.DefenceDamage
+						 && BulwarkPopulationBefore > BulwarkRow.PopulationDamage)
+		|| !TestTrue(TEXT("set-up: the Quest dungeon's own row carries no damage"),
+					 Moved->DefenceDamage == 0.0f && Moved->PopulationDamage == 0.0f))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	TestTrue(TEXT("set-up: both Quest timers ran out on day 2"),
+			 Report.Resolved.Contains(OnTheBulwarkId)
+				 && Report.Resolved.Contains(OnTheOutpostId));
+	TestEqual(TEXT("set-up: no city fell"), Report.Fallen.Num(), 0);
+
+	// THE BULWARK PAID THE BULWARK'S ROW, THOUGH THE DUNGEON WAS ROLLED ON AN
+	// OUTPOST, AND AT A SCALE OF ONE WHATEVER THE DUNGEON'S TWENTY FLOORS.
+	TestEqual(TEXT("the Bulwark lost exactly the defence of the ordinary row of a Bulwark"),
+			  BulwarkDefenceBefore - Bulwark->Defence,
+			  BulwarkRow.DefenceDamage, 0.01f);
+	TestEqual(TEXT("and exactly that row's population"),
+			  BulwarkPopulationBefore - Bulwark->Population,
+			  BulwarkRow.PopulationDamage, 0.01f);
+
+	// THE CONTROL: THE SAME KIND OF DUNGEON ON AN OUTPOST TAKES THE OUTPOST'S.
+	TestEqual(TEXT("CONTROL: the Outpost lost exactly the defence of the ordinary row of an Outpost"),
+			  OutpostDefenceBefore - Outpost->Defence,
+			  OutpostRow.DefenceDamage, 0.01f);
+	TestEqual(TEXT("CONTROL: and exactly that row's population"),
+			  OutpostPopulationBefore - Outpost->Population,
+			  OutpostRow.PopulationDamage, 0.01f);
+
+	// AND EACH DUNGEON IS STILL ON THE MAP WITH A FULL TIMER. Where each stands
+	// now is not asserted: a Quest dungeon may move after it hits.
+	TestNotNull(TEXT("the Quest dungeon that hit the Bulwark is still on the map"),
+				Run->FindDungeon(OnTheBulwarkId));
+	TestEqual(TEXT("and its timer is full again"),
+			  Run->Clock->DaysUntilResolveFor(OnTheBulwarkId), 25.0f, 0.001f);
+	TestNotNull(TEXT("CONTROL: and so is the one that hit the Outpost"),
+				Run->FindDungeon(OnTheOutpostId));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestHitFellsTest,
+	"Cataclysm.EmpireRun.AQuestHitThatFellsItsCityAbsorbsTheQuestDungeonWithNoRefreshAndNoMove",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestHitFellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9731;
+	const int32 BystanderId = 9732;
+
+	// TWO RUNS FROM ONE SEED. In each a Quest dungeon with one day left stands
+	// on the first Outpost beside an ordinary dungeon whose timer never runs
+	// out. In `Felled` the Outpost is first taken down to half of what an
+	// ordinary hit takes, so the Quest dungeon's hit fells it. In `Stood`, the
+	// control, the Outpost is at full defence.
+	UCataclysmEmpireRun* Felled = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Stood = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Felled);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+				  CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Stood), CityId))
+	{
+		return false;
+	}
+
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const float FullDefence = Felled->Map->Find(CityId)->Defence;
+
+	if (!TestTrue(TEXT("set-up: an ordinary hit takes less than an Outpost's whole defence"),
+				  OutpostRow.DefenceDamage > 1.0f
+					  && FullDefence > 2.0f * OutpostRow.DefenceDamage))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Run : { Felled, Stood })
+	{
+		PlaceDungeon(*Run, QuestId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
+					 25.0f);
+		PlaceDungeon(*Run, BystanderId, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
+					 EmptyBoardNeverDays);
+		ResolveOnTheNextDay(*Run, QuestId);
+	}
+
+	// HALF AN ORDINARY HIT IS LEFT ON THE ONE CITY.
+	const bool bFellEarly = Felled->Map->Damage(
+		CityId, FullDefence - 0.5f * OutpostRow.DefenceDamage, 0.0f);
+	if (!TestFalse(TEXT("set-up: taking the Outpost down did not fell it"),
+				   bFellEarly)
+		|| !TestEqual(TEXT("set-up: it has half an ordinary hit's defence left"),
+					  Felled->Map->Find(CityId)->Defence,
+					  0.5f * OutpostRow.DefenceDamage, 0.01f))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport FellReport = Felled->AdvanceDay();
+	const FCataclysmDayReport StoodReport = Stood->AdvanceDay();
+
+	// THE HIT FELLED THE CITY AND THE FALL TOOK THE QUEST DUNGEON WITH IT.
+	TestTrue(TEXT("the Quest dungeon's timer ran out"),
+			 FellReport.Resolved.Contains(QuestId));
+	TestTrue(TEXT("the city fell to its hit"),
+			 FellReport.Fallen.Contains(CityId));
+	TestTrue(TEXT("the Quest dungeon is named as absorbed"),
+			 FellReport.Absorbed.Contains(QuestId));
+	TestTrue(TEXT("and so is the dungeon beside it"),
+			 FellReport.Absorbed.Contains(BystanderId));
+	TestNull(TEXT("the Quest dungeon is off the map"),
+			 Felled->FindDungeon(QuestId));
+	TestNull(TEXT("no refresh: it has no timer"),
+			 Felled->Clock->FindTimer(QuestId));
+	TestFalse(TEXT("no move: the report does not name it as relocated"),
+			  FellReport.Relocated.Contains(QuestId));
+	TestNotNull(TEXT("a Dungeon City stands on the fallen city"),
+				DungeonCityOn(*Felled, CityId));
+	TestEqual(TEXT("the hit is counted as one Quest hit"), Felled->QuestHits, 1);
+
+	// THE CONTROL: AT FULL DEFENCE THE SAME TIMER LEAVES THE DUNGEON STANDING.
+	TestTrue(TEXT("CONTROL: the Quest dungeon's timer ran out"),
+			 StoodReport.Resolved.Contains(QuestId));
+	TestEqual(TEXT("CONTROL: no city fell"), StoodReport.Fallen.Num(), 0);
+	TestEqual(TEXT("CONTROL: the Outpost lost one ordinary hit's defence"),
+			  FullDefence - Stood->Map->Find(CityId)->Defence,
+			  OutpostRow.DefenceDamage, 0.01f);
+	TestNotNull(TEXT("CONTROL: the Quest dungeon is still on the map"),
+				Stood->FindDungeon(QuestId));
+	TestEqual(TEXT("CONTROL: and its timer is full again"),
+			  Stood->Clock->DaysUntilResolveFor(QuestId), 25.0f, 0.001f);
+	TestFalse(TEXT("CONTROL: and nothing was absorbed"),
+			  StoodReport.Absorbed.Contains(QuestId));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestOnAFallenCityTest,
+	"Cataclysm.EmpireRun.AQuestDungeonOnAFallenCityHitsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestOnAFallenCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9741;
+
+	// TWO RUNS FROM ONE SEED. In `OnAFallen` the first Outpost is felled through
+	// the map before anything stands on it, and a Quest dungeon with one day
+	// left is then put on it by hand. In `OnAStanding`, the control, the same
+	// dungeon is put on the same Outpost standing.
+	UCataclysmEmpireRun* OnAFallen = MakeEmptyRun(1);
+	UCataclysmEmpireRun* OnAStanding = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*OnAFallen);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+				  CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*OnAStanding), CityId))
+	{
+		return false;
+	}
+
+	const bool bFell = OnAFallen->Map->Damage(CityId, 100000.0f, 0.0f);
+	if (!TestTrue(TEXT("set-up: the Outpost was felled through the map"), bFell)
+		|| !TestTrue(TEXT("set-up: and reads as fallen"),
+					 OnAFallen->Map->Find(CityId)->bFallen))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Run : { OnAFallen, OnAStanding })
+	{
+		PlaceDungeon(*Run, QuestId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
+					 25.0f);
+		ResolveOnTheNextDay(*Run, QuestId);
+	}
+
+	const float DefenceBefore = DefenceOfTheWholeMap(*OnAFallen);
+	const float PopulationBefore = PopulationOfTheWholeMap(*OnAFallen);
+	const float ControlDefenceBefore = DefenceOfTheWholeMap(*OnAStanding);
+
+	const FCataclysmDayReport Report = OnAFallen->AdvanceDay();
+	const FCataclysmDayReport ControlReport = OnAStanding->AdvanceDay();
+
+	TestTrue(TEXT("the Quest dungeon's timer ran out on the fallen city"),
+			 Report.Resolved.Contains(QuestId));
+	TestEqual(TEXT("the report names no city as hit by a Quest timer"),
+			  Report.QuestHits.Num(), 0);
+	TestEqual(TEXT("no Quest hit is counted"), OnAFallen->QuestHits, 0);
+	TestEqual(TEXT("no city anywhere lost defence that day"),
+			  DefenceOfTheWholeMap(*OnAFallen), DefenceBefore, 0.01f);
+	TestEqual(TEXT("nor population"),
+			  PopulationOfTheWholeMap(*OnAFallen), PopulationBefore, 0.01f);
+	TestNotNull(TEXT("the Quest dungeon is still on the map"),
+				OnAFallen->FindDungeon(QuestId));
+
+	// THE CONTROL: ON THE SAME CITY STANDING, THE SAME TIMER HITS.
+	TestEqual(TEXT("CONTROL: on the standing Outpost the report names one city as hit by a Quest timer"),
+			  ControlReport.QuestHits.Num(), 1);
+	TestEqual(TEXT("CONTROL: and one Quest hit is counted"),
+			  OnAStanding->QuestHits, 1);
+	TestTrue(TEXT("CONTROL: and the map lost defence that day"),
+			 ControlDefenceBefore - DefenceOfTheWholeMap(*OnAStanding) > 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestHitsCountedApartTest,
+	"Cataclysm.EmpireRun.AQuestHitIsCountedInQuestHitsAndNotInDungeonsDetonated",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestHitsCountedApartTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9751;
+	const int32 OrdinaryId = 9752;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	// A QUEST DUNGEON ON ONE OUTPOST WITH ONE DAY LEFT, AND AN ORDINARY ONE ON
+	// ANOTHER WITH TWO. So day 2 holds a Quest hit alone and day 3 an ordinary
+	// hit alone, and the ordinary dungeon is the control on both counters.
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"),
+				   Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	PlaceDungeon(*Run, QuestId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(Outposts[0]),
+				 25.0f);
+	ResolveOnTheNextDay(*Run, QuestId);
+
+	PlaceDungeon(*Run, OrdinaryId, ECataclysmDungeonType::Basic,
+				 ECataclysmDungeonSubType::None, *Run->Map->Find(Outposts[1]),
+				 30.0f);
+	GiveDamageAndDaysLeft(*Run, OrdinaryId, 100.0f, 40.0f, 2.0f);
+
+	if (!TestEqual(TEXT("set-up: no Quest hit is counted before the day"),
+				   Run->QuestHits, 0)
+		|| !TestEqual(TEXT("set-up: nor an ordinary dungeon's"),
+					  Run->DungeonsDetonated, 0))
+	{
+		return false;
+	}
+
+	const float FirstDefenceBefore = Run->Map->Find(Outposts[0])->Defence;
+
+	const FCataclysmDayReport QuestDay = Run->AdvanceDay();
+
+	TestTrue(TEXT("set-up: the Quest hit took defence from its city"),
+			 FirstDefenceBefore - Run->Map->Find(Outposts[0])->Defence > 1.0f);
+	TestEqual(TEXT("the Quest hit is counted in QuestHits"), Run->QuestHits, 1);
+	TestEqual(TEXT("and not in DungeonsDetonated"), Run->DungeonsDetonated, 0);
+	TestEqual(TEXT("the day's report names one city as hit by a Quest timer"),
+			  QuestDay.QuestHits.Num(), 1);
+	TestTrue(TEXT("and it is the Quest dungeon's city"),
+			 QuestDay.QuestHits.Contains(Outposts[0]));
+	TestEqual(TEXT("and names none as hit by a dungeon that left"),
+			  QuestDay.HitAndLeft.Num(), 0);
+	TestEqual(TEXT("the run keeps day 2 as the last hit"), Run->LastHitDay, 2);
+	TestTrue(TEXT("and keeps it as a Quest timer's"), Run->bLastHitWasAQuestTimer);
+
+	// THE CONTROL: AN ORDINARY DUNGEON'S HIT MOVES THE OTHER COUNTER.
+	const FCataclysmDayReport OrdinaryDay = Run->AdvanceDay();
+
+	TestEqual(TEXT("CONTROL: the ordinary hit is counted in DungeonsDetonated"),
+			  Run->DungeonsDetonated, 1);
+	TestEqual(TEXT("CONTROL: and QuestHits did not move"), Run->QuestHits, 1);
+	TestEqual(TEXT("CONTROL: that day's report names no city as hit by a Quest timer"),
+			  OrdinaryDay.QuestHits.Num(), 0);
+	TestTrue(TEXT("CONTROL: and names the ordinary dungeon's city as hit by a dungeon that left"),
+			 OrdinaryDay.HitAndLeft.Contains(Outposts[1]));
+	TestEqual(TEXT("CONTROL: the run keeps day 3 as the last hit"),
+			  Run->LastHitDay, 3);
+	TestFalse(TEXT("CONTROL: and no longer as a Quest timer's"),
+			  Run->bLastHitWasAQuestTimer);
+
+	// AND `Describe` SAYS BOTH COUNTS.
+	TestTrue(TEXT("Describe says one ordinary dungeon has hit a city and one Quest timer has"),
+			 Run->Describe().Contains(
+				 TEXT("1 ordinary dungeons have hit a city. 1 Quest dungeon "
+					  "timers have hit one.")));
 
 	return true;
 }

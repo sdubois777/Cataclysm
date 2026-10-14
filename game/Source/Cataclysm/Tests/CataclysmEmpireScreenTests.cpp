@@ -5,7 +5,10 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Components/TextBlock.h"
+#include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Interface/CataclysmChoiceButton.h"
@@ -902,6 +905,146 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 	// what has to land first, and this fails if somebody adds one meanwhile.
 	TestFalse(TEXT("and it does not claim to know how many are needed"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run).Contains(TEXT(" of ")));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The last hit a dungeon's timer landed
+// ---------------------------------------------------------------------------
+
+/**
+ * The empire screen's one line for the last city a dungeon's timer hit.
+ *
+ * HEADLESS: a run object with no world, no widget and no actor. The line is
+ * built by `UCataclysmEmpireMapLayout::LastHitLine` for the reason
+ * `ProgressLine` gives: a headless widget's labels are null.
+ *
+ * THE HITS ARE MADE BY THE RUN, NOT WRITTEN ONTO IT. A dungeon is put on the
+ * map and on the clock with one day left and a day is advanced, so the line is
+ * read after `UCataclysmEmpireRun::ResolveDungeon` filled the three fields.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireLastHitLineTest,
+	"Cataclysm.EmpireScreen.TheScreenNamesTheLastCityADungeonsTimerHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireLastHitLineTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("no run says nothing"),
+			  UCataclysmEmpireMapLayout::LastHitLine(nullptr), FString());
+
+	UCataclysmEmpireRun* NotStarted = NewObject<UCataclysmEmpireRun>();
+	TestEqual(TEXT("a run that has not begun says nothing"),
+			  UCataclysmEmpireMapLayout::LastHitLine(NotStarted), FString());
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+
+	// THE OPENING WAVE IS TAKEN OFF, both lists, so the only timers that run
+	// out below are the two this test puts down. The last surge is then day 1
+	// and nothing can bring a wave before day 26.
+	Run->AdvanceDay();
+	Run->Dungeons.Empty();
+	Run->Clock->Timers.Empty();
+
+	// THE CONTROL: with a run begun and no hit yet, the line is empty.
+	TestEqual(TEXT("CONTROL: a run in which no timer has hit a city says nothing"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run), FString());
+
+	// TWO OUTPOSTS THAT STAND, found rather than assumed.
+	TArray<int32> Outposts;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (Outposts.Num() < 2 && City.Tier == ECataclysmCityTier::Outpost
+			&& !City.bFallen)
+		{
+			Outposts.Add(City.CityId);
+		}
+	}
+
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"),
+				   Outposts.Num(), 2)
+		|| !TestEqual(TEXT("set-up: the run is on day 1"), Run->Day(), 1))
+	{
+		return false;
+	}
+
+	const FString FirstName = Run->Map->Find(Outposts[0])->Name;
+	const FString SecondName = Run->Map->Find(Outposts[1])->Name;
+
+	if (!TestTrue(TEXT("set-up: the two Outposts have names, and different ones"),
+				  !FirstName.IsEmpty() && !SecondName.IsEmpty()
+					  && FirstName != SecondName))
+	{
+		return false;
+	}
+
+	/** Puts one dungeon on a city with a timer that runs out the next day. */
+	const auto PutDown = [Run](int32 DungeonId, ECataclysmDungeonType Type,
+							   int32 CityId, float DefencePoints)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = DungeonId;
+		Dungeon.Type = Type;
+		Dungeon.CityId = CityId;
+		Dungeon.CityTier = ECataclysmCityTier::Outpost;
+		Dungeon.Floors = 12;
+		Dungeon.ResolveDays = 30.0f;
+		Dungeon.DefenceDamage = DefencePoints;
+		Dungeon.SpawnedDay = Run->Day();
+
+		Run->Dungeons.Add(Dungeon);
+		Run->Clock->AddDungeon(DungeonId, Dungeon.Floors);
+		Run->Clock->SetResolveDays(DungeonId, 30.0f);
+
+		for (FCataclysmDungeonTimer& Counting : Run->Clock->Timers)
+		{
+			if (Counting.DungeonId == DungeonId)
+			{
+				Counting.DaysUntilResolve = 1.0f;
+			}
+		}
+	};
+
+	// AN ORDINARY DUNGEON HITS THE FIRST OUTPOST ON DAY 2 AND LEAVES.
+	PutDown(9801, ECataclysmDungeonType::Basic, Outposts[0], 100.0f);
+
+	const FCataclysmDayReport OrdinaryDay = Run->AdvanceDay();
+
+	if (!TestEqual(TEXT("set-up: the day advanced is day 2"), OrdinaryDay.Day, 2)
+		|| !TestTrue(TEXT("set-up: the day's report names the first Outpost as hit by a dungeon that left"),
+					 OrdinaryDay.HitAndLeft.Contains(Outposts[0])))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the line names the day and the city the ordinary dungeon hit and left"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run),
+			  FString::Printf(TEXT("Day 2: a dungeon hit %s and left."),
+							  *FirstName));
+
+	// A QUEST DUNGEON'S TIMER HITS THE SECOND OUTPOST ON DAY 3, AND THE LINE IS
+	// THEN ABOUT THAT ONE.
+	PutDown(9802, ECataclysmDungeonType::Quest, Outposts[1], 0.0f);
+
+	const FCataclysmDayReport QuestDay = Run->AdvanceDay();
+
+	if (!TestEqual(TEXT("set-up: the next day is day 3"), QuestDay.Day, 3)
+		|| !TestTrue(TEXT("set-up: the day's report names the second Outpost as hit by a Quest timer"),
+					 QuestDay.QuestHits.Contains(Outposts[1])))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the line names the day and the city the Quest dungeon's timer hit"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run),
+			  FString::Printf(TEXT("Day 3: a Quest dungeon's timer hit %s."),
+							  *SecondName));
+
+	// A NEW RUN HAS NO LAST HIT. `Begin` clears the three fields.
+	Run->Begin(7);
+	TestEqual(TEXT("a run begun again says nothing"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run), FString());
 
 	return true;
 }

@@ -106,7 +106,7 @@ Self-Found and Heretic Solo Self-Found are both real combinations.
 | :-: | :-: | :-: | :-: | :-: |
 | Standard | 5 days | none | shown | — |
 | Hardcore | 10 days | each of the 18 equipped pieces drops with a 10% chance, so 1.8 on average | map overlay only | — |
-| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons. Cities have 2 upgrade slots instead of 3. |
+| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons, rounded down: 6 where a Surge brings 5. Cities have 2 upgrade slots instead of 3. |
 
 **Solo Self-Found. Optional. Combines with any lethality mode.**
 
@@ -330,7 +330,7 @@ This is the loop the run is built around: the threat chosen at run start decides
 
 ### **The Surge**
 
-A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
+A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. Before any escalation a Surge brings 5 dungeons and the next comes 90 days after the last; until 2026-10-13 it was 4 dungeons every 120 days. Every measured figure in this document that is dated before 2026-10-13 was taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city nothing, and a surge came every 120 days at the size each passage states. None of them was measured again. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
 
   
 
@@ -360,7 +360,7 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 
 
-**Measured in the simulation on 2026-09-07 over 6,000 campaigns**, in six disjoint blocks of 1,000 seeds, at difficulty tier 1, the `No tree` preset, the `triage` policy, static surges every 120 days for 5 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4% of a tier width, with the Siege's city damage live and the play strategies able to see one: **the Last Stand is reached in 45.9% of campaigns and cleared 1 time in 24.6 of those reached** — 112 of 2,754 — against a **40.4%** win rate for the Cataclysm boss dungeon the player opened by clearing quest objectives, which itself opens in **54.9%** of campaigns. A campaign is won at all 24.1% of the time. **Every simulation figure in this document carries those conditions**, because a figure taken at another tier, policy or surge size is not comparable with one taken here.
+**Measured in the simulation on 2026-09-07 over 6,000 campaigns**, in six disjoint blocks of 1,000 seeds, at difficulty tier 1, the `No tree` preset, the `triage` policy, static surges every 120 days for 5 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4% of a tier width, with the Siege's city damage live and the play strategies able to see one: **the Last Stand is reached in 45.9% of campaigns and cleared 1 time in 24.6 of those reached** — 112 of 2,754 — against a **40.4%** win rate for the Cataclysm boss dungeon the player opened by clearing quest objectives, which itself opens in **54.9%** of campaigns. A campaign is won at all 24.1% of the time. **Every simulation figure in this document carries those conditions**, because a figure taken at another tier, policy or surge size is not comparable with one taken here. The simulation's default is 5 dungeons every 90 days since 2026-10-13; these figures are at 5 every 120 and were not re-measured.
 
 **Those figures describe a player with NO empire tree.** The project owner ruled on 2026-09-06 that the game should be balanced around a player fully invested in the Explorer tree; nothing on record measures that player at these settings, so these numbers are not it.
 
@@ -388,7 +388,7 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 **The first three rows were measured against one Cataclysm, and it was always Demonic.** The simulation set the active Cataclysms to the first N of a fixed list and never varied N with the difficulty tier, so a tier 1 measurement was a Demonic measurement — and Demonic is the one of the eight that ignores the frontier, while the Last Stand is reached by a chain of frontier cities falling. [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) corrected that on 2026-09-06: the count now follows the tier and which ones are drawn follows the character. Which Cataclysm is active moves the win rate by 13.6 points at tier 1, so the size of the correction was not assumed to be small.
 
-**The two largest moves are both the Siege, in opposite directions.** Teaching the model what a Siege does to a city took the earned route — the way this document says a run is ordinarily won — from 74.7% of campaigns to 2.4%, and left the Last Stand happening in nearly all of them. The project owner ruled against that on [#1349](https://github.com/sdubois777/Cataclysm/issues/1349), verbatim: “Halve the rate and cut the growth”. The Siege spawn weight went 15 to 7.5 and its growth 10 points a day to 2.5; the 1% daily share of a city's maximum was left where it was, which is the separate ruling of 2026-09-05 that a siege does not care how thick your walls are. An unattended Siege now empties a city in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47, and the ordinary way to win is the ordinary outcome again.
+**The two largest moves are both the Siege, in opposite directions.** Teaching the model what a Siege does to a city took the earned route — the way this document says a run is ordinarily won — from 74.7% of campaigns to 2.4%, and left the Last Stand happening in nearly all of them. The project owner ruled against that on [#1349](https://github.com/sdubois777/Cataclysm/issues/1349), verbatim: “Halve the rate and cut the growth”. The Siege spawn weight went 15 to 7.5 and its growth 10 points a day to 2.5; the 1% daily share of a city's maximum was left where it was, which is the separate ruling of 2026-09-05 that a siege does not care how thick your walls are. A Siege left standing empties a city in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47, and the ordinary way to win is the ordinary outcome again. One carried by an ordinary dungeon ends when that dungeon's timer runs out and it leaves the map: measured in the simulation on 2026-10-12 over 10,000 dungeons a city size on a city at full defence, the city fell in 86.1% of cases on an Outpost, 79.0% on a Bulwark and 86.7% on a Sanctuary.
 
 That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time. That check was made before every figure in the table above and has not been repeated on any of them.
 
@@ -442,7 +442,8 @@ equipped items. The run continues.
   
 
 **Dying in an ordinary dungeon also resolves that dungeon,** at once, and its
-consequence lands on its city. The run still continues. Dungeon Basics in
+consequence lands on its city, and the dungeon then leaves the map. The run
+still continues. Dungeon Basics in
 section VIII has the rule.
 
   
@@ -3996,13 +3997,13 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - Each dungeon has: a time-to-clear estimate, a resolve timer, floor count, modifiers, and a dungeon score.
   - More floors = better rewards but more time cost.
   - Every dungeon has a boss on the final floor.
-  - If a dungeon resolves undefeated, its listed consequence occurs (usually city damage or population loss).
+  - If a dungeon resolves undefeated, its listed consequence occurs (usually city damage or population loss). An ordinary dungeon hits its city once and then leaves the map.
   - If a city falls, it becomes a Dungeon City — a staging ground with more floors and multiple boss fights, triggering a Surge.
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
   - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell**, which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
-  - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A Quest dungeon and a Dungeon City never resolve, so this does not reach them: dying in one costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing for the death, and its timer is not touched by the death and runs on through the days paid. That much is a judgement made on 2026-10-09 under the project owner's delegation. The rest of this rule was ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning for both.
+  - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A death resolves an ordinary dungeon and no other kind: dying in a Quest dungeon or a Dungeon City costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing for the death; its timer is not touched by the death, runs on through the days paid, and hits the city when it runs out. That much is a judgement made on 2026-10-09 under the project owner's delegation. The rest of this rule was ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning for both.
   - Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and retaken Dungeon Cities do not: a Quest dungeon is the win condition itself, and retaking your own city is recovery rather than progress. **Pursuing the win condition therefore never makes the final fight harder**, and a player who clears the map meets a deeper boss than one who beelines the objectives. Settled with the project owner on 2026-09-06.
   - **The Last Stand takes none of that growth.** When the Cataclysm reaches the capital the fight is built from its own bonuses alone — see the Last Stand section — because adding earned growth on top would punish a player twice for the same run. That fight is won once in 54 by deliberate design and the figure was chosen on purpose. Settled the same day.
 
@@ -4012,7 +4013,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
 
 A floor is **one level of the dungeon**: a single connected space with one entrance and one stairwell down, themed by the dungeon's Cataclysm and by its type and sub-type. A floor should take an efficient player between two and five minutes, including finding the stairs. One floor costs one day of empire time to begin with, which is why a floor is a substantial space rather than a single room.
 
-**That is a starting rate and not an invariant.** A dungeon's time-to-clear is its own property beside its floor count, and city upgrades and the empire upgrade tree lower it while the floor count stays where it is. An invested player can run a fifty floor dungeon in a couple of days; it is still fifty floors deep, still worth what fifty floors are worth, and its resolve timer is unchanged, because that scales with depth and never with the time to walk it. **Making a dungeon shallower makes it poorer. Making it quicker to walk does not** — which is what makes the two upgrades that do those things different choices rather than one written twice.
+**That is a starting rate and not an invariant.** A dungeon's time-to-clear is its own property beside its floor count, and city upgrades and the empire upgrade tree lower it while the floor count stays where it is. An invested player can run a fifty floor dungeon in a couple of days; it is still fifty floors deep, still worth what fifty floors are worth, and its resolve timer is unchanged, because that scales with depth and never with the time to walk it. **Making a dungeon shallower makes it poorer. Making it quicker to walk does not** — which is what makes the two upgrades that do those things different choices rather than one written twice. Neither changes what the dungeon takes from its city: the hit is sized by the floors the dungeon was rolled with, so an upgrade that adds floors to a city's dungeons does not make them hit harder and one that removes floors does not make them hit less.
 
   
 
@@ -4081,8 +4082,8 @@ This makes a surviving player's escape worth something to the whole party, and i
 
 | Type | Description |
 | :-: | :-: |
-| Basic | Standard dungeon. Most common type. |
-| Quest | Does not resolve — refreshes and may move to adjacent city. Required to challenge the Cataclysm. |
+| Basic | Standard dungeon. Most common type. Hits its city once when its timer runs out, then leaves. |
+| Quest | When its timer runs out it hits its host city with an ordinary dungeon's hit for that city, then its timer refreshes and it may move to an adjacent city. Required to challenge the Cataclysm. |
 | Fallen City | Captured player city. Must be retaken to restore it. Higher floor count and multiple bosses. |
 | Cataclysm | The final boss dungeon for the current run tier. Grows by one floor for every **ordinary** dungeon the player defeats; Quest dungeons and retaken Dungeon Cities do not count, and the Last Stand takes none of the growth. |
 
@@ -4090,7 +4091,11 @@ This makes a surviving player's escape worth something to the whole party, and i
 
 ### **Where a Quest Dungeon Moves To, and What It Takes With It**
 
-A Quest dungeon's timer running out costs its host city nothing. The timer
+A Quest dungeon's timer running out hits its host city. The city takes what an
+ordinary dungeon's hit takes from a city of its tier, whatever the Quest
+dungeon's own depth and whatever tier it was first placed on. If that hit fells
+the city, the Quest dungeon is absorbed into the fallen city with every other
+dungeon on it. Otherwise the timer
 refreshes to full and the dungeon **may move to an adjacent city** — adjacency as
 section IX defines it, the rim's perimeter links included. It may only move onto a
 city a surge could have put a dungeon on: one that is exposed, has not fallen,
@@ -4098,16 +4103,20 @@ and is not the Pillar. When no neighbour qualifies it stays where it is.
 
   
 
-**The project owner spoke to this twice, and the second answer stands.** On
-2026-10-08, verbatim: "resolve means what happens when a dungeon ticks down it's
-timer. Ordinary dungeons will do their city/population damage, and then despawn.
-Quest dungeons will do their city/population damage, and either refresh their
-timer and stay on that city, or potentially move to an adjacent city. Fallen city
-dungeons don't have a resolution timer as they're the enemies now." On
-2026-10-09 the coordinating session recommended that a Quest dungeon cost its
-city nothing when its timer runs out, so that the paragraph above stands as
-written, and the owner accepted that with the words "your rec on all the open
-questions". For Quest dungeons the second supersedes the first.
+**The project owner spoke to this three times, and 2026-10-13 supersedes both
+earlier lines.** On 2026-10-08, verbatim: "resolve means what happens when a
+dungeon ticks down it's timer. Ordinary dungeons will do their city/population
+damage, and then despawn. Quest dungeons will do their city/population damage,
+and either refresh their timer and stay on that city, or potentially move to an
+adjacent city. Fallen city dungeons don't have a resolution timer as they're the
+enemies now." On 2026-10-09 the coordinating session recommended that a Quest
+dungeon cost its city nothing when its timer runs out, and the owner accepted
+that with the words "your rec on all the open questions". On 2026-10-13 the
+coordinating session recommended that a Quest dungeon hit its city when its
+timer runs out, at the size of an ordinary dungeon's hit for that city, then
+refresh or move as before, and the owner accepted that with the words "your rec
+on all three, continue". 2026-10-13 supersedes both: it reverses 2026-10-09 and
+returns to the sentence of 2026-10-08.
 
   
 
@@ -4122,7 +4131,7 @@ twice is neither more nor less likely to move on the third.
 a quarter of quest timers fire with nowhere adjacent to go whatever the coin
 says, so a Quest dungeon in play actually moves on roughly **38% of its timers**
 rather than 50%. Roughly one move in every two and a half timers: visible
-without being constant.
+without being constant. Measured before 2026-10-13, when a Quest dungeon's timer cost its city nothing; with the hit a city can fall under the dungeon, and this was not re-measured.
 
   
 
@@ -4131,7 +4140,7 @@ that moved the dungeon **37.6% to 38.7%**, measured over four disjoint blocks of
 1,000 simulated campaigns — 115,064 quest timers — at difficulty tier 1 with no
 empire tree, the triage policy, and static surges of five dungeons every 120
 days. Those are block ranges rather than an error bar: four blocks give a
-spread, and two would give only a difference.
+spread, and two would give only a difference. The simulation's default is 5 dungeons every 90 days since 2026-10-13; these figures are at 5 every 120 and were not re-measured.
 
   
 
@@ -4164,11 +4173,13 @@ morning is facing the same 44 floors, on the same clock, with the same rules.
 
   
 
-**And its depth still counts against the city it was raised for.** A dungeon's
-damage scales by how deep it is against a typical dungeon of its kind **on the
-tier of city that spawned it**, and that comparison does not move with the
-dungeon. An Outpost dungeon that drifts onto a Sanctuary is not re-measured
-against what a Sanctuary dungeon would be; it is as deep as it always was.
+**What its timer costs is set by the city it stands on.** When a Quest
+dungeon's timer runs out, its host pays what an ordinary dungeon of typical
+depth takes from a city of the host's tier, whatever the Quest dungeon's own
+floor count. An ordinary dungeon's hit scales by the floors it was rolled with
+against a typical dungeon of its kind **on the tier of city that spawned it**;
+floors a city upgrade added or removed are not counted. A dungeon that moves is
+not re-measured: it is as deep as it always was.
 
   
 
@@ -4440,7 +4451,7 @@ has somewhere to go **79.5%** of the time with the rim links counted and **69.1%
 without, a third of all observed moves used one, and a Quest dungeon standing on
 an intact rim could never move at all without them. Anything else that reads "and
 its neighbours" — a passive, a city upgrade, a Cataclysm effect — takes the same
-definition.
+definition. Measured before 2026-10-13, when a Quest dungeon's timer cost its city nothing; with the hit a city can fall under the dungeon, and this was not re-measured.
 
   
 

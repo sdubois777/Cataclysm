@@ -225,4 +225,28 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString ProgressLine(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * The last hit a city took from a dungeon's timer, as one line: "Day 37: a
+	 * dungeon hit Outpost (-3,0) and left." or "Day 37: a Quest dungeon's
+	 * timer hit Outpost (-3,0)." with the city's own name.
+	 *
+	 * WHY THE SCREEN NEEDS IT. Since 2026-10-13 an ordinary dungeon hits its
+	 * city once and leaves the map, so the dungeon that did the damage is not
+	 * on the screen afterwards, and a Quest dungeon's timer now costs its host
+	 * city. Without this line a player sees a city's defence go down and
+	 * nothing that says why.
+	 *
+	 * THE LAST ONE ONLY. The run keeps three fields for it,
+	 * `UCataclysmEmpireRun::LastHitDay` and the two beside it; a list of the
+	 * day's events is the console command's.
+	 *
+	 * A FUNCTION HERE RATHER THAN A `Printf` INSIDE THE WIDGET, for the reason
+	 * `ProgressLine` gives: a headless test cannot read a label.
+	 *
+	 * @param Run the run to describe. Null, one that has not begun, and one in
+	 *            which no hit has landed all answer an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString LastHitLine(const UCataclysmEmpireRun* Run);
 };
