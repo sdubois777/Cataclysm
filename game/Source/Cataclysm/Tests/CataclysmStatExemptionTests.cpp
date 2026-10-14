@@ -7951,6 +7951,33 @@ namespace CataclysmStatExemptionTest
 					   Aura->MoreEffective(100.0f), 150.0f, 0.01f);
 	}
 
+	/**
+	 * `buff_potency`, read by `UCataclysmSelfBuffSkill::MorePotent`. Ruled 2026-10-13, for "Buff effects you apply
+	 * are 20%-40% more potent". A figure of 100 handed to that function for a plain character comes back 100; with
+	 * the character granted 50% on the stat it comes back 150.
+	 *
+	 * THE FUNCTION IS OBSERVED AND NOT A SKILL. `Cataclysm.BuffPotency.` is where a self buff and an aura hand it
+	 * their figures.
+	 */
+	void ProbeBuffPotency(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+		Test.TestEqual(TEXT("control: nothing granted, a figure of 100 comes back 100"),
+					   UCataclysmSelfBuffSkill::MorePotent(Caster.Actor, FGameplayTagContainer(), 100.0f), 100.0f,
+					   0.01f);
+		GrantIncrease(Caster, UCataclysmSelfBuffSkill::BuffPotencyStat, 50.0f);
+		Test.TestEqual(TEXT("and with buff_potency granted at 50 it comes back 150, so MorePotent really reads it"),
+					   UCataclysmSelfBuffSkill::MorePotent(Caster.Actor, FGameplayTagContainer(), 100.0f), 150.0f,
+					   0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8094,6 +8121,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
 			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
 			{TEXT("aura_effect"), &ProbeAuraEffect},
+			{TEXT("buff_potency"), &ProbeBuffPotency},
 		};
 		return Made;
 	}

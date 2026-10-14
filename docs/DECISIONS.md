@@ -2,6 +2,287 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — A row can make the buffs its wearer's skills lay more potent: one stat, a More of its own on a self buff's More damage, on the copy of it given to allies and on an aura's ally damage bonus, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (the stat's name, one
+function, one line of `UCataclysmSelfBuffSkill::GrantIncrease` and two of
+`UCataclysmAuraSkill::HelpAlliesInside`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one
+name on the list of stats with no attribute), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (four
+tests), `game/Source/Cataclysm/Tests/CataclysmBuffPotencySharedTests.cpp` (new: two tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (one
+entry of one list), `tools/tests/test_aura_effect_and_buff_potency_rows.py` (one entry of one list, which every
+test of the file reads). Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`: "Buff effects you apply are 20%-40% more potent".
+
+- **NOT COMPILED AND NOT RUN.** Nothing here was compiled and no Unreal test was run by the session that wrote
+  it. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row is authored, so a player sees no change.** The enchantment session writes the row. Its shape is under
+  "What was built".
+- **The reading is the narrow one. Ruled.** The row multiplies the figure of a buff A SKILL OF THE WEARER'S lays,
+  on the wearer or on allies. That is three things: the More damage a self buff grants its caster, the copy of
+  it given to allies, and an aura's damage bonus to allies.
+- **Four self buffs and one aura have such a figure today.** Counted by script in `game/Data/WeaponSkills.csv`:
+  nine rows have `Shape=SelfBuff`, and four of them state `MoreDamagePer`. With the row at its two ends:
+  - *Burning Wrath*, 4% more for each enemy burning at the cast, becomes 4.8% to 5.6% for each.
+  - *Butcher's Heat*, 1% more a kill, becomes 1.2% to 1.4% a kill.
+  - *Unbroken*, 5% more a second stood still, becomes 6% to 7% a second.
+  - *Held Fast*, 10% more for each enemy pinned at the cast, becomes 12% to 14% for each.
+  - *Conflagration's* 8% increased fire damage to allies becomes 9.6% to 11.2%.
+- **Nothing for the five self buffs whose effect has no number. Ruled.** By the same script the five that state
+  no `MoreDamagePer` are Ashen Edge, Slipstream, Martyr's Ember, Coil of Embers and Groundbreaker. Two of their
+  rows do state figures of their own machinery, Martyr's Ember's store and Coil of Embers' reach; those are not
+  More damage, are not copied to allies, and are not raised.
+- **Nothing for stacks a row grants, and nothing for a `Status.Buff` tag. Ruled.** Read: neither is written by
+  `GrantIncrease` or by `HelpAlliesInside`, which are the two places the stat is asked. Not tested.
+- **The six random buffs of Shard of Anarchy's two-piece stay out. Ruled: a row lays them, not the wearer's
+  skill.** They are Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, read in
+  `UCataclysmAbilitySystemComponent::RandomBuffTable`. Read: `HoldARandomBuff` keeps the name drawn, and
+  `HeldRandomBuffStatModifiers` copies that entry's lines as the table states them; the stat is not asked at
+  either. Not tested.
+- **"Nearby allies gain 10-20% more damage" is not raised.** It is a row's own standing grant, copied to allies
+  by the same step that copies a self buff, and no skill lays it. This follows from the ruling's words and is
+  the writing session's reading of them. Tested.
+- **THE CASTER'S POTENCY TRAVELS WITH THE COPY. Ruled.** `GrantIncrease` writes the raised figure into
+  `GrantedIncrease`, and `UCataclysmSharedBuffs::Step` copies `GrantedIncrease` to each ally as it stands and
+  asks the ally nothing. So an ally who also wears the row carries the caster's raised figure and no more.
+  Tested: a caster's raised 1.4 times reaches an ally wearing a row of 40 as 1.4 times, and a caster with no
+  row gives the same ally the plain figure. `UCataclysmSharedBuffs` was not changed.
+- **ON AN AURA'S ALLY DAMAGE BONUS BOTH ROWS APPLY AND MULTIPLY. Ruled.** This row and "Your auras are 20%-50%
+  more effective". Conflagration's 8 with both at their tops is 8 times 1.5 times 1.4, 16.8. Tested: 2.1 times.
+- **An aura's other four figures are not this row's.** Its pulse damage, its named debuff, the health it returns
+  and its growth are read by `aura_effect` alone. Tested for the named debuff.
+- **A BUFF ALREADY RUNNING WHEN THE STAT CHANGES KEEPS ITS FIGURE UNTIL IT IS GRANTED AGAIN.** Read:
+  `GrantedIncrease` is written in `GrantIncrease` and nowhere else, and `GrantIncrease` is called at three
+  places: the cast, each second a buff that counts seconds is held (`SecondPassed`), and each kill for a buff
+  that counts kills (`NoteKill`). So:
+  - *Burning Wrath and Held Fast*, which count once at the cast, keep the figure of the cast until they end. A
+    row put on during the ten seconds does nothing for that use, and a row taken off leaves that use raised.
+  - *Butcher's Heat* takes the figure of the moment at its next kill, for all its kills so far.
+  - *Unbroken* takes it at its next second.
+  - *The copy an ally holds* follows `GrantedIncrease` at the next step, a quarter of a second later:
+    `UCataclysmSharedBuffs::Step` changes a held copy in place when the value has moved.
+  - *An ally already carrying an aura's bonus* keeps the figure it was given until it leaves the ring or the
+    aura ends, as the entry below this one says of the aura row.
+  Tested for Burning Wrath and Butcher's Heat, both ways. Read and not tested for the other three.
+- **A buff's seconds are not raised.** `buff_duration` is another stat. Tested.
+- **The bucket and the scope of what is granted do not change.** A self buff's bonus stays a More line scoped to
+  the skill's element, and an aura's ally bonus stays an increase scoped to the aura's element. The row
+  multiplies the figure and adds no line of its own to the wearer's damage.
+- **The enchantment's own tag is not a Required Tag.** The sentence's Tags cell in the table of sentences is
+  `Type.Buff`, which says which items the sentence may roll on. The effect row carries no Required Tags; see
+  judgement 2.
+- **No genre source.** See "The genre source".
+
+**What was not read:** how a worn row becomes a line of the stat line at a gear refresh; whether
+`tools/tests/test_enchantment_effects_match_the_row_text.py` and the other checks of authored rows accept the
+row; what "You cannot benefit from buffs applied by allies" does to a copy; where stacks a row grants are
+written; the `Status.Buff` rows of the Status Effects sheet; `RefreshWornStatLine`; a second piece
+carrying the same benefit; the hover text; anything a client that is not the server sees.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+The owner's sentence, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". Each ruling below is a labelled judgement of the coordinating session under that delegation, received
+by the enchantment session on 2026-10-13.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | One stat, in the More bucket, on the figure of a buff a skill of the wearer's lays. | `UCataclysmSelfBuffSkill::BuffPotencyStat`, "buff_potency". `UCataclysmSelfBuffSkill::MorePotent(Caster, Tags, Figure)` hands the figure to `StatAppliedTo`, so a `more` row multiplies it. |
+| R2 | A self buff's More damage. | `UCataclysmSelfBuffSkill::GrantIncrease`: `Modifier.Value = MorePotent(Avatar(), SkillTags, Params.MoreDamagePer * Units)`. |
+| R3 | The copy of it given to allies; the caster's potency travels with the copy and the ally's own is not applied again. | `GrantIncrease` writes `GrantedIncrease = Modifier.Value`. `UCataclysmSharedBuffs::Step`, unchanged, wants `Buff->GrantedIncrease` for each ally and reads no stat of the ally's. |
+| R4 | An aura's ally damage bonus, on which this row and the auras row both apply and multiply. | `UCataclysmAuraSkill::HelpAlliesInside`: `const float Effective = MoreEffective(Params.AllyIncreasedDamage);` and `Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);`. |
+| R5 | The six random buffs stay out. | No call of `MorePotent` in `HoldARandomBuff` or `HeldRandomBuffStatModifiers`. |
+| R6 | Nothing for the five self buffs whose effect has no number. | `GrantIncrease` returns before the call when the row's `MoreDamagePer` is nought or less. |
+| R7 | Nothing for stacks a row grants or `Status.Buff` tags. | No call of `MorePotent` outside the two functions of R2 and R4. |
+
+### JUDGEMENTS OF THE WRITING SESSION
+
+1. **The function is on the self-buff class and the aura calls it.** The stat is about buffs, the self buff is
+   the buff shape, and `CataclysmSkillTemplates.h` declares that class above the aura's. The option not taken:
+   put it on the ability system component, which every caller already has in hand.
+2. **The stat is asked with the tags of the skill that lays the buff, the row carries no Required Tags, and the
+   generator refuses one that does.** "Buff effects you apply" covers an aura's ally bonus by the ruling, and
+   Conflagration does not carry `Type.Buff`: its tags are `Element.Demonic`, `Type.AOE.Aura`, `Keyword.DoT.Burn`,
+   `Stat.Defense.Resist`, `Stat.Offense.Global`, `Stat.Resource.Mana` and `Slot.Aura`. A row requiring `Type.Buff`
+   would leave it out. The option not taken: accept a required tag, for a later sentence about one kind of buff.
+3. **A running buff keeps its figure until it grants again.** Nothing tells a running skill that its caster's
+   stat line changed. The option not taken: revoke and grant every running self buff when the stat line is
+   written, which needs a call from the gear refresh into the skills and changes when Burning Wrath's and Held
+   Fast's counts are taken as read.
+4. **The standing "Nearby allies gain 10-20% more damage" is not raised.** Said first above. The option not
+   taken: raise it as a buff the wearer applies to allies. It was not taken because the ruling keeps out what a
+   row lays, and gives that as its reason for the six random buffs.
+5. **`StatAppliedTo` and not `StatForSkill`**, for the reason the entry below this one gives. So
+   `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains nothing and is not changed.
+6. **The generator's bounds are the sentence's figures, 20 to 40.**
+7. **The copy to allies is tested on the rig of the shared-buff tests, in a new file.** `Step` is declared in a
+   header `CataclysmSkillTemplateTests.cpp` does not include. The option not taken: one more include line at the
+   top of that file, which other sessions are editing.
+
+### The genre source
+
+Fetched by the enchantment session on 2026-10-13. The writing session fetched nothing. HOW IT WAS READ: the page
+was fetched twice through a tool that hands back a model's reading of the page and not the page's bytes. The
+second fetch asked for the lines character for character. A line below in a code block is one the second fetch
+gave as copied exactly. The page is longer than the 100,000 characters the tool read; the rest was not read.
+
+REACHED: `poedb.tw/us/Aura` (Path of Exile), its first 100,000 of 167,483 characters. Lines given as copied
+exactly, each with the group the page lists it under:
+
+```
+Item mods > Suffix "of Redemption": (15—20)% increased effect of Non-Curse Auras from your Skills
+Item mods > WeaponTree (Anger): Anger has 20% increased Aura Effect
+Item mods > WeaponTree (Anger): Anger has 25% increased Reservation
+Support Gem Quality > Arrogance Support: Supported Skills have (0—5)% increased Aura effect
+Support Gem Quality > Generosity Support: Supported Skills have (0—40)% increased Aura Area of Effect
+```
+
+What it settles: in that game an aura's effect, its reservation (its cost) and its area are three separate stats.
+What it does NOT settle: the page was not found to say which numbers of an aura "effect" scales. The list of
+figures scaled here is this game's own and judged.
+
+NOT REACHED: any source for "buff effects are more potent" in any game. No search was made for one.
+
+So this sentence has no genre source. What "more potent" multiplies, and that the caster's figure travels with a
+copy, are the coordinating session's rulings and this game's own.
+
+### WHAT WAS BUILT
+
+- **The stat.** `buff_potency`, with no gameplay attribute and no base, the last name on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code: `UCataclysmSelfBuffSkill::BuffPotencyStat`.
+- **The function.** `UCataclysmSelfBuffSkill::MorePotent(Caster, Tags, Figure)`, public and static. A figure of
+  nought or less is handed back. Otherwise the caster's ability system is asked
+  `StatAppliedTo(buff_potency, Tags, Figure)` and the answer is held to nought or more. A caster with no row,
+  and one whose ability system is not this project's, is handed its figure back.
+- **`GrantIncrease`.** The modifier's value is the row's `MoreDamagePer` times the count, handed to
+  `MorePotent` with the skill's tags. `GrantedIncrease`, which the function already wrote from that value, is
+  therefore the raised figure.
+- **`HelpAlliesInside`.** The ally bonus raised by `aura_effect` is read into `Effective`, and the modifier's
+  value is `MorePotent` of it with the aura's tags.
+- **Nothing in `UCataclysmSharedBuffs`.**
+- **The generator.** `AURA_AND_BUFF_EFFECT_STATS` gains `buff_potency` as a `more` row of 20 to 40, and
+  `refuse_an_aura_or_buff_effect_row_the_game_cannot_read` refuses on it what it refuses on `aura_effect`: a
+  row that is not `more`, that requires a tag, or whose figure is outside its bounds.
+- **The row the enchantment session is to write** is one line on the sentence's enchantment,
+  `Positive_Buff_effects_you_apply_are_20_40_more_potent`: Stat `buff_potency`, Value Kind `more`, Value Low
+  20, Value High 40. No Required Tags, no Condition, no Scale and no Action.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the name, at its end. The generator reads that
+  list, so it now accepts a row on the stat.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry
+  of `Probes()`.
+- The generator refuses more than it did: the refusals listed under "What was built". No shipped row is on the
+  stat, so no shipped row is refused.
+- `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is NOT changed; see judgement 5.
+
+### Tests
+
+Six new Unreal tests in the group `Cataclysm.BuffPotency.`. Every figure with the row is compared with the same
+figure read with no row, and casters stand 100 m apart.
+
+Four are in `CataclysmSkillTemplateTests.cpp`, at its end, on the rig of the aura tests: plain test fighters with
+no stat line but the one the test writes. A kill is `UCataclysmSkillTemplate::NoteKill` called by the test.
+
+- `ARowMultipliesTheMoreDamageASelfBuffGrantsItsCaster`. Three casters run Butcher's Heat and are told of five
+  kills. With no row the buff grants something, the caster carries one modifier of that figure, and a blow of
+  100 comes to more than 100 (the controls). The wearer of a row of 40 is granted 1.4 times that; carries one
+  modifier of the raised figure, in the More bucket; its blow of 100 gains 1.4 times what the control's gains;
+  and its buff lasts what the control's lasts. A caster wearing only a row of 50 on `aura_effect` is granted
+  what the control is.
+- `OnAnAurasAllyDamageBonusTheTwoRowsBothApplyAndMultiply`. Four casters each pulse Conflagration once beside
+  an ally. With no row the ally carries one increase worth something (the control). Beside a wearer of a row of
+  50 on `aura_effect` it is 1.5 times that; of a row of 40 on `buff_potency`, 1.4 times; of both, 2.1 times.
+- `ABuffAlreadyRunningKeepsItsFigureUntilItIsGrantedAgain`. One caster runs Burning Wrath beside one burning
+  enemy, and Butcher's Heat, told of two kills. With no row each grants something (the controls). With a row of
+  40 put on, neither figure moves. A third kill grants Butcher's Heat 1.4 times three kills' worth, and Burning
+  Wrath has not moved. With the row off Butcher's Heat keeps that figure, and a fourth kill grants four kills'
+  worth with no row.
+- `ARowLeavesAloneABuffWithNoNumberABuffsSecondsAndAnAurasOwnFigures`. `MorePotent` hands 100 back as 100 for a
+  caster with no row (the control) and as 140 for a wearer of a row of 40 (set-up), and nought as nought. A
+  self buff stating no More damage has seconds and grants nothing with no row (the controls); with the row it
+  grants nothing, leaves no modifier and lasts the same. With no row a pulse of Conflagration cuts an enemy's
+  resistance (the control); with the row it cuts the same, and the aura hands 100 back as 100 from
+  `MoreEffective`.
+
+Two are in the new file `CataclysmBuffPotencySharedTests.cpp`, on the rig of `CataclysmSharedBuffsTests.cpp`: a
+real player character as the caster, creatures on the players' team as allies, and `UCataclysmSharedBuffs::Step`
+called by the test.
+
+- `TheCopyGivenToAnAllyIsTheCastersRaisedFigureAndTheAllysOwnRowIsNotAppliedAgain`. Two casters share a self
+  buff of five kills within 8 m, each with an ally 5 m away that wears a row of 40. With no row on the caster
+  the buff grants something and its ally carries one modifier of exactly that (the controls). The wearer of a
+  row of 40 is granted 1.4 times that, its ally carries one modifier of 1.4 times that, and a second step leaves
+  it there.
+- `TheMoreDamageARowGivesNearbyAlliesIsNotRaised`. A caster wearing the nearby row at 15 gives its ally 4 m
+  away More damage (the control). A caster wearing it and a row of 40 on `buff_potency` gives its ally the same
+  figure.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeBuffPotency`.
+`MorePotent` hands 100 back as 100 for a plain fighter (the control), and as 150 with the stat granted at 50.
+
+Python, `tools/tests/test_aura_effect_and_buff_potency_rows.py`: the same ten tests now read two stats. For this
+one: the generator's list holds it with its kind and bounds; the ruled row is carried through and not refused
+by any check; its enchantment's name is the one `EnchantmentsPositive.csv` holds for the sentence, which holds
+it once; the stat is one with no attribute; the generator's name is the one `CataclysmSkillTemplates.cpp` gives
+the engine's constant; each wrong shape is refused once and by its own sentence (increased, flat, a required
+tag, 19, 41); a narrower pair and the bounds themselves are accepted; a condition or a scale is refused by the
+two checks that hold those; a passive node's row is left alone; and the sheet's validation runs the check.
+
+**Not tested:** the stat arriving from a worn row through a gear refresh, because no row exists; Burning Wrath,
+Unbroken and Held Fast with the row worn at their cast (Butcher's Heat is the buff read with it); Unbroken's
+figure moving at its next second; a copy an ally holds following a figure that moved; a buff scoped to an
+element (every buff here is granted with no element); the six random buffs; stacks a row grants; a
+`Status.Buff` tag; a minion as the ally; the ally's blow; an ally wearing "You cannot benefit from buffs applied
+by allies"; anything in a dungeon level.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted once in its file by a script of the writing session, which printed 1 for each.
+Each is a break in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`, and each new text was
+read in place for its brackets. The failed assertions are counted by reading the tests and were not measured.
+The prefix of both is `Cataclysm.BuffPotency.`, with its trailing dot, which is 6 tests.
+
+| Proof | Old text | New text | Test stated to fail | Every other test expected to fail |
+|---|---|---|---|---|
+| B-I, a self buff's More damage is multiplied | `Modifier.Value = MorePotent(Avatar(), SkillTags, Params.MoreDamagePer * Units);` | `Modifier.Value = Params.MoreDamagePer * Units;` | `ARowMultipliesTheMoreDamageASelfBuffGrantsItsCaster` | `ABuffAlreadyRunningKeepsItsFigureUntilItIsGrantedAgain` and `TheCopyGivenToAnAllyIsTheCastersRaisedFigureAndTheAllysOwnRowIsNotAppliedAgain` |
+| B-II, this row applies to an aura's ally bonus | `Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);` | `Modifier.Value = Effective;` | `OnAnAurasAllyDamageBonusTheTwoRowsBothApplyAndMultiply` | None |
+
+Failed assertions in each test, by reading:
+
+- **B-I, 8 in 3 tests.** The self-buff test 3: "with a more row of 40 the same five kills grant 1.4 times the
+  More damage"; "and it is the raised figure"; and "and a blow of 100 gains 1.4 times what it gains with no
+  row". Its lines about the bucket, the seconds and the aura row pass. The running-buff test 2: "the next kill
+  grants Butcher's Heat 1.4 times three kills' worth", which would grant three kills' worth; and "with the row
+  taken off, Butcher's Heat keeps the raised figure". Its last line passes. The copy test 3: "with a more row
+  of 40 the buff grants its caster 1.4 times the More damage"; "and it is the caster's raised figure, 1.4
+  times: the ally's own row of 40 is not applied again"; and "a second step leaves the ally carrying the one
+  copy at the same figure".
+- **B-II, 2 in 1 test.** "beside a wearer of a more row of 40 on buff_potency it is 1.4 times", which would be
+  the control's figure; and "and beside a wearer of both it is 2.1 times: the two multiply", which would be 1.5
+  times. The line about the aura row alone passes.
+
+**Tests and no proof:** that the ally's own row is not applied to a copy, which no break of the code written
+can show, because the code asks the ally nothing; that the nearby row is not raised; that a running buff keeps
+its figure; that a buff with no number, a buff's seconds and an aura's own figures are left alone.
+
+No test outside the prefix is expected to fail under either. The probe of the stat asks `MorePotent` directly,
+and neither break touches that function. Under B-II no test of `Cataclysm.AuraEffect.` fails: none of them wears
+a row on `buff_potency`.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — A row can make its wearer's auras more effective: one stat, a More of its own on five figures of an aura skill, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (the stat's name, one
@@ -103,7 +384,7 @@ by the enchantment session on 2026-10-13.
 | R2 | Read in `UCataclysmAuraSkill::Pulse` and what it calls. | Two calls in `Pulse`, one in `HelpAlliesInside`, which `Pulse` calls, and one in `NoteBlowTaken`, which the damage pipeline calls for a blow on the holder. |
 | R3 | The pulse damage. | `Pulse`: `const float Percent = MoreEffective(ScaledDamagePercent(...))`, the percent of weapon damage handed to `HitTargets`. |
 | R4 | The magnitude of the named debuff it lays. | `Pulse`: `TGuardValue<float> Raised(Params.EffectMagnitude, MoreEffective(Params.EffectMagnitude))` around the loop that calls `ApplyNamedEffectsTo`. |
-| R5 | Its ally damage bonus. | `HelpAlliesInside`: `Modifier.Value = MoreEffective(Params.AllyIncreasedDamage)`. |
+| R5 | Its ally damage bonus. | `HelpAlliesInside`: `Modifier.Value = MoreEffective(Params.AllyIncreasedDamage)`. The buff-potency layer, the entry above this one, reads that figure into `Effective` and multiplies it again. |
 | R6 | Living Pyre's health returned for a hit taken. | `NoteBlowTaken`: `DealtToHealth * MoreEffective(Params.HealthFromHitTaken) / 100.0f`. |
 | R7 | Its growth for a hit taken. | `Pulse`: `ScaledDamagePercent(bGrowsByHitsTaken ? MoreEffective(Units) : Units)`. |
 | R8 | "Your auras" is the Aura shape, Living Pyre included. | The stat is read by `UCataclysmAuraSkill` and by nothing else, whatever tags the skill carries. |
