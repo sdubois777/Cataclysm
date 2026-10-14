@@ -2,6 +2,278 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — The two saves from a lethal blow judge the blow after the delayed share is taken off, and nothing of a saved blow is delayed
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (one flag, one question asked by
+both saves, and one condition where the share is taken),
+`game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.h` and `.cpp` (one new function, and `DelayShare`
+written on it), `game/Source/Cataclysm/Tests/CataclysmDelayedDamageTests.cpp` (three tests and their helpers),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the wording of two reasons and of one comment; no
+count and no key), and two entries of 2026-10-12 below, each of which gains one dated correction where it said the
+saves read the blow before the share is taken: the one headed "A row can take a share of the damage that would
+reach its wearer's health and deal it over seconds", and item 7 of the one headed "Seven sentences are given their
+rows". No row, no stat, no table and no generator code is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+This corrects a mechanism of 2026-10-12. It is about a character that wears the row "25%-50% of damage taken is
+dealt over 4-8 seconds" and also holds one of the two saves from a lethal blow.
+
+- **What a wearer of both gets now and got before.** Take a wearer at 50% over 4 seconds, holding 320 health,
+  struck by a hit that is worth 400 after its mitigation and its pools.
+  - **Before, with Nothing Stops It:** the save read the whole 400, which reaches 320, and fired. The hit was cut
+    to 319. The save's twenty seconds were spent and its two seconds of no damage opened. Half of the 319 was then
+    delayed: the wearer lost 159.5, kept 160.5 and owed 159.5.
+  - **Now, with Nothing Stops It:** the save reads 400 less the 200 that will be delayed, which is 200 and does
+    not reach 320. It does not fire. Nothing is spent and no window opens. The wearer loses 200, keeps 120 and
+    owes 200, exactly as a wearer of the row alone does.
+  - **Before, with the healing row (Archon's Aegis, ten pieces):** the row cut the same hit to 319 and half of
+    that was delayed: the wearer lost 159.5 and owed 159.5 instead of losing 200 and owing 200. Nothing with a
+    cooldown was spent, because this save spends nothing when it cuts a blow: its cooldown is spent by the heal,
+    and the heal fires only when health falls below the row's share.
+  - **Now, with the healing row:** the hit is not cut. The wearer loses 200 and owes 200. The heal still fires
+    by its own rule if the 200 takes health below the row's share.
+- **So a wearer of both now loses more health to such a hit than it did, and keeps its save.** That is the
+  ruling: a save is never spent on a blow that would not have killed.
+- **When a save does fire, nothing of that blow is delayed. A judgement of the writing session, and a change in
+  what a player gets.** A save fires when the hit less its share still reaches the health held. The hit is cut to
+  leave one point, as for a holder of the save alone, and the wearer owes nothing for it. Before, the share was
+  taken of the cut figure: a wearer on 160 health struck for 400 was left 80.5 and owed 79.5. Now it is left 1 and
+  owes nothing. The reason and the options not taken are under "The judgements".
+- **Nothing changes for a character that does not wear the delayed-damage row.** The new question is asked only
+  after every condition a save already had is true, and it answers yes whenever no share would be delayed. No
+  merged test's expectation was changed.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** NOT COMPILED AND NOT
+  RUN. A second session wrote the code, the tests and this entry under the enchantment session's brief. Every
+  statement below about what the engine does was read from the code when it was written.
+- **No row and no genre source.** The layer authors no row and states nothing about another game.
+- **Nothing here was played.** The delayed-damage row is already on the owner's play-check list.
+- **A blow that The Breaking Point's window turns into bleeding is judged whole, as before.** While that window is
+  open no share is delayed, so the saves read the whole blow. That is unchanged.
+- **The drain is still not saved.** A wearer holding either save is still killed by the drain of what it owes.
+  That is unchanged and is in the entry of 2026-10-12.
+
+### What the owner said, and who ruled
+
+The owner's own words, typed in the coordinating session on 2026-10-13 and relayed: "your rec on all three,
+continue". The ruling below is a labelled judgement of the coordinating session under that delegation, received
+by the enchantment session on 2026-10-13 as item 3 of its section R0: with the delayed-damage row worn, the two
+saves from a lethal blow must judge the blow after the delayed share is taken off, so that a save is never spent
+on a blow that would not have killed; a test first that shows the save spent wrongly today; then the change; one
+proof.
+
+### What was found first
+
+**The two saves.** Both are in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, in the block that opens
+with the comment "AND NOTHING STOPS IT, ON WHAT CAME OUT AS WELL", after the blow is resolved and before its
+result is recorded.
+
+| | Nothing Stops It | A worn row that heals as health falls below a share |
+| :-- | :-- | :-- |
+| Held as | the stats `lethal_hit_survived_every_seconds` (the 20) and `damage_immunity_after_lethal_hit_seconds` (the 2) | an action on the event `health_falls_below` that heals; the shipped one is Archon's Aegis, ten pieces |
+| Asked by | `MaySurviveLethalHit` | `SavesLethalBlowByCrossing` |
+| Saves | a hit, never a tick | a hit or a tick, when health before it was at or above the row's share and above one point |
+| Does to the blow | `Resolved.DealtToHealth` becomes the health held less one | the same |
+| Spends | `NoteLethalHitSurvived`: the next save waits the 20 seconds, and no damage is taken for the 2 | nothing where it cuts the blow; the fall to one point fires the heal through `NotifyHealthChanged`, and the heal starts the row's cooldown |
+| Merged tests | `Cataclysm.LethalHit.` (four), `Cataclysm.DemonicRows.NothingStopsItReachesARealRavagerFromItsRows`, `Cataclysm.DungeonModifierEffects.APlayerHoldingNothingStopsItStillDiesToTheReaper`, two probes of `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | `Cataclysm.HealthThreshold.AHealingRowOnAFallBelowSavesALethalBlowOnceItsCooldownAllows`, `Cataclysm.Enchantments.ArchonsAegisTenPiecesSaveALethalBlowAndHealToFullOnceInTenMinutes` |
+
+Nothing Stops It is asked first, and a blow it cut no longer reaches the health held, so the healing row is not
+asked about that blow.
+
+**What stands between the saves and the place the share is taken, in order, and what each does to the blow.**
+
+1. A creature no damage reaches: empties the blow's four figures.
+2. A character immune to the attacker that threw the blow: empties the four figures and marks the result.
+3. The overkill line: a blow that no longer reaches the health held has its overkill cleared.
+4. The result is recorded for the blow's sender. Nothing below changes it.
+5. The refill wait, the attacker's leech, the boss clock, the record of who struck, retaliation, and the buffs
+   told of a blow taken: each reads the result and changes none of its figures.
+6. The temporary absorb, the energy shield and mana are charged what the result says each took.
+7. The conversion to bleeding: takes the whole of what was left for health, or nothing.
+8. The share is taken of what is left for health and the overkill together.
+9. The Sacrificial Bond divides what is left once the share is taken.
+
+**The pools do not have to be charged before the share is known.** The damage calculation settles what each pool
+takes and what is left for health in one result, before the saves, and `Resolved.DealtToHealth` at the saves is
+already what is left after the three pools. Steps 4 to 6 above write those figures and do not change them. For a
+blow that reaches the health held, `Resolved.DealtToHealth` and `Resolved.Overkill` together at the saves are the
+figure the share is later taken of, unless step 1, 2 or 7 empties it in between.
+
+**The two ways, and the one chosen.**
+
+- **Chosen: the saves ask what the share would be.** A new function answers what `DelayShare` would take of a
+  figure and holds nothing. Each save asks it, of `Resolved.DealtToHealth` and `Resolved.Overkill` together, only
+  once every condition it already had is true. For a character with no delayed-damage row the answer is nought and
+  the save does what it did. The saves stay where they are.
+- **Not taken: move the two saves below the pools, beside the place the share is taken.** A save changes
+  `Resolved.DealtToHealth`, and between the saves and that place the result is recorded for the sender, leeched
+  from, and handed to the buffs told of a blow taken. Moved below, a saved blow would be recorded, leeched from
+  and announced at its whole figure for every holder of a save, with or without the delayed-damage row. That
+  changes what merged behaviour gives a character that does not wear the row.
+- **Not taken: take the share before the saves.** The entry of 2026-10-12 named this. It moves the write of the
+  store to before the blow's result is recorded and before the pools are charged, and three steps after the saves
+  can still empty the blow, so a share could be held for a blow that then deals nothing.
+
+**What "would not have killed" compares.** `Resolved.DealtToHealth + Resolved.Overkill`, less what would be
+delayed of it, against `GetHealth()` at that moment: the same three figures, in the same arithmetic, that the
+lines where the share is taken use to decide whether the write empties health. A save fires when that is at
+least the health held.
+
+**What was not read:** how `SetStatInputs` and `SetPoolActions` are reached from worn gear; whether any character
+in play can hold a save and the Sacrificial Bond together (the bond is a creature's, and a creature holds no stat
+line and no worn action, as the comments at both places say); what a client that is not the server sees.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Ruled on 2026-10-13 by the coordinating session under the owner's delegation.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R0.3 | With the delayed-damage row worn, the two saves judge the blow after the delayed share is taken off, so that a save is never spent on a blow that would not have killed. | `EmptiesHealthLessTheDelayedShare`, a lambda in `PostGameplayEffectExecute` above the two saves, which each save asks as the last of its conditions. It calls `UCataclysmDelayedDamage::ShareThatWouldBeDelayed`. |
+
+### The judgements, with the options not taken
+
+Each is a judgement of the writing session.
+
+- **The saves ask what the share would be; they are not moved.** Stated above with the two options not taken.
+- **When a save fires, nothing of that blow is delayed.** `bSavedFromALethalBlow` is set by either save and read
+  where the share is taken. Why: a save promises that its holder is left one point. The healing row's save exists
+  for its heal, and the heal fires only when health falls below the row's share. With a share taken of the cut
+  figure, a wearer at full health at 50% is left about half its health, does not fall below the share, and is not
+  healed by the blow the row cut for it. Leaving the one point is what the merged tests of both saves read, and it
+  is now what a holder of both gets.
+  - **Not taken: the share still taken of the cut figure,** which is what the code did until this layer. The wearer
+    lives under it too. It was not taken for the reason above.
+  - **Not taken: the whole share held and the rest cut to leave one point.** The wearer would stand on one point
+    owing half the blow, and the drain, which no save looks at, would kill it at its next step.
+- **While The Breaking Point's window is open the saves read the whole blow.** The share is nought for a blow that
+  conversion will take, so the question answers yes and nothing changes. The option not taken: none; this is what
+  the code did.
+- **The question is asked only by a save whose own conditions are all true.** So a character that holds no save,
+  or whose save is waiting out its time, is asked for no stat it was not asked for before. The option not taken:
+  work the figure out once for every blow that reaches the health held, which asks one stat more of every
+  creature on the blow that kills it.
+- **`DelayShare` is written on the new function,** so the figure a save judges and the figure then taken cannot
+  come apart: both are one call of `AmountDelayed` on one figure. The new function also answers nought for a
+  component with no world, which is where `HoldDelayedDamage` refuses a parcel. The option not taken: a second
+  copy of the two stat lookups in the new function.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmDelayedDamage::ShareThatWouldBeDelayed(AbilitySystem, ToHealth, bIsDamageOverTime, OutSeconds)`.**
+  Static and public. It answers what `DelayShare` would take off `ToHealth` and holds nothing: nought for a tick,
+  for nothing arriving, for a component that is not this project's or has no world, and for a character without
+  both stats. It asks the two stats as `DelayShare` asked them, the share first. `OutSeconds`, when given, is
+  handed the row's seconds.
+- **`UCataclysmDelayedDamage::DelayShare`** now calls it and holds what it answers. It takes what it took.
+- **In `PostGameplayEffectExecute`, above the saves:** `bSavedFromALethalBlow`, false until a save cuts the blow;
+  and `EmptiesHealthLessTheDelayedShare`, which answers whether `Resolved.DealtToHealth + Resolved.Overkill`
+  less the share that would be delayed still reaches `GetHealth()`. It answers yes without that comparison when
+  no share would be delayed, and asks for no share while the conversion to bleeding is open.
+- **Each save** has that question as the last of its conditions, and sets the flag where it cuts the blow.
+- **Where the share is taken:** `DelayShare` is called only when the flag is false.
+- **Comments.** The paragraph at that place that said the saves read the blow before any share is taken now says
+  what they do. `CataclysmDelayedDamage.h` says of `DelayShare` that a saved blow is not handed to it.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No merged Unreal test was edited and none is expected to read differently. No Python check accepts or
+refuses anything it did not.
+
+Said for completeness: `tools/tests/test_stat_lookups_hand_over_what_they_should.py` has the wording of two
+reasons in `INVENTORY` and of the comment above `CALL_SITES` changed, because the two lookups of
+`CataclysmDelayedDamage.cpp` are now made in `ShareThatWouldBeDelayed` and not in `DelayShare`. The keys, which
+are the file and the text handed over, are as they were, and `CALL_SITES` stays 65.
+
+### Tests
+
+Three new Unreal tests in `CataclysmDelayedDamageTests.cpp`, in the group `Cataclysm.DelayedDamage.`, which is
+now 15 tests. They are on that file's rig: plain actors with no body, every blow direct damage on which no roll is
+made, the world's clock moved by hand. Helpers of their own are in the namespace
+`CataclysmDelayedDamageSaveTest`. Every figure is read from a twin first. They were written before the change and
+committed alone, to show the fault.
+
+- `NothingStopsItIsNotSpentOnABlowThatLessItsDelayedShareWouldNotHaveKilled`. Three characters each hold four
+  fifths of what the blow is worth. Controls: the holder of the save alone is left one point, its save's next
+  twenty seconds away and its window open; the wearer of the row alone loses half of the whole blow at once, owes
+  half, and lives. Then the holder of both: its save has never been spent; its window is not open; it lost at once
+  what the wearer of the row alone lost; it is left the same health; it owes the same; it lives. A second later a
+  blow a tenth the size takes health from the wearer of the row alone (a control), and takes the same from the
+  holder of both.
+- `AHealingRowOnAFallBelowDoesNotCutABlowThatLessItsDelayedShareWouldNotHaveKilled`. A blow sent as 8,000, so
+  that the health held before and after is above the tenth of maximum the row watches; the test checks that
+  first. Three characters each hold four fifths of what it is worth. Controls: the wearer of the healing row alone
+  never goes below one point, is healed to full and its row is spent; the wearer of the delayed-damage row alone
+  is left three tenths of the blow's worth and owes half. Then the wearer of both: the lowest health it reached is
+  what the wearer of the delayed-damage row alone was left; so is its health; it owes the same; its healing row is
+  not spent; it was not healed to full.
+- `ASaveThatFiresOnABlowStillLethalLessItsShareLeavesOnePointAndDelaysNothing`. Each character holds two fifths
+  of what its blow is worth. With Nothing Stops It: the wearer of the row alone is emptied and the holder of the
+  save alone is left one point (controls); the holder of both is left one point, owes nothing, its save's next
+  twenty seconds away and its window open. With the healing row and the large blow: the wearer of the
+  delayed-damage row alone is emptied, and the wearer of the healing row alone never goes below one point and is
+  healed to full (controls); the wearer of both never goes below one point, is healed to full, owes nothing, and
+  its healing row is spent.
+
+**What fails on the code as it was, by reading.** Fifteen assertions in the three tests.
+
+- The first test, 6: "the save is not spent", "no two seconds of no damage are opened", "the blow lands at once
+  as it did on the wearer of the row alone", "the health left is what the wearer of the row alone was left", "what
+  is owed is what the wearer of the row alone owes", and "a small blow a second later takes what it took from the
+  wearer of the row alone". The save fired, so its clock and window were set, the blow was cut to the health held
+  less one before half of it was delayed, and the blow a second later was emptied by the window.
+- The second test, 3: "the lowest health reached", "the health left" and "what is owed". The blow was cut to the
+  health held less one before half of it was delayed. Its two last assertions pass on the old code too, because
+  this save spends nothing where it cuts.
+- The third test, 6: with Nothing Stops It, "the blow leaves one point of health" and "nothing of the saved blow
+  is owed"; with the healing row, "the lowest health reached is one point", "the wearer is healed to full",
+  "nothing of the saved blow is owed" and "the healing row is spent". Half of the cut figure was delayed, so the
+  wearer was left well above one point, did not fall below the row's share and was not healed.
+
+**Not tested:** anything compiled or run; a real player, a real skill or a creature's attack (every blow is
+`ApplyDirectDamage` called by the test); the saves and the delayed-damage stats arriving from real rows through a
+gear refresh; a wearer of both whose blow The Breaking Point turns into bleeding; a wearer of both with an energy
+shield, a temporary absorb or mana taking part of the blow; a tick on a wearer of the healing row and the
+delayed-damage row; a holder of both saves and the row; a blow on a holder of both from an attacker it is immune
+to, or on a creature no damage reaches; a save and the Sacrificial Bond together; what the attacker leeches from
+and is told of a blow a save did not cut; a share above 100 or seconds of nought on a holder of a save; a
+component with no world.
+
+### GUARD PROOFS PROPOSED
+
+Not run. One proof, as ruled. The anchor was counted once in its file by a script. The break is in one `.cpp`
+file and puts one multiplication into one expression; the brackets of the line are unchanged. The failed
+assertions are counted by reading and were not measured. The prefix is `Cataclysm.DelayedDamage.`, with its
+trailing dot, which is 15 tests.
+
+| Proof | File | Old text | New text | Tests stated to fail | Every other test expected to fail |
+|---|---|---|---|---|---|
+| S-I, the saves judge the blow less the share that would be delayed | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `return DelayedLater <= 0.0f \|\| WholeToHealth - DelayedLater >= GetHealth();` | `return DelayedLater <= 0.0f \|\| WholeToHealth - 0.0f * DelayedLater >= GetHealth();` | `NothingStopsItIsNotSpentOnABlowThatLessItsDelayedShareWouldNotHaveKilled` and `AHealingRowOnAFallBelowDoesNotCutABlowThatLessItsDelayedShareWouldNotHaveKilled` | None |
+
+With the break each save fires on the whole blow again, and, because a saved blow is no longer delayed, the
+holder of both is left one point and owes nothing.
+
+- **The first test, 6 failed assertions:** "the save is not spent"; "no two seconds of no damage are opened";
+  "the blow lands at once as it did on the wearer of the row alone", which would be the health held less one; "the
+  health left", which would be one point; "what is owed", which would be nothing; and "a small blow a second
+  later", which the window would empty. "the wearer lives" passes.
+- **The second test, 5 failed assertions:** "the lowest health reached", which would be one point; "the health
+  left", which would be the full pool after the heal; "what is owed", which would be nothing; "the healing row is
+  not spent"; and "the wearer was not healed to full".
+- **The third test passes with the break in.** Its blows reach the health held with or without the share, and the
+  flag that stops a saved blow being delayed is not broken. **A test and no proof:** that nothing of a saved blow
+  is delayed.
+
+No test outside the prefix is expected to fail: the break changes the answer only for a character that would have
+a share delayed, and outside this file's tests no test gives one character both a save and the two stats. That
+was read by searching the test folder for the names of the stats and was not measured.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — The dungeon rule The Labrynth is marked Built; its rooms do not move, and nothing it does changed
 
 **Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ was written and read. The
@@ -1154,6 +1426,9 @@ show figures on test characters in worlds with no floor, no walls and no navigat
    owing more than its health. The two saves from a lethal blow read the blow before the share is taken, so a
    save can be spent on a blow that, with the share taken off, would not have killed. A death clears the store;
    leaving the dungeon clears it; a floor change does not; taking the gear off does not.
+   **Corrected 2026-10-13:** the two saves now judge the blow after the share is taken off, and nothing of a blow
+   a save did cut is delayed. See the entry of 2026-10-13 headed "The two saves from a lethal blow judge the blow
+   after the delayed share is taken off". The sentence above is left as it was written.
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -1358,6 +1633,12 @@ The sentence, from `game/Data/EnchantmentsPositive.csv`: "25%-50% of damage take
   though with the share taken off it would not have killed. The share is then taken of the figure the save
   left. The option not taken: take the share before the saves. It needs the share moved to before the blow's
   result is recorded, and is for the coordinating session to rule.
+  **Corrected 2026-10-13:** ruled that day by the coordinating session under the owner's delegation. Each save
+  now asks what the share will be and judges the blow less it, so a save is not spent on a blow that, with the
+  share taken off, would not have killed. And nothing of a blow a save did cut is delayed: the share is no longer
+  taken of the figure the save left. The share itself is still taken where it was. See the entry of 2026-10-13
+  headed "The two saves from a lethal blow judge the blow after the delayed share is taken off". The lines above
+  are left as they were written.
 - **The Sacrificial Bond divides what is left once the share is taken.** No character holds both today: the
   bond is a creature's and a creature wears no row. The comment at that place asked for a ruling before a part
   of a blow was taken off ahead of the bond; this is that case, and it is for the coordinating session to rule.
