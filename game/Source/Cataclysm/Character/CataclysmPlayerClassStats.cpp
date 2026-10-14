@@ -664,6 +664,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute and no base.
 		TEXT("damage_taken_delayed_percent"),
 		TEXT("damage_taken_delayed_seconds"),
+		// The chance, in percent, that a damage over time ailment this character
+		// applied explodes when it ends by time, read where such an effect is
+		// removed, in UCataclysmSkillEffects, with the tags the ended effect
+		// granted. Ruled 2026-10-13: "Your burn effects have a 20%-40% chance to
+		// explode for double their remaining damage when they expire". Flat;
+		// nought is no chance. No gameplay attribute and no base.
+		TEXT("dot_explodes_at_expiry_chance"),
 	};
 	return Stats;
 }

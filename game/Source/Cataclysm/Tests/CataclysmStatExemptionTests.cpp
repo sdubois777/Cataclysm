@@ -7917,6 +7917,59 @@ namespace CataclysmStatExemptionTest
 							"really reads it"), With, Without * 0.5f, 0.01f);
 	}
 
+	/**
+	 * `dot_explodes_at_expiry_chance`, read in `CataclysmSkillEffects.cpp` where a damage over time effect laid by
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` is removed. Ruled 2026-10-13, for "Your burn effects have a
+	 * 20%-40% chance to explode for double their remaining damage when they expire". A Burn of one a tick for four
+	 * seconds is run to its end on a fighter. From a plain applier it takes its four ticks. From an applier holding
+	 * the stat at 100 it takes those and twice their sum again, at once, when it ends.
+	 *
+	 * AT 100, SO NO ROLL IS MADE: a chance of 100 is compared and not rolled.
+	 *
+	 * WHAT THIS DOES NOT REACH. The roll, who else is struck, what ends a Burn without an explosion and what the
+	 * explosion's blow is: `Cataclysm.BurnExplodes.` in `CataclysmBurnExplodesTests.cpp` holds those.
+	 *
+	 * STANDING: nowhere. Both are bare actors with no root component, so the search around the carrier finds
+	 * nobody; the carrier is struck by name.
+	 */
+	void ProbeDotExplodesAtExpiryChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+		if (!Test.TestTrue(TEXT("set-up: the Burn tag"), Burn.IsValid()))
+		{
+			return;
+		}
+
+		const auto TakenByTheEnd = [World, &Burn](bool bHeld)
+		{
+			FScopedFighter Applier(World, /*AttackDamage=*/0.0f);
+			FScopedFighter Struck(World, /*AttackDamage=*/0.0f);
+			if (bHeld)
+			{
+				GrantFlats(Applier.Actor,
+						   {{FName(UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat), 100.0f}});
+			}
+			const float Before = Struck.Health();
+			UCataclysmSkillEffects::ApplyDamageOverTime(Applier.Actor, Struck.Actor, 1.0f, 4.0f, Burn,
+														/*bScalesWithInstigator=*/false);
+			CataclysmTestWorld::RunClock(World, 5.0f);
+			return Before - Struck.Health();
+		};
+
+		const float Without = TakenByTheEnd(false);
+		Test.TestEqual(TEXT("control: a plain applier's Burn of one a tick for four seconds takes four"), Without,
+					   4.0f, 0.01f);
+		Test.TestEqual(TEXT("and eight more when the applier holds dot_explodes_at_expiry_chance at 100, so the end "
+							"of the effect really reads it"),
+					   TakenByTheEnd(true) - Without, 8.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8059,6 +8112,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},
 			{TEXT("damage_taken_delayed_seconds"), &ProbeDamageTakenDelayedSeconds},
+			{TEXT("dot_explodes_at_expiry_chance"), &ProbeDotExplodesAtExpiryChance},
 		};
 		return Made;
 	}

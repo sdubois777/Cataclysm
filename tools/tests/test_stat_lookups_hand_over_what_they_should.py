@@ -136,6 +136,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: A share of damage taken dealt over seconds added two more on 2026-10-12,
 #: the share and the seconds, both asked of the struck character by
 #: `UCataclysmDelayedDamage::DelayShare` where a blow's damage reaches health.
+#: The chance that a damage over time ailment explodes when it ends by time
+#: added one more on 2026-10-13, asked of the applier in
+#: `CataclysmSkillEffects.cpp` where the ended effect's removal is heard.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -857,6 +860,14 @@ INVENTORY = {
         "the seconds a delayed share is drained over (ruled 2026-10-12), "
         "asked beside the share in DelayShare and for the same character; "
         "no tags, no blow and no target, for the reason the share gives",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat), Granted, 0.0f'):
+        "the chance that a damage over time ailment explodes when it ends by "
+        "time (ruled 2026-10-13), asked of the applier where the ended "
+        "effect's removal is heard, with the tags that effect granted, so a "
+        "row requiring one ailment's tag reaches that ailment alone; no blow "
+        "exists yet and the stat is no modifier of one, so no blow and no "
+        "target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
