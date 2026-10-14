@@ -2308,11 +2308,33 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgePlainIsAnExceptionTest,
 
 bool FCataclysmSurgePlainIsAnExceptionTest::RunTest(const FString& Parameters)
 {
-	// TWENTY CAMPAIGNS RATHER THAN ONE. A single 600 day campaign makes about a
-	// hundred dungeons, measured, which is too few to compare a 7-in-100
-	// sub-type against an exception that arises a few times in a hundred.
-	// Pooling also stops the answer being a fact about one seed.
-	constexpr int32 Campaigns = 20;
+	// FORTY CAMPAIGNS RATHER THAN ONE. A single 600 day campaign makes too few
+	// dungeons to compare a 7-in-100 sub-type against an exception that arose
+	// a few times in a hundred. Pooling also stops the answer being a fact
+	// about one seed.
+	//
+	// IT WAS TWENTY UNTIL 2026-10-13. The floor of 1,000 below was kept and
+	// this was raised from 20 to 40, a labelled judgement by the coordinating
+	// session under the owner's delegation, 2026-10-13. Issue #2380.
+	//
+	// WHAT WAS MEASURED, AND WHEN. Every figure here is at TWENTY campaigns.
+	//
+	//   - Recorded in the entry of 2026-09-06 in `docs/DECISIONS.md`, with
+	//     every city's fall firing a surge and before a refused Siege was
+	//     spread across the others: 10,914 days in all, 1,925 dungeons made.
+	//   - This test's own log line in the Unreal run of 2026-10-12 before the
+	//     change for issue #2380, with every fall still firing a surge:
+	//     "20 campaigns, 12000 days in all, 1580 dungeons made: 0 with no
+	//     sub-type (0.0%), 94 Cow Levels, 116 Sieges".
+	//   - The same line in the Unreal run of 2026-10-12 with that change in,
+	//     so that a fall fires a surge only when the last one is at least 25
+	//     days behind: "20 campaigns, 12000 days in all, 687 dungeons made: 0
+	//     with no sub-type (0.0%), 44 Cow Levels, 60 Sieges". That is 34 a
+	//     campaign and under the floor, which is why twenty stopped being
+	//     enough.
+	//
+	// The figure at 40 campaigns had not been measured when this was written.
+	constexpr int32 Campaigns = 40;
 	constexpr int32 MostDays = 600;
 
 	TMap<ECataclysmDungeonSubType, int32> Made;
@@ -2413,7 +2435,8 @@ bool FCataclysmSurgePlainIsAnExceptionTest::RunTest(const FString& Parameters)
 	}
 
 	// **NONE AT ALL.** It was 31 of 1,925 before refused Sieges were spread
-	// across the other six.
+	// across the other six. That was at twenty campaigns with every city's
+	// fall firing a surge; see the comment on `Campaigns` above.
 	TestEqual(TEXT("no dungeon came out without a sub-type"), Plain, 0);
 
 	// AND COW LEVELS DID TURN UP, so the count above is a real zero from a
