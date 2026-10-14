@@ -6,15 +6,18 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageConversion.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Cataclysm.h"
 #include "Engine/World.h"
 #include "GameplayEffect.h"
 #include "GameplayTagsManager.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -170,6 +173,80 @@ namespace CataclysmDebuffImmuneTest
 	}
 
 	using CataclysmTestWorld::RunClock;
+
+	/**
+	 * Everything written to the log while this is alive. The shape of `FScopedWarningCapture` in
+	 * `CataclysmDamageOverTimeTests.cpp`, written again here because that one is in that file's own namespace. A
+	 * warning does not fail an automation test, so reading the log is the only way to see whether one was written.
+	 */
+	struct FImmuneLogCapture : public FOutputDevice
+	{
+		struct FCapturedLine
+		{
+			FString Text;
+			ELogVerbosity::Type Verbosity = ELogVerbosity::NoLogging;
+			FName Category;
+		};
+
+		FImmuneLogCapture()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FImmuneLogCapture()
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity,
+							   const class FName& Category) override
+		{
+			Lines.Add({ FString(Text), Verbosity, Category });
+		}
+
+		/** How many LogCataclysm lines at exactly Warning verbosity hold Needle, case-sensitively. */
+		int32 CataclysmWarningsContaining(const TCHAR* Needle)
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+
+			int32 Found = 0;
+			for (const FCapturedLine& Line : Lines)
+			{
+				if (Line.Category == FName(TEXT("LogCataclysm")) && Line.Verbosity == ELogVerbosity::Warning
+					&& Line.Text.Contains(Needle, ESearchCase::CaseSensitive))
+				{
+					++Found;
+				}
+			}
+			return Found;
+		}
+
+		TArray<FCapturedLine> Lines;
+	};
+
+	/** Words of the warning `UCataclysmDamageConversion::ConvertIfActive` writes when it could not lay its bleed. */
+	const TCHAR* ConversionWarningNeedle = TEXT("into Bleeding and could not");
+
+	/** What a direct blow of `Damage` takes from this rig's health at once: not evaded, not critical. */
+	float TakenAtOnceBy(const FImmuneRig& Struck, AActor* Striker, float Damage)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotBeEvaded = true;
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCannotBeRetaliatedAgainst = true;
+		const float Before = Struck.Health();
+		UCataclysmSkillEffects::ApplyDirectDamage(Striker, Struck.Actor, Damage, Delivery);
+		return Before - Struck.Health();
+	}
 }
 
 #define CATACLYSM_DEBUFF_IMMUNE_TEST(TestClass, TestName) \
@@ -478,6 +555,66 @@ CATACLYSM_DEBUFF_IMMUNE_TEST(FCataclysmDebuffImmuneMinionTest,
 
 	TestTrue(TEXT("a holder's minion is not itself immune: a Cripple from an enemy lands on it"),
 			 ImmuneEffects::ApplyTagForDuration(HoldersEnemy.Actor, HoldersImp, Cripple, 20.0f));
+	return true;
+}
+
+CATACLYSM_DEBUFF_IMMUNE_TEST(FCataclysmDebuffImmuneConversionTest,
+	"Cataclysm.DebuffImmune.AHoldersConversionToBleedingTakesTheBlowAtOnceLeavesItNotBleedingAndWritesNoWarning")
+{
+	using namespace CataclysmDebuffImmuneTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FImmuneRig Striker(World);
+	const FImmuneRig NoWindow(World);
+	const FImmuneRig Converting(World);
+	const FImmuneRig Holder(World, /*bHoldsTheFlag=*/true);
+	const FGameplayTag Bleed = ImmuneDebuffs::BleedTag();
+	if (!TestTrue(TEXT("set-up: the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	// THE WINDOW OF THE BREAKING POINT, OPENED BY HAND on two of the three, as `CataclysmDeathTests.cpp` opens it:
+	// four seconds, and a cooldown that does not matter here.
+	Converting.AbilitySystem->NoteDamageConversionStarted(/*WindowSeconds=*/4.0f, /*CooldownSeconds=*/10.0f);
+	Holder.AbilitySystem->NoteDamageConversionStarted(/*WindowSeconds=*/4.0f, /*CooldownSeconds=*/10.0f);
+	if (!TestTrue(TEXT("set-up: the window is open on both and shut on the third"),
+				  Converting.AbilitySystem->IsConvertingDamageToBleeding()
+					  && Holder.AbilitySystem->IsConvertingDamageToBleeding()
+					  && !NoWindow.AbilitySystem->IsConvertingDamageToBleeding()))
+	{
+		return false;
+	}
+
+	// A BLOW OF 200, WELL UNDER HALF OF 1,000 HEALTH, so no rig crosses the line that opens a window.
+	const float Worth = TakenAtOnceBy(NoWindow, Striker.Actor, 200.0f);
+	if (!TestTrue(*FString::Printf(TEXT("control: with no window open the blow takes health at once: %.2f"), Worth),
+				  Worth > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with the window open and no flag the blow takes nothing at once"),
+			  TakenAtOnceBy(Converting, Striker.Actor, 200.0f), 0.0f, 0.01f);
+	TestTrue(TEXT("control: and that character is bleeding, so the conversion works on this rig"),
+			 Converting.Carries(Bleed));
+
+	FImmuneLogCapture Capture;
+	UE_LOG(LogCataclysm, Warning, TEXT("A line this test writes: %s, said by the test."), ConversionWarningNeedle);
+	TestEqual(TEXT("control: the capture counts a warning holding those words when one is written"),
+			  Capture.CataclysmWarningsContaining(ConversionWarningNeedle), 1);
+
+	TestEqual(TEXT("a holder with the window open takes the whole blow at once, as one with no window does"),
+			  TakenAtOnceBy(Holder, Striker.Actor, 200.0f), Worth, 0.01f);
+	TestFalse(TEXT("and the holder is not bleeding"), Holder.Carries(Bleed));
+	TestEqual(TEXT("and carries no debuff"), Holder.Debuffs(), 0);
+	TestEqual(TEXT("and the refusal wrote no warning: the one line counted is still the test's own"),
+			  Capture.CataclysmWarningsContaining(ConversionWarningNeedle), 1);
 	return true;
 }
 

@@ -7,9 +7,10 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (the flag's name, three
 functions and one include), `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (one refusal in each
 of the four functions that put a debuff on a character),
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.cpp` (one condition on one warning),
 `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one job on the regeneration step),
 `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on the list of stats with no
-attribute), `game/Source/Cataclysm/Tests/CataclysmDebuffImmuneTests.cpp` (new: six tests),
+attribute), `game/Source/Cataclysm/Tests/CataclysmDebuffImmuneTests.cpp` (new: seven tests),
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the
 name and one refusal), `tools/tests/test_generate_datatables.py` (one class of 7 tests),
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site added to its inventory),
@@ -20,8 +21,38 @@ step's list). Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833)
 
 The sentence, from `game/Data/EnchantmentsNegative.csv`: "You are immune to debuffs but also cannot apply them".
 
-- **This row goes on the owner's play-check list, and this is first on that list: FOR A DAMAGE-OVER-TIME BUILD
-  IT REMOVES MOST OF THE BUILD.** Ruled, reading A. The wearer's bleeds, burns, poisons, diseases, necrosis and
+- **This row goes on the owner's play-check list, and this is first on that list: ON THE FLOOR RULES RAW SEWAGE
+  AND BLOOD PRICE A WEARER READS AS CARRYING A DEBUFF ALTHOUGH IMMUNE.** Ruled by the coordinating session on
+  2026-10-13, in a later ruling of that day made on what was built: "The two loose tags (Raw Sewage's
+  Keyword.DoT.Disease, Blood Price's Keyword.DoT.Bleed) stay. So a wearer on those two floor rules READS AS
+  CARRYING A DEBUFF ALTHOUGH IMMUNE." Those two rules put their tag on the player with no gameplay effect and
+  through none of the four functions, in `CataclysmDungeonGameMode.cpp`, which is not edited. While the player
+  holds any stack of Raw Sewage it owns `Keyword.DoT.Disease`, and while it holds any stack of Blood Price it
+  owns `Keyword.DoT.Bleed`. The step that removes what a wearer carries removes effects and cannot remove
+  either. WHAT FOLLOWS, read in the code:
+  - `UCataclysmDebuffs::CountOn` counts each: one debuff on either rule, two on a floor with both. The scale
+    `debuffs_carried` reads that count (`State.DebuffsCarried`), so the fifteen merged rows on it PAY a wearer
+    there: `Masochist_basic_fc_b0#1`, `Masochist_basic_fl_a0#1` to `#3`, `Masochist_keystone_fl_kB#1` and `#2`,
+    `Masochist_keystone_fl_kC#1`, `Masochist_capstone_100#5` and `#6`, `Masochist_capstone_25#1` to `#3`,
+    `Masochist_capstone_200#2` to `#4`.
+  - `UCataclysmDebuffs::IsBleeding` answers yes under Blood Price, so the condition `while_bleeding`
+    (`State.bIsBleeding`) is true and `Masochist_basic_fc_a2#1` pays. Raw Sewage's tag is not a bleed.
+  - `UCataclysmDebuffs::ShareADebuff` compares that tag with an enemy's, so `Masochist_basic_fl_a1#2`
+    (`damage_to_enemies_sharing_a_debuff`) pays against an enemy another character has bled or diseased.
+  - Another character's rows that ask about THEIR TARGET's debuffs read a wearer as debuffed when it is that
+    target: the conditions `target_carries_any_debuff` and `target_carries_a_dot` and the scale
+    `target_debuffs`. No creature wears a row, so today that is another player's.
+  - The player's debug readout of its debuff count and of whether it is bleeding
+    (`CataclysmPlayerCharacter.cpp`, about line 3200) says one or two and yes.
+  - What does NOT follow: the Masochist's two spreads of a debuff it carries
+    (`Masochist_basic_fl_b0#1`, `Masochist_basic_fl_b1#1`) find the loose tag and lay nothing, because the
+    wearer is the instigator and is refused; `debuffs_do_not_expire` and `debuff_duration_taken` act on
+    effects, and a loose tag is none.
+  - These two conditions and one scale are the only ones in the generator that read debuffs on the character
+    itself; the search was of `tools/generate_datatables.py` for conditions and scales naming a debuff, a
+    bleed, a damage over time or an ailment, and of the two effect tables for rows on them. No enchantment
+    row is on any of the three; all seventeen rows named are passive nodes of the Masochist.
+- **Second on that list: FOR A DAMAGE-OVER-TIME BUILD IT REMOVES MOST OF THE BUILD.** Ruled, reading A. The wearer's bleeds, burns, poisons, diseases, necrosis and
   Void Splinters are not applied, and THE DAMAGE OF A REFUSED DAMAGE OVER TIME IS LOST: it is not dealt at
   once and not dealt later. The wearer's stuns, Cripple, Weaken, Shred, Madness and every other named curse
   are not applied either.
@@ -44,21 +75,27 @@ The sentence, from `game/Data/EnchantmentsNegative.csv`: "You are immune to debu
   for the first three; a fear is the same case, because it is not on the list either. So does a knockback or a
   pull, the slow of Ground Down, the hold of Nowhere to Run and anything else that is not a tag under the
   three roots.
-- **The wearer takes none FROM ANY SOURCE that goes through the four functions**: an enemy's blow, an enemy
-  modifier, a floor rule's patch, a trap's zone, another player, the wearer's own skill and the wearer's own
-  rows.
+- **The wearer takes no debuff THAT IS LAID THROUGH THE APPLYING FUNCTIONS.** The first ruling of 2026-10-13
+  said the wearer "takes none FROM ANY SOURCE, the dungeon's included"; the coordinating session narrowed it
+  the same day, on what was built, to: "NONE THAT IS LAID THROUGH THE APPLYING FUNCTIONS". Through those
+  functions come an enemy's blow, an enemy modifier, a floor rule's patch, a trap's zone, another player, the
+  wearer's own skill and the wearer's own rows, and three things the dungeon game mode's file lays on the
+  player: Insanity Bursts' Madness and stun and Spore Clouds' Poison. All are refused.
 - **THE DRAWBACKS THE WEARER'S OTHER ROWS LAY ON THE WEARER ARE REFUSED.** They are debuffs on the list. A
   wearer of this row and of "Every 15 seconds a random debuff is applied to you", "Taking a hit has a 15%-25%
   chance to trigger a random debuff on you", "Critical strikes have a 20%-35% chance to trigger a random
   debuff on you" or "After using a charge skill you are briefly stunned" does not suffer that drawback. The
   debuff half of Shard of Anarchy's two-piece bonus is refused and its buff half lands.
-- **THE MASOCHIST'S CONVERTED BLEED IS REFUSED, SO THE BREAKING POINT DOES NOTHING FOR A WEARER.** The bleed that
-  `UCataclysmDamageConversion::ConvertIfActive` lays on its own character is a debuff on the list. With it
-  refused that function reports nothing converted, and the blow is taken off health at once, as that function
-  already does whenever the bleed cannot be applied. No damage is lost and none is deferred. Each such blow
-  writes the Warning that function logs ("should have turned ... into Bleeding and could not"); that file was
-  not edited. A converted bleed ALREADY RUNNING when the row is put on is kept and runs out, as a cleanse keeps
-  it: it is damage taken and not yet paid.
+- **THE MASOCHIST'S CONVERTED BLEED IS REFUSED, SO THE BREAKING POINT DOES NOTHING FOR A WEARER.** Accepted by
+  the coordinating session on 2026-10-13. The bleed that `UCataclysmDamageConversion::ConvertIfActive` lays on
+  its own character is a debuff on the list. With it refused that function reports nothing converted, and the
+  blow is taken off health at once, as that function already does whenever the bleed cannot be applied. No
+  damage is lost and none is deferred. THAT FUNCTION'S WARNING IS NOT WRITTEN FOR THIS REFUSAL, as ruled the
+  same day: "a refusal by this row is expected and is not a fault". As first built, in the commit before this
+  entry was corrected, every such blow wrote "should have turned ... into Bleeding and could not"; that build
+  was never compiled. The warning is still written when the bleed is not laid for any other reason. A
+  converted bleed ALREADY RUNNING when the row is put on is kept and runs out, as a cleanse keeps it: it is
+  damage taken and not yet paid.
 - **A Masochist wearer loses everything its tree pays for a debuff carried.** The rows are listed below.
 - **What the wearer already carries when the row is put on is removed, at its next regeneration step, a
   quarter of a second at most. A judgement; the ruling does not say.** It is the enchantment session's
@@ -71,8 +108,12 @@ The sentence, from `game/Data/EnchantmentsNegative.csv`: "You are immune to debu
 - **The wearer's minions are not themselves immune.** The sentence says "You".
 - **The copies a spread makes of an ailment are refused too**, to and from a wearer: they go through the same
   functions.
-- **THE DUNGEON'S OWN STACKING DEBUFFS ARE NOT REFUSED.** Ruled that the dungeon game mode's file is not
-  edited. See "The dungeon's own debuffs" below for each one by name and line.
+- **THE DAMAGE OF EIGHT FLOOR RULES IS NOT A DEBUFF AND IS NOT REFUSED, BY RULING.** The coordinating session,
+  2026-10-13: "The stacks' damage of Raw Sewage, Blood Price, Plague Convergence and Infested Hoard, and the
+  damage of Swarm of Locusts, Funereal Procession, Infested Veins and Necrotic Ground, are those floor rules'
+  own damage and not a debuff on the game's list: NOT refused." A wearer takes all of it as any player does.
+  Nothing is asked of the dungeon session and its file is not edited. See "The dungeon's own debuffs" below
+  for each one by line.
 - **A stun refused opens no immunity window and counts as no crowd control.** `ApplyStun` returns before both
   when its tag is refused.
 - **Madness refused opens no shared window either.** `ApplyNamedEffect` opens it only for a Madness that
@@ -121,7 +162,7 @@ with the player as target:
 So is anything a floor rule's ground zone lays through `ACataclysmGroundZone::Sweep`, and anything an enemy
 modifier lays; those are other files.
 
-**NOT REFUSED. For the coordinating session to take to the dungeon session:**
+**NOT REFUSED, AND RULED ON 2026-10-13 TO STAY SO. Nothing is asked of the dungeon session:**
 
 | Rule | Line | What reaches a wearer |
 | :-- | :-- | :-- |
@@ -137,9 +178,10 @@ modifier lays; those are other files.
 | Necrotic Ground | 20562 to 20564 | damage a second in the fog, marked the same way. No tag and no stack |
 | Funereal Procession | 8940 | a fear, through `UCataclysmFear::ApplyFear`. Not on the game's list of debuffs, so it lands as ruled for a stagger, a pin and a knockdown |
 
-The first four rows are what the ruling calls the dungeon's own stacking debuffs with a debuff's tag. The next
-two are stacks that deal damage and carry no tag. The four after them are not stacks; they are listed because
-they are dealt as damage over time and a wearer still takes them. This list was made from two searches of that
+The two tags are the loose tags the ruling says stay; "Said first" has what follows from them. Every damage
+row above is, by the ruling, that floor rule's own damage and not a debuff on the game's list. The first four
+rows are two rules whose stacks carry a debuff's tag. The next two are stacks that deal damage and carry no
+tag. The four after them are not stacks; they are dealt as damage over time and a wearer still takes them. This list was made from two searches of that
 file, for the calls of the applying functions and for `bIsDamageOverTime = true`. A rule that keeps stacks on
 the player and neither lays a tag nor deals damage marked as over time is not on it.
 
@@ -159,6 +201,9 @@ Each was ruled on 2026-10-13 by the coordinating session under the owner's deleg
 | R4 | The damage of a refused damage over time is lost. | `ApplyDamageOverTime` and `ApplyShareOfHealthOverTime` return false before any effect is made, and nothing is dealt in its place. |
 | R5 | Stagger, pin and knockdown are untouched both ways. | None of their three tags is under a root. |
 | R6 | The dungeon game mode's file is not edited; what it lays that is not refused is named. | See "The dungeon's own debuffs". |
+| R7 | LATER THE SAME DAY, on what was built. The stacks' damage of four floor rules and the damage of four more are those rules' own damage and not a debuff: not refused. Madness, its stun and Spore Clouds' Poison are refused, as built. | Nothing in the code asks: damage dealt by `ApplyDirectDamage` passes none of the four functions. |
+| R8 | LATER THE SAME DAY. The two loose tags stay; a wearer on those two floor rules reads as carrying a debuff although immune; "takes none from any source" is narrowed to none that is laid through the applying functions. | `CataclysmDungeonGameMode.cpp` is not edited, and `ImmunityStep` removes effects only. See "Said first". |
+| R9 | LATER THE SAME DAY. The converted bleed refused for an immune wearer, the damage going to health at once: accepted. The warning logged on each such blow must not stay. | `UCataclysmDamageConversion::ConvertIfActive` writes its warning only when `UCataclysmDebuffs::RefusedByARow(Character, Character, UCataclysmDebuffs::BleedTag())` is false. |
 
 ### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
 
@@ -195,8 +240,9 @@ rows) for the debuff conditions, scales, events, actions, stats and required tag
 asks about an ENEMY's debuffs still counts a debuff another character laid on that enemy; with no other
 character, it reads nought.
 
-**Rows paid for a debuff the wearer carries** (all read nought, unless the wearer holds the loose tag of Raw
-Sewage or Blood Price, or a converted bleed laid before the row was put on):
+**Rows paid for a debuff the wearer carries** (all read nought, EXCEPT on the floor rules Raw Sewage and Blood
+Price, where the loose tag makes the rows named under "Said first" pay, and except while a converted bleed
+laid before the row was put on still runs):
 
 - the scale `debuffs_carried`: `Masochist_basic_fc_b0#1`, `Masochist_basic_fl_a0#1` to `#3`,
   `Masochist_keystone_fl_kB#1` and `#2`, `Masochist_keystone_fl_kC#1`, `Masochist_capstone_100#5` and `#6`,
@@ -291,6 +337,12 @@ nothing of that for a wearer.
   after its check of the tag and the duration, so before it takes a running effect off to replace it.
   `ApplyStun`, `ApplyNamedEffect`, `ApplyBurn`, `CopyDebuffsTo`, `ApplySpreadCopy` and every other caller are
   refused through those four.
+- **The warning of the damage conversion.** In `UCataclysmDamageConversion::ConvertIfActive`, where the bleed
+  was not laid: the Warning is written only when
+  `UCataclysmDebuffs::RefusedByARow(Character, Character, UCataclysmDebuffs::BleedTag())` answers false. That
+  is the question `ApplyDamageOverTime` asked to refuse the bleed, of the same character as instigator and
+  target and of the same tag. The function still answers nought, so its caller still takes the blow off
+  health.
 - **`UCataclysmDebuffs::ImmunityStep(Character)`.** For a living character holding the flag: every running
   effect that grants a tag under a root is removed, except one stamped as converted damage. It answers how
   many it removed. `ACataclysmCharacterBase::RegenerationStep` calls it after `NowhereToRunStep`.
@@ -327,7 +379,7 @@ The coordinating session rules on each.
 
 ### Tests
 
-Six new Unreal tests in the new file `CataclysmDebuffImmuneTests.cpp`, in the group `Cataclysm.DebuffImmune.`,
+Seven new Unreal tests in the new file `CataclysmDebuffImmuneTests.cpp`, in the group `Cataclysm.DebuffImmune.`,
 on the rig of `CataclysmDebuffTests.cpp`: a plain actor holding an ability system, a vital set and a combat
 set. A plain actor has no root component and no body. The flag is written by hand as a flat line of 1. Each
 rig takes one application, so no immunity window opened by a stun or a knockdown stands in the way of another.
@@ -357,6 +409,14 @@ private `ApplyNamedEffectOnly`, and Weaken's row moves a stat, so it runs that f
 - `AMinionOfAHolderLaysNoneWithOrWithoutConduitAndIsNotItselfImmune`: the Imp of a character holding no flag
   lays its bleed (the control); the Imp of a holder that holds no Conduit lays none and its enemy is not
   bleeding; a Cripple from that enemy lands on the holder's Imp.
+- `AHoldersConversionToBleedingTakesTheBlowAtOnceLeavesItNotBleedingAndWritesNoWarning`: three rigs are struck
+  by a direct blow of 200 that cannot be evaded or critically strike, and The Breaking Point's window is
+  opened by hand on two of them. With no window the blow takes health at once (the control, and the figure
+  the rest is read against). With the window open and no flag the blow takes nothing at once and the
+  character is bleeding (the control that the conversion works on this rig). A capture of the log counts one
+  warning holding the conversion's words when the test writes such a line itself (the control of the
+  capture). A holder with the window open then takes at once what the character with no window took, is not
+  bleeding, carries no debuff, and the capture still counts one: the refusal wrote none.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
 `ProbeImmuneToDebuffsAndAppliesNone`. A Cripple lands on a character with no row (the control) and is refused
@@ -376,7 +436,10 @@ as the wearer, whose ability system belongs to its player state; the regeneratio
 a minion's burn from its own swing; any skill, projectile, tether or buried weapon of a wearer's (every
 application here is one of the functions called by the test); an enemy's real blow rolling an ailment on a
 wearer; `CopyDebuffsTo`, `ApplySpreadCopy` and `UCataclysmContagion::SpreadOne` to or from a wearer; the
-Masochist's conversion on a real blow, and the Warning it logs; Madness and its shared window; the rows
+Masochist's conversion with its window opened by the node and by a fall below half health (the test opens the
+window by hand); the conversion's warning still being written for another reason, which needs a vocabulary
+with no bleed tag; a wearer on Raw Sewage or Blood Price reading as debuffed, which needs a dungeon; Madness
+and its shared window; the rows
 listed above reading nought; anything in a dungeon, the three refused calls of the dungeon game mode's file
 included; the loose tags of Raw Sewage and Blood Price on a wearer; a client that is not the server.
 
@@ -385,7 +448,9 @@ included; the loose tags of Raw Sewage and Blood Price on a wearer; a client tha
 Not run. Each anchor was counted in its file by a script of the writing session, and each count printed 1.
 Each is a break in one `.cpp` file and the new text keeps the brackets of the old. The failed assertions are
 counted by reading the tests and were not measured. The prefix of all three is `Cataclysm.DebuffImmune.`, with
-its trailing dot, which is 6 tests.
+its trailing dot, which is 7 tests. The seventh, the conversion test, is expected to pass under all three: its
+bleed names the holder as instigator and as target, and none of the three breaks stops a holder being refused
+as a target.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test expected to fail |
 |---|---|---|---|---|---|
@@ -409,8 +474,8 @@ Failed assertions in each test, by reading:
   damage taken and not yet paid, is kept, as a cleanse keeps it". The line "a second step finds nothing more
   to remove" passes with the break in or out.
 
-**Tests and no proof:** that a holder is refused as a target (five of the six tests fail without it, and the
-probe); that the damage of a refused bleed is lost; that a stagger, a pin and a knockdown land both ways; that
+**Tests and no proof:** that a holder is refused as a target (six of the seven tests fail without it, and the
+probe); that the conversion's warning is silent for a holder; that the damage of a refused bleed is lost; that a stagger, a pin and a knockdown land both ways; that
 the step removes what is carried.
 
 No test outside the prefix is expected to fail under any of the three: the probe refuses a Cripple on a holder
@@ -454,8 +519,11 @@ output by 10%-20%".
   the game's list, `UCataclysmDebuffs::DebuffRootNames`, that the wearer applied: every damage over time, a
   stun, and every named curse under `Status.Debuff`. No duration: the cut has none of its own; it lasts while
   the enemy carries at least one of the wearer's debuffs and ends with the last of them.
-- **NOT EVERY BLOW OF AN ENEMY IS CUT.** The cut is in `UCataclysmSkillEffects::WeaponDamageOf`, where the
-  poison rider's cut is. A search made for this entry by a read-only helper of the writing session found 11
+- **NOT EVERY BLOW OF AN ENEMY IS CUT, AND THAT IS RULED.** The coordinating session, 2026-10-13, on what was
+  built, accepted as said: "the damage cut does not reach an enemy's damage over time, the Infernal Brand
+  explosion, its retaliation, Holy Repercussions, the Hellfire death explosion, nor ground laid before the
+  debuff". The lines behind that list were traced by a helper and not re-checked, as the next sentences say.
+  The cut is in `UCataclysmSkillEffects::WeaponDamageOf`, where the poison rider's cut is. A search made for this entry by a read-only helper of the writing session found 11
   calls of that function outside the tests, in 7 files; the search of 2026-10-12 had counted 12. The writing
   session read the function, its call in `ApplyHit` and the two loose-tag sites, and did NOT itself open each
   enemy's file, so the two lists below are that helper's reading and are for the enchantment session to check.
@@ -494,10 +562,17 @@ output by 10%-20%".
   ailment with its owner as instigator, and the owner's `dot_applied` rows and ailment riders already treat
   those as the owner's own, with or without Conduit. They still do. Only this cut asks. A zone now says it is
   laying its effects (`FCataclysmZoneLaying`, held in `ACataclysmGroundZone::Sweep`), and this cut is not
-  recorded for what it lays unless the owner holds `minion_hits_count_as_yours`.
-- **A copy a spread makes does not count.** Ruled. That is `UCataclysmSkillEffects::ApplySpreadCopy`: the copy a
-  dying enemy's ailment leaves on those near it, and the copy "Burn effects you apply spread to 1-2 nearby
-  enemies" makes. See the first judgement below for what is NOT treated as a spread's copy.
+  recorded for what it lays unless the owner holds `minion_hits_count_as_yours`. The one line in
+  `CataclysmGroundZone.cpp` was accepted as said by the coordinating session on 2026-10-13.
+- **A SPREAD COPY IS THE COPIES MADE BY `ApplySpreadCopy` ONLY, AND THOSE DO NOT COUNT. A SKILL THAT COPIES
+  CURSES AND THE MASOCHIST PASSING ON A DEBUFF DO COUNT.** Ruled by the coordinating session on 2026-10-13,
+  first that a spread copy does not count, and later the same day, on what was built: "as the copies made by
+  ApplySpreadCopy only; a skill that copies curses and the Masochist passing on a debuff DO count: accepted as
+  built". `UCataclysmSkillEffects::ApplySpreadCopy` makes the copy a dying enemy's ailment leaves on those
+  near it and the copy "Burn effects you apply spread to 1-2 nearby enemies" makes: no cut. The curses
+  `UCataclysmSkillEffects::CopyDebuffsTo` copies onto other enemies for a skill of the wearer's, and the debuff
+  `UCataclysmContagion::SpreadOne` puts on an enemy for a Masochist, are laid in the wearer's name through the
+  ordinary functions: each gives the cut.
 - **A debuff a row of the wearer's lays on an enemy counts.** Ruled. The random debuff of "Strike skills have a
   15%-30% chance to apply a random debuff on hit" is laid with the wearer as instigator through the same
   functions.
@@ -586,8 +661,8 @@ Each was ruled on 2026-10-13 by the coordinating session under the owner's deleg
   skill of the caster's says so, and `UCataclysmContagion::SpreadOne` puts a debuff the Masochist carries on
   an enemy. Both lay the debuff through the ordinary functions with the character as instigator, the second
   raises that character's `dot_applied` today, and both COUNT here. The option not taken: mark those two as
-  copies too. It needs a flag set in `CopyDebuffsTo` and in `SpreadOne`; it is for the coordinating session to
-  rule.
+  copies too, with a flag set in `CopyDebuffsTo` and in `SpreadOne`. ACCEPTED AS BUILT by the coordinating
+  session on 2026-10-13; see "Said first".
 - **Two wearers of the row on one enemy give one cut, the larger.** The ruling says one reduction however
   many debuffs and does not say whose. The option not taken: one cut for each wearer, multiplied.
 - **Another character's application does not take the wearer's cut down, even when it replaces the wearer's
