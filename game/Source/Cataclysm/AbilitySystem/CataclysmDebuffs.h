@@ -542,6 +542,56 @@ public:
 	 * `UCataclysmSkillEffects::WeaponDamageOf`.
 	 */
 	static float DealLessPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * `immune_to_debuffs_and_applies_none`, a flag: above nought, its holder is
+	 * given no debuff by anybody and lays none on anybody. Ruled 2026-10-13,
+	 * reading A: "You are immune to debuffs but also cannot apply them". No
+	 * gameplay attribute and no base.
+	 */
+	static const TCHAR* ImmuneAndAppliesNoneStat;
+
+	/** Whether this actor holds `ImmuneAndAppliesNoneStat`. False for none and for one with no stat line. */
+	static bool HoldsImmuneAndAppliesNone(const AActor* Actor);
+
+	/**
+	 * Whether a row refuses `Instigator` putting `Debuff` on `Target`. Asked by
+	 * the four functions of `UCataclysmSkillEffects` that put a debuff on a
+	 * character, before anything else is done for the application, so a refused
+	 * one raises no event, hands over no rider, refreshes nothing and deals
+	 * nothing: THE DAMAGE OF A REFUSED DAMAGE OVER TIME IS LOST, as ruled.
+	 *
+	 * ONLY A DEBUFF: a tag `IsADebuff` does not hold is never refused here, so a
+	 * stagger, a pin, a knockdown, a fear and every buff pass.
+	 *
+	 * REFUSED FOR A TARGET THAT HOLDS THE FLAG, whoever the instigator is, itself
+	 * included: a drawback its own row lays on it, and the Masochist's converted
+	 * bleed, are debuffs.
+	 *
+	 * AND FOR AN INSTIGATOR THAT HOLDS IT, OR THAT FOLLOWS A CHARACTER THAT
+	 * DOES. A minion and a thrall are found by `UCataclysmCommand::CommanderOf`,
+	 * with or without Conduit. A ground zone names its owner as instigator, so a
+	 * holder's zone is refused as the holder is.
+	 */
+	static bool RefusedByARow(const AActor* Instigator, const AActor* Target, const FGameplayTag& Debuff);
+
+	/**
+	 * Remove what a holder of `ImmuneAndAppliesNoneStat` already carries: every
+	 * running effect that grants a tag under `DebuffRoots`, whoever laid it. A
+	 * judgement of 2026-10-13: the ruling does not say what becomes of a debuff
+	 * carried when the row is put on.
+	 *
+	 * WHAT IT LEAVES, as `Cleanse` leaves it: converted damage not yet taken,
+	 * the stamped bleed of `UCataclysmDamageConversion`. And a loose tag, which
+	 * is no effect: the dungeon game mode's two.
+	 *
+	 * NOT A CLEANSE: nothing is announced, so the dungeon's stacks that a
+	 * cleanse clears are not cleared by this.
+	 *
+	 * @return how many effects were removed, which is zero for every character
+	 *         without the flag and for a corpse
+	 */
+	static int32 ImmunityStep(AActor* Character);
 };
 
 /**
