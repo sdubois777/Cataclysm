@@ -1213,7 +1213,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// holds both, so the two below add up to it.
 		const bool bIsATrap = Minion && Minion->IsTrap();
 		State.TrapsActive += bIsATrap ? 1 : 0;
-		State.GadgetsActive += Minion && Minion->IsDeployable() && !bIsATrap ? 1 : 0;
+		// BY THE ONE TEST OF WHAT A GADGET IS, `ACataclysmMinion::IsGadget`, which the behaviours a summoner's
+		// row gives "your gadgets" also ask. Ruled 2026-10-13. It answers what this line computed before.
+		State.GadgetsActive += Minion && Minion->IsGadget() ? 1 : 0;
 	}
 
 	// AND THE SELF-BUFF SKILLS RUNNING. Issue #1815. The same test

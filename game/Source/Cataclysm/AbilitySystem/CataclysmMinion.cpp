@@ -421,6 +421,71 @@ bool ACataclysmMinion::IsTrap() const
 	return IsDeployable() && Trap.IsValid() && TypeTags.HasTagExact(Trap);
 }
 
+bool ACataclysmMinion::IsGadget() const
+{
+	return IsDeployable() && !IsTrap();
+}
+
+const TCHAR* ACataclysmMinion::GadgetsTargetMostHealthStat = TEXT("gadgets_target_most_health");
+
+float ACataclysmMinion::SummonersGadgetStat(const TCHAR* Stat) const
+{
+	// THE GADGET TEST FIRST, so an imp, a mote and a trap ask their summoner nothing and are answered nought.
+	if (!IsGadget() || !IsValid(Summoner))
+	{
+		return 0.0f;
+	}
+
+	// THE SUMMONER'S STAT LINE, WITH THIS GADGET'S TAGS. Nothing recorded for the stat answers the fallback of
+	// nought, which is every summoner holding no such row.
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner));
+	return Theirs ? Theirs->StatForSkill(FName(Stat), TypeTags, 0.0f) : 0.0f;
+}
+
+TArray<AActor*> ACataclysmMinion::HostilesWithinReach() const
+{
+	// THE SPHERE `AttackOnce` SEARCHES, nearest first and leaving out the dead, and then the brain's own measure
+	// of reach. The header says why both.
+	const FVector Here = GetActorLocation();
+	TArray<AActor*> Within = UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), this, Here, ReachCm);
+	const float Furthest = ReachCm + ReachAllowanceCm;
+	Within.RemoveAll([&Here, Furthest](const AActor* Each)
+	{
+		return !IsValid(Each) || FVector::Dist2D(Here, Each->GetActorLocation()) > Furthest;
+	});
+	return Within;
+}
+
+AActor* ACataclysmMinion::MostHealthWithinReach() const
+{
+	if (SummonersGadgetStat(GadgetsTargetMostHealthStat) <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// THE MOST HEALTH HELD NOW, AND OF TWO HOLDING THE SAME THE NEARER. The distance is compared by hand and not
+	// left to the order the search answers in, so the rule for a tie is written where it is applied.
+	const FVector Here = GetActorLocation();
+	AActor* Most = nullptr;
+	float MostHealth = 0.0f;
+	double MostDistanceSquared = 0.0;
+	for (AActor* Each : HostilesWithinReach())
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Each);
+		const float Health =
+			Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+		const double DistanceSquared = FVector::DistSquared2D(Here, Each->GetActorLocation());
+		if (!Most || Health > MostHealth || (Health == MostHealth && DistanceSquared < MostDistanceSquared))
+		{
+			Most = Each;
+			MostHealth = Health;
+			MostDistanceSquared = DistanceSquared;
+		}
+	}
+	return Most;
+}
+
 ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
 										  float Lifetime, bool bBurns,
 										  const FString& InTypeName,
