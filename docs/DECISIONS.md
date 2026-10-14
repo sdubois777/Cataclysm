@@ -2,6 +2,221 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-13 — In the game a surge is 5 dungeons every 90 days, as in the simulation; it was 4 every 120
+
+**Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
+No Unreal test was run. Every changed figure below was worked by hand and checked against the simulation's own
+formula in Python; none was checked against the game.
+
+**Said first: what a player sees.** The wave at the start of a run is 5 dungeons, not 4. The next wave the clock
+sends is 90 days after the last, not 120. A wave the empty board brings and a wave a city's fall brings are 5 as
+well. The least interval of 25 days did not change.
+
+**Said first: on Heretic a wave is 6, which is a fifth more than 5.** The design document's Heretic row says
+"Surges spawn 25% more dungeons." The rule is `trunc(5 x 1.25) = 6`. At a wave of 4 the same rule gave 5, which
+was exactly a quarter more. The same formula is in the simulation. This is on the owner's play-check list below.
+
+**Said first: at this commit the game has the cadence of the package without the package's two rules.** 90 days
+and 5 dungeons went into the simulation together with two rules: an ordinary dungeon leaves after it hits, and a
+Quest dungeon's timer hits its city. Those are layer 3, the entry above this one, written the same day for the
+same window. Between the two commits an ordinary dungeon still stays after it hits and there are more of them.
+The check this layer deleted said to confirm the game has both rules; it has them only from layer 3.
+
+**Said first: every seeded campaign in the Unreal tests rolls differently from day 1.** A wave of 5 takes one
+more draw from the stream before any dungeon is made. Tests that depend on what a seed rolls cannot be told by
+reading. The plan for this stack lists 28 of them; none was edited in this layer.
+
+### The decision, and who said what
+
+The owner, typed in the coordinating session on 2026-10-13, verbatim: "your rec on all three, continue".
+
+The recommendation that sentence accepts which concerns this layer, in the coordinating session's words and not
+the owner's: surges every 90 days of 5 dungeons.
+
+### The rulings
+
+Each is a labelled judgement by the coordinating session under the owner's delegation, 2026-10-13.
+
+- "RULE 3, one ruling for the 16 tests and 56 assertions: approved, at exactly these figures: 91, 116, 141, 231;
+  a wave of 5, 6 with one Dungeon City, 7 with two; Heretic 6; gaps 90, 79.2, 69.696, 61.3325, index 10 =
+  25.0651; counts 5, 5, 6, 6, 7, 13 at index 17, 14 at index 18. Where a label states the old number, the label
+  changes too. Any figure that differs from these when written: say so before the window."
+- "Heretic's 6 against "25% more" goes on the owner's play-check list."
+- Ruling 6: one stack of three layers in one window, this one second.
+
+**Every ruled figure was worked again from the code and none differs.** `GapAfterThisSurge` is
+`IntervalDays x 0.88^SurgeIndex`, floored at 25. `DungeonsInNextSurge` is
+`trunc(min(DungeonsPerSurge + 0.5 x SurgeIndex, 14) x multiplier)`, with a multiplier of 1.25 on Heretic and 1
+otherwise. The same figures came out of `Simulation.surge_gap` and `Simulation.surge_count` at 90 and 5, run in
+Python for this entry: gaps 90.0, 79.2, 69.696, 61.33248, and 25.0650878 at index 10, 25.0 at index 11; counts
+5, 5, 6, 6, 7, 13 at index 17, 14 at index 18; Standard 5, Hardcore 5, Heretic 6; a swelling Heretic run at
+index 20 is still 17.
+
+### What was read before writing
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`: `DungeonsInNextSurge`, `GapAfterThisSurge`, `IsDue`,
+  `DaysUntilNextSurge`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`: the cadence constants and `HereticDungeonMultiplier`.
+- `game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp`: the seven tests under "Cadence" and "The
+  schedule" whole, and `Cataclysm.Surge.TheSameSeedGivesTheSameWave` where it counts the wave.
+- `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`: the eight tests changed, each where it states
+  a wave's size or a surge day, and the three empty-board and three fall-surge tests whole.
+- `game/Source/Cataclysm/Tests/CataclysmEmpireScreenTests.cpp`: the Heretic assertion.
+- `tools/tests/test_surge_port.py`: `TestTheCadence` and `TestTheHandWorkedFiguresInTheUnrealTest`.
+- `tools/tests/test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`: its message.
+- A search of `game/Source` for other test assertions on `DungeonsInNextSurge()`, `NextSurgeDay` and a wave's
+  size against a typed number found none outside the 16 tests.
+
+### How it is built
+
+`UCataclysmSurgeScheduler::IntervalDays` is 90 and `DungeonsPerSurge` is 5. Nothing else in game code changed.
+No text the player reads holds either number: the empire screen and `Describe` print what the scheduler answers.
+Neither constant is saved; a saved `NextSurgeDay` stays what it was.
+
+### For the owner's play-check
+
+- **A wave is 5 dungeons every 90 days.** The reading not taken is 4 every 120, which the game had.
+- **Heretic brings 6 where Standard brings 5.** That is 20% more. The design document says 25% more. The reading
+  not taken rounds 6.25 up to 7, which is 40% more. No reading gives exactly 25% at a wave of 5.
+- An accelerating run reaches its floor of 25 days at its twelfth surge, where it was the fourteenth. A swelling
+  run reaches its ceiling of 14 dungeons at its nineteenth surge, where it was the twenty-first.
+
+### The writing session's judgements, for the coordinating session to confirm
+
+1. A judgement by the writing session, for the coordinating session to confirm: two assertions were ADDED to
+   existing tests, so that the ruled figure "14 at index 18" and the floor's first index are asserted in C++ and
+   not only in Python. They are "the twelfth is the floor itself" (index 11, 25.0) in
+   `AnAcceleratingSurgeShortensTheGapDownToAFloor` and "the nineteenth is the ceiling" (index 18, 14) in
+   `ASwellingSurgeGrowsTheWaveUpToACeiling`. The existing "the fourteenth is the floor itself" and "the
+   twenty-first is the ceiling" stay as they were; both are still true.
+2. A judgement by the writing session, for the coordinating session to confirm: one label outside the 16 tests
+   was changed, because it states the old number and its assertion compares with `IntervalDays` itself. In
+   `Cataclysm.EmpireRun.TheReportedDayIsAlwaysTheClocksDay`, "the surge on day %d puts the next one 120 days
+   later" became "... 90 days later". The assertion did not change.
+3. A judgement by the writing session, for the coordinating session to confirm: three comments that state the old
+   numbers were left alone, because each is in a test the rulings say is not edited before the run. They are in
+   `Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone` ("a wave is four dungeons"),
+   `Cataclysm.EmpireRun.DescribeSaysWhatWasClearedAndWhichDungeonIsAQuest` ("the first wave brings four") and
+   `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk` ("four Outpost dungeons ... about
+   44 days").
+4. A judgement by the writing session, for the coordinating session to confirm: the name
+   `HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling` was kept. The rulings rename nothing in this layer. At 5
+   a wave of 6 is a fifth more; a comment in the test says so.
+5. A judgement by the writing session, for the coordinating session to confirm: the deleted check's message asks
+   for a dated sentence in the simulation's entry of 2026-10-13. None was added there; this entry is the record.
+6. A judgement by the writing session, for the coordinating session to confirm: one comment in
+   `sim/cataclysm_sim/config.py` said the game keeps 120 and 4 and named the deleted check. It now says the game
+   holds the same two numbers. No simulation behaviour and no simulation test changed.
+
+### Tests changed, each with the old and the new label and value
+
+No test was renamed. In every row the first figure is the old one. `ERT` is `CataclysmEmpireRunTests.cpp`, `ST`
+is `CataclysmSurgeTests.cpp`.
+
+| Test | Assertion, old then new | Value, old then new |
+|---|---|---|
+| `Cataclysm.EmpireRun.ARunBeginsWithAnIntactEmpireAndASurgeDue` | "bringing four dungeons" / "bringing five dungeons" | 4 / 5 |
+| | "which are now standing" (label unchanged) | 4 / 5 |
+| | "and the clock is counting all four down" / "... all five down" | 4 / 5 |
+| | "the next is due on day 121" / "... day 91" | 121 / 91 |
+| `Cataclysm.EmpireRun.ClearingADungeonTakesItOffTheMapAndOffTheClock` | "four dungeons are standing" / "five dungeons are standing" | 4 / 5 |
+| | "three are left" / "four are left" | 3 / 4 |
+| | "and the clock is counting three down" / "... four down" | 3 / 4 |
+| `Cataclysm.EmpireRun.ClearingTheLastDungeonBringsTheNextSurgeTheNextDay` | "set-up: the clock's next surge is day 121" / "... day 91" (asserted on two runs) | 121 / 91 |
+| | "the wave brought four dungeons" / "... five dungeons" | 4 / 5 |
+| | "four dungeons stand after it" / "five dungeons stand after it" | 4 / 5 |
+| `Cataclysm.EmpireRun.ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed` | "bringing four dungeons" / "bringing five dungeons" | 4 / 5 |
+| `Cataclysm.EmpireRun.AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes` | "set-up: before any empty-board surge the clock's next is day 121" / "... day 91" | 121 / 91 |
+| | "the clock's next surge moved from day 121 to day 146" / "... from day 91 to day 116" | 146 / 116 |
+| | "the clock's next surge moved to day 171" / "... day 141" | 171 / 141 |
+| | "no surge on days 52 to 170 while the Quest dungeon stands" / "... days 52 to 140 ..." | 0 on the walk to day 170 / 0 on the walk to day 140 |
+| | "set-up: the Quest dungeon is the one thing standing on day 170" / "... day 140" | 1 / 1 |
+| | "the next day is day 171" / "the next day is day 141" | 171 / 141 |
+| | "day 171 surges, from the clock" / "day 141 surges, from the clock" | true / true |
+| | "the clock's wave brought four dungeons" / "... five dungeons" | 4 / 5 |
+| | "four surges in all: days 1, 26, 51 and 171" / "... 1, 26, 51 and 141" | 4 / 4 |
+| | "and the clock's next surge is day 291" / "... day 231" | 291 / 231 |
+| `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave` | "the clock's next surge is still day 121" / "... day 91" | 121 / 91 |
+| | "CONTROL: five dungeons arrived on day 26, a wave of four and the Dungeon City" / "CONTROL: six dungeons arrived on day 26, a wave of five and the Dungeon City" | 5 / 6 |
+| `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave` | "the clock's next surge moved from day 121 to day 146" / "... from day 91 to day 116" | 146 / 116 |
+| | "five dungeons arrived on day 26, a wave of four and the Dungeon City" / "six dungeons arrived on day 26, a wave of five and the Dungeon City" | 5 / 6 |
+| | "and five stand after it" / "and six stand after it" | 5 / 6 |
+| | "CONTROL: the clock's next surge stayed at day 121" / "... day 91" | 121 / 91 |
+| `Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringOneWave` | "six dungeons arrived on day 26: one wave of four and the two Dungeon Cities" / "seven dungeons arrived on day 26: one wave of five and the two Dungeon Cities" | 6 / 7 |
+| | "and the clock's next surge is day 146" / "... day 116" | 146 / 116 |
+| | "CONTROL: set-up: the player cleared the four dungeons of that wave on day 26" / "... the five dungeons ..." | 4 / 5 |
+| | "CONTROL: five dungeons arrived on day 51, a wave of four and the Dungeon City" / "CONTROL: six dungeons arrived on day 51, a wave of five and the Dungeon City" | 5 / 6 |
+| `Cataclysm.Surge.AStaticSurgeBringsTheSameWaveForEver` | "surge %d still brings four dungeons" / "... five dungeons" (five indices) | 4 / 5 |
+| | "and the gap after surge %d is still 120 days" / "... 90 days" (five indices) | 120 / 90 |
+| `Cataclysm.Surge.AnAcceleratingSurgeShortensTheGapDownToAFloor` | "the first gap is the full 120 days" / "... 90 days" | 120 / 90 |
+| | "the second is 105.6" / "the second is 79.2" | 105.6 / 79.2 |
+| | "the third is 92.928" / "the third is 69.696" | 92.928 / 69.696 |
+| | "the fourth is 81.7766" / "the fourth is 61.3325" | 81.7766 / 61.3325 |
+| | "by the thirteenth it is 25.88, just above the floor" (index 12) / "by the eleventh it is 25.07, just above the floor" (index 10) | 25.8805 / 25.0651 |
+| | added: "the twelfth is the floor itself" (index 11) | 25.0 |
+| | "an accelerating surge still brings four dungeons" / "... five dungeons" | 4 / 5 |
+| | "and still four after twenty surges" / "and still five after twenty surges" | 4 / 5 |
+| `Cataclysm.Surge.ASwellingSurgeGrowsTheWaveUpToACeiling` | "the first wave is four" / "the first wave is five" | 4 / 5 |
+| | "the second is still four" / "the second is still five" | 4 / 5 |
+| | "the third is five" / "the third is six" | 5 / 6 |
+| | "the fourth is still five" / "the fourth is still six" | 5 / 6 |
+| | "the fifth is six" / "the fifth is seven" | 6 / 7 |
+| | "by the twentieth it is thirteen" (index 19) / "by the eighteenth it is thirteen" (index 17) | 13 / 13 |
+| | added: "the nineteenth is the ceiling" (index 18) | 14 |
+| | "a swelling surge still comes every 120 days" / "... 90 days" | 120 / 90 |
+| `Cataclysm.Surge.BothEscalationsRunTogetherAndNeitherIsLost` | "the gap shortens like an accelerating surge" (label unchanged) | 105.6 / 79.2 |
+| | "and the wave grows like a swelling one" (label unchanged, index 4) | 6 / 7 |
+| `Cataclysm.Surge.HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling` | "Standard brings four" / "Standard brings five" | 4 / 5 |
+| | "Hardcore brings four as well" / "Hardcore brings five as well" | 4 / 5 |
+| | "and Heretic brings five" / "and Heretic brings six" | 5 / 6 |
+| `Cataclysm.Surge.ASurgeFiresAtRunStartAndThenOnTheClock` | "the next is due on day 120" / "... day 90" | 120 / 90 |
+| | "with 119 days to wait" / "with 89 days to wait" | 119 / 89 |
+| | "nor on day 119" / "nor on day 89" | `IsDue(119)` false / `IsDue(89)` false |
+| | "and it is due on day 120" / "and it is due on day 90" | `IsDue(120)` true / `IsDue(90)` true |
+| | "firing late puts the next one 120 days after the firing" / "... 90 days after the firing" | 250 / 220 |
+| `Cataclysm.Surge.TheSameSeedGivesTheSameWave` | "a static wave is four dungeons" / "a static wave is five dungeons" | 4 / 5 |
+| `Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime` | "and a Heretic run brings five dungeons rather than four" / "and a Heretic run brings six dungeons rather than five" | 5 / 6 |
+
+Comments that stated 120 days, day 121 or a wave of four were changed in the tests above, in the two helpers
+`MakeEmptyRun` and `FellTheFirstOutpostOn`, in `Cataclysm.Surge.AWaveLandsOnlyOnTheExposedFrontierAndNeverOnThePillar`
+and in the scene helper of `CataclysmDungeonCostsDaysTests.cpp`. "90 days before the clock would have sent it"
+became 60 days: day 91 less day 31.
+
+**No new Unreal test.** The declared count stays 3659.
+
+### Python checks
+
+- `tools/tests/test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py` is deleted, as its own
+  message says to when both constants have the model's numbers.
+- `tools/tests/test_surge_port.py::TestTheCadence`: `IntervalDays` and `DungeonsPerSurge` are back in `NUMBERS`,
+  held equal to `surge_interval_days` and `surge_dungeon_count`.
+- `tools/tests/test_surge_port.py::TestTheHandWorkedFiguresInTheUnrealTest`:
+  `test_the_accelerating_ladder_still_holds` asserts 90.0, 79.2, 69.696, 61.3325, 25.0651 at index 10 and 25.0
+  at indices 11 and 13; `test_the_swelling_ladder_still_holds` asserts 5, 5, 6, 6, 7, 13 at index 17 and 14 at
+  indices 18 and 20; `test_the_unreal_test_carries_those_same_figures` reads `79.2f`, `69.696f`, `61.3325f` and
+  `25.0651f` in the Unreal test's text; new, `test_heretic_brings_six_where_standard_brings_five`.
+  `test_heretic_at_the_ceiling_is_still_seventeen` is unchanged.
+
+### Not covered
+
+- No assertion in this layer was run against the game.
+- The 28 tests the plan lists as depending on what a seed rolls were not edited and their outcome is not known.
+- Whether an unattended empire still loses the path to the Pillar within 2,000 days at this cadence was not
+  established. Ruling 5 says to keep the test and see the run.
+- `UCataclysmSurgeScheduler::LastSurgeDay` is not saved. That gap is older than this change.
+
+### Guard proofs proposed for the C++
+
+None was run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`, counted once in
+the file at this commit. A break in a header recompiles every file that includes it.
+
+| | The line | Becomes | The test | Predicted |
+|---|---|---|---|---|
+| a | `static constexpr float IntervalDays = 90.0f;` | `static constexpr float IntervalDays = 120.0f;` | `Cataclysm.Surge.ASurgeFiresAtRunStartAndThenOnTheClock` | 4 fail: "the next is due on day 90", "with 89 days to wait", "and it is due on day 90", "firing late puts the next one 90 days after the firing". "nor on day 89" still passes |
+| b | `static constexpr int32 DungeonsPerSurge = 5;` | `static constexpr int32 DungeonsPerSurge = 4;` | `Cataclysm.Surge.HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling` | 3 fail: "Standard brings five", "Hardcore brings five as well", "and Heretic brings six" |
+
+---
+
 ## 2026-10-13 — In the game a dungeon's hit is sized by the floors it was rolled with; the two city upgrades that move floors no longer change it
 
 **Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.

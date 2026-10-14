@@ -322,10 +322,10 @@ class TuningConfig:
     # default of 4" or "`TuningConfig()` defaults". None was re-measured.
     # Set both by name to reproduce one.
     #
-    # THE GAME KEEPS 120 AND 4 AND DIFFERS ON PURPOSE:
+    # THE GAME HOLDS THE SAME TWO NUMBERS since its own layer of 2026-10-13:
     # `UCataclysmSurgeScheduler::IntervalDays` and `DungeonsPerSurge`.
-    # `tools/tests/test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`
-    # records that and fails when either of the game's constants moves.
+    # `TestTheCadence` in `tools/tests/test_surge_port.py` holds them equal.
+    # Until that layer the game kept 120 and 4.
     #
     # THREE ANALYSIS SCRIPTS READ THESE AS "WHAT SHIPS" AND WERE BUILT
     # AROUND 120 AND 4: `analyse_surge_cadence.py`,
