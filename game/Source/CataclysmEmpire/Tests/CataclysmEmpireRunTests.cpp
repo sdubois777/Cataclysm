@@ -87,10 +87,10 @@ bool FCataclysmEmpireRunBeginTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("the first day is day 1"), First.Day, 1);
 	TestTrue(TEXT("and it surged"), First.bSurged);
-	TestEqual(TEXT("bringing four dungeons"), First.Spawned.Num(), 4);
-	TestEqual(TEXT("which are now standing"), Run->DungeonCount(), 4);
-	TestEqual(TEXT("and the clock is counting all four down"),
-			  Run->Clock->Timers.Num(), 4);
+	TestEqual(TEXT("bringing five dungeons"), First.Spawned.Num(), 5);
+	TestEqual(TEXT("which are now standing"), Run->DungeonCount(), 5);
+	TestEqual(TEXT("and the clock is counting all five down"),
+			  Run->Clock->Timers.Num(), 5);
 
 	// AND THEY ALL LANDED ON THE FRONTIER, which on day 1 is the twelve rim
 	// Outposts.
@@ -116,10 +116,10 @@ bool FCataclysmEmpireRunBeginTest::RunTest(const FString& Parameters)
 			  Run->Clock->DaysUntilResolveFor(Any->DungeonId),
 			  Any->ResolveDays - 1.0f, 0.001f);
 
-	// THE NEXT SURGE IS 120 DAYS OFF, not immediately again.
+	// THE NEXT SURGE IS 90 DAYS OFF, not immediately again.
 	TestFalse(TEXT("no surge is due tomorrow"), Run->Surges->IsDue(2));
-	TestEqual(TEXT("the next is due on day 121"),
-			  Run->Surges->NextSurgeDay, 121.0f, 0.001f);
+	TestEqual(TEXT("the next is due on day 91"),
+			  Run->Surges->NextSurgeDay, 91.0f, 0.001f);
 
 	return true;
 }
@@ -168,10 +168,10 @@ bool FCataclysmEmpireRunDayNumberTest::RunTest(const FString& Parameters)
 		//
 		// MEASURED AGAINST THE DAY IT FIRED, NOT AGAINST A FIXED DAY. A city
 		// falling fires a surge of its own and that resets the countdown too, so
-		// "the next one is on day 121" is only true of a run in which nothing
+		// "the next one is on day 91" is only true of a run in which nothing
 		// was lost -- and this one loses two cities inside two hundred days.
 		TestEqual(FString::Printf(
-			TEXT("the surge on day %d puts the next one 120 days later"),
+			TEXT("the surge on day %d puts the next one 90 days later"),
 			Expected),
 			Run->Surges->NextSurgeDay,
 			static_cast<float>(Expected) + UCataclysmSurgeScheduler::IntervalDays,
@@ -753,7 +753,7 @@ bool FCataclysmEmpireRunClearTest::RunTest(const FString& Parameters)
 
 	const FCataclysmDayReport First = Run->AdvanceDay();
 
-	if (!TestEqual(TEXT("four dungeons are standing"), Run->DungeonCount(), 4))
+	if (!TestEqual(TEXT("five dungeons are standing"), Run->DungeonCount(), 5))
 	{
 		return false;
 	}
@@ -782,9 +782,9 @@ bool FCataclysmEmpireRunClearTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("it is off the map"), Run->FindDungeon(DungeonId));
 	TestEqual(TEXT("and off the clock"),
 			  Run->Clock->DaysUntilResolveFor(DungeonId), -1.0f);
-	TestEqual(TEXT("three are left"), Run->DungeonCount(), 3);
-	TestEqual(TEXT("and the clock is counting three down"),
-			  Run->Clock->Timers.Num(), 3);
+	TestEqual(TEXT("four are left"), Run->DungeonCount(), 4);
+	TestEqual(TEXT("and the clock is counting four down"),
+			  Run->Clock->Timers.Num(), 4);
 
 	// AND THE RUN COUNTED IT. Which of the two other counters moved depends on
 	// what a surge rolled, so the kind is read off the dungeon rather than
@@ -816,7 +816,7 @@ bool FCataclysmEmpireRunClearTest::RunTest(const FString& Parameters)
 	// to have run out several times over.
 	//
 	// MEASURED AS "THAT DUNGEON NEVER RESOLVES" RATHER THAN "THAT CITY LOSES NO
-	// DEFENCE", because the surge on day 121 puts more dungeons on the map and
+	// DEFENCE", because the surge on day 91 puts more dungeons on the map and
 	// one of them may well land on the same city. A test written the second way
 	// would fail for a reason that has nothing to do with clearing.
 	bool bResolvedAgain = false;
@@ -3196,7 +3196,7 @@ namespace CataclysmEmpireRunTest
 	 * WHY A DAY IS SPENT RATHER THAN THE SCHEDULE BEING REACHED INTO. "A surge
 	 * is triggered at run start", so day 1 lands a wave whatever else is done.
 	 * Spending the day and then emptying both lists leaves the map intact -- no
-	 * city falls in one day -- and the clock's next surge 120 days off.
+	 * city falls in one day -- and the clock's next surge 90 days off.
 	 *
 	 * THE BOARD IT LEAVES IS EMPTY AND THE LAST SURGE WAS DAY 1, so since issue
 	 * #1414 a run left with nothing standing is sent a wave on day 26. Every
@@ -4136,10 +4136,10 @@ bool FCataclysmEmpireRunEmptyBoardIsDueTest::RunTest(const FString& Parameters)
  * timer that never runs out. On day 30 one run clears that dungeon and the
  * other does not. Nothing else differs, so the other run is the control.
  *
- * THE DAYS, BY HAND. The last surge was day 1 and the clock's next is day 121.
+ * THE DAYS, BY HAND. The last surge was day 1 and the clock's next is day 91.
  * A clear made after day 30 is seen at the end of day 31, which is 30 days
  * after the last surge and past the least interval of 25, so the wave lands on
- * day 31 -- 90 days before the clock would have sent it.
+ * day 31 -- 60 days before the clock would have sent it.
  *
  * NO ACTOR IS SPAWNED. A run is an object with no world.
  */
@@ -4171,8 +4171,8 @@ bool FCataclysmEmpireRunEmptyBoardSurgeTest::RunTest(const FString& Parameters)
 
 		TestEqual(TEXT("set-up: the opening wave fired on day 1"),
 				  Run->Surges->LastSurgeDay, 1);
-		TestEqual(TEXT("set-up: the clock's next surge is day 121"),
-				  Run->Surges->NextSurgeDay, 121.0f, 0.001f);
+		TestEqual(TEXT("set-up: the clock's next surge is day 91"),
+				  Run->Surges->NextSurgeDay, 91.0f, 0.001f);
 		TestEqual(TEXT("set-up: no surge on days 2 to 30 while one dungeon stands"),
 				  SurgesWhileAdvancingTo(*Run, 30), 0);
 		TestEqual(TEXT("set-up: one dungeon stands on day 30"),
@@ -4197,8 +4197,8 @@ bool FCataclysmEmpireRunEmptyBoardSurgeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("day 31 surged on the emptied board"), After.bSurged);
 	TestTrue(TEXT("and the report says the empty board caused it"),
 			 After.bSurgedOnEmptyBoard);
-	TestEqual(TEXT("the wave brought four dungeons"), After.Spawned.Num(), 4);
-	TestEqual(TEXT("four dungeons stand after it"), Cleared->DungeonCount(), 4);
+	TestEqual(TEXT("the wave brought five dungeons"), After.Spawned.Num(), 5);
+	TestEqual(TEXT("five dungeons stand after it"), Cleared->DungeonCount(), 5);
 	TestEqual(TEXT("the run counts one surge from an empty board"),
 			  Cleared->SurgesFromEmptyBoard, 1);
 	TestEqual(TEXT("and two surges in all"), Cleared->Surges->SurgesFired, 2);
@@ -4276,7 +4276,7 @@ bool FCataclysmEmpireRunEmptyBoardWaitsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the next day is day 26"), Report.Day, 26);
 	TestTrue(TEXT("day 26, the 25th after the last surge, surges on the empty board"),
 			 Report.bSurgedOnEmptyBoard);
-	TestEqual(TEXT("bringing four dungeons"), Report.Spawned.Num(), 4);
+	TestEqual(TEXT("bringing five dungeons"), Report.Spawned.Num(), 5);
 	TestEqual(TEXT("and the run counts one surge from an empty board"),
 			  Run->SurgesFromEmptyBoard, 1);
 
@@ -4291,15 +4291,16 @@ bool FCataclysmEmpireRunEmptyBoardWaitsTest::RunTest(const FString& Parameters)
  * every surge whatever caused it, and an empty-board surge advances the
  * escalation counter as the clock's does. So one wave replaces one wave.
  *
- * THE RUN, BY HAND, static surges of 120 days and a least interval of 25:
+ * THE RUN, BY HAND, static surges of 90 days and a least interval of 25:
  *
- *   day 1    the opening wave, from the clock. Taken off at once.
- *   day 26   25 days later the empty board brings a wave. Clock moves to 146.
+ *   day 1    the opening wave, from the clock. Taken off at once. Clock: 91.
+ *   day 26   25 days later the empty board brings a wave. Clock moves to 116.
  *            The player clears all of it the same day.
- *   day 51   25 days later again. Clock moves to 171. The player clears all of
+ *   day 51   25 days later again. Clock moves to 141. The player clears all of
  *            it and one Quest dungeon that never moves is put down.
- *   day 171  the clock's surge. Nothing came on days 52 to 170, though the
- *            least interval passed on day 76, because a dungeon stood.
+ *   day 141  the clock's surge. Nothing came on days 52 to 140, though the
+ *            least interval passed on day 76, because a dungeon stood. Clock
+ *            moves to 231.
  *
  * WHY THE WAVES ARE CLEARED THE DAY THEY LAND. A rolled wave left standing
  * resolves and can fell a city, and a city's fall fires a surge of its own on a
@@ -4315,8 +4316,8 @@ bool FCataclysmEmpireRunEmptyBoardClockTest::RunTest(const FString& Parameters)
 
 	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
 
-	TestEqual(TEXT("set-up: before any empty-board surge the clock's next is day 121"),
-			  Run->Surges->NextSurgeDay, 121.0f, 0.001f);
+	TestEqual(TEXT("set-up: before any empty-board surge the clock's next is day 91"),
+			  Run->Surges->NextSurgeDay, 91.0f, 0.001f);
 	TestEqual(TEXT("set-up: one surge has advanced the escalation counter"),
 			  Run->Surges->SurgeIndex, 1);
 
@@ -4325,8 +4326,8 @@ bool FCataclysmEmpireRunEmptyBoardClockTest::RunTest(const FString& Parameters)
 			  SurgesWhileAdvancingTo(*Run, 26), 1);
 	TestEqual(TEXT("and it was the empty board's, on day 26"),
 			  Run->Surges->LastSurgeDay, 26);
-	TestEqual(TEXT("the clock's next surge moved from day 121 to day 146"),
-			  Run->Surges->NextSurgeDay, 146.0f, 0.001f);
+	TestEqual(TEXT("the clock's next surge moved from day 91 to day 116"),
+			  Run->Surges->NextSurgeDay, 116.0f, 0.001f);
 	TestEqual(TEXT("the escalation counter advanced to 2"),
 			  Run->Surges->SurgeIndex, 2);
 	TestEqual(TEXT("one surge from an empty board so far"),
@@ -4345,8 +4346,8 @@ bool FCataclysmEmpireRunEmptyBoardClockTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the next day is day 51"), Second.Day, 51);
 	TestTrue(TEXT("day 51 surges on the empty board, 25 days after day 26"),
 			 Second.bSurgedOnEmptyBoard);
-	TestEqual(TEXT("the clock's next surge moved to day 171"),
-			  Run->Surges->NextSurgeDay, 171.0f, 0.001f);
+	TestEqual(TEXT("the clock's next surge moved to day 141"),
+			  Run->Surges->NextSurgeDay, 141.0f, 0.001f);
 	TestEqual(TEXT("two surges from an empty board"),
 			  Run->SurgesFromEmptyBoard, 2);
 
@@ -4364,25 +4365,25 @@ bool FCataclysmEmpireRunEmptyBoardClockTest::RunTest(const FString& Parameters)
 				 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
 				 EmptyBoardNeverDays);
 
-	TestEqual(TEXT("no surge on days 52 to 170 while the Quest dungeon stands"),
-			  SurgesWhileAdvancingTo(*Run, 170), 0);
-	TestEqual(TEXT("set-up: the Quest dungeon is the one thing standing on day 170"),
+	TestEqual(TEXT("no surge on days 52 to 140 while the Quest dungeon stands"),
+			  SurgesWhileAdvancingTo(*Run, 140), 0);
+	TestEqual(TEXT("set-up: the Quest dungeon is the one thing standing on day 140"),
 			  Run->DungeonCount(), 1);
 
 	const FCataclysmDayReport Scheduled = Run->AdvanceDay();
 
-	TestEqual(TEXT("the next day is day 171"), Scheduled.Day, 171);
-	TestTrue(TEXT("day 171 surges, from the clock"), Scheduled.bSurged);
+	TestEqual(TEXT("the next day is day 141"), Scheduled.Day, 141);
+	TestTrue(TEXT("day 141 surges, from the clock"), Scheduled.bSurged);
 	TestFalse(TEXT("and not from an empty board"),
 			  Scheduled.bSurgedOnEmptyBoard);
-	TestEqual(TEXT("the clock's wave brought four dungeons"),
-			  Scheduled.Spawned.Num(), 4);
+	TestEqual(TEXT("the clock's wave brought five dungeons"),
+			  Scheduled.Spawned.Num(), 5);
 	TestEqual(TEXT("still two surges from an empty board"),
 			  Run->SurgesFromEmptyBoard, 2);
-	TestEqual(TEXT("four surges in all: days 1, 26, 51 and 171"),
+	TestEqual(TEXT("four surges in all: days 1, 26, 51 and 141"),
 			  Run->Surges->SurgesFired, 4);
-	TestEqual(TEXT("and the clock's next surge is day 291"),
-			  Run->Surges->NextSurgeDay, 291.0f, 0.001f);
+	TestEqual(TEXT("and the clock's next surge is day 231"),
+			  Run->Surges->NextSurgeDay, 231.0f, 0.001f);
 
 	return true;
 }
@@ -4698,7 +4699,7 @@ namespace CataclysmEmpireRunTest
 	 * One run from seed 1 in which the first Outpost falls on `FallDay`.
 	 *
 	 * THE DAYS, BY HAND. The opening wave fires on day 1 and is taken off the
-	 * same day, so the last surge is day 1 and the clock's next is day 121. Two
+	 * same day, so the last surge is day 1 and the clock's next is day 91. Two
 	 * dungeons are put on the first Outpost on day 1. On days 2 to
 	 * `FallDay - 1` nothing resolves and nothing bites; the board is not empty,
 	 * so the empty-board rule fires nothing. That is asserted as set-up. The
@@ -4888,8 +4889,8 @@ bool FCataclysmEmpireRunFallSurgeInsideTest::RunTest(const FString& Parameters)
 			  Inside.SurgeIndexAfter, Inside.SurgeIndexBefore);
 	TestEqual(TEXT("the last surge is still day 1"),
 			  Inside.LastSurgeDayAfter, 1);
-	TestEqual(TEXT("the clock's next surge is still day 121"),
-			  Inside.NextSurgeDayAfter, 121.0f, 0.001f);
+	TestEqual(TEXT("the clock's next surge is still day 91"),
+			  Inside.NextSurgeDayAfter, 91.0f, 0.001f);
 	TestEqual(TEXT("one dungeon arrived on day 25, the Dungeon City"),
 			  Inside.Report.Spawned.Num(), 1);
 	TestEqual(TEXT("and it is the one dungeon standing"),
@@ -4931,8 +4932,8 @@ bool FCataclysmEmpireRunFallSurgeInsideTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("CONTROL: one surge was recorded for that fall"),
 			  AtTheInterval.SurgesFiredAfter,
 			  AtTheInterval.SurgesFiredBefore + 1);
-	TestEqual(TEXT("CONTROL: five dungeons arrived on day 26, a wave of four and the Dungeon City"),
-			  AtTheInterval.Report.Spawned.Num(), 5);
+	TestEqual(TEXT("CONTROL: six dungeons arrived on day 26, a wave of five and the Dungeon City"),
+			  AtTheInterval.Report.Spawned.Num(), 6);
 	TestTrue(TEXT("CONTROL: the city has fallen there too"),
 			 AtTheInterval.bCityFell);
 	TestEqual(TEXT("CONTROL: and its Dungeon City has the same two bosses"),
@@ -4995,12 +4996,12 @@ bool FCataclysmEmpireRunFallSurgeAtIntervalTest::RunTest(const FString& Paramete
 			  EscalatedBy);
 	TestEqual(TEXT("the last surge is now day 26"),
 			  AtTheInterval.LastSurgeDayAfter, 26);
-	TestEqual(TEXT("the clock's next surge moved from day 121 to day 146"),
-			  AtTheInterval.NextSurgeDayAfter, 146.0f, 0.001f);
-	TestEqual(TEXT("five dungeons arrived on day 26, a wave of four and the Dungeon City"),
-			  AtTheInterval.Report.Spawned.Num(), 5);
-	TestEqual(TEXT("and five stand after it"),
-			  AtTheInterval.DungeonsStandingAfter, 5);
+	TestEqual(TEXT("the clock's next surge moved from day 91 to day 116"),
+			  AtTheInterval.NextSurgeDayAfter, 116.0f, 0.001f);
+	TestEqual(TEXT("six dungeons arrived on day 26, a wave of five and the Dungeon City"),
+			  AtTheInterval.Report.Spawned.Num(), 6);
+	TestEqual(TEXT("and six stand after it"),
+			  AtTheInterval.DungeonsStandingAfter, 6);
 	TestEqual(TEXT("the Dungeon City has one boss for each of the two dungeons the city carried"),
 			  AtTheInterval.DungeonCityBosses, 2);
 	TestEqual(TEXT("no further surge on days 27 to 30"),
@@ -5014,8 +5015,8 @@ bool FCataclysmEmpireRunFallSurgeAtIntervalTest::RunTest(const FString& Paramete
 			  Inside.SurgesFiredAfter - Inside.SurgesFiredBefore, 0);
 	TestEqual(TEXT("CONTROL: the escalation counter did not move"),
 			  Inside.SurgeIndexAfter - Inside.SurgeIndexBefore, 0);
-	TestEqual(TEXT("CONTROL: the clock's next surge stayed at day 121"),
-			  Inside.NextSurgeDayAfter, 121.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: the clock's next surge stayed at day 91"),
+			  Inside.NextSurgeDayAfter, 91.0f, 0.001f);
 	TestEqual(TEXT("CONTROL: one dungeon arrived on day 25, the Dungeon City"),
 			  Inside.Report.Spawned.Num(), 1);
 
@@ -5120,12 +5121,12 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 			  SameDay->Surges->SurgesFired, 2);
 	TestEqual(TEXT("the escalation counter advanced for one fall's surge and not two"),
 			  SameDay->Surges->SurgeIndex - IndexOnDay25, EscalatedBy);
-	TestEqual(TEXT("six dungeons arrived on day 26: one wave of four and the two Dungeon Cities"),
-			  Both.Spawned.Num(), 6);
+	TestEqual(TEXT("seven dungeons arrived on day 26: one wave of five and the two Dungeon Cities"),
+			  Both.Spawned.Num(), 7);
 	TestEqual(TEXT("the last surge is day 26"),
 			  SameDay->Surges->LastSurgeDay, 26);
-	TestEqual(TEXT("and the clock's next surge is day 146"),
-			  SameDay->Surges->NextSurgeDay, 146.0f, 0.001f);
+	TestEqual(TEXT("and the clock's next surge is day 116"),
+			  SameDay->Surges->NextSurgeDay, 116.0f, 0.001f);
 
 	// -- THE CONTROL: THE SAME TWO FALLS, 25 DAYS APART --------------------
 	ResolveOnTheNextDay(*DaysApart, FirstFeller);
@@ -5136,8 +5137,8 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 				   FirstFall.Fallen.Num(), 1)
 		|| !TestEqual(TEXT("CONTROL: and its fall fired a surge, the second of the run"),
 					  DaysApart->Surges->SurgesFired, 2)
-		|| !TestEqual(TEXT("CONTROL: set-up: the player cleared the four dungeons of that wave on day 26"),
-					  ClearWhatASurgeRolled(*DaysApart), 4)
+		|| !TestEqual(TEXT("CONTROL: set-up: the player cleared the five dungeons of that wave on day 26"),
+					  ClearWhatASurgeRolled(*DaysApart), 5)
 		|| !TestEqual(TEXT("CONTROL: set-up: no surge on days 27 to 50"),
 					  SurgesWhileAdvancingTo(*DaysApart, 50), 0))
 	{
@@ -5158,8 +5159,8 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 			 SecondFall.bSurged);
 	TestEqual(TEXT("CONTROL: the same two falls 25 days apart fired two surges, three in all"),
 			  DaysApart->Surges->SurgesFired, 3);
-	TestEqual(TEXT("CONTROL: five dungeons arrived on day 51, a wave of four and the Dungeon City"),
-			  SecondFall.Spawned.Num(), 5);
+	TestEqual(TEXT("CONTROL: six dungeons arrived on day 51, a wave of five and the Dungeon City"),
+			  SecondFall.Spawned.Num(), 6);
 
 	return true;
 }

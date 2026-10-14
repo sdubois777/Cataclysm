@@ -849,7 +849,7 @@ namespace CataclysmDeathEndsDungeonTest
 	 * THE RUN HAS NOTHING STANDING ON IT. A day is spent, which lands the
 	 * opening wave, and both lists are then emptied, the way `MakeEmptyRun` in
 	 * the empire layer's own tests does and for its reason: the next surge is
-	 * 120 days off, further than any test here goes.
+	 * 90 days off, further than any test here goes.
 	 *
 	 * THE GAME MODE HAS BEGUN PLAY, so it listens for deaths as it does in the
 	 * running game, and the run is handed to it through the test seam.
