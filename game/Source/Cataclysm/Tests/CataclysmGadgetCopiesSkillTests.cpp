@@ -1072,7 +1072,7 @@ CATACLYSM_TEST(FCataclysmGadgetCopiesSkillDistanceTest,
 
 	// THE PLAYER HOLDS A DEMONIC WAND, whose Special skill Whisper of Madness is a curse that strikes one enemy within
 	// 15 m for the Special slot's damage, and A MADE-UP ROW OF THE SHAPE OF THE SHIPPED
-	// `Negative_Ranged_skills_deal_15_30_less_damage_at_close#2`: `spell_damage`, More, -30, Required Tags
+	// `Negative_Ranged_skills_deal_15_30_less_damage_at_close#1`: `attack_damage`, More, -30, Required Tags
 	// `Type.Ranged`, Condition `target_within_metres` 5. Two turrets: the NEAR one 12 m along Y from the player,
 	// with its target 1 m from it and so about 12 m from the player; the FAR one 60 m along X, with its target 8 m
 	// from it and 68 m from the player, the control far from both. Every enemy holds 50,000.
@@ -1113,7 +1113,7 @@ CATACLYSM_TEST(FCataclysmGadgetCopiesSkillDistanceTest,
 	Close.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Ranged")), /*ErrorIfNotFound=*/false));
 	Close.Condition = ECataclysmStatCondition::TargetWithinMetres;
 	Close.ConditionValue = 5.0f;
-	Rig.HoldTheFlagAnd(TArray<FRig::FIncrease>(), FName(TEXT("spell_damage")), Close);
+	Rig.HoldTheFlagAnd(TArray<FRig::FIncrease>(), FName(TEXT("attack_damage")), Close);
 	if (!TestTrue(TEXT("set-up: each turret's brain chooses its own target"),
 			NearTurret->SkillCopyTarget() == NearTarget && FarTurret->SkillCopyTarget() == FarTarget))
 	{

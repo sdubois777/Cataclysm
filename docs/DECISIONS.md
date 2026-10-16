@@ -488,7 +488,7 @@ requiring `Type.Deployable`. Each test reads a control first.
   holding the new weapon.
 - `ACopysTargetDistanceIsMeasuredFromTheGadgetForATargetWithinMetresRow`. Ruling D. The wearer holds a Demonic Wand,
   whose Whisper of Madness is a curse striking one enemy within 15 m for the Special slot's damage, and a made-up row
-  of the shape of the shipped `Negative_Ranged_skills_deal_15_30_less_damage_at_close#2`: `spell_damage`, More, -30,
+  of the shape of the shipped `Negative_Ranged_skills_deal_15_30_less_damage_at_close#1`: `attack_damage`, More, -30,
   Required Tags `Type.Ranged`, Condition `target_within_metres` 5. A near turret 12 m from the wearer with its target
   1 m from it, about 12 m from the wearer; a far turret 60 m away with its target 8 m from it and 68 m from the
   wearer, the control far from both. In order: set-up, the wand gives the skill and a row may cast it again; two
