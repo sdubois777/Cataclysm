@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-13 — In the game a dungeon's hit is sized by the floors it was rolled with; the two city upgrades that move floors no longer change it
 
-**Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
+**Said first: not compiled and not run, when written; the Run section below has the run.** The C++ in this change was written by reading and has not been built.
 No Unreal test was run. The first build and run belong to a later session.
 
 **Said first: two city upgrades do less than they did.** `DungeonFloorsFewer` no longer shrinks the hit of
@@ -156,7 +156,7 @@ The check compares the two formulas and the order each is built in.
 
 ### Guard proofs proposed for the C++
 
-None was run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`, counted once in
+None was run when written; the Run section below has the run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`, counted once in
 the file at this commit. The test for all three is
 `Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes`.
 
@@ -177,7 +177,7 @@ requires. The reading for this layer missed it.
 The ruling, a labelled judgement by the coordinating session, 2026-10-15: "UpgradeFloors": 0 in Dungeons[0] of
 `Run_v1.json` after "Floors", and a dated README paragraph in the form of the earlier edits, under the "nothing has
 ever loaded a save" exception; 0 "because it changes no other test's meaning". Both are made. The README paragraph
-says no test shows a non-zero value surviving a round trip. Not compiled or run when written.
+says no test shows a non-zero value surviving a round trip. Not compiled or run when written; the Run section below has the run.
 
 ### Run
 
