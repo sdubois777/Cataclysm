@@ -7,6 +7,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For a slot converted into a skill gadget. Ruled 2026-10-16.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCombatOverlay.h"
@@ -401,6 +404,16 @@ FString UCataclysmSkillBar::FervourTextFor(const FCataclysmSkillBarSlot& Slot)
 						   FMath::CeilToInt(Slot.FervourCost));
 }
 
+FString UCataclysmSkillBar::SkillGadgetName()
+{
+	return TEXT("Gadget");
+}
+
+FString UCataclysmSkillBar::SkillGadgetTextFor(const FCataclysmSkillBarSlot& Slot)
+{
+	return Slot.bIsASkillGadget && Slot.bSkillGadgetCastsNothing ? FString(TEXT("Gadget casts nothing")) : FString();
+}
+
 FString UCataclysmSkillBar::LockedNotice()
 {
 	// BASIC ATTACKS ARE NAMED BECAUSE THEY STILL WORK. The bar draws no box for
@@ -574,6 +587,38 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 					Box.CooldownRemaining = Wait.Key;
 					Box.CooldownDuration = Wait.Value;
 				}
+			}
+		}
+
+		// AND A SLOT CONVERTED INTO A SKILL GADGET SAYS SO, AND SWEEPS WITH THE GADGET'S CLOCK. Ruled 2026-10-16
+		// (S14). Asked the way the press asks, `SlotIsASkillGadget`, so the bar and the key cannot disagree. Last, so
+		// it replaces the name and the player's cooldown read above: the player no longer casts the skill, so that
+		// cooldown never runs. Placing costs nothing, so the box is affordable whatever the skill costs; the lock read
+		// above stays, because it refuses the gadget's cast. Before the gadget is placed or casts, no sweep.
+		if (const UCataclysmAbilitySystemComponent* Converting =
+				Cast<const UCataclysmAbilitySystemComponent>(Abilities))
+		{
+			if (Converting->SlotIsASkillGadget(Slot))
+			{
+				Box.bIsASkillGadget = true;
+				Box.Name = SkillGadgetName();
+				Box.bAffordable = true;
+				Box.bShortOfFervour = false;
+				Box.Charges = 1;
+				Box.MaxCharges = 1;
+				Box.CooldownRemaining = 0.0f;
+				Box.CooldownDuration = 0.0f;
+				if (const ACataclysmMinion* Standing = Converting->SkillGadgetIn(Slot))
+				{
+					Standing->SkillGadgetClock(Box.CooldownRemaining, Box.CooldownDuration);
+				}
+				const UCataclysmWeaponSlotsComponent* Held =
+					Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+				const FCataclysmWeaponSkill* Row = Held
+					? Held->GetAvailableSkills().FindByPredicate(
+						  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
+					: nullptr;
+				Box.bSkillGadgetCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row);
 			}
 		}
 

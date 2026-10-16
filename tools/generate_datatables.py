@@ -10124,6 +10124,85 @@ def refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
     return problems
 
 
+#: The flag by which a slot's key places a skill gadget instead of casting the
+#: slot's skill. Ruled 2026-10-16 by the coordinating session (S12), for the
+#: rows "Your heavy attack / special ability / support ability / ultimate
+#: ability is converted into a deployable gadget ... Scales off gadget damage."
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, whose Required Tags is the slot's
+#: own tag and nothing else, with no Condition, no Scale and no Action. The
+#: sentence's own tags carry `Type.Deployable` as well; the row requires the
+#: slot tag alone, because the game asks with the slot's skill tags and a
+#: player's skill carries no `Type.Deployable`.
+#: `UCataclysmAbilitySystemComponent::SkillSlotIsAGadgetStat` holds the same
+#: name, and `TestASlotIsConvertedIntoAGadget` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE FOUR KEYED SLOTS. The basic attack's row is the second stack's: its
+#: press is a click on an enemy, which is not built, and `Slot.Basic` joins
+#: this list when it is.
+SKILL_SLOT_IS_A_GADGET_STAT = "skill_slot_is_a_gadget"
+SKILL_SLOT_IS_A_GADGET_SLOT_TAGS = frozenset({
+    "Slot.Heavy", "Slot.Special", "Slot.Support", "Slot.Ultimate"})
+
+
+def refuse_a_skill_slot_gadget_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `SKILL_SLOT_IS_A_GADGET_STAT` is one its reader answers yes to,
+    for one slot.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE. The game asks for the stat with
+    the held skill's tags and the slot's tag, and reads any value above nought
+    as yes. A row of any kind but `flat` works on a base of nought and says
+    no; a row with an action is not a stat line; a row with no required tag
+    would convert every slot at once, and one requiring anything but one slot
+    tag converts a slot nobody named or none. Each refusal names what the
+    reader would do.
+
+    THE FIGURE IS 1 AND NOTHING ELSE, as the other flags hold theirs.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentences are enchantments'.
+    """
+    problems = []
+    stat = SKILL_SLOT_IS_A_GADGET_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself and takes any value above "
+                f"nought as yes, so the row must be 'flat'; any other kind "
+                f"works on a base of nought and converts NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in SKILL_SLOT_IS_A_GADGET_SLOT_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The row requires ONE slot's tag and nothing else, one of "
+                f"{sorted(SKILL_SLOT_IS_A_GADGET_SLOT_TAGS)}: the game asks "
+                f"with each slot's skill tags, so no tag converts every slot "
+                f"and any other tag converts a slot nobody named, or none.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The flag "
+                f"is a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on this "
+                    f"flag states 1 and nothing else.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10510,6 +10589,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     problems.extend(
         refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
             "EnchantmentEffects", effects))
+
+    # AND THE FLAG THAT CONVERTS A SLOT INTO A SKILL GADGET IS FLAT, 1 TO 1,
+    # REQUIRES ONE SLOT'S TAG AND NOTHING ELSE, AND HAS NO ACTION. Ruled
+    # 2026-10-16.
+    problems.extend(refuse_a_skill_slot_gadget_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
 
     return problems
 

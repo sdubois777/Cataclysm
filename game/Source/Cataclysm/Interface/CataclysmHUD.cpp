@@ -453,6 +453,16 @@ void ACataclysmHUD::DrawSkillBar()
 			DrawTextCentred(Fervour, Ink, Centre, At.Y - SkillBarFervourGapPx,
 							SkillBarKeyScale);
 		}
+
+		// AND, ABOVE A SKILL GADGET'S BOX THAT CAN NEVER CAST ITS SKILL, SO.
+		// Ruled 2026-10-16 (S10). Where the Fervour line goes, which a gadget's
+		// box never shows: `UCataclysmSkillBar::Read` counts it affordable.
+		const FString Idle = UCataclysmSkillBar::SkillGadgetTextFor(Box);
+		if (!Idle.IsEmpty())
+		{
+			DrawTextCentred(Idle, Ink, Centre, At.Y - SkillBarFervourGapPx,
+							SkillBarKeyScale);
+		}
 	}
 
 	// AND IN WORDS WHEN EVERY ONE OF THEM IS LOCKED. Issue #1810. Six boxes
