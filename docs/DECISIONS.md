@@ -221,7 +221,42 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-16 under the lock enchant-br2, on development 8733dad06, for this layer's two
+commits: the reproducing tests alone, then the change. THE WINDOW WAS STARTED TWICE.
+
+- **First start (br), on fix/basic-reach-1: the reproducing tests were not as registered**, "3 tests performed, 1
+  succeeded, 2 failed", 9 failed assertions against 10 registered. The reach fault reproduced exactly as read (8 in the
+  reach test, 1 in the press test), but the aim test PASSED with a skipped half: "the wand's swing waits for its
+  animation, which a test world does not run". The wait was on the project's own mannequin clip (`SKM_Manny_Simple`),
+  in a worktree with no Paragon art. The lock was released, and the coordinating session ruled the correction recorded
+  above: the tests finish a waiting swing with `CataclysmTestWorld::RunClock`, report no skipped half, and the aim test
+  holds a Whip, so that the first commit fails on the aim itself.
+- **Second start (br2), on fix/basic-reach-2, every step as registered:**
+  - **The reproducing tests at the test commit 9671252cd:** "Build: Succeeded - 31 actions, 28 files compiled"; "3 tests
+    performed, 0 succeeded, 3 failed", with 13 failed assertions in the run. Registered: 3 failed and 13 (8 in the reach
+    test, 1 in the press test, 4 in the aim test: the Whip click's strike, its "not the enemy ahead", its turn, and the
+    Wand click's swing).
+  - **The whole Unreal suite at the change 3c756532a:** "3805 tests performed, 3805 succeeded, 0 failed. 40 skipped part
+    of what they check"; "Declared: 3805 tests in the tree at 3c756532a; 3805 performed, gap 0". Registered 3805 and 0:
+    the 3802 measured on 8733dad06 and this layer's three. None of the three skipped part of what it checks.
+  - **Python:** "6445 passed, 8 skipped"; JUnit tests 6453, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+  - **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+    with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.BasicReach.`, 3 tests.** The stop condition for
+each was the set of tests that fail with the break in, by the beginnings of their names. The failed assertions had been
+counted by reading and were measured beside it. Every anchor was counted once, and every file's hash was the same after
+its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| B-I | a ranged basic reaches its bolt's radius | all 3 failed | 10 / 10 | 3 of 3 succeeded |
+| B-II | the shape test asks the wrong shape | all 3 failed | 10 / 10 | 3 of 3 succeeded |
+| B-III | the click names no enemy to aim at | 1 failed, `AClickAttackGoesToTheEnemyClickedAndNotWhereTheAimWouldOtherwiseFall` | 5 / 5 | 3 of 3 succeeded |
+
+The measured lines of B-III: the Whip's "struck the enemy clicked: 50000.0 of 50000 left", "and not the enemy ahead
+... it was 49890.000000", "and the player turned to the enemy clicked: facing (1.000, 0.000)"; the Wand's "struck the
+enemy clicked: 50000.0 of 50000 left" and "and not the enemy ahead ... it was 49900.000000".
 
 ---
 
