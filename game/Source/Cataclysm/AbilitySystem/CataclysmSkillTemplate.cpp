@@ -18,6 +18,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the share of a point-blank skill's blow struck at the allies inside its area. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For turning a health cost into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the part of a cost that is taken later instead of now. Issue #991.
@@ -2598,6 +2600,122 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 			EnemiesHitForFervour);
 	}
 
+	return Total;
+}
+
+// --------------------------------------------------------------------------
+// "Your AOE skills deal 50%-75% of their damage to nearby allies as well as
+// enemies". Ruled 2026-10-15, R1 to R10; see `UCataclysmAreaShareOnAllies`.
+// --------------------------------------------------------------------------
+
+float UCataclysmSkillTemplate::AreaShareOnAlliesPercent() const
+{
+	return UCataclysmAreaShareOnAllies::PercentHeldFor(GetAbilitySystemComponentFromActorInfo(), SkillTags);
+}
+
+float UCataclysmSkillTemplate::HitTargetsSharingWithAllies(const TArray<AActor*>& Targets, float DamagePercent,
+														   const TArray<AActor*>& Allies)
+{
+	if (Allies.IsEmpty())
+	{
+		return HitTargets(Targets, DamagePercent);
+	}
+
+	// ONE ATTACK FOR THE ENEMIES AND THE ALLIES, begun on the enemies alone so the count is theirs. `HitTargets` then
+	// finds it in progress and neither begins nor ends it.
+	const bool bBegan = BeginAttackOn(Targets);
+	const float Total = HitTargets(Targets, DamagePercent);
+	ShareTheBlowWithAllies(Allies, DamagePercent >= 0.0f ? DamagePercent : GetDamagePercent());
+	if (bBegan)
+	{
+		EndAttack();
+	}
+	return Total;
+}
+
+float UCataclysmSkillTemplate::HitScaledSharingWithAllies(const TArray<AActor*>& Targets,
+														  const TArray<AActor*>& Consumed,
+														  const TArray<AActor*>& Allies)
+{
+	if (Allies.IsEmpty())
+	{
+		return HitScaled(Targets, Consumed);
+	}
+
+	// THE ALLIES' PERCENT IS TAKEN BEFORE THE ENEMIES' BLOWS, as `HitScaled` takes its own before them, so nothing
+	// those blows change can size the share differently from the swing.
+	const float AllysPercent = PercentHitScaledGivesAnAlly(Consumed);
+	const bool bBegan = BeginAttackOn(Targets);
+	const float Total = HitScaled(Targets, Consumed);
+	ShareTheBlowWithAllies(Allies, AllysPercent);
+	if (bBegan)
+	{
+		EndAttack();
+	}
+	return Total;
+}
+
+float UCataclysmSkillTemplate::PercentHitScaledGivesAnAlly(const TArray<AActor*>& Consumed) const
+{
+	// THE SAME THREE BRANCHES AS `HitScaled`, for a target that was not consumed.
+	if (Params.ScalingSource.IsEmpty()
+		|| (Params.IncreasedDamagePer <= 0.0f && Params.MoreDamagePer <= 0.0f))
+	{
+		return ScaledDamagePercent(0.0f);
+	}
+	return ScaledDamagePercent(ScalingUnits(Consumed.Num(), false));
+}
+
+float UCataclysmSkillTemplate::ShareTheBlowWithAllies(const TArray<AActor*>& Allies, float DamagePercent)
+{
+	AActor* Self = Avatar();
+	const float Share = AreaShareOnAlliesPercent();
+	if (!Self || Allies.IsEmpty() || DamagePercent <= 0.0f || Share <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THE DELIVERY `HitTargets` BUILDS FOR AN ENEMY, FIELD FOR FIELD AND IN ITS ORDER (R4), so the ally's blow is
+	// priced as an enemy's of the same swing would be. `TestAShareOfAPointBlankSkillsBlowOnAnAlly` in
+	// `tools/tests/test_generate_datatables.py` holds the two lists of fields to each other.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+	Delivery.SkillHealthCostPercent = LastHealthCostPercentOfMaximum;
+	Delivery.MetresMovedBeforeBlow = LastMetresMovedBeforeUse;
+	Delivery.MetresCharged = BlowMetresCharged;
+	Delivery.ChargeRangeMetres = BlowChargeRangeMetres;
+	Delivery.Skill = this;
+	Delivery.bStruckFromAPoint = bFreeRepeatHasOrigin;
+	Delivery.StruckFromPoint = FreeRepeatOrigin;
+	Delivery.EnemiesStruckTogether = AttackEnemiesStruckTogether;
+	Delivery.IncreasedDamageBoughtPercent = AttackIncreasedDamageBoughtPercent;
+	Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+	Delivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
+
+	// AND THEN THE SHARE (R4, R5, R7): the percent, and nothing the blow carries but its damage.
+	UCataclysmAreaShareOnAllies::MarkAsShare(Delivery, Share);
+
+	float Total = 0.0f;
+	for (AActor* Ally : Allies)
+	{
+		// THE ENEMIES' BLOWS CAME FIRST, and an ally may have died since it was found.
+		if (!IsValid(Ally) || UCataclysmSkillEffects::IsDead(Ally))
+		{
+			continue;
+		}
+
+		// AND THE SKILL'S OWN MORE DAMAGE FROM BEHIND, as `HitTargets` gives each target before `ApplyHit`: part of
+		// what the blow is worth where the ally stands, and not a rider.
+		const bool bFromBehind = Params.bRearHits
+			|| (bFreeRepeatHasOrigin ? UCataclysmSkillEffects::IsBehindFrom(FreeRepeatOrigin, Ally)
+									 : UCataclysmSkillEffects::IsBehind(Self, Ally));
+		const float PercentThisBlow =
+			bFromBehind && Params.MoreDamageFromBehind > 0.0f
+				? DamagePercent * (1.0f + Params.MoreDamageFromBehind / 100.0f)
+				: DamagePercent;
+
+		Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, PercentThisBlow, SkillTags, Delivery);
+	}
 	return Total;
 }
 
