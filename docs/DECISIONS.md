@@ -271,7 +271,42 @@ Failed assertions in each test, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-16 under the lock enchant-s2, on development c38f057a2 (the four keyed rows'
+merge), for two layers in this order: this mechanism (the second session's commit with the ruled change to test 2,
+which now counts over 9.5 s and not 10 s) and the basic attack's row with its real-row test. The suite and Python were
+run at the top of the two, which holds both. Every step was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 36 actions, 33 files compiled"; "341 tests
+  performed, 340 succeeded, 1 failed: TheWornBasicGadgetRowMakesTheBasicAttackPlaceASkillGadget", with 1 failed
+  assertion in the run, that test's. Registered: 341, 340 and 1, that test, one assertion.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as "Rebuild the enchantment DataTable assets for the basic attack's skill-gadget row".
+- **The whole Unreal suite:** "3802 tests performed, 3802 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3802 tests in the tree at 5a735d01b; 3802 performed, gap 0". Registered 3802 and 0: the 3794 measured
+  on c38f057a2, the seven of this entry and the one real-row test.
+- **Python:** "6445 passed, 8 skipped"; JUnit tests 6453, failures 0, errors 0, skipped 8. Lint: "All checks
+  passed!".
+- **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+  with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SkillGadgets.`, 22 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| G-IV | the basic gadget's clock keeps no beat | 1 failed, `TheBasicGadgetCastsTheBasicAttackWithinItsReachOnTheSwingIntervalKeptAsABeat` | 2 / 2 | 22 of 22 succeeded |
+| G-V | a projectile carries no gadget into its blow | 1 failed, `ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets` | 2 / 2 | 22 of 22 succeeded |
+| G-VI | the click asks the wrong slot | 1 failed, `AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt` | 1 / 1 | 22 of 22 succeeded |
+
+The measured lines: G-IV, the count "to be 13, but it was 10" and the faster gadget's "to be 19, but it was 13";
+G-V, "each of the 28 axes landing after the use ended raised deployable_hit ... to be 30, but it was 2" and their
+damage "to be 9671.156250, but it was 431.156250" (the 28 late axes without the flat 300 the gadget's blow takes);
+G-VI, "the click on the enemy placed a basic gadget ... to be not null".
+
+**Not measured:** the stat probe's and the real-row test's failure under any break, because the proofs ran only this
+prefix.
 
 ---
 
