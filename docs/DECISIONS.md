@@ -2,6 +2,304 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-15 — A row can make a point-blank skill's own blow strike every ally inside its area for a percent of what it deals there: one stat asked with the skill's tags, a friendly search at four sites, and a damage-only share that spends no store and raises none of the wearer's rows, its kill included, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.h` and `.cpp` (new: the stat's name, its
+reading, the three friendly searches, the share's delivery and the reading of its stamp); `CataclysmSkillTemplate.h`
+and `.cpp` (four members: the percent asked with the skill's tags, `HitTargets` and `HitScaled` with the allies' share
+in the same attack, and the share itself); `CataclysmSkillTemplates.h` and `.cpp` (the searches and calls at the four
+sites, and one defaulted parameter on `UCataclysmMovementSkill::HitScaledAsACharge`); `CataclysmSkillEffects.h` and
+`.cpp` (the delivery's percent, its stamp's name, the stamp in `ApplyTypedSpec`, and in `ApplyHit` the percent of the
+priced figure with neither store spent); `CataclysmCombatEvents.h` and `.cpp` (the hit notice, the record of the last
+blow and the death notice carry the mark); `CataclysmVitalAttributeSet.cpp` (the mark read once in the damage branch,
+and honoured at two places), all under `game/Source/Cataclysm/AbilitySystem/`;
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the three on-hit events refused for a share, and a
+death a share made heard as a death nobody killed); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(one name on the list of stats with no attribute); `game/Source/Cataclysm/Tests/CataclysmAoeStrikesAlliesTests.cpp`
+(new, ten tests); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe);
+`tools/generate_datatables.py` (the name and the refusals of its row); `tools/tests/test_generate_datatables.py` (one
+class of nine tests); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsNegative.csv`, row `Negative_Your_AOE_skills_deal_50_75_of_their_damage_to`:
+"Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies".
+
+- **NOT BUILT, BECAUSE IT IS IN A FILE THIS LAYER MAY NOT TOUCH: some dungeon floor rules read a share as the player's
+  own blow, and a kill a share makes as the player's kill.** `ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.cpp`)
+  hears every hit notice and every death notice. By reading of their tests, and not run:
+  - **Brand of the Aggressor** (`NoteHitForBrandOfTheAggressor`) and **Holy Repercussions**
+    (`NoteHitForHolyRepercussions`) act on a blow whose attacker is the player and whose target is an
+    `ACataclysmEnemyCharacter`, with no test of the target's side. So a share that strikes the wearer's thrall or a
+    warzone soldier of its side does there what the player's blow on a creature does. **Contagious Touch** refuses a
+    player's follower and is not reached. **Carrion Feast** and **Shadowy Enemies** read a fire-tagged blow from an
+    attacker not of the monsters' side on a carcass or a creature, so a share carrying a fire tag on a thrall may reach
+    them; not settled by reading.
+  - **The rules on a kill** test `Notice.Killer != Player` (lines 2759, 13686, 13808, 16692, 16795, 17193, 17277,
+    17755, 19871 and 20319 of that file at this layer's head). For them a share that kills the wearer's thrall or minion
+    is the player's kill; the ones at 2759, 13686 and 13808 also ask that the victim be an `ACataclysmEnemyCharacter`
+    that pays for its death, and the others were not read past that line.
+  - **The hit notice carries `FCataclysmHitNotice::bAreaSkillShareOnAnAlly` and the death notice
+    `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`, so the change, if ruled, is one refusal in each rule in
+    `CataclysmDungeonGameMode.cpp`.** R6 rules the wearer's rows; a floor rule is the dungeon's, so this is reported and
+    not decided here.
+- **A GADGET'S COPY OF A POINT-BLANK SKILL STRIKES THE GADGET ITSELF.** A copy is the wearer's own skill cast from the
+  gadget's place (the entry of 2026-10-14): the cone's apex, or the sphere's centre, is the gadget, and the gadget is an
+  ally by team (R1), so every copy of a point-blank swing finds it inside and strikes it for its share. R1 leaves out
+  the wearer only, so this is built as ruled and said here. By reading; not tested.
+- **In addition, not instead.** Every enemy inside the area takes the whole blow as without the row (test 1); every ally
+  inside it takes the row's percent of the blow priced for that ally (R4).
+- **Only the point-blank skills, and only their own instant blow, at four places (R2):**
+  `UCataclysmStrikeSkill::SwingOnce` (a cone, or the sphere a row's "hits all within" gives; a held release, a spin's
+  repeats and its final hit all swing through it), `UCataclysmStrikeSkill::PullTheWeaponFree`, and in
+  `UCataclysmMovementSkill::ActivateAbility` the Charge's line and the Leap's and the Recall's sphere where they land.
+  **A ground zone's sweep (`ACataclysmGroundZone::Sweep`) and the two blows a row grants a movement skill,
+  `UCataclysmMovementSkill::HitWhatThePathCrossed` and `UCataclysmMovementSkill::ExplodeAtBothEnds`, share nothing.**
+  Nor does a walked charge's step, a blink or a trade: no point-blank skill is one.
+- **Who (R1, R3): every actor on the wearer's side by `UCataclysmTeams` inside the same cone, sphere or line, the wearer
+  left out, once per swing.** Its minions, gadgets, imps, thralls and warzone soldiers, and a second player once there
+  is co-op. A maddened ally, or a maddened wearer, is not an ally while the madness lasts, and the wearer's skill already
+  strikes it in full (R8, the entry of 2026-09-26); nothing extra is built.
+- **An ally inside the area is struck even when no enemy is**, a judgement below.
+- **DAMAGE ONLY, a new ruling (R5):** the ally takes no ailment, no knockback, stun, forced movement, knockdown, burn,
+  Chorus repeat, mana on hit or Fervour, and the blow is never a critical strike. It is not dealt through
+  `HitTargets`, which applies those riders inside its loop. The ally's attacker is not branded or charmed by it, and
+  the ally does not retaliate against it (judgements below).
+- **The ally's own defences meet the share (R4)**: it is priced as `ApplyHit` prices a blow for an enemy standing there,
+  and the ally's armour, resistances and pools then reduce it (test 6).
+- **It raises none of the wearer's rows (R6)**: no `hit_dealt`, `first_hit_dealt` or `critical_strike`, and **no
+  `kill` when the share kills the ally** (test 5). It is not recorded as the wearer's first blow on the ally. So
+  "You take 10-20% of the damage dealt by your own point blank AOE skills", which reads the wearer's point-blank
+  `hit_dealt`, is not fed by a share.
+- **WHERE THE KILL EVENT IS RAISED, AND HOW THE MARK REACHES IT (R6).** The `kill` event is raised in
+  `ACataclysmPlayerCharacter::OnSomethingDied`, `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` line
+  1152 at the head this layer started from (`173f263d`) and 1175 after it, inside `if (Notice.Killer == this)`, with
+  the kill counts, the worn weapons' kill counts and the overkill explosion; below it, health on a kill, Follow Through,
+  the end of crowd control and Wrung Out each ask the same question. The mark travels: the delivery's
+  `AreaSkillShareOnAnAllyPercent`, stamped by `ApplyTypedSpec`; read by `UCataclysmCombatEvents::NoteBlow` onto
+  `FCataclysmLastBlow::bAreaSkillShareOnAnAlly` (`CataclysmCombatEvents.cpp` line 178) for every blow that reaches
+  health; copied by `UCataclysmCombatEvents::NoteDeath` onto `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`
+  (line 291); and at the top of `OnSomethingDied` (line 1135) a death so marked whose killer is this character is heard
+  once more with the killer taken off a copy, so every question below it that asks "did this character kill?" answers
+  no. **Every other listener still reads the wearer as the killer**, which is the floor rules named first.
+- **The wearer's stored-damage stores are not spent by an ally's share (R7)**: Nothing Wasted's and the two stores of
+  absorbed damage are spent on the enemy as without the row (test 7). `ApplyHit` spends them on every blow that is not a
+  tick (`CataclysmSkillEffects.cpp`, the two `Spend...` calls after the pricing); a share skips both.
+- **WITH "YOU TAKE 5%-15% DAMAGE DONE TO NEARBY ALLIES" ALSO WORN (R9):** the wearer's point-blank skill striking its
+  minion gives the minion this row's share, and then the wearer takes that row's percent of what reached the minion's
+  health, as the entry of 2026-10-15 for that row builds it. This layer's mark is not that row's, so the minion's loss
+  is shared as any blow's is. Built as ruled; not prevented and not tested.
+- **The ally's own rows hear the share as any blow taken**: today no ally wears a row. A second player in co-op would.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief. Every statement about what the engine does
+  was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+
+**What was not read:** the bodies of `UCataclysmStrikeSkill::WhenTheSwingConnects`, `ReleaseTheSwing` and
+`LetTheHoldFinish` past their calls to `SwingOnce`; `UCataclysmDamageCalculation::Resolve`; `CataclysmDisplace`; the
+gadget skill-copy path past `CastOrigin`; the floor rules past the lines named above.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+No owner's sentence on this row. The rulings R1 to R10 are the coordinating session's, 2026-10-15
+(`rulings_2026-10-15_allies.md`, "Row B rulings", and this layer's brief). **R1, who is an ally, is recorded with its
+two sources in the entry of 2026-10-15 for "You take 5%-15% damage done to nearby allies", directly below; it is not
+repeated here.** R5 (damage only) is a new ruling of that day and not a reading of the owner's rule of 2026-10-06 on a
+minion's ailments, which is about ailments a minion applies.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | An ally is an actor on the wearer's team by `UCataclysmTeams`, the wearer excluded. | `UCataclysmAreaShareOnAllies::AlliesInCone`, `AlliesInSphere` and `AlliesInLine` search with `UCataclysmTargeting::FindAlliesInSphere`, which leaves out its instigator, the wearer, and the dead. |
+| R2 | Only `Type.AOE.PointBlank` skills, only their own instant blow, at four sites; zones and the two row-granted hits share nothing. | The stat is asked with the skill's tags (`UCataclysmSkillTemplate::AreaShareOnAlliesPercent`), and the generator refuses a row without the tag. The searches and calls are in `SwingOnce`, `PullTheWeaponFree` and `UCataclysmMovementSkill::ActivateAbility` (Charge, Leap, Recall) only. |
+| R3 | Every ally inside the same cone, sphere or line, once per swing. | `AlliesInCone` is the sphere of the cone's radius and `IsInCone` on each location, as `FindEnemiesInCone`; `AlliesInLine` the sphere round the middle and `IsInLine`, as `FindEnemiesInLine`; `AlliesInSphere` is `FindAlliesInSphere`. Each site searches once per call. |
+| R4 | The hit priced for that ally as `ApplyHit` would price it for an enemy there, times the percent. | `UCataclysmSkillTemplate::ShareTheBlowWithAllies` builds `HitTargets`'s delivery field for field, gives the skill's more damage from behind as `HitTargets` does, and calls `ApplyHit` for each ally inside the same attack as the enemies (`HitTargetsSharingWithAllies`, `HitScaledSharingWithAllies`). `ApplyHit` prices it whole and sends `AreaSkillShareOnAnAllyPercent` of it. |
+| R5 | Damage only, no crit, outside `HitTargets`. | `UCataclysmAreaShareOnAllies::MarkAsShare`: no critical strike, no ailment chance, no weapon sub-type, no leech, never retaliated against. In the branch the mark skips Infernal Brand and Beguiling. |
+| R6 | None of the wearer's rows, no `kill`. | `ACataclysmPlayerCharacter::OnSomethingWasHit` refuses `bAreaSkillShareOnAnAlly`; `OnSomethingDied` hears a share's kill as nobody's; the branch does not record it with `NoteStruckBy`. |
+| R7 | The stores are not spent. | `ApplyHit` skips `SpendStoredMitigatedDamage` and `SpendStoredAbsorbedDamage` for a share. |
+| R8 | Madness: nothing extra. | Nothing built. |
+| R9 | With row A worn, both shares; stated. | Nothing built; the mark is not row A's. |
+| R10 | A stat of the percent, flat, 50 to 75, with the skill's tags, Required Tags `Type.AOE.PointBlank`. | `aoe_skill_damage_to_nearby_allies_percent`. No other shape is needed. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **An ally inside the area is struck even when the swing strikes no enemy.** The skill's damage covers its area. The
+  option not taken: strike allies only when an enemy was struck too, which "as well as" could be read to mean.
+- **No limit on how many allies.** The ten designed point-blank Strikes state no `MaxTargets`. The option not taken:
+  the enemies' limit, counted separately for allies.
+- **The share is dealt after the enemies' blows, in the same attack.** So it is priced with the count of enemies the
+  swing struck and with any damage Bought With Ruin bought, as an enemy's blow of the same swing is, and nothing is paid
+  twice. The option not taken: deal it first, which would price it with no enemy count.
+- **The percent is applied to the priced figure, inside `ApplyHit`,** not to the skill's damage percent: a spell's flat
+  damage is added after the percent and would not be scaled by it. The option not taken: pass a smaller damage percent.
+- **The ally's percent for a scaled skill is the figure `HitScaled` gives a target that was not consumed**, taken
+  before the enemies' blows. No ally's burn is put out by the wearer's skill. The option not taken: none found.
+- **The share keeps the skill's more damage from behind**, measured from the ally's place: it is part of what the blow
+  is worth there, not a rider. No point-blank row states one.
+- **Penetration is kept.** It is part of how a blow meets an enemy's defences, and R4 prices the ally as an enemy. The
+  option not taken: `bCannotPenetrate`.
+- **The share is never retaliated against, and does not brand or charm its attacker**, so the share is damage only in
+  both directions. The option not taken: let a thrall's modifiers answer it as a blow.
+- **The share is not recorded as the wearer's first blow on the ally.** Otherwise it would use up a "first hit" that
+  raised no event. The option not taken: record it.
+- **A share's kill is heard by the wearer as a death nobody killed, once, from the top of `OnSomethingDied`.** One
+  place covers the `kill` event and every other question there that asks whether the wearer killed, including ones
+  added later. The option not taken: a refusal beside each of the five places, which a later kill rule could miss.
+- **The percent is held to 100.** The generator refuses a figure above it.
+- **The stat's name, `aoe_skill_damage_to_nearby_allies_percent`.**
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. The sentence states the mechanic. The judgements inside it -- which skills,
+which blows, who an ally is, what the share is of and what it raises -- are this game's own, ruled by the coordinating
+session, and are not read off another game.
+
+### WHAT WAS BUILT
+
+- **The stat.** `aoe_skill_damage_to_nearby_allies_percent`, flat, read through
+  `UCataclysmAreaShareOnAllies::PercentHeldFor` with the skill's own tags, held to 0 to 100. No gameplay attribute and
+  no base; the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code,
+  `UCataclysmAreaShareOnAllies::PercentStat`.
+- **The searches.** `AlliesInCone`, `AlliesInSphere` and `AlliesInLine`, the friendly mirrors of the three enemy
+  searches, with no limit. A site searches only when `AreaShareOnAlliesPercent` is above nought.
+- **The sites.** `SwingOnce` (the cone, or the sphere when a row rolled "hits all within"), `PullTheWeaponFree` (the
+  cone round the sword), and in `UCataclysmMovementSkill::ActivateAbility` the Charge's line and the Leap's and Recall's
+  sphere, found before the move as the enemies are; a Charge's allies go through `HitScaledAsACharge`, which tells them
+  the same metres charged.
+- **The share.** `UCataclysmSkillTemplate::ShareTheBlowWithAllies(Allies, DamagePercent)`, called inside the attack by
+  `HitTargetsSharingWithAllies` and `HitScaledSharingWithAllies`, which are `HitTargets` and `HitScaled` unchanged when
+  there are no allies.
+- **The mark.** `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`, set by `UCataclysmAreaShareOnAllies::MarkAsShare`,
+  stamped by `ApplyTypedSpec` as `Cataclysm.AreaSkillShareOnAnAlly`, read by `UCataclysmAreaShareOnAllies::IsAShare` in
+  the damage branch and in `UCataclysmCombatEvents::NoteBlow`, which writes it on the hit notice and the record of the
+  last blow, and `NoteDeath` on the death notice.
+- **The generator.** `AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT` and
+  `refuse_a_point_blank_share_on_allies_row_the_game_cannot_read`, run by `validate_enchantment_effects`: a row on the
+  stat must be `flat`, require `Type.AOE.PointBlank` (other tags beside it are allowed), carry no Action, rise, and hold
+  each figure above 0 and at most 100. A condition or a scale on it is refused by the two existing checks.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One line on the sentence's enchantment, `Negative_Your_AOE_skills_deal_50_75_of_their_damage_to`: Stat
+`aoe_skill_damage_to_nearby_allies_percent`, Value Kind `flat`, Value Low 50, Value High 75, **Required Tags
+`Type.AOE.PointBlank`**, no Condition, no Scale, no Action, no Action Event and no other cell.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of its
+  probes.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site, the percent asked
+  by `PercentHeldFor` in `CataclysmAreaShareOnAllies.cpp` with the skill's tags and no blow, and one dated line above
+  `CALL_SITES`, whose figure stays the measurement of its own commit.
+- The generator refuses six shapes on one more stat. No shipped row is on it.
+- No merged test asserts anything different, by reading: with nobody holding the stat no site searches, the two
+  wrappers are `HitTargets` and `HitScaled`, `HitScaledAsACharge`'s new parameter defaults to no allies, and no blow
+  carries the mark, so every place that reads it does what it did. The cost a swing of a character without the row now
+  pays is one stat read.
+
+### Tests
+
+Ten new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmAoeStrikesAlliesTests.cpp`, the group
+`Cataclysm.AoeStrikesAllies.`, beside `CataclysmDamageDoneToAlliesTests.cpp`. Players are pawns with a player state, a
+thousand health and a weapon damage of 100, never refreshed; imps are summoned with `ACataclysmMinion::Spawn` and given
+a thousand health, the wearer's as allies and a creature's as enemies of the same defences. The row is held at a flat 50
+from an enchantment, requiring `Type.AOE.PointBlank`; the skills carry `Type.AOE.PointBlank, Type.Melee`. Every
+character stands at least 1 m from every other.
+
+1. `AMinionInsideThePointBlankSwingTakesThePercentOfWhatAnEnemyThereTakes`. In order: set-up, the wearer's imp is its
+   ally and the creature's its enemy; control, a plain player's nova takes health from its enemy imp; control, and none
+   from its own imp; the wearer's enemy takes what the plain swing's did; the wearer's imp takes half of that.
+2. `AnAllyOutsideTheSwingsAreaTakesNone`. A cone of 90 degrees and 6 m. In order: control, the imp 2 m in front takes a
+   share; the imp 8 m in front takes none; the imp 2 m behind takes none.
+3. `ASkillWithoutThePointBlankTagGivesNone`. In order: set-up, the tag is in the vocabulary; control, the point-blank
+   nova gives the imp a share; a melee swing of the same reach without the tag gives none.
+4. `TheAllyTakesNoBurnKnockbackOrStunTheSwingGivesTheEnemy`. In order: control, the enemy is set alight; is knocked back
+   more than 1 m; is stunned; set-up, the imp took its share; the imp is not set alight; is not moved; is not stunned.
+5. `TheAllysBlowRaisesNoHitDealtCriticalStrikeOrKillOnTheWearer`. Every roll critically strikes. In order: set-up, the
+   doomed enemy dies; control, two `hit_dealt`, two `first_hit_dealt`, two `critical_strike`, one `kill`; set-up, the
+   imp summoned after took its share; one `hit_dealt` more; no `first_hit_dealt` more; one `critical_strike` more;
+   set-up, the share kills the imp; no `kill` more; one `hit_dealt` more for the enemy.
+6. `TheAllysArmourReducesItsShare`. Two other players as allies. In order: set-up, the players are on one side; control,
+   the plain ally takes a share; the armoured one takes less, above nought; by
+   `1 - ArmorReduction(800, tier) / 100` of the plain one's.
+7. `AStoreOfTheWearersSurvivesASwingThatStruckAnAllyAndIsSpentOnTheEnemy`. Nothing Wasted held at 100. In order:
+   control, the enemy's plain blow, at least 50; set-up, the store holds 50; set-up, the enemy moved 42 m away is not
+   struck; the ally takes half the plain blow and none of the store; the store survives whole; the enemy moved back
+   takes the plain blow and the 50; the store is spent; the ally beside it still takes half the plain blow.
+8. `TheWearerIsNeverStruckByItsOwnShare`. In order: control, the imp takes a share; the wearer at the centre loses
+   nothing.
+9. `ALeapStrikesTheAllyWhereItLandsAndNoneUnderItsArc`. In order: set-up, the leap activates and lands 9 m along X;
+   control, the enemy at the landing is struck; the imp 1 m past the landing takes half of what the enemy took; the imp
+   beside the path, 7.3 m from the landing, takes none.
+10. `AGroundZoneTheSkillLaysStrikesNoAlly`. In order: set-up, the nova activates; control, its swing gives the imp a
+    share; set-up, it left one zone; control, the zone's sweep burns the enemy; it gives the imp nothing.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeAoeSkillDamageToNearbyAlliesPercent`. Two players 100 m apart, each with an imp 2 m away and a swing all round;
+only the second holds the stat, at 50, with no tags. Each swings once: the first's imp loses nothing, the second's
+loses something.
+
+Python: `TestAShareOfAPointBlankSkillsBlowOnAnAlly` in `tools/tests/test_generate_datatables.py`, nine tests on a
+made-up sheet: the ruled row is carried through with its tag and refused by no check; the name is a stat with no
+attribute, with a made-up name as the control; the generator's name is the one `CataclysmAreaShareOnAllies.cpp` holds,
+with the row of "You take 5%-15% damage done to nearby allies" read the same way as the control; the bound of 100 is
+the clamp `PercentHeldFor` makes; **`ShareTheBlowWithAllies` sets the same delivery fields as `HitTargets`, in the same
+order, with `HitScaled`'s none as the control**; each wrong shape is refused once by its own sentence (increased, more,
+no tag, another tag, an action, a falling range, 0, -5, 150), a narrower row and 100 to 100 are accepted, and two
+figures out of bounds are two refusals; a condition or a scale is refused by the checks that hold those; a passive
+node's row and another stat are left alone; the whole sheet's validation runs the check.
+
+**Not tested:** a real row worn, which does not exist yet; `PullTheWeaponFree`, the Charge and the Recall, a held
+release, a spin's repeats and final hit, and the "hits all within" sphere (only `SwingOnce`'s cone and sphere of 360 and
+the Leap are driven); a gadget's copy, and the gadget struck by its own copy; a thrall, a warzone soldier or a gadget
+as the ally; madness; "You take 5%-15% damage done to nearby allies" worn beside it (R9); a scaled skill's percent; the
+more damage from behind; the absorbed-damage stores (only Nothing Wasted's is driven); the skipped first-blow record,
+brand and charm; retaliation refused; the floor rules named first; replication; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text was
+counted absent from its file before the break and once after it, and each break keeps the file's round and curly
+brackets paired (counted by the same script) and compiles alone by reading. The failed assertions are counted by reading
+the tests and were not measured. The prefix of all three is `Cataclysm.AoeStrikesAllies.`, with its trailing dot, which
+is 10 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| B-I, no share is struck | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, PercentThisBlow, SkillTags, Delivery);` | `Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, 0.0f, SkillTags, Delivery);` | `AMinionInsideThePointBlankSwingTakesThePercentOfWhatAnEnemyThereTakes` | all nine others |
+| B-II, a share spends Nothing Wasted's store | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime && !bAShareOnAnAlly)` | `if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime)` | `AStoreOfTheWearersSurvivesASwingThatStruckAnAllyAndIsSpentOnTheEnemy` | none |
+| B-III, a share's kill is the wearer's kill | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `if (Notice.bByAnAreaSkillShareOnAnAlly && Notice.Killer == this)` | `if (Notice.bByAnAreaSkillShareOnAnAlly && Notice.Killer == nullptr)` | `TheAllysBlowRaisesNoHitDealtCriticalStrikeOrKillOnTheWearer` | none |
+
+Failed assertions in each test, by reading:
+
+- **B-I, 11 in 10 tests.** `ApplyHit` deals nothing for a damage percent of nought, so no ally ever loses anything.
+  Test 1, 1: "the wearer's imp inside the swing takes half". Test 2, 1: "control: the imp inside the cone takes a
+  share", after which it returns. Test 3, 1: its control, after which it returns. Test 4, 1: "set-up: the imp took its
+  share", after which it returns. Test 5, 1: "set-up: the imp took its share", after the control, after which it
+  returns. Test 6, 1: its control, after which it returns. Test 7, 2: "the ally takes half the plain blow, and none of
+  the store" and "and the ally beside it still takes half the plain blow". Test 8, 1: its control. Test 9, 1: "the imp at
+  the landing takes half". Test 10, 1: "control: the swing itself gives the imp a share", after which it returns.
+- **B-II, 3 in 1 test.** Test 7: "the ally takes half the plain blow, and none of the store" (half and the 50), "and the
+  store survives the swing whole" (0 against 50), and "the enemy takes the plain blow and the 50 stored" (the store is
+  gone). "The store is spent" and the last line pass. No other test holds a store.
+- **B-III, 1 in 1 test.** Test 5: "and raises no kill" (2 against 1). The share's death is then heard with the wearer as
+  its killer, which is the line the break turns off.
+
+**Tests of another group expected to fail, to check in the window:** under B-I the probe
+`ProbeAoeSkillDamageToNearbyAlliesPercent` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails
+on its last assertion. Under B-II and B-III it passes.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-16 — Tests for seven cases of the dungeon retune that no test covered; no game code changes
 
 **Not built and not run, when written; the Run section below has the run.** Nothing was compiled and no Unreal test was run. Six new Unreal tests were written and

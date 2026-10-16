@@ -1407,6 +1407,52 @@ protected:
 					const TArray<AActor*>& Consumed);
 
 	/**
+	 * "Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies". Ruled 2026-10-15 by the
+	 * coordinating session, R1 to R10 in the entry of that date in `docs/DECISIONS.md`; the stat and the searches are
+	 * `UCataclysmAreaShareOnAllies`.
+	 *
+	 * THE PERCENT THIS SKILL'S USER HOLDS FOR IT, asked with this skill's own tags: nought for a skill whose tags the
+	 * row does not require, and for a user without the row. A site searches for allies only when this is above nought.
+	 */
+	float AreaShareOnAlliesPercent() const;
+
+	/**
+	 * `HitTargets` and `HitScaled`, and then each of `Allies` struck for its share, ALL AS ONE ATTACK: the attack is
+	 * begun on `Targets` before the first blow and ended after the last share, so a share is priced with the count of
+	 * enemies the swing struck and any damage it bought, exactly as an enemy's blow of the same swing is, and nothing
+	 * is paid twice. With no allies these are exactly `HitTargets` and `HitScaled`.
+	 *
+	 * The four places a point-blank skill's own blow is dealt call these (R2): `UCataclysmStrikeSkill::SwingOnce`,
+	 * `UCataclysmStrikeSkill::PullTheWeaponFree`, and the Charge and the Leap and Recall in
+	 * `UCataclysmMovementSkill::ActivateAbility`.
+	 *
+	 * @return what was sent to `Targets`, summed, before mitigation; the shares are not in it
+	 */
+	float HitTargetsSharingWithAllies(const TArray<AActor*>& Targets, float DamagePercent,
+									  const TArray<AActor*>& Allies);
+	float HitScaledSharingWithAllies(const TArray<AActor*>& Targets, const TArray<AActor*>& Consumed,
+									 const TArray<AActor*>& Allies);
+
+	/**
+	 * Strike each of `Allies` for its share of this skill's blow of `DamagePercent` (R3, R4, R5): the blow
+	 * `UCataclysmSkillEffects::ApplyHit` prices for that ally as for an enemy standing there, with the delivery
+	 * `HitTargets` builds, times `AreaShareOnAlliesPercent`. Once each, nearest first. DAMAGE ONLY: no rider
+	 * `HitTargets` applies in its loop is applied, because a share is not dealt through it; and
+	 * `UCataclysmAreaShareOnAllies::MarkAsShare` takes the critical strike, the ailment chances, the weapon sub-type,
+	 * the leech and the retaliation off. An ally that has died since it was found is skipped.
+	 *
+	 * @return what was sent, summed, before the allies' defences
+	 */
+	float ShareTheBlowWithAllies(const TArray<AActor*>& Allies, float DamagePercent);
+
+	/**
+	 * The percent `HitScaled` gives a target that was not consumed, which every ally is: no ally's burn is put out by
+	 * the wearer's skill. `ScaledDamagePercent(0)` for a skill that scales with nothing, as `HitScaled`'s first branch
+	 * gives, and otherwise the figure its other two branches give an unconsumed target.
+	 */
+	float PercentHitScaledGivesAnAlly(const TArray<AActor*>& Consumed) const;
+
+	/**
 	 * Leave a burning patch of ground, if this skill's numbers say to.
 	 *
 	 * Eight of the sixteen designed Demonic skills do, on top of whatever else
