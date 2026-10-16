@@ -2,6 +2,175 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for nothing (#2414)
+
+**Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ change and its one new
+Unreal test were written and read, not built. Every floor and day figure below is arithmetic done by hand from
+reading the code. The Python checks were run; the commit message records what they printed.
+
+**Said first: the fault is older than the retune.** A city falls while the player is inside one of its dungeons
+when another ordinary dungeon on it resolves, or when a Siege on it bites, the walked dungeon's own Siege included:
+`UCataclysmEmpireRun::ApplySiegeDamage` does not skip the dungeon being walked. `UCataclysmEmpireRun::CityFell`
+then removes every dungeon on the city, the walked one included, and the game mode stays bound to its number. Issue
+#2414 says the retune's game layers add a third way, a Quest dungeon's hit, and so make the fault more common. That
+part was not read by the writing session; it is the issue's statement.
+
+**Said first: what the player now sees.** The stairs end at the dungeon's real bottom, the floor count the dungeon
+had when it was entered. Each floor after the fall costs the same part of a day as a floor before it. The stairs out
+of the last floor take the player out of the dungeon as after any clear, the empire counts no clear, and the loot
+already taken stays with the player. One line is written to the log: "The city of dungeon N fell while you were
+inside it. You reached its bottom, and the clear counts for nothing." **That line does not reach the screen.** No
+surface draws a free sentence on the dungeon screen, and no new interface was built, by ruling. Before this, such a
+walk had no bottom: every step down built a floor, spawned its creatures and spent a whole day. One Unreal test
+walked that way for 65 minutes until the editor ran out of memory (issue #2414).
+
+### The ruling
+
+Option A, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15. The design's
+rule is that the only ways out of a dungeon are clearing it or dying: this file's entry of 2026-08-14 on a full
+inventory and the Stash ("The only ways out are clearing it or dying"), and `docs/Cataclysm_GDD_v2.md`, section IX,
+Storage ("no way out except clearing the dungeon or dying").
+
+1. When the game mode is bound to a dungeon the run no longer has, it uses the floor count and the walk days per
+   floor recorded on entry. The walk ends at the dungeon's real bottom and each floor costs what it cost before the
+   fall, not a whole day.
+2. The clear credits nothing to the empire (`ClearDungeon` answers false for a dungeon it no longer has). Loot
+   already taken stays with the player. The player leaves as after any clear. One line tells the player that the
+   dungeon's city fell while they were inside and the clear counts for nothing. If no message surface reaches the
+   dungeon screen without new interface, that is said and no interface is built; the smallest existing surface is
+   used.
+3. Its own layer, with its own entry; issue #2414. Not decided here and not changed: whether a fall should spare
+   the walked dungeon as the simulation does (issue #2399).
+
+### What was read before writing
+
+- Issue #2414 whole.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `GoDownOneFloor` (13817), `BoundDungeon` (13892),
+  `EmpireDungeonFloors` (13900), `IsOnTheLastFloor` (13906), `SpendFloorTimeInTheEmpire` (13918),
+  `EnterEmpireDungeon` (13944), `LeaveEmpireDungeon` (14053), `ClearEmpireDungeon` (21787), `EndTheDungeonForADeath`
+  (21827), and `RefreshFloorModifierPanel` (18215). Line numbers are from 09ae318f, before this change.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`: the declarations of all of those.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `AdvanceDay` (195), `SpendFloorTime` (300),
+  `ResolveDungeon` (435), `ApplySiegeDamage` (744), `CityFell` (825), `ClearDungeon` (950), `RemoveDungeon` (1062).
+- `game/Source/CataclysmEmpire/DayClock/CataclysmDayClock.cpp`: `AdvanceDay` and `TakeAWholeDay`.
+  `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`: `FCataclysmDungeon::WalkDaysPerFloor`.
+- `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp` to line 1480: the walk tests and the death
+  tests' scene, `PlaceByHand`, `EnterAndStand` and the test that fells a city by a death.
+- `game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp`, and
+  `game/Source/Cataclysm/Interface/CataclysmFloorModifierPanel.h`, for a surface that could carry one line.
+- Every assignment to `EmpireDungeonId` in `game/Source`: two in the game mode, and hand-written ones in
+  `CataclysmDelayedDamageTests.cpp` and `CataclysmEnchantmentEffectTests.cpp`.
+
+No source on how shipped games handle this was read. The change adds no new kind of mechanic; it makes an existing
+walk keep the numbers it entered with.
+
+### How it is built
+
+- `EnterEmpireDungeon` records two private members beside `EmpireDungeonId`: `EmpireDungeonFloorsOnEntry`
+  (the dungeon's `Floors`) and `EmpireDungeonWalkDaysPerFloorOnEntry` (its `WalkDaysPerFloor()`).
+  `LeaveEmpireDungeon` sets both back to nought.
+- `EmpireDungeonFloors` answers the run's dungeon's floors while the run has it, as before. With a number bound and
+  no dungeon in the run, it answers the recorded floors. With no number bound it answers nought, as before. So
+  `IsOnTheLastFloor`, which reads it, is true at the recorded bottom, and `GoDownOneFloor` clears there.
+- `SpendFloorTimeInTheEmpire` charges the recorded rate when a number is bound, the run has no dungeon of it, and a
+  rate was recorded. In every other case it does what it did: the dungeon's own rate, or a whole day.
+- `ClearEmpireDungeon` asks, before clearing, whether the run still has the dungeon. It clears and leaves exactly as
+  before; `ClearDungeon` answers false for a dungeon it no longer has and counts nothing. When the run did not have
+  it, one line is written to `LogCataclysm` at `Log`.
+- **How the sandbox is told apart.** The sandbox has no number bound: `EmpireDungeonId` is `INDEX_NONE`. A walk whose
+  city fell has a number bound and no dungeon of that number in the run. Only the second uses the recorded values.
+- **Why this shape.** The bound number is the one fact that survives the fall, and the run's record of the dungeon
+  does not. Recording the two numbers the walk needs at the one place a walk begins is the smallest change that keeps
+  the walk's depth and cost. Nothing in the empire layer changed.
+- Comments on `EmpireDungeonFloors`, `IsOnTheLastFloor`, `SpendFloorTimeInTheEmpire` and `ClearEmpireDungeon` say
+  the new case. The comment in `EndTheDungeonForADeath` that the game mode stays bound to an absorbed dungeon's
+  number is still true and was not changed.
+
+### Judgements by the writing session
+
+- The line is written when the stairs out of the last floor are taken, in `ClearEmpireDungeon`, rather than when
+  the player arrives on the last floor. That is where the clear is decided to count for nothing. A judgement by the
+  writing session, for the coordinating session to confirm.
+- The line is written at `Log` verbosity, like the death's line in `EndTheDungeonForADeath`, and not at `Warning`.
+  A warning written inside an automation test is reported against that test. A judgement by the writing session,
+  for the coordinating session to confirm.
+- The line names the dungeon by its number, not the city by name: the run no longer has the dungeon, and the city
+  was not recorded on entry. A judgement by the writing session, for the coordinating session to confirm.
+- The recorded rate is used only when it is above nought. Two test files write a number onto `EmpireDungeonId` by
+  hand without entering; such a number has no recorded rate, and its floors keep costing the whole day they cost
+  before. A judgement by the writing session, for the coordinating session to confirm.
+- The recorded floor count is the dungeon's `Floors` as it was on entry, not a figure read later. Nothing was found
+  that changes a dungeon's `Floors` during a walk. A judgement by the writing session, for the coordinating session
+  to confirm.
+
+### For the owner's play-check
+
+- What to do: `Cataclysm.EmpireBegin`, then `Cataclysm.ShowEmpire` to find a dungeon on a city low on defence, then
+  `Cataclysm.EnterDungeon <id>`. Pass days with `Cataclysm.EmpireAdvance <days>` until `Cataclysm.ShowEmpire` shows
+  that city fallen, then walk down the stairs.
+- What you should see: the stairs stop at the floor count the dungeon had when you entered. The last floor's stairs
+  end the dungeon and build no further floor. The Output Log holds one line beginning "The city of dungeon". Nothing
+  appears on screen. The empire's count of dungeons cleared does not move.
+- Judged numbers: none in the game. The test's numbers are its own choice: a four floor dungeon costing two days, a
+  city brought down to ten points of defence, and a floor limit of the dungeon's floors plus two.
+
+### Tests
+
+One new Unreal test in `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`:
+`Cataclysm.DungeonMode.AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing`. It walks the same four
+floor dungeon twice, each in a world of its own. On an Outpost brought down to ten points of defence stand the
+walked dungeon (four floors, two days to walk, so half a day a floor) and one other ordinary dungeon of twenty
+floors and 100 points of defence damage.
+
+- The control: the other dungeon's timer has 40 days left, so nothing falls. The walk ends at the stairs of floor 4,
+  each descent costs half a day, the whole walk two days, one clear and one ordinary clear are counted, the game mode
+  is unbound, and no line is written.
+- The fall: the other dungeon's timer has one day left. The descent to floor 2 makes the first whole day, the other
+  dungeon resolves and the city falls. Set-up assertions: the city fell, the walked dungeon is gone from the run, the
+  game mode is still bound to its number. Then: the floor count answered is four; the walk ended at the stairs and
+  not at the floor limit; the deepest floor is four; two descents after the fall, each at half a day; the last stairs
+  cost no time; the whole walk cost what the control's did; no clear, ordinary clear or objective counted; the game
+  mode is unbound; once unbound there is no bottom, as in the sandbox; one line was written.
+- Every walk is bounded by a floor limit of the dungeon's floors plus two, six here.
+- **On the code before this change it fails in bounded time, by reading.** After the fall, `EmpireDungeonFloors`
+  answers nought, so no floor is the last. The loop descends from floor 2 to floors 3, 4, 5 and 6 and stops at the
+  limit: four floors built after the fall, six in that world, each of the four costing a whole day, five days for
+  the whole walk against the control's two. Nine assertions fail: the floor count, the stairs ending the walk, the
+  deepest floor, the number of descents, the descents at the rate, the last stairs' cost, the whole walk, the
+  unbinding, and the line. The control passes.
+
+The declared test count went from 3720 to 3721.
+
+### Not covered by a test
+
+- That the line reaches the screen. It does not; nothing draws it.
+- A city felled by a Siege, or by the walked dungeon's own Siege, during a walk. The test fells it by another
+  dungeon's resolve; the game mode cannot tell the two apart, because both go through `CityFell`.
+- A walk with a dungeon of fewer than two floors, and a fall on the last floor itself.
+- Loot staying with the player: nothing in the change touches the inventory, and no test reads it.
+- A save loaded during such a walk. The two recorded members are not saved; nothing in the save restores a bound
+  dungeon today, by search of `EmpireDungeonId`.
+
+### Proofs proposed
+
+All three are in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, test prefix
+`Cataclysm.DungeonMode.AWalkWhoseCityFalls`. None was run.
+
+1. `	return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;` becomes `	return 0;`. The walk has
+   no bottom again; the test's floor limit stops it at floor 6. Predicted: eight assertions fail (the floor count,
+   the stairs ending the walk, the deepest floor, the number of descents, the last stairs' cost, the whole walk, the
+   unbinding, the line). The descents at the rate still pass, because the rate is still recorded.
+2. `	Run->SpendFloorTime(Dungeon != nullptr ? Dungeon->WalkDaysPerFloor() : EmpireDungeonWalkDaysPerFloorOnEntry);`
+   becomes the same line with `1.0f` in place of `EmpireDungeonWalkDaysPerFloorOnEntry`. Predicted: two assertions
+   fail, "every descent after the fall cost the walk days per floor recorded on entry" and "the whole walk cost what
+   the control's did" (three days against two).
+3. `	if (bAbsorbedWhileInside)` becomes `	if (bAbsorbedWhileInside && bCleared)`. Predicted: one assertion fails,
+   "one line says the city fell and the clear counts for nothing".
+
+No row is needed: this layer adds no stat, condition or scale, and no data row was dry-run.
+
+---
+
 ## 2026-10-12 — The game's surge when a city falls waits for the 25-day least interval, as the simulation's does (#2380)
 
 **Said first: with this layer, 20 unattended campaigns made 687 dungeons where they made 1,580 before it.** Both
