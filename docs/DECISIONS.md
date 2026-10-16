@@ -166,6 +166,19 @@ the file at this commit. The test for all three is
 | b | `Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;` | `Dungeon.UpgradeFloors = 0;` | 8 fail: the four stored values and the four "hits at the plain one's scale" |
 | c | `Dungeon.UpgradeFloors = Dungeon.Floors - Rolled;` | `Dungeon.UpgradeFloors = Deeper - Shallower;` | 2 fail: "the clamped one stores what was removed and not five hundred" and "the one-floor dungeon hits at the plain one's scale" |
 
+### 2026-10-15: the saved-run fixture carries the new field
+
+**Found by a run, not by reading.** In the Unreal run of 2026-10-15 at `feaedf35` (window void-zones-w25),
+`Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` failed: "Run_v1.json and the record it loads into
+disagree at the record.Dungeons[0].UpgradeFloors is on the second side only". This layer added `UpgradeFloors` to a
+saved dungeon and did not add it to `game/Tests/SaveFixtures/Run_v1.json`, which `game/Tests/SaveFixtures/README.md`
+requires. The reading for this layer missed it.
+
+The ruling, a labelled judgement by the coordinating session, 2026-10-15: "UpgradeFloors": 0 in Dungeons[0] of
+`Run_v1.json` after "Floors", and a dated README paragraph in the form of the earlier edits, under the "nothing has
+ever loaded a save" exception; 0 "because it changes no other test's meaning". Both are made. The README paragraph
+says no test shows a non-zero value surviving a round trip. Not compiled or run when written.
+
 ---
 
 ## 2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for nothing (#2414)
