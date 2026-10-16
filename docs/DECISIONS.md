@@ -2,6 +2,172 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-16 — Tests for seven cases of the dungeon retune that no test covered; no game code changes
+
+**Not built and not run.** Nothing was compiled and no Unreal test was run. Six new Unreal tests were written and
+three existing ones were changed, all by reading. Every figure below was worked by hand from the code. The Python
+checks were run; the commit message records what they printed. No file under `game/Source` changed except test
+files.
+
+**Said first: what is uncertain.** Whether each test passes is not known until it is built and run. One sentence
+in the comment of the three changed tests says that the run rolls an ordinary dungeon for the helper at seed 1;
+that was not read in the code, because it is the outcome of a roll. It is what the 2026-10-13 entry below, on an
+ordinary dungeon leaving the map, records from a run ("the dungeon was the run's roll, ordinary at seed 1"). Each changed test now sets the type itself, so
+the sentence explains the choice and is not relied on.
+
+### The ruling
+
+The coordinating session, 2026-10-16: "plan ACCEPTED". Its answers to the plan's three questions: "A: YES, write 8b,
+saying in its comment that play cannot reach the state today and naming the Quest twin. B: YES, add the console test
+8c; leave the widget label (already covered through LastHitLine). C: AGREED". Each is a labelled judgement by the
+coordinating session under the owner's delegation, 2026-10-16.
+
+### What was read before writing
+
+Line numbers are from development `66a07f1e`, before this change.
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` 245-254, `FCataclysmDungeon::UpgradeFloors`, marked
+  `SaveGame`; `CataclysmSurge.cpp` 906, the one place play sets it; `CataclysmSurge.cpp` 573-604 (`PickTargets`,
+  which lands a wave only on `ExposedCities`) and 765-792 (`PickRelocation`, which skips a city that is not
+  exposed).
+- `game/Source/Cataclysm/Save/CataclysmSaveStorage.cpp` 67-80: `CPF_SaveGame` decides what a record writes.
+  `game/Tests/SaveFixtures/Run_v1.json` 24 holds `UpgradeFloors`.
+- `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp` 41-170 (`WaitForSlot`, `Forget`, `WriterIn`, `FRun`)
+  and 1309-1432 (`Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`).
+- `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` 51876-51925 (`ADarkFloorEmpireDungeon`)
+  and its four callers, 52162, 52248, 53173 and 54495.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`: `AdvanceDay` (199), `SpendFloorTime` (307),
+  `ResolveDungeon` (442; the Quest hit 487-509, the fallen-city guard 515-522), `ApplySiegeDamage` (828),
+  `CityFell` (909), `ClearDungeon` (1034), `RemoveDungeon` (1146), `BuyCityUpgrade` (1338).
+  `CataclysmEmpireRun.h` 290 and 338: `SiegeDefenceBitePerDay` 0.01 and `SiegeDamageGrowthPerDay` 2.5.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp` 450-490 (`Damage`, where both resistances are taken)
+  and 607 (`Fall`, whose one caller is `Damage`). `CataclysmEmpireMap.h` 352: an Outpost's maximum defence, 1000.
+- `game/Source/CataclysmEmpire/DayClock/CataclysmDayClock.cpp` 106 (`AdvanceDay`) and 175 (`TakeAWholeDay`).
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `GoDownOneFloor` (13817), `EmpireDungeonFloors`
+  (13900), `IsOnTheLastFloor` (13918), `SpendFloorTimeInTheEmpire` (13933), `EnterEmpireDungeon` (13968),
+  `ClearEmpireDungeon` (21818).
+- `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`: `MakeScene`, `AnOutpostOf`, `PlaceByHand` (985),
+  `EnterAndStand` (1061), the namespace of issue #2414 (2221), `WalkFourFloors` (2326) and
+  `Cataclysm.DungeonMode.AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing` (2447).
+- `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`: `MakeEmptyRun` (3264), `PlaceDungeon` (3274),
+  `FirstStandingOutpost` (3607), `GiveDamageAndDaysLeft` (3628), `ResolveOnTheNextDay` (4684),
+  `Cataclysm.EmpireRun.AQuestDungeonsTimerTakesTheOrdinaryRowOfTheCityItStandsOn` (5489) and
+  `Cataclysm.EmpireRun.AQuestDungeonOnAFallenCityHitsNothing` (5710).
+- `game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeTests.cpp` 412-459, how a test buys the two resistances.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` 4073-4146, `Cataclysm.EmpireAdvance` whole.
+  `game/Source/Cataclysm/Player/CataclysmGameInstance.cpp` 12 and 78. `CataclysmEmpireRunTierTests.cpp` 264-310 and
+  `CataclysmShowDebtCommandTests.cpp` 45-60 and 111-183, the precedents for a game instance on a test world and for
+  running a console command into an output device.
+- `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp` 157 (`LastHitLine`) and
+  `CataclysmEmpireScreenTests.cpp` 923, the test that covers it.
+
+### The tests
+
+Six new tests. Each compares an amount with a control in the same test.
+
+- `Cataclysm.SaveWriter.AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon`, in
+  `CataclysmSaveWriterTests.cpp`. A run of seed 1 is advanced one day, one standing dungeon is given
+  `UpgradeFloors = 7` by hand, the run record is written and read back, and the dungeon is found by its number. It
+  asserts that the floors read back are 7. The control is the dungeon before the write, which holds 7 and not
+  nought. The existing test compares the saved figure with a live one that is nought in a run where no upgrade was
+  bought, so it could not tell a dropped field from a kept one.
+- `Cataclysm.DungeonMode.AWalkWhoseCityFallsToItsOwnSiegeEndsAtTheBottomAndCountsForNothing`, in
+  `CataclysmDungeonCostsDaysTests.cpp`, with a new helper `WalkFourFloorsOfASiege`. One ordinary dungeon of the
+  Siege sub-type, four floors at half a day a floor, alone on an Outpost. Its bite, worked by hand: placed on day 1;
+  day 2 begins on the descent to floor 2 and the bite is 1000 x 0.01 + 2.5 x 1 = 12.5; day 3 begins on the descent
+  to floor 4 and the bite is 10 + 2.5 x 2 = 15. The control is the city at full defence: it loses 27.5 over the walk
+  and stands, no timer hits, the walk ends at the stairs on floor 4, costs two days, and is counted as one ordinary
+  clear with no log line. In the case under test the city starts at 10 points. Asserted as set-up: one day's bite is
+  more than 10, the city fell on the descent to floor 2, the walked dungeon is gone and still bound, and
+  `DungeonsDetonated` did not move, so no timer felled it. Then the same assertions as the existing fell case: the
+  floors answered are the dungeon's, the stairs end the walk on its last floor, two descents follow at the recorded
+  rate, the last stairs cost nothing, the whole walk costs what the control's did, no clear, no ordinary clear, no
+  objective, unbound, no bottom once unbound, and the log line once.
+- `Cataclysm.DungeonMode.ACityThatFallsWhenThePlayerReachesTheLastFloorEndsTheWalkThere`, same file, with a new
+  helper `WalkFourFloorsOneStairAtATime`. The existing two-dungeon scene, with the other dungeon's timer at two days,
+  so it runs out on day 3, which begins on the descent onto floor 4. The stairs are pressed four times and no more.
+  Asserted as set-up: the city stood on floors 2 and 3 and fell on arriving at floor 4; the walked dungeon is gone,
+  still bound, and the player is on floor 4. Then: the floors answered are the dungeon's, floor 4 is still the last
+  floor, every descent cost the rate, the last stairs return false, no floor 5 is built, the last stairs cost
+  nothing, the whole walk costs what the control's did, no clear, no ordinary clear, no objective, unbound, and the
+  log line once. The control is the same walk with that timer at forty days: the city stands, the last stairs clear
+  the dungeon, one ordinary clear, no log line.
+- `Cataclysm.EmpireRun.AQuestHitOnAResistingCityTakesTheReducedAmount`, in `CataclysmEmpireRunTests.cpp`. Two runs
+  of seed 1; in one the first Outpost buys `ResistDefenceLoss` and `ResistPopulationLoss` at 0.25 each. A Quest
+  dungeon with one day left on that Outpost in each. It asserts the resisting city lost three quarters of the
+  Outpost's ordinary row in defence and in population, read from `SpecFor` and not typed, and less defence than the
+  control. The control's city lost the whole row. One Quest hit in each, and no city fell.
+- `Cataclysm.EmpireRun.AnOrdinaryDungeonOnAFallenCityHitsNothingAndStays`, same file, the twin of
+  `Cataclysm.EmpireRun.AQuestDungeonOnAFallenCityHitsNothing`. Its comment says that play cannot reach the state
+  today: a city falls only through `Map->Damage`, every call that can fell a city goes on to `CityFell`, which
+  removes every dungeon on it, a surge lands only on exposed cities and a Quest relocation skips cities that are not
+  exposed. So it pins the guard in `ResolveDungeon` for a future path such as a save. On a city felled through the
+  map, an ordinary dungeon's timer runs out: it is in the day's `Resolved`, `DungeonsDetonated` and the last-hit day
+  do not move, the city is not in `HitAndLeft`, its defence and population do not change, and the dungeon stays with
+  its timer full again. The control, on the same city standing: counted, in `HitAndLeft`, off the map.
+- `Cataclysm.EmpireRun.TheAdvanceCommandNamesTheCityEachDungeonHit`, in
+  `game/Source/Cataclysm/Tests/CataclysmEmpireRunTierTests.cpp`, because the command and the game instance are in
+  the `Cataclysm` module, which the empire layer's tests cannot include. A world is given a game instance whose
+  `EmpireRun` is set to an emptied run of seed 1, with an ordinary dungeon on the first Outpost and a Quest dungeon
+  on the second, each with two days left. The registered command object is run twice. The control is the first run,
+  day 2: its output holds neither "a dungeon hit " nor "a Quest dungeon's timer hit ". The second, day 3, holds
+  "a dungeon hit <first Outpost's name> and left" and "a Quest dungeon's timer hit <second Outpost's name>", the
+  names read from the map. That file's header said the console command objects are not executed there; the sentence
+  now says one test at its end does.
+
+Three changed tests, in `CataclysmDungeonModifierEffectsTests.cpp`:
+`...ThoseInTheDarkAFallGoesTenFloorsDeeperOrToTheFinalFloorAndSpendsNoDay`,
+`...ThoseInTheDarkTheDarkFloorIsNotTheLastFloorAndHasNoGatekeeperAndLeadsToTheFinalFloor` and
+`...ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor`. Each now passes `ECataclysmDungeonType::Basic`
+to `ADarkFloorEmpireDungeon` and adds one assertion, "CONTROL: the dungeon is an ordinary dungeon". Why Basic: what
+each tests does not depend on the dungeon's type; Basic is the helper's own "first ordinary dungeon" and the type
+the run rolled for it at seed 1. Before, each took whatever the run rolled, so a change to the roll could have
+changed the type under them without any of them saying so. The fourth caller, the dark-floor death test, already
+passes Quest and is unchanged.
+
+### Not covered by a test
+
+- The label on the empire screen that shows the last hit. It is a protected widget bound from the editor and is
+  null in a test. Its text comes from `UCataclysmEmpireMapLayout::LastHitLine`, which
+  `Cataclysm.EmpireScreen.TheScreenNamesTheLastCityADungeonsTimerHit` covers. Ruled B above.
+- An ordinary dungeon's hit on a resisting city, beside the Quest hit in the same test. It is the same call to
+  `Map->Damage`, and `Cataclysm.CityUpgrade.AResistantCityLosesLessToTheSameDungeon` covers the reduction itself.
+- The dark-floor death test's Quest gap the 2026-10-13 entry names (a Quest timer felling the host during the five
+  days a death costs) is not touched here.
+
+### Guard proofs proposed
+
+None was run. Each is for `tools/unreal_build.py`'s `prove_cpp_guard`; no C++ guard proof may run while the
+Python suite runs. Predicted failed assertions are counted by reading.
+
+| Proof | File | Line, copied | Becomes | Test | Predicted failed assertions |
+|---|---|---|---|---|---|
+| P1a | `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` | `return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;` | `return 0;` | `Cataclysm.DungeonMode.AWalkWhoseCityFallsToItsOwnSiegeEndsAtTheBottomAndCountsForNothing` | 8 |
+| P1b | the same | the same | the same | `Cataclysm.DungeonMode.ACityThatFallsWhenThePlayerReachesTheLastFloorEndsTheWalkThere` | 8 |
+| P2 | `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp` | `FMath::Max(0.0f, DefencePoints) * (1.0f - DefenceResisted);` | `FMath::Max(0.0f, DefencePoints) * (1.0f - 0.0f * DefenceResisted);` | `Cataclysm.EmpireRun.AQuestHitOnAResistingCityTakesTheReducedAmount` | 2 |
+| P3 | `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` | `UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")` directly above `int32 UpgradeFloors = 0;` | `UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")` | `Cataclysm.SaveWriter.AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon` | 1 |
+
+P1 is two runs, each with the test's full name as the prefix: no prefix shorter than a full name selects exactly
+these two tests, and `Cataclysm.DungeonMode.A` selects many others. With the break, once the city has fallen the game
+mode answers nought floors, so no floor is the last. In P1a the walk then descends until the floor limit of six, four
+descents after floor 2, and fails: the floors answered after the fall, the walk ending at the stairs, the deepest
+floor, the two descents, the cost of the last stairs (never measured, -1), the whole walk (3 days against 2), unbound
+after the last floor, and the log line. In P1b the last press builds floor 5 and fails: the floors answered after the
+fall, floor 4 being the last floor, the last stairs not going down, no floor 5, their cost (half a day), the whole walk
+(2.5 days against 2), unbound, and the log line. Each control is untouched by the break, because the run still has
+its dungeon. If building floors past the dungeon's depth logs an error, each count rises by that; that was not read.
+
+P2 fails "the resisting city lost three quarters of the ordinary row's defence" and "the resisting city lost less
+defence than the control". The population line is not broken, so its assertion passes.
+
+P3 must be anchored on two lines, because the `UPROPERTY` line occurs 16 times in `CataclysmSurge.h`. It fails "the
+floors a city upgrade moved survive the file"; the control passes, because it reads the live run. **It would also
+fail `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`**, whose fixture `Run_v1.json` holds
+`UpgradeFloors` that the record would no longer write, so a wider prefix than the full name would see two failing
+tests.
+
+---
+
 ## 2026-10-13 — In the game an ordinary dungeon leaves the map after it hits its city, and a Quest dungeon's timer hits its host city
 
 **Said first: not compiled and not run, when written; the Run section below has the run.** The C++ in this change was written by reading and has not been built.
@@ -917,6 +1083,10 @@ run:
 | C2 | `CataclysmSurge.h` | the dungeons a surge brings became 4 | `Cataclysm.Surge.HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling` | 3 = 3 |
 
 Each layer was run as part of the stack, at the stack's head, and not alone. The figures above are the stack's.
+
+**Ruled 2026-10-16, a labelled judgement by the coordinating session under the owner's delegation:** Heretic's
+wave of 6 where Standard brings 5 stands. 6 is the nearest whole wave above 25% more than 5; it is 20% more, and
+the design document's 25% cannot be met at a wave of 5.
 
 ---
 
