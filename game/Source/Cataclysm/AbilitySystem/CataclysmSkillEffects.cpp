@@ -1220,6 +1220,7 @@ const TCHAR* UCataclysmSkillEffects::StruckFromSetDataName = TEXT("Cataclysm.Str
 const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.StruckFromX");
 const TCHAR* UCataclysmSkillEffects::StruckFromYDataName = TEXT("Cataclysm.StruckFromY");
 const TCHAR* UCataclysmSkillEffects::StruckFromZDataName = TEXT("Cataclysm.StruckFromZ");
+const TCHAR* UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName = TEXT("Cataclysm.ShareOfDamageDoneToAnAlly");
 
 float UCataclysmSkillEffects::MetresFromWhereItWasStruck(const FGameplayEffectSpec& Spec, const AActor* From,
 														 const AActor* To)
@@ -1708,6 +1709,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		Spec.SetSetByCallerMagnitude(FName(StruckFromXDataName), static_cast<float>(Delivery.StruckFromPoint.X));
 		Spec.SetSetByCallerMagnitude(FName(StruckFromYDataName), static_cast<float>(Delivery.StruckFromPoint.Y));
 		Spec.SetSetByCallerMagnitude(FName(StruckFromZDataName), static_cast<float>(Delivery.StruckFromPoint.Z));
+	}
+
+	// AND WHETHER IT IS A WEARER'S SHARE OF WHAT A BLOW DID TO AN ALLY BESIDE IT, which raises none of the wearer's
+	// rows and none of its attacker's, and is never shared again. Ruled 2026-10-15. Not stamped otherwise.
+	if (Delivery.bIsAShareOfDamageDoneToAnAlly)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ShareOfDamageDoneToAnAllyDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void
