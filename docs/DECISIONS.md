@@ -25,6 +25,11 @@ time you use it. This cost resets at the beginning of every dungeon".
   out".** Required said first by the coordinating session (R5). There is no least gap between two casts. The player
   controller's press arrives every frame the key is held (`ACataclysmPlayerController::Input_AbilitySlotPressed`,
   bound to `ETriggerEvent::Triggered`), and the cooldown was the only thing that spaced a held Ultimate's casts.
+- **ALSO ON THE OWNER'S PLAY-CHECK LIST: "with 'Using your ultimate ability resets all other skill cooldowns' worn
+  too, a held ultimate key resets every other skill's cooldowns once per cast".** Required by the coordinating session
+  on 2026-10-15.
+- **ALSO ON THE OWNER'S PLAY-CHECK LIST: "a toggled aura in the Ultimate slot pays its upkeep times the doubling on
+  every pulse".** Required by the coordinating session on 2026-10-15.
 - **The Ultimate's 50 Fervour is still paid on every use.** Ruled (R3), by the ruling of 2026-09-27 in the entry
   headed "The Ultimate slot costs 50 Fervour, paid by every class, ...": "A slot cost, not a mana cost". The sentence
   takes the cooldown away and nothing else. So at 50 a cast, Fervour is what limits a wearer who has the mana.
@@ -40,7 +45,9 @@ time you use it. This cost resets at the beginning of every dungeon".
   was.
 - **The count resets when another dungeon is walked, and at a death; a new floor keeps it** (R7). It is never reset
   by time. **A dungeon left and the SAME dungeon entered again would find the count it left with**, if a dungeon can
-  be entered twice, which was not read; see "Not tested".
+  be entered twice, which was not read; see "Not tested". **ACCEPTED AS IT IS by the coordinating session on
+  2026-10-15**, for the reason it ruled: a dungeon is left only by clearing it or by dying, and a death clears the
+  count.
 - **A free start never counts and a refused use never counts** (R6): a repeat, a trigger, Wild Magic, Echo Chamber, a
   gadget's copy and Follow Through. **A free start that pays its cost, as Spellblade's Will's trigger of a held spell
   does, pays the doubled figure and does not count.** A judgement; see below.
@@ -48,26 +55,33 @@ time you use it. This cost resets at the beginning of every dungeon".
   or health at a price, where a row lets those pay, each paying the doubled figure.
 - **Two rows written for cooldown abilities stop reaching the Ultimate while this row is worn** (R4, accepted): a use
   with a base cooldown of nought tells the rows it has none. Named by script below.
-- **Found, not changed: three more rows become worth nothing to the Ultimate while this row is worn**, because they
-  change a cooldown the Ultimate no longer has: "Your ultimate ability cooldown is reduced by 20-40%", the drawback
-  "Ultimate cooldowns increased by 100%-500%" (so that drawback costs a wearer of this row nothing for the Ultimate),
-  and "Ultimate has 1-3 additional charges". Printed by the same script.
-- **Found, not changed: "Using your ultimate ability resets all other skill cooldowns" fires on every cast**, as it
-  fires on every use of the Ultimate today; with no cooldown, a held key resets every other skill's cooldown once per
-  cast, until the Fervour or the mana runs out. By reading of the row (`cooldown_reset_others` on `skill_use`,
-  Required Tags `Slot.Ultimate`, which is matched against the skill's own tags); not tested. For the coordinating
-  session.
-- **Found, not changed: the Spellblade's Will two-piece trigger still counts the Ultimate as "a skill with a
-  cooldown"**: `UCataclysmTriggeredSkill::HeldSkillsToTrigger` reads the cooldown off the skill's row and its slot's
-  table, not off the granted skill, so the Ultimate stays in that row's pool. A triggered Ultimate is a free start that
-  pays nothing and does not count. By reading; not tested.
+- **Found, not changed, and ACCEPTED by the coordinating session on 2026-10-15 as a consequence of the sentence:
+  three more rows become worth nothing to the Ultimate while this row is worn**, because they change a cooldown the
+  Ultimate no longer has: "Your ultimate ability cooldown is reduced by 20-40%", the drawback "Ultimate cooldowns
+  increased by 100%-500%" (so that drawback costs a wearer of this row nothing for the Ultimate), and "Ultimate has
+  1-3 additional charges". Printed by the same script.
+- **Found, not changed, and ACCEPTED by the coordinating session on 2026-10-15 as a consequence of the sentence:
+  "Using your ultimate ability resets all other skill cooldowns" fires on every cast**, as it fires on every use of
+  the Ultimate today; with no cooldown, a held key resets every other skill's cooldown once per cast, until the
+  Fervour or the mana runs out. By reading of the row (`cooldown_reset_others` on `skill_use`, Required Tags
+  `Slot.Ultimate`, which is matched against the skill's own tags); not tested. On the play-check list above.
+- **Found, not changed, and ACCEPTED by the coordinating session on 2026-10-15 as a consequence of the sentence: the
+  Spellblade's Will two-piece trigger still counts the Ultimate as "a skill with a cooldown"**:
+  `UCataclysmTriggeredSkill::HeldSkillsToTrigger` reads the cooldown off the skill's row and its slot's table, not off
+  the granted skill, so the Ultimate stays in that row's pool. A triggered Ultimate is a free start that pays nothing
+  and does not count. By reading; not tested.
+- **Found, not changed, and ACCEPTED by the coordinating session on 2026-10-15 as a consequence of the sentence: a
+  toggled aura placed in the Ultimate slot pays its upkeep times the doubling on every pulse**, because the upkeep
+  pulse asks `ManaCostFor` (`UCataclysmAuraSkill::Pulse`); a pulse is not a use and does not count. See the judgement
+  below. On the play-check list above.
 - **The shaped Ultimates are given no special case** (R8). By reading, what four of them do with no cooldown under a
   held key:
   - **Iron Fortress at its cap** (`UCataclysmDeployableSkill::ActivateAbility`): the use is paid in
     `CommitAndBegin` first, then places nothing ("Names nothing, or the cap was already full" is logged at Verbose),
     and ends at once. **So a held key at the cap pays the doubled mana and 50 Fervour every frame for nothing, until
     one runs out.** A gadget reserves no Fervour in this build (the comment in `DeployOne`, ruled 2026-09-30), which
-    the row's `FervourReserve=5` does not change. For the play-check.
+    the row's `FervourReserve=5` does not change. For the play-check. **ACCEPTED by the coordinating session on
+    2026-10-15 as a consequence of the sentence.**
   - **Living Pyre, a timed aura of 6 seconds** (`UCataclysmAuraSkill`): while it runs, the held key's frames reach
     `InputPressed`, which switches an aura off only after a release (issue #1114), so a held key does not switch it
     off; it ends on its own and the next frame casts it again, paying the doubled cost. **A release and a press while
@@ -128,7 +142,8 @@ needing a cost and a carried counter.
   false for it.
 - **The doubling also reaches an aura's upkeep for a toggled aura placed in the Ultimate slot**, because the upkeep
   pulse asks `ManaCostFor` (`UCataclysmAuraSkill::Pulse`). A pulse is not a use and does not count. Living Pyre is
-  timed and pays no upkeep. The option not taken: a special case for the upkeep, which R8 rules out.
+  timed and pays no upkeep. The option not taken: a special case for the upkeep, which R8 rules out. ACCEPTED by the
+  coordinating session on 2026-10-15 as a consequence of the sentence.
 - **The stat's name, `ultimate_cost_doubles_instead_of_cooldown`.**
 - **The count is not replicated**, as the gadgets' record is not: only the authority pays a cost. What a client's
   skill bar shows for the doubled cost was not read.
