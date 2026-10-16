@@ -15,6 +15,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -2107,6 +2108,327 @@ bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
 			  AtThree.DefenceLost, 2.0f * AtThree.OneBite, 0.01f);
 	TestEqual(TEXT("three floors: its timer ran out on the fifteenth day and is full again"),
 			  AtThree.TimerLeft, TimerAtThree, 0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A walk whose city falls while the player is inside, issue #2414
+// ---------------------------------------------------------------------------
+
+/**
+ * THE FAULT THIS REPRODUCES. A city that falls absorbs every dungeon standing on it, the walked one included
+ * (`UCataclysmEmpireRun::CityFell` calls `RemoveDungeon` for each). The game mode stays bound to the walked
+ * dungeon's number. Before issue #2414 it then asked the run for the dungeon's floor count, found nothing, and
+ * answered nought: no floor was the last, every step down built another floor and spent a whole day, and one
+ * Unreal test walked that way for 65 minutes until the editor ran out of memory.
+ *
+ * THE RULING IT HOLDS THE GAME TO, a labelled judgement by the coordinating session under the owner's delegation,
+ * 2026-10-15: the walk ends at the dungeon's real bottom, using the floor count and the walk days per floor recorded
+ * on entry; the clear credits nothing to the empire; the player leaves as after any clear; one line says so.
+ *
+ * EVERY WALK HERE IS BOUNDED BY A FLOOR LIMIT, the dungeon's floors plus two, so a regression fails the assertions
+ * below rather than walking for ever.
+ */
+namespace CataclysmWalkedDungeonAbsorbedTest
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	/**
+	 * Every line `LogCataclysm` writes while this is alive. The shape of `FImmuneLogCapture` in
+	 * `CataclysmDebuffImmuneTests.cpp`, written again here because that one is in that file's own namespace.
+	 */
+	struct FAbsorbedWalkLogCapture : public FOutputDevice
+	{
+		FAbsorbedWalkLogCapture()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FAbsorbedWalkLogCapture()
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity,
+							   const class FName& Category) override
+		{
+			if (Category == FName(TEXT("LogCataclysm")))
+			{
+				Lines.Add(FString(Text));
+			}
+		}
+
+		/** How many captured lines hold `Needle`, case-sensitively. */
+		int32 LinesContaining(const FString& Needle)
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+
+			int32 Found = 0;
+			for (const FString& Line : Lines)
+			{
+				if (Line.Contains(Needle, ESearchCase::CaseSensitive))
+				{
+					++Found;
+				}
+			}
+			return Found;
+		}
+
+		TArray<FString> Lines;
+	};
+
+	/** The run's time, whole days and the part of a day not yet spent. */
+	float TimeNow(const UCataclysmEmpireRun& Run)
+	{
+		return static_cast<float>(Run.Day()) + (Run.Clock ? Run.Clock->PartialDay : 0.0f);
+	}
+
+	/** What one walk left behind, for comparing the walk whose city fell with the control. */
+	struct FWalked
+	{
+		int32 WalkedId = INDEX_NONE;
+		int32 Floors = 0;
+		float Rate = 0.0f;
+		float OneBiteOfTheOther = 0.0f;
+		bool bCityFell = false;
+		bool bWalkedOnTheMapAtFloorTwo = false;
+		int32 BoundAtFloorTwo = INDEX_NONE;
+		int32 FloorsAnsweredAtFloorTwo = 0;
+		int32 DescentsAfterFloorTwo = 0;
+		int32 DescentsAtTheRate = 0;
+		bool bStairsEndedTheWalk = false;
+		float CostOfTheLastStairs = -1.0f;
+		int32 DeepestFloor = 0;
+		float WholeWalk = 0.0f;
+		int32 ClearsCounted = 0;
+		int32 OrdinaryClearsCounted = 0;
+		int32 ObjectivesEarned = 0;
+		int32 BoundAtTheEnd = 0;
+		int32 FloorsAnsweredAtTheEnd = -1;
+		bool bLastFloorAtTheEnd = true;
+		int32 MessageLines = -1;
+	};
+
+	/**
+	 * One walk, in a world of its own.
+	 *
+	 * THE SCENE. `MakeScene`'s empty run, an Outpost brought down to ten points of defence, and two ordinary
+	 * dungeons placed on it by hand. The walked one is four floors deep and costs two days to walk, so half a day a
+	 * floor: a floor that costs a whole day instead shows. The other is twenty floors deep with 100 points of defence
+	 * damage, far more than ten, and its timer has `OtherDaysLeft` days left.
+	 *
+	 * WHERE EACH STANDS. The possessed player is stood at each floor's entrance by `GoToFloor`; floor 1's creatures
+	 * are cleared by `EnterAndStand`, and later floors' creatures stand where the floor builder puts them. The world
+	 * is never ticked, so nothing fights, and nothing here waits on a tick or a timer.
+	 *
+	 * THE WALK. Enter (floor 1, half a day), one descent to floor 2 (half a day more, so the first whole day passes
+	 * and the other dungeon's timer runs out when it has one day left), and then down the stairs until they end or
+	 * the floor limit is reached.
+	 */
+	bool WalkFourFloors(FAutomationTestBase& Test, float OtherDaysLeft, FWalked& Out)
+	{
+		FDeathScene Scene = MakeScene(0);
+		if (!Test.TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		if (!Test.TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+		{
+			return false;
+		}
+
+		const int32 CityId = AnOutpostOf(*Scene.Run);
+		FCataclysmCity* Weakened = Scene.Run->Map->FindMutable(CityId);
+		if (!Test.TestNotNull(TEXT("set-up: an Outpost is on the map"), Weakened))
+		{
+			return false;
+		}
+		Weakened->Defence = 10.0f;
+
+		Out.WalkedId = PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, CityId, 4, 40.0f, 40.0f,
+								   100.0f, 50.0f);
+		const int32 OtherId = PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, 40.0f,
+										  OtherDaysLeft, 100.0f, 50.0f);
+		if (!Test.TestTrue(TEXT("set-up: two dungeons were placed on that city"),
+						   Out.WalkedId != INDEX_NONE && OtherId != INDEX_NONE && Out.WalkedId != OtherId))
+		{
+			return false;
+		}
+
+		// TWO DAYS FOR THE WHOLE WALK, written on the dungeon as a city upgrade would leave it.
+		for (FCataclysmDungeon& Placed : Scene.Run->Dungeons)
+		{
+			if (Placed.DungeonId == Out.WalkedId)
+			{
+				Placed.WalkDays = 2.0f;
+			}
+		}
+
+		// RECORDED BEFORE ENTRY, from the run, so the walk is measured against the dungeon and not against
+		// anything the game mode kept.
+		const FCataclysmDungeon* Walked = Scene.Run->FindDungeon(Out.WalkedId);
+		const FCataclysmDungeon* Other = Scene.Run->FindDungeon(OtherId);
+		if (!Test.TestNotNull(TEXT("set-up: the walked dungeon is on the map"), Walked)
+			|| !Test.TestNotNull(TEXT("set-up: and so is the other one"), Other))
+		{
+			return false;
+		}
+		Out.Floors = Walked->Floors;
+		Out.Rate = Walked->WalkDaysPerFloor();
+		Out.OneBiteOfTheOther = Other->DefenceDamage * Other->BiteScale();
+
+		if (!Test.TestEqual(TEXT("set-up: the walked dungeon is four floors deep"), Out.Floors, 4)
+			|| !Test.TestEqual(TEXT("set-up: at half a day a floor"), Out.Rate, 0.5f, 0.0001f)
+			|| !Test.TestTrue(TEXT("set-up: one resolve of the other dungeon takes more than the city's ten points"),
+							  Out.OneBiteOfTheOther > 10.0f))
+		{
+			return false;
+		}
+
+		const int32 ClearedBefore = Scene.Run->DungeonsCleared;
+		const int32 OrdinaryBefore = Scene.Run->BasicDungeonsCleared;
+		const int32 ObjectivesBefore = Scene.Run->QuestObjectives;
+
+		FAbsorbedWalkLogCapture Capture;
+		const float TimeBefore = TimeNow(*Scene.Run);
+
+		if (!EnterAndStand(Test, Scene, Out.WalkedId))
+		{
+			return false;
+		}
+
+		// FLOOR 1 TO FLOOR 2: the first whole day passes here.
+		if (!Test.TestTrue(TEXT("set-up: the descent to floor 2 works"), Scene.Mode->GoDownOneFloor()))
+		{
+			return false;
+		}
+
+		const FCataclysmCity* City = Scene.Run->Map->Find(CityId);
+		Out.bCityFell = City != nullptr && City->bFallen;
+		Out.bWalkedOnTheMapAtFloorTwo = Scene.Run->FindDungeon(Out.WalkedId) != nullptr;
+		Out.BoundAtFloorTwo = Scene.Mode->EmpireDungeonId;
+		Out.FloorsAnsweredAtFloorTwo = Scene.Mode->EmpireDungeonFloors();
+
+		// DOWN THE STAIRS UNTIL THEY END, AND NEVER PAST THE FLOOR LIMIT. Without the limit, the code before issue
+		// #2414 walks this loop for ever.
+		const int32 FloorLimit = Out.Floors + 2;
+		while (Scene.Mode->FloorNumber < FloorLimit)
+		{
+			const float BeforeTheStairs = TimeNow(*Scene.Run);
+			if (!Scene.Mode->GoDownOneFloor())
+			{
+				Out.bStairsEndedTheWalk = true;
+				Out.CostOfTheLastStairs = TimeNow(*Scene.Run) - BeforeTheStairs;
+				break;
+			}
+
+			++Out.DescentsAfterFloorTwo;
+			if (FMath::IsNearlyEqual(TimeNow(*Scene.Run) - BeforeTheStairs, Out.Rate, 0.001f))
+			{
+				++Out.DescentsAtTheRate;
+			}
+		}
+
+		Out.DeepestFloor = Scene.Mode->FloorNumber;
+		Out.WholeWalk = TimeNow(*Scene.Run) - TimeBefore;
+		Out.ClearsCounted = Scene.Run->DungeonsCleared - ClearedBefore;
+		Out.OrdinaryClearsCounted = Scene.Run->BasicDungeonsCleared - OrdinaryBefore;
+		Out.ObjectivesEarned = Scene.Run->QuestObjectives - ObjectivesBefore;
+		Out.BoundAtTheEnd = Scene.Mode->EmpireDungeonId;
+		Out.FloorsAnsweredAtTheEnd = Scene.Mode->EmpireDungeonFloors();
+		Out.bLastFloorAtTheEnd = Scene.Mode->IsOnTheLastFloor();
+		Out.MessageLines = Capture.LinesContaining(FString::Printf(
+			TEXT("The city of dungeon %d fell while you were inside it."), Out.WalkedId));
+
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWalkedDungeonAbsorbedTest,
+	"Cataclysm.DungeonMode.AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWalkedDungeonAbsorbedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWalkedDungeonAbsorbedTest;
+
+	// THE CONTROL: the same walk with the other dungeon's timer at forty days, so nothing falls.
+	FWalked Control;
+	if (!WalkFourFloors(*this, 40.0f, Control))
+	{
+		return false;
+	}
+
+	if (!TestFalse(TEXT("CONTROL set-up: the city did not fall"), Control.bCityFell)
+		|| !TestTrue(TEXT("CONTROL set-up: the walked dungeon is on the map at floor 2"),
+					 Control.bWalkedOnTheMapAtFloorTwo))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("CONTROL: the floor count the game mode answers is the dungeon's"),
+			  Control.FloorsAnsweredAtFloorTwo, Control.Floors);
+	TestTrue(TEXT("CONTROL: the walk ended at the stairs and not at the floor limit"),
+			 Control.bStairsEndedTheWalk);
+	TestEqual(TEXT("CONTROL: the deepest floor walked is the dungeon's last"),
+			  Control.DeepestFloor, Control.Floors);
+	TestEqual(TEXT("CONTROL: two descents were walked after floor 2"),
+			  Control.DescentsAfterFloorTwo, Control.Floors - 2);
+	TestEqual(TEXT("CONTROL: every one of them cost the dungeon's walk days per floor"),
+			  Control.DescentsAtTheRate, Control.DescentsAfterFloorTwo);
+	TestEqual(TEXT("CONTROL: the stairs out of the last floor cost no time"),
+			  Control.CostOfTheLastStairs, 0.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: the whole walk cost the dungeon's floors at its rate"),
+			  Control.WholeWalk, Control.Floors * Control.Rate, 0.001f);
+	TestEqual(TEXT("CONTROL: one clear was counted"), Control.ClearsCounted, 1);
+	TestEqual(TEXT("CONTROL: and it was an ordinary dungeon's"), Control.OrdinaryClearsCounted, 1);
+	TestEqual(TEXT("CONTROL: the game mode is unbound after the last floor"), Control.BoundAtTheEnd, INDEX_NONE);
+	TestEqual(TEXT("CONTROL: no line says the city fell"), Control.MessageLines, 0);
+
+	// THE WALK WHOSE CITY FALLS: the other dungeon's timer has one day left, and that day passes on the descent
+	// to floor 2.
+	FWalked Fell;
+	if (!WalkFourFloors(*this, 1.0f, Fell))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the city fell on the descent to floor 2"), Fell.bCityFell)
+		|| !TestFalse(TEXT("set-up: the walked dungeon is gone from the run"), Fell.bWalkedOnTheMapAtFloorTwo)
+		|| !TestEqual(TEXT("set-up: and the game mode is still bound to its number"),
+					  Fell.BoundAtFloorTwo, Fell.WalkedId))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the floor count the game mode answers after the fall is the dungeon's"),
+			  Fell.FloorsAnsweredAtFloorTwo, Fell.Floors);
+	TestTrue(TEXT("the walk ended at the stairs and not at the floor limit"), Fell.bStairsEndedTheWalk);
+	TestEqual(TEXT("the deepest floor walked is the dungeon's last"), Fell.DeepestFloor, Fell.Floors);
+	TestEqual(TEXT("two descents were walked after the fall"), Fell.DescentsAfterFloorTwo, Fell.Floors - 2);
+	TestEqual(TEXT("every descent after the fall cost the walk days per floor recorded on entry"),
+			  Fell.DescentsAtTheRate, Fell.DescentsAfterFloorTwo);
+	TestEqual(TEXT("the stairs out of the last floor cost no time"), Fell.CostOfTheLastStairs, 0.0f, 0.001f);
+	TestEqual(TEXT("the whole walk cost what the control's did"), Fell.WholeWalk, Control.WholeWalk, 0.001f);
+	TestEqual(TEXT("no clear was counted"), Fell.ClearsCounted, 0);
+	TestEqual(TEXT("no ordinary clear was counted"), Fell.OrdinaryClearsCounted, 0);
+	TestEqual(TEXT("no objective was earned"), Fell.ObjectivesEarned, 0);
+	TestEqual(TEXT("the game mode is unbound after the last floor"), Fell.BoundAtTheEnd, INDEX_NONE);
+	TestTrue(TEXT("and once unbound there is no bottom, as in the sandbox"),
+			 Fell.FloorsAnsweredAtTheEnd == 0 && !Fell.bLastFloorAtTheEnd);
+	TestEqual(TEXT("one line says the city fell and the clear counts for nothing"), Fell.MessageLines, 1);
 
 	return true;
 }
