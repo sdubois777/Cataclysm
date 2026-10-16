@@ -520,16 +520,17 @@ without a warning for an unused variable.
 **Not compiled and not run.** The test was changed by reading. No Unreal build and no Unreal test was run. The
 declared count of Unreal tests is 3729 before and after: no test was added, removed or renamed.
 
-**Said first: one guard was left as it was, and needs a ruling.** `Cleared > Absorbed` became
-`Cleared > GoneBeforeItsTurn`, which is the same comparison under a new counter name; its label is unchanged. It can
-now fail for a reason that is not the test's subject. Since this entry's rules, an ordinary dungeon hits its city
+**Said first: one guard could fail for a reason that is not the test's subject, and was changed on a second
+ruling.** `Cleared > Absorbed` first became `Cleared > GoneBeforeItsTurn`, the same comparison under a new counter
+name. It can fail for a reason that is not the test's subject. Since this entry's rules, an ordinary dungeon hits its city
 when its timer runs out and leaves the map. An Outpost dungeon's timer is 10 days plus 1.6 days a floor, varied by
 up to 15%, so about 19 to 39 days for 8 to 15 floors. Each walk costs 8 to 15 days, and the wave is walked in a
 fixed order, so the dungeons late in the order can hit their cities and leave before their turn. That is the
-retune's rule working, not a fault in walking. The writing session proposes, for the coordinating session to rule:
-assert `Cleared + AbsorbedWhileWalked >= 1`, labelled "at least one dungeon of the wave was walked". It keeps what
-the guard was for (a run where nothing was walked measures nothing about walking) and does not compare walks with
-departures the player cannot prevent. The rulings do not settle this, so it was not changed.
+retune's rule working, not a fault in walking. The writing session proposed `Cleared + AbsorbedWhileWalked >= 1`,
+labelled "at least one dungeon of the wave was walked". It keeps what the guard was for (a run where nothing was
+walked measures nothing about walking) and does not compare walks with departures the player cannot prevent. The
+coordinating session ruled, 2026-10-15, a labelled judgement under the owner's delegation: "ACCEPTED as proposed,
+`Cleared + AbsorbedWhileWalked >= 1`, labelled "at least one dungeon of the wave was walked"." It is row 3 below.
 
 The ruling, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15, verbatim:
 "the wave test's changes in the layer that changes its meaning: a loop bound by the depth read before entry,
@@ -560,7 +561,7 @@ Each changed or added assertion, old and new:
 |---|---|---|---|---|
 | 1 | (none) | (none) | "the walk of dungeon %d stopped on its last floor and not at the bound of %d passes" | `bReachedTheLastFloor` is true |
 | 2 | "every dungeon of the wave was accounted for" | `Cleared + Absorbed == WaveSize` | "every dungeon of the wave was accounted for: cleared, gone before its turn, or absorbed while walked" | `Cleared + GoneBeforeItsTurn + AbsorbedWhileWalked == WaveSize` |
-| 3 | "%d of the wave's %d dungeons were walked" | `Cleared > Absorbed` | unchanged | `Cleared > GoneBeforeItsTurn`, the same comparison; left for a ruling, as said first |
+| 3 | "%d of the wave's %d dungeons were walked" | `Cleared > Absorbed` | "at least one dungeon of the wave was walked" | `Cleared + AbsorbedWhileWalked >= 1`, on the second ruling, as said first |
 | 4 | "walking %d floors across %d dungeons cost %d days", the second number `Cleared` | `Day() == StartedOnDay + DaysWalkingCost` | the same words, the second number `Cleared + AbsorbedWhileWalked` | unchanged |
 | 5 | "clearing what was left of the wave cost %d days", the number `FloorsWalked` | `FloorsWalked >= Cleared * 8` | "walking what was left of the wave took %d floors", the same number | `FloorsWalked >= (Cleared + AbsorbedWhileWalked) * 8` |
 
@@ -579,9 +580,13 @@ Judgements by the writing session, for the coordinating session to confirm:
    walked and paid for, and not among those cleared.
 3. The comment saying a walked dungeon cannot hit its city and leave during its walk rests on
    `Cataclysm.DungeonMode.TheDungeonBeingWalkedIsTheOneTimerThatStops`. Only a fall can take it while walked.
-4. The test's opening comment ("four Outpost dungeons are 8 to 15 floors each ... about 44 days, and the earliest
-   a city falls is well past day 100") is stale under the retune and was not changed; the ruling names the loop,
-   the counter and the totals only. Layer 2 of this stack already records it as left alone.
+4. The test's opening comment said "four Outpost dungeons are 8 to 15 floors each ... about 44 days, and the
+   earliest a city falls is well past day 100". Under this entry's rules that is false. The coordinating session
+   ruled, 2026-10-15: "correct the wave test's opening comment ... a change must not ship a statement its own
+   layer makes false." It now says that since 2026-10-13 an Outpost dungeon's timer is about 19 to 39 days against
+   about 44 days to walk the wave, so a dungeon can be gone before its turn and a city can fall during a walk, and
+   that the test counts each case rather than asserting any. Layer 2 of this stack records the comment as left
+   alone at that layer, which is true of that layer.
 
 Nothing here was compiled or run. Whether a dungeon of the wave is absorbed while walked at seed 1, and how many
 are gone before their turn, is not known.
