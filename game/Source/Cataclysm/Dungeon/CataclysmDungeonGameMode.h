@@ -324,6 +324,10 @@ public:
 	 * ITS HOST CITY STOPS BEING BITTEN BY IT, which is the whole reward for
 	 * walking it. Anything else standing on that city keeps its own timer.
 	 *
+	 * A DUNGEON THE RUN NO LONGER HAS IS LEFT AND CREDITS NOTHING. Its city fell while the player was inside it, so
+	 * this answers false, counts no clear, leaves the dungeon as after any clear, and writes one log line saying
+	 * so. Issue #2414.
+	 *
 	 * @return whether there was a dungeon to clear
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
@@ -395,6 +399,9 @@ public:
 
 	/**
 	 * How deep the dungeon being walked is, or 0 when none is bound.
+	 *
+	 * THE DEPTH RECORDED ON ENTRY WHEN THE RUN NO LONGER HAS THE BOUND DUNGEON, because its city fell while the
+	 * player was inside it. So such a walk still ends at the dungeon's real bottom. Issue #2414.
 	 *
 	 * SEPARATE FROM `ChooseTotalFloors` BECAUSE THAT ONE CANNOT SAY "NONE". It
 	 * answers the deeper of the setting and the floor being walked, so it is
@@ -5713,6 +5720,18 @@ private:
 	const struct FCataclysmDungeon* BoundDungeon() const;
 
 	/**
+	 * The bound dungeon's floor count and its walk days per floor, as they were when `EnterEmpireDungeon` bound it.
+	 * Nought when nothing is bound; `LeaveEmpireDungeon` clears both. Issue #2414.
+	 *
+	 * READ ONLY WHEN A NUMBER IS BOUND AND THE RUN NO LONGER HAS ITS DUNGEON. A city that falls while the player is
+	 * inside absorbs the walked dungeon with every other dungeon on it, and `BoundDungeon` then answers null. Before
+	 * these were kept, that walk had no bottom and every floor cost a whole day. While the run has the dungeon, its
+	 * own numbers are read, as before.
+	 */
+	int32 EmpireDungeonFloorsOnEntry = 0;
+	float EmpireDungeonWalkDaysPerFloorOnEntry = 0.0f;
+
+	/**
 	 * One floor's worth of empire time passes, if there is an empire.
 	 *
 	 * ONE PLACE, so that what a floor costs is written down once. Nothing else
@@ -5729,6 +5748,9 @@ private:
 	 *
 	 * A WHOLE DAY WHEN NO DUNGEON IS BOUND, which is what pressing Play gives
 	 * you: a sandbox descent has no empire dungeon to take a rate from.
+	 *
+	 * THE RATE RECORDED ON ENTRY WHEN A NUMBER IS BOUND AND THE RUN NO LONGER HAS ITS DUNGEON, because its city fell
+	 * while the player was inside it. Issue #2414.
 	 */
 	void SpendFloorTimeInTheEmpire();
 

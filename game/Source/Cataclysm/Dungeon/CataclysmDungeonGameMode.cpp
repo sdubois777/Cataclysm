@@ -13900,7 +13900,19 @@ const FCataclysmDungeon* ACataclysmDungeonGameMode::BoundDungeon() const
 int32 ACataclysmDungeonGameMode::EmpireDungeonFloors() const
 {
 	const FCataclysmDungeon* Dungeon = BoundDungeon();
-	return Dungeon ? Dungeon->Floors : 0;
+	if (Dungeon != nullptr)
+	{
+		return Dungeon->Floors;
+	}
+
+	// A NUMBER IS BOUND AND THE RUN NO LONGER HAS ITS DUNGEON: the dungeon's city fell while the player was inside
+	// it, and `UCataclysmEmpireRun::CityFell` took it off the map. The player still finishes the dungeon they
+	// entered, so its depth is the one recorded on entry. Issue #2414; a labelled judgement by the coordinating
+	// session under the owner's delegation, 2026-10-15.
+	//
+	// NO NUMBER BOUND IS STILL NOUGHT, which is the sandbox and has no bottom. The two cases are told apart by
+	// `EmpireDungeonId`, not by whether the run has the dungeon.
+	return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;
 }
 
 bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
@@ -13909,6 +13921,9 @@ bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
 
 	// NO DUNGEON MEANS NO BOTTOM, which is what keeps the stairs descending for
 	// ever in the sandbox.
+	//
+	// A DUNGEON A CITY'S FALL ABSORBED STILL HAS ITS BOTTOM. `EmpireDungeonFloors` answers the floors recorded on
+	// entry while a number is bound, whether or not the run still has the dungeon. Issue #2414.
 	//
 	// AND NEVER THE DARK FLOOR A FALL LEADS TO, which carries the number of the floor its stairs lead to and may
 	// carry the final floor's. Its stairs lead to that floor and do not clear the dungeon. Issues #1820 and #41.
@@ -13925,10 +13940,19 @@ void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 
 	const FCataclysmDungeon* Dungeon = BoundDungeon();
 
+	// THE RATE RECORDED ON ENTRY WHEN A NUMBER IS BOUND AND THE RUN NO LONGER HAS ITS DUNGEON, because its city fell
+	// while the player was inside. Each floor then costs what it cost before the fall, and not a whole day. Issue
+	// #2414; a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15.
+	//
+	// ONLY WHEN A RATE WAS RECORDED. A number written onto `EmpireDungeonId` by hand, as two test files do, was
+	// never entered and has none, and its floor costs the whole day it cost before.
+	const bool bBoundToAnAbsorbedDungeon =
+		Dungeon == nullptr && EmpireDungeonId != INDEX_NONE && EmpireDungeonWalkDaysPerFloorOnEntry > 0.0f;
+
 	// A WHOLE DAY WHEN NOTHING IS BOUND. Pressing Play puts the player on a
 	// generated floor with no empire dungeon behind it, and there is then no
 	// rate to read; a floor costs the ordinary day.
-	if (Dungeon == nullptr || Run->Clock == nullptr)
+	if ((Dungeon == nullptr && !bBoundToAnAbsorbedDungeon) || Run->Clock == nullptr)
 	{
 		Run->AdvanceDay();
 		return;
@@ -13938,7 +13962,7 @@ void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 	// upgrade lowered it. `SpendDays` advances a whole day for each whole day
 	// that accumulates, so timers move and dungeons resolve exactly as they
 	// would have.
-	Run->SpendFloorTime(Dungeon->WalkDaysPerFloor());
+	Run->SpendFloorTime(Dungeon != nullptr ? Dungeon->WalkDaysPerFloor() : EmpireDungeonWalkDaysPerFloorOnEntry);
 }
 
 bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
@@ -13967,6 +13991,11 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	DungeonSeed = FMath::Max(1, DungeonId + 1);
 	TotalFloors = FMath::Max(1, Dungeon->Floors);
 	DungeonType = Dungeon->Type;
+
+	// AND ITS DEPTH AND ITS RATE KEPT, for a walk whose dungeon the run loses while the player is inside: a city
+	// that falls absorbs the dungeons standing on it, the walked one included. Issue #2414.
+	EmpireDungeonFloorsOnEntry = Dungeon->Floors;
+	EmpireDungeonWalkDaysPerFloorOnEntry = Dungeon->WalkDaysPerFloor();
 
 	// AND WHAT IT DOES DIFFERENTLY. `UCataclysmEnemyScore` reads this back off
 	// the game mode and adds the sub-type's weight to every creature on the
@@ -14061,6 +14090,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	}
 
 	EmpireDungeonId = INDEX_NONE;
+	EmpireDungeonFloorsOnEntry = 0;
+	EmpireDungeonWalkDaysPerFloorOnEntry = 0.0f;
 
 	// AND THE DUNGEON'S MODIFIERS GO WITH IT. `EnterEmpireDungeon` overwrites
 	// `TotalFloors`, `DungeonType` and `DungeonSubType` on the way in, so those
@@ -21792,12 +21823,31 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 		return false;
 	}
 
+	// ASKED BEFORE THE CLEAR: WHETHER THE RUN STILL HAS IT. A city that fell while the player was inside absorbed
+	// it, and then `ClearDungeon` answers false and counts nothing, which is the ruling: the clear credits nothing
+	// to the empire, the loot already taken stays with the player, and the player leaves as after any clear. Issue
+	// #2414; a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15.
+	const int32 Walked = EmpireDungeonId;
+	const bool bAbsorbedWhileInside = Run->FindDungeon(Walked) == nullptr;
+
 	// CLEARED FIRST AND LEFT SECOND. `ClearDungeon` takes it off the clock as
 	// well as off the map, and it reads `CurrentDungeonId` to notice it was the
 	// one being stood in; leaving first would make it forget.
 	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
 
 	LeaveEmpireDungeon();
+
+	// ONE LINE, AND IT IS A LOG LINE. Nothing in the game draws a free sentence on the dungeon screen: the HUD
+	// draws numbers, names and status lines over creatures, and the floor panel lists modifier rows by key and is
+	// hidden once the dungeon is left. A log line is the smallest surface that exists, and the death's cost is
+	// told the same way in `EndTheDungeonForADeath`. No new interface was built, by ruling.
+	if (bAbsorbedWhileInside)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("The city of dungeon %d fell while you were inside it. You reached its bottom, and the clear "
+					"counts for nothing."),
+			   Walked);
+	}
 
 	return bCleared;
 }
