@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 // For the eleven probes that prove every scaled stat is asked for. #1973.
 #include "AbilitySystem/CataclysmBasicAttack.h"
@@ -8638,6 +8639,115 @@ namespace CataclysmStatExemptionTest
 					   1000.0f - HealthOf(Carrier), CarrierImpLost * 0.1f, 0.01f);
 	}
 
+	/**
+	 * `aoe_skill_damage_to_nearby_allies_percent`, read by `UCataclysmAreaShareOnAllies::PercentHeldFor` through
+	 * `UCataclysmSkillTemplate::AreaShareOnAlliesPercent`, which `UCataclysmStrikeSkill::SwingOnce` asks before it
+	 * searches for allies. Ruled 2026-10-15, for "Your AOE skills deal 50%-75% of their damage to nearby allies as well
+	 * as enemies". Two players 100 m apart, each with an imp of its own 2 m away and a swing all round of 6 m; only the
+	 * second holds the stat, at a flat 50, with no tags. Each swings once: the first player's imp loses nothing, and
+	 * the second's loses something.
+	 *
+	 * WHAT THIS DOES NOT REACH. The scope by tag, the figure, the other sites and what the share raises:
+	 * `Cataclysm.AoeStrikesAllies.` in `CataclysmAoeStrikesAlliesTests.cpp`.
+	 *
+	 * STANDING: the plain player at the origin and its imp 2 m along X; the carrying player 100 m along Y and its imp
+	 * 2 m along X from it. Players, because an imp takes its summoner's team and a character with no team is hostile
+	 * to its own imp.
+	 */
+	void ProbeAoeSkillDamageToNearbyAlliesPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto PlayerAt = [World](const FVector& Where) -> ACataclysmPlayerCharacter*
+		{
+			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+			ACataclysmPlayerCharacter* Character =
+				World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
+			if (!State || !Character)
+			{
+				return nullptr;
+			}
+			Character->SetPlayerState(State);
+			Character->OnRep_PlayerState();
+			if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Character))
+			{
+				System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+				System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+				System->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), 100.0f);
+			}
+			return Character;
+		};
+		const auto ImpOf = [World](AActor* Summoner) -> ACataclysmMinion*
+		{
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+				Summoner, Summoner->GetActorLocation() + FVector(2 * M, 0, 0), /*Lifetime=*/60.0f, /*bBurns=*/false);
+			if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Imp))
+			{
+				System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+				System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+			}
+			return Imp;
+		};
+		const auto SwingOf = [](ACataclysmPlayerCharacter* Character) -> UCataclysmStrikeSkill*
+		{
+			UCataclysmAbilitySystemComponent* System =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
+			if (!System)
+			{
+				return nullptr;
+			}
+			const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/100, Character);
+			FGameplayAbilitySpec* Spec = Handle.IsValid() ? System->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmStrikeSkill* Swing = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Swing)
+			{
+				Swing->SkillName = TEXT("A swing all round");
+				Swing->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=6; Angle=360"));
+			}
+			return Swing;
+		};
+		const auto HealthOf = [](const AActor* Who) -> float
+		{
+			const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+			return System ? System->GetNumericAttribute(Vital::GetHealthAttribute()) : -1.0f;
+		};
+
+		ACataclysmPlayerCharacter* Plain = PlayerAt(FVector::ZeroVector);
+		ACataclysmPlayerCharacter* Carrier = PlayerAt(FVector(0, 100 * M, 0));
+		if (!Test.TestNotNull(TEXT("set-up: a plain player"), Plain)
+			|| !Test.TestNotNull(TEXT("set-up: a carrying player"), Carrier))
+		{
+			return;
+		}
+		ACataclysmMinion* PlainImp = ImpOf(Plain);
+		ACataclysmMinion* CarrierImp = ImpOf(Carrier);
+		UCataclysmStrikeSkill* PlainSwing = SwingOf(Plain);
+		UCataclysmStrikeSkill* CarrierSwing = SwingOf(Carrier);
+		if (!Test.TestNotNull(TEXT("set-up: an imp of the plain player's"), PlainImp)
+			|| !Test.TestNotNull(TEXT("set-up: and one of the carrying player's"), CarrierImp)
+			|| !Test.TestNotNull(TEXT("set-up: a plain swing"), PlainSwing)
+			|| !Test.TestNotNull(TEXT("set-up: and a carrying one"), CarrierSwing))
+		{
+			return;
+		}
+		GrantFlat(Carrier, UCataclysmAreaShareOnAllies::PercentStat, 50.0f);
+
+		PlainSwing->SwingOnce();
+		CarrierSwing->SwingOnce();
+		Test.TestEqual(TEXT("control: the imp of the player without the stat loses nothing to its swing"),
+					   HealthOf(PlainImp), 1000.0f, 0.01f);
+		Test.TestTrue(*FString::Printf(TEXT("and the imp of the one holding aoe_skill_damage_to_nearby_allies_percent at "
+											"50 loses something, so PercentHeldFor really reads it: %.2f"),
+									   1000.0f - HealthOf(CarrierImp)),
+					  HealthOf(CarrierImp) < 1000.0f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8793,6 +8903,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("gadgets_copy_your_last_skill"), &ProbeGadgetsCopyYourLastSkill},
 			{TEXT("ultimate_cost_doubles_instead_of_cooldown"), &ProbeUltimateCostDoublesInsteadOfCooldown},
 			{TEXT("damage_done_to_nearby_allies_taken_percent"), &ProbeDamageDoneToNearbyAlliesTakenPercent},
+			{TEXT("aoe_skill_damage_to_nearby_allies_percent"), &ProbeAoeSkillDamageToNearbyAlliesPercent},
 		};
 		return Made;
 	}
