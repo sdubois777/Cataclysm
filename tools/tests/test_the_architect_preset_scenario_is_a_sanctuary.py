@@ -388,9 +388,15 @@ class TestTheTimerBonusReachesTheDayLoop:
             f"the timer moved by {with_tree - without} days and the preset "
             f"holds {preset.resolve_bonus_days}.")
 
-    def test_no_other_dungeon_type_reads_it(self, preset):
-        """Every other type takes its timer straight from the spec. Stated
-        because the day loop's `else` branch is easy to lose.
+    def test_basic_and_quest_read_it_and_no_other_type(self, preset):
+        """Basic and Quest dungeons read `resolve_bonus_days`, and no other type.
+
+        RULED 2026-10-16 by the coordinating session: until then this test was
+        `test_no_other_dungeon_type_reads_it` and said only Basic dungeons read
+        it. The owner decided that day that a Quest dungeon's timer scales with
+        its depth like other dungeons, and the formula accepted for it is the
+        ordinary one, tree bonus included. A Fallen City's timer is still the
+        fixed `fallen_city_resolve_days`, which nothing moves.
 
         THE TYPES ARE READ OFF `DUNGEON_SPECS` AND NOT OFF `DungeonType`. A
         Cataclysm dungeon has no spec for a Sanctuary, so walking the enum
@@ -400,15 +406,26 @@ class TestTheTimerBonusReachesTheDayLoop:
         from cataclysm_sim.config import (
             TREE_NONE, CityTier, DungeonType, TuningConfig)
 
+        readers = (DungeonType.BASIC, DungeonType.QUEST)
         others = sorted(
             (d for (d, t) in TuningConfig().DUNGEON_SPECS
-             if t is CityTier.SANCTUARY and d is not DungeonType.BASIC),
+             if t is CityTier.SANCTUARY and d not in readers),
             key=lambda d: d.value)
         assert others, (
-            "no dungeon type other than Basic has a Sanctuary spec, so this "
-            "test compares nothing")
+            "no dungeon type other than Basic and Quest has a Sanctuary spec, "
+            "so the half of this test that says no other type reads it "
+            "compares nothing")
+
+        quest_with = self.timer(preset, DungeonType.QUEST)
+        quest_without = self.timer(TREE_NONE, DungeonType.QUEST)
+        # One day of slack, because the timer is truncated to a whole number.
+        assert quest_with - quest_without == pytest.approx(
+            preset.resolve_bonus_days, abs=1.0), (
+            f"a Quest dungeon's timer moved by {quest_with - quest_without} "
+            f"days with the tree, and the preset holds "
+            f"{preset.resolve_bonus_days}.")
 
         for dtype in others:
             assert self.timer(preset, dtype) == self.timer(TREE_NONE, dtype), (
                 f"a {dtype.value} dungeon's timer moved with the tree, and only "
-                "Basic dungeons read `resolve_bonus_days`.")
+                "Basic and Quest dungeons read `resolve_bonus_days`.")

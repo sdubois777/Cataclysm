@@ -279,52 +279,100 @@ class TestOnePerCity:
 
 
 class TestTheShareThatReachesTheMap:
-    def test_fewer_sieges_arrive_than_are_rolled(self):
-        """THE CHECK ON THE PORT, and the reason it is worth running. A refused
-        roll is redistributed, so the Siege share of dungeons REACHING the map
-        is lower than its share of dungeons rolled. If the model's share did not
-        move off the spawn weight the cap would not be being reached and the
-        rule would be present but idle.
+    def test_the_one_per_city_cap_is_asked_in_play(self):
+        """THE CHECK THAT THE CAP IS WIRED INTO A CAMPAIGN: over eight campaigns
+        every Siege roll asks it.
 
-        SEVEN AND A HALF IN 100 SINCE 2026-09-06, halved from 15 on issue #1349.
-        Measured here at 5.91% arriving over the eight campaigns this test runs
-        and 6.82% over twenty. At the old weight it was 13.1% arriving against
-        15 rolled; the gap is proportionally smaller now because a rarer Siege
-        collides with the one-per-city cap less often.
+        WHAT THIS COUNTS CHANGED ON 2026-10-16, by the coordinating session's
+        ruling. Until then it was `test_fewer_sieges_arrive_than_are_rolled` and
+        asserted that the Siege share reaching the map was below its rolled
+        share of 7.5 in 100. Measured that day over 400 campaigns the arriving
+        share was 7.38% on development and 7.26% with the Quest timer rolled
+        from depth, within 0.2 points of the bound, so no sample size held it.
+        The reason, measured the same day: SINCE AN ORDINARY DUNGEON LEAVES
+        AFTER IT HITS (2026-10-12) THE CAP IS RARELY REACHED. Over seeds 0 to 99
+        it refused 9 of 581 Siege rolls, about one in 65, and over seeds 0 to 7
+        none of 49. So a campaign test that the cap REFUSES would need about a
+        hundred campaigns; that the cap refuses correctly is tested on a built
+        board below, and this test asks only that it is consulted.
 
-        THE LOWER BOUND IS A THIRD OF THE ROLLED SHARE rather than a measured
-        figure, so it says "the cap has not started eating most of them" without
-        being a second copy of a campaign statistic. The upper bound is the
-        rolled share itself and is the half that carries the meaning.
+        `sieges_on` is also asked when a Quest dungeon carrying a Siege moves,
+        so only the calls made while a sub-type is being rolled are counted.
         """
         cfg = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
         rolled = (100.0 * cfg.SUBTYPE_SPAWN_WEIGHTS["Siege"]
                   / sum(cfg.SUBTYPE_SPAWN_WEIGHTS.values()))
-        seen = total = 0
+        assert rolled == pytest.approx(7.5)
+
+        asked = 0
         for seed in range(8):
             sim = Simulation(cfg, seed=seed)
-            made = []
-            original = sim._make_dungeon
+            state = {"rolling": False, "asked": 0}
+            roll, count = sim._roll_subtype, sim.sieges_on
 
-            def wrapped(dtype, city, floors_mult=1.0, _o=original, _m=made):
-                d = _o(dtype, city, floors_mult)
-                _m.append(d)
-                return d
+            def counting(city_id, _count=count, _state=state):
+                if _state["rolling"]:
+                    _state["asked"] += 1
+                return _count(city_id)
 
-            sim._make_dungeon = wrapped
+            def rolling(dtype, city, _roll=roll, _state=state):
+                _state["rolling"] = True
+                try:
+                    return _roll(dtype, city)
+                finally:
+                    _state["rolling"] = False
+
+            sim.sieges_on = counting
+            sim._roll_subtype = rolling
             sim.run(policies.triage)
-            seen += sum(1 for d in made if d.subtype == "Siege")
-            total += len(made)
+            asked += state["asked"]
 
-        arriving = 100.0 * seen / total
-        assert rolled == pytest.approx(7.5)
-        floor = rolled / 3.0
-        assert floor < arriving < rolled, (
-            f"Siege is rolled at {rolled:.1f}% and reaches the map at "
-            f"{arriving:.1f}%. Below {floor:.1f}% something other than the cap "
-            f"is removing them; at or above {rolled:.1f}% the cap is never "
-            "reached and the one-per-city rule is not doing anything.")
+        assert asked >= 1, (
+            "over eight campaigns no Siege roll asked the one-per-city cap, so "
+            "the cap is not wired into the roll")
 
+    @pytest.mark.parametrize("dtype", [DungeonType.BASIC, DungeonType.QUEST])
+    def test_a_besieged_city_refuses_a_siege_draw_and_redistributes_it(self, dtype):
+        """THE CAP ITSELF, on a built board. The draw is made to come out
+        "Siege" every time, so the test does not depend on the 7.5 in 100
+        weight. A city already holding one Siege refuses it and the dungeon
+        gets another sub-type; THE CONTROL, a city holding none, keeps it.
+        """
+        class SiegeFirst:
+            """Stands in for the stream: a draw that can be "Siege" is; the
+            redistribution draw takes the first of what it is offered."""
+
+            def choices(self, population, weights=None, k=1):
+                return ["Siege"] if "Siege" in population else [population[0]]
+
+        cfg = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
+        sim = Simulation(cfg, seed=0)
+        sim.next_surge_day = float("inf")
+        outposts = [c for c in sim.empire.cities.values()
+                    if c.tier is CityTier.OUTPOST and not c.fallen]
+        besieged, quiet = outposts[0], outposts[1]
+        for d in list(sim.dungeons.values()):
+            if d.city_id in (besieged.cid, quiet.cid):
+                del sim.dungeons[d.did]
+
+        held = sim._make_dungeon(DungeonType.BASIC, besieged)
+        held.subtype = "Siege"
+        assert sim.sieges_on(besieged.cid) == cfg.siege_max_per_city == 1, (
+            "set-up: the besieged city holds exactly the one Siege the cap allows")
+        assert sim.sieges_on(quiet.cid) == 0, "set-up: the quiet city holds none"
+
+        sim.rng = SiegeFirst()
+        on_quiet = sim._roll_subtype(dtype, quiet)
+        on_besieged = sim._roll_subtype(dtype, besieged)
+
+        assert on_quiet == "Siege", (
+            f"CONTROL: a {dtype.value} dungeon on a city holding no Siege was "
+            f"given {on_quiet!r} although the draw was a Siege")
+        allowed = [n for n in sim.subtypes_allowed_on(dtype) if n != "Siege"]
+        assert on_besieged == allowed[0], (
+            f"a {dtype.value} dungeon on a city already holding a Siege was "
+            f"given {on_besieged!r}; the cap must refuse the Siege and "
+            f"redistribute to another sub-type ({allowed[0]!r} here)")
 
 class TestTheRuleThatIsNotModelled:
     def test_there_is_still_no_city_upgrade_system_to_pause(self):
