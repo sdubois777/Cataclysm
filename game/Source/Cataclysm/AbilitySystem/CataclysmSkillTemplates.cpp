@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
@@ -439,6 +441,18 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 			GetWorld(), Self, Apex, AimDirection(),
 			ScaledRadiusCm(), ArcDegrees(), MostTargets);
 
+	// AND EVERY ALLY INSIDE THE SAME AREA, WHEN A ROW STRIKES ALLIES WITH THIS SKILL. Ruled 2026-10-15, for "Your AOE
+	// skills deal 50%-75% of their damage to nearby allies as well as enemies" (R2, R3): the same sphere or cone, on the
+	// friendly side, the user left out, and with no limit on how many, a judgement of the writing session. Nobody is
+	// searched for by a user without the row.
+	const TArray<AActor*> Allies = AreaShareOnAlliesPercent() <= 0.0f
+		? TArray<AActor*>()
+		: ThisUseHitsAllWithinCm > 0.0f
+		? UCataclysmAreaShareOnAllies::AlliesInSphere(
+			GetWorld(), Self, Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+		: UCataclysmAreaShareOnAllies::AlliesInCone(
+			GetWorld(), Self, Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees());
+
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
 	// than tidy. Quench gives an enemy whose fire was just put out 50% more
 	// damage and Extinction's damage rises with how many went out at once, so
@@ -460,13 +474,16 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// "anything still standing is set alight again". `HitTargets` applies the
 	// burn, so consuming first and hitting second delivers both sentences in
 	// the order they are written.
+	//
+	// AND THE ALLIES FOUND ABOVE ARE STRUCK FOR THEIR SHARE IN THE SAME ATTACK, after the enemies. Ruled 2026-10-15.
+	// With none, these are `HitTargets` and `HitScaled` as they were.
 	if (DamagePercent >= 0.0f)
 	{
-		HitTargets(Targets, DamagePercent);
+		HitTargetsSharingWithAllies(Targets, DamagePercent, Allies);
 	}
 	else
 	{
-		HitScaled(Targets, Consumed);
+		HitScaledSharingWithAllies(Targets, Consumed, Allies);
 	}
 
 	// AND THE FIRE SPREADS FROM WHERE EACH ONE WENT OUT. Touch Off states three
@@ -943,6 +960,13 @@ int32 UCataclysmStrikeSkill::PullTheWeaponFree()
 		GetWorld(), Self, Where, AimDirection(), ScaledRadiusCm(),
 		Params.AngleDegrees, Params.MaxTargets);
 
+	// AND EVERY ALLY INSIDE THE SAME CONE ROUND THE SWORD, WHEN A ROW STRIKES ALLIES WITH THIS SKILL. Ruled 2026-10-15
+	// (R2, R3), as `SwingOnce` finds them.
+	const TArray<AActor*> CaughtAllies = AreaShareOnAlliesPercent() <= 0.0f
+		? TArray<AActor*>()
+		: UCataclysmAreaShareOnAllies::AlliesInCone(
+			GetWorld(), Self, Where, AimDirection(), ScaledRadiusCm(), Params.AngleDegrees);
+
 	// `HitScaled` READS `ScalingSource=Second`, WHICH `ScalingUnits` ANSWERS BY
 	// ASKING THE SWORD HOW LONG IT HAS STOOD. Done that way round rather than
 	// passing the figure in, so that the eruption is sized by the same route
@@ -954,7 +978,8 @@ int32 UCataclysmStrikeSkill::PullTheWeaponFree()
 	// AND AFTER THE WEAPON'S STATS ARE HANDED BACK. Issue #1166: while the sword stands the character's attack damage
 	// is the unarmed base, and the eruption is the weapon's own blow. Without this line it would be priced as a punch.
 	Sword->HandBack();
-	Erupted = HitScaled(Caught, TArray<AActor*>());
+	// AND THE ALLIES IN THE SAME ATTACK, after the enemies, for their share. Ruled 2026-10-15.
+	Erupted = HitScaledSharingWithAllies(Caught, TArray<AActor*>(), CaughtAllies);
 
 	UCataclysmStrikeEffect::PlayAt(Self, Where, AimDirection(),
 								   UCataclysmStrikeEffect::DamageTypeFor(
@@ -2968,7 +2993,8 @@ void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Cross
 
 void UCataclysmMovementSkill::HitScaledAsACharge(const TArray<AActor*>& Targets,
 												 const TArray<AActor*>& Consumed,
-												 float ChargedCm)
+												 float ChargedCm,
+												 const TArray<AActor*>& Allies)
 {
 	// WHAT THEY HELD IS PUT BACK RATHER THAN -1 WRITTEN, so a blow of this
 	// skill that began inside another of its own blows cannot leave the outer
@@ -2981,7 +3007,8 @@ void UCataclysmMovementSkill::HitScaledAsACharge(const TArray<AActor*>& Targets,
 	BlowMetresCharged = FMath::Max(0.0f, ChargedCm) / 100.0f;
 	BlowChargeRangeMetres = ScaledRangeCm() / 100.0f;
 
-	HitScaled(Targets, Consumed);
+	// AND THE ALLIES ON THE LINE, told the same metres, for their share. Ruled 2026-10-15. None from a walked charge.
+	HitScaledSharingWithAllies(Targets, Consumed, Allies);
 
 	BlowMetresCharged = MetresHeld;
 	BlowChargeRangeMetres = RangeHeld;
@@ -3442,6 +3469,24 @@ void UCataclysmMovementSkill::ActivateAbility(
 		break;
 	}
 
+	// AND EVERY ALLY INSIDE THE SAME LINE OR SPHERE, WHEN A ROW STRIKES ALLIES WITH THIS SKILL. Ruled 2026-10-15, for
+	// "Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies" (R2, R3): the Charge's line
+	// and the Leap's and the Recall's sphere where they land, and NO OTHER MODE, because the ruling names those two
+	// sites and no point-blank skill is a blink or a trade. Found before the move, as the enemies are.
+	TArray<AActor*> Allies;
+	if (AreaShareOnAlliesPercent() > 0.0f)
+	{
+		if (Params.MovementMode == ECataclysmMovementMode::Charge)
+		{
+			Allies = UCataclysmAreaShareOnAllies::AlliesInLine(GetWorld(), Self, Start, End, ScaledRadiusCm());
+		}
+		else if (Params.MovementMode == ECataclysmMovementMode::Leap
+				 || Params.MovementMode == ECataclysmMovementMode::Recall)
+		{
+			Allies = UCataclysmAreaShareOnAllies::AlliesInSphere(GetWorld(), Self, End, ScaledRadiusCm());
+		}
+	}
+
 	// The ground is left BEFORE the move for a blink, because Emberstep burns
 	// "both points", and the point left behind stops being the caster's position
 	// the moment they arrive.
@@ -3479,14 +3524,16 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// leap, a blink, a return and a trade are not charges, and their blows
 	// carry nothing. Where it ARRIVED and not where it aimed, so a charge
 	// stopped short by a wall is paid for the ground it covered.
+	//
+	// AND THE ALLIES FOUND ABOVE IN THE SAME ATTACK, after the enemies, for their share. Ruled 2026-10-15.
 	if (Params.MovementMode == ECataclysmMovementMode::Charge)
 	{
 		HitScaledAsACharge(Targets, Consumed,
-						   static_cast<float>(FVector::Dist2D(Start, ArrivedAt)));
+						   static_cast<float>(FVector::Dist2D(Start, ArrivedAt)), Allies);
 	}
 	else
 	{
-		HitScaled(Targets, Consumed);
+		HitScaledSharingWithAllies(Targets, Consumed, Allies);
 	}
 	IgniteAroundConsumed(Consumed);
 

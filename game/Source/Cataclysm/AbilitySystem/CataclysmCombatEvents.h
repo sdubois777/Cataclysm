@@ -134,6 +134,14 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bShareOfDamageDoneToAnAlly = false;
 
 	/**
+	 * Whether the blow is the share of a point-blank skill's own blow that its attacker struck at an ally inside the
+	 * skill's area. Ruled 2026-10-15. See `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`. The player's on-hit
+	 * rows read this and act on none of it. THE DUNGEON GAME MODE'S FLOOR RULES DO NOT READ IT; the entry of
+	 * 2026-10-15 in `docs/DECISIONS.md` says what that leaves.
+	 */
+	bool bAreaSkillShareOnAnAlly = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.
@@ -231,6 +239,14 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 * a death that came from somewhere else. Never null.
 	 */
 	const FGameplayTagContainer* KillingTags = nullptr;
+
+	/**
+	 * Whether the last blow on record was the share of a point-blank skill's blow struck at this ally inside its area.
+	 * Ruled 2026-10-15: such a kill raises none of its killer's rows, `kill` included, and
+	 * `ACataclysmPlayerCharacter::OnSomethingDied` hears it as a death nobody killed. `Killer` still names the
+	 * striker for every other listener. See `FCataclysmLastBlow::bAreaSkillShareOnAnAlly`.
+	 */
+	bool bByAnAreaSkillShareOnAnAlly = false;
 };
 
 /**
@@ -307,6 +323,13 @@ struct CATACLYSM_API FCataclysmLastBlow
 	 * records no killing tags.
 	 */
 	float Overkill = 0.0f;
+
+	/**
+	 * Whether the blow was the share of a point-blank skill's blow struck at an ally inside its area, read off its
+	 * effect's stamp. Ruled 2026-10-15. Written for every blow on record, as the cheap fields are, and handed to the
+	 * death notice as `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`.
+	 */
+	bool bAreaSkillShareOnAnAlly = false;
 
 	bool IsOnRecord() const { return WorldSeconds >= 0.0; }
 };

@@ -720,7 +720,7 @@ bool ACataclysmMinion::CopySummonersLastSkill()
 	// GRANTED TO THE SUMMONER FOR ONE USE, FREE, FROM HERE, AT THE TARGET, AT THE WHOLE OF ITS DAMAGE.
 	const FVector From = GetActorLocation();
 	if (!UCataclysmTriggeredSkill::Trigger(Caster, Skill, Target->GetActorLocation(), /*DamageShare=*/1.0f,
-										   /*bPaysCost=*/false, &From))
+										   /*bPaysCost=*/false, &From, /*CastBy=*/this))
 	{
 		return false;
 	}

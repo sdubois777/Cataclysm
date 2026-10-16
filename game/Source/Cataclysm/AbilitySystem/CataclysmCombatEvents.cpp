@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the stamp of a point-blank skill's share struck at an ally. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the one question this file asks about a minion: whether its summoner
 // holds the keystone that makes its blows the summoner's. See NoteBlow.
 #include "AbilitySystem/CataclysmMinion.h"
@@ -171,6 +173,9 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 			Blow.bIsSpell = Hit.bIsSpell;
 			Blow.bFromBoss = Hit.bFromBoss;
 			Blow.WorldSeconds = World ? World->GetTimeSeconds() : 0.0;
+			// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY, so a death it causes raises
+			// none of its striker's rows. Ruled 2026-10-15.
+			Blow.bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
 
 			// THE TAGS ONLY FOR THE BLOW THAT KILLS. See `FCataclysmLastBlow`.
 			if (bLethal)
@@ -228,6 +233,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	// AND WHETHER IT IS A WEARER'S SHARE OF AN ALLY'S BLOW, by the stamp its delivery left. Ruled 2026-10-15.
 	Notice.bShareOfDamageDoneToAnAlly = Data.EffectSpec.GetSetByCallerMagnitude(
 		FName(UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY, by the same stamp. Ruled 2026-10-15.
+	Notice.bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
 	// FROM WHERE THE BLOW WAS STRUCK when its effect says it was struck from a point, as `ApplyHit` measures it: a
 	// gadget's copy of its summoner's skill. Ruled 2026-10-14.
 	Notice.DistanceMetres = UCataclysmSkillEffects::MetresFromWhereItWasStruck(Data.EffectSpec, DealtBy, Target);
@@ -280,6 +287,8 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 			static_cast<float>(World->GetTimeSeconds() - Blow.WorldSeconds);
 		Notice.KillingTags = &Blow.KillingTags;
 		Notice.Overkill = Blow.Overkill;
+		// AND WHETHER THAT BLOW WAS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT THIS ALLY. Ruled 2026-10-15.
+		Notice.bByAnAreaSkillShareOnAnAlly = Blow.bAreaSkillShareOnAnAlly;
 	}
 
 	++Events->Deaths;
