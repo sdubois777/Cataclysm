@@ -2690,6 +2690,15 @@ def test_the_count_axis_is_not_silently_capped_at_fourteen(cadence_run):
     Both halves are asserted: that the shipped cap really would flatten the
     axis, so this is a live hazard rather than a historical one, and that
     `base_config` lifts it so the knob is realised.
+
+    `surge_count_for` HOLDS THE OPENING SIZE TO THE KNOB, since 2026-10-16,
+    when `surge_count` began reading `surge_opening_count` at wave index 0.
+    Before that line was added this printed 12 against 10. The ruling of that
+    day: "the helper or the test passes surge_opening_count equal to the
+    count, whichever keeps the script's own figures", a labelled judgement by
+    the coordinating session under the owner's delegation, 2026-10-16. The
+    helper does it, because the script's own table prints the helper's answer
+    and the test only reads it.
     """
     _, ns = cadence_run
     surge_count_for = ns["surge_count_for"]
@@ -2734,11 +2743,18 @@ def test_the_unbound_surge_count_matches_a_real_simulation(cadence_run):
     `AttributeError` or -- worse -- the two answers quietly part. This asks a
     real `Simulation` the same question at every knob on the axis.
     """
+    from dataclasses import replace
+
     from cataclysm_sim.engine import Simulation
 
+    # THE REAL ONE IS GIVEN THE OPENING SIZE `surge_count_for` GIVES ITS
+    # STAND-IN, since 2026-10-16, when the helper began holding
+    # `surge_opening_count` to the knob. Both are asked wave index 0, so this
+    # still compares the same question; see the test above.
     _, ns = cadence_run
     for knob in (4, 5, 10, 14, 20, 30, 40):
-        real = Simulation(ns["base_config"](tier=1, count=knob), seed=0)
+        real = Simulation(replace(ns["base_config"](tier=1, count=knob),
+                                  surge_opening_count=knob), seed=0)
         assert ns["surge_count_for"](1, knob) == real.surge_count(), (
             f"the stand-in and a real Simulation disagree at knob {knob}")
 
@@ -3304,13 +3320,36 @@ def test_the_arrival_rate_is_the_engines_own_arithmetic(throughput_run):
     above 1.0 and that sentence is exactly the kind that goes stale silently --
     it is the failure this whole file was built for.
     """
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from cataclysm_sim.config import TuningConfig
+    from cataclysm_sim.engine import Simulation
+
     _, ns = throughput_run
     rate = {t: ns["arrival_rate"](ns["base_config"](tier=t))
             for t in (1, 2, 4, 8)}
 
-    assert rate[1] < 1.0, (
-        f"tier 1 now lands {rate[1]:.2f} walk-days a day, so the board cannot "
-        "be kept clear even there and this script's whole framing is wrong.")
+    # TIER 1 AT THE SHIPPED CADENCE, since 2026-10-16: the later waves, 8
+    # every 90 days, through the script's own functions. Ruled that day: "the
+    # test's figure is computed from the shipped cadence". A later wave and
+    # not the opening, so `surge_count` is asked at wave index 1; the
+    # opening's 12 would raise it further. It is above 1.0, so the board
+    # cannot be kept clear at tier 1 either.
+    shipped = TuningConfig()
+    cfg = replace(ns["base_config"](tier=1),
+                  surge_interval_days=shipped.surge_interval_days,
+                  surge_dungeon_count=shipped.surge_dungeon_count)
+    later = Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=1))
+    per_wave = max(1, round(later * ns["wave_multiplier"](cfg)))
+    tier_1 = (per_wave * ns["walk_days_per_dungeon"](cfg)
+              / cfg.surge_interval_days)
+    print(f"tier 1 at the shipped cadence lands {tier_1:.2f} walk-days a day")
+    assert tier_1 > 1.0, (
+        f"tier 1 at the shipped cadence lands {tier_1:.2f} walk-days a day. "
+        "Under 1.0 means the waves shrank: the owner asked on 2026-10-16 for "
+        "surges to summon a lot more dungeons, and the board then could not "
+        "be kept clear at tier 1.")
     assert rate[4] > 1.0, (
         f"tier 4 now lands {rate[4]:.2f} walk-days a day. Below 1.0 the "
         "uninvested player can keep the board clear and issue #1392's finding "

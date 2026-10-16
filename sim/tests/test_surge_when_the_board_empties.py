@@ -292,12 +292,24 @@ class TestWhatItDoesToTheEscalationCounter:
 
     def test_under_static_surges_the_counter_changes_nothing(self):
         """**WHY NO FLAG WAS ADDED.** Only STATIC has ever been measured, here
-        or anywhere, and under STATIC the counter is read by neither the gap
-        nor the count. So the choice above cannot move any figure on record.
+        or anywhere, and under STATIC, after the opening wave, the counter is
+        read by neither the gap nor the count. So the choice above cannot move
+        any figure on record.
+
+        AFTER THE OPENING WAVE, SINCE 2026-10-16. The first wave of a run, at
+        index 0, has its own size (`surge_opening_count`), so under STATIC the
+        counter now decides whether a wave is the opening one. An empty-board
+        surge only ever fires after the opening wave, when the counter is
+        already 1 or more, so it still moves nothing. This compares from index
+        1. The ruling of that day: "the STATIC-counter test's statement
+        becomes 'after the opening wave, the counter changes nothing under
+        STATIC'", a labelled judgement by the coordinating session under the
+        owner's delegation, 2026-10-16.
         """
         cfg = quiet()
         assert cfg.surge_mode.value == "static"
         sim = Simulation(cfg, seed=1)
+        sim.surge_index = 1
 
         gap = sim.surge_gap()
         count = sim.surge_count()
@@ -391,10 +403,26 @@ class TestOverWholeCampaigns:
                                   **settings)
         return Simulation(cfg, seed=seed).run(policies.triage)
 
-    @pytest.mark.parametrize("seed", range(4))
-    def test_the_rule_never_gives_a_campaign_fewer_surges(self, seed):
+    def test_the_rule_never_gives_a_campaign_fewer_surges(self):
         """It fires the scheduled wave EARLY and never cancels one, so a
         campaign cannot end up with fewer waves per day than it had.
+
+        **POOLED OVER SEEDS 0 TO 3 SINCE 2026-10-16, AND NOT SEED BY SEED.**
+        Until then it was parametrised by seed and asserted every one. On
+        commit 8096ac39 seed 3 failed, with 16.98 surges per 1,000 days with
+        the rule on against 19.35 with it off. Even with a death resolving
+        nothing, the two campaigns of one seed share a random stream only until
+        the board first empties; after that the rule's extra wave draws from
+        the stream and the two campaigns diverge. One by one, over seeds 0 to
+        199, 18 of 200 give fewer surges per day with the rule on at 8096ac39
+        and 9 of 200 at 3a48236a (seed 3 among the first and not the second).
+        Pooled as a rate, over seeds 0 to 39,999 in disjoint blocks of four,
+        it held on 9,905 of 10,000 blocks at 8096ac39 and 9,981 of 10,000 at
+        3a48236a. Seeds 0 to 3 pooled at 3a48236a: 14.98 with the rule on
+        against 12.28 off. So the assertion is the pooled rate over these four
+        campaigns: every surge over every day they lasted, rule on against rule
+        off. A labelled judgement by the coordinating session under the owner's
+        delegation, 2026-10-16.
 
         COMPARED AS A RATE AND NOT AS A TOTAL. Campaigns are not the same
         length either side -- more waves means the empire falls sooner -- so a
@@ -414,16 +442,21 @@ class TestOverWholeCampaigns:
         `test_over_many_campaigns_the_rule_raises_the_rate_of_surges` is the
         same claim at the defaults.
         """
-        off = self._run(False, seed, death_resolves_dungeon=False)
-        on = self._run(True, seed, death_resolves_dungeon=False)
-        rate_off = off.surges / max(1, off.survived_days)
-        rate_on = on.surges / max(1, on.survived_days)
+        seeds = range(4)
+        off = [self._run(False, seed, death_resolves_dungeon=False)
+               for seed in seeds]
+        on = [self._run(True, seed, death_resolves_dungeon=False)
+              for seed in seeds]
+        assert all(r.survived_days > 0 for r in off + on), (
+            "a campaign lasted no days, so a rate over them means nothing")
+        rate_off = sum(r.surges for r in off) / sum(r.survived_days for r in off)
+        rate_on = sum(r.surges for r in on) / sum(r.survived_days for r in on)
 
         assert rate_on >= rate_off, (
-            f"campaign {seed}: {rate_on * 1000:.2f} surges per 1,000 days with "
-            f"the rule on against {rate_off * 1000:.2f} with it off, with a "
-            "death resolving nothing. The rule is supposed to pull waves "
-            "forward, never remove one")
+            f"seeds 0 to 3 together: {rate_on * 1000:.2f} surges per 1,000 "
+            f"days with the rule on against {rate_off * 1000:.2f} with it off, "
+            "with a death resolving nothing. The rule is supposed to pull "
+            "waves forward, never remove one")
 
     def test_over_many_campaigns_the_rule_raises_the_rate_of_surges(self):
         """The claim above AT THE DEFAULTS, where a death resolves its dungeon.
@@ -473,9 +506,10 @@ class TestOverWholeCampaigns:
             "defaults on the triage policy, so nothing above is measuring the "
             "rule")
 
-    def what_emptied_the_board(self, persists: bool) -> tuple[int, int]:
+    def what_emptied_the_board(self, persists: bool,
+                               campaigns: int = 4) -> tuple[int, int]:
         """(empty-board surges fired, of those how many followed a clear), over
-        the four campaigns the fast suite can afford, on `triage`."""
+        seeds 0 to `campaigns` - 1, on `triage`."""
         cleared_it = 0
         fired = 0
 
@@ -495,59 +529,108 @@ class TestOverWholeCampaigns:
 
         cfg = dataclasses.replace(TuningConfig(),
                                   dungeon_persists_after_resolve=persists)
-        for seed in range(4):
+        for seed in range(campaigns):
             Watched(cfg, seed=seed).run(policies.triage)
         return fired, cleared_it
 
     def test_at_the_shipped_settings_a_hit_empties_the_board_too(self):
         """Since 2026-10-12 an ordinary dungeon leaves after it hits its city,
         so a clear is no longer the only thing that empties a board. Measured
-        that day over these four campaigns: 45 empty-board surges, 43 after a
-        clear. The counts are not pinned; that some surge followed something
-        other than a clear is.
+        that day over four campaigns: 45 empty-board surges, 43 after a clear.
+        The counts are not pinned; that some surge followed something other
+        than a clear is.
+
+        **TWENTY-FOUR CAMPAIGNS SINCE 2026-10-16, AND IT WAS FOUR.** On
+        2026-10-16 the four gave 15 empty-board surges, all after a clear, and
+        this failed. Over seeds 0 to 39,999 in disjoint blocks of 24 it held on
+        1,645 of 1,666 blocks at commit 8096ac39 and 1,653 of 1,666 at
+        3a48236a (the first 100 blocks: 100 of 100 at both). Seeds 0 to 23 at
+        3a48236a give 83 empty-board surges, 82 after a clear, so this holds
+        by one. A labelled judgement by the coordinating session under the
+        owner's delegation, 2026-10-16.
 
         `_after_a_clear` is never reset, so a surge is counted as following a
         clear when any clear in the campaign left the board empty before it.
         The count that did not follow one is therefore a lower bound.
         """
         assert TuningConfig().dungeon_persists_after_resolve is False
-        fired, cleared_it = self.what_emptied_the_board(False)
+        fired, cleared_it = self.what_emptied_the_board(False, campaigns=24)
 
         assert fired > 0, "no empty-board surge fired, so this measures nothing"
         assert cleared_it < fired, (
             f"all {fired} empty-board surges followed the player clearing the "
             "last dungeon. At the shipped settings a dungeon that hits its "
-            "city leaves, and in these four campaigns that emptied a board at "
+            "city leaves, and in these 24 campaigns that emptied a board at "
             "least once when this was written")
 
     def test_with_a_resolved_dungeon_staying_a_clear_is_what_empties_the_board(
             self):
-        """Measured rather than reasoned, because the reasoning recorded beside
-        this rule depended on it.
+        """**A BUILT BOARD SINCE 2026-10-16, AND IT WAS FOUR CAMPAIGNS.** With
+        `dungeon_persists_after_resolve` on, a board emptied by the player
+        clearing the last dungeon fires a surge; THE CONTROL, the same board
+        with one dungeon left standing, does not. A labelled judgement by the
+        coordinating session under the owner's delegation, 2026-10-16.
+
+        WHY NOT CAMPAIGNS. On 2026-10-16 the four campaigns it ran fired no
+        empty-board surge at all and it failed with "measures nothing". Over
+        seeds 0 to 39,999 with the setting on, 38 empty-board surges fired in
+        37 campaigns at commit 8096ac39, all 38 after a clear; at 3a48236a, 42
+        in 40 campaigns, all 42 after a clear. None fired in seeds 0 to 199 at
+        either. Too rare for a fast-suite sample to find one, and the claim is
+        about what the rule does once it is reached, which a built board shows
+        directly.
 
         THE MODEL AS IT WAS. Until 2026-10-12 this test was named
         `test_at_the_shipped_settings_a_clear_is_what_empties_the_board` and
-        ran at the defaults; the setting is now set True by name.
+        ran at the defaults, where `dungeon_persists_after_resolve` was True.
+        With it on the ways a board can empty are: the player clears the last
+        dungeon, or a Cataclysm that erases cities takes the last host away
+        without leaving a Fallen City dungeon behind. That a detonation does
+        not empty it is
+        `test_a_detonation_does_not_empty_the_board_when_a_resolved_dungeon_stays`.
 
-        `dungeon_persists_after_resolve` shipped True, so the ways a board can
-        empty are: the player clears the last dungeon, or a Cataclysm that
-        erases cities takes the last host away without leaving a Fallen City
-        dungeon behind. Over 20 campaigns on the `triage` policy every one of
-        126 empty-board surges was a clear; this checks the same thing over the
-        four campaigns the fast suite can afford.
-
-        IF THIS EVER STOPS BEING TRUE that is a finding and not a failure --
-        the comment on `TuningConfig.surge_on_empty_board` and the
-        `docs/DECISIONS.md` entry of 2026-09-07 both state it of that setting.
+        THE DEATH CHANCE IS SET TO NOUGHT, so the walk ends in a clear and not
+        a death; asserted as set-up. The two cities are distinct, so the
+        standing dungeon is not on the cleared one's host.
         """
-        fired, cleared_it = self.what_emptied_the_board(True)
+        cfg = quiet(dungeon_persists_after_resolve=True, per_floor_risk=0.0,
+                    boss_risk_multiplier=0.0)
+        assert cfg.dungeon_persists_after_resolve is True
 
-        assert fired > 0, "no empty-board surge fired, so this measures nothing"
-        assert cleared_it == fired, (
-            f"{fired - cleared_it} of {fired} empty-board surges followed "
-            "something other than the player clearing the last dungeon. With "
-            "dungeon_persists_after_resolve on a detonated dungeon stays on "
-            "the board, so a clear should be the only thing that empties it")
+        def fired_after_a_clear(leave_one_standing: bool) -> int:
+            sim = parked(cfg)
+            standing = [c for c in sim.empire.cities.values() if not c.fallen]
+            d = sim._make_dungeon(DungeonType.BASIC, standing[0])
+            assert sim.death_chance(d) == 0.0, (
+                "set-up: the walk could end in a death rather than a clear")
+            if leave_one_standing:
+                other = sim._make_dungeon(DungeonType.BASIC, standing[1])
+                assert other.resolve_in > 2, (
+                    "set-up: the dungeon left standing would run out of time "
+                    "inside the two days this test steps")
+            sim.current = d
+            sim.days_remaining = 1
+
+            sim.step(do_nothing)      # the walk finishes
+            assert sim.cleared == 1, "set-up: the walk did not end in a clear"
+            assert d.did not in sim.dungeons, (
+                "set-up: the cleared dungeon is still on the board")
+            sim.step(do_nothing)      # the clear is seen the next day
+            return sim.surges_from_empty_board
+
+        emptied = fired_after_a_clear(leave_one_standing=False)
+        control = fired_after_a_clear(leave_one_standing=True)
+
+        assert control == 0, (
+            f"CONTROL: {control} empty-board surges fired with a dungeon still "
+            "standing after the clear, so the assertion below does not show "
+            "the board emptying is what fired it")
+        assert emptied == 1, (
+            f"{emptied} empty-board surges fired after the player cleared the "
+            "last dungeon with dungeon_persists_after_resolve on. A clear "
+            "empties the board under that setting and the owner ruled on "
+            "2026-09-07, verbatim \"Anytime there are no longer dungeons on "
+            "the board, a surge happens\"")
 
     @pytest.mark.parametrize("seed", range(4))
     def test_the_flag_gates_the_whole_trigger(self, seed):

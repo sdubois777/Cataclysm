@@ -194,9 +194,15 @@ class _Counted(Simulation):
             self.bites += 1
 
 
-#: How many seeds the search below may look through. 32 campaigns at
-#: `TuningConfig()` defaults is about a second.
-SEED_LIMIT = 32
+#: How many seeds the search below may look through. 80 since 2026-10-16,
+#: ruled by the coordinating session: with the opening wave of 12, waves of 8,
+#: the ordinary hit at 0.7, the Quest move and no Quest Siege, 6.3% of
+#: campaigns reach a Fallen City timer running out or a dungeon on a fallen
+#: city (1,268 of 20,000 seeds at 3a48236a), and seeds 0 to 31 reach none.
+#: Disjoint blocks of seeds holding the assertion below: 53 seeds 362 of 377,
+#: 64 seeds 308 of 312, 75 seeds 265 of 266, 80 seeds 250 of 250, 100 seeds
+#: 199 of 200. It was 32, about a second; 80 is about 2.6 s.
+SEED_LIMIT = 80
 
 
 @pytest.fixture(scope="module")

@@ -342,6 +342,12 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
         surge_interval_days=float(interval),
         surge_dungeon_count=count,
         surge_count_max=max(count, TuningConfig().surge_count_max),
+        # THE OPENING WAVE AS IT SHIPS, held explicitly since 2026-10-16:
+        # the first surge of a campaign is `surge_opening_count`, read off
+        # `TuningConfig` so this cannot claim a size the game does not open
+        # with. Ruled that day: "the analysis scripts hold the shipped opening
+        # size". `surge_count_for` replaces it with the knob for its table.
+        surge_opening_count=TuningConfig().surge_opening_count,
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
@@ -372,6 +378,8 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
 #: are written out so the file goes on measuring that world. The names are
 #: kept because the rest of the file and its tests use them. To measure what
 #: ships, read them off `TuningConfig()` again and give the axes a 5 and a 90.
+#: THE RECORDED FIGURES WERE MEASURED BEFORE THE OPENING WAVE OF 12 EXISTED
+#: (2026-10-16), at the cadences they each state, and were not re-run.
 SHIPPED_COUNT = 4
 SHIPPED_INTERVAL = 120.0
 SHIPPED_COUNT_CAP = TuningConfig().surge_count_max
@@ -393,7 +401,13 @@ def surge_count_for(tier: int, count: int, cap: int | None = None) -> int:
     table. `sim/tests/test_analysis_scripts.py` checks this against a real
     `Simulation` at every knob, so the stand-in cannot quietly stop matching.
     """
-    cfg = base_config(tier=tier, count=count)
+    # THE OPENING SIZE IS THE KNOB TOO. Since 2026-10-16 `surge_count` reads
+    # `surge_opening_count` at wave index 0, which is the index asked here, so
+    # without this line every knob would report the shipped opening wave of
+    # 12. This table is about the knob, and every figure it printed before
+    # that day was `surge_dungeon_count`'s, so the two are held equal.
+    cfg = replace(base_config(tier=tier, count=count),
+                  surge_opening_count=count)
     if cap is not None:
         cfg = replace(cfg, surge_count_max=cap)
     return Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=0))

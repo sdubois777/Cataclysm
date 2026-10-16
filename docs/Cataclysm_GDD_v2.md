@@ -106,7 +106,7 @@ Self-Found and Heretic Solo Self-Found are both real combinations.
 | :-: | :-: | :-: | :-: | :-: |
 | Standard | 5 days | none | shown | — |
 | Hardcore | 10 days | each of the 18 equipped pieces drops with a 10% chance, so 1.8 on average | map overlay only | — |
-| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons, rounded down: 6 where a Surge brings 5. Cities have 2 upgrade slots instead of 3. |
+| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons, rounded down: 15 where the opening Surge brings 12, and 10 where a later Surge brings 8. Cities have 2 upgrade slots instead of 3. |
 
 **Solo Self-Found. Optional. Combines with any lethality mode.**
 
@@ -330,7 +330,7 @@ This is the loop the run is built around: the threat chosen at run start decides
 
 ### **The Surge**
 
-A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. Before any escalation a Surge brings 5 dungeons and the next comes 90 days after the last; until 2026-10-13 it was 4 dungeons every 120 days. Every measured figure in this document that is dated before 2026-10-13 was taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city nothing, and a surge came every 120 days at the size each passage states. None of them was measured again. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
+A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. The first Surge, at run start, brings 12 dungeons; before any escalation every later Surge brings 8 and the next comes 90 days after the last. From 2026-10-13 to 2026-10-16 every Surge brought 5, and until 2026-10-13 4 every 120 days. Every measured figure in this document that is dated before 2026-10-13 was taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city nothing, and a surge came every 120 days at the size each passage states; and a figure dated before 2026-10-16 was taken with waves of 5 and an ordinary dungeon's hit 1.43 times today's (today's is 0.7 of it). None of them was measured again. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
 
   
 
@@ -4000,7 +4000,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - If a dungeon resolves undefeated, its listed consequence occurs (usually city damage or population loss). An ordinary dungeon hits its city once and then leaves the map.
   - If a city falls, it becomes a Dungeon City — a staging ground with more floors and multiple boss fights, triggering a Surge.
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
-  - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell**, which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
+  - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell and was absorbed by it** (a Quest dungeon moves away instead and is not counted), which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A death resolves an ordinary dungeon and no other kind: dying in a Quest dungeon or a Dungeon City costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing for the death; its timer is not touched by the death, runs on through the days paid, and hits the city when it runs out. That much is a judgement made on 2026-10-09 under the project owner's delegation. The rest of this rule was ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning for both.
@@ -4094,12 +4094,17 @@ This makes a surviving player's escape worth something to the whole party, and i
 A Quest dungeon's timer running out hits its host city. The city takes what an
 ordinary dungeon's hit takes from a city of its tier, whatever the Quest
 dungeon's own depth and whatever tier it was first placed on. If that hit fells
-the city, the Quest dungeon is absorbed into the fallen city with every other
-dungeon on it. Otherwise the timer
+the city, the Quest dungeon is not absorbed: like every Quest dungeon standing on
+a city that falls, for any reason, it moves at once to an adjacent city, keeping
+its floors, its timer, its sub-type and the quest progress it carries, and its
+timer refreshes because it has just hit. Otherwise the timer
 refreshes to full and the dungeon **may move to an adjacent city** — adjacency as
 section IX defines it, the rim's perimeter links included. It may only move onto a
 city a surge could have put a dungeon on: one that is exposed, has not fallen,
-and is not the Pillar. When no neighbour qualifies it stays where it is.
+and is not the Pillar. When no neighbour qualifies it stays where it is. A Quest
+dungeon whose city has fallen cannot stay: when no neighbour qualifies it goes to
+the nearest city, counted in lanes, that does. A player walking a Quest dungeon
+whose city falls goes on walking it; the dungeon has only moved.
 
   
 
@@ -4117,6 +4122,13 @@ timer runs out, at the size of an ordinary dungeon's hit for that city, then
 refresh or move as before, and the owner accepted that with the words "your rec
 on all three, continue". 2026-10-13 supersedes both: it reverses 2026-10-09 and
 returns to the sentence of 2026-10-08.
+
+On 2026-10-16, verbatim: "Quest dungeons don't go away when a city falls. They
+just move to an adjacent city. So eventually they should be hitting something.
+Other than that they work the same as any other dungeon but provide quest
+progress and should probably be themed towards whatever the quest is for."
+Until that day a Quest dungeon on a city that fell was absorbed with the rest.
+Theming a Quest dungeon to its quest is a later item.
 
   
 
@@ -4140,7 +4152,7 @@ that moved the dungeon **37.6% to 38.7%**, measured over four disjoint blocks of
 1,000 simulated campaigns — 115,064 quest timers — at difficulty tier 1 with no
 empire tree, the triage policy, and static surges of five dungeons every 120
 days. Those are block ranges rather than an error bar: four blocks give a
-spread, and two would give only a difference. The simulation's default is 5 dungeons every 90 days since 2026-10-13; these figures are at 5 every 120 and were not re-measured.
+spread, and two would give only a difference. The simulation's default is an opening wave of 12 and then 8 every 90 days since 2026-10-16 (5 every 90 from 2026-10-13); these figures are at 5 every 120 and were not re-measured.
 
   
 
@@ -4183,6 +4195,10 @@ not re-measured: it is as deep as it always was.
 
   
 
+Its timer follows its depth as an ordinary dungeon's does: a deeper Quest dungeon waits longer between hits.
+
+  
+
 ## **Dungeon Sub-Types**
 
 | Sub-Type | Description |
@@ -4191,7 +4207,7 @@ not re-measured: it is as deep as it always was.
 | Horde | Number of floors equals number of enemy waves. |
 | Sacrificial | Double modifiers. Player can sacrifice materials to remove the extra modifiers, or accept them for bonus rewards. |
 | Elite | Every floor ends with a boss fight. |
-| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. |
+| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. A Quest dungeon never rolls Siege: the only Siege Quest dungeons will be War's (see World War), once War exists. |
 | Volatile | Dungeon modifiers change every floor. |
 | Cow Level | Enemies drop ridiculous amounts of loot. Time to complete is doubled and cannot be reduced. |
 
@@ -5433,6 +5449,8 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 | Siege | 7.5 |
 | Cow Level | 7 |
 
+A Quest dungeon cannot be a Siege, and a Cataclysm dungeon cannot be a Cow Level; for those kinds the excluded weight is shared by the others in proportion.
+
 
 
 **Every dungeon a surge creates has a subtype.** There is no “none” outcome and no row for one. Until 2026-09-05 there was, and it was the commonest at 34 in 100; the seven that remain were rescaled to take up that share while keeping their order.
@@ -6422,7 +6440,9 @@ Cursed Abominations spawn as cities fall, growing stronger with each subsequent 
 
 ## **World War (War)**
 
-Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital.
+Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. War is not built yet.
+
+The owner, 2026-10-16, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap." And, the same day: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
 
   
 

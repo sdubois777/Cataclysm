@@ -6,6 +6,15 @@ Cataclysm dungeon in 2% of campaigns. Re-measured on `998d758` it is **0.0%**.
 Nothing had investigated why. This file is that investigation, kept so the
 answer can be re-measured rather than re-derived.
 
+**SINCE 2026-10-16 THE BOARD CANNOT BE KEPT CLEAR AT TIER 1 EITHER.** The owner
+that day: "I want surges to summon a lot more dungeons". At the shipped cadence
+-- an opening wave of 12, then 8 dungeons every 90 days -- the later waves alone
+land about 1.90 walk-days a day at tier 1, more than one player can walk, so
+"can the board be kept clear" is answered no at tier 1 too.
+`test_the_arrival_rate_is_the_engines_own_arithmetic` in
+`sim/tests/test_analysis_scripts.py` computes that figure. The findings below
+were measured before then, at 4 every 120.
+
 **IT MEASURES AND PROPOSES NOTHING.** Every counterfactual in section 4 changes
 one setting to say whether that step is load-bearing. None of them is a
 recommendation, and issue [#1349] sets the standing rule that a constant does not
@@ -52,6 +61,11 @@ them, because tier 4 needs two Cataclysms finished rather than one and the playe
 completes 3.31 quest objectives against a requirement of at least ten.
 
 ## Conditions
+
+**THE FIGURES IN THIS DOCSTRING WERE MEASURED BEFORE THE OPENING WAVE OF 12
+EXISTED (2026-10-16)**, at the cadence they state, 4 every 120, and were not
+re-run. `base_config` now holds the shipped opening size, so section 1's
+tier-1 row prints the opening wave and no longer prints 0.71.
 
 **THIS FILE DESCRIBES THE MODEL AS IT WAS BEFORE 2026-10-12, WHEN AN ORDINARY
 DUNGEON STAYED ON THE MAP AFTER IT HIT ITS CITY.** That day
@@ -141,6 +155,10 @@ def base_config(tier: int = 1, tree=TREE_NONE, **over) -> TuningConfig:
         surge_interval_days=float(shipped.surge_interval_days),
         surge_dungeon_count=shipped.surge_dungeon_count,
         surge_count_max=max(shipped.surge_dungeon_count, shipped.surge_count_max),
+        # THE OPENING WAVE AS IT SHIPS, held explicitly since 2026-10-16 and
+        # equal to `analyse_surge_cadence.base_config`'s, which the guard in
+        # `sim/tests/test_analysis_scripts.py` requires.
+        surge_opening_count=TuningConfig().surge_opening_count,
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,

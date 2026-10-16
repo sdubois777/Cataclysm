@@ -272,6 +272,8 @@ class Simulation:
         self.cataclysm: Dungeon | None = None
         self.next_surge_day = 0.0
         self.surge_index = 0        # how many surges have happened
+        #: Quest dungeons moved off a city as it fell, since 2026-10-16.
+        self.quest_moves_on_a_fall = 0
         self.surge_log: list[tuple[int, float, int]] = []  # (day, gap, count)
         #: Of those, how many were pulled forward by the board being empty
         #: rather than arriving on the clock. Issue #1406. Counted so that a
@@ -376,18 +378,27 @@ class Simulation:
             picked = self.rng.sample(pool, k)
         mod_score = sum(s for _, s in picked)
 
-        if dtype is DungeonType.BASIC:
+        if dtype in (DungeonType.BASIC, DungeonType.QUEST):
             # Timer scales with depth, so a deep dungeon is a big commitment
             # rather than an automatic loss.
+            #
+            # A QUEST DUNGEON'S TOO, SINCE 2026-10-16. The owner decided its
+            # timer scales with its depth like other dungeons; until then it was
+            # a flat 25 days. The same formula on its own floors, with the same
+            # variation and the tree's resolve bonus: a labelled judgement of
+            # the coordinating session under that decision. Since 2026-10-13
+            # its timer running out hits its host; see `_quest_hit`.
+            #
+            # THE VARIATION IS NOW DRAWN FOR A QUEST DUNGEON AS WELL, so every
+            # campaign's stream differs from its first Quest dungeon on. The
+            # game already draws it for every kind.
             base = cfg.resolve_base_days + floors * cfg.resolve_floor_ratio
             jitter = 1.0 + self.rng.uniform(-cfg.resolve_jitter, cfg.resolve_jitter)
             resolve = base * jitter + cfg.tree.resolve_bonus_days
         else:
-            # A Quest dungeon's timer is flat and is not rolled from its
-            # depth. Fallen Cities and the Cataclysm have already done their
-            # damage and do not detonate. Since 2026-10-13 a Quest dungeon's
-            # timer running out hits its host; see `_quest_hit`.
-            resolve = spec.resolve_days[0]
+            # Fallen Cities and the Cataclysm have already done their damage
+            # and do not detonate.
+            resolve = cfg.fallen_city_resolve_days
 
         d = Dungeon(
             did=self._next_did,
@@ -501,8 +512,11 @@ class Simulation:
     def subtypes_allowed_on(self, dtype: DungeonType) -> list[str]:
         """The sub-types this kind of dungeon may roll, in weight order.
 
-        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL, AND THAT IS THE ONLY
-        EXCLUSION THERE IS.** The project owner ruled on 2026-09-06, verbatim:
+        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL, AND SINCE 2026-10-16 A
+        QUEST DUNGEON MAY NOT BE A SIEGE; THOSE ARE THE TWO EXCLUSIONS THERE
+        ARE.** The second is interim, until each Cataclysm's Quest dungeons take
+        their own type (`TuningConfig.SUBTYPES_FORBIDDEN_ON` quotes the owner).
+        The first: the project owner ruled on 2026-09-06, verbatim:
         "Last stand is a cataclysm dungeon and should not be allowed to roll as
         a cow level sub type." Asked how far to take it they answered "Only the
         one you ruled", so the other 27 pairs stay legal and nothing here may be
@@ -521,8 +535,8 @@ class Simulation:
                 if n not in forbidden]
 
     def _roll_subtype(self, dtype: DungeonType, city: City) -> str:
-        """One sub-type, respecting "Max 1 per city" for the Siege and the one
-        dungeon-type exclusion in `subtypes_allowed_on`.
+        """One sub-type, respecting "Max 1 per city" for the Siege and the
+        dungeon-type exclusions in `subtypes_allowed_on`.
 
         A REFUSED SIEGE IS REDISTRIBUTED RATHER THAN DROPPED, so the dungeon
         still gets a sub-type -- every dungeon has one since issue #1293. That
@@ -581,7 +595,11 @@ class Simulation:
         which is where the extra dungeons would hurt most. Issue #289.
         """
         cfg = self.cfg
-        n = float(cfg.surge_dungeon_count)
+        # THE OPENING WAVE HAS ITS OWN SIZE, since 2026-10-16: the first
+        # surge of a run is `surge_opening_count`, every later one
+        # `surge_dungeon_count`. See `TuningConfig.surge_opening_count`.
+        n = float(cfg.surge_opening_count if self.surge_index == 0
+                  else cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
         n = min(n, float(cfg.surge_count_max))
@@ -824,13 +842,18 @@ class Simulation:
             if cfg.quest_timer_hits_city and not city.fallen:
                 self._quest_hit(d, city)
 
-                # THE HIT FELLED THE CITY AND THE FALL ABSORBED THIS DUNGEON
-                # with every other dungeon on it, so nothing is left to
-                # refresh or to move, and no draw is taken. `_fall` spares
-                # the dungeon the player is inside; that one is still on
-                # the map and goes on to the refresh and the move below.
+                # THE HIT FELLED THE CITY AND THE FALL MOVED THIS DUNGEON, since
+                # 2026-10-16 (owner: "Quest dungeons don't go away when a city
+                # falls. They just move to an adjacent city."). `_fall` moved
+                # it; it has just hit, so its timer refreshes to full, and it
+                # does not take the timer's own move as well that day.
                 if d.did not in self.dungeons:
                     return
+                if d.city_id != city.cid:
+                    d.resolve_in = float(d.resolve_max)
+                    return
+                # A FALL THAT FOUND NOWHERE TO GO leaves it on the fallen city;
+                # it refreshes and tries the move below, as before.
 
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
@@ -986,9 +1009,10 @@ class Simulation:
         game's `DungeonsDetonated`. `Dungeon.times_resolved` is not raised
         for a Quest dungeon either, as it never was.
 
-        A FALL IS A FALL. `_fall` absorbs every dungeon on the city, this
-        one included unless the player is inside it, exactly as when an
-        ordinary dungeon fells a city that a Quest dungeon stands on.
+        A FALL IS A FALL. `_fall` absorbs the ordinary dungeons on the city
+        and, since 2026-10-16, moves every Quest dungeon on it, this one
+        included (`_quest_refuge` says where), exactly as when an ordinary
+        dungeon fells a city that a Quest dungeon stands on.
 
         NO DRAW IS TAKEN HERE, so with the city left standing the random
         stream is where it would have been without the hit.
@@ -1084,8 +1108,22 @@ class Simulation:
         self.empire._invalidate()
 
         # Every dungeon sitting on the city is absorbed into the Fallen City.
-        absorbed = [d for d in self.dungeons.values() if d.city_id == city.cid]
-        for d in absorbed:
+        standing = [d for d in self.dungeons.values() if d.city_id == city.cid]
+        for d in standing:
+            # A QUEST DUNGEON IS NOT ABSORBED, since 2026-10-16. The owner,
+            # verbatim: "Quest dungeons don't go away when a city falls. They
+            # just move to an adjacent city. So eventually they should be
+            # hitting something." It moves at once, with no coin, keeping its
+            # floors, remaining timer and sub-type; the walked one moves too and
+            # the walk goes on. When nowhere qualifies it stays on the fallen
+            # city, which happens only once no exposed city but the Pillar is
+            # left. `_quest_refuge` says where.
+            if d.dtype is DungeonType.QUEST:
+                refuge = self._quest_refuge(d, city)
+                if refuge is not None:
+                    d.city_id = refuge.cid
+                    self.quest_moves_on_a_fall += 1
+                continue
             if self.current is not None and d.did == self.current.did:
                 continue
             self.dungeons.pop(d.did, None)
@@ -1110,6 +1148,43 @@ class Simulation:
         if (cfg.surge_on_city_fall
                 and self.days_since_last_surge() >= cfg.surge_interval_min):
             self.trigger_surge(from_city_fall=True)
+
+    def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:
+        """Where a Quest dungeon on a city that has just fallen goes.
+
+        THE RELOCATION'S OWN FILTER, ruled by the coordinating session on
+        2026-10-16: an exposed city that has not fallen and is not the Pillar
+        (`Empire.adjacent_exposed_cities`), and not a city already holding a
+        Siege if this dungeon carries one. A sealed city never receives a
+        dungeon. AN ADJACENT ONE FIRST; when no neighbour qualifies, the
+        nearest qualifying city counted in lanes (the map's links, perimeter
+        included). Ties by `rng.choice`, one draw. None when no city
+        qualifies anywhere, which means the path to the Pillar is open.
+        """
+        cfg = self.cfg
+
+        def allowed(c: City) -> bool:
+            if d.subtype == "Siege" and self.sieges_on(c.cid) >= cfg.siege_max_per_city:
+                return False
+            return True
+
+        targets = [c for c in self.empire.adjacent_exposed_cities(fallen) if allowed(c)]
+        if not targets:
+            seen = {fallen.cid}
+            frontier = [fallen.cid]
+            while frontier and not targets:
+                ring = []
+                for k in frontier:
+                    for j in self.empire.neighbours(self.empire.cities[k]):
+                        if j not in seen:
+                            seen.add(j)
+                            ring.append(j)
+                targets = [self.empire.cities[j] for j in ring
+                           if self.empire.is_exposed(self.empire.cities[j])
+                           and j != self.empire.pillar_id
+                           and allowed(self.empire.cities[j])]
+                frontier = ring
+        return self.rng.choice(targets) if targets else None
 
     def _retake(self, city: City) -> None:
         city.fallen = False

@@ -113,6 +113,14 @@ class TestFixedDesignRules:
         Both halves are asserted: that the cap binds above 14, and that it does
         NOT bind at or below it, so a change that clamped everything to some
         other value would fail here rather than looking like this rule.
+
+        EVERY CONFIG BELOW SETS `surge_opening_count` WITH `surge_dungeon_count`.
+        `surge_count` reads the opening size at wave index 0 since 2026-10-16,
+        so asking only `surge_dungeon_count` would ask nothing here. By
+        the ruling of 2026-10-16, "each sets surge_opening_count to its
+        surge_dungeon_count value so it keeps testing what it names", a
+        labelled judgement by the coordinating session under the owner's
+        delegation, 2026-10-16.
         """
         cap = TuningConfig().surge_count_max
         assert cap == 14, (
@@ -123,6 +131,7 @@ class TestFixedDesignRules:
 
         for asked in (1, 4, 5, 10, cap):
             cfg = dataclasses.replace(TuningConfig(), surge_dungeon_count=asked,
+                          surge_opening_count=asked,
                           surge_mode=SurgeMode.STATIC)
             assert Simulation(cfg, seed=0).surge_count() == asked, (
                 f"a count of {asked} is at or below the cap and must be "
@@ -130,6 +139,7 @@ class TestFixedDesignRules:
 
         for asked in (cap + 1, 20, 30, 40):
             cfg = dataclasses.replace(TuningConfig(), surge_dungeon_count=asked,
+                          surge_opening_count=asked,
                           surge_mode=SurgeMode.STATIC)
             assert Simulation(cfg, seed=0).surge_count() == cap, (
                 f"a count of {asked} no longer clamps to {cap}. If the cap has "
@@ -139,6 +149,7 @@ class TestFixedDesignRules:
         # Raising the cap alongside the count is the only way past it, and it
         # is what sim/analyse_surge_cadence.py does for its own batches.
         lifted = dataclasses.replace(TuningConfig(), surge_dungeon_count=40,
+                         surge_opening_count=40,
                          surge_count_max=40, surge_mode=SurgeMode.STATIC)
         assert Simulation(lifted, seed=0).surge_count() == 40
 
