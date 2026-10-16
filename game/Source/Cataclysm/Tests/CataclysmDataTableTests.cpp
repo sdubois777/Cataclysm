@@ -827,7 +827,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 612 SINCE THE TWO ROWS THAT MAKE GADGETS TAKE NO DAMAGE AND DRAIN THEM, issue #1833, from 610.
 	//
 	// AND 613 SINCE THE ROW THAT MAKES GADGETS COPY THE LAST SKILL USED, issue #1833, from 612.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    613)
+	//
+	// AND 614 SINCE THE ROW OF MANA WEAVER'S TEN-PIECE BONUS, issue #1833, from 613.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    614)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
