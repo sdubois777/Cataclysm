@@ -9658,12 +9658,29 @@ GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT = (
     "gadget_health_lost_percent_per_second")
 MAX_GADGET_HEALTH_LOST_PERCENT_PER_SECOND = 100.0
 
+#: The flag by which a summoner's gadgets cast a copy of the last skill the
+#: summoner used, at their own target, every 2 seconds. Ruled 2026-10-14 by
+#: the coordinating session on the enchantment session's plan, with the
+#: owner's option B ("the WHOLE skill is cast from the gadget"), for "Gadgets
+#: copy the last skill you used and fire it at their target once every 2
+#: seconds".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, Required Tags `Type.Deployable`,
+#: with no Condition, no Scale, no Action and no Action Event, as the other
+#: gadget flags. THE 2 SECONDS ARE THE ENGINE'S,
+#: `ACataclysmMinion::SecondsBetweenSkillCopies`, and not the row's: the row is
+#: a flag. `ACataclysmMinion::GadgetsCopyYourLastSkillStat` holds the same
+#: name, and `TestGadgetsCopyTheLastSkillUsed` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+GADGETS_COPY_YOUR_LAST_SKILL_STAT = "gadgets_copy_your_last_skill"
+
 #: The stats a summoner's row gives its gadgets that are flags: a flat 1, read
 #: as above nought.
 GADGET_FLAG_STATS = (
     GADGETS_TARGET_MOST_HEALTH_STAT,
     GADGETS_BURST_ON_KILL_STAT,
     GADGETS_TAKE_NO_DAMAGE_STAT,
+    GADGETS_COPY_YOUR_LAST_SKILL_STAT,
 )
 
 #: How many seconds apart a summoner's gadgets fire at every enemy within
