@@ -499,7 +499,22 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 
 	int32 FloorsWalked = 0;
 	int32 Cleared = 0;
-	int32 Absorbed = 0;
+
+	// TWO WAYS A DUNGEON OF THE WAVE IS LOST, COUNTED APART. Ruled by the
+	// coordinating session under the owner's delegation, 2026-10-15.
+	//
+	// GONE BEFORE ITS TURN: it was not on the map when its turn came, so it
+	// was never walked. Since 2026-10-13 that counts an ordinary dungeon that
+	// hit its city and left, as well as one a city's fall absorbed.
+	//
+	// ABSORBED WHILE WALKED: it was on the map when it was entered, and the
+	// run no longer had it when its walk ended, because its city fell while
+	// the player was inside. Its walk still goes to its bottom and costs its
+	// floors at the rate recorded on entry, and its clear counts for nothing.
+	// Issue #2414. Its own timer does not run while it is walked, so it cannot
+	// hit its city and leave in that time.
+	int32 GoneBeforeItsTurn = 0;
+	int32 AbsorbedWhileWalked = 0;
 
 	//: What the dungeons actually walked cost, added up as they are reached.
 	//
@@ -517,9 +532,10 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 		const FCataclysmDungeon* Standing = Bound.Run->FindDungeon(DungeonId);
 		if (Standing == nullptr)
 		{
-			// ABSORBED BY ITS CITY FALLING. It is off the map either way, which
-			// is what the check after this loop asks.
-			++Absorbed;
+			// GONE BEFORE ITS TURN: it hit its city and left, or its city fell
+			// and absorbed it. It is off the map either way, which is what the
+			// check after this loop asks.
+			++GoneBeforeItsTurn;
 			continue;
 		}
 
@@ -544,8 +560,21 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 
 		++FloorsWalked;
 
-		while (!Bound.Mode->IsOnTheLastFloor())
+		// BOUNDED BY THE DEPTH READ BEFORE ENTRY, as
+		// `ReachingTheBottomTakesTheDungeonOffTheMap` walks. A dungeon of
+		// `Floors` floors needs `Floors - 1` descents, so its last floor is
+		// found on pass `Floors` at the latest, and the bound ends the walk
+		// only when the game never says the last floor was reached. Before
+		// issue #2414 a walk whose city fell had no last floor, and the loop
+		// that stood here walked until the editor ran out of memory.
+		bool bReachedTheLastFloor = false;
+		for (int32 Descent = 1; Descent <= Floors; ++Descent)
 		{
+			if (Bound.Mode->IsOnTheLastFloor())
+			{
+				bReachedTheLastFloor = true;
+				break;
+			}
 			if (!Bound.Mode->GoDownOneFloor())
 			{
 				break;
@@ -553,29 +582,48 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 			++FloorsWalked;
 		}
 
+		TestTrue(FString::Printf(
+			TEXT("the walk of dungeon %d stopped on its last floor and not at the bound of %d passes"),
+			DungeonId, Floors),
+			bReachedTheLastFloor);
+
 		TestEqual(FString::Printf(
 			TEXT("dungeon %d was walked to its bottom floor %d"),
 			DungeonId, Floors),
 			Bound.Mode->FloorNumber, Floors);
 
+		// ASKED AT THE END OF THE WALK, BEFORE THE DESCENT THAT BEATS IT:
+		// whether the run still has it. A dungeon whose city fell while the
+		// player was inside is gone by now, and beating it counts for nothing.
+		const bool bAbsorbedWhileWalked = Bound.Run->FindDungeon(DungeonId) == nullptr;
+
 		// THE DESCENT PAST THE LAST FLOOR IS BEATING IT.
 		Bound.Mode->GoDownOneFloor();
-		++Cleared;
+		if (bAbsorbedWhileWalked)
+		{
+			++AbsorbedWhileWalked;
+		}
+		else
+		{
+			++Cleared;
+		}
 
 		TestNull(FString::Printf(TEXT("dungeon %d is off the map"), DungeonId),
 				 Bound.Run->FindDungeon(DungeonId));
 	}
 
 	AddInfo(FString::Printf(
-		TEXT("a wave of %d: %d cleared, %d absorbed by their cities falling "
-			 "first; %d floors walked over %d days"),
-		WaveSize, Cleared, Absorbed, FloorsWalked, DaysWalkingCost));
+		TEXT("a wave of %d: %d cleared, %d gone before their turn (hit their "
+			 "city and left, or absorbed by its fall), %d absorbed while "
+			 "walked; %d floors walked over %d days"),
+		WaveSize, Cleared, GoneBeforeItsTurn, AbsorbedWhileWalked, FloorsWalked,
+		DaysWalkingCost));
 
-	// EVERY DUNGEON OF THE WAVE IS OFF THE MAP, one way or the other. Clearing
-	// it and its city falling on it are the two ways a dungeon leaves, and the
-	// count above says which happened to each.
-	TestEqual(TEXT("every dungeon of the wave was accounted for"),
-			  Cleared + Absorbed, WaveSize);
+	// EVERY DUNGEON OF THE WAVE IS OFF THE MAP, one way or another. It was
+	// cleared, gone before its turn, or absorbed while walked, and the counts
+	// above say which happened to each.
+	TestEqual(TEXT("every dungeon of the wave was accounted for: cleared, gone before its turn, or absorbed while walked"),
+			  Cleared + GoneBeforeItsTurn + AbsorbedWhileWalked, WaveSize);
 
 	for (const int32 DungeonId : Wave)
 	{
@@ -586,10 +634,16 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// AND MOST OF IT WAS WALKED RATHER THAN LOST. A run where every dungeon
 	// vanished before the player reached it would satisfy the line above while
 	// measuring nothing about walking.
+	//
+	// LEFT AS IT WAS, PENDING A RULING (2026-10-15). `GoneBeforeItsTurn` is
+	// what `Absorbed` counted here. Since 2026-10-13 an ordinary dungeon of
+	// the wave can be gone before its turn because it hit its city and left,
+	// which is not about walking, so this can now fail for a reason that is
+	// not this test's subject.
 	TestTrue(FString::Printf(
 				 TEXT("%d of the wave's %d dungeons were walked"), Cleared,
 				 WaveSize),
-			 Cleared > Absorbed);
+			 Cleared > GoneBeforeItsTurn);
 
 	// AND THE DAY MOVED BY EXACTLY WHAT THOSE WALKS COST, because nothing in
 	// this run has shortened one. One floor costs one day as a starting rate,
@@ -597,9 +651,13 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// are the sum of each dungeon's own walk cost rather than the floor count.
 	// Depth and reward are the same axis; depth and time are not, once a player
 	// has invested or a sub-type has intervened.
+	//
+	// A DUNGEON ABSORBED WHILE WALKED IS IN THAT SUM. Its walk cost its floors
+	// at the rate recorded on entry, issue #2414, so it is counted among the
+	// dungeons walked although its clear was not.
 	TestEqual(FString::Printf(
 		TEXT("walking %d floors across %d dungeons cost %d days"),
-		FloorsWalked, Cleared, DaysWalkingCost),
+		FloorsWalked, Cleared + AbsorbedWhileWalked, DaysWalkingCost),
 		Bound.Run->Day(), StartedOnDay + DaysWalkingCost);
 
 	// AND EVERY FLOOR OF THOSE DUNGEONS WAS ACTUALLY WALKED. A run whose day
@@ -610,10 +668,11 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 
 	// A WAVE IS WEEKS OF WORK, not an afternoon. Outpost dungeons are 8 to 15
 	// floors each, which is what makes ignoring one a real decision rather than
-	// an obvious mistake.
+	// an obvious mistake. A dungeon absorbed while walked was walked to its
+	// bottom too, so it is counted with the ones cleared.
 	TestTrue(FString::Printf(
-		TEXT("clearing what was left of the wave cost %d days"), FloorsWalked),
-		FloorsWalked >= Cleared * 8);
+		TEXT("walking what was left of the wave took %d floors"), FloorsWalked),
+		FloorsWalked >= (Cleared + AbsorbedWhileWalked) * 8);
 
 	return true;
 }
