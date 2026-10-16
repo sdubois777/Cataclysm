@@ -358,7 +358,44 @@ Failed assertions in each test, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-16 under the lock enchant-g2, for two layers in this order: the `SkillGadget`
+row of the Minion Types sheet (with the three pins it moves) and this mechanism. The suite and Python were run at the
+top of the two, which holds both. THE WINDOW WAS STARTED TWICE.
+
+- **First start (g1), on development 07218734: two tests failed**, "3793 tests performed, 3791 succeeded, 2 failed".
+  Both were faults of the tests, recorded in the sections above: test 14 held a Celestial Sword, whose Heavy row has
+  no `SkillName`, so its set-up refused it; test 9 expected the flat 300 without the whip's Slashing sub-type, which
+  makes it 330. The lock was released and the coordinating session ruled both corrections. The assets step had
+  passed; Python and the proofs did not run.
+- **Second start (g2), on development 8eae90d4 (the simulation stack's merge; no game file), every step as registered:**
+  - **The asset rebuild:** exactly `DT_MinionTypes.uasset` and `datatable_asset_sources.json` changed. The asset
+    joined the type layer as a commit of its own, and this mechanism was made again on it.
+  - **Build:** "Build: Succeeded - 36 actions, 33 files compiled".
+  - **The whole Unreal suite:** "3793 tests performed, 3793 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 3793 tests in the tree at bb9eee45d; 3793 performed, gap 0". Registered 3793 and 0: the 3778 measured
+    in row B's window, and the fifteen of `Cataclysm.SkillGadgets.`. The stat probe is inside an existing test.
+  - **Python:** "6444 passed, 8 skipped"; JUnit tests 6452, failures 0, errors 0, skipped 8. Lint: "All checks
+    passed!".
+  - **A stall guard** watched every editor run and would have ended the editor and released the lock after 20
+    minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SkillGadgets.`, 15 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| G-I | the fire-rate row does not shorten the clock | 1 failed, `TheClockIsTheSlotsCooldownAfterItsRowsAndTheFireRateRowShortensIt` | 2 / 2 | 15 of 15 succeeded |
+| G-II | the spell part keeps the gadget spell damage row | 1 failed, `AGadgetDamageRowRaisesTheCastAndCountsOnceOnASpell` | 1 / 1 | 15 of 15 succeeded |
+| G-III | the gadget's age is not passed in | 1 failed, `TheAgeRowReadsTheGadgetsAgeAndStillnessIsJudgedOnTheGadget` | 1 / 1 | 15 of 15 succeeded |
+
+The measured lines: G-I, the clock "to be 0.666667, but it was 1.000000" and "the third cast ... to be 3, but it was
+2"; G-II, the gadget's Anathema "to be 520.000000, but it was 539.500000" (the 30% counted a second time on the
+spell part); G-III, the 3-second gadget "to be 357.500000, but it was 275.000000" (an age of none).
+
+**Not measured:** the stat probe's failure under any break, because the proofs ran only this prefix; and no test
+wears the four rows, which the enchantment session writes in a layer of its own.
 
 ---
 
