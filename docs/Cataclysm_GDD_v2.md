@@ -4000,7 +4000,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - If a dungeon resolves undefeated, its listed consequence occurs (usually city damage or population loss). An ordinary dungeon hits its city once and then leaves the map.
   - If a city falls, it becomes a Dungeon City — a staging ground with more floors and multiple boss fights, triggering a Surge.
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
-  - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell**, which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
+  - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell and was absorbed by it** (a Quest dungeon moves away instead and is not counted), which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
   - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A death resolves an ordinary dungeon and no other kind: dying in a Quest dungeon or a Dungeon City costs the same days, the player leaves that dungeon, and nothing resolves. A Quest dungeon's city pays nothing for the death; its timer is not touched by the death, runs on through the days paid, and hits the city when it runs out. That much is a judgement made on 2026-10-09 under the project owner's delegation. The rest of this rule was ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning for both.
@@ -4094,12 +4094,17 @@ This makes a surviving player's escape worth something to the whole party, and i
 A Quest dungeon's timer running out hits its host city. The city takes what an
 ordinary dungeon's hit takes from a city of its tier, whatever the Quest
 dungeon's own depth and whatever tier it was first placed on. If that hit fells
-the city, the Quest dungeon is absorbed into the fallen city with every other
-dungeon on it. Otherwise the timer
+the city, the Quest dungeon is not absorbed: like every Quest dungeon standing on
+a city that falls, for any reason, it moves at once to an adjacent city, keeping
+its floors, its timer, its sub-type and the quest progress it carries, and its
+timer refreshes because it has just hit. Otherwise the timer
 refreshes to full and the dungeon **may move to an adjacent city** — adjacency as
 section IX defines it, the rim's perimeter links included. It may only move onto a
 city a surge could have put a dungeon on: one that is exposed, has not fallen,
-and is not the Pillar. When no neighbour qualifies it stays where it is.
+and is not the Pillar. When no neighbour qualifies it stays where it is. A Quest
+dungeon whose city has fallen cannot stay: when no neighbour qualifies it goes to
+the nearest city, counted in lanes, that does. A player walking a Quest dungeon
+whose city falls goes on walking it; the dungeon has only moved.
 
   
 
@@ -4117,6 +4122,13 @@ timer runs out, at the size of an ordinary dungeon's hit for that city, then
 refresh or move as before, and the owner accepted that with the words "your rec
 on all three, continue". 2026-10-13 supersedes both: it reverses 2026-10-09 and
 returns to the sentence of 2026-10-08.
+
+On 2026-10-16, verbatim: "Quest dungeons don't go away when a city falls. They
+just move to an adjacent city. So eventually they should be hitting something.
+Other than that they work the same as any other dungeon but provide quest
+progress and should probably be themed towards whatever the quest is for."
+Until that day a Quest dungeon on a city that fell was absorbed with the rest.
+Theming a Quest dungeon to its quest is a later item.
 
   
 

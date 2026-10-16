@@ -272,6 +272,8 @@ class Simulation:
         self.cataclysm: Dungeon | None = None
         self.next_surge_day = 0.0
         self.surge_index = 0        # how many surges have happened
+        #: Quest dungeons moved off a city as it fell, since 2026-10-16.
+        self.quest_moves_on_a_fall = 0
         self.surge_log: list[tuple[int, float, int]] = []  # (day, gap, count)
         #: Of those, how many were pulled forward by the board being empty
         #: rather than arriving on the clock. Issue #1406. Counted so that a
@@ -837,13 +839,18 @@ class Simulation:
             if cfg.quest_timer_hits_city and not city.fallen:
                 self._quest_hit(d, city)
 
-                # THE HIT FELLED THE CITY AND THE FALL ABSORBED THIS DUNGEON
-                # with every other dungeon on it, so nothing is left to
-                # refresh or to move, and no draw is taken. `_fall` spares
-                # the dungeon the player is inside; that one is still on
-                # the map and goes on to the refresh and the move below.
+                # THE HIT FELLED THE CITY AND THE FALL MOVED THIS DUNGEON, since
+                # 2026-10-16 (owner: "Quest dungeons don't go away when a city
+                # falls. They just move to an adjacent city."). `_fall` moved
+                # it; it has just hit, so its timer refreshes to full, and it
+                # does not take the timer's own move as well that day.
                 if d.did not in self.dungeons:
                     return
+                if d.city_id != city.cid:
+                    d.resolve_in = float(d.resolve_max)
+                    return
+                # A FALL THAT FOUND NOWHERE TO GO leaves it on the fallen city;
+                # it refreshes and tries the move below, as before.
 
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
@@ -1097,8 +1104,22 @@ class Simulation:
         self.empire._invalidate()
 
         # Every dungeon sitting on the city is absorbed into the Fallen City.
-        absorbed = [d for d in self.dungeons.values() if d.city_id == city.cid]
-        for d in absorbed:
+        standing = [d for d in self.dungeons.values() if d.city_id == city.cid]
+        for d in standing:
+            # A QUEST DUNGEON IS NOT ABSORBED, since 2026-10-16. The owner,
+            # verbatim: "Quest dungeons don't go away when a city falls. They
+            # just move to an adjacent city. So eventually they should be
+            # hitting something." It moves at once, with no coin, keeping its
+            # floors, remaining timer and sub-type; the walked one moves too and
+            # the walk goes on. When nowhere qualifies it stays on the fallen
+            # city, which happens only once no exposed city but the Pillar is
+            # left. `_quest_refuge` says where.
+            if d.dtype is DungeonType.QUEST:
+                refuge = self._quest_refuge(d, city)
+                if refuge is not None:
+                    d.city_id = refuge.cid
+                    self.quest_moves_on_a_fall += 1
+                continue
             if self.current is not None and d.did == self.current.did:
                 continue
             self.dungeons.pop(d.did, None)
@@ -1123,6 +1144,43 @@ class Simulation:
         if (cfg.surge_on_city_fall
                 and self.days_since_last_surge() >= cfg.surge_interval_min):
             self.trigger_surge(from_city_fall=True)
+
+    def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:
+        """Where a Quest dungeon on a city that has just fallen goes.
+
+        THE RELOCATION'S OWN FILTER, ruled by the coordinating session on
+        2026-10-16: an exposed city that has not fallen and is not the Pillar
+        (`Empire.adjacent_exposed_cities`), and not a city already holding a
+        Siege if this dungeon carries one. A sealed city never receives a
+        dungeon. AN ADJACENT ONE FIRST; when no neighbour qualifies, the
+        nearest qualifying city counted in lanes (the map's links, perimeter
+        included). Ties by `rng.choice`, one draw. None when no city
+        qualifies anywhere, which means the path to the Pillar is open.
+        """
+        cfg = self.cfg
+
+        def allowed(c: City) -> bool:
+            if d.subtype == "Siege" and self.sieges_on(c.cid) >= cfg.siege_max_per_city:
+                return False
+            return True
+
+        targets = [c for c in self.empire.adjacent_exposed_cities(fallen) if allowed(c)]
+        if not targets:
+            seen = {fallen.cid}
+            frontier = [fallen.cid]
+            while frontier and not targets:
+                ring = []
+                for k in frontier:
+                    for j in self.empire.neighbours(self.empire.cities[k]):
+                        if j not in seen:
+                            seen.add(j)
+                            ring.append(j)
+                targets = [self.empire.cities[j] for j in ring
+                           if self.empire.is_exposed(self.empire.cities[j])
+                           and j != self.empire.pillar_id
+                           and allowed(self.empire.cities[j])]
+                frontier = ring
+        return self.rng.choice(targets) if targets else None
 
     def _retake(self, city: City) -> None:
         city.fallen = False
