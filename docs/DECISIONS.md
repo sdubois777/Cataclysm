@@ -179,6 +179,47 @@ The ruling, a labelled judgement by the coordinating session, 2026-10-15: "Upgra
 ever loaded a save" exception; 0 "because it changes no other test's meaning". Both are made. The README paragraph
 says no test shows a non-zero value surviving a round trip. Not compiled or run when written.
 
+### Run
+
+The declared count of Unreal tests goes from 3732 to 3733 at this layer, on development `12fd0e70` and
+the fix for issue #2414.
+
+- **2026-10-14, window void-zones-w24, at `f3f4c9e3`**: the three retune layers on development `09ae318f`, before
+  the fix for issue #2414 existed. Build "Build: Succeeded - 50 actions, 45 files compiled". The whole Unreal suite
+  did not finish: after 770 tests had completed, `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`
+  walked for 65 minutes until the editor ran out of memory ("The paging file is too small"). The run printed
+  "unknown tests performed, 770 succeeded, 0 failed". Python "6362 passed, 8 skipped"; JUnit tests="6370"
+  failures="0". No proof was run. This is how issue #2414 was found.
+- **2026-10-15, window void-zones-w25, at `feaedf35`**: the fix for issue #2414 and the three retune layers on
+  development `12fd0e70`. Build "Build: Succeeded - 36 actions, 33 files compiled". Unreal "3740 tests performed,
+  3738 succeeded, 2 failed: ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor,
+  EveryFixtureHoldsEveryFieldItsRecordWrites"; "3740 performed, gap 0". Python "6368 passed, 8 skipped"; JUnit
+  tests="6376" failures="0". No proof was run. Each failure was ruled and corrected in its layer: the save fixture
+  in the hit-size layer, the dark-floor death test in the third retune layer.
+- **2026-10-15, window void-zones-w26, at `4e7bf05b`**: the same four layers with those two corrections. Build
+  "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.29.cpp". Unreal "3740 tests performed, 3740
+  succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3740 tests in the tree at 4e7bf05b; 3740
+  performed, gap 0". Python "6368 passed, 8 skipped in 262.82s"; JUnit tests="6376" failures="0" errors="0"
+  skipped="8". ruff "All checks passed!". The suite ran under a guard that stops it when no test completes for
+  20 minutes; it did not fire.
+
+In window void-zones-w25 this layer's own omission failed `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`;
+in window void-zones-w26, with the fixture carrying the field, it passed, and so did
+`Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes`.
+
+Guard proofs, run in window void-zones-w26 with `tools/unreal_build.py`'s `prove_cpp_guard`. Each printed "PROVED:
+with the break in: 1 tests performed, 0 succeeded, 1 failed ... | restored: 1 tests performed, 1 succeeded, 0
+failed". Failed assertions are counted from each first half's log, and each equals the count predicted before the
+run:
+
+| Proof | File | Break | Test | Failed assertions, predicted = printed |
+|---|---|---|---|---|
+| U1 | `CataclysmSurge.cpp` | `(Floors - UpgradeFloors) / Typical` became `Floors / Typical` | `Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes` | 4 = 4 |
+| U2 | `CataclysmSurge.cpp` | the stored upgrade floors became `Dungeon.UpgradeFloors = 0;` | the same | 8 = 8 |
+| U3 | `CataclysmSurge.cpp` | the stored upgrade floors became `= Deeper - Shallower;` | the same | 2 = 2 |
+
+Each layer was run as part of the stack, at the stack's head, and not alone. The figures above are the stack's.
+
 ---
 
 ## 2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for nothing (#2414)
