@@ -1429,6 +1429,122 @@ bool FCataclysmSaveWriterWritesTheDungeons::RunTest(const FString&)
 }
 
 /**
+ * The floors a city upgrade moved on a dungeon survive the run record. Written 2026-10-16.
+ *
+ * WHY A NUMBER IS WRITTEN BY HAND. `FCataclysmDungeon::UpgradeFloors` is set in play in one place,
+ * `CataclysmSurge.cpp` where a dungeon is made, and only on a city that bought one of the two upgrades that move
+ * floors. A run in which nobody bought one has nought on every dungeon, so
+ * `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`, which compares the saved figure with the
+ * live one, compares nought with nought and would pass with a file that dropped the field. Since 2026-10-13 a
+ * dungeon's hit is sized by `Floors` less `UpgradeFloors`, so a restored run that lost the field would hit harder
+ * than the run that was saved.
+ *
+ * ONE DAY IS ADVANCED, which lands the opening wave; nothing more is needed for a dungeon to stand. Seven is not a
+ * figure any rule gives: it is not nought and it is not a dungeon's whole depth.
+ *
+ * THIS TEST TOUCHES THE DISK, as every test in this file does, and deletes its slots on every path out.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterKeepsUpgradeFloorsTest,
+	"Cataclysm.SaveWriter.AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterKeepsUpgradeFloorsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// ONE DAY, WHICH LANDS THE OPENING WAVE.
+	Run->AdvanceDays(1);
+
+	if (!TestTrue(TEXT("dungeons are standing to save"), Run->DungeonCount() > 0))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// SEVEN FLOORS MOVED, WRITTEN BY HAND ON ONE STANDING DUNGEON, which is found again in the file by its number.
+	const int32 FloorsMoved = 7;
+	Run->Dungeons[0].UpgradeFloors = FloorsMoved;
+	const int32 MovedId = Run->Dungeons[0].DungeonId;
+
+	const FCataclysmDungeon* AboutToBeWritten = Run->FindDungeon(MovedId);
+	if (!TestTrue(TEXT("CONTROL: the dungeon about to be written holds 7 floors a city upgrade moved, not nought"),
+				  AboutToBeWritten != nullptr && AboutToBeWritten->UpgradeFloors == FloorsMoved))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FCataclysmDungeon* Saved = nullptr;
+	for (const FCataclysmDungeon& Candidate : Read->Dungeons)
+	{
+		if (Candidate.DungeonId == MovedId)
+		{
+			Saved = &Candidate;
+		}
+	}
+
+	if (TestNotNull(TEXT("the dungeon is in the file, found by its number"), Saved))
+	{
+		TestEqual(TEXT("the floors a city upgrade moved survive the file"), Saved->UpgradeFloors, FloorsMoved);
+	}
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
  * A restored schedule rolls the wave the live run would have rolled.
  *
  * **THIS IS THE TEST THE WHOLE SLICE EXISTS FOR, AND IT COMPARES THE NEXT WAVE

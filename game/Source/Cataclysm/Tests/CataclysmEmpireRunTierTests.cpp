@@ -7,6 +7,7 @@
 #include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -49,9 +50,11 @@
  * console commands and the first of those is covered too, in the last test
  * here, on a world that has been given a game instance.
  *
- * WHAT IS NOT COVERED, NAMED RATHER THAN LEFT TO BE ASSUMED. The console
- * command objects themselves are not executed here. What is covered is every
- * line of them below the argument parsing.
+ * WHAT IS NOT COVERED, NAMED RATHER THAN LEFT TO BE ASSUMED. The tier tests
+ * here do not execute the console command objects. What they cover is every
+ * line of them below the argument parsing. One test at the end of this file
+ * does execute `Cataclysm.EmpireAdvance`, for what it prints about the cities
+ * dungeons hit, and not for the tier.
  *
  * AND THE GAME MODE BRANCH OF `DifficultyTierIn` IS NOT COVERED EITHER, for the
  * reason `CataclysmDifficultyTierTests.cpp` gives at length: a test world has no
@@ -371,6 +374,188 @@ CATACLYSM_TEST(FCataclysmRunDescribesItsTierTest,
 	TestEqual(TEXT("and there were five of them to name"),
 			  Run->ActiveCataclysms.Num(), ATierThatIsNotTheDefault);
 
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// What the advance command prints about hits, 2026-10-16
+// --------------------------------------------------------------------------
+
+namespace CataclysmEmpireAdvanceCommandTest
+{
+	/**
+	 * An output device that keeps what was printed. The shape of `FCapturedOutput` in
+	 * `CataclysmShowDebtCommandTests.cpp`, written again here because that one is in that file's own namespace.
+	 */
+	struct FAdvanceCommandOutput : public FOutputDevice
+	{
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type,
+							   const class FName&) override
+		{
+			Lines.Add(FString(Text));
+		}
+
+		/** Everything printed, run together, for a plain substring test. */
+		FString All() const
+		{
+			return FString::Join(Lines, TEXT("\n"));
+		}
+
+		TArray<FString> Lines;
+	};
+
+	/**
+	 * Puts one dungeon on a city by hand, with its timer on the clock, as a surge would, and leaves `DaysLeft` on
+	 * the timer.
+	 */
+	void PlaceForTheAdvance(UCataclysmEmpireRun& Run, int32 DungeonId, ECataclysmDungeonType Type,
+							const FCataclysmCity& City, float DefencePoints, float PopulationPoints,
+							float DaysLeft)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = DungeonId;
+		Dungeon.Type = Type;
+		Dungeon.SubType = ECataclysmDungeonSubType::None;
+		Dungeon.CityId = City.CityId;
+		Dungeon.CityTier = City.Tier;
+		Dungeon.Floors = 20;
+		Dungeon.ResolveDays = 25.0f;
+		Dungeon.SpawnedDay = Run.Day();
+		Dungeon.DefenceDamage = DefencePoints;
+		Dungeon.PopulationDamage = PopulationPoints;
+		Run.Dungeons.Add(Dungeon);
+
+		Run.Clock->AddDungeon(DungeonId, Dungeon.Floors);
+		Run.Clock->SetResolveDays(DungeonId, Dungeon.ResolveDays);
+		for (FCataclysmDungeonTimer& Counting : Run.Clock->Timers)
+		{
+			if (Counting.DungeonId == DungeonId)
+			{
+				Counting.DaysUntilResolve = DaysLeft;
+			}
+		}
+	}
+}
+
+/**
+ * `Cataclysm.EmpireAdvance` names the city each dungeon hit. Written 2026-10-16.
+ *
+ * WHAT IT PRINTS. For each day something happened on, "Day %d: " and the parts of that day, among them "a dungeon
+ * hit <city> and left" for each entry of the day's `HitAndLeft` and "a Quest dungeon's timer hit <city>" for each
+ * entry of its `QuestHits`, the city's name read from the map. This test runs the registered command object, as a
+ * person typing it does, against a world given a game instance whose run is set by hand.
+ *
+ * THE RUN. Seed 1, one day spent to land the opening wave, and both lists emptied, as `MakeEmptyRun` in the empire
+ * layer's own tests does: the next wave is 90 days off. One ordinary dungeon on the map's first Outpost and one Quest
+ * dungeon on its second, each with two days left. THE CONTROL is the first advance, day 2, on which no timer runs
+ * out; the second advance, day 3, is the one both hit on.
+ *
+ * NOT TESTED: the label on the empire screen. It is a protected widget bound from the editor and is null in a test;
+ * its text comes from `UCataclysmEmpireMapLayout::LastHitLine`, which
+ * `Cataclysm.EmpireScreen.TheScreenNamesTheLastCityADungeonsTimerHit` covers.
+ */
+CATACLYSM_TEST(FCataclysmEmpireAdvanceNamesHitCitiesTest,
+	"Cataclysm.EmpireRun.TheAdvanceCommandNamesTheCityEachDungeonHit")
+{
+	using namespace CataclysmEmpireAdvanceCommandTest;
+
+	const int32 OrdinaryId = 9781;
+	const int32 QuestId = 9782;
+
+	IConsoleObject* Object = IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.EmpireAdvance"));
+	IConsoleCommand* Command = Object ? Object->AsCommand() : nullptr;
+	if (!TestNotNull(TEXT("set-up: Cataclysm.EmpireAdvance is registered"), Command))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+
+	// A GAME INSTANCE ON THE WORLD, HOLDING THE RUN, which is where the command looks for one.
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>(Instance);
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Run->Dungeons.Empty();
+	Run->Clock->Timers.Empty();
+	Instance->EmpireRun = Run;
+
+	// THE FIRST TWO OUTPOSTS STANDING, AND THEIR NAMES READ FROM THE MAP.
+	TArray<int32> Outposts;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (Outposts.Num() < 2 && City.Tier == ECataclysmCityTier::Outpost && !City.bFallen)
+		{
+			Outposts.Add(City.CityId);
+		}
+	}
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FCataclysmCity* OrdinaryCity = Run->Map->Find(Outposts[0]);
+	const FCataclysmCity* QuestCity = Run->Map->Find(Outposts[1]);
+	const FString OrdinaryCityName = OrdinaryCity->Name;
+	const FString QuestCityName = QuestCity->Name;
+
+	PlaceForTheAdvance(*Run, OrdinaryId, ECataclysmDungeonType::Basic, *OrdinaryCity, 100.0f, 40.0f, 2.0f);
+	PlaceForTheAdvance(*Run, QuestId, ECataclysmDungeonType::Quest, *QuestCity, 0.0f, 0.0f, 2.0f);
+
+	const FCataclysmDungeon* Ordinary = Run->FindDungeon(OrdinaryId);
+	if (!TestTrue(TEXT("set-up: the two cities have names, and not the same one"),
+				  !OrdinaryCityName.IsEmpty() && !QuestCityName.IsEmpty() && OrdinaryCityName != QuestCityName)
+		|| !TestNotNull(TEXT("set-up: the ordinary dungeon is on the map"), Ordinary)
+		|| !TestTrue(TEXT("set-up: its hit leaves its city standing"),
+					 Ordinary->DefenceDamage * Ordinary->BiteScale() < OrdinaryCity->Defence)
+		|| !TestTrue(TEXT("set-up: the command will find this run"),
+					 UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false) == Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FString OrdinarySentence = FString::Printf(TEXT("a dungeon hit %s and left"), *OrdinaryCityName);
+	const FString QuestSentence = FString::Printf(TEXT("a Quest dungeon's timer hit %s"), *QuestCityName);
+
+	// THE CONTROL: DAY 2, ON WHICH NO TIMER RUNS OUT.
+	{
+		FAdvanceCommandOutput Out;
+		Command->Execute(TArray<FString>{ TEXT("1") }, World, Out);
+		const FString Text = Out.All();
+
+		TestEqual(TEXT("CONTROL set-up: the command advanced one day"), Run->Day(), 2);
+		TestTrue(TEXT("CONTROL: the command printed something"), Out.Lines.Num() > 0);
+		TestFalse(TEXT("CONTROL: on a day with no hit it names no dungeon that hit and left"),
+				  Text.Contains(TEXT("a dungeon hit "), ESearchCase::CaseSensitive));
+		TestFalse(TEXT("CONTROL: nor a Quest dungeon's timer that hit"),
+				  Text.Contains(TEXT("a Quest dungeon's timer hit "), ESearchCase::CaseSensitive));
+	}
+
+	// DAY 3: BOTH TIMERS RUN OUT.
+	{
+		FAdvanceCommandOutput Out;
+		Command->Execute(TArray<FString>{ TEXT("1") }, World, Out);
+		const FString Text = Out.All();
+
+		TestEqual(TEXT("set-up: the command advanced to day 3"), Run->Day(), 3);
+		TestEqual(TEXT("set-up: one ordinary dungeon hit a city"), Run->DungeonsDetonated, 1);
+		TestEqual(TEXT("set-up: and one Quest timer did"), Run->QuestHits, 1);
+		TestTrue(TEXT("the day is printed"), Text.Contains(TEXT("Day 3: "), ESearchCase::CaseSensitive));
+		TestTrue(TEXT("it names the city the ordinary dungeon hit and left"),
+				 Text.Contains(OrdinarySentence, ESearchCase::CaseSensitive));
+		TestTrue(TEXT("and the city the Quest dungeon's timer hit"),
+				 Text.Contains(QuestSentence, ESearchCase::CaseSensitive));
+	}
+
+	World->DestroyWorld(false);
 	return true;
 }
 
