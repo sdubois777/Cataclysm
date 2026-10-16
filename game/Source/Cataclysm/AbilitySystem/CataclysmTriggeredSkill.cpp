@@ -64,7 +64,7 @@ static bool FindTheSkillUsed(AActor* Character, FName Named, FCataclysmWeaponSki
 }
 
 bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-									   float DamageShare, bool bPaysCost, const FVector* CastFrom)
+									   float DamageShare, bool bPaysCost, const FVector* CastFrom, AActor* CastBy)
 {
 	UCataclysmAbilitySystemComponent* System =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
@@ -100,6 +100,9 @@ bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeapon
 	// so nothing else reads it; see `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`.
 	Template->bFreeRepeatHasOrigin = CastFrom != nullptr;
 	Template->FreeRepeatOrigin = CastFrom ? *CastFrom : FVector::ZeroVector;
+	// AND THE ACTOR IT IS CAST FROM, when the caller names one: the gadget. Ruled 2026-10-15; see
+	// `UCataclysmSkillTemplate::FreeRepeatCastBy`.
+	Template->FreeRepeatCastBy = CastBy;
 	if (!System->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true))
 	{
 		System->ClearAbility(Handle);

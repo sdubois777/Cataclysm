@@ -991,6 +991,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// NOR THE SHARE OF ONE OF THIS CHARACTER'S POINT-BLANK SKILLS STRUCK AT AN ALLY INSIDE ITS AREA. Ruled 2026-10-15, for
+	// "Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies" (R6): it raises none of the
+	// three events below, and its kill none of this character's kill rows (see `OnSomethingDied`).
+	if (Notice.bAreaSkillShareOnAnAlly)
+	{
+		return;
+	}
+
 	UCataclysmAbilitySystemComponent* Acting =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 	if (!Acting)
@@ -1118,6 +1126,21 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 void ACataclysmPlayerCharacter::OnSomethingDied(
 	const FCataclysmDeathNotice& Notice)
 {
+	// A DEATH THE SHARE OF ONE OF THIS CHARACTER'S POINT-BLANK SKILLS MADE OF AN ALLY IS HEARD AS A DEATH NOBODY
+	// KILLED. Ruled 2026-10-15, for "Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies"
+	// (R6): no `kill` event, and none of the kill counts, Follow Through, health on a kill or anything else below that
+	// asks whether this character is the killer. ONCE, WITH THE KILLER TAKEN OFF A COPY, so every such question below
+	// answers no without each being changed, and the rows on a death this character did not cause still hear it.
+	// Every other listener still reads the striker as the killer.
+	if (Notice.bByAnAreaSkillShareOnAnAlly && Notice.Killer == this)
+	{
+		FCataclysmDeathNotice Uncredited = Notice;
+		Uncredited.Killer = nullptr;
+		Uncredited.bByAnAreaSkillShareOnAnAlly = false;
+		OnSomethingDied(Uncredited);
+		return;
+	}
+
 	// THE WORN ROWS FIRST, BEFORE THE KILLER TEST BELOW, because one of them
 	// fires on a death this character did NOT cause. Issue #1815.
 	if (UCataclysmAbilitySystemComponent* Acting =

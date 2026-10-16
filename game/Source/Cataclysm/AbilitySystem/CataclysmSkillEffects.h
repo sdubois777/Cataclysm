@@ -707,6 +707,24 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	bool bIsAShareOfDamageDoneToAnAlly = false;
 
+	/**
+	 * Above nought when this blow is the share of a point-blank skill's own blow that an ally inside its area is
+	 * struck for, and then the percent of the priced figure it is: the blow `UCataclysmSkillTemplate::
+	 * ShareTheBlowWithAllies` deals, for "Your AOE skills deal 50%-75% of their damage to nearby allies as well as
+	 * enemies". Ruled 2026-10-15 by the coordinating session. Set by `UCataclysmAreaShareOnAllies::MarkAsShare`.
+	 *
+	 * `UCataclysmSkillEffects::ApplyHit` PRICES THE BLOW FOR THE ALLY AS FOR AN ENEMY STANDING THERE, sends this
+	 * percent of the priced figure, and spends neither stored-damage store of the striker (R4, R7). The effect is
+	 * stamped with `UCataclysmSkillEffects::AreaSkillShareOnAnAllyDataName`. The hit announcement and the record of
+	 * the last blow carry it, and `ACataclysmPlayerCharacter` raises none of its rows for it: no `hit_dealt`,
+	 * `first_hit_dealt` or `critical_strike`, and no `kill` when the share kills (R6).
+	 *
+	 * A MARK OF ITS OWN, and not `bIsAShareOfDamageDoneToAnAlly`: that mark keeps its blow's DEFENDER's rows off and
+	 * keeps the blow from being shared again, and this blow's defender is the ally, whose loss "You take 5%-15% damage
+	 * done to nearby allies" still shares (R9).
+	 */
+	float AreaSkillShareOnAnAllyPercent = 0.0f;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{
@@ -1131,6 +1149,15 @@ public:
 	 * `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`.
 	 */
 	static const TCHAR* ShareOfDamageDoneToAnAllyDataName;
+
+	/**
+	 * The name an effect is stamped under when its blow is the share of a point-blank skill's own blow struck at an
+	 * ally inside its area, with any value above nought. Ruled 2026-10-15. A plain name and no gameplay tag, as
+	 * `ShareOfDamageDoneToAnAllyDataName` is. Read by `UCataclysmAreaShareOnAllies::IsAShare`, which
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` and `UCataclysmCombatEvents::NoteBlow` ask. See
+	 * `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`.
+	 */
+	static const TCHAR* AreaSkillShareOnAnAllyDataName;
 
 	/**
 	 * How far apart a blow's striker and `To` stood, in metres: from the point the blow's effect is stamped as

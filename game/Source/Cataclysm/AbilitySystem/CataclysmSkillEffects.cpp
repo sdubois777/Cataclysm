@@ -1006,8 +1006,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// whole (ruled 2026-09-24). The store is emptied by this blow, so the next
 	// target of the same use gets nothing, and `HitTargets` hits nearest first:
 	// that order is the only thing making "the first target" the nearest one.
-	float Sent = Damage;
-	if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime)
+	//
+	// A SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY IS THE ROW'S PERCENT OF THE FIGURE PRICED ABOVE FOR THAT
+	// ALLY, and spends neither store below. Ruled 2026-10-15 (R4, R7), for "Your AOE skills deal 50%-75% of their
+	// damage to nearby allies as well as enemies": the stores are the enemies' to spend, as without the row. See
+	// `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`.
+	const bool bAShareOnAnAlly = Arrived.AreaSkillShareOnAnAllyPercent > 0.0f;
+	float Sent = bAShareOnAnAlly ? Damage * Arrived.AreaSkillShareOnAnAllyPercent / 100.0f : Damage;
+	if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime && !bAShareOnAnAlly)
 	{
 		if (UCataclysmAbilitySystemComponent* Holder =
 				Cast<UCataclysmAbilitySystemComponent>(Source))
@@ -1022,7 +1028,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// spend Nothing Wasted's above. Each cap is measured against `Damage`, the
 	// hit's own figure, and not against `Sent`, so the three stores worn
 	// together can take one hit to four times its own damage and no further.
-	if (!Arrived.bIsSpell && !Arrived.bIsDamageOverTime)
+	if (!Arrived.bIsSpell && !Arrived.bIsDamageOverTime && !bAShareOnAnAlly)
 	{
 		if (UCataclysmAbilitySystemComponent* Holder =
 				Cast<UCataclysmAbilitySystemComponent>(Source))
@@ -1221,6 +1227,7 @@ const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.Struc
 const TCHAR* UCataclysmSkillEffects::StruckFromYDataName = TEXT("Cataclysm.StruckFromY");
 const TCHAR* UCataclysmSkillEffects::StruckFromZDataName = TEXT("Cataclysm.StruckFromZ");
 const TCHAR* UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName = TEXT("Cataclysm.ShareOfDamageDoneToAnAlly");
+const TCHAR* UCataclysmSkillEffects::AreaSkillShareOnAnAllyDataName = TEXT("Cataclysm.AreaSkillShareOnAnAlly");
 
 float UCataclysmSkillEffects::MetresFromWhereItWasStruck(const FGameplayEffectSpec& Spec, const AActor* From,
 														 const AActor* To)
@@ -1716,6 +1723,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsAShareOfDamageDoneToAnAlly)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ShareOfDamageDoneToAnAllyDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY INSIDE ITS AREA, which raises none of
+	// its striker's rows, the kill included. Ruled 2026-10-15. Not stamped otherwise.
+	if (Delivery.AreaSkillShareOnAnAllyPercent > 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(FName(AreaSkillShareOnAnAllyDataName), 1.0f);
 	}
 
 	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void

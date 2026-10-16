@@ -8782,3 +8782,203 @@ class TestAShareOfDamageDoneToNearbyAllies:
         assert any("under a required tag" in problem
                    and repr(self.STAT) in problem
                    for problem in problems), problems
+
+
+class TestAShareOfAPointBlankSkillsBlowOnAnAlly:
+    """`aoe_skill_damage_to_nearby_allies_percent`, ruled 2026-10-15 and built
+    ahead of its row, for "Your AOE skills deal 50%-75% of their damage to
+    nearby allies as well as enemies". One stat at a flat 50 to 75 with
+    Required Tags `Type.AOE.PointBlank`, no Condition, no Scale and no Action
+    (R10): `UCataclysmAreaShareOnAllies::PercentHeldFor` asks for it with the
+    skill's own tags, where a point-blank skill deals its own blow.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, on the Negative
+    side, where the real one is. The real row is the enchantment session's to
+    write; this shows that the generator carries the ruled row through and
+    refuses every shape the game would read wrongly.
+    """
+
+    WORDS = ("Your AOE skills deal 50%-75% of their damage to nearby allies "
+             "as well as enemies")
+    STAT = "aoe_skill_damage_to_nearby_allies_percent"
+    TAG = "Type.AOE.PointBlank"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 50,
+           "Value High": 75, "Required Tags": TAG}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 50.0, 75.0, self.TAG, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, {self.TAG}) == []
+
+    def test_the_stat_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the stat has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT == self.STAT
+        assert gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_REQUIRED_TAG == self.TAG
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "aoe_skill_damage_to_allies" not in (
+            gen.stats_with_no_attribute())
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmAreaShareOnAllies.cpp`. A name
+        spelt differently on the two sides would be refused by neither and
+        read by nothing. THE CONTROL is the name of "You take 5%-15% damage
+        done to nearby allies", read by the same pattern from
+        `CataclysmAllyDamageShare.cpp`, whose definition is split over two
+        lines as this one is, so a pattern that found nothing would fail there
+        first."""
+        import re
+        abilities = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'U(Cataclysm\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+
+        def names(file):
+            return {f"{owner}::{name}": value for owner, name, value in
+                    re.findall(pattern, (abilities / file).read_text(
+                        encoding="utf-8"))}
+
+        assert names("CataclysmAllyDamageShare.cpp")[
+            "CataclysmAllyDamageShare::PercentStat"] == (
+                gen.DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT)
+        assert names("CataclysmAreaShareOnAllies.cpp")[
+            "CataclysmAreaShareOnAllies::PercentStat"] == (
+                gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT)
+
+    def test_the_bound_of_100_is_the_one_the_engine_holds_the_figure_to(self):
+        """`PercentHeldFor` clamps the figure to between 0 and 100, read here
+        from its source, asked with the skill's tags; the generator's bound is
+        the same 100. The control is the clamp's lower bound, read by the same
+        pattern."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAreaShareOnAllies.cpp").read_text(
+                      encoding="utf-8")
+        clamp = re.search(
+            r"FMath::Clamp\(Cataclysm->StatForSkill\(FName\(PercentStat\), "
+            r"SkillTags, 0\.0f\), ([0-9.]+)f, ([0-9.]+)f\)",
+            source)
+        assert clamp is not None
+        assert float(clamp.group(1)) == 0.0
+        assert float(clamp.group(2)) == (
+            gen.MAX_AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT)
+
+    def test_an_allys_share_is_delivered_as_an_enemys_blow_of_the_swing(self):
+        """`ShareTheBlowWithAllies` builds the delivery `HitTargets` builds,
+        field for field and in its order, so the ally's blow is priced as an
+        enemy's of the same swing (R4). Read from
+        `CataclysmSkillTemplate.cpp`: the `Delivery.<field> =` lines of the
+        one function, in order, are those of the other. THE CONTROL is
+        `HitScaled`, whose body sets no delivery field, read by the same
+        pattern; and the list read from `HitTargets` holds its first and last
+        field, so a pattern that found nothing cannot pass."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmSkillTemplate.cpp").read_text(encoding="utf-8")
+
+        def fields(function):
+            start = source.index(
+                f"float UCataclysmSkillTemplate::{function}(")
+            body = source[start:source.index("\n}\n", start)]
+            return re.findall(r"\bDelivery\.(\w+)\s*=", body)
+
+        enemy = fields("HitTargets")
+        assert enemy[0] == "CritChancePercent"
+        assert enemy[-1] == "DamageMultiplierSpent"
+        assert fields("ShareTheBlowWithAllies") == enemy
+        assert fields("HitScaled") == []
+
+    def test_every_shape_the_game_would_read_wrongly_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A kind other than flat is one refusal; a missing tag is one;
+        another tag in its place is one; an action is one; a falling range is
+        one; a figure out of bounds in one column is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": ""}, "without the required tag"),
+                ({"RequiredTags": "Type.AOE.Aura"},
+                 "without the required tag"),
+                ({"Action": "health"}, "with the action 'health'"),
+                ({"ValueLow": 80.0}, "the range must rise"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -5.0}, "states -5 on"),
+                ({"ValueHigh": 150.0}, "states 150 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # A NARROWER ROW IS ACCEPTED: the tag beside another. A ROW OF ONE
+        # FIGURE AT THE BOUND IS ACCEPTED, and both columns out of bounds are
+        # two refusals.
+        assert self.refusals([dict(
+            row, RequiredTags="Type.AOE.PointBlank, Element.Demonic")]) == []
+        assert self.refusals([dict(row, ValueLow=100.0,
+                                   ValueHigh=100.0)]) == []
+        assert len(self.refusals([dict(row, ValueLow=-1.0,
+                                       ValueHigh=101.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{
+            "Name": "X#1",
+            "Stat": "damage_done_to_nearby_allies_taken_percent",
+            "ValueKind": "increased", "ValueLow": 500.0,
+            "ValueHigh": 1.0}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row
+        without its tag is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, {self.TAG}) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="")]},
+            {self.TAG})
+        assert any("without the required tag" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
