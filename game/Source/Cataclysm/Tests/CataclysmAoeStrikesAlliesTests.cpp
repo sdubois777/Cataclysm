@@ -16,7 +16,12 @@
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "GameFramework/PlayerController.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Player/CataclysmGameMode.h"
@@ -146,12 +151,13 @@ namespace CataclysmAoeStrikesAlliesTest
 		return Imp;
 	}
 
-	/** One flat figure an enchantment gives, required tag or none. */
+	/** One flat figure an enchantment gives, requiring `Type.AOE.PointBlank`, another named tag, or none. */
 	struct FHeld
 	{
 		const TCHAR* Stat = nullptr;
 		float Value = 0.0f;
 		bool bPointBlankOnly = false;
+		const TCHAR* OtherRequiredTag = nullptr;
 	};
 
 	/** Give this character flat figures from an enchantment, as worn rows would, replacing any it held. */
@@ -172,6 +178,11 @@ namespace CataclysmAoeStrikesAlliesTest
 			if (Stat.bPointBlankOnly)
 			{
 				Flat.RequiredTags.AddTag(PointBlankTag());
+			}
+			if (Stat.OtherRequiredTag)
+			{
+				Flat.RequiredTags.AddTag(
+					FGameplayTag::RequestGameplayTag(FName(Stat.OtherRequiredTag), /*ErrorIfNotFound=*/false));
 			}
 			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat.Stat));
 			Line.Base = 0.0f;
@@ -795,6 +806,101 @@ CATACLYSM_AOE_ALLIES_TEST(FCataclysmAoeStrikesAlliesZoneTest,
 	TestTrue(*FString::Printf(TEXT("control: the zone's sweep burns the enemy inside it: %.2f"),
 		EnemyBefore - HealthOf(Enemy)), HealthOf(Enemy) < EnemyBefore);
 	TestEqual(TEXT("and gives the imp inside it nothing"), HealthOf(Ally), AllyBefore, 0.01f);
+	return true;
+}
+
+CATACLYSM_AOE_ALLIES_TEST(FCataclysmAoeStrikesAlliesGadgetCopyTest,
+	"Cataclysm.AoeStrikesAllies.AGadgetsCopyOfAPointBlankSkillStrikesTheAllyBesideItAndNotTheGadget")
+{
+	using namespace CataclysmAoeStrikesAlliesTest;
+
+	// The rig of `Cataclysm.GadgetCopiesSkill.`: a possessed player holding a Demonic Whip, a weapon damage of 100,
+	// and a Bolt Turret of its own placed 20 m along Y. The whip's Ultimate, The Gathering, is a point-blank Strike of
+	// 14 m all round, and its use is announced by hand so the turret copies it. A creature 3 m along X from the turret
+	// is the turret's target; an imp of the player's 3 m along -X from the turret is the ally beside it. Ruled
+	// 2026-10-15 by the coordinating session: the casting gadget is excluded.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Wearer =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player state"), State) || !TestNotNull(TEXT("set-up: a controller"), Controller)
+		|| !TestNotNull(TEXT("set-up: a wearer"), Wearer))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(State);
+	Controller->Possess(Wearer);
+	UCataclysmWeaponSlotsComponent* Slots = Wearer->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	if (!TestNotNull(TEXT("set-up: the wearer's weapon slots"), Slots))
+	{
+		return false;
+	}
+	Slots->SetDamageType(TEXT("Demonic"));
+	Slots->EquipWeaponType(TEXT("Whip"));
+	SetHealth(Wearer, 10000.0f, 10000.0f);
+	SetAttribute(Wearer, Combat::GetAttackDamageAttribute(), 100.0f);
+	SetAttribute(Wearer, Vital::GetMaxManaAttribute(), 1000.0f);
+	SetAttribute(Wearer, Vital::GetManaAttribute(), 1000.0f);
+
+	FCataclysmWeaponSkill Gathering;
+	if (!TestTrue(TEXT("set-up: the wearer holds The Gathering. If not, DT_WeaponSkills may be older than "
+				   "game/Data/WeaponSkills.csv: run tools/generate_datatable_assets.py"),
+			UCataclysmTriggeredSkill::HeldSkillNamed(Wearer, FName(TEXT("The Gathering")), Gathering))
+		|| !TestTrue(TEXT("set-up: it is point blank"), Gathering.Tags.HasTag(PointBlankTag()))
+		|| !TestTrue(TEXT("set-up: and a skill a row may cast again"), UCataclysmTriggeredSkill::RepeatsFromARow(Gathering)))
+	{
+		return false;
+	}
+
+	const FVector TurretAt(0.0f, 20.0f * M, 0.0f);
+	ACataclysmMinion* Turret =
+		ACataclysmMinion::Spawn(Wearer, TurretAt, /*Lifetime=*/600.0f, /*bBurns=*/false, TEXT("BoltTurret"));
+	ACataclysmEnemyCharacter* Creature =
+		World->SpawnActor<ACataclysmEnemyCharacter>(TurretAt + FVector(3.0f * M, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmMinion* Beside = SpawnImp(Wearer, TurretAt + FVector(-3.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a turret"), Turret)
+		|| !TestEqual(TEXT("set-up: DT_MinionTypes supplied the BoltTurret row"), Turret->TypeName,
+			FString(TEXT("BoltTurret")))
+		|| !TestNotNull(TEXT("set-up: a creature"), Creature) || !TestNotNull(TEXT("set-up: an imp"), Beside))
+	{
+		return false;
+	}
+	Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	SetHealth(Creature, 100000.0f, 100000.0f);
+	SetHealth(Turret, Pool, Pool);
+	if (!TestTrue(TEXT("set-up: the turret is the wearer's ally"), UCataclysmTargeting::IsFriendlyTo(Turret, Wearer)))
+	{
+		return false;
+	}
+
+	const FVector Aim = Creature->GetActorLocation();
+	UCataclysmCombatEvents::NoteSkillUsed(Wearer, Gathering.Name, Gathering.Tags, Gathering.Slot, &Aim,
+										  /*bHasCooldown=*/true);
+	Hold(Wearer, {{ACataclysmMinion::GadgetsCopyYourLastSkillStat, 1.0f, false, TEXT("Type.Deployable")},
+				  {UCataclysmAreaShareOnAllies::PercentStat, Percent, /*bPointBlankOnly=*/true}});
+	if (!TestTrue(TEXT("set-up: the turret's target is the creature"), Turret->SkillCopyTarget() == Creature))
+	{
+		return false;
+	}
+
+	ACataclysmMinion::GadgetStep(Turret);
+	if (!TestEqual(TEXT("set-up: the turret casts one copy on its step"), Turret->SkillCopiesMade, 1)
+		|| !TestTrue(*FString::Printf(TEXT("control: the copy strikes the turret's target: %.2f"),
+			100000.0f - HealthOf(Creature)), HealthOf(Creature) < 100000.0f))
+	{
+		return false;
+	}
+	TestTrue(*FString::Printf(TEXT("control: the imp beside the turret is struck for its share: %.2f"),
+		Pool - HealthOf(Beside)), HealthOf(Beside) < Pool);
+	TestEqual(TEXT("and the turret the copy is cast from, at the centre of its own swing, loses nothing"),
+		HealthOf(Turret), Pool, 0.01f);
 	return true;
 }
 
