@@ -49,12 +49,14 @@ public:
 	 * @param InSkillTags     the firing skill's tags, so its blows scale and are
 	 *                        mitigated the way that skill's blows should be
 	 * @param bInBurns        whether it sets what it strikes alight
+	 * @param InCastBy        the actor the throwing use was cast from, when its caller named one: a skill gadget,
+	 *                        carried into every later blow. Ruled 2026-10-16, skill gadgets stack 2 (P5).
 	 * @return the component, or null if the creature cannot take one
 	 */
 	static UCataclysmBuriedWeapon* BuryIn(AActor* Target, AActor* Caster,
 										  float RangeCm, float InDamagePercent,
 										  const FGameplayTagContainer& InSkillTags,
-										  bool bInBurns);
+										  bool bInBurns, AActor* InCastBy = nullptr);
 
 	/**
 	 * Tear free of a dying creature and bury in the nearest living enemy.
@@ -93,4 +95,12 @@ public:
 	/** How many creatures it has moved through. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Buried Weapon")
 	int32 Leaps = 0;
+
+	/**
+	 * The actor the throwing use was cast from, or empty. A SKILL GADGET'S AXE IS THE GADGET'S WHILE THE GADGET STANDS:
+	 * each leap's blow carries it as `FCataclysmHitDelivery::CastBy`, so it is priced as the gadget's long after the
+	 * use ended; once the gadget is destroyed it is the player's. Ruled 2026-10-16, skill gadgets stack 2 (P5).
+	 */
+	UPROPERTY()
+	TWeakObjectPtr<AActor> CastBy;
 };

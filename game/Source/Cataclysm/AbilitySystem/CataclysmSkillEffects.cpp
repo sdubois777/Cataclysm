@@ -741,8 +741,9 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// damage both and the attack damage row already reaches the whole blow; (b, c) while the blow is priced the
 	// player's conditions read the gadget's age and the gadget's stillness; (d) the flat attack damage rows naming
 	// gadgets are added to the blow; (e) `deployable_hit` is raised once it is dealt. Nothing for every other blow,
-	// a gadget's copy of its summoner's last skill included: `SkillGadgetCasting` answers null for it.
-	const ACataclysmMinion* const SkillGadget = ACataclysmMinion::SkillGadgetCasting(Delivery.Skill.Get());
+	// a gadget's copy of its summoner's last skill included: `SkillGadgetCasting` answers null for it. ASKED OF THE
+	// DELIVERY, which carries the gadget for a blow landing after its use has ended (stack 2, item 3).
+	const ACataclysmMinion* const SkillGadget = ACataclysmMinion::SkillGadgetCasting(Delivery);
 	UCataclysmAbilitySystemComponent* const GadgetsPlayer =
 		SkillGadget ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
 	const FGameplayTag NamesGadgets =

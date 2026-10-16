@@ -554,6 +554,14 @@ public:
 	FVector StrikesFromPoint = FVector::ZeroVector;
 
 	/**
+	 * The actor the use that fired this was cast from, when its caller named one: the use's `FreeRepeatCastBy`, set
+	 * by `UCataclysmProjectileSkill` just after `Fire` at its three places. Ruled 2026-10-16 (skill gadgets, stack 2,
+	 * item 3). Copied into every contact's delivery as `FCataclysmHitDelivery::CastBy`, so a shot that lands after
+	 * its use has ended, the last axes of a rack, is still priced as a skill gadget's. Weak, as `FiringSkill` is.
+	 */
+	TWeakObjectPtr<AActor> CastBy;
+
+	/**
 	 * A stand-in for the flying object, sized to BodyRadiusCm when it is fired.
 	 *
 	 * WITHOUT THIS EVERY PROJECTILE IN THE GAME IS INVISIBLE, and every one of
