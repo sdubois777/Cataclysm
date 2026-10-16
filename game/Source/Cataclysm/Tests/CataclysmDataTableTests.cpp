@@ -163,7 +163,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// with issue #338, because their numbers lived only in prose and Iron
 	// Fortress deploys two ballistae AND three spike traps, which a skill row
 	// cannot say on its own.
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             5)
+	// AND 6 SINCE 2026-10-16: the skill gadget, the machine a slot converted by an
+	// enchantment places. It casts the player's own skill and has no blow of its
+	// own, so no skill row produces it and its base damage is 0.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             6)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been
