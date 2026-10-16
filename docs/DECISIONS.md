@@ -2,6 +2,233 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-16 — In the simulation a Quest dungeon never rolls a Siege, as an interim rule until each Cataclysm's Quest dungeon type is built
+
+**Simulation only; the game is unchanged.** A Quest dungeon's sub-type roll leaves out the Siege; an ordinary dungeon
+still rolls it. Built as a second row of `TuningConfig.SUBTYPES_FORBIDDEN_ON` (`Quest: ("Siege",)`), beside the
+Cataclysm dungeon's Cow Level. **It is interim**: the owner has since named a fixed sub-type for every Cataclysm's
+Quest dungeons, and the next layer replaces this row with that mapping.
+
+### What the owner said, and who ruled
+
+The owner, 2026-10-16, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and
+provide the player with a bit of an incentive to address them asap." And, the same day: "Oh I should be more clear.
+War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
+
+The interim row, its tests and the design-document lines were ruled by the coordinating session the same day, a
+labelled judgement under the owner's delegation.
+
+### It reverses a recorded position
+
+The entry "2026-09-06 — A Quest dungeon moves on a coin of 0.5…" says: "Barring a Quest dungeon from carrying the Siege
+sub-type at all was rejected because it would add a second sub-type legality exception". The owner capped sub-type
+exclusions that day at "Only the one you ruled" (issue #1333, the Cataclysm's Cow Level). The owner's sentences of
+2026-10-16 go past both, and this row is the second exception.
+
+### Why: the Siege is how cities fall
+
+Measured 2026-10-16 (500 campaigns, seeds 0 to 499, ordinary damage x0.7, the waves of 12 and 8; a fall counted
+when `_fall` runs while `_apply_siege_damage` does, so Sieges carried by ordinary dungeons are counted too):
+
+| | undefended lost by day 2000, T1 / T2 / T3 / T4 (median day) | Explorer triage T1 won / cities lost / falls during a Siege bite | no-tree triage T1 won / cities lost / falls during a Siege bite | Quest dungeons standing on an average day, Explorer / no tree |
+|---|---|---|---|---|
+| before the Quest move | 99.6 (1137) / 100 (712) / 100 (538) / 100 (453) | 51.0% / 1.29 / 95.2% | 43.6% / 2.67 / 86.5% | 0.84 / 1.10 |
+| the Quest move | 100 (675) / 100 (425) / 100 (306) / 100 (246) | 49.4% / 1.85 / 94.8% | 41.4% / 4.23 / 88.9% | 0.89 / 1.24 |
+| (b) the move, and no Siege on a Quest dungeon (this entry) | 100 (1006) / 100 (652) / 100 (504) / 100 (426) | 51.0% / 1.18 / 94.1% | 45.8% / 2.35 / 85.1% | 0.90 / 1.21 |
+| (c) the move, and a Quest dungeon's Siege dropped when it moves | 100 (945) / 100 (615) / 100 (480) / 100 (401) | 50.0% / 1.36 / 94.7% | 44.2% / 2.78 / 86.8% | 0.88 / 1.22 |
+
+About 95% of the Explorer player's city falls, and 85% to 89% of the no-tree player's, happen during a Siege's daily
+bite. Lowering every ordinary row's damage from x0.7 to x0.6 and x0.5 with the Quest move moved the Explorer player's
+cities lost only to 1.76 and 1.78, because a Siege's bite is a share of the city's maximum and reads no row. A Quest
+dungeon carrying a Siege, no longer absorbed when its city fell, went on biting city after city.
+
+Measured again on the committed code (3a48236a): the same as row (b).
+
+### Design document
+
+The Siege row of the sub-type table: "A Quest dungeon never rolls Siege: the only Siege Quest dungeons will be War's
+(see World War), once War exists." World War: "A War quest's dungeon is always a Siege: it bites its city every day
+and moves on when the city falls, until the player clears it. War is not built yet." followed by both owner lines.
+After the spawn-weight table: "A Quest dungeon cannot be a Siege, and a Cataclysm dungeon cannot be a Cow Level; for
+those kinds the excluded weight is shared by the others in proportion."
+
+### Tests
+
+New: `sim/tests/test_a_quest_dungeon_never_rolls_a_siege.py` (the kinds' lists differ only by the Siege, with the
+Cataclysm's exclusion still holding; a draw forced onto the Siege is a Siege for an ordinary roll and not for a Quest
+roll; 1,000 Quest rolls give no Siege, CONTROL 1,000 ordinary rolls give some). Guard proof with
+`tools/prove_guard.py` in a copy, the new row removed: "PROVED: 3 failed in 0.13s | restored: 3 passed in 0.04s",
+named failures the three tests above.
+Changed by ruling: `sim/tests/test_cataclysm_cannot_be_a_cow_level.py`: `test_the_model_records_exactly_two_forbidden_pairs` (was `..._exactly_one_forbidden_pair`) and `test_every_other_kind_of_dungeon_can_still_be_anything` (a Quest dungeon may roll everything but the Siege); `tools/tests/test_dungeon_subtype_port.py`: `test_the_model_bars_exactly_two_pairs` (was `..._exactly_one_pair`; it records that this reverses the 2026-09-06 position) and the game comparison checks the Cataclysm's pair only; `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py` gains `test_the_model_bars_a_quest_dungeon_from_the_siege` and `test_the_game_still_lets_a_quest_dungeon_roll_a_siege`; `sim/tests/test_siege_subtype.py`: the besieged-city built-board test runs for an ordinary dungeon only; `sim/tests/test_quest_relocation_is_adjacent.py`: `test_the_situation_is_not_reachable_in_play_for_now` (was `test_the_situation_is_reachable_at_all`; 100 campaigns, CONTROL Quest dungeons are made and another kind carries a Siege). The Siege-mix prose in `siege_daily_damage` (`policies.py`) was re-measured by its test's own method (seeds 0 to 9,999): 47,102 Sieges, 95% on ordinary dungeons, 0% Quest, 4% Fallen City, 2% Cataclysm, 4.71 a campaign. Three guard proofs, all PROVED (the game's barred-pair switch given a Quest case; the empty-board check removed; the Quest Siege row removed, 6 tests failing). Three comments that said the Cataclysm's Cow Level was the only exclusion were corrected.
+
+**IT IS NOT TO BE PORTED TO THE GAME.** Ruled by the coordinating session, 2026-10-16: the next layer replaces this row with the full per-Cataclysm mapping, and the game layer ports that mapping once it is measured.
+
+### Not covered, and later
+
+The game does not bar the Quest Siege yet; `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`
+says so and fails when it does. The per-Cataclysm sub-types (owner, 2026-10-16: War Siege, Dead Rising Horde, Hell on
+Earth Elite, Pestilence Timed, Famine Sacrificial, Chaos Volatile, Heaven's Wrath Ascendant, The Void Hollow, the last
+two new) are the next layer. Theming a Quest dungeon to its quest beyond its sub-type is a later item the owner named.
+
+---
+
+## 2026-10-16 — In the simulation a Quest dungeon whose city falls moves to an adjacent city instead of being absorbed
+
+**Simulation only; the game is unchanged.**
+
+### What the owner said, and who ruled
+
+The owner, 2026-10-16, verbatim: "Quest dungeons don't go away when a city falls. They just move to an adjacent city.
+So eventually they should be hitting something. Other than that they work the same as any other dungeon but provide
+quest progress and should probably be themed towards whatever the quest is for." Ruled by the coordinating session
+the same day: the relocation's own filter (an exposed city that has not fallen and is not the Pillar, and not one
+holding a Siege if the dungeon carries one); the move is certain, no coin; an adjacent city first, else the nearest
+qualifying city counted in lanes, ties by one draw; if none qualifies anywhere it stays. A Quest hit that fells its own
+host moves it and refreshes its timer, with no second move that day; any other fall leaves its remaining timer. The
+walked Quest dungeon moves and the walk goes on. A Dungeon City counts only the dungeons it absorbed.
+
+### How it is built
+
+`Simulation._fall`: ordinary dungeons are absorbed as before (the walked one still spared, issue #2399); each Quest
+dungeon moves through `_quest_refuge` (adjacent first, then a breadth-first search over `Empire.neighbours`), counted
+in `quest_moves_on_a_fall`. `_resolve`: when the Quest hit's fall has moved the dungeon, its timer refreshes and the
+timer's own move is skipped that day.
+
+### Measured
+
+With the waves of 12 and 8 and x0.7, 500 campaigns: undefended lost 100% by day 2000 at every tier, median day of the
+tier-1 loss 1137 before and 675 after; Explorer triage tier 1 won 51.0% and lost 1.29 cities before, 49.4% and 1.85
+after; no-tree triage 43.6% / 2.67 before, 41.4% / 4.23 after. The next entry's interim rule brought these back.
+
+### Design document
+
+"Where a Quest Dungeon Moves To, and What It Takes With It": the absorption sentence is replaced; "A Quest dungeon whose
+city has fallen cannot stay: when no neighbour qualifies it goes to the nearest city, counted in lanes, that does. A
+player walking a Quest dungeon whose city falls goes on walking it; the dungeon has only moved."; the owner's line;
+"Until that day a Quest dungeon on a city that fell was absorbed with the rest. Theming a Quest dungeon to its quest is
+a later item." The Dungeon City sentence: "one boss per dungeon that was standing on the city when it fell and was
+absorbed by it (a Quest dungeon moves away instead and is not counted)".
+
+### Tests
+
+New: `sim/tests/test_a_quest_dungeon_moves_when_its_city_falls.py` (7: moved to an adjacent exposed city keeping floors,
+timer, its remainder and sub-type, CONTROL an ordinary dungeon absorbed; no neighbour left -> nearest by lanes, checked
+against a breadth-first distance; nowhere -> stays; a Siege carrier avoids besieged neighbours; its own hit fells its
+host -> moved and refreshed, CONTROL a hit that does not fell; the walked one moves and stays the one walked). Changed
+by ruling (owner quoted in each): the Quest hit that fells its city now moves it; the fallen-city test places its
+Quest dungeon after the fall; the ordinary-dungeon fall test asserts ordinary dungeons absorbed and the Quest dungeon
+moved. Two tests that had failed since the waves passed again: `test_quest_hits_land_and_the_result_carries_the_count`
+and `test_the_old_arithmetic_really_did_count_more`.
+
+---
+
+## 2026-10-16 — In the simulation the run opens with a wave of 12, later waves bring 8 every 90 days, and every ordinary dungeon hits for 0.7 of what it did
+
+**Simulation only; the game still has 5 every 90 days and the old rows.**
+
+### What the owner said, and who chose
+
+The owner, 2026-10-16, verbatim: "We need to find a better solution to this. I want surges to summon a lot more
+dungeons. Or maybe the initial surge spawns more and then the first real surge is 6 to 10? Idk, but 6 is boring." and
+"the obvious solution here is to adjust the damage dungeons do." The coordinating session chose, under the owner's
+delegation of numbers, the measured shape: an opening wave of 12 (`TuningConfig.surge_opening_count`, new; read by
+`Simulation.surge_count` at wave index 0), then 8 every 90 days, and the four ordinary rows' damage x0.7 (Outpost
+70/175, Bulwark 189/700, Sanctuary 448/1680, Pillar 840/3150; were 100/250, 270/1000, 640/2400, 1200/4500). A Quest hit
+reads those rows. The ceiling of 14 a wave stays.
+
+### Why
+
+With the Quest timer rolled from depth (the next entry down) and 5 every 90 days, the undefended empire lost only
+85.2% of tier-1 campaigns by day 2000 (target: at least 95% at every tier, 500 campaigns, ruled 2026-10-12). The owner
+rejected the four single-constant options measured (6 or 7 a wave, 1.5x or 2x damage). Measured shapes (500
+campaigns; undefended all tiers; guard: Explorer triage tier 1, won at least 47.2% and cities lost at most 1.86, the
+baseline measured in the same run on development 07218734: 52.2%, 0.93):
+
+| shape | undefended T1 | T2 to T4 | guard won / cities | dungeons standing, mean | largest wave median / p90 |
+|---|---|---|---|---|---|
+| 5 every 90 (Quest timer by depth) | 85.2 | 100 | 51.8 / 0.83 | 4.48 | 5 / 8 |
+| opening 12, then 8 every 90 | 100 | 100 | 45.6 / 1.47 | 8.02 | 12 / 18 |
+| opening 15, then 10 every 120 | 100 | 100 | 44.2 / 1.70 | 9.12 | 15 / 23 |
+| 15 every 150, damage x0.8 | 100 | 100 | 41.8 / 2.10 | 12.03 | 15 / 23 |
+| 18 every 180, damage x0.7 | 100 | 100 | 42.0 / 2.08 | 13.47 | 18 / 27 |
+| 7, +1 a wave to 20 | 100 | 100 | 46.2 / 2.56 | 9.47 | 14 / 18 |
+| 6, +2 a wave to 24 | 100 | 100 | 44.6 / 3.34 | 11.11 | 17 / 22 |
+| opening 12, then 6 +1 to 20 | 100 | 100 | 45.4 / 2.14 | 8.84 | 13 / 18 |
+| **opening 12, then 8 every 90, damage x0.7 (chosen)** | 99.6 | 100 | 51.0 / 1.29 | 7.99 | 12 / 18 |
+| opening 12, then 8, damage x0.5 | 93.2 | 100 | 50.4 / 1.19 | 7.96 | 12 / 18 |
+| opening 15, then 10 every 120, x0.6 | 98.4 | 100 | 47.6 / 1.50 | 9.10 | 15 / 23 |
+| 7, +1 to 20, x0.6 | 100 | 100 | 47.6 / 1.89 | 9.30 | 13 / 17 |
+| opening 14, then 8 every 90, x0.6 | 98.2 | 100 | 48.6 / 1.21 | 8.39 | 14 / 21 |
+
+Also measured and not chosen: deeper floor ranges (stopped by an owner correction before any figure was reported),
+and a dungeon's timer equal to its floor count (withdrawn: the owner's "without investment ... however many floors a
+dungeon has is the amount of days it takes to defeat" is the walk, which is already the rule).
+
+### What a player sees
+
+The run opens with 12 dungeons; later waves are 8 every 90 days (about 7 after the simulation's Cataclysm volume);
+about 8 dungeons stand on an average day against 4.5 before. At tier 1 dungeons arrive at 1.90 walk-days a day at the
+shipped cadence, so one player cannot keep the board clear (`test_the_arrival_rate_is_the_engines_own_arithmetic`).
+
+### Design document
+
+"The Surge": "The first Surge, at run start, brings 12 dungeons; before any escalation every later Surge brings 8 and
+the next comes 90 days after the last. From 2026-10-13 to 2026-10-16 every Surge brought 5, and until 2026-10-13 4
+every 120 days." and the dating clause "and a figure dated before 2026-10-16 was taken with waves of 5 and an ordinary
+dungeon's hit 1.43 times today's (today's is 0.7 of it)". Heretic: "15 where the opening Surge brings 12, and 10 where
+a later Surge brings 8" (the 2026-10-16 ruling that 6 stands no longer bites). The Quest passage's default. The Quest
+timer sentence (next entry).
+
+### Tests
+
+Re-derived at x0.7 by hand (`sim/tests/test_city_health_lever.py`): a city with no tree falls in 19 resolves, was 13 (test renamed `..._falls_in_nineteen`); 26 -> 37, 51 -> 73, 75 -> 108, 1270 -> 1814. Four tests that read wave index 0 set the opening size to their wave size, so they keep testing what they name (`test_engine.py`, `test_lethality_modes.py`, `test_surge_when_the_board_empties.py`, `test_analysis_scripts.py`, the last through the script's helper). The throughput scripts' `base_config` hold the shipped opening size, and each script's recorded figures say they were measured before the opening wave existed; no long campaign was re-run; `analyse_tier_throughput.py`'s section 1 now prints 2.13 at tier 1 (its held 4 every 120 with the opening of 12). The board-empties tests, ruled after measurement (40,000 seeds): the rule's surges are compared as a pooled rate over its cases (one by one 9 of 200 seeds give fewer at 3a48236a, 18 of 200 at 8096ac39, because the stream diverges); the hit-empties test runs 24 campaigns; the clear-empties test is a built board (42 such surges in 40,000 seeds, all after a clear). Issue #1373's test searches 80 seeds (6.3% of campaigns reach its case; 80-seed blocks held 250 of 250). New: `sim/tests/test_the_opening_wave_has_its_own_size.py` (6). `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py` pins the
+model's 12, 8 and rows against the game's 5 and old rows, and fails when the game layer lands.
+
+---
+
+## 2026-10-16 — In the simulation triage and lane_aware see a Quest dungeon's timer
+
+**Simulation only.** Since 2026-10-13 a Quest dungeon's timer hits its host, and no policy saw it: `Dungeon.resolves`
+answers False for a Quest dungeon. Now a Quest dungeon whose next hit would fell its host weighs what a fatal ordinary
+hit weighs in each policy (x5 in `triage`, x4 in `lane_aware`), and a Quest timer due inside a craft counts in the
+craft check. Accepted by the coordinating session 2026-10-16. Tests: `sim/tests/test_policies_see_a_quest_timer.py`
+(5; CONTROL the same board with Quest hits off). Guard proof (triage's x5 removed): "PROVED: 1 failed, 4 passed |
+restored: 5 passed".
+
+---
+
+## 2026-10-16 — In the simulation a Quest dungeon's timer is rolled from its own depth, as an ordinary dungeon's is
+
+**Simulation only; the game still holds `QuestResolveDays = 25`.**
+
+The owner, 2026-10-16: a Quest dungeon's timer scales with its depth like other dungeons; the flat 25 days is retired.
+Formula, accepted by the coordinating session: `(resolve_base_days 10 + floors x resolve_floor_ratio 1.6) x (1 +/-
+resolve_jitter 0.15) + the tree's resolve_bonus_days`, on the Quest dungeon's own floors, rolled at spawn, refreshed to
+the same figure, kept on a move. A 12-floor Quest dungeon: 29.2 days (24.8 to 33.6); a 40-floor one: 74 (62.9 to
+85.1); on an Outpost (20 to 30 floors) 42 to 58 against the old 25. The variation is now drawn for a Quest dungeon too,
+so every campaign's stream changes from its first Quest dungeon. `DungeonSpec.resolve_days` is removed (the ordinary and
+Quest rows' ranges were read by nothing); the Fallen City's and the Cataclysm's 999 moved to
+`TuningConfig.fallen_city_resolve_days`, equal to the game's `FallenCityResolveDays`.
+
+Where 25 came from: the model's Quest rows `(25, 40)`, of which `spec.resolve_days[0]` alone was read, since the first
+commit of the simulation (5dbdc08b, 2026-08-02). No ruling chose it.
+
+Measured alone (500 campaigns, 5 every 90): undefended tier 1 85.2% (target 95%), the cause of the wave and damage
+change above. Tests: `sim/tests/test_a_quest_dungeons_timer_scales_with_its_depth.py` (5). Changed by ruling:
+`test_no_other_dungeon_type_reads_it` became `test_basic_and_quest_read_it_and_no_other_type`. Guard proof (the Quest
+timer flat again): "PROVED: 3 failed, 2 passed | restored: 5 passed".
+
+The Siege test that the change moved: `test_fewer_sieges_arrive_than_are_rolled` (the arriving Siege share, 7.26% to
+7.38% over 400 campaigns, sat within 0.2 points of its 7.5 bound) is replaced, as ruled: since ordinary dungeons leave
+after a hit the one-per-city cap refuses about 1 Siege roll in 65 (9 of 581 over 100 seeds; none of 49 over seeds 0 to
+7), so the cap is tested on a built board and a campaign test asks only that it is consulted; the bigger waves were
+not measured for it.
+
+A reading that moved with the stream: `siege_urgency`'s prose says the median walk to a Sanctuary is 34 days; at
+8096ac39 the guard's 320 campaigns gave 38 and failed, at 3a48236a it passes again. Left as it is, by ruling.
+
+---
+
 ## 2026-10-15 — A row can make a point-blank skill's own blow strike every ally inside its area for a percent of what it deals there: one stat asked with the skill's tags, a friendly search at four sites, and a damage-only share that spends no store and raises none of the wearer's rows, its kill included, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.h` and `.cpp` (new: the stat's name, its
