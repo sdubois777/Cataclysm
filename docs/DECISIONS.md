@@ -4,12 +4,12 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-16 — Tests for seven cases of the dungeon retune that no test covered; no game code changes
 
-**Not built and not run.** Nothing was compiled and no Unreal test was run. Six new Unreal tests were written and
+**Not built and not run, when written; the Run section below has the run.** Nothing was compiled and no Unreal test was run. Six new Unreal tests were written and
 three existing ones were changed, all by reading. Every figure below was worked by hand from the code. The Python
 checks were run; the commit message records what they printed. No file under `game/Source` changed except test
 files.
 
-**Said first: what is uncertain.** Whether each test passes is not known until it is built and run. One sentence
+**Said first: what is uncertain.** Whether each test passes is not known until it is built and run (when written; the Run section below has the run). One sentence
 in the comment of the three changed tests says that the run rolls an ordinary dungeon for the helper at seed 1;
 that was not read in the code, because it is the outcome of a roll. It is what the 2026-10-13 entry below, on an
 ordinary dungeon leaving the map, records from a run ("the dungeon was the run's roll, ordinary at seed 1"). Each changed test now sets the type itself, so
@@ -137,7 +137,7 @@ passes Quest and is unchanged.
 
 ### Guard proofs proposed
 
-None was run. Each is for `tools/unreal_build.py`'s `prove_cpp_guard`; no C++ guard proof may run while the
+None was run, when written; the Run section below has the run. Each is for `tools/unreal_build.py`'s `prove_cpp_guard`; no C++ guard proof may run while the
 Python suite runs. Predicted failed assertions are counted by reading.
 
 | Proof | File | Line, copied | Becomes | Test | Predicted failed assertions |
@@ -165,6 +165,33 @@ floors a city upgrade moved survive the file"; the control passes, because it re
 fail `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`**, whose fixture `Run_v1.json` holds
 `UpgradeFloors` that the record would no longer write, so a wider prefix than the full name would see two failing
 tests.
+
+### Run
+
+- **2026-10-16, window void-zones-w27, at `87f0f080`**: this entry's two commits on development `5c13f1a8`. Build
+  "Build: Succeeded - 39 actions, 34 files compiled". Unreal "3765 tests performed, 3765 succeeded, 0 failed. 40
+  skipped part of what they check"; "Declared: 3765 tests in the tree at 87f0f080; 3765 performed, gap 0". The base,
+  `5c13f1a8`, measured 3759 in another session's window; the six tests here are the difference. Python "6384 passed,
+  8 skipped in 267.75s"; JUnit tests="6392" failures="0" errors="0" skipped="8". ruff "All checks passed!". The
+  suite ran under a guard that stops it when no test completes for 20 minutes; it did not fire.
+
+**The proofs run were not quite the ones proposed above.** P1 was run once with the prefix
+`Cataclysm.DungeonMode.AWalkWhoseCityFalls`, which selects the new Siege test and the existing
+`Cataclysm.DungeonMode.AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing`; P1b was run with the
+last-floor test's full name. A fourth proof was ruled by the coordinating session, 2026-10-16, "because 7b is the
+case nothing else covers; the three-proof limit is for a mechanism layer, and this stack changes no game code."
+
+Each printed "PROVED: with the break in ... | restored: ... 0 failed". Failed assertions are counted from each first
+half's log, and each equals the count predicted before the run:
+
+| Proof | Break | Tests | Failed assertions, predicted = printed |
+|---|---|---|---|
+| P1 | `return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;` became `return 0;` | `...AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing` and `...AWalkWhoseCityFallsToItsOwnSiegeEndsAtTheBottomAndCountsForNothing` | 8 = 8 and 8 = 8 |
+| P1b | the same | `...ACityThatFallsWhenThePlayerReachesTheLastFloorEndsTheWalkThere` | 8 = 8 |
+| P2 | the defence line became `FMath::Max(0.0f, DefencePoints) * (1.0f - 0.0f * DefenceResisted);` | `Cataclysm.EmpireRun.AQuestHitOnAResistingCityTakesTheReducedAmount` | 2 = 2 |
+| P3 | `UpgradeFloors` without `SaveGame` | `Cataclysm.SaveWriter.AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon` | 1 = 1 |
+
+The P1 and P1b counts matched, so building floors past a dungeon's depth logged no error that would have added to them.
 
 ---
 
