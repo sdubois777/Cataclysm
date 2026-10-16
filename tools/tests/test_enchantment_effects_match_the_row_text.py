@@ -907,8 +907,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-14, from 612 over 517: one row on one enchantment.
 #: AND 614 OVER 519 SINCE THE ROW OF MANA WEAVER'S TEN-PIECE BONUS,
 #: issue #1833, 2026-10-15, from 613 over 518: one row on one enchantment.
-AUTHORED_ROWS = 614
-AUTHORED_ENCHANTMENTS = 519
+#: AND 615 OVER 520 SINCE THE ROW THAT GIVES ITS WEARER A SHARE OF DAMAGE DONE TO NEARBY ALLIES,
+#: issue #1833, 2026-10-15, from 614 over 519: one row on one enchantment.
+AUTHORED_ROWS = 615
+AUTHORED_ENCHANTMENTS = 520
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
