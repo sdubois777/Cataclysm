@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-13 — In the game an ordinary dungeon leaves the map after it hits its city, and a Quest dungeon's timer hits its host city
 
-**Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
+**Said first: not compiled and not run, when written; the Run section below has the run.** The C++ in this change was written by reading and has not been built.
 No Unreal test was run, changed or new. The first build and run belong to a later session.
 
 **Said first: what a player sees differently.**
@@ -25,7 +25,7 @@ No Unreal test was run, changed or new. The first build and run belong to a late
   "Day 37: a Quest dungeon's timer hit <city>." The console command `Cataclysm.EmpireAdvance` names each city
   hit on each day, and the run's printed description counts both kinds of hit.
 
-**Said first: existing tests were left unedited whose outcome under these rules is not known.** The rulings say
+**Said first: existing tests were left unedited whose outcome under these rules is not known, when written; the Run section below has the run.** The rulings say
 they are not edited before the run. Each is named here with what the plan for this stack found could make it
 fail. None of this was run.
 
@@ -491,7 +491,7 @@ It read 3666 when written, counted on an older development; corrected 2026-10-15
 
 ### Not covered
 
-- Nothing here was run against the game.
+- Nothing here was run against the game, when written; the Run section below has the run.
 - No test drives the console command's two new lines, or reads the widget's label; the line's text is tested
   through `LastHitLine`.
 - No test covers an ordinary dungeon on a city that had already fallen leaving or staying after its timer; the
@@ -504,7 +504,7 @@ It read 3666 when written, counted on an older development; corrected 2026-10-15
 
 ### Guard proofs proposed for the C++
 
-None was run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, counted
+None was run when written; the Run section below has the run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, counted
 once in the file at this commit.
 
 | | The line | Becomes | The test | Predicted |
@@ -518,7 +518,7 @@ without a warning for an unused variable.
 
 ### 2026-10-15: the wave test's changes, after the fix for issue #2414
 
-**Not compiled and not run.** The test was changed by reading. No Unreal build and no Unreal test was run. The
+**Not compiled and not run, when written; the Run section below has the run.** The test was changed by reading. No Unreal build and no Unreal test was run. The
 declared count of Unreal tests is 3729 before and after: no test was added, removed or renamed.
 
 **Said first: one guard could fail for a reason that is not the test's subject, and was changed on a second
@@ -589,8 +589,8 @@ Judgements by the writing session, for the coordinating session to confirm:
    that the test counts each case rather than asserting any. Layer 2 of this stack records the comment as left
    alone at that layer, which is true of that layer.
 
-Nothing here was compiled or run. Whether a dungeon of the wave is absorbed while walked at seed 1, and how many
-are gone before their turn, is not known.
+Nothing here was compiled or run, when written; the Run section below has the run. At seed 1, in window void-zones-w26, one dungeon of the wave was
+absorbed while walked and two were gone before their turn.
 
 ### 2026-10-15: the dark-floor death test walks a Quest dungeon on purpose
 
@@ -614,7 +614,7 @@ measured for this test's seed.
 What changed: the helper takes an optional type, set before the dungeon is entered because entering copies it
 onto the game mode; its four other callers pass none and keep the rolled type. The test passes
 `ECataclysmDungeonType::Quest`. One assertion added: "CONTROL: before the death the dungeon is a Quest dungeon".
-Every other assertion is unchanged. Not compiled or run when written.
+Every other assertion is unchanged. Not compiled or run when written; the Run section below has the run.
 
 ### Run
 
