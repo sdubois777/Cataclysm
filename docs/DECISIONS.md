@@ -48,6 +48,8 @@ What a player would notice, once a row is worn:
   range. A Heavy Strike gadget of a 5 m skill fires at nothing 6 m away, though the gadget's type row reaches 15 m.
 - **A SUPPORT SELF BUFF REACHES THE PLAYER ONLY WITHIN 8 M OF THE GADGET**, and not again while the one it granted
   still runs. Its enemy areas (Burning Wrath 15 m, Coil of Embers 3 m, Held Fast 12 m) are measured from the gadget.
+  THE 8 M IS A NUMBER SET UNDER THE OWNER'S DELEGATION OF UNSTATED NUMBERS: no row states one, and the coordinating
+  session chose it on 2026-10-16. It is a constant, `ACataclysmMinion::SkillGadgetSelfBuffReachCm`, for play to tune.
 - **A SHAPELESS SKILL'S GADGET IS PLACED AND CASTS NOTHING**, and the box says "Gadget casts nothing". So does the
   gadget of a skill no row may cast again: a summon, a deployable, a held or channelled skill, a planted weapon, a
   skill with a `Requires` or a health cost. 66 to 68 of the 79 rows of each keyed slot have no shape.
