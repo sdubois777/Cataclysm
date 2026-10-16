@@ -370,7 +370,34 @@ nothing". Under M-II and M-III it passes.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-16 under the lock enchant-y1, on development 66a07f1e, for two layers
+in this order: this mechanism (with its documentation commit) and the row. The suite and Python were run at the top of
+the two, which holds both. Every step went as registered at the first start.
+
+- **Build:** "Build: Succeeded - 51 actions, 46 files compiled". Nothing of this layer had been compiled before.
+- **The enchantments group on the assets as merged:** "339 tests performed, 339 succeeded, 0 failed", registered 0
+  failed. This stack adds no test that wears the real row.
+- **The whole Unreal suite:** "3749 tests performed, 3749 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3749 tests in the tree at cde0fb95; 3749 performed, gap 0". Registered 3749 and 0: 3740 measured on
+  66a07f1e's tree by the dungeon session's window, and the nine of `Cataclysm.ManaWeaverTenPiece.`.
+- **Python:** "6376 passed, 8 skipped"; JUnit tests 6384, failures 0, errors 0, skipped 8. Lint: "All checks
+  passed!". The eighth skip, `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, belongs to a
+  checkout that has built binaries.
+- **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+  with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.ManaWeaverTenPiece.`, 9 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| M-I | the cooldown stands: the slot test asks for `None` | all 9 failed | 37 / 37 | 9 of 9 succeeded |
+| M-II | the doubling stops: the count is never advanced | 7 failed, all but `WithTheRowAPaidUse...` and `EveryPaidUseStillPays...` | 19 / 19 | 9 of 9 succeeded |
+| M-III | the count does not reset: the dungeon comparison removed | 1 failed, `ADeathClearsTheCountAnotherDungeonReadsNoughtAndAFloorChangeKeepsIt` | 6 / 6 | 9 of 9 succeeded |
+
+**Not measured:** the stat probe's failure under M-I that this entry predicts, because the proofs ran only this prefix.
 
 ---
 
