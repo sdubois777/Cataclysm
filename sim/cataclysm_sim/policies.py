@@ -107,16 +107,31 @@ def siege_daily_damage(sim, d, city) -> float:
     figure out of this docstring and compares it against
     `TuningConfig.siege_damage_growth_per_day`.
 
-    ANY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
-    `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-10-12 over
-    10,000 campaigns (seeds 0 to 9999) at the settings `siege_urgency` names
-    below, with an ordinary dungeon leaving after it hits its city
-    (`dungeon_persists_after_resolve` False, the default since that day), the
-    55,361 Sieges that reached the map were 83% Basic, 11% Quest, 4% Fallen
-    City and 1% Cataclysm, about 5.54 a campaign. That is why the callers below
-    apply this in all three scoring branches instead of only the ordinary one.
-    UNTIL 2026-10-12 THIS SAID 65,636 Sieges at 79 / 11 / 10 / 1 and 6.56 a
+    EVERY DUNGEON TYPE BUT THE QUEST DUNGEON CAN CARRY THE SUB-TYPE, not
+    only the ordinary ones: `_roll_subtype` runs for every `_make_dungeon`, and
+    since 2026-10-16 `TuningConfig.SUBTYPES_FORBIDDEN_ON` bars a Quest dungeon
+    from the Siege, as an interim rule until each Cataclysm's Quest type is
+    named (War's will be Sieges). Measured on 2026-10-16 over 10,000 campaigns
+    (seeds 0 to 9999) at the settings `siege_urgency` names below, with an
+    ordinary dungeon leaving after it hits its city
+    (`dungeon_persists_after_resolve` False), the 47,102 Sieges that reached
+    the map were 95% Basic, 0% Quest, 4% Fallen City and 2% Cataclysm, about
+    4.71 a campaign. That is why the callers below apply this in all three
+    scoring branches instead of only the ordinary one.
+    UNTIL 2026-10-16 THIS SAID 55,361 Sieges at 83 / 11 / 4 / 1 and 5.54 a
+    campaign, measured on 2026-10-12, when a Quest dungeon could roll a Siege.
+    UNTIL 2026-10-12 IT SAID 65,636 Sieges at 79 / 11 / 10 / 1 and 6.56 a
     campaign, measured on 2026-09-16 with the dungeon staying.
+
+    THE QUEST SHARE WENT TO NOUGHT ON 2026-10-16, AND THE OTHERS ROSE TO FILL
+    IT. Over the same 10,000 seeds on commit 3a48236a: 721,405 dungeons made,
+    81,589 of them Quest dungeons and 30,347 Fallen City; the four shares
+    before rounding 94.73 / 0.00 / 3.63 / 1.63; the share of each kind that
+    rolls a Siege, Basic 7.44%, Fallen City 5.64%, Cataclysm 7.79%. The model
+    changed in other ways between the two measurements -- among them an
+    opening wave of 12, the ordinary dungeon's damage at 0.7, and a Quest
+    dungeon moving when its city falls -- so the fall in the rate is not the
+    Quest bar's alone; what each change contributed was not measured.
 
     THE RATE FELL FROM 10.6 A CAMPAIGN AND THE FOUR SHARES DID NOT MOVE AT ALL.
     Issue #1357 changed when the Cataclysm dungeon opens, so campaigns end

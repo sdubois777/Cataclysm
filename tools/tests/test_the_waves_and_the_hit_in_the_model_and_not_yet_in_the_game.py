@@ -25,6 +25,18 @@ It copies the shape of
 `test_the_surge_is_90_days_and_5_in_the_model_and_not_yet_in_the_game.py`,
 which the game's layer of 2026-10-13 deleted when it was done.
 
+**A QUEST DUNGEON MAY NOT ROLL A SIEGE IN THE MODEL, SINCE 2026-10-16, AND THE
+GAME STILL ALLOWS IT.** The owner, that day, verbatim: "The only quest dungeons
+that will be sieges are Wars." and "War quest dungeons WILL be sieges. Each
+cataclysm's quest dungeons will be one specific type." The model's
+`TuningConfig.SUBTYPES_FORBIDDEN_ON` bars Quest and Siege as an interim rule
+until each Cataclysm's Quest type is named; the game's
+`UCataclysmSurgeScheduler::BarredSubTypeOn` bars only the Cataclysm's Cow
+Level. Until that day `test_dungeon_subtype_port.py` compared every pair the
+model bars with the game; it now compares the Cataclysm pair, and this file
+holds the Quest pair, by a labelled judgement by the coordinating session under
+the owner's delegation, 2026-10-16.
+
 THIS FILE EXISTS TO FAIL WHEN THE GAME'S NUMBERS MOVE. Each failure message
 says what to do then.
 """
@@ -86,6 +98,43 @@ RESTORE = (
     "docs/DECISIONS.md entry of 2026-10-16. If the game has some OTHER "
     "number, the two halves have parted with no decision behind it: find "
     "out which is meant.")
+
+
+RESTORE_SIEGE = (
+    "If the game now bars a Quest dungeon from rolling a Siege, this "
+    "divergence is over. Do these things: (1) check WHICH rule the game took: "
+    "the model's interim one (no Quest dungeon is a Siege) or the owner's "
+    "named one (each Cataclysm's Quest dungeons are one type, and War's are "
+    "Sieges); if the game has the named one and the model the interim one, "
+    "the halves still differ and this file should say so instead; (2) in "
+    "tools/tests/test_dungeon_subtype_port.py make "
+    "test_the_game_bars_the_same_pair_the_model_does compare every pair the "
+    "model bars again, and change test_the_game_constrains_only_the_cataclysm "
+    "to expect the Quest case; (3) delete the two Quest-and-Siege tests and "
+    "their part of the control from this file; (4) add a dated sentence to "
+    "the docs/DECISIONS.md entry of 2026-10-16.")
+
+
+def the_games_barred_kinds() -> list[str]:
+    """The dungeon kinds `BarredSubTypeOn` names a `case` for, read out of the
+    switch the way `test_dungeon_subtype_port.py` reads it."""
+    source_path = SURGE_HEADER.parent / "CataclysmSurge.cpp"
+    if not source_path.is_file():
+        pytest.skip(f"{source_path.name} is not present")
+    body = re.search(
+        r"ECataclysmDungeonSubType UCataclysmSurgeScheduler::"
+        r"BarredSubTypeOn\((.*?)\n\}\n",
+        source_path.read_text(encoding="utf-8"), re.DOTALL)
+    assert body, ("UCataclysmSurgeScheduler::BarredSubTypeOn is gone from "
+                  "CataclysmSurge.cpp, so this file cannot read which kinds "
+                  "the game bars a sub-type on")
+    return re.findall(r"case\s+ECataclysmDungeonType::(\w+)\s*:",
+                      body.group(1))
+
+
+def the_models_quest_bar() -> tuple[str, ...]:
+    from cataclysm_sim.config import DungeonType
+    return tuple(the_model().SUBTYPES_FORBIDDEN_ON.get(DungeonType.QUEST, ()))
 
 
 def the_header() -> str:
@@ -178,6 +227,27 @@ def test_the_models_row_is_the_games_times_0_7(tier: str) -> None:
         assert model == pytest.approx(game * 0.7)
 
 
+def test_the_model_bars_a_quest_dungeon_from_the_siege() -> None:
+    """The interim rule of 2026-10-16, read as the data, and then as the roll:
+    a field the roll did not read would pass the first assertion."""
+    assert the_models_quest_bar() == ("Siege",), (
+        f"TuningConfig().SUBTYPES_FORBIDDEN_ON bars {the_models_quest_bar()} "
+        "on a Quest dungeon. Since 2026-10-16 it bars the Siege; the owner, "
+        "verbatim: \"The only quest dungeons that will be sieges are Wars.\" "
+        "If it was taken out to match the game, do not: the two differ on "
+        "purpose until the game takes the rule.")
+
+    from cataclysm_sim.config import DungeonType
+    from cataclysm_sim.engine import Simulation
+
+    sim = Simulation(the_model(), seed=0)
+    assert "Siege" not in sim.subtypes_allowed_on(DungeonType.QUEST), (
+        "Simulation.subtypes_allowed_on still offers a Quest dungeon the Siege")
+    assert "Siege" in sim.subtypes_allowed_on(DungeonType.BASIC), (
+        "CONTROL: an ordinary dungeon may not roll a Siege either, so the "
+        "assertion above is not about the Quest rule")
+
+
 # ---------------------------------------------------------------------------
 # The game
 # ---------------------------------------------------------------------------
@@ -213,6 +283,20 @@ def test_the_games_ordinary_row_is_still_the_old_one(tier: str) -> None:
         f"model went to {THE_MODEL_ROWS[tier]} on 2026-10-16. " + RESTORE)
 
 
+def test_the_game_still_lets_a_quest_dungeon_roll_a_siege() -> None:
+    """**THIS TEST EXISTS TO FAIL WHEN THE GAME BARS THE PAIR.** Read as a
+    `case` for the Quest kind in `BarredSubTypeOn`, which is where the game
+    keeps the one pair it bars."""
+    kinds = the_games_barred_kinds()
+    assert "Quest" not in kinds, (
+        f"BarredSubTypeOn now names {kinds}. The game bars a sub-type on a "
+        "Quest dungeon; the model has barred the Siege there since "
+        "2026-10-16. " + RESTORE_SIEGE)
+    assert kinds == ["Cataclysm"], (
+        f"BarredSubTypeOn names {kinds}, so this file cannot read whether the "
+        "game bars the Quest pair. Find out what changed before trusting it")
+
+
 # ---------------------------------------------------------------------------
 # The control
 # ---------------------------------------------------------------------------
@@ -230,3 +314,8 @@ def test_the_two_really_do_differ() -> None:
     for tier in THE_GAME_ROWS:
         assert games[tier] != pytest.approx(models[tier]), (
             f"the {tier}'s Basic row is the same in both halves. " + RESTORE)
+    model_bars_it = "Siege" in the_models_quest_bar()
+    game_bars_it = "Quest" in the_games_barred_kinds()
+    assert model_bars_it != game_bars_it, (
+        "the model and the game agree on whether a Quest dungeon may roll a "
+        "Siege. " + RESTORE_SIEGE)
