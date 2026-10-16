@@ -2827,8 +2827,9 @@ void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& N
 	// ITS OWN BLOW, AND ONE THAT LANDED: `Landed` is zero for a blow evaded or wholly
 	// stopped. A damage-over-time tick is not a blow of the scythe, so it does not kill.
 	ACataclysmEnemyCharacter* Reaper = TheReaper.Get();
+	// NOR A WEARER'S SHARE OF ITS BLOW ON AN ALLY: ruled 2026-10-15, a share is not the creature's hit on the player.
 	if (!Reaper || Notice.Attacker != Reaper || Notice.Landed <= 0.0f
-		|| Notice.bDamageOverTime)
+		|| Notice.bDamageOverTime || Notice.bShareOfDamageDoneToAnAlly)
 	{
 		return;
 	}
@@ -3210,8 +3211,9 @@ void ACataclysmDungeonGameMode::StepPlagueConvergence(
 void ACataclysmDungeonGameMode::NoteHitForPlagueConvergence(const FCataclysmHitNotice& Notice)
 {
 	// A LANDED BLOW FROM ONE OF ITS CREATURES ON THE PLAYER, and not a tick: a creature's
-	// damage over time is not a hit.
-	if (Notice.Landed <= 0.0f || Notice.bDamageOverTime
+	// damage over time is not a hit. NOR A WEARER'S SHARE OF ITS BLOW ON AN ALLY: ruled 2026-10-15, a share is not the
+	// creature's hit on the player.
+	if (Notice.Landed <= 0.0f || Notice.bDamageOverTime || Notice.bShareOfDamageDoneToAnAlly
 		|| !Cast<ACataclysmPlayerCharacter>(Notice.Target)
 		|| !IsAPlagueConvergenceCreature(Notice.Attacker))
 	{
@@ -9247,8 +9249,9 @@ void ACataclysmDungeonGameMode::ForgetThePhantasms()
 
 void ACataclysmDungeonGameMode::NoteHitForMindShatteringIllusions(const FCataclysmHitNotice& Notice)
 {
-	// A PHANTASM'S BLOW ON THE PLAYER: the slow starts, or starts again. The next beat writes it.
-	if (!Cast<ACataclysmPlayerCharacter>(Notice.Target) || !Notice.Attacker)
+	// A PHANTASM'S BLOW ON THE PLAYER: the slow starts, or starts again. The next beat writes it. NOT A WEARER'S SHARE
+	// OF ITS BLOW ON AN ALLY: ruled 2026-10-15, a share is not the creature's hit on the player.
+	if (!Cast<ACataclysmPlayerCharacter>(Notice.Target) || !Notice.Attacker || Notice.bShareOfDamageDoneToAnAlly)
 	{
 		return;
 	}
@@ -18080,6 +18083,13 @@ void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
 	// to inflict anything -- which is what keeps the row's chance meaning what it
 	// says rather than being a chance per swing.
 	if (Notice.Landed <= 0.0f)
+	{
+		return;
+	}
+
+	// NOR A WEARER'S SHARE OF A CREATURE'S BLOW ON AN ALLY. Ruled 2026-10-15: a share is not the creature's hit on the
+	// player, so it rolls nothing. See `FCataclysmHitNotice::bShareOfDamageDoneToAnAlly`.
+	if (Notice.bShareOfDamageDoneToAnAlly)
 	{
 		return;
 	}
