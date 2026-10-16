@@ -197,9 +197,11 @@ by hand, a gadget's step is called directly, and a projectile is stepped by hand
    the second holds `minion_attack_speed` 50 requiring `Type.Deployable`. In order: control, the swing interval is
    1/1.3; set-up, the gadget aims by the whip's 3 m; an enemy 4 m away is not aimed at; with an enemy 2 m away the
    gadget casts once; it struck that enemy; it was not the gadget's own blow; the clock is the swing interval; the
-   fire-rate row makes it that over one and a half; over 40 steps of 0.25 s the gadget has cast 14 times (1 + 13, the
-   number 0.769 s gives over 10 s; a clock run as a cooldown gives 11); the enemy beyond reach is untouched; the
-   fire-rate row's gadget has cast 20 times (a cooldown clock gives 14).
+   fire-rate row makes it that over one and a half; over 38 steps of 0.25 s the gadget has cast 13 times (1 + 12, the
+   number 0.769 s gives over 9.5 s; a clock run as a cooldown gives 10); the enemy beyond reach is untouched; the
+   fire-rate row's gadget has cast 19 times (a cooldown clock gives 13). 9.5 s AND NOT 10 s, ruled 2026-10-16 by the
+   coordinating session: thirteen 0.769 s intervals end at exactly 10.0 s, a boundary only the clock's 1 ms allowance
+   kept; at 9.5 s every clock's last due cast and its next are a quarter of a second or more from the end.
 3. `ABasicGadgetWhosePlayerNeverSwingsNeverCasts`. In order: control, the gadget of a player with attack speed 1.3
    casts on its first step; set-up, attack speed nought is an interval of nought; the gadget of that player casts
    nothing over its first step and eight more; its enemy keeps its health.
@@ -255,8 +257,8 @@ with its trailing dot, which is the fifteen tests of stack 1 and the seven here,
 
 Failed assertions in each test, by reading:
 
-- **G-IV, 2 in 1 test.** Test 2: "over ten seconds ... casts 14 times" (11: each cast a whole step-rounded second
-  apart) and "the fire-rate row raises that to 20" (14: 0.513 s rounded up to 0.75). Every earlier line passes: the
+- **G-IV, 2 in 1 test.** Test 2: "over 9.5 seconds ... casts 13 times" (10: each cast a whole step-rounded second
+  apart) and "the fire-rate row raises that to 19" (13: 0.513 s rounded up to 0.75). Every earlier line passes: the
   first cast does not reach the broken line. No other test casts a basic gadget twice.
 - **G-V, 2 in 1 test.** Test 6: "each of the late axes raised deployable_hit" (2 against 2 plus the late count) and
   "took what an axe of the running use took" (each late axe without its 300). The controls pass: an axe landing inside

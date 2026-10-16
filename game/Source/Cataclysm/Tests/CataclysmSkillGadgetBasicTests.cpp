@@ -515,18 +515,22 @@ CATACLYSM_TEST(FCataclysmSkillGadgetBasicClockTest,
 	TestEqual(TEXT("and the fire-rate row at 50 makes it the interval over one and a half"),
 		BasicGadgetClockLength(FasterGadget), Interval / 1.5f, 0.0001f);
 
-	// FORTY QUARTER-SECOND STEPS, TEN SECONDS: the kept beat casts 1 + 13 = 14 in all, the number the 0.769 s interval
-	// gives over 10 s, where a clock run as a cooldown would cast once a second, 11. With the row, 0.513 s: 20.
-	for (int32 Each = 0; Each < 40; ++Each)
+	// THIRTY-EIGHT QUARTER-SECOND STEPS, 9.5 SECONDS: the kept beat casts 1 + 12 = 13 in all, the number the 0.769 s
+	// interval gives over 9.5 s, where a clock run as a cooldown would cast once a second, 10. With the row, 0.513 s:
+	// 1 + 18 = 19. NOT TEN SECONDS, as the first build had it: thirteen 0.769 s intervals end at exactly 10.0 s, so the
+	// count sat on a boundary only the clock's 1 ms allowance kept. At 9.5 s the last due cast of each clock (9.23 s,
+	// cast on the 9.25 s step) and the next (10.0 s and 9.74 s) are a quarter of a second or more from the end. Ruled
+	// 2026-10-16 by the coordinating session.
+	for (int32 Each = 0; Each < 38; ++Each)
 	{
 		BasicGadgetPass(World, 0.25f);
 		BasicGadgetStep(Gadget);
 		BasicGadgetStep(FasterGadget);
 	}
-	TestEqual(TEXT("over ten seconds of quarter-second steps the gadget casts 14 times, not once a second (11)"),
-		Gadget->SkillGadgetCastsMade, 14);
+	TestEqual(TEXT("over 9.5 seconds of quarter-second steps the gadget casts 13 times, not once a second (10)"),
+		Gadget->SkillGadgetCastsMade, 13);
 	TestEqual(TEXT("and never at the enemy beyond its reach"), BasicGadgetHealthOf(Beyond), 50000.0f, 0.001f);
-	TestEqual(TEXT("the fire-rate row raises that to 20"), FasterGadget->SkillGadgetCastsMade, 20);
+	TestEqual(TEXT("the fire-rate row raises that to 19"), FasterGadget->SkillGadgetCastsMade, 19);
 	return true;
 }
 
