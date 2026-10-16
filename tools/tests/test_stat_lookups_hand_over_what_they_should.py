@@ -156,6 +156,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: cost that doubles with each paid use added one more on 2026-10-15, asked
 #: with no tags by `UCataclysmGameplayAbility::UltimateCostDoublesByARow`, the
 #: one helper Mana Weaver's ten-piece bonus is read through.
+#: The percent of what reaches a nearby ally's health that its wearer takes
+#: added one more on 2026-10-15, asked with no tags by
+#: `UCataclysmAllyDamageShare::PercentHeldBy`, of the struck character and of
+#: every character beside it, from the damage branch of the vital set.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -924,6 +928,14 @@ INVENTORY = {
         "GetBaseCooldown, ManaCostFor and CommitAndBegin; no tags, because "
         "the slot the skill holds decides and not its row's tags, and no "
         "blow or target is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAllyDamageShare.cpp',
+     'FName(PercentStat), FGameplayTagContainer(), 0.0f'):
+        "the percent of what reaches a nearby ally's health that its wearer "
+        "takes (ruled 2026-10-15), asked by PercentHeldBy of the struck "
+        "character, of each character beside it and of each wearer when its "
+        "share is sent; the rule is about every blow any ally beside the "
+        "wearer takes, so no tags, and the blow in hand is the ally's and not "
+        "the wearer's, so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

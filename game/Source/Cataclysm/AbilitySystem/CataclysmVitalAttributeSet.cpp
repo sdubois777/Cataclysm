@@ -15,6 +15,8 @@
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the share of a blow that is taken later instead of now. Ruled 2026-10-12.
 #include "AbilitySystem/CataclysmDelayedDamage.h"
+// For the share of a blow on an ally that each wearer beside it takes. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAllyDamageShare.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For every chance to apply an ailment a blow carried, a blunt weapon's stun
@@ -1132,10 +1134,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// console variable, then the game mode, then tier 1 -- and a world
 			// with no game mode gets exactly the answer this line used to
 			// hard-code, so nothing that does not care is changed by it.
+			// WHETHER THIS BLOW IS A WEARER'S SHARE OF WHAT A BLOW DID TO AN ALLY BESIDE IT. Ruled 2026-10-15, for "You
+			// take 5%-15% damage done to nearby allies" (R7): it meets this character's defences as any blow does, and
+			// raises none of its rows. Each place below that a blow taken raises something reads this, and the share
+			// is never passed on again from here. See `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`.
+			const bool bShareOfAnAllysDamage = UCataclysmAllyDamageShare::IsAShare(Data.EffectSpec);
+
 			// WHETHER THIS IS THE Nth HIT OF A WORN "EVERY Nth HIT YOU TAKE" ROW,
 			// asked BEFORE it is resolved, because the count advances after.
 			// Issue #1833, phase 2. A tick is not a hit and is never the Nth.
-			if (!Hit.bIsDamageOverTime)
+			// NOR IS A SHARE OF AN ALLY'S BLOW, which the count does not count either. Ruled 2026-10-15.
+			if (!Hit.bIsDamageOverTime && !bShareOfAnAllysDamage)
 			{
 				if (const UCataclysmAbilitySystemComponent* Taking =
 						Cast<UCataclysmAbilitySystemComponent>(
@@ -1640,8 +1649,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				const bool bExplosionAtAnAilmentsEnd = Data.EffectSpec.GetSetByCallerMagnitude(
 					FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName),
 					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+				// NOR A SHARE OF AN ALLY'S BLOW: its attacker struck the ally and not this character. Ruled 2026-10-15.
 				UCataclysmAbilitySystemComponent* Struck =
-					bConsequenceOfADeath || bARowsAnswerToAnEvent || bExplosionAtAnAilmentsEnd
+					bConsequenceOfADeath || bARowsAnswerToAnEvent || bExplosionAtAnAilmentsEnd || bShareOfAnAllysDamage
 					? nullptr
 					: Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 				if (Struck)
@@ -1763,11 +1773,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// shield has absorbed its share. `Outcome.AbsorbedByShield` is
 				// the other part and is deliberately not counted -- a blow the
 				// shield swallowed dealt nothing to health.
-				UCataclysmSkillTemplate::NoteBlowTaken(
-					GetOwningActor(),
-					Data.EffectSpec.GetContext().GetEffectCauser(),
-					Hit.bIsMelee, Hit.bIsDamageOverTime,
-					Outcome.DealtToHealth);
+				//
+				// NOT FOR A SHARE OF AN ALLY'S BLOW, which tells no running buff of this character's anything. Ruled
+				// 2026-10-15.
+				if (!bShareOfAnAllysDamage)
+				{
+					UCataclysmSkillTemplate::NoteBlowTaken(
+						GetOwningActor(),
+						Data.EffectSpec.GetContext().GetEffectCauser(),
+						Hit.bIsMelee, Hit.bIsDamageOverTime,
+						Outcome.DealtToHealth);
+				}
 			}
 
 			// A BLOW THAT BREAKS THE ENERGY SHIELD, defined as the Sacrificial
@@ -1949,6 +1965,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Executable->PutBackExecuteAsked(AskedBeforeThisHit);
 			}
 
+			// "YOU TAKE 5%-15% DAMAGE DONE TO NEARBY ALLIES": THE WEARERS BESIDE THIS CHARACTER ARE FOUND NOW, BEFORE THE
+			// WRITE BELOW, and paid below the bond, once everything this blow does to this character is done. Ruled
+			// 2026-10-15 (R2 to R5). Found first because the write may kill this character, and a minion that dies may
+			// leave the world inside the write. NOBODY IS SEARCHED FOR when nothing is about to reach health, for a share
+			// of an ally's blow, which is never shared again (R7), and by `WearersBeside` for a wearer struck (R4) or a
+			// character not of the players' team. THE SHARE IS OF WHAT THE WRITE REALLY TAKES (R5): measured across it,
+			// so an overkill, a sigil's hold and the delayed share are all left out, and nothing the execute below
+			// takes afterwards is in it (R6).
+			const TArray<AActor*> WearersToShareWith = ToHealth > 0.0f && !bShareOfAnAllysDamage
+				? UCataclysmAllyDamageShare::WearersBeside(CataclysmDefendingBody(*this), GetOwningAbilitySystemComponent())
+				: TArray<AActor*>();
+			const float HealthBeforeTheWrite = GetHealth();
+			float TakenFromHealth = 0.0f;
+
 			if (ToHealth > 0.0f)
 			{
 				SetHealth(FMath::Clamp(GetHealth() - ToHealth,
@@ -1962,6 +1992,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					SetHealth(GetHealth());
 				}
+				TakenFromHealth = FMath::Max(0.0f, HealthBeforeTheWrite - GetHealth());
 				NotifyIfHealthReachedZero();
 				NotifyHealthChanged();
 
@@ -2018,8 +2049,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// `ToHealth` is then less than what the blow resolved to. Fervour is filled by what was taken
 				// at once. THE HELD SHARE FILLS NONE WHEN IT IS DRAINED: the drain writes health directly and
 				// does not come through this path.
-				UCataclysmFervour::GainFromDamage(
-					GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
+				//
+				// AND A SHARE OF AN ALLY'S BLOW FILLS NONE (R7), ruled 2026-10-15: it is health lost to a blow this
+				// character did not take.
+				if (!bShareOfAnAllysDamage)
+				{
+					UCataclysmFervour::GainFromDamage(
+						GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
+				}
 			}
 
 			// THE BONDED CREATURE'S ALLIES PAY THE REST, EVENLY. Issue #1559.
@@ -2073,6 +2110,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// AND EACH WEARER FOUND ABOVE TAKES ITS SHARE OF WHAT THE WRITE TOOK, as a blow of its own (R7), in the name
+			// of whoever struck this character and of the type this blow was met by. Ruled 2026-10-15. After the bond,
+			// so the shares the bond pays its allies are already paid, as direct losses no wearer sees (R6).
+			UCataclysmAllyDamageShare::PayShares(
+				WearersToShareWith, Data.EffectSpec.GetContext(), TakenFromHealth, Hit.DamageType);
+
 			// AND A HIT OF A CATACLYSM TYPE THIS CHARACTER DOES NOT SHARE
 			// OPENS A WINDOW A PASSIVE NODE CAN READ. Issue #975. The
 			// Masochist's Cataclysmic Resonance grants "+1% increased damage
@@ -2090,9 +2133,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// untyped hit opens nothing, which is what keeps a player's own
 			// damage -- untyped by the decision of 2026-08-12 -- from opening
 			// this every time it retaliates.
+			//
+			// NOR BY A SHARE OF AN ALLY'S BLOW, which opens no window of this character's (R7). Ruled 2026-10-15, and
+			// read by each of the windows, the counts, the stacks and the two modifiers below.
 			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield
 					+ Outcome.AbsorbedByTemporary > 0.0f
-				&& !Hit.DamageType.IsNone())
+				&& !Hit.DamageType.IsNone() && !bShareOfAnAllysDamage)
 			{
 				// THE BODY'S WEAPON, NOT THE SET OWNER'S. Issue #1755. A player's
 				// weapon slots are on its character, and asked of the player state
@@ -2132,7 +2178,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// the window, and this line is reachable for such a blow: the
 			// comment on the energy shield's refill wait above records that an
 			// evaded blow reaches here too.
-			if (Outcome.bBlocked)
+			if (Outcome.bBlocked && !bShareOfAnAllysDamage)
 			{
 				if (UCataclysmAbilitySystemComponent* Cataclysm =
 						Cast<UCataclysmAbilitySystemComponent>(
@@ -2148,7 +2194,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 
 			// AND A BROKEN SHIELD IS ANNOUNCED, read at the shield's write above.
 			// Issue #1833 group D part 3.
-			if (bBrokeShield)
+			if (bBrokeShield && !bShareOfAnAllysDamage)
 			{
 				if (UCataclysmAbilitySystemComponent* Cataclysm =
 						Cast<UCataclysmAbilitySystemComponent>(
@@ -2179,7 +2225,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// NEITHER IS GATED ON DAMAGE GETTING THROUGH, for the reason the
 			// block stamp above is not: an evaded blow deals nothing by
 			// definition, so gating it would mean it never fired at all.
-			if (UCataclysmAbilitySystemComponent* Cataclysm =
+			//
+			// NONE OF THEM FOR A SHARE OF AN ALLY'S BLOW (R7): no `hit_taken`, no Nth-hit count, no evade window, no
+			// immunity roll, no combat clock for its attacker, nothing stored for Nothing Wasted or the shield's store.
+			if (UCataclysmAbilitySystemComponent* Cataclysm = bShareOfAnAllysDamage ? nullptr :
 					Cast<UCataclysmAbilitySystemComponent>(
 						GetOwningAbilitySystemComponent()))
 			{
@@ -2325,7 +2374,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// took to nothing removed nothing and are not damage taken, and a
 			// shield absorbing it is.
 			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield
-					+ Outcome.AbsorbedByTemporary > 0.0f)
+					+ Outcome.AbsorbedByTemporary > 0.0f && !bShareOfAnAllysDamage)
 			{
 				if (UCataclysmAbilitySystemComponent* Cataclysm =
 						Cast<UCataclysmAbilitySystemComponent>(
@@ -2373,7 +2422,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// absorbed marks nobody and charms nobody, which is the rule
 			// docs/DECISIONS.md settled on 2026-09-05: an evaded attack applies
 			// nothing it was carrying.
-			if (Outcome.DealtToHealth > 0.0f)
+			if (Outcome.DealtToHealth > 0.0f && !bShareOfAnAllysDamage)
 			{
 				AActor* Striker =
 					Data.EffectSpec.GetContext().GetEffectCauser();

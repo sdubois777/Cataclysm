@@ -125,6 +125,15 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bExplosionAtAnAilmentsEnd = false;
 
 	/**
+	 * Whether the blow is a wearer's share of what another blow did to an ally beside it, and not a blow its attacker
+	 * struck at the target. Ruled 2026-10-15. See `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`. The
+	 * attacker and the kill credit are those of the ally's blow; the player's on-hit rows read this and act on none of
+	 * it. THE DUNGEON GAME MODE'S FLOOR RULES DO NOT READ IT, which the entry of 2026-10-15 in `docs/DECISIONS.md`
+	 * names as left for a change to that file.
+	 */
+	bool bShareOfDamageDoneToAnAlly = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.
