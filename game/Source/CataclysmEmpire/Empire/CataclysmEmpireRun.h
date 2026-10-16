@@ -50,23 +50,22 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	/**
 	 * The dungeons whose timers ran out today.
 	 *
-	 * A DUNGEON THAT RESOLVES DOES NOT GO AWAY. Its timer is set back to full
-	 * and it bites the same city again the next time it runs out, which is what
-	 * lets an ignored city actually die.
+	 * AN ORDINARY DUNGEON IN THIS LIST IS USUALLY GONE BY THE TIME THE REPORT IS
+	 * READ. Since 2026-10-13 it hits its city once and leaves the map, or is
+	 * absorbed when its hit fells the city. `HitAndLeft` and `Absorbed` below
+	 * say which. Until then it stayed with its timer full and bit the same city
+	 * again.
 	 *
 	 * **A DUNGEON IN THIS LIST DID NOT NECESSARILY BITE ANYTHING.** It is the
-	 * list of timers that ran out, and since issue #1324 slice 3 not every
-	 * timer running out costs the host city something.
-	 * `FCataclysmDungeon::Resolves` is what says which do: a Quest dungeon
-	 * refreshes instead of detonating, and a Fallen City and a Cataclysm stand
-	 * on a city whose damage is already done. A caller counting how often the
-	 * empire was hurt must filter on that rather than on the length of this
-	 * list. Nothing does yet -- a run-wide count of dungeons that detonated is
-	 * slice 5 of that issue.
+	 * list of timers that ran out. An ordinary dungeon on a city already fallen
+	 * takes nothing, and a Fallen City and a Cataclysm stand on a city whose
+	 * damage is already done. A caller counting how often the empire was hurt
+	 * reads `UCataclysmEmpireRun::DungeonsDetonated` and
+	 * `UCataclysmEmpireRun::QuestHits` rather than the length of this list.
 	 *
-	 * A QUEST DUNGEON'S TIMER IS A RELOCATION CLOCK AND APPEARS HERE ON PURPOSE.
-	 * The design has it "refresh and may move to adjacent city", and this is the
-	 * event the move hangs on. `Relocated` below is which ones actually moved.
+	 * A QUEST DUNGEON'S TIMER APPEARS HERE TOO. It hits its host city, which is
+	 * in `QuestHits` below, and then refreshes and may move; `Relocated` is
+	 * which ones actually moved.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Resolved;
@@ -76,8 +75,9 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 *
 	 * A SUBSET OF `Resolved` AND NEVER MORE THAN THAT. Only a Quest dungeon
 	 * moves, and only when its timer runs out; `docs/Cataclysm_GDD_v2.md`
-	 * section VIII says it "does not resolve -- refreshes and may move to
-	 * adjacent city". Issue #1324 slice 4.
+	 * section VIII says its timer "refreshes and it may move to an adjacent
+	 * city". Issue #1324 slice 4. One whose hit felled its host is absorbed
+	 * and does not move.
 	 *
 	 * **IT IS SHORTER THAN THE QUEST DUNGEONS IN `Resolved`, AND THAT IS THE
 	 * RULE RATHER THAN A LOSS.** The design's "MAY move" has two halves and a
@@ -99,6 +99,33 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Relocated;
+
+	/**
+	 * The cities an ordinary dungeon hit today and then left, one entry a hit.
+	 *
+	 * A CITY NUMBER AND NOT A DUNGEON NUMBER, because the dungeon is off the
+	 * map by the time anybody reads this and what a player is told is which
+	 * city was hit. A city hit by two dungeons on one day is here twice.
+	 *
+	 * THE DUNGEON WHOSE HIT FELLED ITS CITY IS NOT HERE. The fall absorbed it;
+	 * it is in `Absorbed` and its city is in `Fallen`.
+	 *
+	 * Since 2026-10-13. The owner's rule of 2026-10-08, verbatim: "Ordinary
+	 * dungeons will do their city/population damage, and then despawn."
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> HitAndLeft;
+
+	/**
+	 * The cities a Quest dungeon's timer hit today, one entry a hit.
+	 *
+	 * THE HIT IS AN ORDINARY DUNGEON'S FOR THAT CITY'S TIER, whatever the Quest
+	 * dungeon's depth. A city this hit felled is here and in `Fallen` both.
+	 * The Quest dungeon itself is in `Resolved`, and in `Relocated` when it
+	 * then moved. Since 2026-10-13.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> QuestHits;
 
 	/**
 	 * The cities a Siege took its daily share of today.
@@ -171,9 +198,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *   5. Every Siege takes its daily share of the city it stands on, whether or
  *      not anything resolved. It is the one dungeon that costs something every
  *      day rather than only when its timer runs out.
- *   6. Any timer that reached zero resolves: its dungeon takes a share of its
- *      host city's defence and population, and its own timer is set back to
- *      full.
+ *   6. Any timer that reached zero resolves. An ordinary dungeon takes points
+ *      of its host city's defence and population and then leaves the map. A
+ *      Quest dungeon takes an ordinary dungeon's hit for its host's tier, and
+ *      then its timer is full again and it may move to an adjacent city.
  *   7. A city whose defence reached zero falls. Every dungeon standing on it is
  *      absorbed, and its fall fires a surge of its own when the last surge is
  *      at least 25 days behind. A fall sooner than that fires none.
@@ -622,11 +650,14 @@ public:
 	 * How many times a dungeon's timer ran out and the empire actually paid.
 	 *
 	 * WHAT `FCataclysmDayReport::Resolved` CANNOT ANSWER, which is why this
-	 * exists. That list is every timer that ran out, and since slice 3 of issue
-	 * #1324 not every timer running out costs a city anything: a Quest dungeon
-	 * refreshes and moves, and a Fallen City and a Cataclysm stand on a city
-	 * whose damage is already done. A caller counting how often the empire was
-	 * hurt had no number to read and the report's own comment said so.
+	 * exists. That list is every timer that ran out, and not every timer
+	 * running out costs a city anything: a Fallen City and a Cataclysm stand on
+	 * a city whose damage is already done. A caller counting how often the
+	 * empire was hurt had no number to read and the report's own comment said
+	 * so.
+	 *
+	 * ORDINARY DUNGEONS ONLY. A Quest dungeon's timer has hit its host since
+	 * 2026-10-13, and that hit is counted in `QuestHits` below and not here.
 	 *
 	 * **IT IS DELIBERATELY NOT A PORT OF `Simulation.resolved` AS THAT STOOD,
 	 * AND THE MODEL HAS SINCE BEEN CORRECTED TO MATCH.** The model used to
@@ -650,6 +681,43 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 DungeonsDetonated = 0;
+
+	/**
+	 * How many times a Quest dungeon's timer ran out and hit its host city.
+	 *
+	 * A PORT OF `Simulation.quest_hits`, AND COUNTED APART FROM
+	 * `DungeonsDetonated` AS THE MODEL COUNTS IT APART FROM `resolved`. Raised
+	 * where the hit lands in `ResolveDungeon`, so a Quest timer that ran out on
+	 * a city already fallen is not counted. Since 2026-10-13.
+	 *
+	 * IT IS NOT SAVED, like the tallies above it. Issue
+	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 QuestHits = 0;
+
+	/**
+	 * The day of the last hit the empire screen has a line for, or 0 when
+	 * there has been none this run.
+	 *
+	 * TWO KINDS OF HIT SET IT: an ordinary dungeon that hit its city and left,
+	 * and a Quest dungeon's timer hitting its host. An ordinary dungeon whose
+	 * hit felled its city does not: the screen already shows a city lost.
+	 * `UCataclysmEmpireMapLayout::LastHitLine` turns the three fields into the
+	 * line. NONE OF THE THREE IS SAVED; a loaded run shows no line until the
+	 * next hit.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastHitDay = 0;
+
+	/** The city that hit landed on. `INDEX_NONE` when there has been none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastHitCityId = INDEX_NONE;
+
+	/** Whether that hit was a Quest dungeon's timer. False: an ordinary
+	 *  dungeon that hit and left. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bLastHitWasAQuestTimer = false;
 
 	/**
 	 * Of `UCataclysmSurgeScheduler::SurgesFired`, how many fired because the
@@ -862,7 +930,8 @@ public:
 
 	/**
 	 * The player died inside this dungeon: if it is the kind that resolves, it
-	 * resolves now, and its timer is set back to full.
+	 * resolves now, and then it leaves the map as any ordinary dungeon that hit
+	 * its city does.
 	 *
 	 * THE PROJECT OWNER RULED IT ON 2026-09-10, verbatim: "Yes, dying in a
 	 * dungeon causes it to resolve, regardless of the remaining time you would
@@ -876,9 +945,8 @@ public:
 	 * the game mode into here. The owner has also decided that an ordinary
 	 * dungeon is removed after it hits its city -- on 2026-10-08, verbatim
 	 * "Ordinary dungeons will do their city/population damage, and then
-	 * despawn." THAT IS NOT BUILT HERE OR ANYWHERE. Whoever builds it changes
-	 * the empire layer's two resolve paths, this one and the timer's, and
-	 * nothing in the game module.
+	 * despawn." THAT IS BUILT IN `ResolveDungeon` SINCE 2026-10-13, which both
+	 * resolve paths reach, this one and the timer's.
 	 *
 	 * WHAT IT DOES FOR AN ORDINARY DUNGEON, the only kind whose
 	 * `FCataclysmDungeon::Resolves` answers true:
@@ -887,13 +955,15 @@ public:
 	 *      function a timer running out reaches, so the points, the count in
 	 *      `DungeonsDetonated`, and a city falling are all exactly what they are
 	 *      there.
-	 *   2. Its timer is set back to full and its count of resolves is raised by
-	 *      one, which is what `UCataclysmDayClock::AdvanceDay` does to a timer
-	 *      that ran out. Without it the days a death costs would be counted
-	 *      against whatever the timer had left, and a dungeon with two days
-	 *      left would resolve a second time two days into them.
+	 *   2. It leaves the map and the clock, inside `ResolveDungeon`. So the
+	 *      days a death costs find no timer of its to run out.
+	 *   3. ONLY WHEN ITS CITY HAD ALREADY FALLEN, nothing is taken, it stays,
+	 *      and its timer is set back to full with its count of resolves raised
+	 *      by one, which is what `UCataclysmDayClock::AdvanceDay` does to a
+	 *      timer that ran out. Without that the days a death costs would be
+	 *      counted against whatever the timer had left.
 	 *
-	 * IT STAYS ON THE MAP, as a dungeon whose timer ran out does today.
+	 * IT DOES NOT STAY ON THE MAP, except in case 3.
 	 *
 	 * WHAT IT DOES FOR EVERY OTHER KIND: NOTHING AT ALL. A Quest dungeon, a
 	 * Dungeon City and the Cataclysm's own dungeon do not resolve, so no city is
@@ -905,10 +975,12 @@ public:
 	 * NO DAY PASSES. The days a death costs are charged by the caller, after it
 	 * has left the dungeon, through `AdvanceDays` and `DeathDayCost` below.
 	 *
-	 * IT DOES NOT TELL THE CLOCK THE PLAYER HAS LEFT. The caller does. The one
-	 * exception is a resolve that fells the city: every dungeon standing on it
-	 * is absorbed, this one included, and `RemoveDungeon` then clears the
-	 * clock's record of which dungeon is being stood in.
+	 * THE CLOCK NO LONGER HOLDS THE PLAYER INSIDE WHEN THIS RETURNS, for an
+	 * ordinary dungeon on a standing city. The dungeon is removed, by leaving
+	 * or by its city's fall absorbing it, and `RemoveDungeon` clears the
+	 * clock's record of which dungeon is being stood in. The caller still
+	 * leaves the dungeon itself; for every other case that call is the one
+	 * that tells the clock.
 	 *
 	 * @return what happened, in the shape a day's report has. `Day` is the
 	 *         clock's day, which did not move. `Resolved` holds this dungeon when
@@ -1025,24 +1097,30 @@ private:
 	ECataclysmType RollCataclysm();
 
 	/**
-	 * A dungeon's timer ran out: if it is a kind that detonates it takes a
-	 * NUMBER OF POINTS off its host city, and the city may fall.
+	 * A dungeon's timer ran out: an ordinary dungeon takes a NUMBER OF POINTS
+	 * off its host city and leaves the map, a Quest dungeon takes an ordinary
+	 * dungeon's points for its host's tier and stays, and either city may fall.
 	 *
 	 * POINTS AND NOT A SHARE. Issue #1331 and `UCataclysmEmpireMap::Damage`.
 	 *
-	 * NOT EVERY KIND DETONATES. `FCataclysmDungeon::Resolves` is the rule and
-	 * this leaves the city untouched when it answers false -- a Quest dungeon
-	 * refreshes instead, which is issue #1324 slice 3. The clock has already put
-	 * the timer back to full by the time this is called, so refreshing is doing
-	 * nothing; what is not nothing is the move, which is
-	 * `RelocateQuestDungeon` below.
+	 * AN ORDINARY DUNGEON HITS ONCE AND IS GONE, since 2026-10-13. When its hit
+	 * fells the city the fall absorbs it; otherwise this removes it and names
+	 * the city in `FCataclysmDayReport::HitAndLeft`. One standing on a city
+	 * already fallen takes nothing and stays.
+	 *
+	 * `FCataclysmDungeon::Resolves` STILL ANSWERS TRUE FOR AN ORDINARY DUNGEON
+	 * AND NOTHING ELSE. A Quest dungeon answers false and is handled in the
+	 * block that asks: its host takes the ordinary row of the host's tier, the
+	 * hit is counted in `QuestHits`, and unless the city fell the move follows
+	 * in `RelocateQuestDungeon` below. The clock has already put its timer back
+	 * to full by the time this is called. A Fallen City and a Cataclysm take
+	 * nothing.
 	 *
 	 * IT HAS TWO CALLERS SINCE ISSUE #41. `AdvanceDay`, for every timer that ran
-	 * out, which is what the paragraph above describes. And
-	 * `ResolveDungeonOnDeath`, for an ordinary dungeon the player died in: there
-	 * the clock has NOT refilled the timer, and that function refills it after
-	 * this returns. It never calls this for a kind that does not detonate, so
-	 * a death does not relocate a Quest dungeon.
+	 * out, which is what the paragraphs above describe. And
+	 * `ResolveDungeonOnDeath`, for an ordinary dungeon the player died in. It
+	 * never calls this for a kind whose `Resolves` answers false, so a death
+	 * neither hits a Quest dungeon's city nor relocates the dungeon.
 	 */
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 
@@ -1050,10 +1128,13 @@ private:
 	 * A Quest dungeon whose timer ran out picks up and may move to an adjacent
 	 * city.
 	 *
-	 * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not
-	 * resolve -- refreshes and **may move to adjacent city**". The project
-	 * owner ruled on 2026-09-06, verbatim "Adjacent, and fix the simulation".
-	 * Issue #1324 slice 4.
+	 * `docs/Cataclysm_GDD_v2.md` section VIII, as it read until 2026-10-13: a
+	 * Quest dungeon "does not resolve -- refreshes and **may move to adjacent
+	 * city**". It now reads that the timer hits the host city first; the
+	 * refresh and the move are as they were, and a Quest dungeon whose hit
+	 * felled its host never reaches this function. The project owner ruled on
+	 * 2026-09-06, verbatim "Adjacent, and fix the simulation". Issue #1324
+	 * slice 4.
 	 *
 	 * **THE "MAY" IS A COIN AS WELL AS A MAP, AND THIS IS WHERE THE COIN IS
 	 * FLIPPED.** The owner ruled on 2026-09-06, verbatim "A chance each time",
@@ -1148,8 +1229,9 @@ private:
 	 * Takes a dungeon off the map and off the clock, and nothing else.
 	 *
 	 * THE HALF OF `ClearDungeon` THAT IS ONLY BOOKKEEPING. A city absorbing its
-	 * dungeons as it falls uses this, so it does not trigger what a player
-	 * clearing a dungeon triggers.
+	 * dungeons as it falls uses this, and so does an ordinary dungeon leaving
+	 * after it hit its city, so neither triggers what a player clearing a
+	 * dungeon triggers.
 	 */
 	bool RemoveDungeon(int32 DungeonId);
 

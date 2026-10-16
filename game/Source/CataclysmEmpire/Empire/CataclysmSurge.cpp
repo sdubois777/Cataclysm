@@ -361,11 +361,11 @@ FCataclysmDungeonSpec UCataclysmSurgeScheduler::SpecFor(
 		break;
 
 	case ECataclysmDungeonType::Quest:
-		// THE ZERO DAMAGE IS THE DESIGN AND NOT A MISSING NUMBER. A Quest
-		// dungeon "does not resolve -- refreshes and may move to adjacent
-		// city", so it never applies a consequence to the city it sits on.
-		// `Simulation._resolve` returns before touching defence or population
-		// for one, and every Quest row in `config.DUNGEON_SPECS` is 0.0/0.0.
+		// THE ZERO DAMAGE IS THE DESIGN AND NOT A MISSING NUMBER. Every Quest
+		// row in `config.DUNGEON_SPECS` is 0.0/0.0. A Quest dungeon's timer
+		// does hit its host since 2026-10-13, and that hit is not read from
+		// these rows: it is the BASIC row of the host's tier, in
+		// `UCataclysmEmpireRun::ResolveDungeon` and `Simulation._quest_hit`.
 		switch (Tier)
 		{
 		case ECataclysmCityTier::Bulwark:
@@ -966,12 +966,12 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	const float Base = UCataclysmDayClock::ResolveDaysFor(Dungeon.Floors);
 	const float Jitter = 1.0f + Stream.FRandRange(-ResolveJitter, ResolveJitter);
 
-	// EXCEPT FOR A QUEST DUNGEON, WHOSE TIMER IS NOT A BITE SCHEDULE. It takes
-	// nothing from its host whenever it runs out, so there is no bite for its
-	// depth to be traded against; what the timer decides is how long the player
-	// has before the objective moves. `QuestResolveDays` is the flat figure the
-	// model gives on every Quest row, and the paragraph there is the argument
-	// for why this is not the depth rule above being broken.
+	// EXCEPT FOR A QUEST DUNGEON, WHOSE TIMER IS FLAT. `QuestResolveDays` is
+	// the figure the model gives on every Quest row. Since 2026-10-13 that
+	// timer hits the host city when it runs out, with an ordinary dungeon's
+	// hit for the host's tier, so it is a hit schedule that does not read the
+	// depth. The comment on `QuestResolveDays` says what can be said for that
+	// and what is not ruled.
 	//
 	// THE DRAWS HAPPEN EITHER WAY, AND THAT IS DELIBERATE. `Base` and `Jitter`
 	// are computed above rather than inside the branch so that a Quest dungeon

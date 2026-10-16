@@ -363,13 +363,15 @@ public:
 	 * IN THAT ORDER, AND THE ORDER MATTERS: resolve, leave, charge.
 	 *
 	 *   - Resolved while still inside, through the one function the empire has
-	 *     for it, `UCataclysmEmpireRun::ResolveDungeonOnDeath`, which also sets
-	 *     the dungeon's timer back to full.
+	 *     for it, `UCataclysmEmpireRun::ResolveDungeonOnDeath`. An ordinary
+	 *     dungeon hits its city there and leaves the map, since 2026-10-13.
 	 *   - Left second, by `LeaveEmpireDungeon`, which is what clearing the last
-	 *     floor calls, so its timer counts again and everything the dungeon had
-	 *     put on the player and on this game mode ends.
-	 *   - Charged last, so the days pass with the player out of the dungeon and
-	 *     its refilled timer counting down through them like every other.
+	 *     floor calls, so everything the dungeon had put on the player and on
+	 *     this game mode ends, and a Quest dungeon's or a Dungeon City's timer
+	 *     counts again.
+	 *   - Charged last, so the days pass with the player out of the dungeon. An
+	 *     ordinary dungeon has no timer left to run through them; a Quest
+	 *     dungeon's runs through them like every other.
 	 *
 	 * **WHERE THE PLAYER IS AFTERWARDS IS NOT THE CAPITAL.** The design says a
 	 * death "respawns the player at the capital", and the capital as a place is

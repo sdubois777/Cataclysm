@@ -464,11 +464,15 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// layer exists to pose: these dungeons, or those cities.
 	//
 	// WHAT THIS TEST DELIBERATELY DOES NOT CLAIM. An earlier version of it
-	// asserted that a city falls while the player is underground, and that is
-	// not true of the first wave: four Outpost dungeons are 8 to 15 floors each,
-	// so clearing all of them costs about 44 days, and the earliest a city falls
-	// is well past day 100. Claiming it would have been a test that passed only
-	// on the seeds where something unusual happened.
+	// asserted that a city falls while the player is underground. This one
+	// asserts neither that nor its opposite. Since 2026-10-13 an ordinary
+	// dungeon hits its city when its timer runs out and leaves the map. An
+	// Outpost dungeon's timer is about 19 to 39 days, and walking the four
+	// Outpost dungeons of the first wave, 8 to 15 floors each, costs about 44
+	// days, so a dungeon of the wave can be gone before the player reaches it,
+	// and a city can fall while the player is inside one of its dungeons. The
+	// test counts each case rather than asserting any of them: claiming one
+	// would have been a test that passed only on the seeds where it happened.
 	FBound Bound = Make();
 	if (!TestNotNull(TEXT("a test world was created"), Bound.World))
 	{
@@ -499,7 +503,22 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 
 	int32 FloorsWalked = 0;
 	int32 Cleared = 0;
-	int32 Absorbed = 0;
+
+	// TWO WAYS A DUNGEON OF THE WAVE IS LOST, COUNTED APART. Ruled by the
+	// coordinating session under the owner's delegation, 2026-10-15.
+	//
+	// GONE BEFORE ITS TURN: it was not on the map when its turn came, so it
+	// was never walked. Since 2026-10-13 that counts an ordinary dungeon that
+	// hit its city and left, as well as one a city's fall absorbed.
+	//
+	// ABSORBED WHILE WALKED: it was on the map when it was entered, and the
+	// run no longer had it when its walk ended, because its city fell while
+	// the player was inside. Its walk still goes to its bottom and costs its
+	// floors at the rate recorded on entry, and its clear counts for nothing.
+	// Issue #2414. Its own timer does not run while it is walked, so it cannot
+	// hit its city and leave in that time.
+	int32 GoneBeforeItsTurn = 0;
+	int32 AbsorbedWhileWalked = 0;
 
 	//: What the dungeons actually walked cost, added up as they are reached.
 	//
@@ -517,9 +536,10 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 		const FCataclysmDungeon* Standing = Bound.Run->FindDungeon(DungeonId);
 		if (Standing == nullptr)
 		{
-			// ABSORBED BY ITS CITY FALLING. It is off the map either way, which
-			// is what the check after this loop asks.
-			++Absorbed;
+			// GONE BEFORE ITS TURN: it hit its city and left, or its city fell
+			// and absorbed it. It is off the map either way, which is what the
+			// check after this loop asks.
+			++GoneBeforeItsTurn;
 			continue;
 		}
 
@@ -544,8 +564,21 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 
 		++FloorsWalked;
 
-		while (!Bound.Mode->IsOnTheLastFloor())
+		// BOUNDED BY THE DEPTH READ BEFORE ENTRY, as
+		// `ReachingTheBottomTakesTheDungeonOffTheMap` walks. A dungeon of
+		// `Floors` floors needs `Floors - 1` descents, so its last floor is
+		// found on pass `Floors` at the latest, and the bound ends the walk
+		// only when the game never says the last floor was reached. Before
+		// issue #2414 a walk whose city fell had no last floor, and the loop
+		// that stood here walked until the editor ran out of memory.
+		bool bReachedTheLastFloor = false;
+		for (int32 Descent = 1; Descent <= Floors; ++Descent)
 		{
+			if (Bound.Mode->IsOnTheLastFloor())
+			{
+				bReachedTheLastFloor = true;
+				break;
+			}
 			if (!Bound.Mode->GoDownOneFloor())
 			{
 				break;
@@ -553,29 +586,48 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 			++FloorsWalked;
 		}
 
+		TestTrue(FString::Printf(
+			TEXT("the walk of dungeon %d stopped on its last floor and not at the bound of %d passes"),
+			DungeonId, Floors),
+			bReachedTheLastFloor);
+
 		TestEqual(FString::Printf(
 			TEXT("dungeon %d was walked to its bottom floor %d"),
 			DungeonId, Floors),
 			Bound.Mode->FloorNumber, Floors);
 
+		// ASKED AT THE END OF THE WALK, BEFORE THE DESCENT THAT BEATS IT:
+		// whether the run still has it. A dungeon whose city fell while the
+		// player was inside is gone by now, and beating it counts for nothing.
+		const bool bAbsorbedWhileWalked = Bound.Run->FindDungeon(DungeonId) == nullptr;
+
 		// THE DESCENT PAST THE LAST FLOOR IS BEATING IT.
 		Bound.Mode->GoDownOneFloor();
-		++Cleared;
+		if (bAbsorbedWhileWalked)
+		{
+			++AbsorbedWhileWalked;
+		}
+		else
+		{
+			++Cleared;
+		}
 
 		TestNull(FString::Printf(TEXT("dungeon %d is off the map"), DungeonId),
 				 Bound.Run->FindDungeon(DungeonId));
 	}
 
 	AddInfo(FString::Printf(
-		TEXT("a wave of %d: %d cleared, %d absorbed by their cities falling "
-			 "first; %d floors walked over %d days"),
-		WaveSize, Cleared, Absorbed, FloorsWalked, DaysWalkingCost));
+		TEXT("a wave of %d: %d cleared, %d gone before their turn (hit their "
+			 "city and left, or absorbed by its fall), %d absorbed while "
+			 "walked; %d floors walked over %d days"),
+		WaveSize, Cleared, GoneBeforeItsTurn, AbsorbedWhileWalked, FloorsWalked,
+		DaysWalkingCost));
 
-	// EVERY DUNGEON OF THE WAVE IS OFF THE MAP, one way or the other. Clearing
-	// it and its city falling on it are the two ways a dungeon leaves, and the
-	// count above says which happened to each.
-	TestEqual(TEXT("every dungeon of the wave was accounted for"),
-			  Cleared + Absorbed, WaveSize);
+	// EVERY DUNGEON OF THE WAVE IS OFF THE MAP, one way or another. It was
+	// cleared, gone before its turn, or absorbed while walked, and the counts
+	// above say which happened to each.
+	TestEqual(TEXT("every dungeon of the wave was accounted for: cleared, gone before its turn, or absorbed while walked"),
+			  Cleared + GoneBeforeItsTurn + AbsorbedWhileWalked, WaveSize);
 
 	for (const int32 DungeonId : Wave)
 	{
@@ -583,13 +635,14 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 				 Bound.Run->FindDungeon(DungeonId));
 	}
 
-	// AND MOST OF IT WAS WALKED RATHER THAN LOST. A run where every dungeon
-	// vanished before the player reached it would satisfy the line above while
-	// measuring nothing about walking.
-	TestTrue(FString::Printf(
-				 TEXT("%d of the wave's %d dungeons were walked"), Cleared,
-				 WaveSize),
-			 Cleared > Absorbed);
+	// AND AT LEAST ONE OF IT WAS WALKED. A run where every dungeon vanished
+	// before the player reached it would satisfy the line above while
+	// measuring nothing about walking. The walks are not compared with the
+	// dungeons gone before their turn: since 2026-10-13 an ordinary dungeon can
+	// be gone because it hit its city and left, which walking cannot prevent.
+	// Ruled by the coordinating session, 2026-10-15.
+	TestTrue(TEXT("at least one dungeon of the wave was walked"),
+			 Cleared + AbsorbedWhileWalked >= 1);
 
 	// AND THE DAY MOVED BY EXACTLY WHAT THOSE WALKS COST, because nothing in
 	// this run has shortened one. One floor costs one day as a starting rate,
@@ -597,9 +650,13 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// are the sum of each dungeon's own walk cost rather than the floor count.
 	// Depth and reward are the same axis; depth and time are not, once a player
 	// has invested or a sub-type has intervened.
+	//
+	// A DUNGEON ABSORBED WHILE WALKED IS IN THAT SUM. Its walk cost its floors
+	// at the rate recorded on entry, issue #2414, so it is counted among the
+	// dungeons walked although its clear was not.
 	TestEqual(FString::Printf(
 		TEXT("walking %d floors across %d dungeons cost %d days"),
-		FloorsWalked, Cleared, DaysWalkingCost),
+		FloorsWalked, Cleared + AbsorbedWhileWalked, DaysWalkingCost),
 		Bound.Run->Day(), StartedOnDay + DaysWalkingCost);
 
 	// AND EVERY FLOOR OF THOSE DUNGEONS WAS ACTUALLY WALKED. A run whose day
@@ -610,10 +667,11 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 
 	// A WAVE IS WEEKS OF WORK, not an afternoon. Outpost dungeons are 8 to 15
 	// floors each, which is what makes ignoring one a real decision rather than
-	// an obvious mistake.
+	// an obvious mistake. A dungeon absorbed while walked was walked to its
+	// bottom too, so it is counted with the ones cleared.
 	TestTrue(FString::Printf(
-		TEXT("clearing what was left of the wave cost %d days"), FloorsWalked),
-		FloorsWalked >= Cleared * 8);
+		TEXT("walking what was left of the wave took %d floors"), FloorsWalked),
+		FloorsWalked >= (Cleared + AbsorbedWhileWalked) * 8);
 
 	return true;
 }
@@ -1228,7 +1286,7 @@ bool FCataclysmDeathCostsTheModesDaysTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathResolvesOnceTest,
-	"Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonResolvesItOnceAndItsTimerStartsAgainFromFull",
+	"Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonHitsItsCityOnceAndTheDungeonLeavesTheMap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDeathResolvesOnceTest::RunTest(const FString& Parameters)
@@ -1236,8 +1294,10 @@ bool FCataclysmDeathResolvesOnceTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDeathEndsDungeonTest;
 
 	// A FULL TIMER OF FORTY DAYS WITH TWO LEFT. Two is fewer than the five days
-	// a Standard death costs, so a death that resolved the dungeon and left its
-	// timer alone would resolve it a second time two days into the charge.
+	// a Standard death costs, so a death that resolved the dungeon and left it
+	// on the map with its timer alone would resolve it a second time two days
+	// into the charge. Since 2026-10-13 the dungeon leaves the map at the
+	// death, so there is no timer for those days to run out.
 	const float FullTimer = 40.0f;
 	const float DaysLeft = 2.0f;
 
@@ -1347,20 +1407,23 @@ bool FCataclysmDeathResolvesOnceTest::RunTest(const FString& Parameters)
 			  PopulationInside - City->Population, PopulationBite, 0.01f);
 	TestEqual(TEXT("one resolve has cost a city, and only one"),
 			  Scene.Run->DungeonsDetonated, 1);
-	TestEqual(TEXT("the clock counts one resolve of that dungeon"),
-			  TimesResolvedOf(*Scene.Run, DungeonId), 1);
+	// THE CLOCK KEEPS NO COUNT OF THAT DUNGEON'S RESOLVES NOW. The count lived
+	// on the dungeon's timer and the timer left with the dungeon;
+	// `TimesResolvedOf` answers -1 for a dungeon with no timer. The run's own
+	// count, one, is asserted above.
+	TestEqual(TEXT("the clock keeps no count of that dungeon's resolves: -1, which is what a dungeon with no timer reads"),
+			  TimesResolvedOf(*Scene.Run, DungeonId), -1);
 
-	// IT STAYS ON THE MAP, as a dungeon whose timer ran out does.
-	TestNotNull(TEXT("the dungeon is still on the map"),
-				Scene.Run->FindDungeon(DungeonId));
+	// IT IS OFF THE MAP, as every ordinary dungeon is after it hits its city.
+	TestNull(TEXT("the dungeon is off the map"),
+			 Scene.Run->FindDungeon(DungeonId));
 
-	// AND ITS TIMER WAS FULL WHEN THE DAYS BEGAN. Forty, less the five days a
-	// Standard death costs. Left alone it would have run out on the second of
-	// those days and read thirty-seven.
+	// AND NO TIMER OF ITS RAN THROUGH THE DAYS. Left on the map with its two
+	// days it would have run out on the second of them and hit the city again;
+	// the count of one above is what shows it did not.
 	TestEqual(TEXT("the death cost five days"), Scene.Run->Day() - DayInside, 5);
-	TestEqual(TEXT("the timer was set to full at the death and has run the five days since"),
-			  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), FullTimer - 5.0f,
-			  0.001f);
+	TestEqual(TEXT("no timer counts down for it after the five days"),
+			  Scene.Run->Clock->DaysUntilResolveFor(DungeonId), -1.0f, 0.001f);
 
 	return true;
 }
@@ -1495,26 +1558,31 @@ bool FCataclysmDeathResolvesNoQuestDungeonTest::RunTest(const FString& Parameter
 
 	// -- A Quest dungeon ---------------------------------------------------
 	//
-	// ITS TIMER IS A RELOCATION CLOCK: 25 days, with 3 left. Three is fewer
-	// than the five days charged, so the clock runs out on the third of them,
-	// refills, and has run two more by the end: 23. A death that touched the
-	// clock would leave some other figure.
+	// ITS TIMER IS 25 DAYS, WITH 12 LEFT. TWELVE IS MORE THAN THE FIVE DAYS
+	// CHARGED, ON PURPOSE. Since 2026-10-13 a Quest dungeon's timer hits its
+	// host city when it runs out. This test is about the death, and its control
+	// says the days alone take nothing from any city; a timer that ran out
+	// inside the five days would take an ordinary hit from the host in both
+	// passes and make that control false. Until that date the timer had 3
+	// days left and ran out on the third. With 12 it runs the five days and
+	// reads 7. A death that touched the timer would leave some other figure.
 	const float QuestTimer = UCataclysmSurgeScheduler::QuestResolveDays;
+	const float QuestDaysLeft = 12.0f;
 
 	FAfterTheDays QuestDeath;
 	FAfterTheDays QuestControl;
-	if (!RunOneCase(*this, ECataclysmDungeonType::Quest, QuestTimer, 3.0f,
-					/*bThePlayerDies=*/true, 0, QuestDeath)
-		|| !RunOneCase(*this, ECataclysmDungeonType::Quest, QuestTimer, 3.0f,
-					   /*bThePlayerDies=*/false, 5, QuestControl))
+	if (!RunOneCase(*this, ECataclysmDungeonType::Quest, QuestTimer,
+					QuestDaysLeft, /*bThePlayerDies=*/true, 0, QuestDeath)
+		|| !RunOneCase(*this, ECataclysmDungeonType::Quest, QuestTimer,
+					   QuestDaysLeft, /*bThePlayerDies=*/false, 5, QuestControl))
 	{
 		return false;
 	}
 
 	if (!TestEqual(TEXT("CONTROL, Quest: five days passed with no death"),
 				   QuestControl.DaysPassed, 5)
-		|| !TestEqual(TEXT("CONTROL, Quest: its clock ran out on the third day and has run two since"),
-					  QuestControl.TimerLeft, QuestTimer - 2.0f, 0.001f)
+		|| !TestEqual(TEXT("CONTROL, Quest: its timer ran the five days and did not run out"),
+					  QuestControl.TimerLeft, QuestDaysLeft - 5.0f, 0.001f)
 		|| !TestEqual(TEXT("CONTROL, Quest: the days alone took nothing from any city"),
 					  QuestControl.Defence, QuestControl.DefenceInside, 0.01f))
 	{
@@ -1527,7 +1595,7 @@ bool FCataclysmDeathResolvesNoQuestDungeonTest::RunTest(const FString& Parameter
 			  QuestDeath.Defence, QuestControl.Defence, 0.01f);
 	TestEqual(TEXT("Quest: and every city's population"),
 			  QuestDeath.Population, QuestControl.Population, 0.01f);
-	TestEqual(TEXT("Quest: the relocation clock is what the days alone make it"),
+	TestEqual(TEXT("Quest: its timer is what the days alone make it"),
 			  QuestDeath.TimerLeft, QuestControl.TimerLeft, 0.001f);
 	TestEqual(TEXT("Quest: it has run out as many times as the days alone make it"),
 			  QuestDeath.TimesResolved, QuestControl.TimesResolved);
@@ -1946,9 +2014,12 @@ bool FCataclysmDeathLeavesAsAClearDoesTest::RunTest(const FString& Parameters)
 			  AfterTheDeath.FloorNumber, AfterAClear.FloorNumber);
 	TestEqual(TEXT("and that is floor 3"), AfterTheDeath.FloorNumber, 3);
 
-	// THE ONE DIFFERENCE FROM A CLEAR: the dungeon is still on the map.
-	TestNotNull(TEXT("unlike a cleared dungeon, this one is still on the map"),
-				Scene.Run->FindDungeon(DungeonId));
+	// AND THE DUNGEON IS OFF THE MAP, AS A CLEARED ONE IS. Until 2026-10-13
+	// this was the one difference from a clear: the dungeon stayed. An
+	// ordinary dungeon now leaves after it hits its city, and a death makes it
+	// hit. It is not counted as cleared; that is the empire layer's test.
+	TestNull(TEXT("like a cleared dungeon, this one is off the map"),
+			 Scene.Run->FindDungeon(DungeonId));
 
 	// AND THE PLAYER STANDS BACK UP WHOLE, at the entrance of that floor.
 	const FVector StandingAgain = Scene.Player->GetActorLocation();
@@ -1981,7 +2052,7 @@ bool FCataclysmDeathLeavesAsAClearDoesTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathHereticShallowTest,
-	"Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonResolvesItAtTheDeathAndAgainFromTheDaysCharged",
+	"Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonHitsItsCityOnceAndNothingMoreLandsInTheDaysCharged",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
@@ -1990,9 +2061,16 @@ bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
 
 	// THE FIGURES THE CASE RESTS ON, READ FROM THE CLOCK AND CHECKED. A full
 	// timer is 10 days plus 1.6 a floor: 14.8 at three floors and 16.4 at four.
-	// A Heretic death costs 15. So a three floor dungeon, full again at the
-	// death, runs out inside the days the death costs, and a four floor one
-	// does not. No roll is on these timers; the test writes them.
+	// A Heretic death costs 15. Until 2026-10-13 a three floor dungeon, full
+	// again at the death, ran out inside the days the death costs and resolved
+	// a second time, and a four floor one did not; this test held that, under
+	// the name `...ResolvesItAtTheDeathAndAgainFromTheDaysCharged`.
+	//
+	// WHAT IT HOLDS NOW: the dungeon hits its city once, at the death, and
+	// leaves the map, so nothing more lands in the fifteen days at either
+	// depth. Three floors is the case that used to hit twice, which is what
+	// makes "once" a figure that could be wrong. No roll is on these timers;
+	// the test writes them.
 	const float TimerAtThree = UCataclysmDayClock::ResolveDaysFor(3);
 	const float TimerAtFour = UCataclysmDayClock::ResolveDaysFor(4);
 	constexpr int32 HereticRung = 2;
@@ -2016,6 +2094,7 @@ bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
 		int32 Detonated = 0;
 		int32 TimesResolved = 0;
 		int32 DaysPassed = 0;
+		bool bOnTheMapAfter = true;
 	};
 
 	const auto DieIn = [this](int32 Floors, float FullTimer, FShallow& Out)
@@ -2067,30 +2146,37 @@ bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
 		Out.Detonated = Scene.Run->DungeonsDetonated;
 		Out.TimesResolved = TimesResolvedOf(*Scene.Run, DungeonId);
 		Out.DaysPassed = Scene.Run->Day() - DayInside;
+		Out.bOnTheMapAfter = Scene.Run->FindDungeon(DungeonId) != nullptr;
 		return true;
 	};
 
-	// -- THE CONTROL: four floors, one resolve ------------------------------
+	// -- FOUR FLOORS: one hit, as it always was ----------------------------
+	//
+	// THE FULL TIMER HERE IS LONGER THAN THE FIFTEEN DAYS, so this depth never
+	// hit twice. It is beside the three floor case to show the two depths now
+	// come out alike.
 	FShallow AtFour;
 	if (!DieIn(4, TimerAtFour, AtFour))
 	{
 		return false;
 	}
 
-	TestEqual(TEXT("CONTROL, four floors: the death cost 15 days"),
+	TestEqual(TEXT("four floors: the death cost 15 days"),
 			  AtFour.DaysPassed, 15);
-	TestEqual(TEXT("CONTROL, four floors: one resolve cost the city, at the death"),
+	TestEqual(TEXT("four floors: one resolve cost the city, at the death"),
 			  AtFour.Detonated, 1);
-	TestEqual(TEXT("CONTROL, four floors: the clock counts one resolve"),
-			  AtFour.TimesResolved, 1);
-	TestTrue(TEXT("CONTROL, four floors: one resolve is a real amount"),
+	TestEqual(TEXT("four floors: the clock keeps no count for it: -1, which is what a dungeon with no timer reads"),
+			  AtFour.TimesResolved, -1);
+	TestTrue(TEXT("four floors: one resolve is a real amount"),
 			 AtFour.OneBite > 1.0f);
-	TestEqual(TEXT("CONTROL, four floors: the city lost one resolve's defence"),
+	TestEqual(TEXT("four floors: the city lost one resolve's defence"),
 			  AtFour.DefenceLost, AtFour.OneBite, 0.01f);
-	TestEqual(TEXT("CONTROL, four floors: its timer has 1.4 of its 16.4 days left"),
-			  AtFour.TimerLeft, TimerAtFour - 15.0f, 0.001f);
+	TestEqual(TEXT("four floors: no timer counts down for it after the fifteen days"),
+			  AtFour.TimerLeft, -1.0f, 0.001f);
+	TestFalse(TEXT("four floors: the dungeon is off the map"),
+			  AtFour.bOnTheMapAfter);
 
-	// -- THREE FLOORS: two resolves ---------------------------------------
+	// -- THREE FLOORS: one hit, where there used to be two ------------------
 	FShallow AtThree;
 	if (!DieIn(3, TimerAtThree, AtThree))
 	{
@@ -2098,16 +2184,18 @@ bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
 	}
 
 	TestEqual(TEXT("three floors: the death cost 15 days"), AtThree.DaysPassed, 15);
-	TestEqual(TEXT("three floors: two resolves cost the city, one at the death and one from the days charged"),
-			  AtThree.Detonated, 2);
-	TestEqual(TEXT("three floors: the clock counts two resolves"),
-			  AtThree.TimesResolved, 2);
+	TestEqual(TEXT("three floors: one resolve cost the city, at the death, and none from the days charged"),
+			  AtThree.Detonated, 1);
+	TestEqual(TEXT("three floors: the clock keeps no count for it: -1, which is what a dungeon with no timer reads"),
+			  AtThree.TimesResolved, -1);
 	TestTrue(TEXT("three floors: one resolve is a real amount"),
 			 AtThree.OneBite > 1.0f);
-	TestEqual(TEXT("three floors: the city lost two resolves' defence"),
-			  AtThree.DefenceLost, 2.0f * AtThree.OneBite, 0.01f);
-	TestEqual(TEXT("three floors: its timer ran out on the fifteenth day and is full again"),
-			  AtThree.TimerLeft, TimerAtThree, 0.001f);
+	TestEqual(TEXT("three floors: the city lost one resolve's defence and no more in the fifteen days"),
+			  AtThree.DefenceLost, AtThree.OneBite, 0.01f);
+	TestEqual(TEXT("three floors: no timer counts down for it after the fifteen days"),
+			  AtThree.TimerLeft, -1.0f, 0.001f);
+	TestFalse(TEXT("three floors: the dungeon is off the map"),
+			  AtThree.bOnTheMapAfter);
 
 	return true;
 }

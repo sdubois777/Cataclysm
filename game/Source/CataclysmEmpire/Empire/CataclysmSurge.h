@@ -39,7 +39,8 @@ enum class ECataclysmSurgeMode : uint8
 // CREATED:
 //
 //   - **Basic** is the common thing a surge spawns. `MakeDungeon` builds it.
-//   - **Quest** refreshes instead of resolving, and clearing one is one
+//   - **Quest** hits its host city when its timer runs out, at an ordinary
+//     dungeon's size for that city, then refreshes; clearing one is one
 //     objective towards challenging the Cataclysm. A surge rolls one in place
 //     of a Basic; see `RollKind` and `QuestChance`. Issue #1324 slice 3.
 //     **And it may relocate**: when its timer runs out it moves to an adjacent
@@ -383,7 +384,16 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	float BiteScale() const;
 
 	/**
-	 * Whether this dungeon's timer running out costs its host city anything.
+	 * Whether this dungeon is an ordinary one: the kind whose timer running out
+	 * takes its OWN row's damage from its host, scaled by depth, and which then
+	 * leaves the map.
+	 *
+	 * **SINCE 2026-10-13 A FALSE HERE NO LONGER MEANS THE CITY PAYS NOTHING.** A
+	 * Quest dungeon answers false and its timer still hits its host, with the
+	 * ordinary row of the host's tier: `UCataclysmEmpireRun::ResolveDungeon`
+	 * does that inside the block that asks this. This used to be headed
+	 * "Whether this dungeon's timer running out costs its host city anything".
+	 * The paragraphs below were written then and are kept for their reasoning.
 	 *
 	 * A PORT OF `Dungeon.resolves` IN `sim/cataclysm_sim/engine.py`, and the
 	 * model's own words for why the other three answer false: "Quest dungeons
@@ -400,10 +410,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * this reads.
 	 *
 	 * IT DOES NOT MEAN THE TIMER NEVER FIRES, AND IT DOES NOT MEAN NOTHING
-	 * HAPPENS. A Quest dungeon's timer is a relocation clock and is MEANT to run
-	 * out -- see `QuestResolveDays`. What this answers is whether anything is
-	 * taken from the CITY when it does; the dungeon itself refreshes and moves
-	 * to an adjacent city. Issue #1324 slice 4.
+	 * HAPPENS. A Quest dungeon's timer is MEANT to run out -- see
+	 * `QuestResolveDays`. When it does the host is hit, the timer refreshes and
+	 * the dungeon may move to an adjacent city. Issue #1324 slice 4. What this
+	 * also still decides is a death: dying in a dungeon resolves it only when
+	 * this answers true.
 	 */
 	bool Resolves() const { return Type == ECataclysmDungeonType::Basic; }
 };
@@ -892,9 +903,11 @@ public:
 	 * answers a spec whose `IsBuilt` is false, because the model has no such row
 	 * and raises when asked for one.
 	 *
-	 * THE THREE NEW KINDS ALL BITE NOTHING, which is the design rather than a
-	 * gap: a Quest dungeon never resolves, and a Fallen City and a Cataclysm
-	 * stand on a city whose damage is already done.
+	 * THE THREE NEW KINDS ALL CARRY NO DAMAGE OF THEIR OWN, which is the design
+	 * rather than a gap. A Fallen City and a Cataclysm stand on a city whose
+	 * damage is already done. A Quest dungeon's rows are nought as well, and
+	 * since 2026-10-13 its timer hits its host with the BASIC row of the host's
+	 * tier, which `UCataclysmEmpireRun::ResolveDungeon` asks this function for.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FCataclysmDungeonSpec SpecFor(ECataclysmDungeonType Type,
@@ -916,22 +929,29 @@ public:
 	/**
 	 * How long a Quest dungeon's timer runs. `config.DUNGEON_SPECS`.
 	 *
-	 * IT IS A RELOCATION CLOCK AND NOT A BITE SCHEDULE, which is why it is a
-	 * flat number rather than derived from the depth. `docs/Cataclysm_GDD_v2.md`
-	 * section VIII: a Quest dungeon "does not resolve -- refreshes and may move
-	 * to adjacent city". The model says the same with a `(25, 40)` on every
-	 * Quest row of `DUNGEON_SPECS` and by reading `spec.resolve_days[0]` for
-	 * every kind but `Basic` in `Simulation._make_dungeon`; all four tiers give
-	 * 25, so one constant covers them and `test_surge_port.py` checks all four
-	 * against it.
+	 * A FLAT NUMBER AND NOT DERIVED FROM THE DEPTH. The model says the same
+	 * with a `(25, 40)` on every Quest row of `DUNGEON_SPECS` and by reading
+	 * `spec.resolve_days[0]` for every kind but `Basic` in
+	 * `Simulation._make_dungeon`; all four tiers give 25, so one constant
+	 * covers them and `test_surge_port.py` checks all four against it.
 	 *
-	 * THIS IS NOT THE "RESOLVE TIMERS SCALE WITH DEPTH" RULE BEING BROKEN.
-	 * `CLAUDE.md` states that rule about a dungeon whose timer running out
-	 * takes something from a city: a deeper one is worth more and slower to
-	 * bite. A Quest dungeon takes nothing whenever its timer runs out, so there
-	 * is no bite for its depth to be traded against. What the timer decides is
-	 * how long the player has before the objective moves, and the design gives
-	 * that no relationship to depth at all.
+	 * **IT IS A HIT SCHEDULE SINCE 2026-10-13, AND IT IS STILL FLAT.** Until
+	 * then this comment said the timer was "a relocation clock and not a bite
+	 * schedule" and that the flat number did not break the rule that resolve
+	 * timers scale with depth, because a Quest dungeon "takes nothing whenever
+	 * its timer runs out". That argument no longer holds: the timer now hits
+	 * the host city every time it runs out.
+	 *
+	 * WHAT CAN BE SAID FOR THE FLAT NUMBER NOW. `CLAUDE.md` states the depth
+	 * rule as a trade: a deeper dungeon is worth more and is slower to bite.
+	 * A Quest dungeon's hit is not sized by its depth either. The host takes
+	 * the ordinary row of its own tier at a scale of one, whatever the Quest
+	 * dungeon's floor count. So neither the size of the hit nor the days
+	 * between hits reads the depth, and a deeper Quest dungeon is not paid for
+	 * with a slower or a smaller hit. An unattended one takes an ordinary hit
+	 * from its host every 25 days. Whether a Quest dungeon's timer SHOULD
+	 * follow its depth is not ruled; the model and the game both keep 25, and
+	 * `docs/DECISIONS.md`, 2026-10-13, records it as open.
 	 *
 	 * AND IT IS WHAT THE MOVE HANGS ON. The timer running out puts the dungeon
 	 * in the day's `FCataclysmDayReport::Resolved`, and

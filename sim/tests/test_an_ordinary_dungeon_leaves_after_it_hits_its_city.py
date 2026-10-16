@@ -12,9 +12,9 @@ now defaults to False, and its one read is the last statement of
 that was standing when the hit landed. Set it True to measure the model as it
 was: the dungeon stays with its timer full again.
 
-THE GAME DOES NOT HAVE THIS RULE YET, ON PURPOSE.
-`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
-records that and says what to do when it gains it.
+THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
+`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`
+holds the two halves together.
 
 EVERY CASE HAS A CONTROL WITH THE SETTING ON "STAYS", built from the same
 seed, so a test that would pass with the rule absent says so by its control

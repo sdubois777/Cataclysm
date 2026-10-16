@@ -911,8 +911,8 @@ class Simulation:
         # empire points or the materials, so a dungeon that leaves adds no
         # floor to the Cataclysm boss.
         #
-        # THE GAME DOES NOT DO THIS YET.
-        # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_not_yet_in_the_game.py`
+        # THE GAME DOES THIS TOO, SINCE ITS LAYER OF 2026-10-13.
+        # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`
         # reads this function and `UCataclysmEmpireRun::ResolveDungeon`.
         if cfg.dungeon_persists_after_resolve:
             d.resolve_in = float(d.resolve_max)
@@ -993,8 +993,8 @@ class Simulation:
         NO DRAW IS TAKEN HERE, so with the city left standing the random
         stream is where it would have been without the hit.
 
-        THE GAME DOES NOT HAVE THIS RULE.
-        `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`
+        THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
+        `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`
         reads this and `UCataclysmEmpireRun::ResolveDungeon`.
         """
         cfg = self.cfg

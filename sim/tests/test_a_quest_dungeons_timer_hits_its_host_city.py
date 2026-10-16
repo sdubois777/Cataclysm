@@ -25,9 +25,9 @@ THE READINGS THIS FILE HOLDS, each a labelled judgement recorded in
     player is inside it;
   * the hit is counted in `quest_hits` and not in `resolved`.
 
-THE GAME DOES NOT HAVE THIS RULE.
-`tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_not_yet_in_the_game.py`
-records that.
+THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
+`tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`
+holds the two halves together.
 
 EVERY CASE HAS A CONTROL WITH THE HIT SWITCHED OFF, or a twin that differs in
 the one thing the test is about.
