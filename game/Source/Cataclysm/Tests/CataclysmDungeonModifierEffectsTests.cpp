@@ -52159,8 +52159,16 @@ bool FCataclysmDarkFloorFallTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	UCataclysmEmpireRun* Run = nullptr;
 	int32 DungeonId = INDEX_NONE;
-	ACataclysmDungeonGameMode* Mode = ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId);
+	// BASIC ON PURPOSE: the subject does not depend on the type; it is the helper's "first ordinary dungeon" and seed 1's roll.
+	ACataclysmDungeonGameMode* Mode =
+		ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId, ECataclysmDungeonType::Basic);
 	if (!Mode)
+	{
+		return false;
+	}
+	const FCataclysmDungeon* Walked = Run->FindDungeon(DungeonId);
+	if (!TestTrue(TEXT("CONTROL: the dungeon is an ordinary dungeon"),
+				  Walked != nullptr && Walked->Type == ECataclysmDungeonType::Basic))
 	{
 		return false;
 	}
@@ -52245,8 +52253,16 @@ bool FCataclysmDarkFloorNotLastTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	UCataclysmEmpireRun* Run = nullptr;
 	int32 DungeonId = INDEX_NONE;
-	ACataclysmDungeonGameMode* Mode = ADarkFloorEmpireDungeon(*this, World, Player, 6, Run, DungeonId);
+	// BASIC ON PURPOSE: the subject does not depend on the type; it is the helper's "first ordinary dungeon" and seed 1's roll.
+	ACataclysmDungeonGameMode* Mode =
+		ADarkFloorEmpireDungeon(*this, World, Player, 6, Run, DungeonId, ECataclysmDungeonType::Basic);
 	if (!Mode)
+	{
+		return false;
+	}
+	const FCataclysmDungeon* Walked = Run->FindDungeon(DungeonId);
+	if (!TestTrue(TEXT("CONTROL: the dungeon is an ordinary dungeon"),
+				  Walked != nullptr && Walked->Type == ECataclysmDungeonType::Basic))
 	{
 		return false;
 	}
@@ -53170,9 +53186,17 @@ bool FCataclysmDarkSaveEnteringTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	UCataclysmEmpireRun* Run = nullptr;
 	int32 DungeonId = INDEX_NONE;
-	ACataclysmDungeonGameMode* Mode = ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId);
+	// BASIC ON PURPOSE: the subject does not depend on the type; it is the helper's "first ordinary dungeon" and seed 1's roll.
+	ACataclysmDungeonGameMode* Mode =
+		ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId, ECataclysmDungeonType::Basic);
 	UCataclysmSaveWriter* Writer = Mode ? DarkSaveWriterIn(*this, World) : nullptr;
 	if (!Writer)
+	{
+		return false;
+	}
+	const FCataclysmDungeon* Walked = Run->FindDungeon(DungeonId);
+	if (!TestTrue(TEXT("CONTROL: the dungeon is an ordinary dungeon"),
+				  Walked != nullptr && Walked->Type == ECataclysmDungeonType::Basic))
 	{
 		return false;
 	}

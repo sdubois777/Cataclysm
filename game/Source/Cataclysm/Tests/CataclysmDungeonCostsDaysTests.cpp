@@ -2521,4 +2521,516 @@ bool FCataclysmWalkedDungeonAbsorbedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Two more falls during a walk, 2026-10-16
+// ---------------------------------------------------------------------------
+
+/**
+ * A WALK WHOSE CITY FALLS TO THE WALKED DUNGEON'S OWN SIEGE, AND A CITY THAT FALLS WHEN THE PLAYER REACHES THE
+ * LAST FLOOR. The test above fells the city with ANOTHER dungeon's timer, on the descent to floor 2. These two cover
+ * what it does not: the walked dungeon felling its own city, and a fall on the descent onto the last floor, after
+ * which the next press of the stairs is the one that ends the walk. Both are held to the ruling the test above
+ * quotes.
+ *
+ * WHAT THE FIRST RESTS ON, read 2026-10-16. `UCataclysmEmpireRun::ApplySiegeDamage` bites the city of every dungeon
+ * whose sub-type is Siege and does not skip the walked one; the day clock stops only the walked dungeon's TIMER
+ * (`UCataclysmDayClock::AdvanceDay`). The bite is `City->MaxDefence * SiegeDefenceBitePerDay +
+ * SiegeDamageGrowthPerDay * days stood`, the days read as `Clock->Day - Dungeon.SpawnedDay`.
+ *
+ * WHAT THE SECOND RESTS ON. `GoDownOneFloor` builds the next floor and only then calls
+ * `SpendFloorTimeInTheEmpire`, so a fall caused by the day that descent completes happens with the player already on
+ * that floor. On the next press `IsOnTheLastFloor` reads the floors recorded on entry, because a number is still
+ * bound, and leads to `ClearEmpireDungeon`.
+ *
+ * EVERY WALK IS BOUNDED. The first by the floor limit the test above uses, the dungeon's floors plus two; the second
+ * by pressing the stairs exactly four times: three descents and the last stairs.
+ */
+namespace CataclysmWalkedDungeonAbsorbedTest
+{
+	using namespace CataclysmDeathEndsDungeonTest;
+
+	/** What one walk of a Siege left behind, for comparing the walk whose city fell with the control. */
+	struct FSiegeWalked
+	{
+		int32 WalkedId = INDEX_NONE;
+		int32 Floors = 0;
+		float Rate = 0.0f;
+		float OneDaysBite = 0.0f;
+		float BitesOverTheWalk = 0.0f;
+		float CityDefenceAtEntry = 0.0f;
+		float CityDefenceAtTheEnd = 0.0f;
+		int32 DetonatedBefore = 0;
+		int32 DetonatedAfter = -1;
+		bool bCityFell = false;
+		bool bWalkedOnTheMapAtFloorTwo = false;
+		int32 BoundAtFloorTwo = INDEX_NONE;
+		int32 FloorsAnsweredAtFloorTwo = 0;
+		int32 DescentsAfterFloorTwo = 0;
+		int32 DescentsAtTheRate = 0;
+		bool bStairsEndedTheWalk = false;
+		float CostOfTheLastStairs = -1.0f;
+		int32 DeepestFloor = 0;
+		float WholeWalk = 0.0f;
+		int32 ClearsCounted = 0;
+		int32 OrdinaryClearsCounted = 0;
+		int32 ObjectivesEarned = 0;
+		int32 BoundAtTheEnd = 0;
+		int32 FloorsAnsweredAtTheEnd = -1;
+		bool bLastFloorAtTheEnd = true;
+		int32 MessageLines = -1;
+	};
+
+	/**
+	 * One walk of a Siege, in a world of its own.
+	 *
+	 * THE SCENE. `MakeScene`'s empty run and ONE dungeon, placed by hand on its first Outpost: ordinary, four floors
+	 * deep, of the Siege sub-type, two days for the whole walk and so half a day a floor, its timer forty days and
+	 * stopped while it is walked. No other dungeon stands, so only this Siege can take anything from the city. With
+	 * `bCityAtTenPoints` the Outpost is first brought down to ten points of defence.
+	 *
+	 * WHERE EACH STANDS. As in `WalkFourFloors`: the possessed player at each floor's entrance, floor 1 cleared of
+	 * creatures by `EnterAndStand`, later floors' creatures where the floor builder puts them. Nothing is ticked.
+	 *
+	 * THE BITES, WORKED BY HAND for an Outpost, whose maximum defence is 1000. The dungeon is placed on day 1, the
+	 * day `MakeScene` leaves the run on. Entering spends half a day and no whole day. The descent to floor 2
+	 * completes a day, day 2: the Siege has stood one day and bites 1000 x 0.01 + 2.5 x 1 = 12.5. The descent to
+	 * floor 3 spends half a day and no whole day. The descent to floor 4 completes day 3: two days stood, so
+	 * 10 + 2.5 x 2 = 15. The last stairs cost nothing. So a city at full defence loses 27.5 over the walk and stands,
+	 * and a city at ten points falls on the descent to floor 2, because 12.5 is more than 10.
+	 */
+	bool WalkFourFloorsOfASiege(FAutomationTestBase& Test, bool bCityAtTenPoints, FSiegeWalked& Out)
+	{
+		FDeathScene Scene = MakeScene(0);
+		if (!Test.TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		if (!Test.TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+		{
+			return false;
+		}
+
+		const int32 CityId = AnOutpostOf(*Scene.Run);
+		FCataclysmCity* Host = Scene.Run->Map->FindMutable(CityId);
+		if (!Test.TestNotNull(TEXT("set-up: an Outpost is on the map"), Host))
+		{
+			return false;
+		}
+		if (bCityAtTenPoints)
+		{
+			Host->Defence = 10.0f;
+		}
+
+		Out.WalkedId = PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, CityId, 4, 40.0f, 40.0f,
+								   100.0f, 50.0f);
+		if (!Test.TestTrue(TEXT("set-up: one dungeon was placed on that city"), Out.WalkedId != INDEX_NONE))
+		{
+			return false;
+		}
+
+		// A SIEGE, AND TWO DAYS FOR THE WHOLE WALK, written on the dungeon as a surge and a city upgrade would.
+		for (FCataclysmDungeon& Placed : Scene.Run->Dungeons)
+		{
+			if (Placed.DungeonId == Out.WalkedId)
+			{
+				Placed.SubType = ECataclysmDungeonSubType::Siege;
+				Placed.WalkDays = 2.0f;
+			}
+		}
+
+		const FCataclysmDungeon* Walked = Scene.Run->FindDungeon(Out.WalkedId);
+		if (!Test.TestNotNull(TEXT("set-up: the walked dungeon is on the map"), Walked))
+		{
+			return false;
+		}
+		Out.Floors = Walked->Floors;
+		Out.Rate = Walked->WalkDaysPerFloor();
+
+		// THE BITES THE COMMENT ABOVE WORKS BY HAND, from the run's own constants: one day stood, then two.
+		Out.OneDaysBite = Host->MaxDefence * UCataclysmEmpireRun::SiegeDefenceBitePerDay
+			+ UCataclysmEmpireRun::SiegeDamageGrowthPerDay * 1.0f;
+		Out.BitesOverTheWalk = 2.0f * Host->MaxDefence * UCataclysmEmpireRun::SiegeDefenceBitePerDay
+			+ UCataclysmEmpireRun::SiegeDamageGrowthPerDay * (1.0f + 2.0f);
+
+		if (!Test.TestEqual(TEXT("set-up: the walked dungeon is four floors deep"), Out.Floors, 4)
+			|| !Test.TestEqual(TEXT("set-up: at half a day a floor"), Out.Rate, 0.5f, 0.0001f)
+			|| !Test.TestTrue(TEXT("set-up: it is a Siege and the only dungeon on the map"),
+							  Walked->SubType == ECataclysmDungeonSubType::Siege && Scene.Run->Dungeons.Num() == 1)
+			|| !Test.TestEqual(TEXT("set-up: it arrived today, so the next day is its first day stood"),
+							   Walked->SpawnedDay, Scene.Run->Day()))
+		{
+			return false;
+		}
+
+		Out.DetonatedBefore = Scene.Run->DungeonsDetonated;
+		const int32 ClearedBefore = Scene.Run->DungeonsCleared;
+		const int32 OrdinaryBefore = Scene.Run->BasicDungeonsCleared;
+		const int32 ObjectivesBefore = Scene.Run->QuestObjectives;
+		Out.CityDefenceAtEntry = Host->Defence;
+
+		FAbsorbedWalkLogCapture Capture;
+		const float TimeBefore = TimeNow(*Scene.Run);
+
+		if (!EnterAndStand(Test, Scene, Out.WalkedId))
+		{
+			return false;
+		}
+
+		// FLOOR 1 TO FLOOR 2: day 2 begins here, and the Siege's first bite lands.
+		if (!Test.TestTrue(TEXT("set-up: the descent to floor 2 works"), Scene.Mode->GoDownOneFloor()))
+		{
+			return false;
+		}
+
+		Out.bCityFell = Host->bFallen;
+		Out.bWalkedOnTheMapAtFloorTwo = Scene.Run->FindDungeon(Out.WalkedId) != nullptr;
+		Out.BoundAtFloorTwo = Scene.Mode->EmpireDungeonId;
+		Out.FloorsAnsweredAtFloorTwo = Scene.Mode->EmpireDungeonFloors();
+
+		// DOWN THE STAIRS UNTIL THEY END, AND NEVER PAST THE FLOOR LIMIT.
+		const int32 FloorLimit = Out.Floors + 2;
+		while (Scene.Mode->FloorNumber < FloorLimit)
+		{
+			const float BeforeTheStairs = TimeNow(*Scene.Run);
+			if (!Scene.Mode->GoDownOneFloor())
+			{
+				Out.bStairsEndedTheWalk = true;
+				Out.CostOfTheLastStairs = TimeNow(*Scene.Run) - BeforeTheStairs;
+				break;
+			}
+
+			++Out.DescentsAfterFloorTwo;
+			if (FMath::IsNearlyEqual(TimeNow(*Scene.Run) - BeforeTheStairs, Out.Rate, 0.001f))
+			{
+				++Out.DescentsAtTheRate;
+			}
+		}
+
+		Out.DeepestFloor = Scene.Mode->FloorNumber;
+		Out.WholeWalk = TimeNow(*Scene.Run) - TimeBefore;
+		Out.CityDefenceAtTheEnd = Host->Defence;
+		Out.DetonatedAfter = Scene.Run->DungeonsDetonated;
+		Out.ClearsCounted = Scene.Run->DungeonsCleared - ClearedBefore;
+		Out.OrdinaryClearsCounted = Scene.Run->BasicDungeonsCleared - OrdinaryBefore;
+		Out.ObjectivesEarned = Scene.Run->QuestObjectives - ObjectivesBefore;
+		Out.BoundAtTheEnd = Scene.Mode->EmpireDungeonId;
+		Out.FloorsAnsweredAtTheEnd = Scene.Mode->EmpireDungeonFloors();
+		Out.bLastFloorAtTheEnd = Scene.Mode->IsOnTheLastFloor();
+		Out.MessageLines = Capture.LinesContaining(FString::Printf(
+			TEXT("The city of dungeon %d fell while you were inside it."), Out.WalkedId));
+
+		return true;
+	}
+
+	/** What one walk, pressed one stair at a time, left behind. */
+	struct FLastFloorWalked
+	{
+		int32 WalkedId = INDEX_NONE;
+		int32 Floors = 0;
+		float Rate = 0.0f;
+		float OneBiteOfTheOther = 0.0f;
+		bool bCityStoodOnFloorTwo = false;
+		bool bCityStoodOnFloorThree = false;
+		bool bCityFellOnFloorFour = false;
+		bool bWalkedOnTheMapOnFloorFour = false;
+		int32 BoundOnFloorFour = INDEX_NONE;
+		int32 FloorOnArriving = 0;
+		int32 FloorsAnsweredOnFloorFour = 0;
+		bool bLastFloorOnFloorFour = false;
+		int32 DescentsAtTheRate = 0;
+		bool bLastStairsWentDown = true;
+		int32 FloorAfterTheLastStairs = 0;
+		float CostOfTheLastStairs = -1.0f;
+		float WholeWalk = 0.0f;
+		int32 ClearsCounted = 0;
+		int32 OrdinaryClearsCounted = 0;
+		int32 ObjectivesEarned = 0;
+		int32 BoundAtTheEnd = 0;
+		int32 MessageLines = -1;
+	};
+
+	/**
+	 * One walk, in a world of its own, with the stairs pressed one at a time.
+	 *
+	 * THE SCENE IS `WalkFourFloors`'S: the Outpost at ten points of defence, the walked dungeon four floors deep at
+	 * half a day a floor, and a second ordinary dungeon on the same city, twenty floors deep, carrying 100 points of
+	 * defence damage, with `OtherDaysLeft` days on its timer. WHERE EACH STANDS is as there.
+	 *
+	 * THE DAYS. Entering spends half a day; the descents to floors 2, 3 and 4 bring the time to one day, a day and a
+	 * half and two days, so day 2 begins on the descent to floor 2 and day 3 on the descent ONTO FLOOR 4. A timer
+	 * with two days left runs out on day 3, so its hit lands with the player already on floor 4. A timer with forty
+	 * days left does not run out in the walk, which is the control.
+	 *
+	 * THE STAIRS ARE PRESSED FOUR TIMES AND NO MORE: three descents, each asserted as set-up, and then the last
+	 * stairs once, whatever they do.
+	 */
+	bool WalkFourFloorsOneStairAtATime(FAutomationTestBase& Test, float OtherDaysLeft, FLastFloorWalked& Out)
+	{
+		FDeathScene Scene = MakeScene(0);
+		if (!Test.TestNotNull(TEXT("a test world was created"), Scene.World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		if (!Test.TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+		{
+			return false;
+		}
+
+		const int32 CityId = AnOutpostOf(*Scene.Run);
+		FCataclysmCity* Weakened = Scene.Run->Map->FindMutable(CityId);
+		if (!Test.TestNotNull(TEXT("set-up: an Outpost is on the map"), Weakened))
+		{
+			return false;
+		}
+		Weakened->Defence = 10.0f;
+
+		Out.WalkedId = PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, CityId, 4, 40.0f, 40.0f,
+								   100.0f, 50.0f);
+		const int32 OtherId = PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, 40.0f,
+										  OtherDaysLeft, 100.0f, 50.0f);
+		if (!Test.TestTrue(TEXT("set-up: two dungeons were placed on that city"),
+						   Out.WalkedId != INDEX_NONE && OtherId != INDEX_NONE && Out.WalkedId != OtherId))
+		{
+			return false;
+		}
+
+		// TWO DAYS FOR THE WHOLE WALK, written on the dungeon as a city upgrade would leave it.
+		for (FCataclysmDungeon& Placed : Scene.Run->Dungeons)
+		{
+			if (Placed.DungeonId == Out.WalkedId)
+			{
+				Placed.WalkDays = 2.0f;
+			}
+		}
+
+		const FCataclysmDungeon* Walked = Scene.Run->FindDungeon(Out.WalkedId);
+		const FCataclysmDungeon* Other = Scene.Run->FindDungeon(OtherId);
+		if (!Test.TestNotNull(TEXT("set-up: the walked dungeon is on the map"), Walked)
+			|| !Test.TestNotNull(TEXT("set-up: and so is the other one"), Other))
+		{
+			return false;
+		}
+		Out.Floors = Walked->Floors;
+		Out.Rate = Walked->WalkDaysPerFloor();
+		Out.OneBiteOfTheOther = Other->DefenceDamage * Other->BiteScale();
+
+		if (!Test.TestEqual(TEXT("set-up: the walked dungeon is four floors deep"), Out.Floors, 4)
+			|| !Test.TestEqual(TEXT("set-up: at half a day a floor"), Out.Rate, 0.5f, 0.0001f)
+			|| !Test.TestTrue(TEXT("set-up: one resolve of the other dungeon takes more than the city's ten points"),
+							  Out.OneBiteOfTheOther > 10.0f))
+		{
+			return false;
+		}
+
+		const int32 ClearedBefore = Scene.Run->DungeonsCleared;
+		const int32 OrdinaryBefore = Scene.Run->BasicDungeonsCleared;
+		const int32 ObjectivesBefore = Scene.Run->QuestObjectives;
+
+		FAbsorbedWalkLogCapture Capture;
+		const float TimeBefore = TimeNow(*Scene.Run);
+
+		if (!EnterAndStand(Test, Scene, Out.WalkedId))
+		{
+			return false;
+		}
+
+		// THREE DESCENTS, ONE AT A TIME, with the city read after each.
+		for (int32 Floor = 2; Floor <= Out.Floors; ++Floor)
+		{
+			const float BeforeTheStairs = TimeNow(*Scene.Run);
+			if (!Test.TestTrue(FString::Printf(TEXT("set-up: the descent to floor %d works"), Floor),
+							   Scene.Mode->GoDownOneFloor()))
+			{
+				return false;
+			}
+
+			if (FMath::IsNearlyEqual(TimeNow(*Scene.Run) - BeforeTheStairs, Out.Rate, 0.001f))
+			{
+				++Out.DescentsAtTheRate;
+			}
+
+			if (Floor == 2)
+			{
+				Out.bCityStoodOnFloorTwo = !Weakened->bFallen;
+			}
+			else if (Floor == 3)
+			{
+				Out.bCityStoodOnFloorThree = !Weakened->bFallen;
+			}
+		}
+
+		Out.bCityFellOnFloorFour = Weakened->bFallen;
+		Out.bWalkedOnTheMapOnFloorFour = Scene.Run->FindDungeon(Out.WalkedId) != nullptr;
+		Out.BoundOnFloorFour = Scene.Mode->EmpireDungeonId;
+		Out.FloorOnArriving = Scene.Mode->FloorNumber;
+		Out.FloorsAnsweredOnFloorFour = Scene.Mode->EmpireDungeonFloors();
+		Out.bLastFloorOnFloorFour = Scene.Mode->IsOnTheLastFloor();
+
+		// THE LAST STAIRS, PRESSED ONCE.
+		const float BeforeTheLastStairs = TimeNow(*Scene.Run);
+		Out.bLastStairsWentDown = Scene.Mode->GoDownOneFloor();
+		Out.FloorAfterTheLastStairs = Scene.Mode->FloorNumber;
+		Out.CostOfTheLastStairs = TimeNow(*Scene.Run) - BeforeTheLastStairs;
+
+		Out.WholeWalk = TimeNow(*Scene.Run) - TimeBefore;
+		Out.ClearsCounted = Scene.Run->DungeonsCleared - ClearedBefore;
+		Out.OrdinaryClearsCounted = Scene.Run->BasicDungeonsCleared - OrdinaryBefore;
+		Out.ObjectivesEarned = Scene.Run->QuestObjectives - ObjectivesBefore;
+		Out.BoundAtTheEnd = Scene.Mode->EmpireDungeonId;
+		Out.MessageLines = Capture.LinesContaining(FString::Printf(
+			TEXT("The city of dungeon %d fell while you were inside it."), Out.WalkedId));
+
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWalkedSiegeCityFallsTest,
+	"Cataclysm.DungeonMode.AWalkWhoseCityFallsToItsOwnSiegeEndsAtTheBottomAndCountsForNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWalkedSiegeCityFallsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWalkedDungeonAbsorbedTest;
+
+	// THE CONTROL: the same Siege walked with its city at full defence. It bites during the walk and the city stands.
+	FSiegeWalked Control;
+	if (!WalkFourFloorsOfASiege(*this, /*bCityAtTenPoints=*/false, Control))
+	{
+		return false;
+	}
+
+	if (!TestFalse(TEXT("CONTROL set-up: the city did not fall"), Control.bCityFell)
+		|| !TestTrue(TEXT("CONTROL set-up: the walked dungeon is on the map at floor 2"),
+					 Control.bWalkedOnTheMapAtFloorTwo))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("CONTROL: the Siege bit its own city during the walk, 12.5 on day 2 and 15 on day 3"),
+			  Control.CityDefenceAtEntry - Control.CityDefenceAtTheEnd, Control.BitesOverTheWalk, 0.01f);
+	TestEqual(TEXT("CONTROL: no dungeon's timer hit a city"), Control.DetonatedAfter, Control.DetonatedBefore);
+	TestTrue(TEXT("CONTROL: the walk ended at the stairs and not at the floor limit"),
+			 Control.bStairsEndedTheWalk);
+	TestEqual(TEXT("CONTROL: the deepest floor walked is the dungeon's last"),
+			  Control.DeepestFloor, Control.Floors);
+	TestEqual(TEXT("CONTROL: the whole walk cost the dungeon's floors at its rate"),
+			  Control.WholeWalk, Control.Floors * Control.Rate, 0.001f);
+	TestEqual(TEXT("CONTROL: one clear was counted"), Control.ClearsCounted, 1);
+	TestEqual(TEXT("CONTROL: and it was an ordinary dungeon's"), Control.OrdinaryClearsCounted, 1);
+	TestEqual(TEXT("CONTROL: the game mode is unbound after the last floor"), Control.BoundAtTheEnd, INDEX_NONE);
+	TestEqual(TEXT("CONTROL: no line says the city fell"), Control.MessageLines, 0);
+
+	// THE WALK WHOSE CITY FALLS: the same Siege with its city at ten points, which its first bite, 12.5, fells on
+	// the descent to floor 2.
+	FSiegeWalked Fell;
+	if (!WalkFourFloorsOfASiege(*this, /*bCityAtTenPoints=*/true, Fell))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: one day's bite of the Siege is more than the city's ten points"),
+				  Fell.OneDaysBite > 10.0f)
+		|| !TestTrue(TEXT("set-up: the city fell on the descent to floor 2"), Fell.bCityFell)
+		|| !TestFalse(TEXT("set-up: the walked dungeon is gone from the run"), Fell.bWalkedOnTheMapAtFloorTwo)
+		|| !TestEqual(TEXT("set-up: and the game mode is still bound to its number"),
+					  Fell.BoundAtFloorTwo, Fell.WalkedId)
+		|| !TestEqual(TEXT("set-up: no dungeon's timer hit a city, so the Siege's own bite felled it"),
+					  Fell.DetonatedAfter, Fell.DetonatedBefore))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the floor count the game mode answers after the fall is the dungeon's"),
+			  Fell.FloorsAnsweredAtFloorTwo, Fell.Floors);
+	TestTrue(TEXT("the walk ended at the stairs and not at the floor limit"), Fell.bStairsEndedTheWalk);
+	TestEqual(TEXT("the deepest floor walked is the dungeon's last"), Fell.DeepestFloor, Fell.Floors);
+	TestEqual(TEXT("two descents were walked after the fall"), Fell.DescentsAfterFloorTwo, Fell.Floors - 2);
+	TestEqual(TEXT("every descent after the fall cost the walk days per floor recorded on entry"),
+			  Fell.DescentsAtTheRate, Fell.DescentsAfterFloorTwo);
+	TestEqual(TEXT("the stairs out of the last floor cost no time"), Fell.CostOfTheLastStairs, 0.0f, 0.001f);
+	TestEqual(TEXT("the whole walk cost what the control's did"), Fell.WholeWalk, Control.WholeWalk, 0.001f);
+	TestEqual(TEXT("no clear was counted"), Fell.ClearsCounted, 0);
+	TestEqual(TEXT("no ordinary clear was counted"), Fell.OrdinaryClearsCounted, 0);
+	TestEqual(TEXT("no objective was earned"), Fell.ObjectivesEarned, 0);
+	TestEqual(TEXT("the game mode is unbound after the last floor"), Fell.BoundAtTheEnd, INDEX_NONE);
+	TestTrue(TEXT("and once unbound there is no bottom, as in the sandbox"),
+			 Fell.FloorsAnsweredAtTheEnd == 0 && !Fell.bLastFloorAtTheEnd);
+	TestEqual(TEXT("one line says the city fell and the clear counts for nothing"), Fell.MessageLines, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityFallsOnTheLastFloorTest,
+	"Cataclysm.DungeonMode.ACityThatFallsWhenThePlayerReachesTheLastFloorEndsTheWalkThere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityFallsOnTheLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWalkedDungeonAbsorbedTest;
+
+	// THE CONTROL: the other dungeon's timer at forty days, so nothing falls and the last stairs clear the dungeon.
+	FLastFloorWalked Control;
+	if (!WalkFourFloorsOneStairAtATime(*this, 40.0f, Control))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("CONTROL set-up: the city stood on every floor"),
+				  Control.bCityStoodOnFloorTwo && Control.bCityStoodOnFloorThree && !Control.bCityFellOnFloorFour))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("CONTROL: the walked dungeon is on the map on floor 4"), Control.bWalkedOnTheMapOnFloorFour);
+	TestTrue(TEXT("CONTROL: floor 4 of 4 is the last floor"), Control.bLastFloorOnFloorFour);
+	TestFalse(TEXT("CONTROL: the last stairs do not go down"), Control.bLastStairsWentDown);
+	TestEqual(TEXT("CONTROL: no floor 5 was built"), Control.FloorAfterTheLastStairs, 4);
+	TestEqual(TEXT("CONTROL: the last stairs cost no time"), Control.CostOfTheLastStairs, 0.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: the whole walk cost the dungeon's floors at its rate"),
+			  Control.WholeWalk, Control.Floors * Control.Rate, 0.001f);
+	TestEqual(TEXT("CONTROL: one clear was counted"), Control.ClearsCounted, 1);
+	TestEqual(TEXT("CONTROL: and it was an ordinary dungeon's"), Control.OrdinaryClearsCounted, 1);
+	TestEqual(TEXT("CONTROL: the game mode is unbound after the last stairs"), Control.BoundAtTheEnd, INDEX_NONE);
+	TestEqual(TEXT("CONTROL: no line says the city fell"), Control.MessageLines, 0);
+
+	// THE CITY FALLS ON THE DESCENT ONTO FLOOR 4: the other dungeon's timer has two days left, and day 3 begins on
+	// that descent.
+	FLastFloorWalked Fell;
+	if (!WalkFourFloorsOneStairAtATime(*this, 2.0f, Fell))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: the city stood on floor 2"), Fell.bCityStoodOnFloorTwo)
+		|| !TestTrue(TEXT("set-up: the city stood on floor 3"), Fell.bCityStoodOnFloorThree)
+		|| !TestTrue(TEXT("set-up: the city fell on arriving at floor 4"), Fell.bCityFellOnFloorFour)
+		|| !TestFalse(TEXT("set-up: the walked dungeon is gone from the run"), Fell.bWalkedOnTheMapOnFloorFour)
+		|| !TestEqual(TEXT("set-up: and the game mode is still bound to its number"),
+					  Fell.BoundOnFloorFour, Fell.WalkedId)
+		|| !TestEqual(TEXT("set-up: the player is on floor 4"), Fell.FloorOnArriving, 4))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the floor count the game mode answers after the fall is the dungeon's"),
+			  Fell.FloorsAnsweredOnFloorFour, Fell.Floors);
+	TestTrue(TEXT("floor 4 of 4 is still the last floor after the fall"), Fell.bLastFloorOnFloorFour);
+	TestEqual(TEXT("every descent cost the walk days per floor"), Fell.DescentsAtTheRate, Fell.Floors - 1);
+	TestFalse(TEXT("the last stairs do not go down"), Fell.bLastStairsWentDown);
+	TestEqual(TEXT("no floor 5 was built"), Fell.FloorAfterTheLastStairs, 4);
+	TestEqual(TEXT("the last stairs cost no time"), Fell.CostOfTheLastStairs, 0.0f, 0.001f);
+	TestEqual(TEXT("the whole walk cost what the control's did"), Fell.WholeWalk, Control.WholeWalk, 0.001f);
+	TestEqual(TEXT("no clear was counted"), Fell.ClearsCounted, 0);
+	TestEqual(TEXT("no ordinary clear was counted"), Fell.OrdinaryClearsCounted, 0);
+	TestEqual(TEXT("no objective was earned"), Fell.ObjectivesEarned, 0);
+	TestEqual(TEXT("the game mode is unbound after the last stairs"), Fell.BoundAtTheEnd, INDEX_NONE);
+	TestEqual(TEXT("one line says the city fell and the clear counts for nothing"), Fell.MessageLines, 1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
