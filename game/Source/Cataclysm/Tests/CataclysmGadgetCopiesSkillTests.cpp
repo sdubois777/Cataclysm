@@ -1113,7 +1113,7 @@ CATACLYSM_TEST(FCataclysmGadgetCopiesSkillDistanceTest,
 	Close.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Ranged")), /*ErrorIfNotFound=*/false));
 	Close.Condition = ECataclysmStatCondition::TargetWithinMetres;
 	Close.ConditionValue = 5.0f;
-	Rig.HoldTheFlagAnd(TArray<FCataclysmGadgetCopiesSkillTest::FRig::FIncrease>(), FName(TEXT("spell_damage")), Close);
+	Rig.HoldTheFlagAnd(TArray<FRig::FIncrease>(), FName(TEXT("spell_damage")), Close);
 	if (!TestTrue(TEXT("set-up: each turret's brain chooses its own target"),
 			NearTurret->SkillCopyTarget() == NearTarget && FarTurret->SkillCopyTarget() == FarTarget))
 	{
