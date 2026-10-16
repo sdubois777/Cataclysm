@@ -8497,6 +8497,53 @@ namespace CataclysmStatExemptionTest
 					  Its->GetNumericAttribute(Vital::GetHealthAttribute()) < 8999.0f);
 	}
 
+	/**
+	 * `ultimate_cost_doubles_instead_of_cooldown`, read by `UCataclysmGameplayAbility::UltimateCostDoublesByARow`,
+	 * which `GetBaseCooldown`, `ManaCostFor` and `UCataclysmSkillTemplate::CommitAndBegin` ask. Ruled 2026-10-14, for
+	 * Mana Weaver's ten-piece bonus. Two characters, the second carrying the stat at a flat 1, each granted the same
+	 * self buff in the Ultimate slot at level 100: the plain one's Ultimate waits its slot's cooldown and the
+	 * carrying one's waits nothing.
+	 *
+	 * WHAT THIS DOES NOT REACH. The doubling, the count and its clearing: `Cataclysm.ManaWeaverTenPiece.` in
+	 * `CataclysmManaWeaverTenPieceTests.cpp`. This observes the base cooldown the reader decides, and no further.
+	 *
+	 * STANDING: the plain character at the origin, the carrying one 100 m along Y.
+	 */
+	void ProbeUltimateCostDoublesInsteadOfCooldown(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Carrier(World, FVector(0, 100 * M, 0));
+		GrantFlat(Carrier.Actor, UCataclysmGameplayAbility::UltimateCostDoublesInsteadOfCooldownStat, 1.0f);
+
+		const auto UltimateOf = [](FScopedSwinger& Who) -> UCataclysmGameplayAbility*
+		{
+			const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Ultimate, /*Level=*/100, Who.Actor);
+			FGameplayAbilitySpec* Spec = Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			return Spec ? Cast<UCataclysmGameplayAbility>(Spec->GetPrimaryInstance()) : nullptr;
+		};
+		UCataclysmGameplayAbility* PlainUltimate = UltimateOf(Plain);
+		UCataclysmGameplayAbility* CarrierUltimate = UltimateOf(Carrier);
+		if (!Test.TestNotNull(TEXT("set-up: an Ultimate for the plain character"), PlainUltimate)
+			|| !Test.TestNotNull(TEXT("set-up: and one for the carrying character"), CarrierUltimate))
+		{
+			return;
+		}
+
+		Test.TestTrue(TEXT("control: a character with no row has an Ultimate that waits its slot's cooldown"),
+					  PlainUltimate->GetBaseCooldown() > 0.0f);
+		Test.TestEqual(TEXT("and one carrying ultimate_cost_doubles_instead_of_cooldown at 1 has one that waits "
+							"nothing, so UltimateCostDoublesByARow really reads it"),
+					   CarrierUltimate->GetBaseCooldown(), 0.0f, 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8650,6 +8697,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("gadgets_take_no_damage"), &ProbeGadgetsTakeNoDamage},
 			{TEXT("gadget_health_lost_percent_per_second"), &ProbeGadgetHealthLostPercentPerSecond},
 			{TEXT("gadgets_copy_your_last_skill"), &ProbeGadgetsCopyYourLastSkill},
+			{TEXT("ultimate_cost_doubles_instead_of_cooldown"), &ProbeUltimateCostDoublesInsteadOfCooldown},
 		};
 		return Made;
 	}

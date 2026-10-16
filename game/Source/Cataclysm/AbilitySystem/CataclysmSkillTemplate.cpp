@@ -402,6 +402,15 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			// Issue #1833, phase 2.
 			Cataclysm->NoteNthEvent(ECataclysmEveryNth::SpellCast);
 		}
+
+		// AND MANA WEAVER'S TEN-PIECE BONUS COUNTS A PAID USE OF THE ULTIMATE, after it was paid for, as the Nth
+		// spell above is: the cost this use paid was read before this line, so the next use pays twice it. Ruled
+		// 2026-10-14. IN THIS BLOCK, so a free start never counts, and past the commit, so a refused use never does.
+		// Only while the row is held: a use of the Ultimate without it counts nothing.
+		if (UltimateCostDoublesByARow(Cataclysm))
+		{
+			Cataclysm->NoteUltimateCostDoubled();
+		}
 	}
 	else
 	{

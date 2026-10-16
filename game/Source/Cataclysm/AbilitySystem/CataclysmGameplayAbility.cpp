@@ -184,12 +184,53 @@ FString UCataclysmGameplayAbility::DisplayedName() const
 
 float UCataclysmGameplayAbility::GetBaseCooldown() const
 {
+	// NO COOLDOWN FOR THE ULTIMATE OF A CHARACTER HOLDING MANA WEAVER'S TEN-PIECE BONUS, ruled 2026-10-14: "Your
+	// ultimate ability no longer has a cooldown." Here, the one place the base is read, so the check, the start, the
+	// charges and the skill-used notice all agree. ABOVE THE OVERRIDE, so a skill stating a cooldown of its own has
+	// none in that slot either. The character is the one this instance was granted to: `CurrentActorInfo`, read as
+	// the member because `GetCurrentActorInfo` ensures on a class default object, which has none and keeps its
+	// slot's figure.
+	if (Slot == ECataclysmAbilitySlot::Ultimate && CurrentActorInfo
+		&& UltimateCostDoublesByARow(CurrentActorInfo->AbilitySystemComponent.Get()))
+	{
+		return 0.0f;
+	}
 	if (CooldownOverride >= 0.0f)
 	{
 		return CooldownOverride;
 	}
 	EnsureSlotNumbersLoaded();
 	return SlotCooldown;
+}
+
+const TCHAR* UCataclysmGameplayAbility::UltimateCostDoublesInsteadOfCooldownStat =
+	TEXT("ultimate_cost_doubles_instead_of_cooldown");
+
+bool UCataclysmGameplayAbility::UltimateCostDoublesByARow(const UAbilitySystemComponent* AbilitySystem) const
+{
+	// THE SLOT FIRST, so no other skill asks the stat line at all: this is on the path of every press.
+	if (Slot != ECataclysmAbilitySlot::Ultimate)
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	return Cataclysm
+		&& Cataclysm->StatForSkill(FName(UltimateCostDoublesInsteadOfCooldownStat), FGameplayTagContainer(), 0.0f)
+			> 0.0f;
+}
+
+float UCataclysmGameplayAbility::UltimateCostDoublingFactor(const UAbilitySystemComponent* AbilitySystem) const
+{
+	if (!UltimateCostDoublesByARow(AbilitySystem))
+	{
+		return 1.0f;
+	}
+	// READ BEFORE THE PAYMENT, AND THE COUNT ADVANCES AFTER IT, as the Nth spell's is, so the first paid use costs
+	// the cost as it is, the second twice it, the third four times it. Held to the cap by the component.
+	const int32 Doublings = FMath::Clamp(
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem)->UltimateCostDoublingsHeld(), 0,
+		UCataclysmAbilitySystemComponent::MostUltimateCostDoublings);
+	return static_cast<float>(1 << Doublings);
 }
 
 float UCataclysmGameplayAbility::GetManaCost() const
@@ -249,12 +290,17 @@ float UCataclysmGameplayAbility::ManaCostFor(
 
 	const float Extra = NthSpellExtra + MaximumManaShare;
 
+	// AND MANA WEAVER'S TEN-PIECE BONUS DOUBLES THE WHOLE OF IT, for the Ultimate slot only. Ruled 2026-10-14: the
+	// full cost as worked out here, after the `mana_cost` rows and the two shares above, times 2 for each paid use
+	// counted in the dungeon being walked. One for every other skill and every other character.
+	const float Doubling = UltimateCostDoublingFactor(AbilitySystem);
+
 	if (Base <= 0.0f)
 	{
 		// NOTHING TO SCALE. The Basic Attack and the Aura's activation are free,
 		// and a stat cannot make a free skill cost something: every row in the
 		// data reduces a cost or takes it away.
-		return Base + Extra;
+		return (Base + Extra) * Doubling;
 	}
 
 	if (!Cataclysm)
@@ -284,7 +330,7 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	// NEVER BELOW ZERO. A Less multiplier stops at -99%, so it cannot get here,
 	// but a negative flat row could, and a cost below zero would pay a character
 	// for casting.
-	return FMath::Max(0.0f, Asked) + Extra;
+	return (FMath::Max(0.0f, Asked) + Extra) * Doubling;
 }
 
 float UCataclysmGameplayAbility::FervourCostFor(
