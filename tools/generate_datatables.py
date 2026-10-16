@@ -9856,6 +9856,89 @@ def refuse_a_gadget_row_the_game_cannot_read(
     return problems
 
 
+#: The flag by which a skill in the Ultimate slot has no cooldown and a mana
+#: cost that doubles with each paid use of it in the dungeon being walked.
+#: Ruled 2026-10-14 by the coordinating session, for "Mana Weaver (10-Piece
+#: Bonus): Your ultimate ability no longer has a cooldown. Instead, its mana
+#: cost is doubled every time you use it. This cost resets at the beginning of
+#: every dungeon".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, with no Required Tags, no Condition,
+#: no Scale and no Action. The doubling, its count, its cap of 30 and its reset
+#: are the engine's and not the row's.
+#: `UCataclysmGameplayAbility::UltimateCostDoublesInsteadOfCooldownStat` holds
+#: the same name, and `TestUltimateCostDoublesInsteadOfCooldown` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmGameplayAbility::UltimateCostDoublesByARow`, because the slot the
+#: skill holds decides what "your ultimate ability" is and not a tag of the
+#: skill's row; it reads any value above nought as yes. So a row requiring a
+#: tag matches nowhere, a row of any kind but `flat` works on a base of nought
+#: and says no, and a row with an action is not a stat line at all;
+#: `refuse_an_ultimate_cost_doubling_row_the_game_cannot_read` refuses each.
+ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT = (
+    "ultimate_cost_doubles_instead_of_cooldown")
+
+
+def refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT` is one its
+    reader answers yes to.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_retaliation_flag_row_the_game_cannot_read`, with an action
+    refused as well.
+
+    THE FIGURE IS 1 AND NOTHING ELSE. The reader takes any value above nought
+    as yes, so 2 would work in the game; it is refused because a flag that
+    states another number reads as a quantity, and the ruling states the row
+    flat, 1 to 1. Least of all a number of doublings, which the engine counts.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as the retaliation flag's check leaves
+    one: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat = ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself and takes any value above "
+                f"nought as yes, so the row must be 'flat'; any other kind "
+                f"works on a base of nought and grants NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, because the slot a "
+                f"skill holds decides what the Ultimate is, so a row requiring "
+                f"a tag matches nowhere: this one would grant NOTHING and say "
+                f"nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The flag "
+                f"is a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on this "
+                    f"flag states 1 and nothing else.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10224,6 +10307,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW ON A STAT A SUMMONER'S GADGETS ARE ASKED FOR IS FLAT AND
     # SCOPED TO `Type.Deployable`. Ruled 2026-10-13.
     problems.extend(refuse_a_gadget_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FLAG THAT TAKES THE ULTIMATE'S COOLDOWN AWAY AND DOUBLES ITS COST
+    # IS FLAT, 1 TO 1, WITH NO TAGS AND NO ACTION. Ruled 2026-10-14.
+    problems.extend(refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

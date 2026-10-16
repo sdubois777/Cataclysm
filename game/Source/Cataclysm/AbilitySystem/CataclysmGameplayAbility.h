@@ -131,7 +131,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
 	float DamagePercentOverride = -1.0f;
 
-	/** Seconds this ability waits, before any cooldown reduction. */
+	/**
+	 * Seconds this ability waits, before any cooldown reduction. Nought for a skill in the Ultimate slot of a
+	 * character holding `UltimateCostDoublesInsteadOfCooldownStat`, Mana Weaver's ten-piece bonus.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetBaseCooldown() const;
 
@@ -454,6 +457,40 @@ public:
 	 * one leaves a cost on mana whenever mana can pay it.
 	 */
 	static const TCHAR* CostPaidFromHealthWhenShortStat;
+
+	/**
+	 * Mana Weaver's ten-piece bonus, a flag: above nought, a skill in the Ultimate slot has no cooldown and its mana
+	 * cost doubles with each paid use of it in the dungeon being walked. Ruled 2026-10-14 by the coordinating
+	 * session, for "Mana Weaver (10-Piece Bonus): Your ultimate ability no longer has a cooldown. Instead, its mana
+	 * cost is doubled every time you use it. This cost resets at the beginning of every dungeon". No attribute, so it
+	 * is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 *
+	 * READ IN TWO PLACES AND COUNTED IN ONE. `GetBaseCooldown` answers nought, so `CheckCooldown` waits for nothing,
+	 * `ApplyCooldown` starts nothing, no skill charge is spent and the skill-used notice says the use has no
+	 * cooldown. `ManaCostFor` multiplies the whole of what it works out by `UltimateCostDoublingFactor`.
+	 * `UCataclysmSkillTemplate::CommitAndBegin` counts a paid use, after the payment, through
+	 * `UCataclysmAbilitySystemComponent::NoteUltimateCostDoubled`. THE FERVOUR IS NOT TOUCHED: a slot cost, not a mana
+	 * cost, ruled 2026-09-27.
+	 */
+	static const TCHAR* UltimateCostDoublesInsteadOfCooldownStat;
+
+	/**
+	 * Whether this skill is in the Ultimate slot of a character holding `UltimateCostDoublesInsteadOfCooldownStat`.
+	 *
+	 * THE SLOT THIS INSTANCE HOLDS AND NOT A TAG OF ITS ROW, ruled 2026-10-14: whatever sits in the Ultimate slot is
+	 * "your ultimate ability", since any skill may go in any slot. So the flag is ASKED WITH NO TAGS, and a row on it
+	 * requiring a tag matches nothing; `tools/generate_datatables.py` refuses one. An ability system this project did
+	 * not make carries no stat line and answers no.
+	 */
+	bool UltimateCostDoublesByARow(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
+	 * What this skill's mana cost is multiplied by now: 2 raised to the paid uses counted in the dungeon being walked,
+	 * `UCataclysmAbilitySystemComponent::UltimateCostDoublingsHeld`, for a skill `UltimateCostDoublesByARow`
+	 * answers yes for, and 1 for every other. The count stops at
+	 * `UCataclysmAbilitySystemComponent::MostUltimateCostDoublings`.
+	 */
+	float UltimateCostDoublingFactor(const UAbilitySystemComponent* AbilitySystem) const;
 
 	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle,
 						   const FGameplayAbilityActorInfo* ActorInfo,

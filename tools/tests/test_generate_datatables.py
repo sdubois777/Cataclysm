@@ -8467,3 +8467,156 @@ class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
             "EnchantmentEffects", [row]) == []
         assert gen.refuse_a_scale_nothing_asks_for(
             "EnchantmentEffects", [row]) == []
+
+
+class TestUltimateCostDoublesInsteadOfCooldown:
+    """`ultimate_cost_doubles_instead_of_cooldown`, ruled 2026-10-14 and built
+    ahead of its row, for "Mana Weaver (10-Piece Bonus): Your ultimate ability
+    no longer has a cooldown. Instead, its mana cost is doubled every time you
+    use it. This cost resets at the beginning of every dungeon". One flag at a
+    flat 1 with no Required Tags, no Condition, no Scale and no Action:
+    `UCataclysmGameplayAbility::UltimateCostDoublesByARow` asks whether it is
+    above nought, with no tags, for a skill in the Ultimate slot.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the real sentence, on the Negative side of a made-up sheet; the
+    real sentence is a Positive set bonus. The real row is the enchantment
+    session's to write; this shows that the generator carries the ruled row
+    through and refuses every shape the game would answer no to.
+    """
+
+    WORDS = ("Mana Weaver (10-Piece Bonus): Your ultimate ability no longer "
+             "has a cooldown. Instead, its mana cost is doubled every time you "
+             "use it. This cost resets at the beginning of every dungeon")
+    STAT = "ultimate_cost_doubles_instead_of_cooldown"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "", "")]
+        assert self.refusals(out) == []
+        # NO CONDITION AND NO SCALE, so neither of those checks has anything
+        # to say; and the whole sheet's validation has nothing to say either.
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "ultimate_has_no_cooldown" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmGameplayAbility.cpp`. A name spelt
+        differently on the two sides would be refused by neither and read by
+        nothing. THE CONTROL is `skill_cost_paid_from_health`, read by the
+        same pattern from the same file, so a pattern that found nothing
+        would fail there first."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmGameplayAbility.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmGameplayAbility::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["CostPaidFromHealthStat"] == "skill_cost_paid_from_health"
+        assert names["UltimateCostDoublesInsteadOfCooldownStat"] == (
+            gen.ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT)
+
+    def test_the_cap_of_thirty_is_the_engines(self):
+        """THE CAP IS A FIGURE OF THE ENGINE, read here from the header that
+        holds it, and no cell of the row states it. The control is
+        `TeleportRandomlyDraws` in the same header, read by the same pattern."""
+        import re
+        header = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAbilitySystemComponent.h").read_text(
+                      encoding="utf-8")
+        figures = dict(re.findall(
+            r"static constexpr int32 (\w+) = (\d+);", header))
+        assert figures["TeleportRandomlyDraws"] == "8"
+        assert figures["MostUltimateCostDoublings"] == "30"
+
+    def test_every_shape_the_game_would_answer_no_to_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A figure changed in one column is one refusal; a kind other
+        than flat is one; a tag is one; an action is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Slot.Ultimate"}, "under a required tag"),
+                ({"Action": "mana"}, "with the action 'mana'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on"),
+                ({"ValueLow": 30.0}, "states 30 on"),
+                ({"ValueHigh": 0.5}, "states 0.5 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # BOTH FIGURES WRONG IS TWO REFUSALS, one for each column.
+        assert len(self.refusals([dict(row, ValueLow=2.0, ValueHigh=4.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "mana_cost",
+                               "ValueKind": "more", "ValueLow": 100.0,
+                               "ValueHigh": 100.0,
+                               "RequiredTags": "Slot.Ultimate"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row
+        under a required tag is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="Slot.Ultimate")]},
+            set())
+        assert any("under a required tag" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems

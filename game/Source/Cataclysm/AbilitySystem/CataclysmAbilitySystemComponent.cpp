@@ -2746,6 +2746,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// AND THE LAST SKILL ITS GADGETS COPY. Ruled 2026-10-14: a death clears the record. See `SkillGadgetsCopy`.
 	bHoldsSkillGadgetsCopy = false;
 
+	// AND THE DOUBLINGS OF THE ULTIMATE'S COST. Ruled 2026-10-14: a death clears the count. See
+	// `UltimateCostDoublingsHeld`.
+	UltimateCostDoublings = 0;
+
 	// AND THE BUFF A ROW DREW, with a gear refresh so the stat line is written without its lines. Ruled 2026-10-12;
 	// a judgement by the writing session, as the held resistance above is. LAST, so the refresh reads a component
 	// this function has finished with. Nothing, and no refresh, for a character holding no such buff.
@@ -5430,6 +5434,19 @@ void UCataclysmAbilitySystemComponent::NoteSkillGadgetsCopy(const FCataclysmWeap
 	SkillGadgetsCopyRow = Skill;
 	bHoldsSkillGadgetsCopy = true;
 	SkillGadgetsCopyDungeonId = DungeonBeingWalked();
+}
+
+int32 UCataclysmAbilitySystemComponent::UltimateCostDoublingsHeld() const
+{
+	// NOUGHT FOR A COUNT OF ANOTHER DUNGEON, the comparison the gadgets' record above makes. Ruled 2026-10-14.
+	return UltimateCostDoublingsDungeonId == DungeonBeingWalked() ? UltimateCostDoublings : 0;
+}
+
+void UCataclysmAbilitySystemComponent::NoteUltimateCostDoubled()
+{
+	// FROM WHAT IS HELD NOW, so a count of another dungeon reads nought and this one starts again at one.
+	UltimateCostDoublings = FMath::Min(UltimateCostDoublingsHeld() + 1, MostUltimateCostDoublings);
+	UltimateCostDoublingsDungeonId = DungeonBeingWalked();
 }
 
 int32 UCataclysmAbilitySystemComponent::KeptStacksHeld(FName Key) const

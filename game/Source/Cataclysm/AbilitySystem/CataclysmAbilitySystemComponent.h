@@ -967,6 +967,29 @@ public:
 	void NoteSkillGadgetsCopy(const FCataclysmWeaponSkill& Skill);
 
 	/**
+	 * How many times the mana cost of this character's Ultimate is doubled now: the paid uses of a skill in the
+	 * Ultimate slot counted while Mana Weaver's ten-piece bonus was held, in the dungeon being walked. Ruled
+	 * 2026-10-14 by the coordinating session, for "Instead, its mana cost is doubled every time you use it. This cost
+	 * resets at the beginning of every dungeon". Read by `UCataclysmGameplayAbility::UltimateCostDoublingFactor`.
+	 *
+	 * NOUGHT FOR A COUNT OF ANOTHER DUNGEON, the comparison a kept stack and the gadgets' record make: the count
+	 * remembers `DungeonBeingWalked` as it was advanced. That comparison is what "resets at the beginning of every
+	 * dungeon" is, and nothing in the dungeon game mode calls this component for it. A NEW FLOOR of the same dungeon
+	 * changes nothing. A DEATH clears it: `ClearWhatDeathEnds`. NOT REPLICATED: the authority pays every cost.
+	 */
+	int32 UltimateCostDoublingsHeld() const;
+
+	/**
+	 * Count one paid use of the Ultimate, to at most `MostUltimateCostDoublings`, in the dungeon being walked now. A
+	 * count of another dungeon starts again at one. Called by `UCataclysmSkillTemplate::CommitAndBegin` after the
+	 * use was paid for, and only for a use that was not a free start.
+	 */
+	void NoteUltimateCostDoubled();
+
+	/** The most times the Ultimate's cost is doubled: 30, a cost of about a thousand million times its own. Ruled. */
+	static constexpr int32 MostUltimateCostDoublings = 30;
+
+	/**
 	 * How many stacks of one row's own this character holds now: nought once
 	 * the row's window has passed since the last grant. Issue #1833.
 	 */
@@ -5009,6 +5032,10 @@ protected:
 	FCataclysmWeaponSkill SkillGadgetsCopyRow;
 	bool bHoldsSkillGadgetsCopy = false;
 	int32 SkillGadgetsCopyDungeonId = INDEX_NONE;
+
+	/** The doublings of the Ultimate's cost `UltimateCostDoublingsHeld` reads, and `DungeonBeingWalked` as counted. */
+	int32 UltimateCostDoublings = 0;
+	int32 UltimateCostDoublingsDungeonId = INDEX_NONE;
 
 	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */
 	FName PendingHeldTriggerUsedName;
