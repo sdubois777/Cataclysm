@@ -64,7 +64,7 @@ static bool FindTheSkillUsed(AActor* Character, FName Named, FCataclysmWeaponSki
 }
 
 bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-									   float DamageShare, bool bPaysCost)
+									   float DamageShare, bool bPaysCost, const FVector* CastFrom)
 {
 	UCataclysmAbilitySystemComponent* System =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
@@ -96,6 +96,10 @@ bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeapon
 	Template->bFreeRepeatPaysCost = bPaysCost;
 	Template->FreeRepeatAim = Aim;
 	Template->FreeRepeatDamageShare = DamageShare;
+	// AND WHERE IT IS CAST FROM, when the caller gives a place. Ruled 2026-10-14: a gadget's copy. A fresh instance,
+	// so nothing else reads it; see `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`.
+	Template->bFreeRepeatHasOrigin = CastFrom != nullptr;
+	Template->FreeRepeatOrigin = CastFrom ? *CastFrom : FVector::ZeroVector;
 	if (!System->TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true))
 	{
 		System->ClearAbility(Handle);
@@ -188,6 +192,26 @@ int32 UCataclysmTriggeredSkill::MakePendingKeptStackCasts(AActor* Character)
 		}
 	}
 	return Started;
+}
+
+bool UCataclysmTriggeredSkill::HeldSkillNamed(const AActor* Character, FName Named, FCataclysmWeaponSkill& Out)
+{
+	// WHAT THE WEAPON SLOTS HOLD NOW, and not the damage type's table: a skill of a weapon taken off is not held.
+	// Ruled 2026-10-14.
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	if (!Slots || Named.IsNone())
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill* Held = Slots->GetAvailableSkills().FindByPredicate(
+		[Named](const FCataclysmWeaponSkill& Skill) { return FName(*Skill.Name) == Named; });
+	if (!Held)
+	{
+		return false;
+	}
+	Out = *Held;
+	return true;
 }
 
 const FCataclysmWeaponSkill* UCataclysmTriggeredSkill::HeldBasicAttack(const AActor* Character)

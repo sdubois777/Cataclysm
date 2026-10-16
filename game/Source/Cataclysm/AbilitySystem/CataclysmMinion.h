@@ -329,6 +329,76 @@ public:
 	float LastVolleyAtAgeSeconds = 0.0f;
 
 	/**
+	 * The flag by which a summoner's gadgets cast a copy of the last skill their summoner used, at their own target,
+	 * every `SecondsBetweenSkillCopies`. Ruled 2026-10-14: the owner's "the WHOLE skill is cast from the gadget (not
+	 * hits only)", and the coordinating session's rulings on the enchantment session's plan, for "Gadgets copy the
+	 * last skill you used and fire it at their target once every 2 seconds". A row sets it at a flat 1, scoped to
+	 * `Type.Deployable`, and it is read through `SummonersGadgetStat` as above nought. No gameplay attribute and no
+	 * base.
+	 */
+	static const TCHAR* GadgetsCopyYourLastSkillStat;
+
+	/**
+	 * The seconds between a gadget's copies. THE SENTENCE'S OWN 2, AS A FIGURE OF THE ENGINE AND NOT OF THE ROW: the
+	 * row is a flag, flat 1 to 1, as the other gadget flags are, and the sentence states one figure and no range to
+	 * roll. NOT SHORTENED BY "Gadgets fire faster", ruled: that is the time between a gadget's ordinary shots.
+	 */
+	static constexpr float SecondsBetweenSkillCopies = 2.0f;
+
+	/**
+	 * What this gadget's step does for the flag above. Called by `GadgetStep` after the drain and before the volley,
+	 * every quarter of a second; nothing for a gadget whose summoner holds no such row, which is every gadget until
+	 * the row is written, and nothing for anything that is not a gadget.
+	 *
+	 * THE CLOCK IS THE GADGET'S OWN, KEPT AS THE VOLLEY'S IS, by the gadget's age. Ruled 2026-10-14. THE FIRST COPY
+	 * COMES ON THE FIRST STEP THAT CASTS ONE: a step that finds no target within reach, no skill on record or a
+	 * gadget that cannot act casts nothing and starts no clock. After it, one copy each time 2 seconds have passed,
+	 * the beat kept from the first, and a beat that comes round and casts nothing is passed over: the clock does not
+	 * wait for it. IN ADDITION TO THE GADGET'S ORDINARY SHOT and to its volley; neither is read or moved.
+	 *
+	 * THE CLOCK STARTS ON A COPY THAT STARTED, and not on a step that only found a target and a record: a copy can
+	 * still be refused, and the one `Spawn`'s own step asks for always is, because it runs inside the summoner's
+	 * deploying skill, where the engine defers a grant. A judgement of the writing session; the option not taken
+	 * started the clock on the step that found everything, which would have lost the first copy of every gadget.
+	 *
+	 * @return whether a copy started on this step
+	 */
+	bool StepSkillCopy();
+
+	/**
+	 * Cast one copy of the last skill this gadget's summoner used, now, at this gadget's target. Ruled 2026-10-14.
+	 *
+	 * THE CAST IS THE SUMMONER'S. The summoner's own row, granted to the summoner for one use by
+	 * `UCataclysmTriggeredSkill::Trigger`, started FREE from this gadget's place and aimed at its target's location:
+	 * the summoner's weapon, stats, rows, level and tags at the moment of the copy, and nothing run on this gadget's
+	 * own ability system. Its hits are the summoner's, as a repeated cast's are. It costs nothing and waits for and
+	 * starts no cooldown, and it sends no skill-used notice, so it raises no `skill_use` and no `attack_use`.
+	 *
+	 * THE TARGET IS THE ONE THIS GADGET'S BRAIN CHOOSES, `ACataclysmEnemyController::ChooseTarget`, while it stands
+	 * within this gadget's reach; anything else is no target. THE SKILL IS THE SUMMONER'S RECORD,
+	 * `UCataclysmAbilitySystemComponent::SkillGadgetsCopy`, the row AS IT WAS USED, cast whether or not the summoner
+	 * still holds it: the coordinating session's ruling of 2026-10-14. So after a change of weapon the copy is the
+	 * skill of the weapon held before, at the numbers of the weapon held now.
+	 *
+	 * @return whether a copy started. False, casting nothing, for anything that is not a gadget, for a gadget that
+	 *         cannot act, for a summoner that is gone or dead, with no record or no target, and
+	 *         when the skill refuses itself or the engine defers its grant.
+	 */
+	bool CopySummonersLastSkill();
+
+	/** The enemy this gadget's copy would be aimed at now, or null. See `CopySummonersLastSkill`. */
+	AActor* SkillCopyTarget() const;
+
+	/** How many copies of its summoner's skill it has cast. Read by tests. */
+	int32 SkillCopiesMade = 0;
+
+	/** Whether it has cast its first copy. Until it has, its copy clock is not running. */
+	bool bHasCopiedASkill = false;
+
+	/** The age, in seconds since it was placed, at which its copy clock last came round. Nought until it has. */
+	float LastSkillCopyAtAgeSeconds = 0.0f;
+
+	/**
 	 * The flag by which a summoner's gadget that kills an enemy with a blow of its own strikes once more. Ruled
 	 * 2026-10-13 by the coordinating session under the owner's delegation, for "When a gadget kills an enemy, it
 	 * fires an additional burst at the nearest enemy within its range". A row sets it at a flat 1, scoped to

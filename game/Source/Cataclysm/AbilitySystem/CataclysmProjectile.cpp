@@ -644,6 +644,10 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
 	Delivery.Skill = FiringSkill;
 
+	// AND WHERE ITS USE WAS CAST FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
+	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
+	Delivery.StruckFromPoint = StrikesFromPoint;
+
 	// AND WHAT ITS USE SPENT FROM NEXT-USE CHARGES. Issue #1833, phase 2.
 	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
 	Delivery.DamageMultiplierSpent = SpentMoreMultiplier;
@@ -652,7 +656,10 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// `UCataclysmSkillTemplate::HitTargets` gives: the hit can move what it
 	// struck. The same test as any blow's, ruled 2026-09-24 for issue #1938:
 	// "every enemy you strike from behind" does not leave out a thrown one.
-	const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Firer, Target);
+	// FROM WHERE ITS USE WAS CAST when that was another place than the firer's, ruled 2026-10-14: a gadget's copy.
+	const bool bFromBehind = bStrikesFromAPoint
+		? UCataclysmSkillEffects::IsBehindFrom(StrikesFromPoint, Target)
+		: UCataclysmSkillEffects::IsBehind(Firer, Target);
 
 	// AND EVERY LANDED CONTACT AFTER THE FIRST KEEPS THE FIRER'S LATER-HIT
 	// SHARE. Issue #1686: "Projectiles deal 20%-35% less damage on each

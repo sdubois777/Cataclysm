@@ -225,7 +225,9 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	// AND WHETHER IT IS THE EXPLOSION AT AN AILMENT'S END, by the stamp its delivery left. Ruled 2026-10-13.
 	Notice.bExplosionAtAnAilmentsEnd = Data.EffectSpec.GetSetByCallerMagnitude(
 		FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
-	Notice.DistanceMetres = UCataclysmTargeting::MetresBetween(DealtBy, Target);
+	// FROM WHERE THE BLOW WAS STRUCK when its effect says it was struck from a point, as `ApplyHit` measures it: a
+	// gadget's copy of its summoner's skill. Ruled 2026-10-14.
+	Notice.DistanceMetres = UCataclysmSkillEffects::MetresFromWhereItWasStruck(Data.EffectSpec, DealtBy, Target);
 	Notice.Location = Target->GetActorLocation();
 	Notice.EffectTags = &EffectTags;
 	Notice.GrantedTags = Hit.bIsDamageOverTime ? &Granted : nullptr;

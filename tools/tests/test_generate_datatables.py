@@ -8369,3 +8369,101 @@ class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
         problems = self.validation([flag])
         assert any(f"and not {self.DRAIN!r}" in problem
                    for problem in problems), problems
+
+
+class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_copy_your_last_skill`, ruled 2026-10-14 and built ahead of its
+    row, for "Gadgets copy the last skill you used and fire it at their target
+    once every 2 seconds". One flag at a flat 1, scoped to `Type.Deployable`,
+    with no action and no action event: `ACataclysmMinion::StepSkillCopy`
+    asks whether it is above nought on each step of the gadget. THE 2 SECONDS
+    ARE THE ENGINE'S, not the row's.
+    """
+
+    WORDS = ("Gadgets copy the last skill you used and fire it at their "
+             "target once every 2 seconds")
+    STAT = "gadgets_copy_your_last_skill"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_COPY_YOUR_LAST_SKILL_STAT == self.STAT
+        assert self.STAT in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadgets_copy_last_skill" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the first gadget layer, read by the
+        same pattern from the same file."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetsCopyYourLastSkillStat"] == (
+            gen.GADGETS_COPY_YOUR_LAST_SKILL_STAT)
+
+    def test_the_seconds_are_the_engines_and_are_the_sentences(self):
+        """THE 2 SECONDS ARE A FIGURE OF THE ENGINE, read here from the header
+        that holds it. The control is the drain's allowance in the same
+        header, read by the same pattern."""
+        import re
+        header = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmMinion.h").read_text(encoding="utf-8")
+        figures = dict(re.findall(
+            r"static constexpr float (\w+) = ([0-9.]+)f;", header))
+        assert figures["DrainedToNothingShare"] == "0.0001"
+        assert float(figures["SecondsBetweenSkillCopies"]) == 2.0
+        assert "every 2 seconds" in self.WORDS
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Deployable, Type.Trap"},
+                 "under the required tags 'Type.Deployable, Type.Trap'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": 2.0, "ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            if change.get("ValueLow") == 2.0:
+                assert len(problems) == 2, (change, problems)
+            else:
+                assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []

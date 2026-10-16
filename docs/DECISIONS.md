@@ -2,6 +2,575 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-14 — A row can make its wearer's gadgets cast a copy of the last skill the wearer used, at their own target, every 2 seconds: a record on the wearer, a clock on the gadget, and the wearer's own skill started free from the gadget's place, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the stat's name, the 2 seconds, the
+copy clock, the copy, and one call in `GadgetStep`), `CataclysmAbilitySystemComponent.h` and `.cpp` (the record, and
+one line in `ClearWhatDeathEnds`), `CataclysmTriggeredSkill.h` and `.cpp` (a place to cast from on `Trigger`, and
+`HeldSkillNamed`), `CataclysmSkillTemplate.h` and `.cpp` (the place on the one-use grant, `CastOrigin`, and the reads
+of the caster's place that take it), `CataclysmSkillTemplates.cpp` (the Strike, Projectile and Debuff reads),
+`CataclysmSkillEffects.h` and `.cpp` (`IsBehindFrom`, `ApplyKnockbackFrom`, `ApplyPullFrom`),
+`CataclysmProjectile.h` and `.cpp` (where a shot's use was cast from, for a contact from behind and for its
+distance), `CataclysmSkillEffects.h` and `.cpp` again (a blow's place struck from, `FCataclysmHitDelivery::
+bStruckFromAPoint`, its stamp on the effect and `MetresFromWhereItWasStruck`), `CataclysmCombatEvents.cpp` and
+`CataclysmVitalAttributeSet.cpp` (one line each: the hit announcement's and the defender's distance read through it),
+all under `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the
+record is written in `OnSkillWasUsed`), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on
+the list of stats with no attribute), `game/Source/Cataclysm/Tests/CataclysmGadgetCopiesSkillTests.cpp` (new, eleven
+tests),
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe), `tools/generate_datatables.py` (the name,
+added to the flags), `tools/tests/test_generate_datatables.py` (one class of six tests). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`, row
+`Positive_Gadgets_copy_the_last_skill_you_used_and_fire_it`, tags `Type.Deployable`: "Gadgets copy the last skill you
+used and fire it at their target once every 2 seconds".
+
+- **THIS ROW IS FIRST ON THE OWNER'S PLAY-CHECK LIST: "a free cast of the player's skill every 2 seconds for each
+  gadget".** Required said first by the coordinating session.
+- **A War wearer copies Shield Bash and nothing else of War.** Ruled (R2). Of the War weapon skills only Shield Bash
+  has a shape a row may cast again; the list below is made by script.
+- **The copy's hits are the player's: on-hit rows, leech, kills, as a repeated cast's are.** Ruled (R3). This is NOT
+  the rule of 2026-09-17 that a minion's blow carries only the minion's stats, because the blow is not the minion's:
+  the skill is the summoner's own, granted to the summoner and cast by the summoner's ability system, and the gadget
+  only gives it a place to start from and a target.
+- **TODAY NO CHARACTER WHO PLACES GADGETS HOLDS A SKILL THAT SENDS THE SKILL-USED NOTICE.** Read on 2026-10-14. A
+  character holds the six skills of ONE weapon type (`ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon`
+  calls `UCataclysmWeaponSlotsComponent::EquipWeaponType` with the worn weapon's type). The only three skills that
+  place a gadget are War skills of the Crossbow (Bolt Turret) and the Spear (Ballista, Iron Fortress), and the other
+  seven War skills of those two weapons have no shape: a row with no shape is granted `UCataclysmUndesignedSkill`,
+  which never reaches `CommitAndBegin` and sends no notice. So a character holding a weapon that places a gadget
+  records nothing while it holds that weapon.
+- **SO THE RECORD IS THE SKILL'S ROW AS IT WAS USED, and a copy casts it whether or not the wearer still holds it.**
+  The coordinating session's ruling of 2026-10-14 (option B), replacing the enchantment session's judgement J2.
+  **With it the row works for a War wearer in either order:** it uses Shield Bash with a Shield, changes to a Crossbow
+  or a Spear and places a gadget, and the gadget copies Shield Bash; or it places a gadget with a Crossbow or a Spear,
+  changes to a Shield while the gadget stands and uses Shield Bash, and the gadget copies Shield Bash. **A COPY CASTS
+  THE RECORDED ROW WITH THE WEARER'S NUMBERS AT THE MOMENT OF THE COPY**: the weapon held then, its damage and its
+  stats, and not the weapon the skill was used with.
+- **A change of weapon is possible anywhere, and a standing gadget survives it**, by reading at
+  `origin/development` 09ae318f and not by any run in play: the bag screen (`ACataclysmPlayerController::
+  Input_ToggleInventory`) opens with no test of where the character is; equipping reaches `OnEquipmentChanged`, then
+  `FillAbilitySlotsFromWornWeapon`, then `EquipWeaponType`, whose `FillSlotsFromWeaponType` calls `UnequipWeapon` and
+  takes the granted skills back; `UCataclysmDeployableSkill` overrides no `EndAbility` and nothing removes its
+  machines when its skill goes; and a gadget ends by its own lifespan, `SetLifeSpan` in `ACataclysmMinion::Spawn`.
+  The inventory widget's own equip path was not read.
+- **The basic attack does not set the record.** Ruled by the coordinating session on 2026-10-14, by the ruling of
+  2026-09-14 that a basic attack is not a skill use. The option not taken: let it count, which would make the record
+  the basic attack almost always.
+- **A copy costs nothing**: no mana, no health, no Fervour, no cooldown waited for or started. It raises no
+  `skill_use` and no `attack_use` and sends no skill-used notice, so no row that casts a skill casts again from it.
+- **It is cast from the gadget's place, at the enemy the gadget's own brain chooses, while that enemy stands within
+  the gadget's reach.** So "Your gadgets prioritize the highest HP enemy" and a Quarry mark reach the copy.
+- **The summoner does not turn, plays no attack clip and has no cast burst drawn at its feet for a copy**, and the
+  copy does not wait for the summoner's wind-up. The strike's arc is drawn at the gadget. No burst is drawn at the
+  gadget either: `UCataclysmCastEffect::PlayFor` draws at an actor, and the caster is the summoner.
+- **A row that asks how far the target stood measures a copy from the GADGET.** Ruled by the coordinating session on
+  2026-10-14. Nine shipped rows read that distance, printed by script below; "Brute's Heart" and "Ranged skills deal
+  15-30% less damage at close range", for two, read a copy's target as near when it is near the gadget, whatever the
+  wearer's distance. Everything else a copy measures from the caster -- its cone, its range, its release point, its
+  ground and terrain, a shove, a haul, a blow from behind -- is measured from the gadget too. The one shipped row on
+  the distance to what struck its wearer, "Nearby enemies deal 10-30% less damage to you", is not touched: it reads
+  an enemy's blow, which carries no such place.
+- **Follow Through, on a copy's melee kill, does what it does for a `repeat_skill` cast's melee kill**: it repeats the
+  summoner's own held skill of that name, from the summoner, at the nearest enemy within its reach of the summoner.
+  That repeat is a free start: it is not a copy and does not change the record.
+- **A copy comes in addition to the gadget's ordinary shot and to its volley.** "Gadgets fire faster" does not
+  shorten the 2 seconds.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief. Every statement about what the engine does
+  was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+
+**What was not read:** the engine's own `TryActivateAbility` and `CanActivateAbility` past what the repository says
+of them; whether `UCataclysmTargetCandidates` sees an enemy moved by `SetActorLocation` at once, which one test
+relies on; how a weapon is changed in play.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's own words, relayed by the enchantment session: option B, "the WHOLE skill is cast from the gadget (not
+hits only)". The coordinating session ruled R1 to R9 below "AS PLANNED" on the enchantment session's plan, on
+2026-10-14, and ruled J1 on the same day.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | The cast is the player's: the summoner's own skill, granted for one use through `UCataclysmTriggeredSkill`, started from the gadget's place and aimed at its target, with the summoner's weapon, stats, rows, level and tags; nothing run on the gadget's ability system. | `ACataclysmMinion::CopySummonersLastSkill` calls `UCataclysmTriggeredSkill::Trigger(Summoner, Skill, Target location, 1, false, &the gadget's location)`. `Trigger` grants to the character it is given; the three engine rules hold as they did (activate, then `SetRemoveAbilityOnEnd`; a grant inside an activation is refused; removed in `EndAbility`). The new last argument sets `bFreeRepeatHasOrigin` and `FreeRepeatOrigin` on the fresh instance. |
+| R2 | A War wearer copies Shield Bash and nothing else of War. | By `RepeatsFromARow`, unchanged; the list below. |
+| R3 | The copy's hits are the player's. | The summoner is the avatar and its ability system the source of every blow, as for any `Trigger`. |
+| R4 | It costs nothing and is not a use. | `Trigger` with `bPaysCost` false: `bFreeRepeat` skips the commit, the notice and the health cost in `CommitAndBegin`. |
+| R5 | "The last skill you used" is a lasting record of the last skill whose use sent the notice and that `RepeatsFromARow` accepts; free casts never change it; cleared at death and when the dungeon is left; kept across a floor. | `UCataclysmAbilitySystemComponent::SkillGadgetsCopy` and `NoteSkillGadgetsCopy`, written at the end of `ACataclysmPlayerCharacter::OnSkillWasUsed`; emptied in `ClearWhatDeathEnds`; read as none for a record of another dungeon, by `DungeonBeingWalked` as kept stacks are. The record holds the skill's ROW as it was used (the ruling below that replaced J2). |
+| B | The coordinating session, 2026-10-14, option B: keep the skill's row as it was used, not a name to find again; a copy casts it with the wearer's numbers at the copy. | `NoteSkillGadgetsCopy(const FCataclysmWeaponSkill&)` keeps the row; `CopySummonersLastSkill` casts `*SkillGadgetsCopy()` and asks nothing of what is held. |
+| D | The coordinating session, 2026-10-14: a copy's distance to its target is measured from the gadget, for the attacker's lookups, the hit announcement and the defender alike. | `FCataclysmHitDelivery::bStruckFromAPoint` and `StruckFromPoint`, set by `HitTargets`, by `ACataclysmProjectile::HitOne` and by a rack's no-speed fallback; `ApplyHit` measures from it; `ApplyTypedSpec` stamps it on the effect; `UCataclysmSkillEffects::MetresFromWhereItWasStruck` reads the stamp for `UCataclysmCombatEvents::NoteBlow` and `UCataclysmVitalAttributeSet`. |
+| R6 | Each gadget its own clock, 2 seconds, in addition to its ordinary shot; the first copy on the first step with a target, a record and a gadget able to act; a beat that finds nothing is skipped; not shortened; kept by age. | `ACataclysmMinion::StepSkillCopy`, called by `GadgetStep` after the drain and before the volley; `SecondsBetweenSkillCopies`. |
+| R7 | The target is the gadget's own choice; a Spike Trap and an imp do nothing; Conduit changes nothing. | `ACataclysmMinion::SkillCopyTarget` asks `ACataclysmEnemyController::ChooseTarget`. The flag is read through `SummonersGadgetStat`, which answers nought for everything that is not `IsGadget`, and `CopySummonersLastSkill` asks `IsGadget` again. Conduit is read nowhere here. |
+| R8 | A flag stat scoped to gadgets, flat 1 to 1, Required Tags `Type.Deployable`. Propose the name; say whether the 2 seconds are the engine's or the row's. | `gadgets_copy_your_last_skill`; the 2 seconds are the engine's, `ACataclysmMinion::SecondsBetweenSkillCopies`: the row is a flag, as the other gadget flags are, and the sentence states one figure and no range to roll. |
+| R9 | A copy's hit that fires a row which casts starts no copy and changes no record. | Every row that casts fires on `skill_use` or `attack_use`, by script below, and a copy raises neither; a `repeat_skill` or held trigger is recorded only while a skill is in hand, which only `ActOnSkillUse` sets. |
+
+### THE READS OF THE CASTER'S PLACE, CHANGED AND LEFT
+
+Found by searching `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp`, `CataclysmSkillEffects.cpp` and
+`CataclysmProjectile.cpp` for `GetActorLocation`, `GetActorForwardVector`, `AimDirection`, `AimedPointWithin`,
+`IsBehind`, `ApplyKnockback` and `ApplyPull`, and reading every hit inside the three shapes `RepeatsFromARow` accepts
+(Strike, Projectile, Debuff) and inside `CommitAndBegin` and `HitTargets`. A search and not a proof. ONE HELPER,
+`UCataclysmSkillTemplate::CastOrigin`, answers `FreeRepeatOrigin` while `bFreeRepeatHasOrigin` is set and the
+avatar's location otherwise. With no place set every read below answers what it answered before.
+
+CHANGED, each only for a use given a place:
+
+1. `AimDirection`: the direction from `CastOrigin` to the aim.
+2. `AimedPointWithin`: the point within range of `CastOrigin` (a projectile's destination).
+3. `CommitAndBegin`: the summoner is not turned, no attack clip, no cast burst.
+4. `SecondsUntilTheSwingConnects`: the summoner's wind-up is not read; a worn row's `blow_delay_seconds` still is.
+5. `HitTargets`: whether a blow is from behind, by `UCataclysmSkillEffects::IsBehindFrom(FreeRepeatOrigin, Target)`.
+6. `ApplyKnockbackTo`: away from the place, by `ApplyKnockbackFrom`.
+7. `ApplyForcedMovementTo`, a pull or a drag: toward the place, by `ApplyPullFrom`.
+8. Strike, `ActivateAbility`: the skill's ground, a row's zone and the terrain laid at `CastOrigin`; a wall runs along
+   `AimDirection` rather than the avatar's facing.
+9. Strike, `SwingOnce`: the cone's apex and the sphere's centre for a use that hits all nearby, at `CastOrigin`; the
+   arc is drawn there. A strike's repeats over its duration and its final hit are `SwingOnce`.
+10. Projectile, `ActivateAbility`: the release point, `Origin`, is `CastOrigin`. A lob's flight, a beam's line in
+    `Land`, a return's way back (`ACataclysmProjectile` returns to where it started), and ground along the flight
+    all read `Origin`.
+11. Projectile, `BindTether`: the two enemies are sought within range of `CastOrigin`.
+12. Projectile, `NextThrowTarget` and `ThrowOne` (a rack): the search and the release at `CastOrigin`; the no-speed
+    fallback's blow from behind measured from there.
+13. Projectile, every shot it fires is told where its use was cast from (`ACataclysmProjectile::bStrikesFromAPoint`,
+    `StrikesFromPoint`), and `ACataclysmProjectile::HitOne` measures a contact from behind from there.
+14. Debuff, `ActivateAbility`: the enemies in range of `CastOrigin`.
+15. **The distance to the target that a row asks about**, ruled D above. A search over `game/Source/Cataclysm`,
+    tests left out, `grep -rn "MetresBetween(\|DistanceMetres\b\|TargetDistanceMetres =\|OpponentDistanceMetres ="
+    game/Source/Cataclysm --include=*.cpp`, found five places that measure the distance between two characters: `ApplyHit` in
+    `CataclysmSkillEffects.cpp` (the attacker's own lookups), `UCataclysmCombatEvents::NoteBlow` (the hit
+    announcement's `DistanceMetres`), `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` (the defender's
+    `OpponentDistanceMetres`), and two in `CataclysmCommand.cpp`. The first three CHANGED: a blow struck from a point
+    is measured from it, and all three still read the one definition, `MetresBetween`'s, for every other blow, so
+    the three cannot disagree about one strike. Every other `TargetDistanceMetres` the script found is a parameter
+    passed on, or a minion's -1.
+
+LEFT, each with the reason:
+
+- The two distances in `CataclysmCommand.cpp`: Behind the Veil's reach, from a creature choosing whom to attack to a
+  character and to a minion. No blow is in hand.
+- A burn's ticks, a ground zone's sweeps and Chorus's repeats are blows of their own, built with deliveries of their
+  own, and carry no place: each is measured as it was before this change (whatever its own delivery and causer
+  give), and a minion's repeat carries no distance at all. Not read further.
+- `AimDirection`'s fallback when the aim stands on the place: the avatar's facing. A copy is aimed at an enemy within
+  reach of the gadget, which stands on the gadget only if it overlaps it.
+- `ApplyLaunch`: straight up, no position. Stun, knockdown and pin: no position.
+- A skill's `Requires` (the sphere at the avatar in `CataclysmSkillTemplate.cpp`), a held swing's release (two pairs of
+  ground lines in `ReleaseTheSwing` and `LetTheHoldFinish`) and a plant (`PlantTheWeapon`): skills with a `Requires`,
+  a hold or a plant are off the list.
+- The self buff's, the movement skill's, the aura's, the summon's and the deployable's reads: off the list.
+- What is measured from a target or from the projectile itself: spreading curses, igniting around the consumed,
+  spreading fire, a buried weapon's leap, a glance onward, the running buffs told where a blow landed.
+- Compel's order to the summoner's minions: they strike "wherever it happens to be standing".
+- The projectile's blows, Fervour, later-hit share and burn: the firer's, which is the summoner, by R3.
+- The copy's ground and terrain are owned by the summoner, so "only one persistent area at a time" counts them as the
+  summoner's. By R1.
+
+**No shape was found that cannot take a place to cast from, so R5 is not narrowed.**
+
+### JUDGEMENTS, EACH WITH THE OPTION NOT TAKEN
+
+- **J2 IS REPLACED BY THE COORDINATING SESSION'S RULING OF 2026-10-14 (option B): the record keeps the skill's row
+  as it was used**, and a copy casts it whether or not the summoner still holds it, with the summoner's numbers at
+  the copy. The enchantment session's judgement, first built, kept a name and found it again among the skills held,
+  and a gadget then copied nothing after a change of weapon; see SAID FIRST. The record is still written only for a
+  use, other than the basic attack, of a skill held at that moment that `RepeatsFromARow` accepts:
+  `UCataclysmTriggeredSkill::HeldSkillNamed` is kept for that, and is not asked by the copy.
+- **J3, the enchantment session's, built as judged: a place on the one-use grant, set only by this mechanism, read
+  through one helper.** The option not taken: cast from the summoner.
+- **J4: each beat is one copy**, and copies may overlap (a rack's ten seconds, for one).
+- **The clock starts on the first copy that STARTED**, not on the first step that found a target and a record. A
+  copy can still be refused, and the one `Spawn`'s own step asks for always is: it runs inside the summoner's
+  deploying skill, where the engine defers a grant. The option not taken would lose every gadget's first copy.
+- **The brain's choice counts only within the gadget's reach**, by the brain's own measure. A choice beyond it, a
+  Quarry mark far away for one, gives no copy; the gadget does not walk. The option not taken: fall back to the
+  nearest within reach.
+- **A gadget with no brain has no target.** The option not taken: the nearest within reach.
+- **A dead summoner's gadgets copy nothing**, beside the record's clearing at the revival's `ClearWhatDeathEnds`,
+  which is where a death's clearing is done for kept stacks. The option not taken: clear it in `HandleDeath`, which
+  runs inside the killing blow.
+- **The record is kept whether or not the wearer holds the row**, on the ability system, which lives on the player
+  state. So putting the row on finds the skill used before it.
+- **No cast burst is drawn for a copy**, neither at the summoner nor at the gadget. The option not taken: draw it at
+  the summoner, who did not cast.
+- **The 2 seconds are the engine's, `SecondsBetweenSkillCopies`.** The option not taken: the row's value, which
+  would have made the row a figure of seconds and not a flag.
+- **The stat's name, `gadgets_copy_your_last_skill`.**
+
+### THE WEAPON SKILLS ON AND OFF THE LIST, BY SCRIPT
+
+`RepeatsFromARow` as the code states it: `WildMagicLeavesOut(row)` answers `InThePool` and the shape is not a self
+buff; `WildMagicLeavesOut` leaves out, in its order, no shape, Movement, Aura, Summon or Deployable, a `Type.Channel`
+tag or a `ChargeTime`, `DisarmsUntilRecalled`, a `Requires`, and a `HealthCostPercent`. The script restates that
+order over `game/Data/WeaponSkills.csv`; it was run from the repository root on 2026-10-14 as
+`python list_copyable.py game/Data/WeaponSkills.csv`, the script kept in the second session's scratchpad. It printed:
+
+```
+ON THE LIST (25):
+  Demonic_Sword_Heavy | Quench | Strike
+  Demonic_Sword_Ultimate | Extinction | Strike
+  War_Shield_Heavy | Shield Bash | Strike
+  Demonic_Dagger_Heavy | Emberpierce | Strike
+  Demonic_Axe_Heavy | Carom | Projectile
+  Demonic_Axe_Ultimate | Butcher's Bill | Projectile
+  Demonic_Axe_Special | Harrower | Projectile
+  Demonic_Greataxe_Heavy | Molten Cleave | Strike
+  Demonic_Greataxe_Special | Emberhurl | Projectile
+  Demonic_Spear_Heavy | Impale | Strike
+  Demonic_Fist_Heavy | Searing Hook | Strike
+  Demonic_Spear_Special | Skewer | Projectile
+  Demonic_Wand_Support | Hex of Cinders | Debuff
+  Demonic_Wand_Heavy | Malefice | Projectile
+  Demonic_Wand_Ultimate | Anathema | Strike
+  Demonic_Wand_Special | Whisper of Madness | Debuff
+  Demonic_Staff_Support | Quarry | Debuff
+  Demonic_Staff_Heavy | Compel | Projectile
+  Demonic_Whip_Heavy | Searing Lash | Strike
+  Demonic_Whip_Ultimate | The Gathering | Strike
+  Demonic_Whip_Special | Tether | Projectile
+  Demonic_Warhammer_Heavy | Molten Crush | Strike
+  Demonic_Warhammer_Ultimate | Break the World | Strike
+  Demonic_Spear_Ultimate | Thicket | Strike
+  Demonic_Warhammer_Special | Upthrust | Strike
+OFF THE LIST, WITH A SHAPE (38):
+  Demonic_Sword_Support | Ashen Edge | SelfBuff | a self buff
+  Demonic_Sword_Movement | Flashpoint | Movement | Movement
+  Demonic_Sword_Special | Touch Off | Strike | has a Requires
+  Demonic_Greatsword_Support | Unbroken | SelfBuff | has a Requires
+  Demonic_Greatsword_Heavy | Backswing | Strike | a channel or a held swing
+  Demonic_Greatsword_Ultimate | The Whole Weight | Strike | a channel or a held swing
+  Demonic_Greatsword_Movement | Inexorable | Movement | Movement
+  Demonic_Greatsword_Special | Buried Fire | Strike | plants the weapon
+  Demonic_Dagger_Support | Slipstream | SelfBuff | has a Requires
+  Demonic_Dagger_Ultimate | Everywhere at Once | Movement | Movement
+  Demonic_Dagger_Movement | Ashwalk | Movement | Movement
+  Demonic_Dagger_Special | Echo | Movement | Movement
+  Demonic_Axe_Support | Butcher's Heat | SelfBuff | a self buff
+  War_Warhammer_Movement | Shockwave Leap | Movement | Movement
+  Demonic_Axe_Movement | Emberhaul | Movement | Movement
+  Demonic_Greataxe_Support | Burning Wrath | SelfBuff | a self buff
+  Demonic_Greataxe_Ultimate | Pyroclasm | Strike | a channel or a held swing
+  Demonic_Greataxe_Movement | Infernal Plunge | Movement | Movement
+  War_Sword_Movement | Lunge | Movement | Movement
+  War_Whip_Movement | Whip Swing | Movement | Movement
+  Demonic_Spear_Movement | Nail Down | Movement | Movement
+  Demonic_Fist_Support | Martyr's Ember | SelfBuff | a self buff
+  War_Crossbow_Special | Bolt Turret | Deployable | Summon or Deployable
+  Demonic_Fist_Ultimate | Living Pyre | Aura | Aura
+  Demonic_Fist_Movement | Cinder Rush | Movement | Movement
+  Demonic_Fist_Special | Blood Pyre | Projectile | costs health
+  War_Spear_Special | Ballista | Deployable | Summon or Deployable
+  Demonic_Wand_Movement | Foul Wake | Movement | Movement
+  Demonic_Staff_Ultimate | Subjugate | Summon | Summon or Deployable
+  Demonic_Staff_Movement | Vesselstep | Movement | Movement
+  Demonic_Staff_Special | Summon Imp | Summon | Summon or Deployable
+  Demonic_Whip_Support | Coil of Embers | SelfBuff | a self buff
+  Demonic_Spear_Support | Held Fast | SelfBuff | a self buff
+  Demonic_Whip_Movement | Reel | Movement | Movement
+  Demonic_Warhammer_Support | Groundbreaker | SelfBuff | a self buff
+  Demonic_Warhammer_Movement | Crater | Movement | Movement
+  War_Spear_Ultimate | Iron Fortress | Deployable | Summon or Deployable
+  Demonic_All_Aura | Conflagration | Aura | Aura
+ROWS WITH NO SHAPE, OFF THE LIST AND NOT LISTED: 340
+ROWS READ: 403
+```
+
+Two self buffs are off the list for their `Requires` before they are off it as self buffs, because that is the
+order the code asks in. The ten War skills of the Crossbow and the Spear, read the same way: the Bolt Turret, the
+Ballista and Iron Fortress are deployables, and the other seven have no shape.
+
+### R9: THE ROWS THAT CAST, BY SCRIPT, AND FOLLOW THROUGH
+
+`python casting_rows.py game/Data/EnchantmentEffects.csv`, the script kept in the second session's scratchpad, run on
+2026-10-14 at `origin/development` 377e65ae, printed:
+
+```
+Positive_Every_skill_use_has_a_5_15_chance_to_cast_a_se#1 | repeat_skill | skill_use
+Positive_Spells_have_a_10_20_chance_to_cast_a_second_ti#1 | repeat_skill | skill_use
+Positive_Each_skill_has_a_20_40_chance_to_cast_a_duplic#1 | repeat_skill | skill_use
+Positive_Your_heavy_attack_applies_its_full_effect_twice#1 | repeat_skill | skill_use
+Positive_Your_spells_echo_1_time#1 | repeat_skill | skill_use
+Positive_Your_ultimate_ability_applies_its_effect_twice#1 | repeat_skill | skill_use
+Positive_Your_melee_attacks_have_a_12_15_chance_to_trig#1 | repeat_skill | attack_use
+Positive_Spellblade_s_Will_2_Piece_Bonus_Your_melee_at#1 | trigger_held_skill | attack_use
+Positive_Spellblade_s_Will_10_Piece_Bonus_Your_melee_a#1 | trigger_held_spell | attack_use
+Positive_Shard_of_Anarchy_10_Piece_Bonus_Every_30_seco#1 | kept_stacks_repeat_skill | skill_use
+rows read: 612; rows that cast: 10; of those firing on an event other than skill_use or attack_use: 0
+```
+
+So the enchantment session's reading holds: every row that casts fires on `skill_use` or `attack_use`, and none on a
+hit or a kill. And the code would refuse one that did: each of the four actions records its request only while
+`SkillInHandName` is set, which `ActOnSkillUse` alone sets and clears.
+
+**Follow Through.** `ACataclysmPlayerCharacter::OnSomethingDied` calls `UCataclysmFollowThrough::NoteMeleeKill` with
+the killing skill's NAME, and `UCataclysmFollowThrough::SkillNamed` takes the first spec of that name the character
+holds. For a copy, as for a `repeat_skill` cast, the skill of that name is held (a copy is cast only while it is), and
+the held spec was granted first, so it is the one found; `MakePendingRepeat` then starts the held spec free, from the
+summoner, at the nearest enemy within its reach of the summoner. So today a copy's melee kill does exactly what a
+`repeat_skill` cast's melee kill does: one Follow Through repeat when the keystone's clock allows. That repeat is a
+free start of the held spec, which sends no notice and carries no place, so it is not a copy and changes no record.
+**It matches "starts no copy and changes no record", so this part was built and not stopped.** It is read and not
+tested: see "Not tested".
+
+### THE ROWS THAT READ THE DISTANCE, BY SCRIPT
+
+`python distance_rows.py game/Data/EnchantmentEffects.csv`, the script kept in the second session's scratchpad, run
+on 2026-10-14 from the repository root, printed:
+
+```
+THE ATTACKER'S DISTANCE TO ITS TARGET (9):
+  Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr#1 | attack_damage increased 25.0 to 25.0 | tags '' | condition target_within_metres 5.0 | scale  0.0
+  Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr#2 | spell_damage increased 25.0 to 25.0 | tags '' | condition target_within_metres 5.0 | scale  0.0
+  Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2#1 | attack_damage more 25.0 to 25.0 | tags '' | condition target_within_metres 5.0 | scale  0.0
+  Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2#2 | spell_damage more 25.0 to 25.0 | tags '' | condition target_within_metres 5.0 | scale  0.0
+  Negative_Ranged_skills_deal_15_30_less_damage_at_close#1 | attack_damage more -15.0 to -30.0 | tags 'Type.Ranged' | condition target_within_metres 5.0 | scale  0.0
+  Negative_Ranged_skills_deal_15_30_less_damage_at_close#2 | spell_damage more -15.0 to -30.0 | tags 'Type.Ranged' | condition target_within_metres 5.0 | scale  0.0
+  Positive_Ranged_skills_deal_10_20_bonus_damage_for_each#1 | attack_damage increased 10.0 to 20.0 | tags 'Type.Ranged' | condition  0.0 | scale metres_to_target 1.0
+  Positive_Ranged_skills_deal_10_20_bonus_damage_for_each#2 | spell_damage increased 10.0 to 20.0 | tags 'Type.Ranged' | condition  0.0 | scale metres_to_target 1.0
+  Negative_Enemies_within_5_metres_gain_20_40_resistances#1 | penetration flat -20.0 to -40.0 | tags '' | condition target_within_metres 5.0 | scale  0.0
+THE DEFENDER'S DISTANCE TO WHAT STRUCK IT (1):
+  Positive_Nearby_enemies_deal_10_30_less_damage_to_you#1 | damage_taken more -10.0 to -30.0 | tags '' | condition opponent_within_metres 5.0 | scale  0.0
+rows read: 612
+```
+
+The nine rows of the first list now measure a copy from the gadget. The one of the second, "Nearby enemies deal
+10-30% less damage to you", is asked when an enemy strikes its wearer, and an enemy's blow carries no place, so it is
+not touched. The passive tree holds one row of that second kind, read by `grep metres game/Data/PassiveEffects.csv`:
+`Ritualist_capstone_100#1`, `damage_taken` more -25 under `attacker_beyond_metres` 6; untouched for the same reason.
+What a copy's blow does to an ENEMY'S lookups of the distance to what struck it is changed with the defender's
+reading; no enemy modifier reading it was found by a search of `game/Data/EnemyModifiers.csv` and
+`game/Data/DungeonModifiers.csv` for the three names.
+
+### THE GENRE SOURCE
+
+poedb.tw, "Spell Totem Support" (Path of Exile), https://poedb.tw/us/Spell_Totem_Support, the first 100,000 of
+105,954 characters read. Lines copied from the page:
+
+```
+Supports spell skills that are not triggered.
+Instead of casting that spell, you will summon a totem that casts the spell for you.
+Supported Skills will summon a Totem which uses that Skill
+Supported Skills deal (50—55)% less Damage
+Totem lasts 8 seconds
+```
+
+SUMMARY: in that game a placed object casting the player's own skill for the player is a shipped shape. It pays for
+it with less damage; this sentence states no cost, and the owner's choice of the whole skill at full strength is
+this game's own. The page states nothing about whose stats the totem's skill uses.
+
+Not reached: Diablo, Last Epoch, Torchlight Infinite.
+
+### WHAT WAS BUILT
+
+- **The stat.** `gadgets_copy_your_last_skill`, a flag: a row sets it at a flat 1, read through
+  `ACataclysmMinion::SummonersGadgetStat` as above nought. No gameplay attribute and no base; the last name on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code, `ACataclysmMinion::GadgetsCopyYourLastSkillStat`.
+- **The record.** `UCataclysmAbilitySystemComponent::SkillGadgetsCopy` and `NoteSkillGadgetsCopy`: the skill's
+  `FCataclysmWeaponSkill` row as it was used, and `DungeonBeingWalked` as it was written. `ACataclysmPlayerCharacter::OnSkillWasUsed` writes it at its end, for a use
+  that is not the basic attack, of a skill the character holds (`UCataclysmTriggeredSkill::HeldSkillNamed`, new) that
+  `RepeatsFromARow` accepts. `ClearWhatDeathEnds` empties it.
+- **The clock.** `ACataclysmMinion::StepSkillCopy`, called by `GadgetStep` after `StepNoDamageAndDrain` and before
+  the volley's clock (which returns early for a gadget whose summoner holds no volley row), with
+  `bHasCopiedASkill`, `LastSkillCopyAtAgeSeconds` and `SkillCopiesMade`, the last read by tests.
+- **The copy.** `ACataclysmMinion::CopySummonersLastSkill` and `SkillCopyTarget`, as R1 and R7 above.
+- **The place to cast from.** `UCataclysmSkillTemplate::bFreeRepeatHasOrigin` and `FreeRepeatOrigin`, beside
+  `FreeRepeatAim`; set by `Trigger`'s new last argument, `CastFrom`, defaulting to none, so every other caller is
+  unchanged; cleared in `EndAbility`. `CastOrigin`, and the reads listed above.
+- **Three functions of `UCataclysmSkillEffects` measured from a point**: `IsBehindFrom`, `ApplyKnockbackFrom` and
+  `ApplyPullFrom`. `IsBehind`, `ApplyKnockback` and `ApplyPull` are now each one call of these with the instigator's
+  location, after the same refusals as before, so there is one body of each.
+- **A blow's place struck from.** `FCataclysmHitDelivery::bStruckFromAPoint` and `StruckFromPoint`; `ApplyHit`
+  measures the target's distance from it; `ApplyTypedSpec` stamps it on the effect as four set-by-caller figures
+  (`StruckFromSetDataName` and X, Y, Z); `UCataclysmSkillEffects::MetresFromWhereItWasStruck` reads the stamp, or
+  answers `MetresBetween` for a blow with none, for the hit announcement and the defender.
+- **The generator.** `GADGETS_COPY_YOUR_LAST_SKILL_STAT`, added to `GADGET_FLAG_STATS`, so
+  `refuse_a_gadget_row_the_game_cannot_read` holds it as it holds the other flags.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One line on the sentence's enchantment, `Positive_Gadgets_copy_the_last_skill_you_used_and_fire_it`: Stat
+`gadgets_copy_your_last_skill`, Value Kind `flat`, Value Low 1, Value High 1, Required Tags `Type.Deployable`. No
+Condition, no Scale, no Action, no Action Event and no other cell. With the row, that session adds the name to
+`FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`, as the other gadget flags were added.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of its
+  probes.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is NOT changed: the flag is asked
+  through `SummonersGadgetStat`, whose one call of `StatForSkill` is already listed.
+- The generator refuses the same shapes on one more stat. No shipped row is on it.
+- No merged test asserts anything different, by reading: with no place given, every changed read answers what it
+  answered before, and the record and the clock do nothing for a summoner holding no row.
+
+### Tests
+
+Eleven new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmGadgetCopiesSkillTests.cpp`, the group
+`Cataclysm.GadgetCopiesSkill.`, a file of its own beside `CataclysmGadgetBehaviourTests.cpp`. The summoner is a
+possessed player holding a Demonic Whip and a weapon damage of 100: its Heavy skill Searing Lash, a 5 m cone of 45
+degrees, is what is copied. A use is announced by hand, as the repeat tests announce one. Enemies hold 50,000, with no
+defences. A gadget's step is called by hand after the world's clock is moved. The flag is granted by hand, flat 1,
+requiring `Type.Deployable`. Each test reads a control first.
+
+- `TheRecordIsTheLastSkillARowMayCastAgainAndADeathOrALeftDungeonClearsIt`. In order: control, nothing on record;
+  Searing Lash is on the list; Reel and Coil of Embers are not; a use of Searing Lash sets the record; a use of Reel
+  leaves it; a use of Coil of Embers leaves it; the basic attack is held (set-up); its use leaves it; a use of
+  Tether moves it to Tether; a free start of Searing Lash starts; it sends no notice; the record is still Tether;
+  `ClearWhatDeathEnds` leaves nothing; with a dungeon game mode spawned (set-up) and dungeon 7 walked, a use sets it;
+  the floor number moved on keeps it; the dungeon left (no dungeon walked) reads nothing; dungeon 8 reads nothing.
+  The floor change writes the game mode's number by hand and does not call `GoToFloor`, as `Cataclysm.DelayedDamage.`
+  does: it shows the record does not read the floor, not what a floor change does in play. Leaving the dungeon is
+  reached by writing `EmpireDungeonId`, as the kept-stack test does.
+- `ACopyStartsFromTheGadgetAndStrikesItsTargetWithTheSummonersOwnNumbers`. The player at the origin; the turret 20 m
+  along Y; its target 3 m along X from it; an enemy beside the summoner, 4 m from it on the line from the summoner to
+  the target, within the whip's 5 m of the summoner and 16 m from the turret; a control enemy 3 m along X from the
+  summoner. In order: set-up, Searing Lash on record; the turret's brain chooses the target; the turret casts one
+  copy; the target lost health; the enemy beside the summoner lost nothing; nor did the control enemy; the
+  summoner's own free start from its own place at the control enemy starts (set-up); it took health; the copy took
+  the same as it, to 0.01; the turret made no attack of its own.
+- `ACopyCostsNothingStartsNoCooldownAndIsMadeWhileTheSkillIsOnCooldown`. The player holds 500 mana and 40 of 100
+  class resource. In order: the control free start from the summoner's place starts and strikes (set-up); no Heavy
+  cooldown runs; the copy is cast and strikes (set-up); the copy took no mana; no health; the class resource moved by
+  exactly what the control's hit moved it, so none was paid; no Heavy cooldown started; 2.1 seconds on, the held
+  Searing Lash is pressed and its cooldown runs (set-up), and still runs once the press is cancelled (set-up); the
+  next step casts the second copy; it strikes.
+- `ACopyRaisesNoSkillUseAndNoAttackUseSendsNoNoticeAndLeavesTheRecord`. In order: control, the announced use raised
+  `skill_use` once, `attack_use` once and one notice; the copy is cast (set-up); still one `skill_use`; still one
+  `attack_use`; no notice sent; the record is unchanged.
+- `TheFirstCopyComesOnTheFirstStepWithATargetAndOneEveryTwoSecondsAfterUnhurried`. The player also holds an
+  increase of 100 on `minion_attack_speed` requiring `Type.Deployable`. In order: control, a step with nobody within
+  reach casts nothing; and starts no clock; with an enemy stood, the next step casts the first; a second step at the
+  same moment casts no second; none 1.1 seconds after the first; none at 1.9; the second at 2.1; none at 3.95; the
+  third at 4.05, 1.95 after the second, so the beat is kept from the first.
+- `NoTargetWithinReachOrNoRecordCastsNothingAndABeatThatCastsNothingIsPassedOver`. Two players, both holding the
+  flag; the first with Searing Lash on record and an enemy 12 m from its turret, beyond its 10 m reach; the second
+  with nothing on record and an enemy 3 m from its turret. In order: set-up, the records are as said; with no target
+  within reach nothing is cast; that enemy keeps its health; with nothing on record nothing is cast; that enemy keeps
+  its health; the first enemy moved within reach, the first copy (control); moved beyond reach, the next beat casts
+  nothing; moved back a step later, still nothing, so the clock did not wait; the beat after that casts the second.
+- `AHoldersSpikeTrapAndImpCastNothingAndAGadgetOfASummonerHoldingNoRowCastsNothing`. One player, a Spike Trap, an
+  imp and a turret, each with an enemy within reach. In order: set-up, the trap is a trap and not a gadget and the
+  turret a gadget; control, before the flag is granted the turret casts nothing; and its enemy keeps its health;
+  with the flag, the turret casts one; the trap none on its step; the imp none; the trap none asked outright; the imp
+  none; the trap's enemy keeps its health; the imp's does.
+- `ACopyGetsNoRepeatAndNoTriggerFromTheRowsThatCastAndLeavesTheRecord`. The player wears a `repeat_skill` row at a
+  chance of 100 on `skill_use` and a `trigger_held_skill` row at 100 on `attack_use`. In order: control, a use asks
+  the repeat row for a repeat of Searing Lash; and the trigger row for a trigger; both are taken back by hand; the
+  copy is cast and its hit lands (set-up); no repeat is asked for; no trigger; the record is unchanged; one copy and
+  no other.
+- `ACopysHitIsTheSummonersAndSetsOffItsHitDealtRow`. The player wears a row on `hit_dealt` restoring 10% of its
+  maximum mana, and holds 500 of 1,000. In order: the control free start from the summoner's place starts (set-up);
+  it raised `hit_dealt` once on the summoner; the row restored mana; the copy is cast (set-up); its hit raised
+  `hit_dealt` on the summoner; the row restored what it restored for the control, to 0.01; the target's record of
+  its last blow credits the summoner.
+
+- `AfterAChangeOfWeaponTheGadgetStandsAndCopiesTheSkillUsedAtTheNewWeaponsNumbers`. The ruling that replaced J2. THE
+  CHANGE OF WEAPON IS MADE WITH `UCataclysmWeaponSlotsComponent::EquipWeaponType`, the call
+  `FillAbilitySlotsFromWornWeapon` makes when the worn weapon changes, and NOT through `OnEquipmentChanged`: that
+  first refreshes the attributes from worn items, which the rig does not wear, so the new weapon's damage is written
+  by hand, from 100 to 200, as that refresh would write it. The turret is placed with `ACataclysmMinion::Spawn` and
+  not by the Crossbow's own skill, so the test does not show that taking that skill back leaves its machine; that is
+  read, above. The wearer, War, holds a Shield; its turret 20 m along Y with a target 2 m from it; a control enemy
+  2 m from the wearer. In order: set-up, a War Shield gives Shield Bash; two enemies; Shield Bash on record; the
+  first copy is cast and strikes (control, at 100); the wearer changes to a War Crossbow; Shield Bash is no longer
+  held; Bolt Turret is; the turret still stands; Shield Bash is still on record; 2.1 seconds on, the second copy is
+  cast; it takes more than the first; the wearer's own start of the recorded row from its own place at the control
+  enemy starts (set-up); the copy took what that start takes, to 0.01, which is the difference against a control
+  holding the new weapon.
+- `ACopysTargetDistanceIsMeasuredFromTheGadgetForATargetWithinMetresRow`. Ruling D. The wearer holds a Demonic Wand,
+  whose Whisper of Madness is a curse striking one enemy within 15 m for the Special slot's damage, and a made-up row
+  of the shape of the shipped `Negative_Ranged_skills_deal_15_30_less_damage_at_close#2`: `spell_damage`, More, -30,
+  Required Tags `Type.Ranged`, Condition `target_within_metres` 5. A near turret 12 m from the wearer with its target
+  1 m from it, about 12 m from the wearer; a far turret 60 m away with its target 8 m from it and 68 m from the
+  wearer, the control far from both. In order: set-up, the wand gives the skill and a row may cast it again; two
+  enemies; each turret's brain chooses its own target; the far copy is cast and strikes (control); the near copy is
+  cast (set-up); it took 30% less than the far one, to a thousandth of it, so 1 m from the gadget counted as within
+  5 m though the wearer stood 12 m away.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeGadgetsCopyYourLastSkill`.
+One player holding a Demonic Whip and Searing Lash on record, its turret 20 m away with an enemy 3 m beyond it. The
+turret's step before the flag is granted casts nothing and the enemy keeps its 9,000; with the flag at a flat 1, the
+next step casts one copy and the enemy loses health.
+
+Python: `TestGadgetsCopyTheLastSkillUsed` in `tools/tests/test_generate_datatables.py`, six tests on a made-up
+sheet: the ruled row is carried through with no action and no action event and refused by no check; the name is a
+flag and a stat with no attribute, with a made-up name as the control; the generator's name is the one
+`CataclysmMinion.cpp` holds, with the first gadget flag as the control; the 2 seconds are read from
+`CataclysmMinion.h` as `SecondsBetweenSkillCopies`, with the drain's allowance as the control; each wrong shape is
+refused (a kind that is not flat, no tag, a second tag, an action, a figure of 0, a figure of 2 in both columns); a
+condition or a scale is refused by the checks that hold those.
+
+**Not tested:** Follow Through on a copy's melee kill, which is read above and not run; a shove or a haul from the
+gadget's place (Searing Hook, Molten Crush, The Gathering); a blow from behind from the gadget's place
+(Emberpierce); the ground, terrain or row zone laid at the gadget; a projectile, a rack, a beam or a debuff copied
+(only a Strike and a curse are copied in the tests); the strike's arc drawn at the gadget; a Ballista; a change of
+weapon made through equipping an item and `OnEquipmentChanged`, and a gadget placed by the Crossbow's own skill
+standing after it; the `metres_to_target` scale and the hit announcement's and the defender's distances, which share
+the stamp and are read and not tested; a dead summoner; a gadget that cannot act; the copy that `Spawn`'s own step
+asks for inside a deploying skill being refused; the target chosen by "Your gadgets prioritize the highest HP enemy"
+or a Quarry mark; Conduit; a real floor change; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's commit, each new text was
+counted absent from its file before the break, and each new text keeps the file's brackets paired and compiles alone
+by reading. The failed assertions are counted by reading the tests and were not measured. The prefix of all three is
+`Cataclysm.GadgetCopiesSkill.`, with its trailing dot, which is 11 tests. Re-counted after the second commit: the
+three old texts are each found once, and C-II's new text is now `NoteSkillGadgetsCopy(Skill)`, the row. THERE IS NO
+FOURTH PROOF FOR THE DISTANCE: the brief allows three. The one that would be proposed breaks `ApplyHit`'s
+`Delivery.bStruckFromAPoint && Target` to `false && Target`, and the eleventh test would fail on its one comparison.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| C-I, the copy starts from the summoner | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `return FreeRepeatOrigin;` | `return Avatar() ? Avatar()->GetActorLocation() : FreeRepeatOrigin;` | `ACopyStartsFromTheGadgetAndStrikesItsTargetWithTheSummonersOwnNumbers` | `ACopyCostsNothingStartsNoCooldownAndIsMadeWhileTheSkillIsOnCooldown`, `ACopyGetsNoRepeatAndNoTriggerFromTheRowsThatCastAndLeavesTheRecord`, `ACopysHitIsTheSummonersAndSetsOffItsHitDealtRow`, `AfterAChangeOfWeaponTheGadgetStandsAndCopiesTheSkillUsedAtTheNewWeaponsNumbers`, `ACopysTargetDistanceIsMeasuredFromTheGadgetForATargetWithinMetresRow` |
+| C-II, a free cast changes the record | `game/Source/Cataclysm/AbilitySystem/CataclysmTriggeredSkill.cpp` | `System->SetRemoveAbilityOnEnd(Handle);` | `System->SetRemoveAbilityOnEnd(Handle); System->NoteSkillGadgetsCopy(Skill);` | `TheRecordIsTheLastSkillARowMayCastAgainAndADeathOrALeftDungeonClearsIt` | none |
+| C-III, the clock is half as long | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (Age - LastSkillCopyAtAgeSeconds < SecondsBetweenSkillCopies)` | `if (Age - LastSkillCopyAtAgeSeconds < SecondsBetweenSkillCopies * 0.5f)` | `TheFirstCopyComesOnTheFirstStepWithATargetAndOneEveryTwoSecondsAfterUnhurried` | none |
+
+Failed assertions in each test, by reading:
+
+- **C-I, 10 in 6 tests.** With the break `CastOrigin` answers the summoner's place, so a copy's cone starts at the
+  summoner and points from the summoner toward the gadget's target; the target is 20 m away and nobody else stands in
+  that cone but the enemy beside the summoner, placed there for it. The second test 3: "the copy struck the turret's
+  target, 3 m from the turret", "and not the enemy beside the summoner, out of the whip's reach from the turret", and
+  "the copy took what the summoner's own cast of the same skill takes". The third test 1: "set-up: and it strikes",
+  after which it returns. The eighth test 1: "set-up: and its hit lands", after which it returns. The ninth test 3:
+  "the copy's hit raised hit_dealt on the summoner", "and the summoner's hit_dealt row restored what it restores for
+  the summoner's own cast", and "and the blow on record on the target is credited to the summoner". The tenth test 1:
+  Shield Bash's 2.5 m cone from the summoner reaches nobody, so "control: the first copy struck its target", after
+  which it returns. The eleventh test 1: the far turret's curse is sought within 15 m of the summoner, where only the
+  near target stands, so the far target is untouched: "control: the copy far from both struck its target", after
+  which it returns. The other five assert counts and records, which the break does not move. The control casts are
+  given the summoner's own place, so they are unchanged.
+- **C-II, 1 in 1 test.** With the break every start made through `Trigger` writes the record, and the first test's
+  free start of Searing Lash moves it from Tether: "so the record is still Tether". Every copy in the other tests
+  copies the skill already on record, and the tenth test's own start of Shield Bash writes Shield Bash after its
+  record was read, so writing it again changes nothing they read.
+- **C-III, 3 in 1 test.** With the break a beat comes round after 1 second and the mark still moves on by 2. In the
+  fifth test: "1.1 seconds after the first no second" reads 2; "nor 1.9 seconds after it" reads 2; "2.1 seconds
+  after the first the second is cast" reads 2 and passes; "3.95 seconds after the first no third" reads 3; the last
+  line reads 3 and passes. The sixth test's beats are 2.05 and 2.3 seconds apart and pass, and the third test's second
+  copy at 2.1 passes.
+
+**Tests of another group expected to fail, to check in the window:** under C-I the probe
+`ProbeGadgetsCopyYourLastSkill` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails on its last
+assertion, "and its enemy lost health to the copy": the copy's cone from the summoner, 23 m from the enemy, reaches
+nobody. Under C-II and C-III it passes.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-12 — The game's surge when a city falls waits for the 25-day least interval, as the simulation's does (#2380)
 
 **Said first: with this layer, 20 unattended campaigns made 687 dungeons where they made 1,580 before it.** Both
