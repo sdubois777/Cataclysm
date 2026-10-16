@@ -162,6 +162,18 @@ float UCataclysmBasicAttack::ReachCmOf(
 		return 0.0f;
 	}
 
+	// A RANGED BASIC ATTACK REACHES ITS RANGE, NOT ITS BOLT'S WIDTH. Ruled 2026-10-16 by the coordinating session
+	// (P7, brief 38). A Projectile's radius is how wide its bolt is, 40 to 90 cm on the four ranged weapons, which no
+	// click could ever be within past two capsules; its range is how far the bolt flies, 7.2 m to 12 m. THE SAME
+	// FIGURE THE SHOT IS CLAMPED TO, `ScaledRangeCm`, which `UCataclysmProjectileSkill::ActivateAbility` passes to
+	// `AimedPointWithin`, so the walk stops where the bolt reaches. It carries the `skill_range` increases asked with
+	// the basic's own tags (`Slot.Basic` and its element). NOT THE COIL'S HELD RANGE INCREASE BELOW (P7-a): the shot
+	// does not read it, so it would stop the walk beyond where the bolt lands. Still measured between centres (P7-c).
+	if (Skill->Shape() == ECataclysmSkillShape::Projectile)
+	{
+		return Skill->ScaledRangeCm();
+	}
+
 	// AND A RUNNING BUFF MAY LENGTHEN IT. The Whip's Coil of Embers: "your
 	// attack range is increased by 30%". The basic attack is the clearest thing
 	// "attack range" can mean, and it is a separate read from the one in
@@ -208,7 +220,7 @@ bool UCataclysmBasicAttack::ShouldSwingNow(const AActor* Character,
 }
 
 bool UCataclysmBasicAttack::Swing(
-	UCataclysmAbilitySystemComponent* AbilitySystem)
+	UCataclysmAbilitySystemComponent* AbilitySystem, const AActor* AimedAt)
 {
 	const FGameplayAbilitySpec* Spec = FindBasicAttackSpec(AbilitySystem);
 	if (!Spec)
@@ -224,12 +236,28 @@ bool UCataclysmBasicAttack::Swing(
 		return false;
 	}
 
+	// THE ENEMY CLICKED IS WHERE THIS USE AIMS. Ruled 2026-10-16 (P7-b). Written on the granted instance just before
+	// the activation, which reads it in `AimPoint` (the turn, the announced aim and a bolt's destination are all read
+	// there); `EndAbility` clears it, and so does a refused activation below, so no later use of the instance reads
+	// it. NULL FOR A SWING NAMING NO ENEMY, which aims as before. The instance alone, as `ReachCmOf` reads it: an
+	// ability granted without one keeps its aim on the cursor.
+	UCataclysmSkillTemplate* Aiming = Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance());
+	if (Aiming)
+	{
+		Aiming->ClickedTarget = AimedAt;
+	}
+
 	// REMOTE ACTIVATION LEFT ON, for the same reason ProcessAbilityInput leaves
 	// it on: abilities in this project default to ServerInitiated, and the
 	// engine turns a client's TryActivateAbility on such an ability into a
 	// server call rather than refusing it.
-	return AbilitySystem->TryActivateAbility(Spec->Handle,
-											 /*bAllowRemoteActivation=*/true);
+	const bool bStarted = AbilitySystem->TryActivateAbility(Spec->Handle,
+															/*bAllowRemoteActivation=*/true);
+	if (!bStarted && Aiming)
+	{
+		Aiming->ClickedTarget.Reset();
+	}
+	return bStarted;
 }
 
 // ---------------------------------------------------------------------------
