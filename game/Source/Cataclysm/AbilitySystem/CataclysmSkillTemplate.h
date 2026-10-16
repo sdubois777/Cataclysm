@@ -63,6 +63,16 @@ public:
 	bool bFreeRepeatHasOrigin = false;
 	FVector FreeRepeatOrigin = FVector::ZeroVector;
 
+	/**
+	 * The actor a free start is cast FROM, when its caller names one: the gadget whose copy this use is. Ruled
+	 * 2026-10-15 by the coordinating session, for "Your AOE skills deal 50%-75% of their damage to nearby allies as
+	 * well as enemies": THE CASTING GADGET IS EXCLUDED from the allies a point-blank skill's share strikes, beside the
+	 * wearer; see `ShareTheBlowWithAllies`. THE ACTOR ITSELF AND NOT ITS PLACE, so another ally standing on the same
+	 * point is still struck. Set by `UCataclysmTriggeredSkill::Trigger` beside `FreeRepeatOrigin`, and cleared when
+	 * the use ends. Weak, so it keeps no gadget alive.
+	 */
+	TWeakObjectPtr<AActor> FreeRepeatCastBy;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FString SkillDescription;
 
