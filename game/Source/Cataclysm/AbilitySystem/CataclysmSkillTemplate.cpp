@@ -28,6 +28,8 @@
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+// For a skill gadget's ground, priced for the gadget's age and stillness. Ruled 2026-10-16, stack 2.
+#include "AbilitySystem/CataclysmMinion.h"
 // For binding together the creatures one throw pinned, so that killing any of
 // them frees the rest. The Spear's Skewer. Issue #37.
 #include "AbilitySystem/CataclysmPinnedLine.h"
@@ -3279,12 +3281,21 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 	// keep paying, or stop paying part way through a patch the player already
 	// earned. The design says the ground burns for a duration, not that it
 	// tracks the caster.
+	//
+	// AND A SKILL GADGET'S GROUND IS PRICED AS THE GADGET'S BLOW IS, FOR ITS AGE AND STILLNESS ONLY. Ruled 2026-10-16,
+	// skill gadgets stack 2 (P2): while `PerTick` is worked out the caster's conditions read the gadget's age and
+	// stillness, and the scope ends before the zone is laid, so the zone's own rows are judged on the caster. No flat
+	// row and no `deployable_hit`: a tick is not a hit. Nothing for every other use: the gadget is null.
+	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)),
+		ACataclysmMinion::SkillGadgetCasting(this));
 	const float PerTick = UCataclysmSkillEffects::ModifiedDamage(
 							AbilitySystem,
 							WeaponDamage * GetDamagePercent() / 100.0f,
 							SkillTags)
 						* PercentPerSweep / 100.0f
 						* WithSpentIncrease(AbilitySystem);
+	PricedForTheGadget.End();
 
 	ACataclysmGroundZone* Zone = LeaveAZoneFor(
 		Self, Start, End, RadiusCm, Seconds, PerTick, SkillTags,

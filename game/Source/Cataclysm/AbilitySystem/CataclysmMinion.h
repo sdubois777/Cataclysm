@@ -458,6 +458,7 @@ public:
 	 * its slot table's, through `UCataclysmGameplayAbility::CooldownAfterReduction` with the skill's tags, then
 	 * shortened by the player's `minion_attack_speed` rows that reach this gadget, as an interval is shortened:
 	 * divided by one plus the increases. NEVER `GetBaseCooldown`, whose Mana Weaver nought must not reach it.
+	 * FOR THE BASIC ATTACK, the player's swing interval in place of the cooldown, and nought for "never" (stack 2).
 	 */
 	float SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSkill& Skill) const;
 
@@ -484,6 +485,7 @@ public:
 	 * the first step at least `SkillGadgetSecondsBetweenCasts` after the last that started. A step that casts nothing,
 	 * for want of a target or of a living player, starts nothing and waits. A CAST CAN COME UP TO A QUARTER OF A
 	 * SECOND LATE, because this is where the clock is looked at and this runs four times a second.
+	 * THE BASIC ATTACK'S GADGET KEEPS ITS BEAT INSTEAD, and never casts on an interval of nought (stack 2, below).
 	 *
 	 * @return whether a cast started on this step
 	 */
@@ -495,7 +497,8 @@ public:
 	 * A FREE START, `UCataclysmTriggeredSkill::Trigger` with this gadget as the actor cast by, of the player's own
 	 * row with `Type.Deployable` added to its tags, so the rows that raise gadget damage reach it. A SELF BUFF is
 	 * granted to the player while the player stands within `SkillGadgetSelfBuffReachCm`, and not while one this
-	 * gadget granted still runs; EVERY OTHER SHAPE is aimed at the nearest enemy within `SkillGadgetReachCm`.
+	 * gadget granted still runs; EVERY OTHER SHAPE is aimed at the nearest enemy within `SkillGadgetReachCm`, or at
+	 * `MostHealthWithin` that reach when the player holds the highest-health row (stack 2).
 	 *
 	 * @return whether it started. False, casting nothing, for a gadget that cannot act, a player gone or dead, a
 	 *         slot holding no skill or a shapeless one, a skill no row may cast (a movement skill, a summon, a held
@@ -509,7 +512,8 @@ public:
 
 	/**
 	 * The skill gadget whose cast `Skill` is, or null: the template's `FreeRepeatCastBy`, when that is a skill
-	 * gadget. A gadget's copy of its summoner's last skill is not one. Read by `UCataclysmSkillEffects::ApplyHit`.
+	 * gadget. A gadget's copy of its summoner's last skill is not one. Read by the overload taking a delivery, below,
+	 * which `UCataclysmSkillEffects::ApplyHit` calls, and by `UCataclysmSkillTemplate::LeaveZoneAlong` (stack 2).
 	 */
 	static const ACataclysmMinion* SkillGadgetCasting(const class UGameplayAbility* Skill);
 
@@ -524,6 +528,50 @@ public:
 
 	/** World time at which it was placed or last moved. */
 	float SkillGadgetPlacedAtSeconds = 0.0f;
+
+	/**
+	 * SKILL GADGETS, STACK 2. Ruled 2026-10-16 by the coordinating session ("Stack 2 rulings", items 1-7 and P1-P9),
+	 * for "Your basic attack is converted into a deployable gadget that fires your basic attack at the nearest enemy
+	 * within range, once per basic attack cooldown. Scales off gadget damage."
+	 *
+	 * THE BASIC ATTACK'S GADGET is the same skill gadget, for `ECataclysmAbilitySlot::BasicAttack`: placed by a left
+	 * click on an enemy (`ACataclysmPlayerController::PressOnAnEnemy`), and cast by `StepSkillGadget`. Two things
+	 * differ from the keyed slots. ITS CLOCK IS THE PLAYER'S SWING INTERVAL, `UCataclysmBasicAttack::
+	 * SecondsBetweenSwingsFor`, shortened by "Gadgets fire 20%-40% faster" (`SkillGadgetSecondsBetweenCasts`); an
+	 * interval of nought or less, which is "never swing", NEVER CASTS. AND IT KEEPS ITS BEAT (P1): each cast after the
+	 * first is due one interval after the last one was DUE, not after the step that made it, and a beat more than one
+	 * interval behind is brought to now. So the average rate is the interval's, though the step that looks at the
+	 * clock runs four times a second. IT CANNOT CAST MORE THAN FOUR TIMES A SECOND, whatever the interval: the step
+	 * is a quarter of a second and casts once at most. A step that casts nothing, for want of a target, moves nothing,
+	 * as the keyed clock waits. The keyed slots' clock is unchanged.
+	 */
+
+	/**
+	 * Every living character this minion is hostile to within `Reach` of it, nearest first, by the brain's measure
+	 * along the floor: `HostilesWithinReach` for any reach. Stack 2, item 4: a skill gadget aims by its skill's reach
+	 * and not by its type row's.
+	 */
+	TArray<AActor*> HostilesWithin(float Reach) const;
+
+	/**
+	 * The enemy within `Reach` holding the most health now, or null: `MostHealthWithinReach` for any reach. Null for
+	 * everything that is not a gadget of a summoner holding `GadgetsTargetMostHealthStat`. CURRENT HEALTH, AS A
+	 * FIGURE, and of two holding the same the nearer, as there. `CastPlayersSkillFromHere` aims at it first, by the
+	 * skill's reach, so "Your gadgets prioritize the highest HP enemy within their range instead of the nearest"
+	 * reaches a skill gadget's cast (stack 1's judgement f, reversed).
+	 */
+	AActor* MostHealthWithin(float Reach) const;
+
+	/**
+	 * The skill gadget whose cast `Delivery` is a blow of, or null. THE GADGET THE DELIVERY CARRIES FIRST,
+	 * `FCataclysmHitDelivery::CastBy`, when that is a skill gadget; ELSE the delivery's skill, as the overload above
+	 * reads it. Stack 2, item 3: a blow that lands after its one-use grant has ended (the last axes of a rack, a
+	 * buried axe's later leap, anything in flight when its use is cancelled) has lost its skill, because the grant's
+	 * end clears `FreeRepeatCastBy` and the engine marks the instance for removal, so only what it carries can say.
+	 * A GADGET DESTROYED BEFORE ITS BLOW LANDS is no gadget, and the blow is priced as the player's.
+	 * Read by `UCataclysmSkillEffects::ApplyHit`.
+	 */
+	static const ACataclysmMinion* SkillGadgetCasting(const struct FCataclysmHitDelivery& Delivery);
 
 	/**
 	 * The flag by which a summoner's gadget that kills an enemy with a blow of its own strikes once more. Ruled

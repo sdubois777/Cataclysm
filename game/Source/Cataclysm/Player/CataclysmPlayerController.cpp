@@ -1257,10 +1257,29 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	// IT IS SET WHETHER OR NOT THE TARGET IS IN REACH. Out of reach is a walk
 	// followed by a swing, which `UpdatePendingAttack` performs, and it is the
 	// same shape a click on a distant dropped item already had.
-	AActor* Enemy = EnemyUnderCursor();
+	PressOnAnEnemy(EnemyUnderCursor());
+}
+
+void ACataclysmPlayerController::PressOnAnEnemy(AActor* Enemy)
+{
 	bPressBeganOnAnEnemy = Enemy != nullptr;
 	if (Enemy)
 	{
+		// WITH THE BASIC ATTACK CONVERTED INTO A SKILL GADGET, A CLICK ON AN ENEMY PLACES OR MOVES ITS GADGET AT THE
+		// PLAYER'S FEET AND ORDERS NOTHING. Ruled 2026-10-16 (S15; skill gadgets stack 2, item 2): no swing, and no
+		// target, so `UpdatePendingAttack` neither swings nor walks. `bPressBeganOnAnEnemy` stays true, so the hold
+		// steers nothing and the release orders no walk. The press is debounced by the ability system until the
+		// release. A walk under way was already stopped by `Input_MoveToCursorStarted`, as every click on the world
+		// stops one (P4). A slot that is not converted answers false and goes on below as before.
+		if (UCataclysmAbilitySystemComponent* Placing = GetCataclysmAbilitySystem())
+		{
+			if (Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack)))
+			{
+				PendingAttack = nullptr;
+				return;
+			}
+		}
+
 		PendingAttack = Enemy;
 
 		// THE FIRST SWING HAPPENS ON THE PRESS rather than waiting for the next
@@ -1319,6 +1338,15 @@ void ACataclysmPlayerController::Input_MoveToCursorHeld()
 
 void ACataclysmPlayerController::Input_MoveToCursorReleased()
 {
+	// THE BUTTON IS UP, so the next click on an enemy may place or move the basic attack's gadget again. Ruled
+	// 2026-10-16 (skill gadgets stack 2, item 2). FIRST, before any branch returns: the press debounces until this,
+	// so without it every later click on an enemy would be swallowed, neither moving the gadget nor swinging. Both
+	// the Completed and the Canceled events reach here. Nothing for a player whose basic attack is not converted.
+	if (UCataclysmAbilitySystemComponent* Releasing = GetCataclysmAbilitySystem())
+	{
+		Releasing->ReleaseOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack));
+	}
+
 	// THE PRESS BEGAN ON AN OPEN SCREEN, so releasing it finishes nothing in the
 	// world. Cleared here and on the Canceled event this is also bound to, so a
 	// mapping context change mid-press cannot leave every later click ignored.
