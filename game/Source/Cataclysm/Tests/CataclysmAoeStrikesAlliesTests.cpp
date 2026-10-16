@@ -656,7 +656,16 @@ CATACLYSM_AOE_ALLIES_TEST(FCataclysmAoeStrikesAlliesStoreTest,
 	Enemy->SetActorLocation(EnemyAt);
 	SetHealth(Ally, Pool, Pool);
 	Nova->SwingOnce();
-	TestEqual(TEXT("the enemy takes the plain blow and the 50 stored"), Pool - HealthOf(Enemy), Plain + 50.0f, 0.01f);
+	// THE STORE IS ADDED BEFORE THE DEFENDER'S RESOLUTION, so a Slashing weapon's more damage to health multiplies it
+	// as it multiplies the blow: the wearer holds its starting Greataxe, which is Slashing. Ruled 2026-10-16 by the
+	// coordinating session, after the window found the 50 arriving as 55. Read off the wearer, so another starting
+	// weapon changes the expectation with it.
+	const float StoreArrives = UCataclysmWeaponSlotsComponent::SubTypeOf(Wearer).Equals(
+			TEXT("Slashing"), ESearchCase::IgnoreCase)
+		? 50.0f * (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)
+		: 50.0f;
+	TestEqual(TEXT("the enemy takes the plain blow and the 50 stored"), Pool - HealthOf(Enemy), Plain + StoreArrives,
+		0.01f);
 	TestEqual(TEXT("the store is spent"), System->StoredMitigatedDamageNow(), 0.0f, 0.01f);
 	TestEqual(TEXT("and the ally beside it still takes half the plain blow"), Pool - HealthOf(Ally),
 		Plain * Percent / 100.0f, 0.01f);
@@ -776,16 +785,28 @@ CATACLYSM_AOE_ALLIES_TEST(FCataclysmAoeStrikesAlliesZoneTest,
 	}
 	ACataclysmMinion* Ally = SpawnImp(Wearer, FVector(2.0f * M, 0.0f, 0.0f));
 	ACataclysmMinion* Enemy = SpawnImp(Creature, FVector(0.0f, 2.0f * M, 0.0f));
-	UCataclysmStrikeSkill* Nova = GrantNova(
-		Wearer, TEXT("Radius=4; Angle=360; GroundRadius=4; GroundDuration=6; GroundPercent=20"));
-	if (!TestNotNull(TEXT("set-up: an imp"), Ally) || !TestNotNull(TEXT("set-up: an enemy imp"), Enemy)
-		|| !TestNotNull(TEXT("set-up: a nova"), Nova))
+	if (!TestNotNull(TEXT("set-up: an imp"), Ally) || !TestNotNull(TEXT("set-up: an enemy imp"), Enemy))
 	{
 		return false;
 	}
 	Wear(Wearer);
 
-	if (!TestTrue(TEXT("set-up: the nova activates"), Activate(Wearer, Nova))
+	// A FREE START FROM THE WEARER'S OWN PLACE, AND NOT A PRESS. Ruled 2026-10-16 by the coordinating session, after
+	// the window: a pressed Strike of a player waits for its attack clip before it swings and lays its ground, and a
+	// test world is never ticked, so the press swung nothing. A start given a place does not wait, as the control
+	// cast of `Cataclysm.GadgetCopiesSkill.` does not. The row is the nova's, in the Heavy slot.
+	FCataclysmWeaponSkill Nova;
+	Nova.Slot = ECataclysmAbilitySlot::Heavy;
+	Nova.Name = TEXT("A point-blank nova that leaves ground");
+	Nova.Shape = ECataclysmSkillShape::Strike;
+	Nova.Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Radius=4; Angle=360; GroundRadius=4; GroundDuration=6; GroundPercent=20"));
+	Nova.Tags = UCataclysmSkillShapes::TagsFromCell(PointBlankCell);
+	const FVector Here = Wearer->GetActorLocation();
+	const FVector Aim = Here + FVector(1.0f * M, 0.0f, 0.0f);
+
+	if (!TestTrue(TEXT("set-up: the nova starts from the wearer's own place"),
+			UCataclysmTriggeredSkill::Trigger(Wearer, Nova, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/false, &Here))
 		|| !TestTrue(*FString::Printf(TEXT("control: the swing itself gives the imp a share: %.2f"),
 			Pool - HealthOf(Ally)), HealthOf(Ally) < Pool))
 	{

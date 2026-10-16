@@ -83,7 +83,8 @@ public:
 	 *
 	 * IT SETS `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`, which `ApplyHit` reads to send that percent of
 	 * the figure it priced and to spend neither stored-damage store (R7). DAMAGE ONLY (R5): never a critical strike,
-	 * no ailment chance, no weapon sub-type (so no blunt stun), no leech, and never retaliated against. The riders
+	 * no ailment chance, no leech, and never retaliated against. THE WEAPON SUB-TYPE IS KEPT (ruled 2026-10-16), as
+	 * part of how the blow is priced; its blunt stun alone is refused, in the vital set's damage branch. The riders
 	 * `HitTargets` applies in its loop are not reached at all, because a share is never dealt through it.
 	 */
 	static void MarkAsShare(FCataclysmHitDelivery& Delivery, float Percent);

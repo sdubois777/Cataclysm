@@ -68,9 +68,13 @@ void UCataclysmAreaShareOnAllies::MarkAsShare(FCataclysmHitDelivery& Delivery, f
 {
 	Delivery.AreaSkillShareOnAnAllyPercent = FMath::Clamp(Percent, 0.0f, 100.0f);
 	// DAMAGE ONLY (R5), and no crit (R5): nothing the blow carries reaches the ally but its damage.
+	//
+	// THE WEAPON SUB-TYPE IS KEPT. Ruled 2026-10-16 by the coordinating session: Slashing's more damage to health,
+	// Magic's energy shield stripping and Piercing's armour ignored are how the blow is priced against a target (R4),
+	// so the ally meets them as an enemy standing there would. Only the blunt weapon's stun, which is an effect and
+	// not damage, is refused, in the damage branch of `UCataclysmVitalAttributeSet`, by the share's stamp.
 	Delivery.bCannotCriticallyStrike = true;
 	Delivery.bCarriesNoAilmentChance = true;
-	Delivery.bCarriesNoWeaponSubType = true;
 	Delivery.bCannotLeech = true;
 	// AND NOTHING COMES BACK FROM THE ALLY FOR IT, a judgement of the writing session: a share is not a blow the
 	// ally can answer.

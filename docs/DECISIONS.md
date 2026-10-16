@@ -83,6 +83,13 @@ The sentence, from `game/Data/EnchantmentsNegative.csv`, row `Negative_Your_AOE_
   Chorus repeat, mana on hit or Fervour, and the blow is never a critical strike. It is not dealt through
   `HitTargets`, which applies those riders inside its loop. The ally's attacker is not branded or charmed by it, and
   the ally does not retaliate against it (judgements below).
+- **THE SHARE KEEPS THE WEARER'S WEAPON SUB-TYPE, AND ONLY ITS BLUNT STUN IS REFUSED.** Ruled 2026-10-16 by the
+  coordinating session, after the first window. Slashing's 10% more damage to health, Magic's energy shield
+  stripping and Piercing's armour ignored are how a blow is priced against its target, so the ally meets them as an
+  enemy standing there would (R4): `UCataclysmAreaShareOnAllies::MarkAsShare` no longer sets
+  `bCarriesNoWeaponSubType`. A blunt weapon's chance to stun is an effect and not damage (R5), so the damage branch
+  of `UCataclysmVitalAttributeSet` passes `Hit.bIsBlunt && !bAreaSkillShareOnAnAlly` to
+  `UCataclysmAilments::RollOnLandedBlow`; the share already carries no other ailment chance.
 - **The ally's own defences meet the share (R4)**: it is priced as `ApplyHit` prices a blow for an enemy standing there,
   and the ally's armour, resistances and pools then reduce it (test 6).
 - **It raises none of the wearer's rows (R6)**: no `hit_dealt`, `first_hit_dealt` or `critical_strike`, and **no
@@ -133,7 +140,7 @@ minion's ailments, which is about ailments a minion applies.
 | R2 | Only `Type.AOE.PointBlank` skills, only their own instant blow, at four sites; zones and the two row-granted hits share nothing. | The stat is asked with the skill's tags (`UCataclysmSkillTemplate::AreaShareOnAlliesPercent`), and the generator refuses a row without the tag. The searches and calls are in `SwingOnce`, `PullTheWeaponFree` and `UCataclysmMovementSkill::ActivateAbility` (Charge, Leap, Recall) only. |
 | R3 | Every ally inside the same cone, sphere or line, once per swing. | `AlliesInCone` is the sphere of the cone's radius and `IsInCone` on each location, as `FindEnemiesInCone`; `AlliesInLine` the sphere round the middle and `IsInLine`, as `FindEnemiesInLine`; `AlliesInSphere` is `FindAlliesInSphere`. Each site searches once per call. |
 | R4 | The hit priced for that ally as `ApplyHit` would price it for an enemy there, times the percent. | `UCataclysmSkillTemplate::ShareTheBlowWithAllies` builds `HitTargets`'s delivery field for field, gives the skill's more damage from behind as `HitTargets` does, and calls `ApplyHit` for each ally inside the same attack as the enemies (`HitTargetsSharingWithAllies`, `HitScaledSharingWithAllies`). `ApplyHit` prices it whole and sends `AreaSkillShareOnAnAllyPercent` of it. |
-| R5 | Damage only, no crit, outside `HitTargets`. | `UCataclysmAreaShareOnAllies::MarkAsShare`: no critical strike, no ailment chance, no weapon sub-type, no leech, never retaliated against. In the branch the mark skips Infernal Brand and Beguiling. |
+| R5 | Damage only, no crit, outside `HitTargets`. | `UCataclysmAreaShareOnAllies::MarkAsShare`: no critical strike, no ailment chance, no leech, never retaliated against; the weapon sub-type kept and its blunt stun refused in the damage branch (ruled 2026-10-16). In the branch the mark skips Infernal Brand and Beguiling. |
 | R6 | None of the wearer's rows, no `kill`. | `ACataclysmPlayerCharacter::OnSomethingWasHit` refuses `bAreaSkillShareOnAnAlly`; `OnSomethingDied` hears a share's kill as nobody's; the branch does not record it with `NoteStruckBy`. |
 | R7 | The stores are not spent. | `ApplyHit` skips `SpendStoredMitigatedDamage` and `SpendStoredAbsorbedDamage` for a share. |
 | R8 | Madness: nothing extra. | Nothing built. |
@@ -253,14 +260,19 @@ character stands at least 1 m from every other.
 7. `AStoreOfTheWearersSurvivesASwingThatStruckAnAllyAndIsSpentOnTheEnemy`. Nothing Wasted held at 100. In order:
    control, the enemy's plain blow, at least 50; set-up, the store holds 50; set-up, the enemy moved 42 m away is not
    struck; the ally takes half the plain blow and none of the store; the store survives whole; the enemy moved back
-   takes the plain blow and the 50; the store is spent; the ally beside it still takes half the plain blow.
+   takes the plain blow and the 50, which a Slashing wearer's 10% more to health multiplies as it multiplies the
+   blow (`Plain + 50 x (1 + SubtypeBonus / 100)`, read off the wearer's sub-type; a change to what the test
+   asserts ruled by the coordinating session on 2026-10-16); the store is spent; the ally beside it still takes
+   half the plain blow.
 8. `TheWearerIsNeverStruckByItsOwnShare`. In order: control, the imp takes a share; the wearer at the centre loses
    nothing.
 9. `ALeapStrikesTheAllyWhereItLandsAndNoneUnderItsArc`. In order: set-up, the leap activates and lands 9 m along X;
    control, the enemy at the landing is struck; the imp 1 m past the landing takes half of what the enemy took; the imp
    beside the path, 7.3 m from the landing, takes none.
-10. `AGroundZoneTheSkillLaysStrikesNoAlly`. In order: set-up, the nova activates; control, its swing gives the imp a
-    share; set-up, it left one zone; control, the zone's sweep burns the enemy; it gives the imp nothing.
+10. `AGroundZoneTheSkillLaysStrikesNoAlly`. The nova is started free from the wearer's own place with
+    `UCataclysmTriggeredSkill::Trigger` and a cast place, and not pressed: a pressed Strike of a player waits for
+    its attack clip and a test world is never ticked (ruled by the coordinating session on 2026-10-16). In order:
+    set-up, the nova starts; control, its swing gives the imp a share; set-up, it left one zone; control, the zone's sweep burns the enemy; it gives the imp nothing.
 11. `AGadgetsCopyOfAPointBlankSkillStrikesTheAllyBesideItAndNotTheGadget`. The rig of `Cataclysm.GadgetCopiesSkill.`:
     a possessed player holding a Demonic Whip and a Bolt Turret of its own 20 m away. In order: set-up, the wearer
     holds The Gathering; it is point blank; a row may cast it again; set-up, the turret came from its row, a creature
@@ -334,6 +346,27 @@ Failed assertions in each test, by reading:
 **Tests of another group expected to fail, to check in the window:** under B-I the probe
 `ProbeAoeSkillDamageToNearbyAlliesPercent` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails
 on its last assertion. Under B-II and B-III it passes.
+
+### WHY THE FIRST WINDOW STOPPED, AND WHAT WAS CHANGED
+
+Recorded by the writing session from the enchantment session's report of 2026-10-16. The build compiled after the
+enchantment session renamed the floor-rule tests' `HealthOf` to `ShareHealthOf`, which clashed with the file's
+own. The whole suite then gave "3772 tests performed, 3768 succeeded, 4 failed", all four in this group:
+
+- **Three, from the weapon sub-type stripped from the share.** Tests 1 and 7 and the Leap test found the enemy's
+  blow 1.1 times what the ally was priced at (275 against 250, 110 against 100), and in test 7 the stored 50
+  arriving as 55 (330 against 325). The wearer's starting Greataxe is Slashing
+  (`UCataclysmWeaponSlotsComponent::StartingWeaponType`), and `UCataclysmDamageCalculation::Resolve` multiplies
+  what reaches health by `1 + SubtypeBonus / 100` for a Slashing blow; `MarkAsShare` had set
+  `bCarriesNoWeaponSubType`, so the ally's share alone missed it. **The game differed from R4**; fixed as the
+  second bullet of SAID FIRST says. Test 7's line on the store was also wrong, and was changed as ruled.
+- **One, from a pressed nova that never swung.** The ground-zone test pressed its Strike, which waits for the
+  attack clip in `UCataclysmSkillTemplate::WhenTheSwingConnects`; the world is never ticked, so no swing, no share
+  and no zone. **A fault of the test**; changed as ruled.
+- **The other tests that start a skill, checked by reading:** the Leap test presses a movement skill, whose
+  `ActivateAbility` does not wait for a clip (it struck in the window, failing only on the figure above), and the
+  gadget-copy test starts a copy given a place, which does not wait either. Every other test swings with
+  `SwingOnce` and presses nothing.
 
 ### THE WINDOW'S RUN
 

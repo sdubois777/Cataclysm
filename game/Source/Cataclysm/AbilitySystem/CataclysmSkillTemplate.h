@@ -1448,8 +1448,9 @@ protected:
 	 * `UCataclysmSkillEffects::ApplyHit` prices for that ally as for an enemy standing there, with the delivery
 	 * `HitTargets` builds, times `AreaShareOnAlliesPercent`. Once each, nearest first. DAMAGE ONLY: no rider
 	 * `HitTargets` applies in its loop is applied, because a share is not dealt through it; and
-	 * `UCataclysmAreaShareOnAllies::MarkAsShare` takes the critical strike, the ailment chances, the weapon sub-type,
-	 * the leech and the retaliation off. An ally that has died since it was found is skipped.
+	 * `UCataclysmAreaShareOnAllies::MarkAsShare` takes the critical strike, the ailment chances, the leech and the
+	 * retaliation off, and keeps the weapon sub-type but for its blunt stun (ruled 2026-10-16). An ally that has died
+	 * since it was found is skipped.
 	 *
 	 * @return what was sent, summed, before the allies' defences
 	 */

@@ -2459,10 +2459,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// took a tenth of the target's maximum health, because the sub-type
 			// is read off the actor the damage is credited to. The chance to stun
 			// is a chance to apply an effect on a hit, and a tick is not a hit.
+			//
+			// AND NO BLUNT STUN FROM A POINT-BLANK SKILL'S SHARE STRUCK AT THIS ALLY, ruled 2026-10-16 by the
+			// coordinating session: the share keeps the weapon sub-type, which prices it (R4), and is damage only
+			// (R5). It carries no ailment chance, so the blunt weapon's own chance is the one roll left to refuse.
 			if (!Hit.bIsDamageOverTime)
 			{
 				UCataclysmAilments::RollOnLandedBlow(Data.EffectSpec,
-					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt);
+					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly);
 			}
 
 			// A MELEE CRITICAL STRIKE MAY APPLY BLEEDING TO WHAT IT HIT.
