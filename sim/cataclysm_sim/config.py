@@ -630,7 +630,8 @@ class TuningConfig:
     # SO THE OTHER 27 PAIRS STAY LEGAL AND NOTHING MAY BE INFERRED FROM THIS ONE
     # ABOUT ANY OF THEM. Whether a Fallen City should be able to roll a
     # Sacrificial is unstated by omission rather than decided; issue #1333
-    # raised it with the Quest Siege below, and #1342 asks the
+    # raised it with a Quest Siege (now settled by `QUEST_SUBTYPE_BY_CATACLYSM`
+    # below: a Quest dungeon does not roll at all), and #1342 asks the
     # related question about a Fallen City carrying a sub-type at all. A reader
     # adding a second row here is making a design decision, not a code one.
     #
@@ -640,28 +641,43 @@ class TuningConfig:
     # having none. It costs no extra draw either -- the roll is taken from the
     # shortened list, so the stream is left exactly where a full roll leaves it.
     #
-    # THE GAME HOLDS THE CATACLYSM'S RULE in
+    # THE GAME HOLDS THE SAME RULE in
     # `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
-    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares that
-    # pair and fails if either side moves. The Quest pair below is not in the
-    # game yet: `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`
-    # says so and fails when the game bars it.
+    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares the
+    # two and fails if either side moves.
     #
-    # A QUEST DUNGEON MAY NOT ROLL A SIEGE, SINCE 2026-10-16, AND THIS IS
-    # INTERIM. The owner, that day, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap."
-    # and then: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
-    # So a Quest dungeon's sub-type will be set by its Cataclysm, not rolled,
-    # and War's will be a Siege. Until the owner names the other Cataclysms'
-    # types this model keeps rolling them, without the Siege (War is not
-    # built). Since the same day a Quest dungeon is not absorbed when its city
-    # falls but moves on, so one carrying a Siege went on biting city after
-    # city; measured that day it lifted the defending player's cities lost
-    # from 1.18 to 1.85 (`docs/DECISIONS.md`, 2026-10-16).
+    # FROM 2026-10-16 TO THE NEXT COMMIT A SECOND ROW BARRED A QUEST DUNGEON
+    # FROM THE SIEGE, as an interim rule; `QUEST_SUBTYPE_BY_CATACLYSM` below
+    # replaced it the same day, and a Quest dungeon a surge makes no longer
+    # rolls a sub-type at all.
     SUBTYPES_FORBIDDEN_ON: dict[DungeonType, tuple[str, ...]] = field(
         default_factory=lambda: {
             DungeonType.CATACLYSM: ("Cow Level",),
-            DungeonType.QUEST: ("Siege",),
         })
+
+    # EACH CATACLYSM'S QUEST DUNGEONS ARE ONE SUB-TYPE, NOT ROLLED, since
+    # 2026-10-16. The owner, that day, verbatim: "Oh I should be more clear.
+    # War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will
+    # be one specific type." and "I really thought you would have picked horde
+    # for dead rising... as the whole undead zombie swarm thing kinda makes
+    # sense there. I assumed hell on earth would be Elite." Pestilence, Famine
+    # and Chaos as the coordinating session proposed, confirmed by the owner;
+    # Celestial and the Void take two NEW sub-types, Ascendant and Hollow, which
+    # an ordinary dungeon never rolls (they are not in `SUBTYPE_SPAWN_WEIGHTS`)
+    # and whose rules come in later commits; until then they are names only.
+    # The model applies War's Siege now (it runs War as a Cataclysm); the game
+    # follows in its own layer. A Quest dungeon made without a Cataclysm (a test,
+    # or a sweep with none active) still rolls, as before.
+    QUEST_SUBTYPE_BY_CATACLYSM: dict[str, str] = field(default_factory=lambda: {
+        "War": "Siege",
+        "Death": "Horde",
+        "Demonic": "Elite",
+        "Pestilence": "Timed",
+        "Famine": "Sacrificial",
+        "Chaos": "Volatile",
+        "Celestial": "Ascendant",
+        "Void": "Hollow",
+    })
 
     # --- the Siege sub-type ----------------------------------------------
     #
