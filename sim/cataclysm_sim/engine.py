@@ -590,7 +590,11 @@ class Simulation:
         which is where the extra dungeons would hurt most. Issue #289.
         """
         cfg = self.cfg
-        n = float(cfg.surge_dungeon_count)
+        # THE OPENING WAVE HAS ITS OWN SIZE, since 2026-10-16: the first
+        # surge of a run is `surge_opening_count`, every later one
+        # `surge_dungeon_count`. See `TuningConfig.surge_opening_count`.
+        n = float(cfg.surge_opening_count if self.surge_index == 0
+                  else cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
         n = min(n, float(cfg.surge_count_max))

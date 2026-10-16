@@ -338,8 +338,23 @@ class TuningConfig:
     # `analyse_board_empty_surge.py` and `analyse_tier_throughput.py`. Each
     # now holds 120 and 4 by name, because its axes and its recorded
     # figures are those of that cadence.
+    #
+    # 8 A WAVE AND AN OPENING WAVE OF 12, SINCE 2026-10-16. The owner, that
+    # day, verbatim: "I want surges to summon a lot more dungeons. Or maybe
+    # the initial surge spawns more and then the first real surge is 6 to 10?
+    # Idk, but 6 is boring." and "the obvious solution here is to adjust the
+    # damage dungeons do." The coordinating session chose, under the owner's
+    # delegation of numbers, an opening wave of 12, then 8 every 90 days, with
+    # every ordinary row's damage times 0.7 (`DUNGEON_SPECS` below).
+    # `docs/DECISIONS.md`, 2026-10-16, has the measurement.
     surge_interval_days: float = 90.0
-    surge_dungeon_count: int = 5
+    surge_dungeon_count: int = 8
+
+    #: THE FIRST WAVE OF A RUN, the one the design's "A Surge is triggered at
+    #: run start" fires. Since 2026-10-16 it has its own size; until then it
+    #: was `surge_dungeon_count`. The ceiling `surge_count_max` and the
+    #: lethality mode's multiplier apply to it as to any wave.
+    surge_opening_count: int = 12
 
     # Heretic spawns 25% more dungeons per surge. Set by the lethality mode.
     surge_dungeon_multiplier: float = 1.0
@@ -948,16 +963,20 @@ class TuningConfig:
     #   Bulwark     9% of 3,000 =   270 defence,  5% of  20,000 = 1,000 people
     #   Sanctuary   8% of 8,000 =   640 defence,  4% of  60,000 = 2,400 people
     #   Pillar      6% of 20,000 = 1,200 defence, 3% of 150,000 = 4,500 people
+    #
+    # TIMES 0.7 SINCE 2026-10-16, with the bigger waves above: 70 and 175 on an
+    # Outpost, 189 and 700 on a Bulwark, 448 and 1,680 on a Sanctuary, 840 and
+    # 3,150 on the Pillar. A Quest dungeon's hit reads these rows too.
     DUNGEON_SPECS: dict[tuple[DungeonType, CityTier], DungeonSpec] = field(
         default_factory=lambda: {
             (DungeonType.BASIC, CityTier.OUTPOST):
-                DungeonSpec((8, 15),   100.0, 250.0),
+                DungeonSpec((8, 15),   70.0, 175.0),
             (DungeonType.BASIC, CityTier.BULWARK):
-                DungeonSpec((15, 25),  270.0, 1_000.0),
+                DungeonSpec((15, 25),  189.0, 700.0),
             (DungeonType.BASIC, CityTier.SANCTUARY):
-                DungeonSpec((25, 40),  640.0, 2_400.0),
+                DungeonSpec((25, 40),  448.0, 1_680.0),
             (DungeonType.BASIC, CityTier.PILLAR):
-                DungeonSpec((40, 60),  1_200.0, 4_500.0),
+                DungeonSpec((40, 60),  840.0, 3_150.0),
 
             # A Quest dungeon's OWN rows carry no damage, and the game's
             # `SpecFor` holds the same zeros. Until 2026-10-13 this said
