@@ -265,7 +265,8 @@ row is held at a flat 10 from an enchantment. Every character stands at least 1 
     dungeon game mode, a possessed player, the Wasting Sickness roll pinned to inflict, a floor carrying the rule,
     the player wearing the row at a flat 10 and its imp 2 m away. In order: set-up, the floor carries the rule; no
     stack before any blow; set-up, the creature's own blow of 5 landed on the player; control, it adds a stack;
-    set-up, the creature's blow of 300 on the imp sends the player a tenth of what reached the imp, more than nothing;
+    set-up, the creature's blow of 300 on the imp sends the player no more than a tenth of what reached the imp (the
+    refreshed player's own armour and damage reduction meet the share), more than nothing;
     the share adds no stack.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:

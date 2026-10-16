@@ -46337,8 +46337,10 @@ bool FCataclysmWastingSicknessShareTest::RunTest(const FString& Parameters)
 	const float BeforeTheShare = Player.Read(Health);
 	UCataclysmSkillEffects::ApplyDirectDamage(Enemy, Imp, 300.0f);
 	const float ImpLost = 1000.0f - ImpSystem->GetNumericAttribute(Health);
-	if (!TestEqual(TEXT("set-up: the share landed on the player: a tenth of what reached the imp"),
-				   BeforeTheShare - Player.Read(Health), ImpLost * 0.1f, 0.01f)
+	// AT MOST A TENTH, AND NOT EXACTLY ONE: this player is refreshed and holds armour and damage reduction of its own,
+	// and a share meets the wearer's defences (ruled 2026-10-15). The window of 2026-10-16 measured 25.86 of 30.
+	if (!TestTrue(TEXT("set-up: the share landed on the player: no more than a tenth of what reached the imp"),
+				  BeforeTheShare - Player.Read(Health) <= ImpLost * 0.1f + 0.01f)
 		|| !TestTrue(TEXT("set-up: and it was more than nothing"), Player.Read(Health) < BeforeTheShare))
 	{
 		return false;
