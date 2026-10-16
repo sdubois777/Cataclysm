@@ -9939,6 +9939,93 @@ def refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
     return problems
 
 
+#: The percent of what reaches a nearby ally's health that its wearer takes, as
+#: a blow of its own. Ruled 2026-10-15 by the coordinating session, for "You
+#: take 5%-15% damage done to nearby allies".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 5 to 15, with no Required Tags, no
+#: Condition, no Scale and no Action (R8). Who is an ally, the 5 m, the
+#: delivery and what the share raises are the engine's and not the row's.
+#: `UCataclysmAllyDamageShare::PercentStat` holds the same name, and
+#: `TestAShareOfDamageDoneToNearbyAllies` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmAllyDamageShare::PercentHeldBy`, from the damage branch of the
+#: vital attribute set, where no skill of the wearer's is in hand. So a row
+#: requiring a tag matches nowhere, a row of any kind but `flat` works on a base
+#: of nought, and a row with an action is not a stat line at all.
+#:
+#: THE BOUND IS THE ENGINE'S: above nought and at most 100, which
+#: `PercentHeldBy` holds the figure to.
+DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT = (
+    "damage_done_to_nearby_allies_taken_percent")
+MAX_DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT = 100.0
+
+
+def refuse_a_share_of_allies_damage_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT` is a figure
+    its one reader takes as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_delayed_damage_row_the_game_cannot_read`, for one stat.
+
+    A RANGE IS ALLOWED AND MUST RISE: the game rolls from the first column to
+    the second.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as the delayed damage check leaves one:
+    the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat = DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT
+    top = MAX_DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; "
+                f"any other kind works on a base of nought and shares "
+                f"NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, where a blow on an "
+                f"ally reaches its health, so a row requiring a tag matches "
+                f"nowhere: this one would share NOTHING and say nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= top:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0 and at most {top:g}. Nought or less "
+                    f"shares nothing, and the game holds the figure to "
+                    f"{top:g}.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10312,6 +10399,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE FLAG THAT TAKES THE ULTIMATE'S COOLDOWN AWAY AND DOUBLES ITS COST
     # IS FLAT, 1 TO 1, WITH NO TAGS AND NO ACTION. Ruled 2026-10-14.
     problems.extend(refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE SHARE OF WHAT REACHES A NEARBY ALLY'S HEALTH IS FLAT, ABOVE 0 AND
+    # AT MOST 100, WITH NO TAGS AND NO ACTION. Ruled 2026-10-15.
+    problems.extend(refuse_a_share_of_allies_damage_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

@@ -688,6 +688,25 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bStruckFromAPoint = false;
 	FVector StruckFromPoint = FVector::ZeroVector;
 
+	/**
+	 * Whether this blow is a wearer's share of what another blow did to an ally beside it: the blow
+	 * `UCataclysmAllyDamageShare::PayShares` deals, for "You take 5%-15% damage done to nearby allies". Ruled
+	 * 2026-10-15 by the coordinating session.
+	 *
+	 * THE BLOW MEETS ITS WEARER'S DEFENCES AND RAISES NONE OF ITS WEARER'S ROWS. The effect is stamped with
+	 * `UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName`. `UCataclysmVitalAttributeSet` reads the stamp and
+	 * skips, for such a blow, everything a blow taken raises on its wearer: `hit_taken` and the other windows, the
+	 * "every Nth hit you take" count, the stacks, the Fervour and the running buffs told of a blow. The hit
+	 * announcement carries it as `FCataclysmHitNotice::bShareOfDamageDoneToAnAlly`, and
+	 * `ACataclysmPlayerCharacter::OnSomethingWasHit` raises none of its attacker's on-hit events for it.
+	 *
+	 * AND IT IS NEVER SHARED AGAIN, which is the guard against two wearers passing one blow back and forth.
+	 *
+	 * A MARK OF ITS OWN, and not `bIsConsequenceOfADeath`: that mark stops the attacker's events and leaves the
+	 * defender's, and this must stop both.
+	 */
+	bool bIsAShareOfDamageDoneToAnAlly = false;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{
@@ -1103,6 +1122,15 @@ public:
 	static const TCHAR* StruckFromXDataName;
 	static const TCHAR* StruckFromYDataName;
 	static const TCHAR* StruckFromZDataName;
+
+	/**
+	 * The name an effect is stamped under when its blow is a wearer's share of what another blow did to an ally
+	 * beside it, with any value above nought. Ruled 2026-10-15. A plain name and no gameplay tag, as
+	 * `ExplosionAtAnAilmentsEndDataName` is. Read by `UCataclysmAllyDamageShare::IsAShare`, which
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` and `UCataclysmCombatEvents::NoteBlow` ask. See
+	 * `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`.
+	 */
+	static const TCHAR* ShareOfDamageDoneToAnAllyDataName;
 
 	/**
 	 * How far apart a blow's striker and `To` stood, in metres: from the point the blow's effect is stamped as

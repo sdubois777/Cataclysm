@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmAllyDamageShare.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 // For the eleven probes that prove every scaled stat is asked for. #1973.
 #include "AbilitySystem/CataclysmBasicAttack.h"
@@ -8544,6 +8545,99 @@ namespace CataclysmStatExemptionTest
 					   CarrierUltimate->GetBaseCooldown(), 0.0f, 0.0001f);
 	}
 
+	/**
+	 * `damage_done_to_nearby_allies_taken_percent`, read by `UCataclysmAllyDamageShare::PercentHeldBy`, which the
+	 * damage branch of `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` asks of the struck character and of
+	 * every character beside it. Ruled 2026-10-15, for "You take 5%-15% damage done to nearby allies". Two players
+	 * 100 m apart, each with an imp of its own 2 m away; only the second holds the stat, at a flat 10. A creature
+	 * strikes each imp for 100: the first player loses nothing, and the second a tenth of what its imp lost.
+	 *
+	 * WHAT THIS DOES NOT REACH. The reach, the delivery and what the share raises: `Cataclysm.DamageDoneToAllies.` in
+	 * `CataclysmDamageDoneToAlliesTests.cpp`.
+	 *
+	 * STANDING: the plain player at the origin and its imp 2 m along X; the carrying player 100 m along Y and its imp
+	 * 2 m along X from it; the creature 50 m along -Y, which strikes by `ApplyDirectDamage` and needs no reach.
+	 */
+	void ProbeDamageDoneToNearbyAlliesTakenPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto PlayerAt = [World](const FVector& Where) -> ACataclysmPlayerCharacter*
+		{
+			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+			ACataclysmPlayerCharacter* Character =
+				World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
+			if (!State || !Character)
+			{
+				return nullptr;
+			}
+			Character->SetPlayerState(State);
+			Character->OnRep_PlayerState();
+			if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Character))
+			{
+				System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+				System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+			}
+			return Character;
+		};
+		const auto ImpOf = [World](AActor* Summoner) -> ACataclysmMinion*
+		{
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+				Summoner, Summoner->GetActorLocation() + FVector(2 * M, 0, 0), /*Lifetime=*/60.0f, /*bBurns=*/false);
+			if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Imp))
+			{
+				System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+				System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+			}
+			return Imp;
+		};
+		const auto HealthOf = [](const AActor* Who) -> float
+		{
+			const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+			return System ? System->GetNumericAttribute(Vital::GetHealthAttribute()) : -1.0f;
+		};
+
+		ACataclysmPlayerCharacter* Plain = PlayerAt(FVector::ZeroVector);
+		ACataclysmPlayerCharacter* Carrier = PlayerAt(FVector(0, 100 * M, 0));
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(0, -50 * M, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: a plain player"), Plain)
+			|| !Test.TestNotNull(TEXT("set-up: a carrying player"), Carrier)
+			|| !Test.TestNotNull(TEXT("set-up: a creature"), Creature))
+		{
+			return;
+		}
+		Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		ACataclysmMinion* PlainImp = ImpOf(Plain);
+		ACataclysmMinion* CarrierImp = ImpOf(Carrier);
+		if (!Test.TestNotNull(TEXT("set-up: an imp of the plain player's"), PlainImp)
+			|| !Test.TestNotNull(TEXT("set-up: and one of the carrying player's"), CarrierImp))
+		{
+			return;
+		}
+		GrantFlat(Carrier, UCataclysmAllyDamageShare::PercentStat, 10.0f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Creature, PlainImp, 100.0f);
+		UCataclysmSkillEffects::ApplyDirectDamage(Creature, CarrierImp, 100.0f);
+		const float PlainImpLost = 1000.0f - HealthOf(PlainImp);
+		const float CarrierImpLost = 1000.0f - HealthOf(CarrierImp);
+		if (!Test.TestTrue(*FString::Printf(TEXT("set-up: both imps lost health: %.2f and %.2f"), PlainImpLost,
+				CarrierImpLost), PlainImpLost > 0.0f && CarrierImpLost > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: the player without the stat loses nothing to its imp's blow"),
+					   HealthOf(Plain), 1000.0f, 0.01f);
+		Test.TestEqual(TEXT("and the one holding damage_done_to_nearby_allies_taken_percent at 10 loses a tenth of what "
+							"its imp lost, so PercentHeldBy really reads it"),
+					   1000.0f - HealthOf(Carrier), CarrierImpLost * 0.1f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8698,6 +8792,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("gadget_health_lost_percent_per_second"), &ProbeGadgetHealthLostPercentPerSecond},
 			{TEXT("gadgets_copy_your_last_skill"), &ProbeGadgetsCopyYourLastSkill},
 			{TEXT("ultimate_cost_doubles_instead_of_cooldown"), &ProbeUltimateCostDoublesInsteadOfCooldown},
+			{TEXT("damage_done_to_nearby_allies_taken_percent"), &ProbeDamageDoneToNearbyAlliesTakenPercent},
 		};
 		return Made;
 	}
