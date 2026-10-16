@@ -8982,3 +8982,133 @@ class TestAShareOfAPointBlankSkillsBlowOnAnAlly:
         assert any("without the required tag" in problem
                    and repr(self.STAT) in problem
                    for problem in problems), problems
+
+
+class TestASlotIsConvertedIntoAGadget(GadgetRowsOnAMadeUpSheet):
+    """`skill_slot_is_a_gadget`, ruled 2026-10-16 (S12) and built ahead of its
+    rows, for "Your heavy attack is converted into a deployable gadget that
+    fires your heavy attack at the nearest enemy within range once per heavy
+    attack cooldown. Scales off gadget damage." and its three siblings. One
+    flag at a flat 1 whose Required Tags is the slot's tag:
+    `UCataclysmAbilitySystemComponent::SlotIsASkillGadget` asks whether it is
+    above nought with the slot's skill tags, the way the lock is asked.
+
+    THE SENTENCE'S OWN TAGS ARE NOT THE ROW'S. The made-up sheet gives the
+    sentence `Type.Deployable, Slot.Heavy`, as the real Heavy sentence carries,
+    and the row requires `Slot.Heavy` alone. The first test shows the generator
+    carries such a row and refuses nothing: an effect's Required Tags need not
+    be the enchantment's own column-4 tags.
+    """
+
+    WORDS = ("Your heavy attack is converted into a deployable gadget that "
+             "fires your heavy attack at the nearest enemy within range once "
+             "per heavy attack cooldown. Scales off gadget damage.")
+    SENTENCE_TAGS = "Type.Deployable, Slot.Heavy"
+    STAT = "skill_slot_is_a_gadget"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Slot.Heavy"}
+
+    def refusals(self, rows):
+        return gen.refuse_a_skill_slot_gadget_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows):
+        """What the generator's check of the finished sheet says of these
+        rows, told that the slot tag and `Type.Deployable` are tags the game
+        has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Slot.Heavy", self.TAG})
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Slot.Heavy", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_each_of_the_four_keyed_slots_is_accepted(self):
+        """THE CONTROL for the tag refusal below: every keyed slot's tag is
+        accepted, and the basic attack's, which is the second stack's, is
+        not yet."""
+        row = {"Name": "X#1", "Stat": self.STAT, "ValueKind": "flat",
+               "ValueLow": 1.0, "ValueHigh": 1.0}
+        for slot in ("Slot.Heavy", "Slot.Special", "Slot.Support",
+                     "Slot.Ultimate"):
+            assert self.refusals([dict(row, RequiredTags=slot)]) == [], slot
+        assert len(self.refusals([dict(row, RequiredTags="Slot.Basic")])) == 1
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.SKILL_SLOT_IS_A_GADGET_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "skill_slot_is_gadget" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """Read from the file that defines it, by the pattern
+        `names_in_the_engine` reads the minion's. THE CONTROL is the lock's
+        name in the skill slots file, read by the same pattern."""
+        import re
+        source_dir = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'(\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+        system = (source_dir / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        slots = (source_dir / "CataclysmSkillSlots.cpp").read_text(
+            encoding="utf-8")
+        assert ("UCataclysmSkillSlots", "LockedStat", "skill_locked") in (
+            re.findall(pattern, slots))
+        assert ("UCataclysmAbilitySystemComponent", "SkillSlotIsAGadgetStat",
+                gen.SKILL_SLOT_IS_A_GADGET_STAT) in re.findall(pattern, system)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                ({"RequiredTags": "Type.Deployable, Slot.Heavy"},
+                 "under the required tags 'Type.Deployable, Slot.Heavy'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": 2.0, "ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            if change.get("ValueLow") == 2.0:
+                assert len(problems) == 2, (change, problems)
+            else:
+                assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` runs the refusal: the row unchanged
+        gives it nothing to say, and the row with no tag is refused there, in
+        this check's words."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.validation([row]) == []
+        problems = self.validation([dict(row, RequiredTags="")])
+        assert any("under the required tags ''" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems

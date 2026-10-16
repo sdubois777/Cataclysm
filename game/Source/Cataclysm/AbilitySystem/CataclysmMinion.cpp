@@ -16,6 +16,10 @@
 #include "AbilitySystem/CataclysmTeams.h"
 // For the copy of its summoner's last skill a gadget casts. Ruled 2026-10-14.
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
+// For a skill gadget's clock, its skill and which skills it may cast. Ruled 2026-10-16.
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -547,6 +551,14 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 		return;
 	}
 
+	// AND A SKILL GADGET'S CAST OF ITS PLAYER'S SKILL, ON ITS OWN CLOCK. Ruled 2026-10-16. Nothing for a gadget that
+	// is not one. After the copy, as the copy is before the volley, and for the same reason.
+	Gadget->StepSkillGadget();
+	if (UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		return;
+	}
+
 	// THE VOLLEY'S CLOCK. Nothing for a gadget whose summoner holds no such row, which is every gadget until a
 	// row is written.
 	const float Seconds = Gadget->VolleyEverySeconds();
@@ -726,6 +738,284 @@ bool ACataclysmMinion::CopySummonersLastSkill()
 	}
 	++SkillCopiesMade;
 	return true;
+}
+
+// ==========================================================================
+// The skill gadget. Ruled 2026-10-16 (S1-S14); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::SkillGadgetTypeName = TEXT("SkillGadget");
+
+namespace
+{
+	/**
+	 * How far short of its clock a skill gadget's step may come and still cast, in seconds. A clock read from a world
+	 * whose time has been added up in floating point can fall a hair short of the figure it was built to equal; a
+	 * thousandth of a second is far inside the quarter-second step.
+	 */
+	constexpr float SkillGadgetClockAllowanceSeconds = 0.001f;
+}
+
+ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmAbilitySlot Slot,
+													 const FVector& Location)
+{
+	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None)
+	{
+		return nullptr;
+	}
+
+	// A LIFETIME OF A SECOND, TAKEN AWAY AT ONCE BELOW. `Spawn` refuses nought, and the engine's `SetLifeSpan(0)` is
+	// "never expires", which is S8's "no lifespan".
+	ACataclysmMinion* Placed =
+		Spawn(Player, Location, /*Lifetime=*/1.0f, /*bBurns=*/false, FString(SkillGadgetTypeName));
+	if (!Placed)
+	{
+		return nullptr;
+	}
+	if (Placed->TypeName != SkillGadgetTypeName || !Placed->IsGadget())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The minion type '%s' is missing or is not a gadget, so no skill gadget was placed. Run "
+				 "tools/generate_datatable_assets.py."), SkillGadgetTypeName);
+		Placed->Destroy();
+		return nullptr;
+	}
+	Placed->SetLifeSpan(0.0f);
+
+	// OUTSIDE EVERY SUMMON CAP, S8: it fills none and is never destroyed to make room in one.
+	Placed->bOutsideSummonCaps = true;
+	Placed->SkillGadgetSlot = Slot;
+	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
+	return Placed;
+}
+
+bool ACataclysmMinion::IsSkillGadget() const
+{
+	return SkillGadgetSlot != ECataclysmAbilitySlot::None && IsGadget();
+}
+
+void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
+{
+	// MOVED, NOT REPLACED: its health, its clock and its age are its own and stay. S6.
+	SetActorLocation(Location, /*bSweep=*/false, /*OutSweepHitResult=*/nullptr, ETeleportType::TeleportPhysics);
+	SkillGadgetPlacedAtSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+}
+
+float ACataclysmMinion::SecondsSinceSkillGadgetPlaced() const
+{
+	const UWorld* World = GetWorld();
+	return World ? FMath::Max(0.0f, World->GetTimeSeconds() - SkillGadgetPlacedAtSeconds) : 0.0f;
+}
+
+bool ACataclysmMinion::SkillGadgetsSkill(FCataclysmWeaponSkill& Out) const
+{
+	// WHAT THE PLAYER'S WEAPON SLOTS HOLD NOW for the slot, as the bar and the press read it.
+	const UCataclysmWeaponSlotsComponent* Slots =
+		IsValid(Summoner) ? Summoner->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const ECataclysmAbilitySlot Slot = SkillGadgetSlot;
+	const FCataclysmWeaponSkill* Held = Slots && Slot != ECataclysmAbilitySlot::None
+		? Slots->GetAvailableSkills().FindByPredicate(
+			  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
+		: nullptr;
+	if (!Held)
+	{
+		return false;
+	}
+	Out = *Held;
+	return true;
+}
+
+float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSkill& Skill) const
+{
+	// THE ROW'S OWN COOLDOWN WHEN IT STATES ONE, AND ITS SLOT'S WHEN IT DOES NOT, as `HeldSkillsToTrigger` reads it.
+	// THROUGH THE PLAYER'S COOLDOWN ROWS WITH THE SKILL'S OWN TAGS, so "Ultimate cooldowns increased" reaches the
+	// Ultimate gadget. NOT `GetBaseCooldown`: Mana Weaver's ten-piece answers nought there for the Ultimate (S2).
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Summoner);
+	const float Base = Skill.Cooldown >= 0.0f
+		? Skill.Cooldown
+		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Skill.Slot).Cooldown;
+	const float AfterRows = UCataclysmGameplayAbility::CooldownAfterReduction(Theirs, Base, Skill.Tags);
+
+	// AND SHORTENED BY "Gadgets fire 20%-40% faster" (S3), as a minion's interval is shortened by attack speed: one
+	// over one plus the increases, with this gadget's type tags, the reading `UCataclysmCommand` makes for a swing.
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Theirs);
+	const float Faster = Cataclysm
+		? FMath::Max(0.0f, Cataclysm->IncreasesForStat(FName(TEXT("minion_attack_speed")), TypeTags))
+		: 0.0f;
+	return AfterRows / (1.0f + Faster);
+}
+
+float ACataclysmMinion::SkillGadgetReachCm(const FCataclysmWeaponSkill& Skill) const
+{
+	// THE SKILL'S OWN REACH, AS ITS ROW STATES IT (S4), and not the type row's: a Strike from the gadget lands only
+	// within its radius of the gadget. A judgement of the writing session: the row's figure and not one an area row
+	// has widened, so the gadget never aims at an enemy its strike would reach only with a row it may lose.
+	float Stated = 0.0f;
+	switch (Skill.Shape)
+	{
+	case ECataclysmSkillShape::Strike:
+		Stated = Skill.Params.RadiusCm;
+		break;
+	case ECataclysmSkillShape::Projectile:
+	case ECataclysmSkillShape::Debuff:
+		Stated = Skill.Params.RangeCm;
+		break;
+	default:
+		break;
+	}
+
+	// RAISED BY "Gadgets have 20%-40% increased attack range", with this gadget's type tags, as `Spawn` raises a
+	// type's reach; a multiplier of nought or less keeps the stated figure, as there.
+	const float Multiplier = UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_range"), TypeTags);
+	return Stated * (Multiplier > 0.0f ? Multiplier : 1.0f);
+}
+
+bool ACataclysmMinion::SkillGadgetMayCast(const FCataclysmWeaponSkill& Skill)
+{
+	// THE SELF BUFF REFUSAL OF `RepeatsFromARow` IS WHAT IS LEFT OUT HERE, for this caller only (S13). It guards
+	// against a second running copy of a self buff adding a second "more"; the player no longer casts the skill, and
+	// `CastPlayersSkillFromHere` grants none while one this gadget granted still runs.
+	return UCataclysmWeaponSkills::TemplateFor(Skill.Shape).Get() != nullptr
+		&& UCataclysmDungeonModifierEffects::WildMagicLeavesOut(Skill) == ECataclysmWildMagicLeftOut::InThePool;
+}
+
+bool ACataclysmMinion::StepSkillGadget()
+{
+	if (!IsSkillGadget())
+	{
+		return false;
+	}
+	const float Age = GetGameTimeSinceCreation();
+
+	// AFTER THE FIRST CAST, NOTHING UNTIL ITS CLOCK HAS RUN, READ AGAIN EACH STEP, so a row put on or taken off, or a
+	// change of weapon, moves the next cast. The header says why a step that casts nothing waits.
+	if (bSkillGadgetHasCast)
+	{
+		FCataclysmWeaponSkill Skill;
+		if (!SkillGadgetsSkill(Skill)
+			|| Age - LastSkillGadgetCastAtAgeSeconds
+				< SkillGadgetSecondsBetweenCasts(Skill) - SkillGadgetClockAllowanceSeconds)
+		{
+			return false;
+		}
+	}
+	if (!CastPlayersSkillFromHere())
+	{
+		return false;
+	}
+	bSkillGadgetHasCast = true;
+	LastSkillGadgetCastAtAgeSeconds = Age;
+	return true;
+}
+
+bool ACataclysmMinion::CastPlayersSkillFromHere()
+{
+	// A SKILL GADGET, STANDING AND ABLE TO ACT, OF A PLAYER STILL HERE AND ALIVE. S11: the gadgets stay through the
+	// player's death and cast nothing while it lasts.
+	AActor* const Player = Summoner.Get();
+	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Player) || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return false;
+	}
+
+	// AND ONLY WHILE THE SLOT IS STILL CONVERTED. A judgement of the writing session: a player who takes the row off
+	// casts the skill again with its key, and a gadget casting it as well would be the skill twice. The gadget stands
+	// and casts nothing until the row is worn again; nothing destroys it, because nothing hears the gear change.
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs || !Theirs->SlotIsASkillGadget(SkillGadgetSlot))
+	{
+		return false;
+	}
+
+	// A SHAPELESS SKILL CASTS NOTHING (S10), nor one no row may cast again. See `SkillGadgetMayCast`.
+	FCataclysmWeaponSkill Skill;
+	if (!SkillGadgetsSkill(Skill) || !SkillGadgetMayCast(Skill))
+	{
+		return false;
+	}
+
+	const FVector From = GetActorLocation();
+	FVector Aim = From;
+	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
+	{
+		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THE GADGET (S13). Its enemy areas are measured from
+		// the gadget, because the cast is made from here. NOT WHILE ONE THIS GADGET GRANTED STILL RUNS: a second
+		// running copy would add a second "more" to the player, which the player's own press could never do.
+		if (FVector::Dist2D(From, Player->GetActorLocation()) > SkillGadgetSelfBuffReachCm + ReachAllowanceCm)
+		{
+			return false;
+		}
+		for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
+		{
+			const UCataclysmSkillTemplate* Running = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Running && Spec.IsActive() && Running->FreeRepeatCastBy.Get() == this)
+			{
+				return false;
+			}
+		}
+	}
+	else
+	{
+		// THE NEAREST LIVING ENEMY WITHIN THE SKILL'S OWN REACH OF THE GADGET (S4), by the brain's measure along the
+		// floor, as `HostilesWithinReach` takes it for the type's reach.
+		const float Reach = SkillGadgetReachCm(Skill);
+		if (Reach <= 0.0f)
+		{
+			return false;
+		}
+		const float Furthest = Reach + ReachAllowanceCm;
+		AActor* Target = nullptr;
+		for (AActor* Each : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), this, From, Reach))
+		{
+			if (IsValid(Each) && !UCataclysmSkillEffects::IsDead(Each)
+				&& FVector::Dist2D(From, Each->GetActorLocation()) <= Furthest)
+			{
+				Target = Each;
+				break;
+			}
+		}
+		if (!Target)
+		{
+			return false;
+		}
+		Aim = Target->GetActorLocation();
+	}
+
+	// THE PLAYER'S OWN ROW, WITH `Type.Deployable` ADDED TO ITS TAGS (S5), which `StampOnto` makes the one-use grant's
+	// skill tags inside `Trigger`. Granted to the player, free, from here, at the whole of its damage (S1).
+	FCataclysmWeaponSkill AsTheGadgets = Skill;
+	AsTheGadgets.Tags.AddTag(DeployableTag());
+	if (!UCataclysmTriggeredSkill::Trigger(Player, AsTheGadgets, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/false,
+										   &From, /*CastBy=*/this))
+	{
+		return false;
+	}
+	++SkillGadgetCastsMade;
+	return true;
+}
+
+void ACataclysmMinion::SkillGadgetClock(float& OutRemaining, float& OutDuration) const
+{
+	OutRemaining = 0.0f;
+	OutDuration = 0.0f;
+	FCataclysmWeaponSkill Skill;
+	if (!IsSkillGadget() || !bSkillGadgetHasCast || !SkillGadgetsSkill(Skill))
+	{
+		return;
+	}
+	OutDuration = SkillGadgetSecondsBetweenCasts(Skill);
+	OutRemaining =
+		FMath::Max(0.0f, OutDuration - (GetGameTimeSinceCreation() - LastSkillGadgetCastAtAgeSeconds));
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillGadgetCasting(const UGameplayAbility* Skill)
+{
+	// THE ACTOR A FREE START WAS CAST BY, when that is a skill gadget. A copy is cast by a gadget too, and is not one.
+	const UCataclysmSkillTemplate* Template = Cast<const UCataclysmSkillTemplate>(Skill);
+	const ACataclysmMinion* Gadget = Template ? Cast<const ACataclysmMinion>(Template->FreeRepeatCastBy.Get()) : nullptr;
+	return Gadget && Gadget->IsSkillGadget() ? Gadget : nullptr;
 }
 
 const TCHAR* ACataclysmMinion::GadgetsTakeNoDamageStat = TEXT("gadgets_take_no_damage");

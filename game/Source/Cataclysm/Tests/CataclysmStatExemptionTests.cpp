@@ -8748,6 +8748,51 @@ namespace CataclysmStatExemptionTest
 					  HealthOf(CarrierImp) < 1000.0f);
 	}
 
+	/**
+	 * `skill_slot_is_a_gadget`, read by `UCataclysmAbilitySystemComponent::SlotIsASkillGadget` with the slot's skill
+	 * tags, which a slot's press and the skill bar ask. Ruled 2026-10-16, for the four rows "Your heavy attack ...
+	 * special ability ... support ability ... ultimate ability is converted into a deployable gadget". ONE PLAYER
+	 * CHARACTER. THE CONTROL IS THE SAME CHARACTER BEFORE THE STAT IS GRANTED: its Heavy slot is not converted and a
+	 * press of the Heavy key is left to the skill, which is the press answering false. Granted at a flat 1, the slot
+	 * is converted and the press is the gadget's.
+	 *
+	 * WHAT THIS DOES NOT REACH. The gadget, its place, its clock and its cast: `Cataclysm.SkillGadgets.` in
+	 * `CataclysmSkillGadgetTests.cpp`. The press answers true here whether or not `DT_MinionTypes` holds the
+	 * `SkillGadget` row, so this probe needs no row of the enchantment session's.
+	 */
+	void ProbeSkillSlotIsAGadget(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Player = SpawnPotionHolder(World);
+		UCataclysmAbilitySystemComponent* System = Player
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player))
+			: nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a player character with an ability system"), System))
+		{
+			return;
+		}
+		const FGameplayTag HeavyKey = CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Heavy);
+		Test.TestFalse(TEXT("control: a character holding no such row has its Heavy slot unconverted"),
+					   System->SlotIsASkillGadget(ECataclysmAbilitySlot::Heavy));
+		Test.TestFalse(TEXT("control: and a press of the Heavy key is left to the skill"),
+					   System->PressOfASkillGadgetSlot(HeavyKey));
+		System->ReleaseOfASkillGadgetSlot(HeavyKey);
+
+		GrantFlat(Player, UCataclysmAbilitySystemComponent::SkillSlotIsAGadgetStat, 1.0f);
+		Test.TestTrue(TEXT("with skill_slot_is_a_gadget at 1 the Heavy slot is converted, so SlotIsASkillGadget "
+						   "really reads it"),
+					  System->SlotIsASkillGadget(ECataclysmAbilitySlot::Heavy));
+		Test.TestTrue(TEXT("and a press of the Heavy key is taken by the gadget"),
+					  System->PressOfASkillGadgetSlot(HeavyKey));
+		System->ReleaseOfASkillGadgetSlot(HeavyKey);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8904,6 +8949,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("ultimate_cost_doubles_instead_of_cooldown"), &ProbeUltimateCostDoublesInsteadOfCooldown},
 			{TEXT("damage_done_to_nearby_allies_taken_percent"), &ProbeDamageDoneToNearbyAlliesTakenPercent},
 			{TEXT("aoe_skill_damage_to_nearby_allies_percent"), &ProbeAoeSkillDamageToNearbyAlliesPercent},
+			{TEXT("skill_slot_is_a_gadget"), &ProbeSkillSlotIsAGadget},
 		};
 		return Made;
 	}

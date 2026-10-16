@@ -2281,11 +2281,13 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// skill that states only one of the two sources.
 	BurningEnemiesAtCast = 0;
 	PinnedEnemiesAtCast = 0;
+	// MEASURED FROM WHERE THE USE IS CAST, which is the caster's own place unless a free start was given another: a
+	// support skill gadget's, ruled 2026-10-16 (S13), so Burning Wrath and Held Fast count around the gadget.
 	if (ScaledRadiusCm() > 0.0f)
 	{
 		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
 		for (AActor* Nearby : UCataclysmTargeting::FindEnemiesInSphere(
-				GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm()))
+				GetWorld(), Self, CastOrigin(), ScaledRadiusCm()))
 		{
 			if (UCataclysmSkillEffects::HasTag(Nearby, Burn))
 			{
@@ -2645,8 +2647,10 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 	const bool bOnlyPinned =
 		Params.ScalingSource.Equals(TEXT("Pinned"), ESearchCase::IgnoreCase);
 
+	// AROUND WHERE THE USE WAS CAST, the caster's own place unless a free start was given another: a support skill
+	// gadget's, ruled 2026-10-16 (S13), so Coil of Embers and Held Fast pulse around the gadget.
 	for (AActor* Nearby : UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm()))
+			GetWorld(), Self, CastOrigin(), ScaledRadiusCm()))
 	{
 		if (bOnlyPinned && !UCataclysmSkillEffects::IsPinned(Nearby))
 		{
@@ -2686,9 +2690,14 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 		// The Whip's own Gathering states `ForcedMovement=Pull, Knockdown` when
 		// it means a creature cannot rise; this row states `Knockback` and
 		// nothing else, so what it describes is the shove.
+		//
+		// AWAY FROM THE PLACE IT WAS CAST, when a free start was given one: a support skill gadget's (S13).
 		if (Params.KnockbackCm > 0.0f
-			&& UCataclysmSkillEffects::ApplyKnockback(Self, Nearby,
-													  Params.KnockbackCm))
+			&& (bFreeRepeatHasOrigin
+					? UCataclysmSkillEffects::ApplyKnockbackFrom(Self, Nearby, FreeRepeatOrigin,
+																 Params.KnockbackCm)
+					: UCataclysmSkillEffects::ApplyKnockback(Self, Nearby,
+															 Params.KnockbackCm)))
 		{
 			++LastRepeatShoved;
 		}

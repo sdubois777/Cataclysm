@@ -207,6 +207,13 @@ void UCataclysmAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag
 		return;
 	}
 
+	// A SLOT CONVERTED INTO A SKILL GADGET PLACES OR MOVES ITS GADGET AND QUEUES NOTHING, so the player's skill is
+	// never tried: no mana, no cooldown, no lock and no skill-used notice. Ruled 2026-10-16 (S7).
+	if (PressOfASkillGadgetSlot(InputTag))
+	{
+		return;
+	}
+
 	for (const FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
 	{
 		// HasTagExact, not HasTag. Slot.Heavy must not be matched by a press of
@@ -227,6 +234,9 @@ void UCataclysmAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTa
 	{
 		return;
 	}
+
+	// THE KEY IS UP, so the next press of a converted slot may place or move its gadget again. Ruled 2026-10-16 (S7).
+	ReleaseOfASkillGadgetSlot(InputTag);
 
 	for (const FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
 	{
@@ -1368,6 +1378,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// target" and "touching" would otherwise be the same reading. A bool has no
 	// such collision: "not staggered" and "no target" both mean no bonus.
 	State.bTargetIsStaggered = bTargetIsStaggered;
+
+	// AND WHILE A SKILL GADGET'S BLOW IS PRICED, THE GADGET'S AGE AND THE GADGET'S STILLNESS. Ruled 2026-10-16 (S5 b
+	// and c): the two gadget-age rows read the real age of the gadget casting, and "while stationary" is judged on the
+	// gadget, which stands still, not on the player. Set only inside `UCataclysmSkillEffects::ApplyHit`'s pricing,
+	// through `FPricingASkillGadgetsBlow`; every other asker finds nothing here and reads what it read before.
+	if (const ACataclysmMinion* PricedFor = SkillGadgetBeingPriced.Get())
+	{
+		State.MinionSecondsActive = PricedFor->GetGameTimeSinceCreation();
+		State.bIsMoving = false;
+		State.SecondsSinceMoved = PricedFor->SecondsSinceSkillGadgetPlaced();
+	}
 
 	// WHO IS ASKING, SET LAST. Issue #1815. `FromHealth` near the top of this
 	// function replaces the whole struct, so a field set before it is lost:
@@ -7369,4 +7390,165 @@ int32 UCataclysmAbilitySystemComponent::ExecutePeriodicEffectsGrantingForTests(
 		ExecutePeriodicEffect(Handle);
 	}
 	return Running.Num();
+}
+
+// ==========================================================================
+// Skill gadgets. Ruled 2026-10-16 (S1-S14).
+// ==========================================================================
+
+const TCHAR* UCataclysmAbilitySystemComponent::SkillSlotIsAGadgetStat = TEXT("skill_slot_is_a_gadget");
+
+namespace
+{
+	/** The slot a `Slot.*` tag names, or `None`. The one direction `CataclysmAbilitySlots` does not give. */
+	ECataclysmAbilitySlot SkillGadgetSlotNamedBy(const FGameplayTag& SlotTag)
+	{
+		if (SlotTag.IsValid())
+		{
+			for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+			{
+				if (CataclysmAbilitySlots::Tag(Slot) == SlotTag)
+				{
+					return Slot;
+				}
+			}
+		}
+		return ECataclysmAbilitySlot::None;
+	}
+}
+
+FGameplayTagContainer UCataclysmAbilitySystemComponent::SkillGadgetSlotTags(ECataclysmAbilitySlot Slot) const
+{
+	// THE HELD SKILL'S OWN TAGS, which carry its `Slot.*` tag on every row, as the lock is asked with a skill's tags.
+	// And the slot's tag added, so a slot whose weapon holds no skill for it is still answered by its row.
+	FGameplayTagContainer Tags;
+	const AActor* Avatar = GetAvatarActor();
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Avatar ? Avatar->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	if (Slots)
+	{
+		if (const FCataclysmWeaponSkill* Held = Slots->GetAvailableSkills().FindByPredicate(
+				[Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; }))
+		{
+			Tags = Held->Tags;
+		}
+	}
+	const FGameplayTag SlotTag = CataclysmAbilitySlots::Tag(Slot);
+	if (SlotTag.IsValid())
+	{
+		Tags.AddTag(SlotTag);
+	}
+	return Tags;
+}
+
+bool UCataclysmAbilitySystemComponent::SlotIsASkillGadget(ECataclysmAbilitySlot Slot) const
+{
+	// A FALLBACK OF NOUGHT: a character with no stat line, which is every enemy and a player before its first
+	// refresh, has no slot converted.
+	return Slot != ECataclysmAbilitySlot::None
+		&& StatForSkill(FName(SkillSlotIsAGadgetStat), SkillGadgetSlotTags(Slot), 0.0f) > 0.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTag& SlotTag)
+{
+	const ECataclysmAbilitySlot Slot = SkillGadgetSlotNamedBy(SlotTag);
+	if (!SlotIsASkillGadget(Slot))
+	{
+		return false;
+	}
+
+	// ONCE PER PRESS AND NOT ONCE PER FRAME. The binding fires every frame the key is held, as issue #1016 found for
+	// a click on a screen; the release clears it.
+	if (SkillGadgetSlotsHeldDown.Contains(Slot))
+	{
+		return true;
+	}
+	SkillGadgetSlotsHeldDown.Add(Slot);
+
+	AActor* Player = GetAvatarActor();
+	if (!IsValid(Player) || !IsOwnerActorAuthoritative())
+	{
+		return true;
+	}
+
+	// AT THE CHARACTER'S FEET, as a deployable with no range is put down: its own location.
+	const FVector At = Player->GetActorLocation();
+
+	// ONE PER SLOT: A NEW PRESS MOVES THE ONE STANDING, keeping its health and its clock (S6). One that has died,
+	// and is only a body for half a second, is no gadget, and a new one is placed with its clock not yet started.
+	if (ACataclysmMinion* Standing = SkillGadgetIn(Slot))
+	{
+		Standing->MoveSkillGadgetTo(At);
+		return true;
+	}
+	if (ACataclysmMinion* Placed = ACataclysmMinion::PlaceSkillGadget(Player, Slot, At))
+	{
+		SkillGadgets.Add(Slot, Placed);
+	}
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::ReleaseOfASkillGadgetSlot(const FGameplayTag& SlotTag)
+{
+	SkillGadgetSlotsHeldDown.Remove(SkillGadgetSlotNamedBy(SlotTag));
+}
+
+ACataclysmMinion* UCataclysmAbilitySystemComponent::SkillGadgetIn(ECataclysmAbilitySlot Slot) const
+{
+	const TWeakObjectPtr<ACataclysmMinion>* Recorded = SkillGadgets.Find(Slot);
+	ACataclysmMinion* Gadget = Recorded ? Recorded->Get() : nullptr;
+	return IsValid(Gadget) && !UCataclysmSkillEffects::IsDead(Gadget) ? Gadget : nullptr;
+}
+
+UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow::FPricingASkillGadgetsBlow(
+	UCataclysmAbilitySystemComponent* InSystem, const ACataclysmMinion* Gadget)
+	: System(Gadget ? InSystem : nullptr)
+{
+	if (System)
+	{
+		Before = System->SkillGadgetBeingPriced;
+		System->SkillGadgetBeingPriced = Gadget;
+		bActive = true;
+	}
+}
+
+UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow::~FPricingASkillGadgetsBlow()
+{
+	End();
+}
+
+void UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow::End()
+{
+	if (bActive && System)
+	{
+		System->SkillGadgetBeingPriced = Before;
+	}
+	bActive = false;
+}
+
+float UCataclysmAbilitySystemComponent::FlatOfStatNamingTag(
+	FName Stat, const FGameplayTag& Named, const FGameplayTagContainer& Tags, const AActor* Target) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs || !Named.IsValid())
+	{
+		return 0.0f;
+	}
+	// THE ROWS NAMING THE TAG, as `StatNamingTagAppliedTo` keeps them, on a base of nought, and only the Flat bucket
+	// read back: the increases among them are the caller's to apply where it applies every other increase.
+	TArray<FCataclysmStatModifier> Naming;
+	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+	{
+		if (Modifier.RequiredTags.HasTagExact(Named))
+		{
+			Naming.Add(Modifier);
+		}
+	}
+	if (Naming.IsEmpty())
+	{
+		return 0.0f;
+	}
+	const FCataclysmStatConditions State =
+		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions()));
+	return FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State).Flat);
 }

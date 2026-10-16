@@ -29,6 +29,8 @@
 // For how long a lasting harmful effect really runs on its target, which is
 // the target's own stat rather than the attacker's. Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For a skill gadget's blow, priced as the gadget's. Ruled 2026-10-16.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -732,6 +734,26 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
+	// A SKILL GADGET'S CAST IS PRICED AS THE GADGET'S, IN FIVE PARTS, ruled 2026-10-16 (S5) for "Scales off gadget
+	// damage". Its skill tags carry `Type.Deployable`, given by `ACataclysmMinion::CastPlayersSkillFromHere`, so the
+	// increases naming gadgets join `Applying` below. And here: (a) the spell part leaves out the spell damage rows
+	// naming `Type.Deployable`, because "Gadgets deal 20%-40% increased damage" is written on attack damage and spell
+	// damage both and the attack damage row already reaches the whole blow; (b, c) while the blow is priced the
+	// player's conditions read the gadget's age and the gadget's stillness; (d) the flat attack damage rows naming
+	// gadgets are added to the blow; (e) `deployable_hit` is raised once it is dealt. Nothing for every other blow,
+	// a gadget's copy of its summoner's last skill included: `SkillGadgetCasting` answers null for it.
+	const ACataclysmMinion* const SkillGadget = ACataclysmMinion::SkillGadgetCasting(Delivery.Skill.Get());
+	UCataclysmAbilitySystemComponent* const GadgetsPlayer =
+		SkillGadget ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+	const FGameplayTag NamesGadgets =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(GadgetsPlayer, SkillGadget);
+	FGameplayTagContainer TagsForSpellDamage = SkillTags;
+	if (GadgetsPlayer && NamesGadgets.IsValid())
+	{
+		TagsForSpellDamage.RemoveTag(NamesGadgets);
+	}
+
 	// THE THREE-BUCKET PIPELINE, REOPENED. Issue #895.
 	//
 	// `AttackDamage` is already `(base + flat) x (1 + increases)`, and two
@@ -888,7 +910,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 					  Delivery.EnemiesStruckTogether,
 					  Delivery.MetresCharged, Delivery.ChargeRangeMetres);
 	const float Flat = IsSpell(SkillTags)
-		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
+		? SpellDamageOf(Source, TagsForSpellDamage, Delivery.SkillHealthCostPercent,
 						TargetDistanceMetres, bTargetIsStaggered,
 						AilmentTarget, Delivery.EnemiesStruckTogether,
 						Delivery.MetresCharged, Delivery.ChargeRangeMetres)
@@ -907,9 +929,16 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
 	const float Kept = Striking ? 1.0f - Striking->DamageCutPercentNow() / 100.0f : 1.0f;
 
+	// AND A SKILL GADGET'S FLAT ROWS (S5 d): "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit".
+	// Beside the spell part and outside the skill's percent, because "per hit" states an amount; the increases below
+	// reach it, as the naming increases reach a gadget's own blow. Nought for every other blow.
+	const float GadgetFlat = GadgetsPlayer
+		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		: 0.0f;
+
 	const float Damage = ModifiedDamage(
 		Source,
-		(BeforeIncreases * DamagePercent / 100.0f + Flat)
+		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat)
 			* (1.0f + Applying + Conditional + Bought)
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
 			// Issue #1833, timed grants. One for every other blow.
@@ -1037,8 +1066,23 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		}
 	}
 
-	return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
-		? Sent : 0.0f;
+	// THE PRICING ENDS BEFORE THE BLOW IS DEALT, so whatever the blow provokes is judged on the player and not on
+	// the gadget. AND A SKILL GADGET'S BLOW ON AN ENEMY IS ANNOUNCED AS `deployable_hit` (S5 e), as a machine's own
+	// blow is in `ACataclysmMinion::AttackTarget`, with the gadget's type tags, landed only when it was not evaded and
+	// not refused as immune to its attacker. Not for a share struck at an ally, and not for a tick.
+	PricedForTheGadget.End();
+	if (!GadgetsPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
+	{
+		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
+			? Sent : 0.0f;
+	}
+	const FGameplayTagContainer GadgetsTags = SkillGadget->TypeTags;
+	FCataclysmDamageResult OwnResult;
+	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
+	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
+	GadgetsPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, 0.0f,
+							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
+	return bDealt ? Sent : 0.0f;
 }
 
 bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,

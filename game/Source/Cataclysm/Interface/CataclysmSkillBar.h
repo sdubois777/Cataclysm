@@ -128,6 +128,19 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	bool bLocked = false;
+
+	/**
+	 * Whether this slot is converted into a skill gadget. Ruled 2026-10-16 (S14): the box then reads
+	 * `UCataclysmSkillBar::SkillGadgetName` and its sweep is the gadget's clock, not the player's cooldown, which
+	 * never runs because the player no longer casts the skill. Placing costs nothing, so the box is never drawn as
+	 * unaffordable. A lock still greys it, because the lock refuses the gadget's cast.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bIsASkillGadget = false;
+
+	/** Whether that gadget can never cast the skill the slot holds: a shapeless one, or one no row may cast (S10). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bSkillGadgetCastsNothing = false;
 };
 
 /**
@@ -326,6 +339,16 @@ public:
 	 * ruled on 2026-09-27.
 	 */
 	static FString FervourTextFor(const FCataclysmSkillBarSlot& Slot);
+
+	/** What a box converted into a skill gadget reads, "Gadget". Ruled 2026-10-16 (S14). */
+	static FString SkillGadgetName();
+
+	/**
+	 * The words over a box converted into a skill gadget that can never cast its slot's skill, "Gadget casts
+	 * nothing", or empty. Ruled 2026-10-16 (S10). THE BAR HAS NO TOOLTIP: nowhere in it describes a skill to the
+	 * player, so the words go over the box, where the Fervour line goes, which a gadget box never shows.
+	 */
+	static FString SkillGadgetTextFor(const FCataclysmSkillBarSlot& Slot);
 
 	/**
 	 * The line above the bar naming the next-use charges held, or empty when
