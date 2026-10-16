@@ -567,7 +567,61 @@ nobody. Under C-II and C-III it passes.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-15 under the lock enchant-x1, on development 09ae318f, for two layers
+in this order: this mechanism (with its two corrections below) and the row. The suite and Python were run at the
+top of the two, which holds both. THE WINDOW WAS STARTED THREE TIMES, and each stop is recorded here.
+
+- **First start: the build failed**, "Build: Failed - 47 actions, 42 files compiled". All eight errors were on one
+  line of `CataclysmGadgetCopiesSkillTests.cpp`, the distance test's, which named the namespace
+  `CataclysmGadgetCopiesSkillTest` with an F in front (error C2065, "'FCataclysmGadgetCopiesSkillTest': undeclared
+  identifier"). The enchantment session had read that line and not seen it. The lock was released, and the line was
+  corrected to `TArray<FRig::FIncrease>()` in this layer.
+- **Second start: one test failed.** The build compiled, the enchantments group on the old assets passed, and the
+  whole suite gave "3731 tests performed, 3730 succeeded, 1 failed: ACopysTargetDistanceIsMeasuredFromTheGadgetFor
+  ATargetWithinMetresRow": "Expected ... to be 105.000000, but it was 150.000000". **The fault was in the test.** Its
+  made-up row was the shape of the sentence's `spell_damage` row, and `spell_damage` is read only for a spell's flat
+  spell damage (`UCataclysmSkillEffects::SpellDamageOf`), which the test player holds at nought, so the row could not
+  move the blow at any distance. The weapon damage of every skill, spells included, takes the More lines of
+  `attack_damage` (`AttackDamageMoreForSkill`). The lock was released. The coordinating session accepted the change
+  to what the test asserts: it wears the sentence's `attack_damage` row (#1) instead, with the same figures, in this
+  layer.
+- **Third start, every step as registered:**
+  - **Build:** "Build: Succeeded - 5 actions, 2 files compiled".
+  - **The enchantments group on the assets as merged:** "339 tests performed, 339 succeeded, 0 failed", registered
+    0 failed. This stack adds no test that wears the real row.
+  - **The whole Unreal suite:** "3731 tests performed, 3731 succeeded, 0 failed. 40 skipped part of what they
+    check"; "Declared: 3731 tests in the tree at 1d01625a; 3731 performed, gap 0". Registered 3731 and 0 (3720
+    declared at 09ae318f, and the eleven of `Cataclysm.GadgetCopiesSkill.`).
+  - **Python:** "6371 passed, 8 skipped"; JUnit tests 6379, failures 0, errors 0, skipped 8. Lint: "All checks
+    passed!". The eighth skip, `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, belongs to a
+    checkout that has built binaries.
+  - **A stall guard** watched every editor run: had no test completed for 20 minutes with an editor running, it
+    would have ended the editor and released the lock. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.GadgetCopiesSkill.`, 11 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| C-I | `CastOrigin` answers the summoner's place | 6 failed, the six registered | 10 / 10 | 11 of 11 succeeded |
+| C-II | every start through `Trigger` writes the record | 1 failed, `TheRecordIsTheLastSkillARowMayCastAgainAndADeathOrALeftDungeonClearsIt` | 1 / 1 | 11 of 11 succeeded |
+| C-III | the copy clock comes round at half its seconds | 1 failed, `TheFirstCopyComesOnTheFirstStepWithATargetAndOneEveryTwoSecondsAfterUnhurried` | 3 / 3 | 11 of 11 succeeded |
+
+The six under C-I: `ACopyStartsFromTheGadgetAndStrikesItsTargetWithTheSummonersOwnNumbers`,
+`ACopyCostsNothingStartsNoCooldownAndIsMadeWhileTheSkillIsOnCooldown`,
+`ACopyGetsNoRepeatAndNoTriggerFromTheRowsThatCastAndLeavesTheRecord`, `ACopysHitIsTheSummonersAndSetsOffItsHitDealtRow`,
+`AfterAChangeOfWeaponTheGadgetStandsAndCopiesTheSkillUsedAtTheNewWeaponsNumbers` and
+`ACopysTargetDistanceIsMeasuredFromTheGadgetForATargetWithinMetresRow`. **Not measured:** the stat probe's failure
+under C-I that this entry predicts, because the proofs ran only this prefix.
+
+**A FINDING, recorded at the coordinating session's word and changing nothing here.** Of the shipped sentences that
+are written as an `attack_damage` row and a `spell_damage` row, the `spell_damage` half moves only a spell's flat
+spell damage: in `UCataclysmSkillEffects::ApplyHit`, `spell_damage` is read only through `SpellDamageOf`, for that
+flat figure. Read in `ApplyHit` only; no other reader of `spell_damage` was searched for. The weapon damage of a spell
+takes the `attack_damage` half, so such a sentence still acts on spells, through that half. The second start's failure
+is how this was found.
 
 ---
 
