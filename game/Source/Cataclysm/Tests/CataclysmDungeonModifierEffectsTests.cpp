@@ -51877,10 +51877,14 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * A game mode with a possessed player, inside the first ordinary dungeon of a new empire run, made `Floors` deep,
 	 * of an ordinary sub-type, carrying Those in the Dark alone, at the ordinary rate of one day a floor. Hands back
 	 * the run and the dungeon's number. Null when any of it failed, and says which.
+	 *
+	 * `Type`, WHEN GIVEN, IS SET BEFORE THE DUNGEON IS ENTERED, because entering copies it onto the game mode. When
+	 * not given the dungeon keeps the type the run rolled for it, as every caller had before 2026-10-15.
 	 */
 	ACataclysmDungeonGameMode* ADarkFloorEmpireDungeon(FAutomationTestBase& Test, UWorld* World,
 													   const FPossessedPlayer& Player, int32 Floors,
-													   UCataclysmEmpireRun*& OutRun, int32& OutDungeonId)
+													   UCataclysmEmpireRun*& OutRun, int32& OutDungeonId,
+													   TOptional<ECataclysmDungeonType> Type = TOptional<ECataclysmDungeonType>())
 	{
 		OutRun = nullptr;
 		OutDungeonId = INDEX_NONE;
@@ -51910,6 +51914,10 @@ namespace CataclysmDungeonModifierEffectsTest
 		Run->Dungeons[Chosen].WalkDays = 0.0f;
 		Run->Dungeons[Chosen].SubType = ECataclysmDungeonSubType::None;
 		Run->Dungeons[Chosen].Modifiers = {ThoseInTheDarkRow};
+		if (Type.IsSet())
+		{
+			Run->Dungeons[Chosen].Type = Type.GetValue();
+		}
 		const int32 DungeonId = Run->Dungeons[Chosen].DungeonId;
 		if (!Test.TestTrue(TEXT("set-up: the dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId))
 			|| !Test.TestEqual(TEXT("set-up: and the game mode reads its depth"), Mode->EmpireDungeonFloors(), Floors))
@@ -54455,6 +54463,11 @@ bool FCataclysmFragmentedRealityLeavingTest::RunTest(const FString& Parameters)
 
 // A DEATH ON THE DARK FLOOR LEAVES THE DUNGEON AS ANY OTHER DEATH DOES. Issue #41.
 //
+// A QUEST DUNGEON, ON PURPOSE, ruled 2026-10-15. The dungeon's type was the run's roll, and since 2026-10-13 a death
+// makes an ordinary dungeon hit its city and leave the map, so "the dungeon is still on the map" held only on the
+// rolls that came out Quest. A Quest dungeon does not resolve on a death and stays on the map. What a death does to
+// an ordinary dungeon is tested by `Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap`.
+//
 // An empire dungeon thirty floors deep carrying Those in the Dark, in a Standard run. One character, the player,
 // who falls from floor 3 and stands where the fall's beat left them on the dark floor; the floor's own creatures
 // were cleared away before the fall. The player dies there and is stood back up by hand. CONTROL, IN THE SAME
@@ -54478,14 +54491,18 @@ bool FCataclysmDarkFloorDeathTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	UCataclysmEmpireRun* Run = nullptr;
 	int32 DungeonId = INDEX_NONE;
-	ACataclysmDungeonGameMode* Mode = ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId);
+	ACataclysmDungeonGameMode* Mode =
+		ADarkFloorEmpireDungeon(*this, World, Player, 30, Run, DungeonId, ECataclysmDungeonType::Quest);
 	int32 Seed = 0;
 	if (!Mode || !AFloorWithChasms(*this, Mode, Player, 3, 1, Seed) || !FallIntoAChasm(*this, Mode, Player))
 	{
 		return false;
 	}
 
-	if (!TestTrue(TEXT("CONTROL: before the death the player is on the dark floor"), Mode->ThePlayerIsOnTheDarkFloor())
+	const FCataclysmDungeon* Walked = Run->FindDungeon(DungeonId);
+	if (!TestTrue(TEXT("CONTROL: before the death the dungeon is a Quest dungeon"),
+				  Walked != nullptr && Walked->Type == ECataclysmDungeonType::Quest)
+		|| !TestTrue(TEXT("CONTROL: before the death the player is on the dark floor"), Mode->ThePlayerIsOnTheDarkFloor())
 		|| !TestEqual(TEXT("CONTROL: having fallen from floor 3"), Mode->TheDarkFloorFellFromFloor(), 3)
 		|| !TestEqual(TEXT("CONTROL: and the game mode is walking the dungeon"), Mode->EmpireDungeonId, DungeonId))
 	{
