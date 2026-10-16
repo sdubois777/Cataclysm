@@ -623,6 +623,13 @@ flat figure. Read in `ApplyHit` only; no other reader of `spell_damage` was sear
 takes the `attack_damage` half, so such a sentence still acts on spells, through that half. The second start's failure
 is how this was found.
 
+**The row's layer.** Its one row, `gadgets_copy_your_last_skill` flat 1 to 1, Required Tags `Type.Deployable`, on
+`Positive_Gadgets_copy_the_last_skill_you_used_and_fire_it`, took the effect table from 612 to 613 rows over 517 to 518
+enchantments. The editor rebuilt the effect table's asset from it, and only that asset and its record changed, as
+registered; the row's layer carries them in a commit of its own, and the tree ids matched. **No test wears the real
+row**, so nothing in this window shows the row reaching a character; the probe and the eleven tests grant the flag by
+hand.
+
 ---
 
 ## 2026-10-12 — The game's surge when a city falls waits for the 25-day least interval, as the simulation's does (#2380)
