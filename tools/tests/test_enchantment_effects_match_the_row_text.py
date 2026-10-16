@@ -286,7 +286,10 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               "gadgets_take_no_damage",
               # gadgets copy the last skill their summoner used, every 2 seconds
               # (2026-10-14)
-              "gadgets_copy_your_last_skill"}
+              "gadgets_copy_your_last_skill",
+              # Mana Weaver ten-piece: no cooldown on the Ultimate, its mana cost doubles
+              # per paid use this dungeon (2026-10-15)
+              "ultimate_cost_doubles_instead_of_cooldown"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -902,8 +905,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-13, from 610 over 516: two rows on one enchantment.
 #: AND 613 OVER 518 SINCE THE ROW THAT MAKES GADGETS COPY THE LAST SKILL USED,
 #: issue #1833, 2026-10-14, from 612 over 517: one row on one enchantment.
-AUTHORED_ROWS = 613
-AUTHORED_ENCHANTMENTS = 518
+#: AND 614 OVER 519 SINCE THE ROW OF MANA WEAVER'S TEN-PIECE BONUS,
+#: issue #1833, 2026-10-15, from 613 over 518: one row on one enchantment.
+AUTHORED_ROWS = 614
+AUTHORED_ENCHANTMENTS = 519
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
