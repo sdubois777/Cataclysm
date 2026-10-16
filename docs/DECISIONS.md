@@ -399,6 +399,13 @@ hash was the same after its proof.
 
 **Not measured:** the stat probe's failure under M-I that this entry predicts, because the proofs ran only this prefix.
 
+**The row's layer.** Its one row, `ultimate_cost_doubles_instead_of_cooldown` flat 1 to 1, with no Required Tag, on
+`Positive_Mana_Weaver_10_Piece_Bonus_Your_ultimate_abil`, took the effect table from 613 to 614 rows over 518 to 519
+enchantments. The editor rebuilt the effect table's asset from it, and only that asset and its record changed, as
+registered; the row's layer carries them in a commit of its own, and the tree ids matched. **No test wears the real
+row**, so nothing in this window shows the row reaching a character; the probe and the nine tests grant the flag by
+hand.
+
 ---
 
 ## 2026-10-13 — In the game an ordinary dungeon leaves the map after it hits its city, and a Quest dungeon's timer hits its host city
