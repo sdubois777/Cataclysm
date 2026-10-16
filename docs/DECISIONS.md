@@ -336,7 +336,44 @@ A-II and A-III it passes.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-16 under the lock enchant-z1, on development 330ce3b7 (the Mana Weaver
+ten-piece's merge), for two layers in this order: this mechanism (its commit, its floor-rule commit and the correction
+below) and the row. The suite and Python were run at the top of the two, which holds both. THE WINDOW WAS STARTED
+TWICE, and the stop is recorded here.
+
+- **First start: one test failed.** The build compiled ("36 actions, 33 files compiled"), the enchantments group on the
+  old assets passed (339 of 339), and the whole suite gave "3759 tests performed, 3758 succeeded, 1 failed:
+  AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack": "Expected 'set-up: the share landed on the player: a
+  tenth of what reached the imp' to be 30.000000, but it was 25.857544". **The fault was in the test's set-up.** Its
+  player is an `FPossessedPlayer`, and possession (`ACataclysmPlayerCharacter::PossessedBy` calls
+  `ApplyChosenClassStats`) gives it its class's armour and damage reduction, which a share meets, as ruled. The lock
+  was released, and the coordinating session accepted the change: the set-up asks for no more than a tenth and, as a
+  separate existing assertion, more than nothing.
+- **Second start, every step as registered:**
+  - **Build:** "Build: Succeeded - 36 actions, 33 files compiled".
+  - **The enchantments group on the assets as merged:** "339 tests performed, 339 succeeded, 0 failed", registered
+    0 failed. This stack adds no test that wears the real row.
+  - **The whole Unreal suite:** "3759 tests performed, 3759 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 3759 tests in the tree at 0d43f569; 3759 performed, gap 0". Registered 3759 and 0: 3749 measured on
+    330ce3b7's tree by the Mana Weaver window, and the ten of `Cataclysm.DamageDoneToAllies.`.
+  - **Python:** "6384 passed, 8 skipped"; JUnit tests 6392, failures 0, errors 0, skipped 8. Lint: "All checks
+    passed!". The eighth skip, `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, belongs to a
+    checkout that has built binaries.
+  - **A stall guard** watched every editor run and would have ended the editor and released the lock after 20
+    minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.DamageDoneToAllies.`, 10 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| A-I | no share is sent: the share sent as nought | all 10 failed | 13 / 13 | 10 of 10 succeeded |
+| A-II | `hit_taken` is not skipped for a share | 1 failed, `TheShareRaisesNoHitTakenNoFervourAndNoRetaliation` | 1 / 1 | 10 of 10 succeeded |
+| A-III | a struck wearer shares | 1 failed, `TwoWearersTakeOneShareEachOfAMinionsBlowAndNoneOfEachOthers` | 1 / 1 | 10 of 10 succeeded |
+
+**Not measured:** the stat probe's failure under A-I that this entry predicts, because the proofs ran only this prefix.
 
 ---
 
