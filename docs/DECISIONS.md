@@ -139,7 +139,8 @@ floors and 100 points of defence damage.
   deepest floor, the number of descents, the descents at the rate, the last stairs' cost, the whole walk, the
   unbinding, and the line. The control passes.
 
-The declared test count went from 3720 to 3721.
+The declared test count went from 3720 to 3721 when written, on development `09ae318f`. On development
+`12fd0e70`, which this layer now stands on, it goes from 3731 to 3732.
 
 ### Not covered by a test
 
@@ -168,6 +169,45 @@ All three are in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, t
    "one line says the city fell and the clear counts for nothing".
 
 No row is needed: this layer adds no stat, condition or scale, and no data row was dry-run.
+
+### Run
+
+- **2026-10-14, window void-zones-w24, at `f3f4c9e3`**: the three retune layers on development `09ae318f`, before
+  the fix for issue #2414 existed. Build "Build: Succeeded - 50 actions, 45 files compiled". The whole Unreal suite
+  did not finish: after 770 tests had completed, `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`
+  walked for 65 minutes until the editor ran out of memory ("The paging file is too small"). The run printed
+  "unknown tests performed, 770 succeeded, 0 failed". Python "6362 passed, 8 skipped"; JUnit tests="6370"
+  failures="0". No proof was run. This is how issue #2414 was found.
+- **2026-10-15, window void-zones-w25, at `feaedf35`**: the fix for issue #2414 and the three retune layers on
+  development `12fd0e70`. Build "Build: Succeeded - 36 actions, 33 files compiled". Unreal "3740 tests performed,
+  3738 succeeded, 2 failed: ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor,
+  EveryFixtureHoldsEveryFieldItsRecordWrites"; "3740 performed, gap 0". Python "6368 passed, 8 skipped"; JUnit
+  tests="6376" failures="0". No proof was run. Each failure was ruled and corrected in its layer: the save fixture
+  in the hit-size layer, the dark-floor death test in the third retune layer.
+- **2026-10-15, window void-zones-w26, at `4e7bf05b`**: the same four layers with those two corrections. Build
+  "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.29.cpp". Unreal "3740 tests performed, 3740
+  succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3740 tests in the tree at 4e7bf05b; 3740
+  performed, gap 0". Python "6368 passed, 8 skipped in 262.82s"; JUnit tests="6376" failures="0" errors="0"
+  skipped="8". ruff "All checks passed!". The suite ran under a guard that stops it when no test completes for
+  20 minutes; it did not fire.
+
+In window void-zones-w26 the new test passed, and so did the wave test. The wave test's information line at seed 1:
+"a wave of 5: 2 cleared, 2 gone before their turn (hit their city and left, or absorbed by its fall), 1 absorbed
+while walked; 33 floors walked over 33 days". So the case of this entry happened inside the wave test too, and the
+walk of that dungeon ended at its bottom.
+
+Guard proofs, run in window void-zones-w26 with `tools/unreal_build.py`'s `prove_cpp_guard`. Each printed "PROVED:
+with the break in: 1 tests performed, 0 succeeded, 1 failed ... | restored: 1 tests performed, 1 succeeded, 0
+failed". Failed assertions are counted from each first half's log, and each equals the count predicted before the
+run:
+
+| Proof | File | Break | Test | Failed assertions, predicted = printed |
+|---|---|---|---|---|
+| W1 | `CataclysmDungeonGameMode.cpp` | `return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;` became `return 0;` | `Cataclysm.DungeonMode.AWalkWhoseCityFallsEndsAtTheDungeonsBottomAndCountsForNothing` | 8 = 8; the test's floor limit stopped the walk |
+| W2 | `CataclysmDungeonGameMode.cpp` | the rate after the fall `EmpireDungeonWalkDaysPerFloorOnEntry` became `1.0f` | the same | 2 = 2 |
+| W3 | `CataclysmDungeonGameMode.cpp` | `if (bAbsorbedWhileInside)` became `if (bAbsorbedWhileInside && bCleared)` | the same | 1 = 1 |
+
+Each layer was run as part of the stack, at the stack's head, and not alone. The figures above are the stack's.
 
 ---
 
