@@ -1006,9 +1006,10 @@ class Simulation:
         game's `DungeonsDetonated`. `Dungeon.times_resolved` is not raised
         for a Quest dungeon either, as it never was.
 
-        A FALL IS A FALL. `_fall` absorbs every dungeon on the city, this
-        one included unless the player is inside it, exactly as when an
-        ordinary dungeon fells a city that a Quest dungeon stands on.
+        A FALL IS A FALL. `_fall` absorbs the ordinary dungeons on the city
+        and, since 2026-10-16, moves every Quest dungeon on it, this one
+        included (`_quest_refuge` says where), exactly as when an ordinary
+        dungeon fells a city that a Quest dungeon stands on.
 
         NO DRAW IS TAKEN HERE, so with the city left standing the random
         stream is where it would have been without the hit.

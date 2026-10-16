@@ -628,9 +628,9 @@ class TuningConfig:
     # "Only the one you ruled".
     #
     # SO THE OTHER 27 PAIRS STAY LEGAL AND NOTHING MAY BE INFERRED FROM THIS ONE
-    # ABOUT ANY OF THEM. Whether a Quest dungeon should be able to roll a Siege
-    # that never resolves, or a Fallen City a Sacrificial, is unstated by
-    # omission rather than decided; issue #1333 raises it and #1342 asks the
+    # ABOUT ANY OF THEM. Whether a Fallen City should be able to roll a
+    # Sacrificial is unstated by omission rather than decided; issue #1333
+    # raised it with the Quest Siege below, and #1342 asks the
     # related question about a Fallen City carrying a sub-type at all. A reader
     # adding a second row here is making a design decision, not a code one.
     #
@@ -644,9 +644,21 @@ class TuningConfig:
     # `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
     # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares the
     # two and fails if either side moves.
+    #
+    # A QUEST DUNGEON MAY NOT ROLL A SIEGE, SINCE 2026-10-16, AND THIS IS
+    # INTERIM. The owner, that day, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap."
+    # and then: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
+    # So a Quest dungeon's sub-type will be set by its Cataclysm, not rolled,
+    # and War's will be a Siege. Until the owner names the other Cataclysms'
+    # types this model keeps rolling them, without the Siege (War is not
+    # built). Since the same day a Quest dungeon is not absorbed when its city
+    # falls but moves on, so one carrying a Siege went on biting city after
+    # city; measured that day it lifted the defending player's cities lost
+    # from 1.18 to 1.85 (`docs/DECISIONS.md`, 2026-10-16).
     SUBTYPES_FORBIDDEN_ON: dict[DungeonType, tuple[str, ...]] = field(
         default_factory=lambda: {
             DungeonType.CATACLYSM: ("Cow Level",),
+            DungeonType.QUEST: ("Siege",),
         })
 
     # --- the Siege sub-type ----------------------------------------------

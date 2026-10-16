@@ -4207,7 +4207,7 @@ Its timer follows its depth as an ordinary dungeon's does: a deeper Quest dungeo
 | Horde | Number of floors equals number of enemy waves. |
 | Sacrificial | Double modifiers. Player can sacrifice materials to remove the extra modifiers, or accept them for bonus rewards. |
 | Elite | Every floor ends with a boss fight. |
-| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. |
+| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. A Quest dungeon never rolls Siege: the only Siege Quest dungeons will be War's (see World War), once War exists. |
 | Volatile | Dungeon modifiers change every floor. |
 | Cow Level | Enemies drop ridiculous amounts of loot. Time to complete is doubled and cannot be reduced. |
 
@@ -5449,6 +5449,8 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 | Siege | 7.5 |
 | Cow Level | 7 |
 
+A Quest dungeon cannot be a Siege, and a Cataclysm dungeon cannot be a Cow Level; for those kinds the excluded weight is shared by the others in proportion.
+
 
 
 **Every dungeon a surge creates has a subtype.** There is no “none” outcome and no row for one. Until 2026-09-05 there was, and it was the commonest at 34 in 100; the seven that remain were rescaled to take up that share while keeping their order.
@@ -6438,7 +6440,9 @@ Cursed Abominations spawn as cities fall, growing stronger with each subsequent 
 
 ## **World War (War)**
 
-Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital.
+Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. War is not built yet.
+
+The owner, 2026-10-16, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap." And, the same day: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
 
   
 
