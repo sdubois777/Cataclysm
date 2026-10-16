@@ -164,6 +164,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: struck for added one more on 2026-10-15, asked with the skill's tags by
 #: `UCataclysmAreaShareOnAllies::PercentHeldFor`, through
 #: `UCataclysmSkillTemplate::AreaShareOnAlliesPercent`.
+#: The flag by which a slot's key places a skill gadget added one more on
+#: 2026-10-16, asked with the slot's skill tags by
+#: `UCataclysmAbilitySystemComponent::SlotIsASkillGadget`, from the press and
+#: from the skill bar.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -948,6 +952,13 @@ INVENTORY = {
         "own tags, because the row requires Type.AOE.PointBlank, and no "
         "target, because the one figure serves every ally of the swing and "
         "the row has no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SkillSlotIsAGadgetStat), SkillGadgetSlotTags(Slot), 0.0f'):
+        "whether a slot is converted into a skill gadget (ruled 2026-10-16), "
+        "asked by SlotIsASkillGadget from a slot's press and from the skill "
+        "bar with the held skill's tags and the slot's tag, as the lock is "
+        "asked; a press is not a blow and the row has no condition, so no "
+        "blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

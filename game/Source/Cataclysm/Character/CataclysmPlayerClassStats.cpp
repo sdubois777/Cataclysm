@@ -759,6 +759,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// to nearby allies as well as enemies". No gameplay attribute and no
 		// base.
 		TEXT("aoe_skill_damage_to_nearby_allies_percent"),
+		// The flag by which a slot's key places a skill gadget instead of
+		// casting the slot's skill, read by
+		// UCataclysmAbilitySystemComponent::SlotIsASkillGadget with the slot's
+		// skill tags, the way skill_locked is asked. Ruled 2026-10-16, for the
+		// four "Your heavy attack / special ability / support ability /
+		// ultimate ability is converted into a deployable gadget" rows: a flat
+		// 1 whose Required Tags is the slot's tag. A flag. No gameplay
+		// attribute and no base.
+		TEXT("skill_slot_is_a_gadget"),
 	};
 	return Stats;
 }

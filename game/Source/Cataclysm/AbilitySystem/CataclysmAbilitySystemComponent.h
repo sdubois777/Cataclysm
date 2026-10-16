@@ -4134,6 +4134,82 @@ public:
 	 */
 	int32 ExecutePeriodicEffectsGrantingForTests(const FGameplayTag& GrantedTag);
 
+	/**
+	 * SKILL GADGETS. Ruled 2026-10-16 by the coordinating session (S1-S14), for the rows "Your heavy attack / special
+	 * ability / support ability / ultimate ability is converted into a deployable gadget ...". The owner: pressing a
+	 * converted slot's key PLACES its gadget where the player stands; one gadget per converted slot; a new press moves
+	 * it; the player no longer casts that skill. The gadget is `ACataclysmMinion`'s; this is the press and the record.
+	 *
+	 * THE FLAG, `skill_slot_is_a_gadget` (S12): a flat 1 whose Required Tags is the slot's tag, asked with the slot's
+	 * skill tags the way `UCataclysmSkillSlots::LockedStat` is, and read as above nought. No gameplay attribute and no
+	 * base.
+	 */
+	static const TCHAR* SkillSlotIsAGadgetStat;
+
+	/** Whether `Slot` is converted into a skill gadget now: the flag above, asked with `SkillGadgetSlotTags`. */
+	bool SlotIsASkillGadget(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * The tags the flag is asked with for `Slot`: the tags of the skill the character holds in that slot, and the
+	 * slot's own tag, so a slot holding no skill still answers for its row.
+	 */
+	FGameplayTagContainer SkillGadgetSlotTags(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * A press of a slot key, before anything is queued (S7). FALSE, AND NOTHING DONE, for a slot that is not
+	 * converted. TRUE for one that is: on the first frame of the press its gadget is placed at the character's feet,
+	 * or moved there if it stands (S6), and every later frame of the same press does nothing, because the binding
+	 * fires every frame the key is held. Placing is free: no mana, no cooldown, no skill-used notice, and no lock,
+	 * stun or cooldown refuses it. Called by `AbilityInputTagPressed`, and by the player controller BEFORE its stun
+	 * check, so a stunned player still places.
+	 *
+	 * ON THE AUTHORITY ONLY: a gadget is a spawned actor, and in a client and server game the press would need a
+	 * call to the server, which nothing makes yet. In standalone play the two are one machine.
+	 */
+	bool PressOfASkillGadgetSlot(const FGameplayTag& SlotTag);
+
+	/** The key of a slot is up: its next press may place or move its gadget again. Called by `AbilityInputTagReleased`. */
+	void ReleaseOfASkillGadgetSlot(const FGameplayTag& SlotTag);
+
+	/** The skill gadget standing for `Slot`, or null when none stands or the one placed has died. */
+	class ACataclysmMinion* SkillGadgetIn(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * While alive, `System`'s conditions are judged for `Gadget`'s blow: its age and its stillness (S5 b, c). Made by
+	 * `UCataclysmSkillEffects::ApplyHit` around the pricing of a skill gadget's blow and ended before the blow is
+	 * dealt, so a defence of the character's against what the blow provokes is judged on the character. Restores what
+	 * was there before, so a pricing inside another leaves the outer one as it was.
+	 */
+	struct FPricingASkillGadgetsBlow
+	{
+		FPricingASkillGadgetsBlow(UCataclysmAbilitySystemComponent* InSystem, const class ACataclysmMinion* Gadget);
+		~FPricingASkillGadgetsBlow();
+		/** End it now rather than at the end of the scope. Ending twice does nothing. */
+		void End();
+
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		TWeakObjectPtr<const class ACataclysmMinion> Before;
+		bool bActive = false;
+	};
+
+	/**
+	 * The flat rows of `Stat` that name `Named`, worked out with the character's conditions now and with `Tags`: the
+	 * figure the Flat bucket holds over those rows alone, floored at nothing. For "Gadgets deal bonus damage equal to
+	 * 3%-6% of your maximum HP per hit" on a skill gadget's cast (S5 d), which `StatNamingTagAppliedTo` cannot give,
+	 * because that applies the naming rows' increases too and the cast already takes them.
+	 */
+	float FlatOfStatNamingTag(FName Stat, const FGameplayTag& Named, const FGameplayTagContainer& Tags,
+							  const AActor* Target) const;
+
+	/** The gadget standing for each converted slot, by slot. Weak: a destroyed gadget is no gadget. */
+	TMap<ECataclysmAbilitySlot, TWeakObjectPtr<class ACataclysmMinion>> SkillGadgets;
+
+	/** The converted slots whose key is down and has already placed or moved its gadget in this press. */
+	TSet<ECataclysmAbilitySlot> SkillGadgetSlotsHeldDown;
+
+	/** The skill gadget whose blow is being priced now, or null. See `FPricingASkillGadgetsBlow`. */
+	TWeakObjectPtr<const class ACataclysmMinion> SkillGadgetBeingPriced;
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
