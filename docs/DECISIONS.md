@@ -408,6 +408,13 @@ hash was the same after its proof.
 
 **Not measured:** the stat probe's failure under B-I that this entry predicts, because the proofs ran only this prefix.
 
+**The row's layer.** Its one row, `aoe_skill_damage_to_nearby_allies_percent` flat 50 to 75, Required Tags `Type.AOE.PointBlank`, on
+`Negative_Your_AOE_skills_deal_50_75_of_their_damage_to`, took the effect table from 615 to 616 rows over 520 to 521
+enchantments. The editor rebuilt the effect table's asset from it, and only that asset and its record changed, as
+registered; the row's layer carries them in a commit of its own, and the tree ids matched. **No test wears the real
+row**, so nothing in this window shows the row reaching a character; the probe and the thirteen tests grant the stat by
+hand.
+
 ---
 
 ## 2026-10-16 — Tests for seven cases of the dungeon retune that no test covered; no game code changes
