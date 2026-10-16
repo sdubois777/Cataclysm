@@ -2756,7 +2756,9 @@ void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
 	UWorld* World = GetWorld();
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
-	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -10824,7 +10826,9 @@ void ACataclysmDungeonGameMode::NoteHitForShadowyEnemies(const FCataclysmHitNoti
 		return;
 	}
 	ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Notice.Target);
-	if (!Creature || Notice.bEvaded)
+	// NOR A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15: it is the
+	// wearer's skill striking its own side, not a blow on an enemy.
+	if (!Creature || Notice.bEvaded || Notice.bAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -13686,7 +13690,9 @@ void ACataclysmDungeonGameMode::NoteDeathForRuleOfChaos(const FCataclysmDeathNot
 	UWorld* World = GetWorld();
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	ACataclysmPlayerCharacter* Player = Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly
 		|| CreaturesRaisedByARule.Contains(Fallen))
 	{
 		return;
@@ -13808,7 +13814,9 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodGates(
 	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
 	// A WARDEN THE UNSTABLE PORTAL RAISED IS NOT THE FLOOR'S TO COUNT, slain or standing,
 	// so it cannot seal again stairs the player had opened. Issues #1820 and #41.
-	if (Fallen && Fallen->PaysForItsDeath() && Player && Notice.Killer == Player
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (Fallen && Fallen->PaysForItsDeath() && Player && Notice.Killer == Player && !Notice.bByAnAreaSkillShareOnAnAlly
 		&& !CreaturesRaisedByARule.Contains(Fallen))
 	{
 		++BloodGatesSlain;
@@ -16723,7 +16731,9 @@ void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
 	APlayerController* Controller = World->GetFirstPlayerController();
 	const ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -16826,7 +16836,9 @@ void ACataclysmDungeonGameMode::NoteDeathForEpidemic(
 	APlayerController* Controller = World->GetFirstPlayerController();
 	ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -17224,7 +17236,9 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 	APlayerController* Controller = World->GetFirstPlayerController();
 	const ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -17308,7 +17322,9 @@ void ACataclysmDungeonGameMode::NoteDeathForVoidParasite(const FCataclysmDeathNo
 	APlayerController* Controller = World->GetFirstPlayerController();
 	const ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -17786,7 +17802,9 @@ void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
-	if (!Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -19740,7 +19758,9 @@ void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
 	// `TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts`, which lands nineteen
 	// blows after an eruption and asserts they take nothing. The prediction was
 	// traced from what the TESTS land and missed what the RULE lands in reply.
-	if (Notice.Attacker != Player
+	// NOR A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15: it is the
+	// wearer's skill striking its own side, not a blow on an enemy.
+	if (Notice.Attacker != Player || Notice.bAreaSkillShareOnAnAlly
 		|| !Cast<ACataclysmEnemyCharacter>(Notice.Target))
 	{
 		return;
@@ -19909,7 +19929,9 @@ void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(
 	APlayerController* Controller =
 		World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
-	if (!World || !Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!World || !Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -20004,7 +20026,9 @@ void ACataclysmDungeonGameMode::NoteHitForHolyRepercussions(
 	// each kind, so removing either half fails a test.
 	ACataclysmEnemyCharacter* Creature =
 		Cast<ACataclysmEnemyCharacter>(Notice.Target);
-	if (Notice.Attacker != Player || !Creature)
+	// NOR A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15: it is the
+	// wearer's skill striking its own side, not a blow on an enemy.
+	if (Notice.Attacker != Player || !Creature || Notice.bAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
@@ -20357,7 +20381,9 @@ void ACataclysmDungeonGameMode::NoteDeathForMortalDecay(
 	APlayerController* Controller =
 		World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
-	if (!World || !Player || Notice.Killer != Player)
+	// NOR A KILL MADE BY A SHARE OF A POINT-BLANK SKILL'S BLOW ON AN ALLY. Ruled 2026-10-15:
+	// it is the wearer's skill striking its own side, not a kill of an enemy.
+	if (!World || !Player || Notice.Killer != Player || Notice.bByAnAreaSkillShareOnAnAlly)
 	{
 		return;
 	}
