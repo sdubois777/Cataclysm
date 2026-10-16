@@ -116,9 +116,15 @@ class TierStats:
 
 @dataclass(frozen=True)
 class DungeonSpec:
-    """Floor and timer ranges for one (DungeonType, CityTier) pair."""
+    """The floor range and the damage for one (DungeonType, CityTier) pair.
+
+    NO TIMER RANGE, since 2026-10-16. The field `resolve_days` was removed: an
+    ordinary dungeon's timer and a Quest dungeon's come from
+    `resolve_base_days + floors * resolve_floor_ratio` (see `_make_dungeon`),
+    and a Fallen City's and the Cataclysm's from `fallen_city_resolve_days`.
+    The ordinary and Quest rows' ranges were read by nothing.
+    """
     floors: tuple[int, int]
-    resolve_days: tuple[int, int]
 
     #: Defence POINTS and PEOPLE destroyed each time this dungeon resolves
     #: undefeated, before scaling by relative floor count.
@@ -435,6 +441,12 @@ class TuningConfig:
     resolve_base_days: float = 10.0
     resolve_floor_ratio: float = 1.6
     resolve_jitter: float = 0.15    # +/- fraction, rolled per dungeon
+
+    #: A FALLEN CITY'S AND THE CATACLYSM'S TIMER: past the end of any run, so
+    #: neither ever resolves. It was the `(999, 999)` on their `DUNGEON_SPECS`
+    #: rows until 2026-10-16, when that field was removed; the game's
+    #: `UCataclysmSurgeScheduler::FallenCityResolveDays` holds the same figure.
+    fallen_city_resolve_days: float = 999.0
 
     # UNKNOWN #4 -- base city defense / population. Held in TIER_STATS.
 
@@ -939,13 +951,13 @@ class TuningConfig:
     DUNGEON_SPECS: dict[tuple[DungeonType, CityTier], DungeonSpec] = field(
         default_factory=lambda: {
             (DungeonType.BASIC, CityTier.OUTPOST):
-                DungeonSpec((8, 15),   (10, 20), 100.0, 250.0),
+                DungeonSpec((8, 15),   100.0, 250.0),
             (DungeonType.BASIC, CityTier.BULWARK):
-                DungeonSpec((15, 25),  (14, 26), 270.0, 1_000.0),
+                DungeonSpec((15, 25),  270.0, 1_000.0),
             (DungeonType.BASIC, CityTier.SANCTUARY):
-                DungeonSpec((25, 40),  (20, 34), 640.0, 2_400.0),
+                DungeonSpec((25, 40),  640.0, 2_400.0),
             (DungeonType.BASIC, CityTier.PILLAR):
-                DungeonSpec((40, 60),  (30, 50), 1_200.0, 4_500.0),
+                DungeonSpec((40, 60),  1_200.0, 4_500.0),
 
             # A Quest dungeon's OWN rows carry no damage, and the game's
             # `SpecFor` holds the same zeros. Until 2026-10-13 this said
@@ -953,28 +965,30 @@ class TuningConfig:
             # may move. Bites are zero; the timer is a relocation clock."
             # Since that date its timer running out hits its host with the
             # ORDINARY row of the host's tier, above, and these rows are not
-            # read for it. `quest_timer_hits_city`.
+            # read for it. `quest_timer_hits_city`. Since 2026-10-16 its timer
+            # is rolled from its own depth as an ordinary dungeon's is; these
+            # rows' deeper floor ranges are why a Quest dungeon waits longer.
             (DungeonType.QUEST, CityTier.OUTPOST):
-                DungeonSpec((20, 30),  (25, 40), 0.0, 0.0),
+                DungeonSpec((20, 30),  0.0, 0.0),
             (DungeonType.QUEST, CityTier.BULWARK):
-                DungeonSpec((30, 45),  (25, 40), 0.0, 0.0),
+                DungeonSpec((30, 45),  0.0, 0.0),
             (DungeonType.QUEST, CityTier.SANCTUARY):
-                DungeonSpec((30, 50),  (25, 40), 0.0, 0.0),
+                DungeonSpec((30, 50),  0.0, 0.0),
             (DungeonType.QUEST, CityTier.PILLAR):
-                DungeonSpec((50, 70),  (25, 40), 0.0, 0.0),
+                DungeonSpec((50, 70),  0.0, 0.0),
 
             # Fallen City floor minimums come straight from the GDD: 20/40/60.
             (DungeonType.FALLEN_CITY, CityTier.OUTPOST):
-                DungeonSpec((20, 35),  (999, 999), 0.0, 0.0),
+                DungeonSpec((20, 35),  0.0, 0.0),
             (DungeonType.FALLEN_CITY, CityTier.BULWARK):
-                DungeonSpec((40, 60),  (999, 999), 0.0, 0.0),
+                DungeonSpec((40, 60),  0.0, 0.0),
             (DungeonType.FALLEN_CITY, CityTier.SANCTUARY):
-                DungeonSpec((60, 85),  (999, 999), 0.0, 0.0),
+                DungeonSpec((60, 85),  0.0, 0.0),
             (DungeonType.FALLEN_CITY, CityTier.PILLAR):
-                DungeonSpec((80, 120), (999, 999), 0.0, 0.0),
+                DungeonSpec((80, 120), 0.0, 0.0),
 
             (DungeonType.CATACLYSM, CityTier.PILLAR):
-                DungeonSpec((100, 150), (999, 999), 0.0, 0.0),
+                DungeonSpec((100, 150), 0.0, 0.0),
         })
 
     # Which tier a surge prefers to hit. Higher weight = more likely.

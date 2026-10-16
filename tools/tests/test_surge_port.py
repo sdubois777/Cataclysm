@@ -1118,17 +1118,15 @@ class TestWhatAFallenCityIs:
 
         A Fallen City has no consequence left to apply -- the city it stands on
         has already fallen -- so a timer is meaningless for it. The model says so
-        with `(999, 999)` on every Fallen City row.
+        with `TuningConfig.fallen_city_resolve_days`, which also serves the
+        Cataclysm's dungeon; until 2026-10-16 it was the `(999, 999)` on every
+        Fallen City row.
         """
-        from cataclysm_sim.config import CityTier, DungeonType
-
         unreal = number(surge_header, "FallenCityResolveDays")
 
-        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
-            spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
-            assert spec.resolve_days[0] == pytest.approx(unreal), (
-                f"{tier}: the model gives a Fallen City "
-                f"{spec.resolve_days[0]} days, the game gives {unreal}")
+        assert model.fallen_city_resolve_days == pytest.approx(unreal), (
+            f"the model gives a Fallen City {model.fallen_city_resolve_days} "
+            f"days, the game gives {unreal}")
 
     def test_it_takes_nothing_from_the_city_in_either(self, model):
         """It destroys nothing at any tier. The city has already fallen.
@@ -1241,25 +1239,30 @@ class TestWhatAQuestDungeonIs:
             f"the model rolls a Quest dungeon {model.quest_dungeon_chance:.0%} "
             f"of the time and the game {unreal:.0%}")
 
-    def test_its_timer_is_the_models_relocation_clock_at_every_tier(
-            self, surge_header, model):
-        """One flat figure in the game against four rows in the model.
+    def test_the_model_rolls_its_timer_from_its_depth_and_the_game_not_yet(
+            self, surge_header):
+        """The model's Quest timer follows its depth; the game's is still flat.
 
-        The model reads `spec.resolve_days[0]` for every kind but `Basic`
-        (`Simulation._make_dungeon`), and all four Quest rows give the same
-        number, so the game holds one constant. **All four are checked and not
-        just one**: if a tier's row ever diverges, the game holding a single
-        constant stops being right and this is what says so.
+        THE OWNER DECIDED ON 2026-10-16 that a Quest dungeon's timer scales with
+        its depth like other dungeons, and the flat 25 days is retired. The
+        model changed first: `Simulation._make_dungeon` rolls a Quest dungeon's
+        timer with the ordinary formula on its own floors. The game still holds
+        `QuestResolveDays`. **When the game layer replaces it this fails: then
+        replace this with a check that both kinds use one formula in both.**
         """
-        from cataclysm_sim.config import CityTier, DungeonType
+        engine = read(REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py")
+        made = engine.split("def _make_dungeon(", 1)[1].split("d = Dungeon(", 1)[0]
 
-        unreal = number(surge_header, "QuestResolveDays")
+        assert "if dtype in (DungeonType.BASIC, DungeonType.QUEST):" in made, (
+            "the model no longer rolls a Quest dungeon's timer with the "
+            "ordinary dungeon's formula")
+        assert "spec.resolve_days" not in made, (
+            "the model reads a timer range from a row again")
 
-        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
-            spec = model.spec(DungeonType.QUEST, CityTier(tier))
-            assert spec.resolve_days[0] == pytest.approx(unreal), (
-                f"{tier}: the model gives a Quest dungeon "
-                f"{spec.resolve_days[0]} days, the game gives {unreal}")
+        assert number(surge_header, "QuestResolveDays") == pytest.approx(25.0), (
+            "the game no longer holds the flat 25-day Quest timer. If the game "
+            "layer has landed, replace this check with one that both kinds "
+            "take their timer from one formula")
 
     def test_its_own_rows_carry_no_damage_in_the_model(self, model):
         """A Quest row holds no damage at any tier.
@@ -1345,14 +1348,13 @@ class TestWhatAQuestDungeonIs:
             "else', which is what Dungeon.resolves in the model says")
 
     def test_the_game_does_not_roll_its_timer_from_its_depth(self):
-        """A Quest dungeon's timer is flat; a Basic one's comes from its floors.
+        """In the game a Quest dungeon's timer is still flat; NOT YET THE RULE.
 
-        THE DEPTH RULE IS NOT BEING BROKEN HERE AND THE DISTINCTION MATTERS.
-        `CLAUDE.md` requires a resolve timer to scale with depth, because a
-        deeper dungeon is worth more and should be slower to bite. A Quest
-        dungeon has no bite for its depth to be traded against, and its timer is
-        how long the player has before the objective moves -- which the design
-        relates to nothing.
+        THE OWNER DECIDED ON 2026-10-16 that a Quest dungeon's timer scales with
+        its depth like other dungeons. The model already does so; the game layer
+        that replaces `QuestResolveDays` comes after the model is measured, and
+        this check fails then. What it checks until then is true of the game as
+        it is.
 
         **THE JITTER DRAW STILL HAPPENS EITHER WAY.** That is not decoration: a
         Quest dungeon that took fewer numbers off the stream would change every

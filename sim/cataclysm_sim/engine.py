@@ -376,18 +376,27 @@ class Simulation:
             picked = self.rng.sample(pool, k)
         mod_score = sum(s for _, s in picked)
 
-        if dtype is DungeonType.BASIC:
+        if dtype in (DungeonType.BASIC, DungeonType.QUEST):
             # Timer scales with depth, so a deep dungeon is a big commitment
             # rather than an automatic loss.
+            #
+            # A QUEST DUNGEON'S TOO, SINCE 2026-10-16. The owner decided its
+            # timer scales with its depth like other dungeons; until then it was
+            # a flat 25 days. The same formula on its own floors, with the same
+            # variation and the tree's resolve bonus: a labelled judgement of
+            # the coordinating session under that decision. Since 2026-10-13
+            # its timer running out hits its host; see `_quest_hit`.
+            #
+            # THE VARIATION IS NOW DRAWN FOR A QUEST DUNGEON AS WELL, so every
+            # campaign's stream differs from its first Quest dungeon on. The
+            # game already draws it for every kind.
             base = cfg.resolve_base_days + floors * cfg.resolve_floor_ratio
             jitter = 1.0 + self.rng.uniform(-cfg.resolve_jitter, cfg.resolve_jitter)
             resolve = base * jitter + cfg.tree.resolve_bonus_days
         else:
-            # A Quest dungeon's timer is flat and is not rolled from its
-            # depth. Fallen Cities and the Cataclysm have already done their
-            # damage and do not detonate. Since 2026-10-13 a Quest dungeon's
-            # timer running out hits its host; see `_quest_hit`.
-            resolve = spec.resolve_days[0]
+            # Fallen Cities and the Cataclysm have already done their damage
+            # and do not detonate.
+            resolve = cfg.fallen_city_resolve_days
 
         d = Dungeon(
             did=self._next_did,
