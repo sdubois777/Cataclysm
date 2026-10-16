@@ -461,7 +461,8 @@ wave was taken off, so the day advanced is day 2 and no wave can come.
   ordinary dungeon the run resolved; equals "Day 3: a Quest dungeon's timer hit <name>." after a Quest timer; is
   empty again after `Begin`. The names are read from the map.
 
-The declared count of Unreal tests is 3666: 3659 after layer 2 and these seven.
+The declared count of Unreal tests is 3740 on development `12fd0e70`: 3733 after layer 2 and these seven.
+It read 3666 when written, counted on an older development; corrected 2026-10-15 after the run.
 
 ### Python checks
 
@@ -614,6 +615,52 @@ What changed: the helper takes an optional type, set before the dungeon is enter
 onto the game mode; its four other callers pass none and keep the rolled type. The test passes
 `ECataclysmDungeonType::Quest`. One assertion added: "CONTROL: before the death the dungeon is a Quest dungeon".
 Every other assertion is unchanged. Not compiled or run when written.
+
+### Run
+
+- **2026-10-14, window void-zones-w24, at `f3f4c9e3`**: the three retune layers on development `09ae318f`, before
+  the fix for issue #2414 existed. Build "Build: Succeeded - 50 actions, 45 files compiled". The whole Unreal suite
+  did not finish: after 770 tests had completed, `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`
+  walked for 65 minutes until the editor ran out of memory ("The paging file is too small"). The run printed
+  "unknown tests performed, 770 succeeded, 0 failed". Python "6362 passed, 8 skipped"; JUnit tests="6370"
+  failures="0". No proof was run. This is how issue #2414 was found.
+- **2026-10-15, window void-zones-w25, at `feaedf35`**: the fix for issue #2414 and the three retune layers on
+  development `12fd0e70`. Build "Build: Succeeded - 36 actions, 33 files compiled". Unreal "3740 tests performed,
+  3738 succeeded, 2 failed: ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor,
+  EveryFixtureHoldsEveryFieldItsRecordWrites"; "3740 performed, gap 0". Python "6368 passed, 8 skipped"; JUnit
+  tests="6376" failures="0". No proof was run. Each failure was ruled and corrected in its layer: the save fixture
+  in the hit-size layer, the dark-floor death test in the third retune layer.
+- **2026-10-15, window void-zones-w26, at `4e7bf05b`**: the same four layers with those two corrections. Build
+  "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.29.cpp". Unreal "3740 tests performed, 3740
+  succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3740 tests in the tree at 4e7bf05b; 3740
+  performed, gap 0". Python "6368 passed, 8 skipped in 262.82s"; JUnit tests="6376" failures="0" errors="0"
+  skipped="8". ruff "All checks passed!". The suite ran under a guard that stops it when no test completes for
+  20 minutes; it did not fire.
+
+In window void-zones-w26, among the tests this entry changed or added: the wave test passed, and its information
+line at seed 1 read "a wave of 5: 2 cleared, 2 gone before their turn (hit their city and left, or absorbed by its
+fall), 1 absorbed while walked; 33 floors walked over 33 days". The guard it had before the second ruling,
+`Cleared > GoneBeforeItsTurn`, would have compared 2 with 2 and been false. The new guard,
+`Cleared + AbsorbedWhileWalked >= 1`, held. `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar`
+passed in windows void-zones-w25 and void-zones-w26, so every seed it runs lost.
+
+**The Quest-timer gap did not show on seed 1, and is not shown impossible.** The dark-floor death test walks a
+Quest dungeon on purpose, and passed in window void-zones-w26: at its seed the Quest dungeon's timer did not fell
+its host during the five days the death costs. On another seed or with another timer it could, and the test would
+then fail on "the dungeon is still on the map".
+
+Guard proofs, run in window void-zones-w26 with `tools/unreal_build.py`'s `prove_cpp_guard`. Each printed "PROVED:
+with the break in: 1 tests performed, 0 succeeded, 1 failed ... | restored: 1 tests performed, 1 succeeded, 0
+failed". Failed assertions are counted from each first half's log, and each equals the count predicted before the
+run:
+
+| Proof | File | Break | Test | Failed assertions, predicted = printed |
+|---|---|---|---|---|
+| R1 | `CataclysmEmpireRun.cpp` | the death's removal became `if (RemoveDungeon(INDEX_NONE))` | `Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap` | 7 = 7 |
+| Q1 | `CataclysmEmpireRun.cpp` | the Quest hit's damage multiplied by `0.0f *` | `Cataclysm.EmpireRun.AQuestDungeonsTimerTakesTheOrdinaryRowOfTheCityItStandsOn` | 4 = 4 |
+| Q2 | `CataclysmEmpireRun.cpp` | `Dungeon->CityTier` in place of `Host->Tier` | the same | 2 = 2 |
+
+Each layer was run as part of the stack, at the stack's head, and not alone. The figures above are the stack's.
 
 ---
 
