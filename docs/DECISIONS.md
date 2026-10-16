@@ -14,27 +14,33 @@ on-hit events refused for a share); `game/Source/Cataclysm/Character/CataclysmPl
 list of stats with no attribute); `game/Source/Cataclysm/Tests/CataclysmDamageDoneToAlliesTests.cpp` (new, nine
 tests); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe); `tools/generate_datatables.py` (the
 name and the refusals of its row); `tools/tests/test_generate_datatables.py` (one class of eight tests);
-`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site). Issue
-[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site). A second commit, after the coordinating
+session's ruling of 2026-10-15 on this layer: `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (one
+refusal in each of four floor rules, the only change that file was allowed for) and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (one test, beside the Wasting Sickness tests),
+and this entry. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
 ### SAID FIRST
 
 The sentence, from `game/Data/EnchantmentsNegative.csv`, row `Negative_You_take_5_15_damage_done_to_nearby_allies`:
 "You take 5%-15% damage done to nearby allies".
 
-- **STOPPED ON ONE PART, BECAUSE IT IS IN A FILE THIS LAYER MAY NOT TOUCH: four dungeon floor rules read a share as the
-  creature's own hit on the player.** `ACataclysmDungeonGameMode::OnSomethingWasHit` (`CataclysmDungeonGameMode.cpp`)
-  hands every hit notice to nine rules. By reading of their tests on the notice, four act on a blow that landed on the
-  player pawn from a creature, which is what a share is (its attacker is the creature that struck the ally, R7):
-  Wasting Sickness (`NoteHitForWastingSickness`: the player struck by a creature of the monsters' side, with something
-  landed, may gain a stack), The Reaper (`NoteHitForTheReaper`: a hit of the Reaper's on the player that landed and is
-  not a tick), Plague Convergence (`NoteHitForPlagueConvergence`: the player struck by one of its creatures, not a tick)
-  and Mind-Shattering Illusions (`NoteHitForMindShatteringIllusions`: the player struck by one of its illusions). So
-  while one of those rules is on the floor, a share does what that creature's own hit on the player does. The ruling
-  (R7) says the mark keeps the attacker's own on-hit rows off; a floor rule is the dungeon's and not the attacker's, so
-  this is reported and not decided here. **The notice now carries `FCataclysmHitNotice::bShareOfDamageDoneToAnAlly`,
-  so the change, if ruled, is one refusal in each of the four, in `CataclysmDungeonGameMode.cpp`.** The other five read
-  a blow on a creature or a blow of the player's, and a share is neither.
+- **RULED BY THE COORDINATING SESSION, 2026-10-15: A SHARE IS NOT THE CREATURE'S HIT ON THE PLAYER, so four dungeon floor
+  rules refuse it.** `ACataclysmDungeonGameMode::OnSomethingWasHit` (`CataclysmDungeonGameMode.cpp`) hands every hit
+  notice to nine rules. Four act on a blow that landed on the player pawn from a creature, which is what a share is (its
+  attacker is the creature that struck the ally, R7), and the first commit of this layer reported them rather than
+  touching that file. Each now refuses a notice carrying `FCataclysmHitNotice::bShareOfDamageDoneToAnAlly`, one
+  refusal each:
+  - Wasting Sickness, `NoteHitForWastingSickness`: an early return after the landed test, so a share rolls nothing
+    and adds no stack. **Tested**: `Cataclysm.DamageDoneToAllies.AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack`.
+  - The Reaper, `NoteHitForTheReaper`: joined to its first refusal, beside the tick, so a share of the Reaper's blow on
+    an ally does not kill the player. Not tested.
+  - Plague Convergence, `NoteHitForPlagueConvergence`: joined to its first refusal, beside the tick, so a share adds
+    no stack of its disease. Not tested.
+  - Mind-Shattering Illusions, `NoteHitForMindShatteringIllusions`: joined to its first refusal, so a share of a
+    phantasm's blow starts no slow. Not tested.
+
+  The other five read a blow on a creature or a blow of the player's, and a share is neither; they are unchanged.
 - **In addition, not instead.** The ally takes its whole blow; each wearer within 5 m of it then takes the row's percent
   of what reached the ally's health, as a blow to the wearer (R5, R7). At 15% and three wearers beside one minion, the
   three take 45% of the minion's loss between them.
@@ -124,22 +130,30 @@ and warzone soldiers came after the 2026-09-11 judgement; under the team reading
 
 ### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
 
-- **The share cannot be evaded** (`bCannotBeEvaded`). It is not aimed at the wearer and cannot be stepped out of. The
+**ACCEPTED BY THE COORDINATING SESSION ON 2026-10-15, four of them**, marked ACCEPTED below: (1) the two saves from a
+lethal blow, the immunity windows, the Sacrificial Ward, the delayed share, The Breaking Point and the energy
+shield's refill wait apply to a share as the wearer's defences; (2) block applies to a share and evasion does not;
+(3) the wearer's damage-taken rows read the creature that struck the ally; (4) a share of a tick is a blow. **WHY
+BLOCK APPLIES AND EVASION DOES NOT: the only way the delivery can skip block is `bCannotBeMitigated`, and skipping
+block that way would also remove the wearer's armour and resistance, which R7 says meet the share.** Evasion has a
+mark of its own that changes nothing else, `bCannotBeEvaded`. The others below stand as the writing session's.
+
+- **ACCEPTED (2). The share cannot be evaded** (`bCannotBeEvaded`). It is not aimed at the wearer and cannot be stepped out of. The
   option not taken: let evasion roll, which would let a wearer dodge, whole, damage done to someone else.
-- **The share can be blocked.** Block is one of the defences R7 names, and the delivery can skip block only with
+- **ACCEPTED (2). The share can be blocked.** Block is one of the defences R7 names, and the delivery can skip block only with
   `bCannotBeMitigated`, which would also remove armour and resistance, against R7. A blocked share opens no block
   window. The option not taken: a new mark that skips block alone, in `UCataclysmDamageCalculation`, which is wider
   than this layer.
 - **The attacker's critical strike, penetration, weapon sub-type, leech and ailment chances do not reach the share**:
   they were spent on the ally. The option not taken: a share that is the attacker's blow again, which would roll a
   second critical strike and cut through the wearer's armour with the attacker's penetration.
-- **The wearer's damage-taken rows that read the attacker read the creature that struck the ally** (a boss, staggered,
+- **ACCEPTED (3). The wearer's damage-taken rows that read the attacker read the creature that struck the ally** (a boss, staggered,
   crowd controlled, its debuffs, its distance to the wearer). They are the wearer's defences, which R7 says apply. The
   option not taken: a share carrying no attacker at all, which R7's instigator rules out.
-- **The two saves from a lethal blow, the immunities and the Sacrificial Ward apply to a share**, as defences of the
-  wearer and not rows raised by a blow. The option not taken: skip them, so that a share always lands and a save is
-  never spent on one. The coordinating session may rule either way; each is one more test of the mark in the branch.
-- **A share of a tick is a blow, not a tick.** The share is one blow per ally blow; the tick's nature is not carried.
+- **ACCEPTED (1). The two saves from a lethal blow, the immunities and the Sacrificial Ward apply to a share**, as
+  defences of the wearer and not rows raised by a blow, and so do the delayed share and The Breaking Point. The option
+  not taken: skip them, so that a share always lands and a save is never spent on one.
+- **ACCEPTED (4). A share of a tick is a blow, not a tick.** The share is one blow per ally blow; the tick's nature is not carried.
   The option not taken: carry `bIsDamageOverTime`, which would let the wearer's damage-over-time rows reduce it and the
   energy shield let it through as it lets a bleed through.
 - **What the write took, measured across it** (R5). So an overkill, a sigil holding a thrall at one health, and the
@@ -155,7 +169,7 @@ and warzone soldiers came after the 2026-09-11 judgement; under the team reading
   The option not taken: send it in the ally's name, which would name the ally as the wearer's killer.
 - **The percent is held to 100.** The option not taken: none; a share above the ally's loss would be damage from
   nowhere. The generator refuses a figure above 100.
-- **The energy shield's refill wait restarts for a share**: it is damage taken and not a row. The option not taken:
+- **ACCEPTED (1). The energy shield's refill wait restarts for a share**: it is damage taken and not a row. The option not taken:
   skip it with the windows.
 - **The stat's name, `damage_done_to_nearby_allies_taken_percent`.**
 
@@ -245,6 +259,14 @@ row is held at a flat 10 from an enchantment. Every character stands at least 1 
    far thrall bonded and struck for 200 keeps part and the near one pays its share; the wearer takes nothing of it.
    Then an imp 3 m away: set-up, its blow gives a tenth; set-up, `ExecuteIfLeftBelow` with the creature that struck it
    and a share of 100% executes it; the wearer takes nothing of the execute.
+10. `AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack`, added by the second commit, in
+    `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` beside
+    `WastingSicknessRollsForAnEnemysBlowAndNotForOneTheFloorOrThePlayerDealt`, whose shape and helpers it uses: a
+    dungeon game mode, a possessed player, the Wasting Sickness roll pinned to inflict, a floor carrying the rule,
+    the player wearing the row at a flat 10 and its imp 2 m away. In order: set-up, the floor carries the rule; no
+    stack before any blow; set-up, the creature's own blow of 5 landed on the player; control, it adds a stack;
+    set-up, the creature's blow of 300 on the imp sends the player a tenth of what reached the imp, more than nothing;
+    the share adds no stack.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
 `ProbeDamageDoneToNearbyAlliesTakenPercent`. Two players 100 m apart, each with an imp 2 m away; only the second holds
@@ -264,11 +286,13 @@ the check.
 and a minion or a thrall as the wearer; a tick on an ally; a blow of a projectile, a zone, retaliation or an
 explosion on an ally; madness on either side; block, the energy shield, the two saves, the immunities, the Sacrificial
 Ward, the delayed share and The Breaking Point meeting a share; the attacker's on-hit refusal in
-`OnSomethingWasHit` (no player strikes an ally in any test); the four floor rules named first; the delayed-damage
+`OnSomethingWasHit` (no player strikes an ally in any test); three of the four floor rules named first, The Reaper,
+Plague Convergence and Mind-Shattering Illusions, whose creatures a test world does not raise; the delayed-damage
 drain, Sacrificial Ward and Infernal Sacrifice as sources (none reaches the damage branch, by reading); a share sent
 when the ally's attacker is gone; replication; anything in play.
 
-**THE MARK'S OWN NEVER-SHARE-AGAIN GUARD CANNOT BE PROVED BY A TEST, AND THAT IS SAID PLAINLY.** A share is sent only to
+**THE MARK'S OWN NEVER-SHARE-AGAIN GUARD CANNOT BE PROVED BY A TEST, AND THAT IS SAID PLAINLY. ACCEPTED AS UNTESTABLE
+BEHIND THE STRUCK-WEARER RULE by the coordinating session on 2026-10-15.** A share is sent only to
 a wearer, and a wearer struck shares nothing (R4), so every blow carrying the mark already lands where nothing is
 shared. Breaking the mark's guard alone changes nothing a test can see; it is a second guard behind R4's, kept because
 R7 rules it. Test 7 and proof A-III hold R4's.
@@ -278,27 +302,31 @@ R7 rules it. Test 7 and proof A-III hold R4's.
 Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
 was counted absent from its file before the break and once after it, and each break keeps the file's round and curly
 brackets paired and compiles alone by reading. The failed assertions are counted by reading the tests and were not
-measured. The prefix of all three is `Cataclysm.DamageDoneToAllies.`, with its trailing dot, which is 9 tests.
+measured. The prefix of all three is `Cataclysm.DamageDoneToAllies.`, with its trailing dot, which is 10 tests since
+the second commit added test 10. **ACCEPTED, all three, by the coordinating session on 2026-10-15.** Re-counted at the
+second commit: each old text still once in its file and each new text absent; no anchor moved.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| A-I, no share is sent | `game/Source/Cataclysm/AbilitySystem/CataclysmAllyDamageShare.cpp` | `if (Share > 0.0f && UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Wearer, Share, Delivery))` | `if (Share > 0.0f && UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Wearer, 0.0f, Delivery))` | `AMinionStruckWithinFiveMetresGivesItsWearerThePercentOfWhatReachedItsHealth` | all eight others |
+| A-I, no share is sent | `game/Source/Cataclysm/AbilitySystem/CataclysmAllyDamageShare.cpp` | `if (Share > 0.0f && UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Wearer, Share, Delivery))` | `if (Share > 0.0f && UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Wearer, 0.0f, Delivery))` | `AMinionStruckWithinFiveMetresGivesItsWearerThePercentOfWhatReachedItsHealth` | all nine others |
 | A-II, a share raises `hit_taken` | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (UCataclysmAbilitySystemComponent* Cataclysm = bShareOfAnAllysDamage ? nullptr :` | `if (UCataclysmAbilitySystemComponent* Cataclysm = false ? nullptr :` | `TheShareRaisesNoHitTakenNoFervourAndNoRetaliation` | none |
 | A-III, a wearer struck shares | `game/Source/Cataclysm/AbilitySystem/CataclysmAllyDamageShare.cpp` | `if (PercentHeldBy(StruckSystem) > 0.0f)` | `if (PercentHeldBy(StruckSystem) > 100.0f)` | `TwoWearersTakeOneShareEachOfAMinionsBlowAndNoneOfEachOthers` | none |
 
 Failed assertions in each test, by reading:
 
-- **A-I, 12 in 9 tests.** `ApplyDirectDamage` sends nothing for a figure of nought, so no wearer ever loses anything.
+- **A-I, 13 in 10 tests.** `ApplyDirectDamage` sends nothing for a figure of nought, so no wearer ever loses anything.
   Test 1, 1: "the wearer, 2 m from it, loses a tenth". Test 2, 1: "control: the wearer 3 m away takes a tenth". Test
   3, 1: "control: the wearer takes a tenth of its imp's blow", after which it returns. Test 4, 1: "control: the plain
   wearer takes a tenth", after which it returns. Test 5, 3: "the share kills the wearer", "its death is announced",
   "and names the creature". Test 6, 1: "set-up: the share lands", after which it returns. Test 7, 2: "the first wearer
   takes one share", "and so does the second". Test 8, 1: "the wearer takes a tenth of the 40". Test 9, 1: "control: a
-  thrall struck 4 m from the wearer gives it a tenth", after which it returns. The probe fails too; see below.
+  thrall struck 4 m from the wearer gives it a tenth", after which it returns. Test 10, 1: "set-up: the share landed
+  on the player", after which it returns. The probe fails too; see below.
 - **A-II, 1 in 1 test.** Test 6: "the share raises no hit_taken" (2 against 1). The rest of the skipped block raises
-  nothing any test reads.
+  nothing any test reads; test 10 passes.
 - **A-III, 1 in 1 test.** Test 7: "and gives the second wearer 3 m away nothing": the first wearer struck now shares
   with the second. The share it sends carries the mark and is not passed on, so the first half of the test passes.
+  Test 10 passes: the player struck shares only with its imp, which holds no row.
 
 **Tests of another group expected to fail, to check in the window:** under A-I the probe
 `ProbeDamageDoneToNearbyAlliesTakenPercent` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails

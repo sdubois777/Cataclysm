@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmAllyDamageShare.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmContagion.h"
@@ -46247,6 +46248,103 @@ bool FCataclysmWastingSicknessAttackerTest::RunTest(const FString& Parameters)
 	// AND THE SAME ENEMY'S DIRECT DAMAGE, the route a tick of its ailment takes, rolls too.
 	UCataclysmSkillEffects::ApplyDirectDamage(Enemy, Player.Character, 5.0f, Delivery);
 	TestEqual(TEXT("damage an enemy deals without a swing adds a stack too"), Mode->WastingSicknessStacksHeld(), 2);
+	return true;
+}
+
+// RULED 2026-10-15 by the coordinating session: a wearer's share of a creature's blow on an ally, for "You take 5%-15%
+// damage done to nearby allies", is not the creature's hit on the player. The four floor rules that read a creature's
+// hit on the player refuse it; this drives Wasting Sickness, the one of the four a test world reaches without the
+// rule's own creatures. THE CONTROL FIRST: the same creature's own blow on the player adds a stack.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingSicknessShareTest,
+	"Cataclysm.DamageDoneToAllies.AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingSicknessShareTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	// THE ROLL IS PINNED TO INFLICT, so a blow that rolls adds a stack and one that adds none did not roll.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {WastingSickness};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("set-up: the floor carries Wasting Sickness"),
+					 Mode->FloorBrief.Modifiers.Contains(WastingSickness)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// THE PLAYER WEARS THE ROW AT A FLAT 10, from an enchantment, with no tags, and its imp stands 2 m away.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, 1000.0f);
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = 10.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmAllyDamageShare::PercentStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character,
+		Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/60.0f, /*bBurns=*/false);
+	UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("set-up: the player's imp"), ImpSystem)
+		|| !TestNotNull(TEXT("set-up: a creature that can hit"), Enemy))
+	{
+		return false;
+	}
+	ImpSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	ImpSystem->SetNumericAttributeBase(Health, 1000.0f);
+	TestEqual(TEXT("set-up: no stack before any blow"), Mode->WastingSicknessStacksHeld(), 0);
+
+	// CONTROL: THE CREATURE'S OWN BLOW ON THE PLAYER rolls, and the pinned roll inflicts.
+	const float BeforeItsOwn = Player.Read(Health);
+	UCataclysmSkillEffects::ApplyDirectDamage(Enemy, Player.Character, 5.0f);
+	if (!TestTrue(TEXT("set-up: the creature's own blow landed on the player"), Player.Read(Health) < BeforeItsOwn)
+		|| !TestEqual(TEXT("control: the creature's own blow on the player adds a stack"),
+					  Mode->WastingSicknessStacksHeld(), 1))
+	{
+		return false;
+	}
+
+	// THE SHARE: the creature strikes the imp, and the player takes a tenth of what the imp lost.
+	const float BeforeTheShare = Player.Read(Health);
+	UCataclysmSkillEffects::ApplyDirectDamage(Enemy, Imp, 300.0f);
+	const float ImpLost = 1000.0f - ImpSystem->GetNumericAttribute(Health);
+	if (!TestEqual(TEXT("set-up: the share landed on the player: a tenth of what reached the imp"),
+				   BeforeTheShare - Player.Read(Health), ImpLost * 0.1f, 0.01f)
+		|| !TestTrue(TEXT("set-up: and it was more than nothing"), Player.Read(Health) < BeforeTheShare))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the share adds no stack: it is not the creature's hit on the player"),
+			  Mode->WastingSicknessStacksHeld(), 1);
 	return true;
 }
 
