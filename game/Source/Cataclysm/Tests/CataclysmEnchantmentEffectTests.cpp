@@ -26684,4 +26684,48 @@ bool FCataclysmHeavyGadgetRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicGadgetRowTest,
+	"Cataclysm.Enchantments.TheWornBasicGadgetRowMakesTheBasicAttackPlaceASkillGadget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Skill gadgets stack 2's row layer, ruled 2026-10-16: "Your basic attack is converted into a deployable gadget that
+ * fires your basic attack at the nearest enemy within range, once per basic attack cooldown. Scales off gadget
+ * damage.", whose row is `skill_slot_is_a_gadget` flat 1 requiring `Slot.Basic`. Worn on real gear, the basic attack's
+ * press (the player controller's click on an enemy makes this same call) places a skill gadget for the basic slot
+ * instead of swinging. What the gadget then does is `Cataclysm.SkillGadgets.`'s.
+ *
+ * THE CONTROL wears the ultimate's placeable-trap row, which has no effect row, and its basic press places nothing.
+ * The whole claim is ONE assertion, so on assets built before the row it fails once, and only there.
+ */
+bool FCataclysmBasicGadgetRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	const ECataclysmAbilitySlot Basic = ECataclysmAbilitySlot::BasicAttack;
+	const FGameplayTag BasicTag = CataclysmAbilitySlots::Tag(Basic);
+
+	// THE CONTROL, READ FIRST: a benefit with no effect row converts nothing.
+	FSummoner Plain(Scope.World, CataclysmEnchantmentEffectTest::BenefitWithNoEffect);
+	Plain.ASC()->PressOfASkillGadgetSlot(BasicTag);
+	Plain.ASC()->ReleaseOfASkillGadgetSlot(BasicTag);
+	TestTrue(TEXT("control: a wearer of a benefit with no effect row has no basic gadget after a basic press"),
+		!Plain.ASC()->SlotIsASkillGadget(Basic) && Plain.ASC()->SkillGadgetIn(Basic) == nullptr);
+
+	// THE ROW, worn on a helm, pressed once.
+	FSummoner Worn(Scope.World, TEXT("Positive_Your_basic_attack_is_converted_into_a_deployable"));
+	Worn.ASC()->PressOfASkillGadgetSlot(BasicTag);
+	Worn.ASC()->ReleaseOfASkillGadgetSlot(BasicTag);
+	const ACataclysmMinion* Placed = Worn.ASC()->SkillGadgetIn(Basic);
+	TestTrue(TEXT("the worn basic gadget row converts the basic slot, and the basic press places a skill gadget for "
+				  "it (fails on assets built before the row, which hold no such row)"),
+		Worn.ASC()->SlotIsASkillGadget(Basic) && Placed && Placed->IsSkillGadget()
+		&& Placed->SkillGadgetSlot == Basic);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
