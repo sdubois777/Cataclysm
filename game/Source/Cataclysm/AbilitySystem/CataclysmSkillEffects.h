@@ -13,6 +13,7 @@ class UGameplayAbility;
 class UGameplayEffect;
 struct FGameplayEffectContextHandle;
 struct FActiveGameplayEffectHandle;
+struct FGameplayEffectSpec;
 
 // What a blow resolved to on its target, reported back by `ApplyDirectDamage`
 // and `ApplyHit`. Issue #1156. Declared rather than included, because both take
@@ -676,6 +677,17 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	TWeakObjectPtr<const UGameplayAbility> Skill;
 
+	/**
+	 * Where the use that struck this blow was cast from, when that was not the instigator's own place: read while
+	 * `bStruckFromAPoint` is set. Ruled 2026-10-14 for a gadget's copy of its summoner's skill: the instigator is the
+	 * summoner and the blow is struck from the gadget. THE DISTANCE TO THE TARGET IS MEASURED FROM HERE, by
+	 * `ApplyHit` for the attacker's own lookups and, through the effect's stamp
+	 * `UCataclysmSkillEffects::StruckFromXDataName` and its two siblings, by the hit announcement and by the
+	 * defender's reading, so all three still agree about one strike. See `MetresFromWhereItWasStruck`.
+	 */
+	bool bStruckFromAPoint = false;
+	FVector StruckFromPoint = FVector::ZeroVector;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{
@@ -1081,6 +1093,25 @@ public:
 	 * records who struck the target. See `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`.
 	 */
 	static const TCHAR* ExplosionAtAnAilmentsEndDataName;
+
+	/**
+	 * The stamp of where a blow was struck from, when that was not its instigator's place: three set-by-caller
+	 * figures, X, Y and Z in centimetres, and a fourth at 1 saying they are there. Written by `ApplyTypedSpec` from
+	 * `FCataclysmHitDelivery::bStruckFromAPoint`. Ruled 2026-10-14, for a gadget's copy of its summoner's skill.
+	 */
+	static const TCHAR* StruckFromSetDataName;
+	static const TCHAR* StruckFromXDataName;
+	static const TCHAR* StruckFromYDataName;
+	static const TCHAR* StruckFromZDataName;
+
+	/**
+	 * How far apart a blow's striker and `To` stood, in metres: from the point the blow's effect is stamped as
+	 * struck from when it carries one, and `UCataclysmTargeting::MetresBetween(From, To)` otherwise. Ruled
+	 * 2026-10-14. THE ONE READING the hit announcement and the defender's lookups make of a blow, so a gadget's copy
+	 * is measured from the gadget by both, as `ApplyHit` measures it for the attacker. -1 when `To` is missing, as
+	 * `MetresBetween` answers.
+	 */
+	static float MetresFromWhereItWasStruck(const FGameplayEffectSpec& Spec, const AActor* From, const AActor* To);
 
 	/**
 	 * How far the explosion at an ailment's end reaches from its carrier, in centimetres. Ruled 2026-10-13: five
@@ -2896,6 +2927,20 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsBehind(const AActor* Attacker, const AActor* Target);
+
+	/**
+	 * `IsBehind`, `ApplyKnockback` and `ApplyPull` measured from a POINT rather than from the instigator's own
+	 * place. Ruled 2026-10-14, for "Gadgets copy the last skill you used and fire it at their target once every 2
+	 * seconds": the copy is the summoner's blow, so the summoner is still the instigator, and it is struck from the
+	 * gadget's place, so that place is what is behind the target, what the target is shoved away from and what it is
+	 * hauled toward.
+	 *
+	 * THE ONE BODY OF EACH. The three above are these, asked with the instigator's location, so a blow from a point
+	 * and a blow from a character cannot be judged by two rules.
+	 */
+	static bool IsBehindFrom(const FVector& AttackerAt, const AActor* Target);
+	static bool ApplyKnockbackFrom(AActor* Instigator, AActor* Target, const FVector& From, float DistanceCm);
+	static bool ApplyPullFrom(AActor* Instigator, AActor* Target, const FVector& From, float DistanceCm);
 
 	/**
 	 * Whether this actor's health has reached zero.

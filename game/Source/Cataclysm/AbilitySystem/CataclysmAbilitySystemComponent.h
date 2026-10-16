@@ -21,6 +21,8 @@
 // forward-declares this class, so including it here does not make a circle.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For the row a summoner's gadgets copy, kept as it was used. Ruled 2026-10-14.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "CataclysmAbilitySystemComponent.generated.h"
 
 struct FGameplayTag;
@@ -938,6 +940,31 @@ public:
 
 	/** Every worn action that gains kept stacks, one entry a key, in the order worn, with what it holds now. */
 	TArray<FHeldKeptStacks> KeptStacksForDisplay() const;
+
+	/**
+	 * The row of the last skill this character used that its gadgets may copy, AS IT WAS WHEN USED, or null. Ruled
+	 * 2026-10-14 by the coordinating session, for "Gadgets copy the last skill you used and fire it at their target
+	 * once every 2 seconds". Written by `NoteSkillGadgetsCopy` and read by `ACataclysmMinion::CopySummonersLastSkill`.
+	 *
+	 * THE ROW AND NOT A NAME TO FIND AGAIN, the coordinating session's ruling of 2026-10-14 (option B), so a skill
+	 * used with one weapon is still copied after the character has changed to another. A copy casts the row with the
+	 * character's numbers AT THE COPY: the weapon held then, its damage and stats.
+	 *
+	 * A LASTING RECORD, kept whether or not the character holds the row, so a row put on later finds the skill used
+	 * before it. THE LAST SKILL WHOSE USE SENT THE SKILL-USED NOTICE AND THAT
+	 * `UCataclysmTriggeredSkill::RepeatsFromARow` ACCEPTS: `ACataclysmPlayerCharacter::OnSkillWasUsed` decides,
+	 * and a use of a skill it does not accept leaves the record as it was. A free cast sends no notice, so a repeat,
+	 * a trigger, Wild Magic, Echo Chamber, Follow Through, a kept-stack cast and a gadget's copy never change it.
+	 *
+	 * WHAT ENDS IT. A DEATH: `ClearWhatDeathEnds` empties it, and a gadget copies nothing for a summoner that is
+	 * dead. THE DUNGEON BEING LEFT, OR ANOTHER ENTERED, as a kept stack's: the record remembers `DungeonBeingWalked`
+	 * as it was written, and this answers none for a record of another. A NEW FLOOR of the same dungeon changes
+	 * nothing. NOT REPLICATED: only the authority's gadgets read it.
+	 */
+	const FCataclysmWeaponSkill* SkillGadgetsCopy() const;
+
+	/** Write the record `SkillGadgetsCopy` reads: this row, in the dungeon being walked now. */
+	void NoteSkillGadgetsCopy(const FCataclysmWeaponSkill& Skill);
 
 	/**
 	 * How many stacks of one row's own this character holds now: nought once
@@ -4977,6 +5004,11 @@ protected:
 	 * whole period counted. `InCombat` is `SecondsInCombat()`. Run by `StepTimedGrants` on every step.
 	 */
 	void StepKeptStackClocks(float InCombat);
+
+	/** The row this character's gadgets copy, whether one is held, and `DungeonBeingWalked` as it was used. */
+	FCataclysmWeaponSkill SkillGadgetsCopyRow;
+	bool bHoldsSkillGadgetsCopy = false;
+	int32 SkillGadgetsCopyDungeonId = INDEX_NONE;
 
 	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */
 	FName PendingHeldTriggerUsedName;

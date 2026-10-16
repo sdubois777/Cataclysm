@@ -730,6 +730,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute and no base.
 		TEXT("gadgets_take_no_damage"),
 		TEXT("gadget_health_lost_percent_per_second"),
+		// The flag by which a summoner's gadgets cast a copy of the last skill
+		// the summoner used, at their own target, every 2 seconds, read by
+		// ACataclysmMinion::StepSkillCopy on the gadget's step with the
+		// gadget's type tags. Ruled 2026-10-14: "Gadgets copy the last skill
+		// you used and fire it at their target once every 2 seconds". A flag.
+		// No gameplay attribute and no base.
+		TEXT("gadgets_copy_your_last_skill"),
 	};
 	return Stats;
 }
