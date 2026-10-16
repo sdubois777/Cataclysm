@@ -468,11 +468,24 @@ public:
 	// Cadence
 	// ----------------------------------------------------------------------
 
-	/** Days between surges before any escalation. `config.surge_interval_days`. */
-	static constexpr float IntervalDays = 120.0f;
+	/**
+	 * Days between surges before any escalation. `config.surge_interval_days`.
+	 *
+	 * 90 SINCE 2026-10-13, AND 120 UNTIL THEN. It went into the model together
+	 * with `DungeonsPerSurge` below and with two rules: an ordinary dungeon
+	 * leaves after it hits its city, and a Quest dungeon's timer hits its
+	 * city. `docs/DECISIONS.md`, 2026-10-13.
+	 */
+	static constexpr float IntervalDays = 90.0f;
 
-	/** Dungeons in a surge before any escalation. `config.surge_dungeon_count`. */
-	static constexpr int32 DungeonsPerSurge = 4;
+	/**
+	 * Dungeons in a surge before any escalation. `config.surge_dungeon_count`.
+	 *
+	 * 5 SINCE 2026-10-13, AND 4 UNTIL THEN. On Heretic that is
+	 * trunc(5 x 1.25) = 6, which is a fifth more than 5 and not the quarter
+	 * more that 5 against 4 was. See `HereticDungeonMultiplier`.
+	 */
+	static constexpr int32 DungeonsPerSurge = 5;
 
 	/**
 	 * What an accelerating surge multiplies the gap by each time.
