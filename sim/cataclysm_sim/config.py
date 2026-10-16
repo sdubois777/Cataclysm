@@ -640,10 +640,12 @@ class TuningConfig:
     # having none. It costs no extra draw either -- the roll is taken from the
     # shortened list, so the stream is left exactly where a full roll leaves it.
     #
-    # THE GAME HOLDS THE SAME RULE in
+    # THE GAME HOLDS THE CATACLYSM'S RULE in
     # `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
-    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares the
-    # two and fails if either side moves.
+    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares that
+    # pair and fails if either side moves. The Quest pair below is not in the
+    # game yet: `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`
+    # says so and fails when the game bars it.
     #
     # A QUEST DUNGEON MAY NOT ROLL A SIEGE, SINCE 2026-10-16, AND THIS IS
     # INTERIM. The owner, that day, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap."

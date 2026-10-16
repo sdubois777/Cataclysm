@@ -512,8 +512,11 @@ class Simulation:
     def subtypes_allowed_on(self, dtype: DungeonType) -> list[str]:
         """The sub-types this kind of dungeon may roll, in weight order.
 
-        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL, AND THAT IS THE ONLY
-        EXCLUSION THERE IS.** The project owner ruled on 2026-09-06, verbatim:
+        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL, AND SINCE 2026-10-16 A
+        QUEST DUNGEON MAY NOT BE A SIEGE; THOSE ARE THE TWO EXCLUSIONS THERE
+        ARE.** The second is interim, until each Cataclysm's Quest dungeons take
+        their own type (`TuningConfig.SUBTYPES_FORBIDDEN_ON` quotes the owner).
+        The first: the project owner ruled on 2026-09-06, verbatim:
         "Last stand is a cataclysm dungeon and should not be allowed to roll as
         a cow level sub type." Asked how far to take it they answered "Only the
         one you ruled", so the other 27 pairs stay legal and nothing here may be
@@ -532,8 +535,8 @@ class Simulation:
                 if n not in forbidden]
 
     def _roll_subtype(self, dtype: DungeonType, city: City) -> str:
-        """One sub-type, respecting "Max 1 per city" for the Siege and the one
-        dungeon-type exclusion in `subtypes_allowed_on`.
+        """One sub-type, respecting "Max 1 per city" for the Siege and the
+        dungeon-type exclusions in `subtypes_allowed_on`.
 
         A REFUSED SIEGE IS REDISTRIBUTED RATHER THAN DROPPED, so the dungeon
         still gets a sub-type -- every dungeon has one since issue #1293. That
