@@ -26640,4 +26640,48 @@ bool FCataclysmWornNoDamageAndDrainRowsTest::RunTest(const FString&)
 			Worn.LostToASecond, Worn.Placed), Worn.LostToASecond, Worn.Placed * 0.05f, Worn.Placed * 0.001f);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavyGadgetRowTest,
+	"Cataclysm.Enchantments.TheWornHeavyGadgetRowMakesTheHeavyKeyPlaceASkillGadget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Skill gadgets, the row layer, ruled 2026-10-16: "Your heavy attack is converted into a deployable gadget that fires
+ * your heavy attack at the nearest enemy within range once per heavy attack cooldown. Scales off gadget damage.",
+ * whose row is `skill_slot_is_a_gadget` flat 1 requiring `Slot.Heavy`. Worn on real gear, its Heavy key places a skill
+ * gadget for the Heavy slot instead of casting. What the gadget then does is `Cataclysm.SkillGadgets.`'s.
+ *
+ * THE CONTROL wears the ultimate's placeable-trap row, which has no effect row, and its Heavy press places nothing.
+ * The whole claim is ONE assertion, so on assets built before the row it fails once, and only there.
+ */
+bool FCataclysmHeavyGadgetRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	const FGameplayTag Heavy = CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Heavy);
+
+	// THE CONTROL, READ FIRST: a benefit with no effect row converts nothing.
+	FSummoner Plain(Scope.World, CataclysmEnchantmentEffectTest::BenefitWithNoEffect);
+	Plain.ASC()->AbilityInputTagPressed(Heavy);
+	Plain.ASC()->AbilityInputTagReleased(Heavy);
+	TestTrue(TEXT("control: a wearer of a benefit with no effect row has no Heavy gadget after a Heavy press"),
+		!Plain.ASC()->SlotIsASkillGadget(ECataclysmAbilitySlot::Heavy)
+		&& Plain.ASC()->SkillGadgetIn(ECataclysmAbilitySlot::Heavy) == nullptr);
+
+	// THE ROW, worn on a helm, pressed once.
+	FSummoner Worn(Scope.World, TEXT("Positive_Your_heavy_attack_is_converted_into_a_deployable"));
+	Worn.ASC()->AbilityInputTagPressed(Heavy);
+	Worn.ASC()->AbilityInputTagReleased(Heavy);
+	const ACataclysmMinion* Placed = Worn.ASC()->SkillGadgetIn(ECataclysmAbilitySlot::Heavy);
+	TestTrue(TEXT("the worn Heavy gadget row converts the Heavy slot, and the Heavy press places a skill gadget for it "
+				  "(fails on assets built before the row, which hold no such row)"),
+		Worn.ASC()->SlotIsASkillGadget(ECataclysmAbilitySlot::Heavy) && Placed && Placed->IsSkillGadget()
+		&& Placed->SkillGadgetSlot == ECataclysmAbilitySlot::Heavy);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
