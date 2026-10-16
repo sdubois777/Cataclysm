@@ -752,6 +752,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 5%-15% damage done to nearby allies". No gameplay attribute and no
 		// base.
 		TEXT("damage_done_to_nearby_allies_taken_percent"),
+		// The percent of a point-blank skill's own blow, priced for an ally,
+		// that each ally inside its area is struck for, read by
+		// UCataclysmAreaShareOnAllies::PercentHeldFor with the skill's tags.
+		// Ruled 2026-10-15, for "Your AOE skills deal 50%-75% of their damage
+		// to nearby allies as well as enemies". No gameplay attribute and no
+		// base.
+		TEXT("aoe_skill_damage_to_nearby_allies_percent"),
 	};
 	return Stats;
 }

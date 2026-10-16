@@ -1563,9 +1563,12 @@ private:
 	 *
 	 * @param ChargedCm  how far the charge has gone when this blow lands, along
 	 *        the ground, in centimetres
+	 * @param Allies     the allies on the line a point-blank skill's row strikes for a share, told the same metres.
+	 *        Ruled 2026-10-15. Only `ActivateAbility` passes any; a walked charge's steps pass none.
 	 */
 	void HitScaledAsACharge(const TArray<AActor*>& Targets,
-							const TArray<AActor*>& Consumed, float ChargedCm);
+							const TArray<AActor*>& Consumed, float ChargedCm,
+							const TArray<AActor*>& Allies = TArray<AActor*>());
 
 	/** The same, for a charge that arrived at once: finds what the line from `From` to `To` crossed. */
 	void HitAlongThePath(const FVector& From, const FVector& To);

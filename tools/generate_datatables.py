@@ -10026,6 +10026,104 @@ def refuse_a_share_of_allies_damage_row_the_game_cannot_read(
     return problems
 
 
+#: The percent of a point-blank skill's own blow, priced for an ally, that each
+#: ally inside the skill's area is struck for. Ruled 2026-10-15 by the
+#: coordinating session, for "Your AOE skills deal 50%-75% of their damage to
+#: nearby allies as well as enemies".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 50 to 75, with Required Tags
+#: `Type.AOE.PointBlank`, no Condition, no Scale and no Action (R10). Which
+#: blows, which allies and the delivery are the engine's and not the row's.
+#: `UCataclysmAreaShareOnAllies::PercentStat` holds the same name, and
+#: `TestAShareOfAPointBlankSkillsBlowOnAnAlly` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT WITH THE SKILL'S OWN TAGS,
+#: `UCataclysmAreaShareOnAllies::PercentHeldFor`, at the four places a
+#: point-blank skill deals its own blow. So the row's Required Tags are what
+#: keep it to the point-blank skills: a row without `Type.AOE.PointBlank`
+#: would strike allies with every Strike and every Charge, Leap and Recall.
+#: A row of any kind but `flat` works on a base of nought, and a row with an
+#: action is not a stat line at all.
+#:
+#: THE BOUND IS THE ENGINE'S: above nought and at most 100, which
+#: `PercentHeldFor` holds the figure to.
+AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT = (
+    "aoe_skill_damage_to_nearby_allies_percent")
+AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_REQUIRED_TAG = "Type.AOE.PointBlank"
+MAX_AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT = 100.0
+
+
+def refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT` is a figure
+    its one reader takes as it stands, for the point-blank skills only.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_share_of_allies_damage_row_the_game_cannot_read`, for one
+    stat, except that this one REQUIRES a tag where that one refuses any.
+
+    MORE TAGS BESIDE `Type.AOE.PointBlank` ARE ALLOWED: they narrow the row to
+    fewer of those skills, which the game reads as written.
+
+    A RANGE IS ALLOWED AND MUST RISE: the game rolls from the first column to
+    the second.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE, as the delayed damage check leaves one:
+    the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat = AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT
+    needed = AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_REQUIRED_TAG
+    top = MAX_AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; "
+                f"any other kind works on a base of nought and strikes NO "
+                f"ally.")
+        tags = [tag.strip() for tag in
+                str(row.get("RequiredTags") or "").split(",") if tag.strip()]
+        if needed not in tags:
+            problems.append(
+                f"{who}: states {stat!r} without the required tag {needed!r}. "
+                f"The game asks for this stat with the skill's own tags at "
+                f"every Strike swing and every Charge, Leap and Recall, so "
+                f"without it the row would strike allies with skills that are "
+                f"not point blank.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= top:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0 and at most {top:g}. Nought or less "
+                    f"strikes no ally, and the game holds the figure to "
+                    f"{top:g}.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10405,6 +10503,13 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AT MOST 100, WITH NO TAGS AND NO ACTION. Ruled 2026-10-15.
     problems.extend(refuse_a_share_of_allies_damage_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
+
+    # AND THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT ALLIES IS FLAT,
+    # ABOVE 0 AND AT MOST 100, REQUIRES Type.AOE.PointBlank, AND HAS NO ACTION.
+    # Ruled 2026-10-15.
+    problems.extend(
+        refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
+            "EnchantmentEffects", effects))
 
     return problems
 
