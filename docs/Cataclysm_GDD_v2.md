@@ -106,7 +106,7 @@ Self-Found and Heretic Solo Self-Found are both real combinations.
 | :-: | :-: | :-: | :-: | :-: |
 | Standard | 5 days | none | shown | — |
 | Hardcore | 10 days | each of the 18 equipped pieces drops with a 10% chance, so 1.8 on average | map overlay only | — |
-| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons, rounded down: 6 where a Surge brings 5. Cities have 2 upgrade slots instead of 3. |
+| Heretic | 15 days | each equipped piece drops with a 20% chance, and at least 2 always drop, so 3.7 on average | hidden | Surges spawn 25% more dungeons, rounded down: 15 where the opening Surge brings 12, and 10 where a later Surge brings 8. Cities have 2 upgrade slots instead of 3. |
 
 **Solo Self-Found. Optional. Combines with any lethality mode.**
 
@@ -330,7 +330,7 @@ This is the loop the run is built around: the threat chosen at run start decides
 
 ### **The Surge**
 
-A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. Before any escalation a Surge brings 5 dungeons and the next comes 90 days after the last; until 2026-10-13 it was 4 dungeons every 120 days. Every measured figure in this document that is dated before 2026-10-13 was taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city nothing, and a surge came every 120 days at the size each passage states. None of them was measured again. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
+A Surge is triggered at run start and recurs after a fixed number of days or when a city falls. The first Surge, at run start, brings 12 dungeons; before any escalation every later Surge brings 8 and the next comes 90 days after the last. From 2026-10-13 to 2026-10-16 every Surge brought 5, and until 2026-10-13 4 every 120 days. Every measured figure in this document that is dated before 2026-10-13 was taken under the old rules: a dungeon that resolved stayed on the map, a Quest dungeon's timer cost its city nothing, and a surge came every 120 days at the size each passage states; and a figure dated before 2026-10-16 was taken with waves of 5 and an ordinary dungeon's hit 1.43 times today's (today's is 0.7 of it). None of them was measured again. During a Surge, the Cataclysm releases a wave of dungeons that assault random player cities. Players must prioritize which dungeons to tackle before they resolve and which cities to sacrifice.
 
   
 
@@ -4140,7 +4140,7 @@ that moved the dungeon **37.6% to 38.7%**, measured over four disjoint blocks of
 1,000 simulated campaigns — 115,064 quest timers — at difficulty tier 1 with no
 empire tree, the triage policy, and static surges of five dungeons every 120
 days. Those are block ranges rather than an error bar: four blocks give a
-spread, and two would give only a difference. The simulation's default is 5 dungeons every 90 days since 2026-10-13; these figures are at 5 every 120 and were not re-measured.
+spread, and two would give only a difference. The simulation's default is an opening wave of 12 and then 8 every 90 days since 2026-10-16 (5 every 90 from 2026-10-13); these figures are at 5 every 120 and were not re-measured.
 
   
 
@@ -4180,6 +4180,10 @@ floor count. An ordinary dungeon's hit scales by the floors it was rolled with
 against a typical dungeon of its kind **on the tier of city that spawned it**;
 floors a city upgrade added or removed are not counted. A dungeon that moves is
 not re-measured: it is as deep as it always was.
+
+  
+
+Its timer follows its depth as an ordinary dungeon's does: a deeper Quest dungeon waits longer between hits.
 
   
 

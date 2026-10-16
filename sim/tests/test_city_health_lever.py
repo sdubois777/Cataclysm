@@ -99,8 +99,11 @@ def until_it_falls(tree: EmpireTree, tier: CityTier = CityTier.SANCTUARY):
     city = next(c for c in sim.empire.cities.values() if c.tier is tier)
     d = sim._make_dungeon(DungeonType.BASIC, city)
 
-    # PINNED TO THE MIDPOINT so the depth scale is exactly 1.0. Otherwise the
-    # count measures which depth the seed happened to roll.
+    # PINNED TO THE WHOLE FLOOR BELOW THE MIDPOINT, so the depth scale is the
+    # same on every run. Otherwise the count measures which depth the seed
+    # happened to roll. On a Sanctuary that is 32 floors against a typical
+    # 32.5, a scale of 32 / 32.5 = 0.9846 and not exactly 1.0, which is what
+    # this comment said until 2026-10-16; the counts below carry that scale.
     lo, hi = cfg.spec(DungeonType.BASIC, tier).floors
     d.floors = (lo + hi) // 2
 
@@ -117,22 +120,49 @@ class TestTheLeverChangesHowLongACityLasts:
     failed until the damage stopped being a fraction of the pool it came out
     of, and they are the reason the fix cannot be mistaken for a no-op."""
 
-    def test_a_city_with_no_tree_falls_in_thirteen(self):
+    def test_a_city_with_no_tree_falls_in_nineteen(self):
         """The control. This number is unchanged by issue #1327, and it is what
-        makes the rows below a comparison rather than a rescale."""
-        assert until_it_falls(EmpireTree(name="none"))[0] == 13
+        makes the rows below a comparison rather than a rescale.
 
-    @pytest.mark.parametrize("mult, expected", [(2.0, 26), (4.0, 51),
-                                                (5.9, 75), (100.0, 1270)])
+        THE ARITHMETIC. A Sanctuary holds 8,000 defence. The ordinary row's hit
+        is 448, scaled by 32 / 32.5 to 441.1 a resolve. Eighteen resolves take
+        7,939.9 and leave 60.1 standing, so the city falls on the nineteenth.
+
+        NAMED THIRTEEN UNTIL 2026-10-16, when every ordinary row's damage went
+        to 0.7 of what it was: the row was 640, 630.2 a resolve, and twelve
+        left 437.8 standing. Renamed with its figure by the ruling of that
+        day, "each figure re-derived from the test's own arithmetic at x0.7,
+        its comment rewritten to match, not pasted", a labelled judgement by
+        the coordinating session under the owner's delegation, 2026-10-16.
+        """
+        assert until_it_falls(EmpireTree(name="none"))[0] == 19
+
+    @pytest.mark.parametrize("mult, expected", [(2.0, 37), (4.0, 73),
+                                                (5.9, 108), (100.0, 1814)])
     def test_raising_city_health_raises_how_long_a_city_lasts(
             self, mult, expected):
-        """PROPORTIONAL, WHICH IS THE WHOLE POINT. A 5.9x Sanctuary takes 75
-        resolves against 13. Before #1327 every one of these was 13."""
+        """PROPORTIONAL, WHICH IS THE WHOLE POINT. A 5.9x Sanctuary takes 108
+        resolves against 19. Before #1327 every one of these was the control's
+        count.
+
+        THE ARITHMETIC: a pool of 8,000 x mult at 441.1 a resolve (448 x 32 /
+        32.5), the city falling on the resolve that takes it to nought or
+        below. 16,000 falls on the 37th (36 take 15,879.9); 32,000 on the 73rd
+        (72 take 31,759.8); 47,200 on the 108th (107 take 47,198.5 and leave
+        1.5); 800,000 on the 1,814th (1,813 take 799,728.2).
+
+        UNTIL 2026-10-16 THESE WERE 26, 51, 75 AND 1,270, at 630.2 a resolve
+        from a row of 640. That day every ordinary row's damage went to 0.7 of
+        what it was, and the ruling was "each figure re-derived from the
+        test's own arithmetic at x0.7, its comment rewritten to match, not
+        pasted", a labelled judgement by the coordinating session under the
+        owner's delegation, 2026-10-16.
+        """
         resolves, pool, _ = until_it_falls(
             EmpireTree(name="t", city_health_mult=mult))
         assert resolves == expected
         assert pool == pytest.approx(8_000 * mult)
-        assert resolves > 13, (
+        assert resolves > 19, (
             "city health bought nothing, so the damage is a fraction of the "
             "pool again and issue #1327 has regressed")
 
@@ -153,10 +183,19 @@ class TestTheTwoLeversAreStillNotOneLever:
 
     def test_for_how_long_a_city_stands_they_are_now_interchangeable(self):
         """SAID PLAINLY BECAUSE IT IS THE UNCOMFORTABLE HALF. Anyone re-reading
-        #1288 should find this rather than discover it."""
+        #1288 should find this rather than discover it.
+
+        THE ARITHMETIC. Halved, 220.6 a resolve (448 x 32 / 32.5 x 0.5)
+        against 8,000; doubled, 441.1 against 16,000. Both are 36.27 resolves'
+        worth, so both fall on the 37th. It was 26 for both until 2026-10-16,
+        from a row of 640; that day the row went to 448, and the ruling was
+        "each figure re-derived from the test's own arithmetic at x0.7, its
+        comment rewritten to match, not pasted", a labelled judgement by the
+        coordinating session under the owner's delegation, 2026-10-16.
+        """
         halved = until_it_falls(EmpireTree(name="d", city_damage_mult=0.5))
         doubled = until_it_falls(EmpireTree(name="h", city_health_mult=2.0))
-        assert halved[0] == doubled[0] == 26
+        assert halved[0] == doubled[0] == 37
 
     def test_but_only_damage_reduction_saves_the_PEOPLE(self):
         """THE SITUATION EACH ONE OWNS. `city_health_mult` scales defence and

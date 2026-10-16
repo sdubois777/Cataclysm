@@ -292,12 +292,24 @@ class TestWhatItDoesToTheEscalationCounter:
 
     def test_under_static_surges_the_counter_changes_nothing(self):
         """**WHY NO FLAG WAS ADDED.** Only STATIC has ever been measured, here
-        or anywhere, and under STATIC the counter is read by neither the gap
-        nor the count. So the choice above cannot move any figure on record.
+        or anywhere, and under STATIC, after the opening wave, the counter is
+        read by neither the gap nor the count. So the choice above cannot move
+        any figure on record.
+
+        AFTER THE OPENING WAVE, SINCE 2026-10-16. The first wave of a run, at
+        index 0, has its own size (`surge_opening_count`), so under STATIC the
+        counter now decides whether a wave is the opening one. An empty-board
+        surge only ever fires after the opening wave, when the counter is
+        already 1 or more, so it still moves nothing. This compares from index
+        1. The ruling of that day: "the STATIC-counter test's statement
+        becomes 'after the opening wave, the counter changes nothing under
+        STATIC'", a labelled judgement by the coordinating session under the
+        owner's delegation, 2026-10-16.
         """
         cfg = quiet()
         assert cfg.surge_mode.value == "static"
         sim = Simulation(cfg, seed=1)
+        sim.surge_index = 1
 
         gap = sim.surge_gap()
         count = sim.surge_count()

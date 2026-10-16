@@ -2690,6 +2690,15 @@ def test_the_count_axis_is_not_silently_capped_at_fourteen(cadence_run):
     Both halves are asserted: that the shipped cap really would flatten the
     axis, so this is a live hazard rather than a historical one, and that
     `base_config` lifts it so the knob is realised.
+
+    `surge_count_for` HOLDS THE OPENING SIZE TO THE KNOB, since 2026-10-16,
+    when `surge_count` began reading `surge_opening_count` at wave index 0.
+    Before that line was added this printed 12 against 10. The ruling of that
+    day: "the helper or the test passes surge_opening_count equal to the
+    count, whichever keeps the script's own figures", a labelled judgement by
+    the coordinating session under the owner's delegation, 2026-10-16. The
+    helper does it, because the script's own table prints the helper's answer
+    and the test only reads it.
     """
     _, ns = cadence_run
     surge_count_for = ns["surge_count_for"]
@@ -2734,11 +2743,18 @@ def test_the_unbound_surge_count_matches_a_real_simulation(cadence_run):
     `AttributeError` or -- worse -- the two answers quietly part. This asks a
     real `Simulation` the same question at every knob on the axis.
     """
+    from dataclasses import replace
+
     from cataclysm_sim.engine import Simulation
 
+    # THE REAL ONE IS GIVEN THE OPENING SIZE `surge_count_for` GIVES ITS
+    # STAND-IN, since 2026-10-16, when the helper began holding
+    # `surge_opening_count` to the knob. Both are asked wave index 0, so this
+    # still compares the same question; see the test above.
     _, ns = cadence_run
     for knob in (4, 5, 10, 14, 20, 30, 40):
-        real = Simulation(ns["base_config"](tier=1, count=knob), seed=0)
+        real = Simulation(replace(ns["base_config"](tier=1, count=knob),
+                                  surge_opening_count=knob), seed=0)
         assert ns["surge_count_for"](1, knob) == real.surge_count(), (
             f"the stand-in and a real Simulation disagree at knob {knob}")
 

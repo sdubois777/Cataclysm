@@ -125,9 +125,18 @@ class TestTheCadence:
     # 4 until its own layer, with the difference recorded in a file of its
     # own. The game's layer moved both constants and deleted that file, as
     # the file said to. `docs/DECISIONS.md`, 2026-10-13.
+    #
+    # `DungeonsPerSurge` IS OUT OF THIS TABLE AGAIN, SINCE 2026-10-16. The
+    # model went to an opening wave of 12 and then 8 a wave that day; the game
+    # keeps 5 a wave and has no opening size until its own layer. The ruling:
+    # "a 'model and not yet in the game' check file, as on 2026-10-13, failing
+    # when the game layer lands", a labelled judgement by the coordinating
+    # session under the owner's delegation, 2026-10-16. Both sides are pinned
+    # in
+    # `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`,
+    # which says what to do when the game's number moves: put the row back.
     NUMBERS = {
         "IntervalDays": "surge_interval_days",
-        "DungeonsPerSurge": "surge_dungeon_count",
         "IntervalDecay": "surge_interval_decay",
         "LeastIntervalDays": "surge_interval_min",
         "CountGrowthPerSurge": "surge_count_growth",
@@ -587,6 +596,14 @@ class TestWhatADungeonIs:
     # THE CATACLYSM HAS ONE ROW. `config.DUNGEON_SPECS` holds it only for the
     # Pillar and `TuningConfig.spec` raises when asked for another, so there are
     # thirteen pairs and not sixteen.
+    #
+    # THE FOUR BASIC ROWS' DAMAGE IS THE GAME'S, SINCE 2026-10-16. That day the
+    # model's went to 0.7 of these (70 and 175 on an Outpost, 189 and 700 on a
+    # Bulwark, 448 and 1,680 on a Sanctuary, 840 and 3,150 on the Pillar) and
+    # the game's did not. The model's are pinned in
+    # `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`
+    # and the model check below skips these eight numbers. When the game takes
+    # the new rows, write them here and take the skip out.
     SPECS = {
         ("Basic", "Outpost"):        (8, 15, 100.0, 250.0),
         ("Basic", "Bulwark"):        (15, 25, 270.0, 1000.0),
@@ -709,6 +726,13 @@ class TestWhatADungeonIs:
             assert spec.floors == (least, most), (
                 f"{kind} on {tier_name}: this test expects {(least, most)} "
                 f"floors, the model has {spec.floors}")
+
+            # THE MODEL'S ORDINARY DAMAGE IS 0.7 OF THE GAME'S SINCE
+            # 2026-10-16 and is checked in
+            # `test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`.
+            # The floors above are still compared here.
+            if kind == "Basic":
+                continue
             assert spec.defense_damage == pytest.approx(defence), (
                 f"{kind} on {tier_name}: the model removes "
                 f"{spec.defense_damage} defence points and this test expects "
@@ -2131,9 +2155,20 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
         together.
         """
         header = read(SURGE_HEADER)
+        # THE GAME HAS NO OPENING SIZE, so its first wave is `DungeonsPerSurge`
+        # like every other, and the model is given that too. Since 2026-10-16
+        # the model's own first wave is `surge_opening_count`, 12, and the
+        # ladders below ask wave index 0. The ruling: "the two hand-worked
+        # checks set the model's surge_opening_count equal to its
+        # surge_dungeon_count so they keep comparing the Unreal test's
+        # hand-worked ladder (they move with the game layer)", a labelled
+        # judgement by the coordinating session under the owner's
+        # delegation, 2026-10-16.
+        per_surge = int(number(header, "DungeonsPerSurge"))
         return dict(
             surge_interval_days=number(header, "IntervalDays"),
-            surge_dungeon_count=int(number(header, "DungeonsPerSurge")))
+            surge_dungeon_count=per_surge,
+            surge_opening_count=per_surge)
 
     def gap_at(self, mode, index: float) -> float:
         from cataclysm_sim.config import SurgeMode, TuningConfig

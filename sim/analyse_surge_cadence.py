@@ -393,7 +393,13 @@ def surge_count_for(tier: int, count: int, cap: int | None = None) -> int:
     table. `sim/tests/test_analysis_scripts.py` checks this against a real
     `Simulation` at every knob, so the stand-in cannot quietly stop matching.
     """
-    cfg = base_config(tier=tier, count=count)
+    # THE OPENING SIZE IS THE KNOB TOO. Since 2026-10-16 `surge_count` reads
+    # `surge_opening_count` at wave index 0, which is the index asked here, so
+    # without this line every knob would report the shipped opening wave of
+    # 12. This table is about the knob, and every figure it printed before
+    # that day was `surge_dungeon_count`'s, so the two are held equal.
+    cfg = replace(base_config(tier=tier, count=count),
+                  surge_opening_count=count)
     if cap is not None:
         cfg = replace(cfg, surge_count_max=cap)
     return Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=0))

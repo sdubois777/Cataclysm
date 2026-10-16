@@ -146,8 +146,17 @@ class TestTheMultiplierReachesTheSurge:
 
     def test_the_default_four_becomes_five(self):
         """4 x 1.25 = 5 exactly, so this case has no rounding in it and states
-        the rule plainly."""
+        the rule plainly.
+
+        THE OPENING SIZE IS SET TO 4 AS WELL. `surge_count` here asks wave
+        index 0, which reads `surge_opening_count` since 2026-10-16. By
+        the ruling of 2026-10-16, "each sets surge_opening_count to its
+        surge_dungeon_count value so it keeps testing what it names", a
+        labelled judgement by the coordinating session under the owner's
+        delegation, 2026-10-16.
+        """
         assert self.surge_count(surge_dungeon_count=4,
+                                surge_opening_count=4,
                                 surge_dungeon_multiplier=1.25) == 5
 
     def test_it_multiplies_after_the_cap_not_before(self):
