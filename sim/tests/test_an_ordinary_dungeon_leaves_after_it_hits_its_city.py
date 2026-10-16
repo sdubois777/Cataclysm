@@ -332,6 +332,10 @@ class TestTheKindsThatDoNotChange:
 class TestTheHitThatFellsTheCity:
     @pytest.mark.parametrize("persists", [LEAVES, STAYS])
     def test_the_fall_absorbs_the_dungeon_under_either_setting(self, persists):
+        """Every ORDINARY dungeon on the fallen city is absorbed; the Quest
+        dungeon on it moves to another city, since 2026-10-16. THE OWNER, 2026-10-16: "Quest dungeons don't go away when a city
+        falls. They just move to an adjacent city."
+        """
         sim = simulation(persists, surge_on_city_fall=False)
         city = an_outpost(sim)
         d = a_dungeon(sim, DungeonType.BASIC, city)
@@ -344,8 +348,13 @@ class TestTheHitThatFellsTheCity:
 
         assert city.fallen
         assert d.did not in sim.dungeons
-        assert other.did not in sim.dungeons and quest.did not in sim.dungeons, (
-            "a fallen city absorbs every dungeon standing on it")
+        assert other.did not in sim.dungeons, (
+            "a fallen city absorbs every ordinary dungeon standing on it")
+        assert quest.did in sim.dungeons, (
+            "the Quest dungeon on the fallen city left the map. Since "
+            "2026-10-16 a fall moves a Quest dungeon rather than absorbing it")
+        assert quest.city_id != city.cid, (
+            "the Quest dungeon is still on the fallen city")
         assert sim.resolved == 1
         standing = [x for x in sim.dungeons.values() if x.city_id == city.cid]
         if city.erased:

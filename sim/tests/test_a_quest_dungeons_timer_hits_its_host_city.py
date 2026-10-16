@@ -21,8 +21,9 @@ THE READINGS THIS FILE HOLDS, each a labelled judgement recorded in
   * it is NOT scaled by the Quest dungeon's depth
     (`quest_hit_scales_with_depth` is the other reading);
   * the tree's damage reduction applies;
-  * a hit that fells the city has the fall absorb the Quest dungeon, unless the
-    player is inside it;
+  * a hit that fells the city moves the Quest dungeon to a neighbouring exposed
+    city with its timer full, since 2026-10-16 (the owner: "Quest dungeons
+    don't go away when a city falls. They just move to an adjacent city.");
   * the hit is counted in `quest_hits` and not in `resolved`.
 
 THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
@@ -344,16 +345,31 @@ class TestTheHitThatFellsTheCity:
         sim._resolve(d)
         return sim, city, d, other, full, stream
 
-    def test_the_city_falls_and_the_fall_absorbs_the_quest_dungeon(self):
-        sim, city, d, other, _, stream = self.nearly_fallen(HITS)
+    def test_the_city_falls_and_the_quest_dungeon_moves_to_a_neighbour(self):
+        """THE OWNER, 2026-10-16: "Quest dungeons don't go away when a city
+        falls. They just move to an adjacent city."
+
+        The fall absorbs the ordinary dungeon and moves the Quest one to a
+        neighbouring exposed city, where its timer is full because it has
+        just hit. Until that day this test asserted the fall absorbed it.
+        """
+        sim, city, d, other, full, stream = self.nearly_fallen(HITS)
 
         assert city.fallen
-        assert d.did not in sim.dungeons, (
-            "a Quest dungeon's hit felled its city and the dungeon is still "
-            "on the map. A fall absorbs every dungeon on the city")
+        assert d.did in sim.dungeons, (
+            "a Quest dungeon's hit felled its city and the dungeon left the "
+            "map. Since 2026-10-16 a fall moves a Quest dungeon rather than "
+            "absorbing it")
         assert other.did not in sim.dungeons
-        assert d.city_id == city.cid, "an absorbed dungeon was moved"
-        assert d.resolve_in == 0.0, "an absorbed dungeon had its timer filled"
+        moved_to = sim.empire.cities[d.city_id]
+        assert d.city_id != city.cid, "the Quest dungeon stayed on the fallen city"
+        assert moved_to in sim.empire.adjacent_exposed_cities(city), (
+            "the Quest dungeon moved to a city that is not an exposed "
+            "neighbour of the one that fell")
+        assert not moved_to.fallen
+        assert d.resolve_in == d.resolve_max == full, (
+            "a Quest dungeon whose hit felled its city moved without its "
+            "timer being filled")
         standing = [x for x in sim.dungeons.values()
                     if x.city_id == city.cid]
         assert [x.dtype for x in standing] == [DungeonType.FALLEN_CITY]
@@ -379,13 +395,18 @@ class TestTheHitThatFellsTheCity:
 
 class TestWhatDoesNotHit:
     def test_a_quest_dungeon_on_a_city_already_fallen_hits_nothing(self):
+        """THE DUNGEON IS PLACED AFTER THE FALL, since 2026-10-16. THE OWNER, 2026-10-16: "Quest dungeons don't go away when a city
+        falls. They just move to an adjacent city."
+        A dungeon standing on the city when it fell now moves to a standing
+        neighbour and would hit that, so it is put on the fallen city
+        afterwards; the subject, a timer on a fallen city, is unchanged.
+        """
         sim = simulation(HITS)
         city = a_city(sim)
-        d = a_quest_dungeon(sim, city)
-        sim.current = d
         sim._fall(city)
-        sim.current = None
+        d = a_quest_dungeon(sim, city)
         assert d.did in sim.dungeons and city.fallen
+        assert d.city_id == city.cid
         before = health_of(sim)
 
         sim._resolve(d)

@@ -3320,13 +3320,36 @@ def test_the_arrival_rate_is_the_engines_own_arithmetic(throughput_run):
     above 1.0 and that sentence is exactly the kind that goes stale silently --
     it is the failure this whole file was built for.
     """
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from cataclysm_sim.config import TuningConfig
+    from cataclysm_sim.engine import Simulation
+
     _, ns = throughput_run
     rate = {t: ns["arrival_rate"](ns["base_config"](tier=t))
             for t in (1, 2, 4, 8)}
 
-    assert rate[1] < 1.0, (
-        f"tier 1 now lands {rate[1]:.2f} walk-days a day, so the board cannot "
-        "be kept clear even there and this script's whole framing is wrong.")
+    # TIER 1 AT THE SHIPPED CADENCE, since 2026-10-16: the later waves, 8
+    # every 90 days, through the script's own functions. Ruled that day: "the
+    # test's figure is computed from the shipped cadence". A later wave and
+    # not the opening, so `surge_count` is asked at wave index 1; the
+    # opening's 12 would raise it further. It is above 1.0, so the board
+    # cannot be kept clear at tier 1 either.
+    shipped = TuningConfig()
+    cfg = replace(ns["base_config"](tier=1),
+                  surge_interval_days=shipped.surge_interval_days,
+                  surge_dungeon_count=shipped.surge_dungeon_count)
+    later = Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=1))
+    per_wave = max(1, round(later * ns["wave_multiplier"](cfg)))
+    tier_1 = (per_wave * ns["walk_days_per_dungeon"](cfg)
+              / cfg.surge_interval_days)
+    print(f"tier 1 at the shipped cadence lands {tier_1:.2f} walk-days a day")
+    assert tier_1 > 1.0, (
+        f"tier 1 at the shipped cadence lands {tier_1:.2f} walk-days a day. "
+        "Under 1.0 means the waves shrank: the owner asked on 2026-10-16 for "
+        "surges to summon a lot more dungeons, and the board then could not "
+        "be kept clear at tier 1.")
     assert rate[4] > 1.0, (
         f"tier 4 now lands {rate[4]:.2f} walk-days a day. Below 1.0 the "
         "uninvested player can keep the board clear and issue #1392's finding "
