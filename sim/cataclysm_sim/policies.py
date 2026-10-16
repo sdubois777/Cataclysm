@@ -42,6 +42,31 @@ TIER_VALUE = {
 }
 
 
+def _quest_timer_hits(sim, d) -> bool:
+    """Whether this Quest dungeon's timer running out will hit its host.
+
+    Since 2026-10-13 it does, through `Simulation._quest_hit`, unless
+    `quest_timer_hits_city` is off or the host has fallen. Until 2026-10-16 no
+    policy asked: `Dungeon.resolves` answers False for a Quest dungeon, so the
+    timer was invisible to every list built from it.
+    """
+    if d.dtype is not DungeonType.QUEST or not sim.cfg.quest_timer_hits_city:
+        return False
+    return not sim.empire.cities[d.city_id].fallen
+
+
+def _quest_hit_fells(sim, d, city) -> bool:
+    """Whether the next hit of this Quest dungeon's timer would fell its host.
+
+    The hit is the ordinary row of the host's tier, as `_quest_hit` takes it.
+    NEITHER THE TREE'S REDUCTION NOR A DEPTH SCALE IS APPLIED, which is what
+    the ordinary branch of each policy does with its own guess.
+    """
+    if not _quest_timer_hits(sim, d):
+        return False
+    return sim.cfg.spec(DungeonType.BASIC, city.tier).defense_damage >= city.defense
+
+
 def _safe(sim, dungeons):
     """Dungeons the player can attempt without an unacceptable death risk."""
     tol = sim.cfg.death_risk_tolerance
@@ -420,7 +445,8 @@ def triage(sim, dungeons):
         # Comfortable empire and materials to burn -> bank power now, because
         # the endgame dungeon needs far more than looting alone will supply.
         if danger == 0.0 and sim.materials >= cfg.craft_material_cost * 1.5:
-            hot = [d for d in safe if d.resolves and d.resolve_in <= cfg.craft_days]
+            hot = [d for d in safe
+                   if (d.resolves or _quest_timer_hits(sim, d)) and d.resolve_in <= cfg.craft_days]
             if not hot:
                 return CRAFT
 
@@ -444,6 +470,11 @@ def triage(sim, dungeons):
             # rather than moved in the same change that moved the rule.
             remaining = max(1, cfg.quest_objectives_required - sim.objectives)
             value = 14.0 * (1.0 - 0.6 * danger) * (1.0 + 1.0 / remaining)
+            # ITS TIMER HITS ITS HOST, since 2026-10-13, and this policy saw
+            # it from 2026-10-16: a hit that would fell the host weighs what a
+            # fatal ordinary hit weighs here.
+            if _quest_hit_fells(sim, d, city):
+                value *= 5.0
             score = value * siege / max(1, d.run_days)
             if score > best_score:
                 best, best_score = d, score
@@ -514,7 +545,8 @@ def lane_aware(sim, dungeons):
             return CRAFT
         # Forge only while no lane is genuinely threatened.
         if d2d >= 3 and sim.materials >= cfg.craft_material_cost * 1.5:
-            hot = [d for d in safe if d.resolves and d.resolve_in <= cfg.craft_days]
+            hot = [d for d in safe
+                   if (d.resolves or _quest_timer_hits(sim, d)) and d.resolve_in <= cfg.craft_days]
             if not hot:
                 return CRAFT
 
@@ -539,6 +571,11 @@ def lane_aware(sim, dungeons):
             # rather than moved in the same change that moved the rule.
             remaining = max(1, cfg.quest_objectives_required - sim.objectives)
             value = 14.0 * (1.0 - 0.7 * peril) * (1.0 + 1.0 / remaining)
+            # ITS TIMER HITS ITS HOST, since 2026-10-13, and this policy saw
+            # it from 2026-10-16: a hit that would fell the host weighs what a
+            # fatal ordinary hit weighs here.
+            if _quest_hit_fells(sim, d, city):
+                value *= 4.0
             score = value * siege / max(1, d.run_days)
             if score > best_score:
                 best, best_score = d, score
