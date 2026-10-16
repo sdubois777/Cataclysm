@@ -983,6 +983,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// NOR A WEARER'S SHARE OF WHAT A BLOW OF THIS CHARACTER'S DID TO THE WEARER'S ALLY. Ruled 2026-10-15, for "You take
+	// 5%-15% damage done to nearby allies": the share is not a blow this character struck, so it raises none of the
+	// three events below. Its kill is still this character's kill.
+	if (Notice.bShareOfDamageDoneToAnAlly)
+	{
+		return;
+	}
+
 	UCataclysmAbilitySystemComponent* Acting =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 	if (!Acting)
