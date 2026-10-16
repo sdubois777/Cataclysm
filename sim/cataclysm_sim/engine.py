@@ -942,8 +942,9 @@ class Simulation:
         `cfg.hit_scales_with_natural_floors` False is the model as it was.
         With no tree the two are the same number and nothing changes.
 
-        THE GAME: `FCataclysmDungeon::BiteScale` divides `Floors`. It has no
-        empire tree; it has two city upgrades that move `Floors`.
+        THE GAME: `FCataclysmDungeon::BiteScale` divides `Floors` less
+        `UpgradeFloors`. It has no empire tree; it has two city upgrades that
+        move `Floors`, and `UpgradeFloors` holds what they moved.
         `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`.
         """
         cfg = self.cfg

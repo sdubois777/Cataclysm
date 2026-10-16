@@ -3364,4 +3364,130 @@ bool FCataclysmSurgeSiegeRelocationTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Investment does not change the size of a dungeon's hit
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeFloorUpgradeHitTest,
+	"Cataclysm.Surge.AFloorUpgradeDoesNotChangeWhatADungeonTakes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeFloorUpgradeHitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	// THE RULE. A dungeon's hit is sized by the floors it was rolled with. The
+	// two city upgrades that add and remove floors move the depth, the walk
+	// and the resolve timer, and neither changes what the dungeon takes.
+	// Rulings of 2026-10-13, `docs/DECISIONS.md`.
+	//
+	// HEADLESS: a scheduler and a map, no world and no actor.
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const TArray<int32> Rim =
+		CitiesAtTier(*Map, ECataclysmCityTier::Outpost, 5);
+
+	if (!TestEqual(TEXT("set-up: five Outposts were found to compare"),
+				   Rim.Num(), 5))
+	{
+		return false;
+	}
+
+	// THE FOUR COMBINATIONS, AND A FIFTH THAT THE CLAMP AT ONE FLOOR STOPS
+	// SHORT: none, deeper by five, shallower by five, both (five more and two
+	// fewer), and five hundred fewer.
+	Give(*Map, Rim[1], ECataclysmCityUpgradeEffect::DungeonFloorsMore, 5.0f);
+	Give(*Map, Rim[2], ECataclysmCityUpgradeEffect::DungeonFloorsFewer, 5.0f);
+	Give(*Map, Rim[3], ECataclysmCityUpgradeEffect::DungeonFloorsMore, 5.0f);
+	Give(*Map, Rim[3], ECataclysmCityUpgradeEffect::DungeonFloorsFewer, 2.0f);
+	Give(*Map, Rim[4], ECataclysmCityUpgradeEffect::DungeonFloorsFewer, 500.0f);
+
+	// FIVE STREAMS AT ONE SEED, so every dungeon is rolled from the same draws
+	// and the only difference between them is the upgrade.
+	FRandomStream A(9001), B(9001), C(9001), D(9001), E(9001);
+
+	const FCataclysmDungeon Plain =
+		Scheduler->MakeDungeon(0, *Map->Find(Rim[0]), 1, A);
+	const FCataclysmDungeon Deeper =
+		Scheduler->MakeDungeon(1, *Map->Find(Rim[1]), 1, B);
+	const FCataclysmDungeon Shallower =
+		Scheduler->MakeDungeon(2, *Map->Find(Rim[2]), 1, C);
+	const FCataclysmDungeon Both =
+		Scheduler->MakeDungeon(3, *Map->Find(Rim[3]), 1, D);
+	const FCataclysmDungeon Floored =
+		Scheduler->MakeDungeon(4, *Map->Find(Rim[4]), 1, E);
+
+	// SET-UP. Near one floor, taking five off would be clamped and the
+	// "shallower" case would be the clamped case twice.
+	if (!TestTrue(TEXT("set-up: the plain dungeon is deep enough to shorten"),
+				  Plain.Floors > 6))
+	{
+		return false;
+	}
+
+	// SET-UP: THE PLAIN DUNGEON HAS A HIT TO COMPARE WITH. Its scale is its
+	// rolled floors over the midpoint of its own row, read from the table. A
+	// scale of nought on all five would pass every equality below.
+	const FCataclysmDungeonSpec Row =
+		UCataclysmSurgeScheduler::SpecFor(Plain.Type, Plain.CityTier);
+	const float Midpoint = (Row.LeastFloors + Row.MostFloors) / 2.0f;
+
+	if (!TestTrue(TEXT("set-up: the plain dungeon's row has a floor range and "
+					   "takes defence"),
+				  Midpoint > 0.0f && Plain.DefenceDamage > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the plain dungeon's scale is its floors over its row's "
+				   "midpoint"),
+			  Plain.BiteScale(), Plain.Floors / Midpoint, 0.0001f);
+	TestEqual(TEXT("and no upgrade moved its floors"), Plain.UpgradeFloors, 0);
+
+	// THE CONTROL: THE UPGRADES DID MOVE THE DEPTH, THE WALK AND THE TIMER. An
+	// upgrade that did nothing at all would leave the hit alone too.
+	TestEqual(TEXT("CONTROL: the deeper dungeon has five more floors"),
+			  Deeper.Floors, Plain.Floors + 5);
+	TestEqual(TEXT("CONTROL: the shallower one has five fewer"),
+			  Shallower.Floors, Plain.Floors - 5);
+	TestEqual(TEXT("CONTROL: the one holding both has three more"),
+			  Both.Floors, Plain.Floors + 3);
+	TestEqual(TEXT("CONTROL: five hundred fewer leaves one floor"),
+			  Floored.Floors, 1);
+
+	TestTrue(TEXT("CONTROL: the deeper dungeon takes longer to walk"),
+			 Deeper.WalkDays > Plain.WalkDays);
+	TestTrue(TEXT("CONTROL: the shallower one takes less"),
+			 Shallower.WalkDays < Plain.WalkDays);
+	TestTrue(TEXT("CONTROL: the deeper dungeon's timer is longer"),
+			 Deeper.ResolveDays > Plain.ResolveDays);
+	TestTrue(TEXT("CONTROL: the shallower one's is shorter"),
+			 Shallower.ResolveDays < Plain.ResolveDays);
+
+	// WHAT EACH DUNGEON STORES: the floors the upgrades moved, after the clamp.
+	TestEqual(TEXT("the deeper dungeon stores five floors added"),
+			  Deeper.UpgradeFloors, 5);
+	TestEqual(TEXT("the shallower one stores five removed"),
+			  Shallower.UpgradeFloors, -5);
+	TestEqual(TEXT("the one holding both stores three added"),
+			  Both.UpgradeFloors, 3);
+	TestEqual(TEXT("the clamped one stores what was removed and not five "
+				   "hundred"),
+			  Floored.UpgradeFloors, 1 - Plain.Floors);
+
+	// AND THE HIT IS THE PLAIN DUNGEON'S, FOR EVERY ONE OF THEM.
+	TestEqual(TEXT("the deeper dungeon hits at the plain one's scale"),
+			  Deeper.BiteScale(), Plain.BiteScale(), 0.0001f);
+	TestEqual(TEXT("the shallower one hits at the plain one's scale"),
+			  Shallower.BiteScale(), Plain.BiteScale(), 0.0001f);
+	TestEqual(TEXT("the one holding both hits at the plain one's scale"),
+			  Both.BiteScale(), Plain.BiteScale(), 0.0001f);
+	TestEqual(TEXT("the one-floor dungeon hits at the plain one's scale"),
+			  Floored.BiteScale(), Plain.BiteScale(), 0.0001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

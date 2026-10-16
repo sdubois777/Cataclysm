@@ -107,11 +107,18 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	 * SLOWER TO WALK, WORTH MORE, AND SLOWER TO BITE, because the resolve timer
 	 * is derived from the floor count. That is the trade rather than a side
 	 * effect.
+	 *
+	 * IT DOES NOT MAKE THE DUNGEON HIT HARDER. `FCataclysmDungeon::BiteScale`
+	 * reads the floors the dungeon was rolled with, and
+	 * `FCataclysmDungeon::UpgradeFloors` holds what this upgrade added. Until
+	 * 2026-10-13 a dungeon made deeper here also took more from the city.
 	 */
 	DungeonFloorsMore			= 13,
 
 	/** Flat. Dungeons here have that many fewer floors, minimum one. Quicker to
-	 *  walk, worth less, and bites sooner, for the same reason. */
+	 *  walk, worth less, and bites sooner, for the same reason. IT DOES NOT
+	 *  MAKE THE DUNGEON HIT LESS: the hit is sized by the floors the dungeon
+	 *  was rolled with. Until 2026-10-13 it did. */
 	DungeonFloorsFewer			= 14,
 
 	// ----------------------------------------------------------------------

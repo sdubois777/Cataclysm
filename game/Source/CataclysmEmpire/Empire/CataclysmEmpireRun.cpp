@@ -473,8 +473,10 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 		return;
 	}
 
-	// A DEEPER DUNGEON HITS HARDER, in proportion to how deep it is against a
-	// typical one of its kind on that tier of city.
+	// A DUNGEON ROLLED DEEPER HITS HARDER, in proportion to how deep it was
+	// rolled against a typical one of its kind on that tier of city. Floors a
+	// city upgrade added or removed are not counted: `BiteScale` reads `Floors`
+	// less `UpgradeFloors`.
 	//
 	// POINTS AND NOT A SHARE OF THE CITY, WHICH IS ISSUE #1331. `Map->Damage`
 	// and not `Map->Bite`: the city's own maximum is deliberately not a factor
@@ -644,7 +646,8 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 	// `CityTier` IS NOT "THE HOST'S TIER". Its own comment says what it is --
 	// "that city's tier when the dungeon spawned, which set its depth" -- and
 	// `BiteScale` is the only thing in the game that reads it: it divides
-	// `Floors` by the midpoint of `SpecFor(Type, CityTier)`. Both halves of
+	// the floors the dungeon was rolled with (`Floors` less `UpgradeFloors`)
+	// by the midpoint of `SpecFor(Type, CityTier)`. Both halves of
 	// that division have to come from the SAME specification row. Moving the
 	// tier while leaving `Floors` alone made them come from different rows, so
 	// a Quest dungeon that drifted inward onto a bigger city read as shallower

@@ -362,7 +362,10 @@ by `git add` with no error and no warning. Guarded by
   **Depth and reward are the same axis; depth and time are not, once a player has
   invested.** A floor costs one day to begin with, so the two floor upgrades move
   the resolve timer with the floor count — a deeper dungeon is slower to walk,
-  worth more, and slower to bite. The upgrade that lowers the days a dungeon takes
+  worth more, and slower to bite. Neither changes what the dungeon takes from
+  its city: `FCataclysmDungeon::BiteScale` sizes the hit by the floors the
+  dungeon was rolled with, and `UpgradeFloors` holds what the upgrades moved.
+  The upgrade that lowers the days a dungeon takes
   to walk moves **only** that: `FCataclysmDungeon::WalkDays` is separate from
   `Floors`, so a fifty floor dungeon can be made to cost two days while staying
   fifty floors deep, worth what that is worth, and biting on the same schedule.

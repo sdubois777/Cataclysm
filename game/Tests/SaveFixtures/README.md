@@ -241,6 +241,22 @@ both to add a field the record had gained:
   covered by `Cataclysm.SaveRecords.AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`,
   which takes this file and removes the two lines.
 
+`Run_v1.json` was edited a fourteenth time on 2026-10-15:
+
+- `UpgradeFloors` on a dungeon, because a dungeon's hit on its city is now sized
+  by the floors it was rolled with, and the record keeps how many of its floors a
+  city upgrade added. `docs/DECISIONS.md` has the entry, "In the game a
+  dungeon's hit is sized by the floors it was rolled with; the two city upgrades
+  that move floors no longer change it".
+
+  **It holds 0, the field's default**, unlike the fields above, by the
+  coordinating session's ruling of 2026-10-15: 0 is a dungeon no upgrade
+  touched, so no other test that loads this file changes meaning. So this file
+  does not show that a non-zero value survives a round trip, and **no test
+  does**: `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`
+  compares the field on a live dungeon no upgrade touched, so it compares 0
+  with 0.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 
