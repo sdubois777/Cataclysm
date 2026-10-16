@@ -731,6 +731,8 @@ void UCataclysmSkillTemplate::EndAbility(
 	bFreeRepeatHasOrigin = false;
 	// AND THE ACTOR IT WAS CAST FROM, ruled 2026-10-15, for the same reason.
 	FreeRepeatCastBy.Reset();
+	// AND THE ENEMY A CLICK SWUNG THIS USE AT, ruled 2026-10-16 (P7-b): it is one use's aim.
+	ClickedTarget.Reset();
 }
 
 bool UCataclysmSkillTemplate::CanActivateAbility(
@@ -2113,6 +2115,13 @@ FVector UCataclysmSkillTemplate::AimPoint() const
 	if (bFreeRepeat)
 	{
 		return FreeRepeatAim;
+	}
+
+	// AND A CLICK ATTACK IS AIMED AT THE ENEMY CLICKED, not at the cursor. Ruled 2026-10-16 (P7-b). Only the basic
+	// attack's swing at a chosen enemy sets it; see `ClickedTarget`.
+	if (const AActor* Clicked = ClickedTarget.Get())
+	{
+		return Clicked->GetActorLocation();
 	}
 
 	const AActor* Self = Avatar();

@@ -2,6 +2,229 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-16 — A ranged weapon's basic attack reaches its range and not its bolt's width, and a click attack on an enemy aims at that enemy and not at the cursor
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.h` and `.cpp` (`ReachCmOf` answers a Projectile
+basic's `ScaledRangeCm`; `Swing` takes the enemy a click names and writes it on the granted instance);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (`ClickedTarget`, answered by `AimPoint` and
+cleared in `EndAbility`); `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` (`TrySwingAt` passes its target
+to `Swing`); `game/Source/Cataclysm/Tests/CataclysmBasicReachTests.cpp` (new, three tests). Faults P7 and P7-b of the
+skill gadgets stack 2 reconnaissance.
+
+### SAID FIRST
+
+What a player would notice:
+
+- **A WAND, CROSSBOW, STAFF OR TWO-HANDED CROSSBOW NOW FIRES FROM ITS RANGE.** A click on an enemy within 8.4 m (Wand),
+  10 m (Crossbow), 7.2 m (Staff) or 12 m (Two-Handed Crossbow) fires from where the player stands; an enemy further
+  away is walked toward until it is within that range, and then fired at. Until this change the reach was the bolt's
+  width, 40 to 90 cm, measured between centres; the player's capsule is 42 cm and an ordinary enemy's 48 cm, so a Wand
+  or Crossbow click walked up to the enemy and never fired, and a Staff or Two-Handed Crossbow fired only at contact.
+- **THE WALK STOPS WHERE THE BOLT REACHES.** The reach is the figure the shot is clamped to, `ScaledRangeCm`, which
+  carries the `skill_range` increases asked with the basic attack's own tags, `Slot.Basic` and its element. The one
+  shipped `skill_range` row, "Your ranged skills have 20%-40% increased range", requires `Type.Ranged`, which the basic
+  attack does not carry, so on shipped data it does not lengthen the reach or the shot.
+- **A HELD "ATTACK RANGE" BUFF DOES NOT LENGTHEN A RANGED BASIC (P7-a).** The Whip's Coil of Embers, "your attack range is
+  increased by 30%", still lengthens a Strike basic's reach as before, and does not lengthen a Projectile basic's,
+  because the shot does not read it.
+- **A CLICK ATTACK ON AN ENEMY AIMS AT THAT ENEMY (P7-b).** Every swing the controller starts at a clicked enemy, the
+  first on the press and each one while the button is held, is aimed at the enemy's place and not at the cursor. A
+  ranged bolt goes to the enemy even when the cursor has left it; **A MELEE BASIC ATTACK TURNS TO THE ENEMY CLICKED TOO**,
+  since it is the same swing: its cone is aimed at the enemy. The aim is read when the use is announced and when it
+  turns, and a bolt's destination is fixed then, as before.
+- **NOTHING ELSE AIMS DIFFERENTLY.** A skill pressed on a key, Follow Through's repeat, a gadget's cast and a swing
+  started with no enemy named all aim as they did.
+- **STILL BETWEEN CENTRES (P7-c).** Reach is measured between the two actors' origins, unchanged; at 7 m to 12 m the
+  48 cm of an enemy's capsule does not matter.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 38.
+
+**FOR LATER STACKS: A basic-attack swing waits on the project's own mannequin clip in every worktree, not only where
+the Paragon art exists.** The enchantment session's window measured it on the first branch of this layer,
+`fix/basic-reach-1` at `a928ddc4a`: its aim test passed with a skipped half, "the wand's swing waits for its animation",
+logged after "Waiting for skinned assets to be ready 0/1 (SKM_Manny_Simple)", so where the shot landed was never
+checked. The coordinating session ruled the correction this entry carries, on `fix/basic-reach-2`.
+
+**THE ROUTE USED: THE EXISTING SEAM, `CataclysmTestWorld::RunClock`.** It moves the world's clock and fires every timer
+due, and the wait for a swing to connect is a timer (`UCataclysmSkillTemplate::WhenTheSwingConnects`). The skill
+template tests already land a waiting blow with it:
+`Cataclysm.SkillStats.ACastDelayRowHoldsBackATaggedStrikesBlowAndNoOtherAndItsCostIsPaidAtThePress`
+(`CataclysmSkillTemplateTests.cpp` 27972-28003) runs the clock and asserts `IsWaitingForTheSwingToConnect` before and
+after. So no new seam was added: the tests here
+move the clock a tenth of a second at a time until the swing is no longer waiting, for at most five seconds, and assert
+that it connected as a set-up. No test in `Cataclysm.BasicReach.` reports a skipped half; the branches that did are
+gone. The option not taken: a new seam reading `AimPoint` off the granted instance, which would show where a use aims
+and not what it struck.
+
+**A CORRECTION TO THE ENTRY BELOW (P8, ruled dropped).** The skill gadgets stack 2 entry says rows "on `attack_speed`
+scoped to `Slot.Basic` reach nothing, because `SecondsBetweenSwingsFor` asks with no tags (P8)". That is not a fault on
+shipped data. An enchantment's own Tags column never becomes Required Tags: a modifier's `RequiredTags` is parsed from
+the effect row's `RequiredTags` cell alone (`CataclysmItem.cpp` 949-958). Every shipped `attack_speed` row has empty
+Required Tags: five Enchantment Effects rows (`EnchantmentEffects.csv` 29, 50, 63, 150 and 151, the last "Gain 5-10%
+attack speed on basic attack for 4 s") and six Passive Effects rows (`PassiveEffects.csv` 70, 79, 137, 154, 159 and
+162). A merged test asserts the empty tags on purpose:
+`Cataclysm.Enchantments.AWindowRowCarriesItsOwnEventAndItsOwnSecondsAndNoTag` (`CataclysmEnchantmentEffectTests.cpp`
+2144-2240; the comment at 2161-2166), whose comment says why: "THE REQUIRED TAGS MUST BE EMPTY, AND THAT IS AN ASSERTION RATHER THAN AN OMISSION.
+Attack speed is asked for in CataclysmBasicAttack.cpp with an empty tag container". So the "on basic attack" row reaches
+the swing today. What is left is latent: a row written later requiring `Slot.Basic` would reach nothing. The stack 2
+entry is not edited; this entry carries the correction.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner said nothing on this layer. The rulings R1 to R5 are the coordinating session's of 2026-10-16, given in brief
+38. R4's words, the coordinating session's: "A CLICK ATTACK ON AN ENEMY AIMS AT THAT ENEMY, NOT AT THE CURSOR", "the
+genre's standard and what the player asked for by clicking it". They are recorded as the ruling's words and not as a
+sourced claim.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 (P7) | A Projectile basic's reach is `ScaledRangeCm()`; a Strike keeps today's expression; every caller reads it. | `UCataclysmBasicAttack::ReachCmOf`, `CataclysmBasicAttack.cpp` 172-175. Its callers, unchanged: `ACataclysmPlayerController::TrySwingAt` and `UpdatePendingAttack` (`CataclysmPlayerController.cpp` 1616 and 1680), and Follow Through's repeat for a basic attack (`CataclysmFollowThrough.cpp` 131-133), which a ranged basic never reaches, since only an own melee kill starts one. |
+| R2 (P7-a) | The coil's range increase does not lengthen a ranged reach. | The same branch returns before `HeldRangeIncreasePercent` is read. `ScaledRangeCm` (`CataclysmSkillTemplate.cpp` 2999) carries `skill_range` asked with the basic's tags, and nothing else. |
+| R3 (P7-c) | Centres, unchanged. | `UCataclysmBasicAttack::TargetIsInReach`, unchanged. |
+| R4 (P7-b) | A click attack on an enemy aims at that enemy. | `UCataclysmSkillTemplate::ClickedTarget`, `CataclysmSkillTemplate.h` 84; answered by `AimPoint`, `CataclysmSkillTemplate.cpp` 2122, after a free start's aim; cleared in `EndAbility`, 735. Written by `UCataclysmBasicAttack::Swing`, `CataclysmBasicAttack.cpp` 247, cleared there on a refused activation, 258; passed by `TrySwingAt`, `CataclysmPlayerController.cpp` 1639. |
+| R5 (P8) | Dropped; the stack 2 sentence corrected here. | Nothing built: SAID FIRST carries the correction. |
+
+**R4 WAS BUILT IN THIS LAYER BECAUSE IT IS A SMALL CHANGE IN THE SAME FUNCTION PATH.** The swing already knows its target
+(`TrySwingAt` has it), and every shape reads its aim through `AimPoint`, which already answers Follow Through's
+`FreeRepeatAim` the same way. Nothing new is carried through the ability system: no target data, no event, no change
+to how any skill aims unless `Swing` was handed an enemy.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE CLICK'S AIM REACHES EVERY BASIC ATTACK, A STRIKE'S AS WELL AS A BOLT'S.** The ruling names "a click attack on an
+  enemy" and no shape. The option not taken: the Projectile basic only, which would leave a melee swing turning to a
+  stale cursor while the bolt beside it did not.
+- **THE ENEMY'S PLACE IS READ WHEN THE AIM IS ASKED, NOT KEPT FROM THE CLICK.** A bolt's destination is fixed when its
+  use starts, so for a bolt the two are the same; a strike that reads its direction after its wind-up reads where the
+  enemy now stands. An enemy no longer an actor falls back to the cursor. The option not taken: a point stored at the
+  swing.
+- **THE TARGET IS WRITTEN ON THE GRANTED INSTANCE, BESIDE `FreeRepeatAim`, AND CLEARED AT THE END OF THE USE**, as
+  `FreeRepeatCastBy` is, and by `Swing` when the activation is refused. The option not taken: clear it as soon as
+  `TryActivateAbility` returns, which would lose it for a strike reading its direction after the wind-up.
+- **A FREE START'S AIM IS ASKED FIRST**, so a Follow Through repeat made on the same instance keeps its own target.
+- **`Swing`'S NEW ARGUMENT DEFAULTS TO NONE**, so the two merged tests that call `Swing` directly, and any caller naming
+  no enemy, aim as before.
+- **THE AIM TEST HOLDS A WHIP AS WELL AS A WAND**, so that the first commit of this layer fails on the aim itself: a
+  Strike's 3 m reach already reaches an enemy 2 m to the side, while no wand click can swing before R1. Ruled by the
+  coordinating session, which accepted that the click's aim applies to melee too.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. R1 restores the weapon's own stated range, this game's data
+(`game/Data/ItemBases.csv`). R4 is the coordinating session's ruling, recorded as its words above. None is recorded as a
+source.
+
+### WHAT WAS BUILT
+
+- **The reach.** `UCataclysmBasicAttack::ReachCmOf` returns `Skill->ScaledRangeCm()` when `Skill->Shape()` is
+  `ECataclysmSkillShape::Projectile`, before the coil and the flat melee reach; a Strike's expression is unchanged.
+- **The aim.** `UCataclysmSkillTemplate::ClickedTarget`, a weak pointer; `AimPoint` answers its location while set;
+  `EndAbility` resets it; `UCataclysmBasicAttack::Swing(AbilitySystem, AimedAt = nullptr)` writes it before
+  `TryActivateAbility` and resets it if that refuses; `ACataclysmPlayerController::TrySwingAt` passes its target.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+None. This layer states no stat and needs no row.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. **No merged Unreal test asserts anything different, by reading.** Every merged test reading `ReachCmOf` holds a
+Strike basic (a Greataxe, a Sword, a Whip, or a hand-built `UCataclysmStrikeSkill`), whose expression is unchanged. The
+merged tests that swing through the controller (`Cataclysm.FollowThrough.` at `CataclysmFollowThroughTests.cpp` 491-531
+and `Cataclysm.SkillGadgets.AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt`) place their enemy
+along the player's facing, +X, so aiming at it is the direction the fallback already gave; the two that call `Swing`
+directly (`CataclysmSkillTemplateTests.cpp` 13886 and 16853) name no enemy. No Python test reads `ReachCmOf`, `Swing`,
+`AimPoint` or `ClickedTarget`.
+
+### Tests
+
+Three new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmBasicReachTests.cpp`, the group `Cataclysm.BasicReach.`,
+with stack 2's rig under names of their own: a possessed player character with the game's own
+`ACataclysmPlayerController`, holding one Demonic weapon, a weapon damage of 100, never refreshed; enemies of the
+monsters' side with no defences and 50,000 health. The click is `PressOnAnEnemyForTest` then `ReleaseTheButtonForTest`.
+With no cursor in a test world, a shot naming no enemy aims along the player's facing, +X. A swing waiting for its
+clip is finished with `CataclysmTestWorld::RunClock` (see SAID FIRST), and a projectile is stepped by hand. Every figure is read off the weapon's own row; the rows, printed from `ItemBases.csv` before writing: Wand
+`Range=8.4; Radius=0.6`, Crossbow `Range=10; Radius=0.4`, Staff `Range=7.2; Radius=0.9`, 2H Crossbow `Range=12;
+Radius=0.9`, all Projectile; Whip `Radius=3; Angle=45`, a Strike.
+
+1. `ARangedBasicAttackReachesItsRangeAndAStrikeKeepsItsRadius`. In order: set-up, the whip's basic is a Strike;
+   control, the whip reaches its Strike's radius (300 cm); then for each of the Wand, Crossbow, Staff and 2H Crossbow:
+   set-up, its basic is a Projectile with a range past its radius; set-up, holding no row its `ScaledRangeCm` is its
+   stated range; its basic reaches `ScaledRangeCm`; and its reach is more than a centimetre past its bolt's radius.
+2. `APressOnAnEnemyWithinAWandsRangeSwingsAndOneBeyondItDoesNot`. A Wand player with an enemy 5 m along X and one 10 m
+   along -Y; a Whip player 60 m away with an enemy 2 m from it. In order: set-up, three enemies; set-up, the Wand's range
+   lies between 5 m and 10 m; control, the whip's press starts a swing; control, the wand's press on the enemy 10 m away
+   starts none; the wand's press on the enemy 5 m away starts a swing; set-up, the swing connected once the clock was
+   moved on; the bolt struck the enemy 5 m away; and not the one 10 m away.
+3. `AClickAttackGoesToTheEnemyClickedAndNotWhereTheAimWouldOtherwiseFall`. Two Whip players 60 m apart, each facing +X
+   with an enemy 2 m ahead along X and one 2 m to the side along Y, both inside the whip's 3 m, the side one 90 degrees
+   off its 45-degree, one-target cone; two Wand players at 120 m and 180 m, each with an enemy 5 m ahead, the first also
+   with one 5 m along Y. In order: set-up, seven enemies; set-up, the whip's basic is a Strike reaching past 2 m;
+   set-up, the whip player faces +X; control, the second whip player's `Swing` naming no enemy starts; set-up, it
+   connected; control, it struck the enemy ahead; control, and not the one to the side; set-up, the first whip player's
+   click on the side enemy starts a swing; set-up, it connected; the click's strike struck the enemy clicked; and not
+   the enemy ahead; and the player turned to the enemy clicked (its facing within about 8 degrees of +Y); control, the
+   second wand player's `Swing` naming no enemy starts; set-up, it connected; control, its bolt struck the enemy ahead;
+   set-up, the first wand player's click on the enemy along Y starts a swing; set-up, it connected; the click's bolt
+   struck the enemy clicked; and not the enemy ahead.
+
+**Registered to fail on the first commit of this layer (the tests alone), counted by reading: 13 failed assertions in
+3 tests.**
+
+- **Test 1, 8:** each of the four ranged weapons' "reaches its range" (its radius, 40 to 90 cm, against its range) and
+  "and not its bolt's radius" (the reach is the radius).
+- **Test 2, 1:** "a wand press on an enemy 5 m away ... starts a swing" (60 cm reach); the test ends there.
+- **Test 3, 4, three of them on the aim:** "the click's strike struck the enemy clicked" (the cone points along +X and
+  strikes the enemy ahead), "and not the enemy ahead", and "the player turned to the enemy clicked" (its facing stays
+  +X); then the wand click's "starts a swing" (60 cm reach), where the test ends.
+
+Every control and every other set-up passes on that commit.
+
+**Not tested:** the walk to an enemy beyond range and its stop at the range (`UpdatePendingAttack` has no test seam and
+a test world has no navigation); the cursor itself (a test world has none, so the aim test moves the fallback and not a
+cursor); a held button's later swings; the coil held with a ranged weapon; a `skill_range` row reaching the basic; an
+enemy destroyed during the wind-up; the bolt landing for the Crossbow, Staff and 2H Crossbow (test 1 reads their reach
+only); replication.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+was counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script: 84, 31 and 0 pairs for the first, 85, 31 and 0 for the second and the third) and
+compiles alone by reading: `Params` and `RadiusCm` are public members the next lines already read, `Debuff` is a member
+of `ECataclysmSkillShape`, and a weak pointer takes `nullptr` (`AimedAt` is still read by the condition, so nothing is
+left unused). The failed assertions are counted by reading. The prefix of all three is `Cataclysm.BasicReach.`, with
+its trailing dot, three tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| B-I, a ranged reach is the radius again (R1) | `game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp` | `return Skill->ScaledRangeCm();` | `return Skill->Params.RadiusCm;` | `ARangedBasicAttackReachesItsRangeAndAStrikeKeepsItsRadius` | `APressOnAnEnemyWithinAWandsRangeSwingsAndOneBeyondItDoesNot`, `AClickAttackGoesToTheEnemyClickedAndNotWhereTheAimWouldOtherwiseFall` |
+| B-II, the shape test misses the Projectile (R1) | `game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp` | `Skill->Shape() == ECataclysmSkillShape::Projectile` | `Skill->Shape() == ECataclysmSkillShape::Debuff` | `ARangedBasicAttackReachesItsRangeAndAStrikeKeepsItsRadius` | `APressOnAnEnemyWithinAWandsRangeSwingsAndOneBeyondItDoesNot`, `AClickAttackGoesToTheEnemyClickedAndNotWhereTheAimWouldOtherwiseFall` |
+| B-III, the click names no enemy to the use (R4) | `game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp` | `Aiming->ClickedTarget = AimedAt;` | `Aiming->ClickedTarget = AimedAt ? nullptr : nullptr;` | `AClickAttackGoesToTheEnemyClickedAndNotWhereTheAimWouldOtherwiseFall` | none |
+
+Failed assertions, by reading:
+
+- **B-I, 10 in 3 tests.** Test 1, 8: the four ranged weapons' "reaches its range" and "not its bolt's radius". Test 2,
+  1: the 5 m press "starts a swing"; the test ends there. Test 3, 1: the wand click's "starts a swing", where it ends;
+  the whip half passes, its reach and aim untouched by the break.
+- **B-II, 10 in 3 tests**, the same ten: the Projectile falls through to the Strike expression, whose coil and flat
+  melee reach add nothing to a Projectile with no coil held, so its reach is its radius.
+- **B-III, 5 in 1 test.** Test 3: the whip click's "struck the enemy clicked", "and not the enemy ahead" and "turned to
+  the enemy clicked", and the wand click's "struck the enemy clicked" and "and not the enemy ahead" (each aims along
+  the facing, +X). Test 2 passes: its enemy is along the facing, so the fallback aim strikes it. Test 1 reads no aim.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-16 — A row can convert the basic attack into a skill gadget: a left click on an enemy places or moves it and swings nothing, and it casts the basic attack on the player's swing interval kept as a beat; a skill gadget's late blows are still its own, its ground is priced for its age, and the highest-health row moves its aim, with no row authored
 
 **Affects:** `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (the click on an enemy split out

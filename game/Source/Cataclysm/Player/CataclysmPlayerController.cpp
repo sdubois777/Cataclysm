@@ -1634,7 +1634,9 @@ bool ACataclysmPlayerController::TrySwingAt(AActor* Target)
 		return false;
 	}
 
-	if (!UCataclysmBasicAttack::Swing(AbilitySystem))
+	// AIMED AT THE ENEMY CLICKED, not at the cursor. Ruled 2026-10-16 (P7-b): a held button whose cursor has left the
+	// creature still sends every swing at the creature.
+	if (!UCataclysmBasicAttack::Swing(AbilitySystem, Target))
 	{
 		return false;
 	}

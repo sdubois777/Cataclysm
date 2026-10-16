@@ -116,6 +116,10 @@ public:
 	 *
 	 * Returns 0 when the character has no basic attack granted, which is the
 	 * Shield's case: it grants no attack damage and so has no hit to compose.
+	 *
+	 * THAT IS A STRIKE'S REACH. A PROJECTILE BASIC REACHES ITS RANGE, ruled
+	 * 2026-10-16 (P7): the skill's `ScaledRangeCm`, the distance its bolt is
+	 * clamped to, and not its Radius, which is the bolt's width.
 	 */
 	static float ReachCmOf(const UAbilitySystemComponent* AbilitySystem);
 
@@ -132,10 +136,15 @@ public:
 	/**
 	 * Fires the basic attack, if this character has one granted.
 	 *
+	 * @param AimedAt the enemy a click swung at, or null. Ruled 2026-10-16
+	 *        (P7-b): "a click attack on an enemy aims at that enemy, not at the
+	 *        cursor". Given, it is written on the granted instance's
+	 *        `ClickedTarget` for this use, which `AimPoint` answers.
+	 *
 	 * @return whether an ability was actually activated. False when there is no
 	 *         basic attack granted, or when the ability system refused it.
 	 */
-	static bool Swing(UCataclysmAbilitySystemComponent* AbilitySystem);
+	static bool Swing(UCataclysmAbilitySystemComponent* AbilitySystem, const AActor* AimedAt = nullptr);
 
 	/**
 	 * The whole decision, in one call: whether this character should swing right
