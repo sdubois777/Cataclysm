@@ -916,8 +916,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-16, from 615 over 520: one row on one enchantment.
 #: AND 620 OVER 525 SINCE THE FOUR ROWS THAT CONVERT A KEYED SLOT INTO A SKILL GADGET,
 #: issue #1833, 2026-10-16, from 616 over 521: four rows on four enchantments.
-AUTHORED_ROWS = 620
-AUTHORED_ENCHANTMENTS = 525
+#: AND 621 OVER 526 SINCE THE ROW THAT CONVERTS THE BASIC ATTACK INTO A SKILL GADGET,
+#: issue #1833, 2026-10-16, from 620 over 525: one row on one enchantment.
+AUTHORED_ROWS = 621
+AUTHORED_ENCHANTMENTS = 526
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

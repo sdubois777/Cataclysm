@@ -838,7 +838,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 616 SINCE THE ROW THAT MAKES POINT BLANK SKILLS STRIKE NEARBY ALLIES, issue #1833, from 615.
 	//
 	// AND 620 SINCE THE FOUR ROWS THAT CONVERT A KEYED SLOT INTO A SKILL GADGET, issue #1833, from 616.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    620)
+	//
+	// AND 621 SINCE THE ROW THAT CONVERTS THE BASIC ATTACK INTO A SKILL GADGET, issue #1833, from 620.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    621)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
