@@ -538,6 +538,18 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 		return;
 	}
 
+	// A SLOT CONVERTED INTO A SKILL GADGET PLACES OR MOVES ITS GADGET, BEFORE THE
+	// STUN CHECK. Ruled 2026-10-16 (S7): placing is free and nothing refuses it,
+	// a stun included; only the gadget's cast can be refused. A slot that is not
+	// converted answers false and goes on below as before.
+	if (UCataclysmAbilitySystemComponent* Placing = GetCataclysmAbilitySystem())
+	{
+		if (Placing->PressOfASkillGadgetSlot(SlotTag))
+		{
+			return;
+		}
+	}
+
 	// A stunned character cannot act at all, and that includes skills. The
 	// press is dropped rather than queued, so nothing fires when it wears off.
 	if (IsPawnStunned())

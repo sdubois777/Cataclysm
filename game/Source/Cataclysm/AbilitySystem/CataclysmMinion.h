@@ -4,9 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "Character/CataclysmCharacterBase.h"
+// For the slot a skill gadget casts. Ruled 2026-10-16.
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "CataclysmMinion.generated.h"
 
 struct FCataclysmHitDelivery;
+struct FCataclysmWeaponSkill;
 
 class ACataclysmGroundZone;
 class UCataclysmAbilitySystemComponent;
@@ -397,6 +400,130 @@ public:
 
 	/** The age, in seconds since it was placed, at which its copy clock last came round. Nought until it has. */
 	float LastSkillCopyAtAgeSeconds = 0.0f;
+
+	/**
+	 * THE SKILL GADGET. Ruled 2026-10-16 by the coordinating session (S1-S14), for the four rows "Your heavy attack /
+	 * special ability / support ability / ultimate ability is converted into a deployable gadget that fires (or
+	 * activates) your ... once per ... cooldown ... Scales off gadget damage." The owner's words: pressing a converted
+	 * slot's key PLACES its gadget where the player stands, one gadget per converted slot, a new press moves it, and
+	 * the player no longer casts that skill.
+	 *
+	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, and outside every summon cap. It has no lifespan: the floor
+	 * being cleared destroys it as every deployable is destroyed (`UCataclysmFloorContents::ClearTheFloor`), and it
+	 * can be struck and killed as any gadget can. EVERY OTHER GADGET ROW REACHES IT, because it is a gadget (S9).
+	 *
+	 * WHICH SLOT IT IS RECORDED HERE AND ON ITS PLAYER'S ABILITY SYSTEM, keyed by slot, so the basic attack's gadget
+	 * of the second stack is one more key and not another field. Nothing here assumes the basic slot cannot be one.
+	 */
+	static const TCHAR* SkillGadgetTypeName;
+
+	/**
+	 * How near the player must stand to a support gadget for its self buff to be granted, in centimetres: 8 m. S13,
+	 * a number under the owner's delegation of unstated numbers. Measured along the floor, gadget to player.
+	 */
+	static constexpr float SkillGadgetSelfBuffReachCm = 800.0f;
+
+	/**
+	 * Place a skill gadget for `Player`'s `Slot` at `Location`, or null with the reason logged.
+	 *
+	 * NULL, AND NOTHING LEFT STANDING, WHEN THE TYPE ROW IS MISSING: `Spawn` would otherwise make a minion carrying
+	 * the defaults, which is no gadget and would expire, walk and fight. The row is the enchantment session's to
+	 * author, so an older DataTable asset is the one way to reach this.
+	 */
+	static ACataclysmMinion* PlaceSkillGadget(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location);
+
+	/** Which of its player's slots this gadget casts, or `None` for every minion that is not a skill gadget. */
+	ECataclysmAbilitySlot SkillGadgetSlot = ECataclysmAbilitySlot::None;
+
+	/** Whether this is a skill gadget: a gadget placed for a slot. */
+	bool IsSkillGadget() const;
+
+	/**
+	 * Move this skill gadget to `Location`, as a new press does (S6). ITS HEALTH AND ITS CLOCK ARE KEPT, so pressing
+	 * again and again cannot force a cast; nothing is destroyed and no `gadget_destroyed` is raised.
+	 */
+	void MoveSkillGadgetTo(const FVector& Location);
+
+	/** Seconds since this skill gadget was placed or last moved; its own measure of standing still. */
+	float SecondsSinceSkillGadgetPlaced() const;
+
+	/**
+	 * The row of the skill this gadget casts: what its player holds in its slot NOW, copied into `Out`, so a change
+	 * of weapon changes what the gadget casts. False for a player holding nothing in the slot.
+	 */
+	bool SkillGadgetsSkill(FCataclysmWeaponSkill& Out) const;
+
+	/**
+	 * The seconds between this gadget's casts of `Skill` (S2, S3): the row's own cooldown when it states one, else
+	 * its slot table's, through `UCataclysmGameplayAbility::CooldownAfterReduction` with the skill's tags, then
+	 * shortened by the player's `minion_attack_speed` rows that reach this gadget, as an interval is shortened:
+	 * divided by one plus the increases. NEVER `GetBaseCooldown`, whose Mana Weaver nought must not reach it.
+	 */
+	float SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSkill& Skill) const;
+
+	/**
+	 * How far from this gadget `Skill` reaches, in centimetres (S4): a Strike's radius, a Projectile's or a Debuff's
+	 * range, as the row states it, raised by the player's `minion_range` rows that reach this gadget. Nought for a
+	 * shape with no reach to aim by.
+	 */
+	float SkillGadgetReachCm(const FCataclysmWeaponSkill& Skill) const;
+
+	/**
+	 * Whether a skill gadget may ever cast `Skill`: it has a shape (S10), and the rule a row repeats a skill by lets
+	 * it through, LESS THAT RULE'S REFUSAL OF A SELF BUFF, for this caller only (S13). So a movement skill, an aura, a
+	 * summon or deployable, a held or channelled skill, a planted weapon, a `Requires` and a health cost are left out,
+	 * as `UCataclysmTriggeredSkill::RepeatsFromARow` leaves them out. The skill bar asks it to say "casts nothing".
+	 */
+	static bool SkillGadgetMayCast(const FCataclysmWeaponSkill& Skill);
+
+	/**
+	 * What this gadget does for its slot on its step, called by `GadgetStep` after the copy and before the volley.
+	 * Nothing for a minion that is not a skill gadget.
+	 *
+	 * ONCE PER ITS CLOCK, AS A COOLDOWN RUNS: the first cast on the first step that casts one, and each later cast on
+	 * the first step at least `SkillGadgetSecondsBetweenCasts` after the last that started. A step that casts nothing,
+	 * for want of a target or of a living player, starts nothing and waits. A CAST CAN COME UP TO A QUARTER OF A
+	 * SECOND LATE, because this is where the clock is looked at and this runs four times a second.
+	 *
+	 * @return whether a cast started on this step
+	 */
+	bool StepSkillGadget();
+
+	/**
+	 * Cast the player's skill of this gadget's slot once, now, from this gadget's place. S1, S4, S5, S10, S11, S13.
+	 *
+	 * A FREE START, `UCataclysmTriggeredSkill::Trigger` with this gadget as the actor cast by, of the player's own
+	 * row with `Type.Deployable` added to its tags, so the rows that raise gadget damage reach it. A SELF BUFF is
+	 * granted to the player while the player stands within `SkillGadgetSelfBuffReachCm`, and not while one this
+	 * gadget granted still runs; EVERY OTHER SHAPE is aimed at the nearest enemy within `SkillGadgetReachCm`.
+	 *
+	 * @return whether it started. False, casting nothing, for a gadget that cannot act, a player gone or dead, a
+	 *         slot holding no skill or a shapeless one, a skill no row may cast (a movement skill, a summon, a held
+	 *         or channelled skill, one with a `Requires` or a health cost), no target, or the skill refusing itself
+	 *         (a lock of its slot).
+	 */
+	bool CastPlayersSkillFromHere();
+
+	/** Seconds until this gadget may cast again and the length of its clock, both nought before its first cast. */
+	void SkillGadgetClock(float& OutRemaining, float& OutDuration) const;
+
+	/**
+	 * The skill gadget whose cast `Skill` is, or null: the template's `FreeRepeatCastBy`, when that is a skill
+	 * gadget. A gadget's copy of its summoner's last skill is not one. Read by `UCataclysmSkillEffects::ApplyHit`.
+	 */
+	static const ACataclysmMinion* SkillGadgetCasting(const class UGameplayAbility* Skill);
+
+	/** How many casts it has made for its slot. Read by tests. */
+	int32 SkillGadgetCastsMade = 0;
+
+	/** Whether it has cast for its slot. Until it has, its clock is not running. */
+	bool bSkillGadgetHasCast = false;
+
+	/** Its age when its last cast for its slot started. */
+	float LastSkillGadgetCastAtAgeSeconds = 0.0f;
+
+	/** World time at which it was placed or last moved. */
+	float SkillGadgetPlacedAtSeconds = 0.0f;
 
 	/**
 	 * The flag by which a summoner's gadget that kills an enemy with a blow of its own strikes once more. Ruled

@@ -2,6 +2,345 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-16 — A row can convert a keyed slot into a skill gadget: its key places or moves one gadget at the player's feet, and the gadget casts the player's own skill from its place once per that skill's cooldown, priced with the rows that raise gadget damage, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the skill gadget: its type name, its
+placing, its move, its clock, its reach, its cast and the step that runs them, and the reading of which gadget cast a
+skill); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the flag stat's name and
+reading, the press and its release, the per-slot record, the gadget's age and stillness in `CurrentConditions` while
+its blow is priced, and the flat rows naming a tag); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`
+(`ApplyHit` prices a skill gadget's blow: the spell part, the conditions, the flat row and `deployable_hit`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (a self buff's two enemy searches and its shove are
+made from where its use is cast); `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` (the press is offered to
+the gadget before the stun check); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (a converted slot's box); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(one name on the list of stats with no attribute); `game/Source/Cataclysm/Tests/CataclysmSkillGadgetTests.cpp` (new,
+fifteen tests); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe); `tools/generate_datatables.py`
+(the name and the refusals of its row); `tools/tests/test_generate_datatables.py` (one class of seven tests);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentences, from `game/Data/EnchantmentsPositive.csv`; this layer builds the four keyed ones, and the basic
+attack's row is the second stack's:
+
+- `Positive_Your_heavy_attack_is_converted_into_a_deployable`: "Your heavy attack is converted into a deployable gadget
+  that fires your heavy attack at the nearest enemy within range once per heavy attack cooldown. Scales off gadget
+  damage."
+- `Positive_Your_special_ability_is_converted_into_a_deploya`: "Your special ability is converted into a deployable
+  gadget that activates your special ability once per special ability cooldown, targeting the nearest enemy within
+  range. Scales off gadget damage."
+- `Positive_Your_support_ability_is_converted_into_a_deploya`: "Your support ability is converted into a deployable
+  gadget that activates your support ability once per support ability cooldown, centered on its current location.
+  Scales off gadget damage."
+- `Positive_Your_ultimate_ability_is_converted_into_a_deploy`: "Your ultimate ability is converted into a deployable
+  gadget that fires your ultimate ability once per ultimate cooldown, targeting the nearest enemy within range. Scales
+  off gadget damage."
+
+What a player would notice, once a row is worn:
+
+- **THE KEY NO LONGER CASTS THE SKILL.** A press of a converted slot's key places that slot's gadget at the player's
+  feet, or moves the one standing there. It costs nothing, sends no skill-used notice and starts no cooldown, and a
+  lock, a stun, an empty mana pool or a running cooldown does not stop it. Holding the key places once.
+- **THE GADGET CASTS THE PLAYER'S OWN SKILL FROM WHERE IT STANDS**, once per that skill's cooldown after the player's
+  cooldown rows, at the nearest enemy within the skill's own reach: a Strike's radius, a Projectile's or a Debuff's
+  range. A Heavy Strike gadget of a 5 m skill fires at nothing 6 m away, though the gadget's type row reaches 15 m.
+- **A SUPPORT SELF BUFF REACHES THE PLAYER ONLY WITHIN 8 M OF THE GADGET**, and not again while the one it granted
+  still runs. Its enemy areas (Burning Wrath 15 m, Coil of Embers 3 m, Held Fast 12 m) are measured from the gadget.
+- **A SHAPELESS SKILL'S GADGET IS PLACED AND CASTS NOTHING**, and the box says "Gadget casts nothing". So does the
+  gadget of a skill no row may cast again: a summon, a deployable, a held or channelled skill, a planted weapon, a
+  skill with a `Requires` or a health cost. 66 to 68 of the 79 rows of each keyed slot have no shape.
+- **ITS DAMAGE IS THE PLAYER'S HIT, WITH THE ROWS THAT RAISE GADGET DAMAGE ON TOP**, the 20%-40% row once; its age
+  rows read its age; it is always stationary; the flat share of maximum health is added; and its hits are announced as
+  `deployable_hit`, so the gadget armour-reduction and stagger rows fire.
+- **IT LASTS THE FLOOR.** It has no lifespan, is outside every summon cap, can be struck and destroyed, and the floor
+  being cleared removes it. After it is destroyed the next press places a new one, ready to cast.
+- **THE SKILL BAR'S BOX** of a converted slot reads "Gadget" and sweeps with the gadget's clock.
+- **FOR THE OWNER'S PLAY-CHECK LIST (S9)**: "Each active gadget increases your evasion chance by 5%-10%": five skill
+  gadgets standing all floor give 25%-50% evasion. This layer converts four slots, so four give 20%-40%.
+- **NOT IN PLAY UNTIL TWO THINGS LAND BELOW IT:** the `SkillGadget` row of the Minion Types sheet and the four
+  Enchantment Effects rows, both the enchantment session's. Without the type row a press places nothing and logs why.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief. Every statement about what the engine does
+  was read from the code when it was written.
+
+**What depends on the `SkillGadget` type row**, which is not in this branch: `ACataclysmMinion::PlaceSkillGadget`
+spawns by the name in `ACataclysmMinion::SkillGadgetTypeName` and refuses a minion that did not come from a gadget row;
+the gadget's health (Ballista's, 200 and 90 per level), its tags (`Type.Minion, Type.Deployable, Minion.Machine`, which
+make it a gadget, a deployable for the floor clearing and a minion), its move speed 0, and its nought damage, which
+keeps its brain's own swing at nothing and raising no `deployable_hit` of its own. Every test of
+`Cataclysm.SkillGadgets.` places a gadget, so all fifteen report a set-up error without it.
+The type row's reach, 15 m, is not what the gadget aims its cast by (S4).
+
+**What was not read:** the bodies of the eight shapes' `ActivateAbility` past where they read the caster's place;
+`UCataclysmDamageCalculation::Resolve`; the replication of anything here.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, relayed by the coordinating session on 2026-10-16: the next system is skill gadgets, released from the
+2026-10-09 hold; "Pressing a converted slot's key PLACES its gadget where the player stands. One gadget per converted
+slot; a new press moves it. The player no longer casts that skill."; and "Scales off gadget damage." means "the gadget
+casts the player's skill with the player's numbers AND rows that raise gadget damage (tagged Type.Deployable) also
+apply." The rulings S1 to S15 are the coordinating session's of 2026-10-16; this layer builds S1 to S14 and not S15,
+the basic attack's click.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| S1 | The cast is a free start from the gadget's place, cast by the gadget. | `ACataclysmMinion::CastPlayersSkillFromHere`, `CataclysmMinion.cpp` 911: `UCataclysmTriggeredSkill::Trigger(Player, ..., /*bPaysCost=*/false, &From, /*CastBy=*/this)`. |
+| S2 | The clock: the row's cooldown or the slot table's, through `CooldownAfterReduction` with the skill's tags; never `GetBaseCooldown`. | `ACataclysmMinion::SkillGadgetSecondsBetweenCasts`, `CataclysmMinion.cpp` 828; the call at 837. |
+| S3 | "Gadgets fire 20%-40% faster" shortens it. | The same function, 843: divided by one plus `minion_attack_speed`'s increases with the gadget's type tags. |
+| S4 | The skill's own reach, raised by the gadget range row, replaces the type row's; the nearest enemy within it. | `ACataclysmMinion::SkillGadgetReachCm`, 848; the search in `CastPlayersSkillFromHere`. |
+| S5 | `Type.Deployable` on the grant's skill tags. | `CataclysmMinion.cpp` 989, on the copy of the row that `Trigger`'s `StampOnto` makes the grant's `SkillTags`. |
+| S5 a | The 20%-40% row counts once. | `CataclysmSkillEffects.cpp` 754 and 913: a skill gadget's spell part is asked with its tags less `Type.Deployable`. |
+| S5 b | The gadget's age reaches the conditions. | `CataclysmAbilitySystemComponent.cpp` 1388, set while `FPricingASkillGadgetsBlow` (made at `CataclysmSkillEffects.cpp` 750, ended at 1073) is alive. |
+| S5 c | "While stationary" is judged on the gadget. | `CataclysmAbilitySystemComponent.cpp` 1389-1390, the same scope. |
+| S5 d | The flat maximum-health row applies. | `CataclysmSkillEffects.cpp` 936 and 941: `FlatOfStatNamingTag`, added beside the spell part. |
+| S5 e | `deployable_hit` is raised. | `CataclysmSkillEffects.cpp` 1083, after the blow is dealt. |
+| S6 | A new press moves it and keeps its health and clock. | `UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot`, `CataclysmAbilitySystemComponent.cpp` 7452; `MoveSkillGadgetTo` at 7481. |
+| S7 | Placing is free, intercepted before `TryActivateAbility`, debounced; only the cast is refused. | `AbilityInputTagPressed` 212 and `AbilityInputTagReleased` 239 in `CataclysmAbilitySystemComponent.cpp`; `ACataclysmPlayerController::Input_AbilitySlotPressed`, `CataclysmPlayerController.cpp` 547, before the stun check. The cast's refusal is the lock in `UCataclysmSkillTemplate::CanActivateAbility`, which `Trigger` meets. |
+| S8 | The `SkillGadget` type, outside the caps, no lifespan, ended by the floor clearing, struck like any gadget. | `ACataclysmMinion::PlaceSkillGadget`, `CataclysmMinion.cpp` 759: `SetLifeSpan(0)` at 783, `bOutsideSummonCaps` at 786. The floor clearing is `UCataclysmFloorContents::ClearTheFloor`, unchanged. |
+| S9 | Every other gadget row reaches it. | Nothing built: it is a gadget by its type tags. |
+| S10 | A shapeless skill's press places a gadget that casts nothing; the tooltip says so. | `ACataclysmMinion::SkillGadgetMayCast`, `CataclysmMinion.cpp` 873; the words in `UCataclysmSkillBar::SkillGadgetTextFor`, drawn at `CataclysmHUD.cpp` 460. |
+| S11 | Gadgets stay through the player's death and cast nothing. | `CastPlayersSkillFromHere` refuses a dead player; nothing ends a gadget on a death. |
+| S12 | One flag stat, scoped by `Slot.*` tag, asked with the slot's skill tags. | `skill_slot_is_a_gadget`, `UCataclysmAbilitySystemComponent::SlotIsASkillGadget` with `SkillGadgetSlotTags`. |
+| S13 | The self buff only within 8 m; the self-buff refusal exempted for this caller only; the areas measured from the gadget. | `CataclysmMinion.cpp` 946 (8 m), 953 (not while one runs), `SkillGadgetMayCast` (the exemption); `CataclysmSkillTemplates.cpp` 2290, 2653 and 2697. |
+| S14 | The box shows "gadget" and the gadget's sweep. | `UCataclysmSkillBar::Read`, `CataclysmSkillBar.cpp` 601. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE CLOCK RUNS AS A COOLDOWN.** The first cast comes on the first step that casts one; each later cast on the first
+  step at least the clock after the last that started; a step that casts nothing waits and starts nothing. The option
+  not taken: the gadget copy's kept beat, where a beat with no target is passed over, under which a 20 s Ultimate
+  gadget could wait 40 s for an enemy that arrived a moment late.
+- **"FRESH" MEANS READY.** A new gadget, after one was destroyed, has cast nothing, so its first cast comes on its first
+  step with a target. The option not taken: a new gadget waits a whole clock, which would make a destroyed Ultimate
+  gadget cost the player twenty seconds that the player's own skill would not have cost.
+- **THE PRESS ITSELF CASTS NOTHING.** `Spawn`'s own step runs before the gadget is told its slot, so the first cast is
+  on the next step, a quarter of a second at most. The option not taken: set the slot before that step.
+- **A GADGET WHOSE SLOT IS NO LONGER CONVERTED CASTS NOTHING**, and stands. A player who takes the row off casts the
+  skill with its key again, and the gadget casting it too would be the skill twice. Nothing destroys it, because
+  nothing hears a gear change. The option not taken: destroy it when the row comes off.
+- **A SELF BUFF IS NOT GRANTED AGAIN WHILE ONE THIS GADGET GRANTED STILL RUNS.** Coil of Embers lasts 10 s on a 4 s
+  clock; a second running copy would add a second modifier, which is what `RepeatsFromARow`'s refusal guards against,
+  and which the player's own press could never do. The option not taken: grant it on every clock.
+- **THE SKILL'S REACH IS THE ROW'S STATED FIGURE**, a Strike's `Radius`, a Projectile's or Debuff's `Range`, and not
+  one an area row has widened. The option not taken: `ScaledRadiusCm`, which needs a running instance.
+- **THE AIM IS THE NEAREST ENEMY**, as S4 says, so "Your gadgets prioritize the highest HP enemy" does not move a skill
+  gadget's aim; it reaches the gadget's brain, which deals nothing. The option not taken: the most-health choice.
+- **THE 8 M IS MEASURED ALONG THE FLOOR, GADGET TO PLAYER**, with the brain's allowance of a hundredth of a centimetre.
+- **THE PLACE IS THE PLAYER'S OWN LOCATION**, as a deployable with no range is put down.
+- **THE FLAT ROW IS ADDED BESIDE THE SPELL PART, OUTSIDE THE SKILL'S PERCENT**, because "per hit" states an amount; the
+  increases reach it as the naming increases reach a gadget's own blow. The option not taken: inside the weapon part,
+  where a 350% Ultimate would deal it three and a half times.
+- **THE COUNTED-ONCE RULE LEAVES OUT EVERY SPELL DAMAGE ROW NAMING `Type.Deployable` FROM THE SPELL PART**, so the
+  destroyed-gadget stacks row, also written on both stats, counts once too. The option not taken: leave out the one
+  sentence's row by name.
+- **WHILE A SKILL GADGET'S BLOW IS PRICED, EVERY CONDITION READS THE GADGET'S STILLNESS**, not only the rows naming
+  gadgets, and the pricing ends before the blow is dealt, so what it provokes is judged on the player. The option not
+  taken: judge only the rows naming `Type.Deployable` on the gadget.
+- **`deployable_hit` IS NOT RAISED FOR A TICK OR FOR A SHARE STRUCK AT AN ALLY.** The option not taken: every blow
+  `ApplyHit` deals for the gadget.
+- **THE PRESS IS OFFERED TO THE GADGET BEFORE THE STUN CHECK, AND THE DEBOUNCE IS CLEARED ONLY BY THE RELEASE**, as
+  the screen click's is (issue #1016). So a key held through a stun places once.
+- **PLACING IS ON THE AUTHORITY ONLY.** No server call is built; in standalone play the two are one machine.
+- **A SLOT HOLDING NO SKILL AT ALL STILL PLACES A GADGET**, which casts nothing, as S10 places one for a shapeless skill.
+- **THE CLOCK ALLOWS A THOUSANDTH OF A SECOND** for a world time added up in floating point.
+- **THE GENERATOR ACCEPTS THE FOUR KEYED SLOT TAGS AND NOT `Slot.Basic`**, which joins when the second stack builds
+  the click.
+- **THE BOX'S WORDS GO OVER THE BOX.** The skill bar has no tooltip and nowhere describes a skill, so "Gadget casts
+  nothing" is drawn where the Fervour line goes, which a gadget's box never shows.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. The sentences state the mechanic; the judgements are this game's own,
+ruled by the coordinating session. None is recorded.
+
+### WHAT WAS BUILT
+
+- **The stat.** `skill_slot_is_a_gadget`, a flag, read by `UCataclysmAbilitySystemComponent::SlotIsASkillGadget` with
+  the held skill's tags and the slot's tag; the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In
+  code, `UCataclysmAbilitySystemComponent::SkillSlotIsAGadgetStat`.
+- **The press.** `PressOfASkillGadgetSlot` and `ReleaseOfASkillGadgetSlot`, called from `AbilityInputTagPressed` and
+  `AbilityInputTagReleased` and, for the press, from the player controller before its stun check. The record is
+  `SkillGadgets`, keyed by slot, read through `SkillGadgetIn`; the debounce is `SkillGadgetSlotsHeldDown`.
+- **The gadget.** `ACataclysmMinion::PlaceSkillGadget`, `MoveSkillGadgetTo`, `SkillGadgetsSkill`,
+  `SkillGadgetSecondsBetweenCasts`, `SkillGadgetReachCm`, `SkillGadgetMayCast`, `StepSkillGadget` (called by
+  `GadgetStep` after the copy and before the volley), `CastPlayersSkillFromHere`, `SkillGadgetClock` and
+  `SkillGadgetCasting`.
+- **The pricing.** In `UCataclysmSkillEffects::ApplyHit`, `ACataclysmMinion::SkillGadgetCasting` reads the gadget off
+  the delivery's skill; `UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow` sets
+  `SkillGadgetBeingPriced`, which `CurrentConditions` reads; `FlatOfStatNamingTag` gives the flat rows naming a tag.
+- **The self buff from a place.** `UCataclysmSelfBuffSkill::ActivateAbility` counts burning and pinned enemies around
+  `CastOrigin()`, and `RepeatTick` pulses around it and shoves away from `FreeRepeatOrigin` when a place was given. For
+  every cast made without a place, which is every cast before this layer, `CastOrigin()` is the caster's location and
+  nothing changes.
+- **The box.** `FCataclysmSkillBarSlot::bIsASkillGadget` and `bSkillGadgetCastsNothing`,
+  `UCataclysmSkillBar::SkillGadgetName` and `SkillGadgetTextFor`, the block at the end of `Read`, and one line drawn
+  by `ACataclysmHUD::DrawSkillBar`.
+- **The generator.** `SKILL_SLOT_IS_A_GADGET_STAT`, `SKILL_SLOT_IS_A_GADGET_SLOT_TAGS` and
+  `refuse_a_skill_slot_gadget_row_the_game_cannot_read`, run by `validate_enchantment_effects`.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+One line on each of the four enchantments named in SAID FIRST: Stat `skill_slot_is_a_gadget`, Value Kind `flat`, Value
+Low 1, Value High 1, **Required Tags the slot's tag alone** (`Slot.Heavy`, `Slot.Special`, `Slot.Support`,
+`Slot.Ultimate`), no Condition, no Scale, no Action, no Action Event and no other cell. The generator was dry-run on a
+made-up sheet whose sentence carries `Type.Deployable, Slot.Heavy` and whose row requires `Slot.Heavy`: the row was
+carried through and refused by nothing, so **the generator accepts an effect whose Required Tags differ from the
+enchantment's own column-4 tags.** When the rows are written, `skill_slot_is_a_gadget` joins the flag stats excused
+the value-in-words check in `tools/tests/test_enchantment_effects_match_the_row_text.py`; it cannot join before,
+because that file refuses an excused flag no row grants.
+
+And one row of the Minion Types sheet, `SkillGadget`, as the brief gives it: Family Machine, BaseHealth 200,
+HealthPerLevel 90, BaseDamage 0, DamagePerLevel 0, AttackIntervalSeconds 1.0, MoveSpeed 0, ThreatPercent 5, ReachCm
+1500, NoticeRadiusCm 1500, TargetMode Nearest, Tags `Type.Minion, Type.Deployable, Minion.Machine`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last of its probes.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site, the flag asked by
+  `SlotIsASkillGadget` with the slot's skill tags and no blow, and one dated line above `CALL_SITES`, whose figure
+  stays the measurement of its own commit.
+- The generator refuses four kinds of row on one more stat: of a kind but `flat`, under Required Tags other than one keyed slot's tag, with an action, and stating a figure but 1. No shipped row is on it.
+- No merged test asserts anything different, by reading: with nobody holding the flag no press is taken, no gadget is
+  a skill gadget so `GadgetStep`'s new call and `ApplyHit`'s new pricing do nothing, `SkillGadgetBeingPriced` is
+  always empty, and no self buff was cast with a place before, so its searches are where they were. The cost a press
+  of a character without the row now pays is one stat read; a box of the skill bar, one stat read a frame.
+
+### Tests
+
+Fifteen new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSkillGadgetTests.cpp`, the group
+`Cataclysm.SkillGadgets.`, beside `CataclysmGadgetCopiesSkillTests.cpp`, whose rig they follow: a possessed player
+character holding a Demonic Whip (two hold a Demonic Wand and a Celestial Sword), a weapon damage of 100, 10,000 health
+and 1,000 mana, never refreshed; enemies of the monsters' side with no defences and 50,000 health. Every stat is granted
+by hand as a whole stat line; the flag is a flat 1 requiring the slot's tag. A press is `AbilityInputTagPressed` then
+`ProcessAbilityInput`, and a release the same for the release. The world's clock is moved by hand and a gadget's step is
+called directly. "The player's own cast" is a free start of the same row from the player's own place, through the same
+grant, given the player's location as its place.
+
+1. `APressPlacesAGadgetAtThePlayersFeetAndCastsNothingFromThePlayer`. In order: control, a player holding no row
+   presses Heavy and the Heavy cooldown runs; it pays mana; no gadget stands for it; set-up, the converted press placed
+   a gadget; it is a skill gadget of the Heavy slot; within 1 cm of the player's feet; of the `SkillGadget` type;
+   outside every summon cap; with no lifespan; the player's mana is unchanged; no Heavy cooldown runs; no `skill_use`;
+   no skill-used notice; the gadget cast nothing as it was placed; a second frame of the same press keeps the same
+   gadget; and does not move it.
+2. `ASecondPressMovesTheSameGadgetKeepsItsHealthAndDoesNotCastAtOnce`. In order: control, the gadget casts once on its
+   first step; it strikes the enemy beside it; a blow of 50 cost it health; the second press keeps the same gadget;
+   moves it to where the player stood; its health is kept; it is alive; a step just after casts nothing; the enemy by
+   the new place keeps its health; 1.5 s on, the next step casts; and strikes that enemy.
+3. `TwoConvertedSlotsGiveTwoGadgetsAndAnUnconvertedSlotStillCasts`. In order: control, no gadget for Heavy; Heavy not
+   converted; the Special slot no row names is not converted; two gadgets; each recorded for its own slot; a second
+   Heavy press moves the Heavy gadget and leaves the Ultimate one; the unconverted Special press starts the Special
+   cooldown; pays mana; places no gadget.
+4. `TheGadgetCastsThePlayersSkillAtTheNearestEnemyWithinTheSkillsReachOncePerItsClock`. In order: set-up, the gadget
+   aims by Searing Lash's 5 m; an enemy 6 m away is not aimed at; it keeps its health; set-up, the player's own cast
+   starts; control, it struck; with an enemy 3 m away the gadget casts once; the cast took what the player's own cast
+   takes; the enemy beyond reach is untouched; the cast was not the gadget's own blow; the clock is the Heavy slot's
+   cooldown; a tenth of a second short of it, nothing; at it, the second cast.
+5. `TheClockIsTheSlotsCooldownAfterItsRowsAndTheFireRateRowShortensIt`. A flat 50 of `cooldown_reduction`. In order:
+   control, the row shortens the player's own Heavy cooldown; set-up, the first cast; the clock is the slot's cooldown
+   after the row, as `CooldownAfterReduction` gives it; short of it, nothing; at it, the second cast; with
+   `minion_attack_speed` at 50 requiring `Type.Deployable`, the clock is that over one and a half; short of it,
+   nothing; at it, the third cast.
+6. `ManaWeaversTenPieceLeavesTheUltimateGadgetWaitingItsBaseCooldown`. In order: set-up, the Ultimate is granted;
+   control, the ten-piece flag holds for the player's own Ultimate; set-up, the first cast; the clock is the Ultimate
+   slot's cooldown and not nought; a tenth of a second short of it, nothing; at it, the second cast.
+7. `AGadgetDamageRowRaisesTheCastAndCountsOnceOnASpell`. "Gadgets deal 20%-40% increased damage" at 30, on both
+   `attack_damage` and `spell_damage`, requiring `Type.Deployable`. In order: set-up, Anathema is a spell and Searing
+   Lash is not; set-up, the player's own cast starts; control, the player's own cast, which the rows do not reach; the
+   gadget's attack takes 30% more; set-up, the wand player's own cast starts, with a spell damage of 50; control, it
+   struck; the gadget's Anathema takes 30% more and no more.
+8. `TheAgeRowReadsTheGadgetsAgeAndStillnessIsJudgedOnTheGadget`. "for each second active, up to 30" at 10, then "While
+   stationary" at 30. In order: set-up, the player's own cast starts; control, it struck; a gadget that has stood three
+   and a half seconds casts for 30% more; control, the player is moving; the stationary row holds for the gadget.
+9. `TheFlatMaximumHealthRowAppliesAndTheCastRaisesDeployableHit`. 3 for every 100 of maximum health. In order: set-up,
+   the player's own cast starts; control, it struck; control, it raised no `deployable_hit`; the gadget's cast takes 300
+   more; its one blow raised `deployable_hit` once.
+10. `PlacingUnderTheSlotLockSucceedsAndTheCastIsRefused`. `skill_locked` flat 1 requiring `Slot.Heavy` on the second
+    player. In order: control, an unlocked gadget casts; it strikes; the locked press places the gadget; the lock
+    refuses its cast; its enemy keeps its health.
+11. `TheSupportSelfBuffReachesThePlayerWithinEightMetresAndNotBeyond`. Coil of Embers. In order: set-up, the whip's
+    Support is a self buff; control, the gadget of a slot no row converts casts nothing; 9 m away the player is
+    granted nothing; no self buff of the gadget's runs; 7.5 m away it is cast; it runs on the player, cast by the
+    gadget; its clock run while the first still runs, no second is granted; and one runs.
+12. `AStruckGadgetDiesTheNextPressPlacesANewOneAndClearingTheFloorRemovesIt`. In order: control, the gadget stands; it
+    has cast; an enemy's blow kills it; no gadget stands for the slot; the next press places a new one; its clock not
+    started; it casts on its first step; clearing the floor removes it; no gadget stands for the slot.
+13. `NothingIsCastWhileThePlayerIsDeadAndTheGadgetStays`. In order: control, a living player's gadget casts; a dead
+    player's gadget casts nothing; its enemy keeps its health; the gadget stays; the player alive again, it casts.
+14. `AShapelessSkillsPressPlacesAGadgetThatCastsNothing`. A Celestial Sword. In order: control, a gadget may cast
+    Searing Lash; set-up, the sword's Heavy row states no shape; a gadget may not cast it; the press still places a
+    gadget; which casts nothing; the enemy beside it keeps its health.
+15. `TheSkillBarBoxOfAConvertedSlotSaysGadgetAndSweepsWithItsClock`. In order: control, the Heavy box is drawn; is not
+    a gadget's; does not read Gadget; converted, it is a gadget's; reads Gadget; no sweep before a cast; affordable;
+    does not say its gadget casts nothing; no words over it; the Special box is not a gadget's; set-up, the gadget
+    casts; the box's wait is the whole clock; all of it remains; half a second on, half a second less; the sweep covers
+    that share; a gadget's box whose skill cannot be cast reads "Gadget casts nothing"; a box that is not a gadget's
+    says nothing.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeSkillSlotIsAGadget`. In order:
+control, the Heavy slot of a player holding no row is unconverted; control, its press is left to the skill; with the
+flag at 1 the slot is converted; the press is the gadget's. It needs no `SkillGadget` row.
+
+Python: `TestASlotIsConvertedIntoAGadget` in `tools/tests/test_generate_datatables.py`, seven tests on a made-up sheet:
+the ruled row is carried through with `Slot.Heavy` under a sentence tagged `Type.Deployable, Slot.Heavy` and refused by
+no check; the four keyed slot tags are accepted and `Slot.Basic` is not; the name is a stat with no attribute, with a
+made-up name as the control; the generator's name is the one `CataclysmAbilitySystemComponent.cpp` holds, with the
+lock's in `CataclysmSkillSlots.cpp` read by the same pattern as the control; each wrong shape is refused once by its own
+sentence (increased, no tag, `Type.Deployable`, `Type.Deployable, Slot.Heavy`, an action, 0), and 2 to 2 is two
+refusals; a condition or a scale is refused by the checks that hold those; the whole sheet's validation runs the check.
+
+**Not tested:** a real row worn, and the real `SkillGadget` type row, which do not exist in this branch; the press
+through the player controller, so the stun bypass is not driven (the tests press through the ability system); a Special
+or Support Debuff gadget and a Projectile cast landing (Tether is pressed for its cooldown only); a projectile or a
+thrown rack that lands after its use has ended, whose blow would then not be priced as the gadget's; the self buff's
+enemy areas measured from the gadget (Burning Wrath, Held Fast, Coil's shove); the row taken off while a gadget stands;
+the destroyed-gadget stacks row; the gadget armour-reduction and stagger rows themselves (only `deployable_hit` is
+counted); the other gadget rows reaching it (S9); a weapon change; the evasion count; replication; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text was
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script) and compiles alone by reading: no variable is left unused. The failed assertions are
+counted by reading the tests and were not measured. The prefix of all three is `Cataclysm.SkillGadgets.`, with its
+trailing dot, which is 15 tests, and every one of them that places a gadget needs the `SkillGadget` row to be in
+`DT_MinionTypes`.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| G-I, the fire-rate row does not shorten the clock (S3) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `return AfterRows / (1.0f + Faster);` | `return AfterRows / (1.0f + 0.0f * Faster);` | `TheClockIsTheSlotsCooldownAfterItsRowsAndTheFireRateRowShortensIt` | none |
+| G-II, the 20%-40% row counts twice on a spell (S5 a) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `? SpellDamageOf(Source, TagsForSpellDamage, Delivery.SkillHealthCostPercent,` | `? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,` | `AGadgetDamageRowRaisesTheCastAndCountsOnceOnASpell` | none |
+| G-III, the gadget's age does not reach the conditions (S5 b) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `State.MinionSecondsActive = PricedFor->GetGameTimeSinceCreation();` | `State.MinionSecondsActive = -1.0f;` | `TheAgeRowReadsTheGadgetsAgeAndStillnessIsJudgedOnTheGadget` | none |
+
+Failed assertions in each test, by reading:
+
+- **G-I, 2 in 1 test.** Test 5: "the fire-rate row shortens the clock to the reduced cooldown over one and a half"
+  (the reduced cooldown against two thirds of it), and "at it, the third cast" (2 against 3: the clock is still the
+  reduced cooldown). "Short of the shorter clock, nothing" passes. No other test holds `minion_attack_speed`.
+- **G-II, 1 in 1 test.** Test 7: "the gadget's Anathema takes 30% more and no more" (the spell damage of 50 becomes 65,
+  so 1.349 times the player's own and not 1.3). The attack's line passes: Searing Lash is not a spell. No other test
+  casts a spell.
+- **G-III, 1 in 1 test.** Test 8: "a gadget that has stood three and a half seconds casts for 30% more" (an unknown age
+  scales to nothing, so 1.0 times). The stationary line passes. No other test holds an age row.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading; the probe of
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` reads no line any break touches.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-15 — A row can make a point-blank skill's own blow strike every ally inside its area for a percent of what it deals there: one stat asked with the skill's tags, a friendly search at four sites, and a damage-only share that spends no store and raises none of the wearer's rows, its kill included, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.h` and `.cpp` (new: the stat's name, its
