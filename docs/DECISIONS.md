@@ -18,7 +18,9 @@ death a share made heard as a death nobody killed); `game/Source/Cataclysm/Chara
 (one name on the list of stats with no attribute); `game/Source/Cataclysm/Tests/CataclysmAoeStrikesAlliesTests.cpp`
 (new, eleven tests); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe);
 `tools/generate_datatables.py` (the name and the refusals of its row); `tools/tests/test_generate_datatables.py` (one
-class of nine tests); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site). Issue
+class of nine tests); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (thirteen refusals, a later commit);
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (two tests of this group). Issue
 [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
 ### SAID FIRST
@@ -26,27 +28,34 @@ class of nine tests); `tools/tests/test_stat_lookups_hand_over_what_they_should.
 The sentence, from `game/Data/EnchantmentsNegative.csv`, row `Negative_Your_AOE_skills_deal_50_75_of_their_damage_to`:
 "Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies".
 
-- **RULED 2026-10-15 BY THE COORDINATING SESSION: THE FLOOR RULES REFUSE A SHARE. THE REFUSALS COME IN A LATER COMMIT
-  OF THIS LAYER, after another stack merges, and are not in this one: `CataclysmDungeonGameMode.cpp` is not changed
-  here.** Until then some dungeon floor rules read a share as the player's own blow, and a kill a share makes as the
-  player's kill. `ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.cpp`)
-  hears every hit notice and every death notice. By reading of their tests, and not run:
-  - **Brand of the Aggressor** (`NoteHitForBrandOfTheAggressor`) and **Holy Repercussions**
-    (`NoteHitForHolyRepercussions`) act on a blow whose attacker is the player and whose target is an
-    `ACataclysmEnemyCharacter`, with no test of the target's side. So a share that strikes the wearer's thrall or a
-    warzone soldier of its side does there what the player's blow on a creature does. **Contagious Touch** refuses a
-    player's follower and is not reached. **Carrion Feast** and **Shadowy Enemies** read a fire-tagged blow from an
-    attacker not of the monsters' side on a carcass or a creature, so a share carrying a fire tag on a thrall may reach
-    them; not settled by reading.
-  - **The rules on a kill** test `Notice.Killer != Player` (lines 2759, 13686, 13808, 16692, 16795, 17193, 17277,
-    17755, 19871 and 20319 of that file at this layer's head). For them a share that kills the wearer's thrall or minion
-    is the player's kill; the ones at 2759, 13686 and 13808 also ask that the victim be an `ACataclysmEnemyCharacter`
-    that pays for its death, and the others were not read past that line.
-  - **The hit notice carries `FCataclysmHitNotice::bAreaSkillShareOnAnAlly` and the death notice
-    `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`, so the later commit is one refusal in each rule in
-    `CataclysmDungeonGameMode.cpp`.** The rules it is to name: the hit rules Brand of the Aggressor and Holy
-    Repercussions, and Carrion Feast and Shadowy Enemies if a reading of them then shows they fire for a share; and
-    the ten rules on a kill at the lines above.
+- **RULED 2026-10-15 BY THE COORDINATING SESSION: THE FLOOR RULES REFUSE A SHARE**, because a share is the wearer's
+  skill striking its own side, not a blow or a kill on an enemy. `ACataclysmDungeonGameMode`
+  (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`) hears every hit notice and every death notice; the
+  file was allowed for these refusals only, one each, in a later commit of this layer than the mechanism. Line
+  numbers are of that file at this layer's head (`origin/feat/aoe-skills-strike-nearby-allies-m-2` and the commit
+  above it).
+  - **THREE HIT RULES refuse a notice carrying `FCataclysmHitNotice::bAreaSkillShareOnAnAlly`:**
+    **Brand of the Aggressor** (`NoteHitForBrandOfTheAggressor`, line 19763) and **Holy Repercussions**
+    (`NoteHitForHolyRepercussions`, line 20031), which act on a blow whose attacker is the player and whose target is
+    an `ACataclysmEnemyCharacter` with no test of the target's side, so a share on a thrall or a warzone soldier would
+    brand the player or provoke a Judgment; and **Shadowy Enemies** (`NoteHitForShadowyEnemies`, line 10831), which
+    exposes and unshrouds an `ACataclysmEnemyCharacter` struck by a blow tagged `Element.Demonic` from an attacker not
+    of the monsters' side: a share carries its skill's element, and sixteen of the seventeen point-blank skills are
+    Demonic, so a share on a thrall would fire it.
+  - **CARRION FEAST IS NOT REFUSED, because by reading it cannot fire for a share.** `NoteHitForCarrionFeast` acts only
+    on a carcass, and a carcass is spawned on the monsters' team (`NoteDeathForCarrionFeast`), so it is never an ally of
+    the wearer and no share is ever struck at one. **Contagious Touch** already refuses a player's follower.
+  - **THE TEN RULES ON A KILL refuse a death notice carrying `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`.** Found
+    by script: `Notice.Killer != Player` is on ten lines, one of them a comment in `NoteDeathForBloodForgedChampions`,
+    which asks for no killer; Blood Gates tests `Notice.Killer == Player` instead. So the ten are: Nothing Is
+    Forgotten (`NoteDeathForNothingIsForgotten`, 2761), Rule of Chaos (`NoteDeathForRuleOfChaos`, 13695), Blood Gates
+    (`NoteDeathForBloodGates`, 13819), Demon Prince (`NoteDeathForDemonPrince`, 16736), Epidemic
+    (`NoteDeathForEpidemic`, 16841), Vengeful Wraiths (`NoteDeathForVengefulWraiths`, 17241), Void Parasite
+    (`NoteDeathForVoidParasite`, 17327), March of Progress (`NoteDeathForMarchOfProgress`, 17807), Leech Spores
+    (`NoteDeathForLeechSpores`, 19934) and Mortal Decay (`NoteDeathForMortalDecay`, 20386). Each refuses on the line
+    that asks for the player as the killer.
+  - **Tested:** Holy Repercussions (test 12) and Blood Gates (test 13). **Not tested:** Brand of the Aggressor, Shadowy
+    Enemies, and the other nine rules on a kill.
 - **THE CASTING GADGET IS EXCLUDED.** Ruled 2026-10-15 by the coordinating session. A copy is the wearer's own skill
   cast from the gadget's place (the entry of 2026-10-14), so the cone's apex or the sphere's centre is the gadget, an
   ally by team (R1). The gadget is left out beside the wearer. **BY THE ACTOR AND NOT BY ITS PLACE**, a choice of the
@@ -90,7 +99,7 @@ The sentence, from `game/Data/EnchantmentsNegative.csv`, row `Negative_Your_AOE_
   health; copied by `UCataclysmCombatEvents::NoteDeath` onto `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`
   (line 291); and at the top of `OnSomethingDied` (line 1135) a death so marked whose killer is this character is heard
   once more with the killer taken off a copy, so every question below it that asks "did this character kill?" answers
-  no. **Every other listener still reads the wearer as the killer**, which is the floor rules named first.
+  no. **Every other listener still reads the wearer as the killer**; the floor rules named first refuse it by the mark.
 - **The wearer's stored-damage stores are not spent by an ally's share (R7)**: Nothing Wasted's and the two stores of
   absorbed damage are spent on the enemy as without the row (test 7). `ApplyHit` spends them on every blow that is not a
   tick (`CataclysmSkillEffects.cpp`, the two `Spend...` calls after the pricing); a share skips both.
@@ -258,6 +267,15 @@ character stands at least 1 m from every other.
     and an imp were made; the turret is the wearer's ally; the turret's target is the creature; set-up, the turret
     casts one copy on its step; control, the copy strikes its target; control, the imp 3 m from the turret is struck
     for its share; the turret itself loses nothing.
+12. `AShareOnAThrallProvokesNoHolyRepercussionsJudgment`, in `CataclysmDungeonModifierEffectsTests.cpp`. A floor of
+    Holy Repercussions with the roll pinned to answer. In order: set-up, the roll can be pinned; no Judgment before
+    any blow; set-up, the swing struck the creature; control, the wearer's own blow on a creature leaves one Judgment
+    stack; set-up, a creature is taken as the wearer's thrall and is its ally; set-up, the thrall took its share;
+    set-up, the creature moved 42 m away was not struck; the share leaves no Judgment stack.
+13. `AThrallKilledByAShareIsNotCountedTowardTheBloodGates`, in the same file. A floor of Blood Gates. In order:
+    set-up, the swing killed a placed creature; control, the wearer's own kill is counted; set-up, a placed creature
+    is taken as the wearer's thrall, is its ally and pays for its death; set-up, the share killed the thrall; it is
+    not counted.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
 `ProbeAoeSkillDamageToNearbyAlliesPercent`. Two players 100 m apart, each with an imp 2 m away and a swing all round;
@@ -279,7 +297,8 @@ release, a spin's repeats and final hit, and the "hits all within" sphere (only 
 the Leap are driven); another ally standing on the casting gadget's own point; a thrall, a warzone soldier or a gadget
 as the ally; madness; "You take 5%-15% damage done to nearby allies" worn beside it (R9); a scaled skill's percent; the
 more damage from behind; the absorbed-damage stores (only Nothing Wasted's is driven); the skipped first-blow record,
-brand and charm; retaliation refused; the floor rules named first; replication; anything in play.
+brand and charm; retaliation refused; Brand of the Aggressor, Shadowy Enemies and nine of the ten rules on a kill;
+replication; anything in play.
 
 ### GUARD PROOFS PROPOSED
 
@@ -287,24 +306,25 @@ Not run. Each old text was counted exactly once in its file by a script at this 
 counted absent from its file before the break and once after it, and each break keeps the file's round and curly
 brackets paired (counted by the same script) and compiles alone by reading. The failed assertions are counted by reading
 the tests and were not measured. The prefix of all three is `Cataclysm.AoeStrikesAllies.`, with its trailing dot, which
-is 11 tests.
+is 13 tests.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| B-I, no share is struck | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, PercentThisBlow, SkillTags, Delivery);` | `Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, 0.0f, SkillTags, Delivery);` | `AMinionInsideThePointBlankSwingTakesThePercentOfWhatAnEnemyThereTakes` | all ten others |
+| B-I, no share is struck | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, PercentThisBlow, SkillTags, Delivery);` | `Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, 0.0f, SkillTags, Delivery);` | `AMinionInsideThePointBlankSwingTakesThePercentOfWhatAnEnemyThereTakes` | all twelve others |
 | B-II, a share spends Nothing Wasted's store | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime && !bAShareOnAnAlly)` | `if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime)` | `AStoreOfTheWearersSurvivesASwingThatStruckAnAllyAndIsSpentOnTheEnemy` | none |
 | B-III, a share's kill is the wearer's kill | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `if (Notice.bByAnAreaSkillShareOnAnAlly && Notice.Killer == this)` | `if (Notice.bByAnAreaSkillShareOnAnAlly && Notice.Killer == nullptr)` | `TheAllysBlowRaisesNoHitDealtCriticalStrikeOrKillOnTheWearer` | none |
 
 Failed assertions in each test, by reading:
 
-- **B-I, 12 in 11 tests.** `ApplyHit` deals nothing for a damage percent of nought, so no ally ever loses anything.
+- **B-I, 14 in 13 tests.** `ApplyHit` deals nothing for a damage percent of nought, so no ally ever loses anything.
   Test 1, 1: "the wearer's imp inside the swing takes half". Test 2, 1: "control: the imp inside the cone takes a
   share", after which it returns. Test 3, 1: its control, after which it returns. Test 4, 1: "set-up: the imp took its
   share", after which it returns. Test 5, 1: "set-up: the imp took its share", after the control, after which it
   returns. Test 6, 1: its control, after which it returns. Test 7, 2: "the ally takes half the plain blow, and none of
   the store" and "and the ally beside it still takes half the plain blow". Test 8, 1: its control. Test 9, 1: "the imp at
   the landing takes half". Test 10, 1: "control: the swing itself gives the imp a share", after which it returns. Test 11, 1: "control: the imp beside the turret is struck for its share"; the turret's
-  line passes.
+  line passes. Test 12, 1: "set-up: the thrall took its share", after which it returns. Test 13, 1: "set-up: the share
+  killed the thrall", after which it returns.
 - **B-II, 3 in 1 test.** Test 7: "the ally takes half the plain blow, and none of the store" (half and the 50), "and the
   store survives the swing whole" (0 against 50), and "the enemy takes the plain blow and the 50 stored" (the store is
   gone). "The store is spent" and the last line pass. No other test holds a store.
