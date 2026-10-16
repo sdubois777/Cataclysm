@@ -591,6 +591,30 @@ Judgements by the writing session, for the coordinating session to confirm:
 Nothing here was compiled or run. Whether a dungeon of the wave is absorbed while walked at seed 1, and how many
 are gone before their turn, is not known.
 
+### 2026-10-15: the dark-floor death test walks a Quest dungeon on purpose
+
+**Found by a run.** In the Unreal run of 2026-10-15 at `feaedf35` (window void-zones-w25),
+`Cataclysm.DungeonModifierEffects.ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor` failed "the
+dungeon is still on the map", as this stack's plan listed it might (number 10 of the 28 it could not settle by
+reading). Its set-up helper `ADarkFloorEmpireDungeon` did not set the dungeon's type, so the dungeon was the run's
+roll, ordinary at seed 1, and under this entry's rules a death makes an ordinary dungeon hit its city and leave.
+
+The ruling, a labelled judgement by the coordinating session, 2026-10-15: fix the type and keep the test about its
+own subject, the dark floor after a death; a Quest dungeon on purpose, a control that it is one before the death,
+and "the dungeon is still on the map" kept true. The ordinary dungeon's death is this entry's own subject and is
+tested by `Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap`.
+
+Checked by reading before the change, as the ruling required: `UCataclysmEmpireRun::ResolveDungeonOnDeath` returns
+before touching anything when `Resolves()` is false, and `Resolves()` is true only for `Basic`, so a death leaves a
+Quest dungeon standing. Its timer can still run out during the five days the death costs; a Quest timer then hits
+its host and may move the dungeon, which keeps its number, or fells the host, which removes it. That was not
+measured for this test's seed.
+
+What changed: the helper takes an optional type, set before the dungeon is entered because entering copies it
+onto the game mode; its four other callers pass none and keep the rolled type. The test passes
+`ECataclysmDungeonType::Quest`. One assertion added: "CONTROL: before the death the dungeon is a Quest dungeon".
+Every other assertion is unchanged. Not compiled or run when written.
+
 ---
 
 ## 2026-10-13 — In the game a surge is 5 dungeons every 90 days, as in the simulation; it was 4 every 120
