@@ -370,7 +370,43 @@ own. The whole suite then gave "3772 tests performed, 3768 succeeded, 4 failed",
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-16 under the lock enchant-q1, for two layers in this order: this
+mechanism (its commits, its floor-rule commit and the two corrections recorded above) and the row. The suite and
+Python were run at the top of the two, which holds both. THE WINDOW WAS STARTED THREE TIMES.
+
+- **First start, on development 5c13f1a8: the build failed**, "Build: Failed - 36 actions, 33 files compiled": five
+  errors C2668, an ambiguous call to `HealthOf` in CataclysmDungeonModifierEffectsTests.cpp, because this layer's
+  floor-rule namespace defined a `HealthOf` of the same signature as the file's own. The lock was released; the helper
+  was renamed `ShareHealthOf`.
+- **Second start, on 5c13f1a8: four tests failed**, "3772 tests performed, 3768 succeeded, 4 failed". Three came from
+  the share stripping the wearer's weapon sub-type, a fault of the game against the ruling, and one from a pressed
+  nova that never swung, a fault of the test; both are recorded in the section above. The lock was released, and the
+  coordinating session ruled the corrections.
+- **Third start, on development 20c9a5a4 (the dungeon session's test-only stack's merge), every step as registered:**
+  - **Build:** "Build: Succeeded - 39 actions, 34 files compiled".
+  - **The enchantments group on the assets as merged:** "339 tests performed, 339 succeeded, 0 failed", registered
+    0 failed. This stack adds no test that wears the real row.
+  - **The whole Unreal suite:** "3778 tests performed, 3778 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 3778 tests in the tree at 9eb841e7; 3778 performed, gap 0". Registered 3778 and 0: 3765 measured on
+    20c9a5a4's tree by the dungeon session's window, and the thirteen of `Cataclysm.AoeStrikesAllies.`.
+  - **Python:** "6393 passed, 8 skipped"; JUnit tests 6401, failures 0, errors 0, skipped 8. Lint: "All checks
+    passed!". The eighth skip, `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, belongs to a
+    checkout that has built binaries.
+  - **A stall guard** watched every editor run and would have ended the editor and released the lock after 20
+    minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.AoeStrikesAllies.`, 13 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| B-I | the ally is priced at nought | all 13 failed | 14 / 14 | 13 of 13 succeeded |
+| B-II | a share spends the store | 1 failed, `AStoreOfTheWearersSurvivesASwingThatStruckAnAllyAndIsSpentOnTheEnemy` | 3 / 3 | 13 of 13 succeeded |
+| B-III | the kill is still credited | 1 failed, `TheAllysBlowRaisesNoHitDealtCriticalStrikeOrKillOnTheWearer` | 1 / 1 | 13 of 13 succeeded |
+
+**Not measured:** the stat probe's failure under B-I that this entry predicts, because the proofs ran only this prefix.
 
 ---
 
