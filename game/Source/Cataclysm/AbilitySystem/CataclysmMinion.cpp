@@ -22,6 +22,8 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the basic attack gadget's clock, the player's swing interval. Ruled 2026-10-16, stack 2.
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
 // For the level a minion's own health and damage are raised by, and for the
@@ -452,11 +454,16 @@ float ACataclysmMinion::SummonersGadgetStat(const TCHAR* Stat) const
 
 TArray<AActor*> ACataclysmMinion::HostilesWithinReach() const
 {
+	return HostilesWithin(ReachCm);
+}
+
+TArray<AActor*> ACataclysmMinion::HostilesWithin(float Reach) const
+{
 	// THE SPHERE `AttackOnce` SEARCHES, nearest first and leaving out the dead, and then the brain's own measure
 	// of reach. The header says why both.
 	const FVector Here = GetActorLocation();
-	TArray<AActor*> Within = UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), this, Here, ReachCm);
-	const float Furthest = ReachCm + ReachAllowanceCm;
+	TArray<AActor*> Within = UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), this, Here, Reach);
+	const float Furthest = Reach + ReachAllowanceCm;
 	Within.RemoveAll([&Here, Furthest](const AActor* Each)
 	{
 		return !IsValid(Each) || FVector::Dist2D(Here, Each->GetActorLocation()) > Furthest;
@@ -465,6 +472,11 @@ TArray<AActor*> ACataclysmMinion::HostilesWithinReach() const
 }
 
 AActor* ACataclysmMinion::MostHealthWithinReach() const
+{
+	return MostHealthWithin(ReachCm);
+}
+
+AActor* ACataclysmMinion::MostHealthWithin(float Reach) const
 {
 	if (SummonersGadgetStat(GadgetsTargetMostHealthStat) <= 0.0f)
 	{
@@ -477,7 +489,7 @@ AActor* ACataclysmMinion::MostHealthWithinReach() const
 	AActor* Most = nullptr;
 	float MostHealth = 0.0f;
 	double MostDistanceSquared = 0.0;
-	for (AActor* Each : HostilesWithinReach())
+	for (AActor* Each : HostilesWithin(Reach))
 	{
 		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Each);
 		const float Health =
@@ -842,6 +854,16 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	const float Faster = Cataclysm
 		? FMath::Max(0.0f, Cataclysm->IncreasesForStat(FName(TEXT("minion_attack_speed")), TypeTags))
 		: 0.0f;
+
+	// THE BASIC ATTACK'S CLOCK IS THE PLAYER'S SWING INTERVAL, "once per basic attack cooldown" (stack 2, item 1;
+	// S2): `SecondsBetweenSwingsFor` of the player, shortened by the fire-rate row as the keyed clock is. Its slot
+	// table's cooldown is nought and states no wait. NOUGHT, "never swing", STAYS NOUGHT, which `StepSkillGadget`
+	// reads as never cast. The player's own Cripple reaches it, because it is read off the player's avatar.
+	if (Skill.Slot == ECataclysmAbilitySlot::BasicAttack)
+	{
+		const float Swing = UCataclysmBasicAttack::SecondsBetweenSwingsFor(Cataclysm);
+		return Swing > 0.0f ? Swing / (1.0f + Faster) : 0.0f;
+	}
 	return AfterRows / (1.0f + Faster);
 }
 
@@ -886,6 +908,35 @@ bool ACataclysmMinion::StepSkillGadget()
 		return false;
 	}
 	const float Age = GetGameTimeSinceCreation();
+
+	// THE BASIC ATTACK'S GADGET KEEPS ITS BEAT (stack 2, P1), as the copy's clock does: the next cast is due one
+	// interval after the last was due, and a mark more than one interval behind is brought to now, so the average
+	// rate is the swing interval's and not the quarter-second step's. A step that casts nothing moves nothing, as the
+	// keyed clock waits. AN INTERVAL OF NOUGHT OR LESS NEVER CASTS, the first cast included. The header says more.
+	if (SkillGadgetSlot == ECataclysmAbilitySlot::BasicAttack)
+	{
+		FCataclysmWeaponSkill Basic;
+		const float Interval = SkillGadgetsSkill(Basic) ? SkillGadgetSecondsBetweenCasts(Basic) : 0.0f;
+		if (Interval <= 0.0f
+			|| (bSkillGadgetHasCast
+				&& Age - LastSkillGadgetCastAtAgeSeconds < Interval - SkillGadgetClockAllowanceSeconds)
+			|| !CastPlayersSkillFromHere())
+		{
+			return false;
+		}
+		if (!bSkillGadgetHasCast)
+		{
+			bSkillGadgetHasCast = true;
+			LastSkillGadgetCastAtAgeSeconds = Age;
+			return true;
+		}
+		LastSkillGadgetCastAtAgeSeconds += Interval;
+		if (Age - LastSkillGadgetCastAtAgeSeconds >= Interval)
+		{
+			LastSkillGadgetCastAtAgeSeconds = Age;
+		}
+		return true;
+	}
 
 	// AFTER THE FIRST CAST, NOTHING UNTIL ITS CLOCK HAS RUN, READ AGAIN EACH STEP, so a row put on or taken off, or a
 	// change of weapon, moves the next cast. The header says why a step that casts nothing waits.
@@ -965,16 +1016,14 @@ bool ACataclysmMinion::CastPlayersSkillFromHere()
 		{
 			return false;
 		}
-		const float Furthest = Reach + ReachAllowanceCm;
-		AActor* Target = nullptr;
-		for (AActor* Each : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), this, From, Reach))
+		// OR, WHEN THE PLAYER HOLDS "Your gadgets prioritize the highest HP enemy within their range instead of the
+		// nearest", THE ONE HOLDING THE MOST HEALTH NOW WITHIN THAT SAME REACH (stack 2, item 4; S9). Null without the
+		// row, and then the nearest, as before.
+		AActor* Target = MostHealthWithin(Reach);
+		if (!Target)
 		{
-			if (IsValid(Each) && !UCataclysmSkillEffects::IsDead(Each)
-				&& FVector::Dist2D(From, Each->GetActorLocation()) <= Furthest)
-			{
-				Target = Each;
-				break;
-			}
+			const TArray<AActor*> Within = HostilesWithin(Reach);
+			Target = Within.IsEmpty() ? nullptr : Within[0];
 		}
 		if (!Target)
 		{
@@ -1016,6 +1065,14 @@ const ACataclysmMinion* ACataclysmMinion::SkillGadgetCasting(const UGameplayAbil
 	const UCataclysmSkillTemplate* Template = Cast<const UCataclysmSkillTemplate>(Skill);
 	const ACataclysmMinion* Gadget = Template ? Cast<const ACataclysmMinion>(Template->FreeRepeatCastBy.Get()) : nullptr;
 	return Gadget && Gadget->IsSkillGadget() ? Gadget : nullptr;
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillGadgetCasting(const FCataclysmHitDelivery& Delivery)
+{
+	// WHAT THE BLOW CARRIES FIRST, because a blow landing after its use has ended has no skill left to ask (stack 2,
+	// item 3). A gadget's copy carries the copying gadget, which is no skill gadget, and is answered by the skill.
+	const ACataclysmMinion* Carried = Cast<const ACataclysmMinion>(Delivery.CastBy.Get());
+	return Carried && Carried->IsSkillGadget() ? Carried : SkillGadgetCasting(Delivery.Skill.Get());
 }
 
 const TCHAR* ACataclysmMinion::GadgetsTakeNoDamageStat = TEXT("gadgets_take_no_damage");

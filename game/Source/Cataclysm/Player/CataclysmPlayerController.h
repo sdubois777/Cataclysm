@@ -482,6 +482,26 @@ public:
 	bool TrySwingAtForTest(AActor* Target) { return TrySwingAt(Target); }
 	float LastSwingSecondsForTest() const { return LastSwingSeconds; }
 
+	/**
+	 * A press of the left button on this enemy, from the point where `Input_MoveToCursorStarted` has found it under
+	 * the cursor, and the button's release, exactly as play runs them, for automation tests. Ruled 2026-10-16 (skill
+	 * gadgets stack 2): with the basic attack converted, the click places its gadget and does not swing. A test world
+	 * has no cursor to trace, so the press is given its enemy. CALL THE RELEASE ONLY AFTER A PRESS ON AN ENEMY: after
+	 * any other press it goes on to the pick-up and the move order, which trace the cursor. Nothing in the game calls
+	 * these.
+	 */
+	void PressOnAnEnemyForTest(AActor* Enemy) { PressOnAnEnemy(Enemy); }
+	void ReleaseTheButtonForTest() { Input_MoveToCursorReleased(); }
+
+private:
+	/**
+	 * What a press of the left button on the world does once it knows the enemy under the cursor, or null for the
+	 * floor: remembers whether the press began on an enemy, and on one, places the basic attack's gadget when that
+	 * slot is converted (S15) or else takes it as the target and swings. Split out of `Input_MoveToCursorStarted` on
+	 * 2026-10-16 so a test can reach it.
+	 */
+	void PressOnAnEnemy(AActor* Enemy);
+
 private:
 
 	/**

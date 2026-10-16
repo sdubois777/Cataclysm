@@ -725,6 +725,18 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	float AreaSkillShareOnAnAllyPercent = 0.0f;
 
+	/**
+	 * The actor the use that struck this blow was cast from, when its caller named one: `UCataclysmSkillTemplate::
+	 * FreeRepeatCastBy` as the use was made, CARRIED BY WHAT OUTLIVES THE USE. Ruled 2026-10-16 (skill gadgets,
+	 * stack 2, item 3): a skill gadget's blow that lands after its one-use grant has ended (a rack's last axes, a
+	 * buried axe's later leap, a projectile in flight when its use is cancelled) has lost `Skill`, so this is how
+	 * `ACataclysmMinion::SkillGadgetCasting` still finds the gadget. Set by `ACataclysmProjectile::HitOne` from the
+	 * projectile's own `CastBy`, by a rack's no-speed throw and by `UCataclysmBuriedWeapon::LeapFromDying`; a blow
+	 * inside its use leaves it empty and is found through `Skill`. Weak: a gadget destroyed before its blow lands is no
+	 * gadget. Not a UPROPERTY, as `Skill` is not.
+	 */
+	TWeakObjectPtr<AActor> CastBy;
+
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
 	{

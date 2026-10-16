@@ -1537,6 +1537,8 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		// AND IT IS TOLD WHERE ITS USE WAS CAST FROM, for whether a contact is from behind. Ruled 2026-10-14.
 		InFlight->bStrikesFromAPoint = bFreeRepeatHasOrigin;
 		InFlight->StrikesFromPoint = Origin;
+		// AND WHO IT WAS CAST BY, which outlives the use: a skill gadget's shot is its own when it lands. Stack 2.
+		InFlight->CastBy = FreeRepeatCastBy;
 
 		// AND IT GLANCES ONWARD IF THE ROW SAYS SO. The Axe's Carom: "it glances
 		// from them to the next nearest and onward through three more ... every
@@ -1603,6 +1605,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 				}
 				Shot->bStrikesFromAPoint = bFreeRepeatHasOrigin;
 				Shot->StrikesFromPoint = Origin;
+				Shot->CastBy = FreeRepeatCastBy;
 				Shot->JoinsAUse(LandedOn, Index);
 				LetItGlance(Shot);
 				Shot->OnFinished.AddUObject(
@@ -1864,6 +1867,9 @@ bool UCataclysmProjectileSkill::ThrowOne()
 	{
 		Axe->bStrikesFromAPoint = bFreeRepeatHasOrigin;
 		Axe->StrikesFromPoint = From;
+		// AND WHO IT WAS CAST BY: A RACK'S LAST AXES LAND AFTER THE USE HAS ENDED, and are still a skill gadget's.
+		// Ruled 2026-10-16, stack 2.
+		Axe->CastBy = FreeRepeatCastBy;
 	}
 
 	// AND EACH AXE OF A RACK GLANCES AS A SINGLE THROW DOES, when the row states bounces or a row of the
@@ -1899,6 +1905,10 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// AND WHERE IT WAS THROWN FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
 		Delivery.bStruckFromAPoint = bFreeRepeatHasOrigin;
 		Delivery.StruckFromPoint = From;
+		// AND THE SKILL AND WHO IT WAS CAST BY, which a fired axe carries and this set neither of, so a skill gadget's
+		// rack never priced it as the gadget's. Ruled 2026-10-16, stack 2.
+		Delivery.Skill = this;
+		Delivery.CastBy = FreeRepeatCastBy;
 
 		FCataclysmDamageResult Resolved;
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(
@@ -2063,9 +2073,11 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// keeps striking long after the skill that threw it has ended. Reading
 		// either off the character at the moment it leaps would credit the blow
 		// to whatever the player used last.
+		// AND WHO THE USE WAS CAST BY, so a skill gadget's axe leaping long after is still the gadget's while the
+		// gadget stands. Ruled 2026-10-16, stack 2 (P5).
 		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
 										   GetDamagePercent(), SkillTags,
-										   Params.bBurns))
+										   Params.bBurns, FreeRepeatCastBy.Get()))
 		{
 			++Buried;
 		}

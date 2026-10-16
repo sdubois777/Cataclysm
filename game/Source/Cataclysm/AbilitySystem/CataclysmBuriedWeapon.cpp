@@ -14,7 +14,7 @@
 
 UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	AActor* Target, AActor* Caster, float RangeCm, float InDamagePercent,
-	const FGameplayTagContainer& InSkillTags, bool bInBurns)
+	const FGameplayTagContainer& InSkillTags, bool bInBurns, AActor* InCastBy)
 {
 	if (!IsValid(Target) || RangeCm <= 0.0f)
 	{
@@ -41,6 +41,7 @@ UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	Buried->SkillTags = InSkillTags;
 	Buried->bBurns = bInBurns;
 	Buried->Caster = Caster;
+	Buried->CastBy = InCastBy;
 	return Buried;
 }
 
@@ -85,10 +86,16 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// WHICH SIDE, ASKED BEFORE THE HIT as a fired contact asks it. Issue #1938.
 	const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Credited, NextHost);
 
+	// AND WHO THE THROWING USE WAS CAST FROM, so a skill gadget's axe is still priced as the gadget's while the gadget
+	// stands. Empty for every axe a player threw by hand, which is the delivery this always sent. Stack 2 (P5). AND
+	// ONLY WHILE THE THROWER IS HERE: when it has gone the dying creature is credited, and its blow is no gadget's.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CastBy = Buried->Caster.IsValid() ? Buried->CastBy.Get() : nullptr;
+
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Credited, NextHost, Buried->DamagePercent, Buried->SkillTags,
-		FCataclysmHitDelivery(), &Resolved);
+		Delivery, &Resolved);
 
 	// A DESIGNED BURN, because `bBurns` was copied from the throwing row's own
 	// `Burn=1`. Issue #917: a skill that states an ailment applies it whether or
@@ -134,7 +141,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// ago: a Harrower thrown ten seconds back is not running any more.
 	UCataclysmBuriedWeapon* Moved = BuryIn(NextHost, Credited, Buried->RangeCm,
 										  Buried->DamagePercent,
-										  Buried->SkillTags, Buried->bBurns);
+										  Buried->SkillTags, Buried->bBurns,
+										  Buried->CastBy.Get());
 	if (Moved)
 	{
 		Moved->Leaps = Buried->Leaps + 1;

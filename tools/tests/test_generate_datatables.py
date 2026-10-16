@@ -8988,7 +8988,7 @@ class TestASlotIsConvertedIntoAGadget(GadgetRowsOnAMadeUpSheet):
     """`skill_slot_is_a_gadget`, ruled 2026-10-16 (S12) and built ahead of its
     rows, for "Your heavy attack is converted into a deployable gadget that
     fires your heavy attack at the nearest enemy within range once per heavy
-    attack cooldown. Scales off gadget damage." and its three siblings. One
+    attack cooldown. Scales off gadget damage." and its four siblings. One
     flag at a flat 1 whose Required Tags is the slot's tag:
     `UCataclysmAbilitySystemComponent::SlotIsASkillGadget` asks whether it is
     above nought with the slot's skill tags, the way the lock is asked.
@@ -9034,16 +9034,47 @@ class TestASlotIsConvertedIntoAGadget(GadgetRowsOnAMadeUpSheet):
             "EnchantmentEffects", out) == []
         assert self.validation(out) == []
 
-    def test_each_of_the_four_keyed_slots_is_accepted(self):
+    def test_each_of_the_five_slots_is_accepted(self):
         """THE CONTROL for the tag refusal below: every keyed slot's tag is
-        accepted, and the basic attack's, which is the second stack's, is
-        not yet."""
+        accepted, and the basic attack's since the second stack built its
+        click (ruled 2026-10-16: this asserted its refusal only because the
+        click was not built). A slot no row converts, the Aura's, and a
+        made-up one are still refused, once each."""
         row = {"Name": "X#1", "Stat": self.STAT, "ValueKind": "flat",
                "ValueLow": 1.0, "ValueHigh": 1.0}
         for slot in ("Slot.Heavy", "Slot.Special", "Slot.Support",
-                     "Slot.Ultimate"):
+                     "Slot.Ultimate", "Slot.Basic"):
             assert self.refusals([dict(row, RequiredTags=slot)]) == [], slot
-        assert len(self.refusals([dict(row, RequiredTags="Slot.Basic")])) == 1
+        for slot in ("Slot.Aura", "Slot.Nonsense"):
+            assert len(self.refusals([dict(row, RequiredTags=slot)])) == 1, (
+                slot)
+
+    def test_the_basic_attacks_row_is_carried_through_under_its_sentence(
+            self, tmp_path):
+        """The row the enchantment session is to write for "Your basic attack
+        is converted into a deployable gadget that fires your basic attack at
+        the nearest enemy within range, once per basic attack cooldown. Scales
+        off gadget damage.", under the sentence's own tags `Type.Deployable,
+        Slot.Basic, Scope.BasicOnly`: the row requires `Slot.Basic` alone and
+        nothing refuses it. THE CONTROL: the same row requiring the
+        sentence's whole tag list is refused, once."""
+        self.SENTENCE_TAGS = "Type.Deployable, Slot.Basic, Scope.BasicOnly"
+        words = ("Your basic attack is converted into a deployable gadget "
+                 "that fires your basic attack at the nearest enemy within "
+                 "range, once per basic attack cooldown. Scales off gadget "
+                 "damage.")
+        out = self.out(tmp_path, words, [dict(self.ROW,
+                                              **{"Required Tags": "Slot.Basic"})])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Slot.Basic", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, {"Slot.Basic", self.TAG}) == []
+        whole = [dict(out[0], RequiredTags=self.SENTENCE_TAGS)]
+        assert len(self.refusals(whole)) == 1
 
     def test_the_flag_is_a_stat_with_no_attribute(self):
         """TESTED BY NAME. The control is a made-up name that is on no list."""

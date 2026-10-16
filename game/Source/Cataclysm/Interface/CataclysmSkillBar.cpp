@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For a slot converted into a skill gadget. Ruled 2026-10-16.
 #include "AbilitySystem/CataclysmMinion.h"
+// For whether the player swings at all, which the basic attack gadget's line asks. Ruled 2026-10-16, stack 2.
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/IConsoleManager.h"
@@ -412,6 +414,53 @@ FString UCataclysmSkillBar::SkillGadgetName()
 FString UCataclysmSkillBar::SkillGadgetTextFor(const FCataclysmSkillBarSlot& Slot)
 {
 	return Slot.bIsASkillGadget && Slot.bSkillGadgetCastsNothing ? FString(TEXT("Gadget casts nothing")) : FString();
+}
+
+FString UCataclysmSkillBar::BasicGadgetTextFor(bool bConverted, bool bCastsNothing, bool bPlaced,
+											   float RemainingSeconds)
+{
+	if (!bConverted)
+	{
+		return FString();
+	}
+	if (bCastsNothing)
+	{
+		return TEXT("Basic gadget casts nothing");
+	}
+	if (!bPlaced)
+	{
+		return TEXT("Basic gadget: click an enemy to place");
+	}
+	const FString Wait = CooldownTextFor(RemainingSeconds);
+	return Wait.IsEmpty() ? FString(TEXT("Basic gadget ready")) : FString::Printf(TEXT("Basic gadget %ss"), *Wait);
+}
+
+FString UCataclysmSkillBar::BasicGadgetTextOf(const AActor* Player)
+{
+	// ASKED THE WAY THE CLICK ASKS, `SlotIsASkillGadget`, so the line and the click cannot disagree.
+	const UCataclysmAbilitySystemComponent* Converting = Player
+		? Cast<const UCataclysmAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Player))
+		: nullptr;
+	const ECataclysmAbilitySlot Basic = ECataclysmAbilitySlot::BasicAttack;
+	if (!Converting || !Converting->SlotIsASkillGadget(Basic))
+	{
+		return FString();
+	}
+	const UCataclysmWeaponSlotsComponent* Held = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	const FCataclysmWeaponSkill* Row = Held
+		? Held->GetAvailableSkills().FindByPredicate(
+			  [Basic](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Basic; })
+		: nullptr;
+	const bool bCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row)
+		|| UCataclysmBasicAttack::SecondsBetweenSwingsFor(Converting) <= 0.0f;
+	float Remaining = 0.0f;
+	float Duration = 0.0f;
+	const ACataclysmMinion* Standing = Converting->SkillGadgetIn(Basic);
+	if (Standing)
+	{
+		Standing->SkillGadgetClock(Remaining, Duration);
+	}
+	return BasicGadgetTextFor(/*bConverted=*/true, bCastsNothing, Standing != nullptr, Remaining);
 }
 
 FString UCataclysmSkillBar::LockedNotice()

@@ -351,6 +351,19 @@ public:
 	static FString SkillGadgetTextFor(const FCataclysmSkillBarSlot& Slot);
 
 	/**
+	 * The line above the bar for the basic attack's gadget, or empty while the basic attack is not converted. Ruled
+	 * 2026-10-16 (skill gadgets stack 2, item 6): THE BAR DRAWS NO BOX FOR THE BASIC ATTACK (`SlotsShown`), and a
+	 * seventh box would change its width, so the gadget is one entry of the line above it. "Basic gadget 0.4s", its
+	 * seconds to the next cast written as a box writes its wait (`CooldownTextFor`); "Basic gadget ready" when it may
+	 * cast now; "Basic gadget: click an enemy to place" while none stands; and "Basic gadget casts nothing" when the
+	 * held weapon's basic attack can never be cast by it, a Shield's, or the player never swings (S10).
+	 */
+	static FString BasicGadgetTextFor(bool bConverted, bool bCastsNothing, bool bPlaced, float RemainingSeconds);
+
+	/** `BasicGadgetTextFor`, read off a player as `Read` reads the boxes. Empty for anything but a converted player. */
+	static FString BasicGadgetTextOf(const AActor* Player);
+
+	/**
 	 * The line above the bar naming the next-use charges held, or empty when
 	 * none are. Issue #1833, phase 2: the owner's rule that every system ships
 	 * with a basic interface, so a held charge can be seen in play.

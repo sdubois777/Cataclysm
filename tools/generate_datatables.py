@@ -10126,8 +10126,9 @@ def refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
 
 #: The flag by which a slot's key places a skill gadget instead of casting the
 #: slot's skill. Ruled 2026-10-16 by the coordinating session (S12), for the
-#: rows "Your heavy attack / special ability / support ability / ultimate
-#: ability is converted into a deployable gadget ... Scales off gadget damage."
+#: rows "Your basic attack / heavy attack / special ability / support ability
+#: / ultimate ability is converted into a deployable gadget ... Scales off
+#: gadget damage."
 #:
 #: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, whose Required Tags is the slot's
 #: own tag and nothing else, with no Condition, no Scale and no Action. The
@@ -10138,12 +10139,16 @@ def refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
 #: name, and `TestASlotIsConvertedIntoAGadget` in
 #: `tools/tests/test_generate_datatables.py` compares the two.
 #:
-#: THE FOUR KEYED SLOTS. The basic attack's row is the second stack's: its
-#: press is a click on an enemy, which is not built, and `Slot.Basic` joins
-#: this list when it is.
+#: THE FOUR KEYED SLOTS AND THE BASIC ATTACK'S. `Slot.Basic` joined on
+#: 2026-10-16 with the second stack, which built its press: a left click on
+#: an enemy places or moves the basic attack's gadget (S15), in
+#: `ACataclysmPlayerController::PressOnAnEnemy`. Its sentence carries
+#: `Type.Deployable, Slot.Basic, Scope.BasicOnly`; the row requires
+#: `Slot.Basic` alone, for the reason above.
 SKILL_SLOT_IS_A_GADGET_STAT = "skill_slot_is_a_gadget"
 SKILL_SLOT_IS_A_GADGET_SLOT_TAGS = frozenset({
-    "Slot.Heavy", "Slot.Special", "Slot.Support", "Slot.Ultimate"})
+    "Slot.Heavy", "Slot.Special", "Slot.Support", "Slot.Ultimate",
+    "Slot.Basic"})
 
 
 def refuse_a_skill_slot_gadget_row_the_game_cannot_read(

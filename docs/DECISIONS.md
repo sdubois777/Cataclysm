@@ -2,6 +2,277 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-16 — A row can convert the basic attack into a skill gadget: a left click on an enemy places or moves it and swings nothing, and it casts the basic attack on the player's swing interval kept as a beat; a skill gadget's late blows are still its own, its ground is priced for its age, and the highest-health row moves its aim, with no row authored
+
+**Affects:** `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (the click on an enemy split out
+as `PressOnAnEnemy`, which places the basic attack's gadget when that slot is converted; the release line; two test
+seams); `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the basic clock in
+`SkillGadgetSecondsBetweenCasts` and its kept beat in `StepSkillGadget`; `HostilesWithin` and `MostHealthWithin` by a
+reach; the aim in `CastPlayersSkillFromHere`; `SkillGadgetCasting` of a delivery);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::CastBy`, and
+`ApplyHit` asking the delivery); `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp` (the
+projectile's `CastBy`, copied into each contact); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`
+(the three `Fire` sites, the rack's no-speed throw, `BuryInStruck`); `game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.h`
+and `.cpp` (the buried axe carries the gadget); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (a
+gadget's ground priced inside the gadget's pricing scope); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and
+`.cpp` and `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the basic gadget's line);
+`game/Source/Cataclysm/Tests/CataclysmSkillGadgetBasicTests.cpp` (new, seven tests); `tools/generate_datatables.py`
+(the basic slot's tag accepted); `tools/tests/test_generate_datatables.py` (one test flipped, one added). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`, `Positive_Your_basic_attack_is_converted_into_a_deployable`:
+"Your basic attack is converted into a deployable gadget that fires your basic attack at the nearest enemy within
+range, once per basic attack cooldown. Scales off gadget damage." This is the second stack of skill gadgets; the entry
+below this one is the first.
+
+What a player would notice, once the row is worn:
+
+- **A LEFT CLICK ON AN ENEMY NO LONGER SWINGS.** It places the basic attack's gadget at the player's feet, or moves the
+  one standing there, and the player neither swings nor walks to the enemy. Holding the button places once; the next
+  click after the button comes up places or moves it again. A click on the floor still moves the player; a click on an
+  open screen and an item's pick-up are unchanged.
+- **A CLICK ON AN ENEMY STILL STOPS A WALK UNDER WAY (P4)**, as every click on the world does today: the gadget goes down
+  where the player stopped.
+- **THE GADGET CASTS THE PLAYER'S BASIC ATTACK AT THE NEAREST ENEMY WITHIN THE BASIC'S OWN REACH**, the row's stated
+  figure: a Strike's radius (1.5 m to 3.3 m by weapon, the Whip 3 m), a Projectile's range (7.2 m to 12 m). A melee
+  basic gadget fires only at an enemy that close to it.
+- **ITS CLOCK IS THE PLAYER'S SWING INTERVAL**, `UCataclysmBasicAttack::SecondsBetweenSwingsFor`, shortened by
+  "Gadgets fire 20%-40% faster". It reads the player's own attack speed and the player's Cripple, and a player who
+  never swings has a gadget that never casts. **IT KEEPS ITS BEAT (P1)**, so a Sword's 0.769 s interval casts on
+  average every 0.769 s, though its step looks four times a second. **IT CANNOT CAST MORE THAN FOUR TIMES A SECOND**,
+  whatever the interval: the step is a quarter of a second and casts once at most.
+- **A SHIELD'S BASIC GADGET IS PLACED AND CASTS NOTHING**: the Shield has no basic attack.
+- **ONE LINE ABOVE THE SKILL BAR**, on the line the next-use charges share: "Basic gadget 0.4s", "Basic gadget ready",
+  "Basic gadget: click an enemy to place" or "Basic gadget casts nothing", only while the basic attack is converted.
+  No seventh box.
+- **"YOUR GADGETS PRIORITIZE THE HIGHEST HP ENEMY" NOW MOVES EVERY SKILL GADGET'S AIM**, keyed slots included: the one
+  holding the most current health within the skill's own reach, not within the type row's 15 m (stack 1's judgement
+  f, reversed by the coordinating session).
+- **STACK 1'S FOUND FAULT WAS NARROWER THAN ITS ENTRY SAID, AND IS CORRECTED HERE.** An ordinary throw's use stays
+  active until its last projectile has finished, so its blows were always priced as the gadget's; only three kinds of
+  blow land after the one-use grant has ended: the last axes of a rack (Butcher's Bill), a buried axe's later leaps
+  (Harrower), and anything in flight when its use is cancelled. All three now carry the gadget and are priced as its
+  own. A BURIED AXE IS THE GADGET'S WHILE THE GADGET STANDS (P5); once the gadget is destroyed, the player's.
+- **A SKILL GADGET'S GROUND** (a skill's own ground, or a zone a row leaves) is priced with the gadget's age and
+  stillness (P2), with no flat row and no `deployable_hit`, since a tick is not a hit.
+- **FOR THE OWNER'S PLAY-CHECK LIST (P3)**: a melee basic gadget's landed hit pays the player the Basic slot's mana on
+  hit, 6, as the player's own swing does; a ranged one pays none, as the player's own ranged basic does. A wearer who
+  no longer swings takes its mana income from the gadget.
+- **LEFT OUT (P6):** a Quarry mark does not reach a skill gadget's aim; no row's words name it.
+- **AUTHORITY ONLY (P9)**, as stack 1: the click runs on the local controller and the gadget is placed on the
+  authority. In standalone play the two are one machine.
+- **NOT IN PLAY UNTIL THE ROW LANDS ABOVE IT**: the basic attack's Enchantment Effects row is the enchantment
+  session's, in a layer above this one.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief.
+
+**A SEPARATE QUESTION, RECORDED AND NOT BUILT (P2):** no ground zone takes the stat-line gadget increases ("Gadgets deal
+20%-40% increased damage" and the flat share of maximum health), for the player's own zones as much as a gadget's. A
+zone's tick is priced once, at creation, by `UCataclysmSkillEffects::ModifiedDamage`, which reads the attack damage
+attribute and the running buffs and was not found reading those rows.
+
+**Two faults found by the reconnaissance and ruled to follow as their own layers, not built here:** a ranged weapon's
+own basic attack reaches only its projectile's width, 40 to 90 cm (P7, `UCataclysmBasicAttack::ReachCmOf`); and rows
+on `attack_speed` scoped to `Slot.Basic` reach nothing, because `SecondsBetweenSwingsFor` asks with no tags (P8). The
+second reaches this gadget's clock the same way.
+
+**What was not read:** the bodies of the eight shapes' activation past where the recon read them; how a Projectile
+basic of a ranged weapon lands from a gadget (no test casts one); the replication of anything here.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, relayed by the coordinating session on 2026-10-16: the next system is skill gadgets; "Pressing a converted
+slot's key PLACES its gadget where the player stands. One gadget per converted slot; a new press moves it. The player
+no longer casts that skill."; and "Scales off gadget damage." means "the gadget casts the player's skill with the
+player's numbers AND rows that raise gadget damage (tagged Type.Deployable) also apply." The rulings S15 and "Stack 2
+rulings" items 1-7 and P1-P9 are the coordinating session's of 2026-10-16, as is the reversal of stack 1's judgement f.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| S15, item 2 | A left click on an enemy places or moves the basic gadget at the player's feet, debounced; no swing, no walk; a floor click still moves. | `ACataclysmPlayerController::PressOnAnEnemy`, `CataclysmPlayerController.cpp` 1263, called from `Input_MoveToCursorStarted` at 1260; the release at 1347, first in `Input_MoveToCursorReleased`. |
+| Item 1, S2 | The basic clock is `SecondsBetweenSwingsFor` over the fire-rate row; nought or less never casts. | `ACataclysmMinion::SkillGadgetSecondsBetweenCasts`, `CataclysmMinion.cpp` 862; the refusal in `StepSkillGadget`, 916. |
+| P1 | The kept beat, for the basic only. | `StepSkillGadget`, `CataclysmMinion.cpp` 933-937. |
+| Item 3 | A weak pointer to the casting gadget on the delivery and the projectile, set where a use fires, read first. | `FCataclysmHitDelivery::CastBy`; `ACataclysmProjectile::CastBy`; `CataclysmSkillTemplates.cpp` 1541, 1608, 1872 (the three `Fire` sites); `CataclysmProjectile.cpp` 649; `ACataclysmMinion::SkillGadgetCasting(const FCataclysmHitDelivery&)`, `CataclysmMinion.cpp` 1070, called by `ApplyHit`. |
+| Item 3 | The rack's no-speed throw gets its `Delivery.Skill`. | `CataclysmSkillTemplates.cpp` 1910-1911. |
+| P5 | A buried axe's leap is the gadget's while the gadget stands. | `BuryInStruck`, `CataclysmSkillTemplates.cpp` 2080; `UCataclysmBuriedWeapon::CastBy`, set in `BuryIn` and carried at `CataclysmBuriedWeapon.cpp` 93 and 145. |
+| P2 | A gadget's ground priced inside `FPricingASkillGadgetsBlow`, age and stillness only. | `UCataclysmSkillTemplate::LeaveZoneAlong`, `CataclysmSkillTemplate.cpp` 3289-3298. |
+| Item 4 | `HostilesWithin` and `MostHealthWithin` take the reach; the cast aims at `MostHealthWithin(SkillGadgetReachCm)` first. | `CataclysmMinion.cpp` 460 and 479; the aim at 1022. The brain's own `HostilesWithinReach` and `MostHealthWithinReach` pass the type's reach. |
+| Item 5 | The generator accepts `Slot.Basic`. | `SKILL_SLOT_IS_A_GADGET_SLOT_TAGS`, `tools/generate_datatables.py`. |
+| Item 6 | One text line above the bar; no seventh box. | `UCataclysmSkillBar::BasicGadgetTextFor` and `BasicGadgetTextOf`, `CataclysmSkillBar.cpp` 419 and 438; drawn at `CataclysmHUD.cpp` 540. |
+| P3, P4, P6, P9 | Mana on hit kept; the stop of a walk kept; Quarry left out; authority only. | Nothing built: SAID FIRST says each. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **A BASIC STEP THAT CASTS NOTHING MOVES NOTHING**, as the keyed clock waits: a beat with no target is not passed
+  over, and when a target arrives late the mark is brought to now. The option not taken: the copy's clock, which
+  passes over a beat that casts nothing.
+- **THE CLICK IS SPLIT OUT OF `Input_MoveToCursorStarted` INTO `PressOnAnEnemy`**, with `PressOnAnEnemyForTest` and
+  `ReleaseTheButtonForTest`, because the cursor trace cannot be driven in a test world. The option not taken: test the
+  ability system's press only, which would leave the click itself untested.
+- **NO SECOND GUARD IN `TrySwingAt`.** The recon proposed refusing a swing whenever the basic slot is converted; the
+  brief names the click alone. So a target set before the row came on, while a walk to it was under way, is still
+  swung at on arrival, and `TrySwingAtForTest` still swings. The option not taken: the one-line guard.
+- **THE RELEASE IS THE RELEASE HANDLER'S FIRST LINE**, before its interface and enemy branches return, so no press can
+  leave the basic slot held down.
+- **THE LINE HAS FOUR STATES AND IS AN ENTRY OF THE NEXT-USE LINE**, joined by its three spaces, so it never draws over
+  the boxes' words. The option not taken: a line of its own one gap higher, which the all-locked notice can already
+  occupy. "Casts nothing" is said for no basic row (the Shield), a basic no gadget may cast, and a player whose swing
+  interval is nought.
+- **EVERY USE THAT FIRES SETS ITS PROJECTILE'S `CastBy` FROM `FreeRepeatCastBy`**, a gadget's copy included; the reader
+  keeps only a skill gadget. The option not taken: set it only for a skill gadget's use, which would need the template
+  to know about gadgets.
+- **ONLY THE LATE DELIVERIES CARRY `CastBy`.** A blow struck inside its use is still found through its skill, so
+  `HitTargets`, the allies' share and the movement skills' deliveries are untouched (and the share's field list, which
+  a Python test holds to `HitTargets`', stays the same). The option not taken: set it at every site.
+- **A BURIED AXE CARRIES THE GADGET ONLY WHILE ITS THROWER IS HERE**: when the thrower has gone the dying creature is
+  credited, and its blow is no gadget's.
+- **THE GROUND'S PRICING SCOPE ENDS BEFORE THE ZONE IS LAID**, so the zone's own rows (more per enemy inside, a slow, a
+  stagger) are judged on the player, as a blow's provocations are.
+- **THE BRAIN'S TWO HELPERS STAY**, as one-line wrappers passing the type's reach, so the brain's callers are unchanged.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. The rulings are this game's own. None is recorded.
+
+### WHAT WAS BUILT
+
+- **The click.** `ACataclysmPlayerController::PressOnAnEnemy`: with `SlotIsASkillGadget(BasicAttack)` the ability
+  system's `PressOfASkillGadgetSlot(Slot.Basic)` places or moves the gadget and the press returns with no target and no
+  swing; `Input_MoveToCursorReleased` calls `ReleaseOfASkillGadgetSlot(Slot.Basic)` first.
+- **The clock.** `SkillGadgetSecondsBetweenCasts` answers the swing interval over one plus the fire-rate increases for
+  a basic row; `StepSkillGadget` keeps the basic gadget's beat and refuses an interval of nought.
+- **The aim.** `HostilesWithin(Reach)`, `MostHealthWithin(Reach)`, and `CastPlayersSkillFromHere` aiming at the most
+  health first.
+- **The late landings.** `FCataclysmHitDelivery::CastBy`, `ACataclysmProjectile::CastBy`, `UCataclysmBuriedWeapon::CastBy`
+  and `BuryIn`'s new last argument, `SkillGadgetCasting(const FCataclysmHitDelivery&)`.
+- **The ground.** A `FPricingASkillGadgetsBlow` around `PerTick` in `LeaveZoneAlong`.
+- **The line.** `UCataclysmSkillBar::BasicGadgetTextFor` and `BasicGadgetTextOf`, the last entry of the HUD's next-use
+  line.
+- **The generator.** `Slot.Basic` in `SKILL_SLOT_IS_A_GADGET_SLOT_TAGS`.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One line on `Positive_Your_basic_attack_is_converted_into_a_deployable`: Stat `skill_slot_is_a_gadget`, Value Kind
+`flat`, Value Low 1, Value High 1, **Required Tags `Slot.Basic` alone**, no Condition, no Scale, no Action, no Action
+Event and no other cell. The sentence's own tags are `Type.Deployable, Slot.Basic, Scope.BasicOnly`; the generator was
+dry-run on a made-up sheet carrying them, and the row requiring `Slot.Basic` was carried through and refused by nothing,
+while the same row requiring the sentence's whole tag list was refused once.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session ruled the first.
+
+- **The generator accepts `Slot.Basic`** on `skill_slot_is_a_gadget`. The merged test
+  `TestASlotIsConvertedIntoAGadget.test_each_of_the_four_keyed_slots_is_accepted` in `tools/tests/test_generate_datatables.py`,
+  which asserted `Slot.Basic` was refused, is renamed `test_each_of_the_five_slots_is_accepted` and asserts it is
+  accepted; its control is now `Slot.Aura` and a made-up `Slot.Nonsense`, each refused once.
+- **One test added beside it**, `test_the_basic_attacks_row_is_carried_through_under_its_sentence`.
+- **No merged Unreal test asserts anything different, by reading.** For a player whose basic attack is not converted,
+  the click and the release ask one stat and go on as before; no skill gadget means `CastBy` is read and passed over;
+  the ground's scope is inactive with no gadget; the line is empty; and `HostilesWithin(Reach)` is the search the aim's
+  loop made before, the dead already left out by the sphere search.
+
+### Tests
+
+Seven new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSkillGadgetBasicTests.cpp`, in stack 1's group,
+`Cataclysm.SkillGadgets.`, with helpers of their own names. The rig is stack 1's with the game's own
+`ACataclysmPlayerController`: a possessed player character holding a Demonic Whip (one a War Shield, one a Demonic Axe),
+a weapon damage of 100, 10,000 health and 1,000 mana; enemies of the monsters' side with no defences and 50,000 health
+unless stated. Every stat is granted by hand; the flag is a flat 1 requiring the slot's tag. The world's clock is moved
+by hand, a gadget's step is called directly, and a projectile is stepped by hand, a twentieth of a second at a time.
+
+1. `AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt`. In order: control, holding no row, a
+   click on an enemy 2 m away starts a swing; and places no gadget; set-up, the basic slot is converted; a press on the
+   floor (no enemy) places no gadget; the click on the enemy places a basic gadget; a skill gadget of the basic slot;
+   at the player's feet; the click started no swing; the enemy took nothing; no mana on hit was paid; the gadget cast
+   nothing as it was placed; before the release, a second click from 5 m away moves nothing; and swings nothing; after
+   the release, the next click keeps the same gadget; moves it to the player's feet; and still swings nothing.
+2. `TheBasicGadgetCastsTheBasicAttackWithinItsReachOnTheSwingIntervalKeptAsABeat`. Two whip players, attack speed 1.3;
+   the second holds `minion_attack_speed` 50 requiring `Type.Deployable`. In order: control, the swing interval is
+   1/1.3; set-up, the gadget aims by the whip's 3 m; an enemy 4 m away is not aimed at; with an enemy 2 m away the
+   gadget casts once; it struck that enemy; it was not the gadget's own blow; the clock is the swing interval; the
+   fire-rate row makes it that over one and a half; over 40 steps of 0.25 s the gadget has cast 14 times (1 + 13, the
+   number 0.769 s gives over 10 s; a clock run as a cooldown gives 11); the enemy beyond reach is untouched; the
+   fire-rate row's gadget has cast 20 times (a cooldown clock gives 14).
+3. `ABasicGadgetWhosePlayerNeverSwingsNeverCasts`. In order: control, the gadget of a player with attack speed 1.3
+   casts on its first step; set-up, attack speed nought is an interval of nought; the gadget of that player casts
+   nothing over its first step and eight more; its enemy keeps its health.
+4. `AShieldsBasicGadgetIsPlacedAndCastsNothing`. In order: set-up, the shield holds no basic row; set-up, the whip
+   player's basic gadget is placed; control, it casts on its first step; the shield's basic slot is converted all the
+   same; its press places a gadget; which casts nothing over five steps; the enemy 1.5 m away keeps its health; the
+   line reads "Basic gadget casts nothing".
+5. `TheHighestHealthRowAimsASkillGadgetAtTheHealthierEnemyWithinTheSkillsReach`. A Heavy gadget (Searing Lash, 5 m);
+   enemies 2 m away holding 20,000, 4 m away on the other side holding 40,000, and 7 m away holding 50,000. In order:
+   control, the gadget casts; without the row the nearer is struck; the healthier is not; with
+   `gadgets_target_most_health` flat 1 requiring `Type.Deployable`, `MostHealthWithin` the skill's reach is the
+   healthier; `MostHealthWithinReach`, the type's reach, is the one beyond; 1.5 s on the gadget casts again; the
+   healthier is struck; the nearer keeps what it had; the healthiest, beyond the skill's reach, is untouched.
+6. `ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets`. A Demonic Axe's Ultimate, Butcher's Bill, converted,
+   with "3%-6% of your maximum HP per hit" at 3 (300 a hit) requiring `Type.Deployable`, which only a blow priced as
+   the gadget's takes; an increase row would reach any blow carrying the grant's tags and could not tell. In order:
+   set-up, the Ultimate is a rack of more than two; set-up, the gadget casts; and its rack runs; control, the first axe
+   landing while the use runs raised `deployable_hit`; and so did the second; the second struck with the 300 in it;
+   set-up, the last throw ended the use; every late axe finished its flight; each late axe raised `deployable_hit`
+   (2 plus the late count); and the late axes together took the late count times the second axe's damage, within half
+   a percent.
+7. `TheBasicGadgetsLineAboveTheBarIsDrawnOnlyWhileTheBasicAttackIsConverted`. In order: not converted, no line;
+   nothing to cast, "Basic gadget casts nothing"; none placed, "Basic gadget: click an enemy to place"; waiting 0.44 s,
+   "Basic gadget 0.4s"; due, "Basic gadget ready"; read off a player: control, holding no row, no line; converted with
+   no gadget, the placing words; set-up, the press placed a gadget; placed and not yet cast, ready; set-up, it casts;
+   just after, "Basic gadget 0.8s"; a second on, ready.
+
+Python: `test_each_of_the_five_slots_is_accepted` (the five slot tags accepted; `Slot.Aura` and `Slot.Nonsense`
+refused once each) and `test_the_basic_attacks_row_is_carried_through_under_its_sentence` (the row requiring
+`Slot.Basic` under the sentence's three tags is carried through as written and refused by neither the check nor the
+whole sheet's validation; requiring the three tags it is refused once).
+
+**Not tested:** the click's own handler, `Input_MoveToCursorStarted`, its cursor trace, its interface branch and its stop
+of a walk; the walk a floor click orders with the row worn (a test world has no cursor and no navigation); the hold of
+the button; a Projectile basic gadget (Wand, Crossbow, Staff); the mana on hit a melee basic gadget pays; Cripple
+reaching the clock; a buried axe's late leap (Harrower) and a projectile in flight when its use is cancelled; a gadget
+destroyed before its blow lands; the ground's pricing scope (no test lays a gadget's zone; the recon could not say what
+the scope changes); the real row and the real `SkillGadget` asset in play; replication.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+was counted absent before the break and once after it, and each break keeps the file's round, curly and square
+brackets paired (counted by the same script) and compiles alone by reading: no variable is left unused and every name
+it uses is declared. The failed assertions are counted by reading. The prefix of all three is `Cataclysm.SkillGadgets.`,
+with its trailing dot, which is the fifteen tests of stack 1 and the seven here, 22.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| G-IV, the basic clock does not keep its beat (P1) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `LastSkillGadgetCastAtAgeSeconds += Interval;` | `LastSkillGadgetCastAtAgeSeconds = Age + 0.0f;` | `TheBasicGadgetCastsTheBasicAttackWithinItsReachOnTheSwingIntervalKeptAsABeat` | none |
+| G-V, a projectile's contact does not carry the gadget (item 3) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `Delivery.CastBy = CastBy;` | `Delivery.CastBy.Reset();` | `ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets` | none |
+| G-VI, the click asks a slot nobody converts (S15) | `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` | `Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack))` | `Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Aura))` | `AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt` | none |
+
+Failed assertions in each test, by reading:
+
+- **G-IV, 2 in 1 test.** Test 2: "over ten seconds ... casts 14 times" (11: each cast a whole step-rounded second
+  apart) and "the fire-rate row raises that to 20" (14: 0.513 s rounded up to 0.75). Every earlier line passes: the
+  first cast does not reach the broken line. No other test casts a basic gadget twice.
+- **G-V, 2 in 1 test.** Test 6: "each of the late axes raised deployable_hit" (2 against 2 plus the late count) and
+  "took what an axe of the running use took" (each late axe without its 300). The controls pass: an axe landing inside
+  its use is found through its skill. No other test lands a projectile after its use.
+- **G-VI, 1 in 1 test.** Test 1: "the click on the enemy placed a basic gadget": the press asks the Aura slot, is
+  answered no, and the click swings instead; the test ends there. Tests 4 and 7 press through the ability system, which
+  the break does not touch.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-16 — A row can convert a keyed slot into a skill gadget: its key places or moves one gadget at the player's feet, and the gadget casts the player's own skill from its place once per that skill's cooldown, priced with the rows that raise gadget damage, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the skill gadget: its type name, its

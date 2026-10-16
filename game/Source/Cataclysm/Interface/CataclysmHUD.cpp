@@ -534,7 +534,10 @@ void ACataclysmHUD::DrawSkillBar()
 			  // AND WHAT THE NEXT SPELL'S COOLDOWN WILL LOSE. Issue #1833.
 			  UCataclysmSkillBar::NextSpellCooldownLine(
 				  Cataclysm->NextSpellCooldownSecondsHeld()),
-			  UCataclysmSkillBar::FollowThroughLine(Cataclysm->FollowThroughSecondsLeft())})
+			  UCataclysmSkillBar::FollowThroughLine(Cataclysm->FollowThroughSecondsLeft()),
+			  // AND THE BASIC ATTACK'S GADGET, while that slot is converted: the bar has no box for it. Ruled
+			  // 2026-10-16, skill gadgets stack 2 (item 6).
+			  UCataclysmSkillBar::BasicGadgetTextOf(Pawn)})
 		{
 			if (!Part.IsEmpty())
 			{
