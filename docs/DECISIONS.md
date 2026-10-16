@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-13 — In the game a surge is 5 dungeons every 90 days, as in the simulation; it was 4 every 120
 
-**Said first: not compiled and not run.** The C++ in this change was written by reading and has not been built.
+**Said first: not compiled and not run, when written; the Run section below has the run.** The C++ in this change was written by reading and has not been built.
 No Unreal test was run. Every changed figure below was worked by hand and checked against the simulation's own
 formula in Python; none was checked against the game.
 
@@ -200,15 +200,19 @@ became 60 days: day 91 less day 31.
 
 ### Not covered
 
-- No assertion in this layer was run against the game.
-- The 28 tests the plan lists as depending on what a seed rolls were not edited and their outcome is not known.
-- Whether an unattended empire still loses the path to the Pillar within 2,000 days at this cadence was not
-  established. Ruling 5 says to keep the test and see the run.
+- No assertion in this layer was run against the game, when written; the Run section below has the run.
+- The 28 tests the plan lists as depending on what a seed rolls were not edited before the run. In window
+  void-zones-w25 one of them failed,
+  `Cataclysm.DungeonModifierEffects.ThoseInTheDarkADeathOnTheDarkFloorLeavesTheDungeonAndTheDarkFloor`, and
+  was changed by ruling in the third layer of this stack; in window void-zones-w26 all 28 passed.
+- An unattended empire still loses the path to the Pillar within 2,000 days at this cadence on the five seeds
+  the test runs: `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar` passed in windows
+  void-zones-w25 and void-zones-w26. Other seeds were not run.
 - `UCataclysmSurgeScheduler::LastSurgeDay` is not saved. That gap is older than this change.
 
 ### Guard proofs proposed for the C++
 
-None was run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`, counted once in
+None was run when written; the Run section below has the run. Each break is one line of `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`, counted once in
 the file at this commit. A break in a header recompiles every file that includes it.
 
 | | The line | Becomes | The test | Predicted |
