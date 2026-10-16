@@ -727,6 +727,8 @@ void UCataclysmSkillTemplate::EndAbility(
 	// AND THE PLACE A USE WAS CAST FROM, ruled 2026-10-14. Only a one-use grant ever holds one, and it is removed as
 	// it ends; cleared all the same, so nothing that outlives the use can read it.
 	bFreeRepeatHasOrigin = false;
+	// AND THE ACTOR IT WAS CAST FROM, ruled 2026-10-15, for the same reason.
+	FreeRepeatCastBy.Reset();
 }
 
 bool UCataclysmSkillTemplate::CanActivateAbility(
@@ -2699,7 +2701,11 @@ float UCataclysmSkillTemplate::ShareTheBlowWithAllies(const TArray<AActor*>& All
 	for (AActor* Ally : Allies)
 	{
 		// THE ENEMIES' BLOWS CAME FIRST, and an ally may have died since it was found.
-		if (!IsValid(Ally) || UCataclysmSkillEffects::IsDead(Ally))
+		//
+		// AND THE GADGET A COPY IS CAST FROM IS NOT STRUCK, beside the wearer the searches leave out. Ruled 2026-10-15
+		// by the coordinating session: the casting gadget is excluded. By the actor and not by its place, at all four
+		// sites at once, since every share is dealt here. See `FreeRepeatCastBy`.
+		if (!IsValid(Ally) || UCataclysmSkillEffects::IsDead(Ally) || Ally == FreeRepeatCastBy.Get())
 		{
 			continue;
 		}

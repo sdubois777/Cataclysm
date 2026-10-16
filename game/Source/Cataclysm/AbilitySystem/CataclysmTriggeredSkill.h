@@ -61,9 +61,12 @@ public:
 	 * @param CastFrom  where the skill is cast FROM, or null for the character's own place. Ruled 2026-10-14, for
 	 *                  a gadget's copy of its summoner's skill, which is the only caller that gives one: see
 	 *                  `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`.
+	 * @param CastBy    the actor the skill is cast FROM, or null: the gadget a copy is. Ruled 2026-10-15, so a
+	 *                  point-blank copy's share leaves it out; see `UCataclysmSkillTemplate::FreeRepeatCastBy`.
 	 */
 	static bool Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-						float DamageShare = 1.0f, bool bPaysCost = false, const FVector* CastFrom = nullptr);
+						float DamageShare = 1.0f, bool bPaysCost = false, const FVector* CastFrom = nullptr,
+						AActor* CastBy = nullptr);
 
 	/**
 	 * The row of the skill of this name the character HOLDS, from its weapon slots, copied into `Out`. Ruled
