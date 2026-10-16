@@ -4,7 +4,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-10-15 — A walk whose dungeon's city falls ends at the dungeon's bottom and the clear counts for nothing (#2414)
 
-**Not built and not run.** Nothing was compiled and nothing was run in Unreal. The C++ change and its one new
+**Not built and not run, when written; the Run section below has the run.** Nothing was compiled and nothing was run in Unreal. The C++ change and its one new
 Unreal test were written and read, not built. Every floor and day figure below is arithmetic done by hand from
 reading the code. The Python checks were run; the commit message records what they printed.
 
@@ -155,7 +155,7 @@ The declared test count went from 3720 to 3721 when written, on development `09a
 ### Proofs proposed
 
 All three are in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`, test prefix
-`Cataclysm.DungeonMode.AWalkWhoseCityFalls`. None was run.
+`Cataclysm.DungeonMode.AWalkWhoseCityFalls`. None was run when written; the Run section below has the run.
 
 1. `	return EmpireDungeonId != INDEX_NONE ? EmpireDungeonFloorsOnEntry : 0;` becomes `	return 0;`. The walk has
    no bottom again; the test's floor limit stops it at floor 6. Predicted: eight assertions fail (the floor count,
