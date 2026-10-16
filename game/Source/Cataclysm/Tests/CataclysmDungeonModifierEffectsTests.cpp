@@ -56019,7 +56019,7 @@ namespace CataclysmAoeShareFloorRulesTest
 		return Nova;
 	}
 
-	float HealthOf(const AActor* Who)
+	float ShareHealthOf(const AActor* Who)
 	{
 		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who);
 		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
@@ -56098,7 +56098,7 @@ bool FCataclysmAoeShareHolyRepercussionsTest::RunTest(const FString& Parameters)
 
 	// CONTROL: THE WEARER'S OWN BLOW ON THE CREATURE is answered with a Judgment stack.
 	Nova->SwingOnce();
-	if (!TestTrue(TEXT("set-up: the swing struck the creature"), HealthOf(Enemy) < 10'000'000.0f)
+	if (!TestTrue(TEXT("set-up: the swing struck the creature"), ShareHealthOf(Enemy) < 10'000'000.0f)
 		|| !TestEqual(TEXT("control: the wearer's own blow on a creature leaves one Judgment stack"), CountNow(),
 			Expected(1)))
 	{
@@ -56117,11 +56117,11 @@ bool FCataclysmAoeShareHolyRepercussionsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	SetHealth(Thrall, 1'000'000.0f);
-	const float EnemyBefore = HealthOf(Enemy);
+	const float EnemyBefore = ShareHealthOf(Enemy);
 	Nova->SwingOnce();
-	if (!TestTrue(*FString::Printf(TEXT("set-up: the thrall took its share: %.2f"), 1'000'000.0f - HealthOf(Thrall)),
-			HealthOf(Thrall) < 1'000'000.0f)
-		|| !TestEqual(TEXT("set-up: the creature 42 m away was not struck"), HealthOf(Enemy), EnemyBefore, 0.01f))
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the thrall took its share: %.2f"), 1'000'000.0f - ShareHealthOf(Thrall)),
+			ShareHealthOf(Thrall) < 1'000'000.0f)
+		|| !TestEqual(TEXT("set-up: the creature 42 m away was not struck"), ShareHealthOf(Enemy), EnemyBefore, 0.01f))
 	{
 		return false;
 	}
