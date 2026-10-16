@@ -737,6 +737,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// you used and fire it at their target once every 2 seconds". A flag.
 		// No gameplay attribute and no base.
 		TEXT("gadgets_copy_your_last_skill"),
+		// The flag by which a skill in the Ultimate slot has no cooldown and
+		// its mana cost doubles with each paid use of it in the dungeon, read by
+		// UCataclysmGameplayAbility::UltimateCostDoublesByARow with no tags,
+		// from GetBaseCooldown, ManaCostFor and CommitAndBegin. Ruled
+		// 2026-10-14, for Mana Weaver's ten-piece bonus: "Your ultimate ability
+		// no longer has a cooldown. Instead, its mana cost is doubled every time
+		// you use it". A flag. No gameplay attribute and no base.
+		TEXT("ultimate_cost_doubles_instead_of_cooldown"),
 	};
 	return Stats;
 }

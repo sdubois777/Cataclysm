@@ -2,6 +2,363 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-15 — A row can take the cooldown off whatever skill is in the Ultimate slot and double that skill's mana cost with each paid use in the dungeon: one flag stat, read in `GetBaseCooldown` and `ManaCostFor`, and a count on the ability system, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the stat's name, the
+helper that asks it, the factor, one test in `GetBaseCooldown` and the factor in `ManaCostFor`),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (the count, its dungeon, its cap of 30, and one line in
+`ClearWhatDeathEnds`), `CataclysmSkillTemplate.cpp` (a paid use is counted in `CommitAndBegin`), all under
+`game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name on
+the list of stats with no attribute); `game/Source/Cataclysm/Tests/CataclysmManaWeaverTenPieceTests.cpp` (new, nine
+tests); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe); `tools/generate_datatables.py`
+(the name and the refusals of its row); `tools/tests/test_generate_datatables.py` (one class of eight tests);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site). Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsPositive.csv`, row `Positive_Mana_Weaver_10_Piece_Bonus_Your_ultimate_abil`:
+"Mana Weaver (10-Piece Bonus): Your ultimate ability no longer has a cooldown. Instead, its mana cost is doubled every
+time you use it. This cost resets at the beginning of every dungeon".
+
+- **ON THE OWNER'S PLAY-CHECK LIST: "holding the ultimate key casts again as each cast ends until Fervour or mana runs
+  out".** Required said first by the coordinating session (R5). There is no least gap between two casts. The player
+  controller's press arrives every frame the key is held (`ACataclysmPlayerController::Input_AbilitySlotPressed`,
+  bound to `ETriggerEvent::Triggered`), and the cooldown was the only thing that spaced a held Ultimate's casts.
+- **The Ultimate's 50 Fervour is still paid on every use.** Ruled (R3), by the ruling of 2026-09-27 in the entry
+  headed "The Ultimate slot costs 50 Fervour, paid by every class, ...": "A slot cost, not a mana cost". The sentence
+  takes the cooldown away and nothing else. So at 50 a cast, Fervour is what limits a wearer who has the mana.
+- **"Your ultimate ability" is whatever skill sits in the Ultimate slot**, by the slot the granted skill holds and not
+  by a tag of its row (R1). A skill put in that slot that was designed for another is the wearer's ultimate.
+- **The cost is the whole cost the game works out today, doubled once for each paid use in the dungeon** (R6): after
+  every `mana_cost` row, the "every Nth spell" share of mana held and the share of maximum mana. The first paid use
+  pays the cost, the second twice it, the third four times it. At the Ultimate slot's level-100 cost of 150 that is
+  150, 300, 600, 1,200, 2,400. The skill bar shows the doubled figure, because it reads `ManaCostFor`.
+- **A row that halves the cost halves the doubled cost** (R6, test 6).
+- **The count is kept only while the row is worn, and the doubling applies only while it is worn.** A judgement of
+  the writing session; see below. Taking a piece off and putting it back in the same dungeon finds the count where it
+  was.
+- **The count resets when another dungeon is walked, and at a death; a new floor keeps it** (R7). It is never reset
+  by time. **A dungeon left and the SAME dungeon entered again would find the count it left with**, if a dungeon can
+  be entered twice, which was not read; see "Not tested".
+- **A free start never counts and a refused use never counts** (R6): a repeat, a trigger, Wild Magic, Echo Chamber, a
+  gadget's copy and Follow Through. **A free start that pays its cost, as Spellblade's Will's trigger of a held spell
+  does, pays the doubled figure and does not count.** A judgement; see below.
+- **A cost that cannot be paid refuses the cast, as today** (R8): mana first, then the energy shield (Cast from Ward)
+  or health at a price, where a row lets those pay, each paying the doubled figure.
+- **Two rows written for cooldown abilities stop reaching the Ultimate while this row is worn** (R4, accepted): a use
+  with a base cooldown of nought tells the rows it has none. Named by script below.
+- **Found, not changed: three more rows become worth nothing to the Ultimate while this row is worn**, because they
+  change a cooldown the Ultimate no longer has: "Your ultimate ability cooldown is reduced by 20-40%", the drawback
+  "Ultimate cooldowns increased by 100%-500%" (so that drawback costs a wearer of this row nothing for the Ultimate),
+  and "Ultimate has 1-3 additional charges". Printed by the same script.
+- **Found, not changed: "Using your ultimate ability resets all other skill cooldowns" fires on every cast**, as it
+  fires on every use of the Ultimate today; with no cooldown, a held key resets every other skill's cooldown once per
+  cast, until the Fervour or the mana runs out. By reading of the row (`cooldown_reset_others` on `skill_use`,
+  Required Tags `Slot.Ultimate`, which is matched against the skill's own tags); not tested. For the coordinating
+  session.
+- **Found, not changed: the Spellblade's Will two-piece trigger still counts the Ultimate as "a skill with a
+  cooldown"**: `UCataclysmTriggeredSkill::HeldSkillsToTrigger` reads the cooldown off the skill's row and its slot's
+  table, not off the granted skill, so the Ultimate stays in that row's pool. A triggered Ultimate is a free start that
+  pays nothing and does not count. By reading; not tested.
+- **The shaped Ultimates are given no special case** (R8). By reading, what four of them do with no cooldown under a
+  held key:
+  - **Iron Fortress at its cap** (`UCataclysmDeployableSkill::ActivateAbility`): the use is paid in
+    `CommitAndBegin` first, then places nothing ("Names nothing, or the cap was already full" is logged at Verbose),
+    and ends at once. **So a held key at the cap pays the doubled mana and 50 Fervour every frame for nothing, until
+    one runs out.** A gadget reserves no Fervour in this build (the comment in `DeployOne`, ruled 2026-09-30), which
+    the row's `FervourReserve=5` does not change. For the play-check.
+  - **Living Pyre, a timed aura of 6 seconds** (`UCataclysmAuraSkill`): while it runs, the held key's frames reach
+    `InputPressed`, which switches an aura off only after a release (issue #1114), so a held key does not switch it
+    off; it ends on its own and the next frame casts it again, paying the doubled cost. **A release and a press while
+    it runs switches it off early**, as today, and the next press starts it again, paid and counted.
+  - **Subjugate, which reserves 30 Fervour for each thrall** (`UCataclysmSummonSkill`): each cast is paid when it
+    begins, whether or not the creature is taken; a thrall taken reserves its 30, so Fervour runs out sooner with each
+    thrall held. "Has no room for another thrall" leaves the creature and the cast is still paid.
+  - **Pyroclasm, a channel of 3 seconds** (`UCataclysmStrikeSkill`, `Type.Channel`): a press during the spin is
+    ignored (`InputPressed`, "a press during a spin is not a second half of anything"); the next frame after the spin
+    ends casts it again, paid and counted. The Whole Weight's hold of 3 seconds is held the same way, by reading of
+    the same function.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief. Every statement about what the engine does
+  was read from the code when it was written.
+- **No row is authored, so a player sees no change.**
+
+**What was not read:** whether a dungeon of the empire can be entered a second time with the same id; the skill bar's
+own drawing of a box with no cooldown; what releasing the key does to a channelled strike; whether any shaped
+Ultimate other than the four above holds its instance active past its activation; the engine's own
+`TryActivateAbility` past what the repository says of it.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+No owner's sentence is quoted for this row. The rulings below are the coordinating session's, made on 2026-10-14 and
+2026-10-15 on the enchantment session's plan and relayed "AS PLANNED". The recon of `origin/development` 12fd0e70
+found no earlier entry ruling on the ten-piece bonus; the entries of 2026-08-04 and 2026-09-17 mention it only as
+needing a cost and a carried counter.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | The row is a flag stat, flat 1 to 1, asked of the caster for the skill in the Ultimate SLOT (the slot the instance holds, not its data tag). | `UCataclysmGameplayAbility::UltimateCostDoublesByARow`: `Slot == ECataclysmAbilitySlot::Ultimate`, then `StatForSkill(ultimate_cost_doubles_instead_of_cooldown, no tags, 0) > 0`. The name is `UltimateCostDoublesInsteadOfCooldownStat`, on `StatsWithNoAttribute()`. |
+| R2 | With the flag held, the base cooldown of a skill in the Ultimate slot reads 0, in `GetBaseCooldown`; charges are then not used. | `GetBaseCooldown` answers 0 first, above the override, through `CurrentActorInfo` of the granted instance. `CheckCooldown` and `ApplyCooldown` already return at once for a base of 0, before charges are asked or spent. |
+| R3 | The Ultimate's 50 Fervour is paid as today. | Not touched: `FervourCostFor`, `CheckCost` and `ApplyCost` are unchanged. Test 7. |
+| R4 | The skill-used notice says `bHasCooldown=false`, so rows for cooldown abilities stop reaching the Ultimate. Accepted; name them by script. | `CommitAndBegin` passes `GetBaseCooldown() > 0`, unchanged. The rows, below. |
+| R5 | No least gap; a held key casts again as each cast ends until Fervour or mana runs out. Said first. | No gap is built. "Said first"; test 9. |
+| R6 | The full `ManaCostFor` figure times 2 to the paid uses this dungeon; kept on the ability system as the Nth-spell count is, read before payment, advanced after a paid use in `CommitAndBegin`; free starts never advance it; a refused use does not count; capped at 30; the skill bar shows `ManaCostFor`. | `ManaCostFor` multiplies both of its own answers by `UltimateCostDoublingFactor`, `1 << UltimateCostDoublingsHeld()`. `CommitAndBegin` calls `UCataclysmAbilitySystemComponent::NoteUltimateCostDoubled` at the end of the block a free start skips, past the commit a refused use returns from. `MostUltimateCostDoublings = 30`. |
+| R7 | The count records `DungeonBeingWalked` and reads 0 in any other; a death clears it in `ClearWhatDeathEnds`; a floor change keeps it; nothing in the game mode files. | `UltimateCostDoublingsHeld` compares `UltimateCostDoublingsDungeonId` with `DungeonBeingWalked()`, as `SkillGadgetsCopy` does; `ClearWhatDeathEnds` writes the count to 0. No game mode file is changed. |
+| R8 | A cost that cannot be paid refuses the cast; a row that lets health or the shield pay pays the doubled figure; no special case for any shaped Ultimate. | `CheckCost`, `ApplyCost` and `PoolPaying` take the figure `ManaCostFor` answers, unchanged. "Said first" for the four Ultimates read. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The count advances only while the row is worn.** A paid use of the Ultimate by a character not holding the flag
+  counts nothing. The option not taken: count every paid use, which would make the first cast after putting on the
+  tenth piece in the middle of a dungeon cost many times the cost.
+- **The doubling applies only while the row is worn; the count is kept when it is taken off.** The option not taken:
+  clear the count when the row comes off, which needs a call from the gear refresh that nothing else here needs.
+- **The flag is asked with no tags.** R1 makes the slot decide, and a row requiring a tag would then match nothing;
+  the generator refuses one. The option not taken: ask with the skill's tags, which lets an unscoped row work as well
+  but also lets a row scoped to `Slot.Ultimate` reach only skills designed for that slot, which R1 rules out.
+- **A free start that pays pays the doubled figure.** It pays "the whole of what a press pays" (ruled 2026-10-06,
+  `bFreeRepeatPaysCost`), and `ManaCostFor` is the one figure. The option not taken: pay the undoubled cost, which
+  would need a second figure of the cost.
+- **The base cooldown reads 0 above a skill's own `CooldownOverride`.** No row of `game/Data/WeaponSkills.csv`
+  states a cooldown: of 403 rows read by a one-line script on 2026-10-15, none has a `Cooldown` other than -1. The
+  option not taken: let a stated cooldown stand, which would leave "your ultimate ability no longer has a cooldown"
+  false for it.
+- **The doubling also reaches an aura's upkeep for a toggled aura placed in the Ultimate slot**, because the upkeep
+  pulse asks `ManaCostFor` (`UCataclysmAuraSkill::Pulse`). A pulse is not a use and does not count. Living Pyre is
+  timed and pays no upkeep. The option not taken: a special case for the upkeep, which R8 rules out.
+- **The stat's name, `ultimate_cost_doubles_instead_of_cooldown`.**
+- **The count is not replicated**, as the gadgets' record is not: only the authority pays a cost. What a client's
+  skill bar shows for the doubled cost was not read.
+
+### R4: THE ROWS THAT NEED A USE TO HAVE A COOLDOWN, BY SCRIPT
+
+`python cooldown_rows.py game/Data/EnchantmentEffects.csv game/Data/PassiveEffects.csv`, the script kept in the
+second session's scratchpad, run from the repository root on 2026-10-15 at `origin/development` 12fd0e70. It lists the
+rows whose Action is one of the two that `UCataclysmItemModifiers::AccumulateEnchantmentsInto` marks
+`bOnlyASkillWithACooldown` (`CataclysmItem.cpp`), the only two `ActOnSkillUse` rolls only for a use with a cooldown;
+any row whose condition names a cooldown; the rows on a cooldown figure requiring `Slot.Ultimate`; and the rows that
+reset or reduce a cooldown. It printed:
+
+```
+ROWS WHOSE ACTION NEEDS THE USE TO HAVE A COOLDOWN (2):
+  Negative_Your_cooldown_abilities_have_a_25_chance_to_dea#1 | cooldown_use_no_damage on skill_use | tags ''
+  Positive_Your_cooldown_abilities_have_a_5_20_chance_to#1 | cooldown_use_increased_damage on skill_use | tags ''
+ROWS WHOSE CONDITION NAMES A COOLDOWN (0):
+ROWS ON A COOLDOWN FIGURE REQUIRING Slot.Ultimate (3):
+  Positive_Your_ultimate_ability_cooldown_is_reduced_by_20#1 | cooldown_reduction flat 20.0 to 40.0
+  Negative_Ultimate_cooldowns_increased_by_100_500#1 | cooldown_lengthening flat 100.0 to 500.0
+  Positive_Ultimate_has_1_3_additional_charges#1 | skill_charges_bonus flat 1.0 to 3.0
+ROWS THAT RESET OR REDUCE A COOLDOWN (12):
+  Positive_Using_your_ultimate_ability_resets_all_other_ski#1 | cooldown_reset_others on skill_use | tags 'Slot.Ultimate'
+  Positive_Your_special_ability_cooldown_is_reset_when_you#1 | cooldown_reset_special on kill | tags ''
+  Positive_Every_20_seconds_all_your_skill_cooldowns_are_in#1 | cooldown_reset_all on every_seconds | tags ''
+  Positive_Blocking_an_attack_has_a_20_40_chance_to_reset#1 | cooldown_reset_heavy on block | tags ''
+  Positive_Critical_strikes_have_a_15_30_chance_to_reset#1 | cooldown_reset_movement on critical_strike | tags ''
+  Positive_Dodging_an_attack_has_a_20_40_chance_to_reset#1 | cooldown_reset_movement on dodge | tags ''
+  Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta#1 | cooldown_reset_heavy on hit_dealt | tags ''
+  Positive_Ranged_kills_have_a_20_40_chance_to_refund_the#1 | cooldown_reset_event_skill on kill | tags 'Type.Ranged'
+  Positive_When_your_class_resource_hits_zero_all_skill_co#1 | cooldown_reduce_all on resource_empty | tags ''
+  Positive_Each_summon_reduces_all_your_skill_cooldowns_by#1 | cooldown_reduce_all on summon | tags ''
+  Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5#1 | cooldown_reduce_heavy on critical_strike | tags ''
+  Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec#1 | cooldown_reset_all on block | tags ''
+rows read: 613
+game/Data/PassiveEffects.csv: rows read 325; rows needing a cooldown or naming one in a condition: 0
+```
+
+**The two of the first list are the rows R4 accepts losing for the Ultimate**: "Your cooldown abilities have a 25%
+chance to deal no damage" (a drawback, so a wearer of this row is spared it on the Ultimate) and "Your cooldown
+abilities have a 5-20% chance to deal increased damage". The three of the third list change nothing for the Ultimate
+while the row is worn. Of the fourth, the resets and reductions of "all" skills find no Ultimate cooldown to act on,
+and the first row resets the others on every cast, as said first. The script reads the effect sheet's columns and not
+the engine, so a row reaching a cooldown by any other column would not be listed.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. The sentence states the mechanic and its shape. The judgements inside
+it -- what doubles (the whole of the cost the game works out), what counts (a paid use, not a free start or a refused
+one), the cap of 30 doublings, and the clearing at a death -- are this game's own, ruled by the coordinating session,
+and are not read off another game.
+
+### WHAT WAS BUILT
+
+- **The stat.** `ultimate_cost_doubles_instead_of_cooldown`, a flag: a row sets it at a flat 1, read through
+  `UCataclysmGameplayAbility::UltimateCostDoublesByARow` as above nought, with no tags. No gameplay attribute and no
+  base; the last name on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. In code,
+  `UCataclysmGameplayAbility::UltimateCostDoublesInsteadOfCooldownStat`.
+- **No cooldown.** `GetBaseCooldown` answers 0 for a skill in the Ultimate slot whose granted instance's character
+  holds the flag, read through the instance's `CurrentActorInfo`; a class default object has none and keeps its
+  slot's figure.
+- **The doubling.** `UltimateCostDoublingFactor` answers `1 << UltimateCostDoublingsHeld()`, held to 0 to 30, for a
+  skill the helper answers yes for, and 1 for every other. `ManaCostFor` multiplies both of its own answers (the one
+  for a skill with no base cost and the one after the `mana_cost` pipeline) by it, extras included. An ability system
+  this project did not make is answered as before.
+- **The count.** `UCataclysmAbilitySystemComponent::UltimateCostDoublingsHeld` and `NoteUltimateCostDoubled`, with
+  `UltimateCostDoublings`, `UltimateCostDoublingsDungeonId` and `MostUltimateCostDoublings = 30`, beside the gadgets'
+  record. `ClearWhatDeathEnds` writes it to 0. `CommitAndBegin` advances it at the end of the block a free start
+  skips, after the Nth spell is counted.
+- **The generator.** `ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT` and
+  `refuse_an_ultimate_cost_doubling_row_the_game_cannot_read`, run by `validate_enchantment_effects`: a row on the
+  stat must be `flat`, with no Required Tags, no Action, and 1 in both figures. A condition or a scale on it is
+  refused by the two existing checks, the stat being on neither of their lists.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One line on the sentence's enchantment, `Positive_Mana_Weaver_10_Piece_Bonus_Your_ultimate_abil`: Stat
+`ultimate_cost_doubles_instead_of_cooldown`, Value Kind `flat`, Value Low 1, Value High 1. **No Required Tags**, no
+Condition, no Scale, no Action, no Action Event and no other cell. With the row, that session adds the name to
+`FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`, as the other flags were added.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the name, the last entry of its
+  probes.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site, the flag asked
+  by `UltimateCostDoublesByARow` in `CataclysmGameplayAbility.cpp` with no tags and no blow, and one dated line above
+  `CALL_SITES`, whose figure stays the measurement of its own commit.
+- The generator refuses four shapes on one more stat. No shipped row is on it.
+- No merged test asserts anything different, by reading: for a character not holding the flag, `GetBaseCooldown`
+  and `ManaCostFor` answer what they answered before (the factor is 1 and the test is false), and the count is
+  never advanced. The merged test in `CataclysmCommandTests.cpp` that turns an Ultimate's cooldown off with
+  `CooldownOverride = 0` wears no such row, and its skill still reads 0 from the override.
+
+### Tests
+
+Nine new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmManaWeaverTenPieceTests.cpp`, the group
+`Cataclysm.ManaWeaverTenPiece.`, beside `CataclysmUltimateFervourTests.cpp`. The casters are bare actors with the
+vital, combat, class resource and resistance sets, 100,000 health, and mana and Fervour raised with their maximums; a
+control caster without the row stands 100 m from the carrier in every test. Each is granted the plain self buff of
+`Cataclysm.UltimateFervour.` in the Ultimate slot at level 100, stating no duration, so every use is paid and ends
+inside its own activation: no test cancels a use and none waits for an attack clip. The flag is written by hand,
+flat 1, from an enchantment, with no tags. Every test first makes the shared set-up: both Ultimates granted, the
+cost read off the control's `ManaCostFor`, above nought, equal to the slot table's level-100 figure, the slot
+stating a cooldown, and neither caster holding a count.
+
+1. `WithTheRowAPaidUseOfTheUltimateStartsNoCooldownAndWithoutItOneStarts`. In order: control, the base cooldown
+   without the row is above nought; a paid use is allowed; it starts the cooldown; a second press is refused. With
+   the row: the base cooldown is nought; a paid use is allowed; it starts no cooldown; a second press at the same
+   moment is allowed; it starts none either.
+2. `TheFirstThreePaidUsesCostTheCostItsDoubleAndItsQuadruple`. Both hold ten times the cost. In order: control,
+   three uses, each allowed and each costing the cost, the cooldown ended after each as a reset row ends one; the
+   control counts nothing. With the row, for each of three uses: the Ultimate says before it that it costs the cost,
+   then twice, then four times; the use is allowed; it takes that; the count is then 1, 2, 3. Then it says eight
+   times.
+3. `AFreeStartOfTheUltimateLeavesTheCountAndOneThatPaysPaysTheDoubledCost`. The free start is `bFreeRepeat` set on
+   the held instance before the activation, as `UCataclysmFollowThrough` sets it. In order: control, a paid use is
+   allowed and counts one; a free start starts; it takes no mana; no Fervour; the count stays one; the flag is
+   cleared as it ends; set-up, the Ultimate costs twice the cost; a free start that pays starts; it pays twice the
+   cost; it pays the Fervour the press paid; the count stays one; the next paid use is allowed; it takes twice the
+   cost, not four times; it counts two.
+4. `AUseRefusedForWantOfManaTakesNothingAndLeavesTheCount`. In order: control, a paid use is allowed and counts
+   one; with one mana short of twice the cost the use is refused; it takes no mana; no Fervour; the count stays one;
+   with exactly twice the cost it is allowed; it takes all of it; it counts two.
+5. `ADeathClearsTheCountAnotherDungeonReadsNoughtAndAFloorChangeKeepsIt`. A dungeon game mode is spawned and its
+   `EmpireDungeonId` and `FloorNumber` written by hand, as `Cataclysm.GadgetCopiesSkill.` writes them. In order:
+   set-up, the game mode spawned; control, in dungeon 7 two paid uses are allowed and two are counted; the floor
+   number moved on keeps two; and the cost at four times; in dungeon 8 the count reads nought; the cost is the cost;
+   a paid use there is allowed; it takes the cost; it counts one, not three; with no dungeon walked the count reads
+   nought; set-up, back in dungeon 8 its one use is counted; `ClearWhatDeathEnds` leaves nought; and the cost is
+   the cost. It shows the count does not read the floor and does read the dungeon; not what entering a dungeon or a
+   floor change does in play.
+6. `AManaCostRowThatHalvesTheCostHalvesTheDoubledCost`. A `mana_cost` More of -50 from an enchantment, on both
+   casters; the flag on the carrier only. In order: control, two uses, each allowed, each taking half the cost; with
+   the flag, three uses, each allowed, taking half the cost, the cost, twice the cost.
+7. `EveryPaidUseStillPaysTheUltimatesFervour`. In order: control, the caster without the row uses its Ultimate; it
+   pays Fervour above nought; what it pays is `FervourCostFor`; with the row, three uses, each allowed and each
+   paying the control's Fervour.
+8. `ASkillInAnotherSlotKeepsItsCooldownAndItsCost`. The same self buff in the Special slot of both. In order:
+   control, the Special waits a cooldown and costs mana; the carrier's Special waits the control's cooldown and
+   costs its mana; set-up, the carrier's Ultimate used twice and two counted; the Special still waits the control's
+   cooldown and costs its mana; a use of it is allowed; takes the control's cost; starts the Special's cooldown;
+   leaves the count at two.
+9. `AHeldKeyCastsNoMoreThanTheManaAndTheFervourAllow`, the coordinating session's addition. **The held key is
+   driven below the player controller's private handler**: each frame is `AbilityInputTagPressed` with the slot's
+   tag, which is what `Input_AbilitySlotPressed` calls, and then `ProcessAbilityInput`, which the controller calls
+   once a frame. The handler's own two refusals (a press on an open screen, a stunned pawn) do not apply to a bare
+   caster. Ten frames each, at one moment of the world's clock. In order: set-up, a third caster's Ultimate granted
+   and the Ultimate costing Fervour; control, without the row ten frames cast once; its cooldown runs; with the row
+   and mana for the cost and twice it, ten frames cast twice; paid two casts of Fervour; and all the mana; with the
+   row, mana to spare and Fervour for two, ten frames cast twice; leave no Fervour; took the cost and twice it.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`:
+`ProbeUltimateCostDoublesInsteadOfCooldown`. Two characters 100 m apart, each granted the same self buff in the
+Ultimate slot at level 100, the second carrying the flag at a flat 1: the plain one's base cooldown is above nought
+and the carrying one's is nought.
+
+Python: `TestUltimateCostDoublesInsteadOfCooldown` in `tools/tests/test_generate_datatables.py`, eight tests on a
+made-up sheet: the ruled row is carried through with no tags, condition, scale, action or action event and refused
+by no check; the name is a stat with no attribute, with a made-up name as the control; the generator's name is the
+one `CataclysmGameplayAbility.cpp` holds, with `skill_cost_paid_from_health` as the control; the cap of 30 is read
+from `CataclysmAbilitySystemComponent.h` as `MostUltimateCostDoublings`, with `TeleportRandomlyDraws` as the
+control; each wrong shape is refused once by its own sentence (increased, more, a tag, an action, 0, 2, 30, 0.5) and
+two wrong figures twice; a condition or a scale is refused by the checks that hold those; a passive node's row and
+a `mana_cost` row requiring `Slot.Ultimate` are left alone; the whole sheet's validation runs the check.
+
+**Not tested:** a real row worn, which does not exist yet; a player character, a held key through the player
+controller itself, and the skill bar's box; any shaped Ultimate, including the four read above; a toggled aura's
+upkeep in the Ultimate slot; a cost paid by the energy shield or by health; Wild Magic, Echo Chamber, a gadget's
+copy and Follow Through as such (the free start tested is the Follow Through route on the held instance;
+`UCataclysmTriggeredSkill::Trigger` makes a fresh grant whose slot is stamped and runs the same `bFreeRepeat` path,
+by reading); the "Using your ultimate ability resets all other skill cooldowns" row with no cooldown; the
+two-piece trigger's pool; the count reaching its cap of 30; a piece taken off and put back; a dungeon entered
+through `EnterEmpireDungeon` and left through `LeaveEmpireDungeon`, and the same dungeon entered twice; a real floor
+change; replication; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+was counted absent from its file before the break, and each new text keeps the file's brackets paired and compiles
+alone by reading. The failed assertions are counted by reading the tests and were not measured. The prefix of all
+three is `Cataclysm.ManaWeaverTenPiece.`, with its trailing dot, which is 9 tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| M-I, the cooldown stands | `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp` | `Slot == ECataclysmAbilitySlot::Ultimate && CurrentActorInfo` | `Slot == ECataclysmAbilitySlot::None && CurrentActorInfo` | `WithTheRowAPaidUseOfTheUltimateStartsNoCooldownAndWithoutItOneStarts` | all eight others |
+| M-II, the doubling stops | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `Cataclysm->NoteUltimateCostDoubled();` | `Cataclysm->DungeonBeingWalked();` | `TheFirstThreePaidUsesCostTheCostItsDoubleAndItsQuadruple` | `AFreeStartOfTheUltimateLeavesTheCountAndOneThatPaysPaysTheDoubledCost`, `AUseRefusedForWantOfManaTakesNothingAndLeavesTheCount`, `ADeathClearsTheCountAnotherDungeonReadsNoughtAndAFloorChangeKeepsIt`, `AManaCostRowThatHalvesTheCostHalvesTheDoubledCost`, `ASkillInAnotherSlotKeepsItsCooldownAndItsCost`, `AHeldKeyCastsNoMoreThanTheManaAndTheFervourAllow` |
+| M-III, the count does not reset | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `return UltimateCostDoublingsDungeonId == DungeonBeingWalked() ? UltimateCostDoublings : 0;` | `return UltimateCostDoublings;` | `ADeathClearsTheCountAnotherDungeonReadsNoughtAndAFloorChangeKeepsIt` | none |
+
+Failed assertions in each test, by reading:
+
+- **M-I, 37 in 9 tests.** The carrier's Ultimate keeps its slot's cooldown, so its second press is refused while the
+  first's cooldown runs; the cost still doubles off the count, which advances only on the one paid use. Test 1, 4:
+  "with the row the Ultimate's base cooldown is nought", "and starts no cooldown", "so a second press at the same
+  moment is allowed too", "and starts none either". Test 2, 8: for use 2 "is allowed", "takes 300", "the count is
+  2"; for use 3 "says it costs 600", "is allowed", "takes 600", "the count is 3"; and "eight times". Test 3, 3: the
+  next paid use "is allowed", "takes twice the cost", "counts two" (the free starts wait for no cooldown and pass).
+  Test 4, 3: with exactly twice the cost "is allowed", "takes all of it", "counts two". Test 5, 2: "control: and a
+  second", "control: two are counted", after which it returns. Test 6, 4: uses 2 and 3, "is allowed" and "takes"
+  each. Test 7, 4: uses 2 and 3, "is allowed" and "pays the same Fervour" each. Test 8, 3: "set-up: and again",
+  "set-up: two are counted", "and leaves the count at two". Test 9, 6: for the carrier "cast twice", "two casts of
+  Fervour", "all the mana"; for the third caster "cast twice", "leave no Fervour", "the cost and twice it". The
+  controls pass.
+- **M-II, 19 in 7 tests.** Nothing is ever counted, so every use costs the cost. Test 2, 8: use 1 "the count is 1";
+  use 2 "says it costs 300", "takes 300", "the count is 2"; use 3 "says it costs 600", "takes 600", "the count is
+  3"; "eight times". Test 3, 1: "control: and counts one", after which it returns. Test 4, 1: the same. Test 5, 1:
+  "control: two are counted", after which it returns. Test 6, 2: uses 2 and 3 "takes". Test 8, 2: "set-up: two are
+  counted", "and leaves the count at two". Test 9, 4: the carrier casts three times on three times the cost, so
+  "cast twice" and "two casts of Fervour" fail and "all the mana" passes; the third caster casts twice on its
+  Fervour, so "cast twice" and "the cost and twice it" fail and "leave no Fervour" passes. Tests 1 and 7 pass.
+- **M-III, 6 in 1 test.** The count is read whatever dungeon is walked. Test 5: in dungeon 8 "reads nought" (2),
+  "costs the cost" (four times), its use "takes the cost" (four times), "counts one, not three" (3); with no dungeon
+  "reads nought" (3); "set-up: back in dungeon 8 its one use is counted" (3), after which it returns. Every other
+  test walks no dungeon, where the stored and the walked are both `INDEX_NONE`, and passes.
+
+**Tests of another group expected to fail, to check in the window:** under M-I the probe
+`ProbeUltimateCostDoublesInsteadOfCooldown` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+fails on its last assertion, "and one carrying ultimate_cost_doubles_instead_of_cooldown at 1 has one that waits
+nothing". Under M-II and M-III it passes.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-13 — In the game an ordinary dungeon leaves the map after it hits its city, and a Quest dungeon's timer hits its host city
 
 **Said first: not compiled and not run, when written; the Run section below has the run.** The C++ in this change was written by reading and has not been built.
