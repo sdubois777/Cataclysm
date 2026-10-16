@@ -515,6 +515,77 @@ once in the file at this commit.
 Break b multiplies by nought rather than writing nought, so that `Ordinary` is still read and the file compiles
 without a warning for an unused variable.
 
+### 2026-10-15: the wave test's changes, after the fix for issue #2414
+
+**Not compiled and not run.** The test was changed by reading. No Unreal build and no Unreal test was run. The
+declared count of Unreal tests is 3729 before and after: no test was added, removed or renamed.
+
+**Said first: one guard was left as it was, and needs a ruling.** `Cleared > Absorbed` became
+`Cleared > GoneBeforeItsTurn`, which is the same comparison under a new counter name; its label is unchanged. It can
+now fail for a reason that is not the test's subject. Since this entry's rules, an ordinary dungeon hits its city
+when its timer runs out and leaves the map. An Outpost dungeon's timer is 10 days plus 1.6 days a floor, varied by
+up to 15%, so about 19 to 39 days for 8 to 15 floors. Each walk costs 8 to 15 days, and the wave is walked in a
+fixed order, so the dungeons late in the order can hit their cities and leave before their turn. That is the
+retune's rule working, not a fault in walking. The writing session proposes, for the coordinating session to rule:
+assert `Cleared + AbsorbedWhileWalked >= 1`, labelled "at least one dungeon of the wave was walked". It keeps what
+the guard was for (a run where nothing was walked measures nothing about walking) and does not compare walks with
+departures the player cannot prevent. The rulings do not settle this, so it was not changed.
+
+The ruling, a labelled judgement by the coordinating session under the owner's delegation, 2026-10-15, verbatim:
+"the wave test's changes in the layer that changes its meaning: a loop bound by the depth read before entry,
+"absorbed" split into "gone before its turn" and "absorbed while walked", totals corrected; each changed assertion
+listed for me."
+
+Why the test changed. In the Unreal run of 2026-10-14, before the fix for issue #2414,
+`Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk` walked for 65 minutes until the editor ran
+out of memory. A city's fall absorbed the dungeon being walked, the game then had no last floor for it, and the
+test's loop `while (!Bound.Mode->IsOnTheLastFloor())` had no other end. The fix gives that walk its bottom. The
+test still counted such a dungeon as cleared, and counted every dungeon missing at its turn as absorbed.
+
+What changed in the test, in `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`:
+
+- The walk loop is a `for` over the dungeon's floors, read from the run before entry, as
+  `Cataclysm.DungeonMode.ReachingTheBottomTakesTheDungeonOffTheMap` walks. It allows `Floors` passes, one more than
+  the `Floors - 1` descents a walk needs, and sets `bReachedTheLastFloor` when the game says the last floor is
+  reached.
+- The counter `Absorbed` is two counters. `GoneBeforeItsTurn` is raised when a dungeon of the wave is not on the
+  map at its turn; a comment says that since 2026-10-13 this counts an ordinary dungeon that hit its city and left
+  as well as one a fall absorbed. `AbsorbedWhileWalked` is raised when the run no longer has the dungeon at the end
+  of its walk, asked on the last floor before the descent that beats it. `Cleared` is raised only otherwise.
+- The information line names the three counts.
+
+Each changed or added assertion, old and new:
+
+| | Old label | Old value | New label | New value |
+|---|---|---|---|---|
+| 1 | (none) | (none) | "the walk of dungeon %d stopped on its last floor and not at the bound of %d passes" | `bReachedTheLastFloor` is true |
+| 2 | "every dungeon of the wave was accounted for" | `Cleared + Absorbed == WaveSize` | "every dungeon of the wave was accounted for: cleared, gone before its turn, or absorbed while walked" | `Cleared + GoneBeforeItsTurn + AbsorbedWhileWalked == WaveSize` |
+| 3 | "%d of the wave's %d dungeons were walked" | `Cleared > Absorbed` | unchanged | `Cleared > GoneBeforeItsTurn`, the same comparison; left for a ruling, as said first |
+| 4 | "walking %d floors across %d dungeons cost %d days", the second number `Cleared` | `Day() == StartedOnDay + DaysWalkingCost` | the same words, the second number `Cleared + AbsorbedWhileWalked` | unchanged |
+| 5 | "clearing what was left of the wave cost %d days", the number `FloorsWalked` | `FloorsWalked >= Cleared * 8` | "walking what was left of the wave took %d floors", the same number | `FloorsWalked >= (Cleared + AbsorbedWhileWalked) * 8` |
+
+Unchanged, and why each still holds by reading: "and the floors walked are those dungeons' floors"
+(`FloorsWalked == FloorsToWalk`), because both are added for every dungeon entered and the fix walks an absorbed one
+to the depth recorded on entry; the day total in row 4, because `DaysWalkingCost` adds the walk days read before
+entry for every dungeon entered and the fix charges an absorbed one at the rate recorded on entry; "dungeon %d was
+walked to its bottom floor %d"; and both "dungeon %d is off the map" lines.
+
+Judgements by the writing session, for the coordinating session to confirm:
+
+1. The bound is `Floors` passes, one more than the walk needs, so that the bound and the last floor can be told
+   apart. A bound of exactly `Floors - 1` descents, as the sibling test uses, would end the walk on the last floor
+   whether or not the game said it was the last, and the new assertion could not fail.
+2. A dungeon absorbed while walked is counted among the dungeons walked in rows 4 and 5, because its floors were
+   walked and paid for, and not among those cleared.
+3. The comment saying a walked dungeon cannot hit its city and leave during its walk rests on
+   `Cataclysm.DungeonMode.TheDungeonBeingWalkedIsTheOneTimerThatStops`. Only a fall can take it while walked.
+4. The test's opening comment ("four Outpost dungeons are 8 to 15 floors each ... about 44 days, and the earliest
+   a city falls is well past day 100") is stale under the retune and was not changed; the ruling names the loop,
+   the counter and the totals only. Layer 2 of this stack already records it as left alone.
+
+Nothing here was compiled or run. Whether a dungeon of the wave is absorbed while walked at seed 1, and how many
+are gone before their turn, is not known.
+
 ---
 
 ## 2026-10-13 — In the game a surge is 5 dungeons every 90 days, as in the simulation; it was 4 every 120
