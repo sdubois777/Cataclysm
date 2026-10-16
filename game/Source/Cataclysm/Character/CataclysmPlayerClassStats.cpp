@@ -745,6 +745,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// no longer has a cooldown. Instead, its mana cost is doubled every time
 		// you use it". A flag. No gameplay attribute and no base.
 		TEXT("ultimate_cost_doubles_instead_of_cooldown"),
+		// The percent of what reaches a nearby ally's health that its wearer
+		// takes as a blow of its own, read by
+		// UCataclysmAllyDamageShare::PercentHeldBy with no tags, from the damage
+		// branch of UCataclysmVitalAttributeSet. Ruled 2026-10-15, for "You take
+		// 5%-15% damage done to nearby allies". No gameplay attribute and no
+		// base.
+		TEXT("damage_done_to_nearby_allies_taken_percent"),
 	};
 	return Stats;
 }
