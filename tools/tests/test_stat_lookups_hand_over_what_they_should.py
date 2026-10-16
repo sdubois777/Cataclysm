@@ -160,6 +160,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: added one more on 2026-10-15, asked with no tags by
 #: `UCataclysmAllyDamageShare::PercentHeldBy`, of the struck character and of
 #: every character beside it, from the damage branch of the vital set.
+#: The percent of a point-blank skill's blow that each ally inside its area is
+#: struck for added one more on 2026-10-15, asked with the skill's tags by
+#: `UCataclysmAreaShareOnAllies::PercentHeldFor`, through
+#: `UCataclysmSkillTemplate::AreaShareOnAlliesPercent`.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -936,6 +940,14 @@ INVENTORY = {
         "share is sent; the rule is about every blow any ally beside the "
         "wearer takes, so no tags, and the blow in hand is the ally's and not "
         "the wearer's, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.cpp',
+     'FName(PercentStat), SkillTags, 0.0f'):
+        "the percent of a point-blank skill's blow each ally inside its area "
+        "is struck for (ruled 2026-10-15), asked by PercentHeldFor before the "
+        "allies are searched for and again when they are struck; the skill's "
+        "own tags, because the row requires Type.AOE.PointBlank, and no "
+        "target, because the one figure serves every ally of the swing and "
+        "the row has no condition",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

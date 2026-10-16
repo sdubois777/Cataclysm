@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmContagion.h"
@@ -55973,6 +55974,225 @@ bool FCataclysmSeededCellsSecondRuleTest::RunTest(const FString& Parameters)
 			 Mode->ShadowyEnemiesLightsNow().Num() >= Effects::ShadowyEnemiesLightZonesPerFloor);
 	TestEqual(TEXT("with Shadowy Enemies added the floor has as many rifts"), WithLights.Num(), Alone.Num());
 	TestTrue(TEXT("with Shadowy Enemies added the rifts are on the same cells in the same order"), WithLights == Alone);
+	return true;
+}
+
+// RULED 2026-10-15 by the coordinating session: a share of a point-blank skill's blow on an ally, for "Your AOE
+// skills deal 50%-75% of their damage to nearby allies as well as enemies", is the wearer's skill striking its own
+// side, not a blow or a kill on an enemy. Brand of the Aggressor, Holy Repercussions and Shadowy Enemies refuse the
+// hit, and the ten floor rules on the player's kill refuse the death. These drive Holy Repercussions, whose answer a
+// single blow shows, and Blood Gates, whose count the game mode hands out. The rest are not tested.
+namespace CataclysmAoeShareFloorRulesTest
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	/** The row worn as ruled: a flat 50, requiring `Type.AOE.PointBlank`. A weapon damage of 100 beside it. */
+	void Wear(const FPossessedPlayer& Player)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = 50.0f;
+		Flat.RequiredTags.AddTag(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.AOE.PointBlank")), /*ErrorIfNotFound=*/false));
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmAreaShareOnAllies::PercentStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+	}
+
+	/** A point-blank, melee Strike all round of 6 m in the player's Heavy slot. */
+	UCataclysmStrikeSkill* GrantNova(const FPossessedPlayer& Player)
+	{
+		const FGameplayAbilitySpecHandle Handle = Player.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/100, Player.Character);
+		FGameplayAbilitySpec* Spec = Handle.IsValid() ? Player.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+		UCataclysmStrikeSkill* Nova = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Nova)
+		{
+			Nova->SkillName = TEXT("A point-blank nova");
+			Nova->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=6; Angle=360"));
+			Nova->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.AOE.PointBlank, Type.Melee"));
+		}
+		return Nova;
+	}
+
+	float ShareHealthOf(const AActor* Who)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who);
+		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+
+	void SetHealth(const AActor* Who, float Health)
+	{
+		if (UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who))
+		{
+			Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		}
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAoeShareHolyRepercussionsTest,
+	"Cataclysm.AoeStrikesAllies.AShareOnAThrallProvokesNoHolyRepercussionsJudgment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAoeShareHolyRepercussionsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmAoeShareFloorRulesTest;
+
+	// A wearer swinging a point-blank nova all round of 6 m on a floor of Holy Repercussions, with the roll pinned so
+	// every blow on a creature is answered. A creature 1.5 m away is the control; it is then moved 42 m off, and a
+	// creature 2 m away, taken as the wearer's thrall, is the ally the next swing strikes alone.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {HolyRepercussions};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+	Wear(Player);
+	UCataclysmStrikeSkill* Nova = GrantNova(Player);
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(150.0f, 0.0f, 0.0f), 10'000'000.0f);
+	if (!TestNotNull(TEXT("set-up: a nova"), Nova) || !TestNotNull(TEXT("set-up: a creature"), Enemy))
+	{
+		return false;
+	}
+	Enemy->SetAttackDamage(40.0f);
+	const auto CountNow = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Found = Counting.Find(HolyRepercussions);
+		return Found ? *Found : FString();
+	};
+	const auto Expected = [](int32 Stacks)
+	{
+		return FString::Printf(TEXT("%d of %d"), Stacks,
+							   UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentMostStacks);
+	};
+	FScopedConsoleString Roll(TEXT("Cataclysm.HolyRepercussionsRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Roll.Variable)
+		|| !TestEqual(TEXT("set-up: no Judgment before any blow"), CountNow(), Expected(0)))
+	{
+		return false;
+	}
+
+	// CONTROL: THE WEARER'S OWN BLOW ON THE CREATURE is answered with a Judgment stack.
+	Nova->SwingOnce();
+	if (!TestTrue(TEXT("set-up: the swing struck the creature"), ShareHealthOf(Enemy) < 10'000'000.0f)
+		|| !TestEqual(TEXT("control: the wearer's own blow on a creature leaves one Judgment stack"), CountNow(),
+			Expected(1)))
+	{
+		return false;
+	}
+
+	// THE SHARE: the creature moved off, and a thrall of the wearer's struck alone.
+	Enemy->SetActorLocation(FVector(3000.0f, 3000.0f, 0.0f));
+	ACataclysmEnemyCharacter* Thrall = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), 10'000'000.0f);
+	if (!TestNotNull(TEXT("set-up: a creature to take"), Thrall)
+		|| !TestTrue(TEXT("set-up: it is taken as the wearer's thrall"),
+			UCataclysmCommand::Subjugate(Player.Character, Thrall))
+		|| !TestTrue(TEXT("set-up: and is the wearer's ally"), UCataclysmTargeting::IsFriendlyTo(Thrall, Player.Character)))
+	{
+		return false;
+	}
+	SetHealth(Thrall, 1'000'000.0f);
+	const float EnemyBefore = ShareHealthOf(Enemy);
+	Nova->SwingOnce();
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the thrall took its share: %.2f"), 1'000'000.0f - ShareHealthOf(Thrall)),
+			ShareHealthOf(Thrall) < 1'000'000.0f)
+		|| !TestEqual(TEXT("set-up: the creature 42 m away was not struck"), ShareHealthOf(Enemy), EnemyBefore, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the share on the thrall leaves no Judgment stack: it is not a blow on an enemy"), CountNow(),
+		Expected(1));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAoeShareBloodGatesTest,
+	"Cataclysm.AoeStrikesAllies.AThrallKilledByAShareIsNotCountedTowardTheBloodGates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAoeShareBloodGatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmAoeShareFloorRulesTest;
+
+	// A wearer swinging a point-blank nova all round of 6 m on a floor of Blood Gates. A placed creature 2 m along X at
+	// 1 health is the control the swing kills; then a placed creature 2 m along Y, taken as the wearer's thrall and
+	// left 1 health, is the ally the next swing's share kills.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+	Wear(Player);
+	UCataclysmStrikeSkill* Nova = GrantNova(Player);
+	const FVector At = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Slain = PlaceCreatureAtRung(World, Mode, At + FVector(200.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a nova"), Nova) || !TestNotNull(TEXT("set-up: a creature to slay"), Slain))
+	{
+		return false;
+	}
+	SetHealth(Slain, 1.0f);
+	const int32 Before = Mode->BloodGatesSlainCount();
+
+	// CONTROL: THE WEARER'S OWN BLOW KILLS A CREATURE, and it is counted.
+	Nova->SwingOnce();
+	if (!TestTrue(TEXT("set-up: the swing killed the creature"), UCataclysmSkillEffects::IsDead(Slain))
+		|| !TestEqual(TEXT("control: the wearer's own kill is counted"), Mode->BloodGatesSlainCount(), Before + 1))
+	{
+		return false;
+	}
+
+	// THE SHARE KILLS A THRALL.
+	ACataclysmEnemyCharacter* Thrall = PlaceCreatureAtRung(World, Mode, At + FVector(0.0f, 200.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("set-up: a creature to take"), Thrall)
+		|| !TestTrue(TEXT("set-up: it is taken as the wearer's thrall"),
+			UCataclysmCommand::Subjugate(Player.Character, Thrall))
+		|| !TestTrue(TEXT("set-up: and is the wearer's ally"), UCataclysmTargeting::IsFriendlyTo(Thrall, Player.Character))
+		|| !TestTrue(TEXT("set-up: and pays for its death as a floor creature does"), Thrall->PaysForItsDeath()))
+	{
+		return false;
+	}
+	SetHealth(Thrall, 1.0f);
+	Nova->SwingOnce();
+	if (!TestTrue(TEXT("set-up: the share killed the thrall"), UCataclysmSkillEffects::IsDead(Thrall)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is not counted: a kill made by a share is not the player's kill of an enemy"),
+		Mode->BloodGatesSlainCount(), Before + 1);
 	return true;
 }
 
