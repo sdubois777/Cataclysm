@@ -17,6 +17,8 @@
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 // For the share of a blow on an ally that each wearer beside it takes. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAllyDamageShare.h"
+// For the share of a point-blank skill's blow struck at an ally inside its area. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For every chance to apply an ailment a blow carried, a blunt weapon's stun
@@ -1139,6 +1141,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// raises none of its rows. Each place below that a blow taken raises something reads this, and the share
 			// is never passed on again from here. See `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`.
 			const bool bShareOfAnAllysDamage = UCataclysmAllyDamageShare::IsAShare(Data.EffectSpec);
+			// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW ITS ATTACKER STRUCK AT THIS CHARACTER, AN ALLY
+			// INSIDE THE SKILL'S AREA. Ruled 2026-10-15, for "Your AOE skills deal 50%-75% of their damage to nearby
+			// allies as well as enemies" (R5, R6): its damage meets this character as any blow's does, and it is not
+			// recorded as the attacker's first blow on this character, nor brands or charms its attacker. See
+			// `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`.
+			const bool bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
 
 			// WHETHER THIS IS THE Nth HIT OF A WORN "EVERY Nth HIT YOU TAKE" ROW,
 			// asked BEFORE it is resolved, because the count advances after.
@@ -1650,8 +1658,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName),
 					/*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 				// NOR A SHARE OF AN ALLY'S BLOW: its attacker struck the ally and not this character. Ruled 2026-10-15.
+				// NOR A POINT-BLANK SKILL'S SHARE STRUCK AT THIS ALLY, which raises no `first_hit_dealt` (R6) and so
+				// must not use that first hit up. Ruled 2026-10-15.
 				UCataclysmAbilitySystemComponent* Struck =
 					bConsequenceOfADeath || bARowsAnswerToAnEvent || bExplosionAtAnAilmentsEnd || bShareOfAnAllysDamage
+						|| bAreaSkillShareOnAnAlly
 					? nullptr
 					: Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 				if (Struck)
@@ -2422,7 +2433,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// absorbed marks nobody and charms nobody, which is the rule
 			// docs/DECISIONS.md settled on 2026-09-05: an evaded attack applies
 			// nothing it was carrying.
-			if (Outcome.DealtToHealth > 0.0f && !bShareOfAnAllysDamage)
+			//
+			// NOR FOR A POINT-BLANK SKILL'S SHARE STRUCK AT THIS ALLY, which is damage only (R5). Ruled 2026-10-15.
+			if (Outcome.DealtToHealth > 0.0f && !bShareOfAnAllysDamage && !bAreaSkillShareOnAnAlly)
 			{
 				AActor* Striker =
 					Data.EffectSpec.GetContext().GetEffectCauser();
