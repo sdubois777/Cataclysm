@@ -73,6 +73,16 @@ public:
 	 */
 	TWeakObjectPtr<AActor> FreeRepeatCastBy;
 
+	/**
+	 * The enemy a click swung this use at: the basic attack's alone. Ruled 2026-10-16 by the coordinating session
+	 * (P7-b, brief 38): "A CLICK ATTACK ON AN ENEMY AIMS AT THAT ENEMY, NOT AT THE CURSOR". `AimPoint` answers its
+	 * place while it is set and the enemy is still an actor, after a free start's aim. SET ONLY BY
+	 * `UCataclysmBasicAttack::Swing` WHEN ITS CALLER NAMES ONE, which `ACataclysmPlayerController::TrySwingAt` alone
+	 * does, just before the activation; cleared when the use ends, and by `Swing` when the activation is refused. Weak,
+	 * so it keeps no enemy alive.
+	 */
+	TWeakObjectPtr<const AActor> ClickedTarget;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FString SkillDescription;
 
