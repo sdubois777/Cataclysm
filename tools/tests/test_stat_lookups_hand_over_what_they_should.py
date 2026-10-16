@@ -152,6 +152,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: asked by the one helper `ACataclysmMinion::SummonersGadgetStat` with the
 #: gadget's type tags; the first stat it is asked for is the flag by which a
 #: gadget chooses the enemy with the most health.
+#: The flag by which a skill in the Ultimate slot has no cooldown and a mana
+#: cost that doubles with each paid use added one more on 2026-10-15, asked
+#: with no tags by `UCataclysmGameplayAbility::UltimateCostDoublesByARow`, the
+#: one helper Mana Weaver's ten-piece bonus is read through.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -912,6 +916,14 @@ INVENTORY = {
         "tags, so a row scoped to Type.Deployable matches; each is a flag or "
         "a figure of the gadget's own behaviour, read when the gadget "
         "chooses a target or on its step, with no blow and no target in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UltimateCostDoublesInsteadOfCooldownStat), FGameplayTagContainer(), 0.0f'):
+        "whether a skill in the Ultimate slot has no cooldown and a mana cost "
+        "that doubles with each paid use (Mana Weaver's ten-piece bonus, "
+        "ruled 2026-10-14), asked by UltimateCostDoublesByARow from "
+        "GetBaseCooldown, ManaCostFor and CommitAndBegin; no tags, because "
+        "the slot the skill holds decides and not its row's tags, and no "
+        "blow or target is in hand",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
