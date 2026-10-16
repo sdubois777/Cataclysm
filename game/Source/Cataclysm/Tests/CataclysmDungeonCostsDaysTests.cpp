@@ -464,11 +464,15 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// layer exists to pose: these dungeons, or those cities.
 	//
 	// WHAT THIS TEST DELIBERATELY DOES NOT CLAIM. An earlier version of it
-	// asserted that a city falls while the player is underground, and that is
-	// not true of the first wave: four Outpost dungeons are 8 to 15 floors each,
-	// so clearing all of them costs about 44 days, and the earliest a city falls
-	// is well past day 100. Claiming it would have been a test that passed only
-	// on the seeds where something unusual happened.
+	// asserted that a city falls while the player is underground. This one
+	// asserts neither that nor its opposite. Since 2026-10-13 an ordinary
+	// dungeon hits its city when its timer runs out and leaves the map. An
+	// Outpost dungeon's timer is about 19 to 39 days, and walking the four
+	// Outpost dungeons of the first wave, 8 to 15 floors each, costs about 44
+	// days, so a dungeon of the wave can be gone before the player reaches it,
+	// and a city can fall while the player is inside one of its dungeons. The
+	// test counts each case rather than asserting any of them: claiming one
+	// would have been a test that passed only on the seeds where it happened.
 	FBound Bound = Make();
 	if (!TestNotNull(TEXT("a test world was created"), Bound.World))
 	{
@@ -631,19 +635,14 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 				 Bound.Run->FindDungeon(DungeonId));
 	}
 
-	// AND MOST OF IT WAS WALKED RATHER THAN LOST. A run where every dungeon
-	// vanished before the player reached it would satisfy the line above while
-	// measuring nothing about walking.
-	//
-	// LEFT AS IT WAS, PENDING A RULING (2026-10-15). `GoneBeforeItsTurn` is
-	// what `Absorbed` counted here. Since 2026-10-13 an ordinary dungeon of
-	// the wave can be gone before its turn because it hit its city and left,
-	// which is not about walking, so this can now fail for a reason that is
-	// not this test's subject.
-	TestTrue(FString::Printf(
-				 TEXT("%d of the wave's %d dungeons were walked"), Cleared,
-				 WaveSize),
-			 Cleared > GoneBeforeItsTurn);
+	// AND AT LEAST ONE OF IT WAS WALKED. A run where every dungeon vanished
+	// before the player reached it would satisfy the line above while
+	// measuring nothing about walking. The walks are not compared with the
+	// dungeons gone before their turn: since 2026-10-13 an ordinary dungeon can
+	// be gone because it hit its city and left, which walking cannot prevent.
+	// Ruled by the coordinating session, 2026-10-15.
+	TestTrue(TEXT("at least one dungeon of the wave was walked"),
+			 Cleared + AbsorbedWhileWalked >= 1);
 
 	// AND THE DAY MOVED BY EXACTLY WHAT THOSE WALKS COST, because nothing in
 	// this run has shortened one. One floor costs one day as a starting rate,
