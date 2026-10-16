@@ -289,7 +289,10 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               "gadgets_copy_your_last_skill",
               # Mana Weaver ten-piece: no cooldown on the Ultimate, its mana cost doubles
               # per paid use this dungeon (2026-10-15)
-              "ultimate_cost_doubles_instead_of_cooldown"}
+              "ultimate_cost_doubles_instead_of_cooldown",
+              # The flag by which a converted slot's key places a skill gadget instead of
+              # casting its skill, a flat 1 requiring the slot's tag. Ruled 2026-10-16.
+              "skill_slot_is_a_gadget"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -911,8 +914,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-15, from 614 over 519: one row on one enchantment.
 #: AND 616 OVER 521 SINCE THE ROW THAT MAKES POINT BLANK SKILLS STRIKE NEARBY ALLIES,
 #: issue #1833, 2026-10-16, from 615 over 520: one row on one enchantment.
-AUTHORED_ROWS = 616
-AUTHORED_ENCHANTMENTS = 521
+#: AND 620 OVER 525 SINCE THE FOUR ROWS THAT CONVERT A KEYED SLOT INTO A SKILL GADGET,
+#: issue #1833, 2026-10-16, from 616 over 521: four rows on four enchantments.
+AUTHORED_ROWS = 620
+AUTHORED_ENCHANTMENTS = 525
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

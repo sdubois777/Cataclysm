@@ -397,6 +397,30 @@ spell part); G-III, the 3-second gadget "to be 357.500000, but it was 275.000000
 **Not measured:** the stat probe's failure under any break, because the proofs ran only this prefix; and no test
 wears the four rows, which the enchantment session writes in a layer of its own.
 
+### THE ROW LAYER'S RUN
+
+The four rows were written in a layer of their own on development 32108cb0d, this entry's merge, and run by the
+enchantment session on 2026-10-16 under the lock enchant-r1. The layer adds no code, so no proof was run. Its rows, on
+the Enchantment Effects sheet: `skill_slot_is_a_gadget`, flat 1 to 1, Required Tags `Slot.Heavy`, `Slot.Special`,
+`Slot.Support` and `Slot.Ultimate`, one on each keyed slot's "converted into a deployable gadget" enchantment. The pins
+moved from 616 rows over 521 enchantments to 620 over 525, and the stat joined the row-text check's on-or-off stats.
+ONE TEST WEARS A REAL ROW: `Cataclysm.Enchantments.TheWornHeavyGadgetRowMakesTheHeavyKeyPlaceASkillGadget` (the Heavy
+row on a helm, whose Heavy press places a skill gadget for the Heavy slot; its control wears a benefit with no effect
+row and places nothing), one assertion, so that the assets built before the row fail it once and only there. Every step
+was as registered:
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 5 actions, 2 files compiled"; "340 tests
+  performed, 339 succeeded, 1 failed: TheWornHeavyGadgetRowMakesTheHeavyKeyPlaceASkillGadget", with 1 failed assertion
+  in the run, that test's. Registered: 340, 339 and 1, that test, one assertion.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed as
+  "Rebuild the enchantment DataTable assets for the four skill-gadget rows".
+- **The whole Unreal suite:** "3794 tests performed, 3794 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3794 tests in the tree at db802dbf4; 3794 performed, gap 0". Registered 3794 and 0: this entry's 3793 and
+  the one real-row test.
+- **Python:** "6444 passed, 8 skipped"; JUnit tests 6452, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+  with no test completed. It did not fire.
+
 ---
 
 ## 2026-10-16 — In the simulation a Quest dungeon never rolls a Siege, as an interim rule until each Cataclysm's Quest dungeon type is built
