@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmSilence.h"
 // For the target a gadget takes when its summoner's row says the most health. Ruled 2026-10-13.
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -1214,9 +1215,19 @@ int32 ACataclysmEnemyController::ChooseAbility(float DistanceCm) const
 	// only the creature knows which of its attacks it would rather land.
 	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
 	const int32 Phase = Driven->CurrentPhase();
+	const bool bSilenced = UCataclysmSilence::IsSilenced(Driven);
 	for (int32 Index = 0; Index < Abilities.Num(); ++Index)
 	{
 		const FCataclysmEnemyAbility& Ability = Abilities[Index];
+
+		// A SILENCED CREATURE STARTS NOTHING BUT ITS BASIC ATTACK. The owner, 2026-10-17 (O1). HERE AND NOT AT THE TOP
+		// OF `UseAbilitiesOn`, so the three creatures whose basic attack is an entry here can still choose it. Nothing
+		// else is stopped: a wind-up already running is finished by `ContinueWindUp`, which does not ask this (O3); the
+		// swing, the chase and every timed behaviour do not pass through here.
+		if (bSilenced && !Ability.bIsBasicAttack)
+		{
+			continue;
+		}
 
 		// A PHASE THE FIGHT HAS NOT REACHED YET. **At most, not equal to**:
 		// phases ADD and never take away, so an ability from phase 2 is still

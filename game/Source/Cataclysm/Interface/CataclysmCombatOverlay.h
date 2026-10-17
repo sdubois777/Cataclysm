@@ -556,6 +556,12 @@ public:
 	static FString MaddenedTextFor(const AActor* Actor);
 
 	/**
+	 * "Silenced" while `State.Silenced` lasts on the actor, or empty. Ruled 2026-10-17 (O5). Beside "Maddened" on a
+	 * creature's status line; the player is never silenced, so the line above its own bars does not ask.
+	 */
+	static FString SilencedTextFor(const AActor* Actor);
+
+	/**
 	 * The buff a worn row drew for a living actor and its whole seconds left, such as "Commander 12s", or empty
 	 * while it holds none. Read from `UCataclysmAbilitySystemComponent::HeldRandomBuff` and
 	 * `HeldRandomBuffSecondsLeft`.

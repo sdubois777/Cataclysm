@@ -4141,6 +4141,19 @@ CONDITIONS = {
     #
     # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
     "opponent_first_struck_by_you_seconds_ago": (0.0, 60.0, "a number of seconds"),
+
+    # "Your attacks have a 25% chance to silence an enemy for 1 second" is
+    # `hit_dealt_is_not_spell` on an `apply_status` row. Ruled 2026-10-17 (O6):
+    # "your attacks" is every hit that is not a spell, the line between an
+    # attack and a spell the three `hit_is_` conditions draw. IT TAKES NO VALUE.
+    #
+    # AN ACTION ROW'S CONDITION ONLY, on an event carrying the tags of the hit
+    # dealt (`EVENTS_CARRYING_A_HIT_DEALTS_TAGS`). The engine judges it from the
+    # event's own tags in `UCataclysmAbilitySystemComponent::PoolActionAllowed`;
+    # no stat lookup is handed those, so it is refused on every stat row
+    # (`CONDITIONS_OF_AN_ACTIONS_EVENT`). A hit no skill dealt carries no tags,
+    # and is not a spell.
+    "hit_dealt_is_not_spell": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -5242,6 +5255,16 @@ APPLY_STATUSES = (
 #: because five ailments have five durations and a row states one.
 #: `UCataclysmAbilitySystemComponent::AllDotsStatus` holds the same name.
 ALL_DOTS_STATUS = "All DoTs"
+
+#: And one more, which `apply_status` ALONE may name: A SILENCE on the other
+#: character of the event, for `UCataclysmSilence::SilenceSeconds`, one second.
+#: Ruled 2026-10-17, for "Null Emperor (2-Piece Bonus): Your attacks have a 25%
+#: chance to silence an enemy for 1 second". NOT IN `APPLY_STATUSES`, because
+#: `apply_status_to_self` reads that list too and nothing a wearer does reads a
+#: silence; nor may `apply_status_seconds` name it, because the sentence states
+#: the second and the row states only its chance.
+#: `UCataclysmAbilitySystemComponent::SilenceStatus` holds the same name.
+SILENCE_STATUS = "Silence"
 
 #: One more status, which `apply_status_to_self` ALONE may name: ONE OF THE
 #: WEARER'S PER-TYPE RESISTANCES, DRAWN AND HELD AT NOUGHT until the row fires
@@ -6949,6 +6972,20 @@ def enchantment_effects(book) -> list[dict]:
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Enchantment Effects", index, name)
 
+        # A CONDITION READ FROM AN ACTION'S EVENT NEEDS AN ACTION AND AN EVENT
+        # CARRYING THE HIT'S TAGS. Ruled 2026-10-17. On a stat row it is
+        # refused by `refuse_a_condition_nothing_asks_for`; here, an action row
+        # on any other event would judge an event with no hit and hold every
+        # time, which is "not a spell" said of nothing.
+        if condition in CONDITIONS_OF_AN_ACTIONS_EVENT and action \
+                and action_event not in EVENTS_CARRYING_A_HIT_DEALTS_TAGS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} moves {action} on the "
+                f"event {action_event or '(none)'!r} under the condition "
+                f"{condition!r}, which is judged from the tags of a hit the "
+                f"wearer dealt. Only these events carry them: "
+                f"{', '.join(EVENTS_CARRYING_A_HIT_DEALTS_TAGS)}.")
+
         # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
         # alone carries the column, because only an enchantment's modifier reads
         # it (`UCataclysmItemModifiers`); `passive_effects` refuses the column.
@@ -7739,7 +7776,8 @@ def enchantment_effects(book) -> list[dict]:
                      "apply_status_to_self_sized": (APPLIED_DOT_STATUS,),
                      # AND `apply_status` ALONE MAY NAME ALL FIVE DAMAGE OVER
                      # TIME AILMENTS AT ONCE. The owner, 2026-10-08.
-                     "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,),
+                     "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,
+                                                       SILENCE_STATUS),
                      # AND `apply_status_to_self` ALONE MAY NAME THE STATUSES
                      # THAT ARE ONLY FOR A WEARER. Ruled 2026-10-12.
                      "apply_status_to_self": APPLY_STATUSES + APPLY_STATUSES_TO_SELF_ONLY,
@@ -8607,13 +8645,33 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
 }
 
 
+#: The conditions judged from AN ACTION ROW'S EVENT and from nothing a stat
+#: lookup is handed. Ruled 2026-10-17. No stat's asker passes "action_event",
+#: so `refuse_a_condition_nothing_asks_for` refuses each on every stat row.
+CONDITIONS_OF_AN_ACTIONS_EVENT = frozenset({
+    "hit_dealt_is_not_spell",
+})
+
+#: The events whose tags are the skill of a hit the wearer dealt, which is what
+#: `CONDITIONS_OF_AN_ACTIONS_EVENT` reads: each is raised in
+#: `ACataclysmPlayerCharacter::OnSomethingWasHit` with the blow's skill tags.
+EVENTS_CARRYING_A_HIT_DEALTS_TAGS = (
+    "hit_dealt",
+    "first_hit_dealt",
+    "critical_strike",
+)
+
+
 def what_a_condition_needs(condition: str) -> str:
     """What an asker must pass for this condition to be judged: "blow_taken",
-    "hit_dealt", or an empty string for the wearer's own state."""
+    "hit_dealt", "action_event", or an empty string for the wearer's own
+    state."""
     if condition in CONDITIONS_OF_A_BLOW_TAKEN:
         return "blow_taken"
     if condition in CONDITIONS_OF_A_HIT_DEALT:
         return "hit_dealt"
+    if condition in CONDITIONS_OF_AN_ACTIONS_EVENT:
+        return "action_event"
     return ""
 
 
@@ -8650,6 +8708,7 @@ def refuse_a_condition_nothing_asks_for(sheet: str, rows: list[dict]) -> list[st
             needs = what_a_condition_needs(condition)
             if needs and needs not in CONDITIONED_STATS_WITH_AN_ASKER[stat]:
                 about = ("a blow being taken" if needs == "blow_taken"
+                         else "an action row's event" if needs == "action_event"
                          else "a hit being dealt")
                 problems.append(
                     f"{sheet}/{row['Name']}: states {stat!r} under the condition "

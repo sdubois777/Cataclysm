@@ -6,6 +6,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSilence.h"
 // For the blast an action deals from an enemy that died.
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmAilments.h"
@@ -4022,6 +4023,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSecondsAction =
 const TCHAR* UCataclysmAbilitySystemComponent::StaggerStatus = TEXT("Stagger");
 const TCHAR* UCataclysmAbilitySystemComponent::RandomDebuffStatus = TEXT("Random Debuff");
 const TCHAR* UCataclysmAbilitySystemComponent::AllDotsStatus = TEXT("All DoTs");
+const TCHAR* UCataclysmAbilitySystemComponent::SilenceStatus = TEXT("Silence");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfAction = TEXT("apply_status_to_self");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSecondsAction = TEXT("apply_status_to_self_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusToSelfSizedAction = TEXT("apply_status_to_self_sized");
@@ -6608,6 +6610,14 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 		}
 	}
 
+	// "NOT A SPELL" IS JUDGED FROM THE EVENT'S OWN TAGS, AND ONLY HERE. Ruled 2026-10-17 (O6), for the Null Emperor's
+	// "Your attacks": the event's skill is not a spell. An event with no tags is a hit no skill dealt, and that is not
+	// a spell either. The stat pipeline is not asked: it is handed no event's tags.
+	if (Action.Condition == ECataclysmStatCondition::HitDealtIsNotSpell)
+	{
+		return !(EventTags && UCataclysmSkillEffects::IsSpell(*EventTags));
+	}
+
 	// AND THE CONDITION IS JUDGED NOW, which is the whole difference from a stat
 	// row: the pipeline asks a stat row's condition when something reads the
 	// stat, and a pool moves at a moment instead.
@@ -7081,6 +7091,16 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 	{
 		return UCataclysmSkillEffects::ApplyStagger(Applier, Other,
 			bSeconds ? Action.Percent : UCataclysmSkillEffects::StaggerSeconds);
+	}
+
+	// A SILENCE IS NOT AN AILMENT EITHER, and is crowd control: the owner's rule of #917 is not asked of it, as it is
+	// not of a stagger. `ApplySilence` keeps the health ceiling and crowd-control resistance (ruled 2026-10-17, O4).
+	// THE CHANCE FORM ONLY, for the Null Emperor's one second: the generator refuses this name on
+	// `apply_status_seconds`, and a row that reached here with it applies nothing.
+	if (Action.StatusName.Equals(SilenceStatus, ESearchCase::IgnoreCase))
+	{
+		return !bSeconds
+			&& UCataclysmSilence::ApplySilence(Applier, Other, UCataclysmSilence::SilenceSeconds);
 	}
 
 	// EVERY OTHER STATUS IS AN AILMENT A BLOW CARRIES, and the code classifies

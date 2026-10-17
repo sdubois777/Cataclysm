@@ -346,6 +346,9 @@ ACataclysmGatekeeperCharacter::EnemyAbilities() const
 	Cleave.bArcsOntoItsTarget = false;
 	Cleave.MarkerRadiusCm = DreadCleaveRadiusCm;
 
+	// AND IT IS THE BASIC ATTACK, which a silence leaves usable. Ruled 2026-10-17 (O1).
+	Cleave.bIsBasicAttack = true;
+
 	// ORDER IS PRIORITY, AND DREAD CLEAVE HAS TO COME LAST. See the enumeration
 	// in the header: `ChooseAbility` takes the first entry whose phase, range
 	// and cooldown fit, and a zero-cooldown ability at the front is the only

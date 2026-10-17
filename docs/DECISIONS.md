@@ -2,6 +2,335 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-17 — A creature can be silenced: it starts no ability but its basic attack for a second, and a row can silence on a hit that is not a spell, the Null Emperor set's first layer, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSilence.h` and `.cpp` (new: `UCataclysmSilence`, the tag,
+`ApplySilence`, `IsSilenced`, `SilenceSeconds`); `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`
+(`FCataclysmEnemyAbility::bIsBasicAttack`); `CataclysmCorruptedSentinelCharacter.cpp`, `CataclysmGatekeeperCharacter.cpp`
+and `CataclysmSuccubusCharacter.cpp` (the flag set on Siege Bolt, Dread Cleave and Soulfire);
+`game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (`ChooseAbility` skips every other ability while
+silenced); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`IsCrowdControlled`);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (`SilencedTextFor`, on the status line);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`SilenceStatus`, its branch in
+`ApplyStatusOf`, and the condition judged in `PoolActionAllowed`); `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
+and `.cpp` (the condition `hit_dealt_is_not_spell`); `tools/generate_datatables.py` (`SILENCE_STATUS`, the condition,
+`CONDITIONS_OF_AN_ACTIONS_EVENT`, `EVENTS_CARRYING_A_HIT_DEALTS_TAGS`);
+`game/Source/Cataclysm/Tests/CataclysmSilenceTests.cpp` (new, twelve tests);
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (`ComparesNothing` gains the condition);
+`tools/tests/test_null_emperor_silence_rows.py` (new); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+(`SilenceStatus`); `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (the condition built
+ahead of its row). Issue [#1652](https://github.com/sdubois777/Cataclysm/issues/1652).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING SILENCES ANYTHING UNTIL TWO THINGS LAND BELOW AND ABOVE THIS LAYER.** The tag `State.Silenced` is added to
+  the workbook's Tags sheet by the enchantment session in a data layer below this commit; until it is, the tag is
+  invalid, `ApplySilence` refuses every time and `IsSilenced` answers no for everyone. And the two rows of the set are
+  the enchantment session's to write. This layer authors no row.
+- **A SILENCED CREATURE STARTS NONE OF ITS ABILITIES BUT ITS BASIC ATTACK, FOR ONE SECOND.** A Brute does not stomp or
+  throw; a Hellhound does not rush; an Abyssal Warden does not roar or stampede; a Corrupted Sentinel does not lob its
+  mortar; a Succubus does not curse; a Gatekeeper does not lob, summon or ring. **It still swings, walks, turns and
+  chases**, and the Corrupted Sentinel still fires Siege Bolt, the Gatekeeper still sweeps Dread Cleave and the
+  Succubus still fires Soulfire, which are those three creatures' basic attacks.
+- **A WIND-UP, A CHANNEL OR A CHARGE ALREADY RUNNING WHEN THE SILENCE LANDS FINISHES.** A stomp half way through its
+  telegraph still lands. Only a stun or a knockdown interrupts.
+- **ITS TIMED BEHAVIOURS GO ON**: the enemy-modifier auras, Sigils, Infernal Sacrifice, Inferno Charge, Phasewalker,
+  the Succubus's Dominion and Contagion. See "THE TIMED BEHAVIOURS" below for where each runs.
+- **A BOSS IS SILENCED, FOR THE WHOLE SECOND.** A boss cannot be stunned, knocked down or feared, and can be silenced.
+- **SILENCE IS CROWD CONTROL** for "You cannot apply CC effects to enemies above 50% HP", for crowd-control resistance
+  (Unyielding's 100 refuses it, 50 halves it), for rows asking whether an enemy is crowd controlled, and for "Applying
+  a CC effect grants ..." rows. **IT DOES NOT TAKE THE 5 SECOND STUN WINDOW**: a creature stunned a moment ago can be
+  silenced, and a creature silenced a moment ago can be stunned.
+- **A SECOND SILENCE REFRESHES THE FIRST TO A FULL SECOND FROM NOW**; it never stacks and never lengthens past that.
+- **THE CREATURE'S STATUS LINE READS "Silenced"** while it lasts.
+- **"YOUR ATTACKS" IS EVERY HIT THAT IS NOT A SPELL.** On shipped data the spells are nine Demonic weapon skills, the
+  Wand's and the Staff's Support, Heavy, Ultimate and Movement and the Wand's Special (`game/Data/WeaponSkills.csv`,
+  the nine rows carrying `Type.Spell`); a hit from any of those does not roll. Every basic attack rolls. A row's 0.25 s
+  trigger cooldown means one multi-hit blow rolls once.
+- **A PLAYER IS NEVER SILENCED BY THIS.** The set's drawback, "Your own ultimate ability is disabled", is the existing
+  `skill_locked` stat and needs nothing here.
+- **NOT EVERYTHING A CREATURE DOES PASSES THROUGH THE GATE.** One floor rule makes a creature use an ability outside its
+  brain: Echoes of the Past (`CataclysmDungeonGameMode.cpp` about 3393) makes each echo strike once with its recorded
+  ability. A silenced echo still strikes. That file is outside what this layer may touch.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 39.
+
+**Issue #1652's question is answered by this entry.** It asked for enemy-side silence before any of the set's rows could
+be written: the tag (now a data layer below this), a gate that leaves the swing working (`ChooseAbility`, below), and
+silence kept out of `CannotAct` (below). What the issue did not see: three creatures' basic attacks are abilities, which
+is why the gate is a per-ability flag and not an early return. The enchantment session tells the coordinating session,
+which may close the issue.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's decisions of 2026-10-17, relayed by the coordinating session:
+
+- **O1 (b):** "a silenced creature loses every ability EXCEPT its basic attack (the Corrupted Sentinel's Siege Bolt, the
+  Gatekeeper's Dread Cleave and the Succubus's Soulfire are abilities that are basic attacks, and stay usable); its timed
+  behaviours (auras, Sigils, Sacrifice, Inferno Charge, Phasewalker, Dominion, Contagion) keep running."
+- **O2 (b):** "bosses are silenced for the full duration, as a pin affects them."
+
+The coordinating session's rulings of 2026-10-17, its words and not the owner's: O3, a wind-up, channel or charge
+already running when silence lands finishes; O4, silence is crowd control for the health ceiling, crowd-control
+resistance, `IsCrowdControlled` and the crowd-control event, and does not take and is not refused by the shared 5 second
+stun-immunity window; O5, reapplying refreshes the second with no stacking, shown as "Silenced" on the status line; O6
+(b), "Your attacks" is every hit that is not a spell, with a 0.25 s trigger cooldown like the other `apply_status` rows.
+O7 to O10 are for the next two layers of the set and nothing here builds them.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| O1 | Every ability but the basic attack is refused; the swing, the movement and the timed behaviours go on. | `ACataclysmEnemyController::ChooseAbility`, `CataclysmEnemyController.cpp` 1218 and 1227: `bSilenced && !Ability.bIsBasicAttack` skips the entry. `FCataclysmEnemyAbility::bIsBasicAttack`, `CataclysmCharacterBase.h` 151, default false; set true at `CataclysmCorruptedSentinelCharacter.cpp` 217 (Siege Bolt), `CataclysmGatekeeperCharacter.cpp` 350 (Dread Cleave) and `CataclysmSuccubusCharacter.cpp` 328 (Soulfire). Silence is not in `UCataclysmSkillEffects::CannotAct` (unchanged), so `Think`'s hard-stop branch does not see it. |
+| O2 | A boss is silenced in full. | `UCataclysmSilence::ApplySilence`, `CataclysmSilence.cpp` 20: no `IsBoss` check, and the comment says so. |
+| O3 | A running wind-up, channel or charge finishes. | Nothing new: `ACataclysmEnemyController::ContinueWindUp` (1075), the charge in flight (`ACataclysmEnemyCharacter::AdvanceCharge`, `CataclysmEnemyCharacter.cpp` 1037) and the Inferno Charge channel (`Think`, about 527) are reached before `UseAbilitiesOn` and do not ask `ChooseAbility`. |
+| O4 | Crowd control for the ceiling, resistance, `IsCrowdControlled` and the event; not the stun window. | `ApplySilence`: `CrowdControlRefusedByHealthCeiling` at 30, `HeldSecondsAfterCrowdControlResistance` at 37, `NoteCrowdControlApplied` on `UCataclysmCombatEvents::AttackerOf(Instigator)` at 57; no `StunImmuneTag` read or written. `UCataclysmSkillEffects::IsCrowdControlled`, `CataclysmSkillEffects.cpp` 3156. |
+| O5 | Refresh, no stack; "Silenced" on the status line. | `UCataclysmSkillEffects::ApplyTagForDuration`, unchanged, moves a running tag effect's start (#1576). `UCataclysmCombatOverlay::SilencedTextFor`, `CataclysmCombatOverlay.cpp` 556, joined into `StatusLineFor` at 887, after "Maddened". |
+| O6 | "Your attacks" is a hit that is not a spell, with a 0.25 s trigger cooldown. | The condition `hit_dealt_is_not_spell`: `ECataclysmStatCondition::HitDealtIsNotSpell`, `CataclysmStatPipeline.h` 1678; judged in `UCataclysmAbilitySystemComponent::PoolActionAllowed`, `CataclysmAbilitySystemComponent.cpp` 6616, from the event's tags. The cooldown is the row's Trigger Cooldown cell, which exists (`EnchantmentEffects.csv` 437-441 carry 0.25), and an empty cell on `hit_dealt` gives 0.25 too (`DEFAULT_TRIGGER_COOLDOWN`). |
+| The row | `apply_status` may name "Silence", for `SilenceSeconds`. | `UCataclysmAbilitySystemComponent::SilenceStatus`, `.cpp` 4026; its branch in `ApplyStatusOf`, 7100, beside Stagger's. `SILENCE_STATUS`, `generate_datatables.py` 5267, accepted on `apply_status` only (7780). |
+
+### THE TIMED BEHAVIOURS, AND WHERE EACH RUNS
+
+None of these passes through `ChooseAbility`, so none is stopped, which is O1. None asks `CannotAct` either, so a stun
+stops none of them today.
+
+| Behaviour | Where it runs |
+| :-- | :-- |
+| Enemy-modifier auras: Hellfire, Abyssal, the heal pulse | `UCataclysmEnemyModifiers::AuraStep`, `CataclysmEnemyModifiers.cpp` 382, from `CataclysmCharacterBase.cpp` 360 |
+| Phasewalker's teleport | `UCataclysmEnemyModifiers::PhaseStep`, 331, from `CataclysmCharacterBase.cpp` 373 |
+| Unholy Sigils, Infernal Sacrifice, Inferno Charge | `UCataclysmEnemyModifiers::TimedStep`, 802, from `CataclysmCharacterBase.cpp` 385 |
+| The medic's heal on allies | `UCataclysmEnemyModifiers::HealAlliesPulse`, 1058 |
+| The Succubus's Dominion | a timer to `ACataclysmSuccubusCharacter::DominionTick`, `CataclysmSuccubusCharacter.cpp` 551 |
+| Contagion's debuff aura | `UCataclysmContagion::AuraStep`, `CataclysmContagion.cpp` 136, from `CataclysmCharacterBase.cpp` 285 |
+| A charge already in flight | `ACataclysmEnemyCharacter::AdvanceCharge`, `CataclysmEnemyCharacter.cpp` 1037 |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **"NOT A SPELL" IS A NEW CONDITION, `hit_dealt_is_not_spell`, JUDGED ONLY ON AN ACTION ROW FROM ITS EVENT'S TAGS.**
+  No existing route says it. `hit_is_spell` is a fact of a blow being TAKEN (it reads `FCataclysmBlowContext`, which an
+  action row's judge leaves empty, so on an action row it is false every time), and there is no negation; Required
+  Tags can only require a tag, and no tag is on every attack and on no spell. The options not taken: negating
+  `hit_is_spell` with a new column (a row struct change); a Required Tags syntax for a forbidden tag (wider, and every
+  reader of the cell would need it); a new event raised only for non-spell hits (four lists of events to extend, and
+  `hit_dealt`'s other rows would not see it). The name begins `hit_dealt_` and not `hit_is_` on purpose:
+  `tools/tests/test_every_conditioned_stat_has_an_asker.py` classes every `hit_is_` name as a blow taken.
+- **A HIT WITH NO SKILL TAGS IS NOT A SPELL.** A blow no skill dealt carries no tags (`FCataclysmHitNotice::SkillTags`
+  is null), and it is not a spell. The option not taken: refuse it, which would make the row ignore any hit the game
+  does not tag.
+- **THE CONDITION IS REFUSED ON EVERY STAT ROW AND ON ANY ACTION ROW BUT ONE ON `hit_dealt`, `first_hit_dealt` OR
+  `critical_strike`**, the three events raised with the hit's skill tags. On any other event the condition would judge
+  no hit and hold every time. `ConditionHolds` answers false for it, so a modifier that reached the pipeline some other
+  way grants nothing rather than everything.
+- **A SILENCE DOES NOT ASK THE OWNER'S RULE OF #917**, a tenth of the target's maximum health. It is crowd control and
+  not an ailment a blow carries, as a stagger is; the branch sits beside Stagger's, as the brief asked. The option not
+  taken: ask it, which would make a 25% chance on a light hit a 0% chance.
+- **"Silence" IS FOR `apply_status` ALONE, AND ONLY THE CHANCE FORM.** Not in `APPLY_STATUSES`, which
+  `apply_status_to_self` also reads: nothing a wearer does reads the tag. Not on `apply_status_seconds`: the sentence
+  states the second, and `SilenceSeconds` holds it. The engine branch applies nothing for a seconds row that reached it.
+- **NO SKILL-STATED IMMUNITY IS ASKED.** Fear also asks `UCataclysmSkillTemplate::IsImmuneTo(Target, "Fear")`; no
+  ruling names one for silence, and a creature runs no skill template. The option not taken: ask `IsImmuneTo(Target,
+  "Silence")`, a name no data carries.
+- **THE FLAG IS FALSE BY DEFAULT**, so an ability added later is silenced unless its creature says it is the basic
+  attack. The option not taken: true by default, which would leave a new ability unsilenced without a word.
+- **THE GATE IS IN `ChooseAbility`, NOT AT THE TOP OF `UseAbilitiesOn`.** The recon's recommendation, and the only place
+  the three basic-attack abilities can still be chosen. `ChooseAbility` is also what a test can ask directly.
+- **THE STATUS LINE PUTS "Silenced" AFTER "Maddened"**, beside the other words for what is done to the creature. The
+  line above the player's own bars does not ask: a player is never silenced.
+
+### THE GENRE SOURCE
+
+What `genre_silence.md` fetched, recorded as these three lines only:
+
+- Torchlight: Silence "Prevents your enemies from casting spells and using skills"
+  (https://www.gamebanshee.com/torchlight/spells/silence.php).
+- Diablo IV: Dazed enemies "cannot attack or use skills" but "are still able to move"
+  (https://www.purediablo.com/diablo4/Daze).
+- Diablo III: hard controls reduced "below 0.85 seconds" do not affect Rare Elites and Bosses
+  (https://maxroll.gg/d3/resources/crowd-control-explained).
+
+**WHAT THE GENRE DOES NOT SETTLE.** Whether a silence stops the basic attack: Torchlight's names spells and skills and
+says nothing of attacks, and Diablo IV's Daze stops attacks with skills; the shape in common is only that movement goes
+on. The boss mechanism: every source weakens control on bosses, each by a different mechanism, and none applies a short
+skill lockout freely to a boss. The duration: no source settles a silence's length. The display: no fetched page
+describes a silence icon or text. **The owner chose the basic attack (O1) and the boss rule (O2) against that
+background**; the one second is the set's own sentence, and the word on the status line is the coordinating session's
+O5.
+
+### WHAT WAS BUILT
+
+- **The status.** `UCataclysmSilence::SilencedTag` requests `State.Silenced` by name with `ErrorIfNotFound=false`, the
+  one place the name is written. `ApplySilence(Instigator, Target, Seconds)` refuses no character or no time, then the
+  health ceiling, then a duration resistance takes to nothing, and lays the tag through `ApplyTagForDuration`; a silence
+  that lands raises `NoteCrowdControlApplied` on whoever the act belongs to. `IsSilenced` reads the tag.
+  `SilenceSeconds` is 1.
+- **The gate.** `FCataclysmEnemyAbility::bIsBasicAttack`, and `ChooseAbility` skipping every entry without it while the
+  creature is silenced.
+- **Crowd control.** `IsCrowdControlled` answers yes while silenced. Not `CannotAct`.
+- **The status line.** `SilencedTextFor`, in `StatusLineFor`.
+- **The row's shape.** `apply_status` "Silence"; the condition `hit_dealt_is_not_spell`, with its enumerator, its name,
+  its place among the conditions that compare nothing, its classification for a caching reader (`TheBlowOrSkill`), a
+  `ConditionHolds` case that refuses, and its judge in `PoolActionAllowed`. The generator's three count sentences
+  moved: thirty-two of the seventy-one conditions compare nothing.
+
+**EVERY PLACE THAT DEPENDS ON `State.Silenced`:** `UCataclysmSilence::SilencedTag`, and through it `ApplySilence`,
+`IsSilenced`, `ChooseAbility`, `IsCrowdControlled` (and so the `opponent_is_crowd_controlled` rows),
+`SilencedTextFor` and `StatusLineFor`, and every test in `Cataclysm.Silence.`, each of which asks for the tag as its
+first set-up and stops with the reason when it is missing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Both land together under the set rule (`generate_datatables.py` about 7915-7952). The 2-piece, on the Enchantment Effects
+sheet:
+
+| Cell | Value |
+| :-- | :-- |
+| Enchantment | `Positive_Null_Emperor_2_Piece_Bonus_Your_attacks_have` |
+| Effect | the sentence |
+| Stat, Value Kind | empty |
+| Value Low, Value High | 25, 25 |
+| Required Tags | empty |
+| Condition | `hit_dealt_is_not_spell` |
+| Condition Value | empty |
+| Action | `apply_status` |
+| Action Event | `hit_dealt` |
+| Trigger Cooldown | 0.25 |
+| Ailment | `Silence` |
+| every other cell | empty |
+
+The drawback: Enchantment `Negative_Your_own_ultimate_ability_is_disabled`, Stat `skill_locked`, Value Kind `flat`, Value
+Low and Value High 1 and 1, Required Tags `Slot.Ultimate`, every other cell empty: row 110's shape
+(`EnchantmentEffects.csv` 110) without its condition. **CONFIRMED BY READING, NOT BY A RUN:**
+`UCataclysmSkillTemplate::CanActivateAbility` (`CataclysmSkillTemplate.cpp` 832-842) asks `skill_locked` with the
+skill's own tags before anything else for every slot but the basic attack, and refuses when it is above nought; every
+designed skill carries its `Slot.` tag, so a flat 1 scoped to `Slot.Ultimate` refuses the player's ultimate press and
+nothing else. Both rows pass the generator on a made-up sheet (`tools/tests/test_null_emperor_silence_rows.py`).
+`SETS_THAT_WORK` in `test_enchantment_effects_match_the_row_text.py` gains 14 with the rows, which is the enchantment
+session's to move.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts** "Silence" on `apply_status`, and the condition `hit_dealt_is_not_spell` on an action row on
+  `hit_dealt`, `first_hit_dealt` or `critical_strike`. **It refuses** that condition on a stat row and on an action row
+  on any other event, and "Silence" on every status action but `apply_status`.
+- **`Cataclysm.Passives.EveryConditionNameASheetMayWriteReachesAPassiveModifier`** reads every condition name the
+  engine holds, so it reads the new one; `ComparesNothing` in `CataclysmPassiveTreeTests.cpp` gains it, so the test
+  expects its value to be nought. Without that line the merged test would expect a value of 7 for it.
+- **`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`** holds `SilenceStatus` in `CONSTANTS`.
+- **`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`** lists `hit_dealt_is_not_spell` in
+  `BUILT_AHEAD_OF_THEIR_ROWS`, the route its own failure message gives: the condition lands before its row, which the
+  enchantment session writes above this layer. It failed by name on this layer before the line was added. The name
+  leaves the list with the row.
+
+No other merged test asserts anything different, by reading: nothing silences today, every creature's ability list is
+unchanged but for one field false by default, and `IsCrowdControlled` and the status line answer as before for every
+character not silenced.
+
+### Tests
+
+Twelve new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSilenceTests.cpp`, the group `Cataclysm.Silence.`,
+with helpers of this file's own names. Every test first asks that `State.Silenced` is registered. Creatures and what
+they fight stand at least a metre apart; separate scenes stand 40 m apart, past the 15 m a creature notices. The clock is
+moved by hand: `SilenceAdvanceClock` moves the time only, `CataclysmTestWorld::RunClock` the time and the timers.
+
+1. `ASilencedCreatureStartsNoAbilityItOtherwiseStarts`. Two Brutes, each with a player 2 m off. In order: control,
+   unsilenced it chooses the stomp; control, it starts its wind-up; control, committed to the stomp; set-up, the silence
+   lands on the other; silenced it chooses no ability; it chases rather than winding up; it is committed to nothing.
+2. `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced`. A Corrupted Sentinel, a Succubus and a Gatekeeper
+   in phase 1. In order: set-up, two, two and four abilities; Siege Bolt is a basic attack and Brimstone Mortar is not;
+   Soulfire is and Wither the Living is not; Dread Cleave is and Soulfall, Call the Damned and Soul Harvest are not;
+   control, unsilenced at 7 m the Sentinel lobs; control, at 4 m the Succubus curses; control, at 1 m the Gatekeeper
+   sweeps; control, at 8.74 m it lobs; set-up, all three silenced; silenced, the Sentinel fires Siege Bolt at 7 m; the
+   Succubus fires Soulfire at 4 m; the Gatekeeper still sweeps at 1 m; and at 8.74 m it chooses nothing.
+3. `ASilencedCreaturesOwnSwingAndItsChaseAreUnchanged`. Two plain creatures, reach 2 m, each with a player 1.5 m off.
+   In order: set-up, the second is silenced; control, unsilenced it attacks; control, one swing ordered; silenced it
+   attacks the same; and ordered one swing as well (the difference is nought); control, with the player at 5 m it
+   chases; silenced it chases the same; set-up, it was silenced throughout.
+4. `ATimedBehaviourKeepsRunningWhileSilenced`. Two Succubi, each with an ally 4 m off spawned after it. In order:
+   set-up, neither ally holds Commander; set-up, the second Succubus is silenced; after 0.6 s with timers, control, the
+   unsilenced Succubus's ally holds Commander; set-up, the second is still silenced; its ally holds Commander as well.
+5. `AWindUpAlreadyRunningWhenSilenceLandsFinishes`. Two Brutes, each with a player 2 m off. In order: set-up, both
+   begin a stomp; set-up, half a second in the second is silenced; silenced it is still winding up; still committed to
+   the stomp; past the wind-up, control, the unsilenced stomp lands; control, its player lost health; set-up, the
+   second is still silenced; its stomp lands as well; its player lost health; and the stomp is cooling down.
+6. `ItLastsOneSecondAndAReapplicationRefreshesItWithoutStacking`. In order: control, neither is silenced; set-up, both
+   silenced; set-up, the second reapplied at 0.5 s; one effect holds it; at 0.9 s the first is still silenced; at 1.1 s
+   the first has run out; and the reapplied one holds; at 1.4 s it still holds; by one effect; at 1.6 s it has run out.
+7. `ABossIsSilencedForTheFullSecond`. In order: set-up, the Boss rung is a boss; control, a designed stun is refused;
+   a silence lands; at 0.9 s it holds; at 1.1 s it has run out.
+8. `ItIsRefusedAboveTheHealthCeilingAndAtFullCrowdControlResistance`. In order: control, a silencer with no ceiling
+   silences a creature at full health; one whose ceiling is 50% does not; and that creature is not silenced; a creature
+   at 100 crowd-control resistance is not silenced; and is not.
+9. `ItIsNotRefusedInsideTheStunWindowAndOpensNone`. In order: set-up, a one-second stun lands; set-up, it runs out;
+   control, a second stun inside the window is refused; a silence inside the window lands; a silence lands on the other
+   creature; a stun straight after it lands.
+10. `ItIsCrowdControlAndRaisesTheCrowdControlEventOnce`. In order: control, not under crowd control; control, no
+    `crowd_control` event; set-up, the silence lands; under crowd control; the event raised once on the silencer; not
+    `CannotAct`; after 1.1 s, not under crowd control.
+11. `TheStatusLineReadsSilencedWhileItHolds`. In order: control, `SilencedTextFor` empty; control, the status line holds
+    no "Silenced"; set-up, the silence lands; the text is "Silenced"; the status line holds it; after 1.1 s it does not.
+12. `TheRowSilencesOnAHitThatIsNotASpellAndNotOnASpell`. A possessed player character and four creatures 3 m off. In
+    order: set-up, the blow with no row lands; control, with no row it silences nothing; set-up, with the row (chance
+    100, made by hand) the blow lands; it silences, being no skill's hit; a `hit_dealt` carrying `Type.Melee` silences;
+    one carrying `Type.Spell` does not.
+
+
+Python: `tools/tests/test_null_emperor_silence_rows.py`, seventeen tests on a made-up workbook holding the two real
+sentences typed Generic: the 2-piece row carried through as written; an empty Trigger Cooldown giving 0.25; the
+drawback as row 110 without its condition; both rows together; "Silence" in none of the other status lists; refused on
+`apply_status_seconds`; refused on `apply_status_to_self` and `apply_status_to_self_seconds`; a misspelt "Silenced"
+refused; the condition compares nothing and a value beside it is refused; allowed on `first_hit_dealt` and
+`critical_strike`; refused on `retaliation_dealt` and `deployable_hit`, with the control that the same rows without it
+pass; refused on three stat rows, with a control; and classed in neither stat-lookup set. And one test in
+`test_charge_and_placed_action_names_match_the_engine.py`: the generator's "Silence" is the engine's.
+
+**Not tested:** a channel (the Inferno Charge) and a charge in flight finishing under silence (only a wind-up is); the
+Hellhound's and the Abyssal Warden's abilities refused (only the Brute's are; the gate is the same loop); the timed
+behaviours other than Dominion; crowd-control resistance of 50 halving it; the `opponent_is_crowd_controlled` row and a
+"Applying a CC effect" row reading a silence (only `IsCrowdControlled` and the event are); a minion or a subjugated
+creature silenced; Echoes of the Past (not gated; see SAID FIRST); the 25% chance (the roll is the existing one); the
+0.25 s trigger cooldown in play (a Python test carries the cell); the drawback refusing the ultimate (confirmed by
+reading; the slot-lock tests of `CataclysmEnchantmentEffectTests.cpp` cover `skill_locked` with `Slot.Ultimate`); the
+row through an imported table; the heads-up display drawing the line.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script with comments and strings removed: 406, 130 and 17 pairs for the first; 144, 40
+and 3 for the second; 2765, 934 and 31 for the third, one round pair more than before). Each compiles alone by reading:
+`IsSilenced` takes a `const AActor*`, so `nullptr` is accepted, and `Driven` is still read by the lines around it; a
+`bool` takes `false`; `IsSpell` takes a `const FGameplayTagContainer&`, which a temporary binds to, and `EventTags` is
+still read by the condition. The failed assertions are counted by reading. The prefix is `Cataclysm.Silence.`, with its
+trailing dot.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| S-I, the gate never sees a silence (O1) | `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` | `const bool bSilenced = UCataclysmSilence::IsSilenced(Driven);` | `const bool bSilenced = UCataclysmSilence::IsSilenced(nullptr);` | `ASilencedCreatureStartsNoAbilityItOtherwiseStarts` | `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` |
+| S-II, Siege Bolt is not the basic attack (O1) | `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.cpp` | `Bolt.bIsBasicAttack = true;` | `Bolt.bIsBasicAttack = false;` | `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` | none |
+| S-III, a spell counts as an attack (O6) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `return !(EventTags && UCataclysmSkillEffects::IsSpell(*EventTags));` | `return !(EventTags && UCataclysmSkillEffects::IsSpell(FGameplayTagContainer()));` | `TheRowSilencesOnAHitThatIsNotASpellAndNotOnASpell` | none |
+
+Failed assertions, by reading:
+
+- **S-I, 6 in 2 tests.** Test 1, 3: "silenced, at 2 m it chooses no ability" (the stomp), "and it chases rather than
+  winding up" (it winds up), "and is committed to nothing" (the stomp). Test 2, 3: the Sentinel at 7 m (the mortar), the
+  Succubus at 4 m (the curse), and the Gatekeeper at 8.74 m (Soulfall); its 1 m sweep passes. Test 5 passes: its
+  wind-up began before the silence.
+- **S-II, 2 in 1 test.** Test 2: "Siege Bolt is the Sentinel's basic attack", and "silenced, at 7 m the Sentinel fires
+  Siege Bolt" (nothing is chosen).
+- **S-III, 1 in 1 test.** Test 12: "a hit_dealt carrying Type.Spell does not".
+
+**Tests of another group expected to fail, to check in the window:** none, by reading.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-16 — A ranged weapon's basic attack reaches its range and not its bolt's width, and a click attack on an enemy aims at that enemy and not at the cursor
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.h` and `.cpp` (`ReachCmOf` answers a Projectile
