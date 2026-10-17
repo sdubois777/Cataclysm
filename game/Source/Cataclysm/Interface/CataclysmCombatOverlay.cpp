@@ -605,10 +605,21 @@ FString UCataclysmCombatOverlay::KeptStacksTextFor(const AActor* Actor)
 	TArray<FString> Parts;
 	for (const UCataclysmAbilitySystemComponent::FHeldKeptStacks& Each : AbilitySystem->KeptStacksForDisplay())
 	{
-		Parts.Add(FString::Printf(TEXT("%s %d/%d"), Each.Name.IsEmpty() ? TEXT("Stacks") : *Each.Name,
-								  Each.Held, Each.Cap));
+		Parts.Add(KeptStacksEntry(Each.Name, Each.Held, Each.Cap, Each.bFreeNextAbility, Each.MorePercent));
 	}
 	return FString::Join(Parts, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::KeptStacksEntry(const FString& Name, int32 Held, int32 Cap, bool bFreeNextAbility,
+												 float MorePercent)
+{
+	FString Entry = FString::Printf(TEXT("%s %d/%d"), Name.IsEmpty() ? TEXT("Stacks") : *Name, Held, Cap);
+	// AT THE CAP OF A ROW WHOSE STACKS BUY THE NEXT ABILITY, WHAT THAT PRESS WILL BE. Ruled 2026-10-17.
+	if (bFreeNextAbility && Cap > 0 && Held >= Cap)
+	{
+		Entry += FString::Printf(TEXT(": next ability free, %d%% more damage"), FMath::RoundToInt(MorePercent));
+	}
+	return Entry;
 }
 
 FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)

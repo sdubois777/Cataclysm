@@ -2,6 +2,267 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-17 — A row can gain a kept stack on each hit on a silenced enemy, and at its cap make the next ability but the basic attack cost no mana and deal more damage, spending them all: the Null Emperor set's second layer, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the condition
+`target_is_silenced`, `FCataclysmStatConditions::bTargetIsSilenced`, and `FCataclysmPoolAction::bKeptStacksFreeNextAbility`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`KeptStacksFreeNextAbilityAction`, the
+gain in `ActOnEvent`, `NextAbilityIsFree`, `SpendFreeNextAbility`, `KeptStacksHeldNamed`, the silence read in
+`WithTargetState`, and two fields of `FHeldKeptStacks`); `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h`
+and `.cpp` (`ManaCostFor` answers nothing for the free next ability, and takes `bForAUse`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`CommitAndBegin` spends the stacks and doubles the
+use); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (an aura's upkeep is asked as no use);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the row read into an action);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (`KeptStacksEntry`);
+`game/Source/Cataclysm/Tests/CataclysmVoidTests.cpp` (new, six tests); `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`
+(`ComparesNothing` gains the condition); `tools/generate_datatables.py` (`KEPT_STACKS_FREE_NEXT_ABILITY_ACTION`, its check,
+the condition); `tools/tests/test_null_emperor_void_rows.py` (new);
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (`KeptStacksFreeNextAbilityAction`);
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (the condition built ahead of its row).
+Issue [#1652](https://github.com/sdubois777/Cataclysm/issues/1652). Built on the layer below it, the entry after this one.
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the row is written:
+
+- **NOTHING GAINS VOID UNTIL THE ROW IS WRITTEN ABOVE THIS LAYER**, by the enchantment session, with the sentence's
+  quotes reworded (O10). This layer authors no row. A 6-piece bonus is live only with six pieces worn.
+- **EVERY HIT ON A SILENCED ENEMY GAINS ONE VOID**, a spell's hit as well as an attack's: the sentence says "every time
+  you hit", where the 2-piece says "your attacks". A hit that did not land gains none. One event gains one, however many
+  copies of the row are worn. There is no wait between gains.
+- **VOID STOPS AT 10.** The eleventh hit leaves 10. Void never runs out with time.
+- **AT 10, THE NEXT ABILITY BUT THE BASIC ATTACK COSTS NO MANA AND DEALS TWICE ITS DAMAGE, AND SPENDS ALL 10.** Any slot
+  but the basic attack: Heavy, Special, Support, Aura, Ultimate, Movement. The whole mana cost is waived, its extra
+  shares and the Ultimate's doubling included. The damage is a "more" on the whole use, so its projectile, its ground
+  and every target it strikes take twice. A use that deals no damage itself, such as a buff, still spends the 10 and is
+  still free: it was the next ability.
+- **FERVOUR IS STILL PAID.** An Ultimate at 10 Void costs no mana and still costs its 50 Fervour; with too little, it is
+  refused and the 10 are kept.
+- **A BASIC ATTACK SPENDS NOTHING**, and neither does a press the cooldown, a lock or a short pool refused.
+- **AN AURA'S UPKEEP IS NEVER FREE**, and a skill started free by another row (a repeat, a triggered skill) neither
+  spends the 10 nor is made free by them.
+- **DEATH AND LEAVING THE DUNGEON CLEAR VOID**, and so does taking the gear off, exactly as for every kept stack.
+- **THE LINE ABOVE THE PLAYER'S BARS READS "Void 7/10"**, from the moment the row is worn ("Void 0/10"), and at 10
+  "Void 10/10: next ability free, 100% more damage".
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 40.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner said nothing on this layer; the owner's O1 and O2 are the layer below's. The coordinating session's rulings
+of 2026-10-17, its words and not the owner's: O7 (c), "Void caps at 10; the aura holds at 10; the next non-basic ability
+spends all 10; cleared at death and on leaving the dungeon"; O8, "a next-use charge at effectiveness 200 plus a new
+'free' flag asked in `ManaCostFor`; '100% more' is twice"; O10, "reword 'Void.' to single quotes under the owner's
+reword delegation". The aura is the next layer's and nothing here builds it.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| O7 | One Void per hit on a silenced enemy. | The condition `target_is_silenced`: `ECataclysmStatCondition::TargetIsSilenced`, `CataclysmStatPipeline.h` 1692; read by `UCataclysmAbilitySystemComponent::WithTargetState`, `CataclysmAbilitySystemComponent.cpp` 1581 and 1620, from `UCataclysmSilence::IsSilenced`; judged against the enemy an action's event names by `PoolActionAllowed`, unchanged. The gain: `ActOnEvent`, `.cpp` 6306, `GainKeptStack` once per row per landed event. |
+| O7 (c) | Caps at 10. | `GainKeptStack` (unchanged) holds `KeptStackCap`, the row's Scale Max Steps. |
+| O7 (c) | The next non-basic ability spends all 10. | `UCataclysmSkillTemplate::CommitAndBegin`, `CataclysmSkillTemplate.cpp` 305: `SpendFreeNextAbility` (`CataclysmAbilitySystemComponent.cpp` 5558) for every slot but `BasicAttack`, after the commit. |
+| O7 (c) | Cleared at death and on leaving the dungeon. | Nothing new: Void is a kept stack. `ClearWhatDeathEnds` empties them (`.cpp` 2631); `KeptStacksHeld` (5489) answers nought for a stack of another dungeon; `SetPoolActions` forgets them with the gear. |
+| O8 | Free: a flag asked in `ManaCostFor`. | `UCataclysmGameplayAbility::ManaCostFor`, `CataclysmGameplayAbility.cpp` 272: nothing while `NextAbilityIsFree` (`CataclysmAbilitySystemComponent.cpp` 5544), for every slot but the basic attack. `CheckCost`, `ApplyCost` and the skill bar all ask it. |
+| O8 | 100% more is twice. | `SpendFreeNextAbility` answers one and the row's value over a hundred, 2 for 100; `CommitAndBegin` multiplies `LastNextUseMoreMultiplier`, the effectiveness charges' multiplier, which the use's blows, projectiles and ground carry. |
+| O10 | The name in single quotes. | `tools/generate_datatables.py`: the name check the Shard of Anarchy row passes, now for both kept-stack actions. |
+| The row | One action. | `KEPT_STACKS_FREE_NEXT_ABILITY_ACTION` and `_check_kept_stacks_free_next_ability_action` in the generator; `UCataclysmAbilitySystemComponent::KeptStacksFreeNextAbilityAction`, read at `CataclysmItem.cpp` 1460. |
+| The UI | The count, and the free next ability at the cap. | `UCataclysmCombatOverlay::KeptStacksEntry`, `CataclysmCombatOverlay.cpp` 613, which `KeptStacksTextFor` and so the line above the player's bars use. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **VOID AT ITS CAP IS THE CHARGE; NO SEPARATE NEXT-USE CHARGE IS HELD.** O8 says "a next-use charge at effectiveness
+  200": the damage half is the effectiveness charges' own multiplier, `LastNextUseMoreMultiplier`, at 2, and the free
+  flag is asked in `ManaCostFor`, as ruled. What is not built is a second record, an `FNextUseCharge` granted at the
+  tenth hit. The option not taken, that record: leaving the dungeon would not clear it (a next-use charge has no
+  dungeon), a basic attack would spend it (a next-skill charge is spent by any use that deals damage, ruled
+  2026-09-24), a buff would be made free and not spend it (`SpendNextUseCharges` runs only for a use that deals damage),
+  and two records would have to be kept in step. Read from the count, the free next ability cannot outlast the count.
+- **ONE ACTION AND ONE ROW, BUILT ON KEPT STACKS.** Kept stacks already have no lifetime, end at a death, on leaving
+  the dungeon and with the gear, carry a name and a cap, and are shown with their count. What differs is the gain, on an
+  event and not a clock, and what they buy. The options not taken: own stacks (`GrantOwnStack`), which run out after a
+  window and scale a stat; the consecutive-hit count, which counts per enemy; two rows, a gain and a spend, which the
+  set rule would let land apart.
+- **THE VALUE IS THE SENTENCE'S 100, "PER CENT MORE", AND NOT 200.** The engine multiplies by 1 + 100 / 100 = 2, which
+  is effectiveness 200. The option not taken: the value 200, as `next_skill_effectiveness` states it, which the row text
+  check would refuse because the sentence never writes 200.
+- **"TARGET_IS_SILENCED" IS A CONDITION OF A HIT DEALT, READ BY `WithTargetState` AS `target_is_boss` IS.** So it serves
+  an action row and a stat row on a stat asked while a hit is priced. The option not taken: an action-only condition
+  judged in `PoolActionAllowed`, as `hit_dealt_is_not_spell` is; nothing about a target's state needs that, and every
+  `target_` name is classed as a hit dealt by `tools/tests/test_every_conditioned_stat_has_an_asker.py`.
+- **EVERY HIT COUNTS, SPELLS INCLUDED.** The sentence says "every time you hit". The option not taken: the 2-piece's
+  "not a spell", which is that sentence's "your attacks".
+- **NO TRIGGER COOLDOWN.** A row that counts never waits, ruled 2026-09-30, and the generator refuses one on this
+  action. So one multi-hit blow on a silenced enemy gains a Void for each hit. The option not taken: the 0.25 s the
+  2-piece carries, which would make a multi-hit skill gain one.
+- **ONLY `hit_dealt` GAINS.** The option not taken: also `first_hit_dealt` and `critical_strike`, which would gain twice
+  for one hit.
+- **FERVOUR IS NOT WAIVED.** The sentence says mana. The option not taken: waive every cost, which would make the
+  Ultimate free of the slot cost the owner ruled every class pays.
+- **THE WHOLE MANA COST IS WAIVED**, the share of maximum mana a row adds, the Nth spell's share and the Ultimate's
+  doubling included. The option not taken: waive only the skill's own cost, which would leave "costs no mana" costing
+  mana.
+- **A USE THAT DEALS NO DAMAGE STILL SPENDS.** The cost half reaches every ability. The option not taken: spend only on
+  a use that deals damage, which would make a buff free and leave the 10 for the next press as well. A cost of its own:
+  an aura switched on spends the 10 too, though its upkeep afterwards is paid in full.
+- **AN AURA'S UPKEEP IS ASKED AS NO USE** (`ManaCostFor(..., /*bForAUse=*/false)`), and a free start (`bFreeRepeat`) is
+  neither free nor a spender. The option not taken: one answer for every reader of the cost, which would make a running
+  aura's upkeep free for as long as 10 Void were held.
+- **TWO ROWS AT THEIR CAPS ARE BOTH SPENT AND THE LARGER "MORE" IS KEPT**, one doubling for one use. No second such row
+  exists. The option not taken: their product.
+- **THE READER FOR THE NEXT LAYER IS BY NAME**, `KeptStacksHeldNamed("Void")`: the 10-piece is another enchantment and
+  cannot know the 6-piece's key. No condition reads it yet.
+- **THE DISPLAY IS THE KEPT-STACK LINE ABOVE THE PLAYER'S BARS**, which already shows the count once the row is worn.
+  The option not taken: an entry on the next-use line above the skill bar as well, which would show the count twice.
+
+### THE GENRE SOURCE
+
+None. The sentence states the mechanic, and the brief fetched nothing: the judgements above are this game's own, under
+the coordinating session's O7 and O8.
+
+### WHAT WAS BUILT
+
+- **The condition** `target_is_silenced`: enumerator, name, among the conditions that compare nothing (thirty-three of
+  the seventy-two), classed with the blow or skill, read in `WithTargetState`, judged in `ConditionHolds`.
+- **The action** `kept_stacks_free_next_ability`: a field on the action, its import, its gain in `ActOnEvent`.
+- **The free next ability**: `NextAbilityIsFree`, asked in `ManaCostFor`; `SpendFreeNextAbility`, called in
+  `CommitAndBegin`; and the reader `KeptStacksHeldNamed`.
+- **The display**: `KeptStacksEntry`.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+First the reword (O10), which keeps the row name: Effect "Null Emperor (6-Piece Bonus): Every time you hit a silenced
+enemy, you gain a stack of 'Void.' At 10 stacks, your next ability costs no mana and deals 100% more damage". Then one
+row on the Enchantment Effects sheet:
+
+| Cell | Value |
+| :-- | :-- |
+| Enchantment | `Positive_Null_Emperor_6_Piece_Bonus_Every_time_you_hit` |
+| Effect | the reworded sentence |
+| Stat, Value Kind | empty |
+| Value Low, Value High | 100, 100 |
+| Required Tags | empty |
+| Condition | `target_is_silenced` |
+| Condition Value | empty |
+| Action | `kept_stacks_free_next_ability` |
+| Action Event | `hit_dealt` |
+| Scale Max Steps | 10 |
+| Ailment | `Void` |
+| every other cell | empty (Trigger Cooldown, Stack Seconds and Every Seconds are refused) |
+
+It passes the generator on a made-up sheet (`tools/tests/test_null_emperor_void_rows.py`). The set rule is met: the
+2-piece and the drawback landed in the layer below. The row's name leaves `BUILT_AHEAD_OF_THEIR_ROWS` with it.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts** the action `kept_stacks_free_next_ability` on `hit_dealt`, with a cap, a value above 0 and
+  up to 1000, and a name its sentence writes between single quotes; and the condition `target_is_silenced`, which
+  compares nothing, on any row a hit-dealt condition may sit on. **It refuses** that action on any other event, without
+  a cap or a name, with a value of 0 or less or above 1000, and with a Trigger Cooldown, Stack Seconds, Every Seconds,
+  Fraction Of, Value Kind or Scale.
+- **`Cataclysm.Passives.EveryConditionNameASheetMayWriteReachesAPassiveModifier`** reads the new name; `ComparesNothing`
+  gains it, so the test expects its value to be nought.
+- **`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`** lists `target_is_silenced` in
+  `BUILT_AHEAD_OF_THEIR_ROWS`, the route its own failure message gives; it leaves with the row.
+- **`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`** holds `KeptStacksFreeNextAbilityAction`.
+
+No other merged test asserts anything different, by reading: nothing wears the action, so `NextAbilityIsFree` is false
+for every character and `ManaCostFor` answers as before; `SpendFreeNextAbility` spends nothing and answers 1; an aura's
+upkeep is asked as before; and `KeptStacksTextFor` writes the same words for a row of the other kept-stack action.
+
+### Tests
+
+Six new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmVoidTests.cpp`, the group `Cataclysm.Silence.Void.`, with
+helpers of this file's own names. The row is made by hand. The two gain tests ask that `State.Silenced` is registered
+first. Separate scenes stand 40 m apart and what a test reads stands at least a metre off.
+
+1. `AHitOnASilencedEnemyGainsOneAndAHitOnAnUnsilencedOneGainsNone`. A wearer and two creatures 3 m off. In order:
+   control, no Void held; control, a hit on the unsilenced creature gains none; set-up, the silence lands; a hit on
+   the silenced one gains one; a hit on the other gains none; a hit that did not land gains none; a spell's hit on the
+   silenced one gains one (two); read by its name, two; the case of the name does not matter; control, another name
+   reads nought.
+2. `ItStopsAtTenAndTimeTakesNoneAway`. In order: set-up, the silence lands; control, nine hits hold nine; control, at
+   nine the next ability is not free; the tenth holds ten; at ten it is free; the eleventh leaves ten; ten minutes on
+   the clock, ten are held; and it is still free.
+3. `AtTenTheNextAbilityCostsNoManaDealsTwiceAndSpendsAllTen`. Two casters 40 m apart, at nine and at ten, each with a
+   Heavy and a Special strike and a target 2 m off. In order: set-up, nine and ten held, the Heavy costs mana at nine;
+   at ten the Heavy's cost is nothing; an upkeep asked of it is the control's full cost; control, at nine it activates,
+   pays its cost, keeps nine, multiplies by one; at ten it activates, pays nothing, deals twice what the control dealt,
+   multiplies by two, leaves no Void, and the next ability is not free; then both Specials activate, and the one after
+   the spend pays and deals what the control's does.
+4. `ABasicAttackAndARefusedActivationSpendNoneAndFervourIsStillPaid`. One caster, its Heavy used once before any Void
+   so that it cools down. In order: control, with no Void the Heavy activates; set-up, ten held, free, no Fervour; the
+   basic attack activates, spends nothing, multiplies by one; the Heavy is refused by its cooldown and spends nothing;
+   the Ultimate with no Fervour is refused and spends nothing; given 50 Fervour it activates, pays the 50 Fervour and
+   no mana, and spends all ten.
+5. `ADeathAndLeavingTheDungeonClearIt`. In order: control, ten held and free; after `ClearWhatDeathEnds` none and not
+   free; set-up, a dungeon game mode walking dungeon 7; control, ten held there and free; the dungeon left, none held,
+   none by its name, not free.
+6. `TheLineReadsTheCountAndAtTenTheFreeNextAbility`. In order: control, a row whose stacks buy nothing reads only its
+   count at its cap ("Temporal Flux 5/5"); "Void 7/10"; "Void 10/10: next ability free, 100% more damage"; then on a
+   living wearer: control, wearing nothing, an empty line; "Void 0/10"; "Void 7/10"; and the words at ten.
+
+Python: `tools/tests/test_null_emperor_void_rows.py`, on a made-up workbook holding the reworded sentence typed Generic:
+the row name is the shipped one before and after the reword; the row carried through as written; no trigger cooldown,
+and a stated one refused; refused with no cap; with a value of 0, -100 or 1001; with no name; with a name the sentence
+does not quote; on the sentence as shipped, with double quotes, with the control that the reworded one passes; with
+Stack Seconds or Every Seconds; on `skill_use`, `kill` or `timed`; with Fraction Of, Value Kind or Scale; with a stat
+beside it; the condition compares nothing; the row passes without its condition; the condition is a hit dealt's; and on
+a stat row it passes on `attack_damage` and is refused on `movement_speed`. And one test in
+`test_charge_and_placed_action_names_match_the_engine.py`: the generator's action name is the engine's and the item
+code compares with the constant.
+
+**Not tested:** the row through an imported table (the enchantment session's real-row test, wearing six pieces); a
+projectile, ground or several targets carrying the doubling (the multiplier is the one those already carry, tested by
+`Cataclysm.Skills.*`); an aura's pulse being charged at 10 Void (only the cost it asks is); a free start neither free nor
+spending; a lock refusing at 10 (a cooldown and a short Fervour pool are); a use that deals no damage spending; two
+rows at their caps; another dungeon entered without leaving the first; a stat row under `target_is_silenced`; the heads-up
+display drawing the line.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script with comments and strings removed: 2794, 946 and 31 for the first; 285, 93 and 3
+for the second, one round pair more than before; 1032, 330 and 3 for the third, one round pair fewer). Each compiles
+alone by reading: `IsSilenced` takes a `const AActor*`, and `Target` is still read by the lines around it;
+`KeptStacksHeldNamed` is a `const` member taking a `const FString&`, which a temporary binds to; `FreeMore` is still
+read, and `Cataclysm` is still used in its block. The failed assertions are counted by reading. The prefix is
+`Cataclysm.Silence.Void.`, with its trailing dot, six tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| V-I, the condition never sees a silence (O7) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `State.bTargetIsSilenced = UCataclysmSilence::IsSilenced(Target);` | `State.bTargetIsSilenced = UCataclysmSilence::IsSilenced(nullptr);` | `AHitOnASilencedEnemyGainsOneAndAHitOnAnUnsilencedOneGainsNone` | `ItStopsAtTenAndTimeTakesNoneAway` |
+| V-II, the next ability is never free (O8) | `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp` | `&& Cataclysm->NextAbilityIsFree())` | `&& Cataclysm->KeptStacksHeldNamed(FString()) > 0)` | `AtTenTheNextAbilityCostsNoManaDealsTwiceAndSpendsAllTen` | `ABasicAttackAndARefusedActivationSpendNoneAndFervourIsStillPaid` |
+| V-III, a use spends nothing and doubles nothing (O7 c, O8) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `const float FreeMore = Cataclysm->SpendFreeNextAbility();` | `const float FreeMore = 1.0f;` | `AtTenTheNextAbilityCostsNoManaDealsTwiceAndSpendsAllTen` | `ABasicAttackAndARefusedActivationSpendNoneAndFervourIsStillPaid` |
+
+Failed assertions, by reading:
+
+- **V-I, 12 in 2 tests.** Test 1, 6: "a hit on the silenced enemy gains one", "a hit on the other ... gains none" (it
+  holds nought, not one), "a hit ... that did not land gains none" (likewise), "a spell's hit ... gains one", "read by
+  its name, Void is two", "and the name's case does not matter". Its three controls pass. Test 2, 6: "control: nine
+  hits ... hold nine", "the tenth holds ten", "and at ten the next ability is free", "the eleventh leaves ten", "ten
+  minutes later ten are still held", "and the next ability is still free"; "control: at nine the next ability is not
+  free" passes.
+- **V-II, 3 in 2 tests.** Test 3, 2: "at ten the Heavy strike costs nothing" (15) and "at ten it costs no mana"; the
+  doubling, the spend and the use after it pass, because the spend is not broken. Test 4, 1: "and no mana" (the
+  Ultimate pays 150).
+- **V-III, 6 in 2 tests.** Test 3, 5: "and deals twice what the same use at nine dealt", "and recorded twice as its
+  multiplier", "and spent all ten Void", "so the next ability is not free", and "the use after the spend pays what the
+  control pays" (the ten are still held, so the Special is free); "and deals what the control deals" passes. Test 4, 1:
+  "and spends all ten Void".
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. Nothing else wears the action or
+the condition. The thirteen tests of `Cataclysm.Silence.` outside `Void.` are unchanged by every break.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-17 — A creature can be silenced: it starts no ability but its basic attack for a second, and a row can silence on a hit that is not a spell, the Null Emperor set's first layer, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSilence.h` and `.cpp` (new: `UCataclysmSilence`, the tag,

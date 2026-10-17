@@ -243,8 +243,19 @@ public:
 	 *
 	 * @param AbilitySystem  whose cost it is. An ability system this project did
 	 *                       not make carries no stat line, so it gets the base.
+	 *
+	 * AND NOTHING FOR A USE THAT IS THE WEARER'S FREE NEXT ABILITY, ruled
+	 * 2026-10-17 (O8), for the Null Emperor 6-piece's "At 10 stacks, your next
+	 * ability costs no mana": while
+	 * `UCataclysmAbilitySystemComponent::NextAbilityIsFree`, every slot but the
+	 * basic attack costs nothing, the extra shares and the Ultimate's doubling
+	 * included. Not for a free start (`bFreeRepeat`), which is not a use of the
+	 * wearer's and spends no stack. Fervour is not mana and is still paid.
+	 *
+	 * @param bForAUse  false for an aura's per-pulse upkeep, which is no use of
+	 *                  an ability and so is never the free next one.
 	 */
-	float ManaCostFor(const UAbilitySystemComponent* AbilitySystem) const;
+	float ManaCostFor(const UAbilitySystemComponent* AbilitySystem, bool bForAUse = true) const;
 
 	/**
 	 * What one use costs THIS character in Fervour, on top of its mana. Issue

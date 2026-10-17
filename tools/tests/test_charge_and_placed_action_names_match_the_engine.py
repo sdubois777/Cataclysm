@@ -133,6 +133,9 @@ CONSTANTS = {
     "TeleportRandomlyAction": "teleport_randomly",
     # AND THE STATUS THAT SILENCES THE OTHER CHARACTER OF THE EVENT, ruled 2026-10-17.
     "SilenceStatus": "Silence",
+    # AND THE ONE THAT GAINS KEPT STACKS ON AN EVENT AND, AT THEIR CAP, MAKES THE
+    # NEXT ABILITY FREE AND EMPOWERED, ruled 2026-10-17.
+    "KeptStacksFreeNextAbilityAction": "kept_stacks_free_next_ability",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -292,6 +295,17 @@ def test_the_generator_accepts_exactly_the_kept_stacks_repeat_skill_name_the_eng
             / "CataclysmItem.cpp").read_text(encoding="utf-8")
     assert "UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction" in item
     assert '"kept_stacks_repeat_skill"' not in item
+
+
+def test_the_generator_accepts_exactly_the_kept_stacks_free_next_ability_name_the_engine_has() -> None:
+    """Ruled 2026-10-17, the Null Emperor 6-piece. As for the action above: one
+    name on each side, and the item code compares with the engine's constant."""
+    assert gen.KEPT_STACKS_FREE_NEXT_ABILITY_ACTION == engine_names()["KeptStacksFreeNextAbilityAction"]
+    assert gen.KEPT_STACKS_FREE_NEXT_ABILITY_ACTION not in gen.POOL_ACTIONS
+    item = (ROOT / "game" / "Source" / "Cataclysm" / "Items"
+            / "CataclysmItem.cpp").read_text(encoding="utf-8")
+    assert "UCataclysmAbilitySystemComponent::KeptStacksFreeNextAbilityAction" in item
+    assert '"kept_stacks_free_next_ability"' not in item
 
 
 def test_the_generator_knows_exactly_the_use_outcome_names_the_engine_has() -> None:

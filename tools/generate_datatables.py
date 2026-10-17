@@ -4154,6 +4154,15 @@ CONDITIONS = {
     # (`CONDITIONS_OF_AN_ACTIONS_EVENT`). A hit no skill dealt carries no tags,
     # and is not a spell.
     "hit_dealt_is_not_spell": None,
+
+    # "Every time you hit a silenced enemy, you gain a stack of 'Void.'" is
+    # `target_is_silenced` on a `kept_stacks_free_next_ability` row on
+    # `hit_dealt`. Ruled 2026-10-17 (O7). The character struck is silenced
+    # (`UCataclysmSilence::IsSilenced`). IT TAKES NO VALUE. A fact of the target
+    # in hand, read by `WithTargetState` as `target_is_boss` is, so it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`: an action row judges it against the enemy its
+    # event names, and a stat row on a stat asked while a hit is priced.
+    "target_is_silenced": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -5522,6 +5531,29 @@ KEPT_STACKS_REPEAT_SKILL_ACTION = "kept_stacks_repeat_skill"
 #: stacks is not an event of the row: it is the row's Every Seconds.
 KEPT_STACKS_REPEAT_SKILL_EVENTS = ("skill_use",)
 
+#: The action that GAINS A KEPT STACK ON ITS EVENT, with no clock, and while the
+#: stacks hold their cap makes the wearer's NEXT ABILITY BUT THE BASIC ATTACK
+#: COST NO MANA AND DEAL MORE DAMAGE, spending them all. Ruled 2026-10-17 (O7,
+#: O8), for "Null Emperor (6-Piece Bonus): Every time you hit a silenced enemy,
+#: you gain a stack of 'Void.' At 10 stacks, your next ability costs no mana and
+#: deals 100% more damage". `UCataclysmAbilitySystemComponent::
+#: KeptStacksFreeNextAbilityAction` holds the same name.
+#:
+#: THE VALUE IS THE "MORE", IN PER CENT, AS THE SENTENCE WRITES IT: 100 is twice
+#: the damage. Scale Max Steps is the cap, and the stacks buy the ability only at
+#: it. The Ailment cell is what the sentence calls the stacks, between single
+#: quotes, as on `KEPT_STACKS_REPEAT_SKILL_ACTION`. A kept stack has no lifetime,
+#: so Stack Seconds is refused; the gain is the event, so Every Seconds is too.
+#: A ROW THAT COUNTS NEVER WAITS (ruled 2026-09-30), so no Trigger Cooldown.
+KEPT_STACKS_FREE_NEXT_ABILITY_ACTION = "kept_stacks_free_next_ability"
+
+#: The events that gain such a stack: `hit_dealt`, and no other until a
+#: sentence asks for one.
+KEPT_STACKS_FREE_NEXT_ABILITY_EVENTS = ("hit_dealt",)
+
+#: The most a row of that action may say the ability deals more, in per cent.
+MAX_FREE_NEXT_ABILITY_MORE_PERCENT = 1000.0
+
 #: The actions that trigger a DIFFERENT skill the character holds, with the
 #: value as the chance. Ruled 2026-10-06, for Spellblade's Will. The first
 #: takes a held skill with a cooldown, free: "Your melee attacks have a 25%
@@ -6015,6 +6047,11 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_kept_stacks_repeat_skill_action(index, who, action, event,
                                                fraction_of, kind, raw, headers)
         return
+    if action == KEPT_STACKS_FREE_NEXT_ABILITY_ACTION:
+        _check_kept_stacks_free_next_ability_action(index, who, action, event,
+                                                    fraction_of, kind, raw,
+                                                    headers)
+        return
     if action in AILMENT_RIDER_ACTIONS:
         _check_ailment_rider_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
@@ -6042,6 +6079,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {EXECUTE_TARGET_ACTION}; "
             f"or {TEMPORARY_ABSORB_ACTION}; "
             f"or {KEPT_STACKS_REPEAT_SKILL_ACTION}; "
+            f"or {KEPT_STACKS_FREE_NEXT_ABILITY_ACTION}; "
             f"or a skill-in-hand action, {', '.join(SKILL_IN_HAND_ACTIONS)}; "
             f"or a rider on an ailment, {', '.join(AILMENT_RIDER_ACTIONS)}.")
 
@@ -6637,6 +6675,40 @@ def _check_kept_stacks_repeat_skill_action(index: int, who: str, action: str,
                 f"nothing else, so the column must be empty.")
 
 
+def _check_kept_stacks_free_next_ability_action(index: int, who: str,
+                                                action: str, event: str,
+                                                fraction_of: str, kind: str,
+                                                raw,
+                                                headers: dict[str, int]) -> None:
+    """Everything a row that gains kept stacks on an event and buys a free,
+    empowered next ability with them must say, and must not. Ruled 2026-10-17.
+
+    ITS EVENT IS WHAT GAINS A STACK, one of
+    `KEPT_STACKS_FREE_NEXT_ABILITY_EVENTS`. The cap, the value and the name are
+    checked where Scale Max Steps, the value and Ailment are read.
+
+    A CONDITION AND REQUIRED TAGS ARE ALLOWED: the event is a hit, which names
+    the enemy struck and carries the hit's tags, so both can be judged, and the
+    shipped row's "a silenced enemy" is its condition. A fraction, a value kind
+    and a scale each mean nothing here.
+    """
+    if event not in KEPT_STACKS_FREE_NEXT_ABILITY_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} gains kept stacks on the "
+            f"event {event or '(none)'!r}. The Action Event of {action} is the "
+            f"event that gains one, and the game gains them on: "
+            f"{', '.join(KEPT_STACKS_FREE_NEXT_ABILITY_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} gains kept stacks "
+                f"towards a free next ability and states {column} "
+                f"{written!r}. Its value is how much more damage that ability "
+                f"deals and nothing else, so the column must be empty.")
+
+
 def _check_nth_action(index: int, who: str, action: str, event: str,
                       fraction_of: str, kind: str, raw,
                       headers: dict[str, int]) -> None:
@@ -6916,6 +6988,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != EXECUTE_TARGET_ACTION \
                     and action != TEMPORARY_ABSORB_ACTION \
                     and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
+                    and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                     and action not in SKILL_IN_HAND_ACTIONS \
                     and action not in AILMENT_RIDER_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
@@ -7004,7 +7077,8 @@ def enchantment_effects(book) -> list[dict]:
             cap = number(cap_text, "Scale Max Steps", index)
             if not scale and action not in NEXT_USE_ACTIONS \
                     and action not in PLACED_ACTIONS \
-                    and action != KEPT_STACKS_REPEAT_SKILL_ACTION:
+                    and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
+                    and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has a cap of "
                     f"{cap:g} steps and no scale. A cap limits how many steps "
@@ -7055,6 +7129,26 @@ def enchantment_effects(book) -> list[dict]:
                     f"again at {low:g} to {high:g} per cent of its damage. On "
                     f"{action} the value is that share, above 0 and up to "
                     f"100, and 100 is the whole.")
+
+        # AND A ROW THAT GAINS THEM TOWARDS A FREE NEXT ABILITY STATES THE CAP
+        # THE ABILITY IS BOUGHT AT, AND ITS VALUE IS HOW MUCH MORE DAMAGE THAT
+        # ABILITY DEALS, in per cent, above 0. Ruled 2026-10-17: "At 10 stacks"
+        # is the cap and "100% more" the value.
+        if action == KEPT_STACKS_FREE_NEXT_ABILITY_ACTION:
+            if scale_max_steps < 1:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} gains kept "
+                    f"stacks and states no Scale Max Steps. On {action} that "
+                    f"column is the count the next ability is bought at, a "
+                    f"whole number from 1.")
+            if not (0 < low <= MAX_FREE_NEXT_ABILITY_MORE_PERCENT
+                    and 0 < high <= MAX_FREE_NEXT_ABILITY_MORE_PERCENT):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} makes its free "
+                    f"next ability deal {low:g} to {high:g} per cent more "
+                    f"damage. On {action} the value is that more, above 0 and "
+                    f"up to {MAX_FREE_NEXT_ABILITY_MORE_PERCENT:g}: 100 is "
+                    f"twice.")
 
         # A COOLDOWN RESET'S VALUE IS ITS CHANCE, above 0 and up to 100. Issue
         # #1833, the cooldown reset action. 100 is always.
@@ -7340,9 +7434,11 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} places {action} "
                     f"worth {low:g} to {high:g} a stack. A stack takes away a "
                     f"share, so both ends are above nought.")
-        elif action == KEPT_STACKS_REPEAT_SKILL_ACTION:
-            # A KEPT STACK HAS NO LIFETIME. Ruled 2026-10-12. Refused rather
-            # than dropped, so that a row is never read as stating one.
+        elif action in (KEPT_STACKS_REPEAT_SKILL_ACTION,
+                        KEPT_STACKS_FREE_NEXT_ABILITY_ACTION):
+            # A KEPT STACK HAS NO LIFETIME. Ruled 2026-10-12, and for the second
+            # action that gains them on 2026-10-17. Refused rather than
+            # dropped, so that a row is never read as stating one.
             if stack_text:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} gains kept "
@@ -7787,11 +7883,15 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} applies the status "
                     f"{ailment or '(none)'!r}, which {action} cannot. Known: "
                     f"{', '.join(known)}.")
-        elif action == KEPT_STACKS_REPEAT_SKILL_ACTION:
+        elif action in (KEPT_STACKS_REPEAT_SKILL_ACTION,
+                        KEPT_STACKS_FREE_NEXT_ABILITY_ACTION):
             # WHAT THE SENTENCE CALLS THE STACKS, in the same cell. Ruled
             # 2026-10-12. Required, and a name the row's own words write
             # between single quotes: "a stack of 'Temporal Flux.'" gives
-            # Temporal Flux, the full stop left out.
+            # Temporal Flux, the full stop left out. The same for the second
+            # action that gains kept stacks, ruled 2026-10-17: "'Void.'" gives
+            # Void, which is why that sentence's double quotes are reworded
+            # (O10).
             if not ailment:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} gains kept "
@@ -8557,6 +8657,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_not_yet_crit_by_you",
     "target_not_yet_struck_by_you",
     "target_within_metres",
+    "target_is_silenced",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for

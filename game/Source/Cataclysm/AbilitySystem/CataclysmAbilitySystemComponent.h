@@ -896,6 +896,8 @@ public:
 	 * 2026-10-12: two fights of 20 seconds give a row of 30 one stack, with 10 seconds kept towards the next.
 	 * Every other timed row counts whole periods of one combat and starts again with each combat; that is not
 	 * changed. The seconds are cleared by the last three of the four things below, and not by a use that spends.
+	 * OR ON AN EVENT, with no clock, for a row of `KeptStacksFreeNextAbilityAction`: `ActOnEvent` calls this once for
+	 * each landed event the row is allowed. Ruled 2026-10-17.
 	 *
 	 * A KEPT STACK HAS NO LIFETIME. It is not ended by time, by leaving combat or by a new floor of the same
 	 * dungeon. FOUR THINGS END IT:
@@ -936,10 +938,42 @@ public:
 		FString Name;
 		int32 Held = 0;
 		int32 Cap = 0;
+
+		/** Whether at their cap they make the next ability free: `FCataclysmPoolAction::bKeptStacksFreeNextAbility`. */
+		bool bFreeNextAbility = false;
+
+		/** What that ability deals more, in per cent, the row's value: 100 is twice. Nought for any other row. */
+		float MorePercent = 0.0f;
 	};
 
 	/** Every worn action that gains kept stacks, one entry a key, in the order worn, with what it holds now. */
 	TArray<FHeldKeptStacks> KeptStacksForDisplay() const;
+
+	/**
+	 * Whether the next ability but the basic attack is free: some worn row of `KeptStacksFreeNextAbilityAction` holds
+	 * its cap of kept stacks now. Ruled 2026-10-17 (O7 c, O8), for "At 10 stacks, your next ability costs no mana".
+	 * Asked by `UCataclysmGameplayAbility::ManaCostFor`, which the cost check and the payment both read.
+	 *
+	 * READ FROM THE COUNT AND FROM NOTHING ELSE, so it cannot outlast the count: the stacks of a dungeon left, of a
+	 * death and of gear taken off read as nought, and so the next ability is not free. See `GainKeptStack`.
+	 */
+	bool NextAbilityIsFree() const;
+
+	/**
+	 * Spend every such row's kept stacks that hold their cap, and answer what the use spending them multiplies its
+	 * damage by: one and the largest row's value over a hundred, so 2 for "100% more"; 1 when none was at its cap.
+	 * Ruled 2026-10-17 (O7 c, O8): the next ability spends all of them. Called by
+	 * `UCataclysmSkillTemplate::CommitAndBegin` once a use that is not the basic attack has been paid for, and by
+	 * nothing else.
+	 */
+	float SpendFreeNextAbility();
+
+	/**
+	 * The most kept stacks any worn row that calls them `Name` holds now, by `KeptStacksHeld`, or nought. Ruled
+	 * 2026-10-17, for the Null Emperor's ten-piece bonus, which asks "while you have at least 10 stacks of Void" of
+	 * stacks another row gains: it knows them by their name and not by that row's key. Case does not matter.
+	 */
+	int32 KeptStacksHeldNamed(const FString& Name) const;
 
 	/**
 	 * The row of the last skill this character used that its gadgets may copy, AS IT WAS WHEN USED, or null. Ruled
@@ -1540,6 +1574,14 @@ public:
 	 * `FCataclysmPoolAction::KeptStackKey` and `FCataclysmPoolAction::bKeptStacksRepeatSkill`.
 	 */
 	static const TCHAR* KeptStacksRepeatSkillAction;
+
+	/**
+	 * The action that gains a kept stack on its event and, while the stacks are at their cap, makes the wearer's next
+	 * ability but the basic attack cost no mana and deal more damage, spending them all; its value is that "more", in
+	 * per cent. Ruled 2026-10-17 (O7, O8), for the Null Emperor 6-piece. `tools/generate_datatables.py` holds the same
+	 * name in `KEPT_STACKS_FREE_NEXT_ABILITY_ACTION`. See `FCataclysmPoolAction::bKeptStacksFreeNextAbility`.
+	 */
+	static const TCHAR* KeptStacksFreeNextAbilityAction;
 
 	/**
 	 * The two actions that trigger a different held skill, with the value as the chance: one with a cooldown, free;

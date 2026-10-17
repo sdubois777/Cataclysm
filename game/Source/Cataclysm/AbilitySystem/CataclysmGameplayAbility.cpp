@@ -259,11 +259,21 @@ const FGameplayTagContainer& UCataclysmGameplayAbility::SkillTagsForStats() cons
 }
 
 float UCataclysmGameplayAbility::ManaCostFor(
-	const UAbilitySystemComponent* AbilitySystem) const
+	const UAbilitySystemComponent* AbilitySystem, bool bForAUse) const
 {
 	const float Base = GetManaCost();
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+
+	// "YOUR NEXT ABILITY COSTS NO MANA", AND NOTHING AT ALL, BEFORE ANY SHARE IS ADDED. Ruled 2026-10-17 (O8): while a
+	// worn row's kept stacks hold their cap, a use of any slot but the basic attack is free, and the use spends them in
+	// `UCataclysmSkillTemplate::CommitAndBegin`. Asked here, the one cost function, so the check, the payment and the
+	// bar agree. Not for an aura's upkeep, which is no use, nor for a free start, which spends no stack.
+	if (bForAUse && !bFreeRepeat && Slot != ECataclysmAbilitySlot::BasicAttack && Cataclysm
+		&& Cataclysm->NextAbilityIsFree())
+	{
+		return 0.0f;
+	}
 
 	// THE Nth SPELL OF A WORN "EVERY Nth SPELL" ROW ADDS A SHARE OF THE MANA
 	// HELD, on top of whatever the cost comes to below. Issue #1833, phase 2,

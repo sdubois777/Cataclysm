@@ -1677,6 +1677,20 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	HitDealtIsNotSpell
 		UMETA(DisplayName = "Hit Dealt Is Not Spell"),
+
+	/**
+	 * The target is silenced: `UCataclysmSilence::IsSilenced`. Ruled 2026-10-17 (O7), for "Null Emperor (6-Piece
+	 * Bonus): Every time you hit a silenced enemy, you gain a stack of 'Void.'", whose row is an action on `hit_dealt`
+	 * under this condition, judged against the enemy struck.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetIsBoss` is, so it reaches an action row through
+	 * `UCataclysmAbilitySystemComponent::PoolActionAllowed` and a stat row on the attacker's own lookups. False is "not
+	 * silenced", "no target in hand" and "nothing asked", and all three refuse.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetIsSilenced
+		UMETA(DisplayName = "Target Is Silenced"),
 };
 
 /**
@@ -3213,6 +3227,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bTargetStandsInYourZone = false;
 
 	/**
+	 * Whether the character being hit is silenced. Ruled 2026-10-17. Filled by `WithTargetState` only when some
+	 * modifier in the lookup asks; false otherwise, which refuses. See `ECataclysmStatCondition::TargetIsSilenced`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsSilenced = false;
+
+	/**
 	 * Whether the character being hit is a boss. Issue #1815.
 	 *
 	 * FALSE MEANS NOT A BOSS OR NOT READ, and nothing distinguishes the two.
@@ -4378,7 +4399,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * `UCataclysmAbilitySystemComponent::GainKeptStack` for what ends one.
 	 *
 	 * THE GAIN IS THIS FIELD'S AND WHAT A USE BUYS WITH THE STACKS IS ANOTHER FIELD'S, so that another sentence can
-	 * gain the same way and buy something else. `bKeptStacksRepeatSkill` is the one thing bought so far.
+	 * gain the same way and buy something else. `bKeptStacksRepeatSkill` was the first thing bought.
+	 *
+	 * AND, SINCE 2026-10-17, ONE GAIN ON AN EVENT INSTEAD OF A CLOCK: an action carrying `bKeptStacksFreeNextAbility`
+	 * states no `EverySeconds`, gains one stack on each landed `Event`, and buys a free, empowered next ability, the
+	 * second thing bought. The
+	 * paragraph below about `Event` and the clock is about `bKeptStacksRepeatSkill`.
 	 *
 	 * `Event` IS THE KIND OF USE THAT SPENDS THEM and not the clock: the clock is `EverySeconds`, read by
 	 * `UCataclysmAbilitySystemComponent::StepKeptStackClocks` for every action carrying this key. That clock
@@ -4403,6 +4429,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bKeptStacksRepeatSkill = false;
+
+	/**
+	 * Set, this action GAINS ONE KEPT STACK UNDER `KeptStackKey` ON EACH LANDED `Event` IT IS ALLOWED, to at most
+	 * `KeptStackCap`, with no clock; and WHILE THE STACKS HOLD THAT CAP, THE WEARER'S NEXT ABILITY BUT THE BASIC
+	 * ATTACK COSTS NO MANA AND DEALS `Percent` PER CENT MORE DAMAGE, and spends every stack. Ruled 2026-10-17 (O7, O8)
+	 * for "Null Emperor (6-Piece Bonus): Every time you hit a silenced enemy, you gain a stack of 'Void.' At 10 stacks,
+	 * your next ability costs no mana and deals 100% more damage". `StatusName` is what the row calls its stacks.
+	 * See `UCataclysmAbilitySystemComponent::NextAbilityIsFree` and `SpendFreeNextAbility`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKeptStacksFreeNextAbility = false;
 
 	/**
 	 * Set, this action triggers a DIFFERENT skill the character holds that has a cooldown, free, with `Percent` as
@@ -4831,7 +4868,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-second, which is the drift that put the passive tree eight
+	 * adds a seventy-third, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4840,7 +4877,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-TWO OF THE SEVENTY-ONE COMPARE NOTHING. They are the case labels
+	 * THIRTY-THREE OF THE SEVENTY-TWO COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
