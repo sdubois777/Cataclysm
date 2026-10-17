@@ -350,7 +350,55 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-17 under the lock enchant-n2, on development e9bd27869, for three layers in
+this order: the `State.Silenced` tag (one Tags-sheet row, and the README's sheet table from 143 to 144), this mechanism
+with the Echoes of the Past line, and the Null Emperor's rows with their real-row test. The suite and Python were run at
+the top of the three, which holds all of them. THE WINDOW WAS STARTED TWICE.
+
+- **First start (n1): the whole suite failed one test**, "3819 tests performed, 3818 succeeded, 1 failed:
+  TheWornNullEmperorTwoPieceSilencesWhatABlowThatIsNotASpellStrikes". A fault of the test, not of the game: it wore the
+  2-piece on ONE helm, and a set bonus is live only at its piece threshold (`SetPieceThreshold`, `CataclysmDropRoll.cpp`
+  about 1355; the merged Chronomancer set test shows one piece applying nothing). So it failed on the assets as merged
+  for that reason too, and the old-asset step's match proved less than it seemed: it did not show the row was absent.
+  All thirteen `Cataclysm.Silence.` tests passed. The lock was released and the coordinating session ruled the
+  correction: the test wears two pieces, a helm and a cuirass, each carrying the 2-piece and its real drawback, with a
+  one-piece control, and asserts the drawback too (the ultimate locked).
+- **Second start (n2), every step as registered:**
+  - **The enchantments group on the assets as merged:** "342 tests performed, 341 succeeded, 1 failed:
+    TheWornNullEmperorTwoPieceSilencesWhatABlowThatIsNotASpellStrikes", with exactly the 2 registered failed
+    assertions, checked by their text: the two-piece blow's silence and the drawback's lock. The one-piece controls
+    passed.
+  - **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+    the row layer as "Rebuild the enchantment DataTable assets for the Null Emperor 2-piece and its drawback".
+  - **The whole Unreal suite:** "3819 tests performed, 3819 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 3819 tests in the tree at 4e4b7c23e; 3819 performed, gap 0". Registered 3819 and 0: 3805 measured on
+    e9bd27869, the thirteen of `Cataclysm.Silence.` and the one real-row test.
+  - **Python:** "6463 passed, 8 skipped"; JUnit tests 6471, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+  - **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+    with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Silence.`, 13 tests: FOUR, the coordinating
+session having lifted its limit of three for this layer.** The stop condition for each was the set of tests that fail
+with the break in, by the beginnings of their names. The failed assertions had been counted by reading and were
+measured beside it. Every anchor was counted once, and every file's hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| S-I | the gate asks no creature whether it is silenced | 2 failed, `ASilencedCreatureStartsNoAbilityItOtherwiseStarts`, `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` | 6 / 6 | 13 of 13 succeeded |
+| S-II | Siege Bolt is not marked as the Sentinel's basic attack | 2 failed, `ASilencedEchoUsesNoAbilityButItsBasicAttack`, `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` | 3 / 3 | 13 of 13 succeeded |
+| S-III | the not-a-spell judge reads no tags | 1 failed, `TheRowSilencesOnAHitThatIsNotASpellAndNotOnASpell` | 1 / 1 | 13 of 13 succeeded |
+| S-IV | an echo is not asked whether it is silenced | 1 failed, `ASilencedEchoUsesNoAbilityButItsBasicAttack` | 1 / 1 | 13 of 13 succeeded |
+
+**The echo judgement was accepted by the coordinating session** on 2026-10-17: a refused echo makes its ordinary
+attack, so the echo of a creature whose `AttackTarget` does nothing (the Sentinel, the Gatekeeper, the Succubus) strikes
+with nothing.
+
+**For the next real-row test of a set bonus:** an N-piece bonus is live only with N pieces worn, and its drawback rides on
+every piece. Wear N items each carrying both rows, refresh, and read an N-1 control first; and ask of every registered
+old-asset failure whether it would also fail for a reason other than the missing row.
+
+**Not measured:** the stat probes' and the real-row test's failure under any break, because the proofs ran only this
+prefix.
 
 ---
 
