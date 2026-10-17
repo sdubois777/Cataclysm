@@ -131,6 +131,8 @@ CONSTANTS = {
     # AND THE ONE THAT MOVES ITS WEARER TO A RANDOM REACHABLE POINT NEARBY WHEN
     # IT IS HIT, ruled 2026-10-12.
     "TeleportRandomlyAction": "teleport_randomly",
+    # AND THE STATUS THAT SILENCES THE OTHER CHARACTER OF THE EVENT, ruled 2026-10-17.
+    "SilenceStatus": "Silence",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -419,3 +421,16 @@ def test_every_status_a_row_may_name_is_one_the_engine_applies() -> None:
     named = {names["StaggerStatus"], names["RandomDebuffStatus"]}
     assert set(gen.APPLY_STATUSES) - named == kinds - {"Stun"}
     assert set(gen.APPLY_STATUSES_FOR_SECONDS) <= set(gen.APPLY_STATUSES)
+
+
+def test_the_generator_spells_silence_as_the_engine_does() -> None:
+    """Ruled 2026-10-17, for the Null Emperor's 2-piece bonus. Silence is not an
+    ailment kind, so `UCataclysmAilments::KindNamed` cannot find it: the engine
+    compares the row's Ailment cell with `SilenceStatus` before it looks. A name
+    spelled differently on the two sides would pass the generator and, in the
+    game, log a warning each time the row fired and silence nobody."""
+    assert gen.SILENCE_STATUS == engine_names()["SilenceStatus"]
+    # FOR `apply_status` ALONE: the lists the other four status actions read hold it not.
+    for other in (gen.APPLY_STATUSES, gen.APPLY_STATUSES_FOR_SECONDS,
+                  gen.APPLY_STATUSES_TO_SELF_FOR_SECONDS, gen.APPLY_STATUSES_TO_SELF_ONLY):
+        assert gen.SILENCE_STATUS not in other

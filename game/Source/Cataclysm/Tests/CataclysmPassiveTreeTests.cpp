@@ -3524,7 +3524,10 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #1515, TWO HANDS. It names the weapon in hand rather than a
 			// number, so it compares nothing.
 			|| Name == TEXT("wielding_two_handed_weapon")
-			|| Name == TEXT("target_in_your_zone");
+			|| Name == TEXT("target_in_your_zone")
+			// RULED 2026-10-17, THE NULL EMPEROR'S "YOUR ATTACKS": the hit an action row fires on is not a spell. It
+			// names a kind of hit, so it compares nothing.
+			|| Name == TEXT("hit_dealt_is_not_spell");
 	}
 }
 

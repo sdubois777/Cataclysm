@@ -135,6 +135,20 @@ struct FCataclysmEnemyAbility
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	int32 Phase = 1;
+
+	/**
+	 * Whether this entry IS the creature's basic attack, which a silence leaves usable. Ruled 2026-10-17 by the
+	 * owner (O1): a silenced creature loses every ability except its basic attack.
+	 *
+	 * THREE CREATURES' BASIC ATTACKS ARE ENTRIES HERE, because each is telegraphed: the Corrupted Sentinel's Siege
+	 * Bolt, the Gatekeeper's Dread Cleave and the Succubus's Soulfire. Each of the three overrides `AttackTarget` to
+	 * do nothing, so without this a silence would leave them no attack at all. Every other creature's basic attack is
+	 * its `AttackTarget` swing, which silence does not reach, and leaves this false on every entry.
+	 *
+	 * FALSE IS THE DEFAULT, so an ability added later is silenced unless its creature says otherwise.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	bool bIsBasicAttack = false;
 };
 
 /**

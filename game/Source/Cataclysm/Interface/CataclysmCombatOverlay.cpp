@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
+#include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
@@ -552,6 +553,11 @@ FString UCataclysmCombatOverlay::MaddenedTextFor(const AActor* Actor)
 																						  : FString();
 }
 
+FString UCataclysmCombatOverlay::SilencedTextFor(const AActor* Actor)
+{
+	return UCataclysmSilence::IsSilenced(Actor) ? FString(TEXT("Silenced")) : FString();
+}
+
 FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
 {
 	const UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -878,6 +884,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
+		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
 		  HeldBuffTextFor(Actor),

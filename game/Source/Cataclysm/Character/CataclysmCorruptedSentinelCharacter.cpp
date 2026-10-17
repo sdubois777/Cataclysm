@@ -213,6 +213,9 @@ ACataclysmCorruptedSentinelCharacter::EnemyAbilities() const
 	Bolt.bArcsOntoItsTarget = false;
 	Bolt.MarkerRadiusCm = SiegeBoltRadiusCm;
 
+	// AND IT IS THE BASIC ATTACK, which a silence leaves usable. Ruled 2026-10-17 (O1).
+	Bolt.bIsBasicAttack = true;
+
 	// ORDER IS PRIORITY, AND THE MORTAR HAS TO COME FIRST. See the enumeration
 	// in the header: a zero-cooldown ability at the front of this array is the
 	// only thing the creature would ever do.

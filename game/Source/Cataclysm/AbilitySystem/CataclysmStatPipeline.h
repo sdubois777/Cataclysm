@@ -1660,6 +1660,23 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	OpponentFirstStruckByYouSecondsAgo
 		UMETA(DisplayName = "Opponent First Struck By You Seconds Ago"),
+
+	/**
+	 * The hit an ACTION row fires on is not a spell: the event's skill tags hold no `Type.Spell`, or the event carries
+	 * no skill tags at all. Ruled 2026-10-17 (O6), for "Null Emperor (2-Piece Bonus): Your attacks have a 25% chance
+	 * to silence an enemy for 1 second": "your attacks" is every hit that is not a spell, the line between an attack
+	 * and a spell that `HitIsMeleeAttack` draws.
+	 *
+	 * AN ACTION ROW'S CONDITION ONLY. It is judged from the event's own tags in
+	 * `UCataclysmAbilitySystemComponent::PoolActionAllowed`; `ConditionHolds` refuses it, and
+	 * `tools/generate_datatables.py` refuses it on every stat row and on an action row whose event does not carry the
+	 * tags of a hit dealt.
+	 *
+	 * A HIT WITH NO SKILL IS NOT A SPELL: a basic attack carrying no `Type.Spell` meets it, and so does a blow no skill
+	 * dealt. `ConditionValue` is unused.
+	 */
+	HitDealtIsNotSpell
+		UMETA(DisplayName = "Hit Dealt Is Not Spell"),
 };
 
 /**
@@ -4814,7 +4831,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-first, which is the drift that put the passive tree eight
+	 * adds a seventy-second, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -4823,7 +4840,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-ONE OF THE SEVENTY COMPARE NOTHING. They are the case labels
+	 * THIRTY-TWO OF THE SEVENTY-ONE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
