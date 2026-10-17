@@ -3083,6 +3083,9 @@ public:
 	 * a target moved away and unable to attack. `IsImmuneTo`'s "CrowdControl"
 	 * already names every effect, fear included.
 	 *
+	 * AND SILENCE, THE EIGHTH, ruled 2026-10-17 (O4): `State.Silenced`, a creature that cannot start any ability
+	 * but its basic attack. See `UCataclysmSilence`.
+	 *
 	 * DISPLACEMENT HAS NOTHING TO READ. A knockback, pull or launch is a move
 	 * and leaves no state of its own; the Staggered state it leaves afterwards
 	 * is not a hold, by the owner's answer of 2026-09-11, and is not read here.

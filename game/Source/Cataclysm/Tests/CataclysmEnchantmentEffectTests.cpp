@@ -13,6 +13,8 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For the Null Emperor 2-piece's silence. Ruled 2026-10-17.
+#include "AbilitySystem/CataclysmSilence.h"
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -26725,6 +26727,84 @@ bool FCataclysmBasicGadgetRowTest::RunTest(const FString&)
 				  "it (fails on assets built before the row, which hold no such row)"),
 		Worn.ASC()->SlotIsASkillGadget(Basic) && Placed && Placed->IsSkillGadget()
 		&& Placed->SkillGadgetSlot == Basic);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNullEmperorSilenceRowTest,
+	"Cataclysm.Enchantments.TheWornNullEmperorTwoPieceSilencesWhatABlowThatIsNotASpellStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Enemy silence, stack S1's row layer, ruled 2026-10-17: "Null Emperor (2-Piece Bonus): Your attacks have a 25% chance
+ * to silence an enemy for 1 second", whose row is `apply_status` "Silence" on `hit_dealt` with the condition
+ * `hit_dealt_is_not_spell`, and the set's drawback "Your own ultimate ability is disabled", `skill_locked` flat 1
+ * requiring `Slot.Ultimate`. WORN by a real player with the roll pinned at 0, under the chance.
+ *
+ * A SET BONUS IS LIVE ONLY AT ITS PIECE THRESHOLD (`SetPieceThreshold`): the Chronomancer set test is the pattern. So
+ * the CONTROL wears ONE piece, a helm carrying the 2-piece and its drawback, and neither applies: its blow silences
+ * nothing and its ultimate is not locked. The case wears TWO, the helm and a cuirass, and both apply. The first build of
+ * this test wore one piece, so it could not pass; window n1 of 2026-10-17 stopped on it.
+ *
+ * The case is TWO assertions, the silence and the lock, so on assets built before the rows it fails twice, and only
+ * there.
+ */
+bool FCataclysmNullEmperorSilenceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Null_Emperor_2_Piece_Bonus_Your_attacks_have");
+	const TCHAR* Drawback = TEXT("Negative_Your_own_ultimate_ability_is_disabled");
+	CataclysmConsecutiveRowTest::FStriker OnePiece(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TwoPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker with one piece and two creatures"), OnePiece.Ready())
+		|| !TestTrue(TEXT("a striker for two pieces and two creatures"), TwoPieces.Ready())
+		|| !TestTrue(TEXT("the State.Silenced tag exists"), UCataclysmSilence::SilencedTag().IsValid()))
+	{
+		return false;
+	}
+
+	// THE SECOND PIECE: a cuirass carrying the same two rows, then the refresh, and the attack damage the striker
+	// writes after its own refresh written again.
+	UCataclysmEquipmentComponent* Equipment = TwoPieces.Character->GetEquipment();
+	if (!TestNotNull(TEXT("the two-piece striker's equipment"), Equipment))
+	{
+		return false;
+	}
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Carrying(TEXT("Chest_Cuirass"), Bonus, Drawback), Removed, AlsoRemoved, Slot);
+	}
+	Equipment->RefreshAttributes(TwoPieces.ASC);
+	TwoPieces.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	const FGameplayTagContainer Ultimate(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Ultimate));
+	const FName Locked(UCataclysmSkillSlots::LockedStat);
+	const FPinned Roll(TEXT("Cataclysm.StatusRoll"), 0.0f);
+
+	// THE CONTROL, READ FIRST: one piece is below the threshold, so neither row applies.
+	if (!TestTrue(TEXT("set-up: the one-piece striker's blow lands"),
+			Blow(OnePiece, OnePiece.First, /*bCritical=*/false, /*bStrike=*/false) > 0.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("control: with one piece worn, the blow silences nothing"),
+		UCataclysmSilence::IsSilenced(OnePiece.First));
+	TestFalse(TEXT("control: with one piece worn, the ultimate is not locked"),
+		OnePiece.ASC->StatForSkill(Locked, Ultimate, 0.0f) > 0.0f);
+
+	// TWO PIECES: both apply.
+	if (!TestTrue(TEXT("set-up: the two-piece striker's blow lands"),
+			Blow(TwoPieces, TwoPieces.First, /*bCritical=*/false, /*bStrike=*/false) > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("with two pieces worn, a blow that is not a spell silences the creature it strikes. If not, "
+				  "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmSilence::IsSilenced(TwoPieces.First));
+	TestTrue(TEXT("and the drawback locks the wearer's ultimate"),
+		TwoPieces.ASC->StatForSkill(Locked, Ultimate, 0.0f) > 0.0f);
 	return true;
 }
 
