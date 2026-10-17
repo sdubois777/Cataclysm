@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmProjectile.h"
@@ -3388,7 +3389,9 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 			{
 				continue;
 			}
-			if (One.Attack >= 0 && Echo->EnemyAbilities().IsValidIndex(One.Attack))
+			// A SILENCED ECHO USES NO ABILITY BUT ITS BASIC ATTACK, the owner's O1 of 2026-10-17, as `ChooseAbility` refuses one.
+			if (One.Attack >= 0 && Echo->EnemyAbilities().IsValidIndex(One.Attack)
+				&& !(UCataclysmSilence::IsSilenced(Echo) && !Echo->EnemyAbilities()[One.Attack].bIsBasicAttack))
 			{
 				Echo->UseEnemyAbility(One.Attack, Player, Player->GetActorLocation());
 			}

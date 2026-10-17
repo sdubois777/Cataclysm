@@ -142,6 +142,7 @@ namespace
 												ECataclysmStatCondition::ChannellingForUnderSeconds },
 		{ TEXT("opponent_first_struck_by_you_seconds_ago"),
 												ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo },
+		{ TEXT("hit_dealt_is_not_spell"),       ECataclysmStatCondition::HitDealtIsNotSpell },
 	};
 
 	struct FNamedStatScale
@@ -304,8 +305,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetStandsInYourZone:
 	case ECataclysmStatCondition::WhileUnderDamageOverTime:
 	case ECataclysmStatCondition::WhileChannelling:
+	case ECataclysmStatCondition::HitDealtIsNotSpell:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-one says
+		// nothing for a number to be compared against. Each of the thirty-two says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -495,6 +497,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetDamagedByYouWithinSeconds:
 	case C::TargetStandsInYourZone:
 	case C::OpponentFirstStruckByYouSecondsAgo:
+		return EOn::TheBlowOrSkill;
+
+	// THE KIND OF HIT AN ACTION ROW FIRES ON, ruled 2026-10-17. Only an action row carries it, judged at its event, so
+	// no caching reader ever asks it; it is classed with the blow, which is what it reads.
+	case C::HitDealtIsNotSpell:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -1202,6 +1209,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// an opponent never struck.
 		return State.Blow.SecondsSinceYouFirstStruckOpponent >= 0.0f
 			&& State.Blow.SecondsSinceYouFirstStruckOpponent >= Value;
+
+	case ECataclysmStatCondition::HitDealtIsNotSpell:
+		// NEVER JUDGED HERE. Ruled 2026-10-17. An action row's condition, judged from its event's tags in
+		// `UCataclysmAbilitySystemComponent::PoolActionAllowed` before this could be reached, and the generator refuses
+		// it on every stat row. A modifier that reached here some other way is refused rather than granted on every
+		// hit.
+		return false;
 
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills

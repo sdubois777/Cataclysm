@@ -1218,6 +1218,14 @@ public:
 	static const TCHAR* AllDotsStatus;
 
 	/**
+	 * A fourth status name that is not an ailment: A SILENCE, through `UCataclysmSilence::ApplySilence`, for
+	 * `UCataclysmSilence::SilenceSeconds`. Ruled 2026-10-17, for "Null Emperor (2-Piece Bonus): Your attacks have a
+	 * 25% chance to silence an enemy for 1 second". `ApplyStatusAction` alone may name it; the generator holds the
+	 * same name in `SILENCE_STATUS` and refuses it on every other action.
+	 */
+	static const TCHAR* SilenceStatus;
+
+	/**
 	 * The three actions that lay a status on THE WEARER. Ruled 2026-10-06. The first two are `ApplyStatusAction`
 	 * and `ApplyStatusSecondsAction` with the wearer as the character the status is laid on; the third applies it
 	 * once at the value's multiple of its ordinary size. `tools/generate_datatables.py` holds the same names in

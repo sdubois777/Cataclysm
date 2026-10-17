@@ -32,6 +32,7 @@
 // For a skill gadget's blow, priced as the gadget's. Ruled 2026-10-16.
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
@@ -3151,7 +3152,8 @@ bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
 	return IsStunned(Actor) || IsKnockedDown(Actor) || IsPinned(Actor)
 		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
 		|| UCataclysmTeams::IsMaddened(Actor)
-		|| UCataclysmFear::IsFeared(Actor);
+		|| UCataclysmFear::IsFeared(Actor)
+		|| UCataclysmSilence::IsSilenced(Actor);
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()

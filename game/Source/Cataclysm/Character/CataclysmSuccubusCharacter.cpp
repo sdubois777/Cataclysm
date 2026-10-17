@@ -324,6 +324,9 @@ ACataclysmSuccubusCharacter::EnemyAbilities() const
 	Soulfire.bArcsOntoItsTarget = false;
 	Soulfire.MarkerRadiusCm = SoulfireRadiusCm;
 
+	// AND IT IS THE BASIC ATTACK, which a silence leaves usable. Ruled 2026-10-17 (O1).
+	Soulfire.bIsBasicAttack = true;
+
 	// ORDER IS PRIORITY, AND THE CURSE HAS TO COME FIRST. See the enumeration in
 	// the header: Soulfire has a cooldown of zero and the same 8 metre range, so
 	// a Soulfire at the front of this array is the only thing the creature would
