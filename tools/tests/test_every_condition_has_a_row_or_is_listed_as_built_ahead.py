@@ -95,12 +95,10 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # the engine half of "Enemies that survive more than 5 seconds after first
     # being hit gain 20%-40% increased damage" landed first and its row the
     # same day, issue #1833.
-    # JOINED ON 2026-10-17, ruled that day (O6) and built ahead of its row: the
-    # Null Emperor 2-piece, "Your attacks have a 25% chance to silence an enemy
-    # for 1 second", which the enchantment session writes above the mechanism.
-    # `docs/DECISIONS.md` of that day gives the row cell by cell. It leaves with
-    # its row.
-    "hit_dealt_is_not_spell",
+    # `hit_dealt_is_not_spell` JOINED AND LEFT ON 2026-10-17: ruled that day (O6)
+    # and built ahead of its row, the Null Emperor 2-piece "Your attacks have a
+    # 25% chance to silence an enemy for 1 second", which landed in the layer
+    # above the mechanism in the same build window.
 }
 
 #: A condition several enchantment effect rows name. The control.
