@@ -13,6 +13,8 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For the Null Emperor 2-piece's silence. Ruled 2026-10-17.
+#include "AbilitySystem/CataclysmSilence.h"
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -26725,6 +26727,42 @@ bool FCataclysmBasicGadgetRowTest::RunTest(const FString&)
 				  "it (fails on assets built before the row, which hold no such row)"),
 		Worn.ASC()->SlotIsASkillGadget(Basic) && Placed && Placed->IsSkillGadget()
 		&& Placed->SkillGadgetSlot == Basic);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNullEmperorSilenceRowTest,
+	"Cataclysm.Enchantments.TheWornNullEmperorTwoPieceSilencesWhatABlowThatIsNotASpellStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Enemy silence, stack S1's row layer, ruled 2026-10-17: "Null Emperor (2-Piece Bonus): Your attacks have a 25% chance
+ * to silence an enemy for 1 second", whose row is `apply_status` "Silence" on `hit_dealt` with the condition
+ * `hit_dealt_is_not_spell`. WORN by a real player with the roll pinned at 0, under the chance: a blow that is not a
+ * spell silences the creature it strikes. What a silence then does is `Cataclysm.Silence.`'s.
+ *
+ * THE CONTROL is read first: the creature is not silenced before the blow. The whole claim is ONE assertion, so on
+ * assets built before the row it fails once, and only there.
+ */
+bool FCataclysmNullEmperorSilenceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Null_Emperor_2_Piece_Bonus_Your_attacks_have"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a striker and two creatures"), Striker.Ready())
+		|| !TestTrue(TEXT("the State.Silenced tag exists"), UCataclysmSilence::SilencedTag().IsValid()))
+	{
+		return false;
+	}
+	const FPinned Roll(TEXT("Cataclysm.StatusRoll"), 0.0f);
+	TestFalse(TEXT("control: the creature is not silenced before the blow"), UCataclysmSilence::IsSilenced(Striker.First));
+	if (!TestTrue(TEXT("the blow lands"), Blow(Striker, Striker.First, /*bCritical=*/false, /*bStrike=*/false) > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a blow that is not a spell silences the creature it strikes. If not, DT_EnchantmentEffects may be "
+				  "older than the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmSilence::IsSilenced(Striker.First));
 	return true;
 }
 

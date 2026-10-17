@@ -918,8 +918,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-16, from 616 over 521: four rows on four enchantments.
 #: AND 621 OVER 526 SINCE THE ROW THAT CONVERTS THE BASIC ATTACK INTO A SKILL GADGET,
 #: issue #1833, 2026-10-16, from 620 over 525: one row on one enchantment.
-AUTHORED_ROWS = 621
-AUTHORED_ENCHANTMENTS = 526
+#: AND 623 OVER 528 SINCE THE NULL EMPEROR'S 2-PIECE AND ITS DRAWBACK,
+#: issue #1833, 2026-10-17, from 621 over 526: two rows on two enchantments.
+AUTHORED_ROWS = 623
+AUTHORED_ENCHANTMENTS = 528
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -981,7 +983,12 @@ REMOVED_ROWS = 34
 #: whole: its drawback, and its 2-piece, 6-piece and 10-piece bonuses, five rows
 #: on the four mechanisms the entries of that day built. Null Emperor (14) is
 #: the one set with no row.
-SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18]
+#:
+#: FOURTEEN OF FOURTEEN SINCE 2026-10-17. Null Emperor (14) needed enemy
+#: silence: its 2-piece bonus is one `apply_status` "Silence" row on a hit that
+#: is not a spell, and its drawback one `skill_locked` row on the ultimate. Its
+#: 6-piece and 10-piece rows still wait.
+SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
