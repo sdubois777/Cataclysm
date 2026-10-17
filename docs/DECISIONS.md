@@ -261,7 +261,50 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-17 under the lock enchant-a1, on development 19281b762 (enemy silence S2's
+merge), for two layers in this order: this mechanism and the 10-piece's row with its real-row test. The suite and Python
+were run at the top of the two, which holds both. Every step was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 34 actions, 31 files compiled"; "344 tests
+  performed, 343 succeeded, 1 failed: TheWornNullEmperorTenPieceRaisesTheVoidAuraAtTenVoid", with exactly 1 failed
+  assertion in the run, checked by its text: "with ten pieces worn and ten Void, the void aura is up". The nine-piece
+  control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as "Rebuild the enchantment DataTable assets for the Null Emperor 10-piece".
+- **The whole Unreal suite:** "3834 tests performed, 3834 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3834 tests in the tree at 3e04c8d82; 3834 performed, gap 0". Registered 3834 and 0: the 3826 measured on
+  19281b762, the seven of `Cataclysm.Silence.Aura.` and the one real-row test.
+- **Python:** "6502 passed, 8 skipped"; JUnit tests 6510, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+  with no test completed. It did not fire.
+
+**The real-row test's ten Void are gained the way play gains them** (the coordinating session's check on G3): each
+striker silences its creature and strikes it ten times, so the worn 6-piece's row gains each stack through
+`GainKeptStack`, and that same call is what puts the wearer in the aura's register. No stack is set by hand, so the
+test proves the register that play fills. A set turns on every threshold at or below its worn count, so nine pieces
+hold the 6-piece and not the 10-piece, and ten hold both.
+
+**FOR THE OWNER'S PLAY-CHECK LIST (G1, accepted by the coordinating session on 2026-10-17):** "a consumed Soulfall lob
+still leaves its burning ground where it was aimed". The Gatekeeper lays the ground at the throw, not by the lob. No
+Gatekeeper change.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Silence.Aura.`, 7 tests.** The stop condition
+for each was the set of tests that fail with the break in, by the beginnings of their names. The failed assertions had
+been counted by reading and were measured beside it. Every anchor was counted once, and every file's hash was the same
+after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| A-I | no shot's firer is named to the aura | 6 failed: every test but the line's | 17 / 17 | 7 of 7 succeeded |
+| A-II | the aura does not ask whether the firer is hostile | 1 failed, `TheWearersOwnShotAndAnAllysAreNeverConsumed` | 6 / 6 | 7 of 7 succeeded |
+| A-III | a shot is rolled again at every step | 1 failed, `AFailedRollIsNotRolledAgainAsTheShotFliesOnAndItHits` | 2 / 2 | 7 of 7 succeeded |
+
+The measured lines include, under A-I, "the wearer loses nothing ... to be 0.000000, but it was 100.000000" and "it
+struck nobody ... to be 0, but it was 2"; under A-III, "it lands for what the control's shot dealt ... to be 100.000000,
+but it was 0.000000".
+
+**Not measured:** the stat probe's and the real-row test's failure under any break, because the proofs ran only this
+prefix.
 
 ---
 
