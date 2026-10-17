@@ -15,7 +15,8 @@ silenced); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.c
 `ApplyStatusOf`, and the condition judged in `PoolActionAllowed`); `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
 and `.cpp` (the condition `hit_dealt_is_not_spell`); `tools/generate_datatables.py` (`SILENCE_STATUS`, the condition,
 `CONDITIONS_OF_AN_ACTIONS_EVENT`, `EVENTS_CARRYING_A_HIT_DEALTS_TAGS`);
-`game/Source/Cataclysm/Tests/CataclysmSilenceTests.cpp` (new, twelve tests);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (Echoes of the Past: a silenced echo uses no ability but
+its basic attack); `game/Source/Cataclysm/Tests/CataclysmSilenceTests.cpp` (new, thirteen tests);
 `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (`ComparesNothing` gains the condition);
 `tools/tests/test_null_emperor_silence_rows.py` (new); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
 (`SilenceStatus`); `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (the condition built
@@ -51,9 +52,12 @@ Everything a ruling requires to be said first, and everything a player would not
   trigger cooldown means one multi-hit blow rolls once.
 - **A PLAYER IS NEVER SILENCED BY THIS.** The set's drawback, "Your own ultimate ability is disabled", is the existing
   `skill_locked` stat and needs nothing here.
-- **NOT EVERYTHING A CREATURE DOES PASSES THROUGH THE GATE.** One floor rule makes a creature use an ability outside its
-  brain: Echoes of the Past (`CataclysmDungeonGameMode.cpp` about 3393) makes each echo strike once with its recorded
-  ability. A silenced echo still strikes. That file is outside what this layer may touch.
+- **THE ONE FLOOR RULE THAT MAKES A CREATURE USE AN ABILITY OUTSIDE ITS BRAIN IS GATED TOO.** Echoes of the Past
+  (`CataclysmDungeonGameMode.cpp` 3392-3394, `ACataclysmDungeonGameMode::StepEchoesOfThePast`) makes each echo strike
+  once with its recorded ability. A silenced echo does not use a recorded ability that is not its basic attack: it
+  makes its ordinary attack instead, as a silenced creature in its brain does. A recorded basic attack is still used.
+  Ruled by the coordinating session (R-B (a)), which allowed this one line in `CataclysmDungeonGameMode.cpp`, a file
+  this layer otherwise does not touch; the line needs the file's one new include, `CataclysmSilence.h`, to compile.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
   code, the tests and this entry under the enchantment session's brief 39.
 
@@ -85,7 +89,7 @@ Line numbers are of this layer's working tree.
 
 | | Ruling | Where it is |
 | :-- | :-- | :-- |
-| O1 | Every ability but the basic attack is refused; the swing, the movement and the timed behaviours go on. | `ACataclysmEnemyController::ChooseAbility`, `CataclysmEnemyController.cpp` 1218 and 1227: `bSilenced && !Ability.bIsBasicAttack` skips the entry. `FCataclysmEnemyAbility::bIsBasicAttack`, `CataclysmCharacterBase.h` 151, default false; set true at `CataclysmCorruptedSentinelCharacter.cpp` 217 (Siege Bolt), `CataclysmGatekeeperCharacter.cpp` 350 (Dread Cleave) and `CataclysmSuccubusCharacter.cpp` 328 (Soulfire). Silence is not in `UCataclysmSkillEffects::CannotAct` (unchanged), so `Think`'s hard-stop branch does not see it. |
+| O1 | Every ability but the basic attack is refused; the swing, the movement and the timed behaviours go on. | Echoes of the Past: `ACataclysmDungeonGameMode::StepEchoesOfThePast`, `CataclysmDungeonGameMode.cpp` 3392-3394, the same skip before `UseEnemyAbility`, falling to `AttackTarget`. `ACataclysmEnemyController::ChooseAbility`, `CataclysmEnemyController.cpp` 1218 and 1227: `bSilenced && !Ability.bIsBasicAttack` skips the entry. `FCataclysmEnemyAbility::bIsBasicAttack`, `CataclysmCharacterBase.h` 151, default false; set true at `CataclysmCorruptedSentinelCharacter.cpp` 217 (Siege Bolt), `CataclysmGatekeeperCharacter.cpp` 350 (Dread Cleave) and `CataclysmSuccubusCharacter.cpp` 328 (Soulfire). Silence is not in `UCataclysmSkillEffects::CannotAct` (unchanged), so `Think`'s hard-stop branch does not see it. |
 | O2 | A boss is silenced in full. | `UCataclysmSilence::ApplySilence`, `CataclysmSilence.cpp` 20: no `IsBoss` check, and the comment says so. |
 | O3 | A running wind-up, channel or charge finishes. | Nothing new: `ACataclysmEnemyController::ContinueWindUp` (1075), the charge in flight (`ACataclysmEnemyCharacter::AdvanceCharge`, `CataclysmEnemyCharacter.cpp` 1037) and the Inferno Charge channel (`Think`, about 527) are reached before `UseAbilitiesOn` and do not ask `ChooseAbility`. |
 | O4 | Crowd control for the ceiling, resistance, `IsCrowdControlled` and the event; not the stun window. | `ApplySilence`: `CrowdControlRefusedByHealthCeiling` at 30, `HeldSecondsAfterCrowdControlResistance` at 37, `NoteCrowdControlApplied` on `UCataclysmCombatEvents::AttackerOf(Instigator)` at 57; no `StunImmuneTag` read or written. `UCataclysmSkillEffects::IsCrowdControlled`, `CataclysmSkillEffects.cpp` 3156. |
@@ -138,6 +142,9 @@ stops none of them today.
   attack. The option not taken: true by default, which would leave a new ability unsilenced without a word.
 - **THE GATE IS IN `ChooseAbility`, NOT AT THE TOP OF `UseAbilitiesOn`.** The recon's recommendation, and the only place
   the three basic-attack abilities can still be chosen. `ChooseAbility` is also what a test can ask directly.
+- **A SILENCED ECHO WHOSE RECORDED ABILITY IS REFUSED MAKES ITS ORDINARY ATTACK**, the `else` the rule already has for
+  an echo with no ability, because a silenced creature in its brain swings. For the three creatures whose
+  `AttackTarget` is empty that is nothing. The option not taken: the echo strikes with nothing at all.
 - **THE STATUS LINE PUTS "Silenced" AFTER "Maddened"**, beside the other words for what is done to the creature. The
   line above the player's own bars does not ask: a player is never silenced.
 
@@ -177,7 +184,8 @@ O5.
   moved: thirty-two of the seventy-one conditions compare nothing.
 
 **EVERY PLACE THAT DEPENDS ON `State.Silenced`:** `UCataclysmSilence::SilencedTag`, and through it `ApplySilence`,
-`IsSilenced`, `ChooseAbility`, `IsCrowdControlled` (and so the `opponent_is_crowd_controlled` rows),
+`IsSilenced`, `ChooseAbility`, `StepEchoesOfThePast`, `IsCrowdControlled` (and so the
+`opponent_is_crowd_controlled` rows),
 `SilencedTextFor` and `StatusLineFor`, and every test in `Cataclysm.Silence.`, each of which asks for the tag as its
 first set-up and stops with the reason when it is missing.
 
@@ -231,7 +239,7 @@ character not silenced.
 
 ### Tests
 
-Twelve new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSilenceTests.cpp`, the group `Cataclysm.Silence.`,
+Thirteen new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSilenceTests.cpp`, the group `Cataclysm.Silence.`,
 with helpers of this file's own names. Every test first asks that `State.Silenced` is registered. Creatures and what
 they fight stand at least a metre apart; separate scenes stand 40 m apart, past the 15 m a creature notices. The clock is
 moved by hand: `SilenceAdvanceClock` moves the time only, `CataclysmTestWorld::RunClock` the time and the timers.
@@ -276,6 +284,16 @@ moved by hand: `SilenceAdvanceClock` moves the time only, `CataclysmTestWorld::R
     order: set-up, the blow with no row lands; control, with no row it silences nothing; set-up, with the row (chance
     100, made by hand) the blow lands; it silences, being no skill's hit; a `hit_dealt` carrying `Type.Melee` silences;
     one carrying `Type.Spell` does not.
+13. `ASilencedEchoUsesNoAbilityButItsBasicAttack`. Three scenes, each a world of its own, driven by the dungeon game
+    mode's own beat as `Cataclysm.DungeonModifierEffects.EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`
+    drives it, with helpers of this file's names: a possessed player kills a Corrupted Sentinel on floor 2 whose last
+    attack was set, and on floor 3 its echo appears and strikes. A shot is read from `LastShotFired`, which only
+    `UseEnemyAbility` writes; the Sentinel's ordinary attack does nothing. Each scene's set-ups, in order: a world;
+    a player state, a controller and a player; its ability system; the game mode; deaths announced; floors 1 and 2;
+    a Sentinel; it died; its last attack recorded; floor 3; one echo stands; it has fired nothing; (silenced scenes)
+    the player silences it; it still stands after striking; it is silenced exactly when asked. Then: control, the
+    unsilenced echo of a mortar fires; silenced, the same echo fires nothing; silenced, an echo whose recorded attack
+    is Siege Bolt, its basic attack, still fires it.
 
 
 Python: `tools/tests/test_null_emperor_silence_rows.py`, seventeen tests on a made-up workbook holding the two real
@@ -291,7 +309,7 @@ pass; refused on three stat rows, with a control; and classed in neither stat-lo
 Hellhound's and the Abyssal Warden's abilities refused (only the Brute's are; the gate is the same loop); the timed
 behaviours other than Dominion; crowd-control resistance of 50 halving it; the `opponent_is_crowd_controlled` row and a
 "Applying a CC effect" row reading a silence (only `IsCrowdControlled` and the event are); a minion or a subjugated
-creature silenced; Echoes of the Past (not gated; see SAID FIRST); the 25% chance (the roll is the existing one); the
+creature silenced; an echo of a Brute, a Succubus or a Gatekeeper silenced (only a Sentinel's is); the 25% chance (the roll is the existing one); the
 0.25 s trigger cooldown in play (a Python test carries the cell); the drawback refusing the ultimate (confirmed by
 reading; the slot-lock tests of `CataclysmEnchantmentEffectTests.cpp` cover `skill_locked` with `Slot.Ultimate`); the
 row through an imported table; the heads-up display drawing the line.
@@ -301,7 +319,8 @@ row through an imported table; the heads-up display drawing the line.
 Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
 counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
 paired (counted by the same script with comments and strings removed: 406, 130 and 17 pairs for the first; 144, 40
-and 3 for the second; 2765, 934 and 31 for the third, one round pair more than before). Each compiles alone by reading:
+and 3 for the second; 2765, 934 and 31 for the third, one round pair more than before; 9705, 2616 and 244 for the
+fourth). Each compiles alone by reading:
 `IsSilenced` takes a `const AActor*`, so `nullptr` is accepted, and `Driven` is still read by the lines around it; a
 `bool` takes `false`; `IsSpell` takes a `const FGameplayTagContainer&`, which a temporary binds to, and `EventTags` is
 still read by the condition. The failed assertions are counted by reading. The prefix is `Cataclysm.Silence.`, with its
@@ -310,7 +329,8 @@ trailing dot.
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
 | S-I, the gate never sees a silence (O1) | `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` | `const bool bSilenced = UCataclysmSilence::IsSilenced(Driven);` | `const bool bSilenced = UCataclysmSilence::IsSilenced(nullptr);` | `ASilencedCreatureStartsNoAbilityItOtherwiseStarts` | `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` |
-| S-II, Siege Bolt is not the basic attack (O1) | `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.cpp` | `Bolt.bIsBasicAttack = true;` | `Bolt.bIsBasicAttack = false;` | `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` | none |
+| S-II, Siege Bolt is not the basic attack (O1) | `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.cpp` | `Bolt.bIsBasicAttack = true;` | `Bolt.bIsBasicAttack = false;` | `EachCreatureWhoseBasicAttackIsAnAbilityStillUsesItWhileSilenced` | `ASilencedEchoUsesNoAbilityButItsBasicAttack` |
+| S-IV, an echo never sees a silence (R-B (a)) | `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` | `UCataclysmSilence::IsSilenced(Echo)` | `UCataclysmSilence::IsSilenced(nullptr)` | `ASilencedEchoUsesNoAbilityButItsBasicAttack` | none |
 | S-III, a spell counts as an attack (O6) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `return !(EventTags && UCataclysmSkillEffects::IsSpell(*EventTags));` | `return !(EventTags && UCataclysmSkillEffects::IsSpell(FGameplayTagContainer()));` | `TheRowSilencesOnAHitThatIsNotASpellAndNotOnASpell` | none |
 
 Failed assertions, by reading:
@@ -319,9 +339,12 @@ Failed assertions, by reading:
   winding up" (it winds up), "and is committed to nothing" (the stomp). Test 2, 3: the Sentinel at 7 m (the mortar), the
   Succubus at 4 m (the curse), and the Gatekeeper at 8.74 m (Soulfall); its 1 m sweep passes. Test 5 passes: its
   wind-up began before the silence.
-- **S-II, 2 in 1 test.** Test 2: "Siege Bolt is the Sentinel's basic attack", and "silenced, at 7 m the Sentinel fires
-  Siege Bolt" (nothing is chosen).
+- **S-II, 3 in 2 tests.** Test 2: "Siege Bolt is the Sentinel's basic attack", and "silenced, at 7 m the Sentinel fires
+  Siege Bolt" (nothing is chosen). Test 13: "silenced, an echo whose recorded attack is Siege Bolt ... still fires it"
+  (the bolt is refused and the empty ordinary attack fires nothing).
 - **S-III, 1 in 1 test.** Test 12: "a hit_dealt carrying Type.Spell does not".
+- **S-IV, 1 in 1 test.** Test 13: "silenced, the same echo does not use its mortar: it fires nothing". The control and
+  the basic-attack scene pass: neither depends on the silence being seen there. The `IsSilenced` include stays used.
 
 **Tests of another group expected to fail, to check in the window:** none, by reading.
 

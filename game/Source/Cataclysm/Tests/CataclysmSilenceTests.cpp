@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -22,8 +23,11 @@
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Engine/World.h"
 #include "GameplayEffect.h"
+#include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
@@ -938,6 +942,179 @@ CATACLYSM_SILENCE_TEST(FCataclysmSilenceRowTest,
 	TestTrue(TEXT("a hit_dealt carrying Type.Melee silences"), UCataclysmSilence::IsSilenced(Melee));
 	PlayerSystem->ActOnEvent(FName(TEXT("hit_dealt")), &SpellTags, /*EventAmount=*/100.0f, /*bLanded=*/true, Spell);
 	TestFalse(TEXT("a hit_dealt carrying Type.Spell does not"), UCataclysmSilence::IsSilenced(Spell));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Echoes of the Past, the one floor rule that makes a creature use an ability outside its brain. Ruled 2026-10-17 by
+// the coordinating session (R-B (a)): a silenced echo does not use a non-basic ability, as `ChooseAbility` refuses one.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSilenceTest
+{
+	/** What one Echoes of the Past scene measured. */
+	struct FSilenceEchoRead
+	{
+		bool bSetUp = false;
+		bool bFired = false;
+	};
+
+	/**
+	 * One scene in a world of its own, driven as `Cataclysm.DungeonModifierEffects.EchoesOfThePast...` drives the rule:
+	 * the dungeon game mode's own beat, `Tick` at `SecondsBetweenWaveChecks`, with a possessed player the beat can find.
+	 *
+	 * On floor 2, carrying no row, a Corrupted Sentinel that last used `Recorded` dies to the player. On floor 3, carrying
+	 * Echoes of the Past, its echo appears after five seconds; it is silenced by the player when `bSilenced` says so; and
+	 * a second later it strikes. Whether it fired a shot is read from `LastShotFired`, which only `UseEnemyAbility`
+	 * writes: the Sentinel's ordinary attack does nothing. The beat moves no world clock, so the silence cannot run out.
+	 */
+	FSilenceEchoRead SilenceEchoStrikes(FAutomationTestBase& Test, const TCHAR* Who, int32 Recorded, bool bSilenced)
+	{
+		using Effects = UCataclysmDungeonModifierEffects;
+		FSilenceEchoRead Read;
+		const auto Named = [Who](const TCHAR* What) { return FString::Printf(TEXT("%s: %s"), Who, What); };
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a world")), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		// A PLAYER THE BEAT CAN FIND: `AController::Possess`, with a hundred thousand health.
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Player =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!Test.TestTrue(*Named(TEXT("set-up: a player state, a controller and a player")),
+						   PlayerState && Controller && Player))
+		{
+			return Read;
+		}
+		Controller->SetPlayerState(PlayerState);
+		Controller->Possess(Player);
+		UCataclysmAbilitySystemComponent* PlayerSystem = SilenceSystemOf(Player);
+		if (!Test.TestNotNull(*Named(TEXT("set-up: the player's ability system")), PlayerSystem))
+		{
+			return Read;
+		}
+		PlayerSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+		PlayerSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: the dungeon game mode")), Mode))
+		{
+			return Read;
+		}
+		Mode->StartPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: the world announces deaths")), UCataclysmCombatEvents::In(World)))
+		{
+			return Read;
+		}
+		Mode->DungeonModifiers = {};
+		if (!Test.TestTrue(*Named(TEXT("set-up: floor 1 was reached")), Mode->GoToFloor(1))
+			|| !Test.TestTrue(*Named(TEXT("set-up: floor 2 was reached")), Mode->GoToFloor(2)))
+		{
+			return Read;
+		}
+		Mode->ClearFloorEnemies();
+
+		// THE CREATURE THAT DIES, having last used `Recorded`.
+		ACataclysmCorruptedSentinelCharacter* Fallen =
+			SilenceSpawnCreature<ACataclysmCorruptedSentinelCharacter>(World, FVector(3 * M, 0, 0));
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a Corrupted Sentinel")), Fallen))
+		{
+			return Read;
+		}
+		Fallen->SetHealth(100.0f);
+		Fallen->SetArmour(0.0f);
+		if (UAbilitySystemComponent* FallensSystem = UCataclysmTargeting::AbilitySystemOf(Fallen))
+		{
+			FallensSystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+		Mode->FloorEnemies.Add(Fallen);
+		Fallen->LastAttackUsed = Recorded;
+		UCataclysmSkillEffects::ApplyHit(Player, Fallen, 100000.0f);
+		if (!Test.TestTrue(*Named(TEXT("set-up: it died")), UCataclysmSkillEffects::IsDead(Fallen))
+			|| !Test.TestTrue(*Named(TEXT("set-up: and its last attack was recorded")),
+							  Mode->EchoAttacksRecordedThisFloor() == TArray<int32>{Recorded}))
+		{
+			return Read;
+		}
+
+		Mode->DungeonModifiers = {FName(Effects::EchoesOfThePastKey)};
+		if (!Test.TestTrue(*Named(TEXT("set-up: floor 3 was reached")), Mode->GoToFloor(3)))
+		{
+			return Read;
+		}
+		Mode->ClearFloorEnemies();
+		for (int32 Each = FMath::CeilToInt(Effects::EchoesAppearAfterSeconds
+										   / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks); Each > 0; --Each)
+		{
+			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		}
+		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+		ACataclysmCorruptedSentinelCharacter* Echo =
+			Echoes.Num() == 1 ? Cast<ACataclysmCorruptedSentinelCharacter>(Echoes[0]) : nullptr;
+		if (!Test.TestNotNull(*Named(TEXT("set-up: one Sentinel's echo stands")), Echo)
+			|| !Test.TestNull(*Named(TEXT("set-up: and it has fired nothing yet")), Echo->LastShotFired.Get()))
+		{
+			return Read;
+		}
+		if (bSilenced
+			&& !Test.TestTrue(*Named(TEXT("set-up: the player silences the echo")),
+							  UCataclysmSilence::ApplySilence(Player, Echo, UCataclysmSilence::SilenceSeconds)))
+		{
+			return Read;
+		}
+
+		for (int32 Each = FMath::CeilToInt(Effects::EchoesStrikeAfterSeconds
+										   / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks); Each > 0; --Each)
+		{
+			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		}
+		if (!Test.TestEqual(*Named(TEXT("set-up: the echo is still standing when it has struck")),
+							Mode->EchoesStandingNow().Num(), 1)
+			|| !Test.TestEqual(*Named(TEXT("set-up: and is silenced exactly when asked")),
+							   UCataclysmSilence::IsSilenced(Echo), bSilenced))
+		{
+			return Read;
+		}
+		Read.bFired = Echo->LastShotFired.Get() != nullptr;
+		Read.bSetUp = true;
+		return Read;
+	}
+}
+
+/**
+ * R-B (a). Three scenes, each in a world of its own: a Corrupted Sentinel's echo whose recorded attack was Brimstone
+ * Mortar, unsilenced, which is the control; the same, silenced; and one whose recorded attack was Siege Bolt, its
+ * basic attack, silenced.
+ */
+CATACLYSM_SILENCE_TEST(FCataclysmSilenceEchoTest,
+	"Cataclysm.Silence.ASilencedEchoUsesNoAbilityButItsBasicAttack")
+{
+	using namespace CataclysmSilenceTest;
+	using Sentinel_t = ACataclysmCorruptedSentinelCharacter;
+	if (!SilenceTagIsRegistered(*this))
+	{
+		return false;
+	}
+
+	const FSilenceEchoRead Control =
+		SilenceEchoStrikes(*this, TEXT("the mortar, unsilenced"), Sentinel_t::BrimstoneMortarAbility, false);
+	const FSilenceEchoRead Silenced =
+		SilenceEchoStrikes(*this, TEXT("the mortar, silenced"), Sentinel_t::BrimstoneMortarAbility, true);
+	const FSilenceEchoRead Basic =
+		SilenceEchoStrikes(*this, TEXT("the bolt, silenced"), Sentinel_t::SiegeBoltAbility, true);
+	if (!Control.bSetUp || !Silenced.bSetUp || !Basic.bSetUp)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("control: unsilenced, the echo uses its recorded mortar and fires"), Control.bFired);
+	TestFalse(TEXT("silenced, the same echo does not use its mortar: it fires nothing"), Silenced.bFired);
+	TestTrue(TEXT("silenced, an echo whose recorded attack is Siege Bolt, its basic attack, still fires it"), Basic.bFired);
 	return true;
 }
 
