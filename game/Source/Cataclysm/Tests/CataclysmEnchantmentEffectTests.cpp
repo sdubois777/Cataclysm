@@ -26808,4 +26808,86 @@ bool FCataclysmNullEmperorSilenceRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNullEmperorVoidRowTest,
+	"Cataclysm.Enchantments.TheWornNullEmperorSixPieceGainsAVoidStackOnAHitOnASilencedEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Enemy silence, stack S2's row layer, ruled 2026-10-17: "Null Emperor (6-Piece Bonus): Every time you hit a silenced
+ * enemy, you gain a stack of 'Void.' At 10 stacks, your next ability costs no mana and deals 100% more damage", whose
+ * row is `kept_stacks_free_next_ability` "Void" on `hit_dealt`, condition `target_is_silenced`, cap 10, value 100. WORN
+ * by a real player: what Void then does at 10 is `Cataclysm.Silence.Void.`'s.
+ *
+ * A SET BONUS IS LIVE ONLY AT ITS PIECE THRESHOLD, so the CONTROL wears FIVE pieces and the case SIX: a helm, cuirass,
+ * pauldrons, gauntlets, greaves and sabatons, each carrying the 6-piece and the set's drawback. Each striker silences
+ * the creature it then strikes. The case is ONE assertion, so on assets built before the row it fails once, and only
+ * there.
+ */
+bool FCataclysmNullEmperorVoidRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Null_Emperor_6_Piece_Bonus_Every_time_you_hit");
+	const TCHAR* Drawback = TEXT("Negative_Your_own_ultimate_ability_is_disabled");
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces and two creatures"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces and two creatures"), SixPieces.Ready())
+		|| !TestTrue(TEXT("the State.Silenced tag exists"), UCataclysmSilence::SilencedTag().IsValid()))
+	{
+		return false;
+	}
+
+	// THE OTHER PIECES. The striker's own helm is the first; each more piece carries the same two rows.
+	const TCHAR* More[] = {TEXT("Chest_Cuirass"), TEXT("Shoulders_Pauldrons"), TEXT("Gloves_Gauntlets"),
+						   TEXT("Pants_Greaves"), TEXT("Boots_Sabatons")};
+	const auto Wears = [&](CataclysmConsecutiveRowTest::FStriker& Striker, int32 Extra) -> bool
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+		UCataclysmEquipmentComponent* Equipment = Striker.Character->GetEquipment();
+		if (!Equipment)
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Extra; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(Carrying(More[Index], Bonus, Drawback), Removed, AlsoRemoved, Slot);
+		}
+		Equipment->RefreshAttributes(Striker.ASC);
+		Striker.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		return true;
+	};
+	if (!TestTrue(TEXT("set-up: five pieces worn"), Wears(FivePieces, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), Wears(SixPieces, 5)))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: five pieces are below the threshold, so a hit on a silenced enemy gains nothing.
+	if (!TestTrue(TEXT("set-up: the five-piece striker silences its creature"),
+			UCataclysmSilence::ApplySilence(FivePieces.Character, FivePieces.First, 1.0f))
+		|| !TestTrue(TEXT("set-up: the five-piece striker's blow lands"),
+			Blow(FivePieces, FivePieces.First, /*bCritical=*/false, /*bStrike=*/false) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: with five pieces worn, a hit on a silenced enemy gains no Void"),
+		FivePieces.ASC->KeptStacksHeldNamed(TEXT("Void")), 0);
+
+	// SIX PIECES: the row applies.
+	if (!TestTrue(TEXT("set-up: the six-piece striker silences its creature"),
+			UCataclysmSilence::ApplySilence(SixPieces.Character, SixPieces.First, 1.0f))
+		|| !TestTrue(TEXT("set-up: the six-piece striker's blow lands"),
+			Blow(SixPieces, SixPieces.First, /*bCritical=*/false, /*bStrike=*/false) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with six pieces worn, a hit on a silenced enemy gains one Void. If not, DT_EnchantmentEffects may be "
+				   "older than the rows: run tools/generate_datatable_assets.py"),
+		SixPieces.ASC->KeptStacksHeldNamed(TEXT("Void")), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -99,6 +99,10 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # and built ahead of its row, the Null Emperor 2-piece "Your attacks have a
     # 25% chance to silence an enemy for 1 second", which landed in the layer
     # above the mechanism in the same build window.
+    # `target_is_silenced` JOINED AND LEFT ON 2026-10-17: ruled that day (O7) and
+    # built ahead of its row, the Null Emperor 6-piece "Every time you hit a
+    # silenced enemy, you gain a stack of 'Void.'", which landed in the layer
+    # above the mechanism in the same build window.
 }
 
 #: A condition several enchantment effect rows name. The control.

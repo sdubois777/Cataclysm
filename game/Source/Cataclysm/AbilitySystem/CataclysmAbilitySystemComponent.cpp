@@ -1531,6 +1531,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsBoss = false;
 	bool bWantsHistory = false;
 	bool bWantsZone = false;
+	bool bWantsSilence = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1575,6 +1576,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetStandsInYourZone:
 				bWantsZone = true;
 				break;
+			// AND WHETHER THE TARGET IS SILENCED, LISTED HERE FOR THE REASON THE AILMENT COMMENT ABOVE GIVES. Ruled
+			// 2026-10-17, for the Null Emperor 6-piece's gain of Void.
+			case ECataclysmStatCondition::TargetIsSilenced:
+				bWantsSilence = true;
+				break;
 			default:
 				break;
 			}
@@ -1589,7 +1595,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			bWantsAilments = true;
 		}
 
-		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone)
+		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1602,9 +1608,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
 	if (!Target
-		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone))
+		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence))
 	{
 		return State;
+	}
+
+	// WHETHER THE TARGET IS SILENCED NOW. Ruled 2026-10-17. Its tag, read through `UCataclysmSilence`, the one place
+	// that names it.
+	if (bWantsSilence)
+	{
+		State.bTargetIsSilenced = UCataclysmSilence::IsSilenced(Target);
 	}
 
 	// WHETHER "YOU" HAVE STRUCK IT YET. Issue #1815, the first hit against each
@@ -4351,6 +4364,7 @@ float UCataclysmAbilitySystemComponent::DebuffDamageCutPercentNow() const
 }
 const TCHAR* UCataclysmAbilitySystemComponent::RepeatSkillAction = TEXT("repeat_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksRepeatSkillAction = TEXT("kept_stacks_repeat_skill");
+const TCHAR* UCataclysmAbilitySystemComponent::KeptStacksFreeNextAbilityAction = TEXT("kept_stacks_free_next_ability");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSkillAction = TEXT("trigger_held_skill");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerHeldSpellAction = TEXT("trigger_held_spell");
 const TCHAR* UCataclysmAbilitySystemComponent::UseNoDamageAction = TEXT("use_no_damage");
@@ -5519,9 +5533,57 @@ UCataclysmAbilitySystemComponent::KeptStacksForDisplay() const
 		Entry.Name = Action.StatusName;
 		Entry.Held = KeptStacksHeld(Key);
 		Entry.Cap = Action.KeptStackCap;
+		// AND WHAT THEY BUY AT THE CAP, for the words the line shows there. Ruled 2026-10-17.
+		Entry.bFreeNextAbility = Action.bKeptStacksFreeNextAbility;
+		Entry.MorePercent = Action.bKeptStacksFreeNextAbility ? Action.Percent : 0.0f;
 		Out.Add(Entry);
 	}
 	return Out;
+}
+
+bool UCataclysmAbilitySystemComponent::NextAbilityIsFree() const
+{
+	// ANY WORN ROW OF THE KIND HOLDING ITS CAP, read now, so stacks of a dungeon already left hold nothing.
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.bKeptStacksFreeNextAbility && !Action.KeptStackKey.IsNone() && Action.KeptStackCap > 0
+			&& KeptStacksHeld(Action.KeptStackKey) >= Action.KeptStackCap)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+float UCataclysmAbilitySystemComponent::SpendFreeNextAbility()
+{
+	// EVERY SUCH ROW AT ITS CAP IS SPENT WHOLE, and the largest "more" among them is what the use is worth: one use,
+	// one doubling, as one use spends one next-use charge of each row. A row below its cap keeps its stacks.
+	float More = 1.0f;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.bKeptStacksFreeNextAbility && !Action.KeptStackKey.IsNone() && Action.KeptStackCap > 0
+			&& KeptStacksHeld(Action.KeptStackKey) >= Action.KeptStackCap)
+		{
+			SpendKeptStacks(Action.KeptStackKey);
+			More = FMath::Max(More, 1.0f + FMath::Max(0.0f, Action.Percent) / 100.0f);
+		}
+	}
+	return More;
+}
+
+int32 UCataclysmAbilitySystemComponent::KeptStacksHeldNamed(const FString& Name) const
+{
+	// THE MOST ANY WORN ROW HOLDS UNDER THAT NAME, by `KeptStacksHeld`, so a stack of another dungeon is nought here.
+	int32 Most = 0;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (!Action.KeptStackKey.IsNone() && !Name.IsEmpty() && Action.StatusName.Equals(Name, ESearchCase::IgnoreCase))
+		{
+			Most = FMath::Max(Most, KeptStacksHeld(Action.KeptStackKey));
+		}
+	}
+	return Most;
 }
 
 void UCataclysmAbilitySystemComponent::ForgetKeptStacksNoWornActionCarries()
@@ -6231,6 +6293,22 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				Asked.DamageShare = Action.Percent / 100.0f;
 				PendingKeptStackCastRows.Add(Asked);
 				NoteTriggerFired(Action);
+			}
+			continue;
+		}
+		// A KEPT STACK GAINED ON THE ROW'S EVENT, TOWARDS A FREE AND EMPOWERED NEXT ABILITY. Ruled 2026-10-17 (O7, O8),
+		// for the Null Emperor 6-piece: "Every time you hit a silenced enemy, you gain a stack of 'Void.' At 10 stacks,
+		// your next ability costs no mana and deals 100% more damage". Landed only, and once per row per event, as an
+		// own stack is; to at most the row's cap, where the next gain changes nothing. NO TRIGGER COOLDOWN: a row that
+		// counts never waits (ruled 2026-09-30). The row's condition, `target_is_silenced` on the shipped row, was
+		// judged by `PoolActionAllowed` above, against the enemy struck. What the stacks buy is asked elsewhere: see
+		// `NextAbilityIsFree` and `SpendFreeNextAbility`.
+		if (Action.bKeptStacksFreeNextAbility)
+		{
+			if (bLanded && !Action.KeptStackKey.IsNone() && !StackedThisEvent.Contains(Action.KeptStackKey))
+			{
+				StackedThisEvent.Add(Action.KeptStackKey);
+				GainKeptStack(Action.KeptStackKey, Action.KeptStackCap);
 			}
 			continue;
 		}

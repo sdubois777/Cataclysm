@@ -4932,7 +4932,8 @@ int32 UCataclysmAuraSkill::Pulse()
 		// #1815. "Your aura costs 30%-50% less mana per second" is a row on this
 		// same stat, and an upkeep left on `GetManaCost` would drain the slot's
 		// figure while the cast that switched the aura on paid the reduced one.
-		const float Cost = ManaCostFor(AbilitySystem) * Period;
+		// NOT AS A USE, ruled 2026-10-17: an upkeep is never the free next ability a row's kept stacks buy.
+		const float Cost = ManaCostFor(AbilitySystem, /*bForAUse=*/false) * Period;
 
 		// OUT OF THE SAME POOL THE ACTIVATION PAID FROM, ASKED THE SAME WAY.
 		// Issue #1901. This read mana directly, and a Masochist holding Water to

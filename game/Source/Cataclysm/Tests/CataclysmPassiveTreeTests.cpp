@@ -3527,7 +3527,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_in_your_zone")
 			// RULED 2026-10-17, THE NULL EMPEROR'S "YOUR ATTACKS": the hit an action row fires on is not a spell. It
 			// names a kind of hit, so it compares nothing.
-			|| Name == TEXT("hit_dealt_is_not_spell");
+			|| Name == TEXT("hit_dealt_is_not_spell")
+			// RULED 2026-10-17, THE NULL EMPEROR'S "A SILENCED ENEMY": the character struck is silenced. It names a
+			// state, so it compares nothing.
+			|| Name == TEXT("target_is_silenced");
 	}
 }
 

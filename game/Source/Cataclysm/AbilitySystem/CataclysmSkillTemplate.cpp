@@ -294,6 +294,20 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 				LastNextUseIncreasePercent += RolledIncreasePercent;
 			}
 		}
+		// AND THE FREE, EMPOWERED NEXT ABILITY A WORN ROW'S KEPT STACKS BUY AT THEIR CAP: SPENT HERE, BY EVERY PAID USE
+		// BUT THE BASIC ATTACK. Ruled 2026-10-17 (O7 c, O8), for the Null Emperor 6-piece: "At 10 stacks, your next
+		// ability costs no mana and deals 100% more damage". `ManaCostFor` has already charged this use nothing; past
+		// the commit above, so a press the cooldown, a lock or a short pool refused spends nothing. "100% more" is a
+		// more on the whole use, the effectiveness charges' multiplier, so 100 doubles it. A use that deals no damage
+		// itself, or that a row made deal none, still spends: it was the next ability, and it was free.
+		if (Slot != ECataclysmAbilitySlot::BasicAttack)
+		{
+			const float FreeMore = Cataclysm->SpendFreeNextAbility();
+			if (!bThisUseDealsNoDamage && DeliversDamageItself())
+			{
+				LastNextUseMoreMultiplier *= FreeMore;
+			}
+		}
 		// AND ITS USER TAKES THE SHARE OF WHAT THE USE WOULD HAVE DEALT ONE ENEMY: the use's own priced hit, before
 		// any target's defences, as Echo Chamber prices its self hit. Dealt as the user's own direct damage to
 		// themselves with that rule's delivery, so their own defences reduce it and it neither critically strikes,

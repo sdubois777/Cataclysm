@@ -920,8 +920,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-16, from 620 over 525: one row on one enchantment.
 #: AND 623 OVER 528 SINCE THE NULL EMPEROR'S 2-PIECE AND ITS DRAWBACK,
 #: issue #1833, 2026-10-17, from 621 over 526: two rows on two enchantments.
-AUTHORED_ROWS = 623
-AUTHORED_ENCHANTMENTS = 528
+#: AND 624 OVER 529 SINCE THE NULL EMPEROR'S 6-PIECE,
+#: issue #1833, 2026-10-17, from 623 over 528: one row on one enchantment.
+AUTHORED_ROWS = 624
+AUTHORED_ENCHANTMENTS = 529
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

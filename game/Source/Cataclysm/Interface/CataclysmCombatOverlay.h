@@ -620,6 +620,17 @@ public:
 	static FString KeptStacksTextFor(const AActor* Actor);
 
 	/**
+	 * One row's entry on that line, PURE so a test can read the exact words: "Void 7/10", and at the cap of a row whose
+	 * stacks buy a free next ability, "Void 10/10: next ability free, 100% more damage". Ruled 2026-10-17 (O7, O8),
+	 * under the owner's rule that every system ships with a basic display: the wearer must see the count and that the
+	 * next press is the free one. A row that states no name reads "Stacks", as above.
+	 *
+	 * @param MorePercent  what that ability deals more, in per cent, whole; read only at the cap of such a row
+	 */
+	static FString KeptStacksEntry(const FString& Name, int32 Held, int32 Cap, bool bFreeNextAbility = false,
+								   float MorePercent = 0.0f);
+
+	/**
 	 * What a living actor still owes of its delayed damage, such as "Owed 132", or empty while it owes nothing.
 	 * Read from `UCataclysmAbilitySystemComponent::DelayedDamageOwed`. Ruled 2026-10-12 by the coordinating
 	 * session, for "25%-50% of damage taken is dealt over 4-8 seconds": the wearer must see what is still owed.
