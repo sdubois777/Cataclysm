@@ -269,7 +269,41 @@ the condition. The thirteen tests of `Cataclysm.Silence.` outside `Void.` are un
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-17 under the lock enchant-v1, on development a13a78f36 (enemy silence S1's
+merge), for two layers in this order: this mechanism (with the two statements the coordinating session asked for, on the
+letter of O8 and on Mana Weaver) and the 6-piece's row with the O10 reword and its real-row test. The suite and Python
+were run at the top of the two, which holds both. Every step was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 36 actions, 33 files compiled"; "343 tests
+  performed, 342 succeeded, 1 failed: TheWornNullEmperorSixPieceGainsAVoidStackOnAHitOnASilencedEnemy", with exactly 1
+  failed assertion in the run, checked by its text: "with six pieces worn, a hit on a silenced enemy gains one Void".
+  The five-piece control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` (the reworded
+  sentence) and `datatable_asset_sources.json` changed, committed on the row layer as "Rebuild the enchantment DataTable
+  assets for the Null Emperor 6-piece and its reworded sentence".
+- **The whole Unreal suite:** "3826 tests performed, 3826 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3826 tests in the tree at b4fa51b9e; 3826 performed, gap 0". Registered 3826 and 0: the 3819 measured on
+  a13a78f36, the six of `Cataclysm.Silence.Void.` and the one real-row test.
+- **Python:** "6487 passed, 8 skipped"; JUnit tests 6495, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run and would have ended the editor and released the lock after 20 minutes
+  with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Silence.Void.`, 6 tests.** The stop condition
+for each was the set of tests that fail with the break in, by the beginnings of their names. The failed assertions had
+been counted by reading and were measured beside it. Every anchor was counted once, and every file's hash was the same
+after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| V-I | the condition reads no target | 2 failed, `AHitOnASilencedEnemyGainsOneAndAHitOnAnUnsilencedOneGainsNone`, `ItStopsAtTenAndTimeTakesNoneAway` | 12 / 12 | 6 of 6 succeeded |
+| V-II | the next ability is never free | 2 failed, `AtTenTheNextAbilityCostsNoManaDealsTwiceAndSpendsAllTen`, `ABasicAttackAndARefusedActivationSpendNoneAndFervourIsStillPaid` | 3 / 3 | 6 of 6 succeeded |
+| V-III | a use spends nothing and doubles nothing | 2 failed, the same two | 6 / 6 | 6 of 6 succeeded |
+
+The measured lines of V-III include "deals twice what the same use at nine dealt ... to be 500.000000, but it was
+250.000000" and "the use after the spend pays what the control pays ... to be 40.000000, but it was 0.000000".
+
+**Not measured:** the stat probes' and the real-row test's failure under any break, because the proofs ran only this
+prefix.
 
 ---
 
