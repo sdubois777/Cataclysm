@@ -510,6 +510,23 @@ public:
 	bool bBlockedByGeometry = false;
 
 	/**
+	 * Whether a void aura has rolled for this shot: once is all it is ever rolled. The Null Emperor ten-piece, ruled
+	 * 2026-10-17 (O9): "50% rolled once per projectile". Read by tests.
+	 */
+	bool bVoidAuraRolled = false;
+
+	/** True when a void aura consumed it: it ended there and delivered nothing. Read by tests. */
+	bool bConsumedByAVoidAura = false;
+
+	/**
+	 * Whether the stretch `From` to `To` of this sub-step brought it within a void aura that consumes it, and if so
+	 * end it there with no blast and no hit. See `UCataclysmVoidAura`. Asked by `Step` after it moves and before it
+	 * hits anything, so a shot consumed on the step it would land delivers nothing. Never for a shot that deals
+	 * nothing, such as a floor's falling fireball, whose patch is laid by the floor and not by the ball.
+	 */
+	bool TakenByAVoidAura(const FVector& From, const FVector& To);
+
+	/**
 	 * Make this one of the several projectiles one use of a skill fired. Ruled 2026-10-12 under the owner's
 	 * delegation, for "Skills get +1-4 to projectile count": ONE ENEMY IS LANDED ON BY AT MOST ONE PROJECTILE OF ONE
 	 * USE.

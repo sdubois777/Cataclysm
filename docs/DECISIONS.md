@@ -2,6 +2,269 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-17 — While a wearer holds ten Void, a row can give it an aura that consumes an enemy's shot in flight within 3 m on a chance rolled once, with no blast and no hit: the Null Emperor set's third layer, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVoidAura.h` and `.cpp` (new: `UCataclysmVoidAura`, the stat
+`void_aura_projectile_consume_chance`, `StacksNeeded`, `RadiusCm`, the register, `AuraThatReaches`, `RollConsumes` and
+the roll pin `Cataclysm.VoidAuraConsumeRoll`); `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp`
+(`TakenByAVoidAura`, asked in `Step`, and `bVoidAuraRolled`, `bConsumedByAVoidAura`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (`GainKeptStack` notes the character in the
+register); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stat among those with no attribute);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` (`KeptStacksEntry` ends ", void aura";
+`ProjectileConsumedWord` and `RecordProjectileConsumed`); `game/Source/Cataclysm/Tests/CataclysmVoidAuraTests.cpp` (new,
+seven tests); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (the stat's probe);
+`tools/generate_datatables.py` (`VOID_AURA_PROJECTILE_CONSUME_CHANCE_STAT` and its check);
+`tools/tests/test_null_emperor_void_aura_rows.py` (new); `tools/tests/test_stat_lookups_hand_over_what_they_should.py`
+(the stat's one call site). Issue [#1652](https://github.com/sdubois777/Cataclysm/issues/1652). Built on the layer below
+it, the entry after this one.
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the row is written:
+
+- **NOTHING HAS THE AURA UNTIL THE ROW IS WRITTEN ABOVE THIS LAYER**, by the enchantment session. This layer authors no
+  row. A ten-piece bonus is live only with ten pieces worn.
+- **THE AURA IS UP WHILE THE WEARER HOLDS TEN VOID, AND ONLY THEN.** Ten is the six-piece's cap, so the aura lasts from
+  the tenth hit on a silenced enemy to the next ability but the basic attack, which spends all ten (O7 c) and ends it
+  that moment. A death, leaving the dungeon and taking the gear off end it too, because each leaves no Void.
+- **AN ENEMY'S SHOT IN FLIGHT THAT COMES WITHIN 3 M OF THE WEARER IS ROLLED ONCE, AT THE ROW'S 50%. ON SUCCESS IT ENDS
+  WHERE IT IS AND DELIVERS NOTHING**: no hit, no blast, no ailment. On a failure it flies on and is never rolled again.
+  The 3 m is a delegated number, the coordinating session's to tune against play (O9); the sentence states none. It
+  is measured on the ground plane, from the wearer's centre to the shot's path.
+- **A LOBBED BLAST IS TAKEN IN THE AIR**, before it lands: the Brute's rock, the Corrupted Sentinel's Brimstone Mortar,
+  the Gatekeeper's Soulfall. A lob passing over the wearer within 3 m on the ground is taken too, wherever it was aimed.
+- **THE GATEKEEPER'S SOULFALL STILL LEAVES ITS BURNING GROUND.** The ground is laid where the lob was aimed at the
+  moment it is thrown (`CataclysmGatekeeperCharacter.cpp` about 488), not by the lob when it lands, so consuming the lob
+  takes its hit and its blast and leaves the ground. Read, not tested.
+- **NEVER THE WEARER'S OWN SHOTS, AN ALLY'S OR A MINION'S**: only a shot whose firer the wearer is hostile to, by the
+  same test every blow asks (`UCataclysmTargeting::IsHostileTo`).
+- **A FLOOR'S FALLING FIREBALL IS NEVER TAKEN.** Infernal Rain's ball deals nothing (`CataclysmDungeonGameMode.cpp` about
+  14441, a damage percent of 0) and the floor lays its patch where the ball was aimed whatever happens to the ball, so
+  a shot that deals nothing is never rolled. A beam has no flight and is never taken either.
+- **THE LINE ABOVE THE PLAYER'S BARS ENDS ", void aura" WHILE IT IS UP**: "Void 10/10: next ability free, 100% more
+  damage, void aura". At nine it reads "Void 9/10".
+- **A CONSUMED SHOT VANISHES WHERE IT WAS TAKEN AND THE WORD "Consumed" RISES THERE**, in the grey of a hit that got
+  nothing through, through the queue the floating damage numbers use.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 41.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner said nothing on this layer; the owner's O1 and O2 are the first layer's. The coordinating session's ruling of
+2026-10-17, its words and not the owner's: O9, "consume enemy projectiles in flight within 3 m (a delegated number; the
+entry says so), 50% rolled once per projectile, no blast, never the player's own." Its brief 41 adds: the aura ends the
+moment Void falls below 10, and a lobbed blast is consumed before it lands, "the reason O9 chose in-flight over a
+hit-time block". Already ruled, in the entry of 2026-10-13 that begins "A row can make its wearer's auras more
+effective": "Nothing for the set bonuses whose sentences say 'aura'", this one among them, so `aura_effect` does not
+reach this aura.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| O9 | While the wearer holds ten Void. | `UCataclysmVoidAura::ConsumeChanceOf`, `CataclysmVoidAura.cpp` 30: nought unless `KeptStacksHeldNamed("Void")` (S2's reader, unchanged) is at least `StacksNeeded`, `CataclysmVoidAura.h` 52; then the row's stat, asked with no tags. `IsUp` is that above nought. |
+| O9 | An enemy's shot in flight within 3 m. | `ACataclysmProjectile::Step`, `CataclysmProjectile.cpp` 403, asks `TakenByAVoidAura` (844) for every sub-step after the move and before any hit; it asks `UCataclysmVoidAura::AuraThatReaches` (`CataclysmVoidAura.cpp` 57): the stretch the sub-step flew, within `RadiusCm` (`CataclysmVoidAura.h` 58, 300) of a noted wearer on the ground plane. |
+| O9 | Never the player's own. | `AuraThatReaches`, `CataclysmVoidAura.cpp` 85: `UCataclysmTargeting::IsHostileTo(Avatar, Firer)`, so a wearer counts only for a firer whose skills may hit it. |
+| O9 | 50%, rolled once per projectile. | `TakenByAVoidAura`, 848: `bVoidAuraRolled` is set at the first roll and every later sub-step returns at once; `RollConsumes` (`CataclysmVoidAura.cpp` 95) rolls 0 to 100 against the chance. |
+| O9 | No blast, no hit. | `TakenByAVoidAura`, 867: `bConsumedByAVoidAura`, `bDetonatesWhenItStops` cleared, then `Finish`, whose blast asks that flag; `Step` returns before `HitAlongStep`. |
+| Brief 41 | It ends the moment Void falls below ten. | Nothing kept: `ConsumeChanceOf` reads the count each time it is asked. |
+| The register | Who is asked. | `UCataclysmVoidAura::NoteMayHoldIt` (45), called from `UCataclysmAbilitySystemComponent::GainKeptStack`, `CataclysmAbilitySystemComponent.cpp` 5515. |
+| The row | One flat stat. | `void_aura_projectile_consume_chance`: `UCataclysmVoidAura::ConsumeChanceStat`; `UCataclysmPlayerClassStats::StatsWithNoAttribute`, `CataclysmPlayerClassStats.cpp` 778; `VOID_AURA_PROJECTILE_CONSUME_CHANCE_STAT` and `refuse_a_void_aura_row_the_game_cannot_read`, `generate_datatables.py` 10391 and 10395. |
+| The UI | The aura is up; a shot was consumed. | `UCataclysmCombatOverlay::KeptStacksTextFor` and `KeptStacksEntry`, `CataclysmCombatOverlay.cpp` 610 and 628; `RecordProjectileConsumed`, 1143. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE TEN VOID ARE ASKED BY THE ENGINE, BY NAME, NOT BY A CONDITION ON THE ROW.** `ConsumeChanceOf` reads
+  `KeptStacksHeldNamed("Void")` against 10, the sentence's figure, as S2's entry foresaw ("the reader for the next
+  layer is by name"). The option not taken: a new condition, say "own kept stacks named X at least N", which would need
+  the name in a cell no condition has, the condition lists of the generator, a place in the passive tree's test of
+  every condition name and an entry built ahead of its row, for the one stat that has one reader.
+- **A STAT AND NOT AN ACTION.** The aura is a standing state while ten are held, not something an event does. The
+  option not taken: an action row, which would have no event to fire on.
+- **A REGISTER NOTED AT EVERY GAIN OF A KEPT STACK**, of every character that gains one, asked only when a shot moves.
+  A gain is the one way a count reaches ten (`GainKeptStack` is the only writer of kept stacks). The options not
+  taken: a query of the world's players, which misses a wearer that is not a player character; and a sphere search
+  around every shot on every sub-step, a second overlap query on every projectile in the game.
+- **THE PATH OF THE SUB-STEP, NOT ITS END, AND ON THE GROUND PLANE, CENTRE TO CENTRE.** A shot is in reach when the
+  stretch it flew in one sub-step passes within 3 m of the wearer's centre, measured flat as a shot's range and a pull
+  are. The options not taken: its end point alone, which a long sub-step could carry past the aura and into the wearer
+  in one step; the distance through the air, which would let a lob at its apex pass over a wearer it then lands on;
+  adding the wearer's body to the 3 m.
+- **ASKED AFTER THE MOVE AND BEFORE THE HIT, IN THE SAME SUB-STEP**, so a shot consumed on the step it would land
+  delivers nothing. The option not taken: before the move, which leaves a shot entering the aura and striking in one
+  step.
+- **ONCE PER PROJECTILE, NOT ONCE PER WEARER**, as O9 says. With several wearers in reach, the nearest's chance. The
+  option not taken: once per wearer (the reconnaissance's reading), which two players side by side would turn into two
+  rolls; and the highest chance among them.
+- **A SHOT THAT DEALS NOTHING IS NEVER ROLLED.** Nothing to consume, and Infernal Rain's patch lands whatever happens to
+  its ball. The option not taken: take it, which would hide the ball and leave the patch falling out of nothing.
+- **THE END STILL TELLS ITS LISTENERS.** `Finish` broadcasts `OnFinished` for a consumed shot, so whatever counts the
+  firer's shots in the air still hears it has stopped. Only a player's projectile skill listens, and no hostile
+  wearer of the aura exists: a creature has no gear. The option not taken: end silently, which would leave a firing
+  skill waiting for a shot for ever.
+- **THE GATEKEEPER'S GROUND STAYS.** It is the ability's, laid at the throw. The option not taken: tie the ground to
+  the lob and take both, which is a change to the Gatekeeper and wider than O9.
+- **THE CUE FOR A CONSUMED SHOT IS A FLOATING WORD**, "Consumed", through `ACataclysmHUD::AddDamageNumber`, the queue
+  that already shows "Evaded" for a blow that got nothing through, in that grey. Found, and the smallest that fits:
+  the impact burst belongs to a landed hit (`UCataclysmImpactEffect`) and a consumed shot lands none, the shot's own
+  effect is a head and a trail that die with it (`UCataclysmProjectileEffect::AttachTo`), and a creature's status line
+  belongs to the firer, not to the shot. The option not taken: no cue, which the owner's rule that every system has a
+  basic display refuses.
+- **THE AURA LINE IS A SUFFIX ON THE VOID ENTRY**, ", void aura", on `KeptStacksEntry`'s words, which already end with
+  the free next ability at ten. The option not taken: an entry of its own, which would say ten twice.
+- **THE CHANCE IS HELD TO 0 TO 100**, and two such rows would add, as flat rows do. No second row exists.
+
+### THE GENRE SOURCE
+
+None. The sentence states the mechanic, and brief 41 fetched nothing: O9's 3 m and once per projectile are the
+coordinating session's ruling and a delegated number.
+
+### WHAT WAS BUILT
+
+- **The aura**: `UCataclysmVoidAura`, its stat, its figures, its register and its roll.
+- **The consuming**: `ACataclysmProjectile::TakenByAVoidAura`, asked in `Step`; two flags a test reads.
+- **The register's one entry point**: a line in `GainKeptStack`.
+- **The display**: ", void aura" on the kept-stack line; the floating word "Consumed".
+- **The row's shape**: the stat among those with no attribute, its generator check and its probe.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One row on the Enchantment Effects sheet:
+
+| Cell | Value |
+| :-- | :-- |
+| Enchantment | `Positive_Null_Emperor_10_Piece_Bonus_While_you_have_at` |
+| Effect | "Null Emperor (10-Piece Bonus): While you have at least 10 stacks of Void, you gain an aura of void energy that has a 50% chance to consume enemy projectiles" |
+| Stat | `void_aura_projectile_consume_chance` |
+| Value Kind | `flat` |
+| Value Low, Value High | 50, 50 |
+| every other cell | empty (a Required Tag, an Action, a Condition and a Scale are refused) |
+
+It passes the generator on a made-up sheet (`tools/tests/test_null_emperor_void_aura_rows.py`). The set rule is met: the
+2-piece and the drawback landed in the first layer.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts** `void_aura_projectile_consume_chance` on a `flat` row with no Required Tags and no Action,
+  above 0 and at most 100, a range that rises. **It refuses** it with any other value kind, under a required tag, with
+  an action, at 0 or less, above 100, or on a falling range; a Condition or a Scale on it is refused by the two general
+  checks, because the stat is on neither of their lists.
+- **`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`** reads the new name, and its probe
+  `ProbeVoidAuraProjectileConsumeChance` is added.
+- **`tools/tests/test_stat_lookups_hand_over_what_they_should.py`** holds the stat's one call site in
+  `CataclysmVoidAura.cpp`. `CALL_SITES` is the count measured on af715829 and does not move, as for every entry since.
+
+No other merged test asserts anything different, by reading: no character carries the stat, so `IsUp` is false for
+every one and every shot flies, hits and blasts as before; a shot that deals nothing returns before the register is
+read; and `KeptStacksTextFor` writes the same words for every wearer whose aura is not up.
+
+### Tests
+
+Seven new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmVoidAuraTests.cpp`, the group `Cataclysm.Silence.Aura.`,
+with helpers of this file's own names. The rows are made by hand: the six-piece's action, which names the stacks Void,
+and the ten-piece's flat 50. A wearer is a creature of the players' side and a firer one of the monsters' side; every
+wearer's evasion is nought and the critical strike roll is pinned at 100 after the world is made. Each shot is fired
+with `ACataclysmProjectile::Fire` and stepped by hand at a sixtieth of a second, 20 cm a step for a flat shot. Separate
+scenes stand 40 m apart and everything in a scene at least a metre apart. A scene is a wearer, a firer 8 m along -X
+and a bystander of the wearer's side 1.5 m along +Y; a flat shot does not pierce and blasts 2 m where it stops.
+
+1. `AnEnemyShotEnteringTheAuraAtTenVoidIsConsumedAndDeliversNothing`. Roll pinned at 10. In order: set-up, three scenes;
+   nine Void and the ten-piece; ten Void and the ten-piece; ten Void and the six-piece alone. Control, at nine: the aura
+   is not up; the shot is never rolled; nor consumed; the wearer loses health; and the blast reaches the bystander.
+   Control, ten Void without the ten-piece: the shot is never rolled; and the wearer loses what the wearer at nine
+   lost. At ten: the aura is up; the shot is rolled; consumed; it has ended; it ended inside the 3 m (with half a
+   centimetre for rounding) and more than a metre short of the wearer; it struck nobody; the wearer loses nothing; and
+   no blast reaches the bystander.
+2. `AFailedRollIsNotRolledAgainAsTheShotFliesOnAndItHits`. Roll pinned at 80, then at 10. In order: set-up, two scenes;
+   nine Void; ten Void; control, at nine the shot lands; control, after one step, 8 m off, the shot at ten has not been
+   rolled; inside the 3 m it is rolled; not consumed; still flying; then with the roll at 10, it is still not consumed;
+   and it lands for what the control's shot dealt.
+3. `TheWearersOwnShotAndAnAllysAreNeverConsumed`. Roll pinned at 0, which passes any chance above nought. An ally of the
+   wearer's side 2 m along -Y, and a target of the monsters' side 6 m along +X. In order: set-up, the scene, the ally
+   and the target; ten Void and the ten-piece; control, an enemy's shot at the wearer is consumed; the wearer's own
+   shot, fired from where it stands, is never rolled; nor consumed; and it lands on the target; the ally's shot, fired
+   inside the aura, is never rolled; nor consumed; and it lands on the target.
+4. `AShotPassingFourMetresOffIsNotConsumed`. Roll pinned at 0. Two lanes, each a wearer, a firer 8 m along -X and a
+   creature of the wearer's side 8 m along +X, both in a lane beside the wearer. In order: set-up, two lanes; ten Void
+   and the ten-piece, twice; control, a shot passing 2.5 m off is consumed; control, and the creature at the lane's end
+   loses nothing; a shot passing 4 m off is never rolled; nor consumed; and it lands on the creature at the lane's end.
+5. `ALobbedBlastIsConsumedInFlightAndDealsNothingOnTheGround`. A quarter-arc lob over 8 m with a 2 m blast, aimed at
+   the wearer's place, as the Corrupted Sentinel fires its mortar. Roll pinned at 10. In order: set-up, two scenes;
+   nine Void; ten Void; it lobs; control, at nine the lob is not consumed; it lands and the wearer loses health; and so
+   does the bystander; at ten the lob is consumed; in the air with more than a metre of ground still to cover; the
+   wearer loses nothing; and nor does the bystander.
+6. `SpendingTheVoidEndsTheAuraAndTheNextEnemyShotHits`. Roll pinned at 10. In order: set-up, the scene; ten Void and
+   the ten-piece; control, the first shot is consumed; control, and the wearer loses nothing; the free next ability is
+   spent at twice, as `CommitAndBegin` spends it; it leaves no Void; so the aura is down; the next shot is never
+   rolled; nor consumed; and it lands.
+7. `TheLineSaysTheAuraIsUpAtTenAndNotAtNine`. In order: control, the entry at ten with no aura is the six-piece's words;
+   the entry with the aura up ends ", void aura"; set-up, three wearers; ten Void and the six-piece alone; nine Void and
+   the ten-piece; ten Void and the ten-piece; control, ten Void without the ten-piece reads no aura; nine Void with the
+   ten-piece reads "Void 9/10"; and ten Void with it reads the aura up.
+
+And one probe in `CataclysmStatExemptionTests.cpp`, `ProbeVoidAuraProjectileConsumeChance`: a player character holding
+ten Void; control, without the stat its chance is nought; with the stat at a flat 50 it is 50.
+
+Python: `tools/tests/test_null_emperor_void_aura_rows.py`, on a made-up workbook holding the sentence typed Generic: the
+row name is the shipped one; the row carried through as written and refused by no check; the stat is one with no
+attribute, with a made-up control; the generator's name is the engine's, with the skill lock's as the control; the
+engine's ten and its stacks' name "Void" are the sentence's, with the 3 m as the control that the sentence does not
+state; refused once each, by its own sentence, for the value kind, a required tag, an action, 0, -50, 101 and a falling
+range, each against the control that the carried row passes; 100 accepted; a condition and a scale refused by the
+general checks, with the ruled row as the control; and a row on another stat left alone.
+
+**Not tested:** the row through an imported table, with ten pieces worn (the enchantment session's real-row test); the
+word "Consumed" drawn (no test world has a heads-up display); a minion's shot and a maddened creature's; a dead wearer;
+two wearers in reach; a wall inside the aura; a piercing or glancing enemy shot; a beam; Infernal Rain's fireball never
+rolled and the Gatekeeper's ground still laid (both read); a death or a dungeon left ending the aura (the count those
+clear is S2's, tested there); the 3 m's exact edge (2.5 m and 4 m only); the real roll's spread; a player's projectile
+skill hearing a consumed shot finish.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script with comments and strings removed: 231, 84 and 0 pairs before the first and third,
+230 after the first, one round pair fewer, and 231 after the third; 46, 16 and 1 before the second, 45 after it). Each
+compiles alone by reading: `AuraThatReaches` takes a `const AActor*`, which `nullptr` is, and `GetOwner` is still
+called elsewhere in the file; `Firer` is still read by `AuraThatReaches`'s first check and `IsUp` is unchanged, and an
+include left unused is no error; `DamagePercent` is still read, and `bVoidAuraRolled` is still written and read by the
+tests. The failed assertions are counted by reading. The prefix is `Cataclysm.Silence.Aura.`, with its trailing dot,
+seven tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| A-I, no shot is ever in reach (O9) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `UCataclysmVoidAura::AuraThatReaches(GetOwner(), GetWorld(), From, To);` | `UCataclysmVoidAura::AuraThatReaches(nullptr, GetWorld(), From, To);` | `AnEnemyShotEnteringTheAuraAtTenVoidIsConsumedAndDeliversNothing` | `AFailedRollIsNotRolledAgainAsTheShotFliesOnAndItHits`, `TheWearersOwnShotAndAnAllysAreNeverConsumed`, `AShotPassingFourMetresOffIsNotConsumed`, `ALobbedBlastIsConsumedInFlightAndDealsNothingOnTheGround`, `SpendingTheVoidEndsTheAuraAndTheNextEnemyShotHits` |
+| A-II, the wearer's own and an ally's shots are taken (O9) | `game/Source/Cataclysm/AbilitySystem/CataclysmVoidAura.cpp` | `if (!UCataclysmTargeting::IsHostileTo(Avatar, Firer) \|\| !IsUp(Wearer))` | `if (!IsUp(Wearer))` | `TheWearersOwnShotAndAnAllysAreNeverConsumed` | none |
+| A-III, a shot is rolled on every sub-step (O9) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `if (bVoidAuraRolled \|\| DamagePercent <= 0.0f)` | `if (DamagePercent <= 0.0f)` | `AFailedRollIsNotRolledAgainAsTheShotFliesOnAndItHits` | none |
+
+(The `\|` in the table is a `|` in the file.)
+
+Failed assertions, by reading:
+
+- **A-I, 17 in 6 tests.** Test 1, 6: "the shot is rolled", "and, the roll under 50, consumed", "inside the 3 m and short
+  of the wearer" (it ends at the wearer, under a metre off), "it struck nobody" (it strikes two), "the wearer loses
+  nothing" and "and no blast reaches the bystander"; its controls, "the aura is up" and "and it has ended" pass. Test
+  2, 2: "inside the 3 m it is rolled" and "and still flying" (it has landed); the two after the second pin pass. Test
+  3, 1: "control: an enemy's shot at the wearer is consumed". Test 4, 2: the 2.5 m control's two. Test 5, 4: "at ten
+  the lob is consumed", "in the air", and the two "loses nothing". Test 6, 2: its two controls; the spend and the
+  second shot pass. Test 7 passes.
+- **A-II, 6 in 1 test.** Test 3: for each of the wearer's own shot and the ally's, "is never rolled", "nor consumed"
+  and "and it lands" (both start inside the aura, and the roll at 0 takes them). No other test fires a shot whose firer
+  is not hostile to a wearer in reach.
+- **A-III, 2 in 1 test.** Test 2: "with the roll then under 50 it is still not consumed" and "and it lands for what the
+  control's shot dealt". Every other consumed shot is taken at its first roll.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No other test carries the stat.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-17 — A row can gain a kept stack on each hit on a silenced enemy, and at its cap make the next ability but the basic attack cost no mana and deal more damage, spending them all: the Null Emperor set's second layer, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the condition

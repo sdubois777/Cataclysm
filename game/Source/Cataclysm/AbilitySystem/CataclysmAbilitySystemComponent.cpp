@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSilence.h"
+#include "AbilitySystem/CataclysmVoidAura.h"
 // For the blast an action deals from an enemy that died.
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmAilments.h"
@@ -5508,6 +5509,10 @@ void UCataclysmAbilitySystemComponent::GainKeptStack(FName Key, int32 Cap)
 	FKeptStack& Held = KeptStacks.FindOrAdd(Key);
 	Held.Count = FMath::Min(HeldNow + 1, Cap);
 	Held.DungeonId = DungeonBeingWalked();
+
+	// AND THIS CHARACTER MAY NOW HOLD THE NULL EMPEROR TEN-PIECE'S AURA, which a shot in flight asks of the characters
+	// noted here. A gain is the one way a count reaches ten. Ruled 2026-10-17 (O9).
+	UCataclysmVoidAura::NoteMayHoldIt(this);
 }
 
 int32 UCataclysmAbilitySystemComponent::SpendKeptStacks(FName Key)

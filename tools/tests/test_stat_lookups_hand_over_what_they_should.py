@@ -168,6 +168,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: 2026-10-16, asked with the slot's skill tags by
 #: `UCataclysmAbilitySystemComponent::SlotIsASkillGadget`, from the press and
 #: from the skill bar.
+#: The chance the Null Emperor ten-piece's aura consumes an enemy's shot added
+#: one more on 2026-10-17, asked with no tags by
+#: `UCataclysmVoidAura::ConsumeChanceOf`, for each shot in flight near a
+#: wearer and for the line above the bars.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -959,6 +963,13 @@ INVENTORY = {
         "bar with the held skill's tags and the slot's tag, as the lock is "
         "asked; a press is not a blow and the row has no condition, so no "
         "blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVoidAura.cpp',
+     'FName(ConsumeChanceStat), FGameplayTagContainer(), 0.0f'):
+        "the chance the Null Emperor ten-piece's aura consumes an enemy's shot "
+        "(ruled 2026-10-17, O9), asked by ConsumeChanceOf while the wearer "
+        "holds ten Void, for a shot in flight and for the line above the "
+        "bars; a shot is not one of the wearer's skills, so no tags, and no "
+        "blow has landed, so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

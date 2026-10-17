@@ -10368,6 +10368,92 @@ def refuse_a_skill_slot_gadget_row_the_game_cannot_read(
     return problems
 
 
+#: The per cent chance the Null Emperor ten-piece's aura consumes an enemy's
+#: shot in flight. Ruled 2026-10-17 by the coordinating session (O9), for
+#: "While you have at least 10 stacks of Void, you gain an aura of void energy
+#: that has a 50% chance to consume enemy projectiles".
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 50 to 50, with no Required Tags, no
+#: Condition, no Scale and no Action. The ten Void, the 3 m and the once-only
+#: roll are the engine's and not the row's: `UCataclysmVoidAura` asks the stat
+#: only while its wearer holds ten stacks named Void.
+#: `UCataclysmVoidAura::ConsumeChanceStat` holds the same name, and
+#: `tools/tests/test_null_emperor_void_aura_rows.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS,
+#: `UCataclysmVoidAura::ConsumeChanceOf`, for a shot in flight, where no skill
+#: of the wearer's is in hand. So a row requiring a tag matches nowhere, a row
+#: of any kind but `flat` works on a base of nought, and a row with an action is
+#: not a stat line at all.
+#:
+#: THE BOUND IS THE ENGINE'S: above nought and at most 100, which
+#: `ConsumeChanceOf` holds the figure to.
+VOID_AURA_PROJECTILE_CONSUME_CHANCE_STAT = "void_aura_projectile_consume_chance"
+MAX_VOID_AURA_PROJECTILE_CONSUME_CHANCE = 100.0
+
+
+def refuse_a_void_aura_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `VOID_AURA_PROJECTILE_CONSUME_CHANCE_STAT` is a chance its one
+    reader takes as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_share_of_allies_damage_row_the_game_cannot_read`, for one
+    stat.
+
+    A RANGE IS ALLOWED AND MUST RISE: the game rolls from the first column to
+    the second.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat = VOID_AURA_PROJECTILE_CONSUME_CHANCE_STAT
+    top = MAX_VOID_AURA_PROJECTILE_CONSUME_CHANCE
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the chance itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and consumes NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, for a shot in flight, "
+                f"so a row requiring a tag matches nowhere: this one would "
+                f"consume NOTHING and say nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        for value in sorted({low, high}):
+            if not 0.0 < value <= top:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the chance "
+                    f"must be above 0 and at most {top:g}. Nought or less "
+                    f"consumes nothing, and the game holds the chance to "
+                    f"{top:g}.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10759,6 +10845,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # REQUIRES ONE SLOT'S TAG AND NOTHING ELSE, AND HAS NO ACTION. Ruled
     # 2026-10-16.
     problems.extend(refuse_a_skill_slot_gadget_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE CHANCE THE VOID AURA CONSUMES AN ENEMY'S SHOT IS FLAT, ABOVE 0
+    # AND AT MOST 100, WITH NO TAGS AND NO ACTION. Ruled 2026-10-17 (O9).
+    problems.extend(refuse_a_void_aura_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
