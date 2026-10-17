@@ -15,6 +15,8 @@
 #include "AbilitySystem/CataclysmMinion.h"
 // For the Null Emperor 2-piece's silence. Ruled 2026-10-17.
 #include "AbilitySystem/CataclysmSilence.h"
+// For the Null Emperor 10-piece's void aura. Ruled 2026-10-17.
+#include "AbilitySystem/CataclysmVoidAura.h"
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -26887,6 +26889,95 @@ bool FCataclysmNullEmperorVoidRowTest::RunTest(const FString&)
 	TestEqual(TEXT("with six pieces worn, a hit on a silenced enemy gains one Void. If not, DT_EnchantmentEffects may be "
 				   "older than the rows: run tools/generate_datatable_assets.py"),
 		SixPieces.ASC->KeptStacksHeldNamed(TEXT("Void")), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNullEmperorVoidAuraRowTest,
+	"Cataclysm.Enchantments.TheWornNullEmperorTenPieceRaisesTheVoidAuraAtTenVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Enemy silence, stack S3's row layer, ruled 2026-10-17: "Null Emperor (10-Piece Bonus): While you have at least 10
+ * stacks of Void, you gain an aura of void energy that has a 50% chance to consume enemy projectiles", whose row is
+ * `void_aura_projectile_consume_chance` flat 50. WORN by a real player: what the aura then does to a shot is
+ * `Cataclysm.Silence.Aura.`'s.
+ *
+ * A SET'S BONUSES TURN ON BY HOW MANY PIECES OF IT ARE WORN, every threshold at or below the count (`CataclysmItem.cpp`,
+ * "EVERY THRESHOLD AT OR BELOW THE COUNT"). So the CONTROL wears NINE pieces and holds the 6-piece but not the
+ * 10-piece, and the case wears TEN and holds both. Each piece carries the 10-piece and the set's drawback.
+ *
+ * THE TEN VOID ARE GAINED AS PLAY GAINS THEM, not set by hand: each striker silences its creature and strikes it ten
+ * times, so the worn 6-piece's row gains each stack through `GainKeptStack`, which is also what puts the wearer in the
+ * aura's register. The case is ONE assertion, so on assets built before the row it fails once, and only there.
+ */
+bool FCataclysmNullEmperorVoidAuraRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmApplyStatusRowTest;
+	const TCHAR* Bonus = TEXT("Positive_Null_Emperor_10_Piece_Bonus_While_you_have_at");
+	const TCHAR* Drawback = TEXT("Negative_Your_own_ultimate_ability_is_disabled");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces and two creatures"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces and two creatures"), TenPieces.Ready())
+		|| !TestTrue(TEXT("the State.Silenced tag exists"), UCataclysmSilence::SilencedTag().IsValid()))
+	{
+		return false;
+	}
+
+	// THE OTHER PIECES. The striker's own helm is the first; each more piece carries the same two rows.
+	const TCHAR* More[] = {TEXT("Chest_Cuirass"), TEXT("Shoulders_Pauldrons"), TEXT("Gloves_Gauntlets"),
+						   TEXT("Pants_Greaves"), TEXT("Boots_Sabatons"), TEXT("Belt_Girdle"), TEXT("Ring_Band"),
+						   TEXT("Necklace_Amulet"), TEXT("Relic_Idol")};
+	const auto Wears = [&](CataclysmConsecutiveRowTest::FStriker& Striker, int32 Extra) -> bool
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+		UCataclysmEquipmentComponent* Equipment = Striker.Character->GetEquipment();
+		if (!Equipment)
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Extra; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(Carrying(More[Index], Bonus, Drawback), Removed, AlsoRemoved, Slot);
+		}
+		Equipment->RefreshAttributes(Striker.ASC);
+		Striker.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		return true;
+	};
+	// TEN VOID, GAINED BY TEN HITS ON A SILENCED CREATURE THROUGH THE WORN 6-PIECE.
+	const auto GainsTenVoid = [&](CataclysmConsecutiveRowTest::FStriker& Striker) -> bool
+	{
+		if (!UCataclysmSilence::ApplySilence(Striker.Character, Striker.First, 1.0f))
+		{
+			return false;
+		}
+		for (int32 Hit = 0; Hit < 10; ++Hit)
+		{
+			if (Blow(Striker, Striker.First, /*bCritical=*/false, /*bStrike=*/false) <= 0.0f)
+			{
+				return false;
+			}
+		}
+		return Striker.ASC->KeptStacksHeldNamed(TEXT("Void")) == 10;
+	};
+	if (!TestTrue(TEXT("set-up: nine pieces worn"), Wears(NinePieces, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), Wears(TenPieces, 9))
+		|| !TestTrue(TEXT("set-up: nine pieces gain ten Void through the worn 6-piece"), GainsTenVoid(NinePieces))
+		|| !TestTrue(TEXT("set-up: ten pieces gain ten Void through the worn 6-piece"), GainsTenVoid(TenPieces)))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: nine pieces are below the 10-piece's threshold, so ten Void raise no aura.
+	TestFalse(TEXT("control: with nine pieces worn and ten Void, the void aura is not up"),
+		UCataclysmVoidAura::IsUp(NinePieces.ASC));
+
+	TestTrue(TEXT("with ten pieces worn and ten Void, the void aura is up. If not, DT_EnchantmentEffects may be older "
+				  "than the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmVoidAura::IsUp(TenPieces.ASC));
 	return true;
 }
 
