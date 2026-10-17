@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSilence.h"
+#include "AbilitySystem/CataclysmVoidAura.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
@@ -605,19 +606,28 @@ FString UCataclysmCombatOverlay::KeptStacksTextFor(const AActor* Actor)
 	TArray<FString> Parts;
 	for (const UCataclysmAbilitySystemComponent::FHeldKeptStacks& Each : AbilitySystem->KeptStacksForDisplay())
 	{
-		Parts.Add(KeptStacksEntry(Each.Name, Each.Held, Each.Cap, Each.bFreeNextAbility, Each.MorePercent));
+		// AND WHETHER THE VOID THESE STACKS ARE HOLDS THE TEN-PIECE'S AURA UP NOW. Ruled 2026-10-17 (O9).
+		const bool bVoidAuraUp = Each.Name.Equals(UCataclysmVoidAura::StacksName, ESearchCase::IgnoreCase)
+			&& UCataclysmVoidAura::IsUp(AbilitySystem);
+		Parts.Add(KeptStacksEntry(Each.Name, Each.Held, Each.Cap, Each.bFreeNextAbility, Each.MorePercent,
+								  bVoidAuraUp));
 	}
 	return FString::Join(Parts, TEXT("  "));
 }
 
 FString UCataclysmCombatOverlay::KeptStacksEntry(const FString& Name, int32 Held, int32 Cap, bool bFreeNextAbility,
-												 float MorePercent)
+												 float MorePercent, bool bVoidAuraUp)
 {
 	FString Entry = FString::Printf(TEXT("%s %d/%d"), Name.IsEmpty() ? TEXT("Stacks") : *Name, Held, Cap);
 	// AT THE CAP OF A ROW WHOSE STACKS BUY THE NEXT ABILITY, WHAT THAT PRESS WILL BE. Ruled 2026-10-17.
 	if (bFreeNextAbility && Cap > 0 && Held >= Cap)
 	{
 		Entry += FString::Printf(TEXT(": next ability free, %d%% more damage"), FMath::RoundToInt(MorePercent));
+	}
+	// AND THE TEN-PIECE'S AURA WHILE IT IS UP. Ruled 2026-10-17 (O9).
+	if (bVoidAuraUp)
+	{
+		Entry += TEXT(", void aura");
 	}
 	return Entry;
 }
@@ -1125,5 +1135,30 @@ void UCataclysmCombatOverlay::Record(const AActor* Struck,
 	Number.WorldAnchor = Struck->GetActorLocation()
 		+ FVector(0.0f, 0.0f, AnchorHeightFor(Struck));
 
+	HeadsUpDisplay->AddDamageNumber(Number);
+}
+
+const TCHAR* UCataclysmCombatOverlay::ProjectileConsumedWord = TEXT("Consumed");
+
+void UCataclysmCombatOverlay::RecordProjectileConsumed(const AActor* Shot, const FVector& Where)
+{
+	// THE PATH `Record` TAKES, with a word and no hit: the shot's own world, its first player controller, its heads-up
+	// display. Ruled 2026-10-17 (O9). A world with no local player draws nothing.
+	const UWorld* World = Shot ? Shot->GetWorld() : nullptr;
+	if (!World || !DamageNumbersEnabled())
+	{
+		return;
+	}
+	const APlayerController* Controller = World->GetFirstPlayerController();
+	ACataclysmHUD* HeadsUpDisplay = Controller ? Cast<ACataclysmHUD>(Controller->GetHUD()) : nullptr;
+	if (!HeadsUpDisplay)
+	{
+		return;
+	}
+	FCataclysmDamageNumber Number;
+	Number.Text = ProjectileConsumedWord;
+	Number.Colour = ColourFromHex(NothingThroughHex);
+	Number.StartedAt = World->GetTimeSeconds();
+	Number.WorldAnchor = Where;
 	HeadsUpDisplay->AddDamageNumber(Number);
 }

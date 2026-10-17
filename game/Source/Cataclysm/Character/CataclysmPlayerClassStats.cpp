@@ -768,6 +768,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// 1 whose Required Tags is the slot's tag. A flag. No gameplay
 		// attribute and no base.
 		TEXT("skill_slot_is_a_gadget"),
+		// The per cent chance the Null Emperor ten-piece's aura consumes an
+		// enemy's shot in flight, read by UCataclysmVoidAura::ConsumeChanceOf
+		// with no tags while the wearer holds ten Void, from
+		// ACataclysmProjectile::Step. Ruled 2026-10-17 (O9), for "While you
+		// have at least 10 stacks of Void, you gain an aura of void energy that
+		// has a 50% chance to consume enemy projectiles". Flat. No gameplay
+		// attribute and no base.
+		TEXT("void_aura_projectile_consume_chance"),
 	};
 	return Stats;
 }
