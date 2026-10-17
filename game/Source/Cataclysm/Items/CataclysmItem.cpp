@@ -1451,6 +1451,20 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						// bars. Nothing applies it as a status: this action's `ApplyStatus` is None.
 						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
 					}
+					// AND WHETHER IT GAINS A KEPT STACK ON ITS EVENT AND, AT ITS CAP, MAKES THE NEXT ABILITY BUT
+					// THE BASIC ATTACK FREE AND EMPOWERED, spending them all. Ruled 2026-10-17 (O7, O8), the Null
+					// Emperor 6-piece. The value is how much more damage that ability deals, in per cent; Scale Max
+					// Steps is the cap; the Ailment cell is what the row calls its stacks. Keyed by the row's
+					// trigger key, as the action above is.
+					if (Effect->Action.Equals(
+							UCataclysmAbilitySystemComponent::KeptStacksFreeNextAbilityAction,
+							ESearchCase::IgnoreCase))
+					{
+						Action.bKeptStacksFreeNextAbility = true;
+						Action.KeptStackKey = Action.TriggerKey;
+						Action.KeptStackCap = Effect->ScaleMaxSteps;
+						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
+					}
 					// AND WHETHER IT TRIGGERS A DIFFERENT HELD SKILL: one with a cooldown, free, or a spell that
 					// pays its cost. Ruled 2026-10-06. The value is the chance.
 					Action.bTriggerHeldSkill = Effect->Action.Equals(
