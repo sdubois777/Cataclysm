@@ -626,9 +626,12 @@ public:
 	 * next press is the free one. A row that states no name reads "Stacks", as above.
 	 *
 	 * @param MorePercent  what that ability deals more, in per cent, whole; read only at the cap of such a row
+	 * @param bVoidAuraUp  whether these stacks hold the Null Emperor ten-piece's aura up now
+	 *                     (`UCataclysmVoidAura::IsUp`): the entry then ends ", void aura". Ruled 2026-10-17 (O9),
+	 *                     under the same rule: the wearer must see the aura is up
 	 */
 	static FString KeptStacksEntry(const FString& Name, int32 Held, int32 Cap, bool bFreeNextAbility = false,
-								   float MorePercent = 0.0f);
+								   float MorePercent = 0.0f, bool bVoidAuraUp = false);
 
 	/**
 	 * What a living actor still owes of its delayed damage, such as "Owed 132", or empty while it owes nothing.
@@ -951,4 +954,17 @@ public:
 	 */
 	static void Record(const AActor* Struck, const FCataclysmIncomingHit& Hit,
 					   const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * The word a shot a void aura consumed shows where it ended: "Consumed". Ruled 2026-10-17 (O9), under the owner's
+	 * rule that every system ships with a basic display: a shot that vanishes in the air must say why.
+	 */
+	static const TCHAR* ProjectileConsumedWord;
+
+	/**
+	 * Hand that word to the heads-up display, at `Where`, in the grey of a hit that got nothing through, through the
+	 * queue the floating damage numbers use. Does nothing where `Record` does nothing: no world, no player
+	 * controller, no heads-up display, or the numbers switched off. Every automation test takes that path.
+	 */
+	static void RecordProjectileConsumed(const AActor* Shot, const FVector& Where);
 };

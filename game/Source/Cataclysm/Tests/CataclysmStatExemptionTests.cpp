@@ -47,6 +47,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmVoidAura.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -8793,6 +8794,60 @@ namespace CataclysmStatExemptionTest
 		System->ReleaseOfASkillGadgetSlot(HeavyKey);
 	}
 
+	/**
+	 * `void_aura_projectile_consume_chance`, read by `UCataclysmVoidAura::ConsumeChanceOf` with no tags while its
+	 * wearer holds ten Void, which `ACataclysmProjectile::Step` asks for each shot in flight. Ruled 2026-10-17 (O9),
+	 * for the Null Emperor ten-piece. ONE PLAYER CHARACTER HOLDING TEN VOID, from a six-piece row made by hand. THE
+	 * CONTROL IS THE SAME CHARACTER BEFORE THE STAT IS GRANTED: its chance is nought. Granted at a flat 50, it is 50.
+	 *
+	 * WHAT THIS DOES NOT REACH. A shot consumed, the 3 m and the once-only roll: `Cataclysm.Silence.Aura.` in
+	 * `CataclysmVoidAuraTests.cpp`.
+	 */
+	void ProbeVoidAuraProjectileConsumeChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Player = SpawnPotionHolder(World);
+		UCataclysmAbilitySystemComponent* System = Player
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player))
+			: nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a player character with an ability system"), System))
+		{
+			return;
+		}
+		FCataclysmPoolAction SixPiece;
+		SixPiece.Event = FName(TEXT("hit_dealt"));
+		SixPiece.Pool = FName(UCataclysmAbilitySystemComponent::KeptStacksFreeNextAbilityAction);
+		SixPiece.Percent = 100.0f;
+		SixPiece.bKeptStacksFreeNextAbility = true;
+		SixPiece.KeptStackKey = FName(TEXT("Probe:void"));
+		SixPiece.KeptStackCap = UCataclysmVoidAura::StacksNeeded;
+		SixPiece.StatusName = UCataclysmVoidAura::StacksName;
+		SixPiece.TriggerKey = SixPiece.KeptStackKey;
+		System->SetPoolActions({SixPiece});
+		for (int32 Each = 0; Each < UCataclysmVoidAura::StacksNeeded; ++Each)
+		{
+			System->GainKeptStack(SixPiece.KeptStackKey, SixPiece.KeptStackCap);
+		}
+		if (!Test.TestEqual(TEXT("set-up: it holds ten Void"),
+							System->KeptStacksHeldNamed(UCataclysmVoidAura::StacksName), 10))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: holding ten Void and no such row, its chance to consume a shot is nought"),
+					   UCataclysmVoidAura::ConsumeChanceOf(System), 0.0f, 0.0001f);
+
+		GrantFlat(Player, UCataclysmVoidAura::ConsumeChanceStat, 50.0f);
+		Test.TestEqual(TEXT("with void_aura_projectile_consume_chance at 50 its chance is 50, so ConsumeChanceOf "
+							"really reads it"),
+					   UCataclysmVoidAura::ConsumeChanceOf(System), 50.0f, 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -8950,6 +9005,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_done_to_nearby_allies_taken_percent"), &ProbeDamageDoneToNearbyAlliesTakenPercent},
 			{TEXT("aoe_skill_damage_to_nearby_allies_percent"), &ProbeAoeSkillDamageToNearbyAlliesPercent},
 			{TEXT("skill_slot_is_a_gadget"), &ProbeSkillSlotIsAGadget},
+			{TEXT("void_aura_projectile_consume_chance"), &ProbeVoidAuraProjectileConsumeChance},
 		};
 		return Made;
 	}

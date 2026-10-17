@@ -14,6 +14,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the Null Emperor ten-piece's aura, which consumes an enemy's shot in flight, and the word it shows.
+#include "AbilitySystem/CataclysmVoidAura.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Cataclysm.h"
 // For the skill that fired it, which its blows carry. Issue #41, slice 4.
 #include "Abilities/GameplayAbility.h"
@@ -394,6 +397,12 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 		if (!bReturning)
 		{
 			FurthestReached = Reached;
+		}
+
+		// A VOID AURA BEFORE ANY HIT, so a shot it consumes on this step strikes nothing. The Null Emperor ten-piece.
+		if (TakenByAVoidAura(Previous, Reached))
+		{
+			return false;
 		}
 
 		if (HitAlongStep(Previous, Reached) || bFinished)
@@ -830,6 +839,36 @@ void ACataclysmProjectile::TurnTowardAPull(const FVector& At, float Seconds)
 	const float Most = FMath::DegreesToRadians(Nearest->ProjectilePullDegreesPerSecond()) * Seconds;
 	const float Turned = Heading + FMath::Clamp(FMath::FindDeltaAngleRadians(Heading, Wanted), -Most, Most);
 	Direction = FVector(FMath::Cos(Turned), FMath::Sin(Turned), 0.0f);
+}
+
+bool ACataclysmProjectile::TakenByAVoidAura(const FVector& From, const FVector& To)
+{
+	// ROLLED ONCE AND NEVER AGAIN, and only for a shot that deals something: a shot that only shows has nothing to
+	// consume. Ruled 2026-10-17 (O9).
+	if (bVoidAuraRolled || DamagePercent <= 0.0f)
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* Wearer =
+		UCataclysmVoidAura::AuraThatReaches(GetOwner(), GetWorld(), From, To);
+	if (!Wearer)
+	{
+		return false;
+	}
+	bVoidAuraRolled = true;
+	if (!UCataclysmVoidAura::RollConsumes(UCataclysmVoidAura::ConsumeChanceOf(Wearer)))
+	{
+		return false;
+	}
+
+	// CONSUMED: IT ENDS HERE WITH NO BLAST, NO HIT AND NO AILMENT. A lobbed blast is taken in the air, before it
+	// lands, which is why O9 chose the flight over the hit. `OnFinished` is still broadcast, so whatever counts the
+	// firer's shots in the air still hears that this one has stopped.
+	bConsumedByAVoidAura = true;
+	bDetonatesWhenItStops = false;
+	UCataclysmCombatOverlay::RecordProjectileConsumed(this, GetActorLocation());
+	Finish();
+	return true;
 }
 
 bool ACataclysmProjectile::GlanceOnwardFrom(const FVector& At)
