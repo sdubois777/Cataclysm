@@ -270,6 +270,38 @@ namespace CataclysmSetBonusWarlordSixTest
 		UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Struck, 1.0f);
 	}
 
+	/**
+	 * Counts the `crowd_control` events raised on one character's ability system for the life of the scope, heard from
+	 * `OnActionEvent`, which `ActOnEvent` announces before anything else. A taunt that lands raises one on its
+	 * applier, ruled 2026-10-18 (B).
+	 */
+	struct FWarhoundCrowdControlCount
+	{
+		explicit FWarhoundCrowdControlCount(const AActor* Who)
+			: System(Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Who)))
+		{
+			if (System)
+			{
+				Handle = System->OnActionEvent.AddLambda([this](FName Raised)
+				{
+					Count += Raised == FName(TEXT("crowd_control")) ? 1 : 0;
+				});
+			}
+		}
+
+		~FWarhoundCrowdControlCount()
+		{
+			if (System)
+			{
+				System->OnActionEvent.Remove(Handle);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		FDelegateHandle Handle;
+		int32 Count = 0;
+	};
+
 	/** Destroy whatever is still standing at the end of a case. */
 	void Clear(const TArray<ACataclysmMinion*>& Minions)
 	{
@@ -318,9 +350,12 @@ bool FCataclysmWarlordSixTauntTargetTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { Clear({Taunter}); };
 
 	TestTrue(TEXT("control: untaunted, the creature chooses the player, the nearest"), Enemy.Chooses() == Player.Actor);
+	TestFalse(TEXT("control: untaunted, it is not under crowd control"),
+			  UCataclysmSkillEffects::IsCrowdControlled(Enemy.Actor));
 
 	TestTrue(TEXT("the taunt lands"), UCataclysmTaunt::ApplyTaunt(Taunter, Enemy.Actor, TauntSeconds));
 	TestTrue(TEXT("taunted, it chooses its taunter and not the player"), Enemy.Chooses() == Taunter);
+	TestTrue(TEXT("and it is under crowd control (B)"), UCataclysmSkillEffects::IsCrowdControlled(Enemy.Actor));
 
 	World->TimeSeconds += 2.9f;
 	TestTrue(TEXT("still at 2.9 s"), Enemy.Chooses() == Taunter);
@@ -328,6 +363,7 @@ bool FCataclysmWarlordSixTauntTargetTest::RunTest(const FString&)
 	World->TimeSeconds += 0.2f;
 	TestTrue(TEXT("and at 3.1 s it chooses the player again"), Enemy.Chooses() == Player.Actor);
 	TestNull(TEXT("with no taunt left on it"), UCataclysmTaunt::TaunterOf(Enemy.Actor));
+	TestFalse(TEXT("and it is no longer under crowd control"), UCataclysmSkillEffects::IsCrowdControlled(Enemy.Actor));
 	return true;
 }
 
@@ -414,12 +450,20 @@ bool FCataclysmWarlordSixTauntBossTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { Clear({Taunter}); };
+	FWarhoundCrowdControlCount Noted(Taunter);
+	if (!TestNotNull(TEXT("set-up: the imp has an ability system to count on"), Noted.System))
+	{
+		return false;
+	}
 
+	TestEqual(TEXT("control: before any taunt the imp has applied no crowd control"), Noted.Count, 0);
 	TestTrue(TEXT("control: the Herald is taunted"), UCataclysmTaunt::ApplyTaunt(Taunter, Herald.Actor, TauntSeconds));
 	TestTrue(TEXT("and chooses its taunter"), Herald.Chooses() == Taunter);
+	TestEqual(TEXT("and the taunt that landed raised one crowd_control on the imp that applied it (B)"), Noted.Count, 1);
 
 	TestFalse(TEXT("a Boss is not taunted"), UCataclysmTaunt::ApplyTaunt(Taunter, Boss.Actor, TauntSeconds));
 	TestTrue(TEXT("and goes on choosing the player"), Boss.Chooses() == Player.Actor);
+	TestEqual(TEXT("and the refused taunt raised no crowd_control"), Noted.Count, 1);
 	return true;
 }
 
@@ -508,6 +552,8 @@ bool FCataclysmWarlordSixSecondTauntTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { Clear({First, Other}); };
+	FWarhoundCrowdControlCount FirstNoted(First);
+	FWarhoundCrowdControlCount OtherNoted(Other);
 
 	UCataclysmTaunt::ApplyTaunt(First, Enemy.Actor, TauntSeconds);
 	World->TimeSeconds += 2.0f;
@@ -517,9 +563,12 @@ bool FCataclysmWarlordSixSecondTauntTest::RunTest(const FString&)
 	TestTrue(TEXT("the same taunter taunts it again"), UCataclysmTaunt::ApplyTaunt(First, Enemy.Actor, TauntSeconds));
 	TestEqual(TEXT("and its three seconds restart"), UCataclysmTaunt::SecondsLeftOn(Enemy.Actor), TauntSeconds,
 			  0.001f);
+	TestEqual(TEXT("the placing and the restart each raised crowd_control on the first taunter (B)"),
+			  FirstNoted.Count, 2);
 
 	TestFalse(TEXT("another taunter is refused"), UCataclysmTaunt::ApplyTaunt(Other, Enemy.Actor, TauntSeconds));
 	TestTrue(TEXT("and the first keeps it"), UCataclysmTaunt::TaunterOf(Enemy.Actor) == First);
+	TestEqual(TEXT("and the refused taunter raised no crowd_control"), OtherNoted.Count, 0);
 
 	World->TimeSeconds += TauntSeconds + 0.1f;
 	TestTrue(TEXT("once the restarted taunt has ended, the other's lands"),
@@ -742,17 +791,23 @@ bool FCataclysmWarlordSixBlowTest::RunTest(const FString&)
 		return false;
 	}
 
+	FWarhoundCrowdControlCount ImpNoted(Imp);
+	FWarhoundCrowdControlCount WarhoundNoted(Warhound);
+
 	const float ImpsMarkBefore = ImpsMark.Health();
 	Imp->AttackTarget(ImpsMark.Actor);
 	TestEqual(TEXT("control: an imp that is no Warhound deals its own blow"), ImpsMarkBefore - ImpsMark.Health(),
 			  Imp->OwnDamagePerHit, 0.5f);
 	TestNull(TEXT("control: and taunts nobody"), UCataclysmTaunt::TaunterOf(ImpsMark.Actor));
+	TestEqual(TEXT("control: and applies no crowd control"), ImpNoted.Count, 0);
 
 	const float WarhoundsMarkBefore = WarhoundsMark.Health();
 	Warhound->AttackTarget(WarhoundsMark.Actor);
 	TestEqual(TEXT("the Warhound's hit deals a fifth of the wearer's armour"),
 			  WarhoundsMarkBefore - WarhoundsMark.Health(), WearerArmour * WarhoundArmourPercent / 100.0f, 0.5f);
 	TestTrue(TEXT("and taunts the creature struck"), UCataclysmTaunt::TaunterOf(WarhoundsMark.Actor) == Warhound);
+	TestEqual(TEXT("which is crowd control the Warhound itself applied: one crowd_control on its ability system (B)"),
+			  WarhoundNoted.Count, 1);
 	TestEqual(TEXT("for the row's 3 s"), UCataclysmTaunt::SecondsLeftOn(WarhoundsMark.Actor), TauntSeconds, 0.001f);
 	TestTrue(TEXT("so it chooses the Warhound and not the wearer"), WarhoundsMark.Chooses() == Warhound);
 	return true;

@@ -5,7 +5,9 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-10-18 — A creature can be taunted: for a row's seconds it targets only its taunter, shortened by crowd-control resistance, bosses immune; and a landed blow taken can summon one Warhound for a row's seconds whose hits are a share of the wearer's armour and taunt what they strike: Warlord's Will's six-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTaunt.h` and `.cpp` (new: `UCataclysmTaunt`, `ApplyTaunt`,
-`TaunterOf`, `SecondsLeftOn`, and the register of running taunts); `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`
+`TaunterOf`, `SecondsLeftOn`, `IsTaunted`, and the register of running taunts);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (one include, and the taunt in
+`IsCrowdControlled` and its comment); `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`
 (one block after `SummonTyrantsMinion`: four stat names, the type name, the quarter second, `bIsWarhound`, `WarhoundOf`,
 `SummonWarhound`, `RollForWarhoundOnHitTaken`, `WarhoundBlow`) and `.cpp` (four includes, one block at the end of the
 file, and in `AttackTarget` the blow's figure and the taunt); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
@@ -25,6 +27,25 @@ changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
 
 Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
 
+- **FOR THE OWNER'S PLAY-CHECK LIST** (the coordinating session's ruling (B) of 2026-10-18 puts it there): a taunted
+  enemy counts as crowd-controlled, so the negative row "You take 15%-25% more damage from enemies that are currently
+  CC'd" now applies to a taunted enemy's blows on its wearer.
+- **A TAUNT IS CROWD CONTROL, AS A SILENCE IS (B).** A taunted creature answers yes to
+  `UCataclysmSkillEffects::IsCrowdControlled` while the taunt lasts (`CataclysmSkillEffects.cpp` 3161), and a taunt that
+  lands, placed or restarted, calls `NoteCrowdControlApplied` on whoever applied it (`CataclysmTaunt.cpp` 133 to 137),
+  which raises the `crowd_control` event and starts the clock `seconds_after_crowd_control` rows read. **THIS WIDENS
+  `opponent_is_crowd_controlled` TO TAUNTED ENEMIES**: its one reader is the blow's `bFromCrowdControlled`, filled from
+  `IsCrowdControlled` of the attacker (`CataclysmVitalAttributeSet.cpp` 567), so the negative row
+  `Negative_You_take_15_25_more_damage_from_enemies_that_a` (`EnchantmentEffects.csv` 297, `damage_taken` more 15 to
+  25) now makes a taunted creature's blow on its wearer hit harder. A taunted creature aims at its taunter, so this
+  reaches the wearer through what else that blow strikes, an area or a blow aimed at it after the taunt ends.
+- **FOR A WARHOUND, THE APPLIER IS THE WARHOUND ITSELF**, so the wearer's own `crowd_control` rows do not answer a
+  Warhound's taunt unless the wearer holds Conduit (`UCataclysmCombatEvents::AttackerOf`, `CataclysmCombatEvents.cpp`
+  106 to 116). **WHEN BRUTE'S HEART 6'S AURA LATER APPLIES THE TAUNT, THE APPLIER IS THE PLAYER**, so the player's
+  `crowd_control` rows will answer each taunt it lands.
+- **NO 5 S WINDOW, AS FOR A SILENCE (B).** A taunt neither asks nor opens the stun-immunity window stun, knockdown and
+  fear share.
+
 - **NOTHING CHANGES FOR A PLAYER UNTIL THE FOUR ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
   layer authors no row. A six-piece bonus is live only with six pieces worn.
 - **10 S AND 20% OF ARMOUR A HIT ARE NUMBERS UNDER THE OWNER'S DELEGATION OF UNSTATED NUMBERS, RULED 2026-10-18** by the
@@ -34,14 +55,11 @@ Everything a ruling requires to be said first, and everything a player would not
   log records ("Tyrant's Minion and the Warhound (P342, P375) | An Imp's stats"), and carries a flag that tells it from
   an Imp. **It has no row of its own yet**: `game/Data/MinionTypes.csv` is generated from the workbook's Minion Types
   sheet, which this layer may not touch. The row layer adds the sheet row, rebuilds `DT_MinionTypes.uasset`, and changes
-  `ACataclysmMinion::WarhoundTypeName` from `Imp` to `Warhound`. **ITS STAT BLOCK IS PROPOSED BELOW AND NOT RULED.**
+  `ACataclysmMinion::WarhoundTypeName` from `Imp` to `Warhound`. **ITS STAT BLOCK, BELOW, WAS RULED 2026-10-18 (A) BY THE COORDINATING SESSION AS
+  PROPOSED, a number under the owner's delegation of unstated numbers, and is written in the row layer.**
 - **THE TAUNT IS NOT A GAMEPLAY TAG.** A tag needs a row on the workbook's Tags sheet. It is a register keyed weakly by
   the creature taunted, so nothing a tag query asks (a row's condition, the status line over a creature) sees a taunt.
   No status text is drawn for it.
-- **A TAUNTED CREATURE IS NOT "CROWD-CONTROLLED" TO A ROW THAT ASKS, AND A TAUNT RAISES NO `crowd_control` EVENT.** The
-  owner's ruling names two crowd-control rules, the health ceiling and resistance, and both are built. A stun, a fear
-  and a silence also answer yes to `UCataclysmSkillEffects::IsCrowdControlled` (`CataclysmSkillEffects.cpp` 3150 to
-  3157) and note crowd control on their applier (4174); the taunt does neither. For the coordinating session to rule.
 - **A TAUNTED CREATURE STILL FLEES, IS STILL STUNNED AND STILL FINISHES A WIND-UP.** `Think` asks a stun or knockdown
   (`CataclysmEnemyController.cpp` 369), a fear (440), a charge and a running wind-up before it chooses a target (557).
   The taunt changes the choice only.
@@ -70,6 +88,14 @@ The coordinating session's rulings of 2026-10-18, its words as relayed:
 > Heart 6's aura is NOT in this layer; it is its own layer after this merges. Numbers 10 s and 20% are under the
 > owner's delegation; say so in the entry.
 
+And its rulings on this layer's first hand-back, the same day: (A) the proposed Warhound stat block, accepted, a number
+under the owner's delegation; (C) the chance as a stat read in `NoteHitTaken` with its own 0.25 s constant, accepted;
+the four unruled judgements stand. And (B), verbatim as relayed:
+
+> a taunted creature answers yes to IsCrowdControlled while the taunt lasts, and a taunt that lands calls the
+> applier's NoteCrowdControlApplied, exactly as a silence does. As for silence, it does NOT take the 5-second
+> stun-immunity window.
+
 ### THE RULINGS, AND WHERE EACH IS IN THE CODE
 
 Line numbers are of this layer's working tree.
@@ -77,12 +103,15 @@ Line numbers are of this layer's working tree.
 | | Ruling | Where it is |
 | :-- | :-- | :-- |
 | #6 | A 3 s taunt status on what a Warhound's hit strikes. | `AttackTarget` (`CataclysmMinion.cpp` 1591 to 1597): a Warhound's blow that was dealt, not evaded and not refused as immune to its attacker calls `UCataclysmTaunt::ApplyTaunt` with the summoner's `warhound_taunt_seconds`. |
-| #6 | The health ceiling refuses it. | `CrowdControlRefusedByHealthCeiling` asked of the taunter's commander, or the taunter when it has none (`CataclysmTaunt.cpp` 96 to 100). |
-| #6 | Shortened by crowd-control resistance. | `HeldSecondsAfterCrowdControlResistance` (`CataclysmTaunt.cpp` 109 to 113), the call a stun makes. |
-| #6 | Bosses immune. | `IsBoss`, the Boss and Cataclysm Boss rungs (`CataclysmTaunt.cpp` 76 to 82). |
+| #6 | The health ceiling refuses it. | `CrowdControlRefusedByHealthCeiling` asked of the taunter's commander, or the taunter when it has none (`CataclysmTaunt.cpp` 98 to 102). |
+| #6 | Shortened by crowd-control resistance. | `HeldSecondsAfterCrowdControlResistance` (`CataclysmTaunt.cpp` 111 to 115), the call a stun makes. |
+| #6 | Bosses immune. | `IsBoss`, the Boss and Cataclysm Boss rungs (`CataclysmTaunt.cpp` 78 to 84). |
+| (B) | A taunted creature answers yes to `IsCrowdControlled` while the taunt lasts. | `UCataclysmSkillEffects::IsCrowdControlled` gains `UCataclysmTaunt::IsTaunted` beside `IsSilenced` (`CataclysmSkillEffects.cpp` 3152 to 3162); `IsTaunted` is the same test `TaunterOf` makes (`CataclysmTaunt.cpp` 153 to 156). |
+| (B) | A taunt that lands calls the applier's `NoteCrowdControlApplied`, as a silence does. | `CataclysmTaunt.cpp` 130 to 137, after the taunt is placed or restarted: the ability system of `UCataclysmCombatEvents::AttackerOf(Taunter)`, the lines `CataclysmSilence.cpp` 51 to 57 use. For a Warhound that is the Warhound itself, or its summoner while the summoner holds Conduit. A refused taunt returns before it. |
+| (B) | No 5 s stun-immunity window. | Neither asked nor opened: `CataclysmTaunt.cpp` reads and lays no tag. |
 | Q1 | The taunted enemy targets only its taunter for the taunt's seconds. | `ChooseTarget` asks `UCataclysmTaunt::TaunterOf` first and returns the taunter (`CataclysmEnemyController.cpp` 205 to 208), before the Quarry order (226), the gadget's choice (247), the search (278) and the draw of Behind the Veil (300). |
-| Q1 | It ends at once if the taunter dies or goes. | `RunningTauntOn` forgets a taunt whose taunter is not valid or is dead, whose creature is dead, or whose seconds have passed (`CataclysmTaunt.cpp` 55 to 61). |
-| Q2 | The same taunter restarts the 3 s; another is refused until it ends. | `CataclysmTaunt.cpp` 85 to 91 refuses another taunter while one runs; the same one reaches 124 to 126, which writes a new end. |
+| Q1 | It ends at once if the taunter dies or goes. | `RunningTauntOn` forgets a taunt whose taunter is not valid or is dead, whose creature is dead, or whose seconds have passed (`CataclysmTaunt.cpp` 57 to 63). |
+| Q2 | The same taunter restarts the 3 s; another is refused until it ends. | `CataclysmTaunt.cpp` 87 to 93 refuses another taunter while one runs; the same one reaches 126 to 128, which writes a new end. |
 | Q3 | 10 s, a row value. | `warhound_seconds`, read in `SummonWarhound` (`CataclysmMinion.cpp` 2041); nought summons nothing. |
 | Q3 | At most one; a new summon restarts its time and keeps its health. | `WarhoundOf` (`CataclysmMinion.cpp` 2021) finds the living one; `SetLifeSpan` with the full length (2053); its health is not written. |
 | Q3 | Outside the summon caps. | `bOutsideSummonCaps` (`CataclysmMinion.cpp` 2065), which `MinionsOfTypeCommandedBy` leaves out; in no skill's `Minions`. |
@@ -94,23 +123,23 @@ Line numbers are of this layer's working tree.
 | Q6 | Brute's Heart 6's aura is not in this layer. | Nothing for it is built. `UCataclysmTaunt::ApplyTaunt` takes any taunter, so that layer can call it. |
 
 **EVERY RULE THE TAUNT SHARES WITH THE STUN, AND EVERY ONE IT DOES NOT.** The stun is
-`UCataclysmSkillEffects::ApplyStun` (`CataclysmSkillEffects.cpp` 4048 to 4176).
+`UCataclysmSkillEffects::ApplyStun` (`CataclysmSkillEffects.cpp` 4053 to 4181).
 
 | Rule | Stun | Taunt |
 | :-- | :-- | :-- |
-| The applier's health ceiling refuses it | 4064 | SHARED, `CataclysmTaunt.cpp` 97, asked of the Warhound's summoner |
-| Crowd-control resistance shortens it, nothing at 100% | 4078 | SHARED, the same call, `CataclysmTaunt.cpp` 109 |
-| A skill the target runs stating an immunity refuses it | 4101 (`Stun` or `CrowdControl`) | SHARED, `CataclysmTaunt.cpp` 103 (`Taunt` or `CrowdControl`) |
-| A boss is never controlled | 4154 to 4161 | SHARED, `CataclysmTaunt.cpp` 76 to 82 |
-| A controlled creature cannot be controlled again for 5 s | 4089, opened at 4171 | NOT SHARED: no window is asked or opened; the same taunter restarts it at once (Q2) |
-| A hit must take a tenth of maximum health | 4112 to 4141, skipped for a designed stun | NOT SHARED: every landed hit taunts, as a designed stun skips it |
-| A dead target is not controlled | 4125 (an incidental stun only) | SHARED in effect, for every taunt: `CataclysmTaunt.cpp` 69 |
-| The applier notes crowd control (`crowd_control` event) | 4174 | NOT SHARED: no event is raised |
-| `IsCrowdControlled` answers yes | 3152, `IsStunned` | NOT SHARED |
-| A second application | refused within the 5 s window | Q2: the same taunter restarts; another is refused while one runs (`CataclysmTaunt.cpp` 85 to 91) |
-| Held as | the `State.Stunned` tag for its seconds (4163) | a register keyed weakly by the creature (`CataclysmTaunt.cpp` 22 to 26, 124 to 126) |
-| The target must be hostile to the applier | not asked | `CataclysmTaunt.cpp` 70 |
-| It ends early | not ended by the stunner's death | ended at once by the taunter's death or removal (Q1), `CataclysmTaunt.cpp` 56 |
+| The applier's health ceiling refuses it | 4069 | SHARED, `CataclysmTaunt.cpp` 99, asked of the Warhound's summoner |
+| Crowd-control resistance shortens it, nothing at 100% | 4083 | SHARED, the same call, `CataclysmTaunt.cpp` 111 |
+| A skill the target runs stating an immunity refuses it | 4106 (`Stun` or `CrowdControl`) | SHARED, `CataclysmTaunt.cpp` 105 (`Taunt` or `CrowdControl`) |
+| A boss is never controlled | 4159 to 4166 | SHARED, `CataclysmTaunt.cpp` 78 to 84 |
+| The applier notes crowd control (`crowd_control` event) | 4179 | SHARED since (B), `CataclysmTaunt.cpp` 133 to 137, on the ability system of `AttackerOf(Taunter)`, as a silence does (`CataclysmSilence.cpp` 51 to 57); a stun notes it on its instigator through `CataclysmSkillEffectsNoteCrowdControl` |
+| `IsCrowdControlled` answers yes while it lasts | 3154, `IsStunned` | SHARED since (B), `CataclysmSkillEffects.cpp` 3161, `IsTaunted` |
+| A controlled creature cannot be controlled again for 5 s | 4094, opened at 4176 | NOT SHARED, as for a silence (ruled B): no window is asked or opened; the same taunter restarts it at once (Q2) |
+| A hit must take a tenth of maximum health | 4117 to 4146, skipped for a designed stun | NOT SHARED: every landed hit taunts, as a designed stun skips it |
+| A dead target is not controlled | 4130 (an incidental stun only) | SHARED in effect, for every taunt: `CataclysmTaunt.cpp` 71 |
+| A second application | refused within the 5 s window | Q2: the same taunter restarts; another is refused while one runs (`CataclysmTaunt.cpp` 87 to 93) |
+| Held as | the `State.Stunned` tag for its seconds (4168) | a register keyed weakly by the creature (`CataclysmTaunt.cpp` 19 to 33, 126 to 128) |
+| The target must be hostile to the applier | not asked | `CataclysmTaunt.cpp` 72 |
+| It ends early | not ended by the stunner's death | ended at once by the taunter's death or removal (Q1), `CataclysmTaunt.cpp` 58 |
 
 **HOW AN ENEMY CHOOSES ITS TARGET, AND WHERE THE TAUNT OVERRIDES IT.** `ACataclysmEnemyController::Think` runs four
 times a second. Before any choice it stops for death (`CataclysmEnemyController.cpp` 332), a stun or knockdown (369), a
@@ -129,7 +158,7 @@ stands.
   other "when you take damage, a 10% chance" row, Shard of Anarchy's six-piece (`RollDamageTypeImmunityOnHit`), and the
   quarter second is held by this bonus. The option not taken: a new action `summon_warhound` on `hit_taken`, which
   takes the cooldown machinery for free but changes the pipeline's action struct, the item loader, the action loop and
-  five separate places in the generator, all files other sessions change at once.
+  five separate places in the generator, all files other sessions change at once. Accepted 2026-10-18 (C).
 - **THE COOLDOWN STARTS AT A SUMMON OR A REFRESH, NOT AT A ROLL THAT FAILED**, as a status row's starts only when the
   status is applied. The option not taken: every roll starting it, which would make the chance per quarter second and
   not per blow.
@@ -158,7 +187,7 @@ stands.
   (`smite_nearby_by_armor`'s), 10 s for the taunt (`MAX_STATUS_SECONDS`); the Warhound's own seconds have none, as the
   Tyrant's Minion's have none. The option not taken: no bound.
 
-### THE PROPOSED WARHOUND STAT BLOCK, FOR THE COORDINATING SESSION TO RULE
+### THE WARHOUND STAT BLOCK, RULED 2026-10-18 (A) AS PROPOSED
 
 A number under the owner's delegation of unstated numbers, worked from the Imp, the stand-in this log records and the
 type the Warhound is spawned from now. The Imp's row of `game/Data/MinionTypes.csv`:
@@ -216,8 +245,9 @@ game's numbers, ruled under the owner's delegation, and not read off another gam
 
 ### WHAT WAS BUILT
 
-- **`UCataclysmTaunt`**: the register of running taunts, `ApplyTaunt` with its refusals, `TaunterOf`, and
-  `SecondsLeftOn` for tests.
+- **`UCataclysmTaunt`**: the register of running taunts, `ApplyTaunt` with its refusals and the crowd control it
+  notes on its applier, `TaunterOf`, `IsTaunted`, and `SecondsLeftOn` for tests.
+- **A taunt in `UCataclysmSkillEffects::IsCrowdControlled`**, beside a silence (B).
 - **The taunt asked first in `ACataclysmEnemyController::ChooseTarget`.**
 - **The Warhound**: `SummonWarhound`, `WarhoundOf`, `RollForWarhoundOnHitTaken` with its pinnable roll
   (`Cataclysm.WarhoundRoll`) and its quarter second, `WarhoundBlow`, the flag `bIsWarhound`, four stat names and the type
@@ -272,23 +302,27 @@ asks a brain moves the world's seconds by hand, so no brain thinks; a test that 
 at least 20 m apart. The roll is pinned with `Cataclysm.WarhoundRoll` after the world is made. Critical strikes are
 silenced by the world helper.
 
-1. `ATauntedEnemyTargetsItsTaunterAndAfterTheSecondsThePlayerAgain`, 8 assertions. In order: set-up, a world; set-up, an
-   imp; control, untaunted it chooses the player, nearest; the taunt lands; taunted it chooses its taunter; still at
-   2.9 s; at 3.1 s it chooses the player; no taunt is left on it.
+1. `ATauntedEnemyTargetsItsTaunterAndAfterTheSecondsThePlayerAgain`, 11 assertions. In order: set-up, a world; set-up,
+   an imp; control, untaunted it chooses the player, nearest; control, untaunted it is not under crowd control; the
+   taunt lands; taunted it chooses its taunter; it is under crowd control (B); still at 2.9 s; at 3.1 s it chooses the
+   player; no taunt is left on it; it is no longer under crowd control.
 2. `CrowdControlResistanceShortensATaunt`, 7 assertions. In order: set-up, a world; set-up, an imp; control, a creature
    holding no resistance is taunted for 3 s; one holding 50 is taunted; for 1.5 s; one holding 100 is not taunted;
    nothing taunts it.
-3. `ABossIsNotTauntedAndTheRungBelowIs`, 8 assertions. In order: set-up, a world; set-up, an imp; set-up, the Herald is
-   not a boss; set-up, the Boss is; control, the Herald is taunted; it chooses its taunter; the Boss is not taunted; it
-   goes on choosing the player.
+3. `ABossIsNotTauntedAndTheRungBelowIs`, 12 assertions. In order: set-up, a world; set-up, an imp; set-up, the Herald
+   is not a boss; set-up, the Boss is; set-up, the imp has an ability system to count on; control, before any taunt
+   the imp has applied no crowd control; control, the Herald is taunted; it chooses its taunter; the taunt that landed
+   raised one `crowd_control` on the imp (B); the Boss is not taunted; it goes on choosing the player; the refused
+   taunt raised no `crowd_control` (the count is still 1).
 4. `ATauntEndsAtOnceWhenItsTaunterDiesOrGoes`, 9 assertions. In order: set-up, a world; set-up, the imp that will die;
    set-up, the one that will go; control, the first creature chooses its taunter; control, the second its own; set-up,
    the first imp is dead; its creature chooses the player; the second still chooses its own imp; with that imp
    destroyed, the second chooses the player.
-5. `TheSameTaunterRestartsItsSecondsAndAnotherIsRefusedUntilItEnds`, 10 assertions. In order: set-up, a world; set-up,
+5. `TheSameTaunterRestartsItsSecondsAndAnotherIsRefusedUntilItEnds`, 12 assertions. In order: set-up, a world; set-up,
    the first taunter; set-up, another; control, two seconds on one is left; the same taunter taunts it again; three
-   seconds are left; another taunter is refused; the first keeps it; once that has ended the other's lands; the creature
-   chooses the other.
+   seconds are left; the placing and the restart each raised `crowd_control` on the first taunter (2); another taunter
+   is refused; the first keeps it; the refused taunter raised no `crowd_control`; once that has ended the other's
+   lands; the creature chooses the other.
 6. `ABlowTakenSummonsAWarhoundWhenTheRollIsBelowTheChance`, 10 assertions. In order: set-up, a world; set-up, the blow
    landed; control, a roll of 10 summons none; a roll of 9.9 summons one; one only; it is the wearer's; it stands 1.5 m
    from the wearer; it holds no cap place; no cap count of its type counts it; its lifespan is 10 s.
@@ -299,10 +333,11 @@ silenced by the world helper.
 8. `NeitherATickNorAnEvadedBlowNorABlowWithinAQuarterSecondSummons`, 6 assertions. In order: set-up, a world; a tick
    summons none; an evaded blow none; control, a landed blow summons one; a landed blow 0.2 s later does not restart its
    time; one 0.3 s after the summon does.
-9. `AWarhoundsHitDealsAFifthOfItsSummonersArmourAndTauntsTheEnemyStruck`, 11 assertions. In order: set-up, a world;
+9. `AWarhoundsHitDealsAFifthOfItsSummonersArmourAndTauntsTheEnemyStruck`, 13 assertions. In order: set-up, a world;
    set-up, a Warhound; set-up, an imp; set-up, the wearer's armour is 1000; set-up, the Warhound's mark chooses the
-   wearer, standing nearer; control, an imp that is no Warhound deals its own blow; control, and taunts nobody; the
-   Warhound's hit deals 200; it taunts the creature struck; for 3 s; that creature chooses the Warhound.
+   wearer, standing nearer; control, an imp that is no Warhound deals its own blow; control, and taunts nobody;
+   control, and applies no crowd control; the Warhound's hit deals 200; it taunts the creature struck; one
+   `crowd_control` on the Warhound's own ability system (B); for 3 s; that creature chooses the Warhound.
 10. `AWarhoundsDeathIsNotReplaced`, 9 assertions. In order: set-up, a world; set-up, the control's summon skill; set-up,
    a summon skill; set-up, the control's imp; control, Press-Ganged replaces a dying imp no skill made; set-up, a
    Warhound; set-up, the skill holds no imp; the Warhound's death leaves none standing; Press-Ganged does not replace it.
@@ -327,39 +362,72 @@ player character wearing it, so `NoteHitTaken` reached from a blow on a player's
 system; a random roll; the health ceiling refusing a taunt; a skill-stated immunity refusing one; the Warhound fighting
 under its own brain, so its swing interval and its choice of what to strike; a taunted creature walking to and swinging
 at its taunter under `Think` (the tests ask `ChooseTarget`); a Warhound's death answered by Shared Ruin or Tyrant's
-Chains; `minion_damage` and `minion_duration` on the Warhound; an evaded Warhound swing; anything drawn on a screen.
+Chains; `minion_damage` and `minion_duration` on the Warhound; an evaded Warhound swing; a taunted creature's blow meeting the wearer's `opponent_is_crowd_controlled` row; a `crowd_control` row answering a
+taunt; Conduit sending a Warhound's taunt's `crowd_control` to its summoner; anything drawn on a screen.
 
 ### GUARD PROOFS PROPOSED
 
-Not run. Each old text was counted exactly once in its file by a script at this layer's working tree. Each break keeps
-the file's round, curly and square brackets paired (counted before and after by the same script) and compiles alone by
-reading: WW-I passes a null literal for a pointer parameter, WW-II adds a comparison of a `float` parameter in scope,
-and WW-III reads a field of the same type from the same pointer. The failed assertions are counted by reading. The
-prefix is `Cataclysm.SetBonus.Warlord6.`, with its trailing dot, ten tests. No event any test's actors raise reads the
-taunt: `ApplyTaunt` and `TaunterOf` raise none, and the blows in tests 6, 7 and 9 raise `hit_taken` on the creature
-struck, where `RollForWarhoundOnHitTaken` finds no chance and stops.
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, after ruling (B)
+was built. Each break keeps the file's round, curly and square brackets paired (counted before and after by the same
+script) and compiles alone by reading: WW-I passes a null literal for a pointer parameter, WW-II adds a comparison of a
+`float` parameter in scope, WW-III reads a field of the same type from the same pointer, and WW-IV casts a pointer
+still in scope to `void`. The failed assertions are counted by reading. The prefix is `Cataclysm.SetBonus.Warlord6.`,
+with its trailing dot, ten tests.
+
+**EVERY EVENT EACH TEST'S ACTORS RAISE, LISTED BEFORE COUNTING.** `ChooseTarget`, `TaunterOf`, `IsTaunted`,
+`SecondsLeftOn` and `IsCrowdControlled` raise none. A taunt that lands raises `crowd_control` on its applier's ability
+system (`NoteCrowdControlApplied`); a refused one raises nothing. Every applier here is an imp or a Warhound, and no row
+is on any of them, so the event moves only the counters the tests hold.
+
+1. Test 1: `crowd_control` on the imp, once. The clock is moved by hand.
+2. Test 2: `crowd_control` on the imp twice (the creatures holding 0 and 50); the one holding 100 is refused, none.
+3. Test 3: `crowd_control` on the imp once (the Herald); the Boss is refused, none. `SetRarityStep` raises none.
+4. Test 4: `crowd_control` on each imp once; the first imp's death through the death hook (Fervour asked of its
+   commander, the imp's own death; its commander holds no summon skill, so nothing is replaced); the second imp
+   destroyed, nothing.
+5. Test 5: `crowd_control` on the first imp twice (placed, restarted), and on the other once at the end, after the
+   assertion that counts it.
+6. Test 6: two blows on the wearer: `hit_taken` twice on the wearer, its count of hits taken, and the bare attacker's
+   hit dealt. No `crowd_control`.
+7. Test 7: two blows: `hit_taken` twice on the wearer. The clock runs: regeneration steps, and brains that find nobody
+   hostile within what they notice and strike nothing.
+8. Test 8: `NoteHitTaken` five times: `hit_taken` five times on the wearer. The clock runs as in test 7.
+9. Test 9: the imp's blow raises `hit_taken` on its creature; the Warhound's blow raises `hit_taken` on its creature
+   and `crowd_control` once on the Warhound. The struck creatures hold no chance, so no Warhound is rolled for.
+10. Test 10: two deaths through the death hook; Press-Ganged replaces the control's imp. No taunt.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
 | WW-I, the taunt not asked (Q1) | `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` | `UCataclysmTaunt::TaunterOf(Driven))` | `UCataclysmTaunt::TaunterOf(nullptr))` | `ATauntedEnemyTargetsItsTaunterAndAfterTheSecondsThePlayerAgain` | `ABossIsNotTauntedAndTheRungBelowIs`, `ATauntEndsAtOnceWhenItsTaunterDiesOrGoes`, `TheSameTaunterRestartsItsSecondsAndAnotherIsRefusedUntilItEnds`, `AWarhoundsHitDealsAFifthOfItsSummonersArmourAndTauntsTheEnemyStruck` |
 | WW-II, a boss taunted (#6) | `game/Source/Cataclysm/AbilitySystem/CataclysmTaunt.cpp` | `if (Enemy->IsBoss())` | `if (Enemy->IsBoss() && Seconds < 0.0f)` | `ABossIsNotTauntedAndTheRungBelowIs` | none |
 | WW-III, its death replaced (Q3) | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `const bool bWasWarhound = AsMinion && AsMinion->bIsWarhound;` | `const bool bWasWarhound = AsMinion && AsMinion->bIsTyrantsMinion;` | `AWarhoundsDeathIsNotReplaced` | none |
+| WW-IV, a landed taunt notes no crowd control (B) | `game/Source/Cataclysm/AbilitySystem/CataclysmTaunt.cpp` | `Noting->NoteCrowdControlApplied();` | `(void)Noting;` | `ABossIsNotTauntedAndTheRungBelowIs` | `TheSameTaunterRestartsItsSecondsAndAnotherIsRefusedUntilItEnds`, `AWarhoundsHitDealsAFifthOfItsSummonersArmourAndTauntsTheEnemyStruck` |
 
 Failed assertions, by reading:
 
-- **WW-I, 8 in 5 tests.** Every creature chooses as if untaunted; `ApplyTaunt` and `TaunterOf` still answer. Test 1, 2:
-  "taunted, it chooses its taunter" and "still at 2.9 s". Test 3, 1: "and chooses its taunter" (the Herald). Test 4, 3:
-  "control: the first creature chooses its taunter", "control: the second creature chooses its own", "and the second
-  creature, still taunted, still chooses its own imp". Test 5, 1: "and the creature chooses the other". Test 9, 1: "so
-  it chooses the Warhound and not the wearer". Every assertion that a creature chooses the player passes, and every
-  taunt and seconds assertion. Tests 2, 6, 7, 8 and 10 and the probes ask no brain.
-- **WW-II, 2 in 1 test.** Test 3: "a Boss is not taunted" (it is) and "and goes on choosing the player" (it chooses the
-  imp). The Boss holds no crowd-control resistance (set to nought after its rung's modifiers are drawn) and runs no
-  skill, so nothing else refuses it. No other test holds a boss.
+- **WW-I, 8 in 5 tests.** Every creature chooses as if untaunted; `ApplyTaunt`, `TaunterOf`, `IsTaunted` and the
+  `crowd_control` it notes are unchanged. Test 1, 2: "taunted, it chooses its taunter" and "still at 2.9 s". Test 3,
+  1: "and chooses its taunter" (the Herald). Test 4, 3: "control: the first creature chooses its taunter", "control:
+  the second creature chooses its own", "and the second creature, still taunted, still chooses its own imp". Test 5, 1:
+  "and the creature chooses the other". Test 9, 1: "so it chooses the Warhound and not the wearer". Every assertion that
+  a creature chooses the player passes, and every taunt, seconds, crowd-control and count assertion. Tests 2, 6, 7, 8
+  and 10 and the probes ask no brain.
+- **WW-II, 3 in 1 test.** Test 3: "a Boss is not taunted" (it is), "and goes on choosing the player" (it chooses the
+  imp), and "and the refused taunt raised no crowd_control" (the Boss's taunt lands and raises one: 2, not 1). The
+  Boss holds no crowd-control resistance (set to nought after its rung's modifiers are drawn) and runs no skill, so
+  nothing else refuses it. No other test holds a boss.
 - **WW-III, 1 in 1 test.** Test 10: "and Press-Ganged does not replace it" (the skill holds one: the Warhound was made
   by no skill, so `ReplaceLost` takes the summoner's summon skill). "No Warhound standing" still passes: the replacement
   is an imp, not a Warhound. No other test kills a Warhound: test 7's ends by its lifespan, which reaches no hook, and
   test 4 kills imps whose summoner holds no summon skill. A Tyrant's Minion is still skipped by the line above.
+- **WW-IV, 4 in 3 tests.** No taunt raises `crowd_control`. Test 3, 2: "the taunt that landed raised one crowd_control
+  on the imp" (0) and "the refused taunt raised no crowd_control" (0, against 1). Test 5, 1: "the placing and the
+  restart each raised crowd_control on the first taunter" (0, against 2); "the refused taunter raised no crowd_control"
+  passes (0). Test 9, 1: "one crowd_control on the Warhound's own ability system" (0); its imp control passes (0).
+  Every choice, taunt, seconds and `IsCrowdControlled` assertion passes. Outside the prefix nothing counts the event.
+- **NOT PROPOSED, a fifth for (B):** `UCataclysmTaunt::IsTaunted(Actor);` to `UCataclysmTaunt::IsTaunted(nullptr);` in
+  `CataclysmSkillEffects.cpp` would fail 1 in 1 test, test 1's "and it is under crowd control (B)"; the two "not under
+  crowd control" assertions pass. Kept out by the limit of four.
 
 ### THE WINDOW'S RUN
 

@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmTaunt.h"
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -124,6 +126,15 @@ bool UCataclysmTaunt::ApplyTaunt(AActor* Taunter, AActor* Target, float Seconds)
 	FCataclysmTauntHeld& Held = TauntsHeld().FindOrAdd(TWeakObjectPtr<AActor>(Target));
 	Held.Taunter = Taunter;
 	Held.EndsAtSeconds = TauntWorldSecondsOf(Target) + Seconds;
+
+	// AND IT IS CROWD CONTROL APPLIED, placed or restarted, ruled 2026-10-18 (B): "a taunt that lands calls the
+	// applier's NoteCrowdControlApplied, exactly as a silence does". On whoever the act belongs to: a Warhound itself,
+	// or its summoner while the summoner holds Conduit.
+	if (UCataclysmAbilitySystemComponent* Noting = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(UCataclysmCombatEvents::AttackerOf(Taunter))))
+	{
+		Noting->NoteCrowdControlApplied();
+	}
 	return true;
 }
 
@@ -137,4 +148,9 @@ float UCataclysmTaunt::SecondsLeftOn(const AActor* Target)
 {
 	const FCataclysmTauntHeld* Held = RunningTauntOn(Target);
 	return Held ? FMath::Max(0.0f, Held->EndsAtSeconds - TauntWorldSecondsOf(Target)) : 0.0f;
+}
+
+bool UCataclysmTaunt::IsTaunted(const AActor* Actor)
+{
+	return RunningTauntOn(Actor) != nullptr;
 }

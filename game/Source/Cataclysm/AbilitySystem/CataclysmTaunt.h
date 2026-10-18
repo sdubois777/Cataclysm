@@ -23,11 +23,12 @@ class AActor;
  *
  * A SECOND TAUNT (Q2). The same taunter restarts the seconds; another taunter is refused until the running one ends.
  *
- * CROWD CONTROL IN TWO RULES, AS RULED: the health ceiling the applier carries refuses it, and crowd-control
- * resistance shortens it, each as for a stun. BOSSES ARE IMMUNE (the Boss and Cataclysm Boss rungs), as for a stun. A
- * skill the target is running that states `Immune=Taunt` or `Immune=CrowdControl` refuses it too. It neither asks nor
- * opens the 5 second window stun, knockdown and fear share, needs no share of maximum health, raises no crowd-control
- * event and is not among what `UCataclysmSkillEffects::IsCrowdControlled` answers: none of those is ruled.
+ * CROWD CONTROL, AS A SILENCE IS (ruled 2026-10-18, B): the health ceiling the applier carries refuses it, and
+ * crowd-control resistance shortens it, each as for a stun; `UCataclysmSkillEffects::IsCrowdControlled` answers yes
+ * while it lasts; and a taunt that lands, placed or restarted, raises the crowd-control event on whoever applied it.
+ * BOSSES ARE IMMUNE (the Boss and Cataclysm Boss rungs), as for a stun. A skill the target is running that states
+ * `Immune=Taunt` or `Immune=CrowdControl` refuses it too. As for a silence, it neither asks nor opens the 5 second
+ * window stun, knockdown and fear share, and it needs no share of maximum health.
  *
  * HELD HERE AND NOT AS A GAMEPLAY TAG. A tag needs a row on the design workbook's Tags sheet, which this layer may not
  * add, so the taunt is a register keyed weakly by the creature taunted, as `UCataclysmGroundPound` keeps its clocks.
@@ -51,6 +52,10 @@ public:
 	 *
 	 * THE SAME TAUNTER RESTARTS IT at the seconds left after resistance (Q2).
 	 *
+	 * A TAUNT THAT LANDS, PLACED OR RESTARTED, IS CROWD CONTROL APPLIED (B): `NoteCrowdControlApplied` on the ability
+	 * system of whoever the act belongs to, `UCataclysmCombatEvents::AttackerOf(Taunter)`, as a silence's is. A refusal
+	 * notes nothing.
+	 *
 	 * @return whether the target is now taunted by `Taunter`
 	 */
 	static bool ApplyTaunt(AActor* Taunter, AActor* Target, float Seconds);
@@ -60,4 +65,11 @@ public:
 
 	/** The seconds left on the taunt on `Target`, or nought when none runs. */
 	static float SecondsLeftOn(const AActor* Target);
+
+	/**
+	 * Whether a taunt runs on `Actor` now, by the same test `TaunterOf` makes. Read by
+	 * `UCataclysmSkillEffects::IsCrowdControlled`, ruled 2026-10-18 (B): a taunted creature is under crowd control
+	 * while the taunt lasts, as a silenced one is.
+	 */
+	static bool IsTaunted(const AActor* Actor);
 };
