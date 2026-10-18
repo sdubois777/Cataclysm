@@ -27,8 +27,8 @@
 /**
  * Spellblade's Will's six-piece bonus: Dervish and Spellslinger. Ruled 2026-10-06 and 2026-10-17.
  *
- * "When you use a melee attack, you gain a stack of Spellslinger which reduces the mana cost of your spells by 10% per
- * stack, and when you use a spell, you gain a stack of Dervish which increases your attack speed for melee attacks by
+ * "When you use a melee attack, you gain a stack of Spellslinger which makes your spells cost 10% less mana per stack,
+ * and when you use a spell, you gain a stack of Dervish which increases your attack speed for melee attacks by
  * 10% per stack"
  *
  * DERVISH IS ONE ROW AND NEEDS NO GAME CHANGE: `attack_speed`, increased 10, scaled by its own stacks, granted on the

@@ -848,7 +848,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 625 SINCE THE NULL EMPEROR'S 10-PIECE, issue #1833, from 624.
 	//
 	// AND 630 SINCE THE FIVE ROWS OF WARLORD'S WILL'S 10-PIECE, issue #1833, from 625.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    630)
+	//
+	// AND 632 SINCE THE TWO ROWS OF SPELLBLADE'S WILL'S 6-PIECE, issue #1833, from 630.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    632)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

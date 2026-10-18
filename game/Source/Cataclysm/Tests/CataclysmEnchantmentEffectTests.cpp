@@ -27055,4 +27055,58 @@ bool FCataclysmWarlordTenRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellbladeSixRowTest,
+	"Cataclysm.Enchantments.TheWornSpellbladesWillSixPieceGivesSpellslingerAndDervish",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Spellblade's Will's 6-piece row layer, ruled 2026-10-06 and 2026-10-17: a melee attack's use gains a stack of
+ * Spellslinger, 10% less mana cost for spells, and a spell's use a stack of Dervish, 10% increased attack speed. WORN by
+ * a real player: what the stacks then do is `Cataclysm.SetBonus.Spellblade6.`'s. The CONTROL wears FIVE pieces and the
+ * case SIX, each carrying the 6-piece and the set's drawback. TWO assertions, one per row, so on assets built before
+ * the rows it fails twice, and only there.
+ */
+bool FCataclysmSpellbladeSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use");
+	const TCHAR* Drawback = TEXT("Negative_Melee_damage_is_reduced_by_50");
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces"), SixPieces.Ready())
+		|| !TestTrue(TEXT("set-up: five pieces worn"), WearsMore(FivePieces, Bonus, Drawback, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), WearsMore(SixPieces, Bonus, Drawback, 5)))
+	{
+		return false;
+	}
+	const FGameplayTagContainer MeleeTags(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")), false));
+	const FGameplayTagContainer SpellTags(UCataclysmSkillEffects::SpellTag());
+	const FName ManaCost(TEXT("mana_cost"));
+	const FName AttackSpeed(TEXT("attack_speed"));
+	// THE READERS THE GAME ITSELF USES: `StatAppliedTo` is how `ManaCostFor` scales a cost, and `StatForSkill` how a swing
+	// reads its attack speed.
+	const float FiveCostBefore = FivePieces.ASC->StatAppliedTo(ManaCost, SpellTags, 100.0f);
+	const float SixCostBefore = SixPieces.ASC->StatAppliedTo(ManaCost, SpellTags, 100.0f);
+	const float FiveSpeedBefore = FivePieces.ASC->StatForSkill(AttackSpeed, MeleeTags, 1.0f);
+	const float SixSpeedBefore = SixPieces.ASC->StatForSkill(AttackSpeed, MeleeTags, 1.0f);
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&FivePieces, &SixPieces})
+	{
+		Striker->ASC->ActOnEvent(FName(TEXT("melee_attack_use")), &MeleeTags);
+		Striker->ASC->ActOnEvent(FName(TEXT("spell")), &SpellTags);
+	}
+
+	// THE CONTROLS, READ FIRST: five pieces are below the threshold, so neither use changes anything.
+	TestEqual(TEXT("control: with five pieces worn, a melee use leaves a spell's mana cost as it was"),
+		FivePieces.ASC->StatAppliedTo(ManaCost, SpellTags, 100.0f), FiveCostBefore, 0.001f);
+	TestEqual(TEXT("control: with five pieces worn, a spell leaves melee attack speed as it was"),
+		FivePieces.ASC->StatForSkill(AttackSpeed, MeleeTags, 1.0f), FiveSpeedBefore, 0.001f);
+	TestEqual(TEXT("with six pieces worn, a melee use makes a spell's mana cost 0.9 times (Spellslinger). If not, "
+				   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		SixPieces.ASC->StatAppliedTo(ManaCost, SpellTags, 100.0f), SixCostBefore * 0.9f, 0.001f);
+	TestTrue(TEXT("and a spell raises melee attack speed (Dervish)"),
+		SixPieces.ASC->StatForSkill(AttackSpeed, MeleeTags, 1.0f) > SixSpeedBefore + 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

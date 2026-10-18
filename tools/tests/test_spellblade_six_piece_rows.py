@@ -1,7 +1,7 @@
 """The row shapes of Spellblade's Will's six-piece bonus, Dervish and Spellslinger, through the generator.
 
 "Spellblade's Will (6-Piece Bonus): When you use a melee attack, you gain a stack
-of Spellslinger which reduces the mana cost of your spells by 10% per stack, and
+of Spellslinger which makes your spells cost 10% less mana per stack, and
 when you use a spell, you gain a stack of Dervish which increases your attack
 speed for melee attacks by 10% per stack"
 
@@ -37,8 +37,8 @@ import generate_datatables as gen  # noqa: E402
 from test_generate_datatables import workbook_with  # noqa: E402
 
 WORDS = ("Spellblade's Will (6-Piece Bonus): When you use a melee attack, you "
-         "gain a stack of Spellslinger which reduces the mana cost of your "
-         "spells by 10% per stack, and when you use a spell, you gain a stack of "
+         "gain a stack of Spellslinger which makes your spells cost 10% less "
+         "mana per stack, and when you use a spell, you gain a stack of "
          "Dervish which increases your attack speed for melee attacks by 10% per "
          "stack")
 NAME = gen.row_name("Positive", WORDS[:48])

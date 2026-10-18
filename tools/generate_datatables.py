@@ -8607,7 +8607,7 @@ STATS_WITH_AN_ASKER = frozenset({
     # those rows carries.
     "minion_damage",
     # ADDED 2026-10-17 FOR SPELLSLINGER, Spellblade's Will's six-piece bonus,
-    # "reduces the mana cost of your spells by 10% per stack", a row scaled by
+    # "makes your spells cost 10% less mana per stack", a row scaled by
     # its own stacks; ruled that day (R1). `UCataclysmGameplayAbility::ManaCostFor`
     # asks it through `StatAppliedTo` with the skill's tags for every cost the
     # game reads; `ProbeScaledManaCost` measures that with the scale the row

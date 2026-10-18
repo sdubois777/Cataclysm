@@ -5092,7 +5092,7 @@ namespace CataclysmStatExemptionTest
 	/**
 	 * `mana_cost`, scaled by the row's own stacks, asked by `UCataclysmGameplayAbility::ManaCostFor` through
 	 * `StatAppliedTo` with the skill's tags. Ruled 2026-10-17 (R1) for Spellslinger, Spellblade's Will's six-piece
-	 * bonus: "reduces the mana cost of your spells by 10% per stack", a `more` of -10 scoped `Type.Spell`.
+	 * bonus: "makes your spells cost 10% less mana per stack", a `more` of -10 scoped `Type.Spell`.
 	 *
 	 * TWO CASTERS, ONE HOLDING A STACK AND ONE NOT, each with the same spell, so the second's cost is read against the
 	 * first's. The stack is granted directly, as the skill-lock probe grants its own, because what this measures is
