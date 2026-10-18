@@ -632,6 +632,14 @@ float UCataclysmAbilitySystemComponent::AttributePlusWhatWasNotFolded(
 	return Attribute + (Now - Folded);
 }
 
+float UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded(
+	FName Stat, float Attribute) const
+{
+	// THE HELPER ITSELF, UNCHANGED. Ruled 2026-10-18: a public door to it rather
+	// than the helper made public.
+	return AttributePlusWhatWasNotFolded(Stat, Attribute);
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,

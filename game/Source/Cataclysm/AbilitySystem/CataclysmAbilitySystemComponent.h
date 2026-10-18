@@ -2271,6 +2271,27 @@ public:
 	float MaximumClassResource() const;
 
 	/**
+	 * An attribute's figure plus what the stat refresh could not fold into it,
+	 * for a reader outside this class. Ruled 2026-10-18: the public wrapper of
+	 * the protected `AttributePlusWhatWasNotFolded`, which says how it is worked
+	 * out, and nothing more.
+	 *
+	 * A WRAPPER AND NOT THE HELPER MADE PUBLIC, as ruled. The helper stays where
+	 * `MaximumEnergyShield` and `MaximumClassResource` reach it, and this is the
+	 * one door other classes come through, so a later reader is found by
+	 * searching for this name.
+	 *
+	 * WHO ASKS: `UCataclysmDamageCalculation::TypedResistanceOf`, for a damage
+	 * type's resistance (`UCataclysmItemModifiers::ResistanceStatFor`), so a
+	 * resistance row under a condition reaches a blow, a minion's share, the
+	 * character sheet and `Cataclysm.ShowResistances`.
+	 *
+	 * NOT FROM `CurrentConditions`, for the reason the two maxima give: the
+	 * helper asks it for the character's readings.
+	 */
+	float AttributeWithWhatWasNotFolded(FName Stat, float Attribute) const;
+
+	/**
 	 * What is true of this character right now, for a conditional bonus.
 	 *
 	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than

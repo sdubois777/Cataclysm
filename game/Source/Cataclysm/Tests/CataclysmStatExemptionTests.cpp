@@ -9533,6 +9533,44 @@ namespace CataclysmStatExemptionTest
 					  bWith);
 	}
 
+	/**
+	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
+	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
+	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
+	 * six-piece. The fighter's attribute is 40, as the refresh would write it from the line's base of 40 with the
+	 * conditioned row refused; the row is 50 increased below half health, Brute's Heart's own shape.
+	 *
+	 * BY PLACE AND NOT BY NAME, so the table below names each stat once and the parse of that table reads no damage
+	 * type name as a stat.
+	 *
+	 * WHAT THIS DOES NOT REACH. A blow, a minion's share, the sheet, the console command, a Shred and the hold at
+	 * nought: `Cataclysm.ConditionedResistance.`.
+	 */
+	void ProbeConditionedResistance(FAutomationTestBase& Test, int32 Place)
+	{
+		const TArray<FName>& Types = UCataclysmItemModifiers::DamageTypeNames();
+		if (!Test.TestTrue(TEXT("set-up: the place is one of the damage types"), Types.IsValidIndex(Place)))
+		{
+			return;
+		}
+		const FName Type = Types[Place];
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(Type).ToString();
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(UCataclysmDamageCalculation::ResistanceAttributeFor(Type), 40.0f);
+		ConditionedBelowHalf(Fighter, *Stat, ECataclysmStatBucket::Increased, 50.0f, 40.0f);
+		Test.TestEqual(*FString::Printf(TEXT("%s at full health: the attribute's 40"), *Stat),
+					   UCataclysmDamageCalculation::TypedResistanceOf(Fighter.AbilitySystem, Type), 40.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(*FString::Printf(TEXT("%s is asked for, so below half health 50%% increased gives 60"), *Stat),
+					   UCataclysmDamageCalculation::TypedResistanceOf(Fighter.AbilitySystem, Type), 60.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -9545,6 +9583,14 @@ namespace CataclysmStatExemptionTest
 			{TEXT("dot_damage"),               &ProbeConditionedDotDamage},
 			{TEXT("mana_pool_becomes_health"), &ProbeConditionedManaPoolBecomesHealth},
 			{TEXT("penetration"),              &ProbeConditionedPenetration},
+			{TEXT("resistance_war"),        [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 0); }},
+			{TEXT("resistance_demonic"),    [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 1); }},
+			{TEXT("resistance_death"),      [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 2); }},
+			{TEXT("resistance_pestilence"), [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 3); }},
+			{TEXT("resistance_famine"),     [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 4); }},
+			{TEXT("resistance_celestial"),  [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 5); }},
+			{TEXT("resistance_chaos"),      [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 6); }},
+			{TEXT("resistance_void"),       [](FAutomationTestBase& Test) { ProbeConditionedResistance(Test, 7); }},
 		};
 		return Made;
 	}
@@ -9928,7 +9974,7 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatExemptionTest;
 
-	if (!TestEqual(TEXT("the nine probes are all here"), ConditionedProbes().Num(), 9))
+	if (!TestEqual(TEXT("the seventeen probes are all here"), ConditionedProbes().Num(), 17))
 	{
 		return false;
 	}

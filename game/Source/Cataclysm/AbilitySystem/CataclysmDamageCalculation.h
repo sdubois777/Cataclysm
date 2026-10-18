@@ -1294,10 +1294,13 @@ public:
 	 * THE ONE PLACE A PER-TYPE RESISTANCE IS READ FOR WHAT A BLOW MEETS, since
 	 * 2026-10-12. The mitigation order, the character sheet and
 	 * `Cataclysm.ShowResistances` all read through it. It is the attribute's
-	 * current value, except that a resistance a worn row is holding at nought
+	 * current value plus what a row under a condition or a scale adds now, which
+	 * the stat refresh could not fold into the attribute
+	 * (`UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`, since
+	 * 2026-10-18), except that a resistance a worn row is holding at nought
 	 * (`UCataclysmAbilitySystemComponent::ResistanceHeldAtNought`) reads as
-	 * nought when it is above nought. A held resistance under nought reads as it
-	 * is.
+	 * nought when that sum is above nought. A held resistance whose sum is under
+	 * nought reads as it is.
 	 */
 	static float TypedResistanceOf(const UAbilitySystemComponent* Defender,
 								   FName DamageType);

@@ -8803,6 +8803,20 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "skill_charges_bonus": ASKER_PASSES_NOTHING_MORE,
     "skill_cost_paid_from_health": ASKER_PASSES_NOTHING_MORE,
     "skill_locked": ASKER_PASSES_NOTHING_MORE,
+    # THE EIGHT RESISTANCES, ASKED WHERE A BLOW READS ONE, with the wearer's own
+    # state and no blow: `UCataclysmDamageCalculation::TypedResistanceOf` adds to
+    # the attribute what a conditioned row makes now, through
+    # `AttributeWithWhatWasNotFolded`, which asks `CurrentConditions()` with no
+    # blow in hand. Ruled 2026-10-18, for Brute's Heart's six-piece. Probed in
+    # `ConditionedProbes` by `ProbeConditionedResistance`.
+    "resistance_war": ASKER_PASSES_NOTHING_MORE,
+    "resistance_demonic": ASKER_PASSES_NOTHING_MORE,
+    "resistance_death": ASKER_PASSES_NOTHING_MORE,
+    "resistance_pestilence": ASKER_PASSES_NOTHING_MORE,
+    "resistance_famine": ASKER_PASSES_NOTHING_MORE,
+    "resistance_celestial": ASKER_PASSES_NOTHING_MORE,
+    "resistance_chaos": ASKER_PASSES_NOTHING_MORE,
+    "resistance_void": ASKER_PASSES_NOTHING_MORE,
 }
 
 
