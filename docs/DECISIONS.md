@@ -326,7 +326,63 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 on development e931f2cc3 (the Tyrant's Chains six-piece merge), for four
+commits in this order: this mechanism (with its death-sentence correction folded in), the row layer with its real-row
+test, the change that stopped the row-text check reading a set label's number, and a rename in this entry's test
+file. **IT TOOK TWO RUNS OF ONE WINDOW, enchant-dk. THE FIRST STOPPED AT ITS FIRST BUILD.**
+
+**The first run**, at b4a5baee0: "Build: Failed - 36 actions, 33 files compiled"; "Result: Failed
+(OtherCompilationError)". All 102 errors were in `CataclysmSetBonusDemonKingTenTests.cpp`, and all followed from the
+first: "error C2872: 'FScene': ambiguous symbol", with the note "could be 'FScene'" at
+`Engine/Source/Runtime/Engine/Classes/Engine/Level.h` 324, the engine's `friend class FScene;`. The test namespace's
+own `FScene` collided with it once each test body opened the namespace with `using namespace`. No test ran, nothing
+was rebuilt, and the lock was released.
+
+**The correction**, accepted by the coordinating session the same day: `FScene` renamed `FDemonKingScene` in that
+file and nothing else (commit daf773d8c; 14 lines, each changing only that name). Before the second run the enchantment
+session swept the namespace's 27 names for any other collision, each search run against a control it had to find
+(`FScene` itself, the engine's `IsValid`, the macro `TEXT`): 1 of 27 collided, `FScene`, and no other.
+
+**The second run**, at daf773d8c:
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 4 actions, 1 file compiled:
+  Module.Cataclysm.24.cpp" (the rest was built by the first run); "348 tests performed, 347 succeeded, 1 failed:
+  TheWornDemonKingsRegaliaTenPieceReprievesALethalBlowInTheDemonicRage", with exactly 2 failed assertions in the run,
+  each checked by its text: "with ten pieces worn, the lethal blow in the Rage leaves the wearer alive" and "and under
+  the death sentence an Elite's kill lifts". The nine-piece control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as "Rebuild the enchantment DataTable asset for the Demon King's Regalia 10-piece".
+- **The whole Unreal suite:** "3859 tests performed, 3859 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3859 tests in the tree at b9d88733c; 3859 performed, gap 0". Registered 3859 and 0: the 3850 measured on
+  e931f2cc3, the eight of `Cataclysm.SetBonus.DemonKing10.` and the one real-row test. The five probes are inside tests
+  already counted.
+- **Python:** "6579 passed, 8 skipped"; JUnit tests 6587, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run of both (04:46:46 to 04:47:48, and from 04:56:28 to the end of the second)
+  and would have ended the editor and released the lock after 20 minutes with no test completed. It did not fire.
+
+**WHAT READING HAD LEFT OPEN, NOW MEASURED:** the tests move time by adding to `World->TimeSeconds` rather than by
+running ticks, which relies on the Rage's own stack and the windows being read against the clock rather than ended by a
+timer. All eight passed, so they are.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.DemonKing10.`, 8 tests**, in the
+second run. The stop condition for each was the set of tests that fail with the break in, by the beginnings of their
+names. The failed assertions had been counted by reading, by the second session and again by the enchantment session,
+and were measured beside it. Every anchor was counted once, and every file's hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| DK-I | any rarity lifts the death | 1 failed, `AnEliteKilledInTheThreeSecondsHealsToFullAndLiftsTheDeathAndACommonDoesNot` | 4 / 4 | 8 of 8 succeeded |
+| DK-II | a second reprieve in one Rage | 1 failed, `ASecondLethalBlowInTheSameRageAfterTheThreeSecondsKills` | 3 / 3 | 8 of 8 succeeded |
+| DK-III | no sentence ever begins | 4 failed: `WithNoQualifyingKill...`, `AnEliteKilled...`, `ASecondLethalBlow...`, `NothingStopsItSavesFirst...` | 10 / 10 | 8 of 8 succeeded |
+
+The measured lines include, under DK-I, "control: the wearer's kill of a Common leaves the sentence running ... to be
+true" and "control: and health at one ... to be 1.000000, but it was 1000.000000"; under DK-II, "a second lethal blow
+in the same Rage takes health to nought ... to be 0.000000, but it was 1.000000"; under DK-III, "the reprieve sentences
+the wearer, lifted by an Elite or above ... to be 1, but it was 0".
+
+**Not measured:** DK-III's failure of `ProbeLethalHitReprieveKillRarity` in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and the real-row test's under any break, because the
+proofs ran only this prefix.
 
 ---
 
