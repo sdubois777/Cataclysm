@@ -178,7 +178,7 @@ namespace CataclysmSetBonusDemonKingTenTest
 	}
 
 	/** Everything a test of the bonus stands on. */
-	struct FScene
+	struct FDemonKingScene
 	{
 		ACataclysmPlayerCharacter* Player = nullptr;
 		UCataclysmAbilitySystemComponent* System = nullptr;
@@ -190,7 +190,7 @@ namespace CataclysmSetBonusDemonKingTenTest
 	 * `NothingStopsItEvery` above nought, the player also holds Nothing Stops It's two figures: that interval, and 2 s
 	 * of no damage. False, with a failed set-up assertion, when anything could not be built.
 	 */
-	bool Build(FAutomationTestBase& Test, UWorld* World, FScene& Out, float NothingStopsItEvery = 0.0f)
+	bool Build(FAutomationTestBase& Test, UWorld* World, FDemonKingScene& Out, float NothingStopsItEvery = 0.0f)
 	{
 		FMade Made;
 		if (!Make(Test, Made))
@@ -234,25 +234,25 @@ namespace CataclysmSetBonusDemonKingTenTest
 		return true;
 	}
 
-	float HealthOf(const FScene& Scene)
+	float HealthOf(const FDemonKingScene& Scene)
 	{
 		return Scene.System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
 	}
 
 	/** A direct write of health, as the Demonic Rage test moves it: the fall below 25% starts the Rage. */
-	void SetHealth(const FScene& Scene, float Current)
+	void SetHealth(const FDemonKingScene& Scene, float Current)
 	{
 		Scene.System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Current);
 	}
 
 	/** A blow far larger than the wearer's health. */
-	void Strike(const FScene& Scene)
+	void Strike(const FDemonKingScene& Scene)
 	{
 		UCataclysmSkillEffects::ApplyDirectDamage(Scene.Attacker, Scene.Player, Lethal);
 	}
 
 	/** The wearer's figure for a stat, asked with no tags. */
-	float Figure(const FScene& Scene, const TCHAR* Stat)
+	float Figure(const FDemonKingScene& Scene, const TCHAR* Stat)
 	{
 		return Scene.System->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f);
 	}
@@ -274,7 +274,7 @@ namespace CataclysmSetBonusDemonKingTenTest
 		}
 	}
 
-	bool IsDead(const FScene& Scene)
+	bool IsDead(const FDemonKingScene& Scene)
 	{
 		return UCataclysmSkillEffects::IsDead(Scene.Player);
 	}
@@ -383,7 +383,7 @@ bool FCataclysmDemonKingTenSaveTest::RunTest(const FString&)
 			return false;
 		}
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		FScene Scene;
+		FDemonKingScene Scene;
 		if (!Build(*this, World, Scene))
 		{
 			return false;
@@ -439,7 +439,7 @@ bool FCataclysmDemonKingTenCritTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	FScene Scene;
+	FDemonKingScene Scene;
 	if (!Build(*this, World, Scene))
 	{
 		return false;
@@ -487,7 +487,7 @@ bool FCataclysmDemonKingTenSentenceTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	FScene Scene;
+	FDemonKingScene Scene;
 	if (!Build(*this, World, Scene))
 	{
 		return false;
@@ -531,7 +531,7 @@ bool FCataclysmDemonKingTenKillTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	FScene Scene;
+	FDemonKingScene Scene;
 	if (!Build(*this, World, Scene))
 	{
 		return false;
@@ -596,7 +596,7 @@ bool FCataclysmDemonKingTenOnceTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	FScene Scene;
+	FDemonKingScene Scene;
 	if (!Build(*this, World, Scene))
 	{
 		return false;
@@ -642,7 +642,7 @@ bool FCataclysmDemonKingTenOneBlowTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	FScene Scene;
+	FDemonKingScene Scene;
 	if (!Build(*this, World, Scene))
 	{
 		return false;
@@ -677,7 +677,7 @@ bool FCataclysmDemonKingTenNothingStopsItTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	FScene Scene;
+	FDemonKingScene Scene;
 	if (!Build(*this, World, Scene, /*NothingStopsItEvery=*/3.0f))
 	{
 		return false;
