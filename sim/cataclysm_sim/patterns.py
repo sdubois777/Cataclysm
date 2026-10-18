@@ -28,6 +28,9 @@ class Pattern:
     # Rifts open behind the front line -- the frontier rule does not apply.
     ignores_frontier: bool = False
     # Cities lost to this Cataclysm can never be reclaimed.
+    #: Its ordinary dungeons add void stacks instead of damage, and ten erase a
+    #: city (`Simulation._adds_void_stacks`). Until 2026-10-18 this marked every
+    #: city the Cataclysm's dungeons landed on to be erased by its fall.
     erases_cities: bool = False
     # Weighting function over candidate cities.
     weight: Callable[[Empire, City], float] = lambda e, c: 1.0
