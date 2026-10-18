@@ -24,6 +24,8 @@
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For Brute's Heart's taunt aura, which beats by itself below half health. Ruled 2026-10-18.
+#include "AbilitySystem/CataclysmTauntAura.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -357,6 +359,13 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// late at worst; the call answers nought for every character holding no such
 	// row and refuses a corpse itself. Its return value is for tests.
 	UCataclysmGroundPound::Step(this);
+
+	// AND A WEARER OF BRUTE'S HEART'S SIX PIECES BELOW HALF HEALTH TAUNTS EVERY
+	// ENEMY NEAR, ONCE A SECOND. Ruled 2026-10-18 (Q2). On this step, so the
+	// beat is a quarter of a second late at worst and needs no timer of its own;
+	// the call answers nought for every character holding no such row and
+	// refuses a corpse itself. Its return value is for tests.
+	UCataclysmTauntAura::Step(this);
 
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the

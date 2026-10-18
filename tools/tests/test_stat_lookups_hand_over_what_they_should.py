@@ -181,7 +181,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Warlord's Will's Warhound added one more on 2026-10-18: its summoner's
 #: armour, which each of its hits is a share of, asked as the armour nova asks
 #: it. Its four stats are asked through `SummonerStat`, already listed.
-CALL_SITES = 65
+#: Brute's Heart's taunt aura added one more on 2026-10-18: the one helper
+#: `UCataclysmTauntAura::StatOf` its four stats are asked through.
+CALL_SITES = 66
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1007,6 +1009,13 @@ INVENTORY = {
         "share of (Q5 of 2026-10-18), asked by WarhoundBlow as the armour "
         "nova asks it; the summoner's armour is not a modifier of the "
         "Warhound's blow, so no skill, no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmTauntAura.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Brute's Heart's four taunt aura stats (ruled 2026-10-17 "
+        "and 2026-10-18), asked by StatOf on the regeneration step; the aura "
+        "is not one of the wearer's skills, so no tags, and the share of "
+        "health is judged by the aura itself with the wearer's own state, "
+        "so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

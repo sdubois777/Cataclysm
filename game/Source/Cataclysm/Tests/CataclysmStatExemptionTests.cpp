@@ -29,6 +29,8 @@
 #include "AbilitySystem/CataclysmStacks.h"
 // For the Warhound's taunt. Warlord's Will's six-piece, ruled 2026-10-18.
 #include "AbilitySystem/CataclysmTaunt.h"
+// For Brute's Heart's taunt aura. Its six-piece, ruled 2026-10-18.
+#include "AbilitySystem/CataclysmTauntAura.h"
 // For the stat a worn row grants class points on, and its reader.
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -9466,6 +9468,71 @@ namespace CataclysmStatExemptionTest
 		}
 	}
 
+	/**
+	 * One beat of Brute's Heart's taunt aura, for the four probes below: a wearer holding `Stats`, a real creature of
+	 * the players' side at 40% of its health, and an enemy of the monsters' side 3 m off. Whether that one step leaves
+	 * the enemy taunted by the wearer. The probes compare all four aura stats with the same three less the one probed.
+	 */
+	bool TauntAuraTauntsWith(FAutomationTestBase& Test, const TMap<FName, float>& Stats)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmEnemyCharacter* Wearer =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(3 * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: a wearer"), Wearer)
+			|| !Test.TestNotNull(TEXT("set-up: an enemy 3 m off"), Enemy))
+		{
+			return false;
+		}
+		Wearer->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Wearer->SetHealth(100000.0f);
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Enemy->SetHealth(100000.0f);
+		Enemy->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 0.0f);
+
+		UAbilitySystemComponent* Its = Wearer->GetAbilitySystemComponent();
+		Its->SetNumericAttributeBase(Vital::GetHealthAttribute(), 40000.0f);
+		GrantFlats(Wearer, Stats);
+		UCataclysmTauntAura::Step(Wearer);
+		return UCataclysmTaunt::TaunterOf(Enemy) == Wearer;
+	}
+
+	/**
+	 * The four taunt aura stats, each read by `UCataclysmTauntAura::StatOf` from `Step`. Ruled 2026-10-17 (#6) and
+	 * 2026-10-18, for Brute's Heart's six-piece. THE CONTROL IS THE SAME SCENE WITH THE THREE OTHER STATS AND NOT THE
+	 * ONE PROBED; with all four, the enemy is taunted.
+	 *
+	 * WHAT THIS DOES NOT REACH. The share's edge, the interval, the radius's edge, the taunt's seconds, a boss and
+	 * another taunter: `Cataclysm.SetBonus.Brute6.`.
+	 */
+	void ProbeTauntAura(FAutomationTestBase& Test, const TCHAR* Probed)
+	{
+		TMap<FName, float> All;
+		All.Add(FName(UCataclysmTauntAura::BelowHealthPercentStat), 50.0f);
+		All.Add(FName(UCataclysmTauntAura::EverySecondsStat), 1.0f);
+		All.Add(FName(UCataclysmTauntAura::RadiusMetresStat), 5.0f);
+		All.Add(FName(UCataclysmTauntAura::TauntSecondsStat), 3.0f);
+		TMap<FName, float> Less = All;
+		Less.Remove(FName(Probed));
+
+		const bool bWithout = TauntAuraTauntsWith(Test, Less);
+		const bool bWith = TauntAuraTauntsWith(Test, All);
+		const FString Name(Probed);
+		Test.TestFalse(*FString::Printf(TEXT("control: with no %s the wearer below half health taunts nobody"), *Name),
+					   bWithout);
+		Test.TestTrue(*FString::Printf(TEXT("with %s the enemy 3 m off is taunted by the wearer, so "
+											"UCataclysmTauntAura::Step really reads it"), *Name),
+					  bWith);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -9647,6 +9714,14 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeWarhound(Test, ACataclysmMinion::WarhoundArmourPercentStat); }},
 			{TEXT("warhound_taunt_seconds"),
 			 [](FAutomationTestBase& Test) { ProbeWarhound(Test, ACataclysmMinion::WarhoundTauntSecondsStat); }},
+			{TEXT("taunt_aura_below_health_percent"),
+			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::BelowHealthPercentStat); }},
+			{TEXT("taunt_aura_every_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::EverySecondsStat); }},
+			{TEXT("taunt_aura_radius_metres"),
+			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::RadiusMetresStat); }},
+			{TEXT("taunt_aura_taunt_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::TauntSecondsStat); }},
 		};
 		return Made;
 	}
