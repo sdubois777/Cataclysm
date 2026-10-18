@@ -434,7 +434,53 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-w6, on development 86f36668b (the Brute's Heart
+ten-piece merge), for three commits in this order: the mechanism (c72d585aa), ruling B, a taunt is crowd control
+(4ed1ed2cf), and the row layer with the Warhound's Minion Types row and the real-row test (a23a9be34). Every step was
+as registered.
+
+**RULED BEFORE THE WINDOW (Q-W, the coordinating session, 2026-10-18), and recorded here as it asked:
+`warhound_seconds` = 10 is admitted by the row-text check only because "10%", the summon chance, is the sentence's one
+number, and the check cannot tell a percent from seconds.** It was accepted and recorded, and `value_is_stated` was not
+widened in this layer. No word could state the 10 on purpose: `test_every_word_stated_value_is_still_needed` refuses a
+word that the number already admits.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled" (the
+  mechanism's first compile); "350 tests performed, 349 succeeded, 1 failed:
+  TheWornWarlordsWillSixPieceSummonsAWarhoundOnABlowTaken", with exactly 2 failed assertions in the run, each checked by
+  its text: "with six pieces worn, the blow summons a Warhound" and "and it lasts 10 s". The five-piece control and the
+  set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_MinionTypes.uasset` and
+  `datatable_asset_sources.json` changed, committed on the row layer as 44e0f8241, "Rebuild the enchantment and minion
+  type DataTable assets for Warlord's Will 6".
+- **The whole Unreal suite:** "3880 tests performed, 3880 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3880 tests in the tree at 44e0f8241; 3880 performed, gap 0". Registered 3880 and 0: the 3869 measured on
+  86f36668b, the ten of `Cataclysm.SetBonus.Warlord6.` and the one real-row test. The four probes are inside a test
+  already counted.
+- **Python:** "6625 passed, 8 skipped"; JUnit tests 6633, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 09:26:57 and would have ended the editor and released the lock after
+  20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Warlord6.`, 10 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading, after listing every event each test's actors raise on the way, by the second
+session and again by the enchantment session, and were measured beside it. Each anchor was counted once, and each
+file's hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| WW-I | the taunt not asked in the target choice | 5 failed: `ATauntedEnemyTargets...`, `ABossIsNotTaunted...`, `ATauntEndsAtOnce...`, `TheSameTaunterRestarts...`, `AWarhoundsHitDeals...` | 8 / 8 | 10 of 10 succeeded |
+| WW-II | a boss taunted | 1 failed, `ABossIsNotTauntedAndTheRungBelowIs` | 3 / 3 | 10 of 10 succeeded |
+| WW-III | a Warhound's death handed to the replacement | 1 failed, `AWarhoundsDeathIsNotReplaced` | 1 / 1 | 10 of 10 succeeded |
+| WW-IV | a taunt raises no `crowd_control` (ruling B) | 3 failed: `ABossIsNotTaunted...`, `TheSameTaunterRestarts...`, `AWarhoundsHitDeals...` | 4 / 4 | 10 of 10 succeeded |
+
+The measured lines include, under WW-I, "taunted, it chooses its taunter and not the player ... to be true"; under
+WW-II, "a Boss is not taunted ... to be false" and "and the refused taunt raised no crowd_control ... to be 1, but it
+was 2"; under WW-III, "and Press-Ganged does not replace it ... to be 0, but it was 1"; under WW-IV, "the placing and the
+restart each raised crowd_control on the first taunter (B) ... to be 2, but it was 0".
+
+**Not measured:** the probes' failures outside the prefix, the real-row test's under any break, and the not-proposed
+fifth break (`IsTaunted(nullptr)` in `IsCrowdControlled`).
 
 ---
 
