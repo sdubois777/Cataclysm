@@ -16,6 +16,7 @@
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
+#include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
@@ -9239,6 +9240,120 @@ namespace CataclysmStatExemptionTest
 	}
 
 
+	/** What one Ground Pound did, for the five probes below. */
+	struct FGroundPoundProbeOutcome
+	{
+		/** `SecondsUntilReady` after the first step: -1 when no clock was started. */
+		float SecondsWhenArmed = -1.0f;
+		/** And after one kill raised on the wearer. */
+		float SecondsAfterAKill = -1.0f;
+		/** What the enemy 3 m off lost to the step 30 s on. */
+		float Dealt = 0.0f;
+		/** Whether that step stunned it. */
+		bool bStunned = false;
+	};
+
+	/**
+	 * One wearer holding 1000 armour and `Stats`, an enemy 3 m off with no armour, evasion, block or resistance: one
+	 * step, one kill raised on the wearer, 30 s, one step. The probes below compare all five Ground Pound stats with
+	 * the same four less the one probed.
+	 */
+	FGroundPoundProbeOutcome GroundPoundWith(FAutomationTestBase& Test, const TMap<FName, float>& Stats)
+	{
+		FGroundPoundProbeOutcome Outcome;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return Outcome;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Wearer(World, /*AttackDamage=*/0.0f);
+		Wearer.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 1000.0f);
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(3 * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: an enemy 3 m off"), Enemy))
+		{
+			return Outcome;
+		}
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Enemy->SetHealth(100000.0f);
+		Enemy->SetArmour(0.0f);
+		UAbilitySystemComponent* Its = Enemy->GetAbilitySystemComponent();
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+
+		GrantFlats(Wearer.Actor, Stats);
+		UCataclysmGroundPound::Step(Wearer.Actor);
+		Outcome.SecondsWhenArmed = UCataclysmGroundPound::SecondsUntilReady(Wearer.AbilitySystem);
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("kill")));
+		Outcome.SecondsAfterAKill = UCataclysmGroundPound::SecondsUntilReady(Wearer.AbilitySystem);
+
+		World->TimeSeconds += 30.0f;
+		const float Before = Its->GetNumericAttribute(Vital::GetHealthAttribute());
+		UCataclysmGroundPound::Step(Wearer.Actor);
+		Outcome.Dealt = Before - Its->GetNumericAttribute(Vital::GetHealthAttribute());
+		Outcome.bStunned = UCataclysmSkillEffects::HasTag(Enemy, UCataclysmSkillEffects::StunnedTag());
+		return Outcome;
+	}
+
+	/**
+	 * The five Ground Pound stats, each read by `UCataclysmGroundPound::StatOf` from `Step` or `NoteKill`. Ruled
+	 * 2026-10-17 (#5) and 2026-10-18, for Brute's Heart's ten-piece. THE CONTROL IS THE SAME SCENE WITH THE FOUR OTHER
+	 * STATS AND NOT THE ONE PROBED; with all five, the reading named moves.
+	 *
+	 * WHAT THIS DOES NOT REACH. Holding fire with no enemy near, the 8 m edge, a boss, a kill while ready:
+	 * `Cataclysm.SetBonus.Brute10.`.
+	 */
+	void ProbeGroundPound(FAutomationTestBase& Test, const TCHAR* Probed)
+	{
+		TMap<FName, float> All;
+		All.Add(FName(UCataclysmGroundPound::EverySecondsStat), 30.0f);
+		All.Add(FName(UCataclysmGroundPound::ArmourPercentStat), 500.0f);
+		All.Add(FName(UCataclysmGroundPound::RadiusMetresStat), 8.0f);
+		All.Add(FName(UCataclysmGroundPound::StunSecondsStat), 3.0f);
+		All.Add(FName(UCataclysmGroundPound::SecondsOffPerKillStat), 0.5f);
+		TMap<FName, float> Less = All;
+		Less.Remove(FName(Probed));
+
+		const FGroundPoundProbeOutcome Without = GroundPoundWith(Test, Less);
+		const FGroundPoundProbeOutcome With = GroundPoundWith(Test, All);
+		const FString Name(Probed);
+		if (Name == UCataclysmGroundPound::EverySecondsStat)
+		{
+			Test.TestEqual(TEXT("control: with no ground_pound_every_seconds no clock is started"),
+						   Without.SecondsWhenArmed, -1.0f, 0.0001f);
+			Test.TestEqual(TEXT("with ground_pound_every_seconds at 30 the pound is ready in 30 s, so "
+								"UCataclysmGroundPound::Step really reads it"),
+						   With.SecondsWhenArmed, 30.0f, 0.001f);
+		}
+		else if (Name == UCataclysmGroundPound::ArmourPercentStat || Name == UCataclysmGroundPound::RadiusMetresStat)
+		{
+			Test.TestEqual(*FString::Printf(TEXT("control: with no %s the enemy loses nothing"), *Name),
+						   Without.Dealt, 0.0f, 0.01f);
+			Test.TestEqual(*FString::Printf(TEXT("with %s the enemy loses 500%% of the wearer's 1000 armour, so "
+												 "UCataclysmGroundPound::Step really reads it"), *Name),
+						   With.Dealt, 5000.0f, 0.5f);
+		}
+		else if (Name == UCataclysmGroundPound::StunSecondsStat)
+		{
+			Test.TestFalse(TEXT("control: with no ground_pound_stun_seconds the enemy is not stunned"),
+						   Without.bStunned);
+			Test.TestTrue(TEXT("with ground_pound_stun_seconds at 3 it is, so UCataclysmGroundPound::Step really "
+							   "reads it"),
+						  With.bStunned);
+		}
+		else
+		{
+			Test.TestEqual(TEXT("control: with no ground_pound_seconds_off_per_kill a kill leaves 30 s"),
+						   Without.SecondsAfterAKill, 30.0f, 0.001f);
+			Test.TestEqual(TEXT("with ground_pound_seconds_off_per_kill at 0.5 a kill leaves 29.5 s, so "
+								"UCataclysmGroundPound::NoteKill really reads it"),
+						   With.SecondsAfterAKill, 29.5f, 0.001f);
+		}
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -9402,6 +9517,16 @@ namespace CataclysmStatExemptionTest
 			{TEXT("lethal_hit_reprieve_every_seconds"), &ProbeLethalHitReprieveEvery},
 			{TEXT("lethal_hit_reprieve_seconds"), &ProbeLethalHitReprieveSeconds},
 			{TEXT("lethal_hit_reprieve_kill_rarity_at_least"), &ProbeLethalHitReprieveKillRarity},
+			{TEXT("ground_pound_every_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::EverySecondsStat); }},
+			{TEXT("ground_pound_percent_of_armor"),
+			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::ArmourPercentStat); }},
+			{TEXT("ground_pound_radius_metres"),
+			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::RadiusMetresStat); }},
+			{TEXT("ground_pound_stun_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::StunSecondsStat); }},
+			{TEXT("ground_pound_seconds_off_per_kill"),
+			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::SecondsOffPerKillStat); }},
 		};
 		return Made;
 	}

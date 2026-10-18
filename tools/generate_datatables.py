@@ -10772,6 +10772,119 @@ def refuse_a_lethal_hit_reprieve_row_the_game_cannot_read(
     return problems
 
 
+#: Brute's Heart's ten-piece bonus, the Ground Pound. Ruled 2026-10-17 by the
+#: project owner (#5: it fires by itself once ready and an enemy is inside its
+#: radius, with no key) and 2026-10-18 by the coordinating session (Q1-Q5), for
+#: "Every 30 seconds, you can unleash a powerful "Ground Pound" that deals 500%
+#: of your armor as damage to all enemies in a large radius and stuns them for
+#: 3 seconds. The cooldown of this ability is reduced by 0.5 seconds per kill".
+#:
+#: FIVE ROWS, EACH `flat` WITH NO REQUIRED TAGS, NO CONDITION, NO SCALE AND NO
+#: ACTION, one on each stat below in its order: 30, 500, 8 (a "large radius",
+#: a number under the owner's delegation, Q1), 3 and 0.5.
+#: `UCataclysmGroundPound` holds the same five names, and
+#: `tools/tests/test_brutes_heart_ten_rows.py` compares them.
+#:
+#: THE GAME ASKS FOR EACH WITH NO TAGS, off the wearer, through
+#: `UCataclysmGroundPound::StatOf`, on the regeneration step and at a kill. So a
+#: row requiring a tag matches nowhere, a row of any kind but `flat` works on a
+#: base of nought, and a row with an action is not a stat line at all.
+GROUND_POUND_EVERY_SECONDS_STAT = "ground_pound_every_seconds"
+GROUND_POUND_ARMOUR_PERCENT_STAT = "ground_pound_percent_of_armor"
+GROUND_POUND_RADIUS_METRES_STAT = "ground_pound_radius_metres"
+GROUND_POUND_STUN_SECONDS_STAT = "ground_pound_stun_seconds"
+GROUND_POUND_SECONDS_OFF_PER_KILL_STAT = "ground_pound_seconds_off_per_kill"
+GROUND_POUND_STATS = (
+    GROUND_POUND_EVERY_SECONDS_STAT,
+    GROUND_POUND_ARMOUR_PERCENT_STAT,
+    GROUND_POUND_RADIUS_METRES_STAT,
+    GROUND_POUND_STUN_SECONDS_STAT,
+    GROUND_POUND_SECONDS_OFF_PER_KILL_STAT,
+)
+
+#: The most each may state, where a bound exists already: the period of a
+#: timed row, the share `smite_nearby_by_armor` may state (the blow is that
+#: action's), and the longest status. The radius and the seconds a kill takes
+#: off have no bound but above nought.
+MAX_GROUND_POUND = {
+    GROUND_POUND_EVERY_SECONDS_STAT: MAX_EVERY_SECONDS,
+    GROUND_POUND_ARMOUR_PERCENT_STAT: MAX_NEARBY_PERCENT["smite_nearby_by_armor"],
+    GROUND_POUND_STUN_SECONDS_STAT: MAX_STATUS_SECONDS,
+}
+
+
+def refuse_a_ground_pound_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `GROUND_POUND_STATS` is a figure its one reader takes as
+    it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants above
+    give. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_tyrants_minion_row_the_game_cannot_read`, for five stats.
+
+    EVERY FIGURE IS ABOVE NOUGHT, and at most its bound where it has one: at
+    nought the pound is not armed, strikes nothing, stuns nothing or takes
+    nothing off, which is what not wearing the row already does.
+
+    THE SECONDS FROM ONE POUND TO THE NEXT MAY BE A RANGE ONLY IF IT FALLS, as
+    `gadget_volley_every_seconds` must: a roll of 1 gives the second figure,
+    and the best roll is the shortest wait. Every other range must rise.
+
+    A CONDITION OR A SCALE ON ANY OF THEM IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    none is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in GROUND_POUND_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and the Ground Pound "
+                f"gets nothing from it.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the wearer with no tags, so a "
+                f"row requiring a tag matches nowhere and says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if stat == GROUND_POUND_EVERY_SECONDS_STAT and low < high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the pair "
+                f"must not rise. A roll of 1 gives the second figure, and the "
+                f"best roll is the SHORTEST wait: mark the sentence's range in "
+                f"the Rolls Down column of the Enchantments sheet.")
+        elif stat != GROUND_POUND_EVERY_SECONDS_STAT and low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        bound = MAX_GROUND_POUND.get(stat)
+        for value in sorted({low, high}):
+            if value <= 0.0 or (bound is not None and value > bound):
+                most = f" and at most {bound:g}" if bound is not None else ""
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0{most}: at nought the Ground Pound gets "
+                    f"nothing from the row.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11185,6 +11298,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # TAGS AND NO ACTION; THE INTERVAL SCALED ONLY BY ITS OWN STACKS; THE RUNG
     # ONE WHOLE RUNG FROM 1 TO 5. Ruled 2026-10-18.
     problems.extend(refuse_a_lethal_hit_reprieve_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FIVE GROUND POUND STATS ARE FLAT, WITH NO TAGS AND NO ACTION, AND
+    # ABOVE 0. Ruled 2026-10-17 (#5) and 2026-10-18.
+    problems.extend(refuse_a_ground_pound_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
