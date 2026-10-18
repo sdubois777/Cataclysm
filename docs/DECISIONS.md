@@ -18,6 +18,13 @@ changed. No data row, no tag and no workbook cell is changed. Issue [#1833](http
 
 ### SAID FIRST
 
+- **FOR THE OWNER'S PLAY-CHECK LIST** (ruled 2026-10-18 by the coordinating session, Q4's edge (a)): "Ground Pound's
+  hits and kills trigger the wearer's on-hit and on-kill rows". The pound is the wearer's own blow, dealt from the
+  regeneration step and not from inside a row's event, so the rows that answer a skill's hit answer it; the armour nova
+  `smite_nearby_by_armor` runs inside `ActOnEvent`, one level deep, and is never answered.
+- **THE POUND'S OWN KILLS TAKE 0.5 S OFF ITS NEXT CLOCK**, as Q3 makes every kill credited to the wearer do: the clock
+  restarts at 30 s before the blow lands (`CataclysmGroundPound.cpp`, "THE CLOCK STARTS AGAIN BEFORE THE BLOW"), so a
+  kill the pound makes is taken off the next one.
 - **NOTHING CHANGES FOR A PLAYER UNTIL THE FIVE ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
   layer authors no row. A ten-piece bonus is live only with ten pieces worn.
 - **IT FIRES BY ITSELF.** No key, no slot, no ability is granted (the owner, #5). Once ready it waits for as long as no
@@ -154,10 +161,12 @@ rows are merged (`EnchantmentEffects.csv` 83, 84 and 470).
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 
-**IN THE ROW LAYER**, by the enchantment session, predicted and not run on the real table: in
+**IN THE ROW LAYER**, by the enchantment session, measured on the real table: in
 `tools/tests/test_enchantment_effects_match_the_row_text.py`, `STATED_BY_WORD` gains "large" as 8 on
-`ground_pound_radius_metres`. Measured with that file's `value_is_stated` on the sentence: 30, 500, 3 and 0.5 are read
-out of it, and 8 is not.
+`ground_pound_radius_metres` (ruled 2026-10-18). Measured with that file's `value_is_stated` on the sentence: 30, 500, 3
+and 0.5 are read out of it, and 8 is not. Proved with `prove_guard`: with the word removed,
+`test_a_single_value_appears_in_its_words_outside_any_range` fails, and restored, all 40 tests of the file pass. The row
+pins move to 646 rows and 535 enchantments.
 
 **IN THE MECHANISM:**
 

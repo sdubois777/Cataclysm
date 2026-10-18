@@ -372,6 +372,10 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # (the six-piece's "for 10 seconds"), so one reprieve a Rage. Ruled 2026-10-18 to be
     # stated on purpose: the set label's 10 used to admit it, and no longer does.
     "lethal_hit_reprieve_every_seconds": {"rage": 10.0},
+    # "LARGE" IS 8 ON `ground_pound_radius_metres`, for Brute's Heart's ten-piece, "to all
+    # enemies in a large radius": 8 m, the game's figure for a set's "area" (Warlord's
+    # Will's ten-piece), ruled 2026-10-18 (Q1) under the owner's delegation.
+    "ground_pound_radius_metres": {"large": 8.0},
     # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
@@ -952,8 +956,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 632 over 532: four rows on one enchantment.
 #: AND 641 OVER 534 SINCE THE FIVE ROWS OF THE DEMON KING'S REGALIA'S 10-PIECE,
 #: issue #1833, 2026-10-18, from 636 over 533: five rows on one enchantment.
-AUTHORED_ROWS = 641
-AUTHORED_ENCHANTMENTS = 534
+#: AND 646 OVER 535 SINCE THE FIVE ROWS OF BRUTE'S HEART'S 10-PIECE,
+#: issue #1833, 2026-10-18, from 641 over 534: five rows on one enchantment.
+AUTHORED_ROWS = 646
+AUTHORED_ENCHANTMENTS = 535
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
