@@ -294,6 +294,10 @@ class Simulation:
         self.surge_index = 0        # how many surges have happened
         #: Quest dungeons moved off a city as it fell, since 2026-10-16.
         self.quest_moves_on_a_fall = 0
+        #: Void stacks added to cities, and cities erased by reaching
+        #: `void_stacks_to_erase`, since 2026-10-18.
+        self.void_stacks_added = 0
+        self.void_erasures = 0
         #: The Cataclysm `trigger_surge` is making a dungeon for, read by
         #: `_make_dungeon`; empty outside that call.
         self.making_for = ""
@@ -722,8 +726,6 @@ class Simulation:
             finally:
                 self.making_for = ""
             d.source = ctype
-            if pat.erases_cities:
-                city.doomed = True
 
         gap = self.surge_gap()
         self.surge_log.append((self.day, gap, count))
@@ -969,13 +971,25 @@ class Simulation:
         # damage was a fraction of it, it divided out of how many resolves the
         # city survived and every city-health upgrade in the design was worth
         # nothing. Issue #1327.
-        taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
-        city.defense -= d.defense_damage * scale * taken
-        city.population -= d.population_damage * scale * taken
-        city.population = max(0.0, city.population)
+        #
+        # A VOID DUNGEON ADDS STACKS INSTEAD, since 2026-10-18
+        # (`TuningConfig.void_dungeons_add_stacks` quotes the owner). It still
+        # counts in `resolved` and still leaves the map below.
+        if self._adds_void_stacks(d):
+            added = self._void_stacks_for(d)
+            city.void_stacks += added
+            self.void_stacks_added += added
+            if city.void_stacks >= cfg.void_stacks_to_erase:
+                self.void_erasures += 1
+                self._fall(city)
+        else:
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+            city.defense -= d.defense_damage * scale * taken
+            city.population -= d.population_damage * scale * taken
+            city.population = max(0.0, city.population)
 
-        if city.defense <= 0:
-            self._fall(city)
+            if city.defense <= 0:
+                self._fall(city)
 
         # IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of
         # 2026-10-08, verbatim: "Ordinary dungeons will do their
@@ -1005,6 +1019,28 @@ class Simulation:
             d.resolve_in = float(d.resolve_max)
         else:
             self.dungeons.pop(d.did, None)
+
+    def _adds_void_stacks(self, d: Dungeon) -> bool:
+        """Whether this dungeon's timer adds void stacks instead of damage:
+        an ordinary dungeon of a Cataclysm whose pattern erases cities (the
+        Void's), with `TuningConfig.void_dungeons_add_stacks` on."""
+        return (self.cfg.void_dungeons_add_stacks
+                and d.dtype is DungeonType.BASIC
+                and PATTERNS.get(d.source, PATTERN_DEFAULT).erases_cities)
+
+    def _void_stacks_for(self, d: Dungeon) -> int:
+        """1, 2 or 3: which third of its row's depth the dungeon's natural
+        floors fall in, the row's range scaled by its Cataclysm pattern's
+        `floors_mult` as the roll was. Ruled by the coordinating session,
+        2026-10-16. By the natural floors, so the empire tree's added floors
+        add no stacks, as they add no damage (`_hit_floors`)."""
+        lo, hi = self.cfg.spec(d.dtype, d.city_tier).floors
+        mult = PATTERNS.get(d.source, PATTERN_DEFAULT).floors_mult
+        span = (hi - lo) * mult
+        if span <= 0:
+            return 1
+        third = int(3 * (d.natural_floors - lo * mult) / span)
+        return 1 + min(2, max(0, third))
 
     def _hit_floors(self, d: Dungeon) -> float:
         """The depth a dungeon's hit is sized by.
@@ -1168,7 +1204,9 @@ class Simulation:
         cfg = self.cfg
         city.defense = 0.0
         city.fallen = True
-        if city.doomed:
+        # ERASED AT TEN VOID STACKS, and only then, since 2026-10-18: a city
+        # that falls with fewer can be retaken (`TuningConfig.void_stacks_to_erase`).
+        if city.void_stacks >= cfg.void_stacks_to_erase:
             city.erased = True     # Void: never coming back
         self.empire._invalidate()
 
@@ -1254,6 +1292,8 @@ class Simulation:
 
     def _retake(self, city: City) -> None:
         city.fallen = False
+        # A RETAKEN CITY'S VOID STACKS ARE CLEARED, ruled 2026-10-16.
+        city.void_stacks = 0
         self.empire._invalidate()
         city.defense = city.max_defense * 0.5
         city.population = city.max_population * 0.5

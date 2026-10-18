@@ -247,7 +247,7 @@ class TestTheDenominatorCountsEveryCityFallenOrNot:
         total_max = sum(c.max_population for c in sim.empire.cities.values())
 
         victim = next(c for c in sim.empire.cities.values()
-                      if c.cid != sim.empire.pillar_id and not c.doomed)
+                      if c.cid != sim.empire.pillar_id and not c.erased)
         expected = 1.0 - victim.max_population / total_max
         sim._fall(victim)
 
@@ -285,7 +285,9 @@ class TestTheDenominatorCountsEveryCityFallenOrNot:
 
         victim = next(c for c in sim.empire.cities.values()
                       if c.cid != sim.empire.pillar_id)
-        victim.doomed = True
+        # TEN VOID STACKS AND NOT `doomed`, which went on 2026-10-18: a city is
+        # erased by its fall only when it holds `void_stacks_to_erase`.
+        victim.void_stacks = sim.cfg.void_stacks_to_erase
         sim._fall(victim)
         assert victim.erased, "the test did not reach the erasure path"
 
