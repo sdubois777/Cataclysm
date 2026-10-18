@@ -56,8 +56,10 @@ Everything a ruling requires to be said first, and everything a player would not
 - **AT MOST ONCE A DEMONIC RAGE** (Q2): the interval's row states 10, the Rage's own length, and the reprieve's clock
   waits that long after a reprieve (`CataclysmAbilitySystemComponent.cpp` 2200). The Rage cannot begin again inside 300
   s, so no second reprieve can fall inside one Rage. Test 6.
-- **THE DEATH IS FINAL** (Q3): health written to nought and `HandleDeath`, as the delayed damage's drain kills
-  (`CarryOutDueDeathSentence`, `CataclysmAbilitySystemComponent.cpp` 2252). No blow is dealt, so no save in
+- **THE DEATH IS FINAL** (Q3): health written to nought, and the write's own death notice
+  (`PostAttributeBaseChange` to `NotifyIfHealthReachedZero`) runs `HandleDeath` once (`CarryOutDueDeathSentence`,
+  `CataclysmAbilitySystemComponent.cpp` 2252; corrected 2026-10-18 at the enchantment session's reading, so the
+  player's save trigger is not noted twice). No blow is dealt, so no save in
   `PostGameplayEffectExecute` is asked, Nothing Stops It's included. Test 8 shows the death made while Nothing Stops It
   is ready. **It lands on the next regeneration step after the window ends, up to a quarter of a second late**
   (`CataclysmCharacterBase.cpp` 177 to 186).
@@ -124,7 +126,7 @@ Line numbers are of this layer's working tree.
 | #4 | "Rare or higher" is Elite and above. | The row states rung 1; `NoteKillUnderDeathSentence` compares `RarityStep` with it (2235). |
 | Q1 | +100 points of each, for the 3 s. | Two rows, each a flat 100 scaled by its own stacks on `lethal_hit_reprieved`, one stack for 3 s; the event raised last in `NoteLethalHitReprieved` (2216). |
 | Q2 | At most once per Demonic Rage. | The reprieve's own clock (`LethalHitReprieveNextAllowedSeconds`, 2200), at the row's 10, the Rage's length. |
-| Q3 | The death is final. | `CarryOutDueDeathSentence` (2252): a direct write of health and `HandleDeath`, asking no save; called from `RegenerationStep` (`CataclysmCharacterBase.cpp` 185). |
+| Q3 | The death is final. | `CarryOutDueDeathSentence` (2252): a direct write of health, whose own death notice runs `HandleDeath` once, asking no save; called from `RegenerationStep` (`CataclysmCharacterBase.cpp` 185). |
 | Q4 | A qualifying kill heals to full and lifts the death; the window and the crit run on. | `NoteKillUnderDeathSentence` (2230 to 2250) ends only the sentence and heals through `TopUp`. |
 | Q5 | Exactly the kills the `kill` event credits. | Called beside `kill`, inside `if (Notice.Killer == this)` (`CataclysmPlayerCharacter.cpp` 1153 and 1182). |
 | Q6 | A separate pair if the rows would add. | The three new stats (`CataclysmAbilitySystemComponent.h` 2855 to 2925), asked after Nothing Stops It (`CataclysmVitalAttributeSet.cpp` 1410). |

@@ -2270,11 +2270,11 @@ bool UCataclysmAbilitySystemComponent::CarryOutDueDeathSentence()
 
 	UE_LOG(LogCataclysm, Log, TEXT("%s made no qualifying kill in its reprieve and died of its death sentence."),
 		   *Avatar->GetName());
+	// THE WRITE ITSELF RUNS THE DEATH: a direct write of health reaches
+	// `UCataclysmVitalAttributeSet::PostAttributeBaseChange`, whose `NotifyIfHealthReachedZero` calls the avatar's
+	// `HandleDeath` once. NOT CALLED AGAIN HERE, because a player's `HandleDeath` notes the save trigger before its
+	// once-only guard, and a second call would write the death's save twice.
 	SetNumericAttributeBase(Health, 0.0f);
-	if (ACataclysmCharacterBase* AsCharacter = Cast<ACataclysmCharacterBase>(Avatar))
-	{
-		AsCharacter->HandleDeath();
-	}
 	return true;
 }
 

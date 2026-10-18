@@ -2914,8 +2914,8 @@ public:
 	bool NoteKillUnderDeathSentence(const AActor* Slain);
 
 	/**
-	 * Carry out a sentence whose seconds have ended: health written to nought and the avatar's `HandleDeath`, the
-	 * pair `UCataclysmDelayedDamage::DrainStep` uses. No blow is dealt, so no save in
+	 * Carry out a sentence whose seconds have ended: health written to nought, a write whose own death notice
+	 * (`UCataclysmVitalAttributeSet::PostAttributeBaseChange`) runs the avatar's `HandleDeath`, once. No blow is dealt, so no save in
 	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` is asked (Q3, "the death is final"). Called from
 	 * `ACataclysmCharacterBase::RegenerationStep`, so the death lands up to a quarter of a second after the window
 	 * ends. A test moves the world's clock and calls this directly.
