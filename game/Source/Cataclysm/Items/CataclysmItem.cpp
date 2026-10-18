@@ -999,6 +999,16 @@ namespace
 			{
 				Out.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(Effect);
 			}
+			// AND, FOR A ROW COUNTING ENEMIES ONLY WHILE ANOTHER ROW'S STACK IS
+			// HELD, THAT ROW'S KEY AND THE REACH. Ruled by the project owner on
+			// 2026-10-17. The key of an `own_stacks` row of the same enchantment
+			// on the same stat, which the generator requires beside this one;
+			// no grant is made here for this row, so it reads that row's window.
+			if (Out.Scale == ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld)
+			{
+				Out.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(Effect);
+				Out.ReachMetres = UCataclysmItemModifiers::OwnStackWindowReachMetres;
+			}
 			// AND ITS OFFSET. Issue #1686.
 			Out.ScaleOffset = Effect.ScaleOffset;
 		}

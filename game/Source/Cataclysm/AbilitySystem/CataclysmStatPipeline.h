@@ -2446,6 +2446,30 @@ enum class ECataclysmStatScale : uint8
 	 */
 	ShareOfRangeMoved
 		UMETA(DisplayName = "Share Of Range Moved"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies standing within `ReachMetres`, but
+	 * ONLY WHILE THE ASKING CHARACTER HOLDS AT LEAST ONE STACK UNDER `StackKey`.
+	 * Ruled by the project owner on 2026-10-17 for Warlord's Will's ten-piece
+	 * bonus, "This bonus scales with the number of enemies in the area": +10%
+	 * more damage per enemy within 8 m, capped at 5 enemies, for the 5 s the
+	 * bonus lasts. The cap is the row's `ScaleMaxSteps`, as for every capped
+	 * scale.
+	 *
+	 * THE STACK IS ANOTHER ROW'S, AND THIS ROW GRANTS NONE. The key is the
+	 * enchantment and the stat, the key an `own_stacks` row of the same
+	 * enchantment on the same stat counts, so this row reads the window that row
+	 * opens and closes. The generator refuses this scale on a row with no such
+	 * sibling. A lookup with no character in hand counts nothing, as
+	 * `PerOwnStack` does.
+	 *
+	 * THE REACH IS STATED BY THE LOADER. The Enchantment Effects sheet has no
+	 * reach column, so `UCataclysmItemModifiers` writes
+	 * `OwnStackWindowReachMetres` onto the modifier; a modifier made by hand
+	 * states its own.
+	 */
+	PerEnemyInReachWhileOwnStackHeld
+		UMETA(DisplayName = "Per Enemy In Reach While Own Stack Held"),
 };
 
 /**
