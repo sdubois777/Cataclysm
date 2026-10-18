@@ -73,9 +73,13 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
     AND ONE MACHINE NO SKILL PRODUCES. `SkillGadget`, ruled 2026-10-16, is the
     gadget a slot converted by an enchantment places: it casts the player's own
     skill and carries no blow of its own, so its base damage is 0.
+
+    AND ONE CREATURE NO SKILL PRODUCES. `TyrantsMinion`, ruled 2026-10-18, is
+    what Tyrant's Chains' six-piece summons at a minion's death: twice the
+    Ballista's health and its damage a second as a melee hit a second.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
-                                  "SpikeTrap", "SkillGadget"}
+                                  "SpikeTrap", "SkillGadget", "TyrantsMinion"}
 
 
 

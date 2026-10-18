@@ -75,7 +75,7 @@ heading row describe their layout instead. Issue #1884.
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High |
 | Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth, Ailment, Gem, Hybrid Part 1, Hybrid Part 2, Allowed Slots, Name Word, Percent, Floor |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
-| Minion Types | 6 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
+| Minion Types | 7 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
 | Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note, Fervour Cost |
@@ -87,7 +87,7 @@ heading row describe their layout instead. Issue #1884.
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Passive Effects | 325 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
-| Enchantment Effects | 632 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
+| Enchantment Effects | 636 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking

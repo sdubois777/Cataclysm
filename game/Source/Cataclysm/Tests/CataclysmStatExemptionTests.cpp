@@ -8924,6 +8924,118 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmVoidAura::ConsumeChanceOf(System), 50.0f, 0.0001f);
 	}
 
+	/**
+	 * `minion_death_blast_deals_death`, read by `ACataclysmMinion::DeathBlast` off the commander. Ruled 2026-10-18,
+	 * for Tyrant's Chains' six-piece. Two summoners a hundred metres apart, each holding Shared Ruin's two figures,
+	 * each lose an imp; a target two metres from each imp holds 50 Death resistance. THE CONTROL IS THE FIRST
+	 * TARGET, whose summoner holds no flag: the blast is untyped, meets no Death resistance, and lands whole. The
+	 * second summoner holds the flag at 1, so its blast is Death and its target takes half.
+	 *
+	 * WHAT THIS DOES NOT REACH. The 5 m edge and the summon: `Cataclysm.SetBonus.Tyrant6.`.
+	 */
+	void ProbeDeathBlastDealsDeath(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Without(World, FVector::ZeroVector);
+		FScopedSwinger WithoutTarget(World, FVector(3 * M, 0, 0));
+		FScopedSwinger With(World, FVector(0, 100 * M, 0));
+		FScopedSwinger WithTarget(World, FVector(3 * M, 100 * M, 0));
+		const FGameplayAttribute DeathResistance = UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute();
+		WithoutTarget.Set(DeathResistance, 50.0f);
+		WithTarget.Set(DeathResistance, 50.0f);
+		const TMap<FName, float> Ruin = {
+			{FName(ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat), 20.0f},
+			{FName(ACataclysmMinion::DeathBlastRadiusMetresStat), 4.0f}};
+		GrantFlats(Without.Actor, Ruin);
+		TMap<FName, float> RuinAsDeath = Ruin;
+		RuinAsDeath.Add(FName(ACataclysmMinion::DeathBlastDealsDeathStat), 1.0f);
+		GrantFlats(With.Actor, RuinAsDeath);
+
+		ACataclysmMinion* WithoutImp = ImpToldItsExplosion(Test, Without.Actor, FVector(1 * M, 0, 0));
+		ACataclysmMinion* WithImp = ImpToldItsExplosion(Test, With.Actor, FVector(1 * M, 100 * M, 0));
+		if (!WithoutImp || !WithImp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* Imp : {WithoutImp, WithImp})
+			{
+				if (IsValid(Imp))
+				{
+					Imp->Destroy();
+				}
+			}
+		};
+
+		KillMinion(WithoutImp);
+		KillMinion(WithImp);
+
+		const FGameplayAttribute Health = Vital::GetHealthAttribute();
+		const float Whole = TargetHealthPool - WithoutTarget.Get(Health);
+		if (!Test.TestTrue(FString::Printf(TEXT("control: with no flag the blast lands whole on a target holding "
+												"Death resistance: %.2f"), Whole),
+						   Whole > 0.001f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("with minion_death_blast_deals_death at 1 the blast is Death and meets that resistance, "
+							"so ACataclysmMinion::DeathBlast really reads it"),
+					   TargetHealthPool - WithTarget.Get(Health), Whole * 0.5f, 0.01f);
+	}
+
+	/**
+	 * `minion_death_summons_tyrants_minion_seconds`, read by `ACataclysmMinion::SummonTyrantsMinion` off the
+	 * commander from the death hook. Ruled 2026-10-18, for Tyrant's Chains' six-piece. ONE SUMMONER. THE CONTROL IS
+	 * AN IMP OF ITS DYING BEFORE THE STAT IS GRANTED: no Tyrant's Minion stands. Granted at a flat 10, a second imp's
+	 * death leaves one standing.
+	 *
+	 * WHAT THIS DOES NOT REACH. Its length, its refresh and its own death: `Cataclysm.SetBonus.Tyrant6.`.
+	 */
+	void ProbeTyrantsMinionSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Summoner(World, FVector::ZeroVector);
+		ACataclysmMinion* First = ImpToldItsExplosion(Test, Summoner.Actor, FVector(2 * M, 0, 0));
+		ACataclysmMinion* Second = ImpToldItsExplosion(Test, Summoner.Actor, FVector(0, 2 * M, 0));
+		if (!First || !Second)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* Imp : {First, Second, ACataclysmMinion::TyrantsMinionOf(Summoner.Actor)})
+			{
+				if (IsValid(Imp))
+				{
+					Imp->Destroy();
+				}
+			}
+		};
+
+		KillMinion(First);
+		Test.TestNull(TEXT("control: with no such stat an imp's death summons no Tyrant's Minion"),
+					  ACataclysmMinion::TyrantsMinionOf(Summoner.Actor));
+
+		GrantFlat(Summoner.Actor, ACataclysmMinion::TyrantsMinionSecondsStat, 10.0f);
+		KillMinion(Second);
+		Test.TestNotNull(TEXT("with minion_death_summons_tyrants_minion_seconds at 10 an imp's death summons one, so "
+							  "ACataclysmMinion::SummonTyrantsMinion really reads it"),
+						 ACataclysmMinion::TyrantsMinionOf(Summoner.Actor));
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -9082,6 +9194,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("aoe_skill_damage_to_nearby_allies_percent"), &ProbeAoeSkillDamageToNearbyAlliesPercent},
 			{TEXT("skill_slot_is_a_gadget"), &ProbeSkillSlotIsAGadget},
 			{TEXT("void_aura_projectile_consume_chance"), &ProbeVoidAuraProjectileConsumeChance},
+			{TEXT("minion_death_blast_deals_death"), &ProbeDeathBlastDealsDeath},
+			{TEXT("minion_death_summons_tyrants_minion_seconds"), &ProbeTyrantsMinionSeconds},
 		};
 		return Made;
 	}

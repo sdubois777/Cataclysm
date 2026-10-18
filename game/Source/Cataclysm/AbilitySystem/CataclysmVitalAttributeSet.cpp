@@ -2795,6 +2795,8 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	// AND THE SUMMON SKILL THAT MADE IT, for the re-summon below, read now for
 	// the same reason. Null for a deployable, a risen imp and a thrall.
 	UCataclysmSummonSkill* MadeBy = AsMinion ? AsMinion->SummonedBy.Get() : nullptr;
+	// AND WHETHER IT WAS A TYRANT'S MINION, for the summon and the replacement below. Ruled 2026-10-18.
+	const bool bWasTyrantsMinion = AsMinion && AsMinion->bIsTyrantsMinion;
 
 	// AND SHARED RUIN'S BLAST, ALSO BEFORE THE DEATH IS HANDLED. Issue #1515.
 	// The dying creature deals it and its maximum health sets it, and an
@@ -2815,7 +2817,19 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	// AND WHEN NOTHING REPLACED IT AT ONCE, THE WAIT TO SUMMON IT AGAIN BEGINS.
 	// Issue #1833 group E part 4b: "When a minion dies it automatically
 	// re-summons after 3-6 seconds". Not both, or one loss would give two.
+	// AND NEITHER FOR A TYRANT'S MINION, ruled 2026-10-18 (Q4): it is outside the
+	// caps and is never replaced or re-summoned. `ReplaceLost` would otherwise take
+	// the commander's first summon skill, since no skill made it, and replace it
+	// with what that skill summons.
+	//
+	// AND A TYRANT'S MINION IS SUMMONED, OR THE ONE STANDING REFRESHED, for the
+	// same deaths Shared Ruin's blast above fires for. Tyrant's Chains' six-piece,
+	// ruled 2026-10-17 (#3) and 2026-10-18. Its own death summons none.
 	if (Commander)
+	{
+		ACataclysmMinion::SummonTyrantsMinion(Commander, bWasTyrantsMinion, Where);
+	}
+	if (Commander && !bWasTyrantsMinion)
 	{
 		if (!UCataclysmSummonSkill::ReplaceLost(Commander, Character, Where, bExplodes))
 		{

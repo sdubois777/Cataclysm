@@ -10546,6 +10546,99 @@ def refuse_a_window_scale_with_no_own_stack_row(
     return problems
 
 
+#: Tyrant's Chains' six-piece bonus. Ruled 2026-10-17 by the project owner
+#: (#3: the Tyrant's Minion's own death explodes but summons none; at most one
+#: stands; a new summon refreshes the one standing) and 2026-10-18 by the
+#: coordinating session (Q1-Q5), for "When a pet or minion dies, it explodes,
+#: dealing 50% of its maximum health as Death damage to all nearby enemies.
+#: Additionally, a new, powerful Tyrant's Minion is summoned to fight for you
+#: for a short duration".
+#:
+#: FOUR ROWS, EACH `flat` WITH NO REQUIRED TAGS, NO CONDITION, NO SCALE AND NO
+#: ACTION: Shared Ruin's two stats at 50 and 5 ("nearby" is 5 m), the flag
+#: below at 1, and the seconds below at 10 (a number under the owner's
+#: delegation). `ACataclysmMinion::DeathBlastDealsDeathStat` and
+#: `ACataclysmMinion::TyrantsMinionSecondsStat` hold the same names, and
+#: `tools/tests/test_tyrants_chains_six_rows.py` compares the two.
+#:
+#: THE GAME ASKS FOR BOTH IN ONE PLACE, WITH NO TAGS: off the commander, through
+#: `SummonerStat` in `CataclysmMinion.cpp`, when a minion or thrall of its dies.
+#: So a row requiring a tag matches nowhere, a row of any kind but `flat` works
+#: on a base of nought, and a row with an action is not a stat line at all.
+TYRANTS_DEATH_BLAST_DEALS_DEATH_STAT = "minion_death_blast_deals_death"
+TYRANTS_MINION_SECONDS_STAT = "minion_death_summons_tyrants_minion_seconds"
+
+
+def refuse_a_tyrants_minion_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `TYRANTS_DEATH_BLAST_DEALS_DEATH_STAT` or
+    `TYRANTS_MINION_SECONDS_STAT` is a figure its one reader takes as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants above
+    give. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_void_aura_row_the_game_cannot_read`, for two stats.
+
+    THE FLAG STATES 1 AND NOTHING ELSE, as every flag row does. THE SECONDS MAY
+    BE A RANGE, WHICH MUST RISE, and each end must be above nought: nought
+    summons nothing, which is what not wearing the row already does.
+
+    A CONDITION OR A SCALE ON EITHER IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    neither stat is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    flag = TYRANTS_DEATH_BLAST_DEALS_DEATH_STAT
+    seconds = TYRANTS_MINION_SECONDS_STAT
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in (flag, seconds) or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        nothing = ("deals NO Death damage" if stat == flag
+                   else "summons NO Tyrant's Minion")
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and {nothing}.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the commander with no tags, so "
+                f"a row requiring a tag matches nowhere: this one {nothing} "
+                f"and says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if stat == flag:
+            for value in sorted({low, high}):
+                if value != 1.0:
+                    problems.append(
+                        f"{who}: states {value:g} on {stat!r}, and a row on "
+                        f"this flag states 1 and nothing else.")
+            continue
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        for value in sorted({low, high}):
+            if value <= 0.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the seconds "
+                    f"must be above 0: nought or less summons nothing.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10947,6 +11040,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW COUNTING ENEMIES ONLY WHILE ANOTHER ROW'S STACK IS HELD HAS
     # THAT ROW BESIDE IT. Ruled by the project owner on 2026-10-17.
     problems.extend(refuse_a_window_scale_with_no_own_stack_row(
+        "EnchantmentEffects", effects))
+
+    # AND THE DEATH FLAG AND THE TYRANT'S MINION'S SECONDS ARE FLAT, WITH NO
+    # TAGS AND NO ACTION; THE FLAG IS 1 AND THE SECONDS ABOVE 0. Ruled
+    # 2026-10-18.
+    problems.extend(refuse_a_tyrants_minion_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
