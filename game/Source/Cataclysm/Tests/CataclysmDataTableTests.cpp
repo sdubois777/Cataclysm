@@ -854,7 +854,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 632 SINCE THE TWO ROWS OF SPELLBLADE'S WILL'S 6-PIECE, issue #1833, from 630.
 	//
 	// AND 636 SINCE THE FOUR ROWS OF TYRANT'S CHAINS' 6-PIECE, issue #1833, from 632.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    636)
+	//
+	// AND 641 SINCE THE FIVE ROWS OF THE DEMON KING'S REGALIA'S 10-PIECE, issue #1833, from 636.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    641)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

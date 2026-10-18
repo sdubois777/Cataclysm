@@ -27169,4 +27169,52 @@ bool FCataclysmTyrantSixRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonKingTenRowTest,
+	"Cataclysm.Enchantments.TheWornDemonKingsRegaliaTenPieceReprievesALethalBlowInTheDemonicRage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Demon King's Regalia's 10-piece row layer, ruled 2026-10-17 and 2026-10-18 (Q1-Q7): a lethal blow while the
+ * Demonic Rage holds leaves the wearer alive for 3 s under a sentence an Elite's kill lifts. WORN by a real player: what
+ * the reprieve then does is `Cataclysm.SetBonus.DemonKing10.`'s. The CONTROL wears NINE pieces and the case TEN, each
+ * carrying the 10-piece and the set's drawback, so both hold the 6-piece's Rage. Each striker is written to full health
+ * and then to 20%, which starts the Rage, and struck by its first creature for far more than its health, with a blow
+ * that cannot be mitigated, so no evasion, block or armour of the striker's class line stands in front of the save.
+ * TWO assertions on the case, so on assets built before the rows it fails twice, and only there.
+ */
+bool FCataclysmDemonKingTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Demon_King_s_Regalia_10_Piece_Bonus_If_you_wo");
+	const TCHAR* Drawback = TEXT("Negative_Ranged_attacks_deal_20_more_damage_to_you");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces"), TenPieces.Ready())
+		|| !TestTrue(TEXT("set-up: nine pieces worn"), WearsMore(NinePieces, Bonus, Drawback, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), WearsMore(TenPieces, Bonus, Drawback, 9)))
+	{
+		return false;
+	}
+	FCataclysmHitDelivery Unmitigated;
+	Unmitigated.bCannotBeMitigated = true;
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&NinePieces, &TenPieces})
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Maximum = Striker->ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		Striker->ASC->SetNumericAttributeBase(Health, Maximum);
+		Striker->ASC->SetNumericAttributeBase(Health, Maximum * 0.2f);
+		UCataclysmSkillEffects::ApplyDirectDamage(Striker->First, Striker->Character, Maximum * 100.0f, Unmitigated);
+	}
+
+	// THE CONTROL, READ FIRST: nine pieces hold the Rage and not the reprieve, so the blow kills.
+	TestTrue(TEXT("control: with nine pieces worn, the lethal blow in the Rage kills"),
+		UCataclysmSkillEffects::IsDead(NinePieces.Character));
+	TestFalse(TEXT("with ten pieces worn, the lethal blow in the Rage leaves the wearer alive. If not, "
+				   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmSkillEffects::IsDead(TenPieces.Character));
+	TestTrue(TEXT("and under the death sentence an Elite's kill lifts"), TenPieces.ASC->IsUnderDeathSentence());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
