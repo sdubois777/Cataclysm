@@ -193,6 +193,7 @@ namespace
 		{ TEXT("leech_pools_in_flight"), ECataclysmStatScale::PerLeechPoolInFlight },
 		{ TEXT("seconds_leeching"),    ECataclysmStatScale::PerSecondLeeching },
 		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
+		{ TEXT("enemies_in_reach_while_own_stack"), ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld },
 	};
 
 	/**
@@ -1812,6 +1813,20 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst:
 		return StackedValue(Modifier,
 							FMath::Max(0, State.EnemiesStruckTogether - 1));
+
+	// PER ENEMY IN REACH, WHILE THE STACK UNDER THE ROW'S KEY IS HELD. Ruled by
+	// the project owner on 2026-10-17 for Warlord's Will's ten-piece bonus. The
+	// count `PerEnemyInReach` takes, and nothing at all outside the window the
+	// sibling `own_stacks` row opens. A lookup with no character in hand counts
+	// none, as `PerOwnStack` does.
+	case ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld:
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		return Asking && !Modifier.StackKey.IsNone() && Asking->OwnStacksHeld(Modifier.StackKey) > 0
+			? StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres))
+			: 0.0f;
+	}
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full
@@ -2082,6 +2097,13 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		&& Modifier.StackKey.IsNone())
 	{
 		return TEXT("consecutive_hits with no stack key. It would count nothing.");
+	}
+	// AND THE WINDOW'S ENEMY COUNT NEEDS THE WINDOW'S KEY AND A REACH. Ruled
+	// 2026-10-17. Without either it counts nothing, silently.
+	if (Modifier.Scale == ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld
+		&& (Modifier.StackKey.IsNone() || Modifier.ReachMetres <= 0.0f))
+	{
+		return TEXT("enemies_in_reach_while_own_stack with no stack key or no reach. It would count nothing.");
 	}
 
 	// AN OFFSET IS HOW MUCH OF THE READING IS NOT COUNTED, AND TWO SCALES READ

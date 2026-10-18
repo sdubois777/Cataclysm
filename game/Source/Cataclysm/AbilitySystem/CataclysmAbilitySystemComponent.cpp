@@ -1421,7 +1421,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		// EITHER CONDITION MAY ASK, since issue #1833 gave a row a second one.
 		if (Modifier.Condition == ECataclysmStatCondition::EnemiesInReachAtLeast
 			|| Modifier.Condition2 == ECataclysmStatCondition::EnemiesInReachAtLeast
-			|| Modifier.Scale == ECataclysmStatScale::PerEnemyInReach)
+			|| Modifier.Scale == ECataclysmStatScale::PerEnemyInReach
+			// AND THE COUNT THAT HOLDS ONLY WHILE ANOTHER ROW'S STACK IS HELD.
+			// Ruled by the project owner on 2026-10-17. The same list, read
+			// by the same count; the stack is asked by the scale itself.
+			|| Modifier.Scale == ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld)
 		{
 			Widest = FMath::Max(Widest, Modifier.ReachMetres);
 		}

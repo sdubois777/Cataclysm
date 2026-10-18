@@ -124,7 +124,12 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: leaves with them, and `EXPECTED_NAMED_BY_A_ROW` below moves then and not
 #: before.
 #: IT LEFT with its two rows, issue #1833, and the list is empty again.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: ONE JOINED ON 2026-10-17, `enemies_in_reach_while_own_stack`, ruled by the
+#: project owner that day for Warlord's Will's ten-piece bonus, "This bonus
+#: scales with the number of enemies in the area", and built ahead of its two
+#: rows. `docs/DECISIONS.md` of that day gives the shape of each row. It leaves
+#: with them.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"enemies_in_reach_while_own_stack"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

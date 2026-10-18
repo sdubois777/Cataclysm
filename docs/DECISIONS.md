@@ -2,6 +2,291 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-17 — A row can count the enemies within 8 m only while another row's own stack is held, so Warlord's Will's ten-piece bonus is five rows: a movement use gives twice the speed and 50% more damage for 5 s at most once in 30 s, and 10% more damage per enemy near, up to five, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the scale
+`enemies_in_reach_while_own_stack`, `ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld`, its count and its check in
+`ValidateModifier`); `game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp`
+(`UCataclysmItemModifiers::OwnStackWindowReachMetres`, and the key and the reach written onto such a row's modifier);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (`WithEnemiesInReach` walks for the scale);
+`game/Source/Cataclysm/Tests/CataclysmSetBonusWarlordTenTests.cpp` (new, four tests); `tools/generate_datatables.py`
+(the scale, `WINDOW_SCALE`, `refuse_a_window_scale_with_no_own_stack_row`, and its refusal on the Passive Effects
+sheet); `tools/tests/test_warlord_ten_piece_window_rows.py` (new);
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (the scale built ahead of its rows).
+No data row, no tag and no workbook cell is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE FIVE ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A ten-piece bonus is live only with ten pieces worn.
+- **NO STACK IS COUNTED, AS FOR DIVINE RETRIBUTION'S TEN-PIECE BONUS.** The sentence says a stack of 'Tactical
+  Advantage' is gained every 30 seconds and a movement use consumes them all. The rows are the movement use and a
+  wait: a movement use opens the bonus for 5 seconds, and no other movement use opens it for the next 30 seconds.
+  Nothing in the game holds a count named Tactical Advantage, and nothing a player can read shows one. **A movement
+  use in the first 30 seconds opens it at once**, where the sentence would have the wearer wait 30 seconds first.
+  Holding the bonus back for several 30 second periods gains nothing extra.
+- **WHILE IT IS OPEN: TWICE THE MOVEMENT SPEED, AND 50% MORE ATTACK DAMAGE AND SPELL DAMAGE**, for 5 seconds from the
+  use. "100% more" is twice.
+- **AND 10% MORE DAMAGE FOR EACH ENEMY WITHIN 8 M, AT MOST FIVE ENEMIES, WHILE IT IS OPEN.** The owner's ruling. The
+  two "more" figures multiply, as every two "more" sources do in this game: with five or more enemies near, damage is
+  1.5 x 1.5 = 2.25 times, not 2.0 times. **Ruled by the coordinating session on 2026-10-17 (R2): 2.25 times at five
+  enemies, because separate "more" sources multiply in the ruled pipeline.**
+- **THE ENEMIES ARE COUNTED AT EVERY LOOKUP WHILE IT IS OPEN, NOT ONCE AT THE USE.** An enemy that walks within 8 m
+  during the 5 seconds raises the damage from then, and one that dies or walks away lowers it. Measured centre to
+  centre. Every enemy counts one, a boss included. Outside the 5 seconds, enemies near add nothing.
+- **THE MOVEMENT SPEED HALF DOES NOT SCALE**, as ruled.
+- **THE SPEED RISES ON THE NEXT QUARTER-SECOND STEP, NOT ON THE FRAME OF THE USE.** See "Not changed" below.
+- **"A MOVEMENT ABILITY" IS A PAID USE OF THE SKILL IN THE MOVEMENT SLOT**, the event `movement_skill`, raised by
+  `UCataclysmSkillTemplate::CommitAndBegin` for that slot after the use is paid for. A free repeat or a triggered start
+  raises none. Read, not changed.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 42.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner chose the recommended option on all seven open questions of the ten set bonuses on 2026-10-17, relayed by
+the coordinating session; the owner's own words were not relayed and none is quoted here. The coordinating session's
+record of the decision for this bonus, its words: "the bonus's 'scales with the number of enemies in the area' = +10%
+MORE DAMAGE PER ENEMY WITHIN 8 M, CAPPED AT 5 ENEMIES (so at most +50% more on top of the 50% more). The movement speed
+half does not scale." Its brief 42 asks for the smallest version after Divine Retribution's ten-piece, "three own-stack
+rows on `movement_skill`, 5 s, trigger cooldown 30", which the owner accepted for that bonus on 2026-10-08 ("Make it
+every 5 seconds") and 2026-10-09 ("your rec on all the open questions"); see "Divine Retribution's ten-piece bonus is
+reworded from 10 seconds to 5" below.
+
+The coordinating session's rulings on this layer's report, 2026-10-17, its words: R2, "2.25x at five enemies.
+Separate 'more' sources multiply in the ruled pipeline"; R3, the enchantment session rewords the sentence to end
+"...in the area: 10% more damage for each enemy within 8 meters, up to 5"; R4, "the new scale is ACCEPTED with its
+refusals"; and the proofs W-I to W-III are accepted. **The sentence as it will read once reworded:**
+
+> Warlord's Will (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Tactical Advantage.' When you use a
+> movement ability, you consume all stacks of 'Tactical Advantage' and gain 100% more movement speed and 50% more
+> damage for 5 seconds. This bonus scales with the number of enemies in the area: 10% more damage for each enemy
+> within 8 meters, up to 5
+
+The reword is the enchantment session's; this layer changes no sentence.
+
+### WHAT THE RECONNAISSANCE FOUND
+
+- **A "per enemy within N m" scale exists and cannot carry this sentence.** `enemies_in_reach`
+  (`ECataclysmStatScale::PerEnemyInReach`) counts the enemies within the row's own `ReachMetres`, and a cap on it is the
+  row's Scale Max Steps, as on every scale. But **the Enchantment Effects sheet has no reach column**, so an enchantment
+  row on it keeps a reach of -1 and counts nobody, which `refuse_a_reach_scale_a_row_cannot_state` refuses (issue
+  #1987); **and a row has one scale**, which the window rows already spend on `own_stacks`, so a per-enemy row could not
+  also be held to the 5 seconds. No condition says "while an own stack is held". So this is not rows only.
+- **`more` on `movement_speed` is read by the movement code.** `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks
+  `StatForSkill`, whose answer carries every bucket, and gives the movement component that answer; its second pass,
+  for the suppression flag, keeps a "more" above one. The test `AMovementUseDoublesTheSpeedTheMovementComponentIsGivenForFiveSeconds`
+  settles it in the engine.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| Brief 42 | Three own-stack rows on `movement_skill`, 5 s, trigger cooldown 30. | Rows only. `movement_skill` is raised by `NoteMovementSkillUsed` (`CataclysmAbilitySystemComponent.cpp` 3856); an own stack's grant and its cooldown are `AccumulateEnchantmentsInto` (`CataclysmItem.cpp` 1165) and `ActOnEvent`, both unchanged. |
+| #1 | +10% more damage per enemy within 8 m. | The scale: `NamedStatScales`, `CataclysmStatPipeline.cpp` 196; its count, `UncappedScaledValue`, 1822, the count `enemies_in_reach` takes while `OwnStacksHeld` of the row's key is above nought. The 8 m: `UCataclysmItemModifiers::OwnStackWindowReachMetres`, `CataclysmItem.h` 747, written onto the modifier at `CataclysmItem.cpp` 1010 with the key. The walk: `WithEnemiesInReach`, `CataclysmAbilitySystemComponent.cpp` 1428. |
+| #1 | Capped at 5 enemies. | The row's Scale Max Steps, applied by `ScaledValue` as for every capped scale; the generator requires it (`refuse_a_window_scale_with_no_own_stack_row`, `generate_datatables.py` 10486). |
+| #1 | The movement speed half does not scale. | The rows: no enemy row is written on `movement_speed`. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **A NEW SCALE THAT READS ANOTHER ROW'S STACK.** The enemy row is scaled by `enemies_in_reach_while_own_stack`: the
+  count `enemies_in_reach` takes, and nought unless the asking character holds the stack counted under the row's own
+  enchantment and stat, which is exactly the key the `own_stacks` row of the same enchantment on the same stat grants.
+  The generator already allows two rows on one enchantment and stat with different scales. The options not taken: a
+  condition "own stack held", which would still need a reach this sheet cannot state and which `ConditionHolds` cannot
+  judge, since it is not handed the modifier's key; a second scale on one row, which no row has; and making the window
+  rows themselves count enemies, which would put the window's own 50% under the count.
+- **THE 8 M IS A CONSTANT OF THE LOADER, NOT A CELL.** The option not taken: a Reach Metres column on the Enchantment
+  Effects sheet, which needs a workbook column and a regenerated `EnchantmentEffects.csv`, neither of which this session
+  may touch, and the value rule the passive sheet already has. The constant is named for the window scale, so a later
+  column can replace it in one place.
+- **TWO "MORE" SOURCES, SO 2.25 TIMES AT FIVE ENEMIES.** The window row's 50% and the enemy row's 10% a step are two
+  modifiers in the "more" bucket, and `UCataclysmStatPipeline::Accumulate` multiplies each source on its own. The
+  coordinating session's record says "at most +50% more on top of the 50% more", which reads as two multipliers; its
+  brief says "the damage 'more' is 50% + up to 50%", which could also be read as one figure of 100% at most, 2.0 times.
+  The option not taken: one figure, which needs the window row to scale by both its stack and the enemies. **Ruled
+  2026-10-17 (R2): 2.25 times.**
+- **COUNTED AT EVERY LOOKUP, NOT FROZEN AT THE USE.** Every `enemies_in_reach` row in the game counts at the lookup, and
+  so does this. The option not taken: count once at the movement use, as Path of Exile's warcries count at the cast
+  (the genre file, below), which needs a stack count set by the enemies, a new kind of grant.
+- **EVERY ENEMY COUNTS ONE.** The option not taken: weight by rarity, as Path of Exile's warcry power does (the genre
+  file); the ruling says "per enemy".
+- **"DAMAGE" IS ATTACK DAMAGE AND SPELL DAMAGE**, two rows each, the shape of the merged Demon King's Regalia six-piece
+  rows (`EnchantmentEffects.csv` 425 to 426).
+- **THE CAP IS REQUIRED BY THE NEW CHECK, NOT BY `SCALES_THAT_NEED_A_CAP`.** A merged test,
+  `TestTheConditionsAndTheScaleOfTheSeventhOfOctober.test_another_scale_still_needs_no_cap` in
+  `tools/tests/test_generate_datatables.py`, holds that
+  set to `{"seconds_leeching"}`, and the brief forbids changing what a merged test asserts. The option not taken:
+  widening the set, which would also have refused the scale on the passive sheet for free; that refusal is written
+  beside it in `passive_effects` instead.
+- **THE SCALE IS REFUSED ON THE PASSIVE EFFECTS SHEET.** A passive node holds no own stacks, so its modifier would have
+  no key and no window. The engine's `ValidateModifier` refuses such a modifier too.
+
+### THE GENRE SOURCE
+
+`genre_set_bonuses.md`, question 2, "Scaling with the number of nearby enemies", fetched by the coordinating session's
+research on 2026-10-17 through WebFetch, which summarises pages; each line is that file's account of the page and not a
+verbatim reading. Only what it fetched is copied, as it stands:
+
+> - **D4, Iron Blood Aspect** (https://diablo4.wiki.fextralife.com/Iron+Blood+Aspect): 3.9 to 5.9% damage reduction
+>   for each nearby bleeding enemy, "up to [20 - 30]% maximum". That is a cap of about five enemies.
+> - **D4, Bold Chieftain's Aspect, patch 1.0.2d** (https://maxroll.gg/d4/news/diablo-4-patch-notes-1-0-2d): shout
+>   cooldown reduced per nearby enemy. The patch cut the per-enemy value from 2.7–5.4 s to 1.0–1.9 s and the cap from
+>   12 s to 6 s, so both numbers came down after launch. The current fextralife page
+>   (https://diablo4.wiki.fextralife.com/Bold+Chieftain's+Aspect) reads a flat 8–10 s reduction, which suggests the
+>   per-enemy version was later removed. That is an inference from the page; no patch note confirming it was found.
+> - **PoE 1, warcry power** (https://poedb.tw/us/Warcry): warcries scale with the "power" of nearby enemies, worked out
+>   at cast time. Each enemy is weighted by rarity: normal 1, magic 2, rare 10, unique 20. Warning Call is capped at "up
+>   to a maximum of 100%". The page gives no general cap.
+> - **PoE "per nearby enemy" unique modifiers:** none found. The searches returned nothing usable and no page was
+>   fetched.
+
+Its verdict, a summary: one bonus per enemy with an explicit cap is the genre shape, the cap typically about five
+enemies' worth; Path of Exile weights enemies by rarity; nothing read scales two halves of a bonus at once, and
+nothing extends a duration per enemy. **Settled by it:** per enemy, capped. **Not settled:** whether to count at the use
+or continuously (only Path of Exile's warcries say, at the cast), and whether to weight by rarity; both are judgements
+above. **Not reached:** a Path of Exile "per nearby enemy, up to N" unique modifier. One further claim in that section,
+on Diablo IV's Aspect of the Crowded Sage, came from a search snippet the file marks NOT FETCHED and is left out.
+
+### WHAT WAS BUILT
+
+- **The scale**: its name, its count, and its check in `ValidateModifier` (no key or no reach is refused).
+- **The loader**: a row on the scale is given its enchantment-and-stat key and the 8 m reach; no grant is made for it.
+- **The walk**: `WithEnemiesInReach` walks the level for a modifier on the scale, at its reach.
+- **The generator**: the scale on `SCALES` with a step of exactly one enemy; `refuse_a_window_scale_with_no_own_stack_row`
+  in `validate_enchantment_effects`, which refuses an enemy row with no `own_stacks` row of its enchantment on its stat
+  beside it, and one with no Scale Max Steps; and a refusal on the Passive Effects sheet. The general checks already
+  refuse Stack Seconds, an Action Event and a Trigger Cooldown on it, because it is not `own_stacks`.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Five rows on the Enchantment Effects sheet, each with Enchantment
+`Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second` and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High | Scale | Scale Step | Action Event | Scale Max Steps | Stack Seconds | Trigger Cooldown |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `movement_speed` | `more` | 100, 100 | `own_stacks` | 1 | `movement_skill` | 1 | 5 | 30 |
+| `attack_damage` | `more` | 50, 50 | `own_stacks` | 1 | `movement_skill` | 1 | 5 | 30 |
+| `spell_damage` | `more` | 50, 50 | `own_stacks` | 1 | `movement_skill` | 1 | 5 | 30 |
+| `attack_damage` | `more` | 10, 10 | `enemies_in_reach_while_own_stack` | 1 | empty | 5 | empty | empty |
+| `spell_damage` | `more` | 10, 10 | `enemies_in_reach_while_own_stack` | 1 | empty | 5 | empty | empty |
+
+Every other cell empty: no Required Tags, no Condition, no Action. The five pass the generator on a made-up sheet
+(`tools/tests/test_warlord_ten_piece_window_rows.py`). The set rule is met: the 2-piece and the drawback are merged.
+**The 10, the 8 m and the 5 enter the sentence with the reword of R3** (quoted above), which the enchantment session
+makes; what `tools/tests/test_enchantment_effects_match_the_row_text.py` needs for the rows is the enchantment
+session's.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts** the scale `enemies_in_reach_while_own_stack` on an enchantment row, with a step of exactly
+  1, a Scale Max Steps of 1 to 100, and an `own_stacks` row of the same enchantment on the same stat beside it. **It
+  refuses** it with no such row, with no Scale Max Steps, with any other step, with Stack Seconds, an Action Event or a
+  Trigger Cooldown, and on any Passive Effects row.
+- **`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`** lists the scale as built ahead of
+  its rows; it leaves with them.
+- **`tools/tests/test_stat_condition_names_match_the_engine.py`** reads the new name on both sides and passes.
+
+No merged test asserts anything different, by reading: no row carries the scale, `WithEnemiesInReach`'s new clause is
+asked only for a modifier on it, and the loader's new lines run only for it.
+
+### Tests
+
+Four new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusWarlordTenTests.cpp`, the group
+`Cataclysm.SetBonus.Warlord10.`, with helpers of the file's own names. The five rows are made up in the shape above, on
+the real non-set enchantment "Double your energy shield", and passed through `AccumulateEnchantmentsInto`, so the
+loader's lines are what is tested. The damage wearer is a creature of the players' side whose two damage lines hold
+the rows alone on a base of 100; figures are ratios against the control read first. Time is moved by setting the
+world's clock. The creatures counted stand on a ring 3 m from the wearer and 3 m from each other; one stands 9 m off.
+
+1. `TheRowsBecomeThreeWindowGrantsAndTwoEnemyCountsReadingTheDamageWindows`. In order: control, the rows made three stat
+   lines; three grants; for each grant, on `movement_skill`, one stack at most, five seconds, thirty seconds' wait;
+   movement speed holds one modifier, 100% more scaled by its own stacks; for each damage stat, two modifiers, the
+   window's and the enemy count's; the window is 50% more under a key; the enemy count reads the window's own key; it
+   is 10% more a step of one enemy; it reaches the loader's 8 m; that constant is 8; it stops at 5; and the engine's
+   check refuses neither modifier.
+2. `AMovementUseDoublesTheSpeedTheMovementComponentIsGivenForFiveSeconds`. A player character on a speed line of 5 m/s.
+   In order: set-up; control, with no window the movement component is given 5 m/s; after a movement use and the
+   quarter-second step, twice; 4.9 s after the use, twice; 5.1 s after, once.
+3. `AMovementUseGivesHalfAgainDamageForFiveSecondsAndOnlyOnceInThirty`. In order: control, attack damage is its base;
+   control, so is spell damage; a movement use gives 1.5 times attack damage; and 1.5 times spell damage; 4.9 s after,
+   still 1.5; 5.1 s after, once; a second use 10 s after the first gives attack damage once; and spell damage once; a
+   use 30.1 s after the first gives 1.5 again.
+4. `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive`. In order: control, alone with no window,
+   attack damage is its base; set-up, a creature 9 m off; with the window open and only that creature, 1.5 times; with
+   one to six creatures near, 1.65, 1.8, 1.95, 2.1, 2.25 and 2.25 times; spell damage with six near is 2.25 times; and
+   5.1 s after the use, with six near, once.
+
+Python: `tools/tests/test_warlord_ten_piece_window_rows.py`, on a made-up workbook holding the sentence typed Generic:
+the row name is the shipped one; the five rows carried through as written and refused by the new check, the reach
+check, the scale check and the condition check by nothing; the scale is on the engine's name table with a step of one
+and is not one that needs a reach column, with `enemies_in_reach` as the control; the loader states 8 m; an enemy row
+alone is refused; a window row on another stat does not open it; an enemy row with no cap is refused; an enemy row
+stating Stack Seconds, an Action Event or a Trigger Cooldown is refused, each against the control that the plain pair
+passes; a step of two is refused; and the scale is refused on a passive row, with a passive row on another scale as
+the control.
+
+**Not tested:** the real rows worn at ten pieces with a control at nine (the enchantment session's real-row test); a
+real movement skill used through `CommitAndBegin` (every use here is `NoteMovementSkillUsed` called by hand); a blow
+dealt while the window is open (the tests read the stats and deal no damage); the speed's quarter-second lateness on the
+use's own frame (read); an enemy at exactly 8 m; a boss counted as one; two worn copies of the rows; the window rows'
+cooldown when the bonus is taken off and put back on; anything drawn on a screen.
+
+### Not changed
+
+- **THE MOVEMENT SPEED RISES ONE QUARTER-SECOND STEP LATE.** `UCataclysmAbilitySystemComponent::ActOnEvent` broadcasts
+  `OnActionEvent` first, before any row acts, so the player character's refresh on hearing `movement_skill` reads no
+  window yet: the grant is made after it. The next quarter-second step
+  (`ACataclysmPlayerCharacter::RefreshMovementSpeedIfItCanChangeUnannounced`, from `AfterRegenerationStep`) reads it.
+  At most a quarter of a second late, the same allowance the closing edge of every timed window already takes. Not
+  changed, because moving the broadcast would change when every listener hears every event, which is wider than this
+  layer; accepted by the coordinating session on 2026-10-17 (R4).
+
+**FOR THE OWNER'S PLAY-CHECK LIST (R2):** at five enemies the window's damage is 2.25 times.
+
+### GUARD PROOFS PROPOSED
+
+Accepted by the coordinating session on 2026-10-17. Not run. Each old text was counted exactly once in its file by a
+script at this layer's working tree. The new texts of
+W-II and W-III were counted absent before the break; W-I's new text is already in the file, as the start of the
+`PerOwnStack` and `PerConsecutiveHit` cases, so it is the old text that locates it. Each break keeps the file's round,
+curly and square brackets paired (counted by the same script with comments and strings removed: 374, 213 and 2 pairs
+before W-I and 373, 213 and 2 after, one round pair fewer; 2795, 946 and 31 before and after W-II; 664, 251 and 51
+before and after W-III) and compiles alone by reading: W-I
+removes one `&&` term of a boolean expression; W-II replaces a comparison by `false` inside an `||` chain; W-III writes a
+float literal where a `static constexpr float` was read, and the constant is still read by the test file. The failed
+assertions are counted by reading. The prefix is `Cataclysm.SetBonus.Warlord10.`, with its trailing dot, four tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| W-I, the enemies count outside the window (#1) | `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` | `return Asking && !Modifier.StackKey.IsNone() && Asking->OwnStacksHeld(Modifier.StackKey) > 0` | `return Asking && !Modifier.StackKey.IsNone()` | `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | none |
+| W-II, nothing walks the level for the scale (#1) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `\|\| Modifier.Scale == ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld)` | `\|\| false)` | `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | none |
+| W-III, the loader states no reach (#1, the 8 m) | `game/Source/Cataclysm/Items/CataclysmItem.cpp` | `Out.ReachMetres = UCataclysmItemModifiers::OwnStackWindowReachMetres;` | `Out.ReachMetres = -1.0f;` | `TheRowsBecomeThreeWindowGrantsAndTwoEnemyCountsReadingTheDamageWindows` | `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` |
+
+(The `\|` in the table is a `|` in the file.)
+
+Failed assertions, by reading:
+
+- **W-I, 1 in 1 test.** Test 4: "5.1 s after the use, with six near, once" reads 1.5, the five-enemy cap with no
+  window. Every reading inside the window is unchanged; test 3 has no creature near.
+- **W-II, 7 in 1 test.** Test 4: the six readings with one to six near, which each read 1.5 where 1.65, 1.8, 1.95,
+  2.1, 2.25 and 2.25 are asserted, and spell damage at six, 1.5 where 2.25 is asserted. Its control, the far-only 1.5
+  and the closed window pass.
+- **W-III, 11 in 2 tests.** Test 1: "reaches the loader's 8 m" and "the engine's check refuses neither modifier", once
+  for each damage stat, 4. Test 4: the same 7 as W-II, because a reach of -1 walks nothing.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No other test carries the scale.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-17 — While a wearer holds ten Void, a row can give it an aura that consumes an enemy's shot in flight within 3 m on a chance rolled once, with no blast and no hit: the Null Emperor set's third layer, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVoidAura.h` and `.cpp` (new: `UCataclysmVoidAura`, the stat
