@@ -252,6 +252,17 @@ def moves():
 
         result = _o(self, d)
 
+        # A TIMER MOVE ONLY WHEN THE CITY STILL STANDS, since 2026-10-18. The
+        # timer's hit can fell the city, and the fall then moves the dungeon
+        # to the nearest qualifying city counted in lanes (owner, 2026-10-16:
+        # "They just move to an adjacent city"; the lane search when no
+        # neighbour qualifies was ruled by the coordinating session that
+        # day). That move is not this rule's;
+        # `test_a_quest_dungeon_moves_when_its_city_falls.py` holds it. Ruled
+        # by the coordinating session, 2026-10-18.
+        if self.empire.cities[was].fallen:
+            return result
+
         if d.city_id != was:
             seen.append((was, d.city_id, around))
         else:
@@ -417,61 +428,17 @@ class TestASiegeMayNotWalkOntoABesiegedCity:
         d.subtype = "Siege"
         return d
 
-    def test_the_situation_is_not_reachable_in_play_for_now(self):
-        """**IT WAS THE CONTROL ON EVERY TEST BELOW, AND SINCE 2026-10-16 IT
-        SAYS THE OPPOSITE.** It was named `test_the_situation_is_reachable_at_all`
-        and asserted that a Quest dungeon may roll a Siege, because barring the
-        pair was the alternative the owner rejected on 2026-09-06.
-
-        On 2026-10-16 the owner said, verbatim: "The only quest dungeons that
-        will be sieges are Wars." and "War quest dungeons WILL be sieges. Each
-        cataclysm's quest dungeons will be one specific type." War is not built,
-        so the model bars Quest and Siege as an interim rule
-        (`TuningConfig.SUBTYPES_FORBIDDEN_ON`), and a Siege-carrying Quest
-        dungeon does not arise in play. This test now holds that, over the
-        module's `CAMPAIGNS` campaigns at the `moves` fixture's settings, every
-        dungeon recorded when it is made. Changed by a labelled judgement by the
-        coordinating session under the owner's delegation, 2026-10-16.
-
-        **WAR'S QUEST DUNGEONS WILL MAKE IT REACHABLE AGAIN.** When they are
-        built this test fails, and should then go back to asserting the
-        situation is reachable. The tests below build the situation by hand, so
-        they still guard the relocation's Siege cap meanwhile; they are kept as
-        they are.
-
-        THE CONTROL: the same campaigns make Quest dungeons, and Sieges on
-        other kinds, so a recorder that saw nothing would fail here.
+    def test_the_situation_is_reachable_at_all(self):
+        """**THE CONTROL ON EVERY TEST BELOW.** If a Quest dungeon could never
+        carry the Siege sub-type, the whole class would be asserting something
+        about a state that cannot exist and would pass whatever the code did.
         """
-        made: list[tuple[DungeonType, str]] = []
+        sim = Simulation(safe(), seed=1)
 
-        class Recording(Simulation):
-            def _make_dungeon(self, dtype, city, floors_mult: float = 1.0):
-                d = super()._make_dungeon(dtype, city, floors_mult=floors_mult)
-                made.append((dtype, d.subtype))
-                return d
-
-        for seed in range(CAMPAIGNS):
-            Recording(safe(), seed=seed).run(POLICIES["triage"])
-
-        quests = [s for t, s in made if t is DungeonType.QUEST]
-        other_sieges = [t for t, s in made
-                        if s == "Siege" and t is not DungeonType.QUEST]
-        assert quests, (
-            f"CONTROL: no Quest dungeon was made in {CAMPAIGNS} campaigns, so "
-            "the assertion below says nothing")
-        assert other_sieges, (
-            f"CONTROL: no dungeon of any kind carried a Siege in {CAMPAIGNS} "
-            "campaigns, so the recorder could not have seen one on a Quest "
-            "dungeon either")
-
-        quest_sieges = quests.count("Siege")
-        assert quest_sieges == 0, (
-            f"{quest_sieges} of {len(quests)} Quest dungeons made in "
-            f"{CAMPAIGNS} campaigns carried a Siege. Since 2026-10-16 a Quest "
-            "dungeon may not roll one until War's Quest dungeons are built; "
-            "the owner, verbatim: \"The only quest dungeons that will be "
-            "sieges are Wars.\" If War is now built, this test should assert "
-            "the situation is reachable again")
+        assert "Siege" in sim.subtypes_allowed_on(DungeonType.QUEST), (
+            "a Quest dungeon may no longer roll Siege, so issue #1371's "
+            "situation cannot arise and this class guards nothing. Barring the "
+            "pair was the alternative the owner REJECTED on 2026-09-06")
 
     def test_it_moves_to_the_free_neighbour_instead(self):
         """The redirect. One neighbour is besieged, the other is not, so the
