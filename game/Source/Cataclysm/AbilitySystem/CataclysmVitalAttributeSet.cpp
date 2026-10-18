@@ -1399,6 +1399,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					}
 				}
 
+				// AND A REPRIEVE THAT ENDS IN DEATH UNLESS A KILL IS MADE, FOR A BLOW OR A TICK NOTHING STOPS IT DID
+				// NOT SAVE. Ruled 2026-10-17 and 2026-10-18 for the Demon King's Regalia's ten-piece: the same one
+				// point left, its own figures and clock (Q6), and the sentence and the critical strike rows begun by
+				// `NoteLethalHitReprieved`. Judgements of the writing session: AFTER NOTHING STOPS IT, because that
+				// save costs nothing, so the sentence is risked only when it is not ready; and A TICK TOO, because
+				// "if you would be killed" is about dying and not about a hit, as Archon's Aegis's save below reads
+				// its sentence. Only a blow that lands while the Rage's stack is already held is reprieved (Q7): a
+				// blow that itself takes health below 25% grants that stack in the write below, after this is asked.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType)
+					&& GetHealth() > 0.0f && Resolved.DealtToHealth >= GetHealth()
+					&& Guarded->MayReprieveLethalHit() && EmptiesHealthLessTheDelayedShare())
+				{
+					bSavedFromALethalBlow = true;
+					Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+					Guarded->NoteLethalHitReprieved();
+				}
+
 				// AND A WORN ROW THAT HEALS AS HEALTH FALLS BELOW ITS SHARE, which
 				// also saves a blow that would empty health: ruled 2026-09-30 for
 				// Archon's Aegis, because 0 is below 10%. The blow leaves one point,

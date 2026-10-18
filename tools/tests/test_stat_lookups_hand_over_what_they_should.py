@@ -172,6 +172,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: one more on 2026-10-17, asked with no tags by
 #: `UCataclysmVoidAura::ConsumeChanceOf`, for each shot in flight near a
 #: wearer and for the line above the bars.
+#: The three figures of a reprieve from a lethal blow added one more on
+#: 2026-10-18, asked with no tags by
+#: `UCataclysmAbilitySystemComponent::LethalHitReprieveFigure`.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -970,6 +973,15 @@ INVENTORY = {
         "holds ten Void, for a shot in flight and for the line above the "
         "bars; a shot is not one of the wearer's skills, so no tags, and no "
         "blow has landed, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "the three figures of a reprieve from a lethal blow (ruled 2026-10-18, "
+        "the Demon King's Regalia's ten-piece), asked by "
+        "LethalHitReprieveFigure off the defender when a blow or a tick would "
+        "kill; the rule is about any blow, so no tags, and its rows carry no "
+        "condition and are scaled only by their own stacks, which the "
+        "character's state already counts, so no blow and no target are "
+        "handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
