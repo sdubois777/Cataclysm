@@ -142,6 +142,12 @@ HOOKS = {
                 "asking about movement would ever fire, and the two dungeon "
                 "modifiers that watch it would do nothing. Issue #41, "
                 "slice 2",
+            "UCataclysmGroundPound::Step":
+                "Brute's Heart's ten-piece Ground Pound: its clock started, "
+                "kept or forgotten, and the pound fired once ready and an "
+                "enemy is within its radius, ruled 2026-10-17 (#5: it fires "
+                "by itself). Deleting it leaves the rows worn and the pound "
+                "never firing",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",

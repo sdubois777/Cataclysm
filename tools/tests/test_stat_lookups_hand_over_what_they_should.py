@@ -175,6 +175,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: The three figures of a reprieve from a lethal blow added one more on
 #: 2026-10-18, asked with no tags by
 #: `UCataclysmAbilitySystemComponent::LethalHitReprieveFigure`.
+#: Brute's Heart's Ground Pound added two more on 2026-10-18: the one helper
+#: `UCataclysmGroundPound::StatOf` its five stats are asked through, and the
+#: wearer's armour the pound strikes with, asked as the armour nova asks it.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -982,6 +985,19 @@ INVENTORY = {
         "condition and are scaled only by their own stacks, which the "
         "character's state already counts, so no blow and no target are "
         "handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Brute's Heart's five Ground Pound stats (ruled 2026-10-17 "
+        "and 2026-10-18), asked by StatOf on the regeneration step and at a "
+        "kill; the pound is not one of the wearer's skills, so no tags, and "
+        "nothing has landed when they are asked, so no blow and no target "
+        "are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the wearer's own armour, which the Ground Pound strikes every enemy "
+        "near with, asked as the armour nova in "
+        "CataclysmAbilitySystemComponent.cpp asks it (Q4 of 2026-10-18); no "
+        "skill and no blow of its own is in hand",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
