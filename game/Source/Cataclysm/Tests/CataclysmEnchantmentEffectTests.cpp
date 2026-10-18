@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmGroundPound.h"
 // For the Null Emperor 2-piece's silence. Ruled 2026-10-17.
 #include "AbilitySystem/CataclysmSilence.h"
 // For the Null Emperor 10-piece's void aura. Ruled 2026-10-17.
@@ -27214,6 +27215,48 @@ bool FCataclysmDemonKingTenRowTest::RunTest(const FString&)
 				   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
 		UCataclysmSkillEffects::IsDead(TenPieces.Character));
 	TestTrue(TEXT("and under the death sentence an Elite's kill lifts"), TenPieces.ASC->IsUnderDeathSentence());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteTenRowTest,
+	"Cataclysm.Enchantments.TheWornBrutesHeartTenPieceArmsAGroundPoundThatStrikesAtThirtySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Brute's Heart's 10-piece row layer, ruled 2026-10-17 (#5) and 2026-10-18 (Q1-Q5): a Ground Pound that fires by
+ * itself, first ready 30 s after the tenth piece goes on, at every enemy within 8 m. WORN by a real player: what the
+ * pound then does is `Cataclysm.SetBonus.Brute10.`'s. The CONTROL wears NINE pieces and the case TEN, each carrying the
+ * 10-piece and the set's drawback. The pound's own step is called by hand, as the regeneration step calls it, and time
+ * is moved by adding to the world's clock. Each striker's two creatures stand 2 m off, inside the 8 m. TWO assertions
+ * on the case, so on assets built before the rows it fails twice, and only there.
+ */
+bool FCataclysmBruteTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds");
+	const TCHAR* Drawback = TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces"), TenPieces.Ready())
+		|| !TestTrue(TEXT("set-up: nine pieces worn"), WearsMore(NinePieces, Bonus, Drawback, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), WearsMore(TenPieces, Bonus, Drawback, 9)))
+	{
+		return false;
+	}
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&NinePieces, &TenPieces})
+	{
+		UCataclysmGroundPound::Step(Striker->Character);
+	}
+
+	// THE CONTROL, READ FIRST: nine pieces are below the threshold, so no pound is armed.
+	TestEqual(TEXT("control: with nine pieces worn, no Ground Pound is armed"),
+		UCataclysmGroundPound::SecondsUntilReady(NinePieces.ASC), -1.0f, 0.01f);
+	TestEqual(TEXT("with ten pieces worn, a Ground Pound is armed, ready in 30 s. If not, DT_EnchantmentEffects may be "
+				   "older than the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmGroundPound::SecondsUntilReady(TenPieces.ASC), 30.0f, 0.01f);
+	TenPieces.World->TimeSeconds += 30.0f;
+	TestTrue(TEXT("and 30 s on it strikes the creatures 2 m off"), UCataclysmGroundPound::Step(TenPieces.Character) > 0);
 	return true;
 }
 
