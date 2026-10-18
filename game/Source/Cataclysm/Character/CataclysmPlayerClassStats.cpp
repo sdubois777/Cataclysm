@@ -786,6 +786,18 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// and no base.
 		TEXT("minion_death_blast_deals_death"),
 		TEXT("minion_death_summons_tyrants_minion_seconds"),
+		// The three figures of a reprieve from a lethal blow that ends in
+		// death unless a kill is made: the seconds between reprieves, above
+		// zero meaning one may be given, the seconds of no damage and of the
+		// window to make the kill, and the rarity rung that kill must reach,
+		// at nought no sentence. Read by UCataclysmAbilitySystemComponent::
+		// LethalHitReprieveFigure from UCataclysmVitalAttributeSet::
+		// PostGameplayEffectExecute when a blow or a tick would kill. Ruled
+		// 2026-10-18, for the Demon King's Regalia's ten-piece. Flat. No
+		// gameplay attribute and no base.
+		TEXT("lethal_hit_reprieve_every_seconds"),
+		TEXT("lethal_hit_reprieve_seconds"),
+		TEXT("lethal_hit_reprieve_kill_rarity_at_least"),
 	};
 	return Stats;
 }

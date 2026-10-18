@@ -363,6 +363,15 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # delegation. One word per stat, each the one that row's sentence uses.
     "minion_death_blast_radius_metres": {"nearby": 5.0},
     "minion_death_summons_tyrants_minion_seconds": {"short": 10.0},
+    # "RARE" IS 1 ON `lethal_hit_reprieve_kill_rarity_at_least`, for the Demon King's
+    # Regalia's ten-piece, "Killing a Rare or higher enemy": the game has no Rare rung,
+    # and "Rare or higher" is Elite and above, rung 1, ruled 2026-10-17.
+    "lethal_hit_reprieve_kill_rarity_at_least": {"rare": 1.0},
+    # AND "RAGE" IS 10 ON `lethal_hit_reprieve_every_seconds`, the same sentence's
+    # "during Demonic Rage": the reprieve's interval is the Demonic Rage's own 10 s
+    # (the six-piece's "for 10 seconds"), so one reprieve a Rage. Ruled 2026-10-18 to be
+    # stated on purpose: the set label's 10 used to admit it, and no longer does.
+    "lethal_hit_reprieve_every_seconds": {"rage": 10.0},
     # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
@@ -941,8 +950,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 630 over 531: two rows on one enchantment.
 #: AND 636 OVER 533 SINCE THE FOUR ROWS OF TYRANT'S CHAINS' 6-PIECE,
 #: issue #1833, 2026-10-18, from 632 over 532: four rows on one enchantment.
-AUTHORED_ROWS = 636
-AUTHORED_ENCHANTMENTS = 533
+#: AND 641 OVER 534 SINCE THE FIVE ROWS OF THE DEMON KING'S REGALIA'S 10-PIECE,
+#: issue #1833, 2026-10-18, from 636 over 533: five rows on one enchantment.
+AUTHORED_ROWS = 641
+AUTHORED_ENCHANTMENTS = 534
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1139,7 +1150,11 @@ def value_is_stated(stat: str, value: float, words: str,
     if stated_by_word is None:
         stated_by_word = STATED_BY_WORD
 
-    stated = numbers_in(outside_ranges(words))
+    # NOT THE SET LABEL'S NUMBER, which counts the pieces worn and states nothing about what the bonus does
+    # (`SET_LABEL` above). Ruled 2026-10-18: until then a row whose value equalled its piece count passed here
+    # by that coincidence alone, and so would a wrong one; the Demon King's Regalia's ten-piece interval was the
+    # one row that did, and it is now stated by word below.
+    stated = numbers_in(outside_ranges(SET_LABEL.sub(" ", words)))
     if abs(value) in stated:
         return True
 
