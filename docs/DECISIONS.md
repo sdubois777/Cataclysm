@@ -2,6 +2,613 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-17 — Spellblade's Will's six-piece bonus: a melee use, the basic attack included, raises an attack event of its own, so Spellslinger is a row on it and Dervish a row on the event a spell raises; mana cost joins the stats a scaled row may name, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (one block in
+`UCataclysmAbilitySystemComponent::ActOnSkillUse`) and `.h` (that function's comment);
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (one merged assertion changed, with its comment);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (the probe `ProbeScaledManaCost` and its line in
+`ScaledProbes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusSpellbladeSixTests.cpp` (new, four tests);
+`tools/generate_datatables.py` (`melee_attack_use` on `ACTION_ONLY_EVENTS`, `mana_cost` on `STATS_WITH_AN_ASKER`);
+`tools/tests/test_spellblade_six_piece_rows.py` (new). No data row, no tag and no workbook cell is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE TWO ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A six-piece bonus is live only with six pieces worn.
+- **A MELEE ATTACK IS EVERY PAID USE TAGGED `Type.Melee`, THE BASIC ATTACK INCLUDED.** Each gives one stack of
+  Spellslinger, at most five; all of them end 5 seconds after the last melee use, since a new stack refreshes the time
+  of every stack held (`GrantOwnStack`). A ranged basic attack, a spell and a use with no tags give none.
+- **EACH STACK OF SPELLSLINGER CUTS THE MANA COST OF A SPELL BY A TENTH**: five halve it. A "more" of -10 a stack is one
+  figure of -10 times the stacks, so the cuts add rather than compound. A skill not tagged `Type.Spell` costs what it
+  did.
+- **A SPELL IS A PAID USE OF A SKILL TAGGED `Type.Spell`**, which `UCataclysmSkillTemplate::CommitAndBegin` announces as
+  the event `spell`. Each gives one stack of Dervish, at most five, each 10% increased attack speed, all ending 5
+  seconds after the last spell. Nine rows of `game/Data/WeaponSkills.csv` carry the tag today (counted), all of them
+  Demonic Wand and Staff skills on 2026-10-06 (the entry of that day "A row can trigger a different held skill"); **a
+  melee character holds none, so for the character the set is for, Dervish is granted by nothing and Spellslinger lowers
+  no cost**, as that entry already said. A basic attack whose tags carry `Type.Spell` would count as a spell, since the
+  event is raised in the block every paid use passes. Read, not tested.
+- **"FOR MELEE ATTACKS" IS NOT A SCOPE ON DERVISH**: ruled, "Dervish raises every swing". Attack speed is read in one
+  place in the game, the basic attack's swing interval (`UCataclysmBasicAttack::SecondsBetweenSwingsFor`, asked with no
+  tags), found by a search of the game code for the stat's name; so Dervish makes the basic attack swing faster, a
+  ranged one included, and changes no skill.
+- **EVERY MELEE USE NOW ANNOUNCES ONE EVENT MORE.** `ActOnEvent` broadcasts `OnActionEvent` for every event, and the
+  player character asks again for its movement speed when it hears one and its speed has a row that can change
+  unannounced. A character with no row on `melee_attack_use` is otherwise unchanged.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 42 and the coordinating session's rulings on
+  its report.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner decided on 2026-10-06 that "your spells" are the spells the character runs, as recorded in the entry of that
+day "A row can roll for a use to hit its own user instead of any enemy" ("The owner decided on 2026-10-06 that 'your
+spells' are the spells the character is running; with none, the bonus does nothing"); those are that entry's words and
+not the owner's. The rulings of 2026-10-06, each a labelled judgement by the coordinating session under the owner's
+delegation, as the entry "A row can trigger a different held skill" records them:
+
+> - **Spellslinger and Dervish: 5 stacks lasting 5 s**, as already recorded (the table row "Spellslinger and Dervish
+>   (P354)"). **Dervish raises every swing**: the attack speed read stays without tags.
+
+And what "melee attacks" means, as the entry "The first row that repeats a skill" reads that day's ruling:
+
+> - **"Melee attacks" is every paid use that is melee, the basic attack included**, by the 2026-10-06 ruling that made
+>   `attack_use`.
+
+The coordinating session's rulings of 2026-10-17, its words: "#2 Spellblade's Will 6: as ruled 2026-10-06"; and, on
+this layer's first report, which stopped on Spellslinger because the smallest way to build it changed a merged
+assertion, **R1 (a)**: "build the new attack event melee_attack_use, raised in ActOnSkillUse after attack_use for a
+Type.Melee use, THE BASIC ATTACK INCLUDED, as the 2026-10-06 ruling requires", "Change the merged assertion ... to expect
+'attack_use, melee_attack_use' for a Type.Melee basic attack. Its comment must say the 2026-09-14 point still holds: a
+basic attack raises no SKILL event, and melee_attack_use is an attack event", "mana_cost joins STATS_WITH_AN_ASKER with
+a ProbeScaledManaCost probe", and "Build Spellslinger as you proposed: mana_cost more -10, Required Tags Type.Spell,
+own_stacks on melee_attack_use, cap 5, 5 s".
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | The event `melee_attack_use`, after `attack_use`, for a `Type.Melee` use, the basic attack included. | `UCataclysmAbilitySystemComponent::ActOnSkillUse`, `CataclysmAbilitySystemComponent.cpp` 5803 to 5808, outside the branch the basic attack skips; the name on `ACTION_ONLY_EVENTS`, `generate_datatables.py` 5924. |
+| R1 | The merged assertion now expects "attack_use, melee_attack_use"; the 2026-09-14 point still holds. | `Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`, `CataclysmEnchantmentEffectTests.cpp` 7337 to 7344. |
+| R1 | `mana_cost` joins `STATS_WITH_AN_ASKER`, with a probe. | `generate_datatables.py` 8615; `ProbeScaledManaCost`, `CataclysmStatExemptionTests.cpp` 5101, in `ScaledProbes` at 5197. The asker: `UCataclysmGameplayAbility::ManaCostFor` (`StatAppliedTo` with the skill's tags, `CataclysmGameplayAbility.cpp` 337). |
+| R1 | Spellslinger: `mana_cost` more -10, `Type.Spell`, own stacks on `melee_attack_use`, cap 5, 5 s. | The row; nothing else. |
+| 2026-10-06 | Dervish: a stack on each spell; 5 stacks, 5 s; every swing. | The row on the event `spell`, raised by `NoteSpellCast` (`CataclysmAbilitySystemComponent.cpp` 3877) for a use tagged `Type.Spell` (`CataclysmSkillTemplate.cpp` 418); asked with no tags by `SecondsBetweenSwingsFor` (`CataclysmBasicAttack.cpp` 97). Unchanged. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE EVENT IS RAISED AFTER `attack_use`, AS RULED, AND BEFORE THE SKILL IN HAND IS CLEARED**, so a row on it reads
+  the same use. The option not taken: raising it before `attack_use`, which would change the order every row on
+  `attack_use` hears.
+- **`Type.Melee` IS ASKED BY NAME ON EACH USE, AND A NULL TAG POINTER RAISES NOTHING**, as `healing_skill_use` does. The
+  option not taken: a cached tag.
+- **NOT ON `REPEAT_SKILL_EVENTS`.** A row that repeats a melee use already names `attack_use` with `Type.Melee`.
+- **DERVISH IS GRANTED ON `spell`, NOT ON `skill_use`.** The 2026-10-06 entry wrote "granted on `skill_use` with grant
+  tags `Type.Spell`", which needs a grant-tags column that was never built. `spell` is raised for exactly the uses the
+  sentence names. The option not taken: that column.
+- **DERVISH IS INCREASED, NOT MORE**, as every merged attack speed row is (`EnchantmentEffects.csv` 29, 150 and 151).
+- **THE PROBE READS A SPELL'S COST THROUGH `ManaCostFor`** on two casters, one holding a stack granted by hand, as the
+  skill-lock probe does. The option not taken: reading `StatAppliedTo` directly, which would not show the cost asks.
+
+### THE GENRE SOURCE
+
+None. Every point was ruled, on 2026-10-06 and 2026-10-17, and brief 42 names no genre question for this bonus.
+
+### WHAT WAS BUILT
+
+- **The event**: one block in `ActOnSkillUse`, and its line in the function's comment.
+- **The generator**: `melee_attack_use` on `ACTION_ONLY_EVENTS`, so an own stack and an action row may name it;
+  `mana_cost` on `STATS_WITH_AN_ASKER`, so a row may scale it.
+- **The probe** that holds `mana_cost` to that list, in the Unreal test the list is checked against.
+- **The merged assertion**, changed as ruled.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Two rows on the Enchantment Effects sheet, each with Enchantment `Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use`
+and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High | Required Tags | Scale | Scale Step | Action Event | Scale Max Steps | Stack Seconds |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `mana_cost` | `more` | -10, -10 | `Type.Spell` | `own_stacks` | 1 | `melee_attack_use` | 5 | 5 |
+| `attack_speed` | `increased` | 10, 10 | empty | `own_stacks` | 1 | `spell` | 5 | 5 |
+
+Every other cell empty: no Condition, no Action, no Trigger Cooldown. Both pass the generator on a made-up sheet
+(`tools/tests/test_spellblade_six_piece_rows.py`). The set rule is met: the 2-piece and the drawback are merged.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **A MERGED ASSERTION IS CHANGED, AS RULED (R1).** In
+  `Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`,
+  `CataclysmEnchantmentEffectTests.cpp`, the line "the basic attack raises attack_use and nothing else", which expected
+  `attack_use`, is now "a melee basic attack raises attack_use, then melee_attack_use, and no skill event", expecting
+  `attack_use, melee_attack_use`. Its comment says the 2026-09-14 point still holds: a basic attack raises no skill
+  event. **The count line after it does not move**: it reads the stacks of the rows on `skill_use`, `attack_use` and
+  `healing_skill_use`, and no row there hangs on `melee_attack_use`, so it still reads
+  "skill_use 3, attack_use 4, healing_skill_use 1". No other merged test reads every event of a melee use: the eighteen
+  other listeners on `OnActionEvent` in the tests each count one named event, checked by reading.
+- **`STATS_WITH_AN_ASKER` GAINS `mana_cost`**, so `refuse_a_scale_nothing_asks_for` accepts a scaled row on it, which
+  it refused before. `tools/tests/test_every_scaled_stat_has_an_asker.py` holds the list equal to the probe table, which
+  gains `ProbeScaledManaCost`.
+- **The generator accepts `melee_attack_use`** as an event an own stack or an action row may name.
+  `tools/tests/test_pool_action_names_match_the_engine.py` reads the name on both sides and passes.
+
+### Tests
+
+Four Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusSpellbladeSixTests.cpp`, the group
+`Cataclysm.SetBonus.Spellblade6.`, with helpers of the file's own names. Each row is made up in the shape above, on the
+real non-set enchantment "Double your energy shield", and passed through `AccumulateEnchantmentsInto`. The wearer is an
+actor carrying all five attribute sets whose stat line holds the row alone. A melee use is `ActOnSkillUse` with a melee
+strike's tags (with `bBasicAttack` for a basic attack); a spell is `ActOnSkillUse` with a spell's tags followed by
+`NoteSpellCast`, the two calls a spell's use makes; a ranged basic attack is `ActOnSkillUse` with a shot's tags. Costs
+are read with `ManaCostFor` on two skills the wearer holds, each stating 40.
+
+1. `ASpellGivesAStackOfDervishAndEachRaisesTheSwingRateByATenthUpToFive`. In order: set-up, the row is one modifier and
+   one grant, a 10% increase a stack under a key with no tag, granted on `spell` under the same key, five stacks, five
+   seconds; control, the swing gap is a second; control, no stack is held; one spell gives one stack; and the gap is a
+   second over 1.1; five spells give five; and the gap is a second over 1.5; a sixth leaves five; and the gap is still
+   a second over 1.5; asked for a melee strike's tags attack speed is 1.5, the row has no scope; 4.9 s after the last
+   spell, five stacks; 5.1 s after, none; and the gap is a second again.
+2. `AMeleeAttackGivesNoStackOfDervish`. A stack made by hand on `attack_use` beside the row. In order: control, a spell
+   gives a stack; set-up, it runs out; control, a melee strike's use reached the rows; it gives no stack of Dervish;
+   control, a melee basic attack reached the rows; it gives none; and the swing gap is a second.
+3. `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth`. In order: set-up, the row
+   is one modifier and one grant, a "more" of -10 a stack under a key requiring `Type.Spell` alone, granted on
+   `melee_attack_use` under the same key, five stacks, five seconds; set-up, a spell and a melee skill; control, the
+   spell costs something; control, so does the melee skill; control, no stack is held; a melee strike's use gives one
+   stack; and the spell costs 0.9; a melee basic attack gives a second; and 0.8; five melee uses give five; and 0.5; a
+   sixth leaves five; and still 0.5; the melee skill's own cost is unchanged; 4.9 s after the last melee use, five
+   stacks; 5.1 s after, none; and the spell costs what it states again.
+4. `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger`. A stack made by hand on `attack_use` beside the row. In
+   order: control, a melee strike's use gives a stack; set-up, it runs out; control, the spell's use reached the rows;
+   it gives no stack of Spellslinger; control, the ranged basic attack reached the rows; it gives none.
+
+And one probe in `CataclysmStatExemptionTests.cpp`, `ProbeScaledManaCost`: two casters each holding a spell stating 40
+and the row's modifier made by hand; control, the spell costs something; with one stack granted it costs 0.9 of that.
+It runs once a shipped row scales `mana_cost`, which the Spellslinger row will.
+
+Python: `tools/tests/test_spellblade_six_piece_rows.py`, on a made-up workbook holding the sentence typed Generic: the
+row name is the shipped one; the Dervish row is carried through and refused by the scale and condition checks by
+nothing; `spell` is a clock's event, with a name with no clock as the control; Dervish on an event the game does not
+raise is refused; Dervish with no cap, or no Stack Seconds, is refused; the Spellslinger row beside it is carried
+through and refused by nothing; `mana_cost` is on the list of stats asked for, with an invented stat refused as the
+control; `melee_attack_use` is on `ACTION_ONLY_EVENTS` and on none of the narrower lists; the C++ raises it after
+`attack_use`, asking `Type.Melee`, with no basic-attack test between them; and the Spellslinger row on `attack_use`
+would be accepted, which is why its event is a new one.
+
+**Not tested:** the real rows worn at six pieces with a control at five (the enchantment session's real-row test); a
+real skill used through `CommitAndBegin` (every use here is handed to the rows by hand); a cost actually paid, rather
+than read; a basic attack tagged `Type.Spell`; two worn copies of the rows; anything drawn on a screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, and each new text
+counted absent before the break. Each break keeps the file's round, curly and square brackets paired (2803, 947 and 31 pairs before and after each, counted by the same script with comments and strings removed) and compiles alone by reading: SB-I adds a
+`!` to a call already made; SB-II adds `&& !bBasicAttack`, the function's own parameter, in scope. The failed assertions
+are counted by reading. The prefix is `Cataclysm.SetBonus.Spellblade6.`, with its trailing dot, four tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| SB-I, the event for every use but a melee one (R1) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && !SkillTags->HasTag(Melee))` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger` |
+| SB-II, the basic attack left out (R1, "the basic attack included") | the same file | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && SkillTags->HasTag(Melee) && !bBasicAttack)` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | none |
+
+SB-I and SB-II share one anchor and are two separate runs.
+
+Failed assertions, by reading:
+
+- **SB-I, 10 in 2 tests.** Test 3, 9: "gives one stack" and "0.9", "a second stack" and "0.8", "five stacks" and "0.5",
+  "a sixth leaves five" and "still 0.5", and "4.9 s after, five stacks"; the melee skill's cost, "none" and "what it
+  states again" pass. Test 4, 1: its first control, after which it returns. The Dervish tests pass.
+- **SB-II, 4 in 1 test.** Test 3: "a melee basic attack gives a second stack" (one is held) and "0.8" (0.9), then, four
+  stacks after the three more, "five melee uses give five" and "0.5" (0.6); the sixth makes five, so the rest pass.
+
+**Tests of another group expected to fail, to check in the window:** under SB-I, the changed merged test
+`Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`, 3: Living
+Pyre's and Blood Pyre's lists gain `melee_attack_use` (neither is melee) and the melee basic attack's loses it. Under
+SB-II, the same test, 1: the melee basic attack's list. And under SB-II the Python check
+`test_the_engine_raises_the_event_for_a_melee_use_after_attack_use` fails, which no Unreal proof run reads.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-18 under the lock enchant-ws, on development e27f7c50f (the Null Emperor
+10-piece's merge), for four layers in this order: Warlord's Will 10's mechanism, Spellblade's Will 6's mechanism,
+Warlord's rows with its real-row test and Spellblade's rows with its real-row test. One window served both sets. The
+suite and Python were run at the top of the four, which holds all of them. Every step was as registered.
+
+**THE WINDOW RAN AS TWO SCRIPTS, BOTH UNDER THE ONE LOCK.** The first script was made by splitting the previous
+window's script on a line that occurs in it twice, so it held only the old-asset run and the asset rebuild, and it
+ended after the rebuild's push with exit 0. Nothing was built or changed between the two scripts: the second ran
+the whole suite, Python and the proofs, as registered, on the pushed asset commit, after checking that it was HEAD
+and that the worktree was clean.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled"; "346 tests
+  performed, 344 succeeded, 2 failed: TheWornSpellbladesWillSixPieceGivesSpellslingerAndDervish,
+  TheWornWarlordsWillTenPieceGivesAMovementUseHalfAgainDamage", with exactly 3 failed assertions in the run, each
+  checked by its text: "with ten pieces worn and two creatures 2 m off, a movement use makes attack damage 1.8 times";
+  "with six pieces worn, a melee use makes a spell's mana cost 0.9 times (Spellslinger)"; "and a spell raises melee
+  attack speed (Dervish)". The controls, wearing one piece fewer, and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` (the two reworded
+  sentences) and `datatable_asset_sources.json` changed, committed on the row layers as "Rebuild the enchantment
+  DataTable assets for Warlord's Will 10 and Spellblade's Will 6".
+- **The whole Unreal suite:** "3844 tests performed, 3844 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3844 tests in the tree at fb6eadc53; 3844 performed, gap 0". Registered 3844 and 0: the 3834 measured on
+  e27f7c50f, the four of `Cataclysm.SetBonus.Warlord10.`, the four of `Cataclysm.SetBonus.Spellblade6.` and the two
+  real-row tests.
+- **Python:** "6535 passed, 8 skipped"; JUnit tests 6543, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run, from 00:25:54 to 01:14:54, and would have ended the editor and released
+  the lock after 20 minutes with no test completed. It did not fire.
+
+**The real-row test wears six pieces, and its control five**, each carrying the 6-piece and the set's drawback. A
+melee use and a spell are each raised as the events play raises; the spell's mana cost is read through
+`StatAppliedTo` with `Type.Spell`, as `ManaCostFor` reads it, and is 0.9 times after one stack of Spellslinger; melee
+attack speed, read through `StatForSkill` with `Type.Melee`, rises after one stack of Dervish.
+
+**THE SENTENCE WAS REWORDED IN THE ROW LAYER, ruled 2026-10-18 by the coordinating session under the owner's reword
+delegation.** Spellslinger's clause now reads "which makes your spells cost 10% less mana per stack". The row is in
+the `more` bucket (R1), and the check that a `more` row's sentence says more, less or the like
+(`test_a_more_row_is_worded_as_a_multiplier`) refused "reduces the mana cost of your spells by 10% per stack", which
+is a word of the `increased` bucket. The change falls after the first 48 characters, so the row name is unchanged.
+The two older quotations of the sentence in this log, both in entries of 2026-10-06, keep the words they recorded.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Spellblade6.`, 4 tests.** The
+stop condition for each was the set of tests that fail with the break in, by the beginnings of their names. The
+failed assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every
+file's hash was the same after its proof. The two proofs are named SB-I and SB-II here, renamed from S-I and S-II
+above, so they are not confused with enemy silence's.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| SB-I | the event for every use but a melee one | 2 failed, `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` and `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger` | 10 / 10 | 4 of 4 succeeded |
+| SB-II | the basic attack left out | 1 failed, `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | 4 / 4 | 4 of 4 succeeded |
+
+The measured lines include, under SB-I, "a melee strike's use gives one stack of Spellslinger ... to be 1, but it
+was 0" and "and the spell costs a tenth less ... to be 0.900000, but it was 1.000000"; under SB-II, "a melee basic
+attack gives a second stack ... to be 2, but it was 1".
+
+**Not measured:** the failures SB-I and SB-II cause in other groups (the changed merged test in
+`Cataclysm.HealingSkillUse.`), the Python check named above, and the real-row test's failure under either break,
+because the proofs ran only this prefix.
+
+---
+
+## 2026-10-17 — A row can count the enemies within 8 m only while another row's own stack is held, so Warlord's Will's ten-piece bonus is five rows: a movement use gives twice the speed and 50% more damage for 5 s at most once in 30 s, and 10% more damage per enemy near, up to five, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the scale
+`enemies_in_reach_while_own_stack`, `ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld`, its count and its check in
+`ValidateModifier`); `game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp`
+(`UCataclysmItemModifiers::OwnStackWindowReachMetres`, and the key and the reach written onto such a row's modifier);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (`WithEnemiesInReach` walks for the scale);
+`game/Source/Cataclysm/Tests/CataclysmSetBonusWarlordTenTests.cpp` (new, four tests); `tools/generate_datatables.py`
+(the scale, `WINDOW_SCALE`, `refuse_a_window_scale_with_no_own_stack_row`, and its refusal on the Passive Effects
+sheet); `tools/tests/test_warlord_ten_piece_window_rows.py` (new);
+`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (the scale built ahead of its rows).
+No data row, no tag and no workbook cell is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE FIVE ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A ten-piece bonus is live only with ten pieces worn.
+- **NO STACK IS COUNTED, AS FOR DIVINE RETRIBUTION'S TEN-PIECE BONUS.** The sentence says a stack of 'Tactical
+  Advantage' is gained every 30 seconds and a movement use consumes them all. The rows are the movement use and a
+  wait: a movement use opens the bonus for 5 seconds, and no other movement use opens it for the next 30 seconds.
+  Nothing in the game holds a count named Tactical Advantage, and nothing a player can read shows one. **A movement
+  use in the first 30 seconds opens it at once**, where the sentence would have the wearer wait 30 seconds first.
+  Holding the bonus back for several 30 second periods gains nothing extra.
+- **WHILE IT IS OPEN: TWICE THE MOVEMENT SPEED, AND 50% MORE ATTACK DAMAGE AND SPELL DAMAGE**, for 5 seconds from the
+  use. "100% more" is twice.
+- **AND 10% MORE DAMAGE FOR EACH ENEMY WITHIN 8 M, AT MOST FIVE ENEMIES, WHILE IT IS OPEN.** The owner's ruling. The
+  two "more" figures multiply, as every two "more" sources do in this game: with five or more enemies near, damage is
+  1.5 x 1.5 = 2.25 times, not 2.0 times. **Ruled by the coordinating session on 2026-10-17 (R2): 2.25 times at five
+  enemies, because separate "more" sources multiply in the ruled pipeline.**
+- **THE ENEMIES ARE COUNTED AT EVERY LOOKUP WHILE IT IS OPEN, NOT ONCE AT THE USE.** An enemy that walks within 8 m
+  during the 5 seconds raises the damage from then, and one that dies or walks away lowers it. Measured centre to
+  centre. Every enemy counts one, a boss included. Outside the 5 seconds, enemies near add nothing.
+- **THE MOVEMENT SPEED HALF DOES NOT SCALE**, as ruled.
+- **THE SPEED RISES ON THE NEXT QUARTER-SECOND STEP, NOT ON THE FRAME OF THE USE.** See "Not changed" below.
+- **"A MOVEMENT ABILITY" IS A PAID USE OF THE SKILL IN THE MOVEMENT SLOT**, the event `movement_skill`, raised by
+  `UCataclysmSkillTemplate::CommitAndBegin` for that slot after the use is paid for. A free repeat or a triggered start
+  raises none. Read, not changed.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 42.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner chose the recommended option on all seven open questions of the ten set bonuses on 2026-10-17, relayed by
+the coordinating session; the owner's own words were not relayed and none is quoted here. The coordinating session's
+record of the decision for this bonus, its words: "the bonus's 'scales with the number of enemies in the area' = +10%
+MORE DAMAGE PER ENEMY WITHIN 8 M, CAPPED AT 5 ENEMIES (so at most +50% more on top of the 50% more). The movement speed
+half does not scale." Its brief 42 asks for the smallest version after Divine Retribution's ten-piece, "three own-stack
+rows on `movement_skill`, 5 s, trigger cooldown 30", which the owner accepted for that bonus on 2026-10-08 ("Make it
+every 5 seconds") and 2026-10-09 ("your rec on all the open questions"); see "Divine Retribution's ten-piece bonus is
+reworded from 10 seconds to 5" below.
+
+The coordinating session's rulings on this layer's report, 2026-10-17, its words: R2, "2.25x at five enemies.
+Separate 'more' sources multiply in the ruled pipeline"; R3, the enchantment session rewords the sentence to end
+"...in the area: 10% more damage for each enemy within 8 meters, up to 5"; R4, "the new scale is ACCEPTED with its
+refusals"; and the proofs W-I to W-III are accepted. **The sentence as it will read once reworded:**
+
+> Warlord's Will (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Tactical Advantage.' When you use a
+> movement ability, you consume all stacks of 'Tactical Advantage' and gain 100% more movement speed and 50% more
+> damage for 5 seconds. This bonus scales with the number of enemies in the area: 10% more damage for each enemy
+> within 8 meters, up to 5
+
+The reword is the enchantment session's; this layer changes no sentence.
+
+### WHAT THE RECONNAISSANCE FOUND
+
+- **A "per enemy within N m" scale exists and cannot carry this sentence.** `enemies_in_reach`
+  (`ECataclysmStatScale::PerEnemyInReach`) counts the enemies within the row's own `ReachMetres`, and a cap on it is the
+  row's Scale Max Steps, as on every scale. But **the Enchantment Effects sheet has no reach column**, so an enchantment
+  row on it keeps a reach of -1 and counts nobody, which `refuse_a_reach_scale_a_row_cannot_state` refuses (issue
+  #1987); **and a row has one scale**, which the window rows already spend on `own_stacks`, so a per-enemy row could not
+  also be held to the 5 seconds. No condition says "while an own stack is held". So this is not rows only.
+- **`more` on `movement_speed` is read by the movement code.** `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks
+  `StatForSkill`, whose answer carries every bucket, and gives the movement component that answer; its second pass,
+  for the suppression flag, keeps a "more" above one. The test `AMovementUseDoublesTheSpeedTheMovementComponentIsGivenForFiveSeconds`
+  settles it in the engine.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| Brief 42 | Three own-stack rows on `movement_skill`, 5 s, trigger cooldown 30. | Rows only. `movement_skill` is raised by `NoteMovementSkillUsed` (`CataclysmAbilitySystemComponent.cpp` 3856); an own stack's grant and its cooldown are `AccumulateEnchantmentsInto` (`CataclysmItem.cpp` 1165) and `ActOnEvent`, both unchanged. |
+| #1 | +10% more damage per enemy within 8 m. | The scale: `NamedStatScales`, `CataclysmStatPipeline.cpp` 196; its count, `UncappedScaledValue`, 1822, the count `enemies_in_reach` takes while `OwnStacksHeld` of the row's key is above nought. The 8 m: `UCataclysmItemModifiers::OwnStackWindowReachMetres`, `CataclysmItem.h` 747, written onto the modifier at `CataclysmItem.cpp` 1010 with the key. The walk: `WithEnemiesInReach`, `CataclysmAbilitySystemComponent.cpp` 1428. |
+| #1 | Capped at 5 enemies. | The row's Scale Max Steps, applied by `ScaledValue` as for every capped scale; the generator requires it (`refuse_a_window_scale_with_no_own_stack_row`, `generate_datatables.py` 10486). |
+| #1 | The movement speed half does not scale. | The rows: no enemy row is written on `movement_speed`. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **A NEW SCALE THAT READS ANOTHER ROW'S STACK.** The enemy row is scaled by `enemies_in_reach_while_own_stack`: the
+  count `enemies_in_reach` takes, and nought unless the asking character holds the stack counted under the row's own
+  enchantment and stat, which is exactly the key the `own_stacks` row of the same enchantment on the same stat grants.
+  The generator already allows two rows on one enchantment and stat with different scales. The options not taken: a
+  condition "own stack held", which would still need a reach this sheet cannot state and which `ConditionHolds` cannot
+  judge, since it is not handed the modifier's key; a second scale on one row, which no row has; and making the window
+  rows themselves count enemies, which would put the window's own 50% under the count.
+- **THE 8 M IS A CONSTANT OF THE LOADER, NOT A CELL.** The option not taken: a Reach Metres column on the Enchantment
+  Effects sheet, which needs a workbook column and a regenerated `EnchantmentEffects.csv`, neither of which this session
+  may touch, and the value rule the passive sheet already has. The constant is named for the window scale, so a later
+  column can replace it in one place.
+- **TWO "MORE" SOURCES, SO 2.25 TIMES AT FIVE ENEMIES.** The window row's 50% and the enemy row's 10% a step are two
+  modifiers in the "more" bucket, and `UCataclysmStatPipeline::Accumulate` multiplies each source on its own. The
+  coordinating session's record says "at most +50% more on top of the 50% more", which reads as two multipliers; its
+  brief says "the damage 'more' is 50% + up to 50%", which could also be read as one figure of 100% at most, 2.0 times.
+  The option not taken: one figure, which needs the window row to scale by both its stack and the enemies. **Ruled
+  2026-10-17 (R2): 2.25 times.**
+- **COUNTED AT EVERY LOOKUP, NOT FROZEN AT THE USE.** Every `enemies_in_reach` row in the game counts at the lookup, and
+  so does this. The option not taken: count once at the movement use, as Path of Exile's warcries count at the cast
+  (the genre file, below), which needs a stack count set by the enemies, a new kind of grant.
+- **EVERY ENEMY COUNTS ONE.** The option not taken: weight by rarity, as Path of Exile's warcry power does (the genre
+  file); the ruling says "per enemy".
+- **"DAMAGE" IS ATTACK DAMAGE AND SPELL DAMAGE**, two rows each, the shape of the merged Demon King's Regalia six-piece
+  rows (`EnchantmentEffects.csv` 425 to 426).
+- **THE CAP IS REQUIRED BY THE NEW CHECK, NOT BY `SCALES_THAT_NEED_A_CAP`.** A merged test,
+  `TestTheConditionsAndTheScaleOfTheSeventhOfOctober.test_another_scale_still_needs_no_cap` in
+  `tools/tests/test_generate_datatables.py`, holds that
+  set to `{"seconds_leeching"}`, and the brief forbids changing what a merged test asserts. The option not taken:
+  widening the set, which would also have refused the scale on the passive sheet for free; that refusal is written
+  beside it in `passive_effects` instead.
+- **THE SCALE IS REFUSED ON THE PASSIVE EFFECTS SHEET.** A passive node holds no own stacks, so its modifier would have
+  no key and no window. The engine's `ValidateModifier` refuses such a modifier too.
+
+### THE GENRE SOURCE
+
+`genre_set_bonuses.md`, question 2, "Scaling with the number of nearby enemies", fetched by the coordinating session's
+research on 2026-10-17 through WebFetch, which summarises pages; each line is that file's account of the page and not a
+verbatim reading. Only what it fetched is copied, as it stands:
+
+> - **D4, Iron Blood Aspect** (https://diablo4.wiki.fextralife.com/Iron+Blood+Aspect): 3.9 to 5.9% damage reduction
+>   for each nearby bleeding enemy, "up to [20 - 30]% maximum". That is a cap of about five enemies.
+> - **D4, Bold Chieftain's Aspect, patch 1.0.2d** (https://maxroll.gg/d4/news/diablo-4-patch-notes-1-0-2d): shout
+>   cooldown reduced per nearby enemy. The patch cut the per-enemy value from 2.7–5.4 s to 1.0–1.9 s and the cap from
+>   12 s to 6 s, so both numbers came down after launch. The current fextralife page
+>   (https://diablo4.wiki.fextralife.com/Bold+Chieftain's+Aspect) reads a flat 8–10 s reduction, which suggests the
+>   per-enemy version was later removed. That is an inference from the page; no patch note confirming it was found.
+> - **PoE 1, warcry power** (https://poedb.tw/us/Warcry): warcries scale with the "power" of nearby enemies, worked out
+>   at cast time. Each enemy is weighted by rarity: normal 1, magic 2, rare 10, unique 20. Warning Call is capped at "up
+>   to a maximum of 100%". The page gives no general cap.
+> - **PoE "per nearby enemy" unique modifiers:** none found. The searches returned nothing usable and no page was
+>   fetched.
+
+Its verdict, a summary: one bonus per enemy with an explicit cap is the genre shape, the cap typically about five
+enemies' worth; Path of Exile weights enemies by rarity; nothing read scales two halves of a bonus at once, and
+nothing extends a duration per enemy. **Settled by it:** per enemy, capped. **Not settled:** whether to count at the use
+or continuously (only Path of Exile's warcries say, at the cast), and whether to weight by rarity; both are judgements
+above. **Not reached:** a Path of Exile "per nearby enemy, up to N" unique modifier. One further claim in that section,
+on Diablo IV's Aspect of the Crowded Sage, came from a search snippet the file marks NOT FETCHED and is left out.
+
+### WHAT WAS BUILT
+
+- **The scale**: its name, its count, and its check in `ValidateModifier` (no key or no reach is refused).
+- **The loader**: a row on the scale is given its enchantment-and-stat key and the 8 m reach; no grant is made for it.
+- **The walk**: `WithEnemiesInReach` walks the level for a modifier on the scale, at its reach.
+- **The generator**: the scale on `SCALES` with a step of exactly one enemy; `refuse_a_window_scale_with_no_own_stack_row`
+  in `validate_enchantment_effects`, which refuses an enemy row with no `own_stacks` row of its enchantment on its stat
+  beside it, and one with no Scale Max Steps; and a refusal on the Passive Effects sheet. The general checks already
+  refuse Stack Seconds, an Action Event and a Trigger Cooldown on it, because it is not `own_stacks`.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Five rows on the Enchantment Effects sheet, each with Enchantment
+`Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second` and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High | Scale | Scale Step | Action Event | Scale Max Steps | Stack Seconds | Trigger Cooldown |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `movement_speed` | `more` | 100, 100 | `own_stacks` | 1 | `movement_skill` | 1 | 5 | 30 |
+| `attack_damage` | `more` | 50, 50 | `own_stacks` | 1 | `movement_skill` | 1 | 5 | 30 |
+| `spell_damage` | `more` | 50, 50 | `own_stacks` | 1 | `movement_skill` | 1 | 5 | 30 |
+| `attack_damage` | `more` | 10, 10 | `enemies_in_reach_while_own_stack` | 1 | empty | 5 | empty | empty |
+| `spell_damage` | `more` | 10, 10 | `enemies_in_reach_while_own_stack` | 1 | empty | 5 | empty | empty |
+
+Every other cell empty: no Required Tags, no Condition, no Action. The five pass the generator on a made-up sheet
+(`tools/tests/test_warlord_ten_piece_window_rows.py`). The set rule is met: the 2-piece and the drawback are merged.
+**The 10, the 8 m and the 5 enter the sentence with the reword of R3** (quoted above), which the enchantment session
+makes; what `tools/tests/test_enchantment_effects_match_the_row_text.py` needs for the rows is the enchantment
+session's.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts** the scale `enemies_in_reach_while_own_stack` on an enchantment row, with a step of exactly
+  1, a Scale Max Steps of 1 to 100, and an `own_stacks` row of the same enchantment on the same stat beside it. **It
+  refuses** it with no such row, with no Scale Max Steps, with any other step, with Stack Seconds, an Action Event or a
+  Trigger Cooldown, and on any Passive Effects row.
+- **`tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`** lists the scale as built ahead of
+  its rows; it leaves with them.
+- **`tools/tests/test_stat_condition_names_match_the_engine.py`** reads the new name on both sides and passes.
+
+No merged test asserts anything different, by reading: no row carries the scale, `WithEnemiesInReach`'s new clause is
+asked only for a modifier on it, and the loader's new lines run only for it.
+
+### Tests
+
+Four new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusWarlordTenTests.cpp`, the group
+`Cataclysm.SetBonus.Warlord10.`, with helpers of the file's own names. The five rows are made up in the shape above, on
+the real non-set enchantment "Double your energy shield", and passed through `AccumulateEnchantmentsInto`, so the
+loader's lines are what is tested. The damage wearer is a creature of the players' side whose two damage lines hold
+the rows alone on a base of 100; figures are ratios against the control read first. Time is moved by setting the
+world's clock. The creatures counted stand on a ring 3 m from the wearer and 3 m from each other; one stands 9 m off.
+
+1. `TheRowsBecomeThreeWindowGrantsAndTwoEnemyCountsReadingTheDamageWindows`. In order: control, the rows made three stat
+   lines; three grants; for each grant, on `movement_skill`, one stack at most, five seconds, thirty seconds' wait;
+   movement speed holds one modifier, 100% more scaled by its own stacks; for each damage stat, two modifiers, the
+   window's and the enemy count's; the window is 50% more under a key; the enemy count reads the window's own key; it
+   is 10% more a step of one enemy; it reaches the loader's 8 m; that constant is 8; it stops at 5; and the engine's
+   check refuses neither modifier.
+2. `AMovementUseDoublesTheSpeedTheMovementComponentIsGivenForFiveSeconds`. A player character on a speed line of 5 m/s.
+   In order: set-up; control, with no window the movement component is given 5 m/s; after a movement use and the
+   quarter-second step, twice; 4.9 s after the use, twice; 5.1 s after, once.
+3. `AMovementUseGivesHalfAgainDamageForFiveSecondsAndOnlyOnceInThirty`. In order: control, attack damage is its base;
+   control, so is spell damage; a movement use gives 1.5 times attack damage; and 1.5 times spell damage; 4.9 s after,
+   still 1.5; 5.1 s after, once; a second use 10 s after the first gives attack damage once; and spell damage once; a
+   use 30.1 s after the first gives 1.5 again.
+4. `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive`. In order: control, alone with no window,
+   attack damage is its base; set-up, a creature 9 m off; with the window open and only that creature, 1.5 times; with
+   one to six creatures near, 1.65, 1.8, 1.95, 2.1, 2.25 and 2.25 times; spell damage with six near is 2.25 times; and
+   5.1 s after the use, with six near, once.
+
+Python: `tools/tests/test_warlord_ten_piece_window_rows.py`, on a made-up workbook holding the sentence typed Generic:
+the row name is the shipped one; the five rows carried through as written and refused by the new check, the reach
+check, the scale check and the condition check by nothing; the scale is on the engine's name table with a step of one
+and is not one that needs a reach column, with `enemies_in_reach` as the control; the loader states 8 m; an enemy row
+alone is refused; a window row on another stat does not open it; an enemy row with no cap is refused; an enemy row
+stating Stack Seconds, an Action Event or a Trigger Cooldown is refused, each against the control that the plain pair
+passes; a step of two is refused; and the scale is refused on a passive row, with a passive row on another scale as
+the control.
+
+**Not tested:** the real rows worn at ten pieces with a control at nine (the enchantment session's real-row test); a
+real movement skill used through `CommitAndBegin` (every use here is `NoteMovementSkillUsed` called by hand); a blow
+dealt while the window is open (the tests read the stats and deal no damage); the speed's quarter-second lateness on the
+use's own frame (read); an enemy at exactly 8 m; a boss counted as one; two worn copies of the rows; the window rows'
+cooldown when the bonus is taken off and put back on; anything drawn on a screen.
+
+### Not changed
+
+- **THE MOVEMENT SPEED RISES ONE QUARTER-SECOND STEP LATE.** `UCataclysmAbilitySystemComponent::ActOnEvent` broadcasts
+  `OnActionEvent` first, before any row acts, so the player character's refresh on hearing `movement_skill` reads no
+  window yet: the grant is made after it. The next quarter-second step
+  (`ACataclysmPlayerCharacter::RefreshMovementSpeedIfItCanChangeUnannounced`, from `AfterRegenerationStep`) reads it.
+  At most a quarter of a second late, the same allowance the closing edge of every timed window already takes. Not
+  changed, because moving the broadcast would change when every listener hears every event, which is wider than this
+  layer; accepted by the coordinating session on 2026-10-17 (R4).
+
+**FOR THE OWNER'S PLAY-CHECK LIST (R2):** at five enemies the window's damage is 2.25 times.
+
+### GUARD PROOFS PROPOSED
+
+Accepted by the coordinating session on 2026-10-17. Not run. Each old text was counted exactly once in its file by a
+script at this layer's working tree. The new texts of
+W-II and W-III were counted absent before the break; W-I's new text is already in the file, as the start of the
+`PerOwnStack` and `PerConsecutiveHit` cases, so it is the old text that locates it. Each break keeps the file's round,
+curly and square brackets paired (counted by the same script with comments and strings removed: 374, 213 and 2 pairs
+before W-I and 373, 213 and 2 after, one round pair fewer; 2795, 946 and 31 before and after W-II; 664, 251 and 51
+before and after W-III) and compiles alone by reading: W-I
+removes one `&&` term of a boolean expression; W-II replaces a comparison by `false` inside an `||` chain; W-III writes a
+float literal where a `static constexpr float` was read, and the constant is still read by the test file. The failed
+assertions are counted by reading. The prefix is `Cataclysm.SetBonus.Warlord10.`, with its trailing dot, four tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| W-I, the enemies count outside the window (#1) | `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` | `return Asking && !Modifier.StackKey.IsNone() && Asking->OwnStacksHeld(Modifier.StackKey) > 0` | `return Asking && !Modifier.StackKey.IsNone()` | `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | none |
+| W-II, nothing walks the level for the scale (#1) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `\|\| Modifier.Scale == ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld)` | `\|\| false)` | `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | none |
+| W-III, the loader states no reach (#1, the 8 m) | `game/Source/Cataclysm/Items/CataclysmItem.cpp` | `Out.ReachMetres = UCataclysmItemModifiers::OwnStackWindowReachMetres;` | `Out.ReachMetres = -1.0f;` | `TheRowsBecomeThreeWindowGrantsAndTwoEnemyCountsReadingTheDamageWindows` | `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` |
+
+(The `\|` in the table is a `|` in the file.)
+
+Failed assertions, by reading:
+
+- **W-I, 1 in 1 test.** Test 4: "5.1 s after the use, with six near, once" reads 1.5, the five-enemy cap with no
+  window. Every reading inside the window is unchanged; test 3 has no creature near.
+- **W-II, 7 in 1 test.** Test 4: the six readings with one to six near, which each read 1.5 where 1.65, 1.8, 1.95,
+  2.1, 2.25 and 2.25 are asserted, and spell damage at six, 1.5 where 2.25 is asserted. Its control, the far-only 1.5
+  and the closed window pass.
+- **W-III, 11 in 2 tests.** Test 1: "reaches the loader's 8 m" and "the engine's check refuses neither modifier", once
+  for each damage stat, 4. Test 4: the same 7 as W-II, because a reach of -1 walks nothing.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No other test carries the scale.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-18 under the lock enchant-ws, on development e27f7c50f (the Null Emperor
+10-piece's merge), for four layers in this order: Warlord's Will 10's mechanism, Spellblade's Will 6's mechanism,
+Warlord's rows with its real-row test and Spellblade's rows with its real-row test. One window served both sets. The
+suite and Python were run at the top of the four, which holds all of them. Every step was as registered.
+
+**THE WINDOW RAN AS TWO SCRIPTS, BOTH UNDER THE ONE LOCK.** The first script was made by splitting the previous
+window's script on a line that occurs in it twice, so it held only the old-asset run and the asset rebuild, and it
+ended after the rebuild's push with exit 0. Nothing was built or changed between the two scripts: the second ran
+the whole suite, Python and the proofs, as registered, on the pushed asset commit, after checking that it was HEAD
+and that the worktree was clean.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled"; "346 tests
+  performed, 344 succeeded, 2 failed: TheWornSpellbladesWillSixPieceGivesSpellslingerAndDervish,
+  TheWornWarlordsWillTenPieceGivesAMovementUseHalfAgainDamage", with exactly 3 failed assertions in the run, each
+  checked by its text: "with ten pieces worn and two creatures 2 m off, a movement use makes attack damage 1.8 times";
+  "with six pieces worn, a melee use makes a spell's mana cost 0.9 times (Spellslinger)"; "and a spell raises melee
+  attack speed (Dervish)". The controls, wearing one piece fewer, and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` (the two reworded
+  sentences) and `datatable_asset_sources.json` changed, committed on the row layers as "Rebuild the enchantment
+  DataTable assets for Warlord's Will 10 and Spellblade's Will 6".
+- **The whole Unreal suite:** "3844 tests performed, 3844 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3844 tests in the tree at fb6eadc53; 3844 performed, gap 0". Registered 3844 and 0: the 3834 measured on
+  e27f7c50f, the four of `Cataclysm.SetBonus.Warlord10.`, the four of `Cataclysm.SetBonus.Spellblade6.` and the two
+  real-row tests.
+- **Python:** "6535 passed, 8 skipped"; JUnit tests 6543, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run, from 00:25:54 to 01:14:54, and would have ended the editor and released
+  the lock after 20 minutes with no test completed. It did not fire.
+
+**The real-row test wears ten pieces, and its control nine**, each carrying the 10-piece and the set's drawback, and
+uses a movement ability through `NoteMovementSkillUsed`, the call play makes. The test's striker stands two monsters
+2 m off, inside the 8 m, so the case's attack damage is 1.5 times 1.2, 1.8 times: the window's 50% more and two
+steps of the enemy count's 10% more. The sentence now ends "10% more damage for each enemy within 8 meters, up to 5",
+as ruled.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Warlord10.`, 4 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| W-I | the enemies count outside the window | 1 failed, `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | 1 / 1 | 4 of 4 succeeded |
+| W-II | nothing walks the level for the scale | 1 failed, `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | 7 / 7 | 4 of 4 succeeded |
+| W-III | the loader states no reach | 2 failed, that test and `TheRowsBecomeThreeWindowGrantsAndTwoEnemyCountsReadingTheDamageWindows` | 11 / 11 | 4 of 4 succeeded |
+
+The measured lines include, under W-I, "5.1 s after the use, with six near, attack damage is its base again ... to
+be 1.000000, but it was 1.500000"; under W-II, "with 5 near and the one at 9 m, 2.25 times ... but it was 1.500000";
+under W-III, "attack_damage: the enemy count reaches 8 m, the loader's ... to be 8.000000, but it was -1.000000".
+
+**Not measured:** the real-row test's failure under any break, because the proofs ran only this prefix.
+
+---
+
 ## 2026-10-17 — While a wearer holds ten Void, a row can give it an aura that consumes an enemy's shot in flight within 3 m on a chance rolled once, with no blast and no hit: the Null Emperor set's third layer, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVoidAura.h` and `.cpp` (new: `UCataclysmVoidAura`, the stat

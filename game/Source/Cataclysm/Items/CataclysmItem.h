@@ -737,6 +737,16 @@ public:
 	static FName OwnStackKeyFor(const FCataclysmEnchantmentEffectRow& Effect);
 
 	/**
+	 * How far a row scaled by `enemies_in_reach_while_own_stack` counts enemies,
+	 * in metres. Ruled by the project owner on 2026-10-17 for Warlord's Will's
+	 * ten-piece bonus: "+10% more damage per enemy within 8 m". A constant and
+	 * not a cell, because the Enchantment Effects sheet has no reach column;
+	 * `EnchantmentModifierFor` writes it onto the modifier, which is where
+	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` reads a reach.
+	 */
+	static constexpr float OwnStackWindowReachMetres = 8.0f;
+
+	/**
 	 * The step a row's scale takes at this roll. Issue #1833, the kill counter.
 	 * `ScaleStep` for a row stating one step; for a row stating
 	 * `ScaleStepHigh`, the number between the two at the roll's place, as

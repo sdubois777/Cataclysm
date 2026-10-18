@@ -4522,6 +4522,20 @@ SCALES = {
     # not a charge's own, so the row requires `Keyword.Charge` only to say
     # which skills it is about.
     "share_of_range_moved": (1.0, 1.0, "the whole of a charge's range"),
+
+    # "This bonus scales with the number of enemies in the area", Warlord's
+    # Will's ten-piece bonus, is `enemies_in_reach_while_own_stack` with a step
+    # of 1. Ruled by the project owner on 2026-10-17: +10% more damage per
+    # enemy within 8 m, capped at 5 enemies, for the 5 s the bonus lasts. The
+    # count `enemies_in_reach` takes, and nothing outside the window that an
+    # `own_stacks` row of the same enchantment on the same stat opens; this row
+    # grants no stack of its own. The 8 m is the loader's,
+    # `UCataclysmItemModifiers::OwnStackWindowReachMetres`, because this sheet
+    # has no reach column. A step of exactly one enemy. The cap and the
+    # sibling are required by `refuse_a_window_scale_with_no_own_stack_row`,
+    # and `passive_effects` refuses the scale outright: a passive node has no
+    # own stacks.
+    "enemies_in_reach_while_own_stack": (1.0, 1.0, "one enemy"),
 }
 
 
@@ -4784,6 +4798,15 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} scales by {scale!r}, which "
                 f"needs a cap in Scale Max Steps, and this sheet has no such "
                 f"column. The row would be uncapped.")
+        # AND THE SCALE THAT COUNTS ENEMIES ONLY WHILE AN OWN STACK IS HELD.
+        # Ruled by the project owner on 2026-10-17. A passive node holds no own
+        # stacks, so its modifier would have no window to read.
+        if scale == WINDOW_SCALE:
+            raise DataError(
+                f"Passive Effects row {index}: {node} scales by {scale!r}, which "
+                f"counts enemies only while an enchantment's own stack is held, "
+                f"and a passive node has no own stacks. The row would grant "
+                f"nothing.")
 
         # HOW FAR "NEAR" IS, FOR THE TWO NAMES THAT COUNT NEARBY ENEMIES.
         # Issue #1597. A condition carries one number and "three or more
@@ -5890,6 +5913,15 @@ ACTION_ONLY_EVENTS = (
     # Bonus): When an enemy dies while affected by a DoT from you". Raised in
     # `UCataclysmContagion::AnnounceAfflictedDeath`.
     "afflicted_death",
+    # A PAID USE WHOSE TAGS HOLD `Type.Melee`, THE BASIC ATTACK INCLUDED, raised
+    # by `UCataclysmAbilitySystemComponent::ActOnSkillUse` after `attack_use`.
+    # Ruled 2026-10-17 (R1) for Spellblade's Will's six-piece bonus, "When you
+    # use a melee attack, you gain a stack of Spellslinger": an own stack is
+    # granted on every event of its name whatever Required Tags it states, so
+    # such a row on `attack_use` would be granted by spells too. An attack event
+    # and not a skill event. NOT IN `REPEAT_SKILL_EVENTS`: a row that repeats a
+    # melee use already names `attack_use` with `Type.Melee`.
+    "melee_attack_use",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -8574,6 +8606,13 @@ STATS_WITH_AN_ASKER = frozenset({
     # measures it on a trap's blow with the scale and the offset the first of
     # those rows carries.
     "minion_damage",
+    # ADDED 2026-10-17 FOR SPELLSLINGER, Spellblade's Will's six-piece bonus,
+    # "makes your spells cost 10% less mana per stack", a row scaled by
+    # its own stacks; ruled that day (R1). `UCataclysmGameplayAbility::ManaCostFor`
+    # asks it through `StatAppliedTo` with the skill's tags for every cost the
+    # game reads; `ProbeScaledManaCost` measures that with the scale the row
+    # carries.
+    "mana_cost",
 })
 
 
@@ -10454,6 +10493,59 @@ def refuse_a_void_aura_row_the_game_cannot_read(
     return problems
 
 
+#: The scale that counts enemies in reach only while another row's own stack is
+#: held. Ruled by the project owner on 2026-10-17 for Warlord's Will's ten-piece
+#: bonus. See its entry in `SCALES`.
+WINDOW_SCALE = "enemies_in_reach_while_own_stack"
+
+
+def refuse_a_window_scale_with_no_own_stack_row(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row scaled by `WINDOW_SCALE` has a sibling that opens its window.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE. It grants no stack of its own: it
+    reads the stack counted under its enchantment and its stat
+    (`UCataclysmItemModifiers::OwnStackKeyFor`), which only an `own_stacks` row
+    of the same enchantment on the same stat grants. With no such row nothing
+    ever grants that stack, the window never opens, and the row counts nobody
+    and says nothing.
+
+    AND IT STATES A CAP. The owner's ruling caps the count at 5 enemies, and
+    the count it takes, `enemies_in_reach`'s, is uncapped by the owner's ruling
+    of 2026-09-12, so a row stating none would be uncapped.
+    `SCALES_THAT_NEED_A_CAP` is not widened for it: a merged test holds that
+    set to the one scale it names.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE HERE: `passive_effects` refuses the
+    scale outright.
+    """
+    problems = []
+    openers = {(str(row.get("Enchantment") or ""), str(row.get("Stat") or ""))
+               for row in rows
+               if str(row.get("Scale") or "").strip().lower() == "own_stacks"
+               and not str(row.get("Action") or "").strip()}
+    for row in rows:
+        if str(row.get("Scale") or "").strip().lower() != WINDOW_SCALE \
+                or "Node" in row:
+            continue
+        pair = (str(row.get("Enchantment") or ""), str(row.get("Stat") or ""))
+        if pair not in openers:
+            problems.append(
+                f"{sheet}/{row['Name']}: scales {pair[1]!r} by "
+                f"{WINDOW_SCALE!r}, which counts the enemies in reach only "
+                f"while a stack of {pair[0]}'s own on {pair[1]!r} is held, and "
+                f"no own_stacks row of {pair[0]} on {pair[1]!r} grants one. "
+                f"The row would count nobody and grant NOTHING. Write the "
+                f"own_stacks row on the same stat beside it.")
+        if int(float(row.get("ScaleMaxSteps") or 0)) < 1:
+            problems.append(
+                f"{sheet}/{row['Name']}: scales {pair[1]!r} by "
+                f"{WINDOW_SCALE!r} and states no Scale Max Steps. The count "
+                f"has no cap of its own, so the row would be uncapped. State "
+                f"the cap: \"capped at 5 enemies\" is 5.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -10850,6 +10942,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE CHANCE THE VOID AURA CONSUMES AN ENEMY'S SHOT IS FLAT, ABOVE 0
     # AND AT MOST 100, WITH NO TAGS AND NO ACTION. Ruled 2026-10-17 (O9).
     problems.extend(refuse_a_void_aura_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND A ROW COUNTING ENEMIES ONLY WHILE ANOTHER ROW'S STACK IS HELD HAS
+    # THAT ROW BESIDE IT. Ruled by the project owner on 2026-10-17.
+    problems.extend(refuse_a_window_scale_with_no_own_stack_row(
         "EnchantmentEffects", effects))
 
     return problems

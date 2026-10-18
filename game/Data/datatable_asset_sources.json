@@ -52,8 +52,8 @@
     {
       "asset": "DT_EnchantmentEffects",
       "csv": "EnchantmentEffects.csv",
-      "rows": 625,
-      "csv_sha256": "78d4cbe579c1c58ebb0c2ae9e24dd1b1d0a1020a6978324fa827cd7455b0ac80"
+      "rows": 632,
+      "csv_sha256": "917412b8e4e5cb0da369a50f3232f57000ab403a370b14094a7eebe6e4f4fd62"
     },
     {
       "asset": "DT_EnchantmentsNegative",
@@ -65,7 +65,7 @@
       "asset": "DT_EnchantmentsPositive",
       "csv": "EnchantmentsPositive.csv",
       "rows": 379,
-      "csv_sha256": "d8327948a05e989bb965ba6d49db527c3ce021f303b03814f6ccb1a301e41a91"
+      "csv_sha256": "40d7a6fff90e5635f2970a0f50669a03ac49cd31dfdac5d52ba0393728ec3604"
     },
     {
       "asset": "DT_EnemyArchetypes",
