@@ -118,7 +118,35 @@ Failed assertions, by reading: **DD-I, 1 in 1 test**, test 2's "and the death no
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-dd, on development ed4a92100 (the Demon King's
+Regalia ten-piece merge), for the two commits in this order: the failing tests alone (6c5f631e7) and the game change
+with this entry (d6d16f5b8). Every step was as registered. No asset was rebuilt and no row was written.
+
+- **The new group on the tests commit alone, before the game change:** "Build: Succeeded - 6 actions, 3 files
+  compiled"; "3 tests performed, 1 succeeded, 2 failed: APlayerKilledByTheDelayedDamageDrainNotesItsDeathOnce,
+  APlayerKilledByTheHealthDebtDrainNotesItsDeathOnce", with exactly 2 failed assertions in the run, each checked by its
+  text: "Expected 'and the death notes exactly one trigger' to be 1, but it was 2". **So the fault was measured, not
+  only read:** a player killed by either drain noted its death's save twice, and a direct write of health to nought
+  (the control test) noted it once.
+- **The whole Unreal suite at the game change:** "Build: Succeeded - 5 actions, 2 files compiled"; "3862 tests
+  performed, 3862 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3862 tests in the tree at
+  d6d16f5b8; 3862 performed, gap 0". Registered 3862 and 0: the 3859 measured on ed4a92100 and the three of
+  `Cataclysm.DrainDeathNotedOnce.`.
+- **Python:** "6579 passed, 8 skipped"; JUnit tests 6587, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 06:08:42 and would have ended the editor and released the lock after
+  20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.DrainDeathNotedOnce.`, 3 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Each anchor was counted once in its file, and each
+file's hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| DD-I | the delayed-damage drain's second call made again | 1 failed, `APlayerKilledByTheDelayedDamageDrainNotesItsDeathOnce` | 1 / 1 | 3 of 3 succeeded |
+| DD-II | the health-debt drain's second call made again | 1 failed, `APlayerKilledByTheHealthDebtDrainNotesItsDeathOnce` | 1 / 1 | 3 of 3 succeeded |
+
+The measured line, under each: "'and the death notes exactly one trigger' to be 1, but it was 2".
 
 ---
 
