@@ -88930,6 +88930,13 @@ any dose: 70 days against a median walk of 123.
 > 55 / 70 days a Siege leaves did not move**, so only the walk and the
 > subtraction changed.
 
+> **Re-measured on 2026-10-18**, after each Cataclysm's Quest dungeons became one
+> fixed sub-type (War's the Siege, at most two a wave), over 10,000 campaigns
+> (seeds 0 to 9999, 756,907 dungeons) by the prose test's own method (its report
+> settings, no tree, `triage`, every dungeon recorded when it is made): Against a
+> median walk of 14 / 23 / 35 days, the slack is eleven, sixteen and twenty days.
+> It was 14 / 22 / 34 and eleven, seventeen and twenty-one, measured on 2026-10-12.
+
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 
 > **THE COW LEVEL ROW BELOW WAS SUPERSEDED THE SAME DAY.** Sharing the slack
