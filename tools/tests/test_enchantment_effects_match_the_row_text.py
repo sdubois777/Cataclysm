@@ -292,7 +292,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               "ultimate_cost_doubles_instead_of_cooldown",
               # The flag by which a converted slot's key places a skill gadget instead of
               # casting its skill, a flat 1 requiring the slot's tag. Ruled 2026-10-16.
-              "skill_slot_is_a_gadget"}
+              "skill_slot_is_a_gadget",
+              # Tyrant's Chains' six-piece, ruled 2026-10-18 (Q1): the flag by which a
+              # commander's death blast deals Death damage. Its row states 1 and the
+              # sentence's "as Death damage" says so in words.
+              "minion_death_blast_deals_death"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -352,6 +356,13 @@ COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction",
 STATED_BY_WORD: dict[str, dict[str, float]] = {
     "crowd_control_resistance": {"immune": 100.0},
     "armor_penetration": {"all": 100.0},
+    # "NEARBY" IS 5 ON `minion_death_blast_radius_metres` AND "SHORT" IS 10 ON
+    # `minion_death_summons_tyrants_minion_seconds`, for Tyrant's Chains' six-piece,
+    # "...to all nearby enemies ... for a short duration": 5 m is the recorded
+    # stand-in for "nearby", and 10 s was ruled 2026-10-18 (Q2) under the owner's
+    # delegation. One word per stat, each the one that row's sentence uses.
+    "minion_death_blast_radius_metres": {"nearby": 5.0},
+    "minion_death_summons_tyrants_minion_seconds": {"short": 10.0},
     # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
@@ -928,8 +939,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 625 over 530: five rows on one enchantment.
 #: AND 632 OVER 532 SINCE THE TWO ROWS OF SPELLBLADE'S WILL'S 6-PIECE,
 #: issue #1833, 2026-10-18, from 630 over 531: two rows on one enchantment.
-AUTHORED_ROWS = 632
-AUTHORED_ENCHANTMENTS = 532
+#: AND 636 OVER 533 SINCE THE FOUR ROWS OF TYRANT'S CHAINS' 6-PIECE,
+#: issue #1833, 2026-10-18, from 632 over 532: four rows on one enchantment.
+AUTHORED_ROWS = 636
+AUTHORED_ENCHANTMENTS = 533
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -27109,4 +27109,64 @@ bool FCataclysmSpellbladeSixRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTyrantSixRowTest,
+	"Cataclysm.Enchantments.TheWornTyrantsChainsSixPieceBlastsAndSummonsATyrantsMinionAtAMinionsDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Tyrant's Chains' 6-piece row layer, ruled 2026-10-17 (#3) and 2026-10-18: a minion's death deals 50% of its maximum
+ * health as Death damage within 5 m and summons a Tyrant's Minion for 10 s. WORN by a real player: what the blast and
+ * the summon then do is `Cataclysm.SetBonus.Tyrant6.`'s. The CONTROL wears FIVE pieces and the case SIX, each carrying
+ * the 6-piece and the set's drawback. Each striker's imp stands 1 m from the striker's first creature and is killed by
+ * writing its health to nought. TWO assertions, one per half, so on assets built before the rows it fails twice, and
+ * only there.
+ */
+bool FCataclysmTyrantSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Tyrant_s_Chains_6_Piece_Bonus_When_a_pet_or_m");
+	const TCHAR* Drawback = TEXT("Negative_Minion_maximum_health_is_reduced_by_50");
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces"), SixPieces.Ready())
+		|| !TestTrue(TEXT("set-up: five pieces worn"), WearsMore(FivePieces, Bonus, Drawback, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), WearsMore(SixPieces, Bonus, Drawback, 5)))
+	{
+		return false;
+	}
+	const auto HealthOf = [](const AActor* Who)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+	};
+	ACataclysmMinion* FiveImp = ACataclysmMinion::Spawn(FivePieces.Character, FVector(300.0f, 0.0f, 0.0f),
+														/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	ACataclysmMinion* SixImp = ACataclysmMinion::Spawn(SixPieces.Character, FVector(300.0f, 0.0f, 0.0f),
+													   /*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: an imp for five pieces"), FiveImp)
+		|| !TestNotNull(TEXT("set-up: an imp for six pieces"), SixImp))
+	{
+		return false;
+	}
+	const float FiveBefore = HealthOf(FivePieces.First);
+	const float SixBefore = HealthOf(SixPieces.First);
+	for (ACataclysmMinion* Imp : {FiveImp, SixImp})
+	{
+		UCataclysmTargeting::AbilitySystemOf(Imp)->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	}
+
+	// THE CONTROLS, READ FIRST: five pieces are below the threshold, so the death neither blasts nor summons.
+	TestEqual(TEXT("control: with five pieces worn, the imp's death costs the creature 1 m off nothing"),
+		HealthOf(FivePieces.First), FiveBefore, 0.01f);
+	TestNull(TEXT("control: and summons no Tyrant's Minion"),
+		ACataclysmMinion::TyrantsMinionOf(FivePieces.Character));
+	TestTrue(TEXT("with six pieces worn, the imp's death costs the creature 1 m off health. If not, "
+				  "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		HealthOf(SixPieces.First) < SixBefore - 0.01f);
+	TestNotNull(TEXT("and summons a Tyrant's Minion"), ACataclysmMinion::TyrantsMinionOf(SixPieces.Character));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -835,10 +835,9 @@ public:
 	static const TCHAR* TyrantsMinionSecondsStat;
 
 	/**
-	 * The minion type a Tyrant's Minion is made from. AN IMP FOR NOW: `docs/DECISIONS.md` records "An Imp's stats"
-	 * as the stand-in until the creature is designed. Its own row in `game/Data/MinionTypes.csv` needs the design
-	 * workbook's Minion Types sheet, which the generator's `--check` compares the table with, so it waits for the
-	 * row layer; that layer changes this one name.
+	 * The minion type a Tyrant's Minion is made from: its own row, `TyrantsMinion` in `game/Data/MinionTypes.csv`,
+	 * from the design workbook's Minion Types sheet. Ruled 2026-10-18 under the owner's delegation: twice the
+	 * Ballista's health and the Ballista's damage a second as one melee hit a second, every other cell the Imp's.
 	 */
 	static const TCHAR* TyrantsMinionTypeName;
 

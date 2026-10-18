@@ -1913,7 +1913,7 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 
 const TCHAR* ACataclysmMinion::DeathBlastDealsDeathStat = TEXT("minion_death_blast_deals_death");
 const TCHAR* ACataclysmMinion::TyrantsMinionSecondsStat = TEXT("minion_death_summons_tyrants_minion_seconds");
-const TCHAR* ACataclysmMinion::TyrantsMinionTypeName = TEXT("Imp");
+const TCHAR* ACataclysmMinion::TyrantsMinionTypeName = TEXT("TyrantsMinion");
 
 ACataclysmMinion* ACataclysmMinion::TyrantsMinionOf(const AActor* Commander)
 {

@@ -30,6 +30,13 @@ Everything a ruling requires to be said first, and everything a player would not
   workbook's Minion Types sheet and `python tools/generate_datatables.py --check`, which continuous integration runs,
   refuses a table row the sheet does not hold; this layer may not touch the workbook. The row layer adds the sheet row,
   rebuilds `DT_MinionTypes.uasset`, and changes `ACataclysmMinion::TyrantsMinionTypeName` from `Imp` to the new name.
+  - **THE STAT BLOCK, RULED 2026-10-18 (A) BY THE COORDINATING SESSION, AND WRITTEN IN THE ROW LAYER**, a number under
+    the owner's delegation of unstated numbers. It is built from the Ballista, the strongest existing minion type
+    (31.5 x (1 + level) damage a second, tied with the Bolt Turret, at 2.5 times the Bolt Turret's health): twice the Ballista's
+    health, 400 and 180 a level, and the Ballista's damage a second as one melee hit a second, 31.5 and 31.5 a level,
+    three times an Imp's. Every other cell is the Imp's. The row is `TyrantsMinion,Creature,400.0,180.0,31.5,31.5,
+    300.0,1.0,4.4,100.0,200.0,1500.0,Nearest,"Type.Minion, Type.Summon, Minion.Creature, Minion.Melee"`, and
+    `TyrantsMinionTypeName` is now `TyrantsMinion`.
 - **WHICH DEATHS EXPLODE AND SUMMON** (Q3, exactly the deaths Shared Ruin's blast already fires for), each with the line
   that shows it. All are deaths that reach `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`, which finds the
   commander (`CataclysmVitalAttributeSet.cpp` 2781), deals the blast (2807), handles the death (2810) and then summons
@@ -45,6 +52,9 @@ Everything a ruling requires to be said first, and everything a player would not
     Actor.cpp` 6572 to 6575, UE 5.8): no health is written, so neither the hook nor `HandleDeath` runs, as
     `CataclysmMinion.h` 891 already says. This includes the Tyrant's Minion's own end of time: it explodes only when
     killed.
+  - **SAID PLAINLY, as the coordinating session asked on 2026-10-18: a minion whose lifetime runs out is not killed,
+    so it neither explodes nor summons a Tyrant's Minion; and a Tyrant's Minion that runs out of time does not
+    explode.**
   - **A skill gadget or other deployable destroyed**: YES when it is killed, since a deployable is a minion with health.
     Its `HandleDeath`, called from the hook, raises `gadget_destroyed` (`CataclysmMinion.cpp` 1654 to 1660). A gadget the
     drain empties is killed through a direct write (`CataclysmMinion.cpp` 1132), which reaches the hook, and its own
@@ -68,7 +78,9 @@ Everything a ruling requires to be said first, and everything a player would not
     asserts it, since a test of it could not fail.
 - **THE BLAST IS SHARED RUIN'S, SO THE TWO ADD UP WHEN BOTH ARE HELD.** A Ritualist holding Shared Ruin (a flat 20 and
   4) and wearing the six-piece (a flat 50 and 5) holds 70% within 9 m, one blast, and with the six-piece's flag it is
-  all Death damage. Not ruled; read from how flat stats add, not tested.
+  all Death damage. **Ruled 2026-10-18 (B) by the coordinating session, which ruled Q1 and so narrows it: accepted and
+  recorded. With Shared Ruin and six pieces both worn, the one summed blast is all Death.** Read from how flat stats
+  add, not tested.
 - **A TYRANT'S MINION IS IN EVERYTHING THAT ASKS `UCataclysmCommand::ThingsCommandedBy`**, as any minion is: for
   example it can be the minion Sacrificial Ward spends (`LeastHealthCommandedBy` walks that list,
   `CataclysmCommand.cpp` 132). Only the summon caps leave it out. Read, not tested.
@@ -162,6 +174,16 @@ merged (`EnchantmentEffects.csv` 147). And, once the stat block is ruled, one Mi
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 
+**IN THE ROW LAYER**, by the enchantment session, for the four rows: in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `minion_death_blast_deals_death` joins `FLAG_STATS` (its
+row states 1, and the sentence says "as Death damage" in words), and `STATED_BY_WORD` gains "nearby" as 5 on
+`minion_death_blast_radius_metres` and "short" as 10 on `minion_death_summons_tyrants_minion_seconds`, one word on one
+stat each. Without them `test_a_single_value_appears_in_its_words_outside_any_range` refused the rows' 5, 1 and 10,
+which the sentence does not state as numbers. The Minion Types counts move from 6 to 7 (`docs/README.md`,
+`CataclysmDataTableTests.cpp`, and the set of names in `tools/tests/test_minion_stat_blocks.py`).
+
+**IN THE MECHANISM:**
+
 - **The generator now refuses** a row on `minion_death_blast_deals_death` that is not `flat`, carries a Required Tag or
   an Action, or states anything but 1; and a row on `minion_death_summons_tyrants_minion_seconds` that is not `flat`,
   carries a Required Tag or an Action, falls, or states nought or less. Neither stat was accepted on a row before, since
@@ -219,27 +241,30 @@ fighting (no controller is ticked in these tests); anything drawn on a screen.
 
 ### GUARD PROOFS PROPOSED
 
+Renamed TC-I to TC-III on 2026-10-18 from G-I to G-III, so they are not confused with the skill
+gadgets' G-I to G-VI.
+
 Not run. Each old text was counted exactly once in its file by a script at this layer's working tree. Each break keeps
 the file's round, curly and square brackets paired (counted before and after by the same script) and compiles alone
-by reading: G-I sets the field to `NAME_None`, G-II passes a literal for a `bool` parameter, and G-III drops a condition
+by reading: TC-I sets the field to `NAME_None`, TC-II passes a literal for a `bool` parameter, and TC-III drops a condition
 whose variable is still used on the line above it. The failed assertions are counted by reading. The prefix is
 `Cataclysm.SetBonus.Tyrant6.`, with its trailing dot, five tests.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| G-I, the blast left untyped (Q1) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `Delivery.DamageType = FName(TEXT("Death"));` | `Delivery.DamageType = NAME_None;` | `ADyingMinionDealsHalfItsMaximumHealthAsDeathWithinFiveMetresAndNothingAtSix` | none |
-| G-II, its own death summons another (#3) | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `ACataclysmMinion::SummonTyrantsMinion(Commander, bWasTyrantsMinion, Where);` | `ACataclysmMinion::SummonTyrantsMinion(Commander, false, Where);` | `ATyrantsMinionsOwnDeathExplodesAndSummonsNoneAndIsNotReplaced` | none |
-| G-III, its death handed to the replacement (Q4) | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (Commander && !bWasTyrantsMinion)` | `if (Commander)` | `ATyrantsMinionsOwnDeathExplodesAndSummonsNoneAndIsNotReplaced` | none |
+| TC-I, the blast left untyped (Q1) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `Delivery.DamageType = FName(TEXT("Death"));` | `Delivery.DamageType = NAME_None;` | `ADyingMinionDealsHalfItsMaximumHealthAsDeathWithinFiveMetresAndNothingAtSix` | none |
+| TC-II, its own death summons another (#3) | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `ACataclysmMinion::SummonTyrantsMinion(Commander, bWasTyrantsMinion, Where);` | `ACataclysmMinion::SummonTyrantsMinion(Commander, false, Where);` | `ATyrantsMinionsOwnDeathExplodesAndSummonsNoneAndIsNotReplaced` | none |
+| TC-III, its death handed to the replacement (Q4) | `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` | `if (Commander && !bWasTyrantsMinion)` | `if (Commander)` | `ATyrantsMinionsOwnDeathExplodesAndSummonsNoneAndIsNotReplaced` | none |
 
 Failed assertions, by reading:
 
-- **G-I, 1 in 1 test.** Test 1: "one 4 m away holding 50 Death resistance loses a quarter" (it loses half). The
+- **TC-I, 1 in 1 test.** Test 1: "one 4 m away holding 50 Death resistance loses a quarter" (it loses half). The
   others read targets holding no Death resistance. Outside the prefix, `ProbeDeathBlastDealsDeath` fails, in
   `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
-- **G-II, 1 in 1 test.** Test 3: "and it summons none" (a second stands: the first is dead, so `TyrantsMinionOf` finds
+- **TC-II, 1 in 1 test.** Test 3: "and it summons none" (a second stands: the first is dead, so `TyrantsMinionOf` finds
   none and a new one is made). In tests 2, 4 and 5 no Tyrant's Minion is killed: test 2's ends by its lifespan, which
   reaches no hook.
-- **G-III, 1 in 1 test.** Test 3: "and Press-Ganged does not replace it" (the skill holds one). Its explosion is dealt
+- **TC-III, 1 in 1 test.** Test 3: "and Press-Ganged does not replace it" (the skill holds one). Its explosion is dealt
   before the replacement and still lands. Tests 2, 4 and 5 hold no summon skill, so `ReplaceLost` finds none.
 
 ### THE WINDOW'S RUN
