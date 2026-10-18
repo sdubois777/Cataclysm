@@ -83,9 +83,15 @@ class City:
     population: float = 0.0
 
     fallen: bool = False
-    # Marked by the Void: if this city falls it is erased, not merely lost, and
-    # the lane it was sealing can never be closed again.
-    doomed: bool = False
+    # VOID STACKS, since 2026-10-18: each ordinary Void dungeon whose timer runs
+    # out on this city adds 1 to 3 (`Simulation._void_stacks_for`), and at
+    # `TuningConfig.void_stacks_to_erase` the city is erased. A city that falls
+    # with fewer can be retaken, and retaking it clears them. Until that day a
+    # city was "doomed" the moment any Void dungeon landed on it, and erased by
+    # whatever then felled it.
+    void_stacks: int = 0
+    # Erased: fallen and never coming back, and the lane it was sealing can never
+    # be closed again.
     erased: bool = False
     upgrades: int = 0
 
