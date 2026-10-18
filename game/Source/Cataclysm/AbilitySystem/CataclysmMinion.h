@@ -816,6 +816,62 @@ public:
 	static int32 DeathBlast(AActor* Lost, const AActor* Commander);
 
 	/**
+	 * Tyrant's Chains' six-piece bonus: "When a pet or minion dies, it explodes, dealing 50% of its maximum health
+	 * as Death damage to all nearby enemies. Additionally, a new, powerful Tyrant's Minion is summoned to fight for
+	 * you for a short duration". Owner's ruling #3 of 2026-10-17 and the coordinating session's rulings of
+	 * 2026-10-18 (Q1-Q5); `docs/DECISIONS.md` carries both.
+	 *
+	 * THE BLAST IS SHARED RUIN'S, ON ITS TWO STATS, AND THIS FLAG MAKES IT DEATH DAMAGE (Q1). Above nought on the
+	 * commander, `DeathBlast` delivers its blow typed Death; at nought the blow carries the dying creature's own
+	 * type, as Shared Ruin's always has. A flag, a flat 1. No gameplay attribute and no base.
+	 */
+	static const TCHAR* DeathBlastDealsDeathStat;
+
+	/**
+	 * The seconds a Tyrant's Minion lasts, read off the commander when a minion or thrall of its dies (Q2: 10 s, a
+	 * number under the owner's delegation, stated by the row). Nought means none is summoned. No gameplay attribute
+	 * and no base.
+	 */
+	static const TCHAR* TyrantsMinionSecondsStat;
+
+	/**
+	 * The minion type a Tyrant's Minion is made from. AN IMP FOR NOW: `docs/DECISIONS.md` records "An Imp's stats"
+	 * as the stand-in until the creature is designed. Its own row in `game/Data/MinionTypes.csv` needs the design
+	 * workbook's Minion Types sheet, which the generator's `--check` compares the table with, so it waits for the
+	 * row layer; that layer changes this one name.
+	 */
+	static const TCHAR* TyrantsMinionTypeName;
+
+	/**
+	 * True for a Tyrant's Minion. WHAT TELLS IT FROM AN IMP, since it is made from the Imp's row: its own death
+	 * summons none (ruling #3), and the two replacement paths, Press-Ganged's and Rekindled's `ReplaceLost` and the
+	 * re-summon `ScheduleResummon`, are not asked at its death (Q4).
+	 */
+	bool bIsTyrantsMinion = false;
+
+	/** The Tyrant's Minion `Commander` has standing, alive, or null. At most one stands (ruling #3). */
+	static ACataclysmMinion* TyrantsMinionOf(const AActor* Commander);
+
+	/**
+	 * Summon `Commander`'s Tyrant's Minion at `Where`, where a minion or thrall of its has just died, or refresh
+	 * the one standing. Called by the commander's death hook, `UCataclysmVitalAttributeSet::
+	 * NotifyIfHealthReachedZero`, after the death is handled, so for exactly the deaths `DeathBlast` fires for (Q3).
+	 *
+	 * NOTHING WHEN THE LOST ONE WAS A TYRANT'S MINION (ruling #3: it explodes but summons none), when the
+	 * commander's `TyrantsMinionSecondsStat` is nought, or when the commander is dead.
+	 *
+	 * ONE AT MOST (ruling #3). With one standing, no second is summoned: the standing one's time restarts at the
+	 * full length and its health is kept (Q5). The length is raised by `minion_duration` as `Spawn` raises it.
+	 *
+	 * OUTSIDE EVERY SUMMON CAP (Q4): it fills none, is never destroyed to make room in one, and is in no summon
+	 * skill's list.
+	 *
+	 * @return the one summoned or refreshed, or null
+	 */
+	static ACataclysmMinion* SummonTyrantsMinion(AActor* Commander, bool bLostWasTyrantsMinion,
+												 const FVector& Where);
+
+	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
 	 * centimetres, how long it lasts in seconds, and the percent of the dead minion's own blow a sweep deals. Ruled
 	 * 2026-10-06 by the coordinating session under the owner's delegation; the row's sentence states none of them.

@@ -1882,6 +1882,12 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 	// run the death a second time.
 	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
 	Delivery.bCannotBeRetaliatedAgainst = true;
+	// AND DEATH DAMAGE WHERE THE COMMANDER'S ROW SAYS SO, Tyrant's Chains' six-piece, ruled 2026-10-18 (Q1). Shared
+	// Ruin's own blast keeps the dying creature's type: its node states no flag.
+	if (SummonerStat(Commander, DeathBlastDealsDeathStat) > 0.0f)
+	{
+		Delivery.DamageType = FName(TEXT("Death"));
+	}
 
 	// AND THE DYING CREATURE'S OWN BUFFS. Issue #1771, ruled 2026-09-30: the
 	// blast is a hit it deals. A minion's type tags stand for the blow's; a
@@ -1898,4 +1904,65 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
 	}
 	return Caught.Num();
+}
+
+// ==========================================================================
+// Tyrant's Chains, six-piece. Owner's ruling #3 of 2026-10-17 and the
+// coordinating session's rulings of 2026-10-18; the header carries them.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::DeathBlastDealsDeathStat = TEXT("minion_death_blast_deals_death");
+const TCHAR* ACataclysmMinion::TyrantsMinionSecondsStat = TEXT("minion_death_summons_tyrants_minion_seconds");
+const TCHAR* ACataclysmMinion::TyrantsMinionTypeName = TEXT("Imp");
+
+ACataclysmMinion* ACataclysmMinion::TyrantsMinionOf(const AActor* Commander)
+{
+	// EVERYTHING THE COMMANDER COMMANDS, WHICH LEAVES OUT THE DEAD, so a Tyrant's Minion whose death is being
+	// handled is not "the one standing".
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Minion) && Minion->bIsTyrantsMinion)
+		{
+			return Minion;
+		}
+	}
+	return nullptr;
+}
+
+ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool bLostWasTyrantsMinion,
+														const FVector& Where)
+{
+	// ITS OWN DEATH SUMMONS NONE, ruling #3. A dead commander summons nothing, as a re-summon is refused for one.
+	if (bLostWasTyrantsMinion || !IsValid(Commander) || UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return nullptr;
+	}
+	const float Seconds = SummonerStat(Commander, TyrantsMinionSecondsStat);
+	if (Seconds <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// ONE STANDING IS REFRESHED AND NO SECOND IS MADE, ruling #3 and Q5: its time restarts at the full length and its
+	// health is kept. THE LENGTH `Spawn` WOULD GIVE A NEW ONE, the stated seconds raised by `minion_duration`, with
+	// the same guard against a multiplier of nought, which `SetLifeSpan` would read as "never expires".
+	if (ACataclysmMinion* Standing = TyrantsMinionOf(Commander))
+	{
+		const float Duration = Seconds
+			* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_duration"), Standing->TypeTags);
+		Standing->SetLifeSpan(Duration > 0.0f ? Duration : Seconds);
+		return Standing;
+	}
+
+	// WHERE THE LOST ONE STOOD, a judgement: the sentence says only that it is summoned. Told no explosion radius,
+	// as no summon skill made it, so Every One Bursts does not explode it; Shared Ruin's blast and this bonus's do.
+	ACataclysmMinion* Made = Spawn(Commander, Where, Seconds, /*bBurns=*/false, FString(TyrantsMinionTypeName));
+	if (Made)
+	{
+		// OUTSIDE EVERY SUMMON CAP, Q4, as a necrosis-risen imp and a skill gadget are.
+		Made->bOutsideSummonCaps = true;
+		Made->bIsTyrantsMinion = true;
+	}
+	return Made;
 }
