@@ -27,6 +27,8 @@
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
+// For the Warhound's taunt. Warlord's Will's six-piece, ruled 2026-10-18.
+#include "AbilitySystem/CataclysmTaunt.h"
 // For the stat a worn row grants class points on, and its reader.
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -9354,6 +9356,116 @@ namespace CataclysmStatExemptionTest
 		}
 	}
 
+	/** What one blow on a Warlord's Will wearer led to, for the four probes below. */
+	struct FWarhoundProbeOutcome
+	{
+		/** Whether the blow left the wearer a Warhound. */
+		bool bSummoned = false;
+		/** What the enemy 5 m off lost to one swing of that Warhound. */
+		float Dealt = 0.0f;
+		/** Whether that swing left the enemy taunted by the Warhound. */
+		bool bTaunted = false;
+	};
+
+	/**
+	 * One wearer holding 1000 armour and `Stats` takes one landed blow of 1 from a bare attacker; its Warhound, if one
+	 * came, swings once at an enemy 5 m off with no armour, evasion, block or resistance. The probes below compare all
+	 * four Warhound stats with the same three less the one probed. THE CHANCE IS 100, which is not rolled, so no roll
+	 * is pinned.
+	 */
+	FWarhoundProbeOutcome WarhoundWith(FAutomationTestBase& Test, const TMap<FName, float>& Stats)
+	{
+		FWarhoundProbeOutcome Outcome;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return Outcome;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Wearer(World, FVector::ZeroVector);
+		Wearer.Set(UCataclysmCombatAttributeSet::GetArmorAttribute(), 1000.0f);
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Wearer.Actor, Stats);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Wearer.Actor, 1.0f);
+
+		ACataclysmMinion* Warhound = ACataclysmMinion::WarhoundOf(Wearer.Actor);
+		ON_SCOPE_EXIT { if (IsValid(Warhound)) { Warhound->Destroy(); } };
+		Outcome.bSummoned = Warhound != nullptr;
+		if (!Warhound)
+		{
+			return Outcome;
+		}
+
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(5 * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: an enemy 5 m off"), Enemy))
+		{
+			return Outcome;
+		}
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Enemy->SetHealth(100000.0f);
+		Enemy->SetArmour(0.0f);
+		UAbilitySystemComponent* Its = Enemy->GetAbilitySystemComponent();
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+
+		const float Before = Its->GetNumericAttribute(Vital::GetHealthAttribute());
+		Warhound->AttackTarget(Enemy);
+		Outcome.Dealt = Before - Its->GetNumericAttribute(Vital::GetHealthAttribute());
+		Outcome.bTaunted = UCataclysmTaunt::TaunterOf(Enemy) == Warhound;
+		return Outcome;
+	}
+
+	/**
+	 * The four Warhound stats: the chance read by `ACataclysmMinion::RollForWarhoundOnHitTaken` from `NoteHitTaken`,
+	 * the seconds by `SummonWarhound`, the armour share by `WarhoundBlow` and the taunt's seconds by `AttackTarget`.
+	 * Ruled 2026-10-17 (#6) and 2026-10-18, for Warlord's Will's six-piece. THE CONTROL IS THE SAME SCENE WITH THE THREE
+	 * OTHER STATS AND NOT THE ONE PROBED; with all four, the reading named moves.
+	 *
+	 * WHAT THIS DOES NOT REACH. The roll below 100, the quarter second, the refresh, the length and the taunt's rules:
+	 * `Cataclysm.SetBonus.Warlord6.`.
+	 */
+	void ProbeWarhound(FAutomationTestBase& Test, const TCHAR* Probed)
+	{
+		TMap<FName, float> All;
+		All.Add(FName(ACataclysmMinion::WarhoundChanceStat), 100.0f);
+		All.Add(FName(ACataclysmMinion::WarhoundSecondsStat), 10.0f);
+		All.Add(FName(ACataclysmMinion::WarhoundArmourPercentStat), 20.0f);
+		All.Add(FName(ACataclysmMinion::WarhoundTauntSecondsStat), 3.0f);
+		TMap<FName, float> Less = All;
+		Less.Remove(FName(Probed));
+
+		const FWarhoundProbeOutcome Without = WarhoundWith(Test, Less);
+		const FWarhoundProbeOutcome With = WarhoundWith(Test, All);
+		const FString Name(Probed);
+		if (Name == ACataclysmMinion::WarhoundChanceStat || Name == ACataclysmMinion::WarhoundSecondsStat)
+		{
+			Test.TestFalse(*FString::Printf(TEXT("control: with no %s a blow taken summons no Warhound"), *Name),
+						   Without.bSummoned);
+			Test.TestTrue(*FString::Printf(TEXT("with %s a blow taken summons one, so ACataclysmMinion really reads "
+												"it"), *Name),
+						  With.bSummoned);
+		}
+		else if (Name == ACataclysmMinion::WarhoundArmourPercentStat)
+		{
+			Test.TestEqual(TEXT("control: with no warhound_percent_of_armor the Warhound's swing deals nothing"),
+						   Without.Dealt, 0.0f, 0.01f);
+			Test.TestEqual(TEXT("with warhound_percent_of_armor at 20 it deals a fifth of the wearer's 1000 armour, so "
+								"ACataclysmMinion::WarhoundBlow really reads it"),
+						   With.Dealt, 200.0f, 0.5f);
+		}
+		else
+		{
+			Test.TestFalse(TEXT("control: with no warhound_taunt_seconds the Warhound's hit taunts nobody"),
+						   Without.bTaunted);
+			Test.TestTrue(TEXT("with warhound_taunt_seconds at 3 the enemy struck is taunted by it, so "
+							   "ACataclysmMinion::AttackTarget really reads it"),
+						  With.bTaunted);
+		}
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -9527,6 +9639,14 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::StunSecondsStat); }},
 			{TEXT("ground_pound_seconds_off_per_kill"),
 			 [](FAutomationTestBase& Test) { ProbeGroundPound(Test, UCataclysmGroundPound::SecondsOffPerKillStat); }},
+			{TEXT("warhound_summon_chance"),
+			 [](FAutomationTestBase& Test) { ProbeWarhound(Test, ACataclysmMinion::WarhoundChanceStat); }},
+			{TEXT("warhound_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeWarhound(Test, ACataclysmMinion::WarhoundSecondsStat); }},
+			{TEXT("warhound_percent_of_armor"),
+			 [](FAutomationTestBase& Test) { ProbeWarhound(Test, ACataclysmMinion::WarhoundArmourPercentStat); }},
+			{TEXT("warhound_taunt_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeWarhound(Test, ACataclysmMinion::WarhoundTauntSecondsStat); }},
 		};
 		return Made;
 	}

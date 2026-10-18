@@ -3248,6 +3248,16 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	// call returns, so it reads false at every other time.
 	TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);
 	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
+
+	// AND A LANDED BLOW THAT IS NOT A TICK MAY SUMMON A WARHOUND, Warlord's Will's six-piece. Ruled 2026-10-18 (Q4):
+	// "10% per blow taken through hit_taken with its 0.25 s trigger cooldown; damage-over-time ticks do not count". The
+	// blows that raise `hit_taken` above as landed, less the ticks, as `TeleportRandomlyAction` reads them. The roll,
+	// the quarter second and the summon are `ACataclysmMinion::RollForWarhoundOnHitTaken`'s; a character with no such
+	// row stops at its first stat.
+	if (bLanded && !bDamageOverTime)
+	{
+		ACataclysmMinion::RollForWarhoundOnHitTaken(GetAvatarActor());
+	}
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceHitTaken() const

@@ -24,6 +24,11 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For the basic attack gadget's clock, the player's swing interval. Ruled 2026-10-16, stack 2.
 #include "AbilitySystem/CataclysmBasicAttack.h"
+// For a Warhound's blow, its taunt and where it appears. Warlord's Will's six-piece, ruled 2026-10-17 and 2026-10-18.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmTaunt.h"
+#include "HAL/IConsoleManager.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
 // For the level a minion's own health and damage are raised by, and for the
@@ -1431,7 +1436,11 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// Three tests older than the minion type table also summon one.
 	FCataclysmDamageResult Resolved;
 	float Dealt = 0.0f;
-	if (OwnDamagePerHit > 0.0f)
+	// A WARHOUND'S BLOW IS A SHARE OF ITS SUMMONER'S ARMOUR, IN PLACE OF ITS TYPE'S OWN DAMAGE. Warlord's Will's
+	// six-piece, ruled 2026-10-18 (Q5): "deals damage based on your armor", 20% a hit. Everything below that raises a
+	// minion's blow raises it as it raises any other.
+	const float OwnBlow = bIsWarhound ? WarhoundBlow() : OwnDamagePerHit;
+	if (OwnBlow > 0.0f)
 	{
 		// AND THE SUMMONER'S INCREASED MINION DAMAGE ON TOP, WHICH IS NEW. Issue
 		// #898. Until this, `game/Data/Affixes.csv` granted `minion_damage` and
@@ -1458,7 +1467,7 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// attack_damage alone, because "Gadgets deal 20%-40% increased damage"
 		// is written on attack_damage and spell_damage both, and reading both
 		// would count one sentence twice; a machine's bolt is an attack.
-		float Own = OwnDamagePerHit;
+		float Own = OwnBlow;
 		if (IsDeployable())
 		{
 			if (const UCataclysmAbilitySystemComponent* Theirs =
@@ -1577,6 +1586,14 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		UCataclysmSkillEffects::ApplyBurn(this, Target, Dealt,
 										  /*bScalesWithInstigator=*/false,
 										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this);
+	}
+
+	// AND A WARHOUND'S HIT TAUNTS THE ENEMY STRUCK, for its summoner's row's seconds. Warlord's Will's six-piece, ruled
+	// 2026-10-17 (#6) and 2026-10-18 (Q1, Q2); what a taunt is, and what refuses it, is `UCataclysmTaunt`'s. A HIT, as
+	// the burn above is: a blow that was dealt and not evaded, and not one the enemy refused as immune to its attacker.
+	if (bIsWarhound && Dealt > 0.0f && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)
+	{
+		UCataclysmTaunt::ApplyTaunt(this, Target, SummonerStat(Summoner, WarhoundTauntSecondsStat));
 	}
 
 	++AttacksMade;
@@ -1965,4 +1982,159 @@ ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool 
 		Made->bIsTyrantsMinion = true;
 	}
 	return Made;
+}
+
+// ==========================================================================
+// Warlord's Will, six-piece. Owner's ruling #6 of 2026-10-17 and the
+// coordinating session's rulings of 2026-10-18; the header carries them.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::WarhoundChanceStat = TEXT("warhound_summon_chance");
+const TCHAR* ACataclysmMinion::WarhoundSecondsStat = TEXT("warhound_seconds");
+const TCHAR* ACataclysmMinion::WarhoundArmourPercentStat = TEXT("warhound_percent_of_armor");
+const TCHAR* ACataclysmMinion::WarhoundTauntSecondsStat = TEXT("warhound_taunt_seconds");
+const TCHAR* ACataclysmMinion::WarhoundTypeName = TEXT("Imp");
+
+/**
+ * Pins the roll `RollForWarhoundOnHitTaken` makes against its chance, 0 to 100, for tests. Negative, the default, rolls
+ * at random. A roll below the chance summons; one equal to it does not.
+ */
+static TAutoConsoleVariable<float> CVarWarhoundRoll(
+	TEXT("Cataclysm.WarhoundRoll"), -1.0f,
+	TEXT("Pins the roll a Warlord's Will six-piece wearer makes for a Warhound when struck, 0 to 100. Negative rolls."),
+	ECVF_Default);
+
+namespace
+{
+	/**
+	 * When each wearer last summoned or refreshed its Warhound, in its world's seconds, keyed weakly. HELD HERE AND NOT
+	 * ON THE ABILITY SYSTEM, as `UCataclysmGroundPound` keeps its clocks. A gone wearer's entry is dropped when the next
+	 * is written.
+	 */
+	TMap<TWeakObjectPtr<AActor>, float>& WarhoundSummonedAt()
+	{
+		static TMap<TWeakObjectPtr<AActor>, float> Held;
+		return Held;
+	}
+}
+
+ACataclysmMinion* ACataclysmMinion::WarhoundOf(const AActor* Summoner)
+{
+	// EVERYTHING THE SUMMONER COMMANDS, WHICH LEAVES OUT THE DEAD, as `TyrantsMinionOf` asks.
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Summoner))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Minion) && Minion->bIsWarhound)
+		{
+			return Minion;
+		}
+	}
+	return nullptr;
+}
+
+ACataclysmMinion* ACataclysmMinion::SummonWarhound(AActor* Summoner)
+{
+	if (!IsValid(Summoner) || UCataclysmSkillEffects::IsDead(Summoner))
+	{
+		return nullptr;
+	}
+	const float Seconds = SummonerStat(Summoner, WarhoundSecondsStat);
+	if (Seconds <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// ONE STANDING IS REFRESHED AND NO SECOND IS MADE (Q3): its time restarts at the full length and its health is
+	// kept. The length `Spawn` would give a new one, with the same guard against a multiplier of nought.
+	if (ACataclysmMinion* Standing = WarhoundOf(Summoner))
+	{
+		const float Duration = Seconds
+			* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_duration"), Standing->TypeTags);
+		Standing->SetLifeSpan(Duration > 0.0f ? Duration : Seconds);
+		return Standing;
+	}
+
+	// WHERE A RE-SUMMONED MINION APPEARS, in front of its summoner: a judgement, since the sentence names no place and
+	// no minion has died where it could stand. Told no explosion radius, as no summon skill made it.
+	const FVector Where = Summoner->GetActorLocation()
+		+ Summoner->GetActorForwardVector() * UCataclysmSummonSkill::ResummonDistanceCm;
+	ACataclysmMinion* Made = Spawn(Summoner, Where, Seconds, /*bBurns=*/false, FString(WarhoundTypeName));
+	if (Made)
+	{
+		// OUTSIDE EVERY SUMMON CAP (Q3), as a Tyrant's Minion is.
+		Made->bOutsideSummonCaps = true;
+		Made->bIsWarhound = true;
+	}
+	return Made;
+}
+
+ACataclysmMinion* ACataclysmMinion::RollForWarhoundOnHitTaken(AActor* Struck)
+{
+	if (!IsValid(Struck) || UCataclysmSkillEffects::IsDead(Struck))
+	{
+		return nullptr;
+	}
+	// A CHARACTER WITH NO SUCH ROW STOPS HERE, which is every character but a six-piece wearer.
+	const float Chance = SummonerStat(Struck, WarhoundChanceStat);
+	if (Chance <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// WITHIN A QUARTER OF A SECOND OF THE LAST SUMMON OR REFRESH, NO BLOW ROLLS (Q4).
+	const UWorld* World = Struck->GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	if (const float* Last = WarhoundSummonedAt().Find(TWeakObjectPtr<AActor>(Struck)))
+	{
+		if (Now - *Last < WarhoundSummonCooldownSeconds)
+		{
+			return nullptr;
+		}
+	}
+
+	// A CHANCE OF 100 OR MORE IS NOT ROLLED, and one below it is compared with the roll: a roll equal to the chance
+	// fails. The shape of `RollDamageTypeImmunityOnHit`, the other "when you take damage, a 10% chance" row.
+	if (Chance < 100.0f)
+	{
+		const float Pinned = CVarWarhoundRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (Roll >= Chance)
+		{
+			return nullptr;
+		}
+	}
+
+	ACataclysmMinion* Made = SummonWarhound(Struck);
+	if (Made)
+	{
+		for (auto It = WarhoundSummonedAt().CreateIterator(); It; ++It)
+		{
+			if (!It.Key().IsValid())
+			{
+				It.RemoveCurrent();
+			}
+		}
+		WarhoundSummonedAt().Add(TWeakObjectPtr<AActor>(Struck), Now);
+	}
+	return Made;
+}
+
+float ACataclysmMinion::WarhoundBlow() const
+{
+	if (!bIsWarhound)
+	{
+		return 0.0f;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner));
+	if (!Theirs)
+	{
+		return 0.0f;
+	}
+	// THE SUMMONER'S ARMOUR, ASKED AS THE ARMOUR NOVA AND THE GROUND POUND ASK IT: the stat with every row on it, the
+	// attribute as the fallback. Read at each blow, so a change of gear moves the next hit.
+	const UCataclysmCombatAttributeSet* Combat = Theirs->GetSet<UCataclysmCombatAttributeSet>();
+	const float Armour = Theirs->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
+		Combat ? Combat->GetArmor() : 0.0f);
+	return FMath::Max(0.0f, Armour) * SummonerStat(Summoner, WarhoundArmourPercentStat) / 100.0f;
 }

@@ -178,6 +178,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Brute's Heart's Ground Pound added two more on 2026-10-18: the one helper
 #: `UCataclysmGroundPound::StatOf` its five stats are asked through, and the
 #: wearer's armour the pound strikes with, asked as the armour nova asks it.
+#: Warlord's Will's Warhound added one more on 2026-10-18: its summoner's
+#: armour, which each of its hits is a share of, asked as the armour nova asks
+#: it. Its four stats are asked through `SummonerStat`, already listed.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -998,6 +1001,12 @@ INVENTORY = {
         "near with, asked as the armour nova in "
         "CataclysmAbilitySystemComponent.cpp asks it (Q4 of 2026-10-18); no "
         "skill and no blow of its own is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the summoner's own armour, which each of a Warhound's hits is a "
+        "share of (Q5 of 2026-10-18), asked by WarhoundBlow as the armour "
+        "nova asks it; the summoner's armour is not a modifier of the "
+        "Warhound's blow, so no skill, no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

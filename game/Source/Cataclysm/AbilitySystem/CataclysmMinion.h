@@ -871,6 +871,72 @@ public:
 												 const FVector& Where);
 
 	/**
+	 * Warlord's Will's six-piece bonus: "When you take damage, you have a 10% chance to summon a "Warhound" to fight for
+	 * you for a short duration. The Warhound taunts enemies and deals damage based on your armor". Owner's ruling #6 of
+	 * 2026-10-17 and the coordinating session's rulings of 2026-10-18 (Q1-Q6); `docs/DECISIONS.md` carries both.
+	 *
+	 * FOUR STATS, EACH READ OFF THE WEARER WITH NO TAGS AND NO GAMEPLAY ATTRIBUTE OR BASE: the percent chance a blow
+	 * taken summons one (Q4: 10), the seconds it lasts (Q3: 10), the percent of the wearer's armour each of its hits
+	 * deals (Q5: 20), and the seconds each hit taunts the enemy struck (#6: 3). The two 10s and the 20 are numbers under
+	 * the owner's delegation. Any of the first two at nought summons nothing.
+	 */
+	static const TCHAR* WarhoundChanceStat;
+	static const TCHAR* WarhoundSecondsStat;
+	static const TCHAR* WarhoundArmourPercentStat;
+	static const TCHAR* WarhoundTauntSecondsStat;
+
+	/**
+	 * The minion type a Warhound is made from. THE IMP FOR NOW, the stand-in `docs/DECISIONS.md` records ("Tyrant's
+	 * Minion and the Warhound (P342, P375) | An Imp's stats"): a type row needs the design workbook's Minion Types
+	 * sheet, which this layer may not touch. The row layer adds a `Warhound` row and changes this one name.
+	 */
+	static const TCHAR* WarhoundTypeName;
+
+	/**
+	 * How long after a blow summons or refreshes a Warhound the next blow may not (Q4: "with its 0.25 s trigger
+	 * cooldown"). The quarter second every hit-fired row waits, `DEFAULT_TRIGGER_COOLDOWN` in
+	 * `tools/generate_datatables.py`; `tools/tests/test_warlords_will_six_rows.py` compares the two.
+	 */
+	static constexpr float WarhoundSummonCooldownSeconds = 0.25f;
+
+	/**
+	 * True for a Warhound. WHAT TELLS IT FROM AN IMP, since it is made from the Imp's row: its blow is a share of its
+	 * summoner's armour and taunts what it strikes (`AttackTarget`), and the replacement paths are not asked at its
+	 * death (Q3).
+	 */
+	bool bIsWarhound = false;
+
+	/** The Warhound `Summoner` has standing, alive, or null. At most one stands (Q3). */
+	static ACataclysmMinion* WarhoundOf(const AActor* Summoner);
+
+	/**
+	 * Summon `Summoner`'s Warhound beside it, or refresh the one standing, as `SummonTyrantsMinion` does a Tyrant's
+	 * Minion (Q3): for the summoner's `WarhoundSecondsStat` raised by `minion_duration`, at most one, a new summon
+	 * restarting the standing one's time at the full length and keeping its health, outside every summon cap.
+	 * Nothing for a summoner that is dead or holds the seconds at nought.
+	 *
+	 * @return the one summoned or refreshed, or null
+	 */
+	static ACataclysmMinion* SummonWarhound(AActor* Summoner);
+
+	/**
+	 * A blow `Struck` has taken may summon its Warhound (Q4): called by `UCataclysmAbilitySystemComponent::
+	 * NoteHitTaken`, beside the event `hit_taken`, for a landed blow that is not a tick of damage over time. Rolls the
+	 * struck character's `WarhoundChanceStat`; a summon or a refresh starts `WarhoundSummonCooldownSeconds`, within
+	 * which no blow rolls. A roll that fails starts no wait. `Cataclysm.WarhoundRoll` pins the roll for tests.
+	 *
+	 * @return the one summoned or refreshed, or null
+	 */
+	static ACataclysmMinion* RollForWarhoundOnHitTaken(AActor* Struck);
+
+	/**
+	 * What one of this Warhound's hits is worth: its summoner's armour, asked as the armour nova asks it, times the
+	 * summoner's `WarhoundArmourPercentStat` (Q5). Nought for a minion that is not a Warhound and for a summoner with
+	 * no ability system.
+	 */
+	float WarhoundBlow() const;
+
+	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
 	 * centimetres, how long it lasts in seconds, and the percent of the dead minion's own blow a sweep deals. Ruled
 	 * 2026-10-06 by the coordinating session under the owner's delegation; the row's sentence states none of them.

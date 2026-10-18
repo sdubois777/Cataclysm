@@ -811,6 +811,19 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("ground_pound_radius_metres"),
 		TEXT("ground_pound_stun_seconds"),
 		TEXT("ground_pound_seconds_off_per_kill"),
+		// Warlord's Will's Warhound: the per cent chance a landed blow taken
+		// summons one, the seconds it lasts, the per cent of the wearer's armour
+		// each of its hits deals, and the seconds each hit taunts the enemy
+		// struck. Each read with no tags off the wearer by ACataclysmMinion: the
+		// chance in RollForWarhoundOnHitTaken from UCataclysmAbilitySystemComponent::
+		// NoteHitTaken, the seconds in SummonWarhound, the armour in WarhoundBlow
+		// and the taunt in AttackTarget. Ruled 2026-10-17 (#6) and 2026-10-18
+		// (Q1-Q5), for the six-piece bonus. Flat; the chance or the seconds at
+		// nought summon nothing. No gameplay attribute and no base.
+		TEXT("warhound_summon_chance"),
+		TEXT("warhound_seconds"),
+		TEXT("warhound_percent_of_armor"),
+		TEXT("warhound_taunt_seconds"),
 	};
 	return Stats;
 }
