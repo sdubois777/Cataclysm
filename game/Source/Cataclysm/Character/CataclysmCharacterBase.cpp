@@ -174,6 +174,17 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// for tests.
 	UCataclysmDelayedDamage::DrainStep(this);
 
+	// AND A DEATH SENTENCE FALLS DUE ON THE SAME TIMER. Ruled 2026-10-17 and 2026-10-18, for "Killing a Rare or higher
+	// enemy instanly heals you to full, failing to results in your death": a reprieve's seconds ended with no kill
+	// that lifted it. Here for the reason the health debt gives above, so the death lands up to a quarter of a second
+	// after the window ends. BEFORE THE GUARD BELOW, as the drain above is, because it kills. It refuses a corpse
+	// itself, and does nothing for a character with no sentence running. Its return value is for tests.
+	if (UCataclysmAbilitySystemComponent* Sentenced =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this)))
+	{
+		Sentenced->CarryOutDueDeathSentence();
+	}
+
 	// AND A GADGET DOES WHAT ITS SUMMONER'S ROWS MAKE IT DO BECAUSE TIME PASSED, ON THE SAME TIMER. Ruled
 	// 2026-10-13, for "Gadgets fire at all enemies within range simultaneously once every 5-8 seconds": the clock
 	// of a gadget's volley is looked at here, so a volley can fire up to a quarter of a second late.

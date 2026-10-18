@@ -5164,6 +5164,114 @@ namespace CataclysmStatExemptionTest
 			StackedSkill->ManaCostFor(Stacked.AbilitySystem) / Plain, 0.9f, 0.001f);
 	}
 
+	/**
+	 * One own-stack line on `Stat`: a flat `Value` a stack over `Base`, one stack at most, keyed `Key`. The shape of
+	 * the Demon King's Regalia's ten-piece rows. Replaces the whole line set, as `GrantFlats` does.
+	 */
+	void GiveOwnStackLine(FScopedFighter& Who, const TCHAR* Stat, float Value, FName Key, float Base)
+	{
+		FCataclysmStatModifier Stacked;
+		Stacked.Bucket = ECataclysmStatBucket::Flat;
+		Stacked.Source = ECataclysmModifierSource::Enchantment;
+		Stacked.Value = Value;
+		Stacked.Scale = ECataclysmStatScale::PerOwnStack;
+		Stacked.ScaleStep = 1.0f;
+		Stacked.ScaleMaxSteps = 1;
+		Stacked.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = Base;
+		Line.Modifiers = {Stacked};
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * `lethal_hit_reprieve_every_seconds`, SCALED BY ITS OWN STACKS, as the ten-piece's row is on the Rage's event.
+	 * Two fighters hold the same line, a flat 10 a stack; only the second is granted the stack. THE CONTROL IS THE
+	 * FIRST: holding no stack, it holds no interval and the blow kills it.
+	 */
+	void ProbeScaledLethalHitReprieveEvery(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:lethal_hit_reprieve_every_seconds"));
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/0.0f);
+		for (FScopedFighter* Each : {&Plain, &Stacked})
+		{
+			GiveOwnStackLine(*Each, UCataclysmAbilitySystemComponent::LethalHitReprieveEverySecondsStat, 10.0f, Key,
+							 /*Base=*/0.0f);
+		}
+		Stacked.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/10.0f, /*Cap=*/1);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Plain.Actor, TargetHealthPool * 2.0f);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Stacked.Actor, TargetHealthPool * 2.0f);
+		Test.TestEqual(TEXT("lethal_hit_reprieve_every_seconds by its own stacks: control, with no stack the blow kills"),
+					   Plain.Health(), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and with one stack held the blow is reprieved to one, so the reprieve asks the stat through "
+							"the pipeline"),
+					   Stacked.Health(), 1.0f, 0.001f);
+	}
+
+	/**
+	 * `crit_multiplier`, SCALED BY ITS OWN STACKS, asked through `StatForSkill` at the critical strike site in
+	 * `UCataclysmVitalAttributeSet`. Ruled 2026-10-18 for the Demon King's Regalia's ten-piece: +100 points of
+	 * multiplier for 3 s from the reprieve. Two strikers at 100% chance, the roll pinned so every blow critically
+	 * strikes, each holding a multiplier of 150 with a flat 100 a stack; only the second holds the stack. THE CONTROL
+	 * IS THE FIRST STRIKER'S BLOW.
+	 */
+	void ProbeScaledCritMultiplier(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		// PINNED AFTER THE WORLD IS MADE, which sets the roll to 100 itself; at the console's own priority and put back
+		// after, as `ProbeScaledCritChance` pins it. A roll of nought is below any chance above nought.
+		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		if (!Test.TestNotNull(TEXT("crit_multiplier by its own stacks: the critical strike roll can be pinned"), Roll))
+		{
+			return;
+		}
+		const float PreviousRoll = Roll->GetFloat();
+		Roll->Set(0.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(PreviousRoll, ECVF_SetByConsole); };
+
+		const FName Key(TEXT("Probe:crit_multiplier"));
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		for (FScopedFighter* Striker : {&Plain, &Stacked})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 150.0f);
+			GiveOwnStackLine(*Striker, TEXT("crit_multiplier"), 100.0f, Key, /*Base=*/150.0f);
+		}
+		Stacked.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/1);
+		FCataclysmDamageResult Clean;
+		UCataclysmSkillEffects::ApplyHit(Plain.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Clean);
+		FCataclysmDamageResult Raised;
+		UCataclysmSkillEffects::ApplyHit(Stacked.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Raised);
+		if (!Test.TestTrue(TEXT("crit_multiplier by its own stacks: both blows landed and critically struck"),
+						   Clean.bWasCritical && Raised.bWasCritical && Clean.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(FString::Printf(TEXT("crit_multiplier is asked for, so the striker holding the stack critically "
+										   "strikes for more: %.1f against %.1f"),
+									  Raised.DealtToHealth, Clean.DealtToHealth),
+					  Raised.DealtToHealth > Clean.DealtToHealth * 1.2f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5195,6 +5303,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("energy_shield_leech"),        &ProbeScaledEnergyShieldLeech},
 			{TEXT("minion_damage"),              &ProbeScaledMinionDamage},
 			{TEXT("mana_cost"),                  &ProbeScaledManaCost},
+			{TEXT("crit_multiplier"),            &ProbeScaledCritMultiplier},
+			{TEXT("lethal_hit_reprieve_every_seconds"), &ProbeScaledLethalHitReprieveEvery},
 		};
 		return Made;
 	}
@@ -9036,6 +9146,99 @@ namespace CataclysmStatExemptionTest
 						 ACataclysmMinion::TyrantsMinionOf(Summoner.Actor));
 	}
 
+	/**
+	 * `lethal_hit_reprieve_every_seconds`, read by `UCataclysmAbilitySystemComponent::LethalHitReprieveFigure` from
+	 * `PostGameplayEffectExecute` when a blow would kill. Ruled 2026-10-18, for the Demon King's Regalia's ten-piece.
+	 * THE CONTROL IS A PLAIN FIGHTER, killed by a blow worth twice its pool; one holding the interval at a flat 10 is
+	 * left at one.
+	 *
+	 * WHAT THIS DOES NOT REACH. The Rage's stack, the sentence and the critical strike: `Cataclysm.SetBonus.DemonKing10.`.
+	 */
+	void ProbeLethalHitReprieveEvery(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const float Lethal = TargetHealthPool * 2.0f;
+		const TArray<float> Plain = HealthAfterBlows(World, {}, {Lethal});
+		const TArray<float> Held = HealthAfterBlows(World,
+			{{FName(UCataclysmAbilitySystemComponent::LethalHitReprieveEverySecondsStat), 10.0f}}, {Lethal});
+		Test.TestEqual(TEXT("lethal_hit_reprieve_every_seconds: control, a plain fighter is killed by the blow"),
+					   Plain[0], 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and one holding lethal_hit_reprieve_every_seconds at 10 is left at one, so "
+							"LethalHitReprieveFigure really reads it"),
+					   Held[0], 1.0f, 0.001f);
+	}
+
+	/**
+	 * `lethal_hit_reprieve_seconds`, the reprieve's no-damage window. Both fighters hold the interval at 10, so both
+	 * are reprieved; THE CONTROL IS THE ONE WITHOUT THE SECONDS, whom the blow after it hurts. With them at 3 it does
+	 * not.
+	 */
+	void ProbeLethalHitReprieveSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Every(UCataclysmAbilitySystemComponent::LethalHitReprieveEverySecondsStat);
+		const FName Seconds(UCataclysmAbilitySystemComponent::LethalHitReprieveSecondsStat);
+		const TArray<float> Blows = {TargetHealthPool * 2.0f, 0.5f};
+		const TArray<float> Plain = HealthAfterBlows(World, {{Every, 10.0f}}, Blows);
+		const TArray<float> Held = HealthAfterBlows(World, {{Every, 10.0f}, {Seconds, 3.0f}}, Blows);
+		Test.TestEqual(TEXT("lethal_hit_reprieve_seconds: control, without the seconds the blow after the reprieve "
+							"hurts"),
+					   Plain[1], 0.5f, 0.001f);
+		Test.TestEqual(TEXT("and with lethal_hit_reprieve_seconds at 3 it does not, so LethalHitReprieveFigure really "
+							"reads it"),
+					   Held[1], 1.0f, 0.001f);
+	}
+
+	/**
+	 * `lethal_hit_reprieve_kill_rarity_at_least`, which turns the death sentence on. Two fighters each hold the
+	 * interval at 10 and the seconds at 3 and are reprieved by a blow worth twice the pool. THE CONTROL IS THE ONE
+	 * WITHOUT THE RUNG: no sentence runs. The one holding it at 1 is sentenced, to be lifted by an Elite or above.
+	 */
+	void ProbeLethalHitReprieveKillRarity(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Every(UCataclysmAbilitySystemComponent::LethalHitReprieveEverySecondsStat);
+		const FName Seconds(UCataclysmAbilitySystemComponent::LethalHitReprieveSecondsStat);
+		const FName Rarity(UCataclysmAbilitySystemComponent::LethalHitReprieveKillRarityStat);
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Held(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Plain.Actor, {{Every, 10.0f}, {Seconds, 3.0f}});
+		GrantFlats(Held.Actor, {{Every, 10.0f}, {Seconds, 3.0f}, {Rarity, 1.0f}});
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Plain.Actor, TargetHealthPool * 2.0f);
+		UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Held.Actor, TargetHealthPool * 2.0f);
+		if (!Test.TestTrue(TEXT("lethal_hit_reprieve_kill_rarity_at_least: set-up, both fighters were reprieved"),
+						   FMath::IsNearlyEqual(Plain.Health(), 1.0f, 0.001f)
+							   && FMath::IsNearlyEqual(Held.Health(), 1.0f, 0.001f)))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("lethal_hit_reprieve_kill_rarity_at_least: control, without the rung no death sentence runs"),
+					   Plain.AbilitySystem->IsUnderDeathSentence());
+		Test.TestEqual(TEXT("and with lethal_hit_reprieve_kill_rarity_at_least at 1 one runs, lifted by rung 1, so "
+							"LethalHitReprieveFigure really reads it"),
+					   Held.AbilitySystem->DeathSentenceLiftedByRarity(), 1);
+	}
+
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -9196,6 +9399,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("void_aura_projectile_consume_chance"), &ProbeVoidAuraProjectileConsumeChance},
 			{TEXT("minion_death_blast_deals_death"), &ProbeDeathBlastDealsDeath},
 			{TEXT("minion_death_summons_tyrants_minion_seconds"), &ProbeTyrantsMinionSeconds},
+			{TEXT("lethal_hit_reprieve_every_seconds"), &ProbeLethalHitReprieveEvery},
+			{TEXT("lethal_hit_reprieve_seconds"), &ProbeLethalHitReprieveSeconds},
+			{TEXT("lethal_hit_reprieve_kill_rarity_at_least"), &ProbeLethalHitReprieveKillRarity},
 		};
 		return Made;
 	}

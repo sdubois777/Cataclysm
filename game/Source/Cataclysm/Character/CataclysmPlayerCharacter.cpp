@@ -1175,6 +1175,12 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags, SlainMaximum,
 							   /*bLanded=*/true, Notice.Victim);
 
+			// AND A DEATH SENTENCE THIS KILL MAY LIFT, heard for exactly the kills that raise `kill` above. Ruled
+			// 2026-10-18 (Q5) for the Demon King's Regalia's ten-piece. A call of its own rather than a row on
+			// `kill`, because `ActOnEvent` drops an event raised while it is already running, and a kill made by a
+			// blow a row deals would then lift nothing.
+			Acting->NoteKillUnderDeathSentence(Notice.Victim);
+
 			// THE EXPLOSION A WORN ROW ASKED FOR AT THIS KILL. Ruled 2026-10-07: "Enemies killed by you explode
 			// for the overkill amount". What the rows recorded is taken at once, so no later kill can find it.
 			//

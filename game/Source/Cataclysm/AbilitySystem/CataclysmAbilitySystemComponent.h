@@ -2853,6 +2853,78 @@ public:
 	void GrantDamageImmunity(float Seconds);
 
 	/**
+	 * The three figures of A REPRIEVE FROM A LETHAL BLOW THAT ENDS IN DEATH UNLESS A KILL IS MADE. Ruled 2026-10-17
+	 * and 2026-10-18 by the coordinating session, for "Demon King's Regalia (10-Piece Bonus): If you would be killed
+	 * during Demonic Rage, instead gain 100% crit chance and crit multiplier and become immune to all damage for 3
+	 * seconds. Killing a Rare or higher enemy instanly heals you to full, failing to results in your death".
+	 *
+	 * - `LethalHitReprieveEverySecondsStat`: above nought, a lethal blow may be reprieved, and the next reprieve waits
+	 *   this long. Its row is scaled by its own stacks on the Demonic Rage's event and length, so it is held only while
+	 *   the Rage is, and at the Rage's length it reprieves at most once a Rage (Q2).
+	 * - `LethalHitReprieveSecondsStat`: the seconds of the no-damage window a reprieve opens, which are also the
+	 *   seconds the wearer has to make the kill.
+	 * - `LethalHitReprieveKillRarityStat`: at one or more, the reprieve ends in death at those seconds' end unless the
+	 *   wearer has killed an enemy whose rarity rung (`game/Data/EnemyRarities.csv`, Elite is 1) is at least this.
+	 *   Rounded to a whole rung. At nought there is no sentence, so a wearer without the row is never sentenced.
+	 *
+	 * A SEPARATE PAIR FROM NOTHING STOPS IT'S, ruled 2026-10-18 (Q6): rows on Nothing Stops It's two stats would add to
+	 * its figures and share its clock. Asked by `PostGameplayEffectExecute` after Nothing Stops It, so that save, which
+	 * costs nothing, is spent first. All three flat, with no gameplay attribute and no base, on
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. `tools/generate_datatables.py` holds the same names in
+	 * `LETHAL_HIT_REPRIEVE_STATS`.
+	 */
+	static const TCHAR* LethalHitReprieveEverySecondsStat;
+	static const TCHAR* LethalHitReprieveSecondsStat;
+	static const TCHAR* LethalHitReprieveKillRarityStat;
+
+	/** One of the three figures above, asked with no tags and the character's state now. Nought when none is held. */
+	float LethalHitReprieveFigure(const TCHAR* Stat) const;
+
+	/**
+	 * Whether a blow that would kill this character may be reprieved now: the interval above is held, and its clock
+	 * allows. The shape of `MaySurviveLethalHit`, with a clock of its own. No world means no reprieve.
+	 */
+	bool MayReprieveLethalHit() const;
+
+	/**
+	 * Record a reprieve just given: the clock waits the interval, the no-damage window opens for the seconds (or
+	 * stays open to a later end), the death sentence begins when the rarity figure asks for one, and
+	 * `lethal_hit_reprieved` is raised, the event rows granting the critical strike for those seconds hang on.
+	 *
+	 * THE EVENT IS AN ORDINARY `ActOnEvent`, SO IT IS DROPPED WHEN THIS CHARACTER IS ALREADY INSIDE ONE: a blow its
+	 * own row deals it while that row acts is reprieved with no critical strike rows granted.
+	 */
+	void NoteLethalHitReprieved();
+
+	/** Whether a death sentence is running: a reprieve's seconds have not ended and no qualifying kill has lifted it. */
+	bool IsUnderDeathSentence() const;
+
+	/** The rung a kill must reach to lift the running sentence, or nought when none runs. For tests. */
+	int32 DeathSentenceLiftedByRarity() const;
+
+	/**
+	 * A kill credited to this character, heard while a sentence runs. When `Slain` is an enemy creature whose rarity
+	 * rung is at least the sentence's, the sentence is lifted and health is healed to full through
+	 * `UCataclysmRegeneration::TopUp`, the ordinary heal, so a healing ceiling still holds. The no-damage window and
+	 * any critical strike stacks run on to their own end (Q4). Called by `ACataclysmPlayerCharacter::OnSomethingDied`
+	 * for exactly the kills that raise `kill`.
+	 *
+	 * @return whether this kill lifted a sentence
+	 */
+	bool NoteKillUnderDeathSentence(const AActor* Slain);
+
+	/**
+	 * Carry out a sentence whose seconds have ended: health written to nought and the avatar's `HandleDeath`, the
+	 * pair `UCataclysmDelayedDamage::DrainStep` uses. No blow is dealt, so no save in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` is asked (Q3, "the death is final"). Called from
+	 * `ACataclysmCharacterBase::RegenerationStep`, so the death lands up to a quarter of a second after the window
+	 * ends. A test moves the world's clock and calls this directly.
+	 *
+	 * @return whether a sentence fell due and the death was made
+	 */
+	bool CarryOutDueDeathSentence();
+
+	/**
 	 * The two figures of a worn row by which A HIT MAY MAKE ITS WEARER IMMUNE TO THAT HIT'S DAMAGE TYPE FOR A TIME.
 	 * Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (6-Piece Bonus): When you take damage,
 	 * you have a 10% chance to become immune to the damage type that hit you for 5 seconds". The first is the
@@ -5195,6 +5267,15 @@ protected:
 
 	/** Until when, in world seconds, this character takes no damage. -1 is not. */
 	float DamageImmuneUntilSeconds = -1.0f;
+
+	/**
+	 * When a lethal blow may next be reprieved, in world seconds, -1 for never reprieved; when the running death
+	 * sentence falls due, -1 for none; and the rung a kill must reach to lift it. Ruled 2026-10-18. See
+	 * `NoteLethalHitReprieved`. Cleared by `ClearWhatDeathEnds`. NOT REPLICATED: the authority deals every blow.
+	 */
+	float LethalHitReprieveNextAllowedSeconds = -1.0f;
+	float DeathSentenceDueAtSeconds = -1.0f;
+	int32 DeathSentenceLiftingRarity = 0;
 
 	/**
 	 * Until when, in world seconds, this character takes no damage of each damage type. Ruled 2026-10-12. A type

@@ -5922,6 +5922,14 @@ ACTION_ONLY_EVENTS = (
     # and not a skill event. NOT IN `REPEAT_SKILL_EVENTS`: a row that repeats a
     # melee use already names `attack_use` with `Type.Melee`.
     "melee_attack_use",
+    # A LETHAL BLOW OR TICK REPRIEVED, raised once per reprieve by
+    # `UCataclysmAbilitySystemComponent::NoteLethalHitReprieved` from
+    # `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, with no tags,
+    # amount or character. Ruled 2026-10-18 for the Demon King's Regalia's
+    # ten-piece, "instead gain 100% crit chance and crit multiplier ... for 3
+    # seconds": two own-stack rows on it. NOT raised for Nothing Stops It's save,
+    # so a wearer holding both gains the critical strike only from the reprieve.
+    "lethal_hit_reprieved",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -8613,6 +8621,19 @@ STATS_WITH_AN_ASKER = frozenset({
     # game reads; `ProbeScaledManaCost` measures that with the scale the row
     # carries.
     "mana_cost",
+    # ADDED 2026-10-18 FOR THE DEMON KING'S REGALIA'S TEN-PIECE, "instead gain
+    # 100% crit chance and crit multiplier ... for 3 seconds", a row scaled by
+    # its own stacks on `lethal_hit_reprieved`. The critical strike site in
+    # CataclysmVitalAttributeSet.cpp asks it through `StatForSkill` on every
+    # blow, beside `crit_chance`; `ProbeScaledCritMultiplier` measures that.
+    "crit_multiplier",
+    # ADDED 2026-10-18 FOR THE SAME SENTENCE, "If you would be killed during
+    # Demonic Rage": the reprieve's interval, a row scaled by its own stacks on
+    # the Rage's event and length, so it is held only during the Rage.
+    # `UCataclysmAbilitySystemComponent::LethalHitReprieveFigure` asks it through
+    # `StatForSkill` when a blow or a tick would kill;
+    # `ProbeScaledLethalHitReprieveEvery` measures that.
+    "lethal_hit_reprieve_every_seconds",
 })
 
 
@@ -10639,6 +10660,118 @@ def refuse_a_tyrants_minion_row_the_game_cannot_read(
     return problems
 
 
+#: The Demon King's Regalia's ten-piece bonus. Ruled 2026-10-17 by the
+#: coordinating session (the window to make the kill is the 3 s of immunity;
+#: "Rare or higher" is Elite and above) and 2026-10-18 (Q1-Q7), for "If you
+#: would be killed during Demonic Rage, instead gain 100% crit chance and crit
+#: multiplier and become immune to all damage for 3 seconds. Killing a Rare or
+#: higher enemy instanly heals you to full, failing to results in your death".
+#:
+#: THREE STATS, ALL `flat`, WITH NO REQUIRED TAGS AND NO ACTION: the interval
+#: between reprieves, the seconds of no damage (and of the window to make the
+#: kill), and the lowest rarity rung of a kill that lifts the death sentence.
+#: `UCataclysmAbilitySystemComponent::LethalHitReprieveEverySecondsStat`,
+#: `LethalHitReprieveSecondsStat` and `LethalHitReprieveKillRarityStat` hold the
+#: same names, and `tools/tests/test_demon_kings_regalia_ten_rows.py` compares
+#: them.
+#:
+#: THE GAME ASKS FOR ALL THREE IN ONE PLACE, WITH NO TAGS:
+#: `LethalHitReprieveFigure`, when a blow or a tick would kill. So a row
+#: requiring a tag matches nowhere, and a row of any kind but `flat` works on a
+#: base of nought. ONLY THE INTERVAL MAY BE SCALED, AND ONLY BY ITS OWN STACKS:
+#: that is what holds the reprieve to the Demonic Rage, and a reprieve held under
+#: any other count is no sentence anybody wrote. THE RUNG IS ONE WHOLE RUNG OF
+#: `game/Data/EnemyRarities.csv` FROM ELITE (1) TO CATACLYSM BOSS (5), not a
+#: range: a rolled rarity reads as nothing a player could be told.
+LETHAL_HIT_REPRIEVE_EVERY_STAT = "lethal_hit_reprieve_every_seconds"
+LETHAL_HIT_REPRIEVE_SECONDS_STAT = "lethal_hit_reprieve_seconds"
+LETHAL_HIT_REPRIEVE_RARITY_STAT = "lethal_hit_reprieve_kill_rarity_at_least"
+LETHAL_HIT_REPRIEVE_STATS = (LETHAL_HIT_REPRIEVE_EVERY_STAT,
+                             LETHAL_HIT_REPRIEVE_SECONDS_STAT,
+                             LETHAL_HIT_REPRIEVE_RARITY_STAT)
+
+#: The highest rung a kill may be asked to reach: Cataclysm Boss.
+LETHAL_HIT_REPRIEVE_HIGHEST_RUNG = 5
+
+
+def refuse_a_lethal_hit_reprieve_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `LETHAL_HIT_REPRIEVE_STATS` is a figure its one reader
+    takes as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants above
+    give. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_tyrants_minion_row_the_game_cannot_read`, for three stats.
+
+    THE INTERVAL AND THE SECONDS MAY BE A RANGE, WHICH MUST RISE, and each end
+    must be above nought. THE RUNG IS ONE WHOLE NUMBER FROM 1 TO 5 IN BOTH
+    COLUMNS.
+
+    A CONDITION, OR A SCALE ON THE SECONDS OR THE RUNG, IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in LETHAL_HIT_REPRIEVE_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and reprieves nothing.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags when a blow would kill, "
+                f"so a row requiring a tag matches nowhere and says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        scale = str(row.get("Scale") or "").strip()
+        if (stat == LETHAL_HIT_REPRIEVE_EVERY_STAT and scale
+                and scale.lower() != "own_stacks"):
+            problems.append(
+                f"{who}: scales {stat!r} by {scale!r}. The reprieve is held to "
+                f"a window by its own stacks and by nothing else: scale it by "
+                f"'own_stacks' on the window's event, or not at all.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if stat == LETHAL_HIT_REPRIEVE_RARITY_STAT:
+            for value in sorted({low, high}):
+                if (value != int(value) or value < 1
+                        or value > LETHAL_HIT_REPRIEVE_HIGHEST_RUNG):
+                    problems.append(
+                        f"{who}: states {value:g} on {stat!r}, and the rung "
+                        f"is one whole rung of game/Data/EnemyRarities.csv "
+                        f"from 1 (Elite) to "
+                        f"{LETHAL_HIT_REPRIEVE_HIGHEST_RUNG} (Cataclysm Boss).")
+            if low != high:
+                problems.append(
+                    f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                    f"rung is one rung in both columns, not a range.")
+            continue
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        for value in sorted({low, high}):
+            if value <= 0.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the seconds "
+                    f"must be above 0: nought or less reprieves nothing.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11046,6 +11179,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # TAGS AND NO ACTION; THE FLAG IS 1 AND THE SECONDS ABOVE 0. Ruled
     # 2026-10-18.
     problems.extend(refuse_a_tyrants_minion_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE THREE FIGURES OF A REPRIEVE FROM A LETHAL BLOW ARE FLAT, WITH NO
+    # TAGS AND NO ACTION; THE INTERVAL SCALED ONLY BY ITS OWN STACKS; THE RUNG
+    # ONE WHOLE RUNG FROM 1 TO 5. Ruled 2026-10-18.
+    problems.extend(refuse_a_lethal_hit_reprieve_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

@@ -2162,6 +2162,122 @@ bool UCataclysmAbilitySystemComponent::IsDamageImmune() const
 		&& World->GetTimeSeconds() < DamageImmuneUntilSeconds;
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::LethalHitReprieveEverySecondsStat =
+	TEXT("lethal_hit_reprieve_every_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::LethalHitReprieveSecondsStat =
+	TEXT("lethal_hit_reprieve_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::LethalHitReprieveKillRarityStat =
+	TEXT("lethal_hit_reprieve_kill_rarity_at_least");
+
+float UCataclysmAbilitySystemComponent::LethalHitReprieveFigure(const TCHAR* Stat) const
+{
+	// WITH NO TAGS, because the rule is about any blow, and with the character's state now, which is what lets the
+	// interval's row count the Demonic Rage's own stack.
+	return StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f);
+}
+
+bool UCataclysmAbilitySystemComponent::MayReprieveLethalHit() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LethalHitReprieveFigure(LethalHitReprieveEverySecondsStat) <= 0.0f)
+	{
+		return false;
+	}
+	return LethalHitReprieveNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= LethalHitReprieveNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteLethalHitReprieved()
+{
+	const UWorld* World = GetWorld();
+	const float Every = LethalHitReprieveFigure(LethalHitReprieveEverySecondsStat);
+	if (!World || Every <= 0.0f)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	LethalHitReprieveNextAllowedSeconds = Now + Every;
+
+	// THE SAME WINDOW NOTHING STOPS IT AND ARCHON'S AEGIS OPEN, and never cut short by this.
+	const float Seconds = LethalHitReprieveFigure(LethalHitReprieveSecondsStat);
+	GrantDamageImmunity(Seconds);
+
+	// AND THE SENTENCE, ONLY WHEN A ROW ASKS FOR ONE AND THERE ARE SECONDS TO MAKE THE KILL IN. Ruled 2026-10-17: the
+	// window to make the kill is the window of immunity.
+	const int32 Rarity = FMath::RoundToInt(LethalHitReprieveFigure(LethalHitReprieveKillRarityStat));
+	if (Seconds > 0.0f && Rarity > 0)
+	{
+		DeathSentenceDueAtSeconds = Now + Seconds;
+		DeathSentenceLiftingRarity = Rarity;
+	}
+
+	// AND THE EVENT THE CRITICAL STRIKE ROWS ARE GRANTED ON, LAST, so a row acting on it reads the window above.
+	ActOnEvent(FName(TEXT("lethal_hit_reprieved")));
+}
+
+bool UCataclysmAbilitySystemComponent::IsUnderDeathSentence() const
+{
+	const UWorld* World = GetWorld();
+	return World && DeathSentenceDueAtSeconds >= 0.0f && World->GetTimeSeconds() < DeathSentenceDueAtSeconds;
+}
+
+int32 UCataclysmAbilitySystemComponent::DeathSentenceLiftedByRarity() const
+{
+	return IsUnderDeathSentence() ? DeathSentenceLiftingRarity : 0;
+}
+
+bool UCataclysmAbilitySystemComponent::NoteKillUnderDeathSentence(const AActor* Slain)
+{
+	// ONLY AN ENEMY CREATURE HAS A RARITY RUNG, `ACataclysmEnemyCharacter::RarityStep`. A minion, a gadget or a bare
+	// actor has none and lifts nothing. "Rare or higher" is Elite and above, ruled 2026-10-17; the rung is the row's.
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Slain);
+	if (!IsUnderDeathSentence() || !Enemy || Enemy->RarityStep < DeathSentenceLiftingRarity)
+	{
+		return false;
+	}
+
+	DeathSentenceDueAtSeconds = -1.0f;
+	DeathSentenceLiftingRarity = 0;
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (HasAttributeSetForAttribute(Health))
+	{
+		// "HEALS YOU TO FULL": THE WHOLE MAXIMUM OFFERED TO THE ORDINARY HEAL, with no tags, as an item's restore is.
+		UCataclysmRegeneration::TopUp(*this, Health, Maximum, GetNumericAttribute(Maximum), FGameplayTagContainer());
+	}
+	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::CarryOutDueDeathSentence()
+{
+	const UWorld* World = GetWorld();
+	if (!World || DeathSentenceDueAtSeconds < 0.0f || World->GetTimeSeconds() < DeathSentenceDueAtSeconds)
+	{
+		return false;
+	}
+
+	// TAKEN BEFORE THE HEALTH IS WRITTEN, so nothing the write reaches can find it running.
+	DeathSentenceDueAtSeconds = -1.0f;
+	DeathSentenceLiftingRarity = 0;
+
+	AActor* Avatar = GetAvatarActor();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!Avatar || UCataclysmSkillEffects::IsDead(Avatar) || !HasAttributeSetForAttribute(Health))
+	{
+		return false;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s made no qualifying kill in its reprieve and died of its death sentence."),
+		   *Avatar->GetName());
+	SetNumericAttributeBase(Health, 0.0f);
+	if (ACataclysmCharacterBase* AsCharacter = Cast<ACataclysmCharacterBase>(Avatar))
+	{
+		AsCharacter->HandleDeath();
+	}
+	return true;
+}
+
 const TCHAR* UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitChanceStat =
 	TEXT("damage_type_immunity_on_hit_chance");
 const TCHAR* UCataclysmAbilitySystemComponent::DamageTypeImmunityOnHitSecondsStat =
@@ -2770,6 +2886,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// AND THE WINDOWS AGAINST ONE DAMAGE TYPE, as the no-damage window above. Ruled 2026-10-12.
 	DamageTypeImmuneUntilSeconds.Reset();
 	ShieldWardNextAllowedSeconds = -1.0f;
+	// AND THE REPRIEVE'S CLOCK AND ITS DEATH SENTENCE, as Nothing Stops It's clock above. Ruled 2026-10-18.
+	LethalHitReprieveNextAllowedSeconds = -1.0f;
+	DeathSentenceDueAtSeconds = -1.0f;
+	DeathSentenceLiftingRarity = 0;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
 	// payment promised by a hit before the death would resume paying out after

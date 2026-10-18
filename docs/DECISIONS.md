@@ -2,6 +2,321 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — A lethal blow or tick can be reprieved to one health for a row's seconds of no damage, raising an event critical strike rows hang on, with a death at the window's end that a kill of a rarity rung lifts by healing to full: the Demon King's Regalia's ten-piece mechanism, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` (one block after
+`GrantDamageImmunity`: three stat names, `LethalHitReprieveFigure`, `MayReprieveLethalHit`, `NoteLethalHitReprieved`,
+`IsUnderDeathSentence`, `DeathSentenceLiftedByRarity`, `NoteKillUnderDeathSentence`, `CarryOutDueDeathSentence`; three
+members after `DamageImmuneUntilSeconds`) and `.cpp` (their definitions after `IsDamageImmune`, and three lines in
+`ClearWhatDeathEnds`); `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (one block in
+`PostGameplayEffectExecute`, after Nothing Stops It's save and before Archon's Aegis's);
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (one call in `OnSomethingDied`, after the `kill` event);
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one block in `RegenerationStep`, after the delayed
+damage's drain); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (three names on
+`StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (three probes in `Probes`, two in
+`ScaledProbes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusDemonKingTenTests.cpp` (new, eight tests);
+`tools/generate_datatables.py` (`lethal_hit_reprieved` on `ACTION_ONLY_EVENTS`; `crit_multiplier` and
+`lethal_hit_reprieve_every_seconds` on `STATS_WITH_AN_ASKER`; `refuse_a_lethal_hit_reprieve_row_the_game_cannot_read`,
+called from `validate_enchantment_effects`); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call
+site); `tools/tests/test_demon_kings_regalia_ten_rows.py` (new). No data row, no tag and no workbook cell is changed.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE FIVE ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A ten-piece bonus is live only with ten pieces worn.
+- **FOR THE OWNER'S PLAY-CHECK LIST:** "a single blow that takes a Demon King wearer from above 25% health to death is
+  not saved; the save needs the Rage already running". Ruled 2026-10-18 (Q7), and the recorded judgement at
+  `SavesLethalBlowByCrossing` stands. Why, in the code: the reprieve is asked in `PostGameplayEffectExecute` before
+  the blow is written to health (`CataclysmVitalAttributeSet.cpp` 1410 to 1418), and the Rage's stack is granted by
+  `NoteHealthForCrossing` from `NotifyHealthChanged` when health is written (`CataclysmAbilitySystemComponent.cpp` 4535). A blow from 30% to death therefore finds no stack held. Test 7 below.
+- **THE RECONNAISSANCE'S "ROWS ONLY" READING OF THE SAVE DOES NOT HOLD, FOR TWO REASONS.** (1) `StatForSkill` does read
+  an own-stack row at the save: an own stack is counted off the asking ability system by the pipeline
+  (`CataclysmStatPipeline.cpp` 1632 to 1639), so a row on Nothing Stops It's interval scaled by the Rage's stacks would
+  be read. (2) But **the rows would simply add**, which Q6 rules out: `StatForSkill` sums flat rows, so a wearer holding
+  Nothing Stops It (a flat 20 and 2, `CataclysmVitalAttributeSet.cpp` 1391 and 1397) and such rows (10 and 3) would hold
+  30 and 5 during the Rage, on Nothing Stops It's one clock (`MaySurviveLethalHit`,
+  `CataclysmAbilitySystemComponent.cpp` 2060). And the generator would refuse the rows anyway: neither of Nothing Stops
+  It's stats is on `STATS_WITH_AN_ASKER`, so `refuse_a_scale_nothing_asks_for` refuses a scale on either. **SO A
+  SEPARATE PAIR WAS BUILT** (Q6), with a third figure for the sentence: `lethal_hit_reprieve_every_seconds`,
+  `lethal_hit_reprieve_seconds` and `lethal_hit_reprieve_kill_rarity_at_least`.
+- **BESIDE NOTHING STOPS IT** (Q6, the lines that show it): its save is asked first (`CataclysmVitalAttributeSet.cpp`
+  1393), and the reprieve only when that did not save the blow (`!bSavedFromALethalBlow`, 1410) and its no-damage window
+  is not open (1410). So with both held and Nothing Stops It ready, Nothing Stops It takes the blow: one health, its 2 s,
+  no sentence, no critical strike, and the Rage's reprieve is not spent. The next lethal blow while Nothing Stops It's
+  clock waits is reprieved. Neither figure adds to the other. Test 8 below.
+- **"100% CRIT CHANCE AND CRIT MULTIPLIER" IS +100 POINTS OF EACH** (Q1). The chance is `crit_chance`, a percentage
+  chance; the multiplier is `crit_multiplier`, a percentage a critical strike's damage is multiplied by
+  (`CataclysmDamageCalculation.cpp` 853: `Damage *= Hit.CritMultiplier / 100.0f`), asked through `StatForSkill` at the
+  critical strike site (`CataclysmVitalAttributeSet.cpp` 948 and 1003). So a wearer at 150 strikes for 250% while it
+  lasts. The chance is still held under the wearer's own ceiling (`max_crit_chance`, 968 to 978), so a ceiling row
+  lowers it.
+- **AT MOST ONCE A DEMONIC RAGE** (Q2): the interval's row states 10, the Rage's own length, and the reprieve's clock
+  waits that long after a reprieve (`CataclysmAbilitySystemComponent.cpp` 2200). The Rage cannot begin again inside 300
+  s, so no second reprieve can fall inside one Rage. Test 6.
+- **THE DEATH IS FINAL** (Q3): health written to nought and `HandleDeath`, as the delayed damage's drain kills
+  (`CarryOutDueDeathSentence`, `CataclysmAbilitySystemComponent.cpp` 2252). No blow is dealt, so no save in
+  `PostGameplayEffectExecute` is asked, Nothing Stops It's included. Test 8 shows the death made while Nothing Stops It
+  is ready. **It lands on the next regeneration step after the window ends, up to a quarter of a second late**
+  (`CataclysmCharacterBase.cpp` 177 to 186).
+- **A QUALIFYING KILL HEALS TO FULL AND LIFTS THE DEATH; THE IMMUNITY AND THE CRITICAL STRIKE RUN THEIR 3 S** (Q4).
+  The heal is the ordinary one, `UCataclysmRegeneration::TopUp` offered the whole maximum
+  (`CataclysmAbilitySystemComponent.cpp` 2247), so a healing ceiling (reservation, "cannot be healed above") still holds.
+  Test 5.
+- **HOW A KILL REACHES THE WEARER, AND WHICH KILLS COUNT** (Q5), with the lines:
+  - A death is announced by `UCataclysmCombatEvents::NoteDeath`, whose `Killer` is the attacker of the last blow on
+    record (`CataclysmCombatEvents.cpp` 273). That attacker is decided once, by `AttackerOf`: for a blow a minion dealt,
+    it is the MINION unless the summoner holds the Ritualist keystone Conduit (`CataclysmCombatEvents.cpp` 98 and 110,
+    `ACataclysmMinion::HitsCountAsTheSummoners`).
+  - The player hears every death in `ACataclysmPlayerCharacter::OnSomethingDied` and acts on a kill only when
+    `Notice.Killer == this` (`CataclysmPlayerCharacter.cpp` 1153), which raises `kill` (1175) and now calls
+    `NoteKillUnderDeathSentence` (1182). A death the wearer's point-blank skill share dealt an ally is uncredited first
+    (1135 to 1142).
+  - **So the kills that count are the wearer's own, its damage over time's included. A MINION'S KILL DOES NOT COUNT,
+    unless the wearer holds Conduit**, which makes every minion's kill the wearer's. Test 5 shows a kill credited to
+    another actor lifting nothing; no test spawns a minion.
+- **HOW A KILLED ENEMY'S RARITY IS READ**: `ACataclysmEnemyCharacter::RarityStep` (`CataclysmEnemyCharacter.h` 321,
+  public), the rung of `game/Data/EnemyRarities.csv`: Common 0, Elite 1, Legendary 2, Herald 3, Boss 4, Cataclysm Boss
+  5. "Rare or higher" is Elite and above (ruled 2026-10-17), so the row states 1, and a kill lifts the sentence when the
+  slain creature's rung is at least the row's (`CataclysmAbilitySystemComponent.cpp` 2235). **Anything that is not an
+  enemy creature has no rung and lifts nothing**: a minion, a gadget, a thrall's or another player's body.
+- **A TICK IS REPRIEVED TOO**, not only a hit: a judgement below. Nothing Stops It saves hits only.
+- **THE CRITICAL STRIKE ROWS HANG ON AN ORDINARY EVENT, SO THEY ARE NOT GRANTED WHEN THE LETHAL BLOW IS DEALT WHILE THE
+  WEARER'S OWN ROWS ARE ACTING** (`ActOnEvent` answers nothing at depth one). That is a blow a wearer's own row deals
+  it, such as "You take 10%-20% of the damage dealt by your own point blank AOE skills" while its hit row acts: such a
+  blow is reprieved, and the sentence runs, with no critical strike. Read, not tested.
+- **A DEATH BY A DIRECT WRITE IS NOT REPRIEVED**: the health debt's drain and the delayed damage's drain write health
+  without a blow and never reach the save, as they never reach Nothing Stops It's.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 44 and the rulings below.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's sentence is the shipped row (`game/Data/EnchantmentsPositive.csv` 359), typos and all: "Demon King's
+Regalia (10-Piece Bonus): If you would be killed during Demonic Rage, instead gain 100% crit chance and crit
+multiplier and become immune to all damage for 3 seconds. Killing a Rare or higher enemy instanly heals you to full,
+failing to results in your death".
+
+The coordinating session ruled on 2026-10-17 (#4): the window to make the kill is the 3 s of immunity; "Rare or
+higher" is Elite and above. And on 2026-10-18, its words as relayed:
+
+> Q1 (a) crit chance +100 points and crit multiplier +100 points for the 3 s.
+> Q2 (a) at most once per Demonic Rage.
+> Q3 (a) the death at the end of the 3 s is final; no other save stops it ("results in your death").
+> Q4 (a) a qualifying kill heals to full and lifts the death; immunity and crit run their 3 s.
+> Q5 (a) exactly the kills the existing kill event credits to the wearer; report with lines whether a minion's kill
+> is among them, and say it in the entry.
+> Q6 (a) report how it combines with Nothing Stops It; if the rows would simply add, build a separate pair of stats.
+> Q7 (a): the 10-piece saves only a lethal blow that lands while the Rage's stack is already held ("If you would be
+> killed during Demonic Rage"); a one-blow kill from above 25% is not saved, and the recorded judgement at
+> SavesLethalBlowByCrossing stands. Say in the entry, and put on the owner's play-check list: "a single blow that
+> takes a Demon King wearer from above 25% health to death is not saved; the save needs the Rage already running".
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| #4 | The window to make the kill is the 3 s of immunity. | The sentence falls due at the reprieve's seconds, the same figure that opens the window (`CataclysmAbilitySystemComponent.cpp` 2203 to 2212). |
+| #4 | "Rare or higher" is Elite and above. | The row states rung 1; `NoteKillUnderDeathSentence` compares `RarityStep` with it (2235). |
+| Q1 | +100 points of each, for the 3 s. | Two rows, each a flat 100 scaled by its own stacks on `lethal_hit_reprieved`, one stack for 3 s; the event raised last in `NoteLethalHitReprieved` (2216). |
+| Q2 | At most once per Demonic Rage. | The reprieve's own clock (`LethalHitReprieveNextAllowedSeconds`, 2200), at the row's 10, the Rage's length. |
+| Q3 | The death is final. | `CarryOutDueDeathSentence` (2252): a direct write of health and `HandleDeath`, asking no save; called from `RegenerationStep` (`CataclysmCharacterBase.cpp` 185). |
+| Q4 | A qualifying kill heals to full and lifts the death; the window and the crit run on. | `NoteKillUnderDeathSentence` (2230 to 2250) ends only the sentence and heals through `TopUp`. |
+| Q5 | Exactly the kills the `kill` event credits. | Called beside `kill`, inside `if (Notice.Killer == this)` (`CataclysmPlayerCharacter.cpp` 1153 and 1182). |
+| Q6 | A separate pair if the rows would add. | The three new stats (`CataclysmAbilitySystemComponent.h` 2855 to 2925), asked after Nothing Stops It (`CataclysmVitalAttributeSet.cpp` 1410). |
+| Q7 | Only a blow landing while the Rage's stack is held. | The interval is a row scaled by the Rage's own stacks, asked before the blow is written (`CataclysmVitalAttributeSet.cpp` 1413). |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **NOTHING STOPS IT SAVES FIRST.** It costs nothing, so the death sentence is risked only when it is not ready. The
+  option not taken: the reprieve first, which would give the critical strike window but sentence a wearer whom a free
+  save would have spared.
+- **A TICK IS REPRIEVED TOO.** "If you would be killed" is about dying and not about a hit, as Archon's Aegis's save
+  reads its sentence (`CataclysmVitalAttributeSet.cpp` 1420 to 1426). The option not taken: hits only, as Nothing
+  Stops It.
+- **"ONCE A RAGE" IS THE REPRIEVE'S OWN CLOCK AT THE RAGE'S LENGTH**, a figure on the interval's row. The option not
+  taken: tying the reprieve to the grant of the Rage's own stack, which needs the save to know which row's stack is the
+  Rage and a new column to say so.
+- **ONLY THE INTERVAL IS SCALED BY THE RAGE'S STACKS**; the seconds and the rung are flat, because they are read only at
+  a reprieve, which happens only in the Rage. One own-stack stat holds the bonus to the Rage. The option not taken: all
+  three scaled, which needs two more stats on `STATS_WITH_AN_ASKER` for nothing a player could see.
+- **THE RUNG IS THE ROW'S FIGURE**, and above nought is what turns the sentence on, so a wearer without the row is
+  never sentenced. The option not taken: a flag of 1 with Elite written in the code.
+- **THE CRITICAL STRIKE IS TWO ROWS ON A NEW EVENT, `lethal_hit_reprieved`**, raised only by the reprieve. The option
+  not taken: raising it from Nothing Stops It's save as well, which would give a wearer holding both the critical
+  strike outside any Rage.
+- **THE KILL IS HEARD BY A CALL OF ITS OWN BESIDE `kill`, NOT BY A ROW ON `kill`**, because `ActOnEvent` drops an event
+  raised while it runs, and a kill made by a blow a row deals would then lift nothing. The option not taken: a new pool
+  action on `kill`.
+- **THE HEAL IS THE ORDINARY HEAL, `TopUp`**, as Archon's Aegis's "healed to 100%" is. The option not taken: health
+  written to the maximum, past a healing ceiling.
+- **THE DEATH WAITS FOR THE REGENERATION STEP**, up to a quarter of a second, as the health debt's and the delayed
+  damage's deaths do. The option not taken: a timer, one more thing a death must cancel.
+
+### THE GENRE SOURCE
+
+None. Brief 44 makes the genre question optional (`recon_ten_set_bonuses.md` section 6: "this shape is
+game-specific"), and `genre_set_bonuses.md` holds no section for this sentence. Nothing was fetched.
+
+### WHAT WAS BUILT
+
+- **The reprieve**: one block in `PostGameplayEffectExecute`, after Nothing Stops It's save, leaving one health, and
+  `MayReprieveLethalHit` and `NoteLethalHitReprieved` on the ability system: its own clock, the no-damage window, the
+  sentence, and the event.
+- **The event `lethal_hit_reprieved`**, raised once per reprieve, on `ACTION_ONLY_EVENTS`.
+- **The sentence**: `NoteKillUnderDeathSentence`, called beside `kill`; `CarryOutDueDeathSentence`, called from the
+  regeneration step; both cleared by `ClearWhatDeathEnds`.
+- **The three stats on `StatsWithNoAttribute`**, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **`crit_multiplier` and `lethal_hit_reprieve_every_seconds` on `STATS_WITH_AN_ASKER`**, each with a probe in
+  `ScaledProbes`.
+- **The generator's refusal** of a row on any of the three stats that the game would read as nothing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Five rows on the Enchantment Effects sheet, each with Enchantment
+`Positive_Demon_King_s_Regalia_10_Piece_Bonus_If_you_wo` and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High | Scale | Scale Step | Action Event | Scale Max Steps | Stack Seconds | Trigger Cooldown | Event Value |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `lethal_hit_reprieve_every_seconds` | `flat` | 10, 10 | `own_stacks` | 1 | `health_falls_below` | 1 | 10 | 300 | 25 |
+| `lethal_hit_reprieve_seconds` | `flat` | 3, 3 | | | | | | | |
+| `lethal_hit_reprieve_kill_rarity_at_least` | `flat` | 1, 1 | | | | | | | |
+| `crit_chance` | `flat` | 100, 100 | `own_stacks` | 1 | `lethal_hit_reprieved` | 1 | 3 | | |
+| `crit_multiplier` | `flat` | 100, 100 | `own_stacks` | 1 | `lethal_hit_reprieved` | 1 | 3 | | |
+
+Every other cell empty: no Required Tags, no Condition, no Action. The first row's event, threshold, length and
+cooldown are the Demonic Rage's own (`EnchantmentEffects.csv` 424 to 426), so it is granted in the same call as the
+Rage. All five pass the generator on a made-up sheet (`tools/tests/test_demon_kings_regalia_ten_rows.py`). The set rule
+is met: the 2-piece and the 6-piece are merged (`EnchantmentEffects.csv` 86 to 87 and 424 to 426).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+**IN THE ROW LAYER**, by the enchantment session, read and not measured: the five rows will likely need
+`tools/tests/test_enchantment_effects_match_the_row_text.py` to accept 10 on `lethal_hit_reprieve_every_seconds` (the
+sentence says "during Demonic Rage") and 1 on `lethal_hit_reprieve_kill_rarity_at_least` (it says "Rare or higher"),
+in `STATED_BY_WORD` as the Tyrant's Chains six-piece's rows did, and the set counts there to move.
+
+**IN THE MECHANISM:**
+
+- **The generator now accepts a scaled row on `crit_multiplier` and on `lethal_hit_reprieve_every_seconds`**, which
+  `refuse_a_scale_nothing_asks_for` refused before.
+- **The generator now accepts `lethal_hit_reprieved` as an Action Event.**
+- **The generator now refuses** a row on any of the three new stats that is not `flat` or carries a Required Tag or an
+  Action; an interval scaled by anything but `own_stacks`; an interval or seconds that fall or state nought or less;
+  and a rung that is not one whole rung from 1 to 5 in both columns. None of the three was accepted on a row before.
+- **`StatsWithNoAttribute` gains three names.**
+- **`test_stat_lookups_hand_over_what_they_should.py` gains one call site**, `LethalHitReprieveFigure`'s.
+
+### Tests
+
+Eight Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusDemonKingTenTests.cpp`, the group
+`Cataclysm.SetBonus.DemonKing10.`. The rows are made up in the shape above, on a real non-set enchantment, and passed
+through the loader. The wearer is a player built by the client path, with health 1000, holding the made-up lines and
+nothing else; the critical strike lines sit on bases of 5 and 150. Blows are 100000 of direct damage from a creature 3
+m off. Kills are announced as `NoteDeath` announces one. Time is moved by hand and the sentence's step called by hand.
+Every set-up below includes "a world" and the seven checks of building the scene (the two tables, the five rows, a
+player state, a player, its ability system, the creature).
+
+1. `TheRowsBecomeAReprieveHeldByTheRageAndTwoCriticalStrikeGrantsOnTheReprieve`, 13 assertions. In order: set-up, the
+   two tables and the rows read; control, five stat lines; three grants; two on `lethal_hit_reprieved`, one stack for 3
+   s, no cooldown; one on `health_falls_below`; it is one stack for 10 s below 25% with a 300 s cooldown; the interval
+   is a flat 10 scaled by that grant's stacks under its key; the seconds unscaled; the rung unscaled; the chance a flat
+   100 by its own stacks, refused by nothing; the multiplier the same.
+2. `ALethalBlowInTheRageLeavesOneHealthAndNoDamageForThreeSecondsAndAfterTheRageKills`, 26 assertions, two worlds of 9
+   set-up assertions each (the scene, and the fall below 25% making the interval 10). Control world: 11 s on the
+   interval reads nought; the blow takes health to nought; the wearer is dead. Second world: the blow leaves one health;
+   the wearer is alive; it takes no damage; 2.9 s on a second blow deals nothing; 3.1 s on the window has ended.
+3. `TheReprieveGivesAHundredPointsOfCriticalStrikeChanceAndMultiplierForThreeSeconds`, 17 assertions. Set-up 8;
+   control, the wearer's own chance and multiplier in the Rage before the blow; set-up, the blow is reprieved; the
+   chance and the multiplier each 100 above their own; the same 2.9 s on; their own again 3.1 s on.
+4. `WithNoQualifyingKillTheWearerIsDeadWhenTheThreeSecondsEnd`, 17 assertions. Set-up 8; control, no sentence before
+   the blow; the reprieve sentences the wearer to be lifted by rung 1; control 2.9 s on, the step makes no death, one
+   health, alive; 3.1 s on the step makes the death; health nought; dead; no sentence runs.
+5. `AnEliteKilledInTheThreeSecondsHealsToFullAndLiftsTheDeathAndACommonDoesNot`, 26 assertions. Set-up 8, a Common, an
+   Elite, another actor, the Elite on rung 1, and the blow reprieved and sentenced; control, the wearer's kill of a
+   Common leaves the sentence and one health; control, an Elite's kill credited to another actor does the same; the
+   wearer's kill of an Elite lifts the sentence, heals to full, and the window and the chance run on; 3.1 s on the step
+   makes no death, the wearer is alive at full health, the window has ended, the chance is its own.
+6. `ASecondLethalBlowInTheSameRageAfterTheThreeSecondsKills`, 14 assertions. Set-up 8, an Elite, and the reprieve with
+   the Elite's kill healing to full; control, 4 s on the interval still reads 10 and the reprieve's clock refuses; the
+   blow takes health to nought; dead.
+7. `ASingleBlowFromAboveAQuarterStraightToDeathIsNotSaved`, 12 assertions. Set-up 8; control, at 30% the interval
+   reads nought; the blow takes health to nought; dead; no sentence was begun.
+8. `NothingStopsItSavesFirstTheReprieveTakesTheNextBlowAndNeitherStopsTheDeath`, 22 assertions. Set-up 8; control, in
+   the Rage Nothing Stops It's interval reads its own 3 and the reprieve's its own 10; the first blow leaves one
+   health, Nothing Stops It's clock is spent, no sentence, the chance its own; set-up, 2.1 s on its window has ended;
+   the second blow leaves one health, a sentence runs, the chance is 100 above; control, 3.1 s later Nothing Stops It is
+   ready again; the step still makes the death; health nought; dead.
+
+And five probes in `CataclysmStatExemptionTests.cpp`. In `Probes`: `ProbeLethalHitReprieveEvery` (control, a plain
+fighter killed by a blow of twice its pool; with the interval at 10, left at one); `ProbeLethalHitReprieveSeconds`
+(both reprieved; control, without the seconds the blow after hurts; with 3, it does not);
+`ProbeLethalHitReprieveKillRarity` (set-up, both reprieved; control, without the rung no sentence; with 1, a sentence
+lifted by rung 1). In `ScaledProbes`, which `Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline`
+runs only for a stat a shipped row scales, so **neither runs until the rows are written**:
+`ProbeScaledLethalHitReprieveEvery` (control, with the line and no stack the blow kills; with one stack, left at one)
+and `ProbeScaledCritMultiplier` (both strikers critically strike; the one holding the stack strikes for more than 1.2
+times the other).
+
+Python: `tools/tests/test_demon_kings_regalia_ten_rows.py`, on a made-up workbook holding the sentence typed Generic:
+the row name is the shipped one; the five rows are carried through cell by cell and refused by nothing, the whole
+validation included; a wrong rung put through the whole validation is refused by this check's own sentence; the two
+stats a scaled row names are on `STATS_WITH_AN_ASKER`, with made-up names as the control; the three stats are on
+`stats_with_no_attribute`; the engine's three names are the generator's, with Nothing Stops It's read by the same
+pattern as the control; the event has no clock and is on no narrower list; the engine raises it once, inside
+`NoteLethalHitReprieved` and not inside `NoteLethalHitSurvived`; a critical strike row on an event the game does not
+raise is refused; thirteen wrong shapes, each refused once and by its own sentence; an unscaled interval, a rising
+range of seconds and rung 5 are accepted; a scale on the seconds or the rung is refused by the general check; a row on
+another stat and a passive node's row are left alone.
+
+**Not tested:** the real rows worn at ten pieces with a control at nine (the enchantment session's real-row test); the
+Rage's real 6-piece rows beside these; a blow that crits during the window (the figures are read, not a strike's
+damage); a minion's kill, with and without Conduit (no minion is spawned; the lines are read); a damage over time
+tick reprieved; a reprieve inside the wearer's own `ActOnEvent`; a healing ceiling below full at the kill; the delayed
+damage share beside the reprieve; the regeneration step calling `CarryOutDueDeathSentence` (called by hand); a revival
+after the sentence's death; anything drawn on a screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree. Each break keeps
+the file's round, curly and square brackets paired and compiles alone by reading: DK-I drops a condition whose
+variable is still used beside it, DK-II leaves a boolean expression, and DK-III changes a literal. The failed
+assertions are counted by reading. The prefix is `Cataclysm.SetBonus.DemonKing10.`, with its trailing dot, eight
+tests. All three are in `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`.
+
+| Proof | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|
+| DK-I, any rarity lifts the sentence (#4) | `if (!IsUnderDeathSentence() \|\| !Enemy \|\| Enemy->RarityStep < DeathSentenceLiftingRarity)` | `if (!IsUnderDeathSentence() \|\| !Enemy)` | `AnEliteKilledInTheThreeSecondsHealsToFullAndLiftsTheDeathAndACommonDoesNot` | none |
+| DK-II, a second reprieve in one Rage (Q2) | `\|\| World->GetTimeSeconds() >= LethalHitReprieveNextAllowedSeconds;` | `\|\| true;` | `ASecondLethalBlowInTheSameRageAfterTheThreeSecondsKills` | none |
+| DK-III, no sentence begun (the death) | `if (Seconds > 0.0f && Rarity > 0)` | `if (Seconds > 0.0f && Rarity > 99)` | `WithNoQualifyingKillTheWearerIsDeadWhenTheThreeSecondsEnd` | `AnEliteKilledInTheThreeSecondsHealsToFullAndLiftsTheDeathAndACommonDoesNot`, `ASecondLethalBlowInTheSameRageAfterTheThreeSecondsKills`, `NothingStopsItSavesFirstTheReprieveTakesTheNextBlowAndNeitherStopsTheDeath` |
+
+Failed assertions, by reading:
+
+- **DK-I, 4 in 1 test.** Test 5: the Common's kill lifts the sentence and heals, so "control: the wearer's kill of a
+  Common leaves the sentence running" and its "control: and health at one" fail; then no sentence runs, so the two
+  controls after the other actor's kill fail too. The Elite's kill and everything after pass (the sentence is already
+  lifted, health already full). Test 6 kills only an Elite.
+- **DK-II, 3 in 1 test.** Test 6: "control: and the reprieve's own clock refuses a second", "a second lethal blow in
+  the same Rage takes health to nought" (one health) and "and the wearer is dead". The second blow of test 2 falls in
+  the no-damage window and is emptied before the reprieve is asked; test 8's second blow is a first reprieve.
+- **DK-III, 10 in 4 tests.** Test 4, 4: "the reprieve sentences the wearer" (0 for 1), "3.1 s on ... the step makes the
+  death", "health is nought", "and the wearer is dead". Test 5, 1: the set-up "the blow is reprieved and the wearer
+  sentenced", which returns. Test 6, 1: the set-up "reprieved, and the Elite's kill healed to full" (no sentence, so no
+  heal), which returns. Test 8, 4: "and the reprieve took it: a sentence runs", "and the step still makes the death",
+  "health is nought", "and the wearer is dead". Outside the prefix, `ProbeLethalHitReprieveKillRarity` fails in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-18 — A minion's or thrall's death can summon one Tyrant's Minion for a row's seconds, outside the summon caps, refreshing the one standing, and the death blast can deal Death damage: Tyrant's Chains' six-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` (one block after `DeathBlast`: two stat names,
