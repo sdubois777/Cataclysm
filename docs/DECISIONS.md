@@ -305,7 +305,47 @@ assertions on the case, after a set-up check and two controls.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-rz, on development 3b3edeb89 (the Brute's Heart
+six-piece taunt-aura merge), for two commits in this order: the mechanism (51121dfbb) and the row layer with its
+real-row test (78649e5cc). Every step was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled" (the
+  mechanism's first compile); "352 tests performed, 351 succeeded, 1 failed:
+  TheWornBrutesHeartSixPieceRaisesEveryResistanceByHalfBelowHalfHealth", with exactly 8 failed assertions in the run,
+  each checked by its text, one per damage type: "with six pieces worn and below half health, <type> is half again what
+  five pieces give". The set-up check and both controls passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as b47006f8b, "Rebuild the enchantment DataTable asset for Brute's Heart 6-piece's resistance rows".
+- **The whole Unreal suite:** "3893 tests performed, 3893 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3893 tests in the tree at b47006f8b; 3893 performed, gap 0". Registered 3893 and 0: the 3887 measured at
+  95b48ac55, the five of `Cataclysm.ConditionedResistance.` and the one real-row test. The eight probes are inside a test
+  already counted. The test that runs `Cataclysm.ShowResistances` on a possessed player passed, so possession left no
+  all-resistance figure that changed the printed numbers.
+- **Python:** "6657 passed, 8 skipped"; JUnit tests 6665, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 13:28:27 to 14:26:02 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.ConditionedResistance.`, 5 tests, all in
+`CataclysmDamageCalculation.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the
+beginnings of their names. The failed assertions had been counted by reading, after listing every event each test's
+actors raise, by the second session and again by the enchantment session, and were measured beside it. Each anchor was
+counted once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| CR-I | the stat name passed as `NAME_None`, so no conditioned difference is asked for | 4 failed: `AHeldResistanceWhoseSum...`, `AMinionsShareFollows...`, `ARowUnderHealthBelowHalf...`, `ShowResistancesPrints...` | 16 / 16 | 5 of 5 succeeded |
+| CR-II | the hold taken on the attribute, not the sum | 1 failed, `AHeldResistanceWhoseSumIsAboveNoughtReadsNoughtAndOneBelowReadsAsItself` | 2 / 2 | 5 of 5 succeeded |
+| CR-III | the armour step's shape, `StatForSkill` with the attribute as fallback | 4 failed: `AHeldResistanceWhoseSum...`, `ARowUnderHealthBelowHalf...`, `ShowResistancesPrints...`, `WithNoConditionedRow...` | 25 / 25 | 5 of 5 succeeded |
+
+The measured lines include, under CR-I, "at 49% health 50% increased on 40 reads 60 ... to be 60.000000, but it was
+40.000000"; under CR-II, "Death held, its attribute of -10 lifted to 15 by the row, reads nought ... to be 0.000000, but
+it was -10.000000"; under CR-III, "with a Shred on Demonic: Demonic reads its attribute, as before ... to be 10.000000,
+but it was 40.000000".
+
+**Not measured:** the eight probes' failures outside the prefix, and the real-row test's under any break.
+
+**BRUTE'S HEART'S SIX-PIECE BONUS IS NOW WHOLE**: its armour row (2026-10-05), its taunt aura's four rows and its eight
+resistance rows are all in play.
 
 ---
 
