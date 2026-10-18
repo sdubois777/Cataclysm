@@ -824,6 +824,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("warhound_seconds"),
 		TEXT("warhound_percent_of_armor"),
 		TEXT("warhound_taunt_seconds"),
+		// Brute's Heart's taunt aura: the share of maximum health the wearer must
+		// be strictly below, the seconds from one beat to the next, how far an
+		// enemy is taunted from, and the seconds each beat taunts it for. Each read
+		// with no tags off the wearer by UCataclysmTauntAura::Step, on the
+		// regeneration step. Ruled 2026-10-17 (#6) and 2026-10-18 (Q1-Q4), for the
+		// six-piece bonus. Flat; any at nought arms nothing. No gameplay attribute
+		// and no base.
+		TEXT("taunt_aura_below_health_percent"),
+		TEXT("taunt_aura_every_seconds"),
+		TEXT("taunt_aura_radius_metres"),
+		TEXT("taunt_aura_taunt_seconds"),
 	};
 	return Stats;
 }

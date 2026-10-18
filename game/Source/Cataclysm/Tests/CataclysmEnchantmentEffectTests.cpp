@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
+#include "AbilitySystem/CataclysmTaunt.h"
+#include "AbilitySystem/CataclysmTauntAura.h"
 // For the Null Emperor 2-piece's silence. Ruled 2026-10-17.
 #include "AbilitySystem/CataclysmSilence.h"
 // For the Null Emperor 10-piece's void aura. Ruled 2026-10-17.
@@ -27309,6 +27311,51 @@ bool FCataclysmWarlordSixRowTest::RunTest(const FString&)
 	TestNotNull(TEXT("with six pieces worn, the blow summons a Warhound. If not, DT_EnchantmentEffects may be older "
 					 "than the rows: run tools/generate_datatable_assets.py"), Warhound);
 	TestEqual(TEXT("and it lasts 10 s"), Warhound ? Warhound->GetLifeSpan() : 0.0f, 10.0f, 0.06f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteSixAuraRowTest,
+	"Cataclysm.Enchantments.TheWornBrutesHeartSixPieceTauntsAnEnemyNearbyBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Brute's Heart's 6-piece taunt-aura row layer, ruled 2026-10-17 (#6) and 2026-10-18 (Q1-Q5): below half health, once a
+ * second, every enemy within 5 m is taunted by the wearer for 3 s. WORN by a real player: what the aura then does is
+ * `Cataclysm.SetBonus.Brute6.`'s. The CONTROL wears FIVE pieces and the case SIX, each carrying the 6-piece and the
+ * set's drawback. Each striker is written to full health and then to 40%, and the aura's step is called by hand, as
+ * the regeneration step calls it. Each striker's first creature stands 2 m off, inside the 5 m. TWO assertions on the
+ * case, so on assets built before the rows it fails twice, and only there.
+ */
+bool FCataclysmBruteSixAuraRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health");
+	const TCHAR* Drawback = TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces"), SixPieces.Ready())
+		|| !TestTrue(TEXT("set-up: five pieces worn"), WearsMore(FivePieces, Bonus, Drawback, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), WearsMore(SixPieces, Bonus, Drawback, 5)))
+	{
+		return false;
+	}
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&FivePieces, &SixPieces})
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Maximum = Striker->ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		Striker->ASC->SetNumericAttributeBase(Health, Maximum);
+		Striker->ASC->SetNumericAttributeBase(Health, Maximum * 0.4f);
+		UCataclysmTauntAura::Step(Striker->Character);
+	}
+
+	// THE CONTROL, READ FIRST: five pieces are below the threshold, so no aura taunts anything.
+	TestNull(TEXT("control: with five pieces worn, nothing taunts the creature 2 m off"),
+		UCataclysmTaunt::TaunterOf(FivePieces.First));
+	TestTrue(TEXT("with six pieces worn and below half health, the wearer taunts the creature 2 m off. If not, "
+				  "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		UCataclysmTaunt::TaunterOf(SixPieces.First) == SixPieces.Character);
+	TestEqual(TEXT("for 3 s"), UCataclysmTaunt::SecondsLeftOn(SixPieces.First), 3.0f, 0.01f);
 	return true;
 }
 

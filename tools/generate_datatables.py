@@ -10989,6 +10989,121 @@ def refuse_a_warhound_row_the_game_cannot_read(
     return problems
 
 
+#: Brute's Heart's six-piece bonus, the taunt aura. Ruled 2026-10-17 by the
+#: project owner (#6: Warlord's Will 6's taunt status "also completes Brute's
+#: Heart 6's taunt") and 2026-10-18 by the coordinating session (Q1-Q4), for
+#: "When your health falls below 50%, you gain a powerful aura that taunts all
+#: nearby enemies and increases your armor and resistances by 50%".
+#:
+#: FOUR ROWS, EACH `flat` WITH NO REQUIRED TAGS, NO CONDITION, NO SCALE AND NO
+#: ACTION, one on each stat below in its order: 50 (the share of maximum health
+#: the wearer must be strictly below, the sentence's), 1 (the seconds from one
+#: beat to the next, Q2), 5 (the metres an enemy is taunted from, Q1) and 3 (the
+#: taunt's seconds, Q2). 1 and 5 are numbers under the owner's delegation.
+#: `UCataclysmTauntAura` holds the same four names, and
+#: `tools/tests/test_brutes_heart_six_rows.py` compares them. The set's armour
+#: row, `armor` increased 50 under `health_below` 50, is not one of these.
+#:
+#: THE GAME ASKS FOR EACH WITH NO TAGS, off the wearer, through
+#: `UCataclysmTauntAura::StatOf` on the regeneration step. So a row requiring a
+#: tag matches nowhere, a row of any kind but `flat` works on a base of nought,
+#: and a row with an action is not a stat line at all. THE SHARE IS A STAT AND
+#: NOT A CONDITION ON THE OTHER THREE: the game judges it with the pipeline's own
+#: `health_below` predicate, so a condition on any of the four is refused by
+#: `refuse_a_condition_nothing_asks_for`, as on every stat it does not list.
+TAUNT_AURA_BELOW_HEALTH_PERCENT_STAT = "taunt_aura_below_health_percent"
+TAUNT_AURA_EVERY_SECONDS_STAT = "taunt_aura_every_seconds"
+TAUNT_AURA_RADIUS_METRES_STAT = "taunt_aura_radius_metres"
+TAUNT_AURA_TAUNT_SECONDS_STAT = "taunt_aura_taunt_seconds"
+TAUNT_AURA_STATS = (
+    TAUNT_AURA_BELOW_HEALTH_PERCENT_STAT,
+    TAUNT_AURA_EVERY_SECONDS_STAT,
+    TAUNT_AURA_RADIUS_METRES_STAT,
+    TAUNT_AURA_TAUNT_SECONDS_STAT,
+)
+
+#: The most each may state, where a bound exists already: a share of health is
+#: at most 100, the period of a timed row, and the longest status. The radius
+#: has no bound but above nought, as the Ground Pound's has none.
+MAX_TAUNT_AURA = {
+    TAUNT_AURA_BELOW_HEALTH_PERCENT_STAT: 100.0,
+    TAUNT_AURA_EVERY_SECONDS_STAT: MAX_EVERY_SECONDS,
+    TAUNT_AURA_TAUNT_SECONDS_STAT: MAX_STATUS_SECONDS,
+}
+
+
+def refuse_a_taunt_aura_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `TAUNT_AURA_STATS` is a figure its one reader takes as
+    it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants above
+    give. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_ground_pound_row_the_game_cannot_read`, for four stats.
+
+    EVERY FIGURE IS ABOVE NOUGHT, and at most its bound where it has one: at
+    nought the aura is not armed, which is what not wearing the row already
+    does.
+
+    THE SECONDS FROM ONE BEAT TO THE NEXT MAY BE A RANGE ONLY IF IT FALLS, as
+    `ground_pound_every_seconds` must: a roll of 1 gives the second figure, and
+    the best roll is the shortest wait. Every other range must rise.
+
+    A CONDITION OR A SCALE ON ANY OF THEM IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    none is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in TAUNT_AURA_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and the taunt aura gets "
+                f"nothing from it.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the wearer with no tags, so a "
+                f"row requiring a tag matches nowhere and says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if stat == TAUNT_AURA_EVERY_SECONDS_STAT and low < high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the pair "
+                f"must not rise. A roll of 1 gives the second figure, and the "
+                f"best roll is the SHORTEST wait: mark the sentence's range in "
+                f"the Rolls Down column of the Enchantments sheet.")
+        elif stat != TAUNT_AURA_EVERY_SECONDS_STAT and low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        bound = MAX_TAUNT_AURA.get(stat)
+        for value in sorted({low, high}):
+            if value <= 0.0 or (bound is not None and value > bound):
+                most = f" and at most {bound:g}" if bound is not None else ""
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0{most}: at nought the taunt aura gets "
+                    f"nothing from the row.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11412,6 +11527,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE FOUR WARHOUND STATS ARE FLAT, WITH NO TAGS AND NO ACTION, AND
     # ABOVE 0. Ruled 2026-10-17 (#6) and 2026-10-18.
     problems.extend(refuse_a_warhound_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FOUR TAUNT AURA STATS ARE FLAT, WITH NO TAGS AND NO ACTION, AND
+    # ABOVE 0. Ruled 2026-10-17 (#6) and 2026-10-18.
+    problems.extend(refuse_a_taunt_aura_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

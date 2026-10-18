@@ -649,3 +649,7 @@ Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#1,Positive_Warlord_s_Will
 Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#2,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_seconds,flat,10.0,10.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#3,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_percent_of_armor,flat,20.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#4,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_taunt_seconds,flat,3.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#2,Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,taunt_aura_below_health_percent,flat,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#3,Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,taunt_aura_every_seconds,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#4,Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,taunt_aura_radius_metres,flat,5.0,5.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#5,Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health,taunt_aura_taunt_seconds,flat,3.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

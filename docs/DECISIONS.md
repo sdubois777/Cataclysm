@@ -2,6 +2,426 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — A worn row can give its wearer an aura that, while its health is below a row's share, taunts every enemy within the row's radius once a row's interval for a row's seconds, as the wearer: Brute's Heart's six-piece taunt aura, with no row authored and the resistances still not built
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTauntAura.h` and `.cpp` (new: `UCataclysmTauntAura`, four stat
+names, `BeatAllowanceSeconds`, `StatOf`, `Step`, and the register of each wearer's last beat);
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one include, and one call in `RegenerationStep` after
+`UCataclysmGroundPound::Step`); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (four names at the end of
+`StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one include, one probe helper and
+four lines at the end of `Probes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusBruteSixTests.cpp` (new, six tests);
+`tools/generate_datatables.py` (`refuse_a_taunt_aura_row_the_game_cannot_read`, called from
+`validate_enchantment_effects`); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site);
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (the new job on `RegenerationStep`);
+`tools/tests/test_brutes_heart_six_rows.py` (new). Every change to an existing file is an insertion but one, the pinned
+count of stat lookups (65 to 66). `UCataclysmTaunt` is not changed (Q3, Q4). No data row, no tag and no workbook cell is
+changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+- **BRUTE'S HEART'S SIX-PIECE BONUS STAYS PARTLY BUILT, FOR THE RESISTANCES.** With this layer and its rows, the armour
+  and the taunt are built; "and resistances by 50%" is not. **The check of 2026-10-05 still holds on this base**: a
+  blow reads a defender's damage-type resistance from its gameplay attribute, `Defender->GetNumericAttribute(Typed)` in
+  `UCataclysmDamageCalculation::TypedResistanceOf` (`CataclysmDamageCalculation.cpp` 573, called from `ResistanceFor`
+  262, which the resistance step calls at 1031), and an attribute is worked out with every condition refused. The armour
+  step asks the pipeline instead (`DefenderStat(Defender, TEXT("armor"), ...)`, 999), which is why the armour row works.
+  **A resistance row under `health_below` is not even accepted today**: `refuse_a_condition_nothing_asks_for` refuses it,
+  because no `resistance_<type>` is on `CONDITIONED_STATS_WITH_AN_ASKER` (`tools/tests/test_brutes_heart_six_rows.py`
+  shows it, with the armour row as the control). The smallest change and what it would move are under THE RESISTANCES,
+  CHECKED below. The coordinating session rules it as its own layer, straight after this one (Q5).
+- **THE AURA'S TAUNTS RAISE `crowd_control` ON THE WEARER, WHICH WIDENS WHAT THE WEARER'S `crowd_control` ROWS ANSWER.**
+  The wearer is the taunter, so `UCataclysmCombatEvents::AttackerOf(Wearer)` is the wearer, and every taunt that lands,
+  placed or restarted, calls `NoteCrowdControlApplied` on its ability system (`CataclysmTaunt.cpp` 133 to 137), which
+  raises the event and restarts the clock `seconds_after_crowd_control` reads (`CataclysmAbilitySystemComponent.cpp`
+  4048 to 4056). With one enemy in reach that is one event a second; with five, five. The beat runs from the
+  regeneration step and not from inside a row's event, so nothing limits the depth: the wearer's rows answer each one.
+- **FOR THE OWNER'S PLAY-CHECK LIST** (ruled 2026-10-18, Q3): "Applying a CC effect grants 10-20% increased movement
+  speed" (`seconds_after_crowd_control` 3) stays live while the wearer is below half health with an enemy in reach.
+  Counted by script on this base: that row (`Positive_Applying_a_CC_effect_grants_10_20_increased_mo#1`,
+  `movement_speed` increased 10 to 20) is the one row of `EnchantmentEffects.csv` or `PassiveEffects.csv` on a condition
+  or scale naming the wearer's own crowd control; no row of either has `crowd_control` as its action event.
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE FOUR ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A six-piece bonus is live only with six pieces worn.
+- **1 S AND 5 M ARE NUMBERS UNDER THE OWNER'S DELEGATION OF UNSTATED NUMBERS, RULED 2026-10-18** by the coordinating
+  session (Q1, Q2): the sentence says "nearby" and states no interval. The 3 s is the taunt the owner ruled (#6); the 50
+  is the sentence's. All four are row values, not constants.
+- **BELOW HALF, AS THE ARMOUR ROW READS IT**: strictly below, judged by the pipeline's own `health_below` predicate on the
+  wearer's own state (`UCataclysmStatPipeline::ConditionHolds` with `CurrentConditions`, `CataclysmTauntAura.cpp` 64 to
+  68). At exactly half the wearer has neither the armour nor the aura.
+- **AN ENEMY COUNTS WHEN ITS BODY TOUCHES THE 5 M SPHERE**, as every nearby action's search counts one
+  (`UCataclysmTargeting::FindEnemiesInSphere`, an overlap), so its centre may be a capsule's radius beyond 5 m.
+- **WHAT A TAUNT DOES IS WARLORD'S WILL'S, UNCHANGED (Q3, Q4)**: for its seconds the enemy targets only the wearer; the
+  wearer's death ends it at once; a boss is never taunted; crowd-control resistance shortens it; an enemy a Warhound
+  (or any other taunter) holds is refused until that taunt ends; and a taunted enemy counts as crowd-controlled, so the
+  negative row "You take 15%-25% more damage from enemies that are currently CC'd" reaches it as the Warlord's Will
+  entry records.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 48 and the rulings below.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's decision of 2026-10-17, as relayed by the coordinating session (#6; the relay's words, not the owner's): the
+Warhound's taunt status "also completes Brute's Heart 6's taunt".
+
+The coordinating session's rulings of 2026-10-18, its words as relayed:
+
+> Q1 (a): 5 m as a row value (NearbyActionRadiusCm 500). A number under the owner's delegation.
+> Q2 (a): every 1 s while health is below 50% (health_below 50, as the armour row reads it), each enemy within 5 m is
+> taunted by the wearer for 3 s; interval and seconds are row values.
+> Q3 (a): as ruled B, no change to UCataclysmTaunt. Every landed taunt, placed or restarted, notes crowd control on the
+> wearer. The rows that read it today are "Applying a CC effect grants 10-20% increased movement speed"
+> (seconds_after_crowd_control 3) and Demon King's 6-piece CC immunity is not one; so in play the movement-speed row
+> stays live while the wearer is below half with an enemy in reach. Put that line on the play-check list.
+> Q4 (a): as Warlord 6, no change to UCataclysmTaunt.
+> Q5: NOT an issue. The owner's mandate is that every enchantment is done in game, so the resistances half is real
+> work, not a note. In this layer: CHECK the resistance read on the base, with lines, build nothing for it, and keep
+> the set "partly built" for resistances in the entry. Report the finding to me with the smallest change that would
+> make a pipeline resistance row reach a blow and what else it would move; I will rule it as its own layer straight
+> after this one, before #7.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| Q1 | 5 m, a row value. | `taunt_aura_radius_metres`, read in `Step` (`CataclysmTauntAura.cpp` 54) and searched with `FindEnemiesInSphere` from the wearer (95 to 96). Nought arms nothing (56). |
+| Q2 | While health is below 50%, as the armour row reads it. | `taunt_aura_below_health_percent` (52), judged by `ConditionHolds(ECataclysmStatCondition::HealthBelowPercent, Share, Wearer->CurrentConditions())` (64 to 68), the predicate the pipeline maps `health_below` to (`CataclysmStatPipeline.cpp` 71) and judges at 564. |
+| Q2 | Every 1 s, a row value. | `taunt_aura_every_seconds` (53); a beat is due when no beat is held or a whole interval has passed, less `BeatAllowanceSeconds` (70 to 89). |
+| Q2 | Each enemy within 5 m taunted by the wearer for 3 s, a row value. | `UCataclysmTaunt::ApplyTaunt(Character, Enemy, Seconds)` for each enemy found (94 to 99), with `taunt_aura_taunt_seconds` (55). |
+| Q3 | No change to `UCataclysmTaunt`; every landed taunt, placed or restarted, notes crowd control on the wearer. | `CataclysmTaunt.cpp` is untouched; its 133 to 137 note crowd control on `AttackerOf(Taunter)`, here the wearer. The same taunter restarts the seconds (its 87 to 93 and 126 to 128), so each beat below half renews every taunt in reach. |
+| Q4 | Bosses, resistance and another taunter as Warlord's Will 6. | `ApplyTaunt` unchanged: a boss at its 78 to 84, another taunter at 87 to 93, the wearer's own health ceiling at 98 to 102 (a player commands nobody, so `CommanderOf` is null and its own ceiling is asked), a running skill's immunity at 105 to 108, crowd-control resistance at 111 to 115. |
+| Q5 | Check the resistance read, build nothing. | Nothing for it is built. THE RESISTANCES, CHECKED, below. |
+
+**WHERE THE INTERVAL RUNS, AND WHY THERE.** In `ACataclysmCharacterBase::RegenerationStep`
+(`CataclysmCharacterBase.cpp` 368), one call after `UCataclysmGroundPound::Step` (361). That step is a repeating timer
+every `UCataclysmRegeneration::StepSeconds` = 0.25 s (`CataclysmRegeneration.h` 75) for every living character, started
+in `BeginPlay` (`CataclysmCharacterBase.cpp` 93 to 97), and it already carries the Ground Pound, the shared buffs and the
+enemy auras for the same reason: nothing announces a row being put on, and a 1 s beat on a quarter-second step is at most
+a quarter of a second late. It needs no timer of its own, no member on a shared class (the last beat is a register in
+`CataclysmTauntAura.cpp`, as the Ground Pound keeps its clocks), and it answers nought after four stat lookups for every
+character holding no such row. `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` now fails if
+the call is deleted.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE SHARE IS A STAT OF ITS OWN, JUDGED BY THE PIPELINE'S `health_below` PREDICATE.** The brief lists the share among
+  the values rows decide. The option not taken: a `health_below` 50 condition on each of the other three rows, which
+  puts three stats on `CONDITIONED_STATS_WITH_AN_ASKER` with three probes and lets three cells that must agree disagree.
+- **THE FIRST BEAT COMES AT ONCE**, on the first step that finds the wearer below the share, unless it beat within the
+  last interval: "When your health falls below 50%, you gain a powerful aura". The option not taken: the first beat a
+  whole interval after the fall.
+- **A FIXED BEAT, AND A BEAT THAT FINDS NOBODY STILL COUNTS.** "Every 1 s" (Q2). An enemy walking in between beats is
+  taunted at the next one, up to a second late. The option not taken: holding the beat until an enemy is in reach, as
+  the Ground Pound holds its fire, which taunts a walker-in at once but ties the beat to whichever enemy came first.
+- **ABOVE THE SHARE THE LAST BEAT IS KEPT**, so health crossing the line back and forth never beats faster than once an
+  interval. The option not taken: forgetting it above the share, which lets a heal and a blow re-taunt within the
+  second. Taking a row off (any of the four at nought) does forget it.
+- **A STEP 0.05 S EARLY STILL TAKES THE BEAT** (`BeatAllowanceSeconds`): the timer can come a hair before the second,
+  and without it the beat slips a whole step to 1.25 s. Under half a step, so no step a quarter-second early takes one.
+  The option not taken: no allowance.
+- **THE TAUNTER IS THE CHARACTER THE STEP RUNS ON**, the pawn for a player, so a taunted enemy targets the pawn, and the
+  crowd control is noted on the pawn's ability system, which for a player is the player state's
+  (`UCataclysmTargeting::AbilitySystemOf`). The option not taken: none that `ApplyTaunt` could take.
+- **ROW RANGES**: the interval may fall and not rise, as `ground_pound_every_seconds` (a roll of 1 gives the second
+  figure, and the best roll is the shortest wait); the others must rise. Bounds where one exists: 100 for the share,
+  `MAX_EVERY_SECONDS` (60) for the interval, `MAX_STATUS_SECONDS` (10) for the taunt; the radius has none, as the
+  Ground Pound's has none. The option not taken: no bound.
+
+### THE GENRE SOURCE
+
+From `genre_set_bonuses.md` section 1 of 2026-10-17, as it stands. Pages were read through WebFetch, which summarises
+them, so each claim is that summary's account of the page and not a verbatim reading.
+
+- **PoE 1** (https://poedb.tw/us/Taunt): taunt is a timed status on the enemy, **3 seconds**. A taunted enemy aims its
+  attacks, spells and movement at whoever taunted it, and deals 10% less damage to anyone else. The taunt ends at once
+  if the taunter dies, and the first taunter keeps the enemy's attention. Pinnacle bosses are not retargeted (Shaper,
+  Elder, the Guardians). Some unique monsters and the Unstoppable map affix make monsters immune. The page quotes the
+  line "Enemies you Taunt can only target you".
+- **D3** (https://maxroll.gg/d3/resources/crowd-control-explained): taunted monsters run at you and attack. Taunt is a
+  hard crowd control. Its visible effect lasts 2 s, but it builds crowd-control resistance over its full duration.
+  Bosses are "immune to any kind of Charm, Fear, Hex, Knockback or Taunt effect". Rare elites are not immune: they take
+  normal hard-control rules, with resistance capped at 95%. Elites with the Juggernaut affix are immune to all crowd
+  control.
+- **Torchlight Infinite** (https://tlidb.com/en/Taunt, and https://tlidb.com/es/Taunt holds the same text): taunt is a
+  status, "Forced to attack the taunting unit", with a base duration of **4 s**. It is applied by Provoke (taunts
+  enemies within 15 m), by a belt affix (a chance on hit), and by the Protection Field support, where summoned minions
+  taunt nearby enemies **every 6 s**. Gear can grant immunity to taunt. Bosses are not covered.
+- **Last Epoch**: two searches found no source on taunt. Nothing was fetched. **Not reached.**
+- **Verdict.** All three games that were read run taunt as a **timed status placed on enemies** (option b), lasting 2
+  to 4 s. D3 shortens it through crowd-control resistance. PoE and D3 both exempt bosses (D3 all bosses, PoE the
+  pinnacle ones). None runs it as a permanent "while it lives, within reach" aura (option a). Torchlight's Protection
+  Field gets close to a minion that keeps drawing enemies: it re-applies the timed taunt every 6 s. Nothing read
+  supports a threat-only version (option c).
+- **SETTLED:** option (b). Taunt is a timed status of 3 to 4 s, re-applied periodically when it comes from a minion;
+  bosses are exempt (D3) or partly exempt (PoE); D3 shortens it by crowd-control resistance.
+
+What the research settles and what it does not: an aura that keeps taunting is built as the nearest shape read,
+Torchlight Infinite's Protection Field, which re-applies the timed taunt on an interval, here from the wearer and not a
+minion. The 1 s interval and the 5 m reach are this game's numbers, ruled under the owner's delegation; the 6 s and the
+15 m read are not this game's figures and were not adopted.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmTauntAura`**: four stat names, `StatOf`, `Step` (armed, below the share, due; then every enemy in reach
+  taunted by the wearer), the register of each wearer's last beat, and `BeatAllowanceSeconds`.
+- **One call in `ACataclysmCharacterBase::RegenerationStep`**, after the Ground Pound's.
+- **The four stats on `StatsWithNoAttribute`**, each with a probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The generator's refusal** of a row on any of the four that the game would read as nothing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Four rows on the Enchantment Effects sheet after the set's armour row, each with Enchantment
+`Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health` and Effect the whole sentence, so they become `#2` to `#5`:
+
+| Stat | Value Kind | Value Low, High |
+| :-- | :-- | :-- |
+| `taunt_aura_below_health_percent` | `flat` | 50, 50 |
+| `taunt_aura_every_seconds` | `flat` | 1, 1 |
+| `taunt_aura_radius_metres` | `flat` | 5, 5 |
+| `taunt_aura_taunt_seconds` | `flat` | 3, 3 |
+
+Every other cell empty: no Required Tags, no Condition, no Scale, no Action, no Action Event, no Trigger Cooldown. All
+four pass the generator on a made-up sheet beside the armour row (`tools/tests/test_brutes_heart_six_rows.py`). The set
+rule is met: the 2-piece rows are merged (`EnchantmentEffects.csv` 83 and 84) and the 10-piece's five (643 to 647).
+
+**THE ROW LAYER WILL MEET THE ROW-TEXT CHECK, MEASURED HERE AND NOT CHANGED.** Asked directly of
+`value_is_stated` in `tools/tests/test_enchantment_effects_match_the_row_text.py` with the sentence: 50 is stated, and 1,
+5 and 3 are not, so `test_a_single_value_appears_in_its_words_outside_any_range` will refuse three of the four rows until
+`STATED_BY_WORD` gains a word for each. The precedents are "nearby" as 5 on `minion_death_blast_radius_metres` and
+"taunts" as 3 on `warhound_taunt_seconds`; the sentence has no word for the 1 s. That is a change to what a check
+accepts, for the row layer to put to the coordinating session.
+
+**IN THE ROW LAYER, MEASURED AND RULED 2026-10-18 (Q-B6, the coordinating session):** `STATED_BY_WORD` gains
+"nearby" as 5 on `taunt_aura_radius_metres`, "taunts" as 3 on `taunt_aura_taunt_seconds`, and "aura" as 1 on
+`taunt_aura_every_seconds`, the word naming what pulses once a second (the coordinating session's Q2 ruling under the
+owner's delegation). One word on one stat each. Proved with `prove_guard`, each word on its own: with it removed,
+`test_a_single_value_appears_in_its_words_outside_any_range` fails, and restored, all 40 tests of the file pass. The
+row pins move to 654 rows over 536 enchantments: the four rows go on an enchantment that already had one.
+
+### THE RESISTANCES, CHECKED (Q5), AND NOTHING BUILT
+
+**(i) THE SMALLEST CHANGE THAT WOULD MAKE A RESISTANCE ROW UNDER A CONDITION REACH A BLOW.** Three parts, all needed:
+
+1. **`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp`, `UCataclysmDamageCalculation::TypedResistanceOf`
+   (564 to 592)**: line 573, `const float Held = Defender->GetNumericAttribute(Typed);`, becomes the attribute plus what
+   the refresh could not fold into it, for the stat `UCataclysmItemModifiers::ResistanceStatFor(DamageType)`
+   (`resistance_<type>`, `CataclysmItem.cpp` 560 to 564): `UCataclysmAbilitySystemComponent::AttributePlusWhatWasNotFolded`
+   (`CataclysmAbilitySystemComponent.cpp` 608 to 633), the helper the maximum energy shield and class resource already
+   use. It adds only (now less folded), so every unconditioned, unscaled row reads exactly as today, and it keeps the
+   attribute as the starting point, so a Shred or a status written onto the attribute is kept.
+2. **`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`**: `AttributePlusWhatWasNotFolded` (4397) is
+   under `protected:` (4340), so it must be made public, or a one-line public wrapper added.
+3. **`tools/generate_datatables.py`**: the eight `resistance_<type>` names on `CONDITIONED_STATS_WITH_AN_ASKER` as
+   `ASKER_PASSES_NOTHING_MORE` (the wearer's state, no blow), each with a probe in `CataclysmStatExemptionTests.cpp`, which
+   `tools/tests/test_every_conditioned_stat_has_an_asker.py` requires. Without this the generator still refuses the row.
+
+**NOT THE ARMOUR STEP'S SHAPE.** `DefenderStat` (`CataclysmDamageCalculation.cpp` 156 to 168, used for armour at 999)
+asks `StatForSkill` with the attribute only as the fallback when no line is recorded, so for a player it returns the
+pipeline's figure and drops whatever a gameplay effect wrote onto the attribute; a Shred lowers a resistance attribute
+through an effect (`CataclysmSkillEffects.cpp` 1857, the slot chosen at 4673). A blow would then ignore every Shred on a
+player.
+
+**(ii) WHAT ELSE THAT CHANGE WOULD MOVE, EACH COUNTED BY SCRIPT.**
+
+*Every place a resistance is read today.* Method: every `.cpp` and `.h` under `game/Source`, `Tests/` excluded, with
+comments and string literals blanked, for `GetAllResistance(`, a typed resistance getter, a resistance attribute handed
+to `GetNumericAttribute*`, `TypedResistanceOf(`, `ResistanceFor(`, `InheritedResistance(` and `ResistanceAttributeFor(`;
+the one read that names its attribute through a variable (573) was added by reading `TypedResistanceOf`. 21 lines in 7
+files. Grouped:
+
+| Read | Where | Moved by the change |
+| :-- | :-- | :-- |
+| A blow's typed resistance | `CataclysmDamageCalculation.cpp` 573 in `TypedResistanceOf`, from `ResistanceFor` 262, from the resistance step 1031 | YES |
+| A minion's share of its summoner's resistance | `InheritedResistance` 372 to 381, calling `ResistanceFor(Inherited.Summoner, ...)` 380, from 1032 | YES, the summoner's conditioned rows would reach its minions' share |
+| `Cataclysm.ShowResistances` | `CataclysmPlayerCharacter.cpp` 4496 | YES, it would print what a blow meets |
+| The character sheet's resistance lines | `CataclysmCharacterSheetLayout.cpp` 440 | YES, the same |
+| The enemies' generic all-resistance | `CataclysmDamageCalculation.cpp` 249, `CataclysmPlayerCharacter.cpp` 4486, `CataclysmCharacterSheetLayout.cpp` 432 | no |
+| A floor rule reading an enemy's all-resistance | `CataclysmDungeonGameMode.cpp` 4552, 4617, 13008 | no |
+| The slot, not the figure | `CataclysmAbilitySystemComponent.cpp` 7050 (the draw that holds one at nought), `CataclysmSkillEffects.cpp` 4673 (Shred's slot) | no |
+
+The remaining matched lines are the definitions (`CataclysmDamageCalculation.cpp` 237, 372, 531, 564; the header's 1286
+and 1302).
+
+*Every row and passive node on a resistance stat that would start to count.* Method: every CSV under `game/Data` with a
+`Stat` column; a row counts as moved only if its `Condition`, `Condition2` or `Scale` is filled, since the change adds
+nothing for an unconditioned, unscaled row. **None.** `EnchantmentEffects.csv` holds 16 rows on a damage-type resistance,
+all unconditioned and unscaled ("You have no resistances", eight removals; "Enemies ignore 10-20% of your resistances",
+eight flats); `PassiveEffects.csv`, `Affixes.csv`, `ClassStats.csv`, `Attributes.csv` and `MinionScaling.csv` hold none.
+`StatusEffects.csv` has one status moving two resistances (`Debuff_Abyssal_Aura`, `resistance_demonic, resistance_war`),
+which writes the attribute and is kept as the starting point. The floor rules' resistance modifiers are unconditioned:
+the one conditioned floor modifier, `DungeonModifierEffectsAddFlatWhile`, is called once, on mana cost
+(`CataclysmDungeonModifierEffects.cpp` 1578). The first rows to count would be Brute's Heart's own eight.
+
+*Every test that asserts a resistance figure.* Method (Unreal): each `IMPLEMENT_SIMPLE_AUTOMATION_TEST` or
+`IMPLEMENT_COMPLEX_AUTOMATION_TEST` in `game/Source/Cataclysm/Tests`, its body from `RunTest(` to the next macro, comments
+blanked; 3089 macros found, a static count that is short of the 3880 a run performs, and helpers outside a body are not
+followed, so the figures are floors. **5 bodies read a resistance figure**: two through `TypedResistanceOf`
+(`Cataclysm.Enchantments.ShardOfAnarchysDrawbackHoldsOneResistanceAtNoughtEveryFiveSecondsFromTwoPiecesOn`,
+`Cataclysm.StatExemption.ARowDrawsOneOfItsWearersResistancesAndHoldsItAtNoughtUntilItFiresAgain`) and three an enemy's
+all-resistance (`Cataclysm.DungeonModifierEffects.AClickThroughThePlayerControllerRollsAndItsSweepDoesNot`,
+`...TheThirdInfestedVeinDestroyedCallsTwoEliteGuardiansOnce`, `...ACreatureTheTrialDoubledIsPutBackOnceTaken`), and
+further floor-rule tests read the enemy base through the helper `AllResistanceBaseOf`, which the change does not touch.
+10 bodies write a resistance attribute and 13 name a resistance stat line; **none grants a resistance line under a
+condition or a scale**, so none is expected to move. Method (Python): every `def test_*` in `tools/tests` and
+`sim/tests`: no test there names `TypedResistanceOf`, `ResistanceFor`, `GetAllResistance` or
+`AttributePlusWhatWasNotFolded`; 149 assert with "resist" in the body (the simulation's own model, and crowd-control
+resistance among them), none of them on the engine's read.
+
+### Tests
+
+Six Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusBruteSixTests.cpp`, the group
+`Cataclysm.SetBonus.Brute6.`. The rows are given as stat lines of a flat figure each. Every body is a real creature with
+a team and a brain: the wearer of the players' side at the origin, every enemy of the monsters' side, 100000 health
+each, no armour, evasion, block, crowd-control resistance or resistance unless the case says. The near enemies stand 3 m
+from the wearer, the far one 8 m. The world's seconds are moved by hand and `UCataclysmTauntAura::Step` is called as the
+regeneration step would call it, so no brain thinks and nothing is struck.
+
+1. `AboveHalfHealthNobodyIsTauntedAndBelowItAnEnemyInReachIsAndOneBeyondIsNot`, 8 assertions. In order: set-up, a world;
+   control, at full health a step taunts nobody; and the enemy 3 m off is not taunted; at exactly half a step still
+   taunts nobody; at 49% a step lands one taunt; on the enemy 3 m off, by the wearer; for 3 s; the enemy 8 m off is not
+   taunted.
+2. `ABossInReachIsNotTauntedAndTheRungBelowIs`, 7 assertions. In order: set-up, a world; set-up, the Herald is not a
+   boss; set-up, the Boss is; control, the Herald is taunted, by the wearer; the Boss is not; so the beat landed one;
+   one `crowd_control` on the wearer and none for the refused Boss.
+3. `TheTauntIsRenewedEachSecondBelowHalfAndRunsOutOnceAbove`, 12 assertions. In order: set-up, a world; control, the
+   first beat lands one; it has 3 s; half a second on a step lands nothing; 2.5 s are left; a second after the first
+   beat the taunt lands again; 3 s again; healed to full, a step a second later lands nothing; 2 s are left; still the
+   wearer's; 3.1 s after the last beat a step lands nothing; the enemy is no longer taunted.
+4. `EachTauntThatLandsRaisesCrowdControlOnTheWearer`, 11 assertions. In order: set-up, a world; set-up, the wearer has an
+   ability system to count on; control, above half a step raises no `crowd_control` on the wearer; control, the wearer
+   has applied no crowd control (`SecondsSinceCrowdControlApplied` below nought); below half a beat lands two taunts;
+   two `crowd_control` on the wearer; the clock `seconds_after_crowd_control` reads is at nought; a step between beats
+   raises none; the next beat restarts both; two more, four; neither enemy raised one of its own.
+5. `AnEnemyAWarhoundTauntsIsRefusedByTheAuraUntilThatTauntEnds`, 10 assertions. In order: set-up, a world; set-up, a
+   Warhound of the wearer's (an Imp's row with `bIsWarhound`); control, the Warhound's taunt lands; control, it raised no
+   `crowd_control` on the wearer; the aura's beat lands nothing; the enemy stays the Warhound's; the refused taunt raised
+   no `crowd_control` on the wearer; 3.1 s later the next beat lands; the enemy is the wearer's; one `crowd_control` on
+   the wearer.
+6. `CrowdControlResistanceShortensTheAurasTaunt`, 5 assertions. In order: set-up, a world; control, an enemy holding no
+   resistance is taunted for 3 s; one holding 50 for 1.5 s; one holding 100 is not taunted; so the beat landed two.
+
+And `ProbeTauntAura` in `CataclysmStatExemptionTests.cpp`, one probe for each of the four stats, two assertions each: a
+wearer of the players' side at 40% health, one step, an enemy 3 m off; the control holds the other three stats and not
+the one probed and taunts nobody; with all four the enemy is taunted by the wearer.
+
+Python: `tools/tests/test_brutes_heart_six_rows.py`, 24 tests on a made-up workbook holding the sentence typed Generic:
+the row name is the shipped one; the armour row and the four are carried through as `#1` to `#5` and refused by nothing,
+the condition and scale checks and the whole validation included; a wrong radius row put through the whole validation is
+refused by this check's own sentence; the four stats are on `stats_with_no_attribute`, with a made-up name as the
+control; the engine defines exactly the generator's four names; the engine judges the share with `HealthBelowPercent`,
+the predicate the pipeline maps `health_below` to; fourteen wrong shapes, each refused once and by its own sentence; a
+falling interval and a rising radius are accepted; a condition or a scale on any of the four is refused by the general
+checks; a resistance row under `health_below` is still refused, with the armour row as the control; a row on another
+stat and a passive node's row are left alone.
+
+**Not tested:** the real rows worn at six pieces with a control at five (the enchantment session's real-row test); a
+player character wearing it, so the pawn as the taunter with the player state's ability system; the regeneration step
+calling `Step` in a running world (only its source is checked, by the hooks test); float drift of the real timer and the
+0.05 s allowance; a dead wearer; the wearer's health ceiling refusing a taunt; a running skill's immunity refusing one;
+an enemy walking into reach between beats; a taunted enemy walking to and swinging at the wearer under `Think`; the
+movement-speed row answering the aura's `crowd_control`; anything drawn on a screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmTauntAura.cpp` by a
+script at this layer's working tree, and the round, curly and square brackets of the file stay paired with each break in
+place (counted by the same script). Each break compiles alone by reading: BH6-I adds a float literal to a `float`, BH6-II
+drops a term of a comparison of two floats (`Every` stays used at line 56), BH6-III multiplies a `float` argument by a
+literal. The failed assertions are counted by reading. The prefix is `Cataclysm.SetBonus.Brute6.`, with its trailing dot,
+six tests.
+
+**EVERY EVENT EACH TEST'S ACTORS RAISE, LISTED BEFORE COUNTING.** `Step`, `StatOf`, `ConditionHolds`,
+`CurrentConditions`, `FindEnemiesInSphere`, `TaunterOf` and `SecondsLeftOn` raise none. A taunt that lands raises
+`crowd_control` on the wearer's ability system; a refused one raises nothing. A write of the wearer's health that lowers it
+raises `health_falls_below` on the wearer (`NoteHealthForCrossing`, `CataclysmAbilitySystemComponent.cpp` 4545 to 4557) and
+calls each character's `HealthChanged`; a rise raises nothing. No row is worn but the aura's four stat lines, so neither
+event moves anything but the counters the tests hold.
+
+1. Test 1: `health_falls_below` twice on the wearer (100% to 50%, 50% to 49%); `crowd_control` once (the beat at 49%).
+2. Test 2: `health_falls_below` once (to 40%); `crowd_control` once (the Herald); the Boss refused, none. `SetRarityStep`
+   re-applies the creatures' starting attributes at set-up.
+3. Test 3: `health_falls_below` once; `crowd_control` twice (the first beat and the renewal); the heal raises nothing.
+4. Test 4: `health_falls_below` once; `crowd_control` four times on the wearer, none on either enemy.
+5. Test 5: `health_falls_below` once; `crowd_control` once on the Warhound (its taunt), none for the refused beat, once on
+   the wearer at the end. The minion's spawn raises none.
+6. Test 6: `health_falls_below` once; `crowd_control` twice (the 0 and the 50); the 100 refused, none.
+
+| Proof | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|
+| BH6-I, the share not asked (Q2) | `HealthBelowPercent, Share,` | `HealthBelowPercent, Share + 100.0f,` | `TheTauntIsRenewedEachSecondBelowHalfAndRunsOutOnceAbove` | `AboveHalfHealthNobodyIsTauntedAndBelowItAnEnemyInReachIsAndOneBeyondIsNot`, `EachTauntThatLandsRaisesCrowdControlOnTheWearer` |
+| BH6-II, every step a beat (Q2) | `if (Now + BeatAllowanceSeconds < *Last + Every)` | `if (Now + BeatAllowanceSeconds < *Last)` | `TheTauntIsRenewedEachSecondBelowHalfAndRunsOutOnceAbove` | `EachTauntThatLandsRaisesCrowdControlOnTheWearer` |
+| BH6-III, the radius doubled (Q1) | `GetActorLocation(), RadiusCm))` | `GetActorLocation(), RadiusCm * 2.0f))` | `AboveHalfHealthNobodyIsTauntedAndBelowItAnEnemyInReachIsAndOneBeyondIsNot` | none |
+
+Failed assertions, by reading:
+
+- **BH6-I, 10 in 3 tests.** Every wearer is below 150% of its health, so it beats whatever its health. Test 1, 3: the
+  first step at full health beats, so "control: at full health a step taunts nobody" (1) and "and the enemy 3 m off is
+  not taunted" fail; the 50% step at the same second is not due and passes; the 49% step is not due either, so "at 49% a
+  step lands one taunt" (0) fails; the enemy is still the wearer's for 3 s and the far one is untaunted, so those pass.
+  Test 3, 4: healed to full a step a second later beats, so "lands nothing" (1) and "2 s are left" (3) fail; "still the
+  wearer's" passes; 2.1 s later it beats again, so "lands nothing" (1) and "no longer taunted" fail. Test 4, 3: the
+  first step above half beats both enemies, so "control: above half a step raises no crowd_control" (2) and "control:
+  and the wearer has applied no crowd control" fail, and the 40% step at the same second is not due, so "below half a
+  beat lands two" (0) fails; the count is then 2 and every later assertion passes. Tests 2, 5 and 6 hold the wearer
+  below half throughout. Outside the prefix the probes hold the wearer at 40%, and the share probe's control holds no
+  share, which returns before the predicate.
+- **BH6-II, 4 in 2 tests.** Every step below the share beats. Test 3, 2: "half a second on, a step lands nothing" (1)
+  and "and 2.5 s are left" (3) fail; the later steps above half land nothing as before. Test 4, 2: "a step between beats
+  raises none" (4, against 2) and "and raises two more" (6, against 4) fail; "the next beat ... restarts both" lands 2 and
+  passes. Tests 1, 2, 5 and 6 and the probes take at most one step below the share before each change of the clock that
+  passes a whole second (test 5's two steps are 3.1 s apart).
+- **BH6-III, 2 in 1 test.** The search reaches 10 m. Test 1, 2: the 49% beat finds the enemy 8 m off too, so "at 49% a
+  step lands one taunt" (2) and "and the enemy 8 m off, beyond the 5 m, is not taunted" fail; the near enemy's
+  assertions pass. Every other test holds every enemy at 3 m and the Warhound is the wearer's ally. The radius probe's
+  control holds no radius and returns before the search.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-18 under the lock enchant-b6, on development 20de58242 (the Warlord's Will
+six-piece merge), for two commits in this order: the mechanism (9294761b9) and the row layer with its real-row test
+(5a2d6fa53). Every step was as registered. The four rows joined an enchantment that already had one, the armour row
+merged on 2026-10-05; the enchantment session's row script refuses that by default and was given this one named
+exception, with its ruling.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 15 actions, 12 files compiled" (the
+  mechanism's first compile); "351 tests performed, 350 succeeded, 1 failed:
+  TheWornBrutesHeartSixPieceTauntsAnEnemyNearbyBelowHalfHealth", with exactly 2 failed assertions in the run, each
+  checked by its text: "with six pieces worn and below half health, the wearer taunts the creature 2 m off" and "for 3
+  s". The five-piece control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as 95b48ac55, "Rebuild the enchantment DataTable asset for Brute's Heart 6-piece's taunt aura".
+- **The whole Unreal suite:** "3887 tests performed, 3887 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3887 tests in the tree at 95b48ac55; 3887 performed, gap 0". Registered 3887 and 0: the 3880 measured on
+  20de58242, the six of `Cataclysm.SetBonus.Brute6.` and the one real-row test. The four probes are inside a test
+  already counted.
+- **Python:** "6650 passed, 8 skipped"; JUnit tests 6658, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 11:22:16 and would have ended the editor and released the lock after
+  20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Brute6.`, 6 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading, after listing every event each test's actors raise, by the second session and
+again by the enchantment session, and were measured beside it. Each anchor was counted once, and each file's hash was
+the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| BH6-I | the health share not asked | 3 failed: `AboveHalfHealth...`, `TheTauntIsRenewed...`, `EachTauntThatLands...` | 10 / 10 | 6 of 6 succeeded |
+| BH6-II | every step a beat | 2 failed: `TheTauntIsRenewed...`, `EachTauntThatLands...` | 4 / 4 | 6 of 6 succeeded |
+| BH6-III | the radius doubled | 1 failed, `AboveHalfHealthNobodyIsTauntedAndBelowItAnEnemyInReachIsAndOneBeyondIsNot` | 2 / 2 | 6 of 6 succeeded |
+
+The measured lines include, under BH6-I, "control: at full health a step taunts nobody ... to be 0, but it was 1" and
+"control: above half a step raises no crowd_control on the wearer ... to be 0, but it was 2"; under BH6-II, "half a
+second on, a step lands nothing: the beat is not due ... to be 0, but it was 1"; under BH6-III, "and the enemy 8 m off,
+beyond the 5 m, is not taunted ... to be null".
+
+**Not measured:** the probes' failures outside the prefix, and the real-row test's under any break.
+
+**THE SET IS STILL PARTLY BUILT FOR ITS RESISTANCES**, as Q5 ruled. Their layer, ruled 2026-10-18, follows this one.
+
+---
+
 ## 2026-10-18 — A creature can be taunted: for a row's seconds it targets only its taunter, shortened by crowd-control resistance, bosses immune; and a landed blow taken can summon one Warhound for a row's seconds whose hits are a share of the wearer's armour and taunt what they strike: Warlord's Will's six-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTaunt.h` and `.cpp` (new: `UCataclysmTaunt`, `ApplyTaunt`,

@@ -148,6 +148,11 @@ HOOKS = {
                 "enemy is within its radius, ruled 2026-10-17 (#5: it fires "
                 "by itself). Deleting it leaves the rows worn and the pound "
                 "never firing",
+            "UCataclysmTauntAura::Step":
+                "Brute's Heart's six-piece taunt aura: below the share of "
+                "health a row states, every enemy within its radius taunted "
+                "by the wearer once a beat, ruled 2026-10-18 (Q1-Q4). "
+                "Deleting it leaves the rows worn and nobody ever taunted",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",
