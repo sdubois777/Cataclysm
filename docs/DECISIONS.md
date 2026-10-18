@@ -2,6 +2,89 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — In the simulation an ordinary Void dungeon adds 1 to 3 void stacks to its city instead of damage, and ten stacks erase the city
+
+**Simulation only; the game has no Void (#53).** When an ordinary (`BASIC`) Void dungeon's timer runs out on a
+standing city, it adds 1, 2 or 3 to `City.void_stacks` and takes no defence or population. It still counts as a
+resolve and still leaves the map. At `TuningConfig.void_stacks_to_erase` (10) the city falls and is erased, and
+an erased city leaves no Fallen City dungeon. Branch `feat/sim-void-stacks`, on top of the entry below.
+
+### SAID FIRST
+
+- **IN VOID CAMPAIGNS THE PLAYER WITHOUT THE UPGRADE TREE NOW LOSES TWICE AS MANY CITIES**: 5.73 against 2.87, 3.59
+  of them erased (500 campaigns, tier 1). The Explorer player loses fewer: 1.36 against 2.08.
+- **AN UNDEFENDED EMPIRE FACING THE VOID FALLS SOONER**: a median day of 944 at tier 1, against 1,176.
+- **THE VOID'S TARGETING STILL READS LOST DEFENCE, WHICH ITS ORDINARY DUNGEONS NO LONGER TAKE.** Its pattern
+  weight (`patterns._void`, "fixates on what it has already hurt") is `tier weight x (1 + 4 x (1 - defence share))`.
+  Since this layer it fixates on what other Cataclysms, Sieges and Quest hits have hurt, and not on the stacks.
+  This was not changed and is a question for the coordinating session.
+- `City.doomed` is gone. Until this layer, a city became doomed when any Void dungeon landed on it, and its fall
+  then erased it, whatever felled it.
+
+### What the owner said, and who ruled
+
+The owner, 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time." The last sentence is about the Void's Quest dungeons, Hollow, which is
+the next layer. The coordinating session ruled the same day:
+
+- the stacks go by which third of the row's depth the dungeon's natural floors fall in;
+- a Void Siege's daily bite stays damage;
+- a city that falls with fewer than ten stacks is not erased and can be retaken, and retaking it clears them;
+- the doomed mark goes.
+
+### How it is built
+
+- `world.py`: `City.void_stacks` replaces `City.doomed`.
+- `config.py`: `void_dungeons_add_stacks = True` (False is the model as it was, less the doomed mark) and
+  `void_stacks_to_erase = 10`.
+- `engine.py`: `_resolve` adds `_void_stacks_for(d)` instead of the damage when `_adds_void_stacks(d)`, which is an
+  ordinary dungeon whose Cataclysm pattern has `erases_cities`. The thirds are of the row's floor range times the
+  pattern's `floors_mult` (1.25 for the Void), read against the natural floors, so the empire tree's added floors
+  add no stacks, as they add no damage. `_fall` erases only at ten stacks; `_retake` clears them; `trigger_surge`
+  no longer marks a city. A death in the dungeon resolves it through `_resolve` as before, so it adds stacks too.
+  Two counters, `void_stacks_added` and `void_erasures`.
+
+### Measured
+
+500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. The left figure is
+the head of the entry below (`27794b24`), the right one this layer (`aa92b5d3`):
+
+| campaigns | undefended, median day lost T1 / T2 / T3 / T4 (all 100% by day 2000) | Explorer `triage` T1 won / cities lost / erased at the end | no-tree `triage` T1 won / cities lost / erased at the end |
+|---|---|---|---|
+| the first 500 facing the Void | 1176 / 689 / 480 / 358 → 944 / 700 / 509 / 375 | 41.0% / 2.08 / 2.08 → 45.2% (40.9 to 49.6) / 1.36 / 0.77 | 39.4% / 2.87 / 2.79 → 42.4% / 5.73 / 3.59 |
+| the first 500 not facing it | 865 / 546 / 367 / 316, both | 48.2% / 1.34 / 0, both | 41.4% / 4.93 / 0, both |
+| seeds 0 to 499 | 945 / 577 / 405 / 347 → 891 / 583 / 412 / 347 | 48.4% / 1.43 / 0.30 → 49.6% (45.2 to 54.0) / 1.32 / 0.10 | 39.2% / 4.72 / 0.38 → 40.4% / 5.21 / 0.57 |
+
+In Void campaigns the Explorer player sees 45.8 stacks added a campaign, and the no-tree player 88.3.
+
+### Tests
+
+New: `sim/tests/test_a_void_dungeon_adds_stacks_and_ten_erase_a_city.py` (9), each case with a control. Guard
+proofs with `tools/prove_guard.py` in a `git archive` copy of `aa92b5d3`, all PROVED and passing again restored:
+
+| break | failed with it in | restored |
+|---|---|---|
+| no stacks added | 3 failed, 6 passed | 9 passed |
+| a fall ignores the stacks | 2 failed, 7 passed | 9 passed |
+| a retake keeps the stacks | 1 failed, 8 passed | 9 passed |
+| stacks by halves, not thirds | 2 failed, 7 passed | 9 passed |
+| a Void dungeon still damages | 3 failed, 6 passed | 9 passed |
+
+Changed: `sim/tests/test_population_scales_empire_points.py`, `test_an_erased_city_is_still_counted_in_the_denominator`
+reaches the erasure by giving the city ten stacks instead of setting `doomed`, which is gone; what it asserts is
+unchanged.
+
+### Design document
+
+The Void section, one paragraph with the owner's line.
+
+### Not covered, and later
+
+- The Void's Quest dungeons, Hollow, add no stacks yet; their hit is the ordinary Quest hit. They are the next
+  layer.
+- The game.
+
+---
+
 ## 2026-10-18 — In the simulation each Cataclysm's Quest dungeons are one fixed sub-type, and a War Quest Siege comes at most two a wave, does a quarter of a Siege's damage and grows only from the day it reached its city
 
 **Simulation only; the game is unchanged.** A Quest dungeon a surge makes takes its Cataclysm's sub-type
