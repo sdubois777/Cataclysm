@@ -135,6 +135,26 @@ class Dungeon:
     #: removed floors. Set once by `Simulation._make_dungeon`; 0 for a
     #: dungeon built by hand and for a campaign with no tree.
     tree_floors: int = 0
+    #: The day this dungeon reached the city it stands on now. None until it
+    #: first moves, and then `spawned_day` is that day.
+    arrived_day: int | None = None
+
+    def days_on_its_city(self, day: int) -> int:
+        """Days this dungeon has stood on the city it stands on now.
+
+        WHAT A SIEGE'S GROWTH COUNTS, since 2026-10-17 (the owner's choice is
+        quoted at `TuningConfig.quest_sieges_per_wave_max`). Only a Quest
+        dungeon moves, so for every other dungeon this is its age. NEVER
+        NEGATIVE: a dungeon built by hand in a test may carry a spawn day later
+        than the clock, and a negative age would heal the city.
+        """
+        since = self.spawned_day if self.arrived_day is None else self.arrived_day
+        return max(0, day - since)
+
+    def siege_bite_share(self, quest_scale: float) -> float:
+        """The share of an ordinary Siege's daily damage this one deals:
+        `quest_scale` for a Quest dungeon, 1.0 for any other."""
+        return quest_scale if self.dtype is DungeonType.QUEST else 1.0
 
     @property
     def natural_floors(self) -> int:
@@ -650,6 +670,7 @@ class Simulation:
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
         count = max(1, int(round(self.surge_count() * volume)))
+        quest_sieges: dict[str, int] = {}
 
         for _ in range(count):
             idx = self.rng.choices(range(len(self.active_types)),
@@ -670,6 +691,16 @@ class Simulation:
             dtype = (DungeonType.QUEST
                      if self.rng.random() < cfg.quest_dungeon_chance
                      else DungeonType.BASIC)
+
+            # AT MOST `quest_sieges_per_wave_max` SIEGE-CARRYING QUEST DUNGEONS
+            # FROM ONE CATACLYSM IN ONE WAVE, since 2026-10-17; a further Quest
+            # roll makes an ordinary dungeon. `TuningConfig` quotes the owner.
+            if (dtype is DungeonType.QUEST
+                    and cfg.QUEST_SUBTYPE_BY_CATACLYSM.get(ctype) == "Siege"):
+                if quest_sieges.get(ctype, 0) >= cfg.quest_sieges_per_wave_max:
+                    dtype = DungeonType.BASIC
+                else:
+                    quest_sieges[ctype] = quest_sieges.get(ctype, 0) + 1
 
             # A QUEST DUNGEON THAT IS ALWAYS A SIEGE (War's) WILL NOT LAND ON A
             # CITY THAT ALREADY HOLDS ONE: it re-draws its city among this
@@ -898,6 +929,7 @@ class Simulation:
                     target = self.rng.choice(targets)
                     if self.rng.random() < cfg.quest_move_chance:
                         d.city_id = target.cid
+                        d.arrived_day = self.day
             return
 
         # THIS ONE COUNTS TIMERS AND IS MEANT TO. `times_resolved` is per
@@ -1087,16 +1119,17 @@ class Simulation:
         the same care for the same reason.
         """
         cfg = self.cfg
-        hosts: list[tuple[int, int]] = []
+        hosts: list[tuple[int, int, float]] = []
         for d in self.dungeons.values():
             if d.subtype != "Siege":
                 continue
-            # NEVER NEGATIVE. A dungeon built by hand in a test may carry a
-            # spawn day later than the clock, and a negative age would heal
-            # the city rather than hurt it.
-            hosts.append((d.city_id, max(0, self.day - d.spawned_day)))
+            # THE GROWTH COUNTS THE DAYS ON THIS CITY, AND A QUEST SIEGE BITES
+            # A QUARTER AS HARD, since 2026-10-17; `TuningConfig.
+            # quest_sieges_per_wave_max` quotes the owner.
+            hosts.append((d.city_id, d.days_on_its_city(self.day),
+                          d.siege_bite_share(cfg.quest_siege_bite_scale)))
 
-        for city_id, days_stood in hosts:
+        for city_id, days_stood, share in hosts:
             city = self.empire.cities.get(city_id)
             # CHECKED AGAIN FOR EACH ONE. A city that fell to an earlier Siege
             # in this same loop must not be bitten a second time.
@@ -1120,7 +1153,7 @@ class Simulation:
             # BLUNTED BY WHAT REDUCES DAMAGE. Both defensive lines stay
             # meaningful, which is also why the combined defensive ceiling
             # still has two things to multiply. Issue #1329.
-            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count()) * share
             city.defense -= (city.max_defense * cfg.siege_defence_bite_per_day
                              + grown) * taken
             city.population -= (
@@ -1154,6 +1187,7 @@ class Simulation:
                 refuge = self._quest_refuge(d, city)
                 if refuge is not None:
                     d.city_id = refuge.cid
+                    d.arrived_day = self.day
                     self.quest_moves_on_a_fall += 1
                 continue
             if self.current is not None and d.did == self.current.did:
