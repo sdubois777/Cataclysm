@@ -136,11 +136,24 @@ def test_on_the_shipped_sheets_the_eight_rows_pass_the_whole_validation(tmp_path
     resistances come from affixes. On the shipped sheet the base check is met by
     the eight `flat` rows of "Enemies ignore 10-20% of your resistances", which
     supply each `resistance_<type>`. With those taken out, each of the eight is
-    refused by the base check, once."""
+    refused by the base check, once.
+
+    THE SHIPPED #6 TO #13 ARE TAKEN OUT BEFORE THE EIGHT ARE ADDED, so the table
+    holds each once whether or not the rows have shipped. Ruled 2026-10-18:
+    appending alone counted each refusal twice once they shipped, 16 against 8.
+    Once they have shipped they are first compared with the eight built here,
+    cell by cell, so the test cannot pass on a table that differs from the one
+    that ships."""
     new = carried(tmp_path)
     names = {row["Name"] for row in new}
     tables = shipped_tables()
-    tables["EnchantmentEffects"] = tables["EnchantmentEffects"] + new
+    shipped = [row for row in tables["EnchantmentEffects"] if row["Name"] in names]
+    if shipped:
+        assert shipped == [{key: str(value) for key, value in row.items()}
+                           for row in new]
+    tables["EnchantmentEffects"] = [
+        row for row in tables["EnchantmentEffects"]
+        if row["Name"] not in names] + new
     found = [problem for problem in gen.validate_enchantment_effects(tables, set())
              if any(name in problem for name in names)]
     assert found == []

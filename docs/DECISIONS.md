@@ -281,6 +281,28 @@ Failed assertions, by reading:
   equals its attribute. Test 5, 2: "with a Shred, Demonic prints its attribute" and "with an Abyssal Aura, War prints
   its attribute" fail. Outside the prefix: not counted.
 
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-18 on this mechanism. Eight rows on the Enchantment Effects sheet,
+`Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#6` to `#13`, one per damage type in the engine's order: Stat
+`resistance_<type>`, Value Kind `increased`, Value Low and High 50, Condition `health_below`, Condition Value 50, every
+other cell empty. The row pins move to 662 rows over 536 enchantments: the eight go on an enchantment that already had
+five. The row-text check needed nothing added: the sentence's "50%" states the 50.
+
+**ONE TEST'S SET-UP CHANGED, RULED BY THE COORDINATING SESSION THE SAME DAY.**
+`test_on_the_shipped_sheets_the_eight_rows_pass_the_whole_validation` built its table by appending the eight rows to the
+shipped ones. Once the rows shipped, each was in the table twice, so its control counted each refusal twice: 16
+against 8. It now takes any shipped row named `#6` to `#13` out before adding the eight. Every assertion is unchanged.
+One assertion is added, as ruled, because no other test in the file compares the shipped rows with the eight it builds:
+when the rows have shipped, they must equal the eight cell by cell, so the test cannot pass on a table that differs
+from the one that ships. With one shipped cell changed, the comparison is false; checked by hand.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornBrutesHeartSixPieceRaisesEveryResistanceByHalfBelowHalfHealth`,
+wears five pieces against six, each with a belt carrying the "All resistances" affix and no enchantment. A player's
+resistance comes only from gear affixes, and an increase on nothing is nothing. The affix's size is not asserted.
+Below half health each of the eight six-piece reads is asserted as 1.5 times the five-piece read, so the test has eight
+assertions on the case, after a set-up check and two controls.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
