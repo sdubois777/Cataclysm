@@ -365,11 +365,13 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     "minion_death_summons_tyrants_minion_seconds": {"short": 10.0},
     # "RARE" IS 1 ON `lethal_hit_reprieve_kill_rarity_at_least`, for the Demon King's
     # Regalia's ten-piece, "Killing a Rare or higher enemy": the game has no Rare rung,
-    # and "Rare or higher" is Elite and above, rung 1, ruled 2026-10-17. THE SAME
-    # SENTENCE'S 10, on `lethal_hit_reprieve_every_seconds`, is the Demonic Rage's own
-    # 10 s, which this sentence does not state: it is admitted only because the set
-    # label "(10-Piece Bonus)" holds a 10, which this check reads as stated.
+    # and "Rare or higher" is Elite and above, rung 1, ruled 2026-10-17.
     "lethal_hit_reprieve_kill_rarity_at_least": {"rare": 1.0},
+    # AND "RAGE" IS 10 ON `lethal_hit_reprieve_every_seconds`, the same sentence's
+    # "during Demonic Rage": the reprieve's interval is the Demonic Rage's own 10 s
+    # (the six-piece's "for 10 seconds"), so one reprieve a Rage. Ruled 2026-10-18 to be
+    # stated on purpose: the set label's 10 used to admit it, and no longer does.
+    "lethal_hit_reprieve_every_seconds": {"rage": 10.0},
     # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
@@ -1148,7 +1150,11 @@ def value_is_stated(stat: str, value: float, words: str,
     if stated_by_word is None:
         stated_by_word = STATED_BY_WORD
 
-    stated = numbers_in(outside_ranges(words))
+    # NOT THE SET LABEL'S NUMBER, which counts the pieces worn and states nothing about what the bonus does
+    # (`SET_LABEL` above). Ruled 2026-10-18: until then a row whose value equalled its piece count passed here
+    # by that coincidence alone, and so would a wrong one; the Demon King's Regalia's ten-piece interval was the
+    # one row that did, and it is now stated by word below.
+    stated = numbers_in(outside_ranges(SET_LABEL.sub(" ", words)))
     if abs(value) in stated:
         return True
 

@@ -198,13 +198,21 @@ is met: the 2-piece and the 6-piece are merged (`EnchantmentEffects.csv` 86 to 8
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 
-**IN THE ROW LAYER**, by the enchantment session, measured: of the five rows' single values, `test_a_single_value_appears_in_its_words_outside_any_range`
-in `tools/tests/test_enchantment_effects_match_the_row_text.py` refused only the 1 on
-`lethal_hit_reprieve_kill_rarity_at_least`, so `STATED_BY_WORD` gains "rare" as 1 on that stat alone, by the Tyrant's
-Chains pattern (ruled 2026-10-18). The 10 on `lethal_hit_reprieve_every_seconds` is the Demonic Rage's own 10 s, which
-this sentence does not state; the check admits it only because the set label "(10-Piece Bonus)" holds a 10, which
-it reads as stated (measured: the sentence's numbers are 3, 10 and 100 with the label and 3 and 100 without it). The
-comment beside the new word says so. The row pins move to 641 rows and 534 enchantments.
+**IN THE ROW LAYER**, by the enchantment session, measured, in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`:
+
+- `test_a_single_value_appears_in_its_words_outside_any_range` refused the 1 on
+  `lethal_hit_reprieve_kill_rarity_at_least`, so `STATED_BY_WORD` gains "rare" as 1 on that stat alone, by the
+  Tyrant's Chains pattern (ruled 2026-10-18).
+- **THE SET LABEL NO LONGER STATES A NUMBER TO THAT CHECK.** The 10 on `lethal_hit_reprieve_every_seconds` is the
+  Demonic Rage's own 10 s, which this sentence does not state; the check admitted it only because the label
+  "(10-Piece Bonus)" holds a 10 (the sentence's numbers are 3, 10 and 100 with the label and 3 and 100 without it),
+  and a check that passes by coincidence passes a wrong 10 as well. Ruled 2026-10-18 to be stated on purpose:
+  `value_is_stated` now reads the words without `SET_LABEL`, and `STATED_BY_WORD` gains "rage" as 10 on that stat,
+  for "during Demonic Rage". Measured before the change: this was the only row in the table that the label alone
+  admitted. Proved with `prove_guard`: with the "rage" word removed,
+  `test_a_single_value_appears_in_its_words_outside_any_range` fails, and restored, all 40 tests of the file pass.
+- The row pins move to 641 rows and 534 enchantments.
 
 **IN THE MECHANISM:**
 
