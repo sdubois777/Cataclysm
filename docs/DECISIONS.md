@@ -275,7 +275,59 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 on development 29b22690a (the Warlord's Will 10 and Spellblade's Will 6
+merge), for three layers in this order: this mechanism, the row layer with the Minion Types row and the real-row
+test, and a one-line correction to a test's set-up. **IT TOOK TWO WINDOWS. THE FIRST STOPPED ON A FAILED TEST.**
+
+**The first window, enchant-t6**, at the row layer, 391070149:
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 32 actions, 29 files compiled" (the
+  mechanism's first compile); "347 tests performed, 346 succeeded, 1 failed:
+  TheWornTyrantsChainsSixPieceBlastsAndSummonsATyrantsMinionAtAMinionsDeath", with exactly 2 failed assertions in the
+  run, each checked by its text: "with six pieces worn, the imp's death costs the creature 1 m off health" and "and
+  summons a Tyrant's Minion". The five-piece controls and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_MinionTypes.uasset` and
+  `datatable_asset_sources.json` changed, committed on the row layer as "Rebuild the enchantment and minion type
+  DataTable assets for Tyrant's Chains 6".
+- **The whole Unreal suite STOPPED THE WINDOW:** "3850 tests performed, 3849 succeeded, 1 failed:
+  ASecondDeathWhileOneStandsRestartsItsTimeKeepsItsHealthAndMakesNoSecond", on one assertion: "Expected 'its health is
+  kept' to be 2005.750000, but it was 1005.750000". The second imp stood 4.24 m from the Tyrant's Minion, inside the
+  5 m blast, and the test's bare summoner has no team, so its two minions counted as hostile to each other (SAID FIRST
+  above). The set-up was wrong and the game was right. The lock was released and nothing was corrected inside the
+  window. Python and the proofs did not run.
+
+**The correction**, ruled (a) by the coordinating session the same day: the second imp stands at (-3 m, 0), 6 m from
+the Tyrant's Minion, outside the blast, with a comment saying why. Every assertion is unchanged. Commit dfef1c467, on
+the asset commit; nothing under `game/Content` or `game/Data` changed.
+
+**The second window, enchant-t6b**, at dfef1c467, the remaining steps only (the old-asset run and the rebuild stood):
+
+- **The whole Unreal suite:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.24.cpp"; "3850 tests
+  performed, 3850 succeeded, 0 failed. 40 skipped part of what they check"; "Declared: 3850 tests in the tree at
+  dfef1c467; 3850 performed, gap 0". Registered 3850 and 0: the 3844 measured on 29b22690a, the five of
+  `Cataclysm.SetBonus.Tyrant6.` and the one real-row test. The two probes are inside a test already counted.
+- **Python:** "6554 passed, 8 skipped"; JUnit tests 6562, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run of both windows (02:05:41 to 02:44:49, and from 02:52:35 to the end of the
+  second) and would have ended the editor and released the lock after 20 minutes with no test completed. It did not
+  fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Tyrant6.`, 5 tests**, in the second
+window. The stop condition for each was the set of tests that fail with the break in, by the beginnings of their
+names. The failed assertions had been counted by reading and were measured beside it. Every anchor was counted once,
+and every file's hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TC-I | the blast left untyped | 1 failed, `ADyingMinionDealsHalfItsMaximumHealthAsDeathWithinFiveMetresAndNothingAtSix` | 1 / 1 | 5 of 5 succeeded |
+| TC-II | its own death summons another | 1 failed, `ATyrantsMinionsOwnDeathExplodesAndSummonsNoneAndIsNotReplaced` | 1 / 1 | 5 of 5 succeeded |
+| TC-III | its death handed to the replacement | 1 failed, `ATyrantsMinionsOwnDeathExplodesAndSummonsNoneAndIsNotReplaced` | 1 / 1 | 5 of 5 succeeded |
+
+The measured lines: under TC-I, "one 4 m away holding 50 Death resistance loses a quarter, so the blast is Death
+damage ... to be 500.000000, but it was 1000.000000"; under TC-II, "and it summons none ... to be 0, but it was 1";
+under TC-III, "and Press-Ganged does not replace it ... to be 0, but it was 1".
+
+**Not measured:** TC-I's failure in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (the probe), and
+the real-row test's under any break, because the proofs ran only this prefix.
 
 ---
 
