@@ -1993,7 +1993,7 @@ const TCHAR* ACataclysmMinion::WarhoundChanceStat = TEXT("warhound_summon_chance
 const TCHAR* ACataclysmMinion::WarhoundSecondsStat = TEXT("warhound_seconds");
 const TCHAR* ACataclysmMinion::WarhoundArmourPercentStat = TEXT("warhound_percent_of_armor");
 const TCHAR* ACataclysmMinion::WarhoundTauntSecondsStat = TEXT("warhound_taunt_seconds");
-const TCHAR* ACataclysmMinion::WarhoundTypeName = TEXT("Imp");
+const TCHAR* ACataclysmMinion::WarhoundTypeName = TEXT("Warhound");
 
 /**
  * Pins the roll `RollForWarhoundOnHitTaken` makes against its chance, 0 to 100, for tests. Negative, the default, rolls

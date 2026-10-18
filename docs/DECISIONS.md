@@ -275,13 +275,16 @@ is ruled, one Minion Types sheet row, its asset, and `WarhoundTypeName`, as SAID
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 
-**IN THE ROW LAYER**, by the enchantment session, not measured here: in
-`tools/tests/test_enchantment_effects_match_the_row_text.py`, the sentence states "10%" and nothing else as a number, so
-`STATED_BY_WORD` will likely need a word for each of the other three, for example "short" as 10 on `warhound_seconds`,
-"armor" as 20 on `warhound_percent_of_armor` and "taunts" as 3 on `warhound_taunt_seconds`; that file's
-`value_is_stated` decides, and it was not run against the rows here. With a Warhound row, the Minion Types counts move
-from 7 to 8 (`docs/README.md`, `CataclysmDataTableTests.cpp`, and the set of names in
-`tools/tests/test_minion_stat_blocks.py`).
+**IN THE ROW LAYER**, by the enchantment session, measured on the real table: in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `test_a_single_value_appears_in_its_words_outside_any_range`
+refused the 20 on `warhound_percent_of_armor` and the 3 on `warhound_taunt_seconds`, so `STATED_BY_WORD` gains
+"armor" as 20 and "taunts" as 3, one word on one stat each. Proved with `prove_guard`, each word on its own: with it
+removed that test fails, and restored, all 40 tests of the file pass. **The 10 on `warhound_seconds` was not refused,
+and only by a coincidence: the one number the check reads in the sentence is 10, from "10%", the summon chance.**
+A word for it cannot be added, because `test_every_word_stated_value_is_still_needed` refuses a word the number already
+admits; it is recorded here and put to the coordinating session. The Minion Types counts move from 7 to 8
+(`docs/README.md`, `CataclysmDataTableTests.cpp`, and the set of names in `tools/tests/test_minion_stat_blocks.py`), and
+the row pins to 650 rows and 536 enchantments. `ACataclysmMinion::WarhoundTypeName` is now `Warhound`.
 
 **IN THE MECHANISM:**
 

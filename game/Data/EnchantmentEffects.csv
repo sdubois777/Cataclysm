@@ -645,3 +645,7 @@ Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds#2,Positive_Brute_s_Heart_
 Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds#3,Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds,ground_pound_radius_metres,flat,8.0,8.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds#4,Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds,ground_pound_stun_seconds,flat,3.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds#5,Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds,ground_pound_seconds_off_per_kill,flat,0.5,0.5,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#1,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_summon_chance,flat,10.0,10.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#2,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_seconds,flat,10.0,10.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#3,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_percent_of_armor,flat,20.0,20.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da#4,Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da,warhound_taunt_seconds,flat,3.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

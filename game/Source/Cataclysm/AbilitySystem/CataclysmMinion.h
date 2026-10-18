@@ -886,9 +886,9 @@ public:
 	static const TCHAR* WarhoundTauntSecondsStat;
 
 	/**
-	 * The minion type a Warhound is made from. THE IMP FOR NOW, the stand-in `docs/DECISIONS.md` records ("Tyrant's
-	 * Minion and the Warhound (P342, P375) | An Imp's stats"): a type row needs the design workbook's Minion Types
-	 * sheet, which this layer may not touch. The row layer adds a `Warhound` row and changes this one name.
+	 * The minion type a Warhound is made from: its own row, `Warhound` in `game/Data/MinionTypes.csv`, from the design
+	 * workbook's Minion Types sheet. Ruled 2026-10-18 (A) under the owner's delegation: twice the Imp's health, no
+	 * damage of its own (its blow is a share of its summoner's armour), every other cell the Imp's.
 	 */
 	static const TCHAR* WarhoundTypeName;
 

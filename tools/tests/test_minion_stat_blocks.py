@@ -77,9 +77,14 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
     AND ONE CREATURE NO SKILL PRODUCES. `TyrantsMinion`, ruled 2026-10-18, is
     what Tyrant's Chains' six-piece summons at a minion's death: twice the
     Ballista's health and its damage a second as a melee hit a second.
+
+    AND ONE MORE. `Warhound`, ruled 2026-10-18, is what Warlord's Will's
+    six-piece summons on a blow taken: twice the Imp's health and no damage of
+    its own, because each hit is a share of its summoner's armour.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
-                                  "SpikeTrap", "SkillGadget", "TyrantsMinion"}
+                                  "SpikeTrap", "SkillGadget", "TyrantsMinion",
+                                  "Warhound"}
 
 
 
