@@ -378,7 +378,47 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-b6, on development 20de58242 (the Warlord's Will
+six-piece merge), for two commits in this order: the mechanism (9294761b9) and the row layer with its real-row test
+(5a2d6fa53). Every step was as registered. The four rows joined an enchantment that already had one, the armour row
+merged on 2026-10-05; the enchantment session's row script refuses that by default and was given this one named
+exception, with its ruling.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 15 actions, 12 files compiled" (the
+  mechanism's first compile); "351 tests performed, 350 succeeded, 1 failed:
+  TheWornBrutesHeartSixPieceTauntsAnEnemyNearbyBelowHalfHealth", with exactly 2 failed assertions in the run, each
+  checked by its text: "with six pieces worn and below half health, the wearer taunts the creature 2 m off" and "for 3
+  s". The five-piece control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as 95b48ac55, "Rebuild the enchantment DataTable asset for Brute's Heart 6-piece's taunt aura".
+- **The whole Unreal suite:** "3887 tests performed, 3887 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3887 tests in the tree at 95b48ac55; 3887 performed, gap 0". Registered 3887 and 0: the 3880 measured on
+  20de58242, the six of `Cataclysm.SetBonus.Brute6.` and the one real-row test. The four probes are inside a test
+  already counted.
+- **Python:** "6650 passed, 8 skipped"; JUnit tests 6658, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 11:22:16 and would have ended the editor and released the lock after
+  20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Brute6.`, 6 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading, after listing every event each test's actors raise, by the second session and
+again by the enchantment session, and were measured beside it. Each anchor was counted once, and each file's hash was
+the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| BH6-I | the health share not asked | 3 failed: `AboveHalfHealth...`, `TheTauntIsRenewed...`, `EachTauntThatLands...` | 10 / 10 | 6 of 6 succeeded |
+| BH6-II | every step a beat | 2 failed: `TheTauntIsRenewed...`, `EachTauntThatLands...` | 4 / 4 | 6 of 6 succeeded |
+| BH6-III | the radius doubled | 1 failed, `AboveHalfHealthNobodyIsTauntedAndBelowItAnEnemyInReachIsAndOneBeyondIsNot` | 2 / 2 | 6 of 6 succeeded |
+
+The measured lines include, under BH6-I, "control: at full health a step taunts nobody ... to be 0, but it was 1" and
+"control: above half a step raises no crowd_control on the wearer ... to be 0, but it was 2"; under BH6-II, "half a
+second on, a step lands nothing: the beat is not due ... to be 0, but it was 1"; under BH6-III, "and the enemy 8 m off,
+beyond the 5 m, is not taunted ... to be null".
+
+**Not measured:** the probes' failures outside the prefix, and the real-row test's under any break.
+
+**THE SET IS STILL PARTLY BUILT FOR ITS RESISTANCES**, as Q5 ruled. Their layer, ruled 2026-10-18, follows this one.
 
 ---
 
