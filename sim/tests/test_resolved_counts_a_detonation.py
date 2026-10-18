@@ -184,13 +184,17 @@ class _Counted(Simulation):
 
     def _resolve(self, d) -> None:
         city = self.empire.cities[d.city_id]
-        before = (self.resolved, city.defense, city.population)
+        before = (self.resolved, city.defense, city.population, city.void_stacks)
         if d.dtype is not DungeonType.QUEST:
             self.old_tally += 1
         super()._resolve(d)
+        # VOID STACKS COUNT AS TAKING SOMETHING, since 2026-10-18: an ordinary
+        # Void dungeon's timer adds stacks instead of damage. Ruled by the
+        # coordinating session that day.
         if (self.resolved > before[0]
                 and (city.defense != before[1]
-                     or city.population != before[2])):
+                     or city.population != before[2]
+                     or city.void_stacks != before[3])):
             self.bites += 1
 
 
