@@ -148,3 +148,21 @@ def test_with_the_setting_off_a_void_dungeon_does_damage() -> None:
     before = city.defense
     sim._resolve(dungeon(sim, city, "Void", depths(sim, city)[1]))
     assert city.defense < before and city.void_stacks == 0
+
+
+def test_the_void_returns_to_the_cities_it_has_stacked() -> None:
+    """Its targeting weight rises with the city's stacks, from 1x at none to 5x
+    at ten, and no longer reads lost defence. CONTROL: War's weight on the same
+    city does not move with the stacks."""
+    sim = simulation()
+    city = outpost(sim)
+    void, war = PATTERNS["Void"].weight, PATTERNS["War"].weight
+    plain, plain_war = void(sim.empire, city), war(sim.empire, city)
+    city.void_stacks = 5
+    assert void(sim.empire, city) == plain * 3.0
+    city.void_stacks = 10
+    assert void(sim.empire, city) == plain * 5.0
+    assert war(sim.empire, city) == plain_war
+    city.void_stacks = 0
+    city.defense = city.max_defense / 2
+    assert void(sim.empire, city) == plain, "lost defence no longer draws the Void"
