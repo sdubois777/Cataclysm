@@ -331,9 +331,7 @@ class TestTheShareThatReachesTheMap:
             "over eight campaigns no Siege roll asked the one-per-city cap, so "
             "the cap is not wired into the roll")
 
-    # No Quest case since 2026-10-16: a Quest dungeon may not roll a Siege
-    # (config.SUBTYPES_FORBIDDEN_ON), so its draw can never be a Siege to refuse.
-    @pytest.mark.parametrize("dtype", [DungeonType.BASIC])
+    @pytest.mark.parametrize("dtype", [DungeonType.BASIC, DungeonType.QUEST])
     def test_a_besieged_city_refuses_a_siege_draw_and_redistributes_it(self, dtype):
         """THE CAP ITSELF, on a built board. The draw is made to come out
         "Siege" every time, so the test does not depend on the 7.5 in 100

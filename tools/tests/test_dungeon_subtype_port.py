@@ -340,23 +340,11 @@ class TestWhatACowLevelCosts:
 
 
 class TestWhichSubTypesAKindOfDungeonMayNotRoll:
-    """**TWO PAIRS OF THE 28 ARE ILLEGAL IN THE MODEL, AND THE GAME HAS ONE.**
+    """**ONE PAIR OF THE 28 IS ILLEGAL AND BOTH SIDES HAVE TO AGREE WHICH.**
 
     The project owner ruled on 2026-09-06, verbatim: *"Last stand is a cataclysm
     dungeon and should not be allowed to roll as a cow level sub type."* Asked
     how far to take it they answered *"Only the one you ruled"*. Issue #1333.
-
-    THE SECOND PAIR, QUEST AND SIEGE, SINCE 2026-10-16, AND IN THE MODEL ONLY.
-    The owner, that day, verbatim: *"The only quest dungeons that will be
-    sieges are Wars."* and *"War quest dungeons WILL be sieges. Each
-    cataclysm's quest dungeons will be one specific type."* That reverses the
-    one-pair position of 2026-09-06 for this pair. The model bars it as an
-    interim rule; the game does not yet. So the comparison below covers the
-    Cataclysm pair only, and the Quest pair is held, model barring and game not
-    yet, in
-    `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`.
-    A labelled judgement by the coordinating session under the owner's
-    delegation, 2026-10-16.
 
     THE MODEL IS THE ORIGINAL AND THE GAME IS THE COPY, the same direction as
     the weights above. `config.SUBTYPES_FORBIDDEN_ON` holds the rule;
@@ -379,42 +367,32 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
 
     def test_the_game_bars_the_same_pair_the_model_does(self, surge_source,
                                                         model):
-        """THE CATACLYSM PAIR ONLY, since 2026-10-16. The model's second pair,
-        Quest and Siege, is not in the game yet; the file named in the class
-        docstring holds that difference and fails when the game takes it."""
         game = self.forbidden_in_the_game(surge_source)
 
-        from cataclysm_sim.config import DungeonType
-
-        wanted = {"Cataclysm": tuple(
-            NAMES[n] for n in model.SUBTYPES_FORBIDDEN_ON[DungeonType.CATACLYSM])}
+        wanted = {dtype.name.title().replace("_", ""):
+                  tuple(NAMES[n] for n in names)
+                  for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()}
 
         assert game == wanted, (
             f"the game bars {game} and the model bars {wanted}; "
             "config.SUBTYPES_FORBIDDEN_ON is the original and "
             "UCataclysmSurgeScheduler::CataclysmForbiddenSubType is the copy")
 
-    def test_the_model_bars_exactly_two_pairs(self, model):
-        """Twenty-six pairs stay legal, and a session adding a third row is
-        making a design decision the owner has not made.
+    def test_the_model_bars_exactly_one_pair(self, model):
+        """"Only the one you ruled". Twenty-seven pairs stay legal, and a
+        session adding a second row is making a design decision the owner has
+        not made."""
+        pairs = [(dtype, name)
+                 for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()
+                 for name in names]
 
-        IT WAS ONE PAIR UNTIL 2026-10-16. The ruling of 2026-09-06 named one,
-        "Only the one you ruled", and declined to name any others. On
-        2026-10-16 the owner said, verbatim: "The only quest dungeons that will
-        be sieges are Wars." and "War quest dungeons WILL be sieges. Each
-        cataclysm's quest dungeons will be one specific type." That reverses
-        the 2026-09-06 position for Quest and Siege: the model bars that pair
-        as an interim rule until each Cataclysm's Quest type is named. Changed
-        to two by a labelled judgement by the coordinating session under the
-        owner's delegation, 2026-10-16."""
-        pairs = sorted((dtype.name, name)
-                       for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()
-                       for name in names)
+        assert len(pairs) == 1, (
+            f"the model now bars {pairs}. The ruling of 2026-09-06 named one "
+            "pair and explicitly declined to name any others")
 
-        assert pairs == [("CATACLYSM", "Cow Level"), ("QUEST", "Siege")], (
-            f"the model now bars {pairs}. The ruling of 2026-09-06 named "
-            "Cataclysm and Cow Level, and the owner's words of 2026-10-16 "
-            "added Quest and Siege; nothing has named any other pair")
+        dtype, name = pairs[0]
+        assert dtype.name == "CATACLYSM"
+        assert name == "Cow Level"
 
     def test_the_game_constrains_only_the_cataclysm(self):
         """`BarredSubTypeOn` answers `None` for the other three kinds.
@@ -439,12 +417,8 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
                            body.group(1))
 
         assert cases == ["Cataclysm"], (
-            f"BarredSubTypeOn now names {cases}. In the game the owner's "
-            "ruling of 2026-09-06 bars one pair. If the new case is Quest, the "
-            "game has taken the model's interim Quest-and-Siege rule of "
-            "2026-10-16: follow the instructions in "
-            "test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py. "
-            "Any other case is a design decision nobody has made")
+            f"BarredSubTypeOn now names {cases}. The owner barred one pair and "
+            "said nothing about any other dungeon type")
 
         assert "default:" in body.group(1), (
             "BarredSubTypeOn no longer answers for the kinds it does not name, "
