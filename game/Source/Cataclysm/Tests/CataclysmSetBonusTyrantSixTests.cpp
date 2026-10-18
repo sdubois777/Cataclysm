@@ -475,7 +475,11 @@ bool FCataclysmTyrantSixRefreshTest::RunTest(const FString&)
 	GiveTheBonus(Summoner, /*bDeath=*/true, TyrantsSeconds);
 
 	ACataclysmMinion* First = ImpOf(Summoner, FVector(3 * M, 0, 0));
-	ACataclysmMinion* Second = ImpOf(Summoner, FVector(0, 3 * M, 0));
+	// 6 M FROM THE TYRANT'S MINION, which stands where the first imp dies, AND SO OUTSIDE THE 5 M BLAST. This test's
+	// bare summoner has no team, so its minions have none, and with no team two minions count as hostile to each
+	// other (`UCataclysmTeams::AttitudeBetween`): a blast inside 5 m would hit the Tyrant's Minion, which a player's
+	// minions never do, since they share the player's team. Measured at (0, 3 m), 4.24 m off: it lost 1000.
+	ACataclysmMinion* Second = ImpOf(Summoner, FVector(-3 * M, 0, 0));
 	if (!TestNotNull(TEXT("set-up: a first imp"), First) || !TestNotNull(TEXT("set-up: a second imp"), Second))
 	{
 		return false;

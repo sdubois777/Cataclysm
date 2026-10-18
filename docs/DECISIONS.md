@@ -81,6 +81,12 @@ Everything a ruling requires to be said first, and everything a player would not
   all Death damage. **Ruled 2026-10-18 (B) by the coordinating session, which ruled Q1 and so narrows it: accepted and
   recorded. With Shared Ruin and six pieces both worn, the one summed blast is all Death.** Read from how flat stats
   add, not tested.
+- **IN A TEST WITH A BARE-ACTOR SUMMONER, ITS MINIONS ARE HOSTILE TO EACH OTHER; IN PLAY THEY NEVER ARE.** A minion
+  takes its summoner's team at spawn (`ACataclysmMinion::Spawn`), a bare actor has no team, and
+  `UCataclysmTeams::AttitudeBetween` treats no team as hostile. A player's minions share the player's team, so one
+  minion's death blast never hits another of the player's. Measured in window enchant-t6 on 2026-10-18: with the
+  second imp 4.24 m from the Tyrant's Minion, `ASecondDeathWhileOneStandsRestartsItsTimeKeepsItsHealthAndMakesNoSecond`
+  read 1005.75 for "its health is kept" against 2005.75; ruled (a) that day, the imp is now 6 m off, outside the blast.
 - **A TYRANT'S MINION IS IN EVERYTHING THAT ASKS `UCataclysmCommand::ThingsCommandedBy`**, as any minion is: for
   example it can be the minion Sacrificial Ward spends (`LeastHealthCommandedBy` walks that list,
   `CataclysmCommand.cpp` 132). Only the summon caps leave it out. Read, not tested.
