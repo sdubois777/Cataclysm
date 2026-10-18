@@ -265,7 +265,61 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 on development 049066666 (the drain-death fix's merge), for two commits
+in this order: this mechanism (f0c620812) and the row layer with its real-row test (2396ed068), both moved there from
+e931f2cc3 with their zero-context patch ids unchanged, file by file. **IT TOOK TWO WINDOWS. THE FIRST STOPPED AT ITS
+SECOND PROOF, ON A WRONG REGISTRATION.**
+
+**The first window, enchant-bh**, at 2396ed068:
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 14 actions, 11 files compiled"; "349 tests
+  performed, 348 succeeded, 1 failed: TheWornBrutesHeartTenPieceArmsAGroundPoundThatStrikesAtThirtySeconds", with
+  exactly 2 failed assertions in the run, each checked by its text: "with ten pieces worn, a Ground Pound is armed,
+  ready in 30 s" and "and 30 s on it strikes the creatures 2 m off". The nine-piece control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as ece039fd1, "Rebuild the enchantment DataTable asset for Brute's Heart 10-piece".
+- **The whole Unreal suite:** "3869 tests performed, 3869 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3869 tests in the tree at ece039fd1; 3869 performed, gap 0". Registered 3869 and 0: the 3862 measured on
+  049066666, the six of `Cataclysm.SetBonus.Brute10.` and the one real-row test.
+- **Python:** "6603 passed, 8 skipped"; JUnit tests 6611, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **BH-I**: as registered (below).
+- **BH-II STOPPED THE WINDOW. IT MEASURED 9 FAILED ASSERTIONS IN 3 TESTS AGAINST A REGISTERED 7 IN 1.** The two not
+  registered were "and the clock is 30 s again ... to be 30.000000, but it was 29.500000", once in
+  `ItIsNotReadyUntilThirtySecondsAfterItIsArmedAndThenStrikesAtOnce` and once in
+  `ReadyWithNoEnemyInsideItHoldsFireAndStrikesTheFirstStepOneIsInside`. The registration was wrong and the game was
+  right (restored, 6 of 6 succeeded): the count had assumed the bare test wearer raises no event but `kill`, and it
+  raises one more. **THE POUND'S STUN RAISES `crowd_control` ON THE WEARER**: `UCataclysmSkillEffects::ApplyStun` calls
+  the instigator's `NoteCrowdControlApplied` (`CataclysmSkillEffects.cpp` about 3570-3577 and 3640), which raises
+  `ActOnEvent("crowd_control")` (`CataclysmAbilitySystemComponent.cpp` 4038-4046). With the break, the listener took
+  that event for a kill, so each pound's stun took 0.5 s off the clock it had just restarted. In the unbroken code only
+  `kill` reaches `NoteKill`, so nothing in play changes. The lock was released and nothing was corrected in the window;
+  BH-III did not run.
+
+**Ruled (a) by the coordinating session the same day**: BH-II re-registered at 9 assertions in 3 tests, and a second
+window run for BH-II and BH-III only, on ece039fd1 with the assets as built. The other steps stand as measured.
+
+**The second window, enchant-bh2**, at ece039fd1: both proofs as registered.
+
+**A stall guard** watched every editor run of both (from 07:18:22, and again for the second) and would have ended the
+editor and released the lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Brute10.`, 6 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Each anchor was counted once, and each file's hash
+was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored | Window |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| BH-I | it fires with no enemy near | 2 failed, `ReadyWithNoEnemyInside...` and `EachKillTakesHalf...` | 7 / 7 | 6 of 6 succeeded | enchant-bh |
+| BH-II | kills not heard (every other event taken for one) | 3 failed, `EachKillTakesHalf...`, `ItIsNotReadyUntilThirtySeconds...`, `ReadyWithNoEnemyInside...` | 9 / 9 as re-registered (7 at first) | 6 of 6 succeeded | enchant-bh2 |
+| BH-III | not a designed stun | 1 failed, `EachEnemyStruckIsStunnedForThreeSecondsLessItsResistanceAndABossIsNot` | 5 / 5 | 6 of 6 succeeded | enchant-bh2 |
+
+The measured lines include, under BH-I, "and it is ready ... to be 0.000000, but it was 30.000000"; under BH-II, "a
+kill leaves 29.5 s ... to be 29.500000, but it was 30.000000" and "and the clock is 30 s again ... to be 30.000000, but
+it was 29.500000"; under BH-III, "the first creature is stunned for 3 s ... to be 3.000000, but it was 0.000000".
+
+**Not measured:** the probes' failures outside the prefix under BH-II and BH-III, and the real-row test's under any
+break.
 
 ---
 
