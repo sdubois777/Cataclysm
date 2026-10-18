@@ -124,10 +124,13 @@ float UCataclysmDelayedDamage::DrainStep(AActor* Character)
 	AbilitySystem->ClearDelayedDamage();
 
 	// HEALTH TO NOUGHT AND THEN `HandleDeath`, the pair `UCataclysmHealthDebt::DrainWhileDebtExceedsHealth` uses.
-	// The write reaches the death through the attribute hook for a character that is its ability system's avatar,
-	// and `HandleDeath` refuses a second time.
+	// The write reaches the death through the attribute hook for a character that is its ability system's avatar.
+	// The second call is kept for an actor that is not its avatar, and SKIPPED FOR ONE THE WRITE ALREADY KILLED:
+	// a player's `HandleDeath` notes its save trigger before its own once-only guard, so a second call noted the
+	// death's save twice. Ruled 2026-10-18.
 	AbilitySystem->SetNumericAttributeBase(Health, 0.0f);
-	if (ACataclysmCharacterBase* AsCharacter = Cast<ACataclysmCharacterBase>(Character))
+	ACataclysmCharacterBase* AsCharacter = Cast<ACataclysmCharacterBase>(Character);
+	if (AsCharacter && !UCataclysmSkillEffects::IsDead(AsCharacter))
 	{
 		AsCharacter->HandleDeath();
 	}

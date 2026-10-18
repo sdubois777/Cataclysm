@@ -491,15 +491,19 @@ float UCataclysmHealthDebt::DrainWhileDebtExceedsHealth(AActor* Character,
 	// with health left and marked dead.
 	AbilitySystem->SetNumericAttributeBase(Health, 0.0f);
 
-	// AND THE DEATH IS ASKED FOR EXPLICITLY AS WELL, WHICH IS NOW USUALLY THE
-	// SECOND ASK. The line above reaches `HandleDeath` through the attribute
-	// hook for any character whose ability system has it as its avatar, and
-	// `HandleDeath` refuses a second time because `MarkDead` reports the tag is
-	// already there. This stays because the hook asks the AVATAR and this asks
-	// the actor that was passed in, and those are the same object for every
+	// AND THE DEATH IS ASKED FOR EXPLICITLY AS WELL, BUT ONLY OF A CHARACTER THE
+	// WRITE DID NOT ALREADY KILL. The line above reaches `HandleDeath` through
+	// the attribute hook for any character whose ability system has it as its
+	// avatar. This stays because the hook asks the AVATAR and this asks the
+	// actor that was passed in, and those are the same object for every
 	// character in the game today but are not required to be.
-	if (ACataclysmCharacterBase* AsCharacter =
-			Cast<ACataclysmCharacterBase>(Character))
+	//
+	// IT IS SKIPPED FOR A CHARACTER ALREADY DEAD, ruled 2026-10-18. `MarkDead`
+	// refuses a second time, but a player's `HandleDeath` notes its save trigger
+	// BEFORE that guard, so the second ask noted the death's save twice.
+	ACataclysmCharacterBase* AsCharacter =
+		Cast<ACataclysmCharacterBase>(Character);
+	if (AsCharacter && !UCataclysmSkillEffects::IsDead(AsCharacter))
 	{
 		AsCharacter->HandleDeath();
 	}

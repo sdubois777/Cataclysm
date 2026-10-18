@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — A player killed by the delayed-damage drain or the health-debt drain notes its death's save once: each drain's own call to `HandleDeath` is kept and skipped for a character its write of health already killed
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp` (`UCataclysmDelayedDamage::DrainStep`,
+the call after the write of health to nought and its comment); `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp`
+(`UCataclysmHealthDebt::DrainWhileDebtExceedsHealth`, the same); `game/Source/Cataclysm/Tests/CataclysmDrainDeathNotedOnceTests.cpp`
+(new, three tests). No data row, no tag, no workbook cell and no Python check is changed.
+
+### SAID FIRST
+
+- **THE FAULT, FOUND 2026-10-18 BY READING AND NOT BY A RUN.** Both drains write health to nought and then call
+  `HandleDeath` on the actor they were given: `DrainStep` at `CataclysmDelayedDamage.cpp` 129 to 133 and
+  `DrainWhileDebtExceedsHealth` at `CataclysmHealthDebt.cpp` 492 to 505, as they stood on development e931f2cc3. The
+  write already reaches `HandleDeath`: `UCataclysmVitalAttributeSet::PostAttributeBaseChange` calls
+  `NotifyIfHealthReachedZero` (`CataclysmVitalAttributeSet.cpp` 354), which returns for a dead avatar (2734) and
+  otherwise calls the avatar's `HandleDeath` (2810). So the drains' own call was the second. Both comments said
+  `HandleDeath` "refuses a second time". That is true of `MarkDead`, but `ACataclysmPlayerCharacter::HandleDeath` calls
+  `UCataclysmSaveWriter::NoteTriggerIn(..., CharacterDied)` at `CataclysmPlayerCharacter.cpp` 1630, BEFORE its
+  once-only guard at 1633. So a player killed by either drain noted its death's save twice. With a run begun that is
+  the synchronous death write made twice; the comment above the note says "Reaching it twice would write the same
+  bytes twice".
+- **A PLAYER NOTICES NOTHING.** The two writes held the same record. An enemy's and a minion's `HandleDeath` mark
+  the death before anything else, so neither was ever noted twice.
+- **THE DEMON KING'S REGALIA'S DEATH SENTENCE HAD THE SAME FAULT AND WAS CORRECTED THE SAME DAY THE OTHER WAY.**
+  `CarryOutDueDeathSentence`, on `UCataclysmAbilitySystemComponent`, wrote health to nought and then called the
+  avatar's `HandleDeath` itself. It reads its own ability system's avatar, the object the attribute hook asks, so its
+  call was only ever the second; it was removed on 2026-10-18 (commit c96a8a6db, on the Regalia ten-piece branch and
+  not on this layer's base).
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner said nothing about this. The coordinating session ruled it on 2026-10-18, as relayed in brief 45: keep the
+drains' second call; guard it with `if (!UCataclysmSkillEffects::IsDead(AsCharacter))` in both; correct both comments;
+the failing test first, on the unchanged code.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| Ruling | Where it is |
+| :-- | :-- |
+| Keep the second call. | `CataclysmDelayedDamage.cpp` 135 and `CataclysmHealthDebt.cpp` 508, each still `AsCharacter->HandleDeath()`. |
+| Guard it by `IsDead`. | `CataclysmDelayedDamage.cpp` 133 and `CataclysmHealthDebt.cpp` 506: `if (AsCharacter && !UCataclysmSkillEffects::IsDead(AsCharacter))`. |
+| Correct both comments. | `CataclysmDelayedDamage.cpp` 126 to 130 and `CataclysmHealthDebt.cpp` 494 to 503. |
+
+**WHY KEPT AND GUARDED RATHER THAN REMOVED.** The debt drain's comment gives the reason: the attribute hook asks the
+ability system's AVATAR and the drain asks the actor passed in, "the same object for every character in the game today
+but ... not required to be". Removed, a drain handed an actor that is not its ability system's avatar would empty its
+health and kill nothing. Guarded, the call runs only when the write did not already kill, which is exactly that case.
+The death sentence was different because it reads its own avatar, so nothing was lost by removing its call.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE CAST IS TAKEN OUT OF THE `if`**, so the guard can read it: `AsCharacter` is declared on its own line and the
+  condition is `AsCharacter && !IsDead(AsCharacter)`. The option not taken: a nested `if` inside the old one, a deeper
+  block for the same test.
+- **THE PLAYER'S `HandleDeath` IS NOT CHANGED**: moving its note inside the once-only guard is not what was ruled, and
+  the note is placed before the mark on purpose (the gather skips a character it can see is dead). The option not
+  taken: guarding the note itself.
+- **THE GADGET DRAIN IN `ACataclysmMinion` IS NOT CHANGED.** It also writes health to nought and calls `HandleDeath`,
+  but on itself, and `ACataclysmMinion::HandleDeath` marks the death first and notes no save trigger.
+
+### THE GENRE SOURCE
+
+None. There is no genre question.
+
+### WHAT WAS BUILT
+
+The guard and the corrected comment in each drain. Nothing else in the game changed.
+
+### Tests
+
+Three Unreal tests in `game/Source/Cataclysm/Tests/CataclysmDrainDeathNotedOnceTests.cpp`, the group
+`Cataclysm.DrainDeathNotedOnce.`. Each builds a player by the client path (`SetPlayerState` and `OnRep_PlayerState`, as
+`CataclysmDeathTests.cpp` does) in a world with no run begun, so `UCataclysmSaveWriter::NoteTrigger` counts every
+trigger in `TriggersWithNowhereToWrite` (`CataclysmSaveWriter.cpp` 132 to 138) and records it in `LastTrigger` (130).
+The writer is reached by `UCataclysmSaveWriter::In`, the world's subsystem. Every count is a difference against the
+count read before. The clock is moved by hand and each drain is called directly, as `CataclysmDelayedDamageTests.cpp`
+and `CataclysmHealthDebtTests.cpp` drive them.
+
+1. `AWriteOfAPlayersHealthToNoughtNotesItsDeathOnce`, 9 assertions. In order: set-up, a world; a player; the world's
+   save writer; the player's ability system; no run is begun; control, the player is alive; the write of health to
+   nought kills it; it notes exactly one trigger; that trigger is the character's death. This is the path both drains
+   rely on.
+2. `APlayerKilledByTheDelayedDamageDrainNotesItsDeathOnce`, 14 assertions. In order: the same five set-ups; set-up, a
+   parcel of 100 over a second is held by hand; control, half a second on the drain takes 50; it notes no trigger; the
+   player is alive; set-up, a parcel of 1000 over a second is held; a second on the drain takes the health left (350);
+   the player is dead; the death notes exactly one trigger; that trigger is the character's death.
+3. `APlayerKilledByTheHealthDebtDrainNotesItsDeathOnce`, 12 assertions. In order: the same five set-ups; at 400 health
+   owing 401 under The Reckoning's flag, control, one regeneration step bleeds 20.05; it notes no trigger; the player
+   is alive; a step of the whole five-second span takes the health left (379.95); the player is dead; the death notes
+   exactly one trigger; that trigger is the character's death.
+
+On the code before this layer, by reading: test 1 passes, and tests 2 and 3 each fail one assertion, "and the death
+notes exactly one trigger", reading 2.
+
+**Not tested:** a drain handed an actor that is not its ability system's avatar (nothing in the game builds one, so
+the kept call's own case is not reached); a run begun, where each note is a synchronous write; an enemy or a minion
+killed by either drain.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree (the same text
+is in both files, once each). Each break keeps the file's round, curly and square brackets paired (counted by the same
+script) and compiles alone by reading: the condition keeps a pointer, and `UCataclysmSkillEffects` is still used at the
+top of each function. The prefix is `Cataclysm.DrainDeathNotedOnce.`, with its trailing dot, three tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| DD-I, the delayed-damage drain's call unguarded | `game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp` | `if (AsCharacter && !UCataclysmSkillEffects::IsDead(AsCharacter))` | `if (AsCharacter)` | `APlayerKilledByTheDelayedDamageDrainNotesItsDeathOnce` | none |
+| DD-II, the health-debt drain's call unguarded | `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp` | `if (AsCharacter && !UCataclysmSkillEffects::IsDead(AsCharacter))` | `if (AsCharacter)` | `APlayerKilledByTheHealthDebtDrainNotesItsDeathOnce` | none |
+
+Failed assertions, by reading: **DD-I, 1 in 1 test**, test 2's "and the death notes exactly one trigger" (it reads 2).
+**DD-II, 1 in 1 test**, test 3's same assertion. Test 1 calls neither drain, and each drain's test calls only its own.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-18 — A minion's or thrall's death can summon one Tyrant's Minion for a row's seconds, outside the summon caps, refreshing the one standing, and the death blast can deal Death damage: Tyrant's Chains' six-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` (one block after `DeathBlast`: two stat names,
