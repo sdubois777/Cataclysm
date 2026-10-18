@@ -776,6 +776,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// has a 50% chance to consume enemy projectiles". Flat. No gameplay
 		// attribute and no base.
 		TEXT("void_aura_projectile_consume_chance"),
+		// The flag by which a commander's death blast (Shared Ruin's two stats,
+		// above) deals Death damage, and the seconds a Tyrant's Minion lasts,
+		// both read off the commander by ACataclysmMinion when a minion or
+		// thrall of its dies: the flag in DeathBlast, the seconds in
+		// SummonTyrantsMinion from UCataclysmVitalAttributeSet::
+		// NotifyIfHealthReachedZero. Ruled 2026-10-18, for Tyrant's Chains'
+		// six-piece. Flat; each at nought does nothing. No gameplay attribute
+		// and no base.
+		TEXT("minion_death_blast_deals_death"),
+		TEXT("minion_death_summons_tyrants_minion_seconds"),
 	};
 	return Stats;
 }
