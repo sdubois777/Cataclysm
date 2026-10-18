@@ -26984,4 +26984,75 @@ bool FCataclysmNullEmperorVoidAuraRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmSetPiecesTest
+{
+	/** Every armour, jewellery and relic base after the helm the striker wears, one per gear slot. */
+	const TCHAR* const MorePieces[] = {TEXT("Chest_Cuirass"), TEXT("Shoulders_Pauldrons"), TEXT("Gloves_Gauntlets"),
+									   TEXT("Pants_Greaves"), TEXT("Boots_Sabatons"), TEXT("Belt_Girdle"),
+									   TEXT("Ring_Band"), TEXT("Necklace_Amulet"), TEXT("Relic_Idol")};
+
+	/** `Extra` more pieces, each carrying the same two rows, then the refresh and the striker's attack damage again. */
+	bool WearsMore(CataclysmConsecutiveRowTest::FStriker& Striker, const TCHAR* Positive, const TCHAR* Negative,
+				   int32 Extra)
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+		UCataclysmEquipmentComponent* Equipment = Striker.Character->GetEquipment();
+		if (!Equipment || Extra > static_cast<int32>(UE_ARRAY_COUNT(MorePieces)))
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Extra; ++Index)
+		{
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(Carrying(MorePieces[Index], Positive, Negative), Removed, AlsoRemoved, Slot);
+		}
+		Equipment->RefreshAttributes(Striker.ASC);
+		Striker.ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarlordTenRowTest,
+	"Cataclysm.Enchantments.TheWornWarlordsWillTenPieceGivesAMovementUseHalfAgainDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Warlord's Will's 10-piece row layer, ruled 2026-10-17: a movement ability's use opens a 5 s window of 100% more
+ * movement speed and 50% more damage, at most once in 30 s, and 10% more damage per enemy within 8 m while it is open,
+ * at most 5. WORN by a real player: what the window then does is `Cataclysm.SetBonus.Warlord10.`'s. A SET'S BONUSES TURN
+ * ON BY HOW MANY PIECES ARE WORN, so the CONTROL wears NINE pieces and the case TEN, each carrying the 10-piece and the
+ * set's drawback. The striker's two creatures stand 2 m off, inside the 8 m, so a movement use leaves the case's attack
+ * damage 1.5 times 1.2, 1.8 times. ONE assertion, so on assets built before the rows it fails once, and only there.
+ */
+bool FCataclysmWarlordTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second");
+	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10_1");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces"), TenPieces.Ready())
+		|| !TestTrue(TEXT("set-up: nine pieces worn"), WearsMore(NinePieces, Bonus, Drawback, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), WearsMore(TenPieces, Bonus, Drawback, 9)))
+	{
+		return false;
+	}
+	const FName Damage(TEXT("attack_damage"));
+	const float NineBefore = NinePieces.ASC->StatForSkill(Damage, FGameplayTagContainer(), 0.0f);
+	const float TenBefore = TenPieces.ASC->StatForSkill(Damage, FGameplayTagContainer(), 0.0f);
+	NinePieces.ASC->NoteMovementSkillUsed();
+	TenPieces.ASC->NoteMovementSkillUsed();
+
+	// THE CONTROL, READ FIRST: nine pieces are below the threshold, so a movement use changes nothing.
+	TestEqual(TEXT("control: with nine pieces worn, a movement use leaves attack damage as it was"),
+		NinePieces.ASC->StatForSkill(Damage, FGameplayTagContainer(), 0.0f), NineBefore, 0.01f);
+	TestEqual(TEXT("with ten pieces worn and two creatures 2 m off, a movement use makes attack damage 1.8 times. If not, "
+				   "DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py"),
+		TenPieces.ASC->StatForSkill(Damage, FGameplayTagContainer(), 0.0f), TenBefore * 1.8f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

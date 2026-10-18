@@ -924,8 +924,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-17, from 623 over 528: one row on one enchantment.
 #: AND 625 OVER 530 SINCE THE NULL EMPEROR'S 10-PIECE,
 #: issue #1833, 2026-10-17, from 624 over 529: one row on one enchantment.
-AUTHORED_ROWS = 625
-AUTHORED_ENCHANTMENTS = 530
+#: AND 630 OVER 531 SINCE THE FIVE ROWS OF WARLORD'S WILL'S 10-PIECE,
+#: issue #1833, 2026-10-18, from 625 over 530: five rows on one enchantment.
+AUTHORED_ROWS = 630
+AUTHORED_ENCHANTMENTS = 531
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
