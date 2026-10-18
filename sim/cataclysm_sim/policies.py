@@ -107,17 +107,20 @@ def siege_daily_damage(sim, d, city) -> float:
     figure out of this docstring and compares it against
     `TuningConfig.siege_damage_growth_per_day`.
 
-    EVERY DUNGEON TYPE BUT THE QUEST DUNGEON CAN CARRY THE SUB-TYPE, not
-    only the ordinary ones: `_roll_subtype` runs for every `_make_dungeon`, and
-    since 2026-10-16 `TuningConfig.SUBTYPES_FORBIDDEN_ON` bars a Quest dungeon
-    from the Siege, as an interim rule until each Cataclysm's Quest type is
-    named (War's will be Sieges). Measured on 2026-10-16 over 10,000 campaigns
-    (seeds 0 to 9999) at the settings `siege_urgency` names below, with an
-    ordinary dungeon leaving after it hits its city
-    (`dungeon_persists_after_resolve` False), the 47,102 Sieges that reached
-    the map were 95% Basic, 0% Quest, 4% Fallen City and 2% Cataclysm, about
-    4.71 a campaign. That is why the callers below apply this in all three
-    scoring branches instead of only the ordinary one.
+    EVERY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
+    `_roll_subtype` runs for every `_make_dungeon` but a surge's Quest
+    dungeon, and since 2026-10-16 that one takes its Cataclysm's fixed
+    sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`), which for War is the
+    Siege, at most two a wave. Measured on 2026-10-18 over 10,000 campaigns
+    (seeds 0 to 9999, 756,907 dungeons, each recorded when it was made) at the
+    settings `siege_urgency` names below, with an ordinary dungeon leaving
+    after it hits its city (`dungeon_persists_after_resolve` False), the
+    64,191 Sieges that reached the map were 70% Basic, 24% Quest, 5% Fallen
+    City and 1% Cataclysm, about 6.42 a campaign. That is why the callers below
+    apply this in all three scoring branches instead of only the ordinary one.
+    UNTIL 2026-10-18 THIS SAID 47,102 Sieges at 95 / 0 / 4 / 2 and 4.71 a
+    campaign, measured on 2026-10-16 while an interim rule barred a Quest
+    dungeon from the Siege.
     UNTIL 2026-10-16 THIS SAID 55,361 Sieges at 83 / 11 / 4 / 1 and 5.54 a
     campaign, measured on 2026-10-12, when a Quest dungeon could roll a Siege.
     UNTIL 2026-10-12 IT SAID 65,636 Sieges at 79 / 11 / 10 / 1 and 6.56 a
@@ -262,13 +265,16 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
     and static surges of five dungeons every 120 days, the median walk is 14
-    days to an Outpost, 22 to a Bulwark, 34 to a Sanctuary and 123 to the
+    days to an Outpost, 23 to a Bulwark, 35 to a Sanctuary and 123 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 11 / 17 / 21 days. Measured on 2026-10-12 over 10,000
-    campaigns (seeds 0 to 9999) and 754,158 dungeons, each recorded at the
+    sizes, the slack is 11 / 16 / 20 days. Measured on 2026-10-18 over 10,000
+    campaigns (seeds 0 to 9999) and 756,907 dungeons, each recorded at the
     moment it was made, with an ordinary dungeon leaving after it hits its city
-    (`dungeon_persists_after_resolve` False, the default since that day).
-    UNTIL THEN THIS SAID 14 / 24 / 37 / 123 AND A SLACK OF 11 / 15 / 18,
+    (`dungeon_persists_after_resolve` False, the default since 2026-10-12),
+    each Cataclysm's Quest dungeons one fixed sub-type and War's at most two a
+    wave. UNTIL 2026-10-18 THIS SAID 14 / 22 / 34 / 123 AND A SLACK OF
+    11 / 17 / 21, measured on 2026-10-12 over 754,158 dungeons. UNTIL 2026-10-12
+    IT SAID 14 / 24 / 37 / 123 AND A SLACK OF 11 / 15 / 18,
     measured on 2026-09-16 over 890,790 dungeons with the dungeon staying;
     issues #1364 and #1432.
 
@@ -346,8 +352,9 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     balance report uses and NOT `TuningConfig.surge_dungeon_count`, which was 4
     when this was measured. Since 2026-10-13 that default is 5 and the
     default interval is 90 days; the figures here are at 5 every 120.
-    The two are different worlds. THE FOUR MEDIANS ARE THE SAME IN BOTH SINCE
-    2026-10-12, and the samples are not: measured that day over 10,000
+    The two are different worlds. THE FOUR MEDIANS WERE THE SAME IN BOTH ON
+    2026-10-12 (not re-measured at four since), and the samples were not:
+    measured that day over 10,000
     campaigns each (seeds 0 to 9999) with the dungeon leaving, four a surge
     gives 14 / 22 / 34 / 123 over 720,044 dungeons and five gives 14 / 22 / 34
     / 123 over 754,158. With the dungeon staying the same seeds give 14 / 24 /

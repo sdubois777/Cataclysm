@@ -722,9 +722,11 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 14 / 22 / 34 (the walk today, re-measured on 2026-10-12 with an ordinary
-    # dungeon leaving after it hits its city; it was 14 / 23 / 37 on the day of
-    # the cut and 14 / 24 / 37 after issue #1432), so on the day of the cut the
+    # 14 / 23 / 35 (the walk today, re-measured on 2026-10-18 over 10,000
+    # campaigns, seeds 0 to 9999, by the prose test's own method: its report
+    # settings, no tree, `triage`, every dungeon recorded when it is made; it
+    # was 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
+    # 14 / 24 / 37 after issue #1432), so on the day of the cut the
     # player arrived on the day the city fell for the two
     # smaller sizes and after it had fallen for the third; at 2.5 it
     # takes 25 / 39 / 55 / 70. Damage dealt grows with the SQUARE of the days a
