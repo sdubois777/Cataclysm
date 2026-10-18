@@ -979,17 +979,19 @@ class Simulation:
             added = self._void_stacks_for(d)
             city.void_stacks += added
             self.void_stacks_added += added
-            if city.void_stacks >= cfg.void_stacks_to_erase:
-                self.void_erasures += 1
-                self._fall(city)
+            erased = city.void_stacks >= cfg.void_stacks_to_erase
+            self.void_erasures += int(erased)
         else:
+            erased = False
             taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
             city.defense -= d.defense_damage * scale * taken
             city.population -= d.population_damage * scale * taken
             city.population = max(0.0, city.population)
 
-            if city.defense <= 0:
-                self._fall(city)
+        # ONE FALL, by the damage or by the tenth stack; `_fall` erases the
+        # city in the second case.
+        if city.defense <= 0 or erased:
+            self._fall(city)
 
         # IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of
         # 2026-10-08, verbatim: "Ordinary dungeons will do their
