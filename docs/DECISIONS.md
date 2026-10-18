@@ -192,6 +192,13 @@ rule is met: the 2-piece rows are merged (`EnchantmentEffects.csv` 83 and 84) an
 "taunts" as 3 on `warhound_taunt_seconds`; the sentence has no word for the 1 s. That is a change to what a check
 accepts, for the row layer to put to the coordinating session.
 
+**IN THE ROW LAYER, MEASURED AND RULED 2026-10-18 (Q-B6, the coordinating session):** `STATED_BY_WORD` gains
+"nearby" as 5 on `taunt_aura_radius_metres`, "taunts" as 3 on `taunt_aura_taunt_seconds`, and "aura" as 1 on
+`taunt_aura_every_seconds`, the word naming what pulses once a second (the coordinating session's Q2 ruling under the
+owner's delegation). One word on one stat each. Proved with `prove_guard`, each word on its own: with it removed,
+`test_a_single_value_appears_in_its_words_outside_any_range` fails, and restored, all 40 tests of the file pass. The
+row pins move to 654 rows over 536 enchantments: the four rows go on an enchantment that already had one.
+
 ### THE RESISTANCES, CHECKED (Q5), AND NOTHING BUILT
 
 **(i) THE SMALLEST CHANGE THAT WOULD MAKE A RESISTANCE ROW UNDER A CONDITION REACH A BLOW.** Three parts, all needed:

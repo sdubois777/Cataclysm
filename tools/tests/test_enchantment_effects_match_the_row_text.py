@@ -383,6 +383,15 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # ruled on 2026-10-17 (#6). One word on one stat each.
     "warhound_percent_of_armor": {"armor": 20.0},
     "warhound_taunt_seconds": {"taunts": 3.0},
+    # BRUTE'S HEART'S SIX-PIECE TAUNT AURA, "a powerful aura that taunts all nearby
+    # enemies": "NEARBY" IS 5 ON `taunt_aura_radius_metres` (the project's nearby, 5 m,
+    # ruled 2026-10-18, Q1), "TAUNTS" IS 3 ON `taunt_aura_taunt_seconds` (the taunt's 3 s,
+    # the owner's #6), and "AURA" IS 1 ON `taunt_aura_every_seconds`: the word naming
+    # what pulses, once a second, the coordinating session's Q2 ruling of 2026-10-18 under
+    # the owner's delegation. One word on one stat each.
+    "taunt_aura_radius_metres": {"nearby": 5.0},
+    "taunt_aura_taunt_seconds": {"taunts": 3.0},
+    "taunt_aura_every_seconds": {"aura": 1.0},
     # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
@@ -967,7 +976,9 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 641 over 534: five rows on one enchantment.
 #: AND 650 OVER 536 SINCE THE FOUR ROWS OF WARLORD'S WILL'S 6-PIECE,
 #: issue #1833, 2026-10-18, from 646 over 535: four rows on one enchantment.
-AUTHORED_ROWS = 650
+#: AND 654 OVER 536 SINCE THE FOUR AURA ROWS OF BRUTE'S HEART'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 650 over 536: four rows on an enchantment that already has one.
+AUTHORED_ROWS = 654
 AUTHORED_ENCHANTMENTS = 536
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
