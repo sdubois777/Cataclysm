@@ -27260,4 +27260,56 @@ bool FCataclysmBruteTenRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarlordSixRowTest,
+	"Cataclysm.Enchantments.TheWornWarlordsWillSixPieceSummonsAWarhoundOnABlowTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Warlord's Will's 6-piece row layer, ruled 2026-10-17 (#6) and 2026-10-18: a blow taken has a 10% chance to summon a
+ * Warhound for 10 s. WORN by a real player: what the Warhound then does is `Cataclysm.SetBonus.Warlord6.`'s. The CONTROL
+ * wears FIVE pieces and the case SIX, each carrying the 6-piece and the set's drawback. The roll is pinned at 0, under
+ * every chance, so a worn chance always summons, and each striker takes one blow from its first creature that cannot
+ * be mitigated, so no evasion or block of the striker's class line refuses it. TWO assertions on the case, so on assets
+ * built before the rows it fails twice, and only there.
+ */
+bool FCataclysmWarlordSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Warlord_s_Will_6_Piece_Bonus_When_you_take_da");
+	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10_1");
+	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.WarhoundRoll"));
+	if (!TestNotNull(TEXT("set-up: the Warhound's roll can be pinned"), Roll))
+	{
+		return false;
+	}
+	const float Was = Roll->GetFloat();
+	Roll->Set(0.0f, ECVF_SetByCode);
+	ON_SCOPE_EXIT { Roll->Set(Was, ECVF_SetByCode); };
+
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces"), SixPieces.Ready())
+		|| !TestTrue(TEXT("set-up: five pieces worn"), WearsMore(FivePieces, Bonus, Drawback, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), WearsMore(SixPieces, Bonus, Drawback, 5)))
+	{
+		return false;
+	}
+	FCataclysmHitDelivery Unmitigated;
+	Unmitigated.bCannotBeMitigated = true;
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&FivePieces, &SixPieces})
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Striker->First, Striker->Character, 10.0f, Unmitigated);
+	}
+
+	// THE CONTROL, READ FIRST: five pieces are below the threshold, so the blow summons nothing.
+	TestNull(TEXT("control: with five pieces worn, the blow summons no Warhound"),
+		ACataclysmMinion::WarhoundOf(FivePieces.Character));
+	const ACataclysmMinion* Warhound = ACataclysmMinion::WarhoundOf(SixPieces.Character);
+	TestNotNull(TEXT("with six pieces worn, the blow summons a Warhound. If not, DT_EnchantmentEffects may be older "
+					 "than the rows: run tools/generate_datatable_assets.py"), Warhound);
+	TestEqual(TEXT("and it lasts 10 s"), Warhound ? Warhound->GetLifeSpan() : 0.0f, 10.0f, 0.06f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -376,6 +376,13 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # enemies in a large radius": 8 m, the game's figure for a set's "area" (Warlord's
     # Will's ten-piece), ruled 2026-10-18 (Q1) under the owner's delegation.
     "ground_pound_radius_metres": {"large": 8.0},
+    # "ARMOR" IS 20 ON `warhound_percent_of_armor` AND "TAUNTS" IS 3 ON
+    # `warhound_taunt_seconds`, for Warlord's Will's six-piece, "The Warhound taunts
+    # enemies and deals damage based on your armor": 20% of the summoner's armour a hit,
+    # ruled 2026-10-18 (Q5) under the owner's delegation, and the 3 s taunt the owner
+    # ruled on 2026-10-17 (#6). One word on one stat each.
+    "warhound_percent_of_armor": {"armor": 20.0},
+    "warhound_taunt_seconds": {"taunts": 3.0},
     # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
     # a chance: a sentence that resets and states no chance resets every time.
     # Issue #1833, the cooldown reset action. One word per action, the one its
@@ -958,8 +965,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 636 over 533: five rows on one enchantment.
 #: AND 646 OVER 535 SINCE THE FIVE ROWS OF BRUTE'S HEART'S 10-PIECE,
 #: issue #1833, 2026-10-18, from 641 over 534: five rows on one enchantment.
-AUTHORED_ROWS = 646
-AUTHORED_ENCHANTMENTS = 535
+#: AND 650 OVER 536 SINCE THE FOUR ROWS OF WARLORD'S WILL'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 646 over 535: four rows on one enchantment.
+AUTHORED_ROWS = 650
+AUTHORED_ENCHANTMENTS = 536
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

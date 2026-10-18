@@ -52,8 +52,8 @@
     {
       "asset": "DT_EnchantmentEffects",
       "csv": "EnchantmentEffects.csv",
-      "rows": 646,
-      "csv_sha256": "9be926193585e779bd091f3e2066ef16513a9e9592476a13be361515785d21eb"
+      "rows": 650,
+      "csv_sha256": "99f9e6570c7e6c5f6a992e1349780887aeec65fe3e73491681c946d112684ef7"
     },
     {
       "asset": "DT_EnchantmentsNegative",
@@ -118,8 +118,8 @@
     {
       "asset": "DT_MinionTypes",
       "csv": "MinionTypes.csv",
-      "rows": 7,
-      "csv_sha256": "3aa4435a5906b5c7f07a1fb0d8bba44bba2f45d79b6b7215235540b6ce2e516f"
+      "rows": 8,
+      "csv_sha256": "af24459955573c7a1c1b5087477f52669b8176600cac69674a39f162cf31406d"
     },
     {
       "asset": "DT_MaterialTiers",

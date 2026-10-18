@@ -168,7 +168,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// own, so no skill row produces it and its base damage is 0.
 	// AND 7 SINCE 2026-10-18: the Tyrant's Minion, which Tyrant's Chains' six-piece
 	// summons at a minion's death. No skill row produces it.
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             7)
+	// AND 8 SINCE 2026-10-18 TOO: the Warhound, which Warlord's Will's six-piece
+	// summons on a blow taken. No skill row produces it.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             8)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been
@@ -858,7 +860,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 641 SINCE THE FIVE ROWS OF THE DEMON KING'S REGALIA'S 10-PIECE, issue #1833, from 636.
 	//
 	// AND 646 SINCE THE FIVE ROWS OF BRUTE'S HEART'S 10-PIECE, issue #1833, from 641.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    646)
+	//
+	// AND 650 SINCE THE FOUR ROWS OF WARLORD'S WILL'S 6-PIECE, issue #1833, from 646.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    650)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

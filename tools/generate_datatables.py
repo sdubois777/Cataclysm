@@ -10885,6 +10885,110 @@ def refuse_a_ground_pound_row_the_game_cannot_read(
     return problems
 
 
+#: Warlord's Will's six-piece bonus, the Warhound. Ruled 2026-10-17 by the
+#: project owner (#6: the Warhound's hits place a 3 s taunt status, crowd
+#: control, shortened by resistance, bosses immune) and 2026-10-18 by the
+#: coordinating session (Q1-Q5), for "When you take damage, you have a 10%
+#: chance to summon a "Warhound" to fight for you for a short duration. The
+#: Warhound taunts enemies and deals damage based on your armor".
+#:
+#: FOUR ROWS, EACH `flat` WITH NO REQUIRED TAGS, NO CONDITION, NO SCALE AND NO
+#: ACTION, one on each stat below in its order: 10 (the per cent chance a
+#: landed blow taken summons one), 10 (its seconds, Q3, a number under the
+#: owner's delegation), 20 (the per cent of the wearer's armour each hit deals,
+#: Q5, a number under the owner's delegation) and 3 (the taunt's seconds, #6).
+#: `ACataclysmMinion` holds the same four names, and
+#: `tools/tests/test_warlords_will_six_rows.py` compares them.
+#:
+#: THE GAME ASKS FOR EACH WITH NO TAGS, off the wearer, through `SummonerStat`
+#: in `CataclysmMinion.cpp`: the chance where a blow is taken, the seconds at
+#: the summon, the share and the taunt at each of the Warhound's hits. So a row
+#: requiring a tag matches nowhere, a row of any kind but `flat` works on a base
+#: of nought, and a row with an action is not a stat line at all.
+WARHOUND_CHANCE_STAT = "warhound_summon_chance"
+WARHOUND_SECONDS_STAT = "warhound_seconds"
+WARHOUND_ARMOUR_PERCENT_STAT = "warhound_percent_of_armor"
+WARHOUND_TAUNT_SECONDS_STAT = "warhound_taunt_seconds"
+WARHOUND_STATS = (
+    WARHOUND_CHANCE_STAT,
+    WARHOUND_SECONDS_STAT,
+    WARHOUND_ARMOUR_PERCENT_STAT,
+    WARHOUND_TAUNT_SECONDS_STAT,
+)
+
+#: The most each may state, where a bound exists already: a chance is at most
+#: 100, the share the armour nova may state (the Warhound's hit is a share of
+#: armour as that action's is), and the longest status. The Warhound's own
+#: seconds have no bound but above nought, as the Tyrant's Minion's have none.
+MAX_WARHOUND = {
+    WARHOUND_CHANCE_STAT: 100.0,
+    WARHOUND_ARMOUR_PERCENT_STAT: MAX_NEARBY_PERCENT["smite_nearby_by_armor"],
+    WARHOUND_TAUNT_SECONDS_STAT: MAX_STATUS_SECONDS,
+}
+
+
+def refuse_a_warhound_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `WARHOUND_STATS` is a figure its one reader takes as it
+    stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants above
+    give. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_ground_pound_row_the_game_cannot_read`, for four stats.
+
+    EVERY FIGURE IS ABOVE NOUGHT, and at most its bound where it has one: at
+    nought no Warhound comes, its hit deals nothing or taunts nobody, which is
+    what not wearing the row already does. EVERY RANGE MUST RISE.
+
+    A CONDITION OR A SCALE ON ANY OF THEM IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    none is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in WARHOUND_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and the Warhound gets "
+                f"nothing from it.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the wearer with no tags, so a "
+                f"row requiring a tag matches nowhere and says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        bound = MAX_WARHOUND.get(stat)
+        for value in sorted({low, high}):
+            if value <= 0.0 or (bound is not None and value > bound):
+                most = f" and at most {bound:g}" if bound is not None else ""
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0{most}: at nought the Warhound gets "
+                    f"nothing from the row.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11303,6 +11407,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE FIVE GROUND POUND STATS ARE FLAT, WITH NO TAGS AND NO ACTION, AND
     # ABOVE 0. Ruled 2026-10-17 (#5) and 2026-10-18.
     problems.extend(refuse_a_ground_pound_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FOUR WARHOUND STATS ARE FLAT, WITH NO TAGS AND NO ACTION, AND
+    # ABOVE 0. Ruled 2026-10-17 (#6) and 2026-10-18.
+    problems.extend(refuse_a_warhound_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

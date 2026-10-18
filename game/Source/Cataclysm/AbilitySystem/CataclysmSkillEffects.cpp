@@ -33,6 +33,8 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSilence.h"
+// A taunt is crowd control, as a silence is. Warlord's Will's six-piece, ruled 2026-10-18 (B).
+#include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
@@ -3153,7 +3155,10 @@ bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
 		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
 		|| UCataclysmTeams::IsMaddened(Actor)
 		|| UCataclysmFear::IsFeared(Actor)
-		|| UCataclysmSilence::IsSilenced(Actor);
+		|| UCataclysmSilence::IsSilenced(Actor)
+		// AND A TAUNT, WHILE IT LASTS, ruled 2026-10-18 (B) for Warlord's Will's six-piece: "a taunted creature
+		// answers yes to IsCrowdControlled while the taunt lasts".
+		|| UCataclysmTaunt::IsTaunted(Actor);
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()

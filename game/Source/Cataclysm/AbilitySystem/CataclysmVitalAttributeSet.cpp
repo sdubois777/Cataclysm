@@ -2815,6 +2815,8 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	UCataclysmSummonSkill* MadeBy = AsMinion ? AsMinion->SummonedBy.Get() : nullptr;
 	// AND WHETHER IT WAS A TYRANT'S MINION, for the summon and the replacement below. Ruled 2026-10-18.
 	const bool bWasTyrantsMinion = AsMinion && AsMinion->bIsTyrantsMinion;
+	// AND WHETHER IT WAS A WARHOUND, for the replacement below. Ruled 2026-10-18 (Warlord's Will's six-piece, Q3).
+	const bool bWasWarhound = AsMinion && AsMinion->bIsWarhound;
 
 	// AND SHARED RUIN'S BLAST, ALSO BEFORE THE DEATH IS HANDLED. Issue #1515.
 	// The dying creature deals it and its maximum health sets it, and an
@@ -2847,9 +2849,12 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	{
 		ACataclysmMinion::SummonTyrantsMinion(Commander, bWasTyrantsMinion, Where);
 	}
+	// AND NEITHER FOR A WARHOUND, ruled 2026-10-18 (Q3), for the Tyrant's Minion's reason: Warlord's Will's six-piece
+	// summons it, no skill does, and it is never replaced or re-summoned. A Warhound's death is still a minion's death
+	// above, so Shared Ruin's blast and Tyrant's Chains' summon answer it.
 	if (Commander && !bWasTyrantsMinion)
 	{
-		if (!UCataclysmSummonSkill::ReplaceLost(Commander, Character, Where, bExplodes))
+		if (!bWasWarhound && !UCataclysmSummonSkill::ReplaceLost(Commander, Character, Where, bExplodes))
 		{
 			UCataclysmSummonSkill::ScheduleResummon(Commander, MadeBy);
 		}

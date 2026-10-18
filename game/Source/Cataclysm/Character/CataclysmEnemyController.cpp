@@ -10,6 +10,8 @@
 // For the target a gadget takes when its summoner's row says the most health. Ruled 2026-10-13.
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the creature a taunt sends this one at. Warlord's Will's six-piece, ruled 2026-10-17 and 2026-10-18.
+#include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -192,6 +194,17 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	if (!Driven)
 	{
 		return nullptr;
+	}
+
+	// A TAUNTED CREATURE TARGETS ONLY ITS TAUNTER, FOR THE TAUNT'S SECONDS, AND IT IS ASKED FIRST FOR THAT REASON.
+	// Ruled 2026-10-17 by the project owner (#6) for Warlord's Will's six-piece, and 2026-10-18 (Q1): "the taunted
+	// enemy targets only its taunter for the taunt's seconds, and the taunt ends at once if the taunter dies or goes".
+	// WHEREVER THE TAUNTER STANDS, as an order is obeyed below, and before the order, the gadget's choice and the draw
+	// of Behind the Veil, each of which a taunt outranks. `UCataclysmTaunt::TaunterOf` answers null for every creature
+	// nothing taunts, and for one whose taunt has ended, and the lines below then run exactly as before.
+	if (AActor* Taunter = UCataclysmTaunt::TaunterOf(Driven))
+	{
+		return Taunter;
 	}
 
 	// AN ORDER OUTRANKS WHATEVER IS NEAREST, AND IT IS ASKED FIRST FOR THAT
