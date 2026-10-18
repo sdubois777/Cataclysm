@@ -187,34 +187,91 @@ than read; a basic attack tagged `Type.Spell`; two worn copies of the rows; anyt
 ### GUARD PROOFS PROPOSED
 
 Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, and each new text
-counted absent before the break. Each break keeps the file's round, curly and square brackets paired (2803, 947 and 31 pairs before and after each, counted by the same script with comments and strings removed) and compiles alone by reading: S-I adds a
-`!` to a call already made; S-II adds `&& !bBasicAttack`, the function's own parameter, in scope. The failed assertions
+counted absent before the break. Each break keeps the file's round, curly and square brackets paired (2803, 947 and 31 pairs before and after each, counted by the same script with comments and strings removed) and compiles alone by reading: SB-I adds a
+`!` to a call already made; SB-II adds `&& !bBasicAttack`, the function's own parameter, in scope. The failed assertions
 are counted by reading. The prefix is `Cataclysm.SetBonus.Spellblade6.`, with its trailing dot, four tests.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| S-I, the event for every use but a melee one (R1) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && !SkillTags->HasTag(Melee))` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger` |
-| S-II, the basic attack left out (R1, "the basic attack included") | the same file | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && SkillTags->HasTag(Melee) && !bBasicAttack)` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | none |
+| SB-I, the event for every use but a melee one (R1) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && !SkillTags->HasTag(Melee))` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger` |
+| SB-II, the basic attack left out (R1, "the basic attack included") | the same file | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && SkillTags->HasTag(Melee) && !bBasicAttack)` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | none |
 
-S-I and S-II share one anchor and are two separate runs.
+SB-I and SB-II share one anchor and are two separate runs.
 
 Failed assertions, by reading:
 
-- **S-I, 10 in 2 tests.** Test 3, 9: "gives one stack" and "0.9", "a second stack" and "0.8", "five stacks" and "0.5",
+- **SB-I, 10 in 2 tests.** Test 3, 9: "gives one stack" and "0.9", "a second stack" and "0.8", "five stacks" and "0.5",
   "a sixth leaves five" and "still 0.5", and "4.9 s after, five stacks"; the melee skill's cost, "none" and "what it
   states again" pass. Test 4, 1: its first control, after which it returns. The Dervish tests pass.
-- **S-II, 4 in 1 test.** Test 3: "a melee basic attack gives a second stack" (one is held) and "0.8" (0.9), then, four
+- **SB-II, 4 in 1 test.** Test 3: "a melee basic attack gives a second stack" (one is held) and "0.8" (0.9), then, four
   stacks after the three more, "five melee uses give five" and "0.5" (0.6); the sixth makes five, so the rest pass.
 
-**Tests of another group expected to fail, to check in the window:** under S-I, the changed merged test
+**Tests of another group expected to fail, to check in the window:** under SB-I, the changed merged test
 `Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`, 3: Living
 Pyre's and Blood Pyre's lists gain `melee_attack_use` (neither is melee) and the melee basic attack's loses it. Under
-S-II, the same test, 1: the melee basic attack's list. And under S-II the Python check
+SB-II, the same test, 1: the melee basic attack's list. And under SB-II the Python check
 `test_the_engine_raises_the_event_for_a_melee_use_after_attack_use` fails, which no Unreal proof run reads.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-ws, on development e27f7c50f (the Null Emperor
+10-piece's merge), for four layers in this order: Warlord's Will 10's mechanism, Spellblade's Will 6's mechanism,
+Warlord's rows with its real-row test and Spellblade's rows with its real-row test. One window served both sets. The
+suite and Python were run at the top of the four, which holds all of them. Every step was as registered.
+
+**THE WINDOW RAN AS TWO SCRIPTS, BOTH UNDER THE ONE LOCK.** The first script was made by splitting the previous
+window's script on a line that occurs in it twice, so it held only the old-asset run and the asset rebuild, and it
+ended after the rebuild's push with exit 0. Nothing was built or changed between the two scripts: the second ran
+the whole suite, Python and the proofs, as registered, on the pushed asset commit, after checking that it was HEAD
+and that the worktree was clean.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled"; "346 tests
+  performed, 344 succeeded, 2 failed: TheWornSpellbladesWillSixPieceGivesSpellslingerAndDervish,
+  TheWornWarlordsWillTenPieceGivesAMovementUseHalfAgainDamage", with exactly 3 failed assertions in the run, each
+  checked by its text: "with ten pieces worn and two creatures 2 m off, a movement use makes attack damage 1.8 times";
+  "with six pieces worn, a melee use makes a spell's mana cost 0.9 times (Spellslinger)"; "and a spell raises melee
+  attack speed (Dervish)". The controls, wearing one piece fewer, and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` (the two reworded
+  sentences) and `datatable_asset_sources.json` changed, committed on the row layers as "Rebuild the enchantment
+  DataTable assets for Warlord's Will 10 and Spellblade's Will 6".
+- **The whole Unreal suite:** "3844 tests performed, 3844 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3844 tests in the tree at fb6eadc53; 3844 performed, gap 0". Registered 3844 and 0: the 3834 measured on
+  e27f7c50f, the four of `Cataclysm.SetBonus.Warlord10.`, the four of `Cataclysm.SetBonus.Spellblade6.` and the two
+  real-row tests.
+- **Python:** "6535 passed, 8 skipped"; JUnit tests 6543, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run, from 00:25:54 to 01:14:54, and would have ended the editor and released
+  the lock after 20 minutes with no test completed. It did not fire.
+
+**The real-row test wears six pieces, and its control five**, each carrying the 6-piece and the set's drawback. A
+melee use and a spell are each raised as the events play raises; the spell's mana cost is read through
+`StatAppliedTo` with `Type.Spell`, as `ManaCostFor` reads it, and is 0.9 times after one stack of Spellslinger; melee
+attack speed, read through `StatForSkill` with `Type.Melee`, rises after one stack of Dervish.
+
+**THE SENTENCE WAS REWORDED IN THE ROW LAYER, ruled 2026-10-18 by the coordinating session under the owner's reword
+delegation.** Spellslinger's clause now reads "which makes your spells cost 10% less mana per stack". The row is in
+the `more` bucket (R1), and the check that a `more` row's sentence says more, less or the like
+(`test_a_more_row_is_worded_as_a_multiplier`) refused "reduces the mana cost of your spells by 10% per stack", which
+is a word of the `increased` bucket. The change falls after the first 48 characters, so the row name is unchanged.
+The two older quotations of the sentence in this log, both in entries of 2026-10-06, keep the words they recorded.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Spellblade6.`, 4 tests.** The
+stop condition for each was the set of tests that fail with the break in, by the beginnings of their names. The
+failed assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every
+file's hash was the same after its proof. The two proofs are named SB-I and SB-II here, renamed from S-I and S-II
+above, so they are not confused with enemy silence's.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| SB-I | the event for every use but a melee one | 2 failed, `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` and `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger` | 10 / 10 | 4 of 4 succeeded |
+| SB-II | the basic attack left out | 1 failed, `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | 4 / 4 | 4 of 4 succeeded |
+
+The measured lines include, under SB-I, "a melee strike's use gives one stack of Spellslinger ... to be 1, but it
+was 0" and "and the spell costs a tenth less ... to be 0.900000, but it was 1.000000"; under SB-II, "a melee basic
+attack gives a second stack ... to be 2, but it was 1".
+
+**Not measured:** the failures SB-I and SB-II cause in other groups (the changed merged test in
+`Cataclysm.HealingSkillUse.`), the Python check named above, and the real-row test's failure under either break,
+because the proofs ran only this prefix.
 
 ---
 
@@ -499,7 +556,56 @@ Failed assertions, by reading:
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-ws, on development e27f7c50f (the Null Emperor
+10-piece's merge), for four layers in this order: Warlord's Will 10's mechanism, Spellblade's Will 6's mechanism,
+Warlord's rows with its real-row test and Spellblade's rows with its real-row test. One window served both sets. The
+suite and Python were run at the top of the four, which holds all of them. Every step was as registered.
+
+**THE WINDOW RAN AS TWO SCRIPTS, BOTH UNDER THE ONE LOCK.** The first script was made by splitting the previous
+window's script on a line that occurs in it twice, so it held only the old-asset run and the asset rebuild, and it
+ended after the rebuild's push with exit 0. Nothing was built or changed between the two scripts: the second ran
+the whole suite, Python and the proofs, as registered, on the pushed asset commit, after checking that it was HEAD
+and that the worktree was clean.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled"; "346 tests
+  performed, 344 succeeded, 2 failed: TheWornSpellbladesWillSixPieceGivesSpellslingerAndDervish,
+  TheWornWarlordsWillTenPieceGivesAMovementUseHalfAgainDamage", with exactly 3 failed assertions in the run, each
+  checked by its text: "with ten pieces worn and two creatures 2 m off, a movement use makes attack damage 1.8 times";
+  "with six pieces worn, a melee use makes a spell's mana cost 0.9 times (Spellslinger)"; "and a spell raises melee
+  attack speed (Dervish)". The controls, wearing one piece fewer, and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` (the two reworded
+  sentences) and `datatable_asset_sources.json` changed, committed on the row layers as "Rebuild the enchantment
+  DataTable assets for Warlord's Will 10 and Spellblade's Will 6".
+- **The whole Unreal suite:** "3844 tests performed, 3844 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3844 tests in the tree at fb6eadc53; 3844 performed, gap 0". Registered 3844 and 0: the 3834 measured on
+  e27f7c50f, the four of `Cataclysm.SetBonus.Warlord10.`, the four of `Cataclysm.SetBonus.Spellblade6.` and the two
+  real-row tests.
+- **Python:** "6535 passed, 8 skipped"; JUnit tests 6543, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run, from 00:25:54 to 01:14:54, and would have ended the editor and released
+  the lock after 20 minutes with no test completed. It did not fire.
+
+**The real-row test wears ten pieces, and its control nine**, each carrying the 10-piece and the set's drawback, and
+uses a movement ability through `NoteMovementSkillUsed`, the call play makes. The test's striker stands two monsters
+2 m off, inside the 8 m, so the case's attack damage is 1.5 times 1.2, 1.8 times: the window's 50% more and two
+steps of the enemy count's 10% more. The sentence now ends "10% more damage for each enemy within 8 meters, up to 5",
+as ruled.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Warlord10.`, 4 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Every anchor was counted once, and every file's
+hash was the same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| W-I | the enemies count outside the window | 1 failed, `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | 1 / 1 | 4 of 4 succeeded |
+| W-II | nothing walks the level for the scale | 1 failed, `TheDamageRisesTenPercentMorePerEnemyWithinEightMetresAndStopsAtFive` | 7 / 7 | 4 of 4 succeeded |
+| W-III | the loader states no reach | 2 failed, that test and `TheRowsBecomeThreeWindowGrantsAndTwoEnemyCountsReadingTheDamageWindows` | 11 / 11 | 4 of 4 succeeded |
+
+The measured lines include, under W-I, "5.1 s after the use, with six near, attack damage is its base again ... to
+be 1.000000, but it was 1.500000"; under W-II, "with 5 near and the one at 9 m, 2.25 times ... but it was 1.500000";
+under W-III, "attack_damage: the enemy count reaches 8 m, the loader's ... to be 8.000000, but it was -1.000000".
+
+**Not measured:** the real-row test's failure under any break, because the proofs ran only this prefix.
 
 ---
 
