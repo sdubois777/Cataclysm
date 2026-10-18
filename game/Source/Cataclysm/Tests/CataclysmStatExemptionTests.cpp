@@ -5089,6 +5089,81 @@ namespace CataclysmStatExemptionTest
 			BlowFrom(Ballista) / BallistaBefore, 1.0f, 0.001f);
 	}
 
+	/**
+	 * `mana_cost`, scaled by the row's own stacks, asked by `UCataclysmGameplayAbility::ManaCostFor` through
+	 * `StatAppliedTo` with the skill's tags. Ruled 2026-10-17 (R1) for Spellslinger, Spellblade's Will's six-piece
+	 * bonus: "reduces the mana cost of your spells by 10% per stack", a `more` of -10 scoped `Type.Spell`.
+	 *
+	 * TWO CASTERS, ONE HOLDING A STACK AND ONE NOT, each with the same spell, so the second's cost is read against the
+	 * first's. The stack is granted directly, as the skill-lock probe grants its own, because what this measures is
+	 * whether the cost asks for the stat and not how a melee attack earns the stack.
+	 */
+	void ProbeScaledManaCost(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:mana_cost"));
+		const auto Prepare = [&Key](FScopedSwinger& Caster)
+		{
+			FCataclysmStatModifier Cheaper;
+			Cheaper.Bucket = ECataclysmStatBucket::More;
+			Cheaper.Source = ECataclysmModifierSource::Enchantment;
+			Cheaper.Value = -10.0f;
+			Cheaper.Scale = ECataclysmStatScale::PerOwnStack;
+			Cheaper.ScaleStep = 1.0f;
+			Cheaper.ScaleMaxSteps = 5;
+			Cheaper.StackKey = Key;
+			Cheaper.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Spell")),
+																		/*ErrorIfNotFound=*/false));
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmSkillSlots::ManaCostStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Cheaper};
+			Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmSelfBuffSkill::StaticClass(), ECataclysmAbilitySlot::Support,
+				/*Level=*/1, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmSelfBuffSkill* Skill =
+				Spec ? Cast<UCataclysmSelfBuffSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->SkillName = TEXT("A probe's spell");
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Duration=6"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Spell, Slot.Support"));
+				Skill->ManaCostOverride = 40.0f;
+			}
+			return Skill;
+		};
+
+		FScopedSwinger Clean(World, FVector::ZeroVector);
+		FScopedSwinger Stacked(World, FVector(0, 100 * M, 0));
+		UCataclysmSelfBuffSkill* CleanSkill = Prepare(Clean);
+		UCataclysmSelfBuffSkill* StackedSkill = Prepare(Stacked);
+		if (!Test.TestNotNull(TEXT("mana_cost: a spell for the caster with no stack"), CleanSkill)
+			|| !Test.TestNotNull(TEXT("mana_cost: and for the caster holding one"), StackedSkill))
+		{
+			return;
+		}
+		const float Plain = CleanSkill->ManaCostFor(Clean.AbilitySystem);
+		// THE CONTROL FIRST, so the fall below is the stack's and not a cost that was nothing.
+		if (!Test.TestTrue(TEXT("mana_cost: control, the spell costs something with no stack"), Plain > 0.0f))
+		{
+			return;
+		}
+		Stacked.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/5.0f, /*Cap=*/5);
+		Test.TestEqual(TEXT("mana_cost is asked for, so one stack held makes the same spell cost a tenth less: "
+							"UCataclysmGameplayAbility::ManaCostFor really reads it"),
+			StackedSkill->ManaCostFor(Stacked.AbilitySystem) / Plain, 0.9f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5119,6 +5194,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
 			{TEXT("energy_shield_leech"),        &ProbeScaledEnergyShieldLeech},
 			{TEXT("minion_damage"),              &ProbeScaledMinionDamage},
+			{TEXT("mana_cost"),                  &ProbeScaledManaCost},
 		};
 		return Made;
 	}

@@ -1,4 +1,4 @@
-"""The row shape of Dervish, half of Spellblade's Will's six-piece bonus, through the generator.
+"""The row shapes of Spellblade's Will's six-piece bonus, Dervish and Spellslinger, through the generator.
 
 "Spellblade's Will (6-Piece Bonus): When you use a melee attack, you gain a stack
 of Spellslinger which reduces the mana cost of your spells by 10% per stack, and
@@ -8,8 +8,12 @@ speed for melee attacks by 10% per stack"
 Ruled 2026-10-06: 5 stacks lasting 5 s, and "Dervish raises every swing", so the
 attack speed is read with no tags. DERVISH IS ONE ROW AND NEEDS NO GAME CHANGE:
 `attack_speed`, increased 10, scaled by its own stacks, granted on `spell`, the
-event a paid use of a skill tagged `Type.Spell` raises. Spellslinger is not built;
-see the decisions-log entry of 2026-10-17 for this bonus.
+event a paid use of a skill tagged `Type.Spell` raises.
+
+SPELLSLINGER, ruled 2026-10-17 (R1): `mana_cost`, more -10, Required Tags
+`Type.Spell`, scaled by its own stacks, granted on `melee_attack_use`, the new
+event a paid use tagged `Type.Melee` raises, the basic attack included; five
+stacks lasting 5 s. `mana_cost` joined `STATS_WITH_AN_ASKER` for it.
 
 THE ENCHANTMENT SESSION AUTHORS THE ROWS; THIS FILE AUTHORS NOTHING. It builds a
 made-up workbook holding the sentence typed Generic, so the set rule (a set
@@ -107,3 +111,75 @@ def test_the_row_with_no_cap_or_no_seconds_is_refused(tmp_path):
         effects(tmp_path, dict(DERVISH_ROW, **{"Scale Max Steps": None}))
     with pytest.raises(gen.DataError, match="no Stack Seconds"):
         effects(tmp_path, dict(DERVISH_ROW, **{"Stack Seconds": None}))
+
+
+#: The Spellslinger row, cell by cell, as the enchantment session is to write it.
+SPELLSLINGER_ROW = {"Enchantment": NAME, "Effect": WORDS, "Stat": "mana_cost",
+                    "Value Kind": "more", "Value Low": -10, "Value High": -10,
+                    "Required Tags": "Type.Spell", "Scale": "own_stacks",
+                    "Scale Step": 1, "Action Event": "melee_attack_use",
+                    "Scale Max Steps": 5, "Stack Seconds": 5}
+
+
+def test_the_spellslinger_row_is_carried_through_and_nothing_refuses_it(tmp_path):
+    out = effects(tmp_path, SPELLSLINGER_ROW, DERVISH_ROW)
+    assert [(row["Stat"], row["ValueKind"], row["ValueLow"], row["ValueHigh"],
+             row["RequiredTags"], row["Scale"], row["ActionEvent"],
+             row["ScaleMaxSteps"], row["StackSeconds"], row["TriggerCooldown"])
+            for row in out] == [
+        ("mana_cost", "more", -10.0, -10.0, "Type.Spell", "own_stacks",
+         "melee_attack_use", 5, 5.0, 0.0),
+        ("attack_speed", "increased", 10.0, 10.0, "", "own_stacks", "spell", 5,
+         5.0, 0.0)]
+    assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+    assert gen.refuse_a_condition_nothing_asks_for(
+        "EnchantmentEffects", out) == []
+
+
+def test_mana_cost_is_now_a_stat_something_asks_for():
+    """THE CONTROL is the same row on a stat nothing asks for, which the scale
+    check still refuses."""
+    assert "mana_cost" in gen.STATS_WITH_AN_ASKER
+    row = {"Name": "A#1", "Stat": "mana_cost", "Scale": "own_stacks"}
+    assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [row]) == []
+    unasked = dict(row, Stat="an_invented_stat")
+    assert len(gen.refuse_a_scale_nothing_asks_for(
+        "EnchantmentEffects", [unasked])) == 1
+
+
+def test_melee_attack_use_is_an_event_with_no_clock_and_on_no_narrower_list():
+    event = "melee_attack_use"
+    assert event in gen.ACTION_ONLY_EVENTS
+    assert event in gen.action_events()
+    assert event in gen.granting_events()
+    assert "seconds_after_" + event not in gen.CONDITIONS
+    assert event not in gen.HIT_FIRED_EVENTS
+    assert event not in gen.EVENTS_WITH_AN_AMOUNT
+    assert event not in gen.STRIKE_TARGET_EVENTS
+    assert event not in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK
+    assert event not in gen.CONSECUTIVE_HIT_EVENTS
+    assert gen.REPEAT_SKILL_EVENTS == ("skill_use", "attack_use")
+
+
+def test_the_engine_raises_the_event_for_a_melee_use_after_attack_use():
+    """Read from the C++, the file `test_pool_action_names_match_the_engine.py`
+    reads. THE CONTROL is `attack_use`, raised just before it."""
+    source = (ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+              / "CataclysmAbilitySystemComponent.cpp").read_text(encoding="utf-8")
+    attack = source.index('ActOnEvent(FName(TEXT("attack_use")), SkillTags);')
+    melee = source.index('ActOnEvent(FName(TEXT("melee_attack_use")), SkillTags);')
+    assert attack < melee
+    between = source[attack:melee]
+    assert 'TEXT("Type.Melee")' in between
+    assert "bBasicAttack" not in between, (
+        "the event must be raised for the basic attack too, as ruled 2026-10-17")
+
+
+def test_the_row_on_attack_use_would_be_accepted_and_is_not_the_row(tmp_path):
+    """Why the event exists: the generator accepts the row on `attack_use`,
+    where every paid use, spells included, would grant it. The row to write
+    names `melee_attack_use`."""
+    out = effects(tmp_path, dict(SPELLSLINGER_ROW,
+                                 **{"Action Event": "attack_use"}))
+    assert out[0]["ActionEvent"] == "attack_use"
+    assert SPELLSLINGER_ROW["Action Event"] == "melee_attack_use"

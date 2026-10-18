@@ -7334,9 +7334,12 @@ bool FCataclysmHealingSkillUseOtherEventsTest::RunTest(const FString&)
 	TestEqual(TEXT("and a row on each grants once more"), Counts(),
 		FString(TEXT("skill_use 3, attack_use 3, healing_skill_use 1")));
 
-	// THE BASIC ATTACK RAISES `attack_use` ALONE, as ruled 2026-09-14 and 2026-10-06.
-	TestEqual(TEXT("the basic attack raises attack_use and nothing else"),
-		EventsAsText(Holder.Use(&Strike, /*bBasicAttack=*/true)), FString(TEXT("attack_use")));
+	// THE BASIC ATTACK RAISES NO SKILL EVENT, as ruled 2026-09-14 and 2026-10-06: not `skill_use` and not
+	// `healing_skill_use`. Handed the strike's `Type.Melee`, it raises the two ATTACK events, `attack_use` and then
+	// `melee_attack_use`, the second ruled 2026-10-17 (R1) for Spellblade's Will's six-piece bonus. No row here hangs
+	// on `melee_attack_use`, so the counts below do not move.
+	TestEqual(TEXT("a melee basic attack raises attack_use, then melee_attack_use, and no skill event"),
+		EventsAsText(Holder.Use(&Strike, /*bBasicAttack=*/true)), FString(TEXT("attack_use, melee_attack_use")));
 	TestEqual(TEXT("and only the row on attack_use grants"), Counts(),
 		FString(TEXT("skill_use 3, attack_use 4, healing_skill_use 1")));
 

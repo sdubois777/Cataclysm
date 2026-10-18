@@ -5791,6 +5791,21 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 		}
 	}
 	ActOnEvent(FName(TEXT("attack_use")), SkillTags);
+
+	// AND `melee_attack_use`, ONLY FOR A USE WHOSE TAGS HOLD `Type.Melee`, THE BASIC ATTACK INCLUDED. Ruled 2026-10-17
+	// (R1) for Spellblade's Will's six-piece bonus, "When you use a melee attack, you gain a stack of Spellslinger": the
+	// 2026-10-06 ruling reads "melee attacks" as every paid use that is melee, the basic attack included. A row scaled by
+	// its own stacks is granted on every event of its name whatever tags it requires, so such a row on `attack_use` would
+	// be granted by every paid use, spells included; the event is what narrows the grant, as `healing_skill_use` narrows
+	// `skill_use` above. AN ATTACK EVENT AND NOT A SKILL EVENT, so the 2026-09-14 ruling still holds: a basic attack
+	// raises no skill event. Raised after `attack_use` has returned, so it is acted on at the same depth, with the skill
+	// in hand still noted. A use with no tags raises nothing.
+	const FGameplayTag Melee = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+	if (SkillTags && SkillTags->HasTag(Melee))
+	{
+		ActOnEvent(FName(TEXT("melee_attack_use")), SkillTags);
+	}
 	SkillInHandName = NAME_None;
 }
 
