@@ -5913,6 +5913,15 @@ ACTION_ONLY_EVENTS = (
     # Bonus): When an enemy dies while affected by a DoT from you". Raised in
     # `UCataclysmContagion::AnnounceAfflictedDeath`.
     "afflicted_death",
+    # A PAID USE WHOSE TAGS HOLD `Type.Melee`, THE BASIC ATTACK INCLUDED, raised
+    # by `UCataclysmAbilitySystemComponent::ActOnSkillUse` after `attack_use`.
+    # Ruled 2026-10-17 (R1) for Spellblade's Will's six-piece bonus, "When you
+    # use a melee attack, you gain a stack of Spellslinger": an own stack is
+    # granted on every event of its name whatever Required Tags it states, so
+    # such a row on `attack_use` would be granted by spells too. An attack event
+    # and not a skill event. NOT IN `REPEAT_SKILL_EVENTS`: a row that repeats a
+    # melee use already names `attack_use` with `Type.Melee`.
+    "melee_attack_use",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -8597,6 +8606,13 @@ STATS_WITH_AN_ASKER = frozenset({
     # measures it on a trap's blow with the scale and the offset the first of
     # those rows carries.
     "minion_damage",
+    # ADDED 2026-10-17 FOR SPELLSLINGER, Spellblade's Will's six-piece bonus,
+    # "reduces the mana cost of your spells by 10% per stack", a row scaled by
+    # its own stacks; ruled that day (R1). `UCataclysmGameplayAbility::ManaCostFor`
+    # asks it through `StatAppliedTo` with the skill's tags for every cost the
+    # game reads; `ProbeScaledManaCost` measures that with the scale the row
+    # carries.
+    "mana_cost",
 })
 
 

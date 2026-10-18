@@ -636,6 +636,11 @@ public:
 	 * AND THE `healing_skill_use` EVENT, RAISED BETWEEN THE TWO, only when `SkillTags` holds a tag under
 	 * `Stat.Recovery`. Ruled 2026-10-10, for "Using a healing skill grants 10%-20% increased damage for 5 seconds".
 	 * It follows `skill_use`: not raised for the basic attack, and not raised when `SkillTags` is null.
+	 *
+	 * AND THE `melee_attack_use` EVENT, RAISED AFTER `attack_use`, only when `SkillTags` holds `Type.Melee`, THE BASIC
+	 * ATTACK INCLUDED: an attack event, as `attack_use` is, and not a skill event. Ruled 2026-10-17 for Spellblade's
+	 * Will's six-piece bonus, "When you use a melee attack, you gain a stack of Spellslinger". Not raised when
+	 * `SkillTags` is null.
 	 */
 	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim,
 					   bool bBasicAttack = false, bool bHasCooldown = false);

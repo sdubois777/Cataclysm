@@ -2,6 +2,222 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-17 — Spellblade's Will's six-piece bonus: a melee use, the basic attack included, raises an attack event of its own, so Spellslinger is a row on it and Dervish a row on the event a spell raises; mana cost joins the stats a scaled row may name, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (one block in
+`UCataclysmAbilitySystemComponent::ActOnSkillUse`) and `.h` (that function's comment);
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (one merged assertion changed, with its comment);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (the probe `ProbeScaledManaCost` and its line in
+`ScaledProbes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusSpellbladeSixTests.cpp` (new, four tests);
+`tools/generate_datatables.py` (`melee_attack_use` on `ACTION_ONLY_EVENTS`, `mana_cost` on `STATS_WITH_AN_ASKER`);
+`tools/tests/test_spellblade_six_piece_rows.py` (new). No data row, no tag and no workbook cell is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE TWO ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A six-piece bonus is live only with six pieces worn.
+- **A MELEE ATTACK IS EVERY PAID USE TAGGED `Type.Melee`, THE BASIC ATTACK INCLUDED.** Each gives one stack of
+  Spellslinger, at most five; all of them end 5 seconds after the last melee use, since a new stack refreshes the time
+  of every stack held (`GrantOwnStack`). A ranged basic attack, a spell and a use with no tags give none.
+- **EACH STACK OF SPELLSLINGER CUTS THE MANA COST OF A SPELL BY A TENTH**: five halve it. A "more" of -10 a stack is one
+  figure of -10 times the stacks, so the cuts add rather than compound. A skill not tagged `Type.Spell` costs what it
+  did.
+- **A SPELL IS A PAID USE OF A SKILL TAGGED `Type.Spell`**, which `UCataclysmSkillTemplate::CommitAndBegin` announces as
+  the event `spell`. Each gives one stack of Dervish, at most five, each 10% increased attack speed, all ending 5
+  seconds after the last spell. Nine rows of `game/Data/WeaponSkills.csv` carry the tag today (counted), all of them
+  Demonic Wand and Staff skills on 2026-10-06 (the entry of that day "A row can trigger a different held skill"); **a
+  melee character holds none, so for the character the set is for, Dervish is granted by nothing and Spellslinger lowers
+  no cost**, as that entry already said. A basic attack whose tags carry `Type.Spell` would count as a spell, since the
+  event is raised in the block every paid use passes. Read, not tested.
+- **"FOR MELEE ATTACKS" IS NOT A SCOPE ON DERVISH**: ruled, "Dervish raises every swing". Attack speed is read in one
+  place in the game, the basic attack's swing interval (`UCataclysmBasicAttack::SecondsBetweenSwingsFor`, asked with no
+  tags), found by a search of the game code for the stat's name; so Dervish makes the basic attack swing faster, a
+  ranged one included, and changes no skill.
+- **EVERY MELEE USE NOW ANNOUNCES ONE EVENT MORE.** `ActOnEvent` broadcasts `OnActionEvent` for every event, and the
+  player character asks again for its movement speed when it hears one and its speed has a row that can change
+  unannounced. A character with no row on `melee_attack_use` is otherwise unchanged.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 42 and the coordinating session's rulings on
+  its report.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner decided on 2026-10-06 that "your spells" are the spells the character runs, as recorded in the entry of that
+day "A row can roll for a use to hit its own user instead of any enemy" ("The owner decided on 2026-10-06 that 'your
+spells' are the spells the character is running; with none, the bonus does nothing"); those are that entry's words and
+not the owner's. The rulings of 2026-10-06, each a labelled judgement by the coordinating session under the owner's
+delegation, as the entry "A row can trigger a different held skill" records them:
+
+> - **Spellslinger and Dervish: 5 stacks lasting 5 s**, as already recorded (the table row "Spellslinger and Dervish
+>   (P354)"). **Dervish raises every swing**: the attack speed read stays without tags.
+
+And what "melee attacks" means, as the entry "The first row that repeats a skill" reads that day's ruling:
+
+> - **"Melee attacks" is every paid use that is melee, the basic attack included**, by the 2026-10-06 ruling that made
+>   `attack_use`.
+
+The coordinating session's rulings of 2026-10-17, its words: "#2 Spellblade's Will 6: as ruled 2026-10-06"; and, on
+this layer's first report, which stopped on Spellslinger because the smallest way to build it changed a merged
+assertion, **R1 (a)**: "build the new attack event melee_attack_use, raised in ActOnSkillUse after attack_use for a
+Type.Melee use, THE BASIC ATTACK INCLUDED, as the 2026-10-06 ruling requires", "Change the merged assertion ... to expect
+'attack_use, melee_attack_use' for a Type.Melee basic attack. Its comment must say the 2026-09-14 point still holds: a
+basic attack raises no SKILL event, and melee_attack_use is an attack event", "mana_cost joins STATS_WITH_AN_ASKER with
+a ProbeScaledManaCost probe", and "Build Spellslinger as you proposed: mana_cost more -10, Required Tags Type.Spell,
+own_stacks on melee_attack_use, cap 5, 5 s".
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| R1 | The event `melee_attack_use`, after `attack_use`, for a `Type.Melee` use, the basic attack included. | `UCataclysmAbilitySystemComponent::ActOnSkillUse`, `CataclysmAbilitySystemComponent.cpp` 5803 to 5808, outside the branch the basic attack skips; the name on `ACTION_ONLY_EVENTS`, `generate_datatables.py` 5924. |
+| R1 | The merged assertion now expects "attack_use, melee_attack_use"; the 2026-09-14 point still holds. | `Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`, `CataclysmEnchantmentEffectTests.cpp` 7337 to 7344. |
+| R1 | `mana_cost` joins `STATS_WITH_AN_ASKER`, with a probe. | `generate_datatables.py` 8615; `ProbeScaledManaCost`, `CataclysmStatExemptionTests.cpp` 5101, in `ScaledProbes` at 5197. The asker: `UCataclysmGameplayAbility::ManaCostFor` (`StatAppliedTo` with the skill's tags, `CataclysmGameplayAbility.cpp` 337). |
+| R1 | Spellslinger: `mana_cost` more -10, `Type.Spell`, own stacks on `melee_attack_use`, cap 5, 5 s. | The row; nothing else. |
+| 2026-10-06 | Dervish: a stack on each spell; 5 stacks, 5 s; every swing. | The row on the event `spell`, raised by `NoteSpellCast` (`CataclysmAbilitySystemComponent.cpp` 3877) for a use tagged `Type.Spell` (`CataclysmSkillTemplate.cpp` 418); asked with no tags by `SecondsBetweenSwingsFor` (`CataclysmBasicAttack.cpp` 97). Unchanged. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE EVENT IS RAISED AFTER `attack_use`, AS RULED, AND BEFORE THE SKILL IN HAND IS CLEARED**, so a row on it reads
+  the same use. The option not taken: raising it before `attack_use`, which would change the order every row on
+  `attack_use` hears.
+- **`Type.Melee` IS ASKED BY NAME ON EACH USE, AND A NULL TAG POINTER RAISES NOTHING**, as `healing_skill_use` does. The
+  option not taken: a cached tag.
+- **NOT ON `REPEAT_SKILL_EVENTS`.** A row that repeats a melee use already names `attack_use` with `Type.Melee`.
+- **DERVISH IS GRANTED ON `spell`, NOT ON `skill_use`.** The 2026-10-06 entry wrote "granted on `skill_use` with grant
+  tags `Type.Spell`", which needs a grant-tags column that was never built. `spell` is raised for exactly the uses the
+  sentence names. The option not taken: that column.
+- **DERVISH IS INCREASED, NOT MORE**, as every merged attack speed row is (`EnchantmentEffects.csv` 29, 150 and 151).
+- **THE PROBE READS A SPELL'S COST THROUGH `ManaCostFor`** on two casters, one holding a stack granted by hand, as the
+  skill-lock probe does. The option not taken: reading `StatAppliedTo` directly, which would not show the cost asks.
+
+### THE GENRE SOURCE
+
+None. Every point was ruled, on 2026-10-06 and 2026-10-17, and brief 42 names no genre question for this bonus.
+
+### WHAT WAS BUILT
+
+- **The event**: one block in `ActOnSkillUse`, and its line in the function's comment.
+- **The generator**: `melee_attack_use` on `ACTION_ONLY_EVENTS`, so an own stack and an action row may name it;
+  `mana_cost` on `STATS_WITH_AN_ASKER`, so a row may scale it.
+- **The probe** that holds `mana_cost` to that list, in the Unreal test the list is checked against.
+- **The merged assertion**, changed as ruled.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Two rows on the Enchantment Effects sheet, each with Enchantment `Positive_Spellblade_s_Will_6_Piece_Bonus_When_you_use`
+and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High | Required Tags | Scale | Scale Step | Action Event | Scale Max Steps | Stack Seconds |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `mana_cost` | `more` | -10, -10 | `Type.Spell` | `own_stacks` | 1 | `melee_attack_use` | 5 | 5 |
+| `attack_speed` | `increased` | 10, 10 | empty | `own_stacks` | 1 | `spell` | 5 | 5 |
+
+Every other cell empty: no Condition, no Action, no Trigger Cooldown. Both pass the generator on a made-up sheet
+(`tools/tests/test_spellblade_six_piece_rows.py`). The set rule is met: the 2-piece and the drawback are merged.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **A MERGED ASSERTION IS CHANGED, AS RULED (R1).** In
+  `Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`,
+  `CataclysmEnchantmentEffectTests.cpp`, the line "the basic attack raises attack_use and nothing else", which expected
+  `attack_use`, is now "a melee basic attack raises attack_use, then melee_attack_use, and no skill event", expecting
+  `attack_use, melee_attack_use`. Its comment says the 2026-09-14 point still holds: a basic attack raises no skill
+  event. **The count line after it does not move**: it reads the stacks of the rows on `skill_use`, `attack_use` and
+  `healing_skill_use`, and no row there hangs on `melee_attack_use`, so it still reads
+  "skill_use 3, attack_use 4, healing_skill_use 1". No other merged test reads every event of a melee use: the eighteen
+  other listeners on `OnActionEvent` in the tests each count one named event, checked by reading.
+- **`STATS_WITH_AN_ASKER` GAINS `mana_cost`**, so `refuse_a_scale_nothing_asks_for` accepts a scaled row on it, which
+  it refused before. `tools/tests/test_every_scaled_stat_has_an_asker.py` holds the list equal to the probe table, which
+  gains `ProbeScaledManaCost`.
+- **The generator accepts `melee_attack_use`** as an event an own stack or an action row may name.
+  `tools/tests/test_pool_action_names_match_the_engine.py` reads the name on both sides and passes.
+
+### Tests
+
+Four Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusSpellbladeSixTests.cpp`, the group
+`Cataclysm.SetBonus.Spellblade6.`, with helpers of the file's own names. Each row is made up in the shape above, on the
+real non-set enchantment "Double your energy shield", and passed through `AccumulateEnchantmentsInto`. The wearer is an
+actor carrying all five attribute sets whose stat line holds the row alone. A melee use is `ActOnSkillUse` with a melee
+strike's tags (with `bBasicAttack` for a basic attack); a spell is `ActOnSkillUse` with a spell's tags followed by
+`NoteSpellCast`, the two calls a spell's use makes; a ranged basic attack is `ActOnSkillUse` with a shot's tags. Costs
+are read with `ManaCostFor` on two skills the wearer holds, each stating 40.
+
+1. `ASpellGivesAStackOfDervishAndEachRaisesTheSwingRateByATenthUpToFive`. In order: set-up, the row is one modifier and
+   one grant, a 10% increase a stack under a key with no tag, granted on `spell` under the same key, five stacks, five
+   seconds; control, the swing gap is a second; control, no stack is held; one spell gives one stack; and the gap is a
+   second over 1.1; five spells give five; and the gap is a second over 1.5; a sixth leaves five; and the gap is still
+   a second over 1.5; asked for a melee strike's tags attack speed is 1.5, the row has no scope; 4.9 s after the last
+   spell, five stacks; 5.1 s after, none; and the gap is a second again.
+2. `AMeleeAttackGivesNoStackOfDervish`. A stack made by hand on `attack_use` beside the row. In order: control, a spell
+   gives a stack; set-up, it runs out; control, a melee strike's use reached the rows; it gives no stack of Dervish;
+   control, a melee basic attack reached the rows; it gives none; and the swing gap is a second.
+3. `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth`. In order: set-up, the row
+   is one modifier and one grant, a "more" of -10 a stack under a key requiring `Type.Spell` alone, granted on
+   `melee_attack_use` under the same key, five stacks, five seconds; set-up, a spell and a melee skill; control, the
+   spell costs something; control, so does the melee skill; control, no stack is held; a melee strike's use gives one
+   stack; and the spell costs 0.9; a melee basic attack gives a second; and 0.8; five melee uses give five; and 0.5; a
+   sixth leaves five; and still 0.5; the melee skill's own cost is unchanged; 4.9 s after the last melee use, five
+   stacks; 5.1 s after, none; and the spell costs what it states again.
+4. `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger`. A stack made by hand on `attack_use` beside the row. In
+   order: control, a melee strike's use gives a stack; set-up, it runs out; control, the spell's use reached the rows;
+   it gives no stack of Spellslinger; control, the ranged basic attack reached the rows; it gives none.
+
+And one probe in `CataclysmStatExemptionTests.cpp`, `ProbeScaledManaCost`: two casters each holding a spell stating 40
+and the row's modifier made by hand; control, the spell costs something; with one stack granted it costs 0.9 of that.
+It runs once a shipped row scales `mana_cost`, which the Spellslinger row will.
+
+Python: `tools/tests/test_spellblade_six_piece_rows.py`, on a made-up workbook holding the sentence typed Generic: the
+row name is the shipped one; the Dervish row is carried through and refused by the scale and condition checks by
+nothing; `spell` is a clock's event, with a name with no clock as the control; Dervish on an event the game does not
+raise is refused; Dervish with no cap, or no Stack Seconds, is refused; the Spellslinger row beside it is carried
+through and refused by nothing; `mana_cost` is on the list of stats asked for, with an invented stat refused as the
+control; `melee_attack_use` is on `ACTION_ONLY_EVENTS` and on none of the narrower lists; the C++ raises it after
+`attack_use`, asking `Type.Melee`, with no basic-attack test between them; and the Spellslinger row on `attack_use`
+would be accepted, which is why its event is a new one.
+
+**Not tested:** the real rows worn at six pieces with a control at five (the enchantment session's real-row test); a
+real skill used through `CommitAndBegin` (every use here is handed to the rows by hand); a cost actually paid, rather
+than read; a basic attack tagged `Type.Spell`; two worn copies of the rows; anything drawn on a screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, and each new text
+counted absent before the break. Each break keeps the file's round, curly and square brackets paired (2803, 947 and 31 pairs before and after each, counted by the same script with comments and strings removed) and compiles alone by reading: S-I adds a
+`!` to a call already made; S-II adds `&& !bBasicAttack`, the function's own parameter, in scope. The failed assertions
+are counted by reading. The prefix is `Cataclysm.SetBonus.Spellblade6.`, with its trailing dot, four tests.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| S-I, the event for every use but a melee one (R1) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && !SkillTags->HasTag(Melee))` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | `ASpellOrARangedBasicAttackGivesNoStackOfSpellslinger` |
+| S-II, the basic attack left out (R1, "the basic attack included") | the same file | `if (SkillTags && SkillTags->HasTag(Melee))` | `if (SkillTags && SkillTags->HasTag(Melee) && !bBasicAttack)` | `AMeleeAttackTheBasicAttackIncludedGivesSpellslingerAndEachStackCutsASpellsCostByATenth` | none |
+
+S-I and S-II share one anchor and are two separate runs.
+
+Failed assertions, by reading:
+
+- **S-I, 10 in 2 tests.** Test 3, 9: "gives one stack" and "0.9", "a second stack" and "0.8", "five stacks" and "0.5",
+  "a sixth leaves five" and "still 0.5", and "4.9 s after, five stacks"; the melee skill's cost, "none" and "what it
+  states again" pass. Test 4, 1: its first control, after which it returns. The Dervish tests pass.
+- **S-II, 4 in 1 test.** Test 3: "a melee basic attack gives a second stack" (one is held) and "0.8" (0.9), then, four
+  stacks after the three more, "five melee uses give five" and "0.5" (0.6); the sixth makes five, so the rest pass.
+
+**Tests of another group expected to fail, to check in the window:** under S-I, the changed merged test
+`Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaisedForBothKindsOfSkillAndARowOnEachStillGrants`, 3: Living
+Pyre's and Blood Pyre's lists gain `melee_attack_use` (neither is melee) and the melee basic attack's loses it. Under
+S-II, the same test, 1: the melee basic attack's list. And under S-II the Python check
+`test_the_engine_raises_the_event_for_a_melee_use_after_attack_use` fails, which no Unreal proof run reads.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-17 — A row can count the enemies within 8 m only while another row's own stack is held, so Warlord's Will's ten-piece bonus is five rows: a movement use gives twice the speed and 50% more damage for 5 s at most once in 30 s, and 10% more damage per enemy near, up to five, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the scale
