@@ -15,19 +15,10 @@ walked in 145 days where 290 was correct. Offered the repair, the owner removed
 the situation instead. About 7 in 100 Last Stands were affected.
 
 **WHAT THIS FILE DOES NOT SAY.** Anything about the other 27 dungeon-type and
-sub-type pairs. All of them stayed legal, by the owner's explicit scope, and
+sub-type pairs. All of them stay legal, by the owner's explicit scope, and
 `TestTheOtherPairsStayLegal` is here to keep that a decision rather than a thing
 that quietly drifted -- a later session adding a second exclusion should have to
 break a test that says the owner ruled one.
-
-**A SECOND PAIR SINCE 2026-10-16: A QUEST DUNGEON MAY NOT ROLL A SIEGE.** The
-owner, that day, verbatim: *"The only quest dungeons that will be sieges are
-Wars."* and *"War quest dungeons WILL be sieges. Each cataclysm's quest dungeons
-will be one specific type."* Until each Cataclysm's Quest type is named the model
-keeps rolling a Quest dungeon's sub-type, without the Siege; that is interim.
-The tests below were changed to hold two pairs by a labelled judgement by the
-coordinating session under the owner's delegation, 2026-10-16. The other 26
-pairs stay legal.
 
 THE OTHER HALF OF THE PORT is `tools/tests/test_dungeon_subtype_port.py`, which
 compares this rule against `UCataclysmSurgeScheduler::CataclysmForbiddenSubType`
@@ -172,39 +163,24 @@ class TestTheRule:
 
 
 class TestTheOtherPairsStayLegal:
-    """The owner: "Only the one you ruled". Twenty-seven pairs were untouched
-    until 2026-10-16, when the owner's words on War's Quest dungeons barred a
-    Quest dungeon from the Siege (see the module docstring). Twenty-six are
-    untouched now."""
+    """The owner: "Only the one you ruled". Twenty-seven pairs are untouched."""
 
-    #: What each kind other than the Cataclysm may not roll. The Quest row is
-    #: the interim rule of 2026-10-16; the owner, verbatim: "The only quest
-    #: dungeons that will be sieges are Wars."
-    BARRED = {DungeonType.BASIC: set(),
-              DungeonType.QUEST: {"Siege"},
-              DungeonType.FALLEN_CITY: set()}
-
-    @pytest.mark.parametrize("dtype", [DungeonType.BASIC, DungeonType.QUEST,
+    # NO QUEST CASE SINCE 2026-10-18. Each Cataclysm's Quest dungeons are one
+    # fixed sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`, the owner's
+    # words of 2026-10-16), so a surge's Quest dungeon does not roll;
+    # `sim/tests/test_each_cataclysms_quest_dungeons_are_one_sub_type.py`
+    # covers it. Ruled by the coordinating session, 2026-10-18.
+    @pytest.mark.parametrize("dtype", [DungeonType.BASIC,
                                        DungeonType.FALLEN_CITY])
     def test_every_other_kind_of_dungeon_can_still_be_anything(self, dtype):
-        """Anything at all for an ordinary or a Fallen City dungeon; anything
-        but a Siege for a Quest dungeon, since 2026-10-16."""
         sim = Simulation(TuningConfig(), seed=3)
         seen = spread(sim, dtype, pillar(sim))
 
-        wanted = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - self.BARRED[dtype]
-        missing = wanted - set(seen)
+        missing = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - set(seen)
         assert not missing, (
             f"a {dtype.value} dungeon can no longer roll {sorted(missing)}. "
-            "The ruling of 2026-09-06 barred Cataclysm and Cow Level, and the "
-            "owner's words of 2026-10-16 barred Quest and Siege; nothing has "
-            "barred any other pair")
-        rolled_barred = self.BARRED[dtype] & set(seen)
-        assert not rolled_barred, (
-            f"a {dtype.value} dungeon rolled {sorted(rolled_barred)}. The "
-            "owner, 2026-10-16, verbatim: \"The only quest dungeons that will "
-            "be sieges are Wars.\" War is not built, so no Quest dungeon may "
-            "be a Siege yet")
+            "The ruling of 2026-09-06 barred exactly one pair -- Cataclysm "
+            "and Cow Level -- and said nothing about any other")
 
     def test_a_cataclysm_can_still_be_any_of_the_other_six(self):
         sim = Simulation(TuningConfig(), seed=4)
@@ -215,25 +191,16 @@ class TestTheOtherPairsStayLegal:
             f"a Cataclysm dungeon rolled {sorted(seen)} where the ruling "
             f"leaves it {sorted(wanted)}")
 
-    def test_the_model_records_exactly_two_forbidden_pairs(self):
-        """The rule is data, so this is where the scope is held.
+    def test_the_model_records_exactly_one_forbidden_pair(self):
+        """The rule is data, so this is where "only the one you ruled" is held.
 
-        IT WAS ONE PAIR UNTIL 2026-10-16, "only the one you ruled". That day
-        the owner said, verbatim: "The only quest dungeons that will be sieges
-        are Wars." and "War quest dungeons WILL be sieges. Each cataclysm's
-        quest dungeons will be one specific type." So the model bars Quest and
-        Siege as well, as an interim rule until each Cataclysm's Quest type is
-        named; this test was changed to two by a labelled judgement by the
-        coordinating session under the owner's delegation, 2026-10-16.
-
-        A session that adds a third row here is making a design decision the
-        owner has not made. `docs/DECISIONS.md` carries the rulings and the
+        A session that adds a second row here is making a design decision the
+        owner has not made. `docs/DECISIONS.md` carries the ruling and the
         scope; issue #1342 is the nearest open question.
         """
         cfg = TuningConfig()
         assert cfg.SUBTYPES_FORBIDDEN_ON == {
-            DungeonType.CATACLYSM: ("Cow Level",),
-            DungeonType.QUEST: ("Siege",)}
+            DungeonType.CATACLYSM: ("Cow Level",)}
 
 
 class TestTheFightsThatActuallyGetBuilt:
