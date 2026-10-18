@@ -1051,6 +1051,21 @@ class TuningConfig:
     # Chance a surge-spawned dungeon is a Quest rather than a Basic.
     quest_dungeon_chance: float = 0.12
 
+    # A QUEST DUNGEON THAT CARRIES A SIEGE (War's, `QUEST_SUBTYPE_BY_CATACLYSM`)
+    # NEVER LEAVES ON ITS OWN AND MOVES ON WHEN ITS CITY FALLS, so it bites
+    # until the player clears it. Measured on 2026-10-16, about ten a War
+    # campaign took the Explorer player at tier 1 from 49.8% won to 21.0% and
+    # from 0.98 cities lost to 12.02. The owner chose, on 2026-10-17, verbatim:
+    # "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress."
+    # So: at most this many of them in one wave (a further Quest roll for that
+    # Cataclysm in the same wave makes an ordinary dungeon instead), and
+    # each bites this share of an ordinary Siege's daily damage, flat share and
+    # growth alike. Its growth also counts only the days it has stood on the
+    # city it stands on now (`Dungeon.days_on_its_city`), which is the third
+    # part of the same choice.
+    quest_sieges_per_wave_max: int = 2
+    quest_siege_bite_scale: float = 0.25
+
     tree: EmpireTree = field(default_factory=EmpireTree)
 
     # ---------------------------------------------------------------------
