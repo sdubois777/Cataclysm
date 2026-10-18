@@ -2,6 +2,167 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — In the simulation each Cataclysm's Quest dungeons are one fixed sub-type, and a War Quest Siege comes at most two a wave, does a quarter of a Siege's damage and grows only from the day it reached its city
+
+**Simulation only; the game is unchanged.** A Quest dungeon a surge makes takes its Cataclysm's sub-type
+(`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`) and draws nothing for it. A Quest dungeon made with no Cataclysm still
+rolls. The interim rule of 2026-10-16, a second row of `SUBTYPES_FORBIDDEN_ON` barring a Quest dungeon from the
+Siege, is gone, so the Cataclysm dungeon's Cow Level is again the only barred pair. Branch
+`feat/sim-quest-type-by-cataclysm`.
+
+### SAID FIRST
+
+- **A DEFENDING EXPLORER LOSES ABOUT 4 CITIES IN A WAR CAMPAIGN** (4.13 over 500 campaigns at tier 1), against 0.96
+  in campaigns without War. This is on the owner's play-check list: "in a War campaign a defending Explorer loses
+  about 4 cities".
+- **OVER ALL CAMPAIGNS THE EXPLORER PLAYER WINS 48.4% (95% interval 44.0% to 52.8%) AND LOSES 1.43 CITIES.** That
+  meets the original guard (won at least 47.2%, cities at most 1.86, against `development`'s 52.2% / 0.93). It
+  misses the coordinating session's margin rule for choosing a damage level (won at least 49%, cities at most 1.6)
+  by 0.6 points of won. The campaigns without War, which no War rule changes, also measure 48.4% (44.0% to 52.8%),
+  so the gap is inside the measurement. The coordinating session accepted the rule as built on 2026-10-18.
+- **Ascendant and Hollow are names only.** Celestial's and the Void's Quest dungeons carry them and nothing reads
+  them yet; their rules are the next layers.
+- **A War Quest Siege that cannot move stays on the fallen city**, as every Quest dungeon does since 2026-10-16.
+
+### What the owner said, and who ruled
+
+The owner, 2026-10-16, verbatim: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type." Then: "We probably need to come up with two more sub types. Also, I really thought you would have picked horde for dead rising... as the whole undead zombie swarm thing kinda makes sense there. I assumed hell on earth would be Elite." Then: "I kinda like Ascendant more. Any argument against?" And, of the Void:
+"All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time."
+
+Pestilence Timed, Famine Sacrificial and Chaos Volatile were proposed by the coordinating session and confirmed by
+the owner. A War Quest dungeon drawn onto a city already holding a Siege draws its city again among that wave's
+targets that hold none, by the same weights, and lands where it was drawn only when every one holds a Siege: ruled
+by the coordinating session, 2026-10-16.
+
+After the measurements below the owner chose, 2026-10-17, verbatim: "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." The "first option" was the
+coordinating session's first of two: at most one War Quest dungeon a wave, a quarter of the bite, growth from the
+day it reached its city. The owner changed one to two.
+
+| Cataclysm | Its Quest dungeons are |
+|---|---|
+| War | Siege |
+| Death | Horde |
+| Demonic | Elite |
+| Pestilence | Timed |
+| Famine | Sacrificial |
+| Chaos | Volatile |
+| Celestial | Ascendant (new) |
+| Void | Hollow (new) |
+
+### Why the War rule: the number of War Quest Sieges, not how the player ranks them
+
+Measured 2026-10-16 and 2026-10-17, 500 campaigns a row, ordinary damage x0.7, the waves of 12 and 8, tier 1.
+With the mapping alone, a War Quest Siege never leaves, moves on when its city falls, and a fall can bring the next
+wave. Over all campaigns the Explorer player fell to 45.2% won / 2.70 cities lost; in War campaigns the undefended
+empire was lost by a median day of 95 and the Explorer player won 21.0% / 12.02 cities.
+
+How the player meets them, War campaigns, Explorer, the mapping alone:
+
+| policy | War Quest Sieges a campaign | cleared | days standing before cleared, median (10th to 90th percentile) | chosen when one was on offer | won / cities lost |
+|---|---|---|---|---|---|
+| `triage` | 9.93 | 78.3% | 30 (14 to 61) | 84.4% of 5,472 decisions | 21.0% / 12.02 |
+| `lane_aware` | 8.78 | 70.8% | 35 (14 to 70) | 63.9% of 5,580 decisions | 14.2% / 12.42 |
+
+So no policy change was proposed. The options, War campaigns only (the first 500 seeds facing War), each with the
+growth counted only on the current city:
+
+| rule | undefended, median day lost T1 (T2 / T3 / T4) | Explorer `triage` T1 won / cities | no-tree `triage` T1 won / cities |
+|---|---|---|---|
+| the interim rule (no Quest Siege), for reference | 1031 (682 / 508 / 436) | 49.8% / 0.98 | 45.8% / 2.68 |
+| growth on the current city only | 165 (172 / 169 / 174) | 33.2% / 9.66 | 6.8% / 23.12 |
+| and it bites for one ordinary timer's length per city | 165 (172 / 169 / 174) | 33.2% / 9.66 | 6.8% / 23.12 |
+| and at most one a wave | 188 (197 / 182 / 183) | 38.2% / 5.88 | 9.2% / 22.13 |
+| and half the bite | 210 (216 / 212 / 213) | 35.0% / 8.29 | 7.6% / 23.20 |
+| and a quarter of the bite | 307 (304 / 279 / 277) | 46.2% / 5.41 | 19.4% / 20.28 |
+| and one a wave, half the bite | 244 (247 / 225 / 223) | 44.8% / 4.72 | 16.0% / 20.98 |
+| and one a wave, a quarter of the bite | 358 (335 / 297 / 285) | 47.2% (42.9 to 51.6) / 3.53 | 25.6% / 16.76 |
+
+One a wave and a quarter of the bite over all campaigns (seeds 0 to 499): Explorer 50.4% (46.0% to 54.8%) / 1.38,
+no tree 38.4% / 4.35. These were measured with the rules applied by scratch overrides, not the built code.
+
+### As built, measured on the built code
+
+`measure15.py` in the session's scratchpad, no overrides, a copy of the working tree that became `c4f6ab96`:
+
+| campaigns | undefended, median day lost T1 / T2 / T3 / T4 (all 100% by day 2000) | Explorer `triage` T1 won (95% interval) / cities | no-tree `triage` T1 won (95% interval) / cities |
+|---|---|---|---|
+| the first 500 facing War | 309 / 308 / 282 / 276 | 43.2% (38.9 to 47.6) / 4.13 | 27.4% (23.7 to 31.5) / 18.03 |
+| the first 500 not facing War | 997 / 659 / 515 / 418 | 48.4% (44.0 to 52.8) / 0.96 | 42.2% (37.9 to 46.6) / 2.16 |
+| seeds 0 to 499 | 945 / 577 / 405 / 347 | 48.4% (44.0 to 52.8) / 1.43 | 39.2% (35.0 to 43.5) / 4.72 |
+
+**Two a wave makes War campaigns harder than one a wave did**: Explorer 43.2% / 4.13 cities against 47.2% / 3.53.
+
+### How it is built
+
+- `config.py`: `QUEST_SUBTYPE_BY_CATACLYSM`; `quest_sieges_per_wave_max = 2`; `quest_siege_bite_scale = 0.25`;
+  `SUBTYPES_FORBIDDEN_ON` back to the Cow Level alone.
+- `engine.py`: `trigger_surge` sets `Simulation.making_for` to the Cataclysm around `_make_dungeon`, which reads the
+  mapping for a Quest dungeon; it counts each Cataclysm's Siege-carrying Quest dungeons in the wave and makes an
+  ordinary dungeon once two have come; a War Quest dungeon re-draws its city away from a Siege.
+  `Dungeon.arrived_day`, set by both moves (the timer's and the fall's), and `Dungeon.days_on_its_city`, which
+  `_apply_siege_damage` uses for the growth; `Dungeon.siege_bite_share` gives a Quest Siege its quarter.
+- `policies.py`: `siege_daily_damage` and `siege_damage_during_the_walk` read the same two, so the player plans by
+  what the model does.
+
+### Tests
+
+New: `sim/tests/test_each_cataclysms_quest_dungeons_are_one_sub_type.py` (5) and
+`sim/tests/test_a_war_quest_siege_is_capped_and_bites_a_quarter.py` (7), each case with a control. Deleted:
+`sim/tests/test_a_quest_dungeon_never_rolls_a_siege.py`, whose rule is gone; the first new file replaces it.
+
+Guard proofs with `tools/prove_guard.py`, in a `git archive` copy of `c4f6ab96`, each breaking one thing; all seven
+printed PROVED and passed again restored:
+
+| break | failed with it in | restored |
+|---|---|---|
+| the mapping not read | 2 failed, 3 passed | 5 passed |
+| no city re-draw away from a Siege | 1 failed, 4 passed | 5 passed |
+| the two-a-wave limit ignored | 2 failed, 5 passed | 7 passed |
+| the quarter dropped from the daily bite | 3 failed, 4 passed | 7 passed |
+| a fall's move records no arrival day | 1 failed, 6 passed | 7 passed |
+| the growth counts the dungeon's age | 2 failed, 5 passed | 7 passed |
+| the player's estimate ignores the quarter | 1 failed, 6 passed | 7 passed |
+
+Changed by the coordinating session's rulings of 2026-10-18, one at a time:
+
+- `sim/tests/test_cataclysm_cannot_be_a_cow_level.py`: `test_the_model_records_exactly_one_forbidden_pair` restored;
+  `test_every_other_kind_of_dungeon_can_still_be_anything` has no Quest case, because it samples
+  `_roll_subtype` and a surge's Quest dungeon no longer rolls; a comment names the file that covers it.
+- `tools/tests/test_dungeon_subtype_port.py`: `test_the_model_bars_exactly_one_pair` restored, and the game
+  comparison covers every barred pair again.
+- `sim/tests/test_quest_relocation_is_adjacent.py`: `test_the_situation_is_reachable_at_all` restored; the
+  campaign fixture counts a move as a timer move only when the starting city still stands, since a timer's hit can
+  fell the city and the fall's move may go further than a neighbour.
+- `sim/tests/test_siege_subtype.py`: the besieged-city built-board test has its Quest case back.
+- `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`: the Quest-and-Siege checks
+  became `test_the_model_gives_each_cataclysms_quest_dungeons_one_sub_type`,
+  `test_the_game_still_rolls_a_quest_dungeons_sub_type` (the game assigns every dungeon's sub-type with
+  `RollSubType` in one line, and its `ECataclysmDungeonSubType` lacks Ascendant and Hollow), and the control's
+  last assertion.
+- `sim/tests/test_the_siege_prose_in_policies_is_true.py`: a share may sit 7 points from the stated one, where it
+  was 3. 31 disjoint blocks of 320 campaigns gave the ordinary-dungeon share from 63.8% to 76.5%; the test's own
+  seeds 0 to 319 give 66.2%.
+
+The prose in `policies.py`, re-measured over 10,000 campaigns (seeds 0 to 9999, 756,907 dungeons) by its test's
+own method: the median walk is 14 / 23 / 35 / 123 days and the slack 11 / 16 / 20 (was 14 / 22 / 34 / 123 and
+11 / 17 / 21); the 64,191 Sieges were 70% ordinary, 24% Quest, 5% Fallen City and 1% Cataclysm, 6.42 a campaign
+(was 47,102 at 95 / 0 / 4 / 2 and 4.71). The copies in `config.py` and in the entry headed "An unattended Siege
+now takes 25 / 39 / 55 / 70 days" follow.
+
+### Design document
+
+The Siege row of the sub-type table, a paragraph under the table naming each Cataclysm's Quest sub-type with the
+owner's lines, the sentence after the spawn-weight table, and World War.
+
+### Not covered, and later
+
+- The game: still rolls every Quest dungeon's sub-type, has no Ascendant or Hollow, and no War Cataclysm (#53).
+  The not-yet file above fails when it changes. Ruled by the coordinating session on 2026-10-17 for the game layer:
+  a Quest dungeon moved because its city fell is listed among the moved dungeons in the end-of-day report.
+- The Void's stacks, Hollow and Ascendant: the next three layers.
+
+---
+
 ## 2026-10-18 — A worn row can give its wearer an aura that, while its health is below a row's share, taunts every enemy within the row's radius once a row's interval for a row's seconds, as the wearer: Brute's Heart's six-piece taunt aura, with no row authored and the resistances still not built
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTauntAura.h` and `.cpp` (new: `UCataclysmTauntAura`, four stat
@@ -4758,6 +4919,9 @@ The game does not bar the Quest Siege yet; `tools/tests/test_the_waves_and_the_h
 says so and fails when it does. The per-Cataclysm sub-types (owner, 2026-10-16: War Siege, Dead Rising Horde, Hell on
 Earth Elite, Pestilence Timed, Famine Sacrificial, Chaos Volatile, Heaven's Wrath Ascendant, The Void Hollow, the last
 two new) are the next layer. Theming a Quest dungeon to its quest beyond its sub-type is a later item the owner named.
+
+> **Superseded on 2026-10-18.** The entry of that day "In the simulation each Cataclysm's Quest dungeons are one fixed
+> sub-type…" replaced this row with the mapping, and the tests it changed went back or were rewritten there.
 
 ---
 
