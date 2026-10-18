@@ -170,10 +170,13 @@ def siege_daily_damage(sim, d, city) -> float:
     if d.subtype != "Siege" or city is None or city.fallen:
         return 0.0
     cfg = sim.cfg
-    days_stood = max(0, sim.day - d.spawned_day)
+    # AS `Simulation._apply_siege_damage` BITES, since 2026-10-17: the growth
+    # counts the days on this city, and a Quest Siege bites a quarter as hard.
+    days_stood = d.days_on_its_city(sim.day)
     grown = cfg.siege_damage_growth_per_day * days_stood
     return ((city.max_defense * cfg.siege_defence_bite_per_day + grown)
-            * cfg.tree.damage_taken(cfg.active_cataclysm_count()))
+            * cfg.tree.damage_taken(cfg.active_cataclysm_count())
+            * d.siege_bite_share(cfg.quest_siege_bite_scale))
 
 
 def siege_damage_during_the_walk(sim, d, city) -> float:
@@ -196,7 +199,8 @@ def siege_damage_during_the_walk(sim, d, city) -> float:
     cfg = sim.cfg
     k = max(1, d.run_days)
     growth = (cfg.siege_damage_growth_per_day
-              * cfg.tree.damage_taken(cfg.active_cataclysm_count()))
+              * cfg.tree.damage_taken(cfg.active_cataclysm_count())
+              * d.siege_bite_share(cfg.quest_siege_bite_scale))
     return k * per_day + growth * k * (k - 1) / 2.0
 
 
