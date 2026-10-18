@@ -194,16 +194,13 @@ Everything a ruling requires to be said first, and everything a player would not
   use. "100% more" is twice.
 - **AND 10% MORE DAMAGE FOR EACH ENEMY WITHIN 8 M, AT MOST FIVE ENEMIES, WHILE IT IS OPEN.** The owner's ruling. The
   two "more" figures multiply, as every two "more" sources do in this game: with five or more enemies near, damage is
-  1.5 x 1.5 = 2.25 times, not 2.0 times. See the judgements below; this is the figure the coordinating session should
-  check against what it meant.
+  1.5 x 1.5 = 2.25 times, not 2.0 times. **Ruled by the coordinating session on 2026-10-17 (R2): 2.25 times at five
+  enemies, because separate "more" sources multiply in the ruled pipeline.**
 - **THE ENEMIES ARE COUNTED AT EVERY LOOKUP WHILE IT IS OPEN, NOT ONCE AT THE USE.** An enemy that walks within 8 m
   during the 5 seconds raises the damage from then, and one that dies or walks away lowers it. Measured centre to
   centre. Every enemy counts one, a boss included. Outside the 5 seconds, enemies near add nothing.
 - **THE MOVEMENT SPEED HALF DOES NOT SCALE**, as ruled.
-- **THE SPEED RISES ON THE NEXT QUARTER-SECOND STEP, NOT ON THE FRAME OF THE USE.** `ActOnEvent` announces the event
-  before it grants the stacks, and the player character refreshes its speed when it hears the announcement, so that
-  refresh reads no window yet; the step a quarter of a second later reads it. Read in the code, not tested and not
-  changed.
+- **THE SPEED RISES ON THE NEXT QUARTER-SECOND STEP, NOT ON THE FRAME OF THE USE.** See "Not changed" below.
 - **"A MOVEMENT ABILITY" IS A PAID USE OF THE SKILL IN THE MOVEMENT SLOT**, the event `movement_skill`, raised by
   `UCataclysmSkillTemplate::CommitAndBegin` for that slot after the use is paid for. A free repeat or a triggered start
   raises none. Read, not changed.
@@ -220,6 +217,18 @@ half does not scale." Its brief 42 asks for the smallest version after Divine Re
 rows on `movement_skill`, 5 s, trigger cooldown 30", which the owner accepted for that bonus on 2026-10-08 ("Make it
 every 5 seconds") and 2026-10-09 ("your rec on all the open questions"); see "Divine Retribution's ten-piece bonus is
 reworded from 10 seconds to 5" below.
+
+The coordinating session's rulings on this layer's report, 2026-10-17, its words: R2, "2.25x at five enemies.
+Separate 'more' sources multiply in the ruled pipeline"; R3, the enchantment session rewords the sentence to end
+"...in the area: 10% more damage for each enemy within 8 meters, up to 5"; R4, "the new scale is ACCEPTED with its
+refusals"; and the proofs W-I to W-III are accepted. **The sentence as it will read once reworded:**
+
+> Warlord's Will (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Tactical Advantage.' When you use a
+> movement ability, you consume all stacks of 'Tactical Advantage' and gain 100% more movement speed and 50% more
+> damage for 5 seconds. This bonus scales with the number of enemies in the area: 10% more damage for each enemy
+> within 8 meters, up to 5
+
+The reword is the enchantment session's; this layer changes no sentence.
 
 ### WHAT THE RECONNAISSANCE FOUND
 
@@ -262,8 +271,8 @@ Line numbers are of this layer's working tree.
   modifiers in the "more" bucket, and `UCataclysmStatPipeline::Accumulate` multiplies each source on its own. The
   coordinating session's record says "at most +50% more on top of the 50% more", which reads as two multipliers; its
   brief says "the damage 'more' is 50% + up to 50%", which could also be read as one figure of 100% at most, 2.0 times.
-  The option not taken: one figure, which needs the window row to scale by both its stack and the enemies. **The
-  coordinating session should say which it meant before the rows are written**; the mechanism gives 2.25.
+  The option not taken: one figure, which needs the window row to scale by both its stack and the enemies. **Ruled
+  2026-10-17 (R2): 2.25 times.**
 - **COUNTED AT EVERY LOOKUP, NOT FROZEN AT THE USE.** Every `enemies_in_reach` row in the game counts at the lookup, and
   so does this. The option not taken: count once at the movement use, as Path of Exile's warcries count at the cast
   (the genre file, below), which needs a stack count set by the enemies, a new kind of grant.
@@ -331,8 +340,9 @@ Five rows on the Enchantment Effects sheet, each with Enchantment
 
 Every other cell empty: no Required Tags, no Condition, no Action. The five pass the generator on a made-up sheet
 (`tools/tests/test_warlord_ten_piece_window_rows.py`). The set rule is met: the 2-piece and the drawback are merged.
-**The 10 and the 8 m are not in the sentence**; whether the sentence is reworded to state them, and what
-`tools/tests/test_enchantment_effects_match_the_row_text.py` needs for the rows, are the enchantment session's.
+**The 10, the 8 m and the 5 enter the sentence with the reword of R3** (quoted above), which the enchantment session
+makes; what `tools/tests/test_enchantment_effects_match_the_row_text.py` needs for the rows is the enchantment
+session's.
 
 ### CHANGES TO WHAT A CHECK ACCEPTS
 
@@ -389,9 +399,22 @@ dealt while the window is open (the tests read the stats and deal no damage); th
 use's own frame (read); an enemy at exactly 8 m; a boss counted as one; two worn copies of the rows; the window rows'
 cooldown when the bonus is taken off and put back on; anything drawn on a screen.
 
+### Not changed
+
+- **THE MOVEMENT SPEED RISES ONE QUARTER-SECOND STEP LATE.** `UCataclysmAbilitySystemComponent::ActOnEvent` broadcasts
+  `OnActionEvent` first, before any row acts, so the player character's refresh on hearing `movement_skill` reads no
+  window yet: the grant is made after it. The next quarter-second step
+  (`ACataclysmPlayerCharacter::RefreshMovementSpeedIfItCanChangeUnannounced`, from `AfterRegenerationStep`) reads it.
+  At most a quarter of a second late, the same allowance the closing edge of every timed window already takes. Not
+  changed, because moving the broadcast would change when every listener hears every event, which is wider than this
+  layer; accepted by the coordinating session on 2026-10-17 (R4).
+
+**FOR THE OWNER'S PLAY-CHECK LIST (R2):** at five enemies the window's damage is 2.25 times.
+
 ### GUARD PROOFS PROPOSED
 
-Not run. Each old text was counted exactly once in its file by a script at this layer's working tree. The new texts of
+Accepted by the coordinating session on 2026-10-17. Not run. Each old text was counted exactly once in its file by a
+script at this layer's working tree. The new texts of
 W-II and W-III were counted absent before the break; W-I's new text is already in the file, as the start of the
 `PerOwnStack` and `PerConsecutiveHit` cases, so it is the old text that locates it. Each break keeps the file's round,
 curly and square brackets paired (counted by the same script with comments and strings removed: 374, 213 and 2 pairs
