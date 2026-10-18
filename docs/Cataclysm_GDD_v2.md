@@ -6476,6 +6476,8 @@ Chaotic Resolutions mean dungeons can have completely unpredictable outcomes whe
 
 Void dungeons accumulate void stacks on cities. When stacks reach a threshold, the city is permanently erased from the game world and cannot be reclaimed. Players must deploy void countermeasures, complete 5 Sealing Rituals, and ultimately defeat the Void Nexus.
 
+An ordinary Void dungeon whose timer runs out adds 1, 2 or 3 void stacks to its city, by which third of its depth range it was rolled in, and does no damage to the city's defences or population. At 10 stacks the city is erased. A city that falls with fewer than 10 is not erased and can be retaken, and retaking it clears its stacks. A Void Siege's daily bite is still damage. The owner, 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time." The thirds, the Siege and the retaking were ruled by the coordinating session the same day. Built in the simulation only.
+
   
 
 ## **How many objectives each Cataclysm asks for**
