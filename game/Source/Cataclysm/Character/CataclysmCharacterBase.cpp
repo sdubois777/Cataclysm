@@ -13,6 +13,8 @@
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
+// For Brute's Heart's Ground Pound, which fires by itself. Ruled 2026-10-17.
+#include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 // For what a gadget does because time passed. Ruled 2026-10-13.
 #include "AbilitySystem/CataclysmMinion.h"
@@ -337,6 +339,13 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// part 4a, ruled 2026-10-02 onto this step: a body walking in or out of
 	// reach is a quarter of a second late at worst.
 	UCataclysmSharedBuffs::Step(this);
+
+	// AND A WEARER OF BRUTE'S HEART'S TEN PIECES POUNDS THE GROUND ONCE IT IS
+	// READY AND AN ENEMY IS NEAR. Ruled 2026-10-17 by the owner (#5): it fires by
+	// itself. On this step, so an enemy walking in is struck a quarter of a second
+	// late at worst; the call answers nought for every character holding no such
+	// row and refuses a corpse itself. Its return value is for tests.
+	UCataclysmGroundPound::Step(this);
 
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the

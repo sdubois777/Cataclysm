@@ -172,6 +172,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: one more on 2026-10-17, asked with no tags by
 #: `UCataclysmVoidAura::ConsumeChanceOf`, for each shot in flight near a
 #: wearer and for the line above the bars.
+#: Brute's Heart's Ground Pound added two more on 2026-10-18: the one helper
+#: `UCataclysmGroundPound::StatOf` its five stats are asked through, and the
+#: wearer's armour the pound strikes with, asked as the armour nova asks it.
 CALL_SITES = 65
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -970,6 +973,19 @@ INVENTORY = {
         "holds ten Void, for a shot in flight and for the line above the "
         "bars; a shot is not one of the wearer's skills, so no tags, and no "
         "blow has landed, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Brute's Heart's five Ground Pound stats (ruled 2026-10-17 "
+        "and 2026-10-18), asked by StatOf on the regeneration step and at a "
+        "kill; the pound is not one of the wearer's skills, so no tags, and "
+        "nothing has landed when they are asked, so no blow and no target "
+        "are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the wearer's own armour, which the Ground Pound strikes every enemy "
+        "near with, asked as the armour nova in "
+        "CataclysmAbilitySystemComponent.cpp asks it (Q4 of 2026-10-18); no "
+        "skill and no blow of its own is in hand",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

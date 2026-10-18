@@ -2,6 +2,264 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — A worn row can arm a Ground Pound that fires by itself once its clock has run and an enemy is within the row's radius, striking each enemy there for a share of the wearer's armour and stunning it, with kills taking time off the clock: Brute's Heart's ten-piece mechanism, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.h` and `.cpp` (new: `UCataclysmGroundPound`,
+five stat names, `StatOf`, `Step`, `SecondsUntilReady`, `NoteKill`); `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`
+(one include, and one call in `RegenerationStep` after `UCataclysmSharedBuffs::Step`);
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (five names at the end of `StatsWithNoAttribute`);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one include, one probe helper and five lines at the end of
+`Probes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusBruteTenTests.cpp` (new, six tests);
+`tools/generate_datatables.py` (`refuse_a_ground_pound_row_the_game_cannot_read`, called from
+`validate_enchantment_effects`); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites);
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (the new job on `RegenerationStep`);
+`tools/tests/test_brutes_heart_ten_rows.py` (new). Every change to an existing file is an insertion; no existing line is
+changed. No data row, no tag and no workbook cell is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE FIVE ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A ten-piece bonus is live only with ten pieces worn.
+- **IT FIRES BY ITSELF.** No key, no slot, no ability is granted (the owner, #5). Once ready it waits for as long as no
+  enemy is within the radius, and strikes at the first regeneration step that finds one: up to a quarter of a second
+  late, since the step runs every `UCataclysmRegeneration::StepSeconds` = 0.25 s (`CataclysmRegeneration.h` 75).
+- **8 M IS A NUMBER UNDER THE OWNER'S DELEGATION, RULED 2026-10-18** by the coordinating session (Q1): the sentence says
+  "a large radius". It is a row value, not a constant. An enemy counts when its body touches the 8 m sphere, as every
+  nearby action's search counts one (`UCataclysmTargeting::FindEnemiesInSphere`, an overlap), so its centre may be a
+  capsule's radius beyond 8 m.
+- **THE BLOW IS NOT QUITE "EXACTLY AS `smite_nearby_by_armor` DEALS IT", AND ONE DIFFERENCE IS NOT THE BLOW'S.** The
+  armour asked, the call that deals it and every property of the blow are that action's (see the rulings table). But
+  that action is always dealt from inside `UCataclysmAbilitySystemComponent::ActOnEvent`, which runs its rows one
+  level deep (`PoolActionDepth`, `CataclysmAbilitySystemComponent.cpp` 5904), so the wearer's own rows never answer its
+  blows or its kills. **The pound is dealt from the regeneration step, outside any event, so for a player character
+  its blows raise `hit_dealt`, `first_hit_dealt` and `critical_strike` (`ACataclysmPlayerCharacter::OnSomethingWasHit`)
+  and its kills raise `kill`, and the wearer's rows on those events answer them, as they answer a skill's blow.** Not
+  built otherwise, and not ruled: making the pound row-quiet needs a public way into `PoolActionDepth` on the ability
+  system, about ten lines, which "build nothing new there" (Q4) was read as forbidding. It is for the coordinating
+  session to rule.
+- **THE CLOCK COUNTS THE WORLD'S SECONDS, IN COMBAT OR OUT OF IT**, from the first step that finds the wearer armed
+  (Q5). It is not a timed row's clock, which counts only the seconds of the current combat
+  (`StepTimedGrants`, `CataclysmAbilitySystemComponent.cpp` 4915). A floor change, a dungeon left and the wearer's
+  death leave it as it was; a dead wearer does not fire.
+- **A KILL WHILE READY BANKS NOTHING, BECAUSE FIRING RESTARTS THE CLOCK FROM THE MOMENT IT FIRES**, at the full
+  interval. Kills while waiting take 0.5 s each off the time left and never take it below nought (Q3).
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 46 and the rulings below.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner's decision of 2026-10-17, as relayed by the coordinating session (#5; the relay's words, not the owner's):
+"Ground Pound FIRES BY ITSELF once ready and an enemy is inside its radius (no key)."
+
+The coordinating session's rulings of 2026-10-18, its words as relayed:
+
+> Q1 (a) 8 m, as a row value (a number under the owner's delegation; the game's set "area" figure).
+> Q2 (a) the ordinary stun, 3 s, shortened by crowd-control resistance; bosses as the existing stun rules treat them
+> (report with lines).
+> Q3 (a) each kill credited to the wearer takes 0.5 s off the time left, never below 0; a kill while ready banks
+> nothing.
+> Q4 (a) exactly as smite_nearby_by_armor deals its blow today; report each property with lines; build nothing new
+> there.
+> Q5 (a) first ready 30 s after the tenth piece goes on.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| #5 | Fires by itself once ready and an enemy is inside its radius. | `UCataclysmGroundPound::Step` (`CataclysmGroundPound.cpp` 101 to 117): not before `ReadyAtSeconds`, then `FindEnemiesInSphere` from the character at the row's radius, and nothing while it finds none. Called from `ACataclysmCharacterBase::RegenerationStep` (`CataclysmCharacterBase.cpp` 348), every 0.25 s, for every character. |
+| Q1 | 8 m, a row value. | `ground_pound_radius_metres`, read at `CataclysmGroundPound.cpp` 107. Not `NearbyActionRadiusCm` (5 m, `CataclysmAbilitySystemComponent.h` 1657). |
+| Q2 | The ordinary stun, 3 s, shortened by crowd control resistance; bosses as the stun rules treat them. | `ApplyStun` as a designed stun (`CataclysmGroundPound.cpp` 137 to 138), the call `stun_near_the_dying` makes (`CataclysmContagion.cpp` 606). In `ApplyStun` (`CataclysmSkillEffects.cpp`): crowd control resistance shortens it, 4078; an enemy stunned within the last 5 s is not stunned again, 4089; a designed stun skips only the tenth-of-maximum-health threshold, 4112; **a boss (the Boss and Cataclysm Boss rungs) is never stunned, 4143 to 4161**. An enemy the blow killed is not stunned (`CataclysmGroundPound.cpp` 135). |
+| Q3 | Each kill credited to the wearer takes 0.5 s off the time left, never below 0; a kill while ready banks nothing. | `NoteKill` (`CataclysmGroundPound.cpp` 153 to 169), heard from the wearer's own `OnActionEvent` (91 to 98), which `ActOnEvent` announces before its depth guard (`CataclysmAbilitySystemComponent.cpp` 5900). Firing restarts the clock at `Now + Every` (120). |
+| Q4 | Exactly as `smite_nearby_by_armor` deals its blow. | `CataclysmGroundPound.cpp` 123 to 133, the lines of `ActOnNearby` (`CataclysmAbilitySystemComponent.cpp` 7293 to 7307): the armour asked as `StatForSkill("armor")` with the attribute as the fallback, times the share, dealt by `UCataclysmSkillEffects::ApplyDirectDamage(Character, Other, Amount)` with no delivery. |
+| Q5 | First ready 30 s after the tenth piece goes on. | The first step that finds `ground_pound_every_seconds` above nought starts the clock (`CataclysmGroundPound.cpp` 79 to 99); a step that finds it at nought forgets it (65 to 75). |
+
+**THE BLOW'S PROPERTIES (Q4), each from `ApplyDirectDamage` with a default `FCataclysmHitDelivery`:**
+
+- **Whose:** the wearer's character is the instigator (`CataclysmSkillEffects.cpp` 1148, `Context.AddInstigator`), so a
+  kill it makes is credited to the wearer: the death notice's killer is the last blow's attacker on record
+  (`CataclysmCombatEvents.cpp` 273).
+- **Not area damage:** `bIsArea` is false, so the effect carries no area tag (`CataclysmVitalAttributeSet.cpp` 429) and
+  the target's evasion is rolled (`CataclysmDamageCalculation.cpp` 803); its block, armour, resistance and reductions
+  meet it.
+- **Can critically strike:** no no-critical tag is put on it (`CataclysmSkillEffects.cpp` 1637), so the attacker's chance
+  is rolled (`CataclysmVitalAttributeSet.cpp` 870).
+- **Is retaliated against:** no no-retaliation tag, so a retaliating enemy pays the wearer back
+  (`CataclysmVitalAttributeSet.cpp` 1705 to 1748).
+
+**HOW A KILL REACHES THE WEARER.** `ACataclysmPlayerCharacter::OnSomethingDied` (`CataclysmPlayerCharacter.cpp` 1126)
+raises `kill` on the wearer's ability system only when the death notice names it the killer (1153 and 1175); that is
+the one place `kill` is raised. A kill is credited when the last blow on record was the wearer's
+(`CataclysmCombatEvents.cpp` 273): its skills, its basic attack, its damage over time, this pound. A minion's kill is the
+minion's unless its summoner holds the Conduit keystone, as the comment on
+`FCataclysmHitDelivery::bCannotBeRetaliatedAgainst` says (`CataclysmSkillEffects.h` 313 to 316); read from that comment
+and not traced.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **FIVE STATS WITH NO ATTRIBUTE, NOT AN ACTION ROW.** The radius, the stun, the time per kill and the clock's rule are
+  not things a nearby action row carries; a stat each keeps every figure in a row. The option not taken: a
+  `smite_nearby_by_armor` row on `every_seconds`, which counts only combat seconds, fires at a fixed 5 m and would need
+  new columns for the rest.
+- **THE CLOCK IS HELD IN `UCataclysmGroundPound`, KEYED WEAKLY BY THE ABILITY SYSTEM**, as `UCataclysmVoidAura` keeps its
+  register, and kills are heard by a listener on `OnActionEvent`. So `UCataclysmAbilitySystemComponent` and
+  `ACataclysmPlayerCharacter` are not changed at all. The option not taken: a member on the ability system and a call
+  beside the `kill` event.
+- **THE CLOCK STARTS AT THE FIRST STEP THAT FINDS THE WEARER ARMED**, up to a quarter of a second after the tenth piece
+  goes on, since nothing announces a row being put on. The option not taken: a hook in the equipment refresh.
+- **TAKING THE BONUS OFF FORGETS THE CLOCK**, so ten pieces put on again wait a whole 30 s, as Q5 reads. The option not
+  taken: keeping the time left, which would let a player swap a piece to keep a pound ready.
+- **WORLD SECONDS, NOT COMBAT SECONDS.** Q5 counts from the tenth piece going on. The option not taken: the timed rows'
+  combat clock.
+- **THE CLOCK RESTARTS BEFORE THE BLOW LANDS**, so a kill the pound itself makes takes 0.5 s off the next one. The option
+  not taken: restarting after, which would let the pound's own kills land on a clock still at nought and be lost.
+- **NO ENEMY THE BLOW KILLED IS STUNNED.** A designed stun does not check health. The option not taken: stunning a
+  corpse, which opens a stun window on it and notes a crowd control for the wearer.
+- **ROW RANGES.** The seconds between pounds may be a range only if it falls (the best roll the shortest wait, as
+  `gadget_volley_every_seconds`); every other range must rise. Bounds where one exists: 60 s (`MAX_EVERY_SECONDS`),
+  1000% (`smite_nearby_by_armor`'s), 10 s of stun (`MAX_STATUS_SECONDS`). The option not taken: no bound.
+
+### THE GENRE SOURCE
+
+None required: brief 46 says the owner ruled the firing rule. Nothing was fetched. Section 3 of the coordinating
+session's genre file of 2026-10-17 ("A power on its own 30-second cooldown") was the research behind that question; in
+summary, it found item and set powers on their own cooldown firing automatically on an event rather than from a new
+key.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmGroundPound`**: five stat names, the clock register, the step that starts, keeps, forgets and fires the
+  clock, the kill rule, and `SecondsUntilReady` for tests.
+- **One call on the regeneration step.**
+- **The five stats on `StatsWithNoAttribute`**, each with a probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The generator's refusal** of a row on any of the five that the game would read as nothing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Five rows on the Enchantment Effects sheet, each with Enchantment
+`Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds` and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High |
+| :-- | :-- | :-- |
+| `ground_pound_every_seconds` | `flat` | 30, 30 |
+| `ground_pound_percent_of_armor` | `flat` | 500, 500 |
+| `ground_pound_radius_metres` | `flat` | 8, 8 |
+| `ground_pound_stun_seconds` | `flat` | 3, 3 |
+| `ground_pound_seconds_off_per_kill` | `flat` | 0.5, 0.5 |
+
+Every other cell empty: no Required Tags, no Condition, no Scale, no Action, no Trigger Cooldown. All five pass the
+generator on a made-up sheet (`tools/tests/test_brutes_heart_ten_rows.py`). The set rule is met: the 2-piece and 6-piece
+rows are merged (`EnchantmentEffects.csv` 83, 84 and 470).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+**IN THE ROW LAYER**, by the enchantment session, predicted and not run on the real table: in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `STATED_BY_WORD` gains "large" as 8 on
+`ground_pound_radius_metres`. Measured with that file's `value_is_stated` on the sentence: 30, 500, 3 and 0.5 are read
+out of it, and 8 is not.
+
+**IN THE MECHANISM:**
+
+- **The generator now refuses** a row on any of the five stats that is not `flat`, carries a Required Tag or an Action,
+  states nought or less, states more than its bound, or whose range runs the wrong way. None was accepted on a row
+  before, since none existed.
+- **`StatsWithNoAttribute` gains five names**, so the generator accepts a row on each with no gameplay attribute.
+- **`RegenerationStep`'s pinned jobs gain `UCataclysmGroundPound::Step`**, in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`, which failed on the new call until it
+  was listed; deleting the call now fails that test. The inventory of `StatForSkill` call sites gains the pound's two.
+
+### Tests
+
+Six Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusBruteTenTests.cpp`, the group
+`Cataclysm.SetBonus.Brute10.`. The rows are given as stat lines of a flat figure each. The wearer is a bare actor at the
+origin holding 1000 armour; the enemies are creatures of the monsters' side with no armour, evasion, block or
+resistance and 100000 health. Critical strikes are silenced by the world helper. The world's clock is moved by hand and
+`UCataclysmGroundPound::Step` called directly; the stun's end is reached with `RunClock`. A kill is raised on the wearer
+by hand with `ActOnEvent("kill")`.
+
+1. `ItIsNotReadyUntilThirtySecondsAfterItIsArmedAndThenStrikesAtOnce`, 9 assertions. In order: set-up, a world; set-up,
+   an enemy 5 m off; control, the first step strikes nothing; it arms the clock at 30 s; 29.75 s on it strikes
+   nothing; the enemy has lost nothing; at 30 s it strikes the one enemy; which has lost something; the clock is 30 s
+   again.
+2. `ReadyWithNoEnemyInsideItHoldsFireAndStrikesTheFirstStepOneIsInside`, 11 assertions. In order: set-up, a world;
+   set-up, an enemy 12 m off; control, at 30 s with no enemy inside it strikes nothing; it is ready; 15 s later it still
+   holds; the enemy at 12 m has lost nothing; set-up, an enemy placed 5 m off; the next step strikes one enemy; the one
+   5 m off lost something; not the one at 12 m; the clock is 30 s again.
+3. `TheBlowIsFiveHundredPercentOfArmourWithinEightMetresAndNothingBeyond`, 9 assertions. In order: set-up, a world;
+   set-up, an enemy 7 m off; set-up, an enemy 10 m off; control, the one at 7 m has lost nothing; control, nor the one at 10 m; the pound
+   strikes one enemy; the one at 7 m loses 5000; the one at 10 m nothing; with the armour raised to 2000 the next pound
+   takes 10000 more.
+4. `EachEnemyStruckIsStunnedForThreeSecondsLessItsResistanceAndABossIsNot`, 19 assertions. In order: set-up, a world;
+   set-up, four creatures (4 m east, 4 m west, 4 m south holding 50 crowd control resistance, and a Boss-rung creature
+   5 m north); set-up, the boss is a boss; control, the first is not stunned; control, nor the second; the pound strikes
+   all four; the first is stunned for 3 s; the second too; the resisting one for 1.5 s; the boss lost health; the boss
+   is not stunned; 2.9 s on the first is still stunned; the second too; the resisting one is not; 0.2 s after that the
+   first is not; nor the second.
+5. `EachKillTakesHalfASecondOffNeverBelowNoughtAndAKillWhileReadyBanksNothing`, 11 assertions. In order: set-up, a
+   world; control, the clock is 30 s; a kill leaves 29.5; three more leave 28; 27.9 s on, 0.1 s is left; a kill makes it
+   ready and not less; with no enemy inside it holds; set-up, an enemy placed 5 m off; after three kills while ready
+   the pound strikes it; the clock is a whole 30 s; one kill after it leaves 29.5.
+6. `TakingTheBonusOffForgetsTheClockAndPuttingItOnStartsItFromThirty`, 6 assertions. In order: set-up, a world;
+   control, with no seconds stated there is no clock; put on, ready in 30 s; 20 s on, in 10; taken off, the clock is
+   forgotten; put on again, ready in 30 s and not 10.
+
+And `ProbeGroundPound` in `CataclysmStatExemptionTests.cpp`, one probe for each of the five stats: a wearer holding
+1000 armour and an enemy 3 m off, one step, one kill raised, 30 s, one step; the control holds the other four stats and
+not the one probed. Seconds: control no clock, with it 30. Share and radius: control the enemy loses nothing, with it
+5000. Stun: control not stunned, with it stunned. Per kill: control a kill leaves 30, with it 29.5.
+
+Python: `tools/tests/test_brutes_heart_ten_rows.py`, on a made-up workbook holding the sentence typed Generic: the row
+name is the shipped one; the five rows are carried through and refused by nothing, the condition and scale checks and
+the whole validation included; a wrong radius row put through the whole validation is refused by this check's own
+sentence; the five stats are on `stats_with_no_attribute`, with a made-up name as the control; the engine defines
+exactly the generator's five names; fifteen wrong shapes, each refused once and by its own sentence; a falling range of
+seconds and a rising range of the share are accepted; a condition or a scale on any of the five is refused by the
+general checks; a row on another stat and a passive node's row are left alone.
+
+**Not tested:** the real rows worn at ten pieces with a control at nine (the enchantment session's real-row test); a
+player character wearing it, so the `kill` raised by `OnSomethingDied` reaching the clock, and the wearer's own rows
+answering the pound's blows (see SAID FIRST); a kill the pound itself makes taking time off the next one; an enemy
+the blow kills not being stunned; evasion, block, a critical strike and retaliation on the blow (each is
+`ApplyDirectDamage`'s, unchanged); the stun window of 5 s; a dead wearer; the call on the regeneration step (the tests
+call `Step` directly); anything drawn on a screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp` by a
+script at this layer's working tree. Each break keeps the file's brackets paired and compiles alone by reading: BH-I
+replaces a call with a comparison of an `int32`, BH-II flips an operator, BH-III passes a literal for a `bool`. The
+failed assertions are counted by reading. The prefix is `Cataclysm.SetBonus.Brute10.`, with its trailing dot, six tests.
+
+| Proof | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|
+| BH-I, fires with no enemy near (#5) | `if (Struck.IsEmpty())` | `if (Struck.Num() < 0)` | `ReadyWithNoEnemyInsideItHoldsFireAndStrikesTheFirstStepOneIsInside` | `EachKillTakesHalfASecondOffNeverBelowNoughtAndAKillWhileReadyBanksNothing` |
+| BH-II, kills not heard (Q3) | `if (Event == KillEvent)` | `if (Event != KillEvent)` | `EachKillTakesHalfASecondOffNeverBelowNoughtAndAKillWhileReadyBanksNothing` | none |
+| BH-III, not a designed stun (Q2) | `/*bStunIsDesigned=*/true);` | `/*bStunIsDesigned=*/false);` | `EachEnemyStruckIsStunnedForThreeSecondsLessItsResistanceAndABossIsNot` | none |
+
+Failed assertions, by reading:
+
+- **BH-I, 7 in 2 tests.** With nothing found the clock restarts as if it had fired. Test 2, 4: "and it is ready" (30
+  left), "the next step strikes one enemy" (0), "the one 5 m off" (lost nothing), "and the clock is 30 s again" (15).
+  Test 5, 3: the empty step at 27.9 s restarts the clock, so "after three kills while ready the pound strikes the
+  enemy" (0), "the clock is a whole 30 s" (28.5), "one kill after it leaves 29.5 s" (28). Tests 1, 3, 4 and the probes
+  always have an enemy inside when ready; test 6 is never ready.
+- **BH-II, 7 in 1 test.** Test 5: every assertion on the clock after a kill, and the two that follow from it ("a kill
+  leaves 29.5", "three more leave 28", "0.1 s is left" (2.1), "a kill makes it ready", "the pound strikes the enemy"
+  (not ready), "a whole 30 s" (2.1), "one kill after it leaves 29.5" (2.1)). No other test raises an event on the
+  wearer. Outside the prefix, `ProbeGroundPound` for `ground_pound_seconds_off_per_kill` fails, in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **BH-III, 5 in 1 test.** A stun that is not designed must take a tenth of maximum health and is passed nought. Test 4:
+  "the first creature is stunned for 3 s", "and the second", "the one holding 50 crowd control resistance for 1.5 s",
+  "2.9 s on the first is still stunned", "and the second". The controls, the boss's two and the three "is not" pass. No
+  other test of the prefix reads a stun. Outside the prefix, `ProbeGroundPound` for `ground_pound_stun_seconds` fails.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-18 — A minion's or thrall's death can summon one Tyrant's Minion for a row's seconds, outside the summon caps, refreshing the one standing, and the death blast can deal Death damage: Tyrant's Chains' six-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` (one block after `DeathBlast`: two stat names,

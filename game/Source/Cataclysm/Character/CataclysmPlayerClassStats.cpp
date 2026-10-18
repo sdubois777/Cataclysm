@@ -786,6 +786,19 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// and no base.
 		TEXT("minion_death_blast_deals_death"),
 		TEXT("minion_death_summons_tyrants_minion_seconds"),
+		// Brute's Heart's Ground Pound: the seconds from one pound to the next,
+		// the per cent of the wearer's armour each enemy struck takes, the
+		// radius, the stun and the seconds a kill takes off the time left. Each
+		// read with no tags by UCataclysmGroundPound::StatOf, from its Step on
+		// the regeneration step and, for the last, from NoteKill. Ruled
+		// 2026-10-17 (#5) and 2026-10-18 (Q1-Q5), for the ten-piece bonus.
+		// Flat; the seconds at nought arm nothing. No gameplay attribute and no
+		// base.
+		TEXT("ground_pound_every_seconds"),
+		TEXT("ground_pound_percent_of_armor"),
+		TEXT("ground_pound_radius_metres"),
+		TEXT("ground_pound_stun_seconds"),
+		TEXT("ground_pound_seconds_off_per_kill"),
 	};
 	return Stats;
 }
