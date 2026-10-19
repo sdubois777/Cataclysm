@@ -795,8 +795,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperSixSeenTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * R8 and its addition. Before any Soul the HUD's reading names none (the control). One left 3 m off is named, "Soul",
- * in its one colour; taken, it is named no more. Before any is taken the line above the skill bar holds nothing (the
+ * R8 and its addition. Before any Soul the HUD's reading names none (the control). One left 3 m off is named, in its
+ * one colour (THE TAG'S TEXT IS NOT TESTED: the HUD draws `ACataclysmReaperSoul::NameText` itself, and a comparison of
+ * that constant with its own words could not fail, so it was taken out, ruled 2026-10-18); taken, it is named no more. Before any is taken the line above the skill bar holds nothing (the
  * control); after three, it reads "attack/spell damage 3/10", which is where the HUD already shows a row's own stacks.
  */
 bool FCataclysmReaperSixSeenTest::RunTest(const FString&)
@@ -833,7 +834,6 @@ bool FCataclysmReaperSixSeenTest::RunTest(const FString&)
 	}
 	const TArray<ACataclysmReaperSoul*> Standing = Named();
 	TestTrue(TEXT("a Soul 3 m off is named"), Standing.Num() == 1 && Standing[0] == Soul);
-	TestEqual(TEXT("its tag says \"Soul\""), FString(ACataclysmReaperSoul::NameText), FString(TEXT("Soul")));
 	TestTrue(TEXT("in its one colour, a pale blue"),
 			 ACataclysmReaperSoul::NameColour().Equals(FLinearColor(0.55f, 0.85f, 1.0f, 1.0f), 0.0001f));
 	Scene.Player->SetActorLocation(Here + FVector(2 * M, 0, 0));
