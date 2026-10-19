@@ -381,7 +381,51 @@ taking it, holds one stack of Soul Strike. Two assertions on the case.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-19 under the lock enchant-ry, on development 1364e537a (the Tyrant's Chains
+ten-piece merge), for three commits in this order: the mechanism (8830f23a9), the HUD test's deleted assertion
+(fbb733d88) and the rows with the real-row test (a01797a17). Every step was as registered. The coordinating session
+merged #2446 (the dungeon session's simulation-only change, no game/ file) while the window ran. These commits were
+moved onto that merge afterwards by cherry-picking, with the same zero-context patch ids, and that change touched no
+file the window's Unreal steps read.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 24 actions, 21 files compiled" (the
+  mechanism's first compile); "354 tests performed, 353 succeeded, 1 failed:
+  TheWornReapersEmbraceSixPieceLeavesASoulAtAMinionsDeathWhoseTakingGivesSoulStrike", with exactly 2 failed assertions
+  in the run, each checked by its text: "with six pieces worn, the imp's death leaves one Soul" and "and taking it gives
+  one stack of Soul Strike". The five-piece control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 9163a60c1, "Rebuild the enchantment DataTable asset for Reaper's Embrace 6-piece's rows", and pushed as
+  `feat/set-bonuses-reaper6-t-1`.
+- **The whole Unreal suite:** "3913 tests performed, 3913 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3913 tests in the tree at 9163a60c1; 3913 performed, gap 0". Registered 3913 and 0: the 3903 measured at
+  91c971c37, the nine of `Cataclysm.SetBonus.Reaper6.` and the one real-row test. The probe is inside a test already
+  counted. The set-up assertions the second session could only read passed: `Subjugate` took a fresh monster, and a
+  Bolt Turret spawned with no skill is a deployable.
+- **Python:** "6703 passed, 8 skipped"; JUnit tests 6711, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 00:33:04 to 01:21:47 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Reaper6.`, 9 tests, all in
+`CataclysmReaperSoul.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the
+beginnings of their names. The failed assertions had been counted by reading, after listing every event each test's
+actors raise, by the second session and again by the enchantment session, and were measured beside it. Each anchor was
+counted once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| RS-I | the flag read as below nought, so nought leaves a Soul | 1 failed, `EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndTheSummonCapsRemovalLeavesNone` | 1 / 1 | 9 of 9 succeeded |
+| RS-II | the reach doubled | 1 failed, `ASoulIsTakenWithinOneAndAHalfMetresAlongTheFloorRaisingTheEventOnceAndNotFromBeyond` | 4 / 4 | 9 of 9 succeeded |
+| RS-III | any taker takes any Soul | 1 failed, `OnlyTheCommanderWhoseMinionLeftASoulTakesItAndNotAnotherPlayerOrACreature` | 5 / 5 | 9 of 9 succeeded |
+
+The measured lines include, under RS-I, "control: with the flag at nought an imp's death leaves no Soul ... to be 0, but
+it was 1"; under RS-II, "control: from 1.55 m along the floor nothing is taken ... to be 0, but it was 1"; under RS-III,
+"another player 1 m from it takes nothing ... to be 0, but it was 1".
+
+**Not measured:** the probe's failure under RS-I (outside the prefix), the real-row test's under any break, the HUD's
+drawing on a canvas, and the player controller's per-frame call (no automation test has a player controller's frame).
+
+**REAPER'S EMBRACE'S SIX-PIECE BONUS IS NOW BUILT**: a minion's death leaves a Soul, and each Soul taken is a stack of
+Soul Strike. The set's ten-piece bonus is the next layer.
 
 ---
 
