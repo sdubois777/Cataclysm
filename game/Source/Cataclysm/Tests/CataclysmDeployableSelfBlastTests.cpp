@@ -6,10 +6,14 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -33,7 +37,8 @@
  * War skill places anything here.
  *
  * THE PLAYER IS A POSSESSED PLAYER CHARACTER HOLDING A DEMONIC WHIP, given a weapon damage of 100 by hand: its Ultimate
- * The Gathering is a 14 m Strike all round, and its basic attack a 3 m Strike of 45 degrees limited to one target.
+ * The Gathering is a 14 m Strike all round, and its basic attack a 3 m Strike of 45 degrees limited to one target. One
+ * case holds a Demonic Staff, whose Heavy skill is a bolt of no speed that lands at once in a 1.5 m radius.
  *
  * NO ROW IS AUTHORED, SO EVERY STAT IS GRANTED BY HAND, one stat line per call, replacing the last. The flag is a flat
  * 1 on `deployable_blasts_strike_self` with no tags, the row the enchantment session is to write.
@@ -133,7 +138,7 @@ namespace CataclysmDeployableSelfBlastTest
 	/** A possessed player character holding one weapon, its ability system and its weapon slots. */
 	struct FDeployableSelfBlastRig
 	{
-		FDeployableSelfBlastRig(UWorld* World, const FVector& Where)
+		FDeployableSelfBlastRig(UWorld* World, const FVector& Where, const TCHAR* WeaponType = TEXT("Whip"))
 		{
 			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
 			APlayerController* Controller = World->SpawnActor<APlayerController>();
@@ -152,7 +157,7 @@ namespace CataclysmDeployableSelfBlastTest
 				return;
 			}
 			Slots->SetDamageType(TEXT("Demonic"));
-			Slots->EquipWeaponType(TEXT("Whip"));
+			Slots->EquipWeaponType(WeaponType);
 			Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
 			Set(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 1.0f);
 			Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
@@ -313,6 +318,17 @@ namespace CataclysmDeployableSelfBlastTest
 	void DeployableSelfBlastStep(ACataclysmMinion* Gadget)
 	{
 		ACataclysmMinion::GadgetStep(Gadget);
+	}
+
+	/** What every leech payment a character has outstanding still owes it, summed over its pools. */
+	float DeployableSelfBlastLeechOwed(const UCataclysmAbilitySystemComponent* System)
+	{
+		float Owed = 0.0f;
+		for (const FCataclysmLeechPayment& Payment : System->GetLeechPayments())
+		{
+			Owed += Payment.Remaining;
+		}
+		return Owed;
 	}
 }
 
@@ -781,6 +797,170 @@ CATACLYSM_DEPLOYABLE_SELF_BLAST_TEST(FCataclysmDeployableSelfBlastDeathBlastTest
 		ACataclysmMinion::DeathBlast(OutsideGadget, Outside.Player), 1);
 	TestEqual(TEXT("the wearer 8 m from its gadget, outside the 5 m, loses nothing"),
 		DeployableSelfBlastHealthOf(Outside.Player), 10000.0f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// 7. The blow on the wearer pays the wearer nothing back: no leech and no Fervour (B4; addition 1 of 2026-10-19)
+// ==========================================================================
+
+CATACLYSM_DEPLOYABLE_SELF_BLAST_TEST(FCataclysmDeployableSelfBlastNoGainTest,
+	"Cataclysm.DeployableSelfBlast.TheBlowOnTheWearerGivesItNoLeechAndNoFervourThatItsBlowOnTheEnemyGives")
+{
+	using namespace CataclysmDeployableSelfBlastTest;
+
+	// TWO GROUPS LAID OUT AS IN THE FIRST CASE: THE PLAIN PLAYER AND THE WEARER. Each leeches 10% into each of its three
+	// pools and gains 5 Fervour for each enemy its blows land on, at half health and half mana, with an empty Fervour pool
+	// of 100. Its gadget's cast strikes one enemy. So the plain player's cast is the control blow on an enemy that pays
+	// back, and the wearer's must pay back exactly that much and no more for the blow it takes itself.
+	FDeployableSelfBlastWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FVector PlainAt(0.0f, 0.0f, 0.0f);
+	const FVector WearerAt(GroupApart, 0.0f, 0.0f);
+	FDeployableSelfBlastRig Plain(World, PlainAt + FVector(3.0f * M, 0.0f, 0.0f));
+	FDeployableSelfBlastRig Wearer(World, WearerAt + FVector(3.0f * M, 0.0f, 0.0f));
+	if (!Plain.IsUsable(*this, ECataclysmAbilitySlot::Ultimate) || !Wearer.IsUsable(*this, ECataclysmAbilitySlot::Ultimate))
+	{
+		return false;
+	}
+	for (const FDeployableSelfBlastRig* Each : {&Plain, &Wearer})
+	{
+		Each->Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 5000.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 500.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetLifeLeechAttribute(), 10.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetManaLeechAttribute(), 10.0f);
+		Each->Set(UCataclysmVitalAttributeSet::GetEnergyShieldLeechAttribute(), 10.0f);
+		Each->Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Each->Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+		Each->Set(UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(), 0.0f);
+		Each->Set(UCataclysmClassResourceAttributeSet::GetCarnageFromDamageTakenAttribute(), 0.0f);
+	}
+	const FDeployableSelfBlastRow Fervour = DeployableSelfBlastFlat(UCataclysmFervour::PerEnemyHitStat, 5.0f);
+	Plain.Holds({DeployableSelfBlastConverts(TEXT("Slot.Ultimate")), Fervour});
+	Wearer.Holds({DeployableSelfBlastConverts(TEXT("Slot.Ultimate")), Fervour, DeployableSelfBlastFlag()});
+	ACataclysmMinion* PlainGadget = DeployableSelfBlastPlace(*this, Plain, ECataclysmAbilitySlot::Ultimate, PlainAt);
+	ACataclysmMinion* WearerGadget = DeployableSelfBlastPlace(*this, Wearer, ECataclysmAbilitySlot::Ultimate, WearerAt);
+	if (!PlainGadget || !WearerGadget)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* PlainEnemy = DeployableSelfBlastEnemy(World, PlainAt + FVector(-3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* WearerEnemy = DeployableSelfBlastEnemy(World, WearerAt + FVector(-3.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: the plain group's enemy"), PlainEnemy)
+		|| !TestNotNull(TEXT("set-up: the wearer's group's enemy"), WearerEnemy))
+	{
+		return false;
+	}
+	if (!DeployableSelfBlastSides(*this, TEXT("plain"), Plain, PlainGadget, PlainEnemy)
+		|| !DeployableSelfBlastSides(*this, TEXT("wearer"), Wearer, WearerGadget, WearerEnemy))
+	{
+		return false;
+	}
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+	// THE CONTROL, READ FIRST: the plain player's cast on its enemy leeches and gains Fervour.
+	DeployableSelfBlastStep(PlainGadget);
+	const int32 PlainPayments = Plain.System->GetLeechPayments().Num();
+	const float PlainLeeched = DeployableSelfBlastLeechOwed(Plain.System);
+	const float PlainFervour = Plain.System->GetNumericAttribute(Pool);
+	if (!TestTrue(*FString::Printf(TEXT("control: the plain cast's blow on its enemy leeches: %d payments, %.2f owed"),
+								   PlainPayments, PlainLeeched),
+			PlainPayments > 0 && PlainLeeched > 0.0f)
+		|| !TestTrue(*FString::Printf(TEXT("control: and gains Fervour: %.2f"), PlainFervour), PlainFervour > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WEARER'S: the same for its enemy, and nothing more for the blow on itself.
+	DeployableSelfBlastStep(WearerGadget);
+	TestTrue(TEXT("set-up: the wearer was struck"), DeployableSelfBlastHealthOf(Wearer.Player) < 5000.0f);
+	TestEqual(TEXT("the wearer's leech payments are its enemy's alone: the blow on itself leeches nothing"),
+		Wearer.System->GetLeechPayments().Num(), PlainPayments);
+	TestEqual(TEXT("and so is what they owe"), DeployableSelfBlastLeechOwed(Wearer.System), PlainLeeched, 0.01f);
+	TestEqual(TEXT("and its Fervour is its enemy's alone: the blow on itself gains none"),
+		Wearer.System->GetNumericAttribute(Pool), PlainFervour, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// 8. A gadget's bolt landing in a radius strikes the wearer beside its enemy, and not one at range (B2; addition 2)
+// ==========================================================================
+
+CATACLYSM_DEPLOYABLE_SELF_BLAST_TEST(FCataclysmDeployableSelfBlastLandingTest,
+	"Cataclysm.DeployableSelfBlast.AGadgetsBoltLandingInARadiusStrikesTheWearerBesideItsEnemyAndNotOneAtRange")
+{
+	using namespace CataclysmDeployableSelfBlastTest;
+
+	// TWO GROUPS, BOTH HOLDING THE FLAG AND A DEMONIC STAFF WITH ITS HEAVY SLOT CONVERTED: the Staff's Heavy bolt, of no
+	// speed and no pierce, lands at once in a 1.5 m radius where it is aimed, `UCataclysmProjectileSkill::Land`. Each
+	// gadget at the group's place and its enemy 6 m along X. THE CONTROL AT RANGE stands 4 m along Y from its enemy; the
+	// wearer beside stands 1.2 m along Y from it.
+	FDeployableSelfBlastWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	const FVector RangeAt(0.0f, 0.0f, 0.0f);
+	const FVector BesideAt(GroupApart, 0.0f, 0.0f);
+	const FVector EnemyOffset(6.0f * M, 0.0f, 0.0f);
+	FDeployableSelfBlastRig AtRange(World, RangeAt + EnemyOffset + FVector(0.0f, 4.0f * M, 0.0f), TEXT("Staff"));
+	FDeployableSelfBlastRig Beside(World, BesideAt + EnemyOffset + FVector(0.0f, 1.2f * M, 0.0f), TEXT("Staff"));
+	FCataclysmWeaponSkill Bolt;
+	if (!AtRange.IsUsable(*this, ECataclysmAbilitySlot::Heavy) || !Beside.IsUsable(*this, ECataclysmAbilitySlot::Heavy)
+		|| !Beside.HeldRow(ECataclysmAbilitySlot::Heavy, Bolt))
+	{
+		return false;
+	}
+	TestTrue(*FString::Printf(TEXT("set-up: the Staff's Heavy skill is a projectile of no speed, no pierce and no single "
+								   "target, landing in %.0f cm"),
+							  Bolt.Params.RadiusCm),
+		Bolt.Shape == ECataclysmSkillShape::Projectile && Bolt.Params.SpeedCmPerSecond <= 0.0f && Bolt.Params.Pierce == 0
+			&& Bolt.Params.MaxTargets != 1 && Bolt.Params.RadiusCm > 120.0f);
+	AtRange.Holds({DeployableSelfBlastConverts(TEXT("Slot.Heavy")), DeployableSelfBlastFlag()});
+	Beside.Holds({DeployableSelfBlastConverts(TEXT("Slot.Heavy")), DeployableSelfBlastFlag()});
+	ACataclysmMinion* RangeGadget = DeployableSelfBlastPlace(*this, AtRange, ECataclysmAbilitySlot::Heavy, RangeAt);
+	ACataclysmMinion* BesideGadget = DeployableSelfBlastPlace(*this, Beside, ECataclysmAbilitySlot::Heavy, BesideAt);
+	if (!RangeGadget || !BesideGadget)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* RangeEnemy = DeployableSelfBlastEnemy(World, RangeAt + EnemyOffset);
+	ACataclysmEnemyCharacter* BesideEnemy = DeployableSelfBlastEnemy(World, BesideAt + EnemyOffset);
+	if (!TestNotNull(TEXT("set-up: the enemy of the group at range"), RangeEnemy)
+		|| !TestNotNull(TEXT("set-up: the enemy of the group beside"), BesideEnemy))
+	{
+		return false;
+	}
+	if (!DeployableSelfBlastSides(*this, TEXT("at range"), AtRange, RangeGadget, RangeEnemy)
+		|| !DeployableSelfBlastSides(*this, TEXT("beside"), Beside, BesideGadget, BesideEnemy))
+	{
+		return false;
+	}
+
+	// THE CONTROL AT RANGE, READ FIRST: the bolt lands on its enemy, and the wearer 4 m from it loses nothing.
+	DeployableSelfBlastStep(RangeGadget);
+	TestEqual(TEXT("control: the gadget at range casts once"), RangeGadget->SkillGadgetCastsMade, 1);
+	TestTrue(TEXT("control: its bolt lands on its enemy"), DeployableSelfBlastHealthOf(RangeEnemy) < 50000.0f);
+	TestEqual(TEXT("control: the wearer 4 m from where it lands loses nothing"),
+		DeployableSelfBlastHealthOf(AtRange.Player), 10000.0f, 0.001f);
+
+	// THE WEARER BESIDE.
+	DeployableSelfBlastStep(BesideGadget);
+	TestTrue(TEXT("set-up: the gadget beside struck its enemy"), DeployableSelfBlastHealthOf(BesideEnemy) < 50000.0f);
+	TestTrue(*FString::Printf(TEXT("the wearer 1.2 m from where it lands is struck: %.2f left of 10000"),
+							  DeployableSelfBlastHealthOf(Beside.Player)),
+		DeployableSelfBlastHealthOf(Beside.Player) < 10000.0f);
 	return true;
 }
 
