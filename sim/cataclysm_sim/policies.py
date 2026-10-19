@@ -64,6 +64,11 @@ def _quest_hit_fells(sim, d, city) -> bool:
     """
     if not _quest_timer_hits(sim, d):
         return False
+    # A HOLLOW'S HIT ADDS VOID STACKS, since 2026-10-18: it fells its city when
+    # they reach the erase count.
+    if sim._hollow_adds_stacks(d):
+        return (city.void_stacks + sim.hollow_hit_stacks(d, city)
+                >= sim.cfg.void_stacks_to_erase)
     return sim.cfg.spec(DungeonType.BASIC, city.tier).defense_damage >= city.defense
 
 
