@@ -13,7 +13,8 @@ existing calls that strike the enemies); `CataclysmProjectile.h` and `.cpp` (one
 `StrikeTheWearerInItsBlast`, and one block in `ACataclysmProjectile::Finish`); `CataclysmMinion.cpp` (one include and one
 block each in `ACataclysmMinion::Explode` and `ACataclysmMinion::DeathBlast`), all under
 `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name at the
-end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmDeployableSelfBlastTests.cpp` (new, six tests);
+end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmDeployableSelfBlastTests.cpp` (new, eight tests: six in the first commit, two
+added by the coordinating session's two additions of 2026-10-19 in a second);
 `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one include, one probe, one line at the end of `Probes`);
 `tools/generate_datatables.py` (`DEPLOYABLE_BLASTS_STRIKE_SELF_STAT` and
 `refuse_a_deployable_self_blast_row_the_game_cannot_read`, called last from `validate_enchantment_effects`);
@@ -195,6 +196,62 @@ outside the tests, found by script (82 at this tree, the three definitions in `C
   from the gadget.
 - **The deployable must be the wearer's own (its `Summoner`).** The option not taken: any deployable.
 
+### B4 AS READ, ACCEPTED BY THE COORDINATING SESSION (2026-10-19)
+
+B4, as ruled: "B4 a blow dealt by the gadget to the wearer, raising what a blow taken raises, never answered as a hit
+dealt, under the 2026-10-15 own-side rulings." **This layer's reading of it:** a skill's blow on the wearer is dealt in the
+wearer's own name, as every blow of the gadget's cast is, carrying the 2026-10-15 share's mark at 100, so B3's figure
+holds (the enemy's delivery, priced as the gadget's); a deployable's own death blast is dealt by the gadget. The
+coordinating session's words when it read the layer: "B4 JUDGEMENT ACCEPTED: a skill's self-blow dealt in the wearer's
+name with the 2026-10-15 share mark at 100, so B3's figure holds; a death blast dealt by the gadget. Record it in the
+entry as a reading of B4, quoting B4."
+
+### WHAT A BLOW DEALT PAYS ITS DEALER BACK, AND WHAT STOPS IT ON THE WEARER (THE FIRST ADDITION OF 2026-10-19)
+
+Asked by the coordinating session, because a blow in the wearer's own name could pay the wearer back. Swept by the
+operation: everything that reads a blow the wearer dealt and gives the dealer something. Read from the code at this
+layer's tree.
+
+| What pays back | Where | What stops it on the blow on the wearer | Tested |
+| :-- | :-- | :-- | :-- |
+| Leech into health, mana and energy shield | `UCataclysmLeech::NoteHit`, from the damage branch of `UCataclysmVitalAttributeSet` | The effect carries `NoLeechTag`, stamped by `ApplyTypedSpec` (`CataclysmSkillEffects.cpp` 1668) for `bCannotLeech`, which `MarkAsShare` sets | Test 7: the wearer's payments and what they owe are its enemy's alone |
+| Fervour for each enemy struck | `UCataclysmFervour::GainForEnemiesHit`, called by `HitTargets` and `ACataclysmProjectile::HitOne` | The blow on the wearer is dealt through `ApplyHit` alone and never through either | Test 7: the wearer's Fervour is its enemy's alone |
+| Mana on hit | `UCataclysmSkillTemplate::ApplyManaOnHit`, paid by `HitTargets` once per call that landed | Never reached, as Fervour is | No: only the Basic slot states any (6, `game/Data/SkillSlots.csv`), its swing is one target and so strikes no wearer, and `mana_on_hit` is a stat a row may only remove |
+| The running buffs told of a landed blow (Martyr's Ember's store spent, Groundbreaker, Slipstream), Chorus's repeat, the designed burn and every rider | The loop of `HitTargets`, and `HitOne` | Never reached, as Fervour is; and the mark takes the ailment chance off | No |
+| Nothing Wasted's store and the two stores of absorbed damage, spent as bonus damage | `UCataclysmSkillEffects::ApplyHit` | `ApplyHit` spends neither for a blow carrying the mark (R7 of 2026-10-15) | No; the precedent's test 7 drives it for an ally's share |
+| Every row on a hit dealt: own stacks gained on hit, class resource or charges from a row, the cull, healing on hit | `hit_dealt`, `first_hit_dealt`, `critical_strike` from `ACataclysmPlayerCharacter::OnSomethingWasHit`; `deployable_hit` from `ApplyHit` | `OnSomethingWasHit` returns for a notice carrying the mark; `ApplyHit` raises no `deployable_hit` for it | Test 5: each is raised once, for the enemy, and not for the wearer |
+| Every row and credit on a kill, the overkill explosion included | `ACataclysmPlayerCharacter::OnSomethingDied` | A death the mark made is heard with no killer | No: the blow does not kill the wearer in any test |
+| Retaliation's leech (Feeding Wound) | `UCataclysmLeech::NoteRetaliation` | The wearer never retaliates against its own blow: the mark sets `bCannotBeRetaliatedAgainst` | No |
+| The first blow on a target, a brand, a charm | The damage branch | Skipped for a blow carrying the mark | No |
+| The combat clock, and a boss's cooldown window | `NoteHitDealt`, `NoteStruckABoss` | Not a gain: the clock is the wearer's already as the one struck, and the wearer is no boss | No |
+
+**A death blast's blow is a minion's**, and a minion's blow carries none of its summoner's leech, critical strike or
+penetration (`MinionDelivery`); it pays the wearer nothing back either. Not tested. **Nothing found needed fixing:** every
+gain is stopped by the mark or never reached.
+
+### THE PROJECTILE SITES (THE SECOND ADDITION OF 2026-10-19)
+
+**The search.** A script over `game/Data/WeaponSkills.csv` listed every row of shape `Projectile`, nine in all and none of
+them War's, with what a skill gadget refuses (`WildMagicLeavesOut`: a channel, a charge time, a disarm, a `Requires`, a
+health cost) and what its shape params make of it:
+
+- **A landing in a sphere (`Land`):** `Demonic_Staff_Heavy`, speed 0, no pierce, radius 1.5 m, no target limit. **Tested,
+  test 8.**
+- **A shot that detonates where it stops (`Finish`):** `Demonic_Wand_Heavy` (1 m), `Demonic_Axe_Special` (1 m),
+  `Demonic_Whip_Special`, Tether (1.5 m), and the thirty axes of `Demonic_Axe_Ultimate`'s rack (1 m each).
+  `Demonic_Axe_Heavy`, Carom, glances, which turns its blast off. `Demonic_Fist_Special` has a health cost and is never
+  cast by a gadget. **THE FIRST COMMIT OF THIS LAYER SAID "no gadget-castable projectile of the test weapon detonates",
+  AND THAT WAS WRONG**: the Whip's own Tether does.
+- **A flight that pierces:** `Demonic_Greataxe_Special` and `Demonic_Spear_Special`, left out as a path (a judgement,
+  above).
+
+**`Finish` stays untested, a judgement of the writing session.** One test was asked for and it drives `Land`, which lands
+at once. A shot that flies must be stepped by hand, and it stops at the first step whose sweep touches an enemy, which is
+up to one step (0.05 s at 2000 to 2600 cm/s, so up to 130 cm) short of the enemy; its blast is centred there and is 1 to
+1.5 m. A wearer at least 1 m from every body and surely inside that blast cannot be laid out with a margin.
+**`Explode` stays untested**: a skill gadget's explosion deals nothing, its own damage being nought and no skill recording
+its radius.
+
 ### THE GENRE SOURCE
 
 Fetched in this session. **NOTHING FOUND MATCHES THE ROW.** No source read describes a player's own traps, mines, turrets
@@ -257,9 +314,10 @@ The coordinating session rules on each.
 
 ### Tests
 
-Six new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmDeployableSelfBlastTests.cpp`, the group
-`Cataclysm.DeployableSelfBlast.`, beside `Cataclysm.SkillGadgets.`, whose rig they follow: possessed players holding a
-Demonic Whip, a weapon damage of 100 and an enemy's defences (no armour, evasion, block, resistance, damage reduction or
+Eight new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmDeployableSelfBlastTests.cpp`, the group
+`Cataclysm.DeployableSelfBlast.`, the last two added for the coordinating session's two additions of 2026-10-19, beside
+`Cataclysm.SkillGadgets.`, whose rig they follow: possessed players holding a Demonic Whip (a Demonic Staff in test 8),
+a weapon damage of 100 and an enemy's defences (no armour, evasion, block, resistance, damage reduction or
 energy shield) unless a case gives one, groups 100 m apart, every body at least 1 m from every other, the enemies on the
 monsters' side and the players on the players'. Every stat is granted by hand. A cast is the gadget's own step. The
 critical strike roll is pinned in every case after the world is made. No existing group begins with the prefix (a search
@@ -296,6 +354,18 @@ for `"Cataclysm.Deployable` finds only this file). **Assertions are counted for 
    control, the plain blast catches one enemy, strikes it, and the plain player 3 m away loses nothing; the inside blast
    still counts one enemy caught; set-up, the enemy beside the wearer is struck; the wearer's loss equals it, within 0.01;
    set-up, the outside blast catches one enemy; the wearer 8 m away loses nothing.
+7. `TheBlowOnTheWearerGivesItNoLeechAndNoFervourThatItsBlowOnTheEnemyGives`, 16. Crit pinned to 100. Two groups laid out
+   as in test 1, a plain player and a wearer, each leeching 10 into each of its three pools and gaining 5 Fervour for
+   each enemy struck, at half health and half mana with an empty Fervour pool of 100. In order: a world; set-up, the pin;
+   set-up, the two enemies; set-up, sides (6); control, the plain cast's blow on its enemy leeches (payments and what
+   they owe above nought); control, and gains Fervour; set-up, the wearer was struck; the wearer's leech payments are as
+   many as the plain player's; what they owe is the same, within 0.01; its Fervour is the same, within 0.001.
+8. `AGadgetsBoltLandingInARadiusStrikesTheWearerBesideItsEnemyAndNotOneAtRange`, 15. Two groups holding the flag and a
+   Demonic Staff with its Heavy slot converted; each enemy 6 m from its gadget; the control wearer 4 m from its enemy, the
+   other 1.2 m. In order: a world; set-up, the Staff's Heavy row is a projectile of no speed, no pierce and no single
+   target with a radius above 1.2 m; set-up, the two enemies; set-up, sides (6); control, the gadget at range casts once,
+   its bolt lands on its enemy, and the wearer 4 m away loses nothing; set-up, the gadget beside struck its enemy; the
+   wearer 1.2 m away is struck.
 
 One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeDeployableBlastsStrikeSelf`. A
 fighter does not hold the flag, and once granted at 1 it does, by `HeldBy`.
@@ -309,11 +379,10 @@ share's name read the same way as the control; **the two new deliveries are the 
 action, 0, 2, 0.5) and two figures wrong are two refusals; a condition or a scale is refused by the checks that hold
 those; a passive node's row and another stat are left alone; the whole sheet's validation runs the check.
 
-**Not tested:** a real row worn, which does not exist yet; `UCataclysmProjectileSkill::Land`, `ACataclysmProjectile::Finish`
-and `ACataclysmMinion::Explode` (no gadget-castable projectile of the test weapon detonates, a projectile in flight needs
-stepping by hand, and a skill gadget's explosion deals nothing); the cone of a gadget's area strike (only The Gathering's
-all-round swing is driven); a row's "hits all within" sphere; the blow killing the wearer, and so its `kill`; the
-stores, leech, retaliation, ailments and forced movement refused; the more damage from behind; the wearer's
+**Not tested:** a real row worn, which does not exist yet; `ACataclysmProjectile::Finish` and `ACataclysmMinion::Explode`,
+for the reasons under "The projectile sites"; the cone of a gadget's area strike (only The Gathering's all-round swing is
+driven); a row's "hits all within" sphere; the blow killing the wearer, and so its `kill`; mana on hit, the stores, the
+running buffs, retaliation, ailments and forced movement refused (leech and Fervour are driven, test 7); the more damage from behind; the wearer's
 resistances, block and energy shield (only armour is driven); a War deployable, a copy of the summoner's last skill and a
 trap (no War work); `hit_taken_cancels_skills`; anything drawn on a screen; replication; anything in play.
 
@@ -325,39 +394,48 @@ counted absent before the break and once after it. Each break keeps the file's r
 pair of round brackets twice and takes none; 38/38 after DS-III; `CataclysmSkillTemplates.cpp` 1832/1832, 491/491,
 29/29 before and after DS-II) and compiles alone by reading: DS-I keeps `Deployable` read and returns a `bool`; DS-II
 compares an `int32` with another literal; DS-III passes the unmarked `Delivery`, which is in scope, and keeps
-`AtTheWearer` read by `MarkAsShare`. The prefix is `Cataclysm.DeployableSelfBlast.`, with its trailing dot, six tests.
+`AtTheWearer` read by `MarkAsShare`. The prefix is `Cataclysm.DeployableSelfBlast.`, with its trailing dot, eight
+tests. **RECOUNTED AFTER THE TWO ADDITIONS OF 2026-10-19**, which added tests 7 and 8 and changed no line a break
+touches; the anchors and the bracket counts above were taken again on the second commit's tree and are unchanged.
 
 **The events the tests' actors raise on the way, listed before counting.** On each player: for each enemy its gadget's
 cast strikes, `hit_dealt`, `first_hit_dealt` (the first blow), `critical_strike` (test 5 only, where every roll strikes
 critically) and `deployable_hit`; and whatever a cast of The Gathering raises for its burn, pull and knock-down on the
-enemy; for the blow on a wearer, `hit_taken`. On a death blast, nothing on the player but the wearer's `hit_taken`. Only
-test 5 counts events. **NO ROW HANGS ON ANY OF THEM**, so no event changes what a later blow does. Read from the code,
-not measured.
+enemy; for the blow on a wearer, `hit_taken`. In test 7, besides, a leech payment into each of three pools and a gain of
+Fervour for each enemy blow. In test 8 the Staff's bolt orders what its player commands, the gadget among them, onto the
+enemy struck (`CommandStrike`); a skill gadget's own blow deals nothing. On a death blast, nothing on the player but the
+wearer's `hit_taken`. Test 5 counts events and test 7 counts payments and Fervour. **NO ROW HANGS ON ANY OF THEM**, so no
+event changes what a later blow does. Read from the code, not measured.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
 | DS-I, the wearer's own cast strikes it (B5) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return Wearer && Deployable && Deployable->IsDeployable() && Deployable->Summoner.Get() == Wearer;` | `return Wearer && (!Deployable \|\| Deployable->IsDeployable()) && (!Deployable \|\| Deployable->Summoner.Get() == Wearer);` | `TheWearersOwnCastOfTheSkillFromItsOwnPlaceDoesNotStrikeIt` | none |
 | DS-II, a single-target swing strikes the wearer (B2) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` | `AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == 1` | `AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == -1` | `ASingleTargetBasicSwingTheGadgetCastsDoesNotStrikeTheWearerInsideItsCone` | none |
-| DS-III, the blow on the wearer is an ordinary blow (B4) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return UCataclysmSkillEffects::ApplyHit(Wearer, Wearer, DamagePercent, SkillTags, AtTheWearer);` | `return UCataclysmSkillEffects::ApplyHit(Wearer, Wearer, DamagePercent, SkillTags, Delivery);` | `TheBlowRaisesHitTakenAndNoHitDealtFirstHitCriticalStrikeOrDeployableHit` | none |
+| DS-III, the blow on the wearer is an ordinary blow (B4) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return UCataclysmSkillEffects::ApplyHit(Wearer, Wearer, DamagePercent, SkillTags, AtTheWearer);` | `return UCataclysmSkillEffects::ApplyHit(Wearer, Wearer, DamagePercent, SkillTags, Delivery);` | `TheBlowRaisesHitTakenAndNoHitDealtFirstHitCriticalStrikeOrDeployableHit` | `TheBlowOnTheWearerGivesItNoLeechAndNoFervourThatItsBlowOnTheEnemyGives` |
 
 Failed assertions, by reading:
 
 - **DS-I, 1 in 1 test.** A use cast from no actor now passes the deployable test, so the wearer's own cast finds it at
   its own centre. Test 4: "the wearer at the centre of its own swing loses nothing". No other test makes a cast with no
-  deployable; test 3's basic swing is refused for its one target first, and test 6's blasts are deployables'.
+  deployable; test 3's basic swing is refused for its one target first, test 6's blasts are deployables', and tests 7
+  and 8 cast from gadgets.
 - **DS-II, 1 in 1 test.** Test 3: "the wearer inside the single-target swing's cone loses nothing". The Gathering states
-  no target limit, so every other swing is struck either way.
-- **DS-III, 4 in 1 test.** Without the mark the blow is the wearer's own hit on itself: it raises `hit_dealt`,
+  no target limit, so every other swing is struck either way; test 8's bolt lands through `Land`, which the break does
+  not touch.
+- **DS-III, 6 in 2 tests.** Without the mark the blow is the wearer's own hit on itself. Test 5, 4: it raises `hit_dealt`,
   `first_hit_dealt` (the wearer's first blow on itself), `critical_strike` (a chance of 50 against a roll of 0) and
-  `deployable_hit` once more each. Test 5: the four lines "one hit_dealt", "one first_hit_dealt", "one critical_strike"
-  and "one deployable_hit" (2 against 1 each); "one hit_taken" passes. Tests 1, 2 and 3 pass: their roll of 100 never
-  strikes critically, and no row there reads a hit dealt; test 6's blasts go through `StrikeWithADeathBlast`, unbroken.
+  `deployable_hit` once more each, so the four lines "one hit_dealt", "one first_hit_dealt", "one critical_strike" and
+  "one deployable_hit" fail (2 against 1 each); "one hit_taken" passes. Test 7, 2: the blow no longer carries the no-leech
+  tag, so the wearer leeches from it into all three pools: "the wearer's leech payments are its enemy's alone" (6 against
+  3) and "and so is what they owe"; its Fervour line passes, because the blow is still dealt through `ApplyHit` alone.
+  Tests 1, 2, 3 and 8 pass: their roll of 100 never strikes critically, their wearers leech nothing, and no row there
+  reads a hit dealt; test 6's blasts go through `StrikeWithADeathBlast`, unbroken.
 
 **Tests of another group expected to fail, to check in the window:** none under any of the three by reading; the probe
 reads `HeldBy`, which no break touches.
 
 **A test and no proof:** the wearer outside the area, the plain player, the figure equal to the enemy's, the armour,
-the death blast and its count.
+the death blast and its count, the Fervour not gained, and the bolt's landing.
 
 ### THE WINDOW'S RUN
 
