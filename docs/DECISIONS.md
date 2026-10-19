@@ -33,7 +33,10 @@ weight 4, tag `Type.Buff`: "You cannot benefit from buffs applied by allies".
   player is given one of those buffs only by ANOTHER PLAYER. Co-operative play is Phase 2 in the design document. On
   the owner's play-check list below, as ruled (A5).
 - **TWO MORE ROUTES WERE FOUND THAT CAN PUT A BUFF'S TAG ON A PLAYER, BOTH THROUGH A THRALL, AND NEITHER ASKS THE
-  QUESTION. NOT RULED; FOR THE COORDINATING SESSION.** The sweep by the operation (below) found two places that lay a
+  QUESTION. RULED 2026-10-19 BY THE COORDINATING SESSION: LEFT AS THEY ARE, AND WHOEVER FIRST MAKES A PLAYER READ
+  `Status.Buff.Commander` MUST MAKE BOTH ROUTES ASK `RefusesBuffsFromAllies`, as Q3 requires of any minion or thrall
+  route.** Its words: "Status.Buff.Commander on a player has no effect today (its reader is the enemy's
+  CommanderMultiplier), so refusing it would be unobservable." The sweep by the operation (below) found two places that lay a
   buff tag on another character's allies with `UCataclysmSkillEffects::ApplyTagForDuration`:
   `ACataclysmSuccubusCharacter::PulseDominion` (`CataclysmSuccubusCharacter.cpp` about 512, every ally within 8 m,
   every half second) and Horde Leader in `CataclysmEnemyModifiers.cpp` (about 314, every ally of a creature that
@@ -43,8 +46,8 @@ weight 4, tag `Type.Buff`: "You cannot benefit from buffs applied by allies".
   is `ACataclysmEnemyCharacter::CommanderMultiplier`, a creature's, and no heads-up display draws it (searched in
   `game/Source/Cataclysm/Interface/`). So no number a player has moves, and the play-check line above stays true in
   effect; but a buff from a thrall does arrive on a holder as a tag. Asking the question there is two conditions of
-  the same shape, in files this brief does not name; it was not done. The ruling's "a future minion or thrall route
-  counts too" is the reason to raise it.
+  the same shape, in files this brief does not name; it was not done, as ruled. The ruling's "a future minion or
+  thrall route counts too" is why it was raised.
 - **"Buffs" is what these three routes give, and nothing wider.** The shared copies' More damage, an aura's increased
   damage, and an aura's shared immunities. Read in the code on 6a9a43f1b; the sweep is below.
 - **WHAT IT DOES NOT REACH.** The wearer's own buffs, each untouched: its self buffs (`UCataclysmSelfBuffSkill::
@@ -99,7 +102,7 @@ Line numbers are of this layer's working tree.
 | | Ruling | Where it is |
 | :-- | :-- | :-- |
 | Q3 (a) | Every buff another character's code puts on the wearer, all three routes, none of its own. | The three conditions below, each asking `RefusesBuffsFromAllies` (`CataclysmAbilitySystemComponent.cpp` 77) of the ally about to be given; nothing a character gives itself asks it. |
-| Q3 (a) | A future minion or thrall route counts too. | The question's header (`CataclysmAbilitySystemComponent.h` 2917) and this entry. Not built for the two tag routes in SAID FIRST. |
+| Q3 (a) | A future minion or thrall route counts too. | The question's header (`CataclysmAbilitySystemComponent.h` 2917) and this entry. Not built for the two tag routes in SAID FIRST, as ruled on 2026-10-19 (SAID FIRST). |
 | A1 | `ally_buffs_refused`, a flag with value 1. | `AllyBuffsRefusedStat` (`CataclysmAbilitySystemComponent.cpp` 75), last on `StatsWithNoAttribute` (`CataclysmPlayerClassStats.cpp` 882); the generator refuses any other row shape. |
 | A2 | Taken back by each route's own next pass; no new take-back code; a test pins the take-back for each route that holds a buff. | The shared copies: `LivingAlliesWithin` (`CataclysmSharedBuffs.cpp` 45) leaves the refuser out, so its held copy matches nothing wanted and `TakeBack` in `Step`'s keep-or-take-back loop removes it. The aura's bonus: the refuser is left out of `ShouldCarry` (`CataclysmSkillTemplates.cpp` 5247), so it is in `Leaving` and its modifier is removed. The immunities: it is left out of `Inside` (5364), so `RevokeImmunitiesFrom(this)` is called for it. Tests 2, 3 and 4. |
 | A3 | A refusing wearer still gives its own buffs. | Each route asks the receiver and never the giver. Test 5. |
@@ -313,6 +316,42 @@ Failed assertions, by reading:
 
 **A test and no proof:** that a refuser still gives (test 5); that its own buff and its own aura's immunity are kept
 (test 5); that a refusal ends when the flag goes (tests 2 and 3).
+
+**A Python guard proof of the generator's refusal, run by the writing session** through `tools/prove_guard.py` in a
+`git archive` copy of 053fcffa (so no other run read the break). The break replaced `stat = ALLY_BUFFS_REFUSED_STAT`
+in `refuse_an_ally_buffs_refused_row_the_game_cannot_read`, counted once before and absent after. It printed "PROVED: 2
+failed, 946 passed in 25.39s | restored: 948 passed in 22.76s", and the two named failures were
+`tools/tests/test_generate_datatables.py::TestAHolderRefusesBuffsFromAllies::test_every_wrong_shape_is_refused_by_its_own_sentence`
+and `...::test_the_whole_sheets_validation_runs_the_check`.
+
+### THE ROW, AUTHORED BY THE ENCHANTMENT SESSION
+
+One effect row, on the coordinating session's grant of the workbook for this row on 2026-10-19, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`:
+
+| Enchantment | Stat | Value Kind | Value Low | Value High | Every other cell |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `Negative_You_cannot_benefit_from_buffs_applied_by_allies` | `ally_buffs_refused` | flat | 1 | 1 | empty |
+
+The name was derived with the generator's `row_name` from the sentence and checked against
+`game/Data/EnchantmentsNegative.csv`. The generator accepted the row, so its new refusal found nothing wrong with it.
+**676 rows over 541 enchantments**, from 675 over 540, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in
+`CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in `docs/README.md`'s sheet table. `ally_buffs_refused` joins
+`FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py` with the row, because
+`test_every_flag_stat_is_still_used` refuses a flag no row states.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornRefusalOfAlliesBuffsKeepsAnAllysNearbyCopyOff`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Two real players each wear a benefit with no effect. The control's
+drawback has no effect either, and the case's drawback is this row. Another player 3 m off holds "Nearby allies gain
+10-20% more damage" at 10 as its stat line, and its shared buffs' step is called once. The control is given one copy,
+and its damage is 1.10 times what it was. The refuser is given none, and its damage is unchanged. Each wearer is read
+as a ratio of itself, because a refreshed wearer carries its class's lines. Two assertions on the case, so on assets
+built before the row it fails twice, and only there.
+
+**THE BENEFIT WITH NO EFFECT THAT THIS TEST, AND OTHERS IN THE FILE, WEAR IS "Your ultimate ability is converted into a
+placeable trap"** (`BenefitWithNoEffect`, `CataclysmEnchantmentEffectTests.cpp` about line 115). The first trap layer
+gives that sentence a row, scheduled 2026-10-19. That layer must move `BenefitWithNoEffect` to a sentence still without
+a row first, or every test wearing it gains a trap.
 
 ### THE WINDOW'S RUN
 

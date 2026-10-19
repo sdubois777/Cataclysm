@@ -27657,4 +27657,70 @@ bool FCataclysmChronoTenRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAllyBuffsRefusedRowTest,
+	"Cataclysm.Enchantments.TheWornRefusalOfAlliesBuffsKeepsAnAllysNearbyCopyOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You cannot benefit from buffs applied by allies", ruled 2026-10-19 (Q3 a, A1-A5): the receiver's flag
+ * `ally_buffs_refused`. WORN by a real player, against a CONTROL wearing a drawback with no effect, each with the same
+ * benefit with no effect. Another player 3 m off each holds "Nearby allies gain 10-20% more damage" at 10, written as
+ * its stat line, and its shared buffs' step is called once by hand. What a refusal does on each route is
+ * `Cataclysm.AllyBuffsRefused.`'s. Each wearer's damage is read as a ratio of its own before and after, because a
+ * refreshed wearer carries a class's lines of its own. TWO assertions on the case, so on assets built before the row
+ * it fails twice, and only there.
+ */
+bool FCataclysmAllyBuffsRefusedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* Refusal = TEXT("Negative_You_cannot_benefit_from_buffs_applied_by_allies");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker Refuser(BenefitWithNoEffect, Refusal);
+	if (!TestTrue(TEXT("a striker wearing a drawback with no effect"), Control.Ready())
+		|| !TestTrue(TEXT("a striker wearing the refusal"), Refuser.Ready()))
+	{
+		return false;
+	}
+
+	float Before[2] = {0.0f, 0.0f};
+	float After[2] = {0.0f, 0.0f};
+	int32 CopiesGiven[2] = {0, 0};
+	int32 Index = 0;
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&Control, &Refuser})
+	{
+		// THE GIVER, 3 m along +Y: inside the 5 m "nearby" radius, and 3.6 m from each of the striker's creatures.
+		ACataclysmPlayerState* GiverState = Striker->World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Giver = Striker->World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector(0.0f, 300.0f, 0.0f), FRotator::ZeroRotator);
+		UCataclysmAbilitySystemComponent* GiverSystem =
+			GiverState ? GiverState->GetCataclysmAbilitySystemComponent() : nullptr;
+		if (!TestNotNull(TEXT("set-up: a giver"), Giver) || !TestNotNull(TEXT("set-up: the giver's abilities"), GiverSystem))
+		{
+			return false;
+		}
+		Giver->SetPlayerState(GiverState);
+		Giver->OnRep_PlayerState();
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat)).Base = 10.0f;
+		GiverSystem->SetStatInputs(MoveTemp(Lines));
+
+		Before[Index] = UCataclysmSkillEffects::ModifiedDamage(Striker->ASC, 100.0f, FGameplayTagContainer());
+		UCataclysmSharedBuffs::Step(Giver);
+		After[Index] = UCataclysmSkillEffects::ModifiedDamage(Striker->ASC, 100.0f, FGameplayTagContainer());
+		CopiesGiven[Index] = GiverSystem->SharedBuffCopies.Num();
+		++Index;
+	}
+
+	// THE CONTROL, READ FIRST: wearing a drawback with no effect, the wearer takes the giver's copy.
+	TestTrue(TEXT("set-up: the control's blow of 100 comes to something before the step"), Before[0] > 0.0f);
+	TestEqual(TEXT("control: the giver gives the control one copy"), CopiesGiven[0], 1);
+	TestEqual(TEXT("control: which makes its damage 10% more"), After[0] / Before[0], 1.10f, 0.001f);
+	TestTrue(TEXT("set-up: the refuser's blow of 100 comes to something before the step"), Before[1] > 0.0f);
+	TestEqual(TEXT("wearing the refusal, the giver gives it no copy. If it does, DT_EnchantmentEffects may be older than "
+				   "the row: run tools/generate_datatable_assets.py"),
+			  CopiesGiven[1], 0);
+	TestEqual(TEXT("and its damage is what it was"), After[1] / Before[1], 1.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
