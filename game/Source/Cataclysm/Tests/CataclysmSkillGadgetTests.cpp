@@ -26,6 +26,7 @@
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
@@ -93,6 +94,34 @@ namespace CataclysmSkillGadgetTest
 		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
 		return Made;
 	}
+
+	/**
+	 * Pins `Cataclysm.CritRoll` for the life of the scope and puts back what it was. Ruled 2026-10-18 by the coordinating
+	 * session, when Tyrant's Chains' ten-piece layer was read: a comparison of two blows' figures must not rest on
+	 * neither of them critically striking. Every blow a defender takes reads the pin (`UCataclysmVitalAttributeSet`). A
+	 * roll of 100 never critically strikes.
+	 */
+	struct FGadgetTestCritRoll
+	{
+		explicit FGadgetTestCritRoll(float Roll)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll")))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+		~FGadgetTestCritRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
 
 	float GadgetTestHealthOf(const AActor* Who)
 	{
@@ -585,6 +614,12 @@ CATACLYSM_TEST(FCataclysmSkillGadgetCastsTest,
 
 	// THE PLAYER AT THE ORIGIN WITH A CONTROL ENEMY 3 M ALONG X; ITS HEAVY GADGET 20 M ALONG Y. AN ENEMY 6 M FROM THE
 	// GADGET, beyond Searing Lash's 5 m and within the type row's 15 m, then one 3 m from it.
+	const FGadgetTestCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 	FGadgetTestWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -799,6 +834,12 @@ CATACLYSM_TEST(FCataclysmSkillGadgetDamageRowTest,
 
 	// A WHIP PLAYER AT THE ORIGIN AND A WAND PLAYER 100 M ALONG X, each with a control enemy 3 m along X and its gadget
 	// 30 M ALONG Y with a target 3 m along X from it.
+	const FGadgetTestCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 	FGadgetTestWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -884,6 +925,12 @@ CATACLYSM_TEST(FCataclysmSkillGadgetAgeAndStillnessTest,
 {
 	using namespace CataclysmSkillGadgetTest;
 
+	const FGadgetTestCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 	FGadgetTestWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -950,6 +997,12 @@ CATACLYSM_TEST(FCataclysmSkillGadgetFlatAndHitTest,
 {
 	using namespace CataclysmSkillGadgetTest;
 
+	const FGadgetTestCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 	FGadgetTestWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{

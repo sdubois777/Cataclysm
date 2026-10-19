@@ -295,6 +295,17 @@ possession runs the stat refresh, which writes the 5% skill default only for a c
 (`UCataclysmEquipmentComponent::WornWeapons`), and these players hold theirs through the weapon slots alone. The pin
 makes that independent of the rig. No proof's count moves: no break touches the pin.
 
+**THE SAME PIN IN FOUR MERGED SKILL GADGET TESTS, RULED THE SAME DAY.** The coordinating session first kept
+`CataclysmSkillGadgetTests.cpp` out of this layer, then, told by the enchantment session that its comparison at line
+636 holds only because that rig wears no weapon item (a rig that wore one would carry the 5% skill default on every
+blow), ruled the pin in as a test-only commit on this branch. By the same reading, four tests in that file compare two
+blows' figures, and each now holds `Cataclysm.CritRoll` at 100 for its length through a scoped `FGadgetTestCritRoll`:
+`FCataclysmSkillGadgetCastsTest` (the gadget's cast against the player's own), `FCataclysmSkillGadgetDamageRowTest`
+(two 30%-more comparisons), `FCataclysmSkillGadgetAgeAndStillnessTest` (two) and `FCataclysmSkillGadgetFlatAndHitTest`
+(the 300-more difference). Its other tests compare health only with the untouched 50,000, which a critical strike
+cannot move. One set-up assertion each, that the pin was found; no test is added. No proof of this layer reaches the
+file: their prefix is `Cataclysm.SetBonus.Tyrant10.` only.
+
 ### THE ROW LAYER
 
 Written by the enchantment session on 2026-10-18 on this mechanism. One row on the Enchantment Effects sheet,
