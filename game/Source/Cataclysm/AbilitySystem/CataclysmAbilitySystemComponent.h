@@ -1584,6 +1584,15 @@ public:
 	bool TeleportTheWearerRandomly(float Metres);
 
 	/**
+	 * The action that FIRES EVERY GADGET THE WEARER COMMANDS, ONCE, AT ONCE, on `player_death`. Ruled 2026-10-19 by
+	 * the coordinating session (C1), for "When you die, all your active traps and gadgets immediately trigger
+	 * simultaneously": the sentence's gadget half; its trap half joins when traps are built.
+	 * `tools/generate_datatables.py` holds the same name in `GADGETS_CAST_NOW_ACTION`. See
+	 * `FCataclysmPoolAction::bGadgetsCastNow` and `ACataclysmMinion::FireEveryGadgetAtTheDeathOf`.
+	 */
+	static const TCHAR* GadgetsCastNowAction;
+
+	/**
 	 * The action that reflects a share of the damage a block removed, and the
 	 * nearby action scaled by armour. Issue #1833 group E part 3, ruled
 	 * 2026-10-02. `tools/generate_datatables.py` holds the same names in
