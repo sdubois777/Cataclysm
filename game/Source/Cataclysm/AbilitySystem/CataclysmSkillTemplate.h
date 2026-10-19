@@ -1474,6 +1474,21 @@ protected:
 	float PercentHitScaledGivesAnAlly(const TArray<AActor*>& Consumed) const;
 
 	/**
+	 * "Your deployables and traps deal full damage to you if you are within their blast radius", the deployable half.
+	 * Ruled 2026-10-19 by the coordinating session, B1 to B6 in the entry of that date in `docs/DECISIONS.md`; the flag
+	 * and the searches are `UCataclysmDeployableSelfBlast`.
+	 *
+	 * Strike `Wearer`, this use's user, with this skill's blow of `DamagePercent`: THE DELIVERY `HitTargets` BUILDS FOR
+	 * AN ENEMY, FIELD FOR FIELD AND IN ITS ORDER, with the skill's more damage from behind measured from the wearer's
+	 * place, so it is priced as an enemy standing there would be (B3). Called inside the attack the enemies' blows are
+	 * dealt in, after them, by `UCataclysmStrikeSkill::SwingOnce` and `UCataclysmProjectileSkill::Land`, and only for a
+	 * wearer `UCataclysmDeployableSelfBlast` found inside the area of a use its deployable cast.
+	 *
+	 * @return what was sent, before the wearer's defences
+	 */
+	float StrikeTheWearerInItsDeployablesBlast(AActor* Wearer, float DamagePercent);
+
+	/**
 	 * Leave a burning patch of ground, if this skill's numbers say to.
 	 *
 	 * Eight of the sixteen designed Demonic skills do, on top of whatever else

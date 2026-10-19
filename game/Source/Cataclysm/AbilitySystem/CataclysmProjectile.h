@@ -634,6 +634,15 @@ private:
 	/** Deal one hit and set the target alight if this projectile does that. */
 	void HitOne(AActor* Target);
 
+	/**
+	 * Strike `Wearer`, the firer, with this projectile's blast, when its deployable cast the use and it stands inside:
+	 * "Your deployables and traps deal full damage to you if you are within their blast radius", ruled 2026-10-19 (B2,
+	 * B3). THE DELIVERY `HitOne` BUILDS FOR AN ENEMY, FIELD FOR FIELD AND IN ITS ORDER, and its later-hit share at
+	 * `ContactsBefore`, the count the blast arrived with, as every enemy of the blast is priced; nothing `HitOne` does
+	 * after the blow (a burn, Fervour, the running buffs, Chorus) is done. See `UCataclysmDeployableSelfBlast`.
+	 */
+	void StrikeTheWearerInItsBlast(AActor* Wearer, int32 ContactsBefore);
+
 	/** Stop flying, detonate if it does not pierce, and tell whoever is listening. */
 	void Finish();
 

@@ -11487,6 +11487,85 @@ def refuse_a_time_lock_rift_row_the_game_cannot_read(
     return problems
 
 
+#: The flag by which a wearer's own deployable's blast strikes the wearer
+#: standing inside it. Ruled 2026-10-19 by the coordinating session (B1-B6),
+#: for "Your deployables and traps deal full damage to you if you are within
+#: their blast radius", the deployable half; the trap half is not yet built.
+#:
+#: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, with no Required Tags, no
+#: Condition, no Scale and no Action (B1). Which blows, who is inside and the
+#: figure are the engine's and not the row's.
+#: `UCataclysmDeployableSelfBlast::FlagStat` holds the same name, and
+#: `TestADeployablesBlastStrikesItsWearer` in
+#: `tools/tests/test_generate_datatables.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT WITH NO TAGS, `UCataclysmDeployableSelfBlast::HeldBy`,
+#: at each place a deployable's blast is struck, because a death blast has no
+#: skill whose tags could scope it; it reads any value above nought as yes. So
+#: a row requiring a tag matches nowhere, a row of any kind but `flat` works on
+#: a base of nought and says no, and a row with an action is not a stat line
+#: at all; `refuse_a_deployable_self_blast_row_the_game_cannot_read` refuses
+#: each.
+DEPLOYABLE_BLASTS_STRIKE_SELF_STAT = "deployable_blasts_strike_self"
+
+
+def refuse_a_deployable_self_blast_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `DEPLOYABLE_BLASTS_STRIKE_SELF_STAT` is one its reader answers
+    yes to.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_an_ultimate_cost_doubling_row_the_game_cannot_read`, for one
+    flag.
+
+    THE FIGURE IS 1 AND NOTHING ELSE. The reader takes any value above nought
+    as yes, so 2 would work in the game; it is refused because a flag that
+    states another number reads as a quantity, and "full damage" is not one a
+    row may change.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat = DEPLOYABLE_BLASTS_STRIKE_SELF_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself and takes any value above "
+                f"nought as yes, so the row must be 'flat'; any other kind "
+                f"works on a base of nought and strikes NOBODY.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, because a deployable's "
+                f"death blast has no skill to scope it, so a row requiring a "
+                f"tag matches nowhere: this one would strike NOBODY and say "
+                f"nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The flag "
+                f"is a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on this "
+                    f"flag states 1 and nothing else.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11939,6 +12018,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # ACTION, ABOVE 0, THE SECONDS BETWEEN RIFTS NOT RISING. Ruled 2026-10-08,
     # 2026-10-17 (#10) and 2026-10-19 (K1-K9).
     problems.extend(refuse_a_time_lock_rift_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FLAG BY WHICH A WEARER'S OWN DEPLOYABLE'S BLAST STRIKES THE WEARER
+    # IS FLAT, 1 AND NOTHING ELSE, WITH NO TAGS AND NO ACTION. Ruled 2026-10-19
+    # (B1-B6).
+    problems.extend(refuse_a_deployable_self_blast_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

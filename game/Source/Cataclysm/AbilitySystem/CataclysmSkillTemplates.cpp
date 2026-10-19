@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
@@ -453,6 +454,19 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 		: UCataclysmAreaShareOnAllies::AlliesInCone(
 			GetWorld(), Self, Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees());
 
+	// AND THE USER ITSELF, WHEN ITS DEPLOYABLE CAST THIS SWING AS AN AREA STRIKE AND IT STANDS INSIDE. Ruled 2026-10-19
+	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius": the same
+	// sphere or cone, measured from the deployable's place. A STRIKE LIMITED TO ONE TARGET IS A SINGLE-TARGET BLOW AND
+	// STRIKES NOBODY HERE, a judgement of the writing session: the basic attack's swing is one. Null for a user without
+	// the row and for every use no deployable cast.
+	AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == 1
+		? nullptr
+		: ThisUseHitsAllWithinCm > 0.0f
+		? UCataclysmDeployableSelfBlast::WearerInSphere(
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+		: UCataclysmDeployableSelfBlast::WearerInCone(
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees());
+
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
 	// than tidy. Quench gives an enemy whose fire was just put out 50% more
 	// damage and Extinction's damage rises with how many went out at once, so
@@ -477,6 +491,12 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	//
 	// AND THE ALLIES FOUND ABOVE ARE STRUCK FOR THEIR SHARE IN THE SAME ATTACK, after the enemies. Ruled 2026-10-15.
 	// With none, these are `HitTargets` and `HitScaled` as they were.
+	//
+	// AND THE USER FOUND ABOVE IS STRUCK IN THE SAME ATTACK TOO, after them, for the percent an enemy that was not
+	// consumed is struck for (B3). Ruled 2026-10-19. The attack is begun here only when the user is struck, so the
+	// two calls below find it in progress and the user's blow is priced with the swing's count and what it bought.
+	const float UsersPercent = DamagePercent >= 0.0f ? DamagePercent : PercentHitScaledGivesAnAlly(Consumed);
+	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
 	if (DamagePercent >= 0.0f)
 	{
 		HitTargetsSharingWithAllies(Targets, DamagePercent, Allies);
@@ -484,6 +504,14 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	else
 	{
 		HitScaledSharingWithAllies(Targets, Consumed, Allies);
+	}
+	if (StruckWearer)
+	{
+		StrikeTheWearerInItsDeployablesBlast(StruckWearer, UsersPercent);
+	}
+	if (bBeganForTheUser)
+	{
+		EndAttack();
 	}
 
 	// AND THE FIRE SPREADS FROM WHERE EACH ONE WENT OUT. Touch Off states three
@@ -2153,7 +2181,25 @@ int32 UCataclysmProjectileSkill::Land()
 			GetWorld(), Self, Destination, ScaledRadiusCm(), Params.MaxTargets);
 	}
 
+	// AND THE USER ITSELF, WHEN ITS DEPLOYABLE CAST THIS AND IT STANDS INSIDE THE RADIUS IT LANDS IN. Ruled 2026-10-19
+	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". NOT A
+	// BEAM THAT PIERCES, whose line is a path and not a blast, and NOT A LANDING LIMITED TO ONE TARGET, which is a
+	// single-target blow: both judgements of the writing session. In the same attack as the enemies, after them, as
+	// `UCataclysmStrikeSkill::SwingOnce` strikes it.
+	AActor* const StruckWearer = Pierces > 0 || Params.MaxTargets == 1
+		? nullptr
+		: UCataclysmDeployableSelfBlast::WearerInSphere(
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm());
+	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
 	HitTargets(Targets);
+	if (StruckWearer)
+	{
+		StrikeTheWearerInItsDeployablesBlast(StruckWearer, GetDamagePercent());
+	}
+	if (bBeganForTheUser)
+	{
+		EndAttack();
+	}
 
 	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
 	// SO. The Staff's Compel: "everything you command strikes that same enemy at
