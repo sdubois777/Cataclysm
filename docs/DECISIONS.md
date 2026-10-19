@@ -67,6 +67,8 @@ Everything a ruling requires to be said first, and everything a player would not
 ### FOR THE OWNER'S PLAY-CHECK LIST
 
 - against a boss the ten-piece does nothing beyond placing the rift, because a boss cannot be stunned
+- with the whole set worn the rift's freeze, and its x6, last 7.5 s (added by the coordinating session when it read this
+  layer, 2026-10-19)
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -458,6 +460,25 @@ Failed assertions, by reading:
 **A test and no proof:** the wait for an enemy, the clock's restart, a boss refused and still caught, the `crowd_control`
 count, the multiplier on each source, the multiplier's end, the drawing, the two persistent-area rules, the regeneration
 step's call.
+
+### RULED BY THE COORDINATING SESSION WHEN IT READ THIS LAYER (2026-10-19)
+
+- **THE TWO-PIECE LENGTHENS THE RIFT'S FREEZE TO 7.5 S, AND THE x6 WITH IT, AND THAT STANDS (P1).** The two-piece's
+  "All debuffs you apply to enemies now last 50% longer" (`debuff_duration` increased 50) lengthens every tag the wearer
+  lays on an enemy, the stun among them, as it already lengthens the six-piece's 2 s freeze to 3 s. The x6 follows the
+  stun as applied. The tests here wear no two-piece, so they measure 5 s.
+- **THE x6 LASTS AS LONG AS THE LONGEST STUN THE ENEMY CARRIES JUST AFTER THIS RIFT'S STUN LANDS**, the writing
+  session's judgement, recorded as ruled: an enemy already stunned for longer by something else keeps the x6 for that
+  longer time.
+- **TWO EXISTING LINES CHANGED, AND FOR EVERY OTHER ZONE NOTHING CHANGED (P4).** `CataclysmAbilitySystemComponent.cpp`
+  1673 (`target_in_your_zone`) and `CataclysmSkillTemplate.cpp` 3144 ("only one persistent area") each skip a zone
+  marked `bIsNotAPersistentArea`. Only the rift is so marked, so every other zone is read exactly as before. Tests 9
+  and 10 pin both.
+- **THE CRITICAL STRIKE ROLL IS PINNED IN TESTS 5, 6 AND 7 (P2)**, by the enchantment session, as for Tyrant's Chains'
+  ten-piece: each compares two blows' or ticks' figures, and each now holds `Cataclysm.CritRoll` at 100, which never
+  critically strikes, through `CataclysmTestWorld::FScopedCritRoll`, with one set-up assertion that the pin was found. By
+  reading nothing there could critically strike: the players wear no weapon item, a minion cannot, and a tick cannot.
+  No proof's count moves: no break touches the pin.
 
 ### THE WINDOW'S RUN
 
