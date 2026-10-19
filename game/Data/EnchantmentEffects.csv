@@ -675,3 +675,4 @@ Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every#5,Positive_Chronomancer_s
 Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every#6,Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every,time_lock_rift_stun_seconds,flat,5.0,5.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every#7,Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every,time_lock_rift_damage_taken_more_percent,flat,500.0,500.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_You_cannot_benefit_from_buffs_applied_by_allies#1,Negative_You_cannot_benefit_from_buffs_applied_by_allies,ally_buffs_refused,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Negative_Your_deployables_and_traps_deal_full_damage_to_y#1,Negative_Your_deployables_and_traps_deal_full_damage_to_y,deployable_blasts_strike_self,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0

@@ -309,7 +309,12 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # "You cannot benefit from buffs applied by allies", ruled 2026-10-19 (Q3 a,
               # A1-A5): the flag by which the receiver refuses every buff another
               # character gives it. Its row states 1 and the sentence names no number.
-              "ally_buffs_refused"}
+              "ally_buffs_refused",
+              # "Your deployables and traps deal full damage to you if you are within
+              # their blast radius", the deployable half, ruled 2026-10-19 (Q1, B1-B6):
+              # the flag by which the wearer's own deployable's blast strikes the wearer
+              # inside it. Its row states 1 and the sentence names no number.
+              "deployable_blasts_strike_self"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -1003,8 +1008,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-19, from 668 over 539: seven rows on one enchantment.
 #: AND 676 OVER 541 SINCE THE ROW THAT REFUSES BUFFS FROM ALLIES,
 #: issue #1833, 2026-10-19, from 675 over 540: one row on one enchantment.
-AUTHORED_ROWS = 676
-AUTHORED_ENCHANTMENTS = 541
+#: AND 677 OVER 542 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER,
+#: issue #1833, 2026-10-19, from 676 over 541: one row on one enchantment.
+AUTHORED_ROWS = 677
+AUTHORED_ENCHANTMENTS = 542
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

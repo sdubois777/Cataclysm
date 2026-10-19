@@ -249,6 +249,13 @@ health cost) and what its shape params make of it:
 at once. A shot that flies must be stepped by hand, and it stops at the first step whose sweep touches an enemy, which is
 up to one step (0.05 s at 2000 to 2600 cm/s, so up to 130 cm) short of the enemy; its blast is centred there and is 1 to
 1.5 m. A wearer at least 1 m from every body and surely inside that blast cannot be laid out with a margin.
+**ACCEPTED BY THE COORDINATING SESSION ON 2026-10-19 (option a): `Land` tested, `Finish` recorded as untested.** The
+shipped skills a gadget can cast that reach `Finish` are `Demonic_Wand_Heavy`, `Demonic_Axe_Special`,
+`Demonic_Whip_Special` (Tether) and `Demonic_Axe_Ultimate`'s rack. By reading, `Finish` strikes the wearer through
+`ACataclysmProjectile::StrikeTheWearerInItsBlast` with the share mark, as `Land`'s tested strike does through
+`StrikeTheWearerInItsDeployablesBlast`, each building the delivery its enemy's blow carries. **MANA ON HIT IS ACCEPTED
+AS READ AND NOT TESTED** by the same ruling: only `HitTargets` and `HitOne` pay it, and the self-blow goes through
+`ApplyHit` alone.
 **`Explode` stays untested**: a skill gadget's explosion deals nothing, its own damage being nought and no skill recording
 its radius.
 
@@ -436,6 +443,41 @@ reads `HeldBy`, which no break touches.
 
 **A test and no proof:** the wearer outside the area, the plain player, the figure equal to the enemy's, the armour,
 the death blast and its count, the Fervour not gained, and the bolt's landing.
+
+### THE MOVE ONTO DEVELOPMENT AND THE ROW, BY THE ENCHANTMENT SESSION
+
+**The two commits of this layer were moved onto development a7b2bcfd9** (the ally-buff refusal's merge), as
+c1af510d8 and 1e87c0428, from 8246a3c06 and e8e24bba5 on 6a9a43f1b. Each kept its zero-context patch id (78b5409e47ab,
+3d8ba4e63a3b) and its count of removed lines (0 and 23), and 0 lines of development were removed. The conflicts were
+the ally-buff refusal's insertions at the same places: the decisions log (this entry placed above that one), the end of
+`StatsWithNoAttribute`, the probes, the generator's refusals, their tests, and the call-site inventory. Each was
+resolved by inserting this layer's lines into development's file just after the refusal's, and each file's added lines
+were checked to be exactly the commit's.
+
+**`CALL_SITES` CORRECTED TO 69.** This layer wrote "added one more" beside 67 and left the figure at 67; with the
+ally-buff refusal's 68 below it, the figure after both is 69. It is printed in a failure message and asserted nowhere,
+and it does not equal what the check measures (165 keys in `INVENTORY` and 165 found, read on this top), so the
+correction follows the file's own convention and nothing more.
+
+One effect row, on the coordinating session's grant of the workbook for this row on 2026-10-19, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`:
+
+| Enchantment | Stat | Value Kind | Value Low | Value High | Every other cell |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `Negative_Your_deployables_and_traps_deal_full_damage_to_y` | `deployable_blasts_strike_self` | flat | 1 | 1 | empty |
+
+The name was derived with the generator's `row_name` from the sentence and checked against
+`game/Data/EnchantmentsNegative.csv`. The generator accepted the row. **677 rows over 542 enchantments**, from 676 over
+541, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in
+`docs/README.md`'s sheet table. `deployable_blasts_strike_self` joins `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` with the row.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornSelfBlastDrawbackMakesItsWearerHoldTheFlagEveryBlastSiteAsks`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Two real players each wear a benefit with no effect; the control's
+drawback has no effect either and the case's is this row. It reads `UCataclysmDeployableSelfBlast::HeldBy`, the one
+question all five blast sites ask: the control does not hold the flag and the wearer does. What a blast then does is
+this layer's group's, where a gadget is placed and cast; a real wearer placing a gadget is not driven here. One
+assertion on the case, so on assets built before the row it fails once, and only there.
 
 ### THE WINDOW'S RUN
 
