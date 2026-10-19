@@ -271,8 +271,8 @@ a skill costs. Every helper type and function is named after the subject (`FReap
    taken; the event is raised; the Soul is gone; ten are held; 7 s after the tenth and 4 s after the eleventh, ten still;
    5.2 s after the eleventh, none.
 8. `TheHudNamesEachSoulInItsColourAndTheLineAboveTheBarCountsSoulStrike`. In order: control, the HUD's reading names no
-   Soul; control, the line above the bar holds nothing; set-up, a Soul 3 m off; it is named; its tag says "Soul"; in the
-   one colour, pinned to its figures; set-up, walked to 1 m, it is taken; it is named no more; three taken, the line reads
+   Soul; control, the line above the bar holds nothing; set-up, a Soul 3 m off; it is named; in the one colour, pinned
+   to its figures; set-up, walked to 1 m, it is taken; it is named no more; three taken, the line reads
    "attack/spell damage 3/10".
 9. `AMinionWhoseLifetimeRunsOutLeavesNoSoul`. In order: control, an imp killed leaves one Soul; set-up, 1.5 s on, the imp
    told 1 s is gone; its lifetime running out left no Soul.
@@ -345,6 +345,19 @@ Failed assertions, by reading:
 
 **Tests of another group expected to fail, to check in the window:** under RS-I, the probe above. None under RS-II or
 RS-III, by reading: no test outside the prefix calls `TakeSoulsNear`.
+
+### CHANGED BY THE ENCHANTMENT SESSION, RULED BY THE COORDINATING SESSION THE SAME DAY
+
+- **TEST 8 LOST ONE ASSERTION, "its tag says \"Soul\"".** It compared `ACataclysmReaperSoul::NameText` with the same
+  words, so it could not fail. The HUD draws that constant itself and keeps no label of its own for a standing Soul, so
+  there is nothing else to read: THE TAG'S TEXT IS UNTESTED. The colour assertion stays: it pins `NameColour()` to its
+  figures. No proof touches the assertion: RS-I, RS-II and RS-III stand at 1, 4 and 5.
+- **R8, READ AS THE WRITING SESSION READ IT.** The Soul Strike count shows on the existing own-stacks line above the
+  skill bar, and nothing is added to the Silenced line.
+- **FOR THE OWNER'S PLAY-CHECK LIST:** the Soul Strike stacks show as "attack/spell damage N/10" above the skill bar,
+  not by the name Soul Strike.
+- **THE THREE JUDGEMENTS STAND**, as ruled: a dead commander's minion still leaves a Soul; the HUD names every Soul in
+  range, whosever it is; Souls are not saved.
 
 ### THE WINDOW'S RUN
 
