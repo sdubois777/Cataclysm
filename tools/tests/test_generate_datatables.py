@@ -9143,3 +9143,143 @@ class TestASlotIsConvertedIntoAGadget(GadgetRowsOnAMadeUpSheet):
         assert any("under the required tags ''" in problem
                    and repr(self.STAT) in problem
                    for problem in problems), problems
+
+
+class TestAHolderRefusesBuffsFromAllies:
+    """`ally_buffs_refused`, ruled 2026-10-19 (Q3 option a, A1 to A5) and
+    built ahead of its row, for "You cannot benefit from buffs applied by
+    allies". One flag at a flat 1 with no Required Tags, no Condition, no
+    Scale and no Action:
+    `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies` asks whether it
+    is above nought, off the receiver, before an ally is given a buff.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one, on a made-up sheet whose tags are not the real enchantment's. The
+    real row is the enchantment session's to write; this shows that the
+    generator carries the proposed row through and refuses the wrong ones.
+    """
+
+    WORDS = "You cannot benefit from buffs applied by allies"
+    STAT = "ally_buffs_refused"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_an_ally_buffs_refused_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def carried(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert row["Stat"] == self.STAT
+        return row
+
+    def test_the_proposed_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_row_is_on_the_shipped_sentences_enchantment(self, tmp_path):
+        """The name is derived from the words, never typed, and the shipped
+        Negative sheet holds a sentence of that name with those words. The
+        control is the made-up sheet's other sentence, whose derived name the
+        shipped sheet does not hold."""
+        import csv
+        (row,) = self.out(tmp_path, [self.ROW])
+        name = gen.row_name("Negative", self.WORDS[:48])
+        assert row["Enchantment"] == name
+        shipped = gen.REPO_ROOT / "game" / "Data" / "EnchantmentsNegative.csv"
+        with shipped.open(encoding="utf-8", newline="") as handle:
+            effects = {r["Name"]: r["Effect"] for r in csv.DictReader(handle)}
+        assert effects.get(name) == self.WORDS
+        assert gen.row_name("Negative", "Double your energy shield") not in effects
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.ALLY_BUFFS_REFUSED_STAT == self.STAT
+        listed = gen.stats_with_no_attribute()
+        assert self.STAT in listed
+        assert "ally_buffs_refused_percent" not in listed
+
+    def test_the_generator_holds_the_name_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks for
+        it in `CataclysmAbilitySystemComponent.cpp`. THE CONTROL is
+        `aura_shares_immunities_with_allies`, read by the same pattern from the
+        same file, so a pattern that found nothing would fail there first."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names.get("AuraSharesImmunitiesStat") == (
+            "aura_shares_immunities_with_allies")
+        assert names.get("AllyBuffsRefusedStat") == self.STAT
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        row = self.carried(tmp_path)
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Buff"}, "under a required tag"),
+                ({"Action": "cleanse"}, "with the action 'cleanse'"),
+                ({"ValueLow": 1.0, "ValueHigh": 2.0}, "states 1 to 2"),
+                ({"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 to 0"),
+                ({"ValueLow": 100.0, "ValueHigh": 100.0}, "states 100 to 100")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The game asks the flag where no condition's state is handed over.
+        The control is the row unchanged, refused by neither."""
+        row = self.carried(tmp_path)
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="debuffs_carried")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1",
+                               "Stat": "aura_shares_immunities_with_allies",
+                               "ValueKind": "increased", "ValueLow": 5.0,
+                               "ValueHigh": 5.0,
+                               "RequiredTags": "Type.Buff"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        row = self.carried(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [row]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(row, ValueLow=1.0, ValueHigh=2.0)]},
+            set())
+        assert any("states 1 to 2" in problem and repr(self.STAT) in problem
+                   for problem in problems), problems

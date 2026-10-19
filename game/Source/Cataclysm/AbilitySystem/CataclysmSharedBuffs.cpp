@@ -28,6 +28,12 @@ namespace CataclysmSharedBuffsDetail
 	 * The living allies within `RadiusCm` that can carry a modifier.
 	 * `FindAlliesInSphere` leaves the wearer out. A DEAD ALLY IS LEFT OUT HERE,
 	 * so a copy it holds is taken back on the step after it dies.
+	 *
+	 * AND AN ALLY THAT REFUSES BUFFS FROM ALLIES IS LEFT OUT HERE, for both
+	 * kinds of copy. Ruled 2026-10-19, "You cannot benefit from buffs applied
+	 * by allies": a copy it already holds is taken back by the step's own
+	 * keep-or-take-back pass, at the next step, as a copy of an ally that left
+	 * is.
 	 */
 	TArray<AActor*> LivingAlliesWithin(AActor* Wearer, float RadiusCm)
 	{
@@ -36,7 +42,7 @@ namespace CataclysmSharedBuffsDetail
 				 Wearer->GetWorld(), Wearer, Wearer->GetActorLocation(), RadiusCm))
 		{
 			if (IsValid(Ally) && Ally != Wearer && !UCataclysmSkillEffects::IsDead(Ally)
-				&& CataclysmOf(Ally))
+				&& CataclysmOf(Ally) && !UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
 			{
 				Living.Add(Ally);
 			}

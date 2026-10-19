@@ -2893,6 +2893,30 @@ public:
 	static const TCHAR* AuraSharesImmunitiesStat;
 
 	/**
+	 * `ally_buffs_refused`, a flag held by the character that RECEIVES: above
+	 * nought, no buff another character's code gives it reaches it. Ruled
+	 * 2026-10-19 (Q3 option a, A1 to A5), for "You cannot benefit from buffs
+	 * applied by allies". No gameplay attribute and no base.
+	 */
+	static const TCHAR* AllyBuffsRefusedStat;
+
+	/**
+	 * Whether `Receiver` refuses buffs from allies: it holds
+	 * `AllyBuffsRefusedStat` above nought. False for no actor and for one whose
+	 * ability system is not this project's.
+	 *
+	 * THE ONE QUESTION, ASKED OF EACH ALLY BEFORE IT IS GIVEN A BUFF, by every
+	 * route that gives another character one: `UCataclysmSharedBuffs::Step`'s
+	 * copies, `UCataclysmAuraSkill::HelpAlliesInside` and
+	 * `UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside`. Each leaves a
+	 * refusing ally out of who should carry the buff, so its own take-back
+	 * removes one already held at its next pass. A FUTURE ROUTE GIVING AN ALLY
+	 * A BUFF -- A MINION'S, A THRALL'S OR ANY OTHER -- ASKS THIS TOO, ruled
+	 * 2026-10-19. A character's own buffs never ask it.
+	 */
+	static bool RefusesBuffsFromAllies(const AActor* Receiver);
+
+	/**
 	 * The immunities other characters' skills have granted this one. Public so
 	 * tests can count them. A character with no abilities of its own -- a minion
 	 * -- can be immune only through this list.

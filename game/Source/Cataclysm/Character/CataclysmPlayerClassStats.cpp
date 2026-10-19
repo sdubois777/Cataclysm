@@ -873,6 +873,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("time_lock_rift_most_seconds"),
 		TEXT("time_lock_rift_stun_seconds"),
 		TEXT("time_lock_rift_damage_taken_more_percent"),
+		// The flag by which a character refuses the buffs other characters give
+		// it, read off the RECEIVER with no tags by
+		// UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies, which the
+		// shared buffs' step and an aura's two passes over its allies ask of each
+		// ally. Ruled 2026-10-19, for "You cannot benefit from buffs applied by
+		// allies". Flat 1. No gameplay attribute and no base.
+		TEXT("ally_buffs_refused"),
 	};
 	return Stats;
 }

@@ -9857,6 +9857,58 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `ally_buffs_refused`, read off the RECEIVER by `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies`, which
+	 * `UCataclysmSharedBuffs::Step` asks of each ally before it gives a copy. Ruled 2026-10-19, for "You cannot benefit
+	 * from buffs applied by allies". A player wearing `nearby_allies_more_damage` at 10 steps once with two allies of
+	 * the players' side within 5 m: the plain one is given 10 More (the control) and the one holding the flag at a
+	 * flat 1 is given nothing.
+	 *
+	 * STANDING: the wearer at the origin, the plain ally 2 m along X and the holder 3 m along Y, 3.6 m apart.
+	 *
+	 * WHAT THIS DOES NOT REACH. The aura's two passes, the take-backs and a refusing giver: `Cataclysm.AllyBuffsRefused.`.
+	 */
+	void ProbeAllyBuffsRefused(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Wearer = SpawnPotionHolder(World);
+		ACataclysmEnemyCharacter* Plain = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(2 * M, 0.0f, 0.0f), FRotator::ZeroRotator);
+		ACataclysmEnemyCharacter* Holder = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(0.0f, 3 * M, 0.0f), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: a wearer"), Wearer) || !Test.TestNotNull(TEXT("set-up: a plain ally"), Plain)
+			|| !Test.TestNotNull(TEXT("set-up: an ally holding the flag"), Holder))
+		{
+			return;
+		}
+		Plain->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Holder->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		GrantFlat(Wearer, UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat, 10.0f);
+		GrantFlat(Holder, UCataclysmAbilitySystemComponent::AllyBuffsRefusedStat, 1.0f);
+
+		UCataclysmSharedBuffs::Step(Wearer);
+		const UCataclysmAbilitySystemComponent* PlainSystem =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Plain));
+		const UCataclysmAbilitySystemComponent* HolderSystem =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Holder));
+		if (!Test.TestNotNull(TEXT("set-up: the plain ally's ability system"), PlainSystem)
+			|| !Test.TestNotNull(TEXT("set-up: the holder's ability system"), HolderSystem))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: the plain ally within 5 m is given the wearer's copy"),
+					   PlainSystem->GetStatModifiers().Num(), 1);
+		Test.TestEqual(TEXT("the ally holding ally_buffs_refused at 1 is given none, so RefusesBuffsFromAllies really "
+							"reads it"),
+					   HolderSystem->GetStatModifiers().Num(), 0);
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -10109,6 +10161,7 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::StunSecondsStat); }},
 			{TEXT("time_lock_rift_damage_taken_more_percent"),
 			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::DamageTakenMorePercentStat); }},
+			{TEXT("ally_buffs_refused"), &ProbeAllyBuffsRefused},
 		};
 		return Made;
 	}
