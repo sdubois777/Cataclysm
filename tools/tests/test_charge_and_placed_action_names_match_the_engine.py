@@ -136,6 +136,8 @@ CONSTANTS = {
     # AND THE ONE THAT GAINS KEPT STACKS ON AN EVENT AND, AT THEIR CAP, MAKES THE
     # NEXT ABILITY FREE AND EMPOWERED, ruled 2026-10-17.
     "KeptStacksFreeNextAbilityAction": "kept_stacks_free_next_ability",
+    # AND THE ONE THAT FIRES EVERY GADGET THE WEARER COMMANDS AT ITS DEATH, ruled 2026-10-19.
+    "GadgetsCastNowAction": "gadgets_cast_now",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -448,3 +450,31 @@ def test_the_generator_spells_silence_as_the_engine_does() -> None:
     for other in (gen.APPLY_STATUSES, gen.APPLY_STATUSES_FOR_SECONDS,
                   gen.APPLY_STATUSES_TO_SELF_FOR_SECONDS, gen.APPLY_STATUSES_TO_SELF_ONLY):
         assert gen.SILENCE_STATUS not in other
+
+
+def test_the_generator_accepts_exactly_the_gadgets_cast_now_name_the_engine_has() -> None:
+    """Ruled 2026-10-19, for "When you die, all your active traps and gadgets
+    immediately trigger simultaneously". And the lines the action needs are in
+    the engine as code and not only named in a comment: the item sets the flag
+    from the name, the row loop asks the flag and fires every gadget of the
+    avatar, and the gadget's death cast lifts only the dead-player refusal."""
+    assert gen.GADGETS_CAST_NOW_ACTION == engine_names()["GadgetsCastNowAction"]
+    assert gen.GADGETS_CAST_NOW_ACTION not in gen.POOL_ACTIONS
+
+    def code_of(path: Path) -> str:
+        return "\n".join(line for line in path.read_text(encoding="utf-8").splitlines()
+                         if not line.lstrip().startswith(("//", "* ", "/*", "*/"))
+                         and line.strip() != "*")
+
+    assert re.search(
+        r"if \(Action\.bGadgetsCastNow\)\s*\{\s*"
+        r"if \(bLanded && !StackedThisEvent\.Contains\(Action\.TriggerKey\)\)\s*\{\s*"
+        r"StackedThisEvent\.Add\(Action\.TriggerKey\);\s*"
+        r"ACataclysmMinion::FireEveryGadgetAtTheDeathOf\(GetAvatarActor\(\)\);", code_of(SOURCE))
+    assert re.search(
+        r"Action\.bGadgetsCastNow = Effect->Action\.Equals\(\s*"
+        r"UCataclysmAbilitySystemComponent::GadgetsCastNowAction,",
+        code_of(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp"))
+    minion = code_of(SOURCE.parent / "CataclysmMinion.cpp")
+    assert "(!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player))" in minion
+    assert "CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true)" in minion

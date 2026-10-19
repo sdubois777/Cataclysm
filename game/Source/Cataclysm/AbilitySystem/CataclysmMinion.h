@@ -504,8 +504,51 @@ public:
 	 *         slot holding no skill or a shapeless one, a skill no row may cast (a movement skill, a summon, a held
 	 *         or channelled skill, one with a `Requires` or a health cost), no target, or the skill refusing itself
 	 *         (a lock of its slot).
+	 *
+	 * @param bEvenForADeadPlayer  true for the one cast a player's death makes (`FireForItsSummonersDeath`): a dead
+	 *        player is then not refused, and every other refusal stands. False, the default, for the clock's cast.
 	 */
-	bool CastPlayersSkillFromHere();
+	bool CastPlayersSkillFromHere(bool bEvenForADeadPlayer = false);
+
+	/**
+	 * A PLAYER'S DEATH FIRES ITS GADGETS. Ruled 2026-10-19 by the coordinating session (C1-C5), for "When you die, all
+	 * your active traps and gadgets immediately trigger simultaneously": the gadget half, reached by the row action
+	 * `gadgets_cast_now` on `player_death` (`UCataclysmAbilitySystemComponent::GadgetsCastNowAction`). The trap half
+	 * is not built, and joins when traps are.
+	 *
+	 * EVERY GADGET `Dying` COMMANDS, TAKEN ONCE, FIRES ONCE, ALL INSIDE THIS ONE CALL (C3): `UCataclysmCommand::
+	 * ThingsCommandedBy`, which leaves out the dead, less every minion that is not a gadget (an imp, a mote, a trap).
+	 * WHAT A DEATH LEAVES STANDING: everything. A player's death destroys no gadget; the skill gadget stays and casts
+	 * nothing by its clock while the player is dead (S11 of 2026-10-16), and only the floor being cleared ends it.
+	 *
+	 * @return how many gadgets fired
+	 */
+	static int32 FireEveryGadgetAtTheDeathOf(AActor* Dying);
+
+	/**
+	 * Fire this gadget once, now, for its summoner's death. See `FireEveryGadgetAtTheDeathOf`.
+	 *
+	 * A SKILL GADGET CASTS ITS PLAYER'S SKILL ONCE (C2) by the path its clock casts by, `CastPlayersSkillFromHere`,
+	 * less only that path's refusal of a dead player: at the target its clock would choose, at the whole of its damage,
+	 * with every other refusal standing (no target within its reach, a slot no longer converted, a shapeless skill, a
+	 * lock). ITS CLOCK IS LEFT AS IT WAS (C4): `bSkillGadgetHasCast` and `LastSkillGadgetCastAtAgeSeconds` are not
+	 * touched, so the death cast is one more and moves no later cast.
+	 *
+	 * ANY OTHER GADGET, which no player holds without War's skills, deals its ordinary blow, `AttackTarget`, once at the
+	 * target its brain chooses within its reach (`SkillCopyTarget`), as its own attack would; none with no target. A
+	 * judgement of the writing session, and NOT TESTED.
+	 *
+	 * NOTHING for a minion that is not a gadget, a dead one or one that cannot act.
+	 *
+	 * @return whether it fired
+	 */
+	bool FireForItsSummonersDeath();
+
+	/** How many casts it has made for its summoner's death. Read by tests. Each is counted in `SkillGadgetCastsMade` too. */
+	int32 SkillGadgetDeathCastsMade = 0;
+
+	/** How many ordinary blows a gadget that is not a skill gadget has dealt for its summoner's death. Read by tests. */
+	int32 GadgetDeathShotsFired = 0;
 
 	/** Seconds until this gadget may cast again and the length of its clock, both nought before its first cast. */
 	void SkillGadgetClock(float& OutRemaining, float& OutDuration) const;

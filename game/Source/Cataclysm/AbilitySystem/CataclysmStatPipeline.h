@@ -4637,6 +4637,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmAilmentRider Rider = ECataclysmAilmentRider::None;
+
+	/**
+	 * Set, this action FIRES EVERY GADGET ITS WEARER COMMANDS, ONCE, AT ONCE, instead of moving a pool: each skill
+	 * gadget casts its skill once at the target its own clock would choose, at the whole of its damage, ignoring its
+	 * clock and leaving it as it was. Ruled 2026-10-19 by the coordinating session (C1-C4), for "When you die, all
+	 * your active traps and gadgets immediately trigger simultaneously". On `player_death` and no other. `Percent` is
+	 * 100 and is not read. See `ACataclysmMinion::FireEveryGadgetAtTheDeathOf`.
+	 */
+	bool bGadgetsCastNow = false;
 };
 
 /**

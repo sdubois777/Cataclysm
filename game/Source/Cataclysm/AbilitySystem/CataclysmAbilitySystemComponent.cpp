@@ -6674,6 +6674,22 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// EVERY GADGET THE WEARER COMMANDS FIRES ONCE, AT ONCE. Ruled 2026-10-19 (C1-C4), for "When you die, all your
+		// active traps and gadgets immediately trigger simultaneously"; the trap half joins when traps are built.
+		// Landed only, once per row per event, on `player_death`, which `HandleDeath` raises once per death after the
+		// player is marked dead and before the respawn's `ClearWhatDeathEnds`, and which a death leaves every gadget
+		// standing for. ALL INSIDE THIS ONE CALL (C3). Each gadget's cast is the player's skill, so its blows' own
+		// events on the wearer reach this function at depth one and are dropped. No trigger cooldown: one death, one
+		// event.
+		if (Action.bGadgetsCastNow)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				ACataclysmMinion::FireEveryGadgetAtTheDeathOf(GetAvatarActor());
+			}
+			continue;
+		}
 		// AND ONLY A LANDED EVENT MOVES A POOL, since issue #1833's small engine
 		// halves. "Every hit you take deals an additional 5%-10% of your maximum
 		// HP as bonus damage" is a pool action on `hit_taken`, and an evaded blow
@@ -6690,6 +6706,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::TeleportRandomlyAction = TEXT("teleport_randomly");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetsCastNowAction = TEXT("gadgets_cast_now");
 
 /**
  * Pins the direction `TeleportTheWearerRandomly` moves its character in, for tests: degrees from the world's X axis

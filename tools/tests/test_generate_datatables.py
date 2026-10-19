@@ -9143,3 +9143,115 @@ class TestASlotIsConvertedIntoAGadget(GadgetRowsOnAMadeUpSheet):
         assert any("under the required tags ''" in problem
                    and repr(self.STAT) in problem
                    for problem in problems), problems
+
+
+class TestGadgetsCastNowAtTheWearersDeath:
+    """A row that fires every gadget its wearer commands, once, at once, when
+    the wearer dies. Ruled 2026-10-19 by the coordinating session (C1-C4), for
+    "When you die, all your active traps and gadgets immediately trigger
+    simultaneously": the gadget half. The action is `gadgets_cast_now`, the
+    event `player_death` and no other, the value 100 and nothing else, and the
+    row takes no trigger cooldown."""
+
+    WORDS = ("When you die, all your active traps and gadgets immediately "
+             "trigger simultaneously")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    HEAL_WORDS = "On death all nearby enemies are healed for 10%-20% of their maximum HP"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Trigger.OnDeath, Type.Trap, Type.Deployable", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [HEAL_WORDS, "Generic", 4, "Trigger.OnDeath", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "gadgets_cast_now.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def fires(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "gadgets_cast_now", "Action Event": "player_death",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_the_row_name_is_the_shipped_enchantments(self):
+        assert self.NAME == "Positive_When_you_die_all_your_active_traps_and_gadgets"
+        shipped = (pathlib.Path(__file__).resolve().parents[2] / "game" / "Data"
+                   / "EnchantmentsPositive.csv").read_text(encoding="utf-8")
+        assert f"\n{self.NAME}," in shipped
+
+    def test_the_ruled_row_is_carried_through_cell_by_cell(self, tmp_path):
+        out = gen.enchantment_effects(self.fires(tmp_path, {}))
+        assert len(out) == 1
+        assert out[0]["Enchantment"] == self.NAME
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["TriggerCooldown"], out[0]["RequiredTags"],
+                out[0]["FractionOf"], out[0]["Scale"], out[0]["Condition"]) == (
+            "gadgets_cast_now", "player_death", 100.0, 100.0, 0.0, "", "", "", "")
+
+    def test_the_ruled_row_passes_the_whole_sheets_validation(self, tmp_path):
+        out = gen.enchantment_effects(self.fires(tmp_path, {}))
+        assert gen.validate_enchantment_effects({"EnchantmentEffects": out}, set()) == []
+
+    def test_the_action_takes_no_trigger_cooldown(self):
+        assert not gen.takes_a_trigger_cooldown(gen.GADGETS_CAST_NOW_ACTION)
+        assert gen.GADGETS_CAST_NOW_ACTION not in gen.POOL_ACTIONS
+
+    def test_control_another_action_on_the_death_may_state_a_trigger_cooldown(
+            self, tmp_path):
+        """So the refusal below is this action's own and not the event's."""
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": gen.row_name("Positive", self.HEAL_WORDS[:48]),
+            "Effect": self.HEAL_WORDS, "Action": "heal_nearby_enemies",
+            "Action Event": "player_death", "Value Low": 10, "Value High": 20,
+            "Trigger Cooldown": 1}))
+        assert out[0]["TriggerCooldown"] == 1.0
+
+    def test_a_stated_trigger_cooldown_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states a Trigger Cooldown"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Trigger Cooldown": 1}))
+
+    def test_the_name_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Action": "gadget_cast_now"}))
+
+    @pytest.mark.parametrize("event", ["kill", "gadget_destroyed", "hit_taken",
+                                       "every_seconds", "skill_use", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError,
+                           match="at the wearer's death and at nothing else"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_the_players_death_alone(self):
+        assert gen.GADGETS_CAST_NOW_EVENTS == ("player_death",)
+        assert set(gen.GADGETS_CAST_NOW_EVENTS) <= gen.action_events()
+
+    @pytest.mark.parametrize("value", [50, 0, 200])
+    def test_a_value_but_100_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="its value is 100 and nothing else"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Value Low": value}))
+
+    @pytest.mark.parametrize("column, written", [("Required Tags", "Type.Deployable"),
+                                                 ("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_tags_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column,
+                                                                written):
+        with pytest.raises(gen.DataError,
+                           match="no size and its event carries no tags"):
+            gen.enchantment_effects(self.fires(tmp_path, {column: written}))
+
+    def test_scale_max_steps_is_refused_by_the_general_check(self, tmp_path):
+        with pytest.raises(gen.DataError, match="with no scale it caps nothing"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Scale Max Steps": 3}))
+
+    def test_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="so it would be dropped"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Ailment": "Burn"}))

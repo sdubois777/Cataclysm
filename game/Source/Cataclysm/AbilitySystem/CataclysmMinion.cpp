@@ -964,13 +964,14 @@ bool ACataclysmMinion::StepSkillGadget()
 	return true;
 }
 
-bool ACataclysmMinion::CastPlayersSkillFromHere()
+bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer)
 {
 	// A SKILL GADGET, STANDING AND ABLE TO ACT, OF A PLAYER STILL HERE AND ALIVE. S11: the gadgets stay through the
-	// player's death and cast nothing while it lasts.
+	// player's death and cast nothing while it lasts; THE ONE CAST THE DEATH ITSELF MAKES is the exception (ruled
+	// 2026-10-19, C2), and is let through only that refusal. See `FireForItsSummonersDeath`.
 	AActor* const Player = Summoner.Get();
 	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
-		|| !IsValid(Player) || UCataclysmSkillEffects::IsDead(Player))
+		|| !IsValid(Player) || (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
 	{
 		return false;
 	}
@@ -1003,6 +1004,60 @@ bool ACataclysmMinion::CastPlayersSkillFromHere()
 		return false;
 	}
 	++SkillGadgetCastsMade;
+	return true;
+}
+
+int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
+{
+	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST GADGET FIRES, as a volley takes its list: every gadget standing as the
+	// death is raised. A cast that somehow ended a later gadget leaves that one firing nothing (C3).
+	TArray<ACataclysmMinion*> Standing;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Dying))
+	{
+		ACataclysmMinion* AsGadget = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(AsGadget) && AsGadget->IsGadget())
+		{
+			Standing.Add(AsGadget);
+		}
+	}
+	int32 Fired = 0;
+	for (ACataclysmMinion* Each : Standing)
+	{
+		if (IsValid(Each) && Each->FireForItsSummonersDeath())
+		{
+			++Fired;
+		}
+	}
+	return Fired;
+}
+
+bool ACataclysmMinion::FireForItsSummonersDeath()
+{
+	if (!IsGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this))
+	{
+		return false;
+	}
+
+	// A SKILL GADGET CASTS ITS PLAYER'S SKILL ONCE BY ITS CLOCK'S OWN PATH (C2), THE CLOCK LEFT AS IT WAS (C4).
+	if (IsSkillGadget())
+	{
+		if (!CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true))
+		{
+			return false;
+		}
+		++SkillGadgetDeathCastsMade;
+		return true;
+	}
+
+	// ANY OTHER GADGET DEALS ITS ORDINARY BLOW ONCE AT THE TARGET ITS BRAIN CHOOSES WITHIN ITS REACH. A judgement of the
+	// writing session; no player holds such a gadget without War's skills, and nothing tests it.
+	AActor* Chosen = SkillCopyTarget();
+	if (!Chosen)
+	{
+		return false;
+	}
+	AttackTarget(Chosen);
+	++GadgetDeathShotsFired;
 	return true;
 }
 
