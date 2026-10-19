@@ -528,7 +528,51 @@ stands and the creature is frozen (two assertions on the case).
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-19 under the lock enchant-cw, on development 92cd6c99e (the Reaper's Embrace
+ten-piece merge), for four commits in this order: the mechanism (280e52181), the crit pin (477c7c6a9), the rows with
+the real-row test (414e64564) and the stun-duration test's widening (cd22fb235). Every step was as registered. The
+lock was taken only once the dungeon session's #2450 (simulation only) had finished its continuous-integration run;
+that pull request stayed open and unmerged through the window.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 38 actions, 35 files compiled" (the
+  mechanism's first compile); "356 tests performed, 355 succeeded, 1 failed:
+  TheWornChronomancersTimeLockTenPiecePlacesARiftThatFreezesAnEnemyNearby", with exactly 2 failed assertions in the run,
+  each checked by its text: "with ten pieces worn, a rift stands 30 s on" and "and the enemy 2 m off is frozen". The
+  nine-piece control and the set-ups passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 8ab024617, "Rebuild the enchantment DataTable asset for Chronomancer's Time-Lock 10-piece's rows", and
+  pushed as `feat/set-bonuses-chrono10-t-1`.
+- **The whole Unreal suite:** "3934 tests performed, 3934 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3934 tests in the tree at 8ab024617; 3934 performed, gap 0". Registered 3934 and 0: the 3922 measured at
+  794e086ff, the eleven of `Cataclysm.SetBonus.Chrono10.` and the one real-row test. The probe is inside a test already
+  counted. The risks that could only be read passed: the regeneration step's timer placed the rift under `RunClock`
+  (test 11), the imp's blow landed with no reach check (test 5), and the bare caster's Strike started (test 10).
+- **Python:** "6776 passed, 8 skipped"; JUnit tests 6784, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 04:34:04 to 05:22:32 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Chrono10.`, 11 tests, all in
+`CataclysmTimeLockRift.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the
+beginnings of their names. The failed assertions had been counted by reading, after listing every event each test's
+actors raise (a landed stun grants `State.StunImmune` at once, so a second stun inside the window is refused), by the
+second session and again by the enchantment session, and were measured beside it. Each anchor was counted once, and the
+file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| CT-I | an enemy caught again by the same rift | 4 failed: `EachEnemyInsideOrWalkingIn...`, `TheRegenerationStepPlaces...`, `TheRiftIsDrawnAsAGroundZone...`, `TheRiftLastsASecondLonger...` | 15 / 15 | 11 of 11 succeeded |
+| CT-II | the x6 held for at least the stated 5 s, not the stun as applied | 1 failed, `AnEnemyWithCrowdControlResistanceTakesSixTimesOnlyForItsShortenedStun` | 2 / 2 | 11 of 11 succeeded |
+| CT-III | the whole length's cap raised by 5 s | 1 failed, `TheRiftLastsASecondLongerForEachEnemyCaughtABossIncludedAndTenSecondsAtMost` | 3 / 3 | 11 of 11 succeeded |
+
+The measured lines include, under CT-I, "the rift has caught three in all ... to be 3, but it was 13"; under CT-II, "3 s
+on, a blow takes its control from the resisting one ... to be 110.000000, but it was 660.000000"; under CT-III, "and
+leaves it at 10 s: its whole length is at most 10 ... to be 10.000000, but it was 11.000000".
+
+**Not measured:** the probe's failure under CT-III (outside the prefix), the real-row test's under any break, the
+seven-and-a-half-second freeze with the two-piece worn (no test wears it), and anything drawn on a screen.
+
+**CHRONOMANCER'S TIME-LOCK IS NOW WHOLE**: its 2-piece, drawback and 6-piece (merged before) and its ten-piece's
+temporal rift are all in play. **WITH IT, THE TEN SET BONUSES THAT HAD NO ROW ON 2026-10-17 ARE ALL BUILT.**
 
 ---
 
