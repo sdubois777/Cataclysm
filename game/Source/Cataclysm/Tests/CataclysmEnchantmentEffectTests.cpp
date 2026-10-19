@@ -27554,4 +27554,63 @@ bool FCataclysmReaperSixRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperTenRowTest,
+	"Cataclysm.Enchantments.TheWornReapersEmbraceTenPieceCullsACommonEnemyLeftAtFortyPercentAtTenStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Reaper's Embrace's 10-piece row layer, ruled 2026-10-17 (#9) and 2026-10-19 (C1-C8): a hit culls an enemy it leaves
+ * below 5% of its maximum health for each Soul Strike stack held, at most 50% for a Common enemy. WORN by a real player:
+ * what the cull and the spawn then do is `Cataclysm.SetBonus.Reaper10.`'s. The CONTROL wears NINE pieces and the case
+ * TEN, each carrying the 10-piece and the set's drawback; both wear at least six, so both gain Soul Strike, and each is
+ * given ten stacks through `soul_picked_up`. Each striker's own blow is measured on its second creature, and its first
+ * creature is set so the blow leaves it at 40%. ONE assertion on the case, so on assets built before the rows it fails
+ * once, and only there.
+ */
+bool FCataclysmReaperTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Reaper_s_Embrace_10_Piece_Bonus_For_each_stac");
+	const TCHAR* Drawback = TEXT("Negative_All_of_your_life_regeneration_effects_are_reduce");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces"), TenPieces.Ready())
+		|| !TestTrue(TEXT("set-up: nine pieces worn"), WearsMore(NinePieces, Bonus, Drawback, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), WearsMore(TenPieces, Bonus, Drawback, 9)))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&NinePieces, &TenPieces})
+	{
+		for (int32 Each = 0; Each < 10; ++Each)
+		{
+			Striker->ASC->ActOnEvent(FName(TEXT("soul_picked_up")));
+		}
+		if (!TestEqual(TEXT("set-up: ten stacks of Soul Strike are held"), Striker->ASC->SoulStrikeStacksHeld(), 10))
+		{
+			return false;
+		}
+		const float Taken = Striker->Blow(Striker->Second, /*bMelee=*/true);
+		const float Maximum = Striker->First->GetAbilitySystemComponent()->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow takes something, under a tenth of a maximum: %.2f"), Taken),
+					  Taken > 1.0f && Taken < Maximum / 10.0f))
+		{
+			return false;
+		}
+		Striker->First->GetAbilitySystemComponent()->SetNumericAttributeBase(Health, Maximum * 0.4f + Taken);
+		Striker->Blow(Striker->First, /*bMelee=*/true);
+	}
+
+	// THE CONTROL, READ FIRST: nine pieces are below the threshold, so the enemy the blow left at 40% lives.
+	TestFalse(TEXT("control: with nine pieces worn, the enemy left at 40% lives"),
+			  !IsValid(NinePieces.First) || UCataclysmSkillEffects::IsDead(NinePieces.First));
+	TestTrue(TEXT("with ten pieces worn and ten stacks, the enemy left at 40% is culled. If not, DT_EnchantmentEffects "
+				  "may be older than the rows: run tools/generate_datatable_assets.py"),
+			 !IsValid(TenPieces.First) || UCataclysmSkillEffects::IsDead(TenPieces.First));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
