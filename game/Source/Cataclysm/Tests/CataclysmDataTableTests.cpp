@@ -866,7 +866,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 654 SINCE THE FOUR AURA ROWS OF BRUTE'S HEART'S 6-PIECE, issue #1833, from 650.
 	//
 	// AND 662 SINCE THE EIGHT RESISTANCE ROWS OF BRUTE'S HEART'S 6-PIECE, issue #1833, from 654.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    662)
+	//
+	// AND 663 SINCE THE ROW OF TYRANT'S CHAINS' 10-PIECE, issue #1833, from 662.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    663)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

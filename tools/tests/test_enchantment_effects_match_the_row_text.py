@@ -980,8 +980,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 650 over 536: four rows on an enchantment that already has one.
 #: AND 662 OVER 536 SINCE THE EIGHT RESISTANCE ROWS OF BRUTE'S HEART'S 6-PIECE,
 #: issue #1833, 2026-10-18, from 654 over 536: eight rows on an enchantment that already has five.
-AUTHORED_ROWS = 662
-AUTHORED_ENCHANTMENTS = 536
+#: AND 663 OVER 537 SINCE THE ROW OF TYRANT'S CHAINS' 10-PIECE,
+#: issue #1833, 2026-10-18, from 662 over 536: one row on one enchantment.
+AUTHORED_ROWS = 663
+AUTHORED_ENCHANTMENTS = 537
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

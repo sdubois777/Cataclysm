@@ -27447,4 +27447,49 @@ bool FCataclysmBruteSixResistanceRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTyrantTenRowTest,
+	"Cataclysm.Enchantments.TheWornTyrantsChainsTenPieceMakesTheTyrantsMinionCastTheUltimateEveryThreeSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Tyrant's Chains' 10-piece row layer, ruled 2026-10-17 (#7) and 2026-10-18 (T1-T7): the Tyrant's Minion casts its
+ * commander's Ultimate every 3 s. WORN by a real player: what the cast and its clock then do is
+ * `Cataclysm.SetBonus.Tyrant10.`'s. The CONTROL wears NINE pieces and the case TEN, each carrying the 10-piece and the
+ * set's drawback. Each wears at least six, so the 6-piece's own rows summon each one's Tyrant's Minion through its own
+ * call, and the minion's seconds between casts are read through the game's one reader. ONE assertion on the case, so on
+ * assets built before the row it fails once, and only there.
+ */
+bool FCataclysmTyrantTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Tyrant_s_Chains_10_Piece_Bonus_Your_Tyrant_s");
+	const TCHAR* Drawback = TEXT("Negative_Minion_maximum_health_is_reduced_by_50");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces"), TenPieces.Ready())
+		|| !TestTrue(TEXT("set-up: nine pieces worn"), WearsMore(NinePieces, Bonus, Drawback, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), WearsMore(TenPieces, Bonus, Drawback, 9)))
+	{
+		return false;
+	}
+	ACataclysmMinion* NineMinion = ACataclysmMinion::SummonTyrantsMinion(
+		NinePieces.Character, /*bLostWasTyrantsMinion=*/false, FVector(0.0f, 300.0f, 0.0f));
+	ACataclysmMinion* TenMinion = ACataclysmMinion::SummonTyrantsMinion(
+		TenPieces.Character, /*bLostWasTyrantsMinion=*/false, FVector(0.0f, 300.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: nine pieces summon a Tyrant's Minion by the 6-piece's rows"), NineMinion)
+		|| !TestNotNull(TEXT("set-up: ten pieces summon a Tyrant's Minion by the 6-piece's rows"), TenMinion))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: nine pieces are below the threshold, so the minion casts nothing.
+	TestEqual(TEXT("control: with nine pieces worn, the Tyrant's Minion's seconds between Ultimate casts are nought"),
+		NineMinion->TyrantsUltimateSecondsBetweenCasts(), 0.0f, 0.0001f);
+	TestEqual(TEXT("with ten pieces worn, the Tyrant's Minion casts the Ultimate every 3 s. If not, DT_EnchantmentEffects "
+				   "may be older than the row: run tools/generate_datatable_assets.py"),
+		TenMinion->TyrantsUltimateSecondsBetweenCasts(), 3.0f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
