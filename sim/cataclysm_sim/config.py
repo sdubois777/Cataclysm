@@ -1068,6 +1068,17 @@ class TuningConfig:
     quest_sieges_per_wave_max: int = 2
     quest_siege_bite_scale: float = 0.25
 
+    # THE VOID ADDS STACKS AND DOES NO DAMAGE, since 2026-10-18. The owner,
+    # 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time."
+    # Ruled by the coordinating session the same day: an ordinary Void dungeon
+    # adds 1, 2 or 3 by the third of its row's depth its natural floors fall in;
+    # a Void Siege's daily bite stays damage; a city that falls with fewer than
+    # ten is not erased and can be retaken, and retaking it clears them.
+    # False is the model as it was: a Void dungeon did ordinary damage and
+    # marked its city to be erased by whatever felled it.
+    void_dungeons_add_stacks: bool = True
+    void_stacks_to_erase: int = 10
+
     tree: EmpireTree = field(default_factory=EmpireTree)
 
     # ---------------------------------------------------------------------
