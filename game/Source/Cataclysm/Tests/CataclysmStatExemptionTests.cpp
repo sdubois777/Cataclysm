@@ -9623,6 +9623,103 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `cull_percent_per_soul_strike_stack`, read off the wearer with no tags by
+	 * `UCataclysmAbilitySystemComponent::CullSharePercentAgainst`. Ruled 2026-10-19, for Reaper's Embrace's ten-piece.
+	 * ONE WEARER holding two stacks of an own-stack grant on `soul_picked_up`, and a Common creature of the monsters'
+	 * side 2 m off. THE CONTROL IS THE SAME STACKS BEFORE THE STAT IS GRANTED: the share against the creature is
+	 * nought. Granted at a flat 5, it is 10.
+	 *
+	 * WHAT THIS DOES NOT REACH. A hit, the rarity caps, the kill and the spawn: `Cataclysm.SetBonus.Reaper10.`.
+	 */
+	void ProbeCullPercentPerSoulStrikeStack(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Wearer(World, FVector::ZeroVector);
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(FVector(2 * M, 0, 0),
+																						  FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: a creature"), Creature))
+		{
+			return;
+		}
+		Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+
+		FCataclysmPoolAction SoulStrike;
+		SoulStrike.Event = FName(UCataclysmAbilitySystemComponent::SoulPickedUpEvent);
+		SoulStrike.StackKey = FName(TEXT("Probe:soul_strike"));
+		SoulStrike.TriggerKey = SoulStrike.StackKey;
+		SoulStrike.StackSeconds = 60.0f;
+		SoulStrike.StackCap = 10;
+		Wearer.AbilitySystem->SetPoolActions({SoulStrike});
+		Wearer.AbilitySystem->ActOnEvent(FName(UCataclysmAbilitySystemComponent::SoulPickedUpEvent));
+		Wearer.AbilitySystem->ActOnEvent(FName(UCataclysmAbilitySystemComponent::SoulPickedUpEvent));
+		if (!Test.TestEqual(TEXT("set-up: two stacks of Soul Strike"), Wearer.AbilitySystem->SoulStrikeStacksHeld(), 2))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("control: with no such stat two stacks cull nothing"),
+					   Wearer.AbilitySystem->CullSharePercentAgainst(Creature), 0.0f, 0.0001f);
+		GrantFlat(Wearer.Actor, UCataclysmAbilitySystemComponent::CullPercentPerSoulStrikeStackStat, 5.0f);
+		Test.TestEqual(TEXT("with cull_percent_per_soul_strike_stack at 5 two stacks cull below 10%, so "
+							"UCataclysmAbilitySystemComponent::CullSharePercentAgainst really reads it"),
+					   Wearer.AbilitySystem->CullSharePercentAgainst(Creature), 10.0f, 0.0001f);
+	}
+
+	/**
+	 * `minion_kill_spawns_minion`, read off the killer with no tags by `UCataclysmSummonSkill::SpawnOneAtAKill`. Ruled
+	 * 2026-10-19, for Reaper's Embrace's ten-piece. ONE SUMMONER holding Summon Imp. THE CONTROL IS A KILL'S CALL BEFORE
+	 * THE STAT IS GRANTED: nothing is spawned. Granted at a flat 1, the same call spawns one of the skill's imps.
+	 *
+	 * WHAT THIS DOES NOT REACH. Which kills, the cap and the place: `Cataclysm.SetBonus.Reaper10.`.
+	 */
+	void ProbeMinionKillSpawnsMinion(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Summoner(World, FVector::ZeroVector);
+		const FGameplayAbilitySpecHandle Handle = Summoner.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/100, Summoner.Actor);
+		FGameplayAbilitySpec* Spec = Summoner.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmSummonSkill* Skill = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a summon skill"), Skill))
+		{
+			return;
+		}
+		Skill->SkillName = TEXT("Summon Imp");
+		Skill->Params = UCataclysmSkillShapes::ParseParams(
+			TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+
+		ACataclysmMinion* Unflagged = UCataclysmSummonSkill::SpawnOneAtAKill(Summoner.Actor, FVector(2 * M, 0, 0));
+		Test.TestNull(TEXT("control: with no such stat a kill spawns nothing"), Unflagged);
+		GrantFlat(Summoner.Actor, UCataclysmSummonSkill::KillSpawnsMinionStat, 1.0f);
+		ACataclysmMinion* Spawned = UCataclysmSummonSkill::SpawnOneAtAKill(Summoner.Actor, FVector(0, 2 * M, 0));
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* Each : {Unflagged, Spawned})
+			{
+				if (IsValid(Each))
+				{
+					Each->Destroy();
+				}
+			}
+		};
+		Test.TestTrue(TEXT("with minion_kill_spawns_minion at 1 a kill spawns one of the skill's imps, so "
+						   "UCataclysmSummonSkill::SpawnOneAtAKill really reads it"),
+					  IsValid(Spawned) && Skill->LivingMinionCount() == 1);
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -9859,6 +9956,8 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::TauntSecondsStat); }},
 			{TEXT("tyrants_minion_casts_ultimate_every_seconds"), &ProbeTyrantsMinionCastsUltimateEverySeconds},
 			{TEXT("minion_death_leaves_soul"), &ProbeMinionDeathLeavesSoul},
+			{TEXT("cull_percent_per_soul_strike_stack"), &ProbeCullPercentPerSoulStrikeStack},
+			{TEXT("minion_kill_spawns_minion"), &ProbeMinionKillSpawnsMinion},
 		};
 		return Made;
 	}

@@ -1986,14 +1986,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
 			const UCataclysmAbilitySystemComponent::FExecuteAsked AskedBeforeThisHit =
 				Executable ? Executable->TakeExecuteAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
+			// AND A CULL'S REQUEST, THE SAME WAY, beside the execute's and not merged with it. Ruled 2026-10-19 (C1), for
+			// Reaper's Embrace's ten-piece. See `UCataclysmAbilitySystemComponent::AskToBeCulled`.
+			const UCataclysmAbilitySystemComponent::FExecuteAsked CullBeforeThisHit =
+				Executable ? Executable->TakeCullAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			UCataclysmCombatEvents::NoteBlow(
 				Data, Hit, Outcome, AssetTags,
 				/*bLethal=*/bWouldKill && !bHeldBySigil, bFirstFromAttacker);
 			const UCataclysmAbilitySystemComponent::FExecuteAsked AskedByThisHit =
 				Executable ? Executable->TakeExecuteAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
+			const UCataclysmAbilitySystemComponent::FExecuteAsked CullByThisHit =
+				Executable ? Executable->TakeCullAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			if (Executable)
 			{
 				Executable->PutBackExecuteAsked(AskedBeforeThisHit);
+				Executable->PutBackCullAsked(CullBeforeThisHit);
 			}
 
 			// "YOU TAKE 5%-15% DAMAGE DONE TO NEARBY ALLIES": THE WEARERS BESIDE THIS CHARACTER ARE FOUND NOW, BEFORE THE
@@ -2036,6 +2043,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				if (Executable && AskedByThisHit.IsAsked())
 				{
 					Executable->ExecuteIfLeftBelow(AskedByThisHit);
+				}
+				// AND THE CULL THIS HIT ASKED FOR, AFTER THE EXECUTE, on the same health the write left (C4). Ruled
+				// 2026-10-19, for Reaper's Embrace's ten-piece. An execute that killed leaves a dead character, which
+				// `KillIfLeftBelow` refuses, so an execute row acts and starts its cooldown exactly as before (C1).
+				if (Executable && CullByThisHit.IsAsked())
+				{
+					Executable->CullIfLeftBelow(CullByThisHit);
 				}
 
 				// AND HEALTH LOST TO DAMAGE FILLS FERVOUR. Issue #954. The

@@ -78,6 +78,9 @@
 #include "TimerManager.h"
 #include "UObject/SoftObjectPath.h"
 #include "Save/CataclysmSaveWriter.h"
+// For Reaper's Embrace's ten-piece: a minion's own blow does not cull, and a kill spawns a minion. Ruled 2026-10-19.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 
 namespace
 {
@@ -1019,6 +1022,16 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// read the amount before, measured 2026-10-01: only `health_cost` lets a row
 	// take a fraction of its event's amount, and only `health_falls_below` rows
 	// state a threshold.
+	//
+	// AND, BEFORE IT, REAPER'S EMBRACE'S TEN-PIECE CULL IS ASKED FOR, ON EXACTLY THE HITS THAT RAISE IT. Ruled 2026-10-19
+	// (C2): a skill's, the basic attack's, a skill gadget's or a Tyrant's Minion's cast, each dealt by this character;
+	// NEVER A MINION'S OWN BLOW, which with Conduit is credited to this character and raises `hit_dealt`, but was dealt
+	// by the minion; and only a hit that took something from health, as an execute asks it. The request is left on the
+	// enemy and judged once the hit's damage is written: `UCataclysmAbilitySystemComponent::AskToCullOnHit`.
+	if (Notice.DealtToHealth > 0.0f && !Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		Acting->AskToCullOnHit(Notice.Target);
+	}
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
@@ -1180,6 +1193,12 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// `kill`, because `ActOnEvent` drops an event raised while it is already running, and a kill made by a
 			// blow a row deals would then lift nothing.
 			Acting->NoteKillUnderDeathSentence(Notice.Victim);
+
+			// AND A MINION OF THIS CHARACTER'S FIRST SUMMON SKILL MAY BE SPAWNED WHERE THE KILLED ENEMY DIED. Ruled
+			// 2026-10-19 (C5-C7) for Reaper's Embrace's ten-piece: heard for exactly the kills that raise `kill` above,
+			// the cull's own included, and a call of its own for the reason the death sentence's is. Free, never above
+			// the cap and nothing without a summon skill: `UCataclysmSummonSkill::SpawnOneAtAKill`.
+			UCataclysmSummonSkill::SpawnOneAtAKill(this, Notice.Location);
 
 			// THE EXPLOSION A WORN ROW ASKED FOR AT THIS KILL. Ruled 2026-10-07: "Enemies killed by you explode
 			// for the overkill amount". What the rows recorded is taken at once, so no later kill can find it.

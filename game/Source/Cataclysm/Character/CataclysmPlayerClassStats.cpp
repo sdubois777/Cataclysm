@@ -848,6 +848,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// for Reaper's Embrace's six-piece. Flat 1; at nought no Soul is left. No
 		// gameplay attribute and no base.
 		TEXT("minion_death_leaves_soul"),
+		// The cull per stack of Soul Strike, read off the wearer with no tags by
+		// UCataclysmAbilitySystemComponent::CullSharePercentAgainst when its hit
+		// lands; and the flag by which a kill spawns one minion of the first
+		// summon skill held, read off the killer with no tags by
+		// UCataclysmSummonSkill::SpawnOneAtAKill. Ruled 2026-10-17 (#9) and
+		// 2026-10-19 (C1-C8), for Reaper's Embrace's ten-piece. A flat 5 and a
+		// flat 1; at nought nothing is culled and nothing spawned. No gameplay
+		// attribute and no base.
+		TEXT("cull_percent_per_soul_strike_stack"),
+		TEXT("minion_kill_spawns_minion"),
 	};
 	return Stats;
 }

@@ -2,6 +2,386 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A wearer's hit can cull the enemy it leaves below a row's share of maximum health for each stack of Soul Strike held, capped by the enemy's rarity and never a boss, through the execute's own execution; and a kill can spawn one minion of the wearer's first summon skill where the enemy died, inside its cap: Reaper's Embrace's ten-piece mechanism, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`KillIfLeftBelow`,
+factored out of `ExecuteIfLeftBelow`; `CullPercentPerSoulStrikeStackStat`, `SoulPickedUpEvent`, `SoulStrikeStacksHeld`,
+`CullCapPercentFor` and its four caps, `CullSharePercentAgainst`, `AskToCullOnHit`, `AskToBeCulled`, `TakeCullAsked`,
+`PutBackCullAsked`, `CullAskedNow`, `CullIfLeftBelow`, and the request `CullAsked`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the damage branch takes, sets aside and puts back
+a cull's request beside the execute's, and acts on it after the execute);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (`FirstHeldSummonSkill`, factored out of
+`ReplaceLost`; `KillSpawnsMinionStat`; `SpawnOneAtAKill`); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(two includes; the cull asked in `OnSomethingWasHit` before `hit_dealt` is raised; the spawn in `OnSomethingDied` after
+the death sentence's lift); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two names at the end of
+`StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two probes and their lines at the
+end of `Probes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusReaperTenTests.cpp` (new, eight tests);
+`tools/generate_datatables.py` (`REAPER_CULL_STAT`, `REAPER_SPAWN_STAT` and
+`refuse_a_reaper_ten_row_the_game_cannot_read`, called last from `validate_enchantment_effects`);
+`tools/tests/test_reapers_embrace_ten_rows.py` (new); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one
+dated line and two entries). No data row, no tag and no workbook cell is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE TWO ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This layer
+  authors no row. A ten-piece bonus is live only with ten pieces worn, and a wearer of ten pieces wears the six-piece
+  too, so the Soul Strike stacks this reads exist only with the six-piece's rows (merged in #2447).
+- **5% AND THE CAPS ARE THE SENTENCE'S AND THE OWNER'S NUMBERS (C3).** 5% is the sentence's ("5% cull on hit"); Common 50,
+  Elite 25, Legendary 25, Herald 10 and nothing for a Boss or a Cataclysm Boss are the owner's (#9). None is a number
+  under the owner's delegation. The 1 of the spawn's flag is a flag's 1, not a number the sentence states.
+- **THE CULL IS A THRESHOLD, NOT A CHANCE (#9)**: a hit of the wearer's that leaves an enemy STRICTLY below
+  min(5 x stacks, cap)% of its maximum health kills it. Judged on the health the hit leaves (C4), after the hit's damage
+  is written, as `execute_target` judges it. At ten stacks a Common enemy is culled below 50%.
+- **THE RARITY CAPS AS BUILT** (`UCataclysmAbilitySystemComponent::CullCapPercentFor`, `CataclysmAbilitySystemComponent.cpp`
+  7014): by `ACataclysmEnemyCharacter::RarityStep`, rung 0 Common 50, rung 1 Elite 25, rung 2 Legendary 25, rung 3 Herald
+  10, and from `FirstBossRarityStep` (4, Boss; 5, Cataclysm Boss) nought. **A CHARACTER THAT IS NOT AN ENEMY CHARACTER HAS
+  NO RARITY AND IS CULLED AS COMMON (C3)**: today that is a minion or thrall of the monsters' side struck by the wearer.
+  A boss is refused twice, by its cap of nought and by `CanBeExecuted`, which the execute already asks. A creature no
+  damage reaches is refused by `CanBeExecuted`.
+- **WHICH HITS CULL (C2): EXACTLY THE HITS FOR WHICH THE WEARER'S PAWN RAISES ITS OWN `hit_dealt`, LESS A MINION'S OWN
+  BLOW.** The cull is asked in `ACataclysmPlayerCharacter::OnSomethingWasHit` (`CataclysmPlayerCharacter.cpp` 1031 to
+  1034), on the line before `hit_dealt` is raised (1035), after every refusal that function makes (934 to 1010): not a
+  blow another character is credited with, not a damage over time tick or an evaded blow (956), not an overkill
+  explosion, not a blow refused as immune, not an ailment's explosion at its end, not a wearer's share of an ally's blow,
+  not a point-blank skill's share struck at an ally. So it culls on: a skill's blow, the basic attack's, a skill
+  gadget's and a Tyrant's Minion's cast (each is the player's skill granted and started with the minion only as the
+  place cast from, `ACataclysmMinion::StartPlayersSkillFromHere`, `CataclysmMinion.cpp` 2235, so the blow is dealt by the
+  player), a retaliation blow of the wearer's, and a hit a row deals from inside the row loop (`strike_target`), whose
+  `hit_dealt` is raised and then dropped by the one-level rule, but whose cull is asked before that. The last two are by
+  reading and not tested. **A MINION'S OWN BLOW NEVER CULLS**: with Conduit it is credited to the wearer and raises
+  `hit_dealt` (`CataclysmCombatEvents.cpp` 110), but it is dealt by the minion (`Delivery.DealtBy = Minion`,
+  `CataclysmMinion.cpp` 188) and the cull refuses a blow whose `DealtBy` is a minion. Without Conduit the blow is the
+  minion's and the pawn hears nothing of it. **ONLY A HIT THAT TOOK SOMETHING FROM HEALTH**: the cull is asked only for
+  `Notice.DealtToHealth > 0`, and it is acted on only where health is written, as an execute is.
+- **THE CULL'S DEATH IS THE WEARER'S KILL**, exactly as an execute's is: `ReduceHealthDirectly(By, Struck, Health)`
+  (`CataclysmAbilitySystemComponent.cpp` 6979), credited by the record the hit left, with no overkill and empty killing
+  tags; the death notice names the wearer and the striking skill, the player state counts it, and `kill` is raised.
+- **WHICH KILLS SPAWN A MINION (C5): EVERY KILL FOR WHICH THE WEARER'S PAWN RAISES ITS OWN `kill`, THE CULL'S OWN
+  INCLUDED.** The spawn is called in `OnSomethingDied` inside `if (Notice.Killer == this)` (`CataclysmPlayerCharacter.cpp`
+  1166), after `kill` is raised (1188) and the death sentence's lift (1195), at 1201. The killer is the attacker of the
+  last blow on the victim's record (`UCataclysmCombatEvents::NoteDeath`, `CataclysmCombatEvents.cpp` 273), which
+  `AttackerOf` decides (68 to 116). Every kind, by reading unless a test is named:
+  - **a death by the wearer's own blow**: a skill's, the basic attack's, a skill gadget's or a Tyrant's Minion's cast.
+    SPAWNS. Tested for a skill's blow;
+  - **a cull's death and an execute's death**: SPAWNS. Tested for a cull;
+  - **a death by the wearer's damage over time tick**: the tick's attacker is the wearer, so the kill is the wearer's
+    (the comment at 1162). SPAWNS, unless the wearer is dead (a judgement below);
+  - **a death by an overkill explosion, or by an ailment's explosion at its end**: still the wearer's kill (the comments at 964 and 983).
+    SPAWNS;
+  - **a death by a row's `strike_target` blow or a retaliation blow of the wearer's**: SPAWNS;
+  - **A MINION'S KILL RAISES THE WEARER'S `kill` ONLY WITH CONDUIT** (`HitsCountAsTheSummoners`, 110): with it, a
+    minion's kill, a gadget's own blow's kill and a Tyrant's Minion's or a Warhound's own blow's kill SPAWN; without it
+    NONE DOES, the killer being the minion;
+  - **a thrall's kill**: a thrall is no `ACataclysmMinion`, so `AttackerOf` names the thrall and NONE SPAWNS, with
+    Conduit or without;
+  - **a death a point-blank skill's share made of an ally**: heard as a death nobody killed (1148). NONE;
+  - **a death another character is credited with**, a co-operative partner's included: NONE.
+- **WHICH MINION (C6): ONE OF THE KIND OF THE WEARER'S FIRST SUMMON SKILL, THROUGH `SummonReplacementAt`, AT THE KILLED
+  ENEMY'S PLACE, FREE.** **"FIRST" IS THE FIRST ENTRY OF THE WEARER'S ABILITY SYSTEM'S `GetActivatableAbilities()` WHOSE
+  INSTANCE IS A `UCataclysmSummonSkill` AND NOT A POSSESSION** (Subjugate, `Params.bPossess`):
+  `UCataclysmSummonSkill::FirstHeldSummonSkill` (`CataclysmSkillTemplates.cpp` 4313). That list is the engine's, appended
+  to by `GiveAbility` in the order the skills are granted (`AbilitySystemComponent_Abilities.cpp` 317, UE 5.8), and a
+  cleared ability is taken from it by `RemoveAtSwap` (532), which moves the last entry into the cleared place. A weapon
+  grants its basic attack first and then its skills in the skill table's row order, its own rows before the
+  weapon-independent ones (`UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType`, 242 and 252;
+  `UCataclysmWeaponSkills::SkillsFor`, 256 and 266). A deploy skill (Bolt Turret, Ballista, Iron Fortress) is not a
+  summon skill and is never chosen. Tested: Summon Imp granted before Summon Mote spawns an imp, and the other order a
+  mote.
+- **NEVER ABOVE THE CAP, NOTHING AT IT, NONE EVICTED, AND NOTHING WITHOUT A SUMMON SKILL (C6)**: `SummonReplacementAt`
+  refuses at the shared cap (`CataclysmSkillTemplates.cpp` 4226) and when the reserve has no room. Tested.
+- **THE SPAWNED MINION IS AN ORDINARY MINION OF THAT SKILL (C7)**: in the skill's own list, counted under its cap,
+  `SummonedBy` the skill, holding the reserve the skill states, lasting the skill's duration, and leaving a Soul when it
+  dies as any minion does. Tested.
+- **WHAT THE PLAYER SEES (C8): NOTHING NEW.** The Soul Strike count already shows above the skill bar, as the six-piece's
+  entry says. Two lines go on the owner's play-check list, below.
+- **EVERY SHIPPED `execute_target` ROW BEHAVES AS BEFORE (C1).** The shipped table holds ONE such row
+  (`Positive_Strike_skills_have_a_10_20_chance_to_execute_e#1`), counted by script on 2026-10-19 and pinned in a Python
+  test and an Unreal test. Its execute is acted on first and starts its own row's trigger cooldown as before; a cull
+  asked for the same hit is a request of its own, acted on after it.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 52 and the rulings below. NOT COMPILED AND NOT
+  RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- the cull threshold is not shown anywhere; the player sees only the Soul Strike stack count and enemies dying
+- a Reaper's Embrace wearer with no summon skill gets nothing from the ten-piece's spawn half
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner took the recommended option on 2026-10-17, as relayed by the coordinating session (#9; the relay's words, not
+the owner's): "cull is a THRESHOLD of 5% of maximum health per Soul Strike stack, CAPPED BY RARITY: Common 50%, Elite
+and Legendary 25%, Herald 10%, NEVER a boss (Boss, Cataclysm Boss)."
+
+The coordinating session's rulings of 2026-10-19 on the enchantment session's questions C1-C8, its words as relayed:
+
+> RULINGS, Reaper's Embrace 10 (brief 52): (a) on all eight, as you wrote them.
+> C1 a new no-attribute stat cull_percent_per_soul_strike_stack (flat 5), read when the wearer's hit lands, times the
+> Soul Strike stacks held, capped by rarity, never a boss; executed through execute_target's own execution, factored
+> out, not copied; every existing execute_target row must behave as before (count them in a test).
+> C2 the hits that raise the wearer's own hit_dealt (skills, basic attack, skill gadget and Tyrant's Minion casts);
+> never a damage-over-time tick or a minion's own blow.
+> C3 min(5 x stacks, cap): Common 50, Elite 25, Legendary 25, Herald 10, Boss and Cataclysm_Boss nothing; no rarity
+> reads as Common. 5% and the caps are the sentence's and the owner's numbers.
+> C4 on the health the hit leaves, as a share of maximum health.
+> C5 every kill that raises the wearer's own "kill" event, the cull's own kills included; the entry names every kind,
+> including whether a minion's kill raises it.
+> C6 one minion of the kind of the wearer's first summon skill (say how "first" is ordered), through
+> SummonReplacementAt at the killed enemy's place; free; nothing at the cap; nothing without a summon skill. Flag
+> minion_kill_spawns_minion, flat 1.
+> C7 an ordinary minion of that skill, inside its cap.
+> C8 no new display. Put on the owner's play-check list: "the cull threshold is not shown anywhere; the player sees
+> only the Soul Strike stack count and enemies dying" and "a Reaper's Embrace wearer with no summon skill gets nothing
+> from the ten-piece's spawn half".
+
+The sentence: "Reaper's Embrace (10-Piece Bonus): For each stack of Soul Strike you gain 5% cull on hit. Killing an enemy
+instanly spawns one of your minions, up to your max".
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| #9, C3 | A threshold of 5% per stack, capped by rarity, never a boss; no rarity is Common. | `CullSharePercentAgainst` (`CataclysmAbilitySystemComponent.cpp` 7038): `FMath::Min(PerStack * Stacks, CullCapPercentFor(Struck))` (7053); `CullCapPercentFor` (7014) and the four caps in the header. |
+| C1 | A new stat with no attribute, flat 5, read when the hit lands, times the stacks held. | `CullPercentPerSoulStrikeStackStat` (6992), asked with no tags in `CullSharePercentAgainst`; `SoulStrikeStacksHeld` (6996); the name at the end of `StatsWithNoAttribute`, a probe, and `REAPER_CULL_STAT` in the generator. |
+| C1 | Executed through `execute_target`'s own execution, factored out, not copied. | `KillIfLeftBelow` (6949), holding what `ExecuteIfLeftBelow` held from its checks to `ReduceHealthDirectly` (6979); `ExecuteIfLeftBelow` (6931) now calls it and starts its row's cooldown; `CullIfLeftBelow` (7089) calls it and starts none. |
+| C1 | Every existing `execute_target` row behaves as before; count them in a test. | The execute's request is untouched; the cull's is `CullAsked`, beside it. The damage branch acts on the execute (`CataclysmVitalAttributeSet.cpp` 2045) before the cull (2052). Count pinned at 1 in `test_the_shipped_table_holds_one_execute_row_and_it_is_as_ruled` and `Cataclysm.SetBonus.Reaper10.TheOneShippedExecuteRowStillExecutesAsItDidBesideTheCull`. |
+| C2 | The hits that raise the wearer's own `hit_dealt`; never a tick or a minion's own blow. | `CataclysmPlayerCharacter.cpp` 1031 to 1034, before `hit_dealt` (1035) and after the refusals of 934 to 1010, the tick's at 956; `!Cast<ACataclysmMinion>(Notice.DealtBy)`. |
+| C4 | On the health the hit leaves, as a share of maximum health. | `AskToCullOnHit` (7056) leaves the request; the damage branch takes it when `NoteBlow` returns (`CataclysmVitalAttributeSet.cpp` 1998) and acts on it after the write (2052); `KillIfLeftBelow` judges `target_health_below` strictly. |
+| C5 | Every kill that raises the wearer's own `kill`, the cull's included. | `CataclysmPlayerCharacter.cpp` 1201, inside `if (Notice.Killer == this)` (1166). |
+| C6 | One minion of the first summon skill's kind, through `SummonReplacementAt`, at the killed enemy's place, free; nothing at the cap or without a summon skill. Flag `minion_kill_spawns_minion`, flat 1. | `SpawnOneAtAKill` (`CataclysmSkillTemplates.cpp` 4333), called with `Notice.Location`; `FirstHeldSummonSkill` (4313); `KillSpawnsMinionStat` (4331); `SummonReplacementAt` (4216, unchanged). |
+| C7 | An ordinary minion of that skill, inside its cap. | `SummonReplacementAt`'s own lines: the shared cap (4226), the reserve, `SummonedBy`, `Minions.Add`. |
+| C8 | No new display; two lines on the play-check list. | Nothing added to the HUD; the list above. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE STACKS ARE FOUND BY THE EVENT THAT GRANTS THEM, NOT BY THE SIX-PIECE'S NAME.** An own stack is keyed
+  "enchantment:stat" by `UCataclysmItemModifiers::OwnStackKeyFor` (`CataclysmItem.cpp` 1020), and the grant is a worn
+  action on its event carrying that key (1163 to 1178); `OwnStacksHeld(FName)` is the reader by key.
+  `SoulStrikeStacksHeld` reads the most held under the key of every worn own-stack grant on `soul_picked_up` (7006 to
+  7008). The option not taken: the six-piece's key typed in C++
+  (`Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion:attack_damage`), which a renamed row would silently break and
+  which made-up rows on another enchantment could not reach. `KeptStacksHeldNamed` reads kept stacks, a different store,
+  and was not used.
+- **THE CULL'S REQUEST IS ITS OWN, BESIDE THE EXECUTE'S.** The option not taken: ask it through `AskToBeExecuted`, which
+  keeps the larger of two shares with that share's trigger key, so a cull larger than an execute row's share would have
+  replaced the row's request and the row's stated trigger cooldown would never start at an execute: an existing row
+  behaving differently.
+- **THE CULL'S FIGURE IS ASKED WITH NO TAGS, AND THE GENERATOR REFUSES A TAGGED ROW**, as every set bonus's stat is. The
+  option not taken: ask it with the striking skill's tags, which no ruled row needs.
+- **A DEAD KILLER SPAWNS NOTHING**, as `ResummonNow` summons nothing for a dead summoner; a tick can kill after its
+  applier has died. The option not taken: spawn for a dead wearer, whose minion would stand beside a body.
+- **`FirstHeldSummonSkill` IS FACTORED OUT OF `ReplaceLost`**, so a thrall's replacement and the spawn choose by one
+  definition of "first". `ReplaceLost` behaves as before. The option not taken: a second copy of the loop.
+- **A HIT A ROW DEALS FROM INSIDE THE ROW LOOP, AND A RETALIATION BLOW, CULL**, being hits whose `hit_dealt` the pawn
+  raises (C2's words). The option not taken: ask the cull from inside `ActOnEvent` at its top level only, where a
+  row-dealt hit's `hit_dealt` is dropped, as an execute row's is.
+
+### THE GENRE SOURCE
+
+From `genre_set_bonuses.md` section 5, "Cull", as it stands. Every page was read through WebFetch, which summarises, so
+each line is that summary's account of the page, not a verbatim reading.
+
+- **PoE 1, Culling Strike Support** (https://poedb.tw/us/Culling_Strike_Support, read on from character 100000 of the
+  page): a **threshold**. A hit that leaves an enemy at 10% of life or lower kills it. It "affects Rare, Unique and Act
+  Bosses" but not Uber Elder's final phase, and possibly other phased boss fights. Damage over time does not trigger it.
+- **PoE 2** (https://poe2db.tw/us/Culling_Strike): a threshold **that depends on rarity**: normal 35%, magic 20%, rare
+  10%, unique 5%. It is checked before the hit's damage is applied.
+- **Last Epoch** (https://forum.lastepoch.com/t/what-does-kill-threshold-not-kill/54771, all players, no developers; one
+  relayed Discord reply from "Mike_W", whose role is not stated): the kill threshold is a percentage threshold. It works
+  on bosses at a reduced value, and a player reports one-shotting the Emperor below about 18%. One poster reckons 15%
+  cull is worth about 17.6% more damage.
+- **Torchlight Infinite** (https://tlidb.com/en/Elimination): "Elimination" is a threshold. It "Directly defeats enemies
+  under a certain percentage of Max Life on hit", 18% on the talent. The page says nothing on bosses and notes it was
+  written from beta data.
+- **Verdict, the file's.** In all four games cull is a threshold, never a chance. Bosses are handled by a smaller
+  threshold (PoE 2 by rarity, Last Epoch at reduced strength), or by full effect with phase exceptions (PoE 1). SETTLED: a
+  threshold. A hit that leaves the enemy below X% of its life kills it. Scale X down for rares and bosses (PoE 2:
+  35/20/10/5) rather than exempting them. "5% per stack" reads naturally as a 5% threshold per stack.
+
+**Not reached**, as the file records: https://poedb.tw/us/Culling_Strike (404), and https://tlidb.com/en/Culling,
+/en/Cull, /en/Culling_Strike and /en/Eliminate (404). "Torchlight Infinite: how bosses are treated by taunt or by
+Elimination" was not found.
+
+**WHAT THE RESEARCH SETTLES AND WHAT IT DOES NOT.** A threshold judged on a hit, scaled down by rarity, is the genre's
+shape, and it is built. What is this game's own: the threshold growing with a stack count; the caps 50/25/25/10, which
+are the owner's and not PoE 2's 35/20/10/5; and a boss EXEMPTED rather than given a smaller threshold, which the file's
+verdict advises against and the owner ruled (#9). PoE 2 judges before the hit's damage; this game judges after it (C4),
+as PoE 1 and the execute already do.
+
+### WHAT WAS BUILT
+
+- **The execution, factored**: `KillIfLeftBelow`, called by `ExecuteIfLeftBelow` (which then starts its row's cooldown)
+  and by `CullIfLeftBelow` (which starts none). No line of the judgement changed: the boss and no-damage refusals, the
+  credit by the record, the strict share, the direct loss, the Unholy Sigil's hold.
+- **The stacks**: `SoulStrikeStacksHeld`.
+- **The share**: `CullCapPercentFor`, `CullSharePercentAgainst`.
+- **The request**: `AskToCullOnHit` on the wearer, `AskToBeCulled`, `TakeCullAsked`, `PutBackCullAsked` and `CullAskedNow`
+  on the struck; set aside and put back in the damage branch as the execute's is, so a hit dealt inside another hit's
+  announcement acts on its own request only.
+- **The hits**: one block in `OnSomethingWasHit`.
+- **The spawn**: `FirstHeldSummonSkill`, `KillSpawnsMinionStat`, `SpawnOneAtAKill`, and one call in `OnSomethingDied`.
+- **The two stats** on `StatsWithNoAttribute`, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The generator's refusal** of a row on either stat that the game would read as nothing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Two rows on the Enchantment Effects sheet, each with Enchantment `Positive_Reaper_s_Embrace_10_Piece_Bonus_For_each_stac`
+and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low | Value High |
+| :-- | :-- | :-- | :-- |
+| `cull_percent_per_soul_strike_stack` | `flat` | 5 | 5 |
+| `minion_kill_spawns_minion` | `flat` | 1 | 1 |
+
+Every other cell empty: no Required Tags (the enchantment's own `Type.Minion` is not a row's), no Condition, no Scale,
+no Action, no Action Event, no Fraction Of, no Stack Seconds, no Trigger Cooldown, no Event Value, no Ailment. Both pass
+the generator's whole validation on a made-up sheet (`tools/tests/test_reapers_embrace_ten_rows.py`). The 2-piece's row
+and the 6-piece's three are in `game/Data/EnchantmentEffects.csv` (counted by name, 2026-10-19); the set's drawback is as
+the six-piece's entry records it. **IN THE ROW LAYER**, by reading only, not run: the spawn
+flag's 1 is not in the sentence's words ("one of your minions" is a word), so `minion_kill_spawns_minion` is expected to
+join `FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`, as `minion_death_leaves_soul` did; the
+cull's 5 is in the words.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator now refuses** a row on `cull_percent_per_soul_strike_stack` that is not `flat`, carries a Required Tag
+  or an Action, or states a figure not above 0 and at most 100; and a row on `minion_kill_spawns_minion` that is not
+  `flat`, carries a Required Tag or an Action, or states anything but 1. Neither stat was accepted on any row before,
+  since neither existed.
+- **`StatsWithNoAttribute` gains two names**, at its end, so the generator accepts a row on each with no gameplay
+  attribute; `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains their two probes, the last of
+  `Probes`.
+- **`INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains two entries**, the cull's call in
+  `CataclysmAbilitySystemComponent.cpp` and the flag's in `CataclysmSkillTemplates.cpp`, with one dated line; `CALL_SITES`
+  stays 66, the figure of the tree it was measured on.
+
+### Tests
+
+Eight Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusReaperTenTests.cpp`, the group
+`Cataclysm.SetBonus.Reaper10.`. The five rows (the six-piece's three and this layer's two) are made up in the shapes
+above, put on the real non-set enchantment "Double your energy shield" and passed through
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto`. The player is a player character on the players' side, built by
+the client path, with attack damage 100; creatures are of the monsters' side with 10,000 maximum health and their rung
+written to `RarityStep`, so no stat block, modifier or body scale moves what a blow takes. Soul Strike's stacks are
+given by raising `soul_picked_up`, which is what a Soul taken raises. What the player's blow takes is measured on a far
+creature after the stacks are given. The critical strike roll is pinned after the world is made. Every body stands at
+least 1 m from every other; nothing deals damage in an area. NO TEST PRESSES A SKILL: every blow is `ApplyHit` or
+`ApplyDirectDamage` with the delivery its kind carries, so no test needs a resource a skill costs. Every helper type
+and function is named after the subject (`FReaperCullScene`, `ReaperCullBlow`...).
+
+1. `WithThreeStacksAHitLeavingACommonEnemyJustBelowFifteenPercentCullsItAndJustAboveDoesNot`. In order: set-up, no stack
+   held; set-up, the blow under half the share; control, with no stack a creature left just below 15% lives; control,
+   and it is below 15%; set-up, three stacks held; set-up, the blow under half the share; three stacks cull a Common
+   creature below 15% (`CullSharePercentAgainst` reads 15); a creature left just below 15% is culled; one left just above
+   15% lives; having lost what the blow takes and no more; and no cull is left waiting on it.
+2. `AtTenStacksTheCapsAreFiftyTwentyFiveTwentyFiveAndTenAndABossIsNeverCulled`. In order: set-up, ten stacks and the
+   blow under 5% of a maximum; then for Common, Elite, Legendary and Herald: the creature left just above 55%, 30%, 30%
+   or 15% lives (the Common one is the control); its cap is 50, 25, 25 or 10, against the owner's figures written as
+   numbers; the creature left just below the cap is culled; then for a Boss and a Cataclysm Boss: its cap is nought;
+   left below 5% it lives; and the blow reached its health.
+3. `ACullsDeathIsTheWearersKillAndADamageOverTimeTickNeverCulls`. In order: control, nobody has died; control, the kill
+   row has not acted; set-up, the blow; a creature left below 10% is culled; one death; the kill row acted once; the
+   player state counts one kill more; one blow announced, not two; one death notice; it names the creature, the player
+   as the killer, the striking skill, and an overkill of nought; set-up, the burn is laid on a creature held at 5%; two
+   seconds on, the ticks took health; it lives, below the share; still one death.
+4. `AKillSpawnsOneFreeMinionOfTheFirstSummonSkillWhereTheEnemyDiedAndNoneAtTheCapOrWithoutOne`. In order: control, no
+   minion before any kill; the kill by the blow spawned one; it stands where the creature died; it is an imp of Summon
+   Imp, granted first; Summon Mote holds none; the player's mana is as it was; the cull's kill spawned a second imp;
+   set-up, Summon Imp at its cap of 3; at the cap a kill spawns none; none of the three evicted; a player granted Summon
+   Mote first spawns a mote of it; a player with no summon skill spawns nothing.
+5. `ASpawnedMinionCountsInsideItsSkillsCapAndLeavesASoulWhenItDies`. In order: it is in Summon Imp's list; counted among
+   the minions sharing the cap; its summoner is the player; it holds a place under the caps; control, no Soul before it
+   dies; killed, it leaves one Soul, the player's, where it died.
+6. `TheWearersOwnHitsCullAndAMinionsOwnBlowDoesNot`. In order, with Conduit and two stacks: control, a skill's blow
+   culls; the basic attack's blow culls; a skill gadget's cast's blow culls; a Tyrant's Minion's cast's blow culls;
+   set-up, the imp's blow measured; control, with Conduit the imp's blow raised the player's `hit_dealt` once; an imp's
+   own blow leaving a creature below 10% does not cull it; and it was left below 10%.
+7. `ACreatureWithNoRarityIsCulledAsCommon`. In order, at ten stacks: control, an Elite creature left at 40% lives; a
+   monster's imp has the Common cap of 50; the blow leaving it at 40% culls it.
+8. `TheOneShippedExecuteRowStillExecutesAsItDidBesideTheCull`. In order: the shipped table holds one `execute_target`
+   row; it is the Strike skills' execute; set-up, one execute action of share 15 and chance 20; worn alone: control, roll
+   0, a Strike blow leaving a creature below 15% executes it; roll 99, one left below 15% lives; roll 0, a Spell blow
+   executes nobody; beside the ten-piece at two stacks: roll 99, a creature left at 12% lives; roll 99, one left at 8% is
+   culled; roll 0, one left at 12% is executed.
+
+Probes in `CataclysmStatExemptionTests.cpp`: `ProbeCullPercentPerSoulStrikeStack` (two stacks; control, with no stat the
+share against a Common creature is nought; at a flat 5 it is 10) and `ProbeMinionKillSpawnsMinion` (control, with no
+stat a kill's call spawns nothing; at a flat 1 it spawns one of Summon Imp's).
+
+Python, `tools/tests/test_reapers_embrace_ten_rows.py`, on a made-up workbook holding the sentence typed Generic: the row
+name is the shipped one and is in `EnchantmentsPositive.csv`; the two rows are carried through cell by cell and pass the
+whole validation; a wrong flag row through the whole validation is refused by this check's sentence; both stats are on
+`stats_with_no_attribute`, with a made-up name as the control; the engine's names are the generator's, read by the
+pattern that reads the six-piece's flag; the stacks are read by `soul_picked_up`; `KillIfLeftBelow` holds the one
+`ReduceHealthDirectly` and both callers call it, only the execute starting a cooldown; the damage branch acts on the
+execute before the cull; the pawn asks the cull before `hit_dealt`, refusing a minion's blow, and spawns after the death
+sentence's lift; the shipped table's one `execute_target` row, cell by cell; ten wrong shapes, each refused once by its
+own sentence; 100 and 2.5 accepted on the cull; a condition or a scale on either refused by the general checks; another
+stat and a passive node's row left alone.
+
+**Not tested:** the real rows worn at ten pieces with a control at nine (the enchantment session's real-row test); a
+real skill pressed, a real skill gadget's or Tyrant's Minion's cast (the tests deal the blow those casts deal); a
+retaliation blow and a `strike_target` blow; a minion's kill with Conduit spawning a minion; a thrall's kill; a kill by
+a tick, by an overkill explosion or by an ailment's explosion; a dead killer; the reserve refusing a spawn; the order of
+`GetActivatableAbilities()` after an ability is cleared; an enemy in an Unholy Sigil; a creature whose rung was set by
+`SetRarityStep`, with its stat block and modifiers; an execute row stating a trigger cooldown beside the cull; anything
+drawn by the HUD.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, and each new text
+counted absent before the break and once after it. Each break keeps the file's round, curly and square brackets paired
+(counted by the same script before and after) and compiles alone by reading: RT-I multiplies a `float` constant by a
+`float` literal; RT-II drops one operand of a `&&`, leaving a `bool`; RT-III passes an `int32` literal where an `int32`
+call stood. The prefix is `Cataclysm.SetBonus.Reaper10.`, with its trailing dot, eight tests.
+
+**The events the tests' actors raise on the way, listed before counting.** On the player: `soul_picked_up` once for
+each stack given, which Soul Strike's two grant rows hang on; `hit_dealt` for each blow of its own that lands, and for
+the imp's blow under Conduit in test 6, which the counting row of test 6 and the execute row of test 8 hang on;
+`first_hit_dealt` for its first blow on each creature, which no row hangs on; no `critical_strike`, the roll being
+pinned; `kill` for each death credited to it, a cull's and an execute's included, which the counting row of test 3
+hangs on, and at which `SpawnOneAtAKill` is called; in test 3 whatever the burn's laying raises, which no row hangs on.
+No `nearby_death`: every enemy dies 4 m or more from its player, and the dying imp of test 5 is the player's own. On a
+creature, nothing is worn. A spawned minion is a summon by `SummonReplacementAt`, which raises no event and reserves the
+nought the made-up skill states. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| RT-I, the Elite cap made Common's (#9, C3) | `CataclysmAbilitySystemComponent.cpp` | `return EliteCullCapPercent;` | `return EliteCullCapPercent * 2.0f;` | `AtTenStacksTheCapsAreFiftyTwentyFiveTwentyFiveAndTenAndABossIsNeverCulled` | `ACreatureWithNoRarityIsCulledAsCommon` |
+| RT-II, a minion's own blow culls (C2) | `CataclysmPlayerCharacter.cpp` | `if (Notice.DealtToHealth > 0.0f && !Cast<ACataclysmMinion>(Notice.DealtBy))` | `if (Notice.DealtToHealth > 0.0f)` | `TheWearersOwnHitsCullAndAMinionsOwnBlowDoesNot` | none |
+| RT-III, the stacks read as ten whatever is held (C1) | `CataclysmAbilitySystemComponent.cpp` | `Most = FMath::Max(Most, OwnStacksHeld(Action.StackKey));` | `Most = FMath::Max(Most, 10);` | `TheOneShippedExecuteRowStillExecutesAsItDidBesideTheCull` | `WithThreeStacksAHitLeavingACommonEnemyJustBelowFifteenPercentCullsItAndJustAboveDoesNot` |
+
+Failed assertions, by reading:
+
+- **RT-I, 3 in 2 tests.** Test 2: "the Elite creature left just above 30% lives" (culled, the cap now 50) and "the Elite
+  creature's cap is 25%" (50). The Elite creature left just below 25% is still culled, and the Legendary rung is
+  untouched. Test 7: "control: an Elite creature left at 40% lives" (culled), after which it returns.
+- **RT-II, 1 in 1 test.** Test 6: "an imp's own blow leaving a creature below 10% does not cull it". "And it was left
+  below 10%" passes: a culled creature reads nought health. The control on `hit_dealt` passes.
+- **RT-III, 2 in 2 tests.** Test 8: "beside the cull, roll 99: a creature left at 12% lives" (culled at 50%); worn alone
+  the execute is untouched, there being no cull line. Test 1: "set-up: no stack of Soul Strike is held" (10), after
+  which it returns. Every other test either holds ten stacks already or kills each creature it asserts dead with the
+  blow or below 10%. Outside the prefix, `ProbeCullPercentPerSoulStrikeStack`'s "set-up: two stacks of Soul Strike" (10)
+  fails, in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**Tests of another group expected to fail, to check in the window:** under RT-III, the probe above. None under RT-I or
+RT-II, by reading: no other test reaches `CullCapPercentFor` or a cull.
+
+**A test and no proof:** the strict share, the boss's exclusion, the cull's kill credit, the tick, the spawn and its cap,
+"first", the ordinary minion's Soul, the creature with no rarity as Common, and the shipped execute's count.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-19 — A minion's or thrall's death can leave a Soul that lasts the floor and that its commander alone takes by walking within 1.5 m of it, raising an event Soul Strike's rows hang on, with its name tag drawn: Reaper's Embrace's six-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmReaperSoul.h` and `.cpp` (new: the Soul, `ACataclysmReaperSoul`);

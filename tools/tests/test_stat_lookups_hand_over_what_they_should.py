@@ -189,6 +189,11 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Reaper's Embrace's six-piece added one more on 2026-10-18: the flag by which
 #: a minion's death leaves a Soul, asked with no tags off the commander by
 #: `ACataclysmReaperSoul::LeaveFor` from the commander's death hook.
+#: Reaper's Embrace's ten-piece added two more on 2026-10-19: the cull per
+#: stack of Soul Strike, asked with no tags off the wearer by
+#: `UCataclysmAbilitySystemComponent::CullSharePercentAgainst` when its hit
+#: lands, and the flag by which a kill spawns a minion, asked with no tags off
+#: the killer by `UCataclysmSummonSkill::SpawnOneAtAKill` at its kill.
 CALL_SITES = 66
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -1030,6 +1035,22 @@ INVENTORY = {
         "is the commander's and no skill of it is in hand, so no tags, and "
         "nothing has landed on anybody, so no blow and no target are handed "
         "over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CullPercentPerSoulStrikeStackStat), FGameplayTagContainer(), 0.0f'):
+        "the cull per stack of Soul Strike (Reaper's Embrace's ten-piece, "
+        "ruled 2026-10-17 and 2026-10-19), asked by CullSharePercentAgainst "
+        "off the wearer when its hit lands; the bonus is about every hit of "
+        "the wearer's and the ruled row states no tag, so no tags, and the "
+        "share is judged on the struck character's health by KillIfLeftBelow "
+        "once the hit's damage is written, so no blow and no target are "
+        "handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(KillSpawnsMinionStat), FGameplayTagContainer(), 0.0f'):
+        "the flag by which a kill spawns one minion of the first summon skill "
+        "held (Reaper's Embrace's ten-piece, ruled 2026-10-19), asked by "
+        "SpawnOneAtAKill off the killer at its kill; the bonus is about any "
+        "kill and no skill of it is in hand, so no tags, and the kill has "
+        "already happened, so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
