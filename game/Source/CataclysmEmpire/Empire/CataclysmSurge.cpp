@@ -966,22 +966,23 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	const float Base = UCataclysmDayClock::ResolveDaysFor(Dungeon.Floors);
 	const float Jitter = 1.0f + Stream.FRandRange(-ResolveJitter, ResolveJitter);
 
-	// EXCEPT FOR A QUEST DUNGEON, WHOSE TIMER IS FLAT. `QuestResolveDays` is
-	// the figure the model gives on every Quest row. Since 2026-10-13 that
-	// timer hits the host city when it runs out, with an ordinary dungeon's
-	// hit for the host's tier, so it is a hit schedule that does not read the
-	// depth. The comment on `QuestResolveDays` says what can be said for that
-	// and what is not ruled.
+	// A QUEST DUNGEON'S TIMER FOLLOWS ITS DEPTH TOO, as an ordinary dungeon's
+	// does. Until 2026-10-19 it was a flat 25 days whatever the floor count;
+	// the owner ruled on 2026-10-16 that it reads the depth like any other
+	// dungeon's, and the design document says the same. Since 2026-10-13 that
+	// timer hits the host city when it runs out, so it is a hit schedule, and a
+	// deeper Quest dungeon is now paid for with a slower one, the trade the
+	// paragraph above describes. `docs/DECISIONS.md`, 2026-10-19, has the
+	// change.
 	//
-	// THE DRAWS HAPPEN EITHER WAY, AND THAT IS DELIBERATE. `Base` and `Jitter`
-	// are computed above rather than inside the branch so that a Quest dungeon
-	// takes exactly as many numbers off the stream as a Basic one. Skipping the
-	// jitter draw for a Quest would make every later roll in the run depend on
-	// which kinds came out earlier, and nothing about a Quest dungeon should
-	// change what the dungeon after it looks like.
-	Dungeon.ResolveDays = (Kind == ECataclysmDungeonType::Quest)
-		? QuestResolveDays
-		: Base * Jitter;
+	// THE DRAWS HAPPEN WHATEVER THE KIND, AND THAT IS DELIBERATE. `Base` and
+	// `Jitter` are drawn above for every dungeon, so every kind takes exactly
+	// as many numbers off the stream as a Basic one. A kind that skipped the
+	// jitter draw would make every later roll in the run depend on which kinds
+	// came out earlier, and nothing about a Quest dungeon should change what
+	// the dungeon after it looks like. Making the Quest timer read the depth
+	// added no draw and removed none, so a run's random stream is unchanged.
+	Dungeon.ResolveDays = Base * Jitter;
 
 	return Dungeon;
 }

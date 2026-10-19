@@ -410,8 +410,9 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * this reads.
 	 *
 	 * IT DOES NOT MEAN THE TIMER NEVER FIRES, AND IT DOES NOT MEAN NOTHING
-	 * HAPPENS. A Quest dungeon's timer is MEANT to run out -- see
-	 * `QuestResolveDays`. When it does the host is hit, the timer refreshes and
+	 * HAPPENS. A Quest dungeon's timer is MEANT to run out, and since
+	 * 2026-10-19 it comes from the depth like any dungeon's -- see
+	 * `MakeDungeon`. When it does the host is hit, the timer refreshes and
 	 * the dungeon may move to an adjacent city. Issue #1324 slice 4. What this
 	 * also still decides is a death: dying in a dungeon resolves it only when
 	 * this answers true.
@@ -927,41 +928,6 @@ public:
 	static constexpr float FallenCityResolveDays = 999.0f;
 
 	/**
-	 * How long a Quest dungeon's timer runs. `config.DUNGEON_SPECS`.
-	 *
-	 * A FLAT NUMBER AND NOT DERIVED FROM THE DEPTH. The model says the same
-	 * with a `(25, 40)` on every Quest row of `DUNGEON_SPECS` and by reading
-	 * `spec.resolve_days[0]` for every kind but `Basic` in
-	 * `Simulation._make_dungeon`; all four tiers give 25, so one constant
-	 * covers them and `test_surge_port.py` checks all four against it.
-	 *
-	 * **IT IS A HIT SCHEDULE SINCE 2026-10-13, AND IT IS STILL FLAT.** Until
-	 * then this comment said the timer was "a relocation clock and not a bite
-	 * schedule" and that the flat number did not break the rule that resolve
-	 * timers scale with depth, because a Quest dungeon "takes nothing whenever
-	 * its timer runs out". That argument no longer holds: the timer now hits
-	 * the host city every time it runs out.
-	 *
-	 * WHAT CAN BE SAID FOR THE FLAT NUMBER NOW. `CLAUDE.md` states the depth
-	 * rule as a trade: a deeper dungeon is worth more and is slower to bite.
-	 * A Quest dungeon's hit is not sized by its depth either. The host takes
-	 * the ordinary row of its own tier at a scale of one, whatever the Quest
-	 * dungeon's floor count. So neither the size of the hit nor the days
-	 * between hits reads the depth, and a deeper Quest dungeon is not paid for
-	 * with a slower or a smaller hit. An unattended one takes an ordinary hit
-	 * from its host every 25 days. Whether a Quest dungeon's timer SHOULD
-	 * follow its depth is not ruled; the model and the game both keep 25, and
-	 * `docs/DECISIONS.md`, 2026-10-13, records it as open.
-	 *
-	 * AND IT IS WHAT THE MOVE HANGS ON. The timer running out puts the dungeon
-	 * in the day's `FCataclysmDayReport::Resolved`, and
-	 * `UCataclysmEmpireRun::ResolveDungeon` relocates it there -- to an
-	 * adjacent exposed city, or nowhere when it has no such neighbour. See
-	 * `PickRelocation`. Issue #1324 slice 4.
-	 */
-	static constexpr float QuestResolveDays = 25.0f;
-
-	/**
 	 * The chance a Quest dungeon with somewhere adjacent to go actually goes.
 	 * `config.quest_move_chance`.
 	 *
@@ -1283,14 +1249,15 @@ public:
 	 * deep and still bites on the same schedule.
 	 *
 	 * WHAT A QUEST DUNGEON DOES DIFFERENTLY, and it is less than it looks. Its
-	 * floors come from the Quest row of `SpecFor` rather than the Basic one, and
-	 * its timer is the flat `QuestResolveDays` rather than a jittered figure
-	 * from its depth. Everything else is the same code: the city's floor
-	 * upgrades still move it, it still rolls a sub-type, its walk still costs a
-	 * day a floor less whatever the city bought, and it still carries the
-	 * design's one boss on the final floor. Nothing about a Quest dungeon says
-	 * otherwise, and giving it its own maker would have been two copies of the
-	 * shared rules.
+	 * floors come from the Quest row of `SpecFor` rather than the Basic one.
+	 * Its timer comes from its depth like any dungeon's, jitter and all; until
+	 * 2026-10-19 it was a flat 25 days, and the owner ruled on 2026-10-16 that
+	 * it follow the depth. Everything else is the same code: the city's floor
+	 * upgrades still move its floors and so its timer, it still rolls a
+	 * sub-type, its walk still costs a day a floor less whatever the city
+	 * bought, and it still carries the design's one boss on the final floor.
+	 * Nothing about a Quest dungeon says otherwise, and giving it its own maker
+	 * would have been two copies of the shared rules.
 	 *
 	 * @param bSiegeAllowed whether this city may take a Siege. Passed straight
 	 *                      to `RollSubType`; see there. It defaults to allowing

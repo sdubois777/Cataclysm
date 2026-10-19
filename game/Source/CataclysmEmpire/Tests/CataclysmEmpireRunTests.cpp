@@ -2177,7 +2177,14 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmEmpireRunTest;
 
-	constexpr int32 Campaigns = 20;
+	// FORTY CAMPAIGNS, AND IT WAS TWENTY UNTIL 2026-10-19. Since then a Quest
+	// dungeon's timer comes from its depth, as an ordinary dungeon's does,
+	// which on an Outpost is about twice the old flat 25 days -- so about half
+	// as many quest timers run out in a campaign, and the rate below needs more
+	// than 200 of them that had a choice. The campaigns were doubled rather
+	// than the 200 lowered, so the four-sigma band keeps the width it had;
+	// ruled by the coordinating session, 2026-10-19.
+	constexpr int32 Campaigns = 40;
 	constexpr int32 MostDays = 600;
 
 	int32 TimersFired = 0;
@@ -3817,8 +3824,10 @@ bool FCataclysmEmpireRunDeathSparesOtherKindsTest::RunTest(const FString& Parame
 	// Quest dungeon, a Dungeon City and the Cataclysm's own dungeon carry none
 	// in the game; here each is given 100 and 40 so a mistaken resolve shows.
 	//
-	// THREE DAYS LEFT ON A TIMER OF TWENTY-FIVE, which is a Quest dungeon's
-	// timer. Since 2026-10-13 that timer hits the host city when it runs out;
+	// THREE DAYS LEFT ON A TIMER OF TWENTY-FIVE, which was a Quest dungeon's
+	// flat timer until 2026-10-19; since then the game draws a Quest timer from
+	// the depth, and twenty-five here is only a figure longer than the days
+	// left. Since 2026-10-13 that timer hits the host city when it runs out;
 	// it does so in both passes alike, so the comparison below is unchanged.
 	// Each kind is then run on for five days twice, once
 	// after the call and once without it, and the two must agree: the call
