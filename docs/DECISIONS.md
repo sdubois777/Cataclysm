@@ -52,7 +52,8 @@ Three readings of this layer, each a judgement:
 ### Measured
 
 500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. Left: the head of the
-entry below (`73ba305b`; measured as `68559c13`). Right: this layer (`b76f84be`; measured as `be0600d4`). Won / cities lost / erased at the end:
+entry below (`23ac0a1a` on `development`; measured as `68559c13`). Right: this layer (`b0c8afaf`; measured as
+`be0600d4`). Won / cities lost / erased at the end:
 
 | campaigns | undefended, median day lost T1 / T2 / T3 / T4 | Explorer `triage` T1 | no-tree `triage` T1 |
 |---|---|---|---|
@@ -62,13 +63,13 @@ entry below (`73ba305b`; measured as `68559c13`). Right: this layer (`b76f84be`;
 ### Tests
 
 New: `sim/tests/test_a_hollow_shrinks_and_its_hit_adds_stacks.py` (10), each case with a control (an ordinary Void
-dungeon, or War's Quest dungeon). **The whole suite found a fault in the first commit (`b76f84be`, then `be0600d4`)**: with an upgrade
+dungeon, or War's Quest dungeon). **The whole suite found a fault in the first commit (`b0c8afaf`, then `be0600d4`)**: with an upgrade
 tree that removes floors, a Hollow has fewer floors than its natural depth, shrank to 0 and divided by zero in
-`scoring.enemy_scores` (18 sweep tests failed or errored at tier 8). `161d715a` (then `24eb3eab`) adds a test that reproduced it and
+`scoring.enemy_scores` (18 sweep tests failed or errored at tier 8). `6408e415` (then `24eb3eab`) adds a test that reproduced it and
 then the bound: a Hollow never goes below one floor. The bound cannot bind in the measurement above, where the trees
 add floors or none, so its figures stand.
 
-Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `24eb3eab` (now `161d715a`; each commit moved with its
+Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `24eb3eab` (now `6408e415`; each commit moved with its
 zero-context patch id unchanged), all PROVED and passing again restored:
 
 | break | failed with it in | restored |
