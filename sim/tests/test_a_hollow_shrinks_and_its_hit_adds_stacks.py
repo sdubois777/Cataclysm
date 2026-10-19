@@ -166,3 +166,18 @@ def test_with_the_stacks_off_a_hollow_hits_as_any_quest_dungeon() -> None:
     before = a.defense
     sim._quest_hit(d, a)
     assert a.defense < before and a.void_stacks == 0
+
+
+def test_it_never_shrinks_below_one_floor_when_the_tree_removes_floors() -> None:
+    """A tree that removes floors leaves a Hollow fewer floors than its natural
+    depth: made with 15 natural floors and 10 removed, it has 5. Its minimum of 8
+    natural floors would be -2 floors; it stops at one. Found by the whole suite,
+    where a Hollow of 0 floors divided by zero in `scoring.enemy_scores`."""
+    sim = simulation()
+    d = hollow(sim, outposts(sim)[0], 15)
+    d.floors, d.tree_floors = 5, -10
+    d.spawned_day = 0
+    for day in range(1, 30):
+        sim.day = day
+        sim._hollow_shrink()
+    assert d.floors == 1
