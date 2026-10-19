@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — In the simulation the Ascendant, Celestial's Quest dungeon, is approximated as one more average modifier a floor, down to four
+
+**Simulation only, and an approximation.** The model has no Celestial Edicts, so the Ascendant's "each floor adds
+one more active Edict, up to 4" is stood in for by the modifier score: on each floor, the dungeon's own modifier
+score plus one average modifier's score for each floor down to four (`TuningConfig.ascendant_extra_modifiers_cap`).
+Branch `feat/sim-ascendant`, on top of the entry below.
+
+### SAID FIRST
+
+- **IT CHANGES LITTLE.** In Celestial campaigns the player without the upgrade tree loses 3.71 cities against 3.42
+  (500 campaigns, tier 1; the standard errors are 0.10 and 0.11); the Explorer player 59.2% won / 0.61 cities against
+  57.2% / 0.58, inside the measurement. An undefended empire is unchanged, as it must be: the extra changes only the
+  chance that a player dies inside the dungeon.
+- **NOT MODELLED:** its Core on the last floor, its Edicts growing 10% stronger a floor deeper, and the Edict it
+  leaves on its city after a hit. The design document says the Ascendant's rule is still being designed.
+- `scoring.enemy_scores` gives no sub-type bonus to a name its table does not list (`SUBTYPE_WEIGHTS.get(subtype,
+  0.0)`), so Ascendant and Hollow carry none. `scoring.py` is a port and was not edited.
+
+### What was ruled
+
+The plan the coordinating session accepted on 2026-10-16: "ASCENDANT (Celestial Quest), model approximation,
+labelled: no Edicts exist in the model, so 'each floor adds one more active Edict, up to 4, each 10% stronger a floor
+deeper' is modelled as its danger: the dungeon's `modifier_score` gains one average modifier's score a floor down to
+four (a judgement standing in for Edicts; the Sacrificial's doubled modifiers are the precedent for a sub-type raising
+modifiers). The Core on its last floor and the 30-day Edict on its city after a hit are NOT modelled (no Edicts); the
+entry says so. Its hit is a Quest hit as now." The owner chose the name, 2026-10-16: "I kinda like Ascendant more.
+Any argument against?"
+
+Two readings of this layer, each a judgement:
+
+- **"A floor down to four" is per floor**: floor 1 carries one extra modifier, floor 2 two, floor 4 and every floor
+  after it four, and the boss's floor four. The model samples seven floors at fixed shares of the depth, so on any
+  dungeon deeper than about 30 floors every sampled floor carries four.
+- **"An average modifier" is the mean score of the campaign's own modifier pool** (`Simulation.modifier_pool`).
+
+### How it is built
+
+- `combat.py`: `floor_modifier_score`; `death_chance` takes `extra_per_floor` and `extra_cap`, both 0 by default,
+  and applies them to every sampled floor and the boss's.
+- `engine.py`: `Simulation.death_chance` passes `average_modifier_score()` and the cap for an Ascendant.
+- `config.py`: `ascendant_extra_modifiers_cap = 4`; 0 turns it off.
+
+### Measured
+
+500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. Left: the head of the
+entry below (`1aa79e71`). Right: this layer (`5ae7d326`). Won / cities lost:
+
+| campaigns | undefended, median day lost T1 / T2 / T3 / T4 | Explorer `triage` T1 | no-tree `triage` T1 |
+|---|---|---|---|
+| the first 500 facing Celestial | 950 / 563 / 442 / 357, both | 57.2% / 0.58 → 59.2% (54.8 to 63.4) / 0.61 | 39.0% / 3.42 → 39.6% (35.4 to 44.0) / 3.71 |
+| seeds 0 to 499 | 773 / 507 / 386 / 343, both | 50.2% / 1.33 → 50.8% (46.4 to 55.2) / 1.33 | 38.8% / 5.29 → 39.0% / 5.32 |
+
+### Tests
+
+New: `sim/tests/test_an_ascendant_grows_more_dangerous_floor_by_floor.py` (5), each case with a control (the extra
+turned off, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `5ae7d326`,
+all PROVED and passing again restored:
+
+| break | failed with it in | restored |
+|---|---|---|
+| the engine asks for no extra | 1 failed, 4 passed | 5 passed |
+| the combat ignores the extra | 2 failed, 3 passed | 5 passed |
+| no cap at four | 1 failed, 4 passed | 5 passed |
+
+No existing test changed.
+
+### Design document
+
+The paragraph naming each Cataclysm's Quest sub-type: it said both new sub-types' rules were still being designed;
+it now says the Hollow's is under The Void, and that the simulation stands in for the Ascendant's.
+
+### Not covered, and later
+
+- The Ascendant's design itself (Core, Edicts), and the game.
+
+---
+
 ## 2026-10-18 — In the simulation the Hollow, the Void's Quest dungeon, loses a floor a day to half its depth, and its hit adds 1 to 3 void stacks instead of damage
 
 **Simulation only; the game has no Void (#53).** Branch `feat/sim-hollow`, on top of the entry headed "In the simulation an ordinary Void dungeon adds 1 to 3 void stacks…".
