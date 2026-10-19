@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from cataclysm_sim import policies
 from cataclysm_sim.config import TREE_NONE, CityTier, DungeonType, TuningConfig
 from cataclysm_sim.engine import Simulation
 from cataclysm_sim.patterns import PATTERNS
@@ -151,18 +152,54 @@ def test_with_the_setting_off_a_void_dungeon_does_damage() -> None:
 
 
 def test_the_void_returns_to_the_cities_it_has_stacked() -> None:
-    """Its targeting weight rises with the city's stacks, from 1x at none to 5x
-    at ten, and no longer reads lost defence. CONTROL: War's weight on the same
-    city does not move with the stacks."""
+    """Its targeting weight rises with the city's stacks, from 1x at none to 2x
+    at ten (the owner, 2026-10-18), and no longer reads lost defence. CONTROL:
+    War's weight on the same city does not move with the stacks."""
     sim = simulation()
     city = outpost(sim)
     void, war = PATTERNS["Void"].weight, PATTERNS["War"].weight
     plain, plain_war = void(sim.empire, city), war(sim.empire, city)
     city.void_stacks = 5
-    assert void(sim.empire, city) == plain * 3.0
+    assert void(sim.empire, city) == plain * 1.5
     city.void_stacks = 10
-    assert void(sim.empire, city) == plain * 5.0
+    assert void(sim.empire, city) == plain * 2.0
     assert war(sim.empire, city) == plain_war
     city.void_stacks = 0
     city.defense = city.max_defense / 2
     assert void(sim.empire, city) == plain, "lost defence no longer draws the Void"
+
+
+def test_a_policy_sees_a_void_dungeon_as_fatal_when_its_stacks_would_erase_the_city() -> None:
+    """By the stacks and not by the damage it no longer does. CONTROL: a War
+    dungeon on a city whose defence is below its row's damage is fatal, and a
+    Void dungeon on that same city with no stacks is not."""
+    sim = simulation()
+    city = outpost(sim)
+    shallow = depths(sim, city)[0]
+    void = dungeon(sim, city, "Void", shallow)
+    war = dungeon(sim, city, "War", shallow)
+    city.void_stacks = 9
+    assert policies._resolve_fells(sim, void, city)
+    city.void_stacks = 8
+    assert not policies._resolve_fells(sim, void, city), "1 stack from 8 is 9, not 10"
+    city.void_stacks = 0
+    city.defense = war.defense_damage / 2
+    assert policies._resolve_fells(sim, war, city)
+    assert not policies._resolve_fells(sim, void, city)
+
+
+def test_triage_and_lane_aware_take_the_void_dungeon_about_to_erase_its_city() -> None:
+    """Two Void dungeons alike but for their cities' stacks: each policy takes
+    the one whose timer would erase its city. CONTROL: swap the stacks and it
+    takes the other."""
+    for name in ("triage", "lane_aware"):
+        for erasing in (0, 1):
+            sim = simulation()
+            cities = [c for c in sim.empire.exposed_cities() if c.tier is CityTier.OUTPOST][:2]
+            shallow = depths(sim, cities[0])[0]
+            made = [dungeon(sim, c, "Void", shallow) for c in cities]
+            for d in made:
+                d.modifier_names, d.modifier_score, d.resolve_in = (), 0.0, 5.0
+            cities[erasing].void_stacks = 9
+            chosen = policies.ALL[name](sim, list(sim.dungeons.values()))
+            assert chosen is made[erasing], (name, erasing, chosen)

@@ -67,6 +67,23 @@ def _quest_hit_fells(sim, d, city) -> bool:
     return sim.cfg.spec(DungeonType.BASIC, city.tier).defense_damage >= city.defense
 
 
+def _resolve_fells(sim, d, city) -> bool:
+    """Whether this ordinary dungeon's timer would fell its city.
+
+    By the row's damage against the city's defence, as each policy always
+    guessed; FOR A VOID DUNGEON, BY ITS STACKS, since 2026-10-18: its timer
+    takes no defence, and erases the city when the stacks it adds
+    (`Simulation._void_stacks_for`) bring the city to
+    `TuningConfig.void_stacks_to_erase`. Part of the plan the coordinating
+    session accepted on 2026-10-16; without it a policy ranked a Void dungeon
+    by damage it does not do and never saw an erasure coming.
+    """
+    if sim._adds_void_stacks(d):
+        return (city.void_stacks + sim._void_stacks_for(d)
+                >= sim.cfg.void_stacks_to_erase)
+    return d.defense_damage >= city.defense
+
+
 def _safe(sim, dungeons):
     """Dungeons the player can attempt without an unacceptable death risk."""
     tol = sim.cfg.death_risk_tolerance
@@ -519,8 +536,7 @@ def triage(sim, dungeons):
         # NEITHER THE DEPTH SCALE NOR THE TREE IS APPLIED, which was true of
         # the fraction this replaced as well. A policy guesses; issue #1327
         # changed the shape of the number and deliberately not the guess.
-        bite = d.defense_damage
-        fatal = bite >= city.defense
+        fatal = _resolve_fells(sim, d, city)
         value = TIER_VALUE[d.city_tier] * (1.0 + (1.0 - city.defense_frac) * 3.0)
         if fatal:
             value *= 5.0
@@ -621,7 +637,7 @@ def lane_aware(sim, dungeons):
 
         # A city off every shortest lane is worth little no matter its tier.
         lane = 1.0 + 9.0 * crit.get(city.cid, 0)
-        fatal = d.defense_damage >= city.defense
+        fatal = _resolve_fells(sim, d, city)
         value = lane * (1.0 + (1.0 - city.defense_frac) * 2.0) * (1.0 + 2.0 * peril)
         if fatal:
             value *= 4.0
