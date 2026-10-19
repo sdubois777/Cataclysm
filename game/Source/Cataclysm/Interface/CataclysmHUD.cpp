@@ -4,6 +4,7 @@
 #include "Dungeon/CataclysmFloorObject.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -88,6 +89,7 @@ void ACataclysmHUD::DrawHUD()
 	DrawDamageNumbers();
 	DrawDropNames();
 	DrawFloorObjectNames();
+	DrawReaperSoulNames();
 
 	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
 	// behind it and covers a strip of the screen; a damage number or a drop
@@ -1373,6 +1375,49 @@ void ACataclysmHUD::DrawFloorObjectNames()
 		DrawBorder(Tag, static_cast<float>(BorderPx), Object->NameColour);
 		const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
 		DrawOutlinedText(Object->DisplayName, Object->NameColour, Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
+	}
+}
+
+void ACataclysmHUD::DrawReaperSoulNames()
+{
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, and every Soul there, whosever it is: a Soul is a thing on the floor, as a drop
+	// is, and the tag says nothing about who may take it.
+	TArray<ACataclysmReaperSoul*> Nearby;
+	ACataclysmReaperSoul::SoulsToName(World, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
+									  Nearby);
+	const FString Words(ACataclysmReaperSoul::NameText);
+	const FLinearColor Ink = ACataclysmReaperSoul::NameColour();
+
+	// A PLAIN BORDER, as a floor object's: a Soul has no rarity to show. Measured first and drawn after, so two Souls
+	// lying together do not print over each other.
+	constexpr int32 BorderPx = 1;
+	TArray<FBox2D> SoulTags;
+	for (const ACataclysmReaperSoul* Soul : Nearby)
+	{
+		const FVector Screen = Project(
+			Soul->GetActorLocation() + FVector(0.0f, 0.0f, ACataclysmReaperSoul::NameHeightCm),
+			/*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+		SoulTags.Add(UCataclysmDropPickup::TagAround(MeasureTextCentred(Words, Screen.X, Screen.Y, 1.0f), BorderPx));
+	}
+
+	UCataclysmDropPickup::SeparateOverlappingNames(SoulTags, UCataclysmDropPickup::NameGapPx);
+
+	const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
+	for (const FBox2D& SoulTag : SoulTags)
+	{
+		DrawBorder(SoulTag, static_cast<float>(BorderPx), Ink);
+		DrawOutlinedText(Words, Ink, SoulTag.Min.X + Inset, SoulTag.Min.Y + Inset, 1.0f);
 	}
 }
 

@@ -5930,6 +5930,12 @@ ACTION_ONLY_EVENTS = (
     # seconds": two own-stack rows on it. NOT raised for Nothing Stops It's save,
     # so a wearer holding both gains the critical strike only from the reprieve.
     "lethal_hit_reprieved",
+    # A SOUL TAKEN, raised once per Soul on its taker by
+    # `ACataclysmReaperSoul::TakeSoulsNear`, with no tags, amount or character.
+    # Ruled 2026-10-18 (R5, R6) for Reaper's Embrace's six-piece, "Picking up a
+    # Soul grants a stack of Soul Strike that increases your damage by 10% for 5
+    # seconds. Max 10 stacks": two own-stack rows on it. Raised at 10 stacks too.
+    "soul_picked_up",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -11202,6 +11208,81 @@ def refuse_a_tyrants_ultimate_row_the_game_cannot_read(
     return problems
 
 
+#: Reaper's Embrace's six-piece bonus. The owner's ruling #8 of 2026-10-17 (a
+#: Soul is picked up by walking within about 1.5 m and lasts the floor) and the
+#: coordinating session's rulings R1-R8 of 2026-10-18, for "When a minion or pet
+#: dies, it leaves behind a "Soul" that can be picked up. Picking up a Soul
+#: grants a stack of Soul Strike that increases your damage by 10% for 5
+#: seconds. Max 10 stacks."
+#:
+#: THREE ROWS: this flag at a flat 1, and Soul Strike as two own-stack rows,
+#: `attack_damage` and `spell_damage` increased 10, step 1, on the event
+#: `soul_picked_up`, at most 10 steps, 5 s. Only the flag is new; the two
+#: Soul Strike rows are the shape `refuse_a_scale_nothing_asks_for` and the
+#: action checks already hold. `ACataclysmReaperSoul::MinionDeathLeavesSoulStat`
+#: holds the same name, and `tools/tests/test_reapers_embrace_six_rows.py`
+#: compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS: off the commander, by
+#: `ACataclysmReaperSoul::LeaveFor`, when a minion or thrall of its dies. So a
+#: row requiring a tag matches nowhere, a row of any kind but `flat` works on a
+#: base of nought, and a row with an action is not a stat line at all.
+REAPER_SOUL_STAT = "minion_death_leaves_soul"
+
+
+def refuse_a_reaper_soul_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `REAPER_SOUL_STAT` is a flag its one reader takes as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_tyrants_minion_row_the_game_cannot_read`'s flag, for one stat.
+
+    THE FLAG STATES 1 AND NOTHING ELSE, as every flag row does.
+
+    A CONDITION OR A SCALE ON IT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither list those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    flag = REAPER_SOUL_STAT
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat != flag or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and no minion's death "
+                f"leaves a Soul.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the commander with no tags, so "
+                f"a row requiring a tag matches nowhere: no minion's death "
+                f"leaves a Soul and the row says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        for value in sorted({low, high}):
+            if value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on "
+                    f"this flag states 1 and nothing else.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11636,6 +11717,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # TAGS AND NO ACTION, ABOVE 0 AND NOT RISING. Ruled 2026-10-17 (#7) and
     # 2026-10-18 (T1-T7).
     problems.extend(refuse_a_tyrants_ultimate_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FLAG BY WHICH A MINION'S DEATH LEAVES A SOUL IS FLAT, 1 AND NOTHING
+    # ELSE, WITH NO TAGS AND NO ACTION. Ruled 2026-10-17 (#8) and 2026-10-18
+    # (R1-R8).
+    problems.extend(refuse_a_reaper_soul_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
