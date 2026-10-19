@@ -5235,11 +5235,16 @@ void UCataclysmAuraSkill::HelpAlliesInside()
 	// WHO SHOULD BE CARRYING IT AFTER THIS PULSE. Built first so the two passes
 	// below -- give to the new ones, take back from the ones who left -- are
 	// decided against one answer rather than two searches a moment apart.
+	//
+	// AN ALLY THAT REFUSES BUFFS FROM ALLIES SHOULD NOT. Ruled 2026-10-19, "You
+	// cannot benefit from buffs applied by allies": one already helped is in
+	// `Leaving` below and loses the bonus at this pulse, as one that walked out
+	// does.
 	TSet<AActor*> ShouldCarry;
 	ShouldCarry.Reserve(Allies.Num());
 	for (AActor* Ally : Allies)
 	{
-		if (IsValid(Ally))
+		if (IsValid(Ally) && !UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
 		{
 			ShouldCarry.Add(Ally);
 		}
@@ -5352,7 +5357,11 @@ void UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside()
 	{
 		UCataclysmAbilitySystemComponent* Theirs =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Ally));
-		if (!IsValid(Ally) || !Theirs || UCataclysmSkillEffects::IsDead(Ally))
+		// AND AN ALLY THAT REFUSES BUFFS FROM ALLIES IS GRANTED NOTHING. Ruled
+		// 2026-10-19: left out of `Inside`, so what it already holds of this aura
+		// is taken back below at this pulse, as from an ally that walked out.
+		if (!IsValid(Ally) || !Theirs || UCataclysmSkillEffects::IsDead(Ally)
+			|| UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
 		{
 			continue;
 		}

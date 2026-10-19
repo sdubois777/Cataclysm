@@ -11487,6 +11487,72 @@ def refuse_a_time_lock_rift_row_the_game_cannot_read(
     return problems
 
 
+#: The flag of "You cannot benefit from buffs applied by allies", ruled
+#: 2026-10-19 (Q3 option a, A1): held by the RECEIVER, it refuses every buff
+#: another character's code gives it.
+#:
+#: THE GAME ASKS WHETHER IT IS ABOVE NOUGHT, WITH NO TAGS,
+#: `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies`, of each ally
+#: the shared buffs' step and an aura's two passes are about to give a buff.
+#: So a row requiring a tag matches nowhere, a row of any kind but `flat`
+#: works on a base of nought, and an action row is not a stat line.
+ALLY_BUFFS_REFUSED_STAT = "ally_buffs_refused"
+
+
+def refuse_an_ally_buffs_refused_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `ALLY_BUFFS_REFUSED_STAT` is a flag: flat, 1 to 1, with no
+    required tag and no action.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant
+    above gives. Each refusal names what the reader would do with the row.
+    The shape of `refuse_a_debuff_immunity_flag_row_the_game_cannot_read`.
+
+    A FIGURE OTHER THAN 1 IS REFUSED though the game reads any value above
+    nought as yes: a flag that states another number reads as a quantity.
+
+    A CONDITION OR A SCALE ON THE FLAG IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the flag is on neither of the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat = ALLY_BUFFS_REFUSED_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game asks whether the flag is above nought, so the row "
+                f"must be 'flat'; any other kind works on a base of nought "
+                f"and refuses NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this flag off the receiver with no tags, so a "
+                f"row requiring a tag matches nowhere: this one would refuse "
+                f"NOTHING and say nothing.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if (low, high) != (1.0, 1.0):
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and a flag "
+                f"is 1 to 1. The game reads any figure above nought as yes, "
+                f"so another figure reads as a quantity and is none.")
+        if str(row.get("Action") or "").strip():
+            problems.append(
+                f"{who}: states {stat!r} on a row with the action "
+                f"{str(row.get('Action')).strip()!r}. The flag is read as a "
+                f"stat line and an action row states none, so this row would "
+                f"refuse NOTHING.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11939,6 +12005,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # ACTION, ABOVE 0, THE SECONDS BETWEEN RIFTS NOT RISING. Ruled 2026-10-08,
     # 2026-10-17 (#10) and 2026-10-19 (K1-K9).
     problems.extend(refuse_a_time_lock_rift_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FLAG BY WHICH ITS HOLDER REFUSES BUFFS FROM ALLIES IS FLAT, 1 TO
+    # 1, WITH NO TAGS AND NO ACTION. Ruled 2026-10-19 (A1).
+    problems.extend(refuse_an_ally_buffs_refused_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

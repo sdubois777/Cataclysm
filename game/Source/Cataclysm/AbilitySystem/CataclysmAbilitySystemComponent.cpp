@@ -72,6 +72,19 @@ UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 const TCHAR* UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat =
 	TEXT("aura_shares_immunities_with_allies");
 
+const TCHAR* UCataclysmAbilitySystemComponent::AllyBuffsRefusedStat = TEXT("ally_buffs_refused");
+
+bool UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(const AActor* Receiver)
+{
+	const UCataclysmAbilitySystemComponent* ReceiverSystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Receiver));
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought. NO TAGS: the row is about every buff,
+	// whoever gives it, and the giver's skill is not the receiver's.
+	return ReceiverSystem
+		&& ReceiverSystem->StatForSkill(FName(AllyBuffsRefusedStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
 void UCataclysmAbilitySystemComponent::GrantImmunity(FName Kind, const UObject* From,
 													 float Seconds)
 {

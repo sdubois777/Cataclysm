@@ -197,7 +197,11 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Chronomancer's Time-Lock's ten-piece added one more on 2026-10-19: the
 #: one helper `UCataclysmTimeLockRift::StatOf` its seven stats are asked
 #: through.
-CALL_SITES = 67
+#: "You cannot benefit from buffs applied by allies" added one more on
+#: 2026-10-19: the flag by which a character refuses the buffs other
+#: characters give it, asked with no tags off the receiver by
+#: `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies`.
+CALL_SITES = 68
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1061,6 +1065,14 @@ INVENTORY = {
         "the regeneration step; the rift is not one of the wearer's "
         "skills, so no tags, and nothing has landed when they are asked, "
         "so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(AllyBuffsRefusedStat), FGameplayTagContainer(), 0.0f'):
+        "whether a character refuses buffs from allies (ruled 2026-10-19), "
+        "asked by RefusesBuffsFromAllies of each ally the shared buffs' step "
+        "and an aura's two passes are about to give a buff; the row is about "
+        "every buff whoever gives it, and the giver's skill is not the "
+        "receiver's, so no tags, and a buff is not a blow, so no blow and no "
+        "target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
