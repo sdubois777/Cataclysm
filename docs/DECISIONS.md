@@ -45,7 +45,8 @@ the next layer. The coordinating session ruled the same day:
 ### Measured
 
 500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. The left figure is
-the head of the entry below (`27794b24`), the right one this layer (`aa92b5d3`):
+the head of the entry below (`477b0298` on `development`; measured as `27794b24`), the right one this layer
+(`7283a84e`; measured as `aa92b5d3`):
 
 | campaigns | undefended, median day lost T1 / T2 / T3 / T4 (all 100% by day 2000) | Explorer `triage` T1 won / cities lost / erased at the end | no-tree `triage` T1 won / cities lost / erased at the end |
 |---|---|---|---|
@@ -58,7 +59,7 @@ In Void campaigns the Explorer player sees 45.8 stacks added a campaign, and the
 ### Tests
 
 New: `sim/tests/test_a_void_dungeon_adds_stacks_and_ten_erase_a_city.py` (9), each case with a control. Guard
-proofs with `tools/prove_guard.py` in a `git archive` copy of `aa92b5d3`, all PROVED and passing again restored:
+proofs with `tools/prove_guard.py` in a `git archive` copy of `aa92b5d3` (now `7283a84e`), all PROVED and passing again restored:
 
 | break | failed with it in | restored |
 |---|---|---|
@@ -107,21 +108,23 @@ The four targeting choices the owner chose among, 500 campaigns a row, tier 1, m
 The same four with the policy change, measured in scratch copies before it was built: no-tree cities lost in Void
 campaigns 5.70 / 6.52 / 6.85 / 7.10, Explorer 51.4% / 1.20, 48.2% / 1.42, 47.2% / 1.56, 46.6% / 1.60.
 
-**As built** (`6474841d`, both changes), the same table's row: facing the Void, undefended median day 919 at T1
+**As built** (`49d6bfde`, measured as `6474841d`, both changes), the same table's row: facing the Void, undefended median day 919 at T1
 (671 / 481 / 372 at T2 / T3 / T4), Explorer 48.2% (43.9 to 52.6) / 1.42 / 0.81, no tree 39.6% (35.4 to 44.0) / 6.52 /
 4.20; all campaigns, undefended 886 / 577 / 412 / 350, Explorer 50.6% (46.2 to 55.0) / 1.33 / 0.11, no tree 39.4% /
 5.33 / 0.64. Every undefended empire was lost by day 2000. These equal the scratch copy's to every figure, which is
 the check that the built code is the measured code. The no-tree player's 6.52 sits 0.02 above the 6.5 the
 coordinating session set as the point to ask the owner; the standard error is 0.16.
 
-Two more guard proofs, in a `git archive` copy of `6474841d`, both PROVED and passing again restored:
+Two more guard proofs, in a `git archive` copy of `6474841d` (now `49d6bfde`), both PROVED and passing again restored:
 
 | break | failed with it in | restored |
 |---|---|---|
 | the policies ignore the stacks | 2 failed, 10 passed | 12 passed |
 | the targeting pull back to 5 times | 1 failed, 11 passed | 12 passed |
 
-The five proofs above were run again on `8b6cd9e5` (the timer's fall moved into one place) with the same counts.
+The five proofs above were run again on `8b6cd9e5` (now `f46c78cb`; the timer's fall moved into one place) with the same counts.
+Each commit was moved onto `development` with its zero-context patch id unchanged, so the measured and proved
+code is the code here.
 
 ### Not covered, and later
 
