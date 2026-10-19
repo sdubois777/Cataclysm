@@ -2,6 +2,86 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A Quest dungeon's timer in the game comes from its depth, as an ordinary dungeon's does
+
+**The game follows the simulation.** `UCataclysmSurgeScheduler::MakeDungeon` now gives every kind of dungeon it builds
+the same timer: `UCataclysmDayClock::ResolveDaysFor(Floors) x (1 +/- ResolveJitter 0.15)`. The flat 25-day
+`QuestResolveDays` is removed. Branch `feat/game-quest-timer-by-depth-1`, on `development` at `6a9a43f1b`; it follows
+the entry headed "In the simulation a Quest dungeon's timer is rolled from its own depth, as an ordinary dungeon's is".
+
+### SAID FIRST
+
+- **A QUEST DUNGEON LEFT ALONE HITS ITS HOST LESS OFTEN.** On an Outpost (20 to 30 floors) its timer is 42 to 58 days
+  before the jitter, against 25; on a Bulwark (30 to 45) 58 to 82; on a Sanctuary (30 to 50) 58 to 90; on a Pillar
+  (50 to 70) 90 to 122. Each of those is then varied by up to 15% either way, as an ordinary dungeon's is.
+- **NO RANDOM DRAW IS ADDED OR REMOVED.** The jitter was already drawn for a Quest dungeon and thrown away, so that
+  every kind took the same numbers off the stream. It is now used. A run with a given seed rolls the same dungeons, in
+  the same places, as before; only a Quest dungeon's timer differs.
+- **A CITY'S FLOOR UPGRADES NOW MOVE A QUEST DUNGEON'S TIMER TOO.** They already moved its floor count; the timer now
+  follows that count. The walk-cost upgrade still moves neither, as for any dungeon.
+- The size of a Quest dungeon's hit is unchanged: the ordinary row of its host's tier, ruled 2026-10-13.
+
+### What was ruled
+
+The owner, 2026-10-16: a Quest dungeon's timer scales with its depth like other dungeons, and the flat 25 days is
+retired. The simulation changed that day; the game held `QuestResolveDays = 25` until this layer. The design document
+already says "Its timer follows its depth as an ordinary dungeon's does".
+
+The coordinating session accepted the plan for this layer on 2026-10-19, with two changes to its tests: the Surge test
+must carry an assertion that fails when the jitter is missing (rolls of one floor count carrying different timers, with
+a control that some floor count was rolled twice), and the relocation campaign test that needs more than 200 Quest
+timers with a choice runs twice as many campaigns rather than having that 200 lowered.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`, `MakeDungeon`: the branch on the kind is gone;
+  `Dungeon.ResolveDays = Base * Jitter;` for every kind. The comment that the draws happen whatever the kind is kept.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`: `QuestResolveDays` and its comment removed; the comments on
+  `FCataclysmDungeon::Resolves` and `MakeDungeon` that named it now say the timer comes from the depth.
+
+### Tests
+
+Unreal, changed (none added, none removed):
+
+- `Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithAFlatTimer` is renamed
+  `Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth`. Old: every Quest dungeon's timer equals
+  `QuestResolveDays`. New: it lies within `ResolveDaysFor(Floors) x (1 -/+ ResolveJitter)`, the band
+  `Cataclysm.Surge.ADungeonsTimerComesFromItsDepthAndThenVaries` uses; the 200 rolls of each tier carry more than one
+  timer; and, the check that fails without the jitter, some floor count's rolls carry more than one timer, after a
+  control that some floor count was rolled at least twice. Its Basic dungeon check was "the timer is not
+  `QuestResolveDays`"; it is now the same band.
+- `Cataclysm.DungeonMode.ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing`, in
+  `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`: its Quest timer read `QuestResolveDays`; it is now `25.0f` set in the test. The test needs
+  a timer with 12 days left, because it runs five; any timer longer than that serves.
+- `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`: 20 campaigns became 40; the assertion that more than 200
+  timers had a choice is unchanged. An Outpost Quest timer is now about twice the old 25 days, so about half as many
+  run out in a campaign. No other test's campaigns changed.
+
+Python, in `tools/tests/test_surge_port.py`:
+
+- `test_the_model_rolls_its_timer_from_its_depth_and_the_game_not_yet` is replaced, as its docstring instructed, by
+  `test_both_kinds_take_their_timer_from_one_formula_in_both`: the model half as before; the game half asks that
+  `MakeDungeon` assigns `ResolveDays` once, as `Base * Jitter`, with no `Kind ==` or `Type ==` in that statement, and
+  that the header no longer names `QuestResolveDays`.
+- `test_the_game_does_not_roll_its_timer_from_its_depth` loses its two checks on the flat timer and is renamed
+  `test_the_jitter_is_drawn_whatever_the_kind`; the check that the jitter is drawn unconditionally is kept.
+
+### Proofs
+
+Not yet run: the window registered with the coordinating session runs them. Two are registered, with these
+predictions:
+
+| break | predicted to fail |
+|---|---|
+| PROOF 1: `MakeDungeon` gives a Quest dungeon `25.0f` again | the renamed Surge test, on its band and same-floor assertions (and its timers-vary assertion, since every timer would be 25); and `test_both_kinds_take_their_timer_from_one_formula_in_both` |
+| PROOF 2: a Quest dungeon's timer is `Base` without the jitter | in Unreal only the renamed Surge test's same-floor assertion; in Python the one-formula check |
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-19 — A worn row can place a temporal rift where its wearer stands once its clock has run and an enemy is within the row's radius, stunning each enemy it catches once and making each it stuns take a row's share more damage from every source for as long as that stun lasts, lengthening by a row's seconds for each enemy caught up to a row's most: Chronomancer's Time-Lock's ten-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTimeLockRift.h` and `.cpp` (new: `UCataclysmTimeLockRift`,
@@ -7580,6 +7660,9 @@ not measured for it.
 
 A reading that moved with the stream: `siege_urgency`'s prose says the median walk to a Sanctuary is 34 days; at
 8096ac39 the guard's 320 campaigns gave 38 and failed, at 3a48236a it passes again. Left as it is, by ruling.
+
+> 2026-10-19: the game follows from the entry of that day headed "A Quest dungeon's timer in the game comes
+> from its depth, as an ordinary dungeon's does", which removes `QuestResolveDays`.
 
 ---
 
