@@ -359,6 +359,26 @@ RS-III, by reading: no test outside the prefix calls `TakeSoulsNear`.
 - **THE THREE JUDGEMENTS STAND**, as ruled: a dead commander's minion still leaves a Soul; the HUD names every Soul in
   range, whosever it is; Souls are not saved.
 
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-19 on this mechanism. Three rows on the Enchantment Effects sheet, on
+`Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion`: `#1` Stat `minion_death_leaves_soul`, Value Kind `flat`, Value
+Low and High 1; `#2` and `#3` Stat `attack_damage` and `spell_damage`, Value Kind `increased`, Value Low and High 10,
+Scale `own_stacks`, Scale Step 1, Action Event `soul_picked_up`, Scale Max Steps 10, Stack Seconds 5. Every other cell
+empty. The row pins move to 666 rows over 538 enchantments.
+
+**THE ROW-TEXT CHECK, RULED BY THE COORDINATING SESSION THE SAME DAY.** `minion_death_leaves_soul` joins `FLAG_STATS`,
+after `minion_death_blast_deals_death`, with a dated comment. Measured: without it,
+`test_a_single_value_appears_in_its_words_outside_any_range` fails on `#1` alone ("1 against ..."); the two Soul Strike
+rows pass on their own, their 10 and 5 being in the words. Proved with `prove_guard`: "PROVED: 1 failed, 39 passed |
+restored: 40 passed", named_failures that one test. The list's own guard refuses a flag no row writes, so the entry is
+checked from the other side as well.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornReapersEmbraceSixPieceLeavesASoulAtAMinionsDeathWhoseTakingGivesSoulStrike`,
+wears five pieces against six, each with the 6-piece and the set's drawback. Each striker's imp, 1 m from it, is killed
+by writing its health to nought. Five pieces leave no Soul (the control); six leave one, and the six-piece striker,
+taking it, holds one stack of Soul Strike. Two assertions on the case.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
