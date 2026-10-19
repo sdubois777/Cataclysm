@@ -817,6 +817,97 @@ public:
 	 */
 	void NoteExecuteMade(FName TriggerKey, float TriggerCooldownSeconds);
 
+	/**
+	 * THE EXECUTION BOTH AN EXECUTE AND A CULL MAKE, factored out of `ExecuteIfLeftBelow` for Reaper's Embrace's
+	 * ten-piece, ruled 2026-10-19 (C1): if this character may be executed (`CanBeExecuted`), the last blow on its
+	 * record is `By`'s and its health is above nought and STRICTLY below `BelowPercent` of its maximum, take the health
+	 * it has left with `UCataclysmSkillEffects::ReduceHealthDirectly`, sent by `By`. Everything `ExecuteIfLeftBelow`
+	 * says of the kill (a direct loss and not a hit, credited by the record the hit left, held by a friendly Unholy
+	 * Sigil) is said of this. It starts no trigger cooldown: `ExecuteIfLeftBelow` does that for an execute row.
+	 *
+	 * @return whether this character died of it
+	 */
+	bool KillIfLeftBelow(AActor* By, float BelowPercent);
+
+	/**
+	 * Reaper's Embrace's ten-piece, "For each stack of Soul Strike you gain 5% cull on hit". The owner's ruling #9 of
+	 * 2026-10-17 and the coordinating session's rulings C1-C8 of 2026-10-19: a THRESHOLD of the row's figure times the
+	 * Soul Strike stacks held, of maximum health, capped by the struck character's rarity, never a boss. Read off the
+	 * wearer with no tags; a flat 5. No gameplay attribute. `tools/generate_datatables.py` holds the same name in
+	 * `REAPER_CULL_STAT`.
+	 */
+	static const TCHAR* CullPercentPerSoulStrikeStackStat;
+
+	/** The event a Soul taken raises, which Soul Strike's own-stack rows grant on. See `ACataclysmReaperSoul`. */
+	static const TCHAR* SoulPickedUpEvent;
+
+	/**
+	 * The stacks of Soul Strike this character holds now: the most own stacks held, by `OwnStacksHeld`, under the key of
+	 * any worn row that grants its own stacks on `SoulPickedUpEvent`. Ruled 2026-10-19 (C1): the six-piece's rows' own
+	 * stack keys, found by the event that grants them and not by the six-piece's name, so a row of another name on the
+	 * same event counts too. Nought for none worn, and once the window has passed.
+	 */
+	int32 SoulStrikeStacksHeld() const;
+
+	/**
+	 * The largest share of maximum health a cull may leave `Struck` below, by its rarity, in per cent. The owner's
+	 * ruling #9 of 2026-10-17 and C3 of 2026-10-19: Common 50, Elite 25, Legendary 25, Herald 10, a Boss and a
+	 * Cataclysm Boss nought. A CHARACTER WITH NO RARITY, one that is not an enemy character, IS COMMON (C3).
+	 */
+	static float CullCapPercentFor(const AActor* Struck);
+
+	/** The ruled caps: the owner's numbers (#9). */
+	static constexpr float CommonCullCapPercent = 50.0f;
+	static constexpr float EliteCullCapPercent = 25.0f;
+	static constexpr float LegendaryCullCapPercent = 25.0f;
+	static constexpr float HeraldCullCapPercent = 10.0f;
+
+	/**
+	 * The share of its maximum health `Struck` is culled below by a hit of this character's now: the row's figure
+	 * times `SoulStrikeStacksHeld`, no more than `CullCapPercentFor`, and nought for a character `CanBeExecuted`
+	 * refuses or for this character itself. C1 and C3 of 2026-10-19.
+	 */
+	float CullSharePercentAgainst(const AActor* Struck) const;
+
+	/**
+	 * Leave a cull's request on `Struck` for the hit now resolving, when `CullSharePercentAgainst` is above nought.
+	 * Called by `ACataclysmPlayerCharacter::OnSomethingWasHit` for exactly the hits that raise this character's own
+	 * `hit_dealt`, and not for a minion's own blow (C2). THE REQUEST AND NOT A KILL, for the reason
+	 * `AskToBeExecuted` gives: the hit's damage is not yet written, and the cull is judged on the health the hit
+	 * leaves (C4). The struck character's attribute set acts on it with `CullIfLeftBelow` once the damage is written.
+	 *
+	 * @return the share asked, or nought for none
+	 */
+	float AskToCullOnHit(AActor* Struck);
+
+	/**
+	 * Keep a cull's request on this character, the one a hit has struck. A REQUEST OF ITS OWN, BESIDE AN EXECUTE'S
+	 * AND NOT MERGED WITH IT, so every execute row acts exactly as before (C1): an execute asked for the same hit is
+	 * acted on first and starts its own row's trigger cooldown, and the cull then finds a dead character and does
+	 * nothing. Of two culls asked for one hit, the larger share is kept.
+	 */
+	void AskToBeCulled(AActor* By, float BelowPercent);
+
+	/** What a cull asked of this character, read once and cleared; and put back, as `PutBackExecuteAsked` does. */
+	FExecuteAsked TakeCullAsked()
+	{
+		const FExecuteAsked Was = CullAsked;
+		CullAsked = FExecuteAsked();
+		return Was;
+	}
+	void PutBackCullAsked(const FExecuteAsked& Earlier) { CullAsked = Earlier; }
+
+	/** What a cull asks of this character now, without clearing it. For tests. */
+	const FExecuteAsked& CullAskedNow() const { return CullAsked; }
+
+	/**
+	 * Act on a cull's request taken from this character: `KillIfLeftBelow` with the request's asker and share. Called
+	 * by the attribute set after it has written a hit's damage to health, after any execute that hit asked for.
+	 *
+	 * @return whether this character died of it
+	 */
+	bool CullIfLeftBelow(const FExecuteAsked& Asked);
+
 	/** The skill a row asked to repeat and that has not been made yet, or none. */
 	FName PendingRepeatSkill() const { return PendingRepeatName; }
 	FVector PendingRepeatAim() const { return PendingRepeatAimPoint; }
@@ -5282,6 +5373,9 @@ protected:
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;
+
+	/** What a striking character's cull asked of this character for the hit now resolving. See `AskToBeCulled`. */
+	FExecuteAsked CullAsked;
 
 	/** When Shoulder Through may next push each enemy, in world seconds. */
 	TMap<TWeakObjectPtr<const AActor>, float> ShoulderedThroughUntil;

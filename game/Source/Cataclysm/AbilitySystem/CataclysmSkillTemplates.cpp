@@ -4278,16 +4278,7 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 	}
 	if (!Skill)
 	{
-		for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
-		{
-			UCataclysmSummonSkill* Held =
-				Cast<UCataclysmSummonSkill>(Spec.GetPrimaryInstance());
-			if (Held && !Held->Params.bPossess)
-			{
-				Skill = Held;
-				break;
-			}
-		}
+		Skill = FirstHeldSummonSkill(Commander);
 	}
 	if (!Skill)
 	{
@@ -4317,6 +4308,41 @@ ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
 		return Made;
 	}
 	return bExploded ? Try(/*bForExplosion=*/true) : nullptr;
+}
+
+UCataclysmSummonSkill* UCataclysmSummonSkill::FirstHeldSummonSkill(AActor* Commander)
+{
+	UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Commander);
+	if (!Theirs)
+	{
+		return nullptr;
+	}
+	for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
+	{
+		UCataclysmSummonSkill* Held = Cast<UCataclysmSummonSkill>(Spec.GetPrimaryInstance());
+		if (Held && !Held->Params.bPossess)
+		{
+			return Held;
+		}
+	}
+	return nullptr;
+}
+
+const TCHAR* UCataclysmSummonSkill::KillSpawnsMinionStat = TEXT("minion_kill_spawns_minion");
+
+ACataclysmMinion* UCataclysmSummonSkill::SpawnOneAtAKill(AActor* Killer, const FVector& Where)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Killer));
+	// NOTHING FOR A DEAD KILLER, as `ResummonNow` makes nothing for a dead summoner: a damage over time tick can kill
+	// after its applier has died.
+	if (!Theirs || !IsValid(Killer) || UCataclysmSkillEffects::IsDead(Killer)
+		|| Theirs->StatForSkill(FName(KillSpawnsMinionStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return nullptr;
+	}
+	UCataclysmSummonSkill* Skill = FirstHeldSummonSkill(Killer);
+	return Skill ? Skill->SummonReplacementAt(Where) : nullptr;
 }
 
 bool UCataclysmSummonSkill::Possess()
