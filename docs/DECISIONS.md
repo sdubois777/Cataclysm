@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — In the simulation the Hollow, the Void's Quest dungeon, loses a floor a day to half its depth, and its hit adds 1 to 3 void stacks instead of damage
+
+**Simulation only; the game has no Void (#53).** Branch `feat/sim-hollow`, on top of the entry below.
+
+### SAID FIRST
+
+- **AN UNDEFENDED EMPIRE FACING THE VOID IS LOST IN ABOUT HALF THE TIME**: a median day of 483 at tier 1, against 919
+  before this layer (500 campaigns). Over all campaigns the tier-1 median goes from 886 to 773. Every undefended
+  empire was lost by day 2000 before and after.
+- **THE DEFENDING PLAYERS BARELY MOVE**: in Void campaigns the Explorer player 47.6% won / 1.29 cities (was 48.2% /
+  1.42), the player without the upgrade tree 42.0% / 6.49 (was 39.6% / 6.52). Inside the measurement.
+- **WHY THE UNDEFENDED EMPIRE FALLS FASTER (a reading, not measured):** a Quest dungeon never leaves, and since
+  2026-10-16 it moves on when its city falls. A Hollow that nobody clears adds up to 3 stacks every time its timer
+  runs out, whatever the city's size, so it erases one city after another; the Quest hit it replaces was an
+  ordinary dungeon's damage, which a large city absorbs many times over.
+- **The plan predicted "small effect on the targets". That was wrong for the undefended empire.**
+
+### What was ruled
+
+The plan the coordinating session accepted on 2026-10-16: "HOLLOW (Void Quest): from the day after it is made it
+loses one floor from its bottom a day, to half its rolled floors (rounded up); its walk and worth shrink with it
+(floors are depth and reward); its timer is as rolled. Its hit adds 1 stack at full depth rising evenly to 3 at its
+minimum: `1 + 2 * lost / (rolled - minimum)`, rounded. No single hit erases a city at fewer than 8 stacks." The
+owner, 2026-10-16, on the Void's Quest dungeons, verbatim: "So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time."
+
+Three readings of this layer, each a judgement:
+
+- **"Rolled floors" is the natural floors**, without the empire tree's, as the stacks of piece 2 and the hit are.
+- **It does not shrink while the player is inside it**: the walk was fixed when the player went in.
+- **"Rounded" is half up**, so 1.5 is 2 and 2.5 is 3; Python's own `round` would give 2 for both.
+- "No single hit erases a city at fewer than 8 stacks" is built as: a hit on a city below 8 stacks stops at 9.
+
+### How it is built
+
+- `config.py`: `hollow_floors_lost_per_day = 1`, `hollow_floor_share_kept = 0.5`,
+  `hollow_hit_cannot_erase_below = 8`. With `void_dungeons_add_stacks` off, a Hollow hits as any Quest dungeon.
+- `engine.py`: `Dungeon.hollow_from`, the natural floors a Hollow was made with; `_hollow_shrink`, run each day after
+  the Sieges bite and before the timers; `_hollow_stacks_for` and `hollow_hit_stacks`; `_quest_hit` adds the stacks
+  instead of the damage and fells the city in one place, by damage or by the tenth stack.
+- `policies.py`: `_quest_hit_fells` sees a Hollow's hit as fatal when its stacks would erase the city.
+
+### Measured
+
+500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. Left: the head of the
+entry below (`68559c13`). Right: this layer (`be0600d4`). Won / cities lost / erased at the end:
+
+| campaigns | undefended, median day lost T1 / T2 / T3 / T4 | Explorer `triage` T1 | no-tree `triage` T1 |
+|---|---|---|---|
+| the first 500 facing the Void | 919 / 671 / 481 / 372 → 483 / 494 / 447 / 353 | 48.2% / 1.42 / 0.81 → 47.6% (43.3 to 52.0) / 1.29 / 0.74 | 39.6% / 6.52 / 4.20 → 42.0% (37.8 to 46.4) / 6.49 / 4.53 |
+| seeds 0 to 499 | 886 / 577 / 412 / 350 → 773 / 507 / 386 / 343 | 50.6% / 1.33 / 0.11 → 50.2% (45.8 to 54.6) / 1.33 / 0.12 | 39.4% / 5.33 / 0.64 → 38.8% / 5.29 / 0.67 |
+
+### Tests
+
+New: `sim/tests/test_a_hollow_shrinks_and_its_hit_adds_stacks.py` (9), each case with a control (an ordinary Void
+dungeon, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `be0600d4`, all
+PROVED and passing again restored:
+
+| break | failed with it in | restored |
+|---|---|---|
+| it never shrinks | 2 failed, 7 passed | 9 passed |
+| its hit does damage | 2 failed, 7 passed | 9 passed |
+| one hit may erase below 8 | 2 failed, 7 passed | 9 passed |
+| always 1 stack | 3 failed, 6 passed | 9 passed |
+| the policies ignore the Hollow | 1 failed, 8 passed | 9 passed |
+| it shrinks while the player is inside | 1 failed, 8 passed | 9 passed |
+
+No existing test changed.
+
+### Design document
+
+The Void section: one sentence group on the Hollow, before the owner's line.
+
+### Not covered, and later
+
+- Ascendant, Celestial's Quest dungeon: the next layer.
+- The game.
+
+---
+
 ## 2026-10-18 — In the simulation an ordinary Void dungeon adds 1 to 3 void stacks to its city instead of damage, and ten stacks erase the city
 
 **Simulation only; the game has no Void (#53).** When an ordinary (`BASIC`) Void dungeon's timer runs out on a
