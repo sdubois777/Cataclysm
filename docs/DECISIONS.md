@@ -109,6 +109,8 @@ Everything a ruling requires to be said first, and everything a player would not
 
 - the cull threshold is not shown anywhere; the player sees only the Soul Strike stack count and enemies dying
 - a Reaper's Embrace wearer with no summon skill gets nothing from the ten-piece's spawn half
+- a kill made by your minion spawns another minion only when you hold the Conduit keystone; without it, a minion's kill
+  spawns none, and a thrall's kill never does (added by the coordinating session when it read this layer, 2026-10-19)
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -375,6 +377,30 @@ RT-II, by reading: no other test reaches `CullCapPercentFor` or a cull.
 
 **A test and no proof:** the strict share, the boss's exclusion, the cull's kill credit, the tick, the spawn and its cap,
 "first", the ordinary minion's Soul, the creature with no rarity as Common, and the shipped execute's count.
+
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-19 on this mechanism. Two rows on the Enchantment Effects sheet, on
+`Positive_Reaper_s_Embrace_10_Piece_Bonus_For_each_stac`: `#1` Stat `cull_percent_per_soul_strike_stack`, Value Kind
+`flat`, Value Low and High 5; `#2` Stat `minion_kill_spawns_minion`, Value Kind `flat`, Value Low and High 1. Every other
+cell empty. The row pins move to 668 rows over 539 enchantments.
+
+**THE ROW-TEXT CHECK, RULED BY THE COORDINATING SESSION THE SAME DAY.** `minion_kill_spawns_minion` joins `FLAG_STATS`,
+after `minion_death_leaves_soul`, with a dated comment. Measured: without it,
+`test_a_single_value_appears_in_its_words_outside_any_range` fails on `#2` alone ("1 against ..."); the cull row's 5 is
+in the words. Proved with `prove_guard`: "PROVED: 1 failed, 39 passed | restored: 40 passed", named_failures that one
+test.
+
+**WHICH KILLS SPAWN (C5), CHECKED BY THE ENCHANTMENT SESSION AGAINST THE CODE.** The list above holds: the killer is
+`UCataclysmCombatEvents::AttackerOf` (`CataclysmCombatEvents.cpp` 68 to 90), which names a minion's summoner only when
+`ACataclysmMinion::HitsCountAsTheSummoners` holds (`CataclysmMinion.cpp` 334 to 342, the Conduit keystone's
+`minion_hits_count_as_yours`), and the minion otherwise. The code agrees with its comments.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornReapersEmbraceTenPieceCullsACommonEnemyLeftAtFortyPercentAtTenStacks`,
+wears nine pieces against ten, each with the 10-piece and the set's drawback. Both wear at least six, so both gain Soul
+Strike; each is given ten stacks through `soul_picked_up`. Each striker's own blow is measured on its second creature,
+and its first creature is set so that blow leaves it at 40% of its maximum health. At nine pieces it lives (the
+control); at ten it is culled (the one assertion on the case).
 
 ### THE WINDOW'S RUN
 
