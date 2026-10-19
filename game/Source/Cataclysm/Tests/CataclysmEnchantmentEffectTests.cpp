@@ -13,6 +13,7 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmTauntAura.h"
@@ -27489,6 +27490,67 @@ bool FCataclysmTyrantTenRowTest::RunTest(const FString&)
 	TestEqual(TEXT("with ten pieces worn, the Tyrant's Minion casts the Ultimate every 3 s. If not, DT_EnchantmentEffects "
 				   "may be older than the row: run tools/generate_datatable_assets.py"),
 		TenMinion->TyrantsUltimateSecondsBetweenCasts(), 3.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperSixRowTest,
+	"Cataclysm.Enchantments.TheWornReapersEmbraceSixPieceLeavesASoulAtAMinionsDeathWhoseTakingGivesSoulStrike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Reaper's Embrace's 6-piece row layer, ruled 2026-10-17 (#8) and 2026-10-18 (R1-R8): a minion's death leaves a Soul its
+ * commander takes within 1.5 m, and each Soul taken is a stack of Soul Strike. WORN by a real player: what the Soul then
+ * does is `Cataclysm.SetBonus.Reaper6.`'s. The CONTROL wears FIVE pieces and the case SIX, each carrying the 6-piece
+ * and the set's drawback. Each striker's imp stands 1 m from it and is killed by writing its health to nought; the
+ * six-piece striker then takes what was left. TWO assertions on the case, so on assets built before the rows it fails
+ * twice, and only there.
+ */
+bool FCataclysmReaperSixRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion");
+	const TCHAR* Drawback = TEXT("Negative_All_of_your_life_regeneration_effects_are_reduce");
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces"), SixPieces.Ready())
+		|| !TestTrue(TEXT("set-up: five pieces worn"), WearsMore(FivePieces, Bonus, Drawback, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), WearsMore(SixPieces, Bonus, Drawback, 5)))
+	{
+		return false;
+	}
+	const auto SoulsLeftFor = [](const CataclysmConsecutiveRowTest::FStriker& Striker)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmReaperSoul> It(Striker.World); It; ++It)
+		{
+			Count += IsValid(*It) && It->LeftByCommander.Get() == Striker.Character ? 1 : 0;
+		}
+		return Count;
+	};
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&FivePieces, &SixPieces})
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Striker->Character, FVector(0.0f, 100.0f, 0.0f),
+														/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (!TestNotNull(TEXT("set-up: an imp 1 m from the striker"), Imp))
+		{
+			return false;
+		}
+		UCataclysmTargeting::AbilitySystemOf(Imp)->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	}
+
+	// THE CONTROL, READ FIRST: five pieces are below the threshold, so the imp's death leaves nothing.
+	TestEqual(TEXT("control: with five pieces worn, the imp's death leaves no Soul"), SoulsLeftFor(FivePieces), 0);
+	TestEqual(TEXT("with six pieces worn, the imp's death leaves one Soul. If not, DT_EnchantmentEffects may be older "
+				   "than the rows: run tools/generate_datatable_assets.py"), SoulsLeftFor(SixPieces), 1);
+	ACataclysmReaperSoul::TakeSoulsNear(SixPieces.Character);
+	int32 Held = 0;
+	for (const UCataclysmAbilitySystemComponent::FHeldOwnStacks& Each : SixPieces.ASC->OwnStacksByEnchantment())
+	{
+		Held += Each.Held;
+	}
+	TestEqual(TEXT("and taking it gives one stack of Soul Strike"), Held, 1);
 	return true;
 }
 

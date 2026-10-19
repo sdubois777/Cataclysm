@@ -3,6 +3,7 @@
 #include "Dungeon/CataclysmFloorContents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
 #include "Character/CataclysmPlayerCharacter.h"
 
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -92,6 +93,10 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 		Destroyed += FloorContentsDestroyEvery<ACataclysmEnemyCharacter>(World);
 	}
 	Destroyed += FloorContentsDestroyEvery<ACataclysmDroppedItem>(World);
+	// AND EVERY SOUL, WHICH LASTS THE FLOOR AND NO LONGER: Reaper's Embrace's six-piece, ruled 2026-10-17 (#8) and
+	// 2026-10-18 (R7). Beside the drops, the other thing lying on a floor to be picked up, and in both branches: a Soul
+	// follows nobody down the stairs.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmReaperSoul>(World);
 
 	// AND THE THREE THINGS SECTION 6 OF THE SAVE DESIGN SAYS ARE NOT RESTORED. A
 	// projectile still flying across a floor that has just been rebuilt, a

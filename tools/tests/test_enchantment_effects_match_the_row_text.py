@@ -296,7 +296,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # Tyrant's Chains' six-piece, ruled 2026-10-18 (Q1): the flag by which a
               # commander's death blast deals Death damage. Its row states 1 and the
               # sentence's "as Death damage" says so in words.
-              "minion_death_blast_deals_death"}
+              "minion_death_blast_deals_death",
+              # Reaper's Embrace's six-piece, ruled 2026-10-18 (R1-R8): the flag by which
+              # a minion's death leaves a Soul. Its row states 1 and the sentence's "it
+              # leaves behind a "Soul"" says so in words.
+              "minion_death_leaves_soul"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -982,8 +986,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 654 over 536: eight rows on an enchantment that already has five.
 #: AND 663 OVER 537 SINCE THE ROW OF TYRANT'S CHAINS' 10-PIECE,
 #: issue #1833, 2026-10-18, from 662 over 536: one row on one enchantment.
-AUTHORED_ROWS = 663
-AUTHORED_ENCHANTMENTS = 537
+#: AND 666 OVER 538 SINCE THE THREE ROWS OF REAPER'S EMBRACE'S 6-PIECE,
+#: issue #1833, 2026-10-19, from 663 over 537: three rows on one enchantment.
+AUTHORED_ROWS = 666
+AUTHORED_ENCHANTMENTS = 538
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
