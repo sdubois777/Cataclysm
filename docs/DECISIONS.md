@@ -110,7 +110,9 @@ also not the caller: it returns at once for anything that is not a gadget, which
   TAGS WOULD WIDEN IT.** The tags are `Type.Minion, Type.Summon, Minion.Creature, Minion.Melee`. No shipped row does:
   the one `minion_range` row, "Gadgets have 20%-40% increased attack range", requires `Type.Deployable`
   (`game/Data/EnchantmentEffects.csv` 406). The option not taken: the row's stated figure alone, which T1's "no minion
-  row reaches it" could be read to ask for. NOT CERTAIN; THE COORDINATING SESSION MAY RULE IT.
+  row reaches it" could be read to ask for. **RULED BY THE COORDINATING SESSION THE SAME DAY, as read here**: T1's "no
+  minion row reaches it" is the pricing, and the aim's reach uses the minion's tags as T5 says. SO A FUTURE
+  `minion_range` ROW REACHING `Type.Minion` OR `Type.Summon` WOULD WIDEN THE TYRANT'S MINION'S AIM.
 - **THE FIRST CAST COMES ON THE FIRST STEP THAT CASTS ONE**, as the keyed gadget clock's "fresh means ready", so a
   Tyrant's Minion just summoned casts on its first step with a target. A new summon that refreshes the one standing
   is the same actor, and its clock is kept. The option not taken: wait a whole 3 s from the summon, or restart the
@@ -280,6 +282,18 @@ Failed assertions, by reading:
 **Tests of another group expected to fail, to check in the window:** none, by reading. The probe reads only
 `TyrantsUltimateSecondsBetweenCasts`, which no break touches; no `Cataclysm.SkillGadgets.` test reaches the three
 changed lines, which are in the Tyrant's Minion's functions only.
+
+### THE CRITICAL STRIKE ROLL, PINNED BY THE ENCHANTMENT SESSION
+
+Ruled by the coordinating session when it read this layer: the two tests that compare two blows' figures,
+`AtNoughtNothingIsCast...` (the Tyrant's Minion's cast against the player's own) and `ItsBlowsAreThePlayers...` (the
+same figure with and without the minion and gadget damage rows), must pin the critical strike roll rather than rest on
+neither blow critically striking. Each now holds `Cataclysm.CritRoll` at 100, which never critically strikes, for its
+length, and puts back what was there; every blow a defender takes reads it (`UCataclysmVitalAttributeSet`). One set-up
+assertion each, that the pin was found. By reading, the player in these tests has no critical strike chance anyway:
+possession runs the stat refresh, which writes the 5% skill default only for a character wearing a weapon item
+(`UCataclysmEquipmentComponent::WornWeapons`), and these players hold theirs through the weapon slots alone. The pin
+makes that independent of the rig. No proof's count moves: no break touches the pin.
 
 ### THE WINDOW'S RUN
 

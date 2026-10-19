@@ -27,6 +27,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -298,6 +299,33 @@ namespace CataclysmSetBonusTyrantTenTest
 		UCataclysmWeaponSlotsComponent* Slots = nullptr;
 	};
 
+	/**
+	 * Pins `Cataclysm.CritRoll` for the life of the scope and puts back what it was. Ruled 2026-10-18 by the coordinating
+	 * session: a comparison of two blows' figures must not rest on neither of them critically striking. Every blow a
+	 * defender takes reads the pin (`UCataclysmVitalAttributeSet`). A roll of 100 never critically strikes.
+	 */
+	struct FTyrantsUltimateCritRoll
+	{
+		explicit FTyrantsUltimateCritRoll(float Roll)
+			: Variable(IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll")))
+		{
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+		~FTyrantsUltimateCritRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
 	/** How many times one event is raised on a character's ability system while this is alive. */
 	struct FTyrantsUltimateEventCount
 	{
@@ -396,6 +424,12 @@ bool FCataclysmTyrantTenCastsEveryThreeSecondsTest::RunTest(const FString& Param
 
 	// THE PLAYER AT THE ORIGIN WITH A CONTROL ENEMY 5 M ALONG X; ITS TYRANT'S MINION 30 M ALONG Y, beyond the 14 m strike
 	// of the player's own place. AN ENEMY 16 M FROM THE MINION, beyond the strike's 14 m, then one 3 m from it.
+	const FTyrantsUltimateCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 	FTyrantsUltimateWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -555,6 +589,12 @@ bool FCataclysmTyrantTenPlayersNumbersTest::RunTest(const FString& Parameters)
 	// TWO PLAYERS 60 M APART, ONE HOLDING THE TWO-PIECE'S ROW (minion_damage 50% increased, no tag) AND THE GADGET DAMAGE
 	// ROW ON BOTH STATS (30% increased, requiring Type.Deployable); each minion 20 m along Y with an enemy 1.5 m from it.
 	// A THIRD PLAYER 120 M ALONG X places a Heavy skill gadget, the control of `SkillGadgetCasting`.
+	const FTyrantsUltimateCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 	FTyrantsUltimateWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
