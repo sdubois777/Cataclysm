@@ -404,7 +404,50 @@ control); at ten it is culled (the one assertion on the case).
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-19 under the lock enchant-rq, on development 0e8b2bee0 (the Reaper's Embrace
+six-piece merge), for two commits in this order: the mechanism (5f817fe05) and the rows with the real-row test
+(52486c605). Every step was as registered. The coordinating session merged #2448 (the dungeon session's
+simulation-only change, no game/ file) while the window ran. These commits were moved onto that merge afterwards by
+cherry-picking, with the same zero-context patch ids, and that change touched no file the window's Unreal steps read.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 38 actions, 35 files compiled" (the
+  mechanism's first compile); "355 tests performed, 354 succeeded, 1 failed:
+  TheWornReapersEmbraceTenPieceCullsACommonEnemyLeftAtFortyPercentAtTenStacks", with exactly 1 failed assertion in the
+  run, checked by its text: "with ten pieces worn and ten stacks, the enemy left at 40% is culled". The nine-piece
+  control and the set-ups passed, ten Soul Strike stacks held by both strikers among them.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 794e086ff, "Rebuild the enchantment DataTable asset for Reaper's Embrace 10-piece's rows", and pushed as
+  `feat/set-bonuses-reaper10-t-1`.
+- **The whole Unreal suite:** "3922 tests performed, 3922 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3922 tests in the tree at 794e086ff; 3922 performed, gap 0". Registered 3922 and 0: the 3913 measured at
+  9163a60c1, the eight of `Cataclysm.SetBonus.Reaper10.` and the one real-row test. The two probes are inside a test
+  already counted. The set-ups that could only be read passed: the spawned imp stands where the enemy died, and the
+  shipped execute row loads with a chance of 20.
+- **Python:** "6738 passed, 8 skipped"; JUnit tests 6746, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 02:23:51 to 03:12:33 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Reaper10.`, 8 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading, after listing every event each test's actors raise, by the second session and
+again by the enchantment session, and were measured beside it. Each anchor was counted once, and each file's hash was the
+same after its proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| RT-I | Elite's cap doubled (`CataclysmAbilitySystemComponent.cpp`) | 2 failed: `ACreatureWithNoRarity...`, `AtTenStacksTheCaps...` | 3 / 3 | 8 of 8 succeeded |
+| RT-II | a minion's own blow allowed to cull (`CataclysmPlayerCharacter.cpp`) | 1 failed, `TheWearersOwnHitsCullAndAMinionsOwnBlowDoesNot` | 1 / 1 | 8 of 8 succeeded |
+| RT-III | the Soul Strike stacks read as ten (`CataclysmAbilitySystemComponent.cpp`) | 2 failed: `TheOneShippedExecuteRow...`, `WithThreeStacks...` | 2 / 2 | 8 of 8 succeeded |
+
+The measured lines include, under RT-I, "the Elite creature's cap is 25% ... to be 25.000000, but it was 50.000000";
+under RT-II, "an imp's own blow leaving a creature below 10% does not cull it ... to be false"; under RT-III, "set-up: no
+stack of Soul Strike is held ... to be 0, but it was 10".
+
+**Not measured:** the cull probe's failure under RT-III (outside the prefix), the real-row test's under any break, and a
+real press or cast of each kind of hit (the tests deal each kind's blow by its delivery).
+
+**REAPER'S EMBRACE IS NOW WHOLE**: its 2-piece and drawback (merged before), its six-piece's Souls and Soul Strike, and
+its ten-piece's cull and spawn are all in play.
 
 ---
 
