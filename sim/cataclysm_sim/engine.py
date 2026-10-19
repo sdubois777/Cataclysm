@@ -135,6 +135,9 @@ class Dungeon:
     #: removed floors. Set once by `Simulation._make_dungeon`; 0 for a
     #: dungeon built by hand and for a campaign with no tree.
     tree_floors: int = 0
+    #: A Hollow's natural floors when it was made, which its shrinking is
+    #: measured from; 0 for every other dungeon. Set by `_make_dungeon`.
+    hollow_from: int = 0
     #: The day this dungeon reached the city it stands on now. None until it
     #: first moves, and then `spawned_day` is that day.
     arrived_day: int | None = None
@@ -456,6 +459,8 @@ class Simulation:
             modifier_score=mod_score,
             power_scale=1.0 + cfg.dungeon_power_escalation_per_100_days * (self.day / 100.0),
         )
+        if subtype == "Hollow":
+            d.hollow_from = natural
         self._next_did += 1
         self.dungeons[d.did] = d
         return d
@@ -1133,13 +1138,71 @@ class Simulation:
 
         self.quest_hits += 1
 
-        taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
-        city.defense -= ordinary.defense_damage * scale * taken
-        city.population -= ordinary.population_damage * scale * taken
-        city.population = max(0.0, city.population)
+        # A HOLLOW ADDS VOID STACKS INSTEAD, since 2026-10-18
+        # (`TuningConfig.hollow_floors_lost_per_day` says the rule).
+        if self._hollow_adds_stacks(d):
+            added = self.hollow_hit_stacks(d, city)
+            city.void_stacks += added
+            self.void_stacks_added += added
+            erased = city.void_stacks >= cfg.void_stacks_to_erase
+            self.void_erasures += int(erased)
+        else:
+            erased = False
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+            city.defense -= ordinary.defense_damage * scale * taken
+            city.population -= ordinary.population_damage * scale * taken
+            city.population = max(0.0, city.population)
 
-        if city.defense <= 0:
+        # ONE FALL, by the damage or by the tenth stack; `_fall` erases the city
+        # in the second case and moves this dungeon on in both.
+        if city.defense <= 0 or erased:
             self._fall(city)
+
+    def _hollow_adds_stacks(self, d: Dungeon) -> bool:
+        """Whether this is a Hollow whose hit adds void stacks."""
+        return (self.cfg.void_dungeons_add_stacks
+                and d.dtype is DungeonType.QUEST and d.subtype == "Hollow")
+
+    def hollow_floor_minimum(self, d: Dungeon) -> int:
+        """The fewest natural floors a Hollow shrinks to: half of what it was
+        made with, rounded up."""
+        return max(1, math.ceil(d.hollow_from * self.cfg.hollow_floor_share_kept))
+
+    def _hollow_stacks_for(self, d: Dungeon) -> int:
+        """1 at the Hollow's full depth, rising evenly to 3 at its smallest:
+        `1 + 2 x lost / (made with - minimum)`, rounded half up. 3 for one that
+        cannot shrink at all."""
+        span = d.hollow_from - self.hollow_floor_minimum(d)
+        if span <= 0:
+            return 3
+        lost = max(0, min(span, d.hollow_from - d.natural_floors))
+        return int(1.0 + 2.0 * lost / span + 0.5)
+
+    def hollow_hit_stacks(self, d: Dungeon, city: City) -> int:
+        """What this Hollow's next hit adds to `city`: `_hollow_stacks_for`,
+        held so that a city below `hollow_hit_cannot_erase_below` stacks ends
+        the hit at most one short of the erase count."""
+        cfg = self.cfg
+        added = self._hollow_stacks_for(d)
+        if city.void_stacks < cfg.hollow_hit_cannot_erase_below:
+            added = min(added, cfg.void_stacks_to_erase - 1 - city.void_stacks)
+        return max(0, added)
+
+    def _hollow_shrink(self) -> None:
+        """Every Hollow made before today loses its floors for the day, down
+        to its minimum. The one the player is inside does not: the walk was
+        fixed when the player went in (a judgement of this layer)."""
+        cfg = self.cfg
+        for d in self.dungeons.values():
+            if d.subtype != "Hollow" or not d.hollow_from or self.day <= d.spawned_day:
+                continue
+            if self.current is not None and d.did == self.current.did:
+                continue
+            lose = min(cfg.hollow_floors_lost_per_day,
+                       d.natural_floors - self.hollow_floor_minimum(d))
+            if lose > 0:
+                d.floors -= lose
+                d.run_days = self._walk_days(d.floors, d.subtype)
 
     def _apply_siege_damage(self) -> None:
         """Every standing Siege takes its daily share of the city it sits on.
@@ -1716,6 +1779,9 @@ class Simulation:
         # order `UCataclysmEmpireRun::AdvanceDay` uses. A Siege that arrived
         # today deals the flat share alone; each later day adds its growth.
         self._apply_siege_damage()
+
+        # A HOLLOW LOSES ITS FLOORS FOR THE DAY, before its timer is acted on.
+        self._hollow_shrink()
 
         # Timers tick. Whether the dungeon the player is currently inside also
         # ticks is a rules question with real design weight -- see config.
