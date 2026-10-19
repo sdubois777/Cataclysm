@@ -995,8 +995,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-19, from 663 over 537: three rows on one enchantment.
 #: AND 668 OVER 539 SINCE THE TWO ROWS OF REAPER'S EMBRACE'S 10-PIECE,
 #: issue #1833, 2026-10-19, from 666 over 538: two rows on one enchantment.
-AUTHORED_ROWS = 668
-AUTHORED_ENCHANTMENTS = 539
+#: AND 675 OVER 540 SINCE THE SEVEN ROWS OF CHRONOMANCER'S TIME-LOCK'S 10-PIECE,
+#: issue #1833, 2026-10-19, from 668 over 539: seven rows on one enchantment.
+AUTHORED_ROWS = 675
+AUTHORED_ENCHANTMENTS = 540
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1401,6 +1403,24 @@ def test_a_pair_runs_against_its_sentence_exactly_when_the_sentence_marks_it(
         f"were measured. Move the two constants with the reason.")
 
 
+#: A SINGLE VALUE A RULING SETS AND THE SENTENCE DOES NOT STATE, exactly as
+#: (enchantment, stat, value). NOT `JUDGED_NUMBERS`, which excuses a whole
+#: enchantment whose sentence states no number at all; this sentence states its
+#: other numbers, and every other row on it is still checked against them.
+#: `test_every_ruled_number_is_still_needed` refuses an entry no row uses or one
+#: the words already state.
+#:
+#: CHRONOMANCER'S TIME-LOCK'S TEN-PIECE, ITS RIFT'S WHOLE LENGTH AT MOST 10 S: the
+#: owner's #10 of 2026-10-17, option text "The rift lasts 1 s longer for each
+#: enemy caught, at most 10 s; an enemy already caught in it is not frozen
+#: again". The sentence says only "extends the duration by 1s". Ruled into this
+#: check by the coordinating session on 2026-10-19.
+RULED_NUMBERS: set[tuple[str, str, float]] = {
+    ("Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every",
+     "time_lock_rift_most_seconds", 10.0),
+}
+
+
 def test_a_single_value_appears_in_its_words_outside_any_range(effects,
                                                               enchantments):
     """A single value that is only an end of a range the sentence states is a
@@ -1413,6 +1433,8 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
         if row["Enchantment"] in JUDGED_NUMBERS:
             continue
         if row["Stat"] in FLAG_STATS:
+            continue
+        if (row["Enchantment"], row["Stat"], value) in RULED_NUMBERS:
             continue
         # A REMOVAL STATES 1 AND NO SENTENCE SAYS IT, for the reason a flag
         # stat's does not. Issue #1791. `test_every_removed_row_states_one`
@@ -1990,6 +2012,23 @@ def test_a_set_label_is_not_a_number_the_sentence_states():
     assert not numbers_in(SET_LABEL.sub(" ", plain))
     assert numbers_in(SET_LABEL.sub(" ", plain + " for 20% of its health")) == {20.0}
     assert numbers_in(SET_LABEL.sub(" ", "Gain 10 armour per piece worn")) == {10.0}
+
+
+def test_every_ruled_number_is_still_needed(effects, enchantments):
+    """Each `RULED_NUMBERS` entry must still be a single value of a row of its
+    enchantment and stat, and its words must still not state it, or the entry
+    excuses nothing and should go."""
+    wrong = []
+    for enchantment, stat, value in sorted(RULED_NUMBERS):
+        rows = [r for r in effects
+                if r["Enchantment"] == enchantment and r["Stat"] == stat
+                and float(r["ValueLow"]) == value == float(r["ValueHigh"])]
+        if not rows:
+            wrong.append(f"{enchantment} / {stat} / {value:g}: no row states it")
+            continue
+        if value_is_stated(stat, value, words_of(rows[0], enchantments)):
+            wrong.append(f"{enchantment} / {stat} / {value:g}: its words state it already")
+    assert not wrong, "RULED_NUMBERS entries that excuse nothing: " + "; ".join(wrong)
 
 
 def test_every_judged_number_is_still_needed(effects, enchantments):
