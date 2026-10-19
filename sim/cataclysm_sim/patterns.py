@@ -110,14 +110,17 @@ def _chaos(e: Empire, c: City) -> float:
 # and take no defence, so it returns to the cities it has stacked. Until that
 # day this read lost defence, `1 + 4 x (1 - defence share)`, which other
 # Cataclysms, Sieges and Quest hits take. Ruled by the coordinating session,
-# 2026-10-18. The share is of `TuningConfig.void_stacks_to_erase` as the class
+# 2026-10-18. THE PULL IS AT MOST 2 TIMES, at ten stacks: the owner chose it
+# the same day ("Stacks, up to 2x") among 2, 3 and 5 times and lost defence,
+# measured; `docs/DECISIONS.md` has the table. The share is of
+# `TuningConfig.void_stacks_to_erase` as the class
 # declares it, read once here: a campaign that sets another threshold still
 # weighs by ten.
 _VOID_STACKS_FULL = TuningConfig.__dataclass_fields__["void_stacks_to_erase"].default
 
 
 def _void(e: Empire, c: City) -> float:
-    return _tier_weight(c) * (1.0 + 4.0 * min(1.0, c.void_stacks / _VOID_STACKS_FULL))
+    return _tier_weight(c) * (1.0 + 1.0 * min(1.0, c.void_stacks / _VOID_STACKS_FULL))
 
 
 PATTERNS: dict[str, Pattern] = {
