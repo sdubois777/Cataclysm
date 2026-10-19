@@ -334,6 +334,27 @@ Slots, Held, Theirs, From, Aim, Target, Within, Running, Minion, Spec) and the n
 data members of `ACataclysmMinion`, `ACataclysmCharacterBase`, and the engine's `AActor`, `APawn` and `ACharacter`.
 None is one. The search's controls: it finds `ReachCm` in `CataclysmMinion.h` and `Tags` in the engine's `Actor.h`.
 
+### THE SECOND WINDOW STOPPED AT THE WHOLE SUITE, ON ONE TEST'S CONTROL
+
+The second window, under the same lock on the same development, ran its first two steps as registered: the old-asset
+group "353 tests performed, 352 succeeded, 1 failed" on the real-row test's one assertion, and the asset rebuild,
+committed as c26f066fc and pushed as `feat/set-bonuses-tyrant10-t-1`, which is left as it is. The whole suite then
+reported "3903 tests performed, 3902 succeeded, 1 failed: TheCastCostsNothingWaitsForAndStartsNoCooldownAndRaisesNoSkillOrAttackUse",
+on two assertions of its CONTROL alone: "the player's own press of the Ultimate starts its cooldown" and "and pays
+mana". Every assertion on the Tyrant's Minion's free start passed. Python and the proofs did not run.
+
+**THE CAUSE, BY READING AND NOT MEASURED.** A Strike commits its cost and its cooldown together as it activates
+(`UCataclysmStrikeSkill::ActivateAbility` calls `CommitAndBegin` first), and the Ultimate slot costs 50 Fervour as well
+as 150 mana (`game/Data/SkillSlots.csv`). The test's players held 1,000 mana and no Fervour, so the press was most
+likely refused at the cost, which writes nothing.
+
+**WHAT CHANGED, RULED BY THE COORDINATING SESSION THE SAME DAY.** Both players of that test are given 100 Fervour
+(`MaxClassResource` and `ClassResource`) before anything runs, with a set-up assertion each. The free start gains
+"the player's Fervour is unchanged". The control first asserts that the press was accepted, by the engine's own
+activation notice, with any refusal's tags in the message, so a refusal for another reason is named on that line;
+then it gains "and pays Fervour". Four assertions more, three of them set-up. No proof reaches the test: TC10-I's
+clock is not met by its single casts, TC10-II needs rows it does not hold, and TC10-III needs a stunned minion.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.

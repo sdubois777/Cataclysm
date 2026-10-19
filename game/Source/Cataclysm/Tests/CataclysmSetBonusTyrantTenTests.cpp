@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -544,6 +545,21 @@ bool FCataclysmTyrantTenFreeStartTest::RunTest(const FString& Parameters)
 	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
 	const FGameplayTag UltimateCooldown = UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Ultimate);
 
+	// FERVOUR FOR BOTH, BECAUSE THE ULTIMATE SLOT COSTS 50 OF IT AS WELL AS 150 MANA (`SkillSlots.csv`). Ruled 2026-10-18
+	// after the second window, where the control's press wrote nothing: maximum before current, as the Mana Weaver
+	// ten-piece caster writes them.
+	const FGameplayAttribute Fervour = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	for (const FTyrantsUltimateRig* Each : {&Free, &Pressed})
+	{
+		Each->Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Each->Set(Fervour, 100.0f);
+	}
+	if (!TestEqual(TEXT("set-up: the free player holds 100 Fervour"), Free.Get(Fervour), 100.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: the pressing player holds 100 Fervour"), Pressed.Get(Fervour), 100.0f, 0.001f))
+	{
+		return false;
+	}
+
 	// THE FREE START, ON A PLAYER WHOSE ULTIMATE HAS NO COOLDOWN RUNNING.
 	FTyrantsUltimateEventCount SkillUses(Free.System, TEXT("skill_use"));
 	FTyrantsUltimateEventCount AttackUses(Free.System, TEXT("attack_use"));
@@ -552,6 +568,7 @@ bool FCataclysmTyrantTenFreeStartTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the minion casts the player's Ultimate"), TyrantsUltimateStep(FreeMinion));
 	TestTrue(TEXT("and it strikes the enemy"), TyrantsUltimateLost(FreeEnemy) > 0.0f);
 	TestEqual(TEXT("the player's mana is unchanged: the cast costs nothing"), Free.Get(Mana), 1000.0f, 0.001f);
+	TestEqual(TEXT("and the player's Fervour is unchanged"), Free.Get(Fervour), 100.0f, 0.001f);
 	TestFalse(TEXT("no Ultimate cooldown runs on the player: the cast starts none"),
 		Free.System->HasMatchingGameplayTag(UltimateCooldown));
 	TestEqual(TEXT("no skill_use was raised"), SkillUses.Count, 0);
@@ -561,11 +578,29 @@ bool FCataclysmTyrantTenFreeStartTest::RunTest(const FString& Parameters)
 							  HitsDealt.Count),
 		HitsDealt.Count >= 1);
 
-	// THE CONTROL: the player's own press of the Ultimate pays and starts its cooldown.
+	// THE CONTROL: the player's own press of the Ultimate pays and starts its cooldown. THE PRESS IS FIRST CHECKED TO HAVE
+	// BEEN ACCEPTED, by the engine's own activation notice, and a refusal's tags are kept for the message, so a press
+	// refused for any reason is named on that line and not read as a missing cooldown. Ruled 2026-10-18.
+	int32 Activated = 0;
+	FString RefusedWith;
+	const FDelegateHandle OnActivated = Pressed.System->AbilityActivatedCallbacks.AddLambda(
+		[&Activated](UGameplayAbility*) { ++Activated; });
+	const FDelegateHandle OnRefused = Pressed.System->AbilityFailedCallbacks.AddLambda(
+		[&RefusedWith](const UGameplayAbility*, const FGameplayTagContainer& Why) { RefusedWith = Why.ToStringSimple(); });
 	Pressed.KeyDown(ECataclysmAbilitySlot::Ultimate);
+	Pressed.System->AbilityActivatedCallbacks.Remove(OnActivated);
+	Pressed.System->AbilityFailedCallbacks.Remove(OnRefused);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the player's own press of the Ultimate was accepted and activated it "
+										"(activations %d; refused with '%s')"), Activated, *RefusedWith),
+			Activated >= 1))
+	{
+		Pressed.KeyUp(ECataclysmAbilitySlot::Ultimate);
+		return false;
+	}
 	TestTrue(TEXT("control: the player's own press of the Ultimate starts its cooldown"),
 		Pressed.System->HasMatchingGameplayTag(UltimateCooldown));
 	TestTrue(TEXT("control: and pays mana"), Pressed.Get(Mana) < 1000.0f);
+	TestTrue(TEXT("control: and pays Fervour"), Pressed.Get(Fervour) < 100.0f);
 	Pressed.KeyUp(ECataclysmAbilitySlot::Ultimate);
 
 	// AND WITH THAT COOLDOWN RUNNING, THE MINION STILL CASTS: it waits for none.
