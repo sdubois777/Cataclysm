@@ -183,6 +183,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: it. Its four stats are asked through `SummonerStat`, already listed.
 #: Brute's Heart's taunt aura added one more on 2026-10-18: the one helper
 #: `UCataclysmTauntAura::StatOf` its four stats are asked through.
+#: Tyrant's Chains' ten-piece added NONE on 2026-10-18: its one stat, the
+#: seconds between a Tyrant's Minion's Ultimate casts, is asked through
+#: `SummonerStat`, already listed.
 CALL_SITES = 66
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
