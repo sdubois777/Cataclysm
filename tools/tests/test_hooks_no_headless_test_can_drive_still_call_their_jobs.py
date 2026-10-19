@@ -153,6 +153,12 @@ HOOKS = {
                 "health a row states, every enemy within its radius taunted "
                 "by the wearer once a beat, ruled 2026-10-18 (Q1-Q4). "
                 "Deleting it leaves the rows worn and nobody ever taunted",
+            "UCataclysmTimeLockRift::Step":
+                "Chronomancer's Time-Lock's ten-piece temporal rift: its "
+                "clock started, kept or forgotten, the rift placed once ready "
+                "and an enemy is within its radius, and every enemy coming "
+                "into it caught, ruled 2026-10-19 (K4, K5). Deleting it leaves "
+                "the rows worn and no rift ever placed",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",

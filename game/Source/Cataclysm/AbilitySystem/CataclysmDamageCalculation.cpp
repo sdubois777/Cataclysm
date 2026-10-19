@@ -19,6 +19,8 @@
 // For the name of a damage type's resistance stat, which `TypedResistanceOf`
 // asks the defender for beside the attribute. Ruled 2026-10-18.
 #include "Items/CataclysmItem.h"
+// For the multiplier a hold puts on everything one character takes, at step 6. Ruled 2026-10-19.
+#include "AbilitySystem/CataclysmDamageTakenMultiplier.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
@@ -1213,6 +1215,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// AND THE Nth HIT OF AN "EVERY Nth HIT YOU TAKE" ROW TAKES ITS SHARE ON
 		// TOP. Issue #1833, phase 2. Nought on every other hit.
 		Damage *= 1.0f + FMath::Max(0.0f, Hit.BonusDamagePercent) / 100.0f;
+
+		// AND WHAT A HOLD ON THIS CHARACTER MULTIPLIES EVERYTHING IT TAKES BY, FROM EVERY SOURCE: one for every
+		// character but an enemy frozen by Chronomancer's Time-Lock's temporal rift, which is six. Ruled 2026-10-19
+		// (K7). A multiplier of its own on the finished blow, as "500% more" is; after `damage_taken` and the
+		// cannot-be-mitigated rule, so neither undoes it, and before the absorb and the pools, so a bigger blow spends
+		// more of each. A tick meets it as a hit does. See `UCataclysmDamageTakenMultiplier`.
+		Damage *= UCataclysmDamageTakenMultiplier::On(Defender);
 
 		if (Hit.bIsDamageOverTime)
 		{
