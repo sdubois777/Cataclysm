@@ -55,18 +55,24 @@ entry below (`68559c13`). Right: this layer (`be0600d4`). Won / cities lost / er
 
 ### Tests
 
-New: `sim/tests/test_a_hollow_shrinks_and_its_hit_adds_stacks.py` (9), each case with a control (an ordinary Void
-dungeon, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `be0600d4`, all
-PROVED and passing again restored:
+New: `sim/tests/test_a_hollow_shrinks_and_its_hit_adds_stacks.py` (10), each case with a control (an ordinary Void
+dungeon, or War's Quest dungeon). **The whole suite found a fault in the first commit (`be0600d4`)**: with an upgrade
+tree that removes floors, a Hollow has fewer floors than its natural depth, shrank to 0 and divided by zero in
+`scoring.enemy_scores` (18 sweep tests failed or errored at tier 8). `24eb3eab` adds a test that reproduced it and
+then the bound: a Hollow never goes below one floor. The bound cannot bind in the measurement above, where the trees
+add floors or none, so its figures stand.
+
+Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `24eb3eab`, all PROVED and passing again restored:
 
 | break | failed with it in | restored |
 |---|---|---|
-| it never shrinks | 2 failed, 7 passed | 9 passed |
-| its hit does damage | 2 failed, 7 passed | 9 passed |
-| one hit may erase below 8 | 2 failed, 7 passed | 9 passed |
-| always 1 stack | 3 failed, 6 passed | 9 passed |
-| the policies ignore the Hollow | 1 failed, 8 passed | 9 passed |
-| it shrinks while the player is inside | 1 failed, 8 passed | 9 passed |
+| no one-floor bound | 1 failed, 9 passed | 10 passed |
+| it never shrinks | 3 failed, 7 passed | 10 passed |
+| its hit does damage | 2 failed, 8 passed | 10 passed |
+| one hit may erase below 8 | 2 failed, 8 passed | 10 passed |
+| always 1 stack | 3 failed, 7 passed | 10 passed |
+| the policies ignore the Hollow | 1 failed, 9 passed | 10 passed |
+| it shrinks while the player is inside | 1 failed, 9 passed | 10 passed |
 
 No existing test changed.
 
