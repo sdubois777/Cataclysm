@@ -295,6 +295,19 @@ possession runs the stat refresh, which writes the 5% skill default only for a c
 (`UCataclysmEquipmentComponent::WornWeapons`), and these players hold theirs through the weapon slots alone. The pin
 makes that independent of the rig. No proof's count moves: no break touches the pin.
 
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-18 on this mechanism. One row on the Enchantment Effects sheet,
+`Positive_Tyrant_s_Chains_10_Piece_Bonus_Your_Tyrant_s#1`: Stat `tyrants_minion_casts_ultimate_every_seconds`, Value
+Kind `flat`, Value Low and High 3, every other cell empty. The row pins move to 663 rows over 537 enchantments. The
+row-text check needed nothing added: the sentence's "3 seconds" states the 3.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornTyrantsChainsTenPieceMakesTheTyrantsMinionCastTheUltimateEveryThreeSeconds`,
+wears nine pieces against ten, each with the 10-piece and the set's drawback. Each wears at least six, so the
+6-piece's own rows summon each striker's Tyrant's Minion through `SummonTyrantsMinion`. The minion's seconds between
+casts are read through `TyrantsUltimateSecondsBetweenCasts`: nought at nine pieces (the control) and 3 at ten (the one
+assertion on the case).
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
