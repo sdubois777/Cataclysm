@@ -27359,4 +27359,92 @@ bool FCataclysmBruteSixAuraRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBruteSixResistanceRowTest,
+	"Cataclysm.Enchantments.TheWornBrutesHeartSixPieceRaisesEveryResistanceByHalfBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Brute's Heart's 6-piece resistance row layer, ruled 2026-10-18: below half health, each of the eight resistances is
+ * 50% increased. WORN by a real player: what the read then does is `Cataclysm.ConditionedResistance.`'s. The CONTROL
+ * wears FIVE pieces and the case SIX, each carrying the 6-piece and the set's drawback, and each a belt carrying the
+ * "All resistances" affix and no enchantment, because gear affixes are the only source of a player's resistance and an
+ * increase on nothing is nothing. Each is read at full health and at 40%. The affix's size is not asserted: the case
+ * below half is asserted as 1.5 times the five-piece figure. EIGHT assertions on the case, one per damage type, so on
+ * assets built before the rows it fails eight times, and only there.
+ */
+bool FCataclysmBruteSixResistanceRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health");
+	const TCHAR* Drawback = TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	CataclysmConsecutiveRowTest::FStriker FivePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker SixPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for five pieces"), FivePieces.Ready())
+		|| !TestTrue(TEXT("a striker for six pieces"), SixPieces.Ready())
+		|| !TestTrue(TEXT("set-up: five pieces worn"), WearsMore(FivePieces, Bonus, Drawback, 4))
+		|| !TestTrue(TEXT("set-up: six pieces worn"), WearsMore(SixPieces, Bonus, Drawback, 5)))
+	{
+		return false;
+	}
+
+	// THE BELT, in the slot after the six pieces, with every resistance and no enchantment.
+	const TArray<FName>& Types = UCataclysmItemModifiers::DamageTypeNames();
+	float FullHealth[2][8] = {};
+	float BelowHalf[2][8] = {};
+	CataclysmConsecutiveRowTest::FStriker* Strikers[2] = {&FivePieces, &SixPieces};
+	for (int32 Which = 0; Which < 2; ++Which)
+	{
+		CataclysmConsecutiveRowTest::FStriker& Striker = *Strikers[Which];
+		FCataclysmItem Belt;
+		Belt.Base = FName(TEXT("Belt_Girdle"));
+		FCataclysmRolledAffix Every;
+		Every.Affix = FName(TEXT("Resistance_All_resistances"));
+		Every.Tier = 7;
+		Every.Roll = 1.0f;
+		Belt.Affixes.Add(Every);
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		UCataclysmEquipmentComponent* Equipment = Striker.Character->GetEquipment();
+		if (!TestNotNull(TEXT("set-up: equipment"), Equipment))
+		{
+			return false;
+		}
+		Equipment->Equip(Belt, Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(Striker.ASC);
+
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Maximum = Striker.ASC->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		Striker.ASC->SetNumericAttributeBase(Health, Maximum);
+		for (int32 Place = 0; Place < 8; ++Place)
+		{
+			FullHealth[Which][Place] = UCataclysmDamageCalculation::TypedResistanceOf(Striker.ASC, Types[Place]);
+		}
+		Striker.ASC->SetNumericAttributeBase(Health, Maximum * 0.4f);
+		for (int32 Place = 0; Place < 8; ++Place)
+		{
+			BelowHalf[Which][Place] = UCataclysmDamageCalculation::TypedResistanceOf(Striker.ASC, Types[Place]);
+		}
+	}
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the belt gives the five-piece wearer War resistance, %.2f"),
+								   FullHealth[0][0]), FullHealth[0][0] > 1.0f))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: five pieces are below the threshold, and above half the six-piece row is off.
+	TestEqual(TEXT("control: with five pieces worn, War below half health reads what it reads at full health"),
+			  BelowHalf[0][0], FullHealth[0][0], 0.01f);
+	TestEqual(TEXT("control: with six pieces worn and at full health, War reads what five pieces give"),
+			  FullHealth[1][0], FullHealth[0][0], 0.01f);
+	for (int32 Place = 0; Place < 8; ++Place)
+	{
+		TestEqual(*FString::Printf(TEXT("with six pieces worn and below half health, %s is half again what five "
+										"pieces give. If not, DT_EnchantmentEffects may be older than the rows: run "
+										"tools/generate_datatable_assets.py"), *Types[Place].ToString()),
+				  BelowHalf[1][Place], FullHealth[0][Place] * 1.5f, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

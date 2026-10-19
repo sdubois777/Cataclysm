@@ -2,6 +2,353 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — A resistance row under a condition reaches a blow: a per-type resistance is read as its attribute plus what the stat refresh could not fold into it, the hold at nought works on that sum, and the eight resistances may carry a condition on the wearer's state, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` (one include; the read in
+`TypedResistanceOf` and one comment on its hold); `CataclysmDamageCalculation.h` (the comment on `TypedResistanceOf`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (one public wrapper,
+`AttributeWithWhatWasNotFolded`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe helper, eight
+lines at the end of `ConditionedProbes`, and that table's pinned count, 9 to 17);
+`game/Source/Cataclysm/Tests/CataclysmConditionedResistanceTests.cpp` (new, five tests); `tools/generate_datatables.py`
+(eight names at the end of `CONDITIONED_STATS_WITH_AN_ASKER`); `tools/tests/test_every_conditioned_stat_has_an_asker.py`
+(the pinned count, 9 to 17, and the resistance row's test turned round); `tools/tests/test_brutes_heart_six_rows.py`
+(the resistance row's test turned round, one docstring line); `tools/tests/test_brutes_heart_six_resistance_rows.py`
+(new). No data row, no tag and no workbook cell is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE EIGHT ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. No
+  shipped row and no passive node states a resistance under a condition or a scale (counted on the base by the Brute's
+  Heart taunt-aura entry, THE RESISTANCES, CHECKED: none), so with no new row every figure any read gives is the figure
+  it gave before.
+- **FOUR READS TAKE THE NEW FIGURE, AND ONLY FOUR**: a blow's typed resistance, a minion's share of its summoner's,
+  `Cataclysm.ShowResistances` and the character sheet's resistance lines. All four go through
+  `UCataclysmDamageCalculation::TypedResistanceOf`, the one function changed. The table under WHAT MOVES AND WHAT DOES
+  NOT says where each is.
+- **A SHRED OR A DEBUFF ON THE ATTRIBUTE IS KEPT.** The attribute is the starting point and only the difference a
+  conditioned or scaled row makes now is added to it. Measured by a test: a War of 40 with Brute's Heart's row reads 60
+  below half health, and 50 once a Shred of 10 has taken the attribute to 30.
+- **THE 2026-10-12 HOLD AT NOUGHT NOW COMPARES THE SUM**, both halves (ruled 2026-10-18): a held resistance whose
+  attribute and row together are above nought reads nought, and one whose sum is under nought reads as that sum. One
+  case reads differently from the attribute alone and is pinned: an attribute of -10 that a row lifts to 15 reads
+  nought while held, where the attribute alone would have read -10.
+- **A RESISTANCE ROW UNDER A CONDITION ABOUT A BLOW OR A HIT IS STILL REFUSED.** The read hands over the wearer's own
+  state and no blow, so the eight joined the generator's list as `ASKER_PASSES_NOTHING_MORE`.
+- **A SCALED RESISTANCE ROW IS STILL REFUSED BY THE GENERATOR.** The engine read adds a scaled row's difference as well
+  as a conditioned one's, but the ruling put the eight on the conditioned list only; `STATS_WITH_AN_ASKER` is unchanged.
+- **THE EIGHT `increased` ROWS PASS THE GENERATOR'S BASE CHECK ONLY BECAUSE OF AN UNRELATED SHIPPED ROW.** An
+  `increased` row needs a base under it, and no class line, attribute or item base supplies a resistance; the shipped
+  sheet's eight `flat` rows of "Enemies ignore 10-20% of your resistances" supply each `resistance_<type>`. Measured by
+  `test_on_the_shipped_sheets_the_eight_rows_pass_the_whole_validation`: with those eight taken out, each new row is
+  refused once. Not changed here.
+- **BRUTE'S HEART'S SIX-PIECE BONUS IS THEN WHOLE ONCE THE EIGHT ROWS LAND**: its armour (2026-10-05), its taunt aura
+  (the layer below) and its resistances.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 49 and the ruling below.
+
+### WHAT WAS SAID, AND WHO RULED
+
+The coordinating session, on Q5 of brief 48 (verbatim as relayed): "NOT an issue. The owner's mandate is that every
+enchantment is done in game, so the resistances half is real work, not a note." That sentence relays the owner's
+mandate; it is not the owner's own sentence.
+
+The coordinating session's ruling of 2026-10-18, verbatim as relayed:
+
+> RESISTANCE LAYER: RULED, as recommended, as its own layer straight after the aura layer merges, before #7. Its
+> content: (1) TypedResistanceOf adds only the conditioned or scaled difference through AttributePlusWhatWasNotFolded,
+> so every existing read is unchanged and a Shred on the attribute is kept; (2) a public wrapper for that helper rather
+> than making it public; (3) the eight resistance_<type> names on CONDITIONED_STATS_WITH_AN_ASKER, each with a probe;
+> (4) Brute's Heart 6's eight rows, resistance_<type> increased 50 under health_below 50. It must keep the 2026-10-12
+> "held at nought" rule just below line 573 working on the sum, and pin it with a test.
+
+And when brief 49 was read:
+
+> One addition: the held-at-nought test must cover both halves of that rule on the sum: a sum above nought reads
+> nought, and a sum below nought reads as itself (a negative attribute plus a smaller conditioned row).
+
+**THE HELD-AT-NOUGHT RULE, AS RULED 2026-10-12 (R3 of its entry):** "A resistance above nought is held at nought. A
+negative resistance is left as it is." Until this layer `TypedResistanceOf` applied it to the attribute: "the smaller
+of the attribute's value and nought, for the held type only". It now applies it to the sum: `FMath::Min(Held, 0.0f)`,
+where `Held` is the attribute plus the difference. Above nought, the sum is held at nought however much the row adds;
+under nought, the sum is returned, attribute and row together.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| (1) | `TypedResistanceOf` adds only the conditioned or scaled difference. | `CataclysmDamageCalculation.cpp` 590 to 596: the attribute is read (592) and handed to `AttributeWithWhatWasNotFolded` under `UCataclysmItemModifiers::ResistanceStatFor(DamageType)` (593 to 596). A defender that is not this project's ability system reads the attribute. The include of `Items/CataclysmItem.h` is at 19 to 21. |
+| (2) | A public wrapper, not the helper made public. | `CataclysmAbilitySystemComponent.h` 2273 to 2292, in the `public:` section opened at 145, after `MaximumClassResource`; defined at `CataclysmAbilitySystemComponent.cpp` 635 to 641. `AttributePlusWhatWasNotFolded` stays under `protected:` (the declaration is unchanged). |
+| (3) | The eight names on `CONDITIONED_STATS_WITH_AN_ASKER`, each with a probe. | `tools/generate_datatables.py` 8806 to 8819, each `ASKER_PASSES_NOTHING_MORE`; `ProbeConditionedResistance` in `CataclysmStatExemptionTests.cpp` 9536 to 9572 and the eight lines of `ConditionedProbes` 9586 to 9593. |
+| (4) | Brute's Heart 6's eight rows. | Not here: the row layer's. Their shape is under THE ROWS below. |
+| held at nought | Works on the sum, both halves. | `CataclysmDamageCalculation.cpp` 614 to 617, `FMath::Min(Held, 0.0f)` on the sum; the comment above it, 598 to 613. |
+
+**WHY THE WRAPPER AND NOT THE HELPER MADE PUBLIC**, as ruled: the helper stays where its two first callers,
+`MaximumEnergyShield` and `MaximumClassResource`, reach it from inside the class, and every reader outside the class
+comes through one named door, so a later reader is found by searching for that name. The wrapper only calls the helper.
+
+**WHY NOT THE ARMOUR STEP'S SHAPE**: `DefenderStat` (`CataclysmDamageCalculation.cpp` 159 to 171) asks `StatForSkill`
+with the attribute only as the fallback, so for a character with a line it answers the line's own figure and drops a
+Shred, which lowers the attribute through a gameplay effect. Proposed as guard proof CR-III below.
+
+### WHAT MOVES AND WHAT DOES NOT
+
+| Read | Where | Moves | The test that pins it |
+| :-- | :-- | :-- | :-- |
+| A blow's typed resistance | `TypedResistanceOf` (567 to 619), from `ResistanceFor` 265, from the resistance step 1059 | YES | tests 1 (unchanged with no conditioned row), 2 (the row below half), 3 (the hold) |
+| A minion's share of its summoner's resistance | `InheritedResistance`, `ResistanceFor(Inherited.Summoner, ...)` 383, from 1060 | YES | tests 1 (unchanged), 4 (follows the summoner) |
+| `Cataclysm.ShowResistances` | `CataclysmPlayerCharacter.cpp` 4496 | YES | test 5 |
+| The character sheet's resistance lines | `CataclysmCharacterSheetLayout.cpp` 440 | YES | tests 1 (unchanged), 2 (60% below half, 30% after a Shred healed) |
+| The enemies' generic all-resistance | `CataclysmDamageCalculation.cpp` 252, `CataclysmPlayerCharacter.cpp` 4486, `CataclysmCharacterSheetLayout.cpp` 432 | no | none written: those lines are not touched |
+| A floor rule reading an enemy's all-resistance | `CataclysmDungeonGameMode.cpp` 4552, 4617, 13008 | no | none written: not touched |
+| The slot, not the figure | `CataclysmAbilitySystemComponent.cpp` 7058 (the draw that holds one at nought), `CataclysmSkillEffects.cpp` 4673 (Shred's slot) | no | none written: not touched |
+
+An enemy has none of the eight per-type attributes, so `TypedResistanceOf` returns nought for it before the read, as
+before; and an enemy records no stat line, so the helper would answer its attribute in any case.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE WRAPPER'S NAME, `AttributeWithWhatWasNotFolded`.** The option not taken: a name that says "resistance", which
+  would mislead the next reader of a different stat.
+- **A DEFENDER THAT IS NOT `UCataclysmAbilitySystemComponent` READS ITS ATTRIBUTE.** None exists in the game. The option
+  not taken: returning nought for it, which would change a read.
+- **THE EIGHT GO TO THE END OF THE LIST WITH ONE COMMENT**, not into the alphabetical run above, so the list is added to
+  in one block. The option not taken: alphabetical placement, which splits the addition into eight hunks.
+- **THE PROBE IS ONE HELPER BY PLACE IN `DamageTypeNames`**, with a lambda per table line. A damage type name in that
+  table would be read by `test_every_conditioned_stat_has_an_asker.py`'s parse as a stat. The option not taken: eight
+  helpers.
+- **THE ROWS STAY `increased` 50, AS RULED**, though they pass the base check only through another enchantment's flat
+  rows (SAID FIRST). The option not taken: an engine-supplied base for the eight, which is a change to what a check
+  accepts and is not ruled.
+
+### THE GENRE SOURCE
+
+None required: the ruling is an engine read, not a mechanic's shape.
+
+### WHAT WAS BUILT
+
+- **The read**: `TypedResistanceOf` adds `AttributeWithWhatWasNotFolded(ResistanceStatFor(DamageType), Attribute)`,
+  and holds the sum at nought.
+- **The wrapper**: `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`, public, calling the protected
+  helper.
+- **The generator**: the eight `resistance_<type>` on `CONDITIONED_STATS_WITH_AN_ASKER` as `ASKER_PASSES_NOTHING_MORE`.
+- **The probes**: `ProbeConditionedResistance`, eight lines of `ConditionedProbes`.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Eight rows on the Enchantment Effects sheet after the aura's four, each with Enchantment
+`Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health` and Effect the whole sentence, so they become `#6` to `#13`:
+
+| Stat | Value Kind | Value Low, High | Condition | Condition Value |
+| :-- | :-- | :-- | :-- | :-- |
+| `resistance_war` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_demonic` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_death` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_pestilence` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_famine` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_celestial` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_chaos` | `increased` | 50, 50 | `health_below` | 50 |
+| `resistance_void` | `increased` | 50, 50 | `health_below` | 50 |
+
+Every other cell empty: no Required Tags, no Condition 2, no Scale, no Action, no Action Event, no Trigger Cooldown.
+The armour row's own shape. Carried through a made-up workbook and refused by none of the condition, scale and
+taunt-aura checks (`test_the_eight_rows_are_carried_through_after_the_five_and_nothing_refuses_them`), and added to the
+shipped sheets they pass the whole validation. **The row-text check, measured and not changed:** `value_is_stated` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` answers yes for 50 on `resistance_war` with the sentence.
+The six-piece then holds thirteen rows. Brute's Heart 6 is then whole.
+
+### Tests
+
+Five Unreal tests in `game/Source/Cataclysm/Tests/CataclysmConditionedResistanceTests.cpp`, the group
+`Cataclysm.ConditionedResistance.`. Rows are stat lines given with `SetStatInputs`, the attribute written by hand as
+the refresh writes it. Every body is a bare actor with its own ability system holding the vital, combat, per-type and
+generic resistance sets, 10000 health, except the console test's possessed player. Bodies stand at least 3 m apart.
+A blow is `Resolve` of 100 with every roll pinned to miss, at the first difficulty tier.
+
+1. `WithNoConditionedRowTheBlowTheMinionShareAndTheSheetReadTheAttributeAsBefore`, 73 assertions. In order: set-up, a
+   world; set-up, the wearer's Death line comes to 30, so the lines are recorded; set-up, the wearer's imp; set-up, the
+   twin's imp; control, the twin with no line reads its War attribute of 30; then four stages, each of sixteen, four for
+   each of War (a plain row's flat 30), Demonic (an affix's flat 40), Death (a base of 20 and an affix's 50 increased)
+   and Famine (15 with no line): the wearer's read is its attribute; a blow takes from the wearer what it takes from the
+   twin; the sheet's line is the twin's; the wearer's imp takes what the twin's takes. The stages: at full health; both
+   below half; then set-up, the Shred took the wearer's Demonic from 40 to 10, and the twin's, and the sixteen; then
+   set-up, the Abyssal Aura took the wearer's War from 30 to 5, and the twin's, and the sixteen.
+2. `ARowUnderHealthBelowHalfAddsToABlowsResistanceBelowHalfAndNothingAboveIt`, 17 assertions. In order: set-up, a world;
+   control, at full health War reads 40; control, a War blow takes what the twin's does; control, the sheet reads 40%;
+   at exactly half War reads 40; at 49% it reads 60; the attribute is still 40; a War blow takes what it takes from one
+   holding 60; less than from the twin; the sheet reads 60%; Demonic, which the row does not name, reads 40; a Demonic
+   blow takes what the twin's does; set-up, a War Shred of 10 lands; the attribute is 30; the read is 50; healed to full
+   it is 30; the sheet reads 30%.
+3. `AHeldResistanceWhoseSumIsAboveNoughtReadsNoughtAndOneBelowReadsAsItself`, 17 assertions. War 30, Demonic -40 and
+   Death -10, each with a flat 25 below half health. In order: set-up, a world; set-up, the pin for the draw; control,
+   below half nothing is held; War reads 55; Demonic -15; Death 15; set-up, the draw holds War; War held reads nought;
+   its attribute is still 30; Demonic, not held, reads -15; set-up, the draw holds Demonic; Demonic held reads -15; War
+   let go reads 55; at full health Demonic held reads -40; below half again, set-up, the draw holds Death; Death held,
+   -10 lifted to 15, reads nought; at full health it reads -10.
+4. `AMinionsShareFollowsItsSummonersConditionedResistance`, 10 assertions. Three summoners each sharing half their
+   defences: Braced (an affix's War 40 with the row), Steady (40, no row), Sixty (60, no row). In order: set-up, a
+   world; set-up, three imps; control, at full health Braced's imp takes from a War blow what Steady's takes; control,
+   and more than Sixty's; below half Braced reads 60; its imp takes what Sixty's takes; Steady's imp, its summoner below
+   half too, takes what it took; Braced healed, its imp takes what it took at first.
+5. `ShowResistancesPrintsTheConditionedFigureAndEveryOtherAsBefore`, 14 assertions. A possessed player: War from a plain
+   row's flat 30, Demonic from an affix's flat 40, Death from an affix's flat 20 with the row. In order: set-up, the
+   command is registered; set-up, a world; set-up, a possessed player with an ability system; control, at full health it
+   prints War 30.0, Demonic 40.0 and Death 20.0; below half War 30.0, Demonic 40.0 and Death 30.0; set-up, a Demonic
+   Shred of 30 lands; Demonic prints its attribute; set-up, an Abyssal Aura of 10 lands; War prints its attribute; Death
+   still prints 30.0.
+
+And `ProbeConditionedResistance` in `CataclysmStatExemptionTests.cpp`, one probe for each of the eight, four assertions
+each: set-up, the place is a damage type; a world; at full health the read is the attribute's 40; below half 50%
+increased gives 60. `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`'s count "the seventeen probes
+are all here" (was nine).
+
+Python: `tools/tests/test_brutes_heart_six_resistance_rows.py`, 6 tests: the eight stats are the engine's eight damage
+types in order, read from `DamageTypeNames`; each is on the conditioned list as asked with the wearer's state, and
+`resistance_cap` is not; the eight rows are carried through as `#6` to `#13` and refused by none of three checks; a
+condition about a blow or a hit is still refused, with the ruled row as the control; a scaled resistance row is still
+refused; on the shipped sheets the eight pass the whole validation, and with the eight shipped flat resistance rows taken
+out each is refused once by the base check. `test_every_conditioned_stat_has_an_asker.py`: the table count is 17; a
+conditioned row on `resistance_cap` is refused; a conditioned resistance row on the wearer's state is allowed and one on
+`hit_is_spell` refused. `test_brutes_heart_six_rows.py`: a resistance row under `health_below` is accepted, with the
+armour row as the control.
+
+**Not tested:** the real rows worn at six pieces with a control at five (the enchantment session's real-row test); a
+refreshed player wearing a conditioned resistance row through gear; a scaled resistance row in play; a difficulty tier
+with a penalty under a conditioned row; the resistance cap with a conditioned row over it; a cleanse while a
+conditioned row is live; the generic all-resistance under a condition (no stat line feeds it); a blow that cannot be
+mitigated; anything drawn on a screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` by a script at this layer's working tree, and the
+round, curly and square brackets of the file, comments and strings blanked, stay paired with each break in place
+(counted by the same script). Each break compiles alone by reading: CR-I passes `NAME_None`, an `FName`, where an
+`FName` is taken; CR-II names `Attribute`, a `float` in scope; CR-III calls `StatForSkill`, a public `const` member
+returning `float` that the same file already calls (167, 324), with `FGameplayTagContainer()` the same file already
+builds. The failed assertions are counted by reading. The prefix is `Cataclysm.ConditionedResistance.`, with its
+trailing dot, five tests.
+
+**EVERY EVENT EACH TEST'S ACTORS RAISE, LISTED BEFORE COUNTING.** `TypedResistanceOf`, `Resolve`, `LineFor`,
+`StatForSkill`, `HoldARandomResistanceAtNought`, `ACataclysmMinion::Spawn` and the console command raise none. A write
+of health that lowers it raises `health_falls_below` on that ability system (`NoteHealthForCrossing`, from the vital
+set's health branch) and a rise raises nothing. `ApplyNamedEffect` raises none; it calls `UCataclysmDebuffs::NoteLaid`,
+which hands the target a debuff damage cut of nought and raises nothing. No pool action is held by any actor, so no
+event moves anything.
+
+1. Test 1: `health_falls_below` once on the wearer and once on the twin (to 40%); Shred twice and Abyssal Aura twice,
+   none.
+2. Test 2: `health_falls_below` twice on the wearer (to 50%, to 49%); the Shred, none; the heal, none.
+3. Test 3: `health_falls_below` twice on the wearer (to 40%, twice); the two heals, none; three draws, none.
+4. Test 4: `health_falls_below` once on Braced and once on Steady; the heal, none; three spawns, none.
+5. Test 5: `health_falls_below` once on the player; the Shred and the aura, none; the command run nine times, none. What
+   `Possess` runs on the player is not read; every figure is written after it.
+
+| Proof | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|
+| CR-I, the conditioned difference not asked (1) | `ResistanceStatFor(DamageType), Attribute)` | `ResistanceStatFor(NAME_None), Attribute)` | `ARowUnderHealthBelowHalfAddsToABlowsResistanceBelowHalfAndNothingAboveIt` | `AHeldResistanceWhose...`, `AMinionsShareFollows...`, `ShowResistancesPrints...` |
+| CR-II, the hold on the attribute and not the sum | `return FMath::Min(Held, 0.0f);` | `return FMath::Min(Attribute, 0.0f);` | `AHeldResistanceWhoseSumIsAboveNoughtReadsNoughtAndOneBelowReadsAsItself` | none |
+| CR-III, the armour step's shape, dropping a Shred (1) | `Cataclysm->AttributeWithWhatWasNotFolded(` newline, three tabs and two spaces, `UCataclysmItemModifiers::ResistanceStatFor(DamageType), Attribute)` | `Cataclysm->StatForSkill(` newline, the same indent, `UCataclysmItemModifiers::ResistanceStatFor(DamageType), FGameplayTagContainer(), Attribute)` | `WithNoConditionedRowTheBlowTheMinionShareAndTheSheetReadTheAttributeAsBefore` | `ARowUnderHealthBelowHalf...`, `AHeldResistanceWhose...`, `ShowResistancesPrints...` |
+
+Failed assertions, by reading:
+
+- **CR-I, 16 in 4 tests.** The helper is asked for `resistance_none`, which has no line, so every read is the attribute.
+  Test 1, 0: every figure there is the attribute already. Test 2, 5: "at 49% ... reads 60" (40), "a War blow takes ...
+  what it takes from one holding 60", "and less than it takes from the twin", "the sheet's War line reads 60%" and "the
+  War read is 50" (30) fail; the controls, the exact half, the attribute, Demonic, the Shred's landing and attribute,
+  and the two healed reads pass. Test 3, 7: "War reads 30 and the row's 25" (30), "Demonic reads -40 and the row's 25"
+  (-40), "Death reads -10 and the row's 25" (-10), "Demonic, not held, still reads its sum" (-40), "Demonic held ...
+  reads -15" (-40), "War, let go, reads its sum again" (30) and "Death held ... reads nought" (-10) fail; War held reads
+  nought either way, and the two full-health reads are the attributes. Test 4, 2: "Braced's own War reads 60" (40) and
+  "its imp takes ... what Sixty's takes" (Steady's figure) fail; both controls and Steady's and the healed reads pass.
+  Test 5, 2: "Death, with the row's 10" and "Death ... still prints 30" (20.0) fail. Outside the prefix, by reading
+  and not measured: the second assertion of each of the eight resistance probes, 8.
+- **CR-II, 2 in 1 test.** The hold compares the attribute alone. Test 3: "Demonic held, its sum of -15 below nought,
+  reads -15" (-40) and "Death held, its attribute of -10 lifted to 15 by the row, reads nought" (-10) fail; War held
+  reads nought (30 is above nought either way) and the two full-health reads are the attribute either way. No other test
+  of the prefix holds a resistance. Outside it the hold's own test holds no line, so its sum is its attribute.
+- **CR-III, 25 in 4 tests.** The read is the line's figure, the attribute only when no line is recorded. Test 1, 12:
+  with the Shred on, Demonic's four (the wearer reads its line's 40 against an attribute of 10); with the aura on,
+  War's four (30 against 5) and Demonic's four (40 against 0); the first two stages and Death's and Famine's lines
+  pass, since there every line equals its attribute. Test 2, 3: "the War read is 50" (60), "healed to full the War read
+  is the attribute's 30" (40) and "the sheet's War line reads 30%" (40%) fail. Test 3, 8: the line has no base, so below
+  half every read is 25 and above it nought: "War reads 30 and the row's 25", "Demonic reads -40 and the row's 25",
+  "Death reads -10 and the row's 25", "Demonic, not held, still reads its sum", "Demonic held ... reads -15", "War, let
+  go, reads its sum again", "at full health Demonic held reads its attribute's -40" (nought) and "at full health ... it
+  reads -10" (nought) fail; War held and Death held below half read nought either way. Test 4, 0: every summoner's line
+  equals its attribute. Test 5, 2: "with a Shred, Demonic prints its attribute" and "with an Abyssal Aura, War prints
+  its attribute" fail. Outside the prefix: not counted.
+
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-18 on this mechanism. Eight rows on the Enchantment Effects sheet,
+`Positive_Brute_s_Heart_6_Piece_Bonus_When_your_health#6` to `#13`, one per damage type in the engine's order: Stat
+`resistance_<type>`, Value Kind `increased`, Value Low and High 50, Condition `health_below`, Condition Value 50, every
+other cell empty. The row pins move to 662 rows over 536 enchantments: the eight go on an enchantment that already had
+five. The row-text check needed nothing added: the sentence's "50%" states the 50.
+
+**ONE TEST'S SET-UP CHANGED, RULED BY THE COORDINATING SESSION THE SAME DAY.**
+`test_on_the_shipped_sheets_the_eight_rows_pass_the_whole_validation` built its table by appending the eight rows to the
+shipped ones. Once the rows shipped, each was in the table twice, so its control counted each refusal twice: 16
+against 8. It now takes any shipped row named `#6` to `#13` out before adding the eight. Every assertion is unchanged.
+One assertion is added, as ruled, because no other test in the file compares the shipped rows with the eight it builds:
+when the rows have shipped, they must equal the eight cell by cell, so the test cannot pass on a table that differs
+from the one that ships. With one shipped cell changed, the comparison is false; checked by hand.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornBrutesHeartSixPieceRaisesEveryResistanceByHalfBelowHalfHealth`,
+wears five pieces against six, each with a belt carrying the "All resistances" affix and no enchantment. A player's
+resistance comes only from gear affixes, and an increase on nothing is nothing. The affix's size is not asserted.
+Below half health each of the eight six-piece reads is asserted as 1.5 times the five-piece read, so the test has eight
+assertions on the case, after a set-up check and two controls.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-18 under the lock enchant-rz, on development 3b3edeb89 (the Brute's Heart
+six-piece taunt-aura merge), for two commits in this order: the mechanism (51121dfbb) and the row layer with its
+real-row test (78649e5cc). Every step was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 37 actions, 34 files compiled" (the
+  mechanism's first compile); "352 tests performed, 351 succeeded, 1 failed:
+  TheWornBrutesHeartSixPieceRaisesEveryResistanceByHalfBelowHalfHealth", with exactly 8 failed assertions in the run,
+  each checked by its text, one per damage type: "with six pieces worn and below half health, <type> is half again what
+  five pieces give". The set-up check and both controls passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the row layer as b47006f8b, "Rebuild the enchantment DataTable asset for Brute's Heart 6-piece's resistance rows".
+- **The whole Unreal suite:** "3893 tests performed, 3893 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3893 tests in the tree at b47006f8b; 3893 performed, gap 0". Registered 3893 and 0: the 3887 measured at
+  95b48ac55, the five of `Cataclysm.ConditionedResistance.` and the one real-row test. The eight probes are inside a test
+  already counted. The test that runs `Cataclysm.ShowResistances` on a possessed player passed, so possession left no
+  all-resistance figure that changed the printed numbers.
+- **Python:** "6657 passed, 8 skipped"; JUnit tests 6665, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 13:28:27 to 14:26:02 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.ConditionedResistance.`, 5 tests, all in
+`CataclysmDamageCalculation.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the
+beginnings of their names. The failed assertions had been counted by reading, after listing every event each test's
+actors raise, by the second session and again by the enchantment session, and were measured beside it. Each anchor was
+counted once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| CR-I | the stat name passed as `NAME_None`, so no conditioned difference is asked for | 4 failed: `AHeldResistanceWhoseSum...`, `AMinionsShareFollows...`, `ARowUnderHealthBelowHalf...`, `ShowResistancesPrints...` | 16 / 16 | 5 of 5 succeeded |
+| CR-II | the hold taken on the attribute, not the sum | 1 failed, `AHeldResistanceWhoseSumIsAboveNoughtReadsNoughtAndOneBelowReadsAsItself` | 2 / 2 | 5 of 5 succeeded |
+| CR-III | the armour step's shape, `StatForSkill` with the attribute as fallback | 4 failed: `AHeldResistanceWhoseSum...`, `ARowUnderHealthBelowHalf...`, `ShowResistancesPrints...`, `WithNoConditionedRow...` | 25 / 25 | 5 of 5 succeeded |
+
+The measured lines include, under CR-I, "at 49% health 50% increased on 40 reads 60 ... to be 60.000000, but it was
+40.000000"; under CR-II, "Death held, its attribute of -10 lifted to 15 by the row, reads nought ... to be 0.000000, but
+it was -10.000000"; under CR-III, "with a Shred on Demonic: Demonic reads its attribute, as before ... to be 10.000000,
+but it was 40.000000".
+
+**Not measured:** the eight probes' failures outside the prefix, and the real-row test's under any break.
+
+**BRUTE'S HEART'S SIX-PIECE BONUS IS NOW WHOLE**: its armour row (2026-10-05), its taunt aura's four rows and its eight
+resistance rows are all in play.
+
+---
+
 ## 2026-10-18 — A worn row can give its wearer an aura that, while its health is below a row's share, taunts every enemy within the row's radius once a row's interval for a row's seconds, as the wearer: Brute's Heart's six-piece taunt aura, with no row authored and the resistances still not built
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTauntAura.h` and `.cpp` (new: `UCataclysmTauntAura`, four stat

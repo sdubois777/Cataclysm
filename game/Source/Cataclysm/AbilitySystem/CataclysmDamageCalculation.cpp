@@ -16,6 +16,9 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Player/CataclysmGameMode.h"
+// For the name of a damage type's resistance stat, which `TypedResistanceOf`
+// asks the defender for beside the attribute. Ruled 2026-10-18.
+#include "Items/CataclysmItem.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
@@ -570,7 +573,27 @@ float UCataclysmDamageCalculation::TypedResistanceOf(
 		return 0.0f;
 	}
 
-	const float Held = Defender->GetNumericAttribute(Typed);
+	// THE ATTRIBUTE, PLUS ONLY WHAT THE STAT REFRESH COULD NOT FOLD INTO IT.
+	// Ruled 2026-10-18, for Brute's Heart's six-piece "increases your armor and
+	// resistances by 50%" below half health. The refresh works the attribute out
+	// with every condition refused, so a row under a condition or a scale is not
+	// in it; `AttributeWithWhatWasNotFolded` adds the difference that row makes
+	// now and nothing else. A character whose rows are all unconditioned and
+	// unscaled gets a difference of exactly nothing, so every figure read before
+	// this is read unchanged, and a character with no line for the stat, every
+	// enemy among them, gets the attribute itself.
+	//
+	// THE ATTRIBUTE STAYS THE STARTING POINT, so a Shred or a debuff written onto
+	// it is kept. NOT THE ARMOUR STEP'S `DefenderStat`, which asks `StatForSkill`
+	// with the attribute only as the fallback: for a character with a line it
+	// answers the line's own figure and drops the Shred.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	const float Attribute = Defender->GetNumericAttribute(Typed);
+	const float Held = Cataclysm
+		? Cataclysm->AttributeWithWhatWasNotFolded(
+			  UCataclysmItemModifiers::ResistanceStatFor(DamageType), Attribute)
+		: Attribute;
 
 	// A RESISTANCE A WORN ROW IS HOLDING AT NOUGHT READS AS NOUGHT WHEN IT IS
 	// ABOVE NOUGHT, AND AS ITSELF WHEN IT IS NOT. Ruled 2026-10-12, for "Every 5
@@ -581,8 +604,13 @@ float UCataclysmDamageCalculation::TypedResistanceOf(
 	// THE ATTRIBUTE'S CURRENT VALUE IS WHAT IS HELD DOWN, so a Shred already on
 	// the character is part of the figure compared with nought, and nothing that
 	// raises the attribute while the hold lasts raises what a blow meets.
-	const UCataclysmAbilitySystemComponent* Cataclysm =
-		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	//
+	// AND SINCE 2026-10-18 IT IS THE SUM THAT IS COMPARED WITH NOUGHT, the
+	// attribute and a conditioned or scaled row's difference together: a sum
+	// above nought is held at nought, however much the row adds, and a sum under
+	// nought is left as it is, so a negative attribute a smaller row lifts reads
+	// as the two together. Ruled by the coordinating session when brief 49 was
+	// read.
 	if (Cataclysm && Cataclysm->ResistanceHeldAtNought() == DamageType)
 	{
 		return FMath::Min(Held, 0.0f);

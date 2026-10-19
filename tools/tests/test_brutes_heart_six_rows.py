@@ -9,7 +9,8 @@ resistances by 50%", already has one row, `armor` increased 50 under
 Condition, no Scale and no Action: `taunt_aura_below_health_percent` at 50,
 `taunt_aura_every_seconds` at 1 (Q2), `taunt_aura_radius_metres` at 5 (Q1) and
 `taunt_aura_taunt_seconds` at 3 (Q2). The rest is the engine's
-(`UCataclysmTauntAura`). The resistances half is not built. The enchantment
+(`UCataclysmTauntAura`). The resistances' eight rows are in
+`test_brutes_heart_six_resistance_rows.py`. The enchantment
 session authors the rows; THIS FILE AUTHORS NOTHING. It builds a made-up
 workbook holding the sentence typed Generic so the set rule (a set written
 whole or not at all) does not ask for the rest of the set, as
@@ -237,25 +238,25 @@ def test_a_condition_or_a_scale_on_any_of_the_four_is_refused_elsewhere(
                                         ScaleStep=1.0)])
 
 
-def test_a_resistance_row_under_health_below_is_still_refused(tmp_path):
-    """THE RESISTANCES HALF IS NOT BUILT, and the generator says so rather than
-    accepting a row that would grant nothing: a blow reads a resistance from
-    its attribute (`UCataclysmDamageCalculation`'s `ResistanceFor`). THE
-    CONTROL is the armour row, which the same check accepts, because the armour
-    step asks the pipeline."""
+def test_a_resistance_row_under_health_below_is_accepted_as_the_armour_row_is(
+        tmp_path):
+    """THE RESISTANCES HALF IS ACCEPTED SINCE 2026-10-18, when a blow began to
+    read a resistance row under a condition (`TypedResistanceOf` through
+    `AttributeWithWhatWasNotFolded`); until then this test asserted the
+    refusal. `test_brutes_heart_six_resistance_rows.py` carries the eight rows.
+    THE CONTROL is the armour row, which the same check accepts, because the
+    armour step asks the pipeline."""
     assert gen.refuse_a_condition_nothing_asks_for(
         "EnchantmentEffects", [dict(row_on(tmp_path, SHARE), Stat="armor",
                                     ValueKind="increased",
                                     Condition="health_below",
                                     ConditionValue=50.0)]) == []
     for typed in ("resistance_war", "resistance_void"):
-        found = gen.refuse_a_condition_nothing_asks_for(
+        assert gen.refuse_a_condition_nothing_asks_for(
             "EnchantmentEffects", [dict(row_on(tmp_path, SHARE), Stat=typed,
                                         ValueKind="increased",
                                         Condition="health_below",
-                                        ConditionValue=50.0)])
-        assert len(found) == 1, found
-        assert "nothing is known to ask for that stat" in found[0]
+                                        ConditionValue=50.0)]) == []
 
 
 def test_a_row_on_another_stat_or_a_passive_node_is_not_this_checks_business(

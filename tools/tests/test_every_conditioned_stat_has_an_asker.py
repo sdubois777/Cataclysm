@@ -97,7 +97,7 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     DIFFER, which is what shows `Probes` did not match another table's tail."""
     sizes = {accessor: len(table(accessor)) for accessor in TABLES}
 
-    assert sizes["ConditionedProbes"] == 9, sizes
+    assert sizes["ConditionedProbes"] == 17, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes
@@ -177,11 +177,24 @@ def refused(*rows: dict) -> list[str]:
     return gen.refuse_a_condition_nothing_asks_for("Made up", list(rows))
 
 
-def test_a_conditioned_resistance_row_is_refused():
-    """The row this check exists for: Brute's Heart's resistances."""
-    problems = refused(row("resistance_war", "health_below"))
+def test_a_conditioned_row_on_a_stat_nothing_asks_for_is_refused():
+    """The shape this check exists for. It was Brute's Heart's resistances until
+    2026-10-18, when a blow began to ask for them; `resistance_cap` is a
+    resistance stat that is still not on the list."""
+    problems = refused(row("resistance_cap", "health_below"))
 
     assert len(problems) == 1 and "nothing is known to ask" in problems[0]
+
+
+def test_a_conditioned_resistance_row_on_the_wearers_state_is_allowed():
+    """Brute's Heart's resistances, since 2026-10-18: `TypedResistanceOf` asks
+    with the wearer's state and no blow, so a condition about the blow is
+    still refused."""
+    assert refused(row("resistance_war", "health_below"),
+                   row("resistance_void", "health_below")) == []
+    problems = refused(row("resistance_war", "hit_is_spell"))
+
+    assert len(problems) == 1 and "a blow being taken" in problems[0]
 
 
 def test_the_same_row_with_no_condition_is_allowed():

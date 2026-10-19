@@ -978,7 +978,9 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 646 over 535: four rows on one enchantment.
 #: AND 654 OVER 536 SINCE THE FOUR AURA ROWS OF BRUTE'S HEART'S 6-PIECE,
 #: issue #1833, 2026-10-18, from 650 over 536: four rows on an enchantment that already has one.
-AUTHORED_ROWS = 654
+#: AND 662 OVER 536 SINCE THE EIGHT RESISTANCE ROWS OF BRUTE'S HEART'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 654 over 536: eight rows on an enchantment that already has five.
+AUTHORED_ROWS = 662
 AUTHORED_ENCHANTMENTS = 536
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
