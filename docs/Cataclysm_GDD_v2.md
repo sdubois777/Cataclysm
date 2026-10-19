@@ -4207,9 +4207,11 @@ Its timer follows its depth as an ordinary dungeon's does: a deeper Quest dungeo
 | Horde | Number of floors equals number of enemy waves. |
 | Sacrificial | Double modifiers. Player can sacrifice materials to remove the extra modifiers, or accept them for bonus rewards. |
 | Elite | Every floor ends with a boss fight. |
-| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. A Quest dungeon never rolls Siege: the only Siege Quest dungeons will be War's (see World War), once War exists. |
+| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. A Quest dungeon does not roll a sub-type: its Cataclysm fixes it (below), and only War's are Sieges. A War Quest Siege does a quarter of this damage, its growth counts only the days it has stood on the city it stands on now, and a wave brings at most two (see World War). |
 | Volatile | Dungeon modifiers change every floor. |
 | Cow Level | Enemies drop ridiculous amounts of loot. Time to complete is doubled and cannot be reduced. |
+
+Each Cataclysm's Quest dungeons are one sub-type, not rolled: War, Siege; Death (Dead Rising), Horde; Demonic (Hell on Earth), Elite; Pestilence, Timed; Famine, Sacrificial; Chaos, Volatile; Celestial (Heaven's Wrath), Ascendant; Void (The Void), Hollow. Ascendant and Hollow are new sub-types whose rules are still being designed; an ordinary dungeon never rolls either. The owner, 2026-10-16, verbatim: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type." and "We probably need to come up with two more sub types. Also, I really thought you would have picked horde for dead rising... as the whole undead zombie swarm thing kinda makes sense there. I assumed hell on earth would be Elite." and "I kinda like Ascendant more. Any argument against?"
 
   
 
@@ -5449,7 +5451,7 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 | Siege | 7.5 |
 | Cow Level | 7 |
 
-A Quest dungeon cannot be a Siege, and a Cataclysm dungeon cannot be a Cow Level; for those kinds the excluded weight is shared by the others in proportion.
+A Cataclysm dungeon cannot be a Cow Level; for that kind the excluded weight is shared by the others in proportion. A Quest dungeon does not use these weights: its Cataclysm fixes its sub-type (see Dungeon Sub-Types).
 
 
 
@@ -6440,7 +6442,7 @@ Cursed Abominations spawn as cities fall, growing stronger with each subsequent 
 
 ## **World War (War)**
 
-Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. War is not built yet.
+Player cities become aggressive and begin attacking each other. Conquered cities immediately become Dungeon Cities. Quest dungeons spawn from major battles. Players collect 10 Essences of War from quest dungeons to unlock the enemy capital. A War quest's dungeon is always a Siege: it bites its city every day and moves on when the city falls, until the player clears it. A wave brings at most two of them, each does a quarter of an ordinary Siege's daily damage, and its growth counts only the days it has stood on the city it stands on now; the owner, 2026-10-17, verbatim: "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." War is not built yet.
 
 The owner, 2026-10-16, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap." And, the same day: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
 

@@ -457,6 +457,18 @@ STATED_MIX = re.compile(
     r"Quest, (\d+)% Fallen City and (\d+)% Cataclysm, about ([\d.]+) a campaign")
 
 
+#: How far a share measured over `CAMPAIGNS` campaigns may sit from the one the
+#: docstring states, in percentage points. IT WAS 3 UNTIL 2026-10-18. War's Quest
+#: dungeons are all Sieges since 2026-10-16, up to two a wave, so a campaign
+#: facing War brings several at once and the shares vary more between samples:
+#: measured on 2026-10-18, 31 disjoint blocks of 320 campaigns (seeds 0 to
+#: 9919) gave the Basic share from 63.8% to 76.5%, median 70.3%, against 69.86%
+#: over all 10,000. Seeds 0 to 319, which this file reads, give 66.2%. Widened
+#: to 7 by a ruling of the coordinating session, 2026-10-18, which declined
+#: more campaigns.
+SHARE_TOLERANCE_POINTS = 7.0
+
+
 class TestWhichKindsOfDungeonCarryASiege:
     """`siege_daily_damage` explains why the sub-type is applied in all three
     scoring branches by saying how often each dungeon kind carries one. The
@@ -481,7 +493,7 @@ class TestWhichKindsOfDungeonCarryASiege:
         total = sum(sieges.values())
         for dtype, share in stated.items():
             measured = 100.0 * sieges[dtype] / total
-            assert abs(measured - share) <= 3.0, (
+            assert abs(measured - share) <= SHARE_TOLERANCE_POINTS, (
                 f"the docstring says {share}% of Sieges sit on a "
                 f"{dtype.value} dungeon; {CAMPAIGNS} campaigns give "
                 f"{measured:.1f}%")

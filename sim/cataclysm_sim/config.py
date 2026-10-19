@@ -630,7 +630,8 @@ class TuningConfig:
     # SO THE OTHER 27 PAIRS STAY LEGAL AND NOTHING MAY BE INFERRED FROM THIS ONE
     # ABOUT ANY OF THEM. Whether a Fallen City should be able to roll a
     # Sacrificial is unstated by omission rather than decided; issue #1333
-    # raised it with the Quest Siege below, and #1342 asks the
+    # raised it with a Quest Siege (now settled by `QUEST_SUBTYPE_BY_CATACLYSM`
+    # below: a Quest dungeon does not roll at all), and #1342 asks the
     # related question about a Fallen City carrying a sub-type at all. A reader
     # adding a second row here is making a design decision, not a code one.
     #
@@ -640,28 +641,43 @@ class TuningConfig:
     # having none. It costs no extra draw either -- the roll is taken from the
     # shortened list, so the stream is left exactly where a full roll leaves it.
     #
-    # THE GAME HOLDS THE CATACLYSM'S RULE in
+    # THE GAME HOLDS THE SAME RULE in
     # `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
-    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares that
-    # pair and fails if either side moves. The Quest pair below is not in the
-    # game yet: `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`
-    # says so and fails when the game bars it.
+    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares the
+    # two and fails if either side moves.
     #
-    # A QUEST DUNGEON MAY NOT ROLL A SIEGE, SINCE 2026-10-16, AND THIS IS
-    # INTERIM. The owner, that day, verbatim: "The only quest dungeons that will be sieges are Wars. So this should be fine and provide the player with a bit of an incentive to address them asap."
-    # and then: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type."
-    # So a Quest dungeon's sub-type will be set by its Cataclysm, not rolled,
-    # and War's will be a Siege. Until the owner names the other Cataclysms'
-    # types this model keeps rolling them, without the Siege (War is not
-    # built). Since the same day a Quest dungeon is not absorbed when its city
-    # falls but moves on, so one carrying a Siege went on biting city after
-    # city; measured that day it lifted the defending player's cities lost
-    # from 1.18 to 1.85 (`docs/DECISIONS.md`, 2026-10-16).
+    # FROM 2026-10-16 TO THE NEXT COMMIT A SECOND ROW BARRED A QUEST DUNGEON
+    # FROM THE SIEGE, as an interim rule; `QUEST_SUBTYPE_BY_CATACLYSM` below
+    # replaced it the same day, and a Quest dungeon a surge makes no longer
+    # rolls a sub-type at all.
     SUBTYPES_FORBIDDEN_ON: dict[DungeonType, tuple[str, ...]] = field(
         default_factory=lambda: {
             DungeonType.CATACLYSM: ("Cow Level",),
-            DungeonType.QUEST: ("Siege",),
         })
+
+    # EACH CATACLYSM'S QUEST DUNGEONS ARE ONE SUB-TYPE, NOT ROLLED, since
+    # 2026-10-16. The owner, that day, verbatim: "Oh I should be more clear.
+    # War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will
+    # be one specific type." and "I really thought you would have picked horde
+    # for dead rising... as the whole undead zombie swarm thing kinda makes
+    # sense there. I assumed hell on earth would be Elite." Pestilence, Famine
+    # and Chaos as the coordinating session proposed, confirmed by the owner;
+    # Celestial and the Void take two NEW sub-types, Ascendant and Hollow, which
+    # an ordinary dungeon never rolls (they are not in `SUBTYPE_SPAWN_WEIGHTS`)
+    # and whose rules come in later commits; until then they are names only.
+    # The model applies War's Siege now (it runs War as a Cataclysm); the game
+    # follows in its own layer. A Quest dungeon made without a Cataclysm (a test,
+    # or a sweep with none active) still rolls, as before.
+    QUEST_SUBTYPE_BY_CATACLYSM: dict[str, str] = field(default_factory=lambda: {
+        "War": "Siege",
+        "Death": "Horde",
+        "Demonic": "Elite",
+        "Pestilence": "Timed",
+        "Famine": "Sacrificial",
+        "Chaos": "Volatile",
+        "Celestial": "Ascendant",
+        "Void": "Hollow",
+    })
 
     # --- the Siege sub-type ----------------------------------------------
     #
@@ -706,9 +722,11 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 14 / 22 / 34 (the walk today, re-measured on 2026-10-12 with an ordinary
-    # dungeon leaving after it hits its city; it was 14 / 23 / 37 on the day of
-    # the cut and 14 / 24 / 37 after issue #1432), so on the day of the cut the
+    # 14 / 23 / 35 (the walk today, re-measured on 2026-10-18 over 10,000
+    # campaigns, seeds 0 to 9999, by the prose test's own method: its report
+    # settings, no tree, `triage`, every dungeon recorded when it is made; it
+    # was 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
+    # 14 / 24 / 37 after issue #1432), so on the day of the cut the
     # player arrived on the day the city fell for the two
     # smaller sizes and after it had fallen for the third; at 2.5 it
     # takes 25 / 39 / 55 / 70. Damage dealt grows with the SQUARE of the days a
@@ -1034,6 +1052,21 @@ class TuningConfig:
 
     # Chance a surge-spawned dungeon is a Quest rather than a Basic.
     quest_dungeon_chance: float = 0.12
+
+    # A QUEST DUNGEON THAT CARRIES A SIEGE (War's, `QUEST_SUBTYPE_BY_CATACLYSM`)
+    # NEVER LEAVES ON ITS OWN AND MOVES ON WHEN ITS CITY FALLS, so it bites
+    # until the player clears it. Measured on 2026-10-16, about ten a War
+    # campaign took the Explorer player at tier 1 from 49.8% won to 21.0% and
+    # from 0.98 cities lost to 12.02. The owner chose, on 2026-10-17, verbatim:
+    # "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress."
+    # So: at most this many of them in one wave (a further Quest roll for that
+    # Cataclysm in the same wave makes an ordinary dungeon instead), and
+    # each bites this share of an ordinary Siege's daily damage, flat share and
+    # growth alike. Its growth also counts only the days it has stood on the
+    # city it stands on now (`Dungeon.days_on_its_city`), which is the third
+    # part of the same choice.
+    quest_sieges_per_wave_max: int = 2
+    quest_siege_bite_scale: float = 0.25
 
     tree: EmpireTree = field(default_factory=EmpireTree)
 
