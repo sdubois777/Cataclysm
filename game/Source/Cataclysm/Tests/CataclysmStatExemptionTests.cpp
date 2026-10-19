@@ -32,6 +32,8 @@
 #include "AbilitySystem/CataclysmTaunt.h"
 // For Brute's Heart's taunt aura. Its six-piece, ruled 2026-10-18.
 #include "AbilitySystem/CataclysmTauntAura.h"
+#include "AbilitySystem/CataclysmTimeLockRift.h"
+#include "AbilitySystem/CataclysmDamageTakenMultiplier.h"
 // For the stat a worn row grants class points on, and its reader.
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -9719,6 +9721,141 @@ namespace CataclysmStatExemptionTest
 					  IsValid(Spawned) && Skill->LivingMinionCount() == 1);
 	}
 
+	/** What one temporal rift did, for the seven probes below. */
+	struct FTimeLockRiftProbeOutcome
+	{
+		/** `SecondsUntilReady` after the first step: -1 when no clock was started. */
+		float SecondsWhenArmed = -1.0f;
+		/** Whether the step 30 s on placed a rift. */
+		bool bPlaced = false;
+		/** That rift's radius, in centimetres, and its whole length with the one enemy caught. */
+		float RadiusCm = 0.0f;
+		float LengthSeconds = 0.0f;
+		/** Whether the enemy was stunned, and what its blows are multiplied by. */
+		bool bStunned = false;
+		float Multiplier = 1.0f;
+	};
+
+	/**
+	 * One wearer holding `Stats`, an enemy 3 m off: one step, 30 s, one step. The probes below compare all seven rift
+	 * stats with the same six less the one probed. THE SECONDS PER ENEMY ARE 8 HERE AND NOT THE RULED 1, so that one
+	 * enemy caught takes the length past the most of 10: the base of 5 and 8 make 13.
+	 */
+	FTimeLockRiftProbeOutcome TimeLockRiftWith(FAutomationTestBase& Test, const TMap<FName, float>& Stats)
+	{
+		FTimeLockRiftProbeOutcome Outcome;
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return Outcome;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Wearer(World, /*AttackDamage=*/0.0f);
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(3 * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("set-up: an enemy 3 m off"), Enemy))
+		{
+			return Outcome;
+		}
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+
+		GrantFlats(Wearer.Actor, Stats);
+		UCataclysmTimeLockRift::Step(Wearer.Actor);
+		Outcome.SecondsWhenArmed = UCataclysmTimeLockRift::SecondsUntilReady(Wearer.AbilitySystem);
+
+		World->TimeSeconds += 30.0f;
+		UCataclysmTimeLockRift::Step(Wearer.Actor);
+		const ACataclysmGroundZone* Rift = UCataclysmTimeLockRift::RiftOf(Wearer.AbilitySystem);
+		Outcome.bPlaced = Rift != nullptr;
+		Outcome.RadiusCm = Rift ? Rift->RadiusCm : 0.0f;
+		Outcome.LengthSeconds = UCataclysmTimeLockRift::RiftLengthSeconds(Wearer.AbilitySystem);
+		Outcome.bStunned = UCataclysmSkillEffects::HasTag(Enemy, UCataclysmSkillEffects::StunnedTag());
+		Outcome.Multiplier = UCataclysmDamageTakenMultiplier::On(Enemy->GetAbilitySystemComponent());
+		return Outcome;
+	}
+
+	/**
+	 * The seven temporal rift stats, each read by `UCataclysmTimeLockRift::StatOf` from `Step`. Ruled 2026-10-08,
+	 * 2026-10-17 (#10) and 2026-10-19 (K1-K9), for Chronomancer's Time-Lock's ten-piece. THE CONTROL IS THE SAME SCENE
+	 * WITH THE SIX OTHER STATS AND NOT THE ONE PROBED; with all seven, the reading named moves.
+	 *
+	 * WHAT THIS DOES NOT REACH. Waiting with no enemy near, an enemy walking in, once per rift, a boss, the blows the
+	 * multiplier reaches, the drawing: `Cataclysm.SetBonus.Chrono10.`.
+	 */
+	void ProbeTimeLockRift(FAutomationTestBase& Test, const TCHAR* Probed)
+	{
+		TMap<FName, float> All;
+		All.Add(FName(UCataclysmTimeLockRift::EverySecondsStat), 30.0f);
+		All.Add(FName(UCataclysmTimeLockRift::RadiusMetresStat), 5.0f);
+		All.Add(FName(UCataclysmTimeLockRift::BaseSecondsStat), 5.0f);
+		All.Add(FName(UCataclysmTimeLockRift::SecondsPerEnemyStat), 8.0f);
+		All.Add(FName(UCataclysmTimeLockRift::MostSecondsStat), 10.0f);
+		All.Add(FName(UCataclysmTimeLockRift::StunSecondsStat), 5.0f);
+		All.Add(FName(UCataclysmTimeLockRift::DamageTakenMorePercentStat), 500.0f);
+		TMap<FName, float> Less = All;
+		Less.Remove(FName(Probed));
+
+		const FTimeLockRiftProbeOutcome Without = TimeLockRiftWith(Test, Less);
+		const FTimeLockRiftProbeOutcome With = TimeLockRiftWith(Test, All);
+		const FString Name(Probed);
+		if (Name == UCataclysmTimeLockRift::EverySecondsStat)
+		{
+			Test.TestEqual(TEXT("control: with no time_lock_rift_every_seconds no clock is started"),
+						   Without.SecondsWhenArmed, -1.0f, 0.0001f);
+			Test.TestEqual(TEXT("with time_lock_rift_every_seconds at 30 the rift is ready in 30 s, so "
+								"UCataclysmTimeLockRift::Step really reads it"),
+						   With.SecondsWhenArmed, 30.0f, 0.001f);
+		}
+		else if (Name == UCataclysmTimeLockRift::RadiusMetresStat)
+		{
+			Test.TestFalse(TEXT("control: with no time_lock_rift_radius_metres no rift is placed"), Without.bPlaced);
+			Test.TestEqual(TEXT("with time_lock_rift_radius_metres at 5 a rift of 5 m is placed, so "
+								"UCataclysmTimeLockRift::Step really reads it"),
+						   With.RadiusCm, 500.0f, 0.01f);
+		}
+		else if (Name == UCataclysmTimeLockRift::BaseSecondsStat)
+		{
+			Test.TestFalse(TEXT("control: with no time_lock_rift_seconds no rift is placed"), Without.bPlaced);
+			Test.TestTrue(TEXT("with time_lock_rift_seconds at 5 a rift is placed, so UCataclysmTimeLockRift::Step "
+							   "really reads it"),
+						  With.bPlaced);
+		}
+		else if (Name == UCataclysmTimeLockRift::SecondsPerEnemyStat)
+		{
+			Test.TestEqual(TEXT("control: with no time_lock_rift_seconds_per_enemy the rift lasts its base 5 s"),
+						   Without.LengthSeconds, 5.0f, 0.001f);
+			Test.TestEqual(TEXT("with time_lock_rift_seconds_per_enemy at 8 one enemy caught takes it to the most of "
+								"10 s, so UCataclysmTimeLockRift::Step really reads it"),
+						   With.LengthSeconds, 10.0f, 0.001f);
+		}
+		else if (Name == UCataclysmTimeLockRift::MostSecondsStat)
+		{
+			Test.TestEqual(TEXT("control: with no time_lock_rift_most_seconds one enemy caught makes it 13 s"),
+						   Without.LengthSeconds, 13.0f, 0.001f);
+			Test.TestEqual(TEXT("with time_lock_rift_most_seconds at 10 it is held to 10 s, so "
+								"UCataclysmTimeLockRift::Step really reads it"),
+						   With.LengthSeconds, 10.0f, 0.001f);
+		}
+		else if (Name == UCataclysmTimeLockRift::StunSecondsStat)
+		{
+			Test.TestFalse(TEXT("control: with no time_lock_rift_stun_seconds the enemy caught is not stunned"),
+						   Without.bStunned);
+			Test.TestTrue(TEXT("with time_lock_rift_stun_seconds at 5 it is, so UCataclysmTimeLockRift::Step really "
+							   "reads it"),
+						  With.bStunned);
+		}
+		else
+		{
+			Test.TestEqual(TEXT("control: with no time_lock_rift_damage_taken_more_percent the frozen enemy takes "
+								"its blows once over"),
+						   Without.Multiplier, 1.0f, 0.0001f);
+			Test.TestEqual(TEXT("with time_lock_rift_damage_taken_more_percent at 500 it takes them six times over, "
+								"so UCataclysmTimeLockRift::Step really reads it"),
+						   With.Multiplier, 6.0f, 0.0001f);
+		}
+	}
+
 	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
@@ -9958,6 +10095,20 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_death_leaves_soul"), &ProbeMinionDeathLeavesSoul},
 			{TEXT("cull_percent_per_soul_strike_stack"), &ProbeCullPercentPerSoulStrikeStack},
 			{TEXT("minion_kill_spawns_minion"), &ProbeMinionKillSpawnsMinion},
+			{TEXT("time_lock_rift_every_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::EverySecondsStat); }},
+			{TEXT("time_lock_rift_radius_metres"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::RadiusMetresStat); }},
+			{TEXT("time_lock_rift_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::BaseSecondsStat); }},
+			{TEXT("time_lock_rift_seconds_per_enemy"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::SecondsPerEnemyStat); }},
+			{TEXT("time_lock_rift_most_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::MostSecondsStat); }},
+			{TEXT("time_lock_rift_stun_seconds"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::StunSecondsStat); }},
+			{TEXT("time_lock_rift_damage_taken_more_percent"),
+			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::DamageTakenMorePercentStat); }},
 		};
 		return Made;
 	}

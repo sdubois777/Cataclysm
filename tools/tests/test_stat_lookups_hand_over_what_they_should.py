@@ -194,7 +194,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: `UCataclysmAbilitySystemComponent::CullSharePercentAgainst` when its hit
 #: lands, and the flag by which a kill spawns a minion, asked with no tags off
 #: the killer by `UCataclysmSummonSkill::SpawnOneAtAKill` at its kill.
-CALL_SITES = 66
+#: Chronomancer's Time-Lock's ten-piece added one more on 2026-10-19: the
+#: one helper `UCataclysmTimeLockRift::StatOf` its seven stats are asked
+#: through.
+CALL_SITES = 67
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1051,6 +1054,13 @@ INVENTORY = {
         "SpawnOneAtAKill off the killer at its kill; the bonus is about any "
         "kill and no skill of it is in hand, so no tags, and the kill has "
         "already happened, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmTimeLockRift.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Chronomancer's Time-Lock's seven temporal rift stats "
+        "(ruled 2026-10-08, 2026-10-17 and 2026-10-19), asked by StatOf on "
+        "the regeneration step; the rift is not one of the wearer's "
+        "skills, so no tags, and nothing has landed when they are asked, "
+        "so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

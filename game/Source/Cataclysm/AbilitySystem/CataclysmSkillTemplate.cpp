@@ -3140,7 +3140,8 @@ namespace
 		}
 		for (TActorIterator<ACataclysmGroundZone> Zone(Self->GetWorld()); Zone; ++Zone)
 		{
-			if (Zone->GetOwner() == Self && !Zone->bLastsTheFloor)
+			// NOR A ZONE THAT IS NONE OF ITS OWNER'S PERSISTENT AREAS: the temporal rift, 2026-10-19.
+			if (Zone->GetOwner() == Self && !Zone->bLastsTheFloor && !Zone->bIsNotAPersistentArea)
 			{
 				Zone->Destroy();
 			}

@@ -11367,6 +11367,126 @@ def refuse_a_reaper_ten_row_the_game_cannot_read(
     return problems
 
 
+#: Chronomancer's Time-Lock's ten-piece bonus, the temporal rift. Ruled
+#: 2026-10-08 by the project owner (the freeze acts like a stun), 2026-10-17
+#: (#10: the rift lengthens 1 s per enemy caught, at most 10 s, and an enemy
+#: already caught in it is not frozen again) and 2026-10-19 by the coordinating
+#: session (K1-K9), for "Every 30 seconds, a "temporal rift" appears around you.
+#: All enemies that enter the rift are frozen in time for 5 seconds and take
+#: 500% more damage from all sources. Every enemy caught in it extends the
+#: duration by 1s".
+#:
+#: SEVEN ROWS, EACH `flat` WITH NO REQUIRED TAGS, NO CONDITION, NO SCALE AND NO
+#: ACTION, one on each stat below in its order: 30, 5 (the radius, K3, a number
+#: under the owner's delegation), 5 (the base length, K2, the same), 1, 10 (the
+#: owner's most, #10, of the WHOLE length, K1), 5 (the stun) and 500.
+#: `UCataclysmTimeLockRift` holds the same seven names, and
+#: `tools/tests/test_chronomancers_time_lock_ten_rows.py` compares them.
+#:
+#: THE GAME ASKS FOR EACH WITH NO TAGS, off the wearer, through
+#: `UCataclysmTimeLockRift::StatOf` on the regeneration step. So a row requiring
+#: a tag matches nowhere, a row of any kind but `flat` works on a base of
+#: nought, and a row with an action is not a stat line at all.
+TIME_LOCK_RIFT_EVERY_SECONDS_STAT = "time_lock_rift_every_seconds"
+TIME_LOCK_RIFT_RADIUS_METRES_STAT = "time_lock_rift_radius_metres"
+TIME_LOCK_RIFT_SECONDS_STAT = "time_lock_rift_seconds"
+TIME_LOCK_RIFT_SECONDS_PER_ENEMY_STAT = "time_lock_rift_seconds_per_enemy"
+TIME_LOCK_RIFT_MOST_SECONDS_STAT = "time_lock_rift_most_seconds"
+TIME_LOCK_RIFT_STUN_SECONDS_STAT = "time_lock_rift_stun_seconds"
+TIME_LOCK_RIFT_MORE_PERCENT_STAT = "time_lock_rift_damage_taken_more_percent"
+TIME_LOCK_RIFT_STATS = (
+    TIME_LOCK_RIFT_EVERY_SECONDS_STAT,
+    TIME_LOCK_RIFT_RADIUS_METRES_STAT,
+    TIME_LOCK_RIFT_SECONDS_STAT,
+    TIME_LOCK_RIFT_SECONDS_PER_ENEMY_STAT,
+    TIME_LOCK_RIFT_MOST_SECONDS_STAT,
+    TIME_LOCK_RIFT_STUN_SECONDS_STAT,
+    TIME_LOCK_RIFT_MORE_PERCENT_STAT,
+)
+
+#: The most each may state, where a bound exists already: the period of a
+#: timed row, and the longest status. The radius, the lengths and the share of
+#: more damage have no bound but above nought, as the Ground Pound's radius has
+#: none.
+MAX_TIME_LOCK_RIFT = {
+    TIME_LOCK_RIFT_EVERY_SECONDS_STAT: MAX_EVERY_SECONDS,
+    TIME_LOCK_RIFT_STUN_SECONDS_STAT: MAX_STATUS_SECONDS,
+}
+
+
+def refuse_a_time_lock_rift_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `TIME_LOCK_RIFT_STATS` is a figure its one reader takes
+    as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constants above
+    give. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_ground_pound_row_the_game_cannot_read`, for seven stats.
+
+    EVERY FIGURE IS ABOVE NOUGHT, and at most its bound where it has one: at
+    nought the rift is not armed, is never placed, does not grow, has no most,
+    stuns nothing or adds nothing to what an enemy takes, none of which the
+    sentence asks for.
+
+    THE SECONDS FROM ONE RIFT TO THE NEXT MAY BE A RANGE ONLY IF IT FALLS, as
+    `ground_pound_every_seconds` must: a roll of 1 gives the second figure, and
+    the best roll is the shortest wait. Every other range must rise.
+
+    A CONDITION OR A SCALE ON ANY OF THEM IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    none is on the lists those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in TIME_LOCK_RIFT_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and the temporal rift "
+                f"gets nothing from it.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the wearer with no tags, so a "
+                f"row requiring a tag matches nowhere and says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if stat == TIME_LOCK_RIFT_EVERY_SECONDS_STAT and low < high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the pair "
+                f"must not rise. A roll of 1 gives the second figure, and the "
+                f"best roll is the SHORTEST wait: mark the sentence's range in "
+                f"the Rolls Down column of the Enchantments sheet.")
+        elif stat != TIME_LOCK_RIFT_EVERY_SECONDS_STAT and low > high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the "
+                f"range must rise: the game rolls from the first column to "
+                f"the second.")
+        bound = MAX_TIME_LOCK_RIFT.get(stat)
+        for value in sorted({low, high}):
+            if value <= 0.0 or (bound is not None and value > bound):
+                most = f" and at most {bound:g}" if bound is not None else ""
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the figure "
+                    f"must be above 0{most}: at nought the temporal rift gets "
+                    f"nothing from the row.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11813,6 +11933,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # THE FLAG BY WHICH A KILL SPAWNS A MINION IS FLAT, 1 AND NOTHING ELSE, EACH
     # WITH NO TAGS AND NO ACTION. Ruled 2026-10-17 (#9) and 2026-10-19 (C1-C8).
     problems.extend(refuse_a_reaper_ten_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE SEVEN FIGURES OF THE TEMPORAL RIFT ARE FLAT, WITH NO TAGS AND NO
+    # ACTION, ABOVE 0, THE SECONDS BETWEEN RIFTS NOT RISING. Ruled 2026-10-08,
+    # 2026-10-17 (#10) and 2026-10-19 (K1-K9).
+    problems.extend(refuse_a_time_lock_rift_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

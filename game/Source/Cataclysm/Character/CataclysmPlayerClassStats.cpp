@@ -858,6 +858,21 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute and no base.
 		TEXT("cull_percent_per_soul_strike_stack"),
 		TEXT("minion_kill_spawns_minion"),
+		// Chronomancer's Time-Lock's temporal rift: the seconds from one rift to
+		// the next, its radius, its base length, the seconds each enemy caught
+		// adds, the most its whole length may be, the stun on each enemy caught,
+		// and how much more damage a frozen enemy takes. Each read with no tags
+		// off the wearer by UCataclysmTimeLockRift::StatOf, from its Step on the
+		// regeneration step. Ruled 2026-10-08, 2026-10-17 (#10) and 2026-10-19
+		// (K1-K9), for the ten-piece bonus. Flat; the seconds between rifts at
+		// nought arm nothing. No gameplay attribute and no base.
+		TEXT("time_lock_rift_every_seconds"),
+		TEXT("time_lock_rift_radius_metres"),
+		TEXT("time_lock_rift_seconds"),
+		TEXT("time_lock_rift_seconds_per_enemy"),
+		TEXT("time_lock_rift_most_seconds"),
+		TEXT("time_lock_rift_stun_seconds"),
+		TEXT("time_lock_rift_damage_taken_more_percent"),
 	};
 	return Stats;
 }

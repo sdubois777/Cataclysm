@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmTimeLockRift.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmTauntAura.h"
@@ -27610,6 +27611,49 @@ bool FCataclysmReaperTenRowTest::RunTest(const FString&)
 	TestTrue(TEXT("with ten pieces worn and ten stacks, the enemy left at 40% is culled. If not, DT_EnchantmentEffects "
 				  "may be older than the rows: run tools/generate_datatable_assets.py"),
 			 !IsValid(TenPieces.First) || UCataclysmSkillEffects::IsDead(TenPieces.First));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChronoTenRowTest,
+	"Cataclysm.Enchantments.TheWornChronomancersTimeLockTenPiecePlacesARiftThatFreezesAnEnemyNearby",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Chronomancer's Time-Lock's 10-piece row layer, ruled 2026-10-08 (freeze = stun), 2026-10-17 (#10) and 2026-10-19
+ * (K1-K9): every 30 s, once an enemy is within 5 m, a rift is placed where the wearer stands and stuns each enemy it
+ * catches. WORN by a real player: what the rift then does is `Cataclysm.SetBonus.Chrono10.`'s. The CONTROL wears NINE
+ * pieces and the case TEN, each carrying the 10-piece and the set's drawback. Each striker's rift step is called by
+ * hand, as the regeneration step calls it: once to start the clock, then 30 s later, its first creature 2 m off. TWO
+ * assertions on the case, so on assets built before the rows it fails twice, and only there.
+ */
+bool FCataclysmChronoTenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSetPiecesTest;
+	const TCHAR* Bonus = TEXT("Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every");
+	const TCHAR* Drawback = TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les");
+	CataclysmConsecutiveRowTest::FStriker NinePieces(Bonus, Drawback);
+	CataclysmConsecutiveRowTest::FStriker TenPieces(Bonus, Drawback);
+	if (!TestTrue(TEXT("a striker for nine pieces"), NinePieces.Ready())
+		|| !TestTrue(TEXT("a striker for ten pieces"), TenPieces.Ready())
+		|| !TestTrue(TEXT("set-up: nine pieces worn"), WearsMore(NinePieces, Bonus, Drawback, 8))
+		|| !TestTrue(TEXT("set-up: ten pieces worn"), WearsMore(TenPieces, Bonus, Drawback, 9)))
+	{
+		return false;
+	}
+	for (CataclysmConsecutiveRowTest::FStriker* Striker : {&NinePieces, &TenPieces})
+	{
+		UCataclysmTimeLockRift::Step(Striker->Character);
+		Striker->World->TimeSeconds += 30.0f;
+		UCataclysmTimeLockRift::Step(Striker->Character);
+	}
+
+	// THE CONTROL, READ FIRST: nine pieces are below the threshold, so no rift stands and nothing is frozen.
+	TestNull(TEXT("control: with nine pieces worn, no rift stands 30 s on"), UCataclysmTimeLockRift::RiftOf(NinePieces.ASC));
+	TestNotNull(TEXT("with ten pieces worn, a rift stands 30 s on, an enemy 2 m off. If not, DT_EnchantmentEffects may be "
+					 "older than the rows: run tools/generate_datatable_assets.py"),
+				UCataclysmTimeLockRift::RiftOf(TenPieces.ASC));
+	TestTrue(TEXT("and the enemy 2 m off is frozen"),
+			 UCataclysmSkillEffects::HasTag(TenPieces.First, UCataclysmSkillEffects::StunnedTag()));
 	return true;
 }
 
