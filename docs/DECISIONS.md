@@ -6,7 +6,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 **The game follows the simulation.** `UCataclysmSurgeScheduler::MakeDungeon` now gives every kind of dungeon it builds
 the same timer: `UCataclysmDayClock::ResolveDaysFor(Floors) x (1 +/- ResolveJitter 0.15)`. The flat 25-day
-`QuestResolveDays` is removed. Branch `feat/game-quest-timer-by-depth-1`, on `development` at `6a9a43f1b`; it follows
+`QuestResolveDays` is removed. Branch `feat/game-quest-timer-by-depth-2`, on `development` at `a7b2bcfd9` (written on `6a9a43f1b` as
+`feat/game-quest-timer-by-depth-1` and moved with its zero-context patch ids unchanged); it follows
 the entry headed "In the simulation a Quest dungeon's timer is rolled from its own depth, as an ordinary dungeon's is".
 
 ### SAID FIRST
