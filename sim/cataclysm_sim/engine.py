@@ -1198,8 +1198,12 @@ class Simulation:
                 continue
             if self.current is not None and d.did == self.current.did:
                 continue
+            # NEVER BELOW ONE FLOOR: a tree that removes floors leaves a Hollow
+            # fewer floors than its natural depth, and a dungeon of none
+            # divides by zero in `scoring.enemy_scores`.
             lose = min(cfg.hollow_floors_lost_per_day,
-                       d.natural_floors - self.hollow_floor_minimum(d))
+                       d.natural_floors - self.hollow_floor_minimum(d),
+                       d.floors - 1)
             if lose > 0:
                 d.floors -= lose
                 d.run_days = self._walk_days(d.floors, d.subtype)
