@@ -2,6 +2,369 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A row can make its wearer's own deployable's blast strike the wearer standing inside it, at the whole of what an enemy standing there would take: one flag, a search for the wearer at five blow sites, and the blow carrying the 2026-10-15 share's mark, with no row authored and the sentence's trap half not yet built
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.h` and `.cpp` (new:
+`UCataclysmDeployableSelfBlast`, the flag's name, `HeldBy`, `IsTheWearersDeployable`, `WearerInSphere`, `WearerInCone`,
+`StrikeWithASkillsBlow`, `StrikeWithADeathBlast`); `CataclysmSkillTemplate.h` and `.cpp` (one include and one member,
+`StrikeTheWearerInItsDeployablesBlast`); `CataclysmSkillTemplates.cpp` (one include; one block each in
+`UCataclysmStrikeSkill::SwingOnce` and `UCataclysmProjectileSkill::Land`, and in `SwingOnce` three lines round the two
+existing calls that strike the enemies); `CataclysmProjectile.h` and `.cpp` (one include, one private member
+`StrikeTheWearerInItsBlast`, and one block in `ACataclysmProjectile::Finish`); `CataclysmMinion.cpp` (one include and one
+block each in `ACataclysmMinion::Explode` and `ACataclysmMinion::DeathBlast`), all under
+`game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name at the
+end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmDeployableSelfBlastTests.cpp` (new, six tests);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one include, one probe, one line at the end of `Probes`);
+`tools/generate_datatables.py` (`DEPLOYABLE_BLASTS_STRIKE_SELF_STAT` and
+`refuse_a_deployable_self_blast_row_the_game_cannot_read`, called last from `validate_enchantment_effects`);
+`tools/tests/test_generate_datatables.py` (one class of eight tests, at the end);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one dated line, one entry, `CALL_SITES` 67). No existing
+line is changed but the line `HitTargets(Targets);` in `Land`, which is kept and has the block round it; every other
+change is an insertion. No data row, no tag, no workbook cell and nothing of `CataclysmDungeonGameMode.*` is changed.
+Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentence, from `game/Data/EnchantmentsNegative.csv`, row `Negative_Your_deployables_and_traps_deal_full_damage_to_y`,
+weight 3, tags `Type.Deployable, Type.Trap`: "Your deployables and traps deal full damage to you if you are within their
+blast radius".
+
+- **THE SENTENCE'S TRAP HALF IS NOT YET BUILT, AND JOINS WHEN TRAPS ARE (Q1).** This layer is the deployable half only.
+  No trap of the game's has a blast today: of the trap feature only the tag exists (the owner's decision of 2026-10-07).
+  A machine whose type carries `Type.Trap` is a deployable as well (`ACataclysmMinion::IsTrap` asks `IsDeployable`
+  first), so its own death blast is already covered by this layer; what a trap does when it is triggered is not built,
+  and nothing here strikes its wearer for it.
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE ROW IS WRITTEN**, by the enchantment session. This layer authors no row.
+- **THE ONLY DEPLOYABLE A PLAYER CAN HAVE TODAY IS THE SKILL GADGET.** `BoltTurret`, `Ballista` and `SpikeTrap` are placed
+  only by War's skills (Bolt Turret, Ballista, Iron Fortress). The rule asks `ACataclysmMinion::IsDeployable` (B5), so it
+  WOULD cover War's deployables, their copies of the summoner's last skill and their death blasts if those were ever
+  reachable; they are not tested, under the owner's mandate of no War work.
+- **WHAT "BLAST" COVERS, EVERY KIND NAMED (B2).** Every instant area blow of a skill the wearer's deployable casts: an area
+  strike or a nova (a Strike's swing in a cone or all round), a no-speed projectile's landing in a radius, and a
+  projectile's explosion where it stops; and a deployable's own death blast, its explosion on death and Shared Ruin's
+  blast. **WHAT IT DOES NOT COVER:** a single-target blow (a Strike or a landing limited to one target, the basic attack's
+  swing among them; a projectile's contact as it flies; a glance; a buried weapon's leap); a ground zone's repeating
+  sweeps, and a tether's or a terrain's; a self buff's pulses, which burn and shove and deal no blow; a curse laid on
+  chosen enemies within range; a beam or a flight that pierces, whose line is a path and not a blast; and every blow a
+  row grants at a kill or at an ailment's end (the overkill explosion, a burn's explosion). Every site is listed under
+  "The sites" below, with its line.
+- **FULL DAMAGE (B3): THE FIGURE AN ENEMY STANDING WHERE THE WEARER STANDS WOULD TAKE, THEN THE WEARER'S OWN DEFENCES.**
+  Each site builds the delivery it builds for an enemy, and the wearer's armour, resistances, block, damage reduction
+  and energy shield then meet it as any blow's. "Full" sets it apart from the 50%-75% of "Your AOE skills deal 50%-75%
+  of their damage to nearby allies as well as enemies".
+- **IT IS NEVER A CRITICAL STRIKE**, under the 2026-10-15 own-side rulings (R5, damage only), which B4 applies wherever
+  they apply. So when the enemies' blow of the same cast critically strikes, the wearer's is the figure of that blow
+  without the critical strike. A judgement, below.
+- **WHAT IT RAISES (B4): WHAT A BLOW TAKEN RAISES, AND NOTHING A HIT DEALT RAISES.** The wearer's `hit_taken` and every
+  defender's step of a blow taken fire; none of the wearer's `hit_dealt`, `first_hit_dealt`, `critical_strike` or
+  `deployable_hit` does, and no `kill` if the blow kills the wearer. **ONE CONSEQUENCE OF AN EXISTING RULE, NOT CHANGED:**
+  "hit_taken_cancels_skills" (a landed hit cuts short its wearer's running skills) is not fired by a cast's blow on the
+  wearer, because a cast's blow is dealt in the wearer's own name and that rule refuses a character's own blow
+  (`UCataclysmAbilitySystemComponent::NoteHitTaken`, ruled 2026-10-08). A death blast's blow is dealt by the deployable,
+  and does fire it.
+- **WHO: THE WEARER, BY THE ACTOR, WHEN THE AREA TOUCHES ITS BODY.** For a sphere, the same overlap against pawns the
+  enemy search makes; for a cone, that sphere and then the cone's test on the wearer's centre, as the enemy cone search
+  makes it. So the wearer is inside exactly when an enemy standing there would be. Nobody else of the wearer's side is
+  struck by this row; that is the other sentence's (2026-10-15).
+- **THE WEARER IS STRUCK EVEN WHEN NO ENEMY IS**, wherever the site strikes at all: a gadget casts only with an enemy in
+  reach, but a death blast goes off with nobody near.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 55 and the rulings below. NOT COMPILED AND NOT
+  RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a skill gadget casting an area skill at an enemy standing next to you strikes you too, at the whole of its damage
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+No owner's sentence on this row. The owner's decision of 2026-10-06, that own-side damage is allowed where a row says so,
+is what lets this row strike its wearer. The rulings are the coordinating session's, 2026-10-19
+(`rulings_2026-10-19_selfblast.md`). Q1, as relayed: "YES for the gadget halves of #15 and #34 now; the trap halves join
+when traps exist (which is now scheduled, so the gap is short). Each entry says the sentence's trap half is not yet
+built." The rulings on B1 to B6, verbatim as relayed:
+
+> RULINGS: two separate layers, #34 first, as you recommend. (a) on every question.
+> #34 (brief 55): B1 deployable_blasts_strike_self, flag 1. B2 every instant area blow of a skill the wearer's gadget
+> casts (area strike, nova, projectile explosion) plus a deployable's own death blast; not single-target blows, not a
+> ground zone's repeating ticks. Name the blow sites (the 2026-10-15 precedent), list every one in the entry with
+> lines, and say which instant area shapes, if any, are left out and why. B3 the figure an enemy standing where the
+> wearer stands would take, then the wearer's own defences. B4 a blow dealt by the gadget to the wearer, raising what a
+> blow taken raises, never answered as a hit dealt, under the 2026-10-15 own-side rulings. B5 asks IsDeployable; test
+> the skill gadget only. B6 the play-check line verbatim.
+> Both entries say the sentence's trap half is not yet built and joins with traps.
+
+Each (a) is the option recommended in the question as put: B1 (a) `deployable_blasts_strike_self`, a flag, value 1; B2
+(a) every instant area blow of a skill a gadget of the wearer's casts and a deployable's own death blast (`Explode`,
+`DeathBlast`), not a single-target blow and not a ground zone's repeating ticks; B3 (a) the whole figure before the
+wearer's defences, which then apply; B4 (a) a blow dealt by the wearer's gadget to the wearer, raising what a blow taken
+raises, not answered by the wearer's own on-hit rows; B5 (a) `ACataclysmMinion::IsDeployable` of the caster or of the
+blast's source, tested on the skill gadget only; B6 (a) the play-check line.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| Q1 | The deployable half now; the trap half joins with traps; each entry says so. | This entry, SAID FIRST. Nothing is built for a trap's own trigger. |
+| B1 | `deployable_blasts_strike_self`, a flag of 1. | `UCataclysmDeployableSelfBlast::FlagStat`, read as above nought by `HeldBy` with no tags; the last name on `StatsWithNoAttribute`; `DEPLOYABLE_BLASTS_STRIKE_SELF_STAT` and its refusals in the generator. |
+| B2 | Every instant area blow of a gadget's cast and a deployable's own death blast; not single-target, not a zone's ticks; the sites named. | Five sites, below: `SwingOnce`, `Land`, `ACataclysmProjectile::Finish`, `ACataclysmMinion::Explode`, `ACataclysmMinion::DeathBlast`. Each asks `WearerInSphere` or `WearerInCone`. |
+| B3 | What an enemy standing there would take, then the wearer's defences. | `UCataclysmSkillTemplate::StrikeTheWearerInItsDeployablesBlast` builds `HitTargets`'s delivery field for field; `ACataclysmProjectile::StrikeTheWearerInItsBlast` builds `HitOne`'s; the two death blasts price the wearer with the same `ModifiedDamage` call and delivery their enemies get. The wearer's own vital set then resolves it. |
+| B4 | Dealt by the gadget to the wearer, raising what a blow taken raises, never a hit dealt, under the 2026-10-15 own-side rulings. | `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow` and `StrikeWithADeathBlast` put `UCataclysmAreaShareOnAllies::MarkAsShare` at 100 on the delivery. |
+| B5 | Asks `IsDeployable`; tested on the skill gadget only. | `UCataclysmDeployableSelfBlast::IsTheWearersDeployable`: the actor the use was cast from, or whose blast it is, is an `ACataclysmMinion` answering `IsDeployable` whose `Summoner` is the wearer. |
+| B6 | The play-check line verbatim. | FOR THE OWNER'S PLAY-CHECK LIST, above. |
+
+### THE SITES: EVERY PLACE CHANGED, AND EVERY AREA-BLOW PLACE READ AND LEFT ALONE
+
+Line numbers are of this layer's working tree, on development `6a9a43f1b`.
+
+**Changed, five sites (B2):**
+
+1. `UCataclysmStrikeSkill::SwingOnce`, `CataclysmSkillTemplates.cpp` 410: the wearer looked for at 462 in the same
+   sphere (a row's "hits all within") or cone the enemies are found in, measured from `CastOrigin` (the gadget); struck at
+   510, after the enemies and the allies' shares, inside the attack begun at 499 and ended at 512. This is the area strike
+   and the nova, and every swing that goes through it: a held release, a spin's repeats and final hit.
+2. `UCataclysmProjectileSkill::Land`, `CataclysmSkillTemplates.cpp` 2155: a no-speed projectile's landing in a radius
+   (and its return, which lands again); the wearer looked for at 2189, struck at 2197 inside an attack begun at 2193.
+3. `ACataclysmProjectile::Finish`, `CataclysmProjectile.cpp` 969: a non-piercing shot's explosion where it stops; the
+   wearer looked for at 1018 by the deployable the shot carries (`CastBy`), struck at 1021 through
+   `StrikeTheWearerInItsBlast` (777), at the later-hit share of the count the blast arrived with.
+4. `ACataclysmMinion::Explode`, `CataclysmMinion.cpp` 1730: a minion's explosion on death or when a summon cap destroys
+   the oldest; the summoner looked for at 1813, struck at 1821. A skill gadget's explosion deals nothing (its own damage
+   is nought, and no skill records its radius), so for the skill gadget this site never strikes.
+5. `ACataclysmMinion::DeathBlast`, `CataclysmMinion.cpp` 1834: Shared Ruin's blast and Tyrant's Chains' six-piece's,
+   a share of the dying creature's maximum health; the summoner of a dying deployable looked for at 1901, struck
+   at 1909. The count it returns stays the enemies caught.
+
+**Read and left alone, with why.** Every call of `FindEnemiesInSphere`, `FindEnemiesInCone` or `FindEnemiesInLine`
+outside the tests, found by script (82 at this tree, the three definitions in `CataclysmTargeting.cpp` among them).
+
+- **Instant area shapes a gadget's cast reaches, left out by judgement:** the piercing branch of `Land` (2174), a beam's
+  line; `ACataclysmProjectile::HitAlongStep` (`CataclysmProjectile.cpp` 526), each contact a single-target blow as the
+  shot flies; `GlanceOnwardFrom` (923), one target; `UCataclysmBuriedWeapon::LeapFromDying` (`CataclysmBuriedWeapon.cpp`
+  69), one target; `UCataclysmDebuffSkill::ActivateAbility` (`CataclysmSkillTemplates.cpp` 5556), a curse and its blow
+  laid on the enemies nearest the aim within range, every Debuff row stating one target: chosen targets, not a blast.
+- **Not a blow:** `UCataclysmSelfBuffSkill::ActivateAbility` (2347), a count of burning and pinned enemies;
+  `UCataclysmSelfBuffSkill::RepeatTick` (2710), burns and shoves with no damage; `UCataclysmProjectileSkill::BindTether`
+  (1298), `SpreadCursesFrom` (1758) and `NextThrowTarget` (1830), a choice of targets and a copy of curses;
+  `UCataclysmSkillTemplate::RequirementsAreMet` (`CataclysmSkillTemplate.cpp` 1067), a check;
+  `IgniteAroundConsumed` (1662) and `SpreadFireAround` (1752), burns laid, which are ailments and not blows;
+  `UCataclysmSkillEffects::SpreadOnApplication` (`CataclysmSkillEffects.cpp` 2730), an ailment spread;
+  `ACataclysmMinion::HostilesWithin` (`CataclysmMinion.cpp` 471), an aim; `UCataclysmBasicAttack::SomethingInReach`
+  (`CataclysmBasicAttack.cpp` 210), a check.
+- **Repeating, a lingering area and not a blast (B2):** `ACataclysmGroundZone::Sweep` (`CataclysmGroundZone.cpp` 427),
+  `ACataclysmTerrain::Sweep` (`CataclysmTerrain.cpp` 327), `ACataclysmTether::Check` (`CataclysmTether.cpp` 201).
+- **A row's blow, not the skill's own and not the deployable's own blast:** `UCataclysmSkillEffects::ExplodeForOverkill`
+  (1236) and `ExplodeAtAnAilmentsEnd` (1330); `UCataclysmAbilitySystemComponent::ActOnEvent` (6239) and `ActOnNearby`
+  (7529); `UCataclysmFollowThrough::MakePendingRepeat`, `UCataclysmGroundPound::Step`, `UCataclysmTauntAura::Step`,
+  `UCataclysmTimeLockRift::Step` (198, 225), `UCataclysmShoulderThrough::EnemyMovedInto`, `UCataclysmRetaliation::TargetsOf`,
+  the six in `CataclysmContagion.cpp`, `UCataclysmCurseSpread::SpreadFromDying` and the three steps in
+  `CataclysmDebuffs.cpp`; and `UCataclysmNova::Step` (`CataclysmNova.cpp` 100), a passive node's pulse, which no gadget
+  casts.
+- **Never cast by a gadget:** a skill gadget casts no movement skill, summon, aura or deployable, nothing held or
+  channelled, nothing that disarms its caster and nothing with a `Requires` or a health cost
+  (`ACataclysmMinion::SkillGadgetMayCast` through `UCataclysmDungeonModifierEffects::WildMagicLeavesOut`). So the ten in
+  `UCataclysmMovementSkill` (3095 to 3953), `UCataclysmSummonSkill::Possess` (4430) and `Collapse` (4822),
+  `UCataclysmAuraSkill::Pulse` (5054), and `UCataclysmStrikeSkill::PullTheWeaponFree` (987), a planting skill's recall,
+  are left alone. `ACataclysmMinion::AttackOnce` (1316) is a minion's own single blow.
+- **Not the player's:** the creatures' abilities in `game/Source/Cataclysm/Character/` (seven calls) and the floor rules
+  in `CataclysmDungeonGameMode.cpp` (nine calls), which the brief forbids touching and which no deployable of the wearer's
+  deals.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **The 2026-10-15 share's own mark at 100 percent, and no mark of its own.** B4 asks for the own-side rulings of that day;
+  the mark carries every one of them to every place that reads it: no critical strike, no ailment chance, no leech,
+  never retaliated against, neither stored-damage store spent, no `deployable_hit`, none of the attacker's three on-hit
+  events, no `kill`, no first-blow record, no brand or charm, no blunt stun, and the refusals of the floor rules. The
+  option not taken: a mark of its own, which would need each of those refusals repeated, thirteen of them in
+  `CataclysmDungeonGameMode.cpp`, which this layer may not touch.
+- **A Strike or a landing limited to one target is a single-target blow, and strikes nobody here.** The option not
+  taken: every swing of a gadget's cast, the basic attack's one-target swing included.
+- **A line that pierces is a path and not a blast.** The option not taken: the piercing beam's line as well, which no
+  "blast radius" describes.
+- **The wearer's blow is never a critical strike (R5 of 2026-10-15, through B4)**, so against a critical blow on the
+  enemies it is smaller than theirs. The option not taken: roll it, which "the figure an enemy standing there would take"
+  could be read to ask; B4's own-side rulings come first.
+- **The attack's count of enemies struck together is the enemies' and leaves the wearer out.** A row scaling with that
+  count prices the wearer's blow by the enemies the swing struck. The option not taken: count the wearer as one more.
+- **The cast's blow is dealt in the wearer's name, as every blow of the cast is**, carrying the gadget through its skill
+  and `CastBy`, so it is priced as the gadget's ("Scales off gadget damage") exactly as an enemy's is. The option not
+  taken: name the gadget as what dealt it (`DealtBy`), which would change how the blow is priced against the enemy's
+  and make "dealt by the gadget" a different figure.
+- **By the actor and not by its side**, so a maddened wearer is still struck. The option not taken: a friendly search
+  from the gadget.
+- **The deployable must be the wearer's own (its `Summoner`).** The option not taken: any deployable.
+
+### THE GENRE SOURCE
+
+Fetched in this session. **NOTHING FOUND MATCHES THE ROW.** No source read describes a player's own traps, mines, turrets
+or deployables damaging the player.
+
+- Diablo II, `https://classic.battle.net/diablo2exp/skills/assassin-traps.shtml`: the Assassin's traps are described only
+  against foes; Fire Blast is "damaging any foe within its small blast radius". Nothing on the page addresses damage to
+  the Assassin herself.
+- Path of Exile, `https://poedb.tw/us/Trap` (the first 100,000 characters of 127,045 read): no modifier that makes a
+  trap, a mine or a totem damage its owner; the nearest lines are about enemies and monsters.
+- Path of Exile 2, `https://poe2db.tw/us/Volatility`: an own-side explosion exists as a mechanic of its own,
+  "Volatility explodes after 4 seconds, dealing 100 Physical Damage to you per Volatility". It is a status on the player,
+  not a deployable.
+- **Not reached:** `www.poewiki.net` and `www.poe2wiki.net` answered with a bot-protection page; Last Epoch, Torchlight
+  Infinite and Diablo IV were not searched.
+
+**What this settles: nothing about the shape.** A blast of the player's own that strikes the player exists in the genre
+(Volatility), as a figure meeting the player's defences, but no shipped game read here turns the player's deployables on
+the player. Which blows, the whole figure and what the blow raises are this game's own, ruled by the coordinating
+session (B2 to B4), and are not read off another game.
+
+### WHAT WAS BUILT
+
+- **The flag.** `deployable_blasts_strike_self`, flat, read as above nought with no tags through
+  `UCataclysmDeployableSelfBlast::HeldBy`. No gameplay attribute and no base; the last name on
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+- **The search for the wearer.** `WearerInSphere` and `WearerInCone`: the wearer, when it holds the flag, is alive, the
+  actor cast from (or whose blast it is) is its own deployable, and the area touches it; the flag is read last but one,
+  after the cheap tests, and the overlap last.
+- **The strikes.** `StrikeWithASkillsBlow` (through `UCataclysmSkillEffects::ApplyHit`, the wearer as instigator and
+  target) and `StrikeWithADeathBlast` (through `ApplyDirectDamage`, the deployable as instigator), each with the enemy's
+  delivery and the share's mark at 100.
+- **The five sites**, above.
+- **The generator.** `DEPLOYABLE_BLASTS_STRIKE_SELF_STAT` and `refuse_a_deployable_self_blast_row_the_game_cannot_read`:
+  a row on the flag must be `flat`, 1 to 1, with no Required Tags and no Action; a Condition or a Scale on it is refused
+  by the two existing checks.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One line on `Negative_Your_deployables_and_traps_deal_full_damage_to_y`, in `game/Data/EnchantmentEffects.csv` through the
+workbook: **Stat** `deployable_blasts_strike_self`; **Value Kind** `flat`; **Value Low** 1; **Value High** 1; **Required
+Tags** empty; **Condition** empty; **Scale** empty; **Action** empty; **Action Event** empty; no other cell. The
+enchantment's own tags, `Type.Deployable, Type.Trap`, stay as they are and are not the row's Required Tags.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+The coordinating session rules on each.
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains the one name, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for it, the last entry of its probes.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site, the flag asked by
+  `HeldBy` with no tags and no blow, and one dated line above `CALL_SITES`, whose figure stays the measurement of its own
+  commit. The wearer's blow in a projectile's explosion asks the later-hit share with the same argument list `HitOne`
+  already hands over, in the same file, so it is the same key and adds none.
+- The generator refuses five shapes on one more stat. No shipped row is on it.
+- No merged test asserts anything different, by reading: with nobody holding the flag no site strikes anybody, the attack
+  `SwingOnce` and `Land` begin for the wearer is begun only when a wearer is struck, and no blow carries a new mark. The
+  cost a blow of a character without the row now pays is, at each site, a cast and the deployable test, and for a
+  deployable's cast one stat read.
+
+### Tests
+
+Six new Unreal tests in `game/Source/Cataclysm/Tests/CataclysmDeployableSelfBlastTests.cpp`, the group
+`Cataclysm.DeployableSelfBlast.`, beside `Cataclysm.SkillGadgets.`, whose rig they follow: possessed players holding a
+Demonic Whip, a weapon damage of 100 and an enemy's defences (no armour, evasion, block, resistance, damage reduction or
+energy shield) unless a case gives one, groups 100 m apart, every body at least 1 m from every other, the enemies on the
+monsters' side and the players on the players'. Every stat is granted by hand. A cast is the gadget's own step. The
+critical strike roll is pinned in every case after the world is made. No existing group begins with the prefix (a search
+for `"Cataclysm.Deployable` finds only this file). **Assertions are counted for a passing run.**
+
+1. `AWearerInsideItsGadgetsAreaStrikeIsStruckAndOneOutsideItOrWithoutTheRowIsNot`, 20. Three groups, each 3 m from its
+   Ultimate gadget (The Gathering, 14 m all round) but the last, 20 m. In order: a world; set-up, the three enemies, each
+   apart; set-up, for each group, the gadget is a deployable of its player's, is its ally, and the enemy is its enemy (9);
+   control, the plain gadget casts once, strikes its enemy, and the plain player holding no flag loses nothing; set-up, the
+   inside gadget struck its enemy; the wearer 3 m away is struck; set-up, the outside gadget struck its enemy; the wearer
+   20 m away loses nothing.
+2. `TheWearerTakesWhatAnEnemyBesideItTakesAndItsOwnArmourThenReducesIt`, 17. Crit pinned to 100. In order: a world; set-up,
+   the pin; set-up, the four enemies; set-up, sides (6); control, the enemy 1.5 m beside the bare wearer is struck; the bare
+   wearer's loss equals it, within 0.01; set-up, the enemy beside the armoured wearer is struck; the wearer with 800 armour
+   is struck; for less than the enemy beside it.
+3. `ASingleTargetBasicSwingTheGadgetCastsDoesNotStrikeTheWearerInsideItsCone`, 16. Two groups laid out alike, the wearer
+   1.5 m along X and 0.5 m along Y from its gadget, the enemy 2.5 m along X. In order: a world; set-up, the two enemies;
+   set-up, sides (6); control, the Ultimate gadget struck its enemy and the wearer at that place; set-up, the whip's basic
+   attack is limited to one target; set-up, the wearer stands inside the basic's cone aimed from the gadget at the enemy;
+   set-up, the basic gadget casts once; control, it strikes its enemy; the wearer loses nothing.
+4. `TheWearersOwnCastOfTheSkillFromItsOwnPlaceDoesNotStrikeIt`, 7. The cast is a free start from the wearer's own place
+   and not a press, because a pressed Strike waits for its attack clip and a test world is never ticked (as ruled on
+   2026-10-16 for `Cataclysm.AoeStrikesAllies.`); it names no actor cast from, as a press names none. In order: a world;
+   set-up, the enemy; the enemy is the wearer's enemy; the wearer holds the flag; the cast starts; control, it strikes the
+   enemy; the wearer at the centre of its own swing loses nothing.
+5. `TheBlowRaisesHitTakenAndNoHitDealtFirstHitCriticalStrikeOrDeployableHit`, 21. Every roll critically strikes; each
+   player has a chance of 50. In order: a world; set-up, the pin; set-up, the two enemies; set-up, sides (6); control, the
+   plain player's cast raises one `hit_dealt`, one `first_hit_dealt`, one `critical_strike`, one `deployable_hit` and no
+   `hit_taken`; set-up, the wearer was struck; one `hit_dealt`, one `first_hit_dealt`, one `critical_strike`, one
+   `deployable_hit`, all its enemy's; and one `hit_taken`, the blow on the wearer.
+6. `AGadgetsDeathBlastStrikesItsWearerInsideTheRadiusForWhatAnEnemyBesideItTakes`, 22. Each group holds Shared Ruin's two
+   stats, 10 of the dying minion's maximum health within 5 m; `ACataclysmMinion::DeathBlast` is called as the death hook
+   calls it, on a gadget still standing. In order: a world; set-up, the pin; set-up, the three enemies; set-up, sides (9);
+   control, the plain blast catches one enemy, strikes it, and the plain player 3 m away loses nothing; the inside blast
+   still counts one enemy caught; set-up, the enemy beside the wearer is struck; the wearer's loss equals it, within 0.01;
+   set-up, the outside blast catches one enemy; the wearer 8 m away loses nothing.
+
+One probe joins `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeDeployableBlastsStrikeSelf`. A
+fighter does not hold the flag, and once granted at 1 it does, by `HeldBy`.
+
+Python: `TestADeployablesBlastStrikesItsWearer` in `tools/tests/test_generate_datatables.py`, eight tests on a made-up
+sheet: the ruled row is carried through and refused by no check; the name is a stat with no attribute, with a made-up
+name as the control; the generator's name is the one `CataclysmDeployableSelfBlast.cpp` holds, with the point-blank
+share's name read the same way as the control; **the two new deliveries are the enemy's field for field, in order:
+`StrikeTheWearerInItsDeployablesBlast` against `HitTargets` and `StrikeTheWearerInItsBlast` against `HitOne`, with
+`HitScaled`'s none as the control**; each wrong shape is refused once by its own sentence (increased, more, a tag, an
+action, 0, 2, 0.5) and two figures wrong are two refusals; a condition or a scale is refused by the checks that hold
+those; a passive node's row and another stat are left alone; the whole sheet's validation runs the check.
+
+**Not tested:** a real row worn, which does not exist yet; `UCataclysmProjectileSkill::Land`, `ACataclysmProjectile::Finish`
+and `ACataclysmMinion::Explode` (no gadget-castable projectile of the test weapon detonates, a projectile in flight needs
+stepping by hand, and a skill gadget's explosion deals nothing); the cone of a gadget's area strike (only The Gathering's
+all-round swing is driven); a row's "hits all within" sphere; the blow killing the wearer, and so its `kill`; the
+stores, leech, retaliation, ailments and forced movement refused; the more damage from behind; the wearer's
+resistances, block and energy shield (only armour is driven); a War deployable, a copy of the summoner's last skill and a
+trap (no War work); `hit_taken_cancels_skills`; anything drawn on a screen; replication; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, and each new text
+counted absent before the break and once after it. Each break keeps the file's round, curly and square brackets paired
+(counted by the same script: `CataclysmDeployableSelfBlast.cpp` 38/38, 11/11, 0/0 before; 40/40 after DS-I, which adds a
+pair of round brackets twice and takes none; 38/38 after DS-III; `CataclysmSkillTemplates.cpp` 1832/1832, 491/491,
+29/29 before and after DS-II) and compiles alone by reading: DS-I keeps `Deployable` read and returns a `bool`; DS-II
+compares an `int32` with another literal; DS-III passes the unmarked `Delivery`, which is in scope, and keeps
+`AtTheWearer` read by `MarkAsShare`. The prefix is `Cataclysm.DeployableSelfBlast.`, with its trailing dot, six tests.
+
+**The events the tests' actors raise on the way, listed before counting.** On each player: for each enemy its gadget's
+cast strikes, `hit_dealt`, `first_hit_dealt` (the first blow), `critical_strike` (test 5 only, where every roll strikes
+critically) and `deployable_hit`; and whatever a cast of The Gathering raises for its burn, pull and knock-down on the
+enemy; for the blow on a wearer, `hit_taken`. On a death blast, nothing on the player but the wearer's `hit_taken`. Only
+test 5 counts events. **NO ROW HANGS ON ANY OF THEM**, so no event changes what a later blow does. Read from the code,
+not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| DS-I, the wearer's own cast strikes it (B5) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return Wearer && Deployable && Deployable->IsDeployable() && Deployable->Summoner.Get() == Wearer;` | `return Wearer && (!Deployable \|\| Deployable->IsDeployable()) && (!Deployable \|\| Deployable->Summoner.Get() == Wearer);` | `TheWearersOwnCastOfTheSkillFromItsOwnPlaceDoesNotStrikeIt` | none |
+| DS-II, a single-target swing strikes the wearer (B2) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` | `AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == 1` | `AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == -1` | `ASingleTargetBasicSwingTheGadgetCastsDoesNotStrikeTheWearerInsideItsCone` | none |
+| DS-III, the blow on the wearer is an ordinary blow (B4) | `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp` | `return UCataclysmSkillEffects::ApplyHit(Wearer, Wearer, DamagePercent, SkillTags, AtTheWearer);` | `return UCataclysmSkillEffects::ApplyHit(Wearer, Wearer, DamagePercent, SkillTags, Delivery);` | `TheBlowRaisesHitTakenAndNoHitDealtFirstHitCriticalStrikeOrDeployableHit` | none |
+
+Failed assertions, by reading:
+
+- **DS-I, 1 in 1 test.** A use cast from no actor now passes the deployable test, so the wearer's own cast finds it at
+  its own centre. Test 4: "the wearer at the centre of its own swing loses nothing". No other test makes a cast with no
+  deployable; test 3's basic swing is refused for its one target first, and test 6's blasts are deployables'.
+- **DS-II, 1 in 1 test.** Test 3: "the wearer inside the single-target swing's cone loses nothing". The Gathering states
+  no target limit, so every other swing is struck either way.
+- **DS-III, 4 in 1 test.** Without the mark the blow is the wearer's own hit on itself: it raises `hit_dealt`,
+  `first_hit_dealt` (the wearer's first blow on itself), `critical_strike` (a chance of 50 against a roll of 0) and
+  `deployable_hit` once more each. Test 5: the four lines "one hit_dealt", "one first_hit_dealt", "one critical_strike"
+  and "one deployable_hit" (2 against 1 each); "one hit_taken" passes. Tests 1, 2 and 3 pass: their roll of 100 never
+  strikes critically, and no row there reads a hit dealt; test 6's blasts go through `StrikeWithADeathBlast`, unbroken.
+
+**Tests of another group expected to fail, to check in the window:** none under any of the three by reading; the probe
+reads `HeldBy`, which no break touches.
+
+**A test and no proof:** the wearer outside the area, the plain player, the figure equal to the enemy's, the armour,
+the death blast and its count.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-19 — A row can make its holder refuse every buff another character gives it: one flag on the receiver, asked of each ally by the shared buffs' step and by an aura's two passes, each taking back what is already held at its own next pass, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the flag's name

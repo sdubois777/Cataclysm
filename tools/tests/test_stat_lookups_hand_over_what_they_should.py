@@ -201,6 +201,12 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: 2026-10-19: the flag by which a character refuses the buffs other
 #: characters give it, asked with no tags off the receiver by
 #: `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies`.
+#: The flag by which a wearer's own deployable's blast strikes the wearer
+#: added one more on 2026-10-19, asked with no tags by
+#: `UCataclysmDeployableSelfBlast::HeldBy` at the five places a
+#: deployable's blast is struck. The wearer's blow in a projectile's
+#: explosion asks the later-hit share with the argument list `HitOne`
+#: already hands over in the same file, so it is the same key and none.
 CALL_SITES = 68
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -1073,6 +1079,14 @@ INVENTORY = {
         "every buff whoever gives it, and the giver's skill is not the "
         "receiver's, so no tags, and a buff is not a blow, so no blow and no "
         "target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp',
+     'FName(FlagStat), FGameplayTagContainer(), 0.0f'):
+        "the flag by which a wearer's own deployable's blast strikes the "
+        "wearer standing inside it (ruled 2026-10-19, B1-B6), asked by "
+        "HeldBy off the wearer at each of the five places a deployable's "
+        "blast is struck, before the wearer is looked for; a death blast "
+        "has no skill to scope it, so no tags, and the row has no "
+        "condition, so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

@@ -880,6 +880,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ally. Ruled 2026-10-19, for "You cannot benefit from buffs applied by
 		// allies". Flat 1. No gameplay attribute and no base.
 		TEXT("ally_buffs_refused"),
+		// The flag by which a wearer's own deployable's blast strikes the wearer
+		// standing inside it, read off the wearer with no tags by
+		// UCataclysmDeployableSelfBlast::HeldBy, at the five places a
+		// deployable's blast is struck. Ruled 2026-10-19 (B1-B6), for "Your
+		// deployables and traps deal full damage to you if you are within their
+		// blast radius", the deployable half. Flat 1; at nought nobody is
+		// struck. No gameplay attribute and no base.
+		TEXT("deployable_blasts_strike_self"),
 	};
 	return Stats;
 }
