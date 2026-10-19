@@ -63,16 +63,29 @@ def floor_threat(tier: int, dtype: str, subtype: str, total_floors: int,
     return sum(s[r] * w for r, w in scoring.DUNGEON_SCORE_MIX)
 
 
+def floor_modifier_score(modifier_score: float, floor: int,
+                         extra_per_floor: float = 0.0, extra_cap: int = 0) -> float:
+    """The modifier score on one floor: the dungeon's own, plus
+    `extra_per_floor` for each floor down to `extra_cap`. Only the Ascendant
+    has an extra (`Simulation.death_chance`)."""
+    return modifier_score + extra_per_floor * min(max(0, floor), max(0, extra_cap))
+
+
 def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
                  total_floors: int, modifier_score: float,
                  per_floor_risk: float, boss_risk_multiplier: float,
                  boss_rarity: str = "Boss",
                  rate: float = OVERWHELM_RATE,
-                 cap: float = OVERWHELM_CAP) -> float:
+                 cap: float = OVERWHELM_CAP,
+                 extra_per_floor: float = 0.0,
+                 extra_cap: int = 0) -> float:
     """Probability of dying at least once on the way through.
 
     Risk on a floor is proportional to how much harder Overwhelm makes you get
     hit. A player who out-powers every floor takes no risk at all.
+
+    `extra_per_floor` and `extra_cap` raise the modifier score floor by floor
+    (`floor_modifier_score`), the boss's floor included. Both 0 by default.
     """
     tw = scoring.tier_width(tier)
     survive = 1.0
@@ -82,7 +95,8 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
     for frac in _SAMPLE_FRACS:
         floor = max(1, min(total_floors, round(total_floors * frac)))
         threat = floor_threat(tier, dtype, subtype, total_floors, floor,
-                              modifier_score)
+                              floor_modifier_score(modifier_score, floor,
+                                                   extra_per_floor, extra_cap))
         ow = overwhelm(player_power, threat, tw, rate, cap)
         risk = per_floor_risk * (damage_multiplier(ow) - 1.0)
         if risk > 0:
@@ -90,7 +104,9 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
 
     # The thing on the last floor.
     boss = scoring.enemy_scores(tier, dtype, subtype, total_floors,
-                                total_floors, modifier_score)[boss_rarity]
+                                total_floors,
+                                floor_modifier_score(modifier_score, total_floors,
+                                                     extra_per_floor, extra_cap))[boss_rarity]
     ow = overwhelm(player_power, boss, tw, rate, cap)
     boss_risk = min(0.95, per_floor_risk * boss_risk_multiplier
                     * (damage_multiplier(ow) - 1.0))
