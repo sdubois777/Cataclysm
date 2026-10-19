@@ -937,6 +937,74 @@ public:
 	float WarhoundBlow() const;
 
 	/**
+	 * Tyrant's Chains' ten-piece bonus: "Your Tyrant's Minion now casts your ultimate ability every 3 seconds". The
+	 * coordinating session's ruling #7 of 2026-10-17 (a FREE START, as the skill gadget's) and its rulings T1-T7 of
+	 * 2026-10-18; `docs/DECISIONS.md` carries both.
+	 *
+	 * ONE STAT, THE SECONDS BETWEEN CASTS, READ OFF THE COMMANDER WITH NO TAGS (T6: 3, the sentence's own number). No
+	 * gameplay attribute and no base. Nought means the Tyrant's Minion casts nothing (T7).
+	 */
+	static const TCHAR* TyrantsMinionCastsUltimateEverySecondsStat;
+
+	/** The seconds between this Tyrant's Minion's casts: its commander's stat above. Nought for any other minion. */
+	float TyrantsUltimateSecondsBetweenCasts() const;
+
+	/**
+	 * What a Tyrant's Minion does for the ten-piece on the step every character takes four times a second, called by
+	 * `ACataclysmCharacterBase` beside `GadgetStep`. Nothing for anything that is not a Tyrant's Minion, and nothing
+	 * for one whose commander holds the stat at nought.
+	 *
+	 * THE KEYED SKILL GADGET'S CLOCK (T6), at the row's seconds, FIXED: the first cast on the first step that casts one,
+	 * each later cast on the first step at least the seconds after the last that started, and a step that casts
+	 * nothing starts nothing and waits. NOT SHORTENED by an Ultimate cooldown row or `minion_attack_speed`: neither is
+	 * read. A cast can come up to a quarter of a second late, as a skill gadget's can.
+	 *
+	 * @return whether a cast started on this step
+	 */
+	static bool TyrantsMinionStep(AActor* Character);
+
+	/**
+	 * Cast the commander's Ultimate once, now, from this Tyrant's Minion's place. T1-T5, T7.
+	 *
+	 * THE SKILL IS WHAT THE COMMANDER HOLDS IN `ECataclysmAbilitySlot::Ultimate` NOW (T2), refused as
+	 * `SkillGadgetMayCast` refuses (a shapeless skill, a movement skill, an aura, a summon or deployable, a held or
+	 * channelled skill, a planted weapon, a `Requires`, a health cost). AN ULTIMATE CONVERTED INTO A SKILL GADGET IS
+	 * STILL CAST (T3). A SELF BUFF follows the skill gadget's S13 (T4): granted only while the commander stands within
+	 * `SkillGadgetSelfBuffReachCm` of this minion, and not while one this minion granted still runs. EVERY OTHER SHAPE
+	 * is aimed at the nearest living enemy within `SkillGadgetReachCm` of this minion (T5); no target, no cast.
+	 *
+	 * THE COMMANDER'S OWN ROW AT THE COMMANDER'S NUMBERS (T1): no tag is added, so no gadget or minion row reaches it,
+	 * and `SkillGadgetCasting` answers null for it, because this minion is no skill gadget. A free start through
+	 * `StartPlayersSkillFromHere`, the skill gadget's own path: no cost, no cooldown, no `skill_use` or `attack_use`.
+	 *
+	 * @return whether it started. False, casting nothing, for anything that is not a Tyrant's Minion, one dead or
+	 *         unable to act, a commander gone or dead, a slot holding no skill or one refused above, no target, or the
+	 *         skill refusing itself.
+	 */
+	bool CastPlayersUltimateFromHere();
+
+	/**
+	 * THE PART OF A CAST FROM THIS MINION'S PLACE THAT A SKILL GADGET AND A TYRANT'S MINION SHARE, factored out of
+	 * `CastPlayersSkillFromHere` for the ten-piece: `Skill`, which the caller has chosen and refused, started for
+	 * `Player` free from here. A self buff is granted only while `Player` stands within `SkillGadgetSelfBuffReachCm`
+	 * and not while one this minion granted still runs; every other shape is aimed at `MostHealthWithin(ReachCm)` (a
+	 * skill gadget's highest-health row; null for anything that is not a gadget) or else the nearest enemy within
+	 * `ReachCm`. A reach of nought casts nothing. The caller adds any tag; this adds none.
+	 *
+	 * @return whether `UCataclysmTriggeredSkill::Trigger` started it
+	 */
+	bool StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float ReachCm);
+
+	/** How many Ultimates this Tyrant's Minion has cast for the ten-piece. Read by tests. */
+	int32 TyrantsUltimateCastsMade = 0;
+
+	/** Whether it has cast for the ten-piece. Until it has, its clock is not running. */
+	bool bTyrantsUltimateHasCast = false;
+
+	/** Its age when its last cast for the ten-piece started. */
+	float LastTyrantsUltimateCastAtAgeSeconds = 0.0f;
+
+	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
 	 * centimetres, how long it lasts in seconds, and the percent of the dead minion's own blow a sweep deals. Ruled
 	 * 2026-10-06 by the coordinating session under the owner's delegation; the row's sentence states none of them.

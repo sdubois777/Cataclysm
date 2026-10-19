@@ -992,57 +992,13 @@ bool ACataclysmMinion::CastPlayersSkillFromHere()
 		return false;
 	}
 
-	const FVector From = GetActorLocation();
-	FVector Aim = From;
-	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
-	{
-		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THE GADGET (S13). Its enemy areas are measured from
-		// the gadget, because the cast is made from here. NOT WHILE ONE THIS GADGET GRANTED STILL RUNS: a second
-		// running copy would add a second "more" to the player, which the player's own press could never do.
-		if (FVector::Dist2D(From, Player->GetActorLocation()) > SkillGadgetSelfBuffReachCm + ReachAllowanceCm)
-		{
-			return false;
-		}
-		for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
-		{
-			const UCataclysmSkillTemplate* Running = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
-			if (Running && Spec.IsActive() && Running->FreeRepeatCastBy.Get() == this)
-			{
-				return false;
-			}
-		}
-	}
-	else
-	{
-		// THE NEAREST LIVING ENEMY WITHIN THE SKILL'S OWN REACH OF THE GADGET (S4), by the brain's measure along the
-		// floor, as `HostilesWithinReach` takes it for the type's reach.
-		const float Reach = SkillGadgetReachCm(Skill);
-		if (Reach <= 0.0f)
-		{
-			return false;
-		}
-		// OR, WHEN THE PLAYER HOLDS "Your gadgets prioritize the highest HP enemy within their range instead of the
-		// nearest", THE ONE HOLDING THE MOST HEALTH NOW WITHIN THAT SAME REACH (stack 2, item 4; S9). Null without the
-		// row, and then the nearest, as before.
-		AActor* Target = MostHealthWithin(Reach);
-		if (!Target)
-		{
-			const TArray<AActor*> Within = HostilesWithin(Reach);
-			Target = Within.IsEmpty() ? nullptr : Within[0];
-		}
-		if (!Target)
-		{
-			return false;
-		}
-		Aim = Target->GetActorLocation();
-	}
-
 	// THE PLAYER'S OWN ROW, WITH `Type.Deployable` ADDED TO ITS TAGS (S5), which `StampOnto` makes the one-use grant's
-	// skill tags inside `Trigger`. Granted to the player, free, from here, at the whole of its damage (S1).
+	// skill tags inside `Trigger`. AIMED BY THE SKILL'S OWN REACH (S4) AND STARTED FROM HERE by the part a Tyrant's
+	// Minion shares, `StartPlayersSkillFromHere`, since Tyrant's Chains' ten-piece: the self buff's 8 m and its
+	// running copy (S13), the highest-health row and the nearest enemy (S4, S9), and the free start (S1) are there.
 	FCataclysmWeaponSkill AsTheGadgets = Skill;
 	AsTheGadgets.Tags.AddTag(DeployableTag());
-	if (!UCataclysmTriggeredSkill::Trigger(Player, AsTheGadgets, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/false,
-										   &From, /*CastBy=*/this))
+	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill)))
 	{
 		return false;
 	}
@@ -2137,4 +2093,144 @@ float ACataclysmMinion::WarhoundBlow() const
 	const float Armour = Theirs->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
 		Combat ? Combat->GetArmor() : 0.0f);
 	return FMath::Max(0.0f, Armour) * SummonerStat(Summoner, WarhoundArmourPercentStat) / 100.0f;
+}
+
+// ==========================================================================
+// Tyrant's Chains, ten-piece. The coordinating session's ruling #7 of
+// 2026-10-17 and its rulings T1-T7 of 2026-10-18; the header carries them.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TyrantsMinionCastsUltimateEverySecondsStat =
+	TEXT("tyrants_minion_casts_ultimate_every_seconds");
+
+float ACataclysmMinion::TyrantsUltimateSecondsBetweenCasts() const
+{
+	// OFF THE COMMANDER WITH NO TAGS, as the six-piece's seconds are read. Nought for every minion that is not one.
+	return bIsTyrantsMinion ? SummonerStat(Summoner, TyrantsMinionCastsUltimateEverySecondsStat) : 0.0f;
+}
+
+bool ACataclysmMinion::TyrantsMinionStep(AActor* Character)
+{
+	ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Character);
+	if (!Minion || !Minion->bIsTyrantsMinion || UCataclysmSkillEffects::IsDead(Minion))
+	{
+		return false;
+	}
+	const float Seconds = Minion->TyrantsUltimateSecondsBetweenCasts();
+	if (Seconds <= 0.0f)
+	{
+		return false;
+	}
+	const float Age = Minion->GetGameTimeSinceCreation();
+
+	// THE KEYED SKILL GADGET'S CLOCK (T6): AFTER THE FIRST CAST, NOTHING UNTIL THE ROW'S SECONDS HAVE RUN since the
+	// last that started, read again each step so a row put on or taken off moves the next cast. With the same
+	// thousandth of a second of allowance, for a world time added up in floating point. A step that casts nothing
+	// moves nothing and waits.
+	if (Minion->bTyrantsUltimateHasCast
+		&& Age - Minion->LastTyrantsUltimateCastAtAgeSeconds < Seconds - SkillGadgetClockAllowanceSeconds)
+	{
+		return false;
+	}
+	if (!Minion->CastPlayersUltimateFromHere())
+	{
+		return false;
+	}
+	Minion->bTyrantsUltimateHasCast = true;
+	Minion->LastTyrantsUltimateCastAtAgeSeconds = Age;
+	return true;
+}
+
+bool ACataclysmMinion::CastPlayersUltimateFromHere()
+{
+	// A TYRANT'S MINION, STANDING AND ABLE TO ACT, OF A COMMANDER STILL HERE AND ALIVE, HOLDING THE STAT (T7).
+	AActor* const Player = Summoner.Get();
+	if (!bIsTyrantsMinion || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Player) || UCataclysmSkillEffects::IsDead(Player) || TyrantsUltimateSecondsBetweenCasts() <= 0.0f)
+	{
+		return false;
+	}
+
+	// WHAT THE COMMANDER HOLDS IN THE ULTIMATE SLOT NOW (T2), as `SkillGadgetsSkill` reads a slot, REFUSED AS A SKILL
+	// GADGET REFUSES (T2). NOT ASKED WHETHER THE SLOT IS CONVERTED: a converted Ultimate is still cast (T3).
+	const UCataclysmWeaponSlotsComponent* Slots = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	const FCataclysmWeaponSkill* Held = Slots
+		? Slots->GetAvailableSkills().FindByPredicate(
+			  [](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == ECataclysmAbilitySlot::Ultimate; })
+		: nullptr;
+	if (!Held || !SkillGadgetMayCast(*Held))
+	{
+		return false;
+	}
+
+	// THE COMMANDER'S OWN ROW AS IT STANDS, WITH NO TAG ADDED (T1), so it is priced at the commander's numbers and no
+	// gadget or minion row reaches it; this minion is no skill gadget, so `SkillGadgetCasting` answers null for it.
+	// AIMED BY THE SKILL'S OWN REACH (T5) and started from here by the skill gadget's own path (T4, T5, #7).
+	const FCataclysmWeaponSkill Skill = *Held;
+	if (!StartPlayersSkillFromHere(Player, Skill, SkillGadgetReachCm(Skill)))
+	{
+		return false;
+	}
+	++TyrantsUltimateCastsMade;
+	return true;
+}
+
+bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float ReachCm)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs)
+	{
+		return false;
+	}
+
+	const FVector From = GetActorLocation();
+	FVector Aim = From;
+	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
+	{
+		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THIS MINION (S13; T4 for a Tyrant's Minion). Its enemy
+		// areas are measured from here, because the cast is made from here. NOT WHILE ONE THIS MINION GRANTED STILL
+		// RUNS: a second running copy would add a second "more" to the player, which the player's own press could
+		// never do.
+		if (FVector::Dist2D(From, Player->GetActorLocation()) > SkillGadgetSelfBuffReachCm + ReachAllowanceCm)
+		{
+			return false;
+		}
+		for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
+		{
+			const UCataclysmSkillTemplate* Running = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Running && Spec.IsActive() && Running->FreeRepeatCastBy.Get() == this)
+			{
+				return false;
+			}
+		}
+	}
+	else
+	{
+		// THE NEAREST LIVING ENEMY WITHIN THE SKILL'S OWN REACH OF THIS MINION (S4; T5), by the brain's measure along
+		// the floor, as `HostilesWithinReach` takes it for the type's reach.
+		if (ReachCm <= 0.0f)
+		{
+			return false;
+		}
+		// OR, FOR A SKILL GADGET WHOSE PLAYER HOLDS "Your gadgets prioritize the highest HP enemy within their range
+		// instead of the nearest", THE ONE HOLDING THE MOST HEALTH NOW WITHIN THAT SAME REACH (stack 2, item 4; S9).
+		// Null without the row, and null for anything that is not a gadget, a Tyrant's Minion included; then the
+		// nearest.
+		AActor* Target = MostHealthWithin(ReachCm);
+		if (!Target)
+		{
+			const TArray<AActor*> Within = HostilesWithin(ReachCm);
+			Target = Within.IsEmpty() ? nullptr : Within[0];
+		}
+		if (!Target)
+		{
+			return false;
+		}
+		Aim = Target->GetActorLocation();
+	}
+
+	// GRANTED TO THE PLAYER, FREE, FROM HERE, AT THE WHOLE OF ITS DAMAGE, CAST BY THIS MINION (S1; #7).
+	return UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/false, &From,
+											 /*CastBy=*/this);
 }

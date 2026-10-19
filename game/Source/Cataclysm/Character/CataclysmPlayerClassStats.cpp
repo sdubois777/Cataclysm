@@ -835,6 +835,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("taunt_aura_every_seconds"),
 		TEXT("taunt_aura_radius_metres"),
 		TEXT("taunt_aura_taunt_seconds"),
+		// The seconds between a Tyrant's Minion's casts of its commander's
+		// Ultimate, read off the commander with no tags by ACataclysmMinion::
+		// TyrantsUltimateSecondsBetweenCasts, from TyrantsMinionStep on the
+		// regeneration step. Ruled 2026-10-17 (#7) and 2026-10-18 (T1-T7), for
+		// Tyrant's Chains' ten-piece. Flat; at nought nothing is cast. No
+		// gameplay attribute and no base.
+		TEXT("tyrants_minion_casts_ultimate_every_seconds"),
 	};
 	return Stats;
 }
