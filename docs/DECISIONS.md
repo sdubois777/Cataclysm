@@ -22,8 +22,8 @@ Decisions made outside the Google Drive documents, newest first.
   owner's standing rule is that an undefended empire must still lose; the owner said of War's Quest Sieges that a
   Quest dungeon should give "a bit of an incentive to address them asap"; the defending players do not move beyond
   the noise; and the below-8 limit answers "shouldn't just flat out erase a city".
-- **FOR THE OWNER'S PLAY-CHECK LIST** (ruled by the coordinating session, 2026-10-19): "an empire that ignores the
-  Void's Quest dungeons is lost in about half the time of one facing another Cataclysm".
+- **FOR THE OWNER'S PLAY-CHECK LIST** (ruled by the coordinating session, 2026-10-19): "an undefended empire facing
+  the Void is now lost by about day 480 (median), against about day 920 before the Hollow".
 
 ### What was ruled
 
