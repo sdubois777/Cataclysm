@@ -51,7 +51,8 @@ class CATACLYSM_API UCataclysmFloorContents : public UBlueprintFunctionLibrary
 public:
 	/**
 	 * Destroy every creature, drop, projectile, ground effect, patch of
-	 * terrain, telegraph marker and floor hazard source in the world.
+	 * terrain, telegraph marker and floor hazard source in the world, and every
+	 * Soul Reaper's Embrace's six-piece left (`ACataclysmReaperSoul`).
 	 *
 	 * THE HAZARD SOURCE IS THE ACTOR A FLOOR'S HAZARDS ARE DEALT IN THE NAME
 	 * OF. `ACataclysmFloorHazardSource` exists only to carry an

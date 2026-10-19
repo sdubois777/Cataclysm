@@ -239,6 +239,12 @@ private:
 	/** The name tags of the floor objects near the character, drawn and recorded as the drops' are. */
 	void DrawFloorObjectNames();
 
+	/**
+	 * The tag "Soul" over every Soul near the character, in its one colour, drawn as a floor object's tag is: Reaper's
+	 * Embrace's six-piece, ruled 2026-10-18 (R8). Not recorded for a click, since a Soul is taken by walking over it.
+	 */
+	void DrawReaperSoulNames();
+
 	/** One bar: a dark backing, then the filled share of it. */
 	void DrawBar(float ScreenX, float ScreenY, float Width, float Height,
 				 float Fraction, const FLinearColor& Fill, float Opacity);

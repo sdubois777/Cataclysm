@@ -46,6 +46,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For the Soul a minion's death leaves, Reaper's Embrace's six-piece.
+#include "AbilitySystem/CataclysmReaperSoul.h"
 // For the stack that taking damage builds. Issue #1003.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -2858,6 +2860,14 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		{
 			UCataclysmSummonSkill::ScheduleResummon(Commander, MadeBy);
 		}
+	}
+
+	// AND A SOUL WHERE IT DIED, where the commander holds the flag: Reaper's Embrace's six-piece, ruled 2026-10-17 (#8)
+	// and 2026-10-18 (R1, exactly the deaths this hook answers, a Tyrant's Minion's and a Warhound's own included). A
+	// lifetime running out writes no health and never reaches this, so it leaves none.
+	if (Commander)
+	{
+		ACataclysmReaperSoul::LeaveFor(Commander, Where);
 	}
 
 	// AND THE DEAD CHARACTER'S OWN WAITS END. Ruled 2026-10-02: a summoner's

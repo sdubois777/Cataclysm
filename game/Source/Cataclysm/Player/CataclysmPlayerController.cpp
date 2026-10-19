@@ -18,6 +18,7 @@
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -457,6 +458,10 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	UpdatePendingObject();
 	UpdatePendingAttack();
 	CollectMaterialsNearby();
+	// AND EVERY SOUL OF THIS PAWN'S WITHIN REACH, BESIDE THE MATERIALS AND EVERY FRAME: Reaper's Embrace's six-piece,
+	// ruled 2026-10-18 (R4). No automation test reaches this line, for the reason above; the tests call the same
+	// function with the pawn.
+	ACataclysmReaperSoul::TakeSoulsNear(GetPawn());
 
 	// CLEARED AFTER EVERYTHING THAT READS IT, AND EVERY FRAME. `Input_Move` sets
 	// it while a movement key is down and this is the only place it is unset, so

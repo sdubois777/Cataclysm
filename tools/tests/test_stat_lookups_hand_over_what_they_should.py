@@ -186,6 +186,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Tyrant's Chains' ten-piece added NONE on 2026-10-18: its one stat, the
 #: seconds between a Tyrant's Minion's Ultimate casts, is asked through
 #: `SummonerStat`, already listed.
+#: Reaper's Embrace's six-piece added one more on 2026-10-18: the flag by which
+#: a minion's death leaves a Soul, asked with no tags off the commander by
+#: `ACataclysmReaperSoul::LeaveFor` from the commander's death hook.
 CALL_SITES = 66
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
@@ -1019,6 +1022,14 @@ INVENTORY = {
         "is not one of the wearer's skills, so no tags, and the share of "
         "health is judged by the aura itself with the wearer's own state, "
         "so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmReaperSoul.cpp',
+     'FName(MinionDeathLeavesSoulStat), FGameplayTagContainer(), 0.0f'):
+        "the flag by which a minion's or thrall's death leaves a Soul "
+        "(Reaper's Embrace's six-piece, ruled 2026-10-17 and 2026-10-18), "
+        "asked by LeaveFor off the commander from the death hook; the bonus "
+        "is the commander's and no skill of it is in hand, so no tags, and "
+        "nothing has landed on anybody, so no blow and no target are handed "
+        "over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

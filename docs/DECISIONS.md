@@ -2,6 +2,356 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A minion's or thrall's death can leave a Soul that lasts the floor and that its commander alone takes by walking within 1.5 m of it, raising an event Soul Strike's rows hang on, with its name tag drawn: Reaper's Embrace's six-piece mechanism, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmReaperSoul.h` and `.cpp` (new: the Soul, `ACataclysmReaperSoul`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (one include, and one block in the commander's death
+hook, `NotifyIfHealthReachedZero`, after the replacement); `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`
+(one include, and one call in `PostProcessInput` after `CollectMaterialsNearby`);
+`game/Source/Cataclysm/Dungeon/CataclysmFloorContents.cpp` (one include, one line in `ClearTheFloor` after the drops) and
+`.h` (its comment); `game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp` (one include, `DrawReaperSoulNames` and
+its call after `DrawFloorObjectNames`); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name at the
+end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one include, one probe and
+its line at the end of `Probes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusReaperSixTests.cpp` (new, nine tests);
+`tools/generate_datatables.py` (`soul_picked_up` at the end of `ACTION_ONLY_EVENTS`; `REAPER_SOUL_STAT` and
+`refuse_a_reaper_soul_row_the_game_cannot_read`, called last from `validate_enchantment_effects`);
+`tools/tests/test_reapers_embrace_six_rows.py` (new); `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one
+dated line and one entry). No data row, no tag and no workbook cell is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE THREE ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A six-piece bonus is live only with six pieces worn.
+- **5 S AND 10 ARE THE SENTENCE'S NUMBERS** ("for 5 seconds. Max 10 stacks", and its "10%"), **AND 1.5 M IS THE OWNER'S**
+  (#8, "about 1.5 m"). None is a number under the owner's delegation.
+- **WHICH DEATHS LEAVE A SOUL (R1): EXACTLY THE DEATHS THE COMMANDER'S DEATH HOOK ANSWERS**, the list the Tyrant's Chains
+  six-piece entry gives. Every one reaches `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`, which finds the
+  commander (`CataclysmVitalAttributeSet.cpp` 2801), handles the death (2832) and then leaves the Soul where the body
+  stood (2870, `Where` read at 2812 before the death):
+  - **A minion's health reaching nought, from a blow or a tick**: `PostGameplayEffectExecute` calls the hook (2027 and
+    2622); **from a direct write**, `PostAttributeBaseChange` calls it (356). A minion's commander is its `Summoner`
+    (`CataclysmCommand.cpp` 229). LEAVES ONE. Tested.
+  - **A thrall's health reaching nought**: the same calls; a thrall's commander is its owner, which `Subjugate` sets
+    (`CataclysmCommand.cpp` 232). LEAVES ONE. Tested.
+  - **A gadget or other deployable killed**: a deployable is a minion with health; its `HandleDeath` raises
+    `gadget_destroyed` on the commander (`CataclysmMinion.cpp` 1632). A gadget the drain empties is killed through a
+    direct write. LEAVES ONE. Tested on a Bolt Turret; the drain is not tested.
+  - **A Tyrant's Minion's own death and a Warhound's own death**: R1 names both. The block is outside the one their
+    deaths skip (`if (Commander && !bWasTyrantsMinion)`, 2857). LEAVES ONE. Tested.
+  - **A minion Sacrificial Ward spends**: its health is written to nought (`CataclysmVitalAttributeSet.cpp` 1276 to
+    1277). LEAVES ONE, by reading; not tested.
+  - **A lifetime running out**: LEAVES NONE. `Spawn` gives the lifetime as the engine's lifespan (`CataclysmMinion.cpp`
+    1298), and the engine's `AActor::LifeSpanExpired` is `Destroy();` and nothing else (`Engine/Source/Runtime/Engine/
+    Private/Actor.cpp` 6572 to 6575, UE 5.8): no health is written, so the hook never runs. This includes a Tyrant's
+    Minion's and a Warhound's own end of time. Tested on an imp.
+  - **A minion the summon cap removes**: LEAVES NONE. `Oldest->Explode()` (`CataclysmSkillTemplates.cpp` 4578)
+    destroys it (`CataclysmMinion.cpp` 1809) and writes no health. Tested.
+  - **A skill gadget moved by a new press**: LEAVES NONE: it is moved, not killed. By reading.
+  - **A minion that dies while its commander is dead**: LEAVES ONE, a judgement below; the dead commander cannot take
+    it until it stands again.
+- **ONLY ITS OWN COMMANDER TAKES A SOUL (R2)**, alive, by walking within 1.5 m of it along the floor. Another player
+  standing on it takes nothing, and nor does a creature. A Soul whose commander has left lies there, taken by nobody,
+  until the floor is cleared.
+- **A SOUL LASTS THE FLOOR (R7)**: no lifespan. It ends only when its commander takes it or when the floor is cleared,
+  at a floor change or a save's restore. NOTHING ELSE ENDS IT: no timer, no count, and not its commander's death.
+- **WHAT THE PLAYER SEES (R8)**: a name tag "Soul" in one fixed colour, a pale blue (0.55, 0.85, 1.0), over where each
+  Soul lies, drawn as a floor object's tag is, from as far as a drop's name is drawn (10 m), every Soul there whosever
+  it is. No mesh. The tag is not clicked.
+- **THE SOUL STRIKE COUNT IS SHOWN WHERE THE HUD ALREADY SHOWS A ROW'S OWN STACKS (R8's addition)**: the line above the
+  skill bar (`CataclysmHUD.cpp` 508 to 511, drawn at 556), which shows every enchantment's own stacks since 2026-09-24
+  (commit e3724c728, issue #1833's timed grants). It reads **"attack/spell damage N/10"**, named by its stats as every
+  own-stack entry is (`UCataclysmSkillBar::OwnStacksEntry`), **NOT "Soul Strike N"**. The place existed before this
+  layer; nothing was added to the status line where "Silenced" is shown. Tested.
+- **THE WALK-OVER IS LOOKED FOR EVERY FRAME (R4)**, in the player controller's `PostProcessInput`, beside the material
+  pick-up (`CataclysmPlayerController.cpp` 464, after 460), so a Soul is taken on the frame the pawn comes within reach.
+  Each frame walks every Soul in the level once, as the material pick-up walks every drop. The reach is 150 cm, measured
+  flat (`FVector::Dist2D`, `CataclysmReaperSoul.cpp` 80), as a drop's reach is: the height between a capsule's centre
+  and the floor a Soul lies on is not counted. A Soul 1.45 m off is taken and one 1.55 m off is not (tested).
+- **A SOUL WHOSE COMMANDER NO LONGER WEARS THE SIX-PIECE IS STILL TAKEN**: the event is raised and no row answers it
+  (settled in the brief).
+- **A SOUL IS NOT SAVED.** A floor restored from a save is cleared first, which destroys every Soul on it.
+- **"Pets" do not exist in the game.** Minions and thralls are what die here.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 51 and the rulings below.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner took the recommended option on 2026-10-17, as relayed by the coordinating session (#8; the relay's words, not
+the owner's): "a Soul is picked up by WALKING WITHIN ABOUT 1.5 M; it LASTS THE FLOOR."
+
+The coordinating session's rulings of 2026-10-18 on the enchantment session's questions R1-R8, its words as relayed:
+
+> RULINGS, Reaper's Embrace 6 (brief 51): (a) on R1-R7, as you wrote them, and (a) on R8 with one addition.
+> R1 exactly the deaths the commander's death hook already answers (the list in the Tyrant's Chains six-piece entry),
+> the Tyrant's Minion's and a Warhound's own included; a lifetime running out leaves no Soul, as that list says. The
+> entry names every kind of death that leaves one.
+> R2 only the commander whose minion left it.
+> R3 1.5 m along the floor, the owner's number.
+> R4 every frame, in the player controller's pass beside the material pick-up.
+> R5 rows: attack_damage and spell_damage increased 10 per stack, own_stacks step 1, Action Event soul_picked_up, Max
+> Steps 10, Stack Seconds 5; one shared window restarted by each pick-up. 5 s and 10 are the sentence's numbers.
+> R6 taken at 10 stacks; the event is raised; the window restarts.
+> R7 ends only when taken or when the floor is cleared.
+> R8 a name tag "Soul" in one fixed colour, no mesh. ADDITION, by the standing rule that every system needs a basic UI:
+> the Soul Strike stack count must be visible to the player. If the HUD already shows a row's own stacks, use that; if
+> it does not, show "Soul Strike N" on the status line where "Silenced" is shown, in this layer, with a test that reads
+> it.
+
+And settled in the brief, not asked: "a Soul whose commander no longer wears the six-piece is still taken; the event is
+raised and no row answers it."
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| #8 | Picked up by walking within about 1.5 m. | `ACataclysmReaperSoul::PickUpReachCm` = 150 (`CataclysmReaperSoul.h`), read in `TakeSoulsNear` (`CataclysmReaperSoul.cpp` 80). |
+| #8, R7 | It lasts the floor; it ends only when taken or when the floor is cleared. | No `SetLifeSpan` anywhere in `CataclysmReaperSoul.cpp`; `Soul->Destroy()` in `TakeSoulsNear` (97); `FloorContentsDestroyEvery<ACataclysmReaperSoul>` in `ClearTheFloor` (`CataclysmFloorContents.cpp` 99), outside the branch on carrying followers. |
+| R1 | Exactly the deaths the hook answers, a Tyrant's Minion's and a Warhound's own included; a lifetime leaves none. | `ACataclysmReaperSoul::LeaveFor(Commander, Where)` in `NotifyIfHealthReachedZero` (`CataclysmVitalAttributeSet.cpp` 2870), behind `if (Commander)` alone, after the death is handled. The flag is read in `LeaveFor` (`CataclysmReaperSoul.cpp` 40). |
+| R2 | Only the commander whose minion left it. | `LeftByCommander`, set in `LeaveFor` (52) and compared with the taker in `TakeSoulsNear` (79). |
+| R3 | 1.5 m along the floor. | `FVector::Dist2D(...) <= PickUpReachCm` (80). |
+| R4 | Every frame, in the player controller's pass beside the material pick-up. | `ACataclysmReaperSoul::TakeSoulsNear(GetPawn())` in `PostProcessInput` (`CataclysmPlayerController.cpp` 464), after `CollectMaterialsNearby()` (460). |
+| R5 | Soul Strike is rows on `soul_picked_up`: the existing own-stacks shape. | `Theirs->ActOnEvent(FName(TEXT("soul_picked_up")))`, once per Soul taken (`CataclysmReaperSoul.cpp` 95); `soul_picked_up` at the end of `ACTION_ONLY_EVENTS` in `tools/generate_datatables.py`. The grant is the existing `GrantOwnStack`. |
+| R6 | Taken at 10 stacks; the event is raised; the window restarts. | `TakeSoulsNear` asks no count; `GrantOwnStack` holds the count at the cap and stamps the time anew (`CataclysmAbilitySystemComponent.cpp` 5591 to 5595, unchanged). |
+| R8 | A name tag "Soul" in one fixed colour, no mesh. | `NameText`, `NameColour` (`CataclysmReaperSoul.cpp` 14 to 19); a scene root and no mesh (21 to 27); `ACataclysmHUD::DrawReaperSoulNames` (`CataclysmHUD.cpp` 1381), called at 92. |
+| R8+ | The count visible: where the HUD already shows a row's own stacks. | Unchanged: `OwnStacksByEnchantment` on the line above the skill bar (`CataclysmHUD.cpp` 508 to 556). |
+| brief | A Soul whose commander no longer wears the six-piece is still taken. | `TakeSoulsNear` reads no stat; the event is raised whatever rows are worn. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **A DEAD COMMANDER'S MINION STILL LEAVES A SOUL.** R1 names the deaths, not the commander's state; the Soul lasts the
+  floor and a player stands up again on it after `RespawnDelaySeconds`. The option not taken: refuse one, as
+  `SummonTyrantsMinion` refuses to summon for a dead commander.
+- **THE SOUL IS LEFT AFTER THE DEATH IS HANDLED, LAST OF THE HOOK'S ANSWERS**, at the place read before it. The option not
+  taken: beside the blast, before the death.
+- **THE FLOOR'S CLEARING IS THE PRECEDENT USED, AS THE DROPS ARE CLEARED**: one line beside the drops in
+  `ClearTheFloor`, in both of its branches. A Soul is a thing lying on the floor to be picked up, as a drop is, and it
+  follows nobody down the stairs. The option not taken: the deployables' branch alone, which runs only at a floor
+  change and would leave Souls through a save's restore; and a Soul subclassing `ACataclysmDroppedItem`, which every drop
+  path (the click, the material sweep, the drop names) would then have had to refuse.
+- **THE HUD NAMES EVERY SOUL WITHIN 10 M, WHOSEVER IT IS**, as every drop is named. The option not taken: only the
+  local player's own, which would hide a co-operative partner's Souls from the player who is not their commander.
+- **THE COLOUR IS A PALE BLUE**, which neither the gear rarities nor the floor objects' tag use. A judgement: the design
+  names no colour for it. The option not taken: the floor object's lilac, which would read as something to click.
+- **THE COUNT IS THE EXISTING ENTRY'S WORDS, "attack/spell damage N/10".** R8 says to use the place where the HUD already
+  shows a row's own stacks, and that place names an entry by its stats. The option not taken: a name for the entry from
+  the sentence ("Soul Strike"), which the own-stacks entry has no cell for and which would change what every own-stack
+  enchantment's entry reads.
+- **THE TAKE IS A STATIC ON THE SOUL, CALLED WITH THE PAWN, NOT A PRIVATE FUNCTION OF THE CONTROLLER**, so the tests reach
+  the same function the frame calls. The option not taken: a `...ForTest` wrapper on the controller, as the material
+  pick-up has, which no test can reach without a controller's frame anyway.
+- **A SOUL IS NOT SAVED**, as a floor object is not. The option not taken: writing Souls into the floor's save.
+
+### THE GENRE SOURCE
+
+From `genre_set_bonuses.md` section 4, "Pick-up orbs (a Soul left behind)", as it stands. Every page was read through
+WebFetch, which summarises, so each line is that summary's account of the page, not a verbatim reading; "Search snippet
+only" claims are labelled NOT FETCHED and carry no weight.
+
+- **D4, Blood Orbs** (https://www.purediablo.com/diablo4/Blood_Orbs): picked up by walking over them. The page gives no
+  radius and no duration. One orb heals 15% of maximum life, and several items scale with how many orbs are picked up.
+- **D4, globes in the Tower** (https://us.forums.blizzard.com/en/d4/t/globe-pickup-needs-qol/240328): players, not staff,
+  complain the pickup radius is "very small" and that pets do not collect them.
+- **PoE 2, Remnants** (https://poe2db.tw/us/Remnant and https://poe2db.tw/us/Remnant_Attraction): collected from a
+  distance, and modifiers raise how far that distance reaches (Remnant Attraction collects them from 50% further away).
+  Neither page gives a base radius or a duration.
+- **D3, health globes:** a 3-yard pickup radius, the same as gold; the player still has to move onto the globe, and
+  pickup-radius items enlarge the radius. Search snippets only (diablo.fandom.com, NOT FETCHED).
+- **D4 potions:** one guide says dropped potions disappear after a while. Search snippet only (NOT FETCHED).
+- **Last Epoch and Torchlight Infinite:** nothing found.
+- **Verdict, the file's.** Every pickup orb read is collected by walking over it, within a pickup radius that items can
+  enlarge; none is clicked like an item. How long an orb lasts is not stated by any page fetched. SETTLED (partly):
+  collect by walking over it within a radius. NOT SETTLED: whether it lasts the whole floor or fades after N seconds.
+
+**Not reached**, as the file records: https://maxroll.gg/d4/resources/blood-orbs (404),
+https://diablowiki.net/Health_orb (403), https://diablo.fandom.com/wiki/Health_globes (402), the breezewiki copy of
+Health_Globe (a bot-check page), https://www.purediablo.com/diablo3/Health_Globe (404) and
+https://diablo4.wiki.fextralife.com/Healing+Potion (404); and "Any orb's lifetime on the ground" was not found.
+
+**WHAT THE RESEARCH SETTLES AND WHAT IT DOES NOT.** Walking over it within a radius is the genre's shape, and it is
+built. The lifetime is not settled by any source; the owner ruled that a Soul lasts the floor. Items that enlarge the
+radius are not built: no row asks for one.
+
+### WHAT WAS BUILT
+
+- **The Soul**, `ACataclysmReaperSoul`: a scene root, no tick, no collision, no mesh; `LeftByCommander`; `LeaveFor`,
+  `TakeSoulsNear` and `SoulsToName`; `PickUpReachCm`, `NameText`, `NameColour` and `NameHeightCm`.
+- **The flag**, `minion_death_leaves_soul`, `ACataclysmReaperSoul::MinionDeathLeavesSoulStat`, read off the commander with
+  no tags by `LeaveFor`; the last name on `StatsWithNoAttribute`, with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The leaving**: one block in the commander's death hook.
+- **The taking**: one call in the player controller's frame.
+- **The ending**: one line in `ClearTheFloor`.
+- **The event**, `soul_picked_up`, raised on the taker once per Soul, and on the generator's list of action events.
+- **The tag**: `ACataclysmHUD::DrawReaperSoulNames`.
+- **The generator's refusal** of a row on the flag that the game would read as nothing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Three rows on the Enchantment Effects sheet, each with Enchantment `Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion`
+and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low, High | Scale | Scale Step | Action Event | Scale Max Steps | Stack Seconds |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| `minion_death_leaves_soul` | `flat` | 1, 1 | | | | | |
+| `attack_damage` | `increased` | 10, 10 | `own_stacks` | 1 | `soul_picked_up` | 10 | 5 |
+| `spell_damage` | `increased` | 10, 10 | `own_stacks` | 1 | `soul_picked_up` | 10 | 5 |
+
+Every other cell empty: no Required Tags (the enchantment's own `Type.Minion` is not a row's), no Condition, no Action,
+no Fraction Of, no Trigger Cooldown, no Event Value, no Ailment. The two Soul Strike rows are the shape of the shipped
+"Critical strikes grant a stack of power" rows (`game/Data/EnchantmentEffects.csv` lines 307 and 308), on another event;
+each grants its own key, both on the same event, so one pick-up restarts both windows together: R5's one shared window.
+All three pass the generator on a made-up sheet (`tools/tests/test_reapers_embrace_six_rows.py`). The set rule is met:
+the 2-piece and the drawback are merged (`EnchantmentEffects.csv` 488 to 490). The ten-piece's cull reads these stacks
+under the key `Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion:attack_damage` or its spell twin; that is its own
+layer.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+**IN THE MECHANISM:**
+
+- **The generator now accepts** an action row on `soul_picked_up`, which it refused before ("to grant them"), since the
+  event did not exist.
+- **The generator now refuses** a row on `minion_death_leaves_soul` that is not `flat`, carries a Required Tag or an
+  Action, or states anything but 1. The stat was accepted on no row before, since it did not exist.
+- **`StatsWithNoAttribute` gains one name**, at its end, so the generator accepts a row on it with no gameplay
+  attribute; `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains its probe, the last of `Probes`.
+- **`INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one entry**, the flag's call in
+  `CataclysmReaperSoul.cpp`, with one dated line; `CALL_SITES` stays 66, the figure of the tree it was measured on.
+
+**IN THE ROW LAYER**, by reading only, not run: the flag's row states 1, which the sentence does not state as a number,
+so `minion_death_leaves_soul` is expected to join `FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+as `minion_death_blast_deals_death` did. The 10, 10 and 5 of the Soul Strike rows are in the sentence's words.
+
+### Tests
+
+Nine Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusReaperSixTests.cpp`, the group
+`Cataclysm.SetBonus.Reaper6.`. The three rows are made up in the shape above, put on the real non-set enchantment
+"Double your energy shield" and passed through `UCataclysmItemModifiers::AccumulateEnchantmentsInto`, as the Demon
+King's Regalia's ten-piece tests do. The commander is a player character on the players' side, built by the client path;
+its minions take its side, a thrall takes it at `Subjugate`, and a creature is of the monsters' side. No commander
+holds Shared Ruin or Every One Bursts and no minion is told an explosion radius, so nothing deals damage in an area.
+Every body stands at least 1 m from every other. Deaths are health written to nought; time is moved with `RunClock`;
+the take is `TakeSoulsNear` with the pawn, as the frame calls it. No test presses a skill, so no test needs a resource
+a skill costs. Every helper type and function is named after the subject (`FReaperSoulScene`, `ReaperSoulsIn`...).
+
+1. `EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndTheSummonCapsRemovalLeavesNone`. In order: set-up, a world and the
+   player; set-up, the control's imp, and it died; control, with the flag at nought an imp's death leaves no Soul;
+   set-up, a Tyrant's Minion, a Warhound, an imp, a Bolt Turret, the imp the cap removes and a creature; set-up, the
+   creature taken as a thrall, the turret a gadget, the Tyrant's Minion and the Warhound each one; then for each of the
+   imp, the thrall, the turret, the Tyrant's Minion and the Warhound: set-up, it died; one Soul more than before, left for
+   its commander within 1 cm of where it died; set-up, the cap's removal destroyed its imp; it left no Soul.
+2. `ASoulIsTakenWithinOneAndAHalfMetresAlongTheFloorRaisingTheEventOnceAndNotFromBeyond`. In order: set-up, a Soul 1.55
+   m off along the floor and 0.9 m below; set-up, the reach is 1.5 m; control, nothing is taken from 1.55 m; the Soul
+   still lies there; no `soul_picked_up` was raised; from 1.45 m it is taken; `soul_picked_up` raised once on the taker;
+   the Soul is gone; none lies anywhere; a second look takes nothing; and raises nothing more.
+3. `OnlyTheCommanderWhoseMinionLeftASoulTakesItAndNotAnotherPlayerOrACreature`. In order: set-up, two players 10 m apart
+   and a creature 2 m beyond the second; control, the commander takes its own Soul from 1 m; and raises the event once;
+   set-up, a second Soul 1 m from the other player and the creature; the other player takes nothing; and raises nothing;
+   the creature takes nothing; the Soul still lies there; its commander, brought 1 m from it, takes it; and raises the
+   event a second time.
+4. `ADeadCommanderTakesNoSoulAndOneWhoseCommanderLeftStaysUntilTheFloorIsCleared`. In order: control, a living commander
+   takes a Soul 1 m off; set-up, a second Soul; dead, it takes nothing; the Soul still lies there; alive again, it takes
+   it; set-up, a Soul of a commander who stays and one of a commander who then leaves (destroyed); control, two minutes
+   on, the first still lies there; the second still lies there; once the floor is cleared, neither does.
+5. `ASoulHasNoLifetimeAndIsGoneWhenTheFloorIsClearedEitherWay`. In order: set-up, an imp told a minute and a Soul; the
+   Soul has no lifespan; control, two minutes on the imp's minute has ended it; the Soul still lies there; the floor
+   cleared at a floor change takes it; set-up, a second Soul; the floor cleared as a save's restore clears it takes it;
+   none lies anywhere.
+6. `EachSoulTakenAddsOneStackOfTenPercentUpToTenEndingFiveSecondsAfterTheLast`. In order: control, no stack; control,
+   attack damage at its base; control, spell damage at its base; one Soul, one stack; one entry on two stats; a cap of
+   10; three Souls, three stacks; attack damage 30 above its base; spell damage too; ten, ten stacks; twelve, still ten;
+   twelve events raised; 4.9 s after the last, ten; 5.1 s after it, none; attack damage at its base again.
+7. `ASoulTakenAtTenStacksIsStillTakenRaisesTheEventAndRestartsTheWindow`. In order: set-up, ten taken, ten stacks;
+   control, with nothing after the tenth, none 5.1 s on; set-up, ten taken again; set-up, an eleventh Soul 3 s on; it is
+   taken; the event is raised; the Soul is gone; ten are held; 7 s after the tenth and 4 s after the eleventh, ten still;
+   5.2 s after the eleventh, none.
+8. `TheHudNamesEachSoulInItsColourAndTheLineAboveTheBarCountsSoulStrike`. In order: control, the HUD's reading names no
+   Soul; control, the line above the bar holds nothing; set-up, a Soul 3 m off; it is named; its tag says "Soul"; in the
+   one colour, pinned to its figures; set-up, walked to 1 m, it is taken; it is named no more; three taken, the line reads
+   "attack/spell damage 3/10".
+9. `AMinionWhoseLifetimeRunsOutLeavesNoSoul`. In order: control, an imp killed leaves one Soul; set-up, 1.5 s on, the imp
+   told 1 s is gone; its lifetime running out left no Soul.
+
+And one probe in `CataclysmStatExemptionTests.cpp`, `ProbeMinionDeathLeavesSoul`: a bare summoner's imp; control, a
+death before the stat leaves no Soul; with the stat at 1, a second imp's death leaves one.
+
+Python: `tools/tests/test_reapers_embrace_six_rows.py`, on a made-up workbook holding the sentence typed Generic: the row
+name is the shipped one; the three rows are carried through, cell by cell, and refused by nothing, the condition and
+scale checks included; the flag's row passes the whole validation, and the two damage rows are refused by it only for
+want of the base this made-up workbook has no class line for; a wrong flag row put through the whole validation is
+refused by this check's own sentence; the flag is on `stats_with_no_attribute`, with a made-up name as the control; the
+engine's name is the generator's, with the Tyrant's Minion's seconds read by the same pattern as the control; the event
+is on `ACTION_ONLY_EVENTS` and `granting_events` and on no narrower list; the C++ raises it once, inside `TakeSoulsNear`
+and not inside `LeaveFor`; the hook leaves a Soul once, after `HandleDeath`, outside the block a Tyrant's Minion's death
+skips, which holds the replacement; the controller's frame calls the take once, after the material pick-up; the floor's
+clearing destroys Souls once, after the drops; a Soul Strike row on an event the game does not raise is refused; seven
+wrong shapes of the flag, each refused once and by its own sentence; a range refused at its wrong end only; a condition
+or a scale on the flag refused by the general checks; a row on another stat and a passive node's row left alone.
+
+**Not tested:** the real rows worn at six pieces with a control at five (the enchantment session's real-row test); the
+call in the player controller's frame (no automation test has a controller's frame; the Python test reads the call);
+anything drawn on a screen (`DrawReaperSoulNames` needs a canvas, which `-nullrhi` gives none; the tests read
+`SoulsToName`, the reading it draws from, and `OwnStacksEntry` and `NextUseLine`, the words it draws); a death by a blow or
+a tick, by the drain, or by Sacrificial Ward (every death here is a direct write, which reaches the same hook); a Tyrant's
+Minion's or a Warhound's end of time; a skill gadget moved; a minion dying while its commander is dead; two players'
+Souls drawn at once; a save's restore with a Soul on the floor; the damage figure on a blow (the stat is read with no
+tags, as `StatForSkill` answers it).
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmReaperSoul.cpp` by a
+script at this layer's working tree, and each new text counted absent before the break and once after it. Each break
+keeps the file's round, curly and square brackets paired (58, 18 and 1 pairs, counted by the same script before and
+after) and compiles alone by reading: RS-I changes one comparison, RS-II multiplies a `float` constant by a `float`
+literal, and RS-III calls `TWeakObjectPtr::IsValid` where a comparison stood, a `bool` either way. The prefix is
+`Cataclysm.SetBonus.Reaper6.`, with its trailing dot, nine tests.
+
+**The events the tests' actors raise on the way, listed before counting.** On the player: `gadget_destroyed` once, at
+the Bolt Turret's death in test 1, which no made-up row hangs on; `soul_picked_up` once for each Soul taken, which the
+two Soul Strike rows hang on. A minion's, a thrall's, a Tyrant's Minion's and a Warhound's death raise no other event on
+their commander: no Fervour is gained (no Ritualist node is held, so `GainOnMinionDeath` answers nought and no
+`resource_full` follows), no `nearby_death` (the dying are on the player's side), and nothing is summoned or replaced
+(no summon skill is held and the summons' seconds are taken away before the deaths). `MarkDead` in test 4 announces a
+death and raises no event on the player (`player_death` is raised by `HandleDeath`, which is not called). Read from the
+code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| RS-I, a Soul left at nought (R1, the flag) | `CataclysmReaperSoul.cpp` | `FGameplayTagContainer(), 0.0f) <= 0.0f)` | `FGameplayTagContainer(), 0.0f) < 0.0f)` | `EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndTheSummonCapsRemovalLeavesNone` | none |
+| RS-II, the reach doubled (R3) | `CataclysmReaperSoul.cpp` | `Standing) <= PickUpReachCm)` | `Standing) <= PickUpReachCm * 2.0f)` | `ASoulIsTakenWithinOneAndAHalfMetresAlongTheFloorRaisingTheEventOnceAndNotFromBeyond` | none |
+| RS-III, anybody takes a Soul (R2) | `CataclysmReaperSoul.cpp` | `Soul->LeftByCommander.Get() == Taker` | `Soul->LeftByCommander.IsValid()` | `OnlyTheCommanderWhoseMinionLeftASoulTakesItAndNotAnotherPlayerOrACreature` | none |
+
+Failed assertions, by reading:
+
+- **RS-I, 1 in 1 test.** Test 1: "control: with the flag at nought an imp's death leaves no Soul" (one lies there). Each
+  later death is counted as one more Soul than before it, and the cap's removal as none more, so none of them moves. Every
+  other test holds the flag at 1. Outside the prefix, `ProbeMinionDeathLeavesSoul`'s control fails, in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **RS-II, 4 in 1 test.** Test 2: "control: from 1.55 m along the floor nothing is taken" (1), "and the Soul still lies
+  there" (gone), "and no soul_picked_up was raised" (1), and "from 1.45 m ... it is taken" (0, already taken). Its later
+  five pass: one event, the Soul gone, none anywhere, and a second look takes and raises nothing. No other test calls
+  the take with a Soul of the taker's between 1.5 m and 3 m of it: test 8's Soul 3 m off is not looked for until the
+  player has walked to 1 m of it.
+- **RS-III, 5 in 1 test.** Test 3: "another player 1 m from it takes nothing" (1), "and raises nothing" (1), "and the
+  Soul still lies there" (gone), "its commander, brought 1 m from it, takes it" (0), and "and raises soul_picked_up a
+  second time" (1 against 2). "A creature 1 m from it takes nothing" passes: the Soul is already gone. No other test calls
+  the take with another's Soul within reach of the taker: test 4's dead commander is refused before the comparison, and
+  the Soul of the commander who left is looked for by nobody.
+
+**Tests of another group expected to fail, to check in the window:** under RS-I, the probe above. None under RS-II or
+RS-III, by reading: no test outside the prefix calls `TakeSoulsNear`.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-18 — A Tyrant's Minion can cast its commander's Ultimate from its own place once a row's seconds, as a free start at the commander's numbers by the skill gadget's own path: Tyrant's Chains' ten-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` (one block after `WarhoundBlow`: the stat's name,

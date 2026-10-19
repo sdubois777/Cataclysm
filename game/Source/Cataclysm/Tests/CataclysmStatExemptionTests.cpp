@@ -19,6 +19,7 @@
 #include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
@@ -9576,6 +9577,51 @@ namespace CataclysmStatExemptionTest
 					   Tyrants->TyrantsUltimateSecondsBetweenCasts(), 3.0f, 0.0001f);
 	}
 
+	/** How many Souls lie in `World`, counted by class. */
+	int32 ProbeReaperSoulsIn(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmReaperSoul> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/**
+	 * `minion_death_leaves_soul`, read by `ACataclysmReaperSoul::LeaveFor` off the commander from the death hook. Ruled
+	 * 2026-10-18, for Reaper's Embrace's six-piece. ONE SUMMONER. THE CONTROL IS AN IMP OF ITS DYING BEFORE THE STAT IS
+	 * GRANTED: no Soul lies anywhere. Granted at a flat 1, a second imp's death leaves one.
+	 *
+	 * WHAT THIS DOES NOT REACH. Which deaths, the reach, the taker, the event and the floor: `Cataclysm.SetBonus.Reaper6.`.
+	 */
+	void ProbeMinionDeathLeavesSoul(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Summoner(World, FVector::ZeroVector);
+		ACataclysmMinion* First = ImpToldItsExplosion(Test, Summoner.Actor, FVector(2 * M, 0, 0));
+		ACataclysmMinion* Second = ImpToldItsExplosion(Test, Summoner.Actor, FVector(0, 2 * M, 0));
+		if (!First || !Second)
+		{
+			return;
+		}
+
+		KillMinion(First);
+		Test.TestEqual(TEXT("control: with no such stat an imp's death leaves no Soul"), ProbeReaperSoulsIn(World), 0);
+
+		GrantFlat(Summoner.Actor, ACataclysmReaperSoul::MinionDeathLeavesSoulStat, 1.0f);
+		KillMinion(Second);
+		Test.TestEqual(TEXT("with minion_death_leaves_soul at 1 an imp's death leaves one, so "
+							"ACataclysmReaperSoul::LeaveFor really reads it"),
+					   ProbeReaperSoulsIn(World), 1);
+	}
+
 	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
@@ -9812,6 +9858,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("taunt_aura_taunt_seconds"),
 			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::TauntSecondsStat); }},
 			{TEXT("tyrants_minion_casts_ultimate_every_seconds"), &ProbeTyrantsMinionCastsUltimateEverySeconds},
+			{TEXT("minion_death_leaves_soul"), &ProbeMinionDeathLeavesSoul},
 		};
 		return Made;
 	}

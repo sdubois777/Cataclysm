@@ -842,6 +842,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Tyrant's Chains' ten-piece. Flat; at nought nothing is cast. No
 		// gameplay attribute and no base.
 		TEXT("tyrants_minion_casts_ultimate_every_seconds"),
+		// The flag by which a minion's or thrall's death leaves a Soul, read off
+		// the commander with no tags by ACataclysmReaperSoul::LeaveFor, from the
+		// commander's death hook. Ruled 2026-10-17 (#8) and 2026-10-18 (R1-R8),
+		// for Reaper's Embrace's six-piece. Flat 1; at nought no Soul is left. No
+		// gameplay attribute and no base.
+		TEXT("minion_death_leaves_soul"),
 	};
 	return Stats;
 }
