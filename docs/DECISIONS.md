@@ -18,6 +18,12 @@ Decisions made outside the Google Drive documents, newest first.
   runs out, whatever the city's size, so it erases one city after another; the Quest hit it replaces was an
   ordinary dungeon's damage, which a large city absorbs many times over.
 - **The plan predicted "small effect on the targets". That was wrong for the undefended empire.**
+- **ACCEPTED by the coordinating session under the owner's delegation, 2026-10-19**, not put to the owner: the
+  owner's standing rule is that an undefended empire must still lose; the owner said of War's Quest Sieges that a
+  Quest dungeon should give "a bit of an incentive to address them asap"; the defending players do not move beyond
+  the noise; and the below-8 limit answers "shouldn't just flat out erase a city".
+- **FOR THE OWNER'S PLAY-CHECK LIST** (ruled by the coordinating session, 2026-10-19): "an empire that ignores the
+  Void's Quest dungeons is lost in about half the time of one facing another Cataclysm".
 
 ### What was ruled
 
