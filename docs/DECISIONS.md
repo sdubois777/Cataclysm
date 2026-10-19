@@ -357,7 +357,49 @@ clock is not met by its single casts, TC10-II needs rows it does not hold, and T
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-18 under the lock enchant-tx, on development 477b0298e (the dungeon session's
+simulation-only merge), the THIRD run of this window, for six commits in this order: the mechanism (9477160b5), its
+tests' crit pin (18b994cfc), the row with its real-row test (f3582cd48), the skill gadget tests' crit pin (d59bc24e2),
+the reach parameter's rename (c817b16e1) and the free-start test's Fervour (89c56a91e). The first two runs stopped as
+the two sections above say. Every step of this one was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 4 actions, 1 file compiled"; "353 tests
+  performed, 352 succeeded, 1 failed: TheWornTyrantsChainsTenPieceMakesTheTyrantsMinionCastTheUltimateEveryThreeSeconds",
+  with exactly 1 failed assertion in the run, checked by its text: "with ten pieces worn, the Tyrant's Minion casts the
+  Ultimate every 3 s". The set-ups and the nine-piece control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 91c971c37, "Rebuild the enchantment DataTable asset for Tyrant's Chains 10-piece's row", and pushed as
+  `feat/set-bonuses-tyrant10-t-2`.
+- **The whole Unreal suite:** "3903 tests performed, 3903 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3903 tests in the tree at 91c971c37; 3903 performed, gap 0". Registered 3903 and 0: the 3893 measured at
+  b47006f8b, the nine of `Cataclysm.SetBonus.Tyrant10.` and the one real-row test. The probe and the crit pins are
+  inside tests already counted. Test 2's control now passed: the press was accepted, started the Ultimate's cooldown
+  and paid mana and Fervour, which is the measurement the second run's cause was waiting on.
+- **Python:** "6682 passed, 8 skipped"; JUnit tests 6690, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 22:42:34 to 23:29:39 and would have ended the editor and released the lock after
+  20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Tyrant10.`, 9 tests, all in
+`CataclysmMinion.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the beginnings
+of their names. The failed assertions had been counted by reading, after listing every event each test's actors raise,
+by the second session and again by the enchantment session, and were measured beside it. Each anchor was counted once,
+and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TC10-I | the 3 s halved | 2 failed: `AtNoughtNothingIsCast...`, `TheThreeSecondsAreNotShortened...` | 3 / 3 | 9 of 9 succeeded |
+| TC10-II | the gadget's `Type.Deployable` tag added to the Tyrant's Minion's cast | 1 failed, `ItsBlowsAreThePlayersAndNoMinionOrGadgetRowReachesThem` | 1 / 1 | 9 of 9 succeeded |
+| TC10-III | `CannotAct` taken out of the cast's gate | 1 failed, `NothingIsCastWhileTheMinionCannotActOrThePlayerIsDead` | 3 / 3 | 9 of 9 succeeded |
+
+The measured lines include, under TC10-I, "a tenth of a second short of 3 s, nothing ... to be 1, but it was 2"; under
+TC10-II, "the player holding the minion and gadget damage rows gets the same figure ... to be 385.000000, but it was
+500.500000"; under TC10-III, "its count stays one ... to be 1, but it was 2".
+
+**Not measured:** the probe's failure under any break, the real-row test's under any break, and the four skill gadget
+tests' pins under any break (no proof was registered for them; they add set-up assertions only).
+
+**TYRANT'S CHAINS IS NOW WHOLE**: its 2-piece and drawback (merged before), its 6-piece's blast and Tyrant's Minion,
+and its 10-piece's Ultimate cast are all in play.
 
 ---
 
