@@ -69,17 +69,40 @@ Python, in `tools/tests/test_surge_port.py`:
 
 ### Proofs
 
-Not yet run: the window registered with the coordinating session runs them. Two are registered, with these
-predictions:
+Both registered proofs PROVED, each half as registered. The Unreal halves ran in the window below with
+`unreal_build.prove_cpp_guard` on `0aaa674d`, prefix
+`Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth`; the Python halves ran with
+`tools/prove_guard.py` in a `git archive` copy of `0aaa674d`, on `tools/tests/test_surge_port.py`, before the Unreal
+halves and in a separate copy of the files.
 
-| break | predicted to fail |
-|---|---|
-| PROOF 1: `MakeDungeon` gives a Quest dungeon `25.0f` again | the renamed Surge test, on its band and same-floor assertions (and its timers-vary assertion, since every timer would be 25); and `test_both_kinds_take_their_timer_from_one_formula_in_both` |
-| PROOF 2: a Quest dungeon's timer is `Base` without the jitter | in Unreal only the renamed Surge test's same-floor assertion; in Python the one-formula check |
+| break | Unreal, with the break in | Unreal, restored | Python, with the break in | Python, restored |
+|---|---|---|---|---|
+| PROOF 1: `MakeDungeon` gives a Quest dungeon `25.0f` again | "1 tests performed, 0 succeeded, 1 failed: AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth"; the band failed on all 600 rolls (200 a tier, three tiers), "timers vary" and "of the same floor count carry different timers" once a tier; both CONTROL assertions passed | "1 tests performed, 1 succeeded, 0 failed" | "1 failed, 59 passed": `test_both_kinds_take_their_timer_from_one_formula_in_both` | "60 passed" |
+| PROOF 2: a Quest dungeon's timer is `Base` without the jitter | the same test failed, on "of the same floor count carry different timers: at most 1 at one depth" once a tier (Outpost, Bulwark, Sanctuary) and on nothing else | "1 tests performed, 1 succeeded, 0 failed" | "1 failed, 59 passed": the same one-formula check | "60 passed" |
+
+Each failing assertion was read from the copied engine log of the broken run. Two asset-manager lines about
+`GameFeatureData` appear in the broken and the restored runs alike, so they are the engine starting up and not a test.
 
 ### Run
 
-Not yet run.
+Run by the dungeon session on 2026-10-19 under the lock void-zones-w28, given by the coordinating session once
+`development`'s runs on `a7b2bcfd9` had completed with success, on `feat/game-quest-timer-by-depth-2` at `0aaa674d`.
+The five conditions were checked immediately before the lock was taken: both of `development`'s runs on `a7b2bcfd9`
+(Unreal and CI) succeeded; the three latest runs were completed and none in progress or queued; the lock was free; no
+cl, link, UnrealBuildTool or UnrealEditor process ran; no pull request was open. The lock was released before this
+was written.
+
+- **Build:** "Build: Succeeded - 69 actions, 59 files compiled".
+- **The whole Unreal suite:** "3940 tests performed, 3940 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3940 tests in the tree at 0aaa674d2; 3940 performed, gap 0; every declared test was reported by the
+  run." Registered 3940 and 0: the 3940 measured at `7056285c1` (merged as `a7b2bcfd9`) plus nothing, since one test
+  was renamed and none added. `AQuestDungeonMovesToAnAdjacentCity` passed at 40 campaigns, so more than 200 Quest
+  timers had a choice.
+- **Python:** "6789 passed, 8 skipped"; JUnit tests 6797, failures 0, errors 0, skipped 8. Registered from the run
+  before the window, 6790 passed and 7 skipped: the one difference is
+  `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, which skips once the checkout has built
+  modules ("this checkout has its modules built, so nothing is missing"), and the window had just built them. Lint:
+  "All checks passed!".
 
 ---
 
