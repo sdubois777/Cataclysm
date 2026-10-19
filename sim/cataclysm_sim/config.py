@@ -1090,6 +1090,17 @@ class TuningConfig:
     # erase count in one hit. The owner, 2026-10-16, on the Void's Quest
     # dungeons: "So, maybe Hollow works, but we shouldn't just flat out erase a
     # city if they player can't get to it in time."
+    # THE ASCENDANT, CELESTIAL'S QUEST DUNGEON, APPROXIMATED, since 2026-10-19,
+    # as the plan the coordinating session accepted on 2026-10-16 has it. Its
+    # design is that each floor adds one more active Edict, up to 4; the model
+    # has no Edicts, so each floor down to this many adds one average modifier's
+    # score to the dungeon's modifier score, which is how the model makes a
+    # dungeon more dangerous (a judgement standing in for the Edicts; the
+    # Sacrificial's doubled modifiers are the precedent). Its Core on the last
+    # floor, its Edicts growing 10% stronger a floor deeper, and the Edict it
+    # leaves on its city after a hit are not modelled. 0 turns it off.
+    ascendant_extra_modifiers_cap: int = 4
+
     hollow_floors_lost_per_day: int = 1
     hollow_floor_share_kept: float = 0.5
     hollow_hit_cannot_erase_below: int = 8

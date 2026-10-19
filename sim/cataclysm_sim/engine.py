@@ -544,7 +544,17 @@ class Simulation:
                          else "Boss"),
             rate=cfg.overwhelm_rate,
             cap=cfg.overwhelm_cap,
+            extra_per_floor=(self.average_modifier_score()
+                             if d.subtype == "Ascendant" else 0.0),
+            extra_cap=(cfg.ascendant_extra_modifiers_cap
+                       if d.subtype == "Ascendant" else 0),
         )
+
+    def average_modifier_score(self) -> float:
+        """The mean score of the modifiers this campaign's dungeons draw from;
+        0 with none."""
+        pool = self.modifier_pool
+        return sum(s for _, s in pool) / len(pool) if pool else 0.0
 
     def sieges_on(self, city_id: int) -> int:
         """How many Siege dungeons are standing on this city."""
