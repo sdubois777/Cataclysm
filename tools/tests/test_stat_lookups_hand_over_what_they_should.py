@@ -207,7 +207,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: deployable's blast is struck. The wearer's blow in a projectile's
 #: explosion asks the later-hit share with the argument list `HitOne`
 #: already hands over in the same file, so it is the same key and none.
-CALL_SITES = 68
+#: Corrected on 2026-10-19 when that layer was moved onto development: it
+#: was written as 67 beside "added one more", and the ally-buff refusal's
+#: 68 had landed below it, so the count after both is 69.
+CALL_SITES = 69
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means

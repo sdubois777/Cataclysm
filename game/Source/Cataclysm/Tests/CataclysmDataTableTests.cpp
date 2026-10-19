@@ -876,7 +876,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 675 SINCE THE SEVEN ROWS OF CHRONOMANCER'S TIME-LOCK'S 10-PIECE, issue #1833, from 668.
 	//
 	// AND 676 SINCE THE ROW THAT REFUSES BUFFS FROM ALLIES, issue #1833, from 675.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    676)
+	//
+	// AND 677 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER, issue #1833, from 676.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    677)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

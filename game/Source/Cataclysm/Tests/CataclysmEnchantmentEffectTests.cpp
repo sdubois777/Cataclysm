@@ -50,6 +50,7 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -27720,6 +27721,39 @@ bool FCataclysmAllyBuffsRefusedRowTest::RunTest(const FString&)
 				   "the row: run tools/generate_datatable_assets.py"),
 			  CopiesGiven[1], 0);
 	TestEqual(TEXT("and its damage is what it was"), After[1] / Before[1], 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeployableSelfBlastRowTest,
+	"Cataclysm.Enchantments.TheWornSelfBlastDrawbackMakesItsWearerHoldTheFlagEveryBlastSiteAsks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your deployables and traps deal full damage to you if you are within their blast radius", the deployable half,
+ * ruled 2026-10-19 (Q1, B1-B6): the wearer's flag `deployable_blasts_strike_self`. WORN by a real player, against a
+ * CONTROL wearing a drawback with no effect, each with the same benefit with no effect. The test reads
+ * `UCataclysmDeployableSelfBlast::HeldBy`, the one question all five blast sites ask before they look for the wearer;
+ * what a blast then does to its wearer is `Cataclysm.DeployableSelfBlast.`'s, where a gadget is placed and cast. ONE
+ * assertion on the case, so on assets built before the row it fails once, and only there.
+ */
+bool FCataclysmDeployableSelfBlastRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* SelfBlast = TEXT("Negative_Your_deployables_and_traps_deal_full_damage_to_y");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker Wearer(BenefitWithNoEffect, SelfBlast);
+	if (!TestTrue(TEXT("a striker wearing a drawback with no effect"), Control.Ready())
+		|| !TestTrue(TEXT("a striker wearing the self-blast drawback"), Wearer.Ready()))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: wearing a drawback with no effect, the wearer holds no flag.
+	TestFalse(TEXT("control: the wearer of a drawback with no effect does not hold the flag"),
+			  UCataclysmDeployableSelfBlast::HeldBy(Control.Character));
+	TestTrue(TEXT("wearing the self-blast drawback, the wearer holds the flag every blast site asks. If not, "
+				  "DT_EnchantmentEffects may be older than the row: run tools/generate_datatable_assets.py"),
+			 UCataclysmDeployableSelfBlast::HeldBy(Wearer.Character));
 	return true;
 }
 
