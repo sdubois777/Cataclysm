@@ -1263,16 +1263,24 @@ class TestWhatAQuestDungeonIs:
             f"the model rolls a Quest dungeon {model.quest_dungeon_chance:.0%} "
             f"of the time and the game {unreal:.0%}")
 
-    def test_the_model_rolls_its_timer_from_its_depth_and_the_game_not_yet(
+    def test_both_kinds_take_their_timer_from_one_formula_in_both(
             self, surge_header):
-        """The model's Quest timer follows its depth; the game's is still flat.
+        """A Basic and a Quest dungeon take their timer from one formula, in both.
 
-        THE OWNER DECIDED ON 2026-10-16 that a Quest dungeon's timer scales with
-        its depth like other dungeons, and the flat 25 days is retired. The
-        model changed first: `Simulation._make_dungeon` rolls a Quest dungeon's
-        timer with the ordinary formula on its own floors. The game still holds
-        `QuestResolveDays`. **When the game layer replaces it this fails: then
-        replace this with a check that both kinds use one formula in both.**
+        THIS WAS `test_the_model_rolls_its_timer_from_its_depth_and_the_game_not_yet`
+        UNTIL 2026-10-19. The owner decided on 2026-10-16 that a Quest
+        dungeon's timer scales with its depth like other dungeons, and the
+        flat 25 days is retired. The model changed first, and that check held
+        the game's `QuestResolveDays = 25` in place with an instruction to
+        replace it with this one when the game layer landed. It landed on
+        2026-10-19: `UCataclysmSurgeScheduler::MakeDungeon` gives every kind
+        `Base * Jitter`, and the constant is gone.
+
+        WHAT EACH HALF IS HELD TO. The model rolls a Basic and a Quest dungeon's
+        timer down one branch of `Simulation._make_dungeon` and reads no timer
+        range from a row. The game assigns `ResolveDays` in one statement that
+        asks nothing about the kind, and its header no longer defines a flat
+        Quest timer for anything to reach for.
         """
         engine = read(REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py")
         made = engine.split("def _make_dungeon(", 1)[1].split("d = Dungeon(", 1)[0]
@@ -1283,10 +1291,32 @@ class TestWhatAQuestDungeonIs:
         assert "spec.resolve_days" not in made, (
             "the model reads a timer range from a row again")
 
-        assert number(surge_header, "QuestResolveDays") == pytest.approx(25.0), (
-            "the game no longer holds the flat 25-day Quest timer. If the game "
-            "layer has landed, replace this check with one that both kinds "
-            "take their timer from one formula")
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        body = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        body = body.split("return Dungeon;", 1)[0]
+
+        assert "Dungeon.ResolveDays = Base * Jitter;" in body, (
+            "MakeDungeon no longer gives a dungeon the timer its depth gives, "
+            "jittered")
+
+        # THE STATEMENT THAT ASSIGNS THE TIMER, read whole up to its semicolon,
+        # so a branch written across lines is still seen.
+        assignments = [
+            part.split(";", 1)[0]
+            for part in body.split("Dungeon.ResolveDays =")[1:]
+        ]
+        assert len(assignments) == 1, (
+            f"MakeDungeon assigns ResolveDays {len(assignments)} times; one "
+            "statement for every kind is the rule")
+        assert "Kind ==" not in assignments[0] \
+            and "Type ==" not in assignments[0], (
+                "MakeDungeon branches on the kind when it assigns the timer "
+                f"again: {assignments[0].strip()!r}")
+
+        assert "QuestResolveDays" not in surge_header, (
+            "CataclysmSurge.h names QuestResolveDays again. A Quest dungeon's "
+            "timer comes from its depth since 2026-10-19")
 
     def test_its_own_rows_carry_no_damage_in_the_model(self, model):
         """A Quest row holds no damage at any tier.
@@ -1371,18 +1401,20 @@ class TestWhatAQuestDungeonIs:
             "FCataclysmDungeon::Resolves is no longer 'Basic and nothing "
             "else', which is what Dungeon.resolves in the model says")
 
-    def test_the_game_does_not_roll_its_timer_from_its_depth(self):
-        """In the game a Quest dungeon's timer is still flat; NOT YET THE RULE.
+    def test_the_jitter_is_drawn_whatever_the_kind(self):
+        """In the game the resolve jitter is drawn for every kind of dungeon.
 
-        THE OWNER DECIDED ON 2026-10-16 that a Quest dungeon's timer scales with
-        its depth like other dungeons. The model already does so; the game layer
-        that replaces `QuestResolveDays` comes after the model is measured, and
-        this check fails then. What it checks until then is true of the game as
-        it is.
+        THIS WAS `test_the_game_does_not_roll_its_timer_from_its_depth` UNTIL
+        2026-10-19, and its first two checks held the game's flat Quest timer:
+        the branch on the kind and `? QuestResolveDays`. The owner decided on
+        2026-10-16 that a Quest dungeon's timer scales with its depth, and the
+        game layer of 2026-10-19 removed both;
+        `test_both_kinds_take_their_timer_from_one_formula_in_both` holds what
+        replaced them. This keeps the check that outlives the change.
 
-        **THE JITTER DRAW STILL HAPPENS EITHER WAY.** That is not decoration: a
-        Quest dungeon that took fewer numbers off the stream would change every
-        later roll in the run depending on which kinds came out earlier.
+        **THE JITTER DRAW HAPPENS WHATEVER THE KIND.** That is not decoration: a
+        kind that took fewer numbers off the stream would change every later
+        roll in the run depending on which kinds came out earlier.
         """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
@@ -1390,16 +1422,11 @@ class TestWhatAQuestDungeonIs:
         made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
         made = made.split("return Dungeon;", 1)[0]
 
-        assert "Dungeon.ResolveDays = (Kind == ECataclysmDungeonType::Quest)" \
-            in made, (
-                "MakeDungeon no longer gives a Quest dungeon a different timer "
-                "from a Basic one's")
+        assert "const float Jitter" in made and "Dungeon.ResolveDays" in made, (
+            "MakeDungeon no longer draws `const float Jitter` before it "
+            "assigns `Dungeon.ResolveDays`, so this check reads nothing")
 
-        assert "? QuestResolveDays" in made, (
-            "MakeDungeon no longer uses QuestResolveDays for a Quest dungeon's "
-            "timer")
-
-        # THE DRAW IS OUTSIDE THE BRANCH, so both kinds cost the stream the same.
+        # THE DRAW IS UNCONDITIONAL, so every kind costs the stream the same.
         jitter = made.split("const float Jitter", 1)[1]
         jitter = jitter.split("Dungeon.ResolveDays", 1)[0]
 
