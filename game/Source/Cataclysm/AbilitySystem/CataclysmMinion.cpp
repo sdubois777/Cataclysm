@@ -2175,7 +2175,7 @@ bool ACataclysmMinion::CastPlayersUltimateFromHere()
 	return true;
 }
 
-bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float ReachCm)
+bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm)
 {
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
@@ -2209,7 +2209,7 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 	{
 		// THE NEAREST LIVING ENEMY WITHIN THE SKILL'S OWN REACH OF THIS MINION (S4; T5), by the brain's measure along
 		// the floor, as `HostilesWithinReach` takes it for the type's reach.
-		if (ReachCm <= 0.0f)
+		if (SkillReachCm <= 0.0f)
 		{
 			return false;
 		}
@@ -2217,10 +2217,10 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 		// instead of the nearest", THE ONE HOLDING THE MOST HEALTH NOW WITHIN THAT SAME REACH (stack 2, item 4; S9).
 		// Null without the row, and null for anything that is not a gadget, a Tyrant's Minion included; then the
 		// nearest.
-		AActor* Target = MostHealthWithin(ReachCm);
+		AActor* Target = MostHealthWithin(SkillReachCm);
 		if (!Target)
 		{
-			const TArray<AActor*> Within = HostilesWithin(ReachCm);
+			const TArray<AActor*> Within = HostilesWithin(SkillReachCm);
 			Target = Within.IsEmpty() ? nullptr : Within[0];
 		}
 		if (!Target)

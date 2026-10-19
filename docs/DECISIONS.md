@@ -319,6 +319,21 @@ wears nine pieces against ten, each with the 10-piece and the set's drawback. Ea
 casts are read through `TyrantsUltimateSecondsBetweenCasts`: nought at nine pieces (the control) and 3 at ten (the one
 assertion on the case).
 
+### THE FIRST WINDOW STOPPED AT THE BUILD, AND THE NAME THAT STOPPED IT
+
+The enchantment session's first window for this layer, under the lock enchant-tx on development 477b0298e, stopped at
+its first step with "Build: Failed - 37 actions, 34 files compiled" and one error: "CataclysmMinion.cpp(2178,108):
+error C4458: declaration of 'ReachCm' hides class member". The shared cast's third parameter had the name of the field
+`ACataclysmMinion::ReachCm` (`CataclysmMinion.h` 1071), and this build treats that warning as an error. Nothing ran:
+no test, no asset rebuild, no proof. Ruled by the coordinating session the same day, the parameter of
+`StartPlayersSkillFromHere` is renamed `SkillReachCm`, in its declaration, its definition, its three uses and the two
+mentions in its comment; its callers pass it by place and do not change, and no proof's anchor names it.
+
+**THE SWEEP BEFORE THE SECOND WINDOW.** Every other name the new code declares (Player, Skill, Character, Seconds, Age,
+Slots, Held, Theirs, From, Aim, Target, Within, Running, Minion, Spec) and the new `SkillReachCm` were searched as
+data members of `ACataclysmMinion`, `ACataclysmCharacterBase`, and the engine's `AActor`, `APawn` and `ACharacter`.
+None is one. The search's controls: it finds `ReachCm` in `CataclysmMinion.h` and `Tags` in the engine's `Actor.h`.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.

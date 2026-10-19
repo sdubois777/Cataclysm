@@ -987,13 +987,13 @@ public:
 	 * THE PART OF A CAST FROM THIS MINION'S PLACE THAT A SKILL GADGET AND A TYRANT'S MINION SHARE, factored out of
 	 * `CastPlayersSkillFromHere` for the ten-piece: `Skill`, which the caller has chosen and refused, started for
 	 * `Player` free from here. A self buff is granted only while `Player` stands within `SkillGadgetSelfBuffReachCm`
-	 * and not while one this minion granted still runs; every other shape is aimed at `MostHealthWithin(ReachCm)` (a
+	 * and not while one this minion granted still runs; every other shape is aimed at `MostHealthWithin(SkillReachCm)` (a
 	 * skill gadget's highest-health row; null for anything that is not a gadget) or else the nearest enemy within
-	 * `ReachCm`. A reach of nought casts nothing. The caller adds any tag; this adds none.
+	 * `SkillReachCm`. A reach of nought casts nothing. The caller adds any tag; this adds none.
 	 *
 	 * @return whether `UCataclysmTriggeredSkill::Trigger` started it
 	 */
-	bool StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float ReachCm);
+	bool StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm);
 
 	/** How many Ultimates this Tyrant's Minion has cast for the ten-piece. Read by tests. */
 	int32 TyrantsUltimateCastsMade = 0;
