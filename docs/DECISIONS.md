@@ -355,7 +355,47 @@ a row first, or every test wearing it gains a trap.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-19 under the lock enchant-ar, on development 6a9a43f1b (the Chronomancer's
+Time-Lock ten-piece merge), for two commits in this order: the mechanism (053fcffa0) and the row with the real-row test
+(926909153). Every step was as registered. The coordinating session handed out the machine for this window and held
+the dungeon session's G1 window until it was reported.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 38 actions, 35 files compiled" (the
+  mechanism's first compile); "357 tests performed, 356 succeeded, 1 failed:
+  TheWornRefusalOfAlliesBuffsKeepsAnAllysNearbyCopyOff", with exactly 2 failed assertions in the run, each checked by
+  its text: "wearing the refusal, the giver gives it no copy" and "and its damage is what it was". The control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 7056285c1, "Rebuild the enchantment DataTable asset for the ally-buff refusal's row", and pushed as
+  `feat/ally-buffs-refused-t-1`.
+- **The whole Unreal suite:** "3940 tests performed, 3940 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3940 tests in the tree at 7056285c1; 3940 performed, gap 0". Registered 3940 and 0: the 3934 measured at
+  the Chronomancer window, the five of `Cataclysm.AllyBuffsRefused.` and the one real-row test. The probe is inside a
+  test already counted. Nothing in this layer had been compiled before the window, and every test passed on its first
+  build.
+- **Python:** "6789 passed, 8 skipped"; JUnit tests 6797, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+  Before the window, on the pushed row top, the one failure was the asset-currency check naming
+  `['EnchantmentEffects.csv']`, which the asset rebuild answers.
+- **A stall guard** watched every editor run from 09:25:59 to 10:25:35 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.AllyBuffsRefused.`, 5 tests.** Each break
+asks the question of no actor (`RefusesBuffsFromAllies(nullptr)`) at one route, so that route gives every ally its
+buff. The stop condition for each was the set of tests that fail with the break in, by the beginnings of their names.
+The failed assertions had been counted by reading, by the second session and again by the enchantment session, and
+were measured beside it. Each anchor was counted once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| AB-I | the shared copies ask no question (`CataclysmSharedBuffs.cpp`) | 2 failed: `ACopyHeldIsTakenBack...`, `ARefusingAllyGetsNoSharedCopy...` | 5 / 5 | 5 of 5 succeeded |
+| AB-II | the aura's bonus asks no question (`CataclysmSkillTemplates.cpp`) | 1 failed, `AnAuraHelpsNoRefusingAllyInsideAndOneHelpedLosesItAtTheNextPulse` | 6 / 6 | 5 of 5 succeeded |
+| AB-III | the aura's immunities ask no question (`CataclysmSkillTemplates.cpp`) | 1 failed, `AnAuraSharesNoImmunityWithARefusingAllyAndOneHoldingThemLosesThemAtTheNextPulse` | 6 / 6 | 5 of 5 succeeded |
+
+The measured lines include, under AB-I, "and the wearer holds one copy, the ally beside's ... to be 1, but it was 2";
+under AB-II, "so the aura helps nobody ... to be 0, but it was 2"; under AB-III, "the refusing ally, inside the ring, is
+granted none ... to be 0, but it was 3".
+
+**Not measured:** the probe's failure under AB-I and the real-row test's under any break (both outside the prefix), a
+second player's buff in a real co-operative game (not built), and anything drawn on a screen.
 
 ---
 
