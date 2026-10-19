@@ -648,6 +648,14 @@ bool FCataclysmChronoTenMoreDamageTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// THE CRITICAL STRIKE ROLL PINNED NEVER TO CRIT, ruled 2026-10-19 by the coordinating session: a comparison of two
+	// blows' figures must not rest on neither of them critically striking.
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 
 	FChronoTenWearer Wearer(World, FVector::ZeroVector);
 	ACataclysmPlayerCharacter* Other = ChronoTenPlayerAt(World, FVector(0, -10 * M, 0));
@@ -731,6 +739,14 @@ bool FCataclysmChronoTenTickTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// THE CRITICAL STRIKE ROLL PINNED NEVER TO CRIT, ruled 2026-10-19 by the coordinating session: a comparison of two
+	// blows' figures must not rest on neither of them critically striking.
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 
 	FChronoTenWearer Wearer(World, FVector::ZeroVector);
 	ACataclysmEnemyCharacter* Caught = ChronoTenEnemyAt(World, FVector(3 * M, 0, 0));
@@ -786,6 +802,14 @@ bool FCataclysmChronoTenResistedTest::RunTest(const FString&)
 		return false;
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// THE CRITICAL STRIKE ROLL PINNED NEVER TO CRIT, ruled 2026-10-19 by the coordinating session: a comparison of two
+	// blows' figures must not rest on neither of them critically striking.
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
 
 	FChronoTenWearer Wearer(World, FVector::ZeroVector);
 	ACataclysmEnemyCharacter* Plain = ChronoTenEnemyAt(World, FVector(3 * M, 0, 0));
