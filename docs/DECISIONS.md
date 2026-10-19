@@ -7,7 +7,7 @@ Decisions made outside the Google Drive documents, newest first.
 **Simulation only, and an approximation.** The model has no Celestial Edicts, so the Ascendant's "each floor adds
 one more active Edict, up to 4" is stood in for by the modifier score: on each floor, the dungeon's own modifier
 score plus one average modifier's score for each floor down to four (`TuningConfig.ascendant_extra_modifiers_cap`).
-Branch `feat/sim-ascendant`, on top of the entry below.
+Branch `feat/sim-ascendant`, on top of the entry headed "In the simulation the Hollow, the Void's Quest dungeon, loses a floor a day…".
 
 ### SAID FIRST
 
@@ -46,8 +46,8 @@ Two readings of this layer, each a judgement:
 
 ### Measured
 
-500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. Left: the head of the
-entry below (`818c69d3` on `development`; measured as `1aa79e71`, the same simulation code). Right: this layer (`cd67d9b9`; measured as
+500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. Left: the head of
+the entry headed "In the simulation the Hollow, the Void's Quest dungeon, loses a floor a day…" (`818c69d3` on `development`; measured as `1aa79e71`, the same simulation code). Right: this layer (`0e87a9c8`; measured as
 `5ae7d326`). Won / cities lost:
 
 | campaigns | undefended, median day lost T1 / T2 / T3 / T4 | Explorer `triage` T1 | no-tree `triage` T1 |
@@ -58,7 +58,7 @@ entry below (`818c69d3` on `development`; measured as `1aa79e71`, the same simul
 ### Tests
 
 New: `sim/tests/test_an_ascendant_grows_more_dangerous_floor_by_floor.py` (5), each case with a control (the extra
-turned off, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `5ae7d326` (now `cd67d9b9`, the same zero-context patch id),
+turned off, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `5ae7d326` (now `0e87a9c8`, the same zero-context patch id),
 all PROVED and passing again restored:
 
 | break | failed with it in | restored |
