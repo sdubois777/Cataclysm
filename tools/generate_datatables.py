@@ -11118,6 +11118,90 @@ def refuse_a_taunt_aura_row_the_game_cannot_read(
     return problems
 
 
+#: Tyrant's Chains' ten-piece bonus. Ruled 2026-10-17 by the coordinating
+#: session (#7: the Tyrant's Minion's ultimate cast is a free start, as the
+#: skill gadget's) and 2026-10-18 (T1-T7), for "Your Tyrant's Minion now casts
+#: your ultimate ability every 3 seconds".
+#:
+#: ONE ROW, `flat` WITH NO REQUIRED TAGS, NO CONDITION, NO SCALE AND NO ACTION:
+#: the seconds between casts at 3, the sentence's own number.
+#: `ACataclysmMinion::TyrantsMinionCastsUltimateEverySecondsStat` holds the same
+#: name, and `tools/tests/test_tyrants_chains_ten_rows.py` compares the two.
+#:
+#: THE GAME ASKS FOR IT IN ONE PLACE, WITH NO TAGS: off the commander, through
+#: `SummonerStat` in `CataclysmMinion.cpp`, from
+#: `ACataclysmMinion::TyrantsUltimateSecondsBetweenCasts`. So a row requiring a
+#: tag matches nowhere, a row of any kind but `flat` works on a base of nought,
+#: and a row with an action is not a stat line at all. A WAIT, SO LOWER IS
+#: BETTER, and a range of it must not rise, as the taunt aura's interval must
+#: not (the owner's rule of 2026-10-05: a lower-is-better row rolls low as the
+#: best roll).
+TYRANTS_MINION_CASTS_ULTIMATE_STAT = "tyrants_minion_casts_ultimate_every_seconds"
+
+
+def refuse_a_tyrants_ultimate_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `TYRANTS_MINION_CASTS_ULTIMATE_STAT` is a figure its one reader
+    takes as it stands.
+
+    THE ROW IS ACCEPTED AND WRONG OTHERWISE, for the reasons the constant above
+    gives. Each refusal names what the reader would do with the row. The shape
+    of `refuse_a_taunt_aura_row_the_game_cannot_read`, for one stat.
+
+    THE FIGURE IS ABOVE NOUGHT AND AT MOST `MAX_EVERY_SECONDS`, the period of a
+    timed row: at nought the Tyrant's Minion casts nothing, which is what not
+    wearing the row already does. A RANGE MUST NOT RISE, as above.
+
+    A CONDITION OR A SCALE ON IT IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`:
+    the stat is on neither list those two read.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    stat_name = TYRANTS_MINION_CASTS_ULTIMATE_STAT
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat != stat_name or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and the Tyrant's Minion "
+                f"casts nothing.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat off the commander with no tags, so "
+                f"a row requiring a tag matches nowhere: the Tyrant's Minion "
+                f"casts nothing and the row says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        if low < high:
+            problems.append(
+                f"{who}: states {low:g} to {high:g} on {stat!r}, and the pair "
+                f"must not rise. A roll of 1 gives the second figure, and the "
+                f"best roll is the SHORTEST wait: mark the sentence's range in "
+                f"the Rolls Down column of the Enchantments sheet.")
+        for value in sorted({low, high}):
+            if value <= 0.0 or value > MAX_EVERY_SECONDS:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the seconds "
+                    f"must be above 0 and at most {MAX_EVERY_SECONDS:g}: at "
+                    f"nought the Tyrant's Minion casts nothing.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11546,6 +11630,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE FOUR TAUNT AURA STATS ARE FLAT, WITH NO TAGS AND NO ACTION, AND
     # ABOVE 0. Ruled 2026-10-17 (#6) and 2026-10-18.
     problems.extend(refuse_a_taunt_aura_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE TYRANT'S MINION'S SECONDS BETWEEN ULTIMATE CASTS ARE FLAT, WITH NO
+    # TAGS AND NO ACTION, ABOVE 0 AND NOT RISING. Ruled 2026-10-17 (#7) and
+    # 2026-10-18 (T1-T7).
+    problems.extend(refuse_a_tyrants_ultimate_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

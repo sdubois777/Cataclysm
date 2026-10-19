@@ -367,6 +367,14 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// refuses a corpse itself. Its return value is for tests.
 	UCataclysmTauntAura::Step(this);
 
+	// AND A WEARER OF TYRANT'S CHAINS' TEN PIECES HAS ITS TYRANT'S MINION CAST ITS
+	// ULTIMATE ON A CLOCK. Ruled 2026-10-17 (#7) and 2026-10-18 (T6): the keyed
+	// skill gadget's clock, looked at here as `GadgetStep` looks at a gadget's, so
+	// a cast is a quarter of a second late at worst. The call answers false for
+	// every character that is not a Tyrant's Minion of a commander holding the
+	// row, and refuses a corpse itself. Its return value is for tests.
+	ACataclysmMinion::TyrantsMinionStep(this);
+
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the
 	// first of them whose effect reaches out on its own. "Emits a burning aura

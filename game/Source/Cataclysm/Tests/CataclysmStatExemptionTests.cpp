@@ -9534,6 +9534,49 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `tyrants_minion_casts_ultimate_every_seconds`, read off the commander with no tags by
+	 * `ACataclysmMinion::TyrantsUltimateSecondsBetweenCasts`, which `TyrantsMinionStep` and
+	 * `CastPlayersUltimateFromHere` ask. Ruled 2026-10-17 (#7) and 2026-10-18 (T1-T7), for Tyrant's Chains' ten-piece.
+	 * ONE SUMMONER, whose Tyrant's Minion is summoned by the six-piece's own call. THE CONTROL IS THE SAME MINION
+	 * BEFORE THE STAT IS GRANTED: its seconds are nought. Granted at a flat 3, they are 3.
+	 *
+	 * WHAT THIS DOES NOT REACH. The cast, its clock, its aim and its pricing: `Cataclysm.SetBonus.Tyrant10.`.
+	 */
+	void ProbeTyrantsMinionCastsUltimateEverySeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Summoner(World, FVector::ZeroVector);
+		GrantFlat(Summoner.Actor, ACataclysmMinion::TyrantsMinionSecondsStat, 10.0f);
+		ACataclysmMinion* Tyrants =
+			ACataclysmMinion::SummonTyrantsMinion(Summoner.Actor, /*bLostWasTyrantsMinion=*/false, FVector(2 * M, 0, 0));
+		if (!Test.TestNotNull(TEXT("set-up: a Tyrant's Minion"), Tyrants))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			if (IsValid(Tyrants))
+			{
+				Tyrants->Destroy();
+			}
+		};
+
+		Test.TestEqual(TEXT("control: with no such stat a Tyrant's Minion's seconds between casts are nought"),
+					   Tyrants->TyrantsUltimateSecondsBetweenCasts(), 0.0f, 0.0001f);
+		GrantFlats(Summoner.Actor, {{FName(ACataclysmMinion::TyrantsMinionSecondsStat), 10.0f},
+									{FName(ACataclysmMinion::TyrantsMinionCastsUltimateEverySecondsStat), 3.0f}});
+		Test.TestEqual(TEXT("with tyrants_minion_casts_ultimate_every_seconds at 3 they are 3, so "
+							"ACataclysmMinion::TyrantsUltimateSecondsBetweenCasts really reads it"),
+					   Tyrants->TyrantsUltimateSecondsBetweenCasts(), 3.0f, 0.0001f);
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -9768,6 +9811,7 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::RadiusMetresStat); }},
 			{TEXT("taunt_aura_taunt_seconds"),
 			 [](FAutomationTestBase& Test) { ProbeTauntAura(Test, UCataclysmTauntAura::TauntSecondsStat); }},
+			{TEXT("tyrants_minion_casts_ultimate_every_seconds"), &ProbeTyrantsMinionCastsUltimateEverySeconds},
 		};
 		return Made;
 	}

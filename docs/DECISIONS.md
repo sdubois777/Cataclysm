@@ -2,6 +2,407 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-18 — A Tyrant's Minion can cast its commander's Ultimate from its own place once a row's seconds, as a free start at the commander's numbers by the skill gadget's own path: Tyrant's Chains' ten-piece mechanism, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` (one block after `WarhoundBlow`: the stat's name,
+`TyrantsUltimateSecondsBetweenCasts`, `TyrantsMinionStep`, `CastPlayersUltimateFromHere`, `StartPlayersSkillFromHere`
+and three fields) and `.cpp` (the end of `CastPlayersSkillFromHere` now calls `StartPlayersSkillFromHere`, and one block
+at the end of the file); `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one call on the regeneration
+step, after `UCataclysmTauntAura::Step`); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name at
+the end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe and its
+line at the end of `Probes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusTyrantTenTests.cpp` (new, nine tests);
+`tools/generate_datatables.py` (`refuse_a_tyrants_ultimate_row_the_game_cannot_read`, called last from
+`validate_enchantment_effects`); `tools/tests/test_tyrants_chains_ten_rows.py` (new);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one dated line, no call site). No data row, no minion
+type row, no tag and no workbook cell is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the row is written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE ONE ROW IS WRITTEN ABOVE THIS LAYER**, by the enchantment session. This layer
+  authors no row. A ten-piece bonus is live only with ten pieces worn, and a wearer of ten also wears the six-piece,
+  which summons the Tyrant's Minion this bonus gives a cast.
+- **THE 3 S IS THE SENTENCE'S NUMBER, NOT A NUMBER UNDER THE OWNER'S DELEGATION**: "every 3 seconds". Ruled 2026-10-18
+  ("The 3 s is the sentence's number, not delegated"). It is the row's value, not a constant.
+- **THE TWO-PIECE'S "Your pets and minions deal 50% increased damage" DOES NOT REACH THESE CASTS** (T1). The cast is the
+  player's own Ultimate, at the player's numbers, with no tag added: no minion row and no gadget row raises it. The
+  same row does raise the Tyrant's Minion's own blow, as before. Measured by a test, not by play.
+- **FOR THE OWNER'S PLAY-CHECK LIST:** the Tyrant's Minion's ultimate casts are priced at the player's numbers, and no
+  minion row raises them.
+- **WHAT A PLAYER WOULD NOTICE**: while the Tyrant's Minion stands, the player's Ultimate is cast from where the minion
+  stands, at the nearest living enemy within the skill's own reach of the minion, at most once every 3 s, costing
+  nothing, waiting for and starting no cooldown on the player's own Ultimate, and raising no `skill_use` or
+  `attack_use`. The player's own Ultimate is untouched and may be cast as well. A self-buff Ultimate is granted to the
+  player only within 8 m of the minion. A summon, a movement skill, an aura, a held or channelled Ultimate, a
+  shapeless one, one with a `Requires` or a health cost, and an empty slot are never cast. NO SHIPPED ULTIMATE IS A
+  SELF BUFF; Living Pyre is an aura and is never cast.
+- **THE CAST CAN COME UP TO A QUARTER OF A SECOND LATE**, because the clock is looked at on the regeneration step, four
+  times a second, as a skill gadget's is.
+- **NO USER INTERFACE IS BUILT FOR IT.** The brief asks for none; nothing on screen says the minion is casting or when it
+  casts next. Said here because every system is meant to have a basic one.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 50 and the rulings below.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner said nothing on this bonus's shape. The coordinating session ruled on 2026-10-17 (#7; its words as relayed):
+"the Tyrant's Minion's ultimate cast is a FREE START, as the skill gadget's." And on 2026-10-18, on the enchantment
+session's questions T1-T7, its words as relayed:
+
+> RULINGS, Tyrant's Chains 10 (brief 50): (a) on all seven, as you wrote them.
+> T1 the player's own Ultimate at the player's numbers; no tag added, no minion row reaches it. Say in the entry that
+> the 2-piece's minion damage does not reach these casts, and put it on the owner's play-check list.
+> T2 what the player holds in the Ultimate slot now, refused by SkillGadgetMayCast's rule.
+> T3 a converted Ultimate is still cast by the Tyrant's Minion.
+> T4 a self-buff Ultimate follows the gadget's S13 (the player within 8 m, not while one this minion granted still
+> runs).
+> T5 from the minion's place at the nearest living enemy within the skill's own reach; no target, no cast.
+> T6 the keyed gadget clock, 3 s from the row, fixed, not shortened by Ultimate cooldown rows or minion_attack_speed.
+> T7 nothing while the minion cannot act or is dead, or the player is gone or dead, or the stat is nought; the casts
+> raise no skill_use or attack_use, and their blows are the player's.
+> The 3 s is the sentence's number, not delegated.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree, in `CataclysmMinion.cpp` unless another file is named.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| #7 | A free start, as the skill gadget's. | `StartPlayersSkillFromHere`, 2234: `UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim, 1.0f, /*bPaysCost=*/false, &From, /*CastBy=*/this)`, the call the skill gadget made. |
+| T1 | The player's own Ultimate at the player's numbers; no tag added; no minion row reaches it. | `CastPlayersUltimateFromHere`, 2169: the held row copied as it stands. The minion is no skill gadget (`IsSkillGadget` needs a slot), so `SkillGadgetCasting` answers null and `ApplyHit` prices the blow as the player's. |
+| T2 | What the player holds in the Ultimate slot now, refused by `SkillGadgetMayCast`'s rule. | 2156 to 2164: the weapon slots' row for `ECataclysmAbilitySlot::Ultimate`, read on each cast, and `SkillGadgetMayCast(*Held)`. |
+| T3 | A converted Ultimate is still cast. | `CastPlayersUltimateFromHere` does not ask `SlotIsASkillGadget`, which `CastPlayersSkillFromHere` asks at 983. |
+| T4 | A self buff follows S13: the player within 8 m, not while one this minion granted still runs. | `StartPlayersSkillFromHere`, 2195 (8 m) and 2202 (a running buff whose `FreeRepeatCastBy` is this minion). |
+| T5 | From the minion's place at the nearest living enemy within the skill's own reach; no target, no cast. | `SkillGadgetReachCm(Skill)` at 2170; the search at 2220 to 2229. `MostHealthWithin` answers null for anything that is not a gadget, so the nearest. |
+| T6 | The keyed gadget clock, 3 s from the row, fixed. | `TyrantsMinionStep`, 2112 to 2141: the first cast on the first step that casts one, then nothing until the row's seconds since the last that started (2131). Only `TyrantsUltimateSecondsBetweenCasts` is read: no cooldown row and no `minion_attack_speed`. The step is called from `ACataclysmCharacterBase`'s regeneration step (`CataclysmCharacterBase.cpp` 376). |
+| T7 | Nothing while the minion cannot act or is dead, the player gone or dead, or the stat nought; no `skill_use` or `attack_use`; the blows the player's. | `TyrantsMinionStep` 2115 (a corpse) and 2120 (nought); `CastPlayersUltimateFromHere` 2148 to 2149. The events: a free start sends no skill-used notice (`bFreeRepeat` skips the commit), and its blows are dealt by the player, so `hit_dealt` and its fellows are raised on the player. |
+| T6 | "The 3 s is the sentence's number, not delegated." | SAID FIRST, and the row below. |
+
+### THE SHARED PART, AND THE LINE THAT KEEPS EVERY SKILL GADGET WHERE IT WAS
+
+**FACTORED OUT, NOT A SECOND CALLER.** The part of `CastPlayersSkillFromHere` after the skill is chosen and refused, the
+self buff's 8 m and running copy, the highest-health row, the nearest enemy within a reach and the free start itself,
+moved unchanged into `StartPlayersSkillFromHere(Player, Skill, ReachCm)`. Each caller keeps its own gate and its own
+choice of skill: `CastPlayersSkillFromHere` still refuses a minion that is not a skill gadget and a slot no longer
+converted, still reads its own slot, and still adds `Type.Deployable` to the copy it passes, which is the line that
+keeps every skill gadget's pricing where it was:
+
+```
+	FCataclysmWeaponSkill AsTheGadgets = Skill;
+	AsTheGadgets.Tags.AddTag(DeployableTag());
+	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill)))
+```
+
+The one difference in order: the skill gadget's reach is now computed before the self-buff branch rather than inside
+the other branch. It is a read with no effect, and the self buff never looks at it. **The option not taken:** calling
+`CastPlayersSkillFromHere` from the Tyrant's Minion, which would have needed three exemptions in its gate (not a
+skill gadget, no converted slot, no `Type.Deployable` tag) and a slot field set on a minion that is not a gadget,
+which `IsSkillGadget` reads and which would then have made `SkillGadgetCasting` answer the minion. `GadgetStep` is
+also not the caller: it returns at once for anything that is not a gadget, which a Tyrant's Minion is not.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE ULTIMATE IS READ INLINE, NOT THROUGH A REFACTOR OF `SkillGadgetsSkill`**, by the same `FindByPredicate` on the
+  weapon slots. `SkillGadgetsSkill` reads the gadget's own `SkillGadgetSlot`, which a Tyrant's Minion leaves at `None`.
+  The option not taken: a static helper both call, a change to a merged function the brief did not need.
+- **THE AIM'S REACH IS `SkillGadgetReachCm`, AS THE BRIEF NAMES IT, SO A `minion_range` ROW REACHING THE MINION'S TYPE
+  TAGS WOULD WIDEN IT.** The tags are `Type.Minion, Type.Summon, Minion.Creature, Minion.Melee`. No shipped row does:
+  the one `minion_range` row, "Gadgets have 20%-40% increased attack range", requires `Type.Deployable`
+  (`game/Data/EnchantmentEffects.csv` 406). The option not taken: the row's stated figure alone, which T1's "no minion
+  row reaches it" could be read to ask for. **RULED BY THE COORDINATING SESSION THE SAME DAY, as read here**: T1's "no
+  minion row reaches it" is the pricing, and the aim's reach uses the minion's tags as T5 says. SO A FUTURE
+  `minion_range` ROW REACHING `Type.Minion` OR `Type.Summon` WOULD WIDEN THE TYRANT'S MINION'S AIM.
+- **THE FIRST CAST COMES ON THE FIRST STEP THAT CASTS ONE**, as the keyed gadget clock's "fresh means ready", so a
+  Tyrant's Minion just summoned casts on its first step with a target. A new summon that refreshes the one standing
+  is the same actor, and its clock is kept. The option not taken: wait a whole 3 s from the summon, or restart the
+  clock on a refresh.
+- **THE STAT IS ASKED AGAIN IN `CastPlayersUltimateFromHere`**, so a direct call at nought casts nothing (T7). The
+  option not taken: ask only on the step.
+- **THE CALL IS ON THE REGENERATION STEP AFTER THE TAUNT AURA'S**, the last job of that kind, and refuses a corpse
+  itself. The option not taken: a timer of its own on the minion.
+- **THE CASTS ARE IN ADDITION TO THE MINION'S OWN FIGHTING.** Its brain, its blow and its walk are unchanged. The
+  option not taken: the cast replacing its blow.
+- **A STATED RANGE MUST NOT RISE, AND THE FIGURE IS AT MOST 60 S**, in the generator: the seconds are a wait, so lower
+  is better, as for the taunt aura's interval (the owner's rule of 2026-10-05), and 60 is `MAX_EVERY_SECONDS`, the
+  period of a timed row. The ruled row is 3 to 3, which neither touches. The option not taken: the six-piece's rising
+  range of seconds, which is a duration, where more is better.
+
+### THE GENRE SOURCE
+
+None. Brief 50 requires none: the shape is ruled by the skill gadget precedent. Nothing was fetched.
+
+### WHAT WAS BUILT
+
+- **The stat**, `tyrants_minion_casts_ultimate_every_seconds`, `ACataclysmMinion::TyrantsMinionCastsUltimateEverySecondsStat`,
+  read off the commander with no tags by `TyrantsUltimateSecondsBetweenCasts` through `SummonerStat`; the last name on
+  `StatsWithNoAttribute`, with a probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The clock**, `TyrantsMinionStep`, with `bTyrantsUltimateHasCast` and `LastTyrantsUltimateCastAtAgeSeconds`, called
+  from `ACataclysmCharacterBase`'s regeneration step.
+- **The cast**, `CastPlayersUltimateFromHere`, counted in `TyrantsUltimateCastsMade`.
+- **The shared part**, `StartPlayersSkillFromHere`, as above.
+- **The generator's refusal** of a row on the stat that the game would read as nothing.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One row on the Enchantment Effects sheet: Enchantment `Positive_Tyrant_s_Chains_10_Piece_Bonus_Your_Tyrant_s`, Effect
+the whole sentence ("Tyrant's Chains (10-Piece Bonus): Your Tyrant's Minion now casts your ultimate ability every 3
+seconds"), Stat `tyrants_minion_casts_ultimate_every_seconds`, Value Kind `flat`, Value Low 3, Value High 3. Every
+other cell empty: no Required Tags (the enchantment's own `Type.Minion, Slot.Ultimate` are not the row's), no
+Condition, no Scale, no Action, no Action Event, no Trigger Cooldown. It passes the generator on a made-up sheet
+(`tools/tests/test_tyrants_chains_ten_rows.py`). No Minion Types row is needed: the Tyrant's Minion's is merged.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **`StatsWithNoAttribute` gains one name**, at its end, so the generator accepts a row on it with no gameplay
+  attribute; `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains its probe, the last of `Probes`.
+- **The generator now refuses** a row on the stat that is not `flat`, carries a Required Tag or an Action, rises, or
+  states nought or less or more than 60. The stat was accepted on no row before, since it did not exist.
+- **`INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` is unchanged**: the stat is asked
+  through `SummonerStat`, already listed. One dated line says so; `CALL_SITES` stays 66.
+- **No merged test asserts anything different, by reading**: every skill gadget's cast takes the same path with the
+  same gate, skill, tag, reach and call; and `TyrantsMinionStep` returns at once for every character that is not a
+  Tyrant's Minion of a commander holding the stat, which before the row is every character.
+- **IN THE ROW LAYER**, by reading only: the row's 3 is in the sentence's words, so the row-text check
+  (`tools/tests/test_enchantment_effects_match_the_row_text.py`) is expected to need no word or flag added. Not run.
+
+### Tests
+
+Nine Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusTyrantTenTests.cpp`, the group
+`Cataclysm.SetBonus.Tyrant10.`, beside `CataclysmSetBonusTyrantSixTests.cpp` and following the rig of
+`CataclysmSkillGadgetTests.cpp`: a possessed player character of the players' side holding a Demonic Whip (The Gathering,
+a 14 m point-blank strike), a weapon damage of 100, 10,000 health and 1,000 mana; enemies of the monsters' side with no
+defences and 50,000 health. Each Tyrant's Minion is summoned by `SummonTyrantsMinion` with the six-piece's seconds held
+for that call alone. Every stat is granted by hand as a whole stat line. Rigs stand 60 m apart, beyond the strike. The
+world's clock is moved by hand and `TyrantsMinionStep` is called directly. Every helper type and function is named after
+the subject (`FTyrantsUltimateRig`, `TyrantsUltimateEnemy`...).
+
+1. `AtNoughtNothingIsCastAndAtThreeTheUltimateIsCastFromTheMinionEveryThreeSeconds`. In order: set-up, a world, the
+   whip's Ultimate, a minion 30 m from the player, two enemies; set-up, the minion aims by The Gathering's 14 m;
+   control, holding no row the seconds are nought; its step casts nothing; no cast is counted; with the row the seconds
+   are 3; an enemy 16 m off is not aimed at; it keeps its health; set-up, the player's own cast starts; control, it
+   struck; set-up, an enemy 3 m from the minion; set-up, it is beyond 14 m of the player; the step casts; once; the cast
+   took what the player's own cast takes; the far enemy is untouched; the cast was not the minion's own blow; a tenth
+   of a second short of 3 s, nothing; at 3 s, the second cast.
+2. `TheCastCostsNothingWaitsForAndStartsNoCooldownAndRaisesNoSkillOrAttackUse`. In order: the minion casts; it strikes;
+   mana unchanged; no Ultimate cooldown runs; no `skill_use`; no `attack_use`; no skill-used notice; `hit_dealt` raised
+   on the player at least once; control, a second player's own press starts the Ultimate cooldown; and pays mana; with
+   that cooldown running its minion still casts; and strikes.
+3. `ItsBlowsAreThePlayersAndNoMinionOrGadgetRowReachesThem`. A second player holds `minion_damage` 50% increased with
+   no tag (the two-piece's shape) and the gadget damage row, 30% increased on `attack_damage` and `spell_damage`
+   requiring `Type.Deployable`. In order: control, the minion's own blow lands; control, the two-piece's row raises it
+   (more than 1.4 times); set-up, both minions cast; the plain player's Ultimate struck; the rowed player's is the same
+   figure; set-up, a third player's Heavy skill gadget; control, a blow a skill gadget carries is the gadget's; a blow
+   the Tyrant's Minion carries is answered null by `SkillGadgetCasting`; the Tyrant's Minion is no skill gadget.
+4. `AnUltimateConvertedIntoASkillGadgetIsStillCast`. In order: control, with the ten-piece row alone the Ultimate slot
+   is not converted; set-up, with the gadget row it is; the Tyrant's Minion still casts it; once; it strikes.
+5. `ASelfBuffUltimateIsGrantedWithinEightMetresOfTheMinionAndNotWhileOneItGrantedRuns`. A weapon skill table built for
+   the test holds Coil of Embers' shape and figures in the whip's Ultimate slot. In order: set-up, the whip holds an
+   Ultimate; it is a self buff; a minion may cast it; control, holding no row, nothing is granted; 9 m from the minion,
+   nothing; no buff of the minion's runs; 7.5 m off, it is cast; it runs on the player, cast by the minion; 3.5 s later,
+   while it runs, no second; one runs.
+6. `TheThreeSecondsAreNotShortenedByACooldownRowOrMinionAttackSpeed`. A flat 50 of `cooldown_reduction` and 50%
+   increased `minion_attack_speed` with no tag. In order: control, the reduction row shortens the player's Ultimate
+   cooldown; control, the attack speed row reaches the minion's tags; the seconds are still 3; set-up, the first cast;
+   at 2 s, nothing; at 2.9 s, nothing; at 3 s, the second cast.
+7. `ASummonAMovementSkillOrAHeldUltimateIsNeverCastAndNeitherIsAnEmptySlot`. Five players: the whip, a Demonic Staff
+   (Subjugate), a Demonic Dagger (Everywhere at Once), a Demonic Greatsword (The Whole Weight) and a Celestial Sword. In
+   order: set-up, each of the first four holds an Ultimate; the sword's slot holds none; Subjugate is a summon;
+   Everywhere at Once is a movement skill; The Whole Weight has a charge time; control, a minion may cast The Gathering;
+   and the whip's minion casts it; then for each of the other four (three refused by `SkillGadgetMayCast`, the empty
+   slot not asked), no cast on two steps 3 s apart, and its enemy keeps its health.
+8. `AnImpAndASkillGadgetCastNothingNewAndTheGadgetsOwnCastsAreUnchanged`. One player holding the ten-piece row and the
+   Heavy slot's gadget row. In order: set-up, an imp, a Heavy skill gadget, three enemies; neither is a Tyrant's Minion;
+   control, the Tyrant's Minion casts; the imp's step casts nothing; its count stays nought; its enemy keeps its
+   health; its seconds are nought; the gadget's ten-piece step casts nothing; its ten-piece count stays nought; it has
+   cast nothing for its slot; its enemy keeps its health; its own first step casts the Heavy once; strikes; still no
+   ten-piece cast; its clock is the Heavy slot's cooldown; short of it, nothing; at it, the second cast.
+9. `NothingIsCastWhileTheMinionCannotActOrThePlayerIsDead`. In order: control, a minion able to act casts; set-up, the
+   minion stunned (by its enemy) cannot act; 3 s on, it casts nothing; its count stays one; its enemy loses nothing
+   more; a dead player's minion casts nothing; its enemy keeps its health; the player alive again, the minion casts;
+   once.
+
+And one probe in `CataclysmStatExemptionTests.cpp`, `ProbeTyrantsMinionCastsUltimateEverySeconds`: a bare summoner's
+Tyrant's Minion; control, with no such stat its seconds are nought; with the stat at 3 they are 3.
+
+Python: `tools/tests/test_tyrants_chains_ten_rows.py`, on a made-up workbook holding the sentence typed Generic: the row
+name is the shipped one; the row is carried through and refused by nothing, the condition and scale checks and the
+whole validation included; a wrong row put through the whole validation is refused by this check's own sentence; the
+stat is on `stats_with_no_attribute`, with a made-up name as the control; the engine's name is the generator's, with the
+six-piece's seconds read by the same pattern as the control; eight wrong shapes, each refused once and by its own
+sentence; a falling range is accepted; a condition or a scale is refused by the general checks; a row on another stat
+and a passive node's row are left alone.
+
+**Not tested:** the real row worn at ten pieces with a control at nine (the enchantment session's real-row test); the
+call from `ACataclysmCharacterBase`'s regeneration step (the tests call `TyrantsMinionStep` directly); a commander
+destroyed; a Projectile or Debuff Ultimate (Butcher's Bill, the rack) cast from the minion; an aura Ultimate (Living
+Pyre), a `Requires` or a health cost, refused by `SkillGadgetMayCast` by reading; a lock on the Ultimate slot refusing
+the cast (`CanActivateAbility`, by reading); a `minion_range` row widening the aim; a refresh by a second death keeping
+the clock; a self buff's enemy areas measured from the minion; the highest-health gadget row not moving the aim; Mana
+Weaver's ten-piece beside it; the Tyrant's Minion fighting while it casts (no controller is ticked); anything drawn on a
+screen.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` by a
+script at this layer's working tree, each new text was counted absent before the break and once after it except
+TC10-III's, whose new text is the start of its old text and so was counted once before and once after; each break keeps
+the file's round, curly and square brackets paired (counted by the same script) and compiles alone by reading: TC10-I
+changes a figure, TC10-II makes a `const` copy a plain one and adds a tag through `DeployableTag`, defined above it in
+the same file, and TC10-III drops one condition of an `if`. The prefix is `Cataclysm.SetBonus.Tyrant10.`, with its
+trailing dot, nine tests.
+
+**The events the tests' actors raise on the way, listed before counting.** A free start's blows are the player's, so on
+the PLAYER each enemy The Gathering strikes raises `hit_dealt`, `first_hit_dealt` on the first blow to that enemy,
+`crowd_control` for the knockdown it lays and `dot_applied` for the burn, and the use raises `skill_end` as it ends. The
+minion's own blow in test 3 is dealt in the player's name too. The press in test 2 raises `skill_use` and `attack_use` on
+the second player, whose counters are not the ones read. The stun in test 9 raises `crowd_control` on the stunning enemy.
+The skill gadget's cast in test 8 raises `deployable_hit` on the player. No test holds a row on any event, so none of
+these moves a figure any assertion reads. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TC10-I, the 3 s shortened to half (T6) | `CataclysmMinion.cpp` | `Age - Minion->LastTyrantsUltimateCastAtAgeSeconds < Seconds - SkillGadgetClockAllowanceSeconds)` | `Age - Minion->LastTyrantsUltimateCastAtAgeSeconds < Seconds * 0.5f - SkillGadgetClockAllowanceSeconds)` | `TheThreeSecondsAreNotShortenedByACooldownRowOrMinionAttackSpeed` | `AtNoughtNothingIsCastAndAtThreeTheUltimateIsCastFromTheMinionEveryThreeSeconds` |
+| TC10-II, `Type.Deployable` added to the cast (T1) | `CataclysmMinion.cpp` | `const FCataclysmWeaponSkill Skill = *Held;` | `FCataclysmWeaponSkill Skill = *Held; Skill.Tags.AddTag(DeployableTag());` | `ItsBlowsAreThePlayersAndNoMinionOrGadgetRowReachesThem` | none |
+| TC10-III, a minion that cannot act casts (T7) | `CataclysmMinion.cpp` | `if (!bIsTyrantsMinion \|\| UCataclysmSkillEffects::IsDead(this) \|\| UCataclysmSkillEffects::CannotAct(this)` | `if (!bIsTyrantsMinion \|\| UCataclysmSkillEffects::IsDead(this)` | `NothingIsCastWhileTheMinionCannotActOrThePlayerIsDead` | none |
+
+Failed assertions, by reading:
+
+- **TC10-I, 3 in 2 tests.** Test 6: "at 3 s over one and a half ... nothing" (2 s on, past the halved 1.5 s: 2 against
+  1) and "a tenth of a second short of 3 s, nothing" (2 against 1); "at 3 s, the second cast" passes, since 1 s after
+  the early second cast is short of 1.5 s and the count stays 2. Test 1: "a tenth of a second short of 3 s, nothing" (2
+  against 1); "at 3 s, the second cast" passes for the same reason. Tests 2, 3, 4, 7, 8 and 9 make one cast per minion
+  at most; test 5's second step is refused by the running buff whatever the clock.
+- **TC10-II, 1 in 1 test.** Test 3: "the player holding the minion and gadget damage rows gets the same figure" (the
+  gadget damage row now reaches the rowed player's cast, 30% more or more). No other test holds a row requiring
+  `Type.Deployable` on the cast's damage; test 8's gadget row is the slot flag.
+- **TC10-III, 3 in 1 test.** Test 9: "its 3 s run, a minion that cannot act casts nothing" (it casts), "its count stays
+  one" (2), "and its enemy loses nothing more" (it loses another cast). No other test stuns a minion.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. The probe reads only
+`TyrantsUltimateSecondsBetweenCasts`, which no break touches; no `Cataclysm.SkillGadgets.` test reaches the three
+changed lines, which are in the Tyrant's Minion's functions only.
+
+### THE CRITICAL STRIKE ROLL, PINNED BY THE ENCHANTMENT SESSION
+
+Ruled by the coordinating session when it read this layer: the two tests that compare two blows' figures,
+`AtNoughtNothingIsCast...` (the Tyrant's Minion's cast against the player's own) and `ItsBlowsAreThePlayers...` (the
+same figure with and without the minion and gadget damage rows), must pin the critical strike roll rather than rest on
+neither blow critically striking. Each now holds `Cataclysm.CritRoll` at 100, which never critically strikes, for its
+length, and puts back what was there; every blow a defender takes reads it (`UCataclysmVitalAttributeSet`). One set-up
+assertion each, that the pin was found. By reading, the player in these tests has no critical strike chance anyway:
+possession runs the stat refresh, which writes the 5% skill default only for a character wearing a weapon item
+(`UCataclysmEquipmentComponent::WornWeapons`), and these players hold theirs through the weapon slots alone. The pin
+makes that independent of the rig. No proof's count moves: no break touches the pin.
+
+**THE SAME PIN IN FOUR MERGED SKILL GADGET TESTS, RULED THE SAME DAY.** The coordinating session first kept
+`CataclysmSkillGadgetTests.cpp` out of this layer, then, told by the enchantment session that its comparison at line
+636 holds only because that rig wears no weapon item (a rig that wore one would carry the 5% skill default on every
+blow), ruled the pin in as a test-only commit on this branch. By the same reading, four tests in that file compare two
+blows' figures, and each now holds `Cataclysm.CritRoll` at 100 for its length through a scoped `FGadgetTestCritRoll`:
+`FCataclysmSkillGadgetCastsTest` (the gadget's cast against the player's own), `FCataclysmSkillGadgetDamageRowTest`
+(two 30%-more comparisons), `FCataclysmSkillGadgetAgeAndStillnessTest` (two) and `FCataclysmSkillGadgetFlatAndHitTest`
+(the 300-more difference). Its other tests compare health only with the untouched 50,000, which a critical strike
+cannot move. One set-up assertion each, that the pin was found; no test is added. No proof of this layer reaches the
+file: their prefix is `Cataclysm.SetBonus.Tyrant10.` only.
+
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-18 on this mechanism. One row on the Enchantment Effects sheet,
+`Positive_Tyrant_s_Chains_10_Piece_Bonus_Your_Tyrant_s#1`: Stat `tyrants_minion_casts_ultimate_every_seconds`, Value
+Kind `flat`, Value Low and High 3, every other cell empty. The row pins move to 663 rows over 537 enchantments. The
+row-text check needed nothing added: the sentence's "3 seconds" states the 3.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornTyrantsChainsTenPieceMakesTheTyrantsMinionCastTheUltimateEveryThreeSeconds`,
+wears nine pieces against ten, each with the 10-piece and the set's drawback. Each wears at least six, so the
+6-piece's own rows summon each striker's Tyrant's Minion through `SummonTyrantsMinion`. The minion's seconds between
+casts are read through `TyrantsUltimateSecondsBetweenCasts`: nought at nine pieces (the control) and 3 at ten (the one
+assertion on the case).
+
+### THE FIRST WINDOW STOPPED AT THE BUILD, AND THE NAME THAT STOPPED IT
+
+The enchantment session's first window for this layer, under the lock enchant-tx on development 477b0298e, stopped at
+its first step with "Build: Failed - 37 actions, 34 files compiled" and one error: "CataclysmMinion.cpp(2178,108):
+error C4458: declaration of 'ReachCm' hides class member". The shared cast's third parameter had the name of the field
+`ACataclysmMinion::ReachCm` (`CataclysmMinion.h` 1071), and this build treats that warning as an error. Nothing ran:
+no test, no asset rebuild, no proof. Ruled by the coordinating session the same day, the parameter of
+`StartPlayersSkillFromHere` is renamed `SkillReachCm`, in its declaration, its definition, its three uses and the two
+mentions in its comment; its callers pass it by place and do not change, and no proof's anchor names it.
+
+**THE SWEEP BEFORE THE SECOND WINDOW.** Every other name the new code declares (Player, Skill, Character, Seconds, Age,
+Slots, Held, Theirs, From, Aim, Target, Within, Running, Minion, Spec) and the new `SkillReachCm` were searched as
+data members of `ACataclysmMinion`, `ACataclysmCharacterBase`, and the engine's `AActor`, `APawn` and `ACharacter`.
+None is one. The search's controls: it finds `ReachCm` in `CataclysmMinion.h` and `Tags` in the engine's `Actor.h`.
+
+### THE SECOND WINDOW STOPPED AT THE WHOLE SUITE, ON ONE TEST'S CONTROL
+
+The second window, under the same lock on the same development, ran its first two steps as registered: the old-asset
+group "353 tests performed, 352 succeeded, 1 failed" on the real-row test's one assertion, and the asset rebuild,
+committed as c26f066fc and pushed as `feat/set-bonuses-tyrant10-t-1`, which is left as it is. The whole suite then
+reported "3903 tests performed, 3902 succeeded, 1 failed: TheCastCostsNothingWaitsForAndStartsNoCooldownAndRaisesNoSkillOrAttackUse",
+on two assertions of its CONTROL alone: "the player's own press of the Ultimate starts its cooldown" and "and pays
+mana". Every assertion on the Tyrant's Minion's free start passed. Python and the proofs did not run.
+
+**THE CAUSE, BY READING AND NOT MEASURED.** A Strike commits its cost and its cooldown together as it activates
+(`UCataclysmStrikeSkill::ActivateAbility` calls `CommitAndBegin` first), and the Ultimate slot costs 50 Fervour as well
+as 150 mana (`game/Data/SkillSlots.csv`). The test's players held 1,000 mana and no Fervour, so the press was most
+likely refused at the cost, which writes nothing.
+
+**WHAT CHANGED, RULED BY THE COORDINATING SESSION THE SAME DAY.** Both players of that test are given 100 Fervour
+(`MaxClassResource` and `ClassResource`) before anything runs, with a set-up assertion each. The free start gains
+"the player's Fervour is unchanged". The control first asserts that the press was accepted, by the engine's own
+activation notice, with any refusal's tags in the message, so a refusal for another reason is named on that line;
+then it gains "and pays Fervour". Four assertions more, three of them set-up. No proof reaches the test: TC10-I's
+clock is not met by its single casts, TC10-II needs rows it does not hold, and TC10-III needs a stunned minion.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session on 2026-10-18 under the lock enchant-tx, on development 477b0298e (the dungeon session's
+simulation-only merge), the THIRD run of this window, for six commits in this order: the mechanism (9477160b5), its
+tests' crit pin (18b994cfc), the row with its real-row test (f3582cd48), the skill gadget tests' crit pin (d59bc24e2),
+the reach parameter's rename (c817b16e1) and the free-start test's Fervour (89c56a91e). The first two runs stopped as
+the two sections above say. Every step of this one was as registered.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 4 actions, 1 file compiled"; "353 tests
+  performed, 352 succeeded, 1 failed: TheWornTyrantsChainsTenPieceMakesTheTyrantsMinionCastTheUltimateEveryThreeSeconds",
+  with exactly 1 failed assertion in the run, checked by its text: "with ten pieces worn, the Tyrant's Minion casts the
+  Ultimate every 3 s". The set-ups and the nine-piece control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 91c971c37, "Rebuild the enchantment DataTable asset for Tyrant's Chains 10-piece's row", and pushed as
+  `feat/set-bonuses-tyrant10-t-2`.
+- **The whole Unreal suite:** "3903 tests performed, 3903 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3903 tests in the tree at 91c971c37; 3903 performed, gap 0". Registered 3903 and 0: the 3893 measured at
+  b47006f8b, the nine of `Cataclysm.SetBonus.Tyrant10.` and the one real-row test. The probe and the crit pins are
+  inside tests already counted. Test 2's control now passed: the press was accepted, started the Ultimate's cooldown
+  and paid mana and Fervour, which is the measurement the second run's cause was waiting on.
+- **Python:** "6682 passed, 8 skipped"; JUnit tests 6690, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 22:42:34 to 23:29:39 and would have ended the editor and released the lock after
+  20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.SetBonus.Tyrant10.`, 9 tests, all in
+`CataclysmMinion.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the beginnings
+of their names. The failed assertions had been counted by reading, after listing every event each test's actors raise,
+by the second session and again by the enchantment session, and were measured beside it. Each anchor was counted once,
+and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TC10-I | the 3 s halved | 2 failed: `AtNoughtNothingIsCast...`, `TheThreeSecondsAreNotShortened...` | 3 / 3 | 9 of 9 succeeded |
+| TC10-II | the gadget's `Type.Deployable` tag added to the Tyrant's Minion's cast | 1 failed, `ItsBlowsAreThePlayersAndNoMinionOrGadgetRowReachesThem` | 1 / 1 | 9 of 9 succeeded |
+| TC10-III | `CannotAct` taken out of the cast's gate | 1 failed, `NothingIsCastWhileTheMinionCannotActOrThePlayerIsDead` | 3 / 3 | 9 of 9 succeeded |
+
+The measured lines include, under TC10-I, "a tenth of a second short of 3 s, nothing ... to be 1, but it was 2"; under
+TC10-II, "the player holding the minion and gadget damage rows gets the same figure ... to be 385.000000, but it was
+500.500000"; under TC10-III, "its count stays one ... to be 1, but it was 2".
+
+**Not measured:** the probe's failure under any break, the real-row test's under any break, and the four skill gadget
+tests' pins under any break (no proof was registered for them; they add set-up assertions only).
+
+**TYRANT'S CHAINS IS NOW WHOLE**: its 2-piece and drawback (merged before), its 6-piece's blast and Tyrant's Minion,
+and its 10-piece's Ultimate cast are all in play.
+
+---
+
 ## 2026-10-18 — In the simulation each Cataclysm's Quest dungeons are one fixed sub-type, and a War Quest Siege comes at most two a wave, does a quarter of a Siege's damage and grows only from the day it reached its city
 
 **Simulation only; the game is unchanged.** A Quest dungeon a surge makes takes its Cataclysm's sub-type
