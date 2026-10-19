@@ -1876,6 +1876,33 @@ public:
 	/** How far in front of the summoner a re-summoned minion appears. */
 	static constexpr float ResummonDistanceCm = 150.0f;
 
+	/**
+	 * The first summon skill `Commander` holds that summons anything, or null: the first entry of its ability system's
+	 * `GetActivatableAbilities()` whose instance is a summon skill and not a possession (Subjugate). THE ORDER IS THE
+	 * ENGINE'S LIST, which `GiveAbility` appends to in the order the skills are granted and from which a cleared
+	 * ability is taken by `RemoveAtSwap`, moving the last entry into its place. `ReplaceLost` asks this for a thrall's
+	 * replacement, and `SpawnOneAtAKill` for every spawn. Factored out of `ReplaceLost` on 2026-10-19 (C6).
+	 */
+	static UCataclysmSummonSkill* FirstHeldSummonSkill(AActor* Commander);
+
+	/**
+	 * Reaper's Embrace's ten-piece, "Killing an enemy instanly spawns one of your minions, up to your max". Ruled
+	 * 2026-10-19 (C5-C7): read off the killer with no tags, a flat 1. No gameplay attribute.
+	 * `tools/generate_datatables.py` holds the same name in `REAPER_SPAWN_STAT`.
+	 */
+	static const TCHAR* KillSpawnsMinionStat;
+
+	/**
+	 * Spawn one minion of `Killer`'s first summon skill at `Where`, for a kill of its, when `KillSpawnsMinionStat` is
+	 * held. Called by `ACataclysmPlayerCharacter::OnSomethingDied` for exactly the kills that raise its `kill` event.
+	 * THROUGH `SummonReplacementAt`, SO FREE, NEVER ABOVE THE CAP AND NEVER BY EVICTING (C6): at the cap, or with no
+	 * room to reserve what the skill reserves, nothing is spawned. AN ORDINARY MINION OF THAT SKILL, IN ITS LIST AND
+	 * INSIDE ITS CAP (C7). Nothing for a killer that is dead or holds no summon skill.
+	 *
+	 * @return the minion spawned, or null
+	 */
+	static ACataclysmMinion* SpawnOneAtAKill(AActor* Killer, const FVector& Where);
+
 private:
 	void SpawnTick();
 	void Collapse();

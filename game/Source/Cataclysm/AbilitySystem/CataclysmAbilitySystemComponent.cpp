@@ -6930,9 +6930,26 @@ void UCataclysmAbilitySystemComponent::AskToBeExecuted(
 
 bool UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow(const FExecuteAsked& Asked)
 {
-	AActor* Struck = GetAvatarActor();
+	// THE EXECUTION IS `KillIfLeftBelow`, which a cull shares. Factored out on 2026-10-19 for Reaper's Embrace's
+	// ten-piece (C1), judging and killing exactly as before; what is left here is the request and the row's trigger
+	// cooldown.
 	AActor* By = Asked.By.Get();
-	if (!Asked.IsAsked() || !Struck || !By || !CanBeExecuted(Struck))
+	if (!Asked.IsAsked() || !By || !KillIfLeftBelow(By, Asked.BelowPercent))
+	{
+		return false;
+	}
+	if (UCataclysmAbilitySystemComponent* Asker = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(By)))
+	{
+		Asker->NoteExecuteMade(Asked.TriggerKey, Asked.TriggerCooldownSeconds);
+	}
+	return true;
+}
+
+bool UCataclysmAbilitySystemComponent::KillIfLeftBelow(AActor* By, float BelowPercent)
+{
+	AActor* Struck = GetAvatarActor();
+	if (!Struck || !By || BelowPercent <= 0.0f || !CanBeExecuted(Struck))
 	{
 		return false;
 	}
@@ -6953,24 +6970,15 @@ bool UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow(const FExecuteAsked& A
 	State.TargetHealthPercent = FCataclysmStatConditions::FromHealth(
 		Health, GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())).HealthPercent;
 	if (Health <= 0.0f || !UCataclysmStatPipeline::ConditionHolds(
-			ECataclysmStatCondition::TargetHealthBelowPercent, Asked.BelowPercent, State))
+			ECataclysmStatCondition::TargetHealthBelowPercent, BelowPercent, State))
 	{
 		return false;
 	}
 
 	// THE HEALTH LEFT AND NO MORE, so there is nothing past it to report as overkill.
 	UCataclysmSkillEffects::ReduceHealthDirectly(By, Struck, Health);
-	if (!UCataclysmSkillEffects::IsDead(Struck))
-	{
-		// HELD: an enemy in a friendly Unholy Sigil keeps one health.
-		return false;
-	}
-	if (UCataclysmAbilitySystemComponent* Asker = Cast<UCataclysmAbilitySystemComponent>(
-			UCataclysmTargeting::AbilitySystemOf(By)))
-	{
-		Asker->NoteExecuteMade(Asked.TriggerKey, Asked.TriggerCooldownSeconds);
-	}
-	return true;
+	// HELD WHEN STILL ALIVE: an enemy in a friendly Unholy Sigil keeps one health.
+	return UCataclysmSkillEffects::IsDead(Struck);
 }
 
 void UCataclysmAbilitySystemComponent::NoteExecuteMade(FName TriggerKey, float TriggerCooldownSeconds)
@@ -6979,6 +6987,109 @@ void UCataclysmAbilitySystemComponent::NoteExecuteMade(FName TriggerKey, float T
 	Row.TriggerKey = TriggerKey;
 	Row.TriggerCooldownSeconds = TriggerCooldownSeconds;
 	NoteTriggerFired(Row);
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::CullPercentPerSoulStrikeStackStat =
+	TEXT("cull_percent_per_soul_strike_stack");
+const TCHAR* UCataclysmAbilitySystemComponent::SoulPickedUpEvent = TEXT("soul_picked_up");
+
+int32 UCataclysmAbilitySystemComponent::SoulStrikeStacksHeld() const
+{
+	// THE SIX-PIECE'S OWN ROWS, BY THE EVENT THAT GRANTS THEM. Each own-stack row's grant is a worn action on its event
+	// carrying the row's key, `UCataclysmItemModifiers::OwnStackKeyFor` ("enchantment:stat"), the one `ActOnEvent`
+	// grants under. Soul Strike's two rows grant on the same event in the same instant, so they hold the same count;
+	// the most is read. A row counting hits in a row carries a key too and is not an own stack.
+	static const FName SoulPicked(SoulPickedUpEvent);
+	int32 Most = 0;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.Event == SoulPicked && !Action.StackKey.IsNone() && !Action.bConsecutiveHits)
+		{
+			Most = FMath::Max(Most, OwnStacksHeld(Action.StackKey));
+		}
+	}
+	return Most;
+}
+
+float UCataclysmAbilitySystemComponent::CullCapPercentFor(const AActor* Struck)
+{
+	// BY RUNG: 0 Common, 1 Elite, 2 Legendary, 3 Herald, and from `FirstBossRarityStep` up a boss
+	// (`game/Data/EnemyRarities.csv`). A character that is not an enemy character has no rung and is Common (C3).
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Struck);
+	if (!Enemy || Enemy->RarityStep <= 0)
+	{
+		return CommonCullCapPercent;
+	}
+	if (Enemy->IsBoss())
+	{
+		return 0.0f;
+	}
+	switch (Enemy->RarityStep)
+	{
+	case 1:
+		return EliteCullCapPercent;
+	case 2:
+		return LegendaryCullCapPercent;
+	default:
+		return HeraldCullCapPercent;
+	}
+}
+
+float UCataclysmAbilitySystemComponent::CullSharePercentAgainst(const AActor* Struck) const
+{
+	const AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	if (!Struck || Struck == Self || !CanBeExecuted(Struck))
+	{
+		return 0.0f;
+	}
+	// THE ROW'S FIGURE TIMES THE STACKS, NO MORE THAN THE CAP (C3): min(5 x stacks, cap). With no tags, as every set
+	// bonus's stat is asked: the ruled row states none, and the generator refuses one.
+	const float PerStack = StatForSkill(FName(CullPercentPerSoulStrikeStackStat), FGameplayTagContainer(), 0.0f);
+	const int32 Stacks = SoulStrikeStacksHeld();
+	if (PerStack <= 0.0f || Stacks <= 0)
+	{
+		return 0.0f;
+	}
+	return FMath::Min(PerStack * static_cast<float>(Stacks), CullCapPercentFor(Struck));
+}
+
+float UCataclysmAbilitySystemComponent::AskToCullOnHit(AActor* Struck)
+{
+	AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	const float Share = CullSharePercentAgainst(Struck);
+	if (Share <= 0.0f || !Self)
+	{
+		return 0.0f;
+	}
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Struck));
+	if (!Theirs)
+	{
+		return 0.0f;
+	}
+	Theirs->AskToBeCulled(Self, Share);
+	return Share;
+}
+
+void UCataclysmAbilitySystemComponent::AskToBeCulled(AActor* By, float BelowPercent)
+{
+	if (!By || BelowPercent <= 0.0f)
+	{
+		return;
+	}
+	// THE LARGER SHARE IS KEPT, as `AskToBeExecuted` keeps it.
+	if (CullAsked.IsAsked() && CullAsked.BelowPercent >= BelowPercent)
+	{
+		return;
+	}
+	CullAsked.By = By;
+	CullAsked.BelowPercent = BelowPercent;
+}
+
+bool UCataclysmAbilitySystemComponent::CullIfLeftBelow(const FExecuteAsked& Asked)
+{
+	AActor* By = Asked.By.Get();
+	return Asked.IsAsked() && By && KillIfLeftBelow(By, Asked.BelowPercent);
 }
 
 bool UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer(const FCataclysmPoolAction& Action)

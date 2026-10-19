@@ -300,7 +300,12 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # Reaper's Embrace's six-piece, ruled 2026-10-18 (R1-R8): the flag by which
               # a minion's death leaves a Soul. Its row states 1 and the sentence's "it
               # leaves behind a "Soul"" says so in words.
-              "minion_death_leaves_soul"}
+              "minion_death_leaves_soul",
+              # Reaper's Embrace's ten-piece, ruled 2026-10-19 (C1-C8): the flag by which
+              # a kill spawns one of the wearer's minions. Its row states 1 and the
+              # sentence's "Killing an enemy instanly spawns one of your minions" says so in
+              # words.
+              "minion_kill_spawns_minion"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -988,8 +993,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-18, from 662 over 536: one row on one enchantment.
 #: AND 666 OVER 538 SINCE THE THREE ROWS OF REAPER'S EMBRACE'S 6-PIECE,
 #: issue #1833, 2026-10-19, from 663 over 537: three rows on one enchantment.
-AUTHORED_ROWS = 666
-AUTHORED_ENCHANTMENTS = 538
+#: AND 668 OVER 539 SINCE THE TWO ROWS OF REAPER'S EMBRACE'S 10-PIECE,
+#: issue #1833, 2026-10-19, from 666 over 538: two rows on one enchantment.
+AUTHORED_ROWS = 668
+AUTHORED_ENCHANTMENTS = 539
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -11283,6 +11283,90 @@ def refuse_a_reaper_soul_row_the_game_cannot_read(
     return problems
 
 
+#: Reaper's Embrace's ten-piece bonus. The owner's ruling #9 of 2026-10-17
+#: (cull is a threshold of 5% of maximum health per Soul Strike stack, capped
+#: by rarity: Common 50%, Elite and Legendary 25%, Herald 10%, never a boss)
+#: and the coordinating session's rulings C1-C8 of 2026-10-19, for "For each
+#: stack of Soul Strike you gain 5% cull on hit. Killing an enemy instanly
+#: spawns one of your minions, up to your max".
+#:
+#: TWO ROWS: the cull per stack at a flat 5, and the spawn's flag at a flat 1.
+#: The stacks are the six-piece's own (`soul_picked_up`), and the caps are the
+#: engine's, so neither is a cell. The engine holds the same names in
+#: `UCataclysmAbilitySystemComponent::CullPercentPerSoulStrikeStackStat` and
+#: `UCataclysmSummonSkill::KillSpawnsMinionStat`, and
+#: `tools/tests/test_reapers_embrace_ten_rows.py` compares them.
+#:
+#: THE GAME ASKS FOR EACH IN ONE PLACE, WITH NO TAGS: the cull off the wearer
+#: by `CullSharePercentAgainst` when its hit lands, the flag off the killer by
+#: `SpawnOneAtAKill` at its kill. So a row requiring a tag matches nowhere, a
+#: row of any kind but `flat` works on a base of nought, and a row with an
+#: action is not a stat line at all.
+REAPER_CULL_STAT = "cull_percent_per_soul_strike_stack"
+REAPER_SPAWN_STAT = "minion_kill_spawns_minion"
+
+
+def refuse_a_reaper_ten_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `REAPER_CULL_STAT` or `REAPER_SPAWN_STAT` that its reader
+    would take as nothing, or as something else.
+
+    THE SHAPE OF `refuse_a_reaper_soul_row_the_game_cannot_read`, for two
+    stats. Each refusal names what the reader would do with the row.
+
+    THE CULL STATES A SHARE ABOVE 0 AND AT MOST 100 per stack: at nought
+    nothing is culled, and the rarity caps hold every share to 50 at most.
+    THE FLAG STATES 1 AND NOTHING ELSE, as every flag row does.
+
+    A CONDITION OR A SCALE ON EITHER IS REFUSED ELSEWHERE, by
+    `refuse_a_condition_nothing_asks_for` and `refuse_a_scale_nothing_asks_for`.
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: the ruled sentence is an enchantment's.
+    """
+    problems = []
+    readers = {
+        REAPER_CULL_STAT: "nothing is culled",
+        REAPER_SPAWN_STAT: "no kill spawns a minion",
+    }
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in readers or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        nothing = readers[stat]
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself, so the row must be 'flat'; any "
+                f"other kind works on a base of nought and {nothing}.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags:
+            problems.append(
+                f"{who}: states {stat!r} under a required tag, {tags!r}. The "
+                f"game asks for this stat with no tags, so a row requiring a "
+                f"tag matches nowhere: {nothing} and the row says nothing.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The "
+                f"stat is a stat line the game asks for, and an action row is "
+                f"not one.")
+        low = float(row.get("ValueLow") or 0.0)
+        high = float(row.get("ValueHigh") or 0.0)
+        for value in sorted({low, high}):
+            if stat == REAPER_SPAWN_STAT and value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on "
+                    f"this flag states 1 and nothing else.")
+            if stat == REAPER_CULL_STAT and not 0.0 < value <= 100.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and the share of "
+                    f"maximum health per stack must be above 0 and at most "
+                    f"100: at nought {nothing}.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -11723,6 +11807,12 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # ELSE, WITH NO TAGS AND NO ACTION. Ruled 2026-10-17 (#8) and 2026-10-18
     # (R1-R8).
     problems.extend(refuse_a_reaper_soul_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE CULL PER STACK OF SOUL STRIKE IS FLAT, ABOVE 0 AND AT MOST 100, AND
+    # THE FLAG BY WHICH A KILL SPAWNS A MINION IS FLAT, 1 AND NOTHING ELSE, EACH
+    # WITH NO TAGS AND NO ACTION. Ruled 2026-10-17 (#9) and 2026-10-19 (C1-C8).
+    problems.extend(refuse_a_reaper_ten_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems
