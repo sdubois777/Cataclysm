@@ -1079,6 +1079,21 @@ class TuningConfig:
     void_dungeons_add_stacks: bool = True
     void_stacks_to_erase: int = 10
 
+    # THE HOLLOW, THE VOID'S QUEST DUNGEON, since 2026-10-18, as the plan the
+    # coordinating session accepted on 2026-10-16 has it. From the day after it
+    # is made it loses `hollow_floors_lost_per_day` floors a day, down to
+    # `hollow_floor_share_kept` of the natural floors it was made with (rounded
+    # up); its walk and its reward shrink with it, and its timer does not. Its
+    # hit adds void stacks instead of damage: 1 at its full depth, rising
+    # evenly to 3 at its smallest (`Simulation._hollow_stacks_for`), and it
+    # cannot take a city below `hollow_hit_cannot_erase_below` stacks to the
+    # erase count in one hit. The owner, 2026-10-16, on the Void's Quest
+    # dungeons: "So, maybe Hollow works, but we shouldn't just flat out erase a
+    # city if they player can't get to it in time."
+    hollow_floors_lost_per_day: int = 1
+    hollow_floor_share_kept: float = 0.5
+    hollow_hit_cannot_erase_below: int = 8
+
     tree: EmpireTree = field(default_factory=EmpireTree)
 
     # ---------------------------------------------------------------------
