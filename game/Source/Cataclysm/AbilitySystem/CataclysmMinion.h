@@ -516,10 +516,12 @@ public:
 	 * `gadgets_cast_now` on `player_death` (`UCataclysmAbilitySystemComponent::GadgetsCastNowAction`). The trap half
 	 * is not built, and joins when traps are.
 	 *
-	 * EVERY GADGET `Dying` COMMANDS, TAKEN ONCE, FIRES ONCE, ALL INSIDE THIS ONE CALL (C3): `UCataclysmCommand::
-	 * ThingsCommandedBy`, which leaves out the dead, less every minion that is not a gadget (an imp, a mote, a trap).
-	 * WHAT A DEATH LEAVES STANDING: everything. A player's death destroys no gadget; the skill gadget stays and casts
-	 * nothing by its clock while the player is dead (S11 of 2026-10-16), and only the floor being cleared ends it.
+	 * EVERY SKILL GADGET `Dying` COMMANDS, TAKEN ONCE, FIRES ONCE, ALL INSIDE THIS ONE CALL (C3): `UCataclysmCommand::
+	 * ThingsCommandedBy`, which leaves out the dead, less every minion that is not a skill gadget (an imp, a mote, a
+	 * trap, and War's gadgets, which this action does not fire, by the no-War mandate: ruled 2026-10-19, J2).
+	 * WHAT A DEATH LEAVES STANDING: everything, when `player_death` is raised. The skill gadget stays and casts nothing by
+	 * its clock while the player is dead (S11 of 2026-10-16); inside a dungeon of the empire the respawn's leaving of the
+	 * dungeon ends everything the player commands (`ACataclysmDungeonGameMode::EndEveryPlayersFollowers`).
 	 *
 	 * @return how many gadgets fired
 	 */
@@ -534,11 +536,7 @@ public:
 	 * lock). ITS CLOCK IS LEFT AS IT WAS (C4): `bSkillGadgetHasCast` and `LastSkillGadgetCastAtAgeSeconds` are not
 	 * touched, so the death cast is one more and moves no later cast.
 	 *
-	 * ANY OTHER GADGET, which no player holds without War's skills, deals its ordinary blow, `AttackTarget`, once at the
-	 * target its brain chooses within its reach (`SkillCopyTarget`), as its own attack would; none with no target. A
-	 * judgement of the writing session, and NOT TESTED.
-	 *
-	 * NOTHING for a minion that is not a gadget, a dead one or one that cannot act.
+	 * NOTHING for a minion that is not a skill gadget (War's gadgets included, J2), a dead one or one that cannot act.
 	 *
 	 * @return whether it fired
 	 */
@@ -546,9 +544,6 @@ public:
 
 	/** How many casts it has made for its summoner's death. Read by tests. Each is counted in `SkillGadgetCastsMade` too. */
 	int32 SkillGadgetDeathCastsMade = 0;
-
-	/** How many ordinary blows a gadget that is not a skill gadget has dealt for its summoner's death. Read by tests. */
-	int32 GadgetDeathShotsFired = 0;
 
 	/** Seconds until this gadget may cast again and the length of its clock, both nought before its first cast. */
 	void SkillGadgetClock(float& OutRemaining, float& OutDuration) const;

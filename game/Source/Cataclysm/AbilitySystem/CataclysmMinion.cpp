@@ -1009,13 +1009,14 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer)
 
 int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
 {
-	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST GADGET FIRES, as a volley takes its list: every gadget standing as the
-	// death is raised. A cast that somehow ended a later gadget leaves that one firing nothing (C3).
+	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST GADGET FIRES, as a volley takes its list: every skill gadget standing as
+	// the death is raised. A cast that somehow ended a later gadget leaves that one firing nothing (C3). SKILL GADGETS
+	// ONLY: War's gadgets are not fired by this action, by the no-War mandate (ruled 2026-10-19, J2).
 	TArray<ACataclysmMinion*> Standing;
 	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Dying))
 	{
 		ACataclysmMinion* AsGadget = Cast<ACataclysmMinion>(Follower);
-		if (IsValid(AsGadget) && AsGadget->IsGadget())
+		if (IsValid(AsGadget) && AsGadget->IsSkillGadget())
 		{
 			Standing.Add(AsGadget);
 		}
@@ -1033,31 +1034,18 @@ int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
 
 bool ACataclysmMinion::FireForItsSummonersDeath()
 {
-	if (!IsGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this))
+	// A SKILL GADGET ONLY (J2): any other gadget fires nothing.
+	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this))
 	{
 		return false;
 	}
 
-	// A SKILL GADGET CASTS ITS PLAYER'S SKILL ONCE BY ITS CLOCK'S OWN PATH (C2), THE CLOCK LEFT AS IT WAS (C4).
-	if (IsSkillGadget())
-	{
-		if (!CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true))
-		{
-			return false;
-		}
-		++SkillGadgetDeathCastsMade;
-		return true;
-	}
-
-	// ANY OTHER GADGET DEALS ITS ORDINARY BLOW ONCE AT THE TARGET ITS BRAIN CHOOSES WITHIN ITS REACH. A judgement of the
-	// writing session; no player holds such a gadget without War's skills, and nothing tests it.
-	AActor* Chosen = SkillCopyTarget();
-	if (!Chosen)
+	// IT CASTS ITS PLAYER'S SKILL ONCE BY ITS CLOCK'S OWN PATH (C2), THE CLOCK LEFT AS IT WAS (C4).
+	if (!CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true))
 	{
 		return false;
 	}
-	AttackTarget(Chosen);
-	++GadgetDeathShotsFired;
+	++SkillGadgetDeathCastsMade;
 	return true;
 }
 
