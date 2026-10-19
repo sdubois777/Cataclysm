@@ -11,13 +11,12 @@ an erased city leaves no Fallen City dungeon. Branch `feat/sim-void-stacks`, on 
 
 ### SAID FIRST
 
-- **IN VOID CAMPAIGNS THE PLAYER WITHOUT THE UPGRADE TREE NOW LOSES TWICE AS MANY CITIES**: 5.73 against 2.87, 3.59
-  of them erased (500 campaigns, tier 1). The Explorer player loses fewer: 1.36 against 2.08.
-- **AN UNDEFENDED EMPIRE FACING THE VOID FALLS SOONER**: a median day of 944 at tier 1, against 1,176.
-- **THE VOID'S TARGETING STILL READS LOST DEFENCE, WHICH ITS ORDINARY DUNGEONS NO LONGER TAKE.** Its pattern
-  weight (`patterns._void`, "fixates on what it has already hurt") is `tier weight x (1 + 4 x (1 - defence share))`.
-  Since this layer it fixates on what other Cataclysms, Sieges and Quest hits have hurt, and not on the stacks.
-  This was not changed and is a question for the coordinating session.
+- **AS BUILT, IN VOID CAMPAIGNS THE PLAYER WITHOUT THE UPGRADE TREE LOSES 6.52 CITIES, 4.20 OF THEM ERASED**, against
+  2.87 before this layer (500 campaigns, tier 1). The Explorer player loses 1.42 against 2.08. The figures of the
+  first commit alone are under "Measured"; the targeting and the policies changed after it (below).
+- **THE VOID'S TARGETING READS ITS STACKS, AT MOST 2 TIMES AT TEN**, the owner's choice of 2026-10-18. Until this
+  layer it read lost defence, which its ordinary dungeons no longer take.
+- **AN UNDEFENDED EMPIRE FACING THE VOID FALLS SOONER**: a median day of 919 at tier 1, against 1,176.
 - `City.doomed` is gone. Until this layer, a city became doomed when any Void dungeon landed on it, and its fall
   then erased it, whatever felled it.
 
@@ -76,6 +75,53 @@ unchanged.
 ### Design document
 
 The Void section, one paragraph with the owner's line.
+
+### Changed after the first report, 2026-10-18
+
+Three changes, each ruled before it was built:
+
+1. **The resolve-count test counts stacks.** `sim/tests/test_resolved_counts_a_detonation.py`'s counting class
+   counts a change in the city's void stacks as the timer taking something, as well as defence or population.
+   Ruled by the coordinating session. Its whole-campaign test had printed "campaign 1 reported 35 resolves but only
+   3 of them changed a city's defence or population".
+2. **The Void's targeting reads its stacks.** `patterns._void` is `tier weight x (1 + 1 x min(1, stacks / 10))`,
+   so a city at ten stacks draws the Void twice as often as one with none, and lost defence no longer counts. The
+   coordinating session ruled that it reads stacks; the owner chose the size, 2026-10-18, verbatim from the
+   options put: "Stacks, up to 2x".
+3. **The policies see a Void dungeon as fatal by its stacks.** `policies._resolve_fells`, used by `triage` and
+   `lane_aware`: a Void dungeon's timer is fatal when the stacks it adds bring its city to ten. It was in the plan
+   the coordinating session accepted on 2026-10-16 ("The policies' fatal test for a Void dungeon becomes 'its
+   stacks would reach 10'") and the first commit left it out; without it a policy ranked a Void dungeon by damage it
+   does not do.
+
+The four targeting choices the owner chose among, 500 campaigns a row, tier 1, measured before the policy change
+(won / cities lost / erased at the end):
+
+| targeting | facing the Void: undefended median day T1 | facing the Void: Explorer | facing the Void: no tree | all: Explorer | all: no tree |
+|---|---|---|---|---|---|
+| lost defence (the first commit) | 944 | 45.2% / 1.36 / 0.77 | 42.4% / 5.73 / 3.59 | 49.6% / 1.32 | 40.4% / 5.21 |
+| **stacks, up to 2 times (chosen)** | 919 | 47.6% / 1.58 / 0.98 | **42.8% / 6.39 / 4.15** | 49.8% / 1.35 | 40.8% / 5.32 |
+| stacks, up to 3 times | 924 | 49.0% / 1.68 / 1.06 | 39.6% / 6.83 / 4.59 | 50.0% / 1.35 | 39.6% / 5.33 |
+| stacks, up to 5 times | 940 | 45.4% / 1.75 / 1.16 | 45.2% / 7.05 / 4.77 | 50.4% / 1.39 | 37.8% / 5.40 |
+
+The same four with the policy change, measured in scratch copies before it was built: no-tree cities lost in Void
+campaigns 5.70 / 6.52 / 6.85 / 7.10, Explorer 51.4% / 1.20, 48.2% / 1.42, 47.2% / 1.56, 46.6% / 1.60.
+
+**As built** (`6474841d`, both changes), the same table's row: facing the Void, undefended median day 919 at T1
+(671 / 481 / 372 at T2 / T3 / T4), Explorer 48.2% (43.9 to 52.6) / 1.42 / 0.81, no tree 39.6% (35.4 to 44.0) / 6.52 /
+4.20; all campaigns, undefended 886 / 577 / 412 / 350, Explorer 50.6% (46.2 to 55.0) / 1.33 / 0.11, no tree 39.4% /
+5.33 / 0.64. Every undefended empire was lost by day 2000. These equal the scratch copy's to every figure, which is
+the check that the built code is the measured code. The no-tree player's 6.52 sits 0.02 above the 6.5 the
+coordinating session set as the point to ask the owner; the standard error is 0.16.
+
+Two more guard proofs, in a `git archive` copy of `6474841d`, both PROVED and passing again restored:
+
+| break | failed with it in | restored |
+|---|---|---|
+| the policies ignore the stacks | 2 failed, 10 passed | 12 passed |
+| the targeting pull back to 5 times | 1 failed, 11 passed | 12 passed |
+
+The five proofs above were run again on `8b6cd9e5` (the timer's fall moved into one place) with the same counts.
 
 ### Not covered, and later
 
