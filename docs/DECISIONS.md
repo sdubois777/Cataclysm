@@ -508,7 +508,18 @@ applies a stun states a duration", and it already excuses the six-piece's `stun_
 pattern does not match after an underscore, so it does not see `time_lock_rift_stun_seconds` or
 `ground_pound_stun_seconds`. Measured, not changed: widened to match after an underscore, it would see 2 rows more (13
 against 11) and flag 1, this layer's `#6`, whose sentence says "frozen" and not "stun", as the six-piece's does.
-Brute's Heart's ten-piece `#4` would pass. For the coordinating session to rule as its own change.
+Brute's Heart's ten-piece `#4` would pass.
+
+**AND THE COORDINATING SESSION RULED IT FIXED IN THIS LAYER**, the same day, as a fault found in the thing being built:
+a Python-only commit widens `mentions_stun` to match "stun" after an underscore, and excuses `#6` exactly as the
+six-piece's `stun_near_the_dying` row is excused, through `its_stated_stun_agrees_with_its_sentence`: the row's single
+value above nought, and the sentence stating the same number as "for N seconds" (its "frozen in time for 5 seconds";
+freeze = stun, the owner's ruling of 2026-10-08). No other stat is excused. Two tests are added: the excuse on made-up
+rows with six refusals, and the widening seeing both stun-length stats and the shipped `#6`. Brute's Heart's `#4` is
+now seen and passes. Proved with `prove_guard` both ways, each "PROVED: 1 failed, 22 passed | restored: 23 passed": the
+excuse removed fails `test_everything_that_applies_a_stun_states_how_long` on `#6`; the widening reverted fails only
+`test_a_stat_naming_stun_after_an_underscore_is_seen`, and the rule itself then passes, which is the gap: unwidened,
+the rule cannot see the row at all.
 
 **THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornChronomancersTimeLockTenPiecePlacesARiftThatFreezesAnEnemyNearby`,
 wears nine pieces against ten, each with the 10-piece and the set's drawback. Each striker's rift step is called once

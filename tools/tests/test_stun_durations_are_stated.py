@@ -190,6 +190,35 @@ def its_own_seconds_agree_with_its_sentence(effect_row: dict[str, str],
     return any(float(stated) == seconds for stated in FOR_SECONDS.findall(sentence))
 
 
+#: The one stat whose row applies a stun under a sentence that does not say
+#: "stun", in the shape of `STUN_NEAR_THE_DYING` above. Chronomancer's
+#: Time-Lock's ten-piece: "All enemies that enter the rift are frozen in time for
+#: 5 seconds", and the owner's ruling of 2026-10-08, "Yes it acts like a stun".
+#: The row holds the length itself, as its value, which is where the engine
+#: reads it (`UCataclysmTimeLockRift::StunSecondsStat`). Ruled 2026-10-19.
+TIME_LOCK_RIFT_STUN = "time_lock_rift_stun_seconds"
+
+
+def its_stated_stun_agrees_with_its_sentence(effect_row: dict[str, str],
+                                             sentences: dict[str, str]) -> bool:
+    """Whether a `time_lock_rift_stun_seconds` row states a length its sentence
+    states too: the row's single value is above nought, and the enchantment's
+    sentence states that same number as "for N seconds". The sibling of
+    `its_own_seconds_agree_with_its_sentence`, as narrow: no other stat is
+    excused this way."""
+    if effect_row.get("Stat") != TIME_LOCK_RIFT_STUN:
+        return False
+    try:
+        low = float(effect_row.get("ValueLow") or 0.0)
+        high = float(effect_row.get("ValueHigh") or 0.0)
+    except ValueError:
+        return False
+    sentence = sentences.get(effect_row.get("Enchantment", ""))
+    if low <= 0.0 or low != high or sentence is None:
+        return False
+    return any(float(stated) == low for stated in FOR_SECONDS.findall(sentence))
+
+
 def enchantment_sentences() -> dict[str, str]:
     return {row["Name"]: row["Effect"] for table in ENCHANTMENT_TABLES for row in rows_of(table)}
 
@@ -217,7 +246,13 @@ def every_generated_row() -> list[tuple[str, str, str]]:
 
 
 def mentions_stun(text: str) -> bool:
-    return re.search(r"\bstun", text, re.IGNORECASE) is not None
+    """AFTER A WORD BOUNDARY OR AN UNDERSCORE, since 2026-10-19: a stat named
+    `..._stun_seconds` applies a stun as surely as a sentence saying "stun" does,
+    and a word boundary does not fall between a letter and an underscore, so
+    `ground_pound_stun_seconds` and `time_lock_rift_stun_seconds` went unseen.
+    Ruled by the coordinating session when Chronomancer's Time-Lock's ten-piece
+    rows were read, as a fault found in the thing being built."""
+    return re.search(r"(?:\b|_)stun", text, re.IGNORECASE) is not None
 
 
 def only_grants_immunity(text: str) -> bool:
@@ -259,6 +294,8 @@ def test_everything_that_applies_a_stun_states_how_long():
                and not (table == "EnchantmentEffects"
                         and (stated_by_its_enchantment(built.get(key, {}), sentences)
                              or its_own_seconds_agree_with_its_sentence(
+                                 built.get(key, {}), sentences)
+                             or its_stated_stun_agrees_with_its_sentence(
                                  built.get(key, {}), sentences)))]
     assert not missing, (
         f"{missing} apply a stun without saying how long it lasts. Since the "
@@ -278,6 +315,39 @@ def test_an_effect_row_is_excused_only_by_a_sentence_that_states_the_duration():
     assert not stated_by_its_enchantment({"Enchantment": "Brief"}, sentences)
     assert not stated_by_its_enchantment({"Enchantment": "Nowhere"}, sentences)
     assert not stated_by_its_enchantment({}, sentences)
+
+
+def test_a_time_lock_rift_stun_is_excused_only_when_its_value_and_its_sentence_agree():
+    """What stops the excuse of 2026-10-19 being a way to say nothing. Made-up
+    rows under made-up sentences: the one that agrees, and the refusals, a
+    sentence that says only "briefly", a sentence that states another length, a
+    row with no length, a range, an unknown enchantment and another stat with the
+    same length and words."""
+    sentences = {"Agrees": "enemies that enter the rift are frozen in time for 5 seconds",
+                 "Brief": "enemies that enter the rift are briefly frozen",
+                 "Another": "enemies that enter the rift are frozen in time for 3 seconds"}
+    def row(enchantment, low, high=None, stat=TIME_LOCK_RIFT_STUN):
+        return {"Enchantment": enchantment, "Stat": stat, "ValueLow": low,
+                "ValueHigh": low if high is None else high}
+    assert its_stated_stun_agrees_with_its_sentence(row("Agrees", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Brief", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Another", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Agrees", "0.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Agrees", "5.0", "6.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Nowhere", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(
+        row("Agrees", "5.0", stat="ground_pound_stun_seconds"), sentences)
+
+
+def test_a_stat_naming_stun_after_an_underscore_is_seen():
+    """The widening of 2026-10-19, measured on words and on the shipped rows: both
+    stun-length stats are seen, and the shipped rift row is among the rows that
+    apply a stun. THE CONTROL is a text with no stun in it."""
+    assert mentions_stun("time_lock_rift_stun_seconds")
+    assert mentions_stun("ground_pound_stun_seconds")
+    assert not mentions_stun("time_lock_rift_seconds")
+    seen = {(table, key) for table, key, _ in stun_rows()}
+    assert ("EnchantmentEffects", "Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every#6") in seen
 
 
 def test_a_stun_near_the_dying_is_excused_only_when_its_seconds_and_its_sentence_agree():
