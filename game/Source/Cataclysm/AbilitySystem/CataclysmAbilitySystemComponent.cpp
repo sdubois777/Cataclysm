@@ -1669,7 +1669,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		const FVector Standing = Target->GetActorLocation();
 		for (TActorIterator<ACataclysmGroundZone> Zone(Target->GetWorld()); Asker && Zone; ++Zone)
 		{
-			if (Zone->GetOwner() == Asker && Zone->Covers(Standing))
+			// NOT A ZONE THAT IS NONE OF ITS OWNER'S PERSISTENT AREAS: the temporal rift, 2026-10-19.
+			if (Zone->GetOwner() == Asker && !Zone->bIsNotAPersistentArea && Zone->Covers(Standing))
 			{
 				State.bTargetStandsInYourZone = true;
 				break;

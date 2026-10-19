@@ -601,6 +601,26 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground")
 	float TravelledCm = 0.0f;
 
+	/**
+	 * Whether this zone is NOT one of its owner's persistent areas, so the rules about "your persistent AOE zones" pass
+	 * it by: `target_in_your_zone` does not count an enemy standing in it, and "You can only have 1 persistent AOE effect
+	 * active at a time" does not end it. Built 2026-10-19 for Chronomancer's Time-Lock's temporal rift, a zone its
+	 * owner's set bonus places and no skill of its owner left (`UCataclysmTimeLockRift`). False for every other zone.
+	 */
+	UPROPERTY(Transient)
+	bool bIsNotAPersistentArea = false;
+
+	/**
+	 * Make this zone last `Seconds` from now, and be drawn for them: its life span set again, the drawings it asked
+	 * for ended and one asked for the new length. Built 2026-10-19 for the temporal rift, which lengthens for each
+	 * enemy it catches (`UCataclysmTimeLockRift`). A zone that lasts the floor, and nought or less, are refused.
+	 *
+	 * ENDED AND DRAWN AGAIN, NOT A SECOND DRAWING ON TOP. A drawing is told its length when it is asked for and cannot
+	 * be told again, so a second drawing for the added seconds alone would draw the patch twice over until the first
+	 * ended.
+	 */
+	void LastFor(float Seconds);
+
 protected:
 	virtual void BeginPlay() override;
 

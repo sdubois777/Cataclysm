@@ -2,6 +2,469 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A worn row can place a temporal rift where its wearer stands once its clock has run and an enemy is within the row's radius, stunning each enemy it catches once and making each it stuns take a row's share more damage from every source for as long as that stun lasts, lengthening by a row's seconds for each enemy caught up to a row's most: Chronomancer's Time-Lock's ten-piece mechanism, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTimeLockRift.h` and `.cpp` (new: `UCataclysmTimeLockRift`,
+seven stat names, `StatOf`, `Step`, `SecondsUntilReady`, `RiftOf`, `RiftLengthSeconds`, `CaughtBy`);
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageTakenMultiplier.h` and `.cpp` (new: `UCataclysmDamageTakenMultiplier`,
+`Hold`, `On`, `SecondsLeftOn`); `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp` (one include, and one
+multiplication at step 6 of `Resolve`); `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp`
+(`bIsNotAPersistentArea` and `LastFor`); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (one condition each, skipping a zone so marked);
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (one include, and one call in `RegenerationStep` after
+`UCataclysmMovement::SampleStep`); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (seven names at the end
+of `StatsWithNoAttribute`); `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (two includes, one probe helper
+and seven lines at the end of `Probes`); `game/Source/Cataclysm/Tests/CataclysmSetBonusChronoTenTests.cpp` (new, eleven
+tests); `tools/generate_datatables.py` (`TIME_LOCK_RIFT_STATS` and `refuse_a_time_lock_rift_row_the_game_cannot_read`,
+called last from `validate_enchantment_effects`); `tools/tests/test_chronomancers_time_lock_ten_rows.py` (new);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one dated line, one entry, `CALL_SITES` 67);
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` (the new job on `RegenerationStep`). Two
+existing lines are changed, the two conditions; every other change is an insertion. No data row, no tag and no workbook
+cell is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+Everything a ruling requires to be said first, and everything a player would notice once the rows are written:
+
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE SEVEN ROWS ARE WRITTEN ABOVE THIS LAYER**, by the enchantment session. This
+  layer authors no row. A ten-piece bonus is live only with ten pieces worn, and a wearer of ten pieces wears the
+  six-piece and the two-piece too.
+- **WITH THE REAL SET WORN THE FREEZE LASTS 7.5 S, NOT 5, AND SO DOES THE 500% MORE. NOT RULED; FOR THE COORDINATING
+  SESSION.** The two-piece's row, `debuff_duration` increased 50 ("All debuffs you apply to enemies now last 50%
+  longer"), lengthens every tag the wearer lays on an enemy for a time, a stun among them:
+  `UCataclysmSkillEffects::ApplyTagForDuration` multiplies the seconds by `DebuffDurationMultiplierOf` for a hostile
+  target (`CataclysmSkillEffects.cpp` 4486 to 4488), and `ApplyStun` lays its stun and its 5 s immunity window through it.
+  This layer reads the 500% more's seconds off the stun as it was laid, so the two lengthen together. It is the same rule
+  that already makes the six-piece's 2 s freeze 3 s. This layer changes nothing in it. The tests here do not wear the
+  two-piece, so their stun is the stated 5 s.
+- **THE RIFT ITSELF DEALS NOTHING AND LAYS NOTHING; "FROZEN IN TIME" IS THE GAME'S STUN AND NOTHING MORE (K8).** A boss is
+  never frozen; an enemy stunned in the last five seconds (by anything, the six-piece's Time-Lock included) is not frozen
+  again; crowd control resistance shortens the freeze and at 100 refuses it; a wearer of "You cannot apply CC effects to
+  enemies above 50% HP" freezes no enemy above half health. Each of those enemies is still CAUGHT: it lengthens the rift
+  (K6) and is not caught again, but takes no more damage (K7).
+- **THE 500% MORE IS A MULTIPLIER OF SIX ON EVERYTHING THE FROZEN ENEMY TAKES THROUGH A BLOW OR A TICK, FROM EVERY
+  SOURCE, FOR AS LONG AS ITS FREEZE LASTS AS LAID (K7).** What it reaches and what it does not is listed under "What the
+  multiplier reaches" below.
+- **THE RIFT APPEARS ONLY WHEN AN ENEMY IS NEAR (K4)**: once ready it waits, for as long as that takes, and appears at the
+  first regeneration step that finds an enemy within 5 m of where the wearer stands, up to a quarter of a second late
+  (`UCataclysmRegeneration::StepSeconds`). The clock restarts as it appears. An enemy walking in is caught up to a quarter
+  of a second late for the same reason.
+- **"WITHIN 5 M" IS THE ENEMY'S CENTRE, ALONG THE GROUND**, the rule every ground zone counts who stands in it by
+  (`UCataclysmTargeting::FindEnemiesInLine`, `IsInLine`), both for calling the rift and for being caught by it. It is not
+  the Ground Pound's rule (a body touching the sphere), so a creature whose centre is just past 5 m with its capsule over
+  the edge neither calls nor is caught.
+- **THE CLOCK COUNTS THE WORLD'S SECONDS, IN COMBAT OR OUT OF IT**, from the first step that finds the wearer armed, as the
+  Ground Pound's does. Taking the bonus off forgets the clock and ends a rift standing.
+- **THE RIFT IS A GROUND ZONE OF THE WEARER'S AND IS NOT ONE OF ITS PERSISTENT AREAS.** "You deal 15%-30% increased damage
+  to enemies standing in your persistent AOE zones" does not count an enemy standing in the rift, and "You can only have
+  1 persistent AOE effect active at a time" does not end the rift when a skill leaves a zone. A judgement, below.
+- **A FLOOR CHANGE ENDS A RIFT**, as it ends every zone (`UCataclysmFloorContents::ClearTheFloor`). A dead wearer catches
+  nobody more; its rift stays drawn until its length runs out.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 53 and the rulings below. NOT COMPILED AND NOT
+  RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- against a boss the ten-piece does nothing beyond placing the rift, because a boss cannot be stunned
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner, 2026-10-08, on the six-piece's freeze: "Yes it acts like a stun". The owner took the recommended option on
+2026-10-17, as relayed by the coordinating session (#10; the relay's words, not the owner's): "the RIFT lengthens 1 s per
+enemy caught, AT MOST 10 S; an enemy already caught in that rift is not frozen again."
+
+The coordinating session's rulings of 2026-10-19 on the enchantment session's questions K1-K9, its words as relayed:
+
+> RULINGS, Chronomancer's Time-Lock 10 (brief 53). (a) on all except K4, which is (c).
+> K1 (a) the rift's whole length is at most 10 s. Checked against the owner's option text of 2026-10-17: "The rift
+> lasts 1 s longer for each enemy caught, at most 10 s; an enemy already caught in it is not frozen again."
+> K2 (a) base 5 s, under the owner's delegation.
+> K3 (a) radius 5 m, under the owner's delegation.
+> K4 (c), NOT (a): the rift is placed where the wearer stands when it appears and stays there; its 30 s clock runs on
+> the character's quarter-second step as the Ground Pound's does; once ready, it WAITS until an enemy is within the
+> radius, and appears on the first step that finds one. Reason: the owner chose exactly that for Brute's Heart 10's
+> Ground Pound ("fires by itself once ready and an enemy is inside its radius"), the nearest precedent, and a rift placed
+> in an empty room every 30 s would spend the bonus on nothing. The clock restarts when the rift appears, as the Ground
+> Pound's does.
+> K5 (a) every enemy inside when it appears and every one entering while it lasts, once per rift; a 5 s stun through
+> ApplyStun by the wearer, with every rule a stun has; a refused stun still counts as caught.
+> K6 (a).
+> K7 (a) x6 on all damage the enemy takes from every source while this rift's freeze on it lasts; a boss the stun
+> refused takes no extra. This needs a new mechanism (an enemy-side damage-taken multiplier); build it the smallest way
+> and say what else could later read it. Put on the owner's play-check list: "against a boss the ten-piece does nothing
+> beyond placing the rift, because a boss cannot be stunned".
+> K8 (a) the stun only.
+> K9 (a) drawn as a ground zone at its radius for its length; nothing on the HUD.
+
+And, when it read brief 53, the coordinating session ruled that "while this rift's freeze on it lasts" means the stun as
+applied: when crowd control resistance shortens the stun, the x6 ends with the shortened stun.
+
+K6 is (a) of the question "whether a refused stun extends the rift": it does. The sentence: "Chronomancer's Time-Lock
+(10-Piece Bonus): Every 30 seconds, a "temporal rift" appears around you. All enemies that enter the rift are frozen in
+time for 5 seconds and take 500% more damage from all sources. Every enemy caught in it extends the duration by 1s".
+
+### WHOSE NUMBERS
+
+- **The sentence's:** 30 s between rifts, the 5 s freeze, the 500% more (a multiplier of 6) and the 1 s per enemy.
+- **The owner's (#10):** the 10 s most, of the whole length (K1).
+- **Under the owner's delegation, ruled by the coordinating session:** the 5 s base length (K2) and the 5 m radius (K3).
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| K1, #10 | The whole length at most 10 s. | `TimeLockRiftLengthFor` (`CataclysmTimeLockRift.cpp` 73 to 80): base plus seconds per enemy times the enemies caught, `FMath::Min(Grown, Most)` (79). |
+| K2 | Base 5 s. | `time_lock_rift_seconds`, read in `TimeLockRiftLengthFor` and refused at nought before placing (220). |
+| K3 | Radius 5 m. | `time_lock_rift_radius_metres`, read at 219; the zone's `RadiusCm`, which every later step asks with (198). |
+| K4 | Placed where the wearer stands and fixed; 30 s on the quarter-second step; once ready waits for an enemy within the radius; the clock restarts as it appears. | `Step` (145): the clock started (186), not ready (212), the search from the wearer (225), nothing while it finds none (226), `ACataclysmGroundZone::Spawn` at the wearer's place (235), `ReadyAtSeconds = Now + Every` (243). Called from `ACataclysmCharacterBase::RegenerationStep` (`CataclysmCharacterBase.cpp` 443). |
+| K5, #10 | Everyone inside when it appears and everyone entering while it lasts, once per rift; a 5 s stun through `ApplyStun` by the wearer with every rule a stun has. | `TimeLockRiftCatch` (105): once per rift by `State.Caught` (115); `ApplyStun(Character, Other, StunSeconds, 0, /*bStunIsDesigned=*/true)` (126). Caught at appearance (the last line of `Step`) and on every step while it stands (194 to 205). |
+| K6 | A refused stun still counts as caught and lengthens it. | The catch is recorded (118) before the stun is tried; the length is grown from `Caught.Num()` (200). |
+| K7, and the stun as applied | x6 on all damage from every source while the freeze lasts as laid; none for a boss the stun refused. | `UCataclysmDamageTakenMultiplier::Hold` (133), only when the stun landed, for `TimeLockRiftStunLeftOn` (83), the time left on the stun just laid; read in `UCataclysmDamageCalculation::Resolve` step 6 (`CataclysmDamageCalculation.cpp` 1224). |
+| K8 | The stun only. | Nothing else is laid: the zone deals nought and carries no effect (235). |
+| K9 | Drawn as a ground zone at its radius for its length; nothing on the HUD. | The zone's own drawing at `BeginPlay`, for its life span; `ACataclysmGroundZone::LastFor` (`CataclysmGroundZone.cpp` 677) when it grows (203). No HUD line added. |
+
+**THE STUN'S RULES, EACH `ApplyStun`'S** (`CataclysmSkillEffects.cpp`): the wearer's health ceiling on crowd control,
+4069; crowd control resistance shortens it, 4083; an enemy stunned within the last 5 s is not stunned again, 4094; a
+skill the target runs may refuse it, 4106; a designed stun skips only the tenth-of-maximum-health threshold, 4117; a boss
+(the Boss and Cataclysm Boss rungs) is never stunned, 4162; a landed stun notes a crowd control on the wearer, raising
+`crowd_control` on its ability system, 4179.
+
+### WHAT WAS REUSED, AND WHAT WAS ADDED
+
+- **REUSED, `ACataclysmGroundZone`, unchanged in what it does for every other zone.** Its round spawn at a place
+  (`Spawn`), its life span, its drawing at its radius for its life span at `BeginPlay` (`CataclysmGroundZone.cpp` 208 to
+  212), its ending of that drawing when cut short and its leaving it when it runs out (`EndPlay`), its floor-change
+  ending, and `RadiusCm` for who is inside. The rift is a zone with `DamagePerTick` nought and no effect, so its own
+  sweep does nothing (390 to 394). WHY: K9 asks for it to be drawn as a ground zone, and this is the one thing in the
+  game that is drawn so and ends with the floor.
+- **ADDED to the zone, `bIsNotAPersistentArea`** (`CataclysmGroundZone.h` 611), set on the rift only, and read in the two
+  rules about a character's persistent areas: `target_in_your_zone` (`CataclysmAbilitySystemComponent.cpp` 1673) and
+  "only one persistent area" (`CataclysmSkillTemplate.cpp` 3144). WHY: without it the rift is one of its owner's zones to
+  both rules, so a skill of the wearer's leaving a zone under the only-one row would end the rift, and a row on enemies
+  "standing in your persistent AOE zones" would reach enemies in the rift.
+- **ADDED to the zone, `LastFor`** (`CataclysmGroundZone.h` 622, `.cpp` 677): the life span set again from now, the
+  drawings ended and one asked for at the new length. WHY: the rift grows after it is placed, and a drawing is told its
+  length once.
+- **REUSED, the Ground Pound's shape** (`UCataclysmGroundPound`): a register keyed weakly by the wearer's ability system,
+  the regeneration step's call, the stats asked with no tags, the clock started at the first armed step and forgotten
+  when unarmed. No code is shared; the rift has no kill rule and listens to no event.
+- **REUSED, `UCataclysmSkillEffects::ApplyStun`** as a designed stun, with every rule above.
+- **ADDED, `UCataclysmDamageTakenMultiplier`**, the enemy-side multiplier, and its one read in `Resolve`.
+
+### WHAT THE MULTIPLIER REACHES, AND WHAT IT DOES NOT
+
+It is read in one place, step 6 of `UCataclysmDamageCalculation::Resolve` (`CataclysmDamageCalculation.cpp` 1224), after
+`damage_taken`, after the cannot-be-mitigated rule (so it raises such a blow too) and after the Nth hit's share, before
+the temporary absorb and the pools. `Resolve` is called from one place, the Damage branch of
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, so the multiplier reaches everything that arrives through the
+Damage meta attribute on the frozen enemy:
+
+- **direct blows**: the wearer's skills, its basic attack, `ApplyDirectDamage` and `ApplyHit` from any row or power, the
+  Ground Pound's blow;
+- **area blows**: point-blank and area skills, an explosion, an ailment's explosion;
+- **damage over time ticks**: every ailment's tick, Void Splinter's share of health included (worked out before
+  `Resolve`);
+- **minions' blows**, a gadget's and a Tyrant's Minion's cast included;
+- **other players' blows**, and their minions';
+- **a zone's sweep**, the wearer's or anyone's;
+- **retaliation**, which is a blow since 2026-10-12;
+- **a share sent as a blow of its own** (the ally-damage and point-blank shares), when the frozen enemy is the one struck.
+
+It does NOT reach: **health taken by `UCataclysmSkillEffects::ReduceHealthDirectly`**, which is not a hit: an execute, a
+cull, the Sacrificial Bond's shares to the bonded creature's allies; **a blow evaded**, which deals nothing; **a defender
+with no combat attribute set**, which step 6 does not reach (every creature has one); and anything after `Resolve` that
+empties a blow (a no-damage window, a creature that takes no damage), which empties it whatever it was multiplied by.
+
+**WHAT ELSE COULD LATER READ IT.** Any "enemies take X% more damage from all sources" a debuff, a mark or a curse states
+can hold its multiplier through `UCataclysmDamageTakenMultiplier::Hold` with no new read: the Manic debuff's "take more
+damage" (not built), a curse's "cursed enemies take more damage", a shatter or "marked" rule. A combat log or a HUD line
+could read `SecondsLeftOn` to show a frozen enemy's window. Not built here: a "less damage taken" (refused by `Hold`), and
+two holds multiplying together (the larger and the later are kept).
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **SEVEN STATS WITH NO ATTRIBUTE, NOT AN ACTION ROW**, as the Ground Pound's five. The option not taken: an action row on
+  an `every_seconds` event, which counts only combat seconds, cannot wait for an enemy, and has no columns for a growing
+  length.
+- **THE 500% MORE IS ITS OWN MULTIPLIER, NOT AN INCREASE ON `damage_taken`.** The option not taken: an ailment rider
+  (`AilmentRiderPercentOn`, `ECataclysmAilmentRider::DamageTaken`), which is an increase added to the defender's
+  `damage_taken` and would sum with every other increase there instead of multiplying, and which rides on an ailment's
+  kind and not on a stun.
+- **THE MULTIPLIER IS HELD FOR THE STUN'S SECONDS AS LAID, READ OFF THE STUN.** The option not taken: the stated 5 s, which
+  is wrong under crowd control resistance (ruled against) and under the two-piece's lengthening (see SAID FIRST).
+  Another option not taken: reading the stun's tag at every blow, which would end the x6 early if anything took the stun
+  off; nothing in the game does today.
+- **ITS END IS THE WORLD'S CLOCK, NOT THE STUN'S REMOVAL.** A test that moves the clock by hand sees it end at the time
+  the stun was laid to end. The option not taken: a listener on the stun's removal.
+- **THE MULTIPLIER IS KEYED BY THE ENEMY'S ABILITY SYSTEM, HELD IN `UCataclysmDamageTakenMultiplier` AND NOT ON THE
+  ABILITY SYSTEM**, as the Ground Pound's clocks are. The option not taken: a member on `UCataclysmAbilitySystemComponent`.
+- **TWO HOLDS ON ONE ENEMY KEEP THE LARGER AND THE LATER, AND DO NOT MULTIPLY.** Today the one writer cannot overlap
+  itself: its stun opens a 5 s window. The option not taken: multiplying, which two rifts could not reach and a later
+  writer should rule on.
+- **THE RIFT IS A ZONE AND IS NOT ONE OF ITS OWNER'S PERSISTENT AREAS** (above). The options not taken: drawing the rift
+  without a zone (`UCataclysmGroundEffect::PlayFor` alone), which loses the floor-change ending and the drawing's ending;
+  and leaving it a persistent area, which lets the only-one row end it.
+- **"WITHIN THE RADIUS" IS THE ZONE'S RULE FOR BOTH CALLING AND CATCHING**, so the enemy that calls the rift is caught.
+  The option not taken: the Ground Pound's sphere for calling, which could call a rift that then caught nobody.
+- **PLACED AT ITS WHOLE LENGTH FOR THOSE CAUGHT AS IT APPEARS**, so it is drawn once as it appears. The option not taken:
+  placing it at 5 s and growing it in the same step, which asks for two drawings at once.
+- **A RIFT STANDING HOLDS THE CLOCK'S NEXT RIFT BACK UNTIL IT ENDS.** With the ruled 30 s and at most 10 s it never
+  matters. The option not taken: a second rift while the first stands.
+- **TAKING THE BONUS OFF ENDS A RIFT STANDING**, so nothing is drawn that catches nobody. The option not taken: leaving it
+  drawn to its end.
+- **A DEAD WEARER CATCHES NOBODY**, the step refusing a corpse as the Ground Pound's does. The option not taken: a rift
+  that catches for a dead owner.
+- **ROW RANGES.** The seconds between rifts may be a range only if it falls; every other range must rise. Bounds where
+  one exists: 60 s (`MAX_EVERY_SECONDS`) and 10 s of stun (`MAX_STATUS_SECONDS`). The option not taken: no bound.
+
+### THE GENRE SOURCE
+
+From `genre_set_bonuses.md` section 6, "A time-stop bubble that grows per enemy caught", as it stands. Every page was
+read through WebFetch, which summarises, so each line is that summary's account of the page, not a verbatim reading.
+
+- **D3, Delsere's Magnum Opus**, BlizzCon 2014 preview (https://www.purediablo.com/?p=32671): the 2-piece lowers Slow
+  Time's **cooldown** each time a listed skill is cast. The 4-piece does damage over time to enemies under Slow Time. The
+  6-piece makes enemies under Slow Time take 500% more damage from the set's skills. The bubble does not grow from
+  enemies it catches. The values of the version that shipped (8,500% or 12,500%, and 3 s off the cooldown per cast) come
+  from a search snippet only (NOT FETCHED; icy-veins returned 403, fandom 402).
+- **D3, the version that shipped, per maxroll** (https://maxroll.gg/d3/guides/dmo-frozen-orb-wizard-guide): "Only those
+  inside a bubble will take extra damage provided by the set", and Spectral Blade "resets the cooldown on Slow Time". No
+  page fetched gives Slow Time's base duration or its rune list.
+- **PoE 2, Time Freeze** (https://poe2db.tw/us/Time_Freeze): stops time for enemies in 10 m for 3 s, on a 65 to 48 s
+  cooldown. **Every repeat freeze within 30 s halves the next one.** Nothing makes it longer per enemy caught.
+- **PoE 1, Temporal Chains** (https://poedb.tw/us/Temporal_Chains): 15 to 29% less action speed, reduced to 9 to 18%
+  against rare and unique enemies, and other effects on the cursed enemy expire 25% slower. A 3.20 patch note called it
+  weak against pinnacle bosses.
+- **Last Epoch:** nothing found.
+- **Verdict, the file's.** No time-stop or slow bubble read makes itself longer per enemy caught. The extension that does
+  exist is a **shorter cooldown, earned by casting the build's skills** (D3 DMO, and Spectral Blade resetting it).
+  Freezes get **shorter when repeated**, not longer (PoE 2 halves them). The damage bonus applies only while the enemy
+  is inside the bubble (D3).
+- **NOT SETTLED, the file's:** nothing read has a per-enemy extension, so what that should extend is this game's own
+  call. The closest pattern is D3's: the *cooldown* is earned back by actions, while the bubble's own length stays fixed.
+  If an extension is kept, extending the **bubble** (it is a capped per-enemy scaling, in the shape from question 2) is a
+  judgement, not a derived answer. Pair it with PoE 2's diminishing repeat freeze so the same enemies cannot be held
+  indefinitely.
+
+**Not reached**, as the file records: https://maxroll.gg/d3/resources/wizard-slow-time,
+https://maxroll.gg/d3/skills/wizard/slow-time and https://maxroll.gg/d3/resources/set-bonuses (404);
+https://www.diablowiki.net/Slow_Time (403); https://www.icy-veins.com/d3/sets/delseres-magnum-opus-dmo and
+https://www.icy-veins.com/d3/dmo-frozen-orb-wizard-skills-and-runes (403); https://diablo.fandom.com/wiki/Slow_Time and
+/wiki/Delsere%27s_Magnum_Opus (402); the breezewiki mirrors of Slow_Time and Delsere's_Magnum_Opus (a bot-check page).
+"D3 Slow Time's base duration and rune text (every source for them failed)" and "Last Epoch time effects" were not found.
+
+**WHAT THE RESEARCH SETTLES AND WHAT IT DOES NOT.** The 500% more is D3's own figure, and D3 applies it only while the
+enemy is inside the bubble. This game applies it for the freeze as laid, which can outlast the enemy's stay inside the
+rift and does not reach an enemy the stun refused: the coordinating session's K7, not the genre's shape. That it reaches
+every source and not only the set's skills is the sentence's ("from all sources"). The per-enemy extension of the
+bubble is this game's own, owned by the owner's #10 with a cap; the genre's diminishing repeat freeze is met here only by
+the stun's own 5 s immunity window and by an enemy being caught once per rift.
+
+### WHAT WAS BUILT
+
+- **`UCataclysmTimeLockRift`**: seven stat names, the register, the step that starts, keeps and forgets the clock, waits,
+  places the rift, catches, stuns and holds the multiplier, and the four readers for tests.
+- **`UCataclysmDamageTakenMultiplier`**: `Hold`, `On` and `SecondsLeftOn`, and its one read in `Resolve`.
+- **On `ACataclysmGroundZone`**: `bIsNotAPersistentArea` and `LastFor`; the two rules that skip a zone so marked.
+- **One call on the regeneration step.**
+- **The seven stats on `StatsWithNoAttribute`**, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- **The generator's refusal** of a row on any of the seven that the game would read as nothing.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+Seven rows on the Enchantment Effects sheet, each with Enchantment `Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every`
+and Effect the whole sentence:
+
+| Stat | Value Kind | Value Low | Value High |
+| :-- | :-- | :-- | :-- |
+| `time_lock_rift_every_seconds` | `flat` | 30 | 30 |
+| `time_lock_rift_radius_metres` | `flat` | 5 | 5 |
+| `time_lock_rift_seconds` | `flat` | 5 | 5 |
+| `time_lock_rift_seconds_per_enemy` | `flat` | 1 | 1 |
+| `time_lock_rift_most_seconds` | `flat` | 10 | 10 |
+| `time_lock_rift_stun_seconds` | `flat` | 5 | 5 |
+| `time_lock_rift_damage_taken_more_percent` | `flat` | 500 | 500 |
+
+Every other cell empty: no Required Tags (the enchantment's own `Type.Debuff, Keyword.CC, Type.AOE.Persistent` are not a
+row's), no Condition, no Scale, no Action, no Action Event, no Fraction Of, no Stack Seconds, no Trigger Cooldown, no
+Event Value, no Ailment. All seven pass the generator's whole validation on a made-up sheet
+(`tools/tests/test_chronomancers_time_lock_ten_rows.py`). The two-piece's row (`EnchantmentEffects.csv` 400), the
+six-piece's (580) and the drawback (401) are merged.
+
+**IN THE ROW LAYER, measured on this layer's tree with the row-text check's own `value_is_stated` on the sentence, not
+run on rows:** 30, 5, 1 and 500 are read out of the words, and **10 IS NOT**, so `time_lock_rift_most_seconds` will fail
+`test_a_single_value_appears_in_its_words_outside_any_range` in `tools/tests/test_enchantment_effects_match_the_row_text.py`
+until that check is told how the owner's 10 is stated (a `STATED_BY_WORD` entry or its like, for the enchantment session
+to propose); a made-up 7 was the control and was not read. **AND THE STUN-DURATION CHECK DOES NOT SEE THE STUN ROW**:
+`tools/tests/test_stun_durations_are_stated.py` matches `\bstun`, which `time_lock_rift_stun_seconds` does not match
+(an underscore is a word character), as `ground_pound_stun_seconds` does not; the sentence's "frozen in time for 5
+seconds" states the length the row holds.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator now refuses** a row on any of the seven stats that is not `flat`, carries a Required Tag or an Action,
+  states nought or less, states more than its bound, or whose range runs the wrong way. None was accepted on a row
+  before, since none existed.
+- **`StatsWithNoAttribute` gains seven names**, at its end, so the generator accepts a row on each with no gameplay
+  attribute.
+- **`RegenerationStep`'s pinned jobs gain `UCataclysmTimeLockRift::Step`**, in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
+- **`INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains the rift's one call site**, with
+  one dated line, and `CALL_SITES` moves from 66 to 67, the count its reader finds on this tree.
+
+### Tests
+
+Eleven Unreal tests in `game/Source/Cataclysm/Tests/CataclysmSetBonusChronoTenTests.cpp`, the group
+`Cataclysm.SetBonus.Chrono10.`. The rows are given as stat lines of a flat figure each, at the ruled figures; the
+two-piece is not worn. The wearer and the other player are player pawns with their ability system on a player state, on
+the players' side, never refreshed; the imp is the other player's; enemies are creatures of the monsters' side with no
+armour, evasion, block or resistance and 100,000 health. The two tests that press a Strike or ask a skill's condition use
+a bare caster owned by a player pawn, which puts it on the players' side, holding 1000 mana and the class resource set:
+the Strike in the Movement slot costs 20 mana and no fervour (`game/Data/SkillSlots.csv`), so every resource it costs is
+held. Every body stands at least 1 m from every other. The clock is moved by hand and `UCataclysmTimeLockRift::Step`
+called directly; `RunClock` is used for a burn's ticks and for the regeneration step's own test, ending at x.5 s.
+Critical strikes are silenced by the world helper, but in test 9, which pins the roll to nought after the world is made.
+Every helper type and function is named after the subject (`FChronoTenWearer`, `ChronoTenEnemyAt`...).
+
+1. `NoRiftWithTheStatsAtNoughtAndOneThirtySecondsAfterTheyAreWornAndNotBefore`, 15 assertions. In order: set-up, a
+   world; set-up, a wearer; set-up, an enemy 3 m off; control, with the stats at nought the first step catches nothing;
+   control, and starts no clock; control, 30 s on it still catches nothing; control, and no rift stands; worn, the first
+   step catches nothing; and starts the clock at 30 s; 29.75 s on, nothing is caught; and no rift stands; at 30 s the
+   rift appears and catches the enemy; a rift stands; where the wearer stands; the clock restarts at 30 s.
+2. `ReadyWithNoEnemyWithinFiveMetresItWaitsAndAppearsTheFirstStepOneIs`, 14 assertions. In order: set-up, a world; a
+   wearer; an enemy 7 m off; control, at 30 s with the only enemy 7 m off nothing is caught; no rift stands; it is ready;
+   15 s later it still waits; with no rift; set-up, an enemy placed 4 m off; the next step catches it; a rift stands; it
+   is stunned; the one 7 m off is not; the clock restarts at 30 s.
+3. `EachEnemyInsideOrWalkingInIsStunnedOnceForFiveSecondsByTheWearerAndABossIsNot`, 23 assertions. In order: set-up, a
+   world, a wearer, an enemy 3 m east, a creature 3 m west, an enemy 8 m north; set-up, the Boss rung is a boss; control,
+   before the rift the enemy 3 m east is not stunned; control, the wearer has raised no crowd control; the rift catches
+   the two inside; the enemy 3 m east is stunned for 5 s; the boss is not stunned; both are caught; one `crowd_control`
+   raised on the wearer; the enemy 8 m off is not stunned; walking in to 4 m it is caught at the next step; stunned for
+   5 s; a second `crowd_control`; a step 1 s later catches nobody; the first's stun was not laid again, 4 s left; walked
+   out to 10 m it is caught by nothing; walked back in it is not caught again; three caught in all; two `crowd_control`
+   in all.
+4. `TheRiftLastsASecondLongerForEachEnemyCaughtABossIncludedAndTenSecondsAtMost`, 26 assertions. In order: set-up, a
+   world, a wearer, six enemies (each by its index), the second is a boss; control, before the rift it has no length; the
+   rift catches the one on the ring; a rift stands; 6 s; its zone lasts 6 s; the boss walking in is caught; and not
+   stunned; and lengthens it to 7 s; enemies 2, 3 and 4 make it 8, 9 and 10 s; the sixth is caught; it stays at 10 s;
+   its zone lasts 10 s; six caught; it stands 9.9 s after it appeared; it has ended 10.1 s after.
+5. `ACaughtEnemyTakesSixTimesTheWearersAnotherPlayersAndAMinionsBlowWhileFrozen`, 20 assertions. In order: set-up, a
+   world, a wearer, another player, an enemy 3 m east, a creature 3 m west, an enemy 20 m off, the other player's imp, the
+   Boss rung is a boss; control, before the rift the wearer's blow, the other player's and the imp's each take something
+   from the enemy to be caught (each source's figure on each of the three enemies is read before the rift); the rift
+   catches two; the wearer's direct blow takes six times its control from the caught enemy; its control from the boss;
+   its control from the enemy not caught; the other player's blow six times on the caught enemy; its control on the
+   boss; the imp's blow six times on the caught enemy; its control on the boss; 5.25 s on, the freeze over, the
+   wearer's blow takes its control from the caught enemy again.
+6. `ADamageOverTimeTickOnACaughtEnemyIsSixTimesTheTickOnOneNotCaught`, 9 assertions. In order: set-up, a world, a wearer,
+   an enemy 3 m east, an enemy 20 m off; set-up, the rift catches the one inside; set-up, a burn laid on each; control,
+   the enemy not caught lost something in 2.5 s; the caught enemy lost six times as much.
+7. `AnEnemyWithCrowdControlResistanceTakesSixTimesOnlyForItsShortenedStun`, 14 assertions. In order: set-up, a world, a
+   wearer, an enemy 3 m east, one 3 m west holding 50 crowd control resistance; control, a blow takes something from the
+   plain enemy (each one's figure is read before the rift); control, neither is held to take more; the rift catches both;
+   the plain one is stunned for 5 s; the resisting one for 2.5 s; the plain one is held to take more for 5 s; the
+   resisting one for 2.5 s and not 5; 3 s on, a blow takes its control from the resisting one; and six times its control
+   from the plain one; 5.25 s on, its control from the plain one.
+8. `TheRiftIsDrawnAsAGroundZoneAtItsRadiusForItsLengthAndDrawnAgainWhenItGrows`, 20 assertions. In order: set-up, a
+   world, a wearer, an enemy 3 m east, an enemy 8 m north, an ordinary zone of the wearer's; control, the ordinary zone is
+   drawn once; control, and is a persistent area; the rift appears and catches one; a rift stands; it is drawn once as it
+   appears; 5 m wide; for its 6 s; where it stands; it deals nothing; it is no persistent area; an enemy walking in 1 s
+   later is caught; it ends the drawing; it asks for one more; for the 6 s left of its 7; its zone lasts those 6 s.
+9. `AnEnemyStandingInTheRiftIsNotStandingInOneOfYourPersistentAreas`, 9 assertions. In order: set-up, a world, a player
+   pawn to own the caster, an enemy 3 m off; set-up, the caster's rift catches it; set-up, and stands; set-up, an ordinary
+   zone of the caster's under the enemy; control, a blow on the enemy carries the zone bonus (critically strikes); set-up,
+   the rift still covers the enemy; with only the rift under it, a blow does not.
+10. `YourOnlyPersistentAreaRuleEndsYourEarlierZoneAndNotTheRift`, 11 assertions. In order: set-up, a world, a player pawn
+    to own the caster, an enemy 4 m off; set-up, the caster's rift catches it; set-up, the rift stands; set-up, an
+    earlier ordinary zone of the caster's; set-up, a Strike; set-up, the Strike is used; control, the earlier ordinary
+    zone is ended by the Strike's new one; the rift is not; and still stands for the caster.
+11. `TheRegenerationStepPlacesTheRiftWithNoCallByHand`, 9 assertions. In order: set-up, a world, a wearer, an enemy 3 m
+    off; control, before the clock runs there is no clock; 29.5 s on the steps have started it; no rift stands; 1.5 s
+    after that a rift stands; it has caught the enemy; it is stunned.
+
+And `ProbeTimeLockRift` in `CataclysmStatExemptionTests.cpp`, one probe for each of the seven stats: a bare wearer and an
+enemy 3 m off, one step, 30 s, one step, with the seconds per enemy at 8 so one enemy takes the length past the most;
+the control holds the other six stats and not the one probed. Every: control no clock, with it 30. Radius: control no
+rift, with it a rift of 500 cm. Base: control no rift, with it a rift. Per enemy: control 5 s, with it 10 (held to the
+most). Most: control 13 s, with it 10. Stun: control not stunned, with it stunned. More: control a multiplier of 1, with
+it 6.
+
+Python: `tools/tests/test_chronomancers_time_lock_ten_rows.py`, on a made-up workbook holding the sentence typed
+Generic: the row name is the shipped one and is in `EnchantmentsPositive.csv`; the seven rows are carried through and
+refused by nothing, the condition and scale checks and the whole validation included; a wrong radius row put through the
+whole validation is refused by this check's own sentence; the seven stats are on `stats_with_no_attribute`, with a
+made-up name as the control; the engine defines exactly the generator's seven names; sixteen wrong shapes, each refused
+once and by its own sentence; a falling range of seconds and a rising range of the share are accepted; a condition or a
+scale on any of the seven is refused by the general checks; a row on another stat and a passive node's row are left
+alone.
+
+**Not tested:** the real rows worn at ten pieces with a control at nine (the enchantment session's real-row test), so
+the two-piece's lengthening of the freeze and of the multiplier to 7.5 s (SAID FIRST); the six-piece's Time-Lock stunning
+an enemy before the rift catches it; a skill of the wearer's on the frozen enemy, a zone's sweep, retaliation, an
+explosion and a gadget's cast (each arrives through `Resolve` as the three blows tested do); `ReduceHealthDirectly`
+not being multiplied; a refused stun on a common enemy for a reason other than a boss (immunity window, resistance at
+100, the health ceiling); taking the bonus off with a rift standing; a floor change; a dead wearer; two holds on one
+enemy; anything drawn on a screen, the drawing itself being invisible to every test under `-nullrhi`.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmTimeLockRift.cpp` by a
+script at this layer's working tree, and each new text counted absent before the break and once after it. Each break
+keeps the file's round, curly and square brackets paired (counted by the same script: 120/120, 34/34, 0/0 before;
+119/119 after CT-I, which drops one call; 121/121 after CT-II, which adds one; 120/120 after CT-III) and compiles alone by
+reading: CT-I drops one operand of an `||`, leaving a `bool`; CT-II wraps a `float` in `FMath::Max` with another `float`,
+keeping `TimeLockRiftStunLeftOn` called; CT-III adds a `float` literal to a `float`, keeping `Most` read. The prefix is
+`Cataclysm.SetBonus.Chrono10.`, with its trailing dot, eleven tests.
+
+**The events the tests' actors raise on the way, listed before counting.** On the wearer: `crowd_control` once for each
+stun that lands (tests 3 to 8, 11), counted in test 3; `hit_dealt` and `first_hit_dealt` for its own direct blows on an
+enemy (tests 5, 7); in test 6 whatever laying a burn raises. On the other player: `hit_dealt` and `first_hit_dealt` for its
+blows (test 5). On the caster: nothing (it is not a player pawn). **NO ROW HANGS ON ANY OF THEM AND THE RIFT LISTENS TO
+NO EVENT**, so no event moves the clock, the catch or the multiplier: unlike the Ground Pound, there is no kill rule. Read
+from the code, not measured.
+
+| Proof | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|
+| CT-I, caught again every step (#10, K5) | `if (!IsValid(Other) \|\| State.Caught.Contains(Other))` | `if (!IsValid(Other))` | `EachEnemyInsideOrWalkingInIsStunnedOnceForFiveSecondsByTheWearerAndABossIsNot` | `TheRiftLastsASecondLongerForEachEnemyCaughtABossIncludedAndTenSecondsAtMost`, `TheRiftIsDrawnAsAGroundZoneAtItsRadiusForItsLengthAndDrawnAgainWhenItGrows`, `TheRegenerationStepPlacesTheRiftWithNoCallByHand` |
+| CT-II, the more damage held for the stated seconds, not the stun as laid (K7 as ruled) | `1.0f + MorePercent / 100.0f, TimeLockRiftStunLeftOn(Other));` | `1.0f + MorePercent / 100.0f, FMath::Max(StunSeconds, TimeLockRiftStunLeftOn(Other)));` | `AnEnemyWithCrowdControlResistanceTakesSixTimesOnlyForItsShortenedStun` | none |
+| CT-III, the most capping only what is added past the 5 s base (K1's option not taken) | `return Most > 0.0f ? FMath::Min(Grown, Most) : Grown;` | `return Most > 0.0f ? FMath::Min(Grown, Most + 5.0f) : Grown;` | `TheRiftLastsASecondLongerForEachEnemyCaughtABossIncludedAndTenSecondsAtMost` | none |
+
+Failed assertions, by reading:
+
+- **CT-I, 15 in 4 tests.** With the once-per-rift test gone, every step catches everyone inside again: the stun is
+  refused by its own immunity window (no `crowd_control`), but each is counted and lengthens the rift. Test 3, 5:
+  "walking in to 4 m, it is caught at the next step" (3, not 1), "a step 1 s later catches nobody" (3), "walked out to
+  10 m, it is caught by nothing" (2), "and walked back in, it is not caught again" (3), "the rift has caught three in
+  all" (13). Its `crowd_control` counts and the stun's 4 s left pass. Test 4, 6: "the boss walking in is caught" (2),
+  "and still lengthens the rift to 7 s" (8), "enemy 2 walking in makes it 8 s" (10), "enemy 3 ... 9 s" (10), "the sixth
+  walking in is caught" (6), "the rift has caught six" (21); enemy 4's 10 s, the sixth's 10 s, the zone's 10 s, 9.9 s
+  and 10.1 s pass. Test 8, 3: "an enemy walking in 1 s later is caught" (2), "for the 6 s left of its 7" (7), "and its
+  zone lasts those 6 s" (7); the drawing counts pass. Test 11, 1: "and has caught the enemy" (at least 2, from the steps
+  after the rift appears in the 1.5 s). Tests 1, 2, 5, 7, 9 and 10 step no more once the rift has appeared; test 6's
+  steps under `RunClock` re-catch the one enemy, whose refused stuns hold nothing more, so its ratio passes. The probes
+  step once at the rift.
+- **CT-II, 2 in 1 test.** Test 7: "and the resisting one for its 2.5 s and not for 5" (5) and "3 s on, a blow takes its
+  control from the resisting one" (six times). The plain enemy's stun is 5 s either way. No other test has a stun shorter
+  than 5 s or reads the hold's length; a refused stun holds nothing under either text.
+- **CT-III, 3 in 1 test.** Test 4: "and leaves it at 10 s" (11), "and its zone lasts 10 s" (11), "10.1 s after, it has
+  ended" (it stands). The lengths 6 to 10 are under 15. No other test catches more than three. Outside the prefix,
+  `ProbeTimeLockRift` for `time_lock_rift_seconds_per_enemy` ("10", 13) and for `time_lock_rift_most_seconds` ("10",
+  13) fail, in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**A test and no proof:** the wait for an enemy, the clock's restart, a boss refused and still caught, the `crowd_control`
+count, the multiplier on each source, the multiplier's end, the drawing, the two persistent-area rules, the regeneration
+step's call.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-19 — A wearer's hit can cull the enemy it leaves below a row's share of maximum health for each stack of Soul Strike held, capped by the enemy's rarity and never a boss, through the execute's own execution; and a kill can spawn one minion of the wearer's first summon skill where the enemy died, inside its cap: Reaper's Embrace's ten-piece mechanism, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`KillIfLeftBelow`,

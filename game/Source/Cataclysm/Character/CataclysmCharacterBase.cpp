@@ -26,6 +26,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 // For Brute's Heart's taunt aura, which beats by itself below half health. Ruled 2026-10-18.
 #include "AbilitySystem/CataclysmTauntAura.h"
+// For Chronomancer's Time-Lock's temporal rift, which appears by itself. Ruled 2026-10-19.
+#include "AbilitySystem/CataclysmTimeLockRift.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -433,6 +435,12 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// IT KEEPS NO CLOCK OF ITS OWN. The sample only says what it saw; the
 	// character's ability system component stamps the clocks from the world.
 	UCataclysmMovement::SampleStep(this);
+
+	// AND A WEARER OF CHRONOMANCER'S TIME-LOCK'S TEN PIECES PLACES ITS TEMPORAL RIFT ONCE IT IS READY AND AN ENEMY
+	// IS NEAR, AND THE RIFT STANDING CATCHES WHOEVER HAS COME INTO IT. Ruled 2026-10-19 (K4, K5). On this step, as
+	// the Ground Pound is, so an enemy walking in is caught a quarter of a second late at worst; the call answers
+	// nought for every character holding no such row and refuses a corpse itself. Its return value is for tests.
+	UCataclysmTimeLockRift::Step(this);
 
 	// AND WHATEVER A SUBCLASS KEEPS THAT MUST BE ASKED FOR AGAIN AS TIME PASSES.
 	// Issue #1821. LAST, so it sees this step's movement sample and every write

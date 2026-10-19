@@ -673,3 +673,17 @@ float ACataclysmGroundZone::RegenerationScaleFor(const AActor* Who)
 
 	return Scale;
 }
+
+void ACataclysmGroundZone::LastFor(float Seconds)
+{
+	if (Seconds <= 0.0f || bLastsTheFloor)
+	{
+		return;
+	}
+	// THE LIFE SPAN FROM NOW, which `AActor::SetLifeSpan` restarts, and the drawings ended and asked for again at the
+	// new length, as `BeginPlay` asks for them at a timed patch's whole life span.
+	SetLifeSpan(Seconds);
+	UCataclysmGroundEffect::EndFor(Drawings);
+	Drawings = UCataclysmGroundEffect::PlayFor(
+		this, GetActorLocation(), FarEnd, RadiusCm, Seconds, TypeItIsDrawnAs());
+}
