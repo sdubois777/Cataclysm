@@ -47,7 +47,7 @@ Two readings of this layer, each a judgement:
 ### Measured
 
 500 campaigns a row, tier 1, ordinary damage x0.7, `measure16.py` in the session's scratchpad. Left: the head of the
-entry below (`c0ebd0f2`; measured as `1aa79e71`, the same simulation code). Right: this layer (`2fadf932`; measured as
+entry below (`818c69d3` on `development`; measured as `1aa79e71`, the same simulation code). Right: this layer (`cd67d9b9`; measured as
 `5ae7d326`). Won / cities lost:
 
 | campaigns | undefended, median day lost T1 / T2 / T3 / T4 | Explorer `triage` T1 | no-tree `triage` T1 |
@@ -58,7 +58,7 @@ entry below (`c0ebd0f2`; measured as `1aa79e71`, the same simulation code). Righ
 ### Tests
 
 New: `sim/tests/test_an_ascendant_grows_more_dangerous_floor_by_floor.py` (5), each case with a control (the extra
-turned off, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `5ae7d326` (now `2fadf932`, the same zero-context patch id),
+turned off, or War's Quest dungeon). Guard proofs with `tools/prove_guard.py` in a `git archive` copy of `5ae7d326` (now `cd67d9b9`, the same zero-context patch id),
 all PROVED and passing again restored:
 
 | break | failed with it in | restored |
