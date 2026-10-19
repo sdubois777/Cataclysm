@@ -872,7 +872,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 666 SINCE THE THREE ROWS OF REAPER'S EMBRACE'S 6-PIECE, issue #1833, from 663.
 	//
 	// AND 668 SINCE THE TWO ROWS OF REAPER'S EMBRACE'S 10-PIECE, issue #1833, from 666.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    668)
+	//
+	// AND 675 SINCE THE SEVEN ROWS OF CHRONOMANCER'S TIME-LOCK'S 10-PIECE, issue #1833, from 668.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    675)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

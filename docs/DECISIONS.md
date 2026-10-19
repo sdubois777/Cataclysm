@@ -480,6 +480,41 @@ step's call.
   reading nothing there could critically strike: the players wear no weapon item, a minion cannot, and a tick cannot.
   No proof's count moves: no break touches the pin.
 
+### THE ROW LAYER
+
+Written by the enchantment session on 2026-10-19 on this mechanism. Seven rows on the Enchantment Effects sheet, on
+`Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every`, each Value Kind `flat`, Value Low and High as given, every
+other cell empty: `#1` `time_lock_rift_every_seconds` 30; `#2` `time_lock_rift_radius_metres` 5; `#3`
+`time_lock_rift_seconds` 5; `#4` `time_lock_rift_seconds_per_enemy` 1; `#5` `time_lock_rift_most_seconds` 10; `#6`
+`time_lock_rift_stun_seconds` 5; `#7` `time_lock_rift_damage_taken_more_percent` 500. The row pins move to 675 rows over
+540 enchantments.
+
+**THE ROW-TEXT CHECK GAINS `RULED_NUMBERS`, RULED BY THE COORDINATING SESSION THE SAME DAY (P3).** Measured: without
+it, `test_a_single_value_appears_in_its_words_outside_any_range` fails on `#5` alone ("10 against ..."): the owner's 10
+is in no word of the sentence, whose "(10-Piece Bonus)" the check strips as the set's label. The new set excuses
+exactly (enchantment, stat, value) = (this ten-piece, `time_lock_rift_most_seconds`, 10), citing the owner's #10 option
+text, and `test_every_ruled_number_is_still_needed` refuses an entry no row states and one the words already state.
+Proved with `prove_guard`, three ways: the entry removed, "PROVED: 1 failed, 40 passed | restored: 41 passed",
+named_failures the single-value test; an entry no row uses (12), and one the words state (30 on
+`time_lock_rift_every_seconds`), each "PROVED: 1 failed, 40 passed | restored: 41 passed", named_failures
+`test_every_ruled_number_is_still_needed`.
+
+**TWO 5s PASS BY COINCIDENCE**, recorded and not changed: `time_lock_rift_radius_metres` 5 and `time_lock_rift_seconds` 5
+are numbers under the owner's delegation, and the check accepts them only because the sentence's "for 5 seconds" (the
+freeze) holds a 5.
+
+**`test_stun_durations_are_stated.py` IS MEANT TO READ ENCHANTMENT ROWS** ("every row in every generated table that
+applies a stun states a duration", and it already excuses the six-piece's `stun_near_the_dying` row), and its `stun`
+pattern does not match after an underscore, so it does not see `time_lock_rift_stun_seconds` or
+`ground_pound_stun_seconds`. Measured, not changed: widened to match after an underscore, it would see 2 rows more (13
+against 11) and flag 1, this layer's `#6`, whose sentence says "frozen" and not "stun", as the six-piece's does.
+Brute's Heart's ten-piece `#4` would pass. For the coordinating session to rule as its own change.
+
+**THE REAL-ROW TEST**, `Cataclysm.Enchantments.TheWornChronomancersTimeLockTenPiecePlacesARiftThatFreezesAnEnemyNearby`,
+wears nine pieces against ten, each with the 10-piece and the set's drawback. Each striker's rift step is called once
+to start the clock and again 30 s later, its first creature 2 m off. At nine no rift stands (the control); at ten one
+stands and the creature is frozen (two assertions on the case).
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
