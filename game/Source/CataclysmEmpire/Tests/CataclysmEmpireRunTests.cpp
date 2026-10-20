@@ -927,8 +927,9 @@ bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmEmpireRunTest;
 
-	// A SEED WHOSE FIRST WAVE CONTAINS A SIEGE, found by looking. Siege is 10 in
-	// 100 and a wave is four dungeons, so most seeds have one, but not all.
+	// A SEED WHOSE FIRST WAVE CONTAINS A SIEGE, found by looking. Most seeds
+	// have one, but not all: the first wave is 12 dungeons since 2026-10-20,
+	// and this comment said "four" and "10 in 100" from earlier still.
 	int32 SiegeSeed = INDEX_NONE;
 	for (int32 Seed = 1; Seed <= 200 && SiegeSeed == INDEX_NONE; ++Seed)
 	{
@@ -3188,7 +3189,8 @@ bool FCataclysmEmpireRunDescribesProgressTest::RunTest(const FString& Parameters
 
 	// A CAMPAIGN WALKED UNTIL A QUEST DUNGEON IS STANDING. Which day that is
 	// depends on the roll, so it is searched for rather than assumed; a surge
-	// rolls one about an eighth of the time and the first wave brings four.
+	// rolls one about an eighth of the time, and the first wave brings 12
+	// since 2026-10-20.
 	UCataclysmEmpireRun* Run = MakeRun(1);
 
 	int32 QuestId = INDEX_NONE;
@@ -4648,8 +4650,10 @@ namespace CataclysmEmpireRunTest
 
 	/**
 	 * The lowest dungeon number these tests place by hand. A surge numbers its
-	 * dungeons upwards from nought and no run here lands twenty, so a dungeon
-	 * numbered below this that is not a Dungeon City was rolled by a surge.
+	 * dungeons upwards from nought and no run here lands more than a few dozen
+	 * -- the opening wave of 12 and a wave of 8 or two after it, since
+	 * 2026-10-20 -- so a dungeon numbered below this that is not a Dungeon
+	 * City was rolled by a surge.
 	 */
 	const int32 FallSurgeFirstHandId = 9500;
 
