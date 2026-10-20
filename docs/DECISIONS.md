@@ -481,7 +481,52 @@ assertion on the case, so on assets built before the row it fails once, and only
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-19 under the lock enchant-sw, on development 4c4570108 (the dungeon session's
+Quest-timer merge, onto which this layer was moved a second time: patch ids unchanged, 0 development lines removed, and
+the difference from the earlier top exactly that merge's seven files). Three commits, in this order: the mechanism
+(20f2fd054), its two additions (847a67109) and the row with the real-row test (14add2e7b). Every step was as
+registered. The lock was taken once development's CI and Unreal runs on 4c4570108 had succeeded, with no run in
+progress and no pull request open.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 49 actions, 44 files compiled" (the
+  mechanism's first compile); "358 tests performed, 357 succeeded, 1 failed:
+  TheWornSelfBlastDrawbackMakesItsWearerHoldTheFlagEveryBlastSiteAsks", with exactly 1 failed assertion in the run,
+  checked by its text: "wearing the self-blast drawback, the wearer holds the flag every blast site asks". The control
+  passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as dbc9d613d, "Rebuild the enchantment DataTable asset for the deployable self-blast's row", and pushed as
+  `feat/deployable-self-blast-t-1`.
+- **The whole Unreal suite:** "3949 tests performed, 3949 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3949 tests in the tree at dbc9d613d; 3949 performed, gap 0". Registered 3949 and 0: the 3940 measured at the
+  ally-buff refusal's window, the eight of `Cataclysm.DeployableSelfBlast.` and the one real-row test; the Quest-timer
+  merge added none. The risks that could only be read passed on the first build: a blow struck by its own attacker
+  (tests 1, 2, 6 and 8), and a wearer given an enemy's defences losing what an enemy beside it loses within 0.01 (tests
+  2 and 6).
+- **Python:** "6797 passed, 8 skipped"; JUnit tests 6805, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 22:14:37 to 23:04:51 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.DeployableSelfBlast.`, 8 tests.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading, by the second session and again after its two additions, and were measured
+beside it. Each anchor was counted once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| DS-I | a cast from no deployable passes the wearer's-deployable test (`CataclysmDeployableSelfBlast.cpp`) | 1 failed, `TheWearersOwnCastOfTheSkillFromItsOwnPlaceDoesNotStrikeIt` | 1 / 1 | 8 of 8 succeeded |
+| DS-II | a single-target swing strikes the wearer (`CataclysmSkillTemplates.cpp`) | 1 failed, `ASingleTargetBasicSwingTheGadgetCastsDoesNotStrikeTheWearerInsideItsCone` | 1 / 1 | 8 of 8 succeeded |
+| DS-III | the blow on the wearer carries no share mark (`CataclysmDeployableSelfBlast.cpp`) | 2 failed: `TheBlowOnTheWearerGivesItNoLeech...`, `TheBlowRaisesHitTaken...` | 6 / 6 | 8 of 8 succeeded |
+
+The measured lines include, under DS-I, "the wearer at the centre of its own swing loses nothing ... to be 10000.000000,
+but it was 9615.000000"; under DS-II, "the wearer inside the single-target swing's cone loses nothing ... but it was
+9890.000000"; under DS-III, "the wearer's leech payments are its enemy's alone ... to be 3, but it was 6" and "one
+hit_dealt, its enemy's ... to be 1, but it was 2".
+
+**Not measured:** the probe's failure and the real-row test's under any break (both outside the prefix);
+`ACataclysmProjectile::Finish` and `ACataclysmMinion::Explode` (untested, as ruled); a real wearer's gadget in play;
+anything drawn on a screen.
+
+**THE SENTENCE'S TRAP HALF IS NOT YET BUILT** and joins with traps, scheduled 2026-10-19.
 
 ---
 
