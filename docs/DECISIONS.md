@@ -348,7 +348,51 @@ once, and only there.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session from 2026-10-19 into 2026-10-20 under the lock enchant-dw, on development 4c206cb3f
+(the deployable self-blast's merge; this layer was built on its head 0e81e2262, whose files the merge holds, so the
+move onto it changed no file). Three commits, in this order: the mechanism (77dca29a3), the War branch's removal
+(3d53b3217) and the row with the real-row test (15d1d363e). Every step was as registered. The lock was taken once
+development's CI and Unreal runs on 4c206cb3f had succeeded, with no run in progress and no pull request open.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 38 actions, 35 files compiled" (the
+  mechanism's first compile); "359 tests performed, 358 succeeded, 1 failed:
+  TheWornDeathTriggerGivesItsWearerTheActionThatFiresItsGadgetsAtItsDeath", with exactly 1 failed assertion in the run,
+  checked by its text: "wearing the death trigger, the wearer holds one action firing its gadgets on player_death". The
+  control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 2a87287b3, "Rebuild the enchantment DataTable asset for the death trigger's row", and pushed as
+  `feat/death-triggers-gadgets-t-1`.
+- **The whole Unreal suite:** "3953 tests performed, 3953 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3953 tests in the tree at 2a87287b3; 3953 performed, gap 0". Registered 3953 and 0: the 3949 measured at
+  the deployable self-blast's window, the three of `Cataclysm.DeathTriggersGadgets.` and the one real-row test. The
+  risks that could only be read passed on the first build: the player is marked dead before `player_death` is raised,
+  so the death cast needs J1's lifted refusal (DG-I below measures it); and a dead caster's cast deals what a living
+  caster's does (test 2: 385.00 for each).
+- **Python:** "6821 passed, 8 skipped"; JUnit tests 6829, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 23:19:49 to 00:10:11 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.DeathTriggersGadgets.`, 3 tests, all in
+`CataclysmMinion.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the beginnings
+of their names. The failed assertions had been counted by reading, after listing every event the tests' actors raise,
+by the second session and again after the War branch's removal, and were measured beside it. Each anchor was counted
+once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| DG-I | the dead player's refusal kept for the death cast | 3 failed: `EachGadgetCastsOnceAtTheDeath...`, `AGadgetWithNoEnemyInReach...`, `TheDeathCastLeavesEachGadgetsClock...` | 13 / 13 | 3 of 3 succeeded |
+| DG-II | the death cast restarts the gadget's clock | 1 failed, `TheDeathCastLeavesEachGadgetsClockAsItWas` | 5 / 5 | 3 of 3 succeeded |
+| DG-III | only the first gadget fires | 2 failed: `EachGadgetCastsOnceAtTheDeath...`, `TheDeathCastLeavesEachGadgetsClock...` | 5 / 5 | 3 of 3 succeeded |
+
+The measured lines include, under DG-I, "at the whole of its damage: it took 0.00, as the living player's clock cast
+took 385.00"; under DG-II, "so its clock has 1.250 s left, as before the death ... but it was 1.500000"; under DG-III,
+"its Ultimate gadget cast once more, inside the same death ... to be 2, but it was 1".
+
+**Not measured:** the real-row test under any break (outside the prefix); a death inside the player's own skill
+activation, and a Support gadget's buff on the dead player (read and not tested); War's gadgets (not fired, J2); a real
+wearer's gadgets in play; anything drawn on a screen.
+
+**THE SENTENCE'S TRAP HALF IS NOT YET BUILT** and joins with traps, scheduled 2026-10-19.
 
 ---
 
