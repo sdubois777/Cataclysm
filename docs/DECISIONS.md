@@ -2,6 +2,226 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-20 — A run in the game opens with a wave of 12 dungeons and brings 8 a wave after, and an ordinary dungeon hits for 0.7 of its old row
+
+**The game follows the simulation.** `UCataclysmSurgeScheduler` gains `OpeningDungeonsPerSurge = 12`, read by
+`DungeonsInNextSurge` at `SurgeIndex` 0; `DungeonsPerSurge` goes from 5 to 8; the four Basic rows of `SpecFor` become
+0.7 of what they were. Branch `feat/game-waves-and-hit-1`, written on `development` at `da6b31cb4`; it follows the entry
+headed "In the simulation the run opens with a wave of 12, later waves bring 8 every 90 days, and every ordinary dungeon
+hits for 0.7 of what it did". Not built and not run: see Proofs and Run.
+
+### SAID FIRST
+
+- **A RUN OPENS WITH 12 DUNGEONS ON THE MAP, NOT 5.** The surge that lands on day 1 brings 12, all on the twelve rim
+  Outposts as before; every later wave brings 8 before escalation, and the next comes 90 days after the last as before.
+  On Heretic the opening wave is trunc(12 x 1.25) = 15 and a later one trunc(8 x 1.25) = 10, a quarter more each time
+  (at 5 a wave it was 6, a fifth more). The ceiling of 14 a wave, and 17 on Heretic, is unchanged.
+- **A SWELLING RUN'S SECOND WAVE IS SMALLER THAN ITS FIRST**: 12, then 8, 9, 9, 10, reaching 14 at the thirteenth wave
+  (index 12) where it reached it at the nineteenth. The model has the same shape.
+- **AN ORDINARY DUNGEON THAT RESOLVES TAKES 0.7 OF WHAT IT DID**: 70 defence and 175 people off an Outpost (was 100 and
+  250), 189 and 700 off a Bulwark (270 and 1,000), 448 and 1,680 off a Sanctuary (640 and 2,400), 840 and 3,150 off the
+  Pillar (1,200 and 4,500). A Quest dungeon's timer hits with the same row, so it is 0.7 too. Floors are unchanged.
+  A city at its base ceiling now survives 15, 16, 18 and 24 ordinary hits by tier, where it survived 10, 12, 13 and 17.
+- **WHICH RUN A SEED GIVES HAS CHANGED.** The opening wave draws twelve targets from the run's stream before any dungeon
+  is made, where it drew five, so every draw after it moves: a seed's cities, depths, kinds, sub-types and Cataclysms
+  are not what they were.
+- The run description's "Next surge in N days, bringing M" and the empire map's line read `DungeonsInNextSurge`, so a
+  new run says 12 there before day 1 and 8 after it.
+
+### What was ruled
+
+The owner, 2026-10-16, verbatim: "We need to find a better solution to this. I want surges to summon a lot more
+dungeons. Or maybe the initial surge spawns more and then the first real surge is 6 to 10? Idk, but 6 is boring." and
+"the obvious solution here is to adjust the damage dungeons do." The coordinating session chose, under the owner's
+delegation of numbers, an opening wave of 12, then 8 every 90 days, and every ordinary row's damage x0.7; the
+simulation took it that day and the game kept 5 a wave and the old rows until this layer.
+
+The coordinating session accepted this layer's plan on 2026-10-20: the two constants and the rows as above, the Unreal
+figures worked from each test's own set-up, the Python comparisons put back as the not-yet-in-the-game file's restore
+text said, that file kept for its Quest sub-type half and renamed, and the two guard proofs below registered.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`: `DungeonsPerSurge` 5 -> 8, with the owner's words and the
+  Heretic arithmetic in its comment; new `OpeningDungeonsPerSurge = 12` beside it; `SurgeIndex`'s comment says that 0
+  means the opening wave; `FCataclysmDungeonSpec::DefenceDamage`'s comment gives the new shares (70 off 1,000 is 7%, 448
+  off 8,000 is 5.6%).
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`, `DungeonsInNextSurge`: the count starts from
+  `SurgeIndex == 0 ? OpeningDungeonsPerSurge : DungeonsPerSurge`, as `Simulation.surge_count` starts from
+  `surge_opening_count` at `surge_index` 0; the comment says that `RecordSurge` raises `SurgeIndex` after each surge, as
+  `Simulation.trigger_surge` raises `surge_index`, so only the first wave of a run is rolled at 0. Growth, the ceiling
+  and the Heretic multiplier are applied after it as before.
+- The same file, `SpecFor`, Basic: Outpost 70/175, Bulwark 189/700, Sanctuary 448/1680, Pillar 840/3150; the comment
+  keeps the fraction table they came from and says when and why they became 0.7 of it.
+
+### Tests
+
+Every changed figure was worked from the test's own set-up: the wave index the assertion reads (how many surges the run
+or scheduler has fired, and in which mode), the hand-placed dungeons, and for the resolve counts the test's own rule
+that a city falls on the hit that takes its defence to nothing or below. Line numbers are on this branch.
+
+Unreal, `game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp` (no test added, removed or renamed):
+
+- `Cataclysm.Surge.AStaticSurgeBringsTheSameWaveForEver`: index 0, 5 -> 12 (:84, now asserted on its own); indices 1,
+  5, 20 and 100, 5 -> 8 (:92). The gap at index 0 is asserted beside it, 90 as before.
+- `Cataclysm.Surge.AnAcceleratingSurgeShortensTheGapDownToAFloor`: index 0, 5 -> 12 (:146); index 20, 5 -> 8 (:150);
+  one assertion added, index 1 is 8 (:148). The gaps are unchanged.
+- `Cataclysm.Surge.ASwellingSurgeGrowsTheWaveUpToACeiling`: indices 0 to 4, 5, 5, 6, 6, 7 -> 12, 8, 9, 9, 10
+  (:172-176); index 17, 13 -> 14 (:186). "The nineteenth is the ceiling" (index 18, 14) was still true but no longer
+  the first wave at the ceiling, so it is reworded "still the ceiling" (:188), and two assertions are added that say
+  where the ceiling is now first reached: index 11 is 13 (:182) and index 12 is 14 (:184), as 8 + 0.5 x 12 = 14.
+  Indices 20, 21 and 100 stay 14.
+- `Cataclysm.Surge.BothEscalationsRunTogetherAndNeitherIsLost`: index 4, 7 -> 10 (:220). The ceiling, the floor and
+  "fourteen every twenty-five days" are unchanged.
+- `Cataclysm.Surge.HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling`: three schedulers that have fired nothing, so the
+  opening wave: Standard 5 -> 12, Hardcore 5 -> 12, Heretic 6 -> 15 (:258-262). The swelling ceiling, 14 and 17 at
+  index 20, is unchanged (:278-280).
+- `Cataclysm.Surge.TheSameSeedGivesTheSameWave`: a new scheduler on a bare map with no caps rolls the opening wave,
+  5 -> 12 (:473).
+- `Cataclysm.Surge.ABiggerCityBreedsADeeperDungeon`: the eight Basic damage literals, 100/250, 270/1000, 640/2400,
+  1200/4500 -> 70/175, 189/700, 448/1680, 840/3150 (:549-558). Its share check still holds and is unchanged: a
+  Sanctuary loses 448 / 8,000 = 5.6% against an Outpost's 70 / 1,000 = 7%, and 448 > 70; the comment says so.
+- Comment only: the five-hundred-roll frontier test's "a wave of five".
+
+Unreal, elsewhere:
+
+- `Cataclysm.EmpireMap.RaisingACitysCeilingBuysMoreResolvesAtEveryTier`
+  (`game/Source/CataclysmEmpire/Tests/CataclysmEmpireMapTests.cpp` :860-863): resolves to fall, plain and with the +20%
+  ceiling, are ceil(ceiling / row): Outpost 10/12 -> 15/18 (1,000 / 70 = 14.3, 1,200 / 70 = 17.1), Bulwark 12/14 ->
+  16/20 (15.9, 19.05), Sanctuary 13/15 -> 18/22 (17.9, 21.4), Pillar 17/20 -> 24/29 (23.8, 28.6). No division is a
+  whole number; the closest any falls to a rounding edge is the upgraded Bulwark's 19th hit, which leaves 9 points. The
+  hand-worked comment is rewritten with the rounding stated, and "17 resolves against 10" becomes 24 against 15.
+- `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`:
+  - `Cataclysm.EmpireRun.ARunBeginsWithAnIntactEmpireAndASurgeDue`: day 1 is the opening wave; spawned, standing and on
+    the clock 5 -> 12 (:93-96).
+  - `Cataclysm.EmpireRun.ClearingADungeonTakesItOffTheMapAndOffTheClock`: standing after day 1, 5 -> 12 (:760); left
+    after one clear, on the map and on the clock, 4 -> 11 (:789-791). Its comment that seed 1 lands a Basic dungeon first
+    now says that was at waves of 5 and is not worked out at 12; the assertions already read the kind off the dungeon.
+  - `Cataclysm.EmpireRun.ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`: the run's second wave, index 1, onto an
+    empty board: spawned and standing 5 -> 8 (:4290-4291).
+  - `Cataclysm.EmpireRun.ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed`: the second wave, 5 -> 8 (:4370).
+  - `Cataclysm.EmpireRun.AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`: day 141 is the fourth wave of a static
+    run, index 3, 5 -> 8 (:4473). The days are unchanged.
+  - `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`: its control's day 26 is the
+    second wave plus the Dungeon City, 6 -> 9 (:5032). The fall that brings no wave still brings 1.
+  - `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`: spawned and standing on day 26,
+    6 -> 9 (:5101-5103). The wave is rolled after the fall, so none of it lands on the fallen city.
+  - `Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringOneWave`: one wave of 8 and two Dungeon Cities, 7 -> 10 (:5225);
+    the control clears that wave, 5 -> 8 (:5241, dungeon ids 12 to 19, under the hand-placed 9,500); the control's day
+    51 is the third wave, index 2, plus the Dungeon City, 6 -> 9 (:5265).
+- `Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime`
+  (`game/Source/Cataclysm/Tests/CataclysmEmpireScreenTests.cpp` :765): a Heretic run just begun, so its next wave is the
+  opening one, 6 -> 15, and the label says fifteen rather than twelve.
+- `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`
+  (`game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp` :469-476): comment only. It walks every dungeon of
+  the opening wave, now twelve, and its assertions are counts it makes itself; the comment's "four Outpost dungeons
+  ... about 44 days" now gives about 138 days for twelve ordinary ones at the typical depth.
+
+Python:
+
+- `tools/tests/test_surge_port.py`: `DungeonsPerSurge` is back in `TestTheCadence.NUMBERS` against
+  `surge_dungeon_count`, and `OpeningDungeonsPerSurge` is added against `surge_opening_count`;
+  `test_the_floor_is_below_the_interval_and_the_ceiling_above_the_count` also asks that the ceiling is at least the
+  opening wave; new `test_both_start_the_first_wave_from_the_opening_size` asks the model for its first two waves (with a
+  control that the two sizes differ) and reads `DungeonsInNextSurge` for the choice on `SurgeIndex == 0`.
+  `TestWhatADungeonIs.SPECS` holds the four 0.7 Basic rows and the skip of the Basic damage in
+  `test_the_model_holds_the_thirteen_specs_this_test_expects` is gone. `TestTheHandWorkedFiguresInTheUnrealTest` gives
+  the model the game's opening size (it gave `DungeonsPerSurge` from 2026-10-16); its swelling ladder is 12, 8, 9, 9,
+  10, 13 at 11, 14 at 12, 17, 18 and 20 (was 5, 5, 6, 6, 7, 13 at 17, 14 at 18 and 20);
+  `test_heretic_brings_six_where_standard_brings_five` is renamed
+  `test_heretic_brings_a_quarter_more_at_the_opening_and_after` and asks 12/12/15 at index 0 and 8/8/10 at index 1.
+- `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py` is renamed
+  `tools/tests/test_each_cataclysms_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`. Its wave and row tests,
+  their `RESTORE` text and their part of the control are deleted: seven test functions, seventeen collected tests
+  (`test_the_model_opens_with_12_and_then_brings_8` x2, `test_the_models_first_wave_is_the_opening_size_and_the_next_is_not`,
+  `test_the_models_ordinary_row_is_0_7_of_what_it_was` x4, `test_the_models_row_is_the_games_times_0_7` x4,
+  `test_the_game_still_brings_5_a_wave`, `test_the_game_still_has_no_opening_size`,
+  `test_the_games_ordinary_row_is_still_the_old_one` x4). The Quest sub-type half is kept as it was:
+  `test_the_model_gives_each_cataclysms_quest_dungeons_one_sub_type`, `test_the_game_still_rolls_a_quest_dungeons_sub_type`
+  and the sub-type part of `test_the_two_really_do_differ`; its restore text now says to delete the file when the game
+  takes that rule, since nothing else is left in it.
+
+Comments only, found by a sweep of every test that runs an empire run: `CataclysmEmpireRunTests.cpp`'s
+`FallSurgeFirstHandId` ("no run here lands twenty" was no longer true of a run that lands 12 and then 8), the Siege-seed
+search's and the Quest-search's "the first wave brings four", and two comments in `CataclysmEmpireMapTests.cpp` that
+called 100 points, and a tenth and a twentieth, what an Outpost dungeon takes; they now say "until 2026-10-20". Not
+changed, and stale: measured figures recorded in comments at waves of 5 (`CataclysmSurgeTests.cpp` about :2369-2388,
+1,580, 687 and 1,488 dungeons; `CataclysmSaveWriterTests.cpp` about :1611-1615 and :1849-1851, 211 to 231 days and 22
+surges; `CataclysmEmpireRunTests.cpp` about :173-175 "loses two cities inside two hundred days", and :1990 and :2308, "5
+of 832 timers"). They can only be re-measured by a run.
+
+### AT RISK: seeded tests whose outcome this layer moves and which cannot be worked out by hand
+
+The opening wave draws seven more targets from the run's stream before any dungeon is made, every later wave three
+more, and every ordinary hit is 0.7 of what it was, so a seeded campaign is a different campaign. These were not
+changed, by the rule that a figure is changed only when it follows from the test's set-up. Each is named so that a
+failure in the window is read against this list first.
+
+- **`Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave`** (`CataclysmSaveWriterTests.cpp` :1792-1794),
+  HIGH. The control asserts that a scheduler which forgot its `SurgeIndex` rolls a wave of a different size from the
+  live one. On a Heretic run in Both mode the forgotten one is now at the opening wave, trunc(12 x 1.25) = 15, and the
+  live one at index N is trunc(min(8 + 0.5N, 14) x 1.25), which is also 15 at N = 8 and 9. So the control fails if
+  seed 4242's campaign stops at index 8 or 9. At 5 a wave the collision was at index 1, which it never stopped at.
+- **`Cataclysm.EmpireRun.ADungeonResolvingTakesExactlyItsPointsOfDefence`** (`CataclysmEmpireRunTests.cpp` about
+  :285-291), HIGH. Its expected loss sums each resolved dungeon's own row, which is zero for a Quest dungeon, while a
+  Quest timer has hit its host with the ordinary row since 2026-10-13. Any day of seed 1's 200 on which a Quest timer
+  runs out on a city that is neither besieged nor falling makes it fail. It passes on the current stream only because
+  that day does not come; this is a defect in the test, older than this layer, that the moved stream may expose.
+- **`Cataclysm.EmpireRun.TheSameSeedGivesTheSameRunAndADifferentOneDoesNot`** (about :689) and
+  **`Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime`** (`CataclysmEmpireScreenTests.cpp` about :752):
+  "a different seed gives a different empire" compares `Map->Render()`, fallen and exposed state only, at day 300; it
+  fails if both seeds have no fall, or the same falls, by then. MEDIUM.
+- **`Cataclysm.DungeonModifiers.ASacrificialDungeonInARunReallyGetsDouble`** (`CataclysmDungeonModifierTests.cpp`
+  about :658-664), MEDIUM-HIGH: within 400 unattended days at seed 3 it needs a dungeon with no sub-type, which only a
+  Fallen City is, so it needs a city to fall by then.
+- MEDIUM, each needs something seed 1 (or its campaigns) happened to do: `Cataclysm.EmpireRun.AnIgnoredDungeonBitesTheSameCityAgainAndAgain`
+  (a repeat offender and a fall in 400 days; an ordinary dungeon now hits once and leaves, so only a Quest dungeon can
+  repeat), `...ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` (a fall in 600 days, and one that surged),
+  `...AFallenCityBecomesADungeonStandingOnItself` (a fall in 600 days; and `Bosses == WasCarrying` counts before the
+  day while the fall counts every dungeon standing at that moment, so a wave landing on the city earlier the same day
+  would add a boss), `...ClearingAFallenCityTakesTheCityBackAtHalf` (a fall in 600 days),
+  `...AQuestDungeonMovesToAnAdjacentCity` (`StayedHemmedIn > 0` and `CrossedATierBoundary > 0` need falls; `Chose > 200`
+  should rise), `...ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice` (`FallenCitiesRetaken > 0` and
+  `AbsorbedInAll > 0`), and `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons` (something stands on day
+  200 at seed 1).
+- LOW: `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar` (2000 days, seeds 1 to 5),
+  `...OnlyAResolveThatCostACitySomethingIsCounted`, `...DescribeSaysWhatWasClearedAndWhichDungeonIsAQuest`,
+  `...AQuestDungeonHitsItsCityAndThenRefreshes` (thresholds over campaigns or a search that more dungeons make easier),
+  `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` and `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`
+  (floors of 1,000 and 500 dungeons that bigger waves raise), `Cataclysm.Surge.TheSameSeedGivesTheSameWave`'s "a
+  different seed gives a different wave" (twelve picks from twelve equal Outposts), `Cataclysm.Roster.EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt`
+  (a fall in 2000 days at seed 31), `Cataclysm.FloorBrief.ADungeonOffTheMapReallyGetsItsSubTypesRule`.
+
+The sweep found no test that reads "Next surge in ... days, bringing N" with a literal N, and none that asserts the id
+of an opening-wave dungeon. Hand-placed dungeon ids are 700 and up, so the opening wave's ids 0 to 11 collide with none.
+
+### Proofs
+
+**Not yet run.** Two are registered, each to run with `tools/prove_guard.py` for the Python half in a `git archive` copy
+and `unreal_build.prove_cpp_guard` for the Unreal half, never both at once.
+
+| break | Unreal, predicted to fail with the break in | Python, predicted to fail with the break in |
+|---|---|---|
+| PROOF 1: the opening size ignored, `DungeonsInNextSurge` always starts from `DungeonsPerSurge` | every assertion on a wave at index 0: `Cataclysm.Surge.AStaticSurgeBringsTheSameWaveForEver`, `AnAcceleratingSurgeShortensTheGapDownToAFloor`, `ASwellingSurgeGrowsTheWaveUpToACeiling`, `HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling` and `TheSameSeedGivesTheSameWave`; `Cataclysm.EmpireRun.ARunBeginsWithAnIntactEmpireAndASurgeDue` and `ClearingADungeonTakesItOffTheMapAndOffTheClock`; `Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime`. Each on its first-wave assertion only (8 for 12, 10 for 15) | `test_surge_port.py::TestTheCadence::test_both_start_the_first_wave_from_the_opening_size`, and nothing else in the file: the constants still match |
+| PROOF 2: the Outpost's Basic row back at 100/250 | `Cataclysm.Surge.ABiggerCityBreedsADeeperDungeon` (the two Outpost literals; its share check still holds at 10% against 5.6%) and `Cataclysm.EmpireMap.RaisingACitysCeilingBuysMoreResolvesAtEveryTier` (the Outpost case only, 10 and 12 for 15 and 18) | `test_surge_port.py::TestWhatADungeonIs::test_every_dungeon_spec_matches_in_the_game`, on the Outpost row |
+
+**THE BRIEF'S PREDICTION FOR PROOF 1 NAMED THREE UNREAL TESTS; IT IS CORRECTED HERE TO EIGHT.** Read from the tests as
+written on this branch: the accelerating test, the Heretic test, the same-seed test, the clearing test and the game
+instance test also assert a wave at index 0. The Python check is new in this layer and is the one named. A prefix that
+covers the eight is `Cataclysm.Surge.` with `Cataclysm.EmpireRun.` and `Cataclysm.EmpireScreen.` run separately, or
+the eight by name. Under PROOF 1 the seeded tests in the at-risk list run on yet another stream, so a failure among them
+in that half is not a prediction and not evidence either way.
+
+### Run
+
+**Not yet run.** Nothing was built and no Unreal test was run by the writing session; the Unreal figures above are
+worked by hand. Python, on this branch before this entry was written, with every code and test change in place:
+"6806 passed, 7 skipped"; JUnit tests 6813, failures 0, errors 0, skipped 7. The run after this entry is in the hand-back
+of the writing session, not here, by the rule that nothing is recorded before the run that proves it. Lint: "All checks
+passed!".
+
+---
+
 ## 2026-10-19 — A worn row can make every skill gadget its wearer commands fire once, at once, when the wearer dies: each casts its skill at the target its own clock would choose, at the whole of its damage, its clock left as it was; the gadget half of "When you die, all your active traps and gadgets immediately trigger simultaneously", with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bGadgetsCastNow`, the
@@ -8960,6 +9180,10 @@ timer sentence (next entry).
 
 Re-derived at x0.7 by hand (`sim/tests/test_city_health_lever.py`): a city with no tree falls in 19 resolves, was 13 (test renamed `..._falls_in_nineteen`); 26 -> 37, 51 -> 73, 75 -> 108, 1270 -> 1814. Four tests that read wave index 0 set the opening size to their wave size, so they keep testing what they name (`test_engine.py`, `test_lethality_modes.py`, `test_surge_when_the_board_empties.py`, `test_analysis_scripts.py`, the last through the script's helper). The throughput scripts' `base_config` hold the shipped opening size, and each script's recorded figures say they were measured before the opening wave existed; no long campaign was re-run; `analyse_tier_throughput.py`'s section 1 now prints 2.13 at tier 1 (its held 4 every 120 with the opening of 12). The board-empties tests, ruled after measurement (40,000 seeds): the rule's surges are compared as a pooled rate over its cases (one by one 9 of 200 seeds give fewer at 3a48236a, 18 of 200 at 8096ac39, because the stream diverges); the hit-empties test runs 24 campaigns; the clear-empties test is a built board (42 such surges in 40,000 seeds, all after a clear). Issue #1373's test searches 80 seeds (6.3% of campaigns reach its case; 80-seed blocks held 250 of 250). New: `sim/tests/test_the_opening_wave_has_its_own_size.py` (6). `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py` pins the
 model's 12, 8 and rows against the game's 5 and old rows, and fails when the game layer lands.
+
+**2026-10-20: the game follows.** Its opening wave is 12, later waves 8 and the ordinary rows 0.7 of the old ones, and
+the check file above lost its wave and row checks and was renamed for the Quest sub-type checks it still holds; see the
+entry of that day headed "A run in the game opens with a wave of 12 dungeons and brings 8 a wave after".
 
 ---
 

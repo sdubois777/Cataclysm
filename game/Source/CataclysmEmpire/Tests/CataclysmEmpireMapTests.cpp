@@ -601,8 +601,9 @@ bool FCataclysmEmpireMapBiteTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireMap* Map = MakeMap();
 
 	// OUTPOST 0: 1,000 defence and 5,000 people. A tenth of its defence and a
-	// twentieth of its people is what a basic dungeon on an Outpost takes,
-	// before any scaling.
+	// twentieth of its people is what a basic dungeon on an Outpost took,
+	// before any scaling, until 2026-10-20; it is 7% and 3.5% since. The
+	// shares below are this test's own inputs.
 	TestFalse(TEXT("one bite does not take it"), Map->Bite(0, 0.10f, 0.05f));
 
 	const FCataclysmCity* City = Map->Find(0);
@@ -717,7 +718,8 @@ bool FCataclysmEmpireMapDamageIsPointsTest::RunTest(const FString& Parameters)
 			  0.01f);
 	TestEqual(TEXT("and it is still full"), Raised->Defence, 1200.0f, 0.01f);
 
-	// A HUNDRED POINTS EACH, which is what a basic dungeon on an Outpost takes.
+	// A HUNDRED POINTS EACH, which is what a basic dungeon on an Outpost took
+	// until 2026-10-20 (70 since). The figures are this test's own inputs.
 	TestFalse(TEXT("the plain city survives it"), Map->Damage(0, 100.0f, 250.0f));
 	TestFalse(TEXT("so does the raised one"), Map->Damage(1, 100.0f, 250.0f));
 
