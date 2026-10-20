@@ -574,6 +574,45 @@ registered:**
 gadget, the radius of 3 m and the increase widening it, the cast at and around the enemy, the gadget row not reaching
 it, the expiry, the two events' tags, the narrowed `gadget_destroyed`, the self-blast, the box and the tint.
 
+### THE ROWS, AUTHORED BY THE ENCHANTMENT SESSION
+
+On the coordinating session's grant of the workbook for these four rows on 2026-10-20, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/MinionTypes.csv` and
+`game/Data/EnchantmentEffects.csv`. The generator accepted all four.
+
+**The Minion Types row `SkillTrap`**, exactly as this layer gives it: Family Machine; Base Health 40 and Health Per
+Level 18 (the Spike Trap's, a number under the owner's delegation); Base Damage 0 and Damage Per Level 0; Attack Interval
+Seconds 1; Move Speed 0; Threat Percent 0; Reach Cm 300 and Notice Radius Cm 300 (the trigger radius, T2); Target Mode
+Nearest; Tags "Type.Minion, Type.Deployable, Minion.Machine, Type.Trap"; Explosion Percent Of Own Damage 300. **Nine
+minion types**, from eight (Imp, Mote, BoltTurret, Ballista, SpikeTrap, SkillGadget, TyrantsMinion, Warhound), in
+`docs/README.md`'s sheet table, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in
+`tools/tests/test_minion_stat_blocks.py`'s set of names.
+
+**Three effect rows**, each Stat `skill_slot_is_a_trap`, Value Kind flat, Value Low 1 and Value High 1, every other cell
+empty but Required Tags:
+
+| Enchantment | Required Tags |
+| :-- | :-- |
+| `Positive_Your_heavy_attack_is_converted_into_a_placeable` | `Slot.Heavy` |
+| `Positive_Your_special_ability_is_converted_into_a_placeab` | `Slot.Special` |
+| `Positive_Your_ultimate_ability_is_converted_into_a_placea` | `Slot.Ultimate` |
+
+Each name was derived with the generator's `row_name` from its sentence and checked against
+`game/Data/EnchantmentsPositive.csv`. **681 rows over 546 enchantments**, from 678 over 543, in `AUTHORED_ROWS` /
+`AUTHORED_ENCHANTMENTS`, in `CHECK_TABLE` and in `docs/README.md`. `skill_slot_is_a_trap` joins `FLAG_STATS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` with the rows; that file and the minion stat blocks' file
+alone: 71 passed.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornTrapConversionsEachMakeTheirOwnSlotATrapAndNoOther`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Four real players: a control wearing a benefit with no effect, and one
+wearing each conversion, each with a drawback with no effect. It asks `SlotIsASkillTrap`, the question the press and the
+skill bar ask. The control's heavy, special and ultimate slots are not a trap's; each wearer's own slot is; and each
+sentence leaves another slot alone. Three assertions on the cases' own slots, so on assets built before the rows it
+fails three times, and only there.
+
+**Still without a row in this layer, as the design's order has it:** the support and basic conversions (layer 2, each
+with a ruling of its own; the generator refuses their slot tags on the flag until then).
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.

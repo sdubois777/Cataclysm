@@ -27808,4 +27808,58 @@ bool FCataclysmDeathTriggersGadgetsRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillTrapRowsTest,
+	"Cataclysm.Enchantments.TheWornTrapConversionsEachMakeTheirOwnSlotATrapAndNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Traps layer 1, ruled 2026-10-19 (T1-T19) and 2026-10-20: "Your heavy attack / special ability / ultimate ability is
+ * converted into a placeable trap", each the flag `skill_slot_is_a_trap` scoped to its slot's tag. WORN by real players,
+ * one sentence each, against a CONTROL wearing a benefit with no effect, each with the same drawback with no effect. The
+ * test asks `UCataclysmAbilitySystemComponent::SlotIsASkillTrap`, the question the press and the skill bar ask; what a
+ * trap then does is `Cataclysm.Traps.`'s. THREE assertions on the cases, one per worn sentence's own slot, so on assets
+ * built before the rows it fails three times, and only there.
+ */
+bool FCataclysmSkillTrapRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* HeavyTrap = TEXT("Positive_Your_heavy_attack_is_converted_into_a_placeable");
+	const TCHAR* SpecialTrap = TEXT("Positive_Your_special_ability_is_converted_into_a_placeab");
+	const TCHAR* UltimateTrap = TEXT("Positive_Your_ultimate_ability_is_converted_into_a_placea");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker Heavy(HeavyTrap, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker Special(SpecialTrap, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker Ultimate(UltimateTrap, DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a striker wearing a benefit with no effect"), Control.Ready())
+		|| !TestTrue(TEXT("a striker wearing the heavy conversion"), Heavy.Ready())
+		|| !TestTrue(TEXT("a striker wearing the special conversion"), Special.Ready())
+		|| !TestTrue(TEXT("a striker wearing the ultimate conversion"), Ultimate.Ready()))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, no slot is a trap's.
+	TestFalse(TEXT("control: the heavy slot of the wearer of a benefit with no effect is not a trap's"),
+			  Control.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Heavy));
+	TestFalse(TEXT("control: nor its special slot"), Control.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Special));
+	TestFalse(TEXT("control: nor its ultimate slot"), Control.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Ultimate));
+
+	const TCHAR* Stale = TEXT(" If not, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+	TestTrue(*(FString(TEXT("wearing the heavy conversion, the heavy slot is a trap's.")) + Stale),
+			 Heavy.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Heavy));
+	TestTrue(*(FString(TEXT("wearing the special conversion, the special slot is a trap's.")) + Stale),
+			 Special.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Special));
+	TestTrue(*(FString(TEXT("wearing the ultimate conversion, the ultimate slot is a trap's.")) + Stale),
+			 Ultimate.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Ultimate));
+
+	// AND EACH SENTENCE CONVERTS ITS OWN SLOT AND NO OTHER: the Required Tags scope it.
+	TestFalse(TEXT("the heavy conversion leaves the ultimate slot alone"),
+			  Heavy.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Ultimate));
+	TestFalse(TEXT("the special conversion leaves the heavy slot alone"),
+			  Special.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Heavy));
+	TestFalse(TEXT("the ultimate conversion leaves the special slot alone"),
+			  Ultimate.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Special));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

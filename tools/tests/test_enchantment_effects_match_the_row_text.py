@@ -314,7 +314,11 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # their blast radius", the deployable half, ruled 2026-10-19 (Q1, B1-B6):
               # the flag by which the wearer's own deployable's blast strikes the wearer
               # inside it. Its row states 1 and the sentence names no number.
-              "deployable_blasts_strike_self"}
+              "deployable_blasts_strike_self",
+              # Traps layer 1, ruled 2026-10-19 (T1-T19) and 2026-10-20: the flag by which a slot,
+              # named by its Required Tags, is converted into a placeable trap. Each of its rows
+              # states 1 and the sentences name no number.
+              "skill_slot_is_a_trap"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -1016,8 +1020,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-19, from 676 over 541: one row on one enchantment.
 #: AND 678 OVER 543 SINCE THE ROW BY WHICH EVERY SKILL GADGET CASTS AT ITS WEARER'S DEATH,
 #: issue #1833, 2026-10-19, from 677 over 542: one row on one enchantment.
-AUTHORED_ROWS = 678
-AUTHORED_ENCHANTMENTS = 543
+#: AND 681 OVER 546 SINCE THE THREE ROWS THAT CONVERT A SLOT INTO A PLACEABLE TRAP,
+#: issue #1833, 2026-10-20, from 678 over 543: three rows on three enchantments.
+AUTHORED_ROWS = 681
+AUTHORED_ENCHANTMENTS = 546
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

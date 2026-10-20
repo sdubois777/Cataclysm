@@ -170,7 +170,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// summons at a minion's death. No skill row produces it.
 	// AND 8 SINCE 2026-10-18 TOO: the Warhound, which Warlord's Will's six-piece
 	// summons on a blow taken. No skill row produces it.
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             8)
+	// AND 9 SINCE THE SKILL TRAP, a slot converted into a placeable trap, ruled 2026-10-19, from 8.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             9)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been
@@ -880,7 +881,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 677 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER, issue #1833, from 676.
 	//
 	// AND 678 SINCE THE ROW BY WHICH EVERY SKILL GADGET CASTS AT ITS WEARER'S DEATH, issue #1833, from 677.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    678)
+	//
+	// AND 681 SINCE THE THREE ROWS THAT CONVERT A SLOT INTO A PLACEABLE TRAP, issue #1833, from 678.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    681)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
