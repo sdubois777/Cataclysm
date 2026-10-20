@@ -315,15 +315,24 @@ FCataclysmDungeonSpec UCataclysmSurgeScheduler::SpecFor(
 	case ECataclysmDungeonType::Basic:
 		// THE DAMAGE COLUMNS ARE POINTS AND PEOPLE, NOT FRACTIONS OF THE CITY.
 		// Issue #1331, and `config.DUNGEON_SPECS` holds the same four pairs.
-		// Each one is the fraction it replaced multiplied by that tier's base
-		// maximum, so this table reproduces the old arithmetic exactly for a
-		// city at its base size and the change of shape can be measured on its
-		// own before any number is chosen:
+		// Each one was first the fraction it replaced multiplied by that
+		// tier's base maximum, so the table reproduced the old arithmetic
+		// exactly for a city at its base size and the change of shape could be
+		// measured on its own before any number was chosen:
 		//
 		//   Outpost    10% of  1,000 =   100 defence,  5% of   5,000 =   250
 		//   Bulwark      9% of 3,000 =   270 defence,  5% of  20,000 = 1,000
 		//   Sanctuary    8% of 8,000 =   640 defence,  4% of  60,000 = 2,400
 		//   Pillar     6% of 20,000 = 1,200 defence,  3% of 150,000 = 4,500
+		//
+		// TIMES 0.7 SINCE 2026-10-20, IN THE MODEL SINCE 2026-10-16: 70 and
+		// 175 on an Outpost, 189 and 700 on a Bulwark, 448 and 1,680 on a
+		// Sanctuary, 840 and 3,150 on the Pillar. The owner, 2026-10-16,
+		// verbatim: "the obvious solution here is to adjust the damage
+		// dungeons do." The coordinating session chose 0.7, together with the
+		// bigger waves on `DungeonsPerSurge` and `OpeningDungeonsPerSurge`,
+		// under the owner's delegation of numbers. A Quest dungeon's hit reads
+		// these rows too. The floors did not move.
 		//
 		// THE TIER MAXIMUMS ARE `UCataclysmEmpireMap::OutpostMaxDefence` and
 		// its seven siblings. `tools/tests/test_surge_port.py` ties these four
@@ -333,29 +342,29 @@ FCataclysmDungeonSpec UCataclysmSurgeScheduler::SpecFor(
 		case ECataclysmCityTier::Bulwark:
 			Spec.LeastFloors = 15;
 			Spec.MostFloors = 25;
-			Spec.DefenceDamage = 270.0f;
-			Spec.PopulationDamage = 1000.0f;
+			Spec.DefenceDamage = 189.0f;
+			Spec.PopulationDamage = 700.0f;
 			break;
 
 		case ECataclysmCityTier::Sanctuary:
 			Spec.LeastFloors = 25;
 			Spec.MostFloors = 40;
-			Spec.DefenceDamage = 640.0f;
-			Spec.PopulationDamage = 2400.0f;
+			Spec.DefenceDamage = 448.0f;
+			Spec.PopulationDamage = 1680.0f;
 			break;
 
 		case ECataclysmCityTier::Pillar:
 			Spec.LeastFloors = 40;
 			Spec.MostFloors = 60;
-			Spec.DefenceDamage = 1200.0f;
-			Spec.PopulationDamage = 4500.0f;
+			Spec.DefenceDamage = 840.0f;
+			Spec.PopulationDamage = 3150.0f;
 			break;
 
 		default:
 			Spec.LeastFloors = 8;
 			Spec.MostFloors = 15;
-			Spec.DefenceDamage = 100.0f;
-			Spec.PopulationDamage = 250.0f;
+			Spec.DefenceDamage = 70.0f;
+			Spec.PopulationDamage = 175.0f;
 			break;
 		}
 		break;
@@ -453,7 +462,20 @@ float UCataclysmSurgeScheduler::DungeonMultiplier() const
 
 int32 UCataclysmSurgeScheduler::DungeonsInNextSurge() const
 {
-	float Count = static_cast<float>(DungeonsPerSurge);
+	// THE OPENING WAVE HAS ITS OWN SIZE, since 2026-10-20 in the game and
+	// 2026-10-16 in the model: at `SurgeIndex` 0 the wave starts from
+	// `OpeningDungeonsPerSurge`, and at every later index from
+	// `DungeonsPerSurge`. `Simulation.surge_count` asks the same question of
+	// `surge_index`.
+	//
+	// THE INDEX AND NOT `SurgesFired`, because that is what the model asks.
+	// `RecordSurge` raises `SurgeIndex` after each surge, after the gap is
+	// read, as `Simulation.trigger_surge` raises `surge_index`, so the first
+	// wave of a run is the only one rolled at 0. A fall-triggered surge
+	// that did not advance the counter would leave it there, but
+	// `bCityFallAdvancesEscalation` is true.
+	float Count = static_cast<float>(SurgeIndex == 0 ? OpeningDungeonsPerSurge
+													 : DungeonsPerSurge);
 
 	if (Mode == ECataclysmSurgeMode::Swelling || Mode == ECataclysmSurgeMode::Both)
 	{

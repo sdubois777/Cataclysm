@@ -93,8 +93,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonSpec
 	 * unchanged for a city at its base size and the change of shape stands on
 	 * its own.
 	 *
-	 * A DEEPER CITY STILL TAKES A SMALLER SHARE OF ITSELF: 100 points off an
-	 * Outpost's 1,000 is a tenth, and 640 off a Sanctuary's 8,000 is 8%.
+	 * A DEEPER CITY STILL TAKES A SMALLER SHARE OF ITSELF: 70 points off an
+	 * Outpost's 1,000 is 7%, and 448 off a Sanctuary's 8,000 is 5.6%. Until
+	 * 2026-10-20 the ordinary rows were today's divided by 0.7, 100 and 640,
+	 * a tenth and 8%.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float DefenceDamage = 0.0f;
@@ -491,13 +493,40 @@ public:
 	static constexpr float IntervalDays = 90.0f;
 
 	/**
-	 * Dungeons in a surge before any escalation. `config.surge_dungeon_count`.
+	 * Dungeons in every surge after the first, before any escalation.
+	 * `config.surge_dungeon_count`. The first is `OpeningDungeonsPerSurge`.
 	 *
-	 * 5 SINCE 2026-10-13, AND 4 UNTIL THEN. On Heretic that is
-	 * trunc(5 x 1.25) = 6, which is a fifth more than 5 and not the quarter
-	 * more that 5 against 4 was. See `HereticDungeonMultiplier`.
+	 * 8 SINCE 2026-10-20, 5 FROM 2026-10-13, AND 4 UNTIL THEN. The model went
+	 * to 8 on 2026-10-16 and the game followed in its own layer. The owner,
+	 * 2026-10-16, verbatim: "I want surges to summon a lot more dungeons. Or
+	 * maybe the initial surge spawns more and then the first real surge is 6
+	 * to 10? Idk, but 6 is boring." and "the obvious solution here is to
+	 * adjust the damage dungeons do." The coordinating session chose 8, with
+	 * an opening wave of 12 and every ordinary row of `SpecFor` at 0.7 of its
+	 * damage, under the owner's delegation of numbers. `docs/DECISIONS.md`,
+	 * 2026-10-16, has the measurement, and 2026-10-20 the game's layer.
+	 *
+	 * ON HERETIC THAT IS trunc(8 x 1.25) = 10, a quarter more exactly. At 5
+	 * it was trunc(6.25) = 6, a fifth more. See `HereticDungeonMultiplier`.
 	 */
-	static constexpr int32 DungeonsPerSurge = 5;
+	static constexpr int32 DungeonsPerSurge = 8;
+
+	/**
+	 * Dungeons in the first surge of a run, the one the design's "A Surge is
+	 * triggered at run start" fires. `config.surge_opening_count`.
+	 *
+	 * 12 SINCE 2026-10-20; UNTIL THEN THE FIRST WAVE WAS `DungeonsPerSurge`
+	 * LIKE EVERY OTHER. The owner's words of 2026-10-16 are quoted on
+	 * `DungeonsPerSurge` above, among them "maybe the initial surge spawns
+	 * more". The coordinating session chose 12 under the owner's delegation
+	 * of numbers, and the model has had it since that day.
+	 *
+	 * READ AT `SurgeIndex` 0 AND AT NO OTHER, as `Simulation.surge_count`
+	 * reads it at `surge_index` 0. The ceiling `MostDungeonsPerSurge` and the
+	 * lethality mode's multiplier apply to it as to any wave, so a Heretic run
+	 * opens with trunc(12 x 1.25) = 15.
+	 */
+	static constexpr int32 OpeningDungeonsPerSurge = 12;
 
 	/**
 	 * What an accelerating surge multiplies the gap by each time.
@@ -1057,6 +1086,9 @@ public:
 	 * NOT THE SAME AS HOW MANY WAVES HAVE LANDED, when a fall-triggered surge
 	 * does not advance it. Today it always does; see
 	 * `bCityFallAdvancesEscalation`.
+	 *
+	 * AT 0 THE NEXT WAVE IS THE OPENING ONE, `OpeningDungeonsPerSurge`. See
+	 * `DungeonsInNextSurge`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 SurgeIndex = 0;

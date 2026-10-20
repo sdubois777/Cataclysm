@@ -467,10 +467,14 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// asserted that a city falls while the player is underground. This one
 	// asserts neither that nor its opposite. Since 2026-10-13 an ordinary
 	// dungeon hits its city when its timer runs out and leaves the map. An
-	// Outpost dungeon's timer is about 19 to 39 days, and walking the four
-	// Outpost dungeons of the first wave, 8 to 15 floors each, costs about 44
-	// days, so a dungeon of the wave can be gone before the player reaches it,
-	// and a city can fall while the player is inside one of its dungeons. The
+	// Outpost dungeon's timer is about 19 to 39 days, and walking the opening
+	// wave's twelve dungeons, an ordinary one 8 to 15 floors and a Quest one
+	// 20 to 30 on an Outpost, costs about 138 days if all twelve are ordinary
+	// at the typical 11.5 floors, and more for each Quest one, against about
+	// 44 for the four ordinary dungeons of the wave of five before
+	// 2026-10-20. So a dungeon of the wave can be gone before the player
+	// reaches it, and a city can fall while the player is inside one of its
+	// dungeons. The
 	// test counts each case rather than asserting any of them: claiming one
 	// would have been a test that passed only on the seeds where it happened.
 	FBound Bound = Make();
