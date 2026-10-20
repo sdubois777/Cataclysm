@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmChorus.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
@@ -9909,6 +9910,33 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `deployable_blasts_strike_self`, read off the wearer with no tags by `UCataclysmDeployableSelfBlast::HeldBy`,
+	 * which every one of the five places a deployable's blast is struck asks before it looks for the wearer. Ruled
+	 * 2026-10-19 (B1-B6), for "Your deployables and traps deal full damage to you if you are within their blast radius".
+	 * THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: it does not hold the flag. Granted at a flat 1, it does.
+	 *
+	 * WHAT THIS DOES NOT REACH. A deployable, a blast, who is inside it and what the blow raises:
+	 * `Cataclysm.DeployableSelfBlast.` in `CataclysmDeployableSelfBlastTests.cpp`.
+	 */
+	void ProbeDeployableBlastsStrikeSelf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Test.TestFalse(TEXT("control: with no deployable_blasts_strike_self the fighter does not hold the flag"),
+					   UCataclysmDeployableSelfBlast::HeldBy(Fighter.Actor));
+		GrantFlat(Fighter.Actor, UCataclysmDeployableSelfBlast::FlagStat, 1.0f);
+		Test.TestTrue(TEXT("with deployable_blasts_strike_self at 1 it does, so UCataclysmDeployableSelfBlast::HeldBy "
+						   "really reads it"),
+					  UCataclysmDeployableSelfBlast::HeldBy(Fighter.Actor));
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -10162,6 +10190,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("time_lock_rift_damage_taken_more_percent"),
 			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::DamageTakenMorePercentStat); }},
 			{TEXT("ally_buffs_refused"), &ProbeAllyBuffsRefused},
+			{TEXT("deployable_blasts_strike_self"), &ProbeDeployableBlastsStrikeSelf},
 		};
 		return Made;
 	}

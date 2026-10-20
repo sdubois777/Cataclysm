@@ -7,6 +7,7 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the chaos pool a killed minion leaves its commander. Ruled 2026-10-06.
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -1804,6 +1805,22 @@ void ACataclysmMinion::Explode()
 					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
 			}
 		}
+
+		// AND ITS SUMMONER, WHEN THIS IS A DEPLOYABLE, THE SUMMONER HOLDS THE ROW AND STANDS INSIDE THE SAME SPHERE. Ruled
+		// 2026-10-19 (B2, B3, B5), for "Your deployables and traps deal full damage to you if you are within their blast
+		// radius": the figure an enemy standing there is struck for, priced for the summoner, with the explosion's own
+		// delivery; damage only, so no burn. A skill gadget deals nothing here, its own damage being nought.
+		if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
+				GetWorld(), Summoner.Get(), this, GetActorLocation(),
+				ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this)))
+		{
+			const float LandedOnTheWearer = UCataclysmSkillEffects::ModifiedDamage(
+				UCataclysmTargeting::AbilitySystemOf(this), Scaled, TypeTags,
+				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Wearer);
+			UCataclysmDeployableSelfBlast::StrikeWithADeathBlast(
+				this, Wearer, LandedOnTheWearer, MinionDelivery(this, /*bIsArea=*/true));
+		}
 	}
 
 	Destroy();
@@ -1875,6 +1892,21 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
 			/*bTargetIsStaggered=*/false, Target);
 		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
+	}
+
+	// AND THE DYING DEPLOYABLE'S SUMMONER, WHEN IT HOLDS THE ROW AND STANDS INSIDE THE SAME SPHERE. Ruled 2026-10-19 (B2,
+	// B3, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius": the figure
+	// an enemy standing there is struck for, priced for the summoner, with the blast's own delivery. Nobody for a thrall
+	// or a minion that is no deployable. NOT IN THE COUNT RETURNED, which stays the enemies caught.
+	if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
+			Lost->GetWorld(), AsMinion ? AsMinion->Summoner.Get() : nullptr, Lost, Lost->GetActorLocation(),
+			RadiusMetres * 100.0f * UCataclysmSecondSelf::AreaMultiplierFor(Lost)))
+	{
+		const float LandedOnTheWearer = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, LostTags, /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Wearer);
+		UCataclysmDeployableSelfBlast::StrikeWithADeathBlast(Lost, Wearer, LandedOnTheWearer, Delivery);
 	}
 	return Caught.Num();
 }

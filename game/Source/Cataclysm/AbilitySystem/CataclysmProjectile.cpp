@@ -8,6 +8,7 @@
 // Issue #1156.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -773,6 +774,43 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	}
 }
 
+void ACataclysmProjectile::StrikeTheWearerInItsBlast(AActor* Wearer, int32 ContactsBefore)
+{
+	if (!Wearer || Wearer != GetOwner())
+	{
+		return;
+	}
+
+	// THE DELIVERY `HitOne` BUILDS FOR AN ENEMY, FIELD FOR FIELD AND IN ITS ORDER (B3).
+	// `TestADeployablesBlastStrikesItsWearer` in `tools/tests/test_generate_datatables.py` holds the two lists of fields
+	// to each other.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
+	Delivery.Skill = FiringSkill;
+	Delivery.CastBy = CastBy;
+	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
+	Delivery.StruckFromPoint = StrikesFromPoint;
+	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
+	Delivery.DamageMultiplierSpent = SpentMoreMultiplier;
+
+	// AND THE LATER-HIT SHARE AT THE COUNT THE BLAST ARRIVED WITH, as `HitOne` gives every enemy of the blast.
+	float Percent = DamagePercent;
+	if (ContactsBefore > 0)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Wearer));
+		const float LaterHitShare = Asking
+			? Asking->StatForSkill(FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat), SkillTags,
+								   UCataclysmDamageCalculation::NormalProjectileLaterHitDamage)
+			: UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
+		Percent *= FMath::Max(0.0f, LaterHitShare) / 100.0f;
+	}
+
+	// AND THEN THE SHARE'S MARK AT THE WHOLE OF THE FIGURE (B4). See `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow`.
+	UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, Percent, SkillTags, Delivery);
+}
+
 void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
 										float InDamagePercentPer, bool bInKeepsItsBlast)
 {
@@ -971,6 +1009,16 @@ void ACataclysmProjectile::Finish()
 				LandedContacts = LandedBefore;
 				HitOne(Target);
 				bAnyLanded = bAnyLanded || LandedContacts > LandedBefore;
+			}
+
+			// AND THE FIRER ITSELF, WHEN ITS DEPLOYABLE CAST THE USE AND IT STANDS INSIDE THE BLAST. Ruled 2026-10-19 (B2,
+			// B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". THE
+			// DEPLOYABLE IS THE ONE THE SHOT CARRIES, `CastBy`, so a shot landing after its use has ended still knows it.
+			// The wearer is no landing: the count below is the enemies'.
+			if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
+					GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm))
+			{
+				StrikeTheWearerInItsBlast(Wearer, LandedBefore);
 			}
 			LandedContacts = LandedBefore + (bAnyLanded ? 1 : 0);
 		}

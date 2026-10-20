@@ -20,6 +20,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the share of a point-blank skill's blow struck at the allies inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For turning a health cost into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the part of a cost that is taken later instead of now. Issue #991.
@@ -2748,6 +2749,51 @@ float UCataclysmSkillTemplate::ShareTheBlowWithAllies(const TArray<AActor*>& All
 		Total += UCataclysmSkillEffects::ApplyHit(Self, Ally, PercentThisBlow, SkillTags, Delivery);
 	}
 	return Total;
+}
+
+// --------------------------------------------------------------------------
+// "Your deployables and traps deal full damage to you if you are within their
+// blast radius", the deployable half. Ruled 2026-10-19, B1 to B6; see
+// `UCataclysmDeployableSelfBlast`.
+// --------------------------------------------------------------------------
+
+float UCataclysmSkillTemplate::StrikeTheWearerInItsDeployablesBlast(AActor* Wearer, float DamagePercent)
+{
+	if (!Wearer || Wearer != Avatar() || DamagePercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THE DELIVERY `HitTargets` BUILDS FOR AN ENEMY, FIELD FOR FIELD AND IN ITS ORDER (B3), as
+	// `ShareTheBlowWithAllies` builds it. `TestADeployablesBlastStrikesItsWearer` in
+	// `tools/tests/test_generate_datatables.py` holds the two lists of fields to each other.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+	Delivery.SkillHealthCostPercent = LastHealthCostPercentOfMaximum;
+	Delivery.MetresMovedBeforeBlow = LastMetresMovedBeforeUse;
+	Delivery.MetresCharged = BlowMetresCharged;
+	Delivery.ChargeRangeMetres = BlowChargeRangeMetres;
+	Delivery.Skill = this;
+	Delivery.bStruckFromAPoint = bFreeRepeatHasOrigin;
+	Delivery.StruckFromPoint = FreeRepeatOrigin;
+	Delivery.EnemiesStruckTogether = AttackEnemiesStruckTogether;
+	Delivery.IncreasedDamageBoughtPercent = AttackIncreasedDamageBoughtPercent;
+	Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+	Delivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
+
+	// AND THE SKILL'S OWN MORE DAMAGE FROM BEHIND, measured from where the use was cast, as `HitTargets` gives each
+	// target: part of what the blow is worth where the wearer stands. A deployable's cast always has that place; a use
+	// without one is the wearer's own and strikes nothing here.
+	const bool bFromBehind = Params.bRearHits
+		|| (bFreeRepeatHasOrigin && UCataclysmSkillEffects::IsBehindFrom(FreeRepeatOrigin, Wearer));
+	const float PercentThisBlow =
+		bFromBehind && Params.MoreDamageFromBehind > 0.0f
+			? DamagePercent * (1.0f + Params.MoreDamageFromBehind / 100.0f)
+			: DamagePercent;
+
+	// AND THEN THE SHARE'S MARK AT THE WHOLE OF THE FIGURE (B4): damage only, and none of the wearer's rows for a hit
+	// dealt. See `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow`.
+	return UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, PercentThisBlow, SkillTags, Delivery);
 }
 
 void UCataclysmSkillTemplate::ApplyManaOnHit() const
