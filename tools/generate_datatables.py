@@ -5708,6 +5708,13 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     "kill",
     "afflicted_death",
     "gadget_destroyed",
+    # Ruled 2026-10-19 (M2, M5). `trap_placed` carries the wearer's own trap.
+    # `trap_triggered` carries the enemy that set the trap off, which the
+    # trap's cast has just struck and may have killed; NO STRIKE ON IT IS
+    # RULED, so a strike row on it is refused here until a layer rules one and
+    # moves it to `STRIKE_TARGET_EVENTS`, whose eight a merged test pins.
+    "trap_placed",
+    "trap_triggered",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -5953,6 +5960,19 @@ ACTION_ONLY_EVENTS = (
     # Soul grants a stack of Soul Strike that increases your damage by 10% for 5
     # seconds. Max 10 stacks": two own-stack rows on it. Raised at 10 stacks too.
     "soul_picked_up",
+    # A SKILL TRAP PLACED, raised once per trap on its player by
+    # `ACataclysmMinion::PlaceSkillTrap`, with the trap's type tags and the
+    # trap as the character. Ruled 2026-10-19 (M2), for "Placing a trap
+    # generates a burst of evasion" (a later layer's row). Clockless: placing
+    # is something the player DID. In no narrower list yet; the layer that
+    # writes the row says which action it takes.
+    "trap_placed",
+    # A SKILL TRAP TRIGGERED, raised once per trigger on its player by
+    # `ACataclysmMinion::TriggerSkillTrap` after its cast started and before it
+    # is used up, with the trap's type tags and the enemy that set it off.
+    # Ruled 2026-10-19 (M5, T13), for the rows of later layers on a trap's
+    # trigger. Clockless, as the one above; in no narrower list yet.
+    "trap_triggered",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -11694,6 +11714,135 @@ def refuse_a_deployable_self_blast_row_the_game_cannot_read(
     return problems
 
 
+#: The flag by which a slot's press PLACES A SKILL TRAP, which casts the slot's
+#: skill once when an enemy comes within 3 m of it. Ruled 2026-10-19 by the
+#: coordinating session (T1-T19), for "Your heavy attack / special ability /
+#: ultimate ability is converted into a placeable trap. When triggered, it
+#: fires your ... Scales off trap damage. All placed copies share the ...
+#: cooldown."
+#:
+#: ONE SENTENCE IS ONE ROW, as the skill gadget's flag: `flat`, 1 to 1, whose
+#: Required Tags is the slot's own tag and nothing else, with no Condition, no
+#: Scale and no Action. The sentence's own tags carry `Type.Trap` as well; the
+#: row requires the slot tag alone, because the game asks with the slot's
+#: skill tags. `UCataclysmAbilitySystemComponent::SkillSlotIsATrapStat` holds
+#: the same name.
+#:
+#: THE THREE SLOTS THIS LAYER BUILDS. The Support's trap (its self buff) and
+#: the basic attack's (its click) are a later layer's, ruled 2026-10-19 in the
+#: build order: a row on either would be accepted and do nothing, or nothing
+#: the ruling settled, so both are refused until that layer.
+SKILL_SLOT_IS_A_TRAP_STAT = "skill_slot_is_a_trap"
+SKILL_SLOT_IS_A_TRAP_SLOT_TAGS = frozenset({
+    "Slot.Heavy", "Slot.Special", "Slot.Ultimate"})
+
+
+def refuse_a_skill_slot_trap_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `SKILL_SLOT_IS_A_TRAP_STAT` is one its reader answers yes to,
+    for one slot this layer builds.
+
+    THE SHAPE OF `refuse_a_skill_slot_gadget_row_the_game_cannot_read`, for
+    the trap's flag, and for its reasons: a kind but `flat` works on a base of
+    nought and converts nothing; no tag converts every slot; a tag but one
+    built slot's converts a slot nobody named or one not built; an action is
+    not a stat line; the figure is 1.
+
+    A CONDITION OR A SCALE ON THE STAT IS REFUSED ELSEWHERE, by the two checks
+    that refuse those on a stat not on their lists. A PASSIVE NODE'S ROW IS
+    LEFT ALONE: the ruled sentences are enchantments'.
+    """
+    problems = []
+    stat = SKILL_SLOT_IS_A_TRAP_STAT
+    for row in rows:
+        if str(row.get("Stat") or "").strip() != stat or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the figure itself and takes any value above "
+                f"nought as yes, so the row must be 'flat'; any other kind "
+                f"works on a base of nought and converts NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in SKILL_SLOT_IS_A_TRAP_SLOT_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The row requires ONE slot's tag and nothing else, one of "
+                f"{sorted(SKILL_SLOT_IS_A_TRAP_SLOT_TAGS)}: the game asks "
+                f"with each slot's skill tags, so no tag converts every slot, "
+                f"and the Support's and the basic attack's traps are a later "
+                f"layer's.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. The flag "
+                f"is a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on this "
+                    f"flag states 1 and nothing else.")
+    return problems
+
+
+#: The two increases a skill trap is read by, ruled 2026-10-19 (M3, M4): how
+#: much faster it arms and how much wider it triggers. Each is asked as an
+#: INCREASE, with the trap's type tags, by `ACataclysmMinion::
+#: SkillTrapArmingSecondsFor` and `SkillTrapTriggerRadiusCmFor`, whose names
+#: `TrapArmingSpeedStat` and `TrapTriggerRadiusStat` hold. Their rows are a
+#: later layer's: "Traps arm 30%-60% faster" and "Traps have 30%-50% increased
+#: trigger radius".
+TRAP_INCREASE_STATS = ("trap_arming_speed", "trap_trigger_radius")
+
+#: The Required Tags a row on one of them may state: none, or the trap's own
+#: tag. The trap is asked with its type tags, `Type.Minion, Type.Deployable,
+#: Minion.Machine, Type.Trap`; a row naming anything outside them matches no
+#: trap, and one naming `Type.Deployable` would read as a gadget row.
+TRAP_INCREASE_REQUIRED_TAGS = frozenset({"", "Type.Trap"})
+
+
+def refuse_a_trap_increase_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `TRAP_INCREASE_STATS` is one its reader adds.
+
+    THE READER ASKS FOR THE INCREASES AND NOTHING ELSE, so a `flat` or a
+    `more` row is accepted and dead: refused. A row requiring a tag the trap
+    does not carry is dead too, and so is an action row, which is not a stat
+    line. A CONDITION OR A SCALE IS REFUSED ELSEWHERE, as on every stat not on
+    those checks' lists. A PASSIVE NODE'S ROW IS LEFT ALONE.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in TRAP_INCREASE_STATS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "increased":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads only the increases of this stat, so the row must "
+                f"be 'increased'; any other kind changes NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in TRAP_INCREASE_REQUIRED_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The game asks with the trap's type tags, so the row requires "
+                f"nothing or 'Type.Trap'; any other tag matches no trap, or "
+                f"reads as a row on gadgets.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. This is "
+                f"a stat line the game asks for, and an action row is not "
+                f"one.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -12157,6 +12306,14 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # IS FLAT, 1 AND NOTHING ELSE, WITH NO TAGS AND NO ACTION. Ruled 2026-10-19
     # (B1-B6).
     problems.extend(refuse_a_deployable_self_blast_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+
+    # AND THE FLAG BY WHICH A SLOT'S PRESS PLACES A SKILL TRAP IS FLAT, 1 TO 1,
+    # REQUIRING ONE BUILT SLOT'S TAG; AND THE TRAP'S TWO INCREASES ARE
+    # INCREASES, REQUIRING NOTHING OR `Type.Trap`. Ruled 2026-10-19 (T1-T19).
+    problems.extend(refuse_a_skill_slot_trap_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    problems.extend(refuse_a_trap_increase_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

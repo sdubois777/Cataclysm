@@ -113,8 +113,15 @@ namespace CataclysmEnchantmentEffectTest
 	//
 	// NOT "Ultimate has 1-3 additional charges" ANY MORE, which this was until
 	// issue #1833's skill charges gave that benefit a row.
+	//
+	// NOR "Your ultimate ability is converted into a placeable trap" ANY MORE,
+	// which this was until the first trap layer of 2026-10-19 built the
+	// mechanism its row stands on. "Your HP regeneration continues at 50%
+	// effectiveness during combat" was RETIRED by the owner at weight 0 and so
+	// never gains a row, as `DrawbackWithNoEffect` is retired. Its name is the
+	// generator's `row_name` of the sentence's first 48 characters.
 	const TCHAR* BenefitWithNoEffect =
-		TEXT("Positive_Your_ultimate_ability_is_converted_into_a_placea");
+		TEXT("Positive_Your_HP_regeneration_continues_at_50_effectiven");
 	const TCHAR* DrawbackWithNoEffect = TEXT("Negative_Can_t_use_a_basic_attack");
 
 	/**

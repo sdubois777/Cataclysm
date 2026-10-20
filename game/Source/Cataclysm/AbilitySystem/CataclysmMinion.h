@@ -1029,9 +1029,15 @@ public:
 	 * skill gadget's highest-health row; null for anything that is not a gadget) or else the nearest enemy within
 	 * `SkillReachCm`. A reach of nought casts nothing. The caller adds any tag; this adds none.
 	 *
+	 * WIDENED FOR THE SKILL TRAP (ruled 2026-10-19, M5): `AimedAt`, when given, is the target, and no search is made and
+	 * no reach is asked; `CastFromPlace`, when given, is where the skill is cast from, and with no target it is also where
+	 * the skill is aimed (T11). Both null, as every caller before the trap passes, is the search above from here. A self
+	 * buff's 8 m is measured from this minion either way.
+	 *
 	 * @return whether `UCataclysmTriggeredSkill::Trigger` started it
 	 */
-	bool StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm);
+	bool StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm,
+								   AActor* AimedAt = nullptr, const FVector* CastFromPlace = nullptr);
 
 	/** How many Ultimates this Tyrant's Minion has cast for the ten-piece. Read by tests. */
 	int32 TyrantsUltimateCastsMade = 0;
@@ -1041,6 +1047,133 @@ public:
 
 	/** Its age when its last cast for the ten-piece started. */
 	float LastTyrantsUltimateCastAtAgeSeconds = 0.0f;
+
+	/**
+	 * THE SKILL TRAP. Ruled 2026-10-19 by the coordinating session (T1-T19), for the rows "Your heavy attack / special
+	 * ability / ultimate ability is converted into a placeable trap. When triggered, it fires your ... at (or centered
+	 * on) the triggering enemy. Scales off trap damage. All placed copies share the ... cooldown." The shape copies the
+	 * skill gadget's: a converted slot's press PLACES the trap at the player's feet (T3), PAYING THE SKILL'S COST AND
+	 * STARTING ITS COOLDOWN (T5); the press is the skill use and the trap's cast is not (T19).
+	 *
+	 * A MACHINE OF ITS OWN TYPE ROW, `SkillTrapTypeName`, whose tags make it a trap (`IsTrap`) and not a gadget: so no
+	 * gadget behaviour reaches it, the skill gadget's step and pricing included. It ARMS after `SkillTrapArmSeconds`
+	 * (T1), TRIGGERS on the first enemy within `SkillTrapTriggerRadiusCm` (T2) on the quarter-second step, CASTS the
+	 * player's skill held in its slot once, free (M5), and is USED UP: destroyed, with no explosion and no
+	 * `gadget_destroyed` (T14). It lasts `SkillTrapSeconds` and A TRAP THAT EXPIRES DOES NOT TRIGGER (T4). At most
+	 * `SkillTrapsMostPerPlayer` stand for one player across all converted slots, and over the cap the oldest is
+	 * destroyed without triggering (T6). 1.0 s, 3 m, 20 s, 5 and the row's health of 40 are numbers under the owner's
+	 * delegation of unstated numbers.
+	 *
+	 * ITS TYPE ROW IS THE ENCHANTMENT SESSION'S, `SkillTrap` in `game/Data/MinionTypes.csv`. Without it a press places
+	 * nothing and logs why, as a skill gadget's does. NOTHING HERE IS FOR IRON FORTRESS'S `SpikeTrap` (T15): every rule
+	 * below asks `IsSkillTrap`, which a Spike Trap never is.
+	 */
+	static const TCHAR* SkillTrapTypeName;
+
+	/** Seconds from placing to armed, before `TrapArmingSpeedStat` (T1). */
+	static constexpr float SkillTrapArmSeconds = 1.0f;
+
+	/** How near an enemy must stand for an armed trap to trigger, in centimetres, before `TrapTriggerRadiusStat` (T2). */
+	static constexpr float SkillTrapTriggerRadiusCm = 300.0f;
+
+	/** Seconds a trap lasts, before the summoner's `minion_duration` rows that name its tags (T4). */
+	static constexpr float SkillTrapSeconds = 20.0f;
+
+	/** The most skill traps one player has standing, across every converted slot (T6). */
+	static constexpr int32 SkillTrapsMostPerPlayer = 5;
+
+	/**
+	 * "Traps arm 30%-60% faster" and "Traps have 30%-50% increased trigger radius": two increased stats of the player,
+	 * asked with the trap's type tags when it is placed and on each step. No gameplay attribute and no base. Read here
+	 * from this layer; their rows are a later layer's.
+	 */
+	static const TCHAR* TrapArmingSpeedStat;
+	static const TCHAR* TrapTriggerRadiusStat;
+
+	/** `SkillTrapArmSeconds` for `Player`'s trap of `TrapTags`: divided by one plus the arming-speed increases. */
+	static float SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
+
+	/** `SkillTrapTriggerRadiusCm` for `Player`'s trap of `TrapTags`: times one plus the trigger-radius increases. */
+	static float SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
+
+	/**
+	 * Place a skill trap for `Player`'s `Slot` at `Location`, or null with the reason logged. NULL, AND NOTHING LEFT
+	 * STANDING AND NOTHING DESTROYED, WHEN THE TYPE ROW IS MISSING, as `PlaceSkillGadget` refuses. Over the cap the
+	 * player's oldest skill traps are destroyed without triggering (T6). Raises `trap_placed` on the player with the
+	 * trap's type tags. Free: the press that calls this is what pays.
+	 */
+	static ACataclysmMinion* PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location);
+
+	/** Every living skill trap `Player` commands, the oldest first by `SpawnOrder`. */
+	static TArray<ACataclysmMinion*> SkillTrapsOf(const AActor* Player);
+
+	/** Which of its player's slots this trap casts, or `None` for every minion that is not a skill trap. */
+	ECataclysmAbilitySlot SkillTrapSlot = ECataclysmAbilitySlot::None;
+
+	/** Whether this is a skill trap: a trap placed for a slot. Never a Spike Trap (T15). */
+	bool IsSkillTrap() const;
+
+	/**
+	 * Whether a trap of `Slot` casts its skill FROM the triggering enemy's place, "centered on the triggering enemy":
+	 * the Special, the Support and the Ultimate. The Heavy and the basic attack "fire ... at the nearest enemy", and are
+	 * cast from the trap at that enemy.
+	 */
+	static bool SkillTrapCastsAroundItsEnemy(ECataclysmAbilitySlot Slot);
+
+	/** The row of the skill this trap casts: what its player holds in its slot NOW, as `SkillGadgetsSkill` reads it. */
+	bool SkillTrapsSkill(FCataclysmWeaponSkill& Out) const;
+
+	/**
+	 * What this trap does on the quarter-second step, called by `GadgetStep` before its refusal of anything that is not
+	 * a gadget. ARMED once its age reaches `SkillTrapArmsAtAgeSeconds`; then, on the first step finding an enemy within
+	 * `SkillTrapTriggerRadiusCmFor`, the nearest is the triggering enemy and `TriggerSkillTrap` is called. A trap that
+	 * cannot act, of a player gone or dead, or whose slot is no longer converted, does nothing. Up to a quarter of a
+	 * second late, as every gadget clock is.
+	 *
+	 * @return whether the trap triggered on this step
+	 */
+	bool StepSkillTrap();
+
+	/**
+	 * Trigger this trap now at `TriggeringEnemy` (T13), or at its own place when that is null (T11): cast its player's
+	 * skill once, free, by `StartPlayersSkillFromHere` with `Type.Trap` and not `Type.Deployable` added to its tags; at
+	 * the enemy from here for the Heavy, from the enemy's place for `SkillTrapCastsAroundItsEnemy`. A SKILL THAT CANNOT
+	 * BE CAST NEVER TRIGGERS (T8): the trap stays armed and is not used up. A cast that starts raises `trap_triggered`
+	 * on the player with the trap's type tags and the enemy, and THEN the trap is used up: destroyed, with no explosion
+	 * and no `gadget_destroyed`.
+	 *
+	 * @return whether the cast started and the trap was used up
+	 */
+	bool TriggerSkillTrap(AActor* TriggeringEnemy);
+
+	/** Its age at which it arms, set when it is placed. */
+	float SkillTrapArmsAtAgeSeconds = 0.0f;
+
+	/** Whether it is armed. */
+	bool bSkillTrapArmed = false;
+
+	/** How many times it has triggered, at most once, since it is then used up. Read by tests before that. */
+	int32 SkillTrapTriggersMade = 0;
+
+	/**
+	 * The skill trap whose cast `Delivery` is a blow of, or null, read as `SkillGadgetCasting` reads a gadget: the actor
+	 * the delivery carries, then its skill's `FreeRepeatCastBy`. Read by `UCataclysmSkillEffects::ApplyHit` to price
+	 * the blow with the player's `Type.Trap` `minion_damage` rows (T10). A TRAP IS USED UP AS ITS CAST STARTS, so a
+	 * blow landing after that (a shot in flight) finds no trap and is priced as the player's.
+	 */
+	static const ACataclysmMinion* SkillTrapCasting(const struct FCataclysmHitDelivery& Delivery);
+	static const ACataclysmMinion* SkillTrapCasting(const class UGameplayAbility* Skill);
+
+	/**
+	 * WHAT THE PLAYER SEES OF IT (T12): its stand-in body DIM WHILE ARMING AND LIT WHEN ARMED, through the engine basic
+	 * shape material's `Color` parameter. Its trigger radius is not drawn. The colour each state is drawn in, and the
+	 * one this trap was last given, which tests read because a test world draws nothing.
+	 */
+	static FLinearColor SkillTrapTintFor(bool bArmed);
+	FLinearColor SkillTrapTintShown = FLinearColor::Black;
+
+	/** Give the stand-in body the colour of the state this trap is in now. */
+	void ShowSkillTrapTint();
 
 	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in

@@ -41677,8 +41677,12 @@ bool FCataclysmBloodPriceDungeonTest::RunTest(const FString& Parameters)
 
 namespace CataclysmDungeonModifierEffectsTest
 {
-	/** A benefit row with no effect in play, to carry the cap's drawback on an item: the enchantment tests' choice. */
-	const TCHAR* FloorStartCapBenefit = TEXT("Positive_Your_ultimate_ability_is_converted_into_a_placea");
+	/**
+	 * A benefit row with no effect in play, to carry the cap's drawback on an item: the enchantment tests' choice. Moved
+	 * on 2026-10-19 with theirs, from the Ultimate's placeable trap, whose row the first trap layer stands up, to the
+	 * retired "Your HP regeneration continues at 50% effectiveness during combat", which never gains one.
+	 */
+	const TCHAR* FloorStartCapBenefit = TEXT("Positive_Your_HP_regeneration_continues_at_50_effectiven");
 
 	/**
 	 * Wears "You start every dungeon floor at 30%-50% of your maximum HP" on a helm and returns the share it rolled, or

@@ -2,6 +2,533 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-20 — A row can convert the Heavy, Special or Ultimate slot into a placeable trap: its key, a paid use of the skill, places a trap at the player's feet that arms in a second, triggers on the first enemy within 3 m, casts the player's skill once from there priced with the trap damage rows, and is used up; at most five stand and one lasts 20 s, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the skill trap: its type name, its
+four constants and two stat names, its placing and cap, its step, its trigger and cast, the reading of which trap cast a
+skill, its tint; one branch at the top of `GadgetStep`; `StartPlayersSkillFromHere` gains two parameters, `AimedAt` and
+`CastFromPlace`, both null by default; `HandleDeath` leaves a skill trap out of `gadget_destroyed`);
+`CataclysmAbilitySystemComponent.h` and `.cpp` (the flag's name and reading, the press and its release, the pricing read
+`TrapDamageNamingTrap`, one include; the press is offered first in `AbilityInputTagPressed`, and
+`PressOfASkillGadgetSlot` leaves a slot converted both ways to it); `CataclysmSkillEffects.cpp` (`ApplyHit`: the one
+pricing read, and `deployable_hit` for a trap's blow), all under `game/Source/Cataclysm/AbilitySystem/`;
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (three names at the end of `StatsWithNoAttribute`);
+`game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` and `CataclysmHUD.cpp` (a converted slot's box);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapTests.cpp` (new, nine tests); `CataclysmStatExemptionTests.cpp` (three
+probes); `CataclysmEnchantmentEffectTests.cpp` and `CataclysmDungeonModifierEffectsTests.cpp` (the benefit with no
+effect moved, one constant each); `tools/generate_datatables.py` (two events, the flag and the two increases with their
+refusals); `tools/tests/test_generate_datatables.py` (three classes and one test, at the end);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (two call sites, one dated line). No data row, no tag, no
+workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The sentences, from `game/Data/EnchantmentsPositive.csv`; this layer builds the mechanism for three, and their rows are
+the enchantment session's:
+
+- `Positive_Your_heavy_attack_is_converted_into_a_placeable` (weight 3, `Type.Trap, Slot.Heavy`): "Your heavy attack is
+  converted into a placeable trap. When triggered, it fires your heavy attack at the nearest enemy. Scales off trap
+  damage. All placed copies share the heavy attack cooldown."
+- `Positive_Your_special_ability_is_converted_into_a_placeab` (weight 4, `Type.Trap, Slot.Special`): "Your special
+  ability is converted into a placeable trap. When triggered, it activates your special ability centered on the
+  triggering enemy. Scales off trap damage. All placed copies share the special ability cooldown."
+- `Positive_Your_ultimate_ability_is_converted_into_a_placea` (weight 2, `Type.Trap, Slot.Ultimate`): "Your ultimate
+  ability is converted into a placeable trap. When triggered, it fires your ultimate ability centered on the triggering
+  enemy. Scales off trap damage. All placed copies share the ultimate cooldown."
+
+What a player would notice, once a row is worn:
+
+- **THE KEY NO LONGER CASTS THE SKILL: IT PLACES A TRAP AT THE PLAYER'S FEET, AND THE PRESS IS THE SKILL'S USE.** It is
+  refused, placing nothing and paying nothing, while the slot's cooldown runs, while the cost cannot be paid and while a
+  lock holds the skill. A press that places pays the skill's mana (and the Ultimate's 50 Fervour), starts its cooldown and
+  raises `skill_use` and `attack_use` as a use does. A stunned player places nothing, because the player controller drops
+  a stunned press before it reaches the ability system. Holding the key places once.
+- **A TRAP ARMS ONE SECOND AFTER IT IS PLACED, DRAWN DIM UNTIL THEN AND LIT ONCE ARMED.** Armed, it triggers on the first
+  enemy that comes within 3 m of it, the nearest, up to a quarter of a second late, and casts the player's skill once:
+  the Heavy at that enemy from the trap, the Special and the Ultimate from the enemy's own place. Then it is gone.
+- **ITS CAST IS THE PLAYER'S SKILL AT THE PLAYER'S NUMBERS, WITH THE TRAP DAMAGE ROWS ON TOP**: "Traps deal 20%-40%
+  increased damage", the two per trap and per gadget, and "doubles" reach it as written; no gadget damage row does. Its
+  blows on enemies raise `deployable_hit` with the trap's tags. The cast is free and raises no `skill_use`.
+- **AT MOST FIVE TRAPS STAND FOR A PLAYER, ACROSS EVERY CONVERTED SLOT**; a sixth destroys the oldest, which does not
+  trigger. **A TRAP LASTS 20 S AND ONE THAT EXPIRES DOES NOT TRIGGER.** Enemies do not seek a trap (threat 0) but area
+  blows hurt it; a trap killed raises nothing.
+- **THE SKILL BAR'S BOX** reads "Trap", sweeps with the slot's own cooldown, and writes "Traps 2/5" over itself, or "Trap
+  casts nothing" for a skill a trap can never cast, whose trap is placed and never triggers.
+- **NOT IN PLAY UNTIL TWO THINGS LAND ABOVE THIS LAYER:** the `SkillTrap` row of the Minion Types sheet and the three flag
+  rows, both the enchantment session's (below). Without the type row a press places nothing, pays nothing and logs why.
+- **FOUND, AND NOT CHANGED, EACH FOR A RULING IF IT IS WANTED:**
+  1. **T14 IS BUILT FOR THE SKILL TRAP ONLY. A SPIKE TRAP KILLED STILL RAISES `gadget_destroyed`.** Narrowing the event
+     to `IsGadget()` would change the Spike Trap, which T15 and the brief leave as it is, and two merged tests assert
+     that a killed Spike Trap raises it: `Cataclysm.GadgetAndResource.AKilledGadgetTellsItsSummonerOnceAndATrapIsAGadget`'s
+     "and a trap is a gadget too" (`CataclysmGadgetAndResourceTests.cpp`) and
+     `Cataclysm.Enchantments.AKilledGadgetGivesTheWearersGadgetsItsRolledDamageForFiveSeconds`, which kills a Spike Trap.
+     So `ACataclysmMinion::HandleDeath` asks `IsDeployable() && !IsSkillTrap()`.
+  2. **A TRAP CARRIES `Type.Deployable` (M1's tags), SO THE GADGET ROWS ON A MINION STAT REACH IT AS THEY REACH A SPIKE
+     TRAP:** "Gadgets last 30%-60% longer" lengthens its 20 s and "Gadgets have 40%-70% increased HP" its health, both
+     asked by `Spawn` with the type tags; "Each active gadget increases your evasion chance by 5%-10%" counts it, through
+     `deployables_active`. Its trigger radius is a constant of its own, so "Gadgets have 20%-40% increased attack range",
+     which `Spawn` puts on the type's reach, does not move it.
+  3. **"Your traps ignore 20%-40% of enemy armor" (`armor_penetration`, `Type.Trap`) reaches a trap's cast**, because the
+     cast's skill tags carry `Type.Trap` and the player's own blow asks that stat with them (2026-10-07, point 2). By
+     reading; not tested. So does the Saboteur's Bigger Traps (`area_of_effect`, `Type.Trap`), a War class node.
+  4. **A ROW THAT REPEATS A SKILL USE ("trigger twice") would repeat a trap press as a free cast of the skill from the
+     player**, because the press sends the skill-used notice (T19) and those rows hang on `skill_use` and `attack_use`.
+     Read and not tested.
+  5. **A SHOT OR A RACK A TRAP CASTS THAT LANDS AFTER THE TRAP IS USED UP IS PRICED AS THE PLAYER'S**, with no trap row and
+     no `deployable_hit`: the trap is destroyed as its cast starts, and a destroyed trap is no trap, as a destroyed gadget
+     is none (2026-10-16, stack 2, item 3). Every Strike and every no-speed landing lands inside the cast and is priced as
+     the trap's. A judgement, below.
+  6. **A SECOND TEST WORE THE ULTIMATE TRAP SENTENCE AS A BENEFIT WITH NO EFFECT**: `FloorStartCapBenefit` in
+     `CataclysmDungeonModifierEffectsTests.cpp`, "the enchantment tests' choice". Moved with `BenefitWithNoEffect` (item 1
+     below).
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 58 and the rulings below. NOT COMPILED AND NOT
+  RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- nothing places a trap without War except the five conversion rows (this layer builds three of them: Heavy, Special,
+  Ultimate)
+- Iron Fortress's spike traps keep their 3 s timer and take none of the trap rows (T15): no arming, trigger, cap,
+  duration rule or trap pricing of this layer reaches a Spike Trap
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+Nothing of the owner's is quoted for traps here. The shape copies the owner's skill gadget rulings of 2026-10-14 and
+2026-10-16 (the press places it; the WHOLE skill is cast from it; its damage is the player's skill plus the rows naming
+the thing), quoted in those entries. The rulings are the coordinating session's of 2026-10-19 on
+`trap_design_2026-10-19.md`, verbatim as relayed:
+
+> TRAP DESIGN RULINGS (trap_design_2026-10-19.md, read through your summary; thank you for re-fetching three quotes).
+> None is an owner question: the numbers are unstated and delegated, and the shape copies the gadget conversion the
+> owner already chose (press places it; the player's skill is cast from it). I tell the owner the result.
+> CONFLICTS: C2 stands over T16 (the gadget half of #15 is one cast each, at the target its own clock would choose).
+> B2 stands over T18 and extends to traps: the self-blast counts a trap's instant area cast as it counts a gadget's.
+> T1 1.0 s. T2 3 m. T3 at the player's feet. T4 20 s; a trap that EXPIRES does NOT trigger (simpler, and it keeps
+> "Traps do not expire, they remain armed until triggered" a clear gain); record in the entry the Path of Exile quote
+> you found ("Most traps are triggered automatically when they expire...") as the option not taken. T5 yes: the press
+> pays the skill's cost and starts its cooldown. T6 at most 5 per player across all converted slots; over the cap the
+> oldest is destroyed without triggering. T7 the 8 m self-buff rule (S13). T8 placed, never triggers, the skill bar
+> says so (S10). T9 not targeted, area blows hurt it, health 40. T10 one added read in ApplyHit of the built Type.Trap
+> minion_damage rows. T11 casts at its own place. T12 the radius is not drawn in the first build; the trap is drawn dim
+> while arming and lit when armed, and the skill bar shows "Trap" (the standing UI rule). T13 each trigger's own
+> triggering enemy. T14 yes: gadget_destroyed narrowed to gadgets; a trap's death raises nothing until a row needs it.
+> T15 no (the no-War mandate). T17 the trap wins; the entry says so. T19 the press is the skill use; the trap's cast is
+> not.
+> Numbers 1.0 s, 3 m, 20 s, 5 and 40 are under the owner's delegation; each entry says so.
+> ORDER: #35, #34, #15, then the seven trap layers, conversion rows first. Write the first trap layer's brief after
+> #15's mechanism is accepted, and put these rulings verbatim in its rulings file.
+
+And, when it accepted brief 58 on 2026-10-19, three points: the new benefit with no effect is "Your HP regeneration
+continues at 50% effectiveness during combat" (retired, weight 0); whether the deployable self-blast already reaches a
+trap's cast is to be read, and if it does one test is written and this entry says that design layer 7 shrinks to its
+row's tests; and the `SkillTrap` Minion Types row and the three flag rows are the enchantment session's.
+
+**THE NUMBERS 1.0 S, 3 M, 20 S, 5 AND 40 ARE UNDER THE OWNER'S DELEGATION OF UNSTATED NUMBERS**, as ruled. No sentence
+states any of them. Each is a constant of `ACataclysmMinion` (`SkillTrapArmSeconds`, `SkillTrapTriggerRadiusCm`,
+`SkillTrapSeconds`, `SkillTrapsMostPerPlayer`) or a cell of the type row (`BaseHealth` 40), for play to tune.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree, on development `da6b31cb4`.
+
+| | Ruling, quoted | Where it is |
+| :-- | :-- | :-- |
+| T1 | "T1 1.0 s." | `ACataclysmMinion::SkillTrapArmSeconds` (`CataclysmMinion.h`); the mark set in `PlaceSkillTrap` (`CataclysmMinion.cpp` 2394) through `SkillTrapArmingSecondsFor` (2361); read in `StepSkillTrap` (2485). |
+| T2 | "T2 3 m." | `SkillTrapTriggerRadiusCm`; `SkillTrapTriggerRadiusCmFor` (2368); the search in `StepSkillTrap` by `HostilesWithin`, nearest first. |
+| T3 | "T3 at the player's feet." | `UCataclysmAbilitySystemComponent::PressOfASkillTrapSlot` (`CataclysmAbilitySystemComponent.cpp` 7985), placing at the avatar's location. |
+| T4 | "T4 20 s; a trap that EXPIRES does NOT trigger" | `SkillTrapSeconds`, passed to `Spawn` as the lifetime, which the summoner's `minion_duration` rows naming the type's tags lengthen; the engine's lifespan destroys the actor and no code of this layer hears it, so nothing is cast. |
+| T5 | "T5 yes: the press pays the skill's cost and starts its cooldown." | `PressOfASkillTrapSlot`: `CheckCooldown`, `CheckCost` and the lock (8031) before placing; `ApplyCost` and `ApplyCooldown` (8049, 8050) after. |
+| T6 | "T6 at most 5 per player across all converted slots; over the cap the oldest is destroyed without triggering." | `SkillTrapsMostPerPlayer`; `SkillTrapsOf` (2376), oldest first by `SpawnOrder`; the loop in `PlaceSkillTrap` (2421) destroys, and never kills, the oldest. |
+| T7 | "T7 the 8 m self-buff rule (S13)." | `StartPlayersSkillFromHere` (2268) measures the 8 m from the minion (`Here`) whatever place the cast is made from. A support trap is layer 2's; this layer's flag rows do not reach the Support slot. |
+| T8 | "T8 placed, never triggers, the skill bar says so (S10)." | `TriggerSkillTrap` (2509) refuses by `SkillGadgetMayCast` and leaves the trap armed and standing; `FCataclysmSkillBarSlot::bSkillTrapCastsNothing` and `UCataclysmSkillBar::SkillTrapTextFor` (`CataclysmSkillBar.cpp` 424). |
+| T9 | "T9 not targeted, area blows hurt it, health 40." | The type row (below): threat 0, health 40. Nothing in code. |
+| T10 | "T10 one added read in ApplyHit of the built Type.Trap minion_damage rows." | `UCataclysmSkillEffects::ApplyHit` (`CataclysmSkillEffects.cpp` 947 to 961): `SkillTrapCasting` and `TrapDamageNamingTrap` (`CataclysmAbilitySystemComponent.cpp` 8062). |
+| T11 | "T11 casts at its own place." | `TriggerSkillTrap` given no enemy casts from and at its own place; `StartPlayersSkillFromHere`'s `CastFromPlace` branch (2307). Nothing in this layer sets a trap off with no enemy. |
+| T12 | "T12 the radius is not drawn in the first build; the trap is drawn dim while arming and lit when armed, and the skill bar shows "Trap"" | `SkillTrapTintFor` and `ShowSkillTrapTint` (2564, 2570), called at placing and at arming; the box in `UCataclysmSkillBar::Read` (692) and the line drawn in `ACataclysmHUD` (`CataclysmHUD.cpp` 473). No radius is drawn. |
+| T13 | "T13 each trigger's own triggering enemy." | The nearest enemy found by the step is the one cast at, and the one `trap_triggered` names (2544). |
+| T14 | "T14 yes: gadget_destroyed narrowed to gadgets; a trap's death raises nothing until a row needs it." | `HandleDeath` (1686), for the skill trap; see SAID FIRST for why not the Spike Trap. |
+| T15 | "T15 no (the no-War mandate)." | Every rule asks `IsSkillTrap` (2445), which needs `SkillTrapSlot`, set only by `PlaceSkillTrap`. |
+| T17 | "T17 the trap wins; the entry says so." | **THE TRAP WINS.** The trap's press is offered first in `AbilityInputTagPressed` (229); `PressOfASkillGadgetSlot` returns false for a slot converted both ways (7870), so the player controller's earlier offer to the gadget passes it on; the bar shows the trap's box (`CataclysmSkillBar.cpp` 666, 692). |
+| T19 | "T19 the press is the skill use; the trap's cast is not." | The skill-used notice sent by the press (8052); the cast is `Trigger`'s free start, which sends none. |
+| B2 extended | "the self-blast counts a trap's instant area cast as it counts a gadget's." | Nothing changed: it already does. See interaction 1. |
+| M5 | The cast's tags gain `Type.Trap` and not `Type.Deployable`; `trap_triggered` before the trap is used up; used up with no explosion and no `gadget_destroyed`. | `TriggerSkillTrap`: the tag (2531), the event (2544), `Destroy` (2547). |
+
+**LEFT FOR LATER LAYERS, NOT BUILT HERE:** the Support's and the basic attack's conversions (layer 2: the self buff of
+T7 in play, and the basic attack's click; the generator refuses both slots' rows until then); `trap_cap_bonus` and
+`traps_do_not_expire` (layer 3, M6); the rows on `trap_arming_speed`, `trap_trigger_radius`, `trap_placed`,
+`trap_triggered` and `deployable_hit` (layer 3); the rearm chance and the four hooks on a trap's own blow (layer 4); the
+two "nearby traps" actions, which are what can set a trap off with no enemy near (T11) and the trap half of #15 (layer
+5); the gadget-firing actions and the pull (layer 6). T16 and T18 were ruled by C2 and B2. **DESIGN LAYER 7, the
+drawback's trap half, SHRINKS TO ITS ROW'S TESTS** (interaction 1).
+
+### WHAT THIS LAYER READS, AND WHAT IT LEAVES FOR LATER
+
+| Stat or event | Added here? | Read here by | Its rows |
+| :-- | :-- | :-- | :-- |
+| `skill_slot_is_a_trap` | yes, a flag | `SlotIsASkillTrap`, from the press, the step and the bar | this layer's three, the enchantment session's; layer 2 adds the Support's and the basic's |
+| `trap_arming_speed` | yes, an increase | `SkillTrapArmingSecondsFor`, at placing | layer 3 ("Traps arm 30%-60% faster") |
+| `trap_trigger_radius` | yes, an increase | `SkillTrapTriggerRadiusCmFor`, on each step | layer 3 ("Traps have 30%-50% increased trigger radius") |
+| `minion_damage` naming `Type.Trap` | no, built 2026-10-07 | `TrapDamageNamingTrap`, in `ApplyHit` | the four built rows, unchanged |
+| `minion_duration` naming `Type.Trap` | no, built 2026-10-08 | `Spawn`'s lifetime | "Traps last 50%-100% longer before expiring", unchanged |
+| `trap_placed` | yes, an event | raised by `PlaceSkillTrap` (2440) | layer 3 ("Placing a trap generates a burst of evasion") |
+| `trap_triggered` | yes, an event | raised by `TriggerSkillTrap` (2544) | layers 3, 5 and 6 |
+| `deployable_hit` with the trap's tags | no, an existing event, newly raised for a trap's cast | `ApplyHit`'s tail (1096 to 1106) | layer 3's slow and bleed rows |
+| `trap_cap_bonus`, `traps_do_not_expire` | **no** | nothing | layer 3 builds both reads with its rows |
+
+**THE TWO EVENTS, AND WHICH LISTS THEY JOIN.** Both join `ACTION_ONLY_EVENTS` (`tools/generate_datatables.py` 5969,
+5975): neither is a clock, because each is something the player did. Because each is raised with a character (the trap
+for `trap_placed`, the triggering enemy for `trap_triggered`), `test_every_event_a_strike_may_hang_on_is_fired_with_a_character`
+requires each to be in `STRIKE_TARGET_EVENTS` or in `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`; **both join the second**
+(5716, 5717): the trap is the wearer's own machine, and no strike on the triggering enemy is ruled (the cast may just have
+killed it). That refuses a strike row on either until a layer rules one, and leaves the merged pin of the eight strike
+events (`test_the_list_of_events_is_exactly_the_eight`) unchanged. Neither joins any narrower list: the layer that writes
+a row on one says which action it takes.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE TRAP IS USED UP BY `Destroy` AS ITS CAST STARTS.** The option not taken: keep a hidden, inert body for some
+  seconds so a shot in flight is still priced as the trap's, which would leave it in `traps_active`, `deployables_active`
+  and every list of what the player commands. SAID FIRST, item 5, gives the cost.
+- **THE PRESS ASKS THE SKILL'S OWN THREE QUESTIONS (COOLDOWN, COST, LOCK) AND PAYS BY ITS OWN TWO CALLS.** A refused press
+  places nothing and pays nothing. The option not taken: the gadget's S7, placing under a lock and paying nothing, which
+  T5 reverses for the cost and the cooldown.
+- **A STUNNED PLAYER PLACES NOTHING.** The trap's press is in `AbilityInputTagPressed`, after the controller's stun check,
+  and not beside the gadget's offer before it. The option not taken: before the stun check, as the gadget places; a trap
+  is a paid use (T19), and a stun stops a use.
+- **WHAT A USE DOES AND THE PRESS DOES NOT:** a health cost (a skill with one is never cast by a trap, so its trap is never
+  set off), the next-use charges, the Nth-attack count, the windows a use opens (charge, basic, support, movement, spell),
+  Mana Weaver's doubling count, and the cast's burst at the caster. The option not taken: route the press through the
+  skill's activation, which would cast the skill.
+- **A SLOT HOLDING NO SKILL STILL PLACES A TRAP**, free, which never triggers, as a slot holding none still places a skill
+  gadget. The option not taken: refuse the press.
+- **THE HEAVY IS AIMED AT ITS TRIGGERING ENEMY WHATEVER ITS OWN REACH**, so a Strike that reaches less than 3 m can miss an
+  enemy that set it off at 3 m. The option not taken: cast it from the enemy's place too, which its sentence ("fires ...
+  at the nearest enemy") does not say.
+- **A CAST AROUND THE ENEMY IS MADE FROM THE ENEMY'S PLACE AND AIMED AT IT**, so an area all round is centred there; a
+  cone or a shot so cast has no direction of its own. No castable Demonic Special is an area all round, so a Special trap
+  of a cone or a shot is untested.
+- **THE TRAP STEPS IN `GadgetStep`, BEFORE ITS REFUSAL OF WHAT IS NOT A GADGET**, so no new job is added to
+  `RegenerationStep`. The option not taken: a call of its own there.
+- **A TRAP THAT CANNOT ACT, OF A PLAYER GONE OR DEAD, OR WHOSE SLOT IS NO LONGER CONVERTED, WAITS ARMED**, as a skill gadget
+  casts nothing then. The option not taken: destroy it.
+- **THE TRIGGER RADIUS IS THE CONSTANT AND `trap_trigger_radius`, NOT THE TYPE ROW'S REACH**, which `Spawn` lengthens by
+  the gadget range row because a trap carries `Type.Deployable`. The row's reach repeats the 3 m for the brain, and a
+  Python test compares the two.
+- **THE PRICING READ TAKES THE "MORE" ROWS TOO**, so "Each gadget on the battlefield doubles the damage of your traps"
+  (`more` 100 per gadget) reaches the cast. The option not taken: the increases alone, which would leave that row reaching
+  only the Spike Trap.
+- **`deployable_hit` IS RAISED FOR A TRAP'S BLOW ON AN ENEMY** (design M5.4), so layer 3's slow and bleed rows are rows
+  only. Not for a share struck at the wearer or an ally, and not for a tick, as the gadget's.
+- **THE TINT: dark grey while arming, ember orange when armed**, through the engine basic shape material's `Color`
+  parameter, which the floor obstacles already paint by.
+- **THE GENERATOR ACCEPTS THE HEAVY, SPECIAL AND ULTIMATE SLOT TAGS ON THE FLAG AND REFUSES THE SUPPORT'S AND THE
+  BASIC'S** until layer 2. The option not taken: all five, as the gadget's flag accepts.
+- **THE TWO INCREASES ARE REFUSED BUT AS `increased`, AND REQUIRING ANYTHING BUT NOTHING OR `Type.Trap`.**
+
+### THE THREE INTERACTIONS WITH THIS DAY'S LAYERS, READ
+
+1. **#34'S SELF-BLAST ALREADY REACHES A TRAP'S AREA CAST. TESTED ONCE; DESIGN LAYER 7 SHRINKS TO ITS ROW'S TESTS.** A
+   trap's cast is started by `UCataclysmTriggeredSkill::Trigger` with `CastBy` the trap, which the one-use grant keeps as
+   `FreeRepeatCastBy`. The five blast sites each ask `UCataclysmDeployableSelfBlast::WearerInSphere` or `WearerInCone`
+   with that actor (`UCataclysmStrikeSkill::SwingOnce`, `CataclysmSkillTemplates.cpp` 462 to 467, passes
+   `FreeRepeatCastBy.Get()`; `Land` the same; `ACataclysmProjectile::Finish` the shot's `CastBy`), and
+   `IsTheWearersDeployable` asks `IsDeployable()` of it and whether its `Summoner` is the wearer: a skill trap is both.
+   The area is measured from `CastOrigin`, which for a cast around the triggering enemy is the enemy's place. So a
+   wearer of `deployable_blasts_strike_self` standing within an Ultimate trap's The Gathering of its triggering enemy is
+   struck, at the figure an enemy there would take, priced as the trap's. Test 7 shows it, with a wearer outside as the
+   control. `Explode` and `DeathBlast`, the other two sites, are a deployable's own death and are reached by a trap
+   killed with a summoner holding those rows, as by any deployable.
+2. **#15'S DEATH ACTION FIRES NO TRAP.** `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` collects `IsSkillGadget()`
+   (`CataclysmMinion.cpp` 1022; the filter at 1031), which asks `SkillGadgetSlot` and `IsGadget()`; a skill trap is not a gadget and
+   its slot is `SkillTrapSlot`, so it is left out, and `FireForItsSummonersDeath` refuses it again. Nothing of this layer
+   changes that walk. The sentence's trap half stays layer 5's.
+3. **#35'S REFUSAL CANNOT REFUSE A TRAP'S SELF BUFF ON ITS OWN PLAYER.** `RefusesBuffsFromAllies` is asked in three places,
+   each of an ally being given another character's buff: `CataclysmSharedBuffsDetail::LivingAlliesWithin`
+   (`CataclysmSharedBuffs.cpp` 45), `UCataclysmAuraSkill::HelpAlliesInside` and `ShareImmunitiesWithAlliesInside`
+   (`CataclysmSkillTemplates.cpp` 5293 and 5410). A trap's self buff is the player's own skill granted to the player by
+   `Trigger`, and `UCataclysmSelfBuffSkill::GrantIncrease` puts its modifier on the ability system of its own avatar, the
+   player. None of the three is on that path. The buff's shared copies to the player's allies do pass the first, and a
+   refusing ally refuses those, as for any self buff. The Support trap is layer 2's.
+
+### ITEM 1: THE BENEFIT WITH NO EFFECT, MOVED
+
+`BenefitWithNoEffect` (`CataclysmEnchantmentEffectTests.cpp` 116) was `Positive_Your_ultimate_ability_is_converted_into_a_placea`;
+the Ultimate trap row that will stand on this layer would give every test wearing it a trap. It is now
+`Positive_Your_HP_regeneration_continues_at_50_effectiven`, "Your HP regeneration continues at 50% effectiveness during
+combat", weight 0, retired by the owner. **The name was printed by the generator's `row_name("Positive", sentence[:48])`
+and pasted, and it is the name on line 117 of `EnchantmentsPositive.csv`, with that sentence and weight 0.0.** What was
+checked:
+
+- **No effect row names it**: none of `EnchantmentEffects.csv`'s rows has it as its enchantment (searched by script; the
+  same search finds none for `Negative_Can_t_use_a_basic_attack` either, the drawback with no effect).
+- **Wearing a weight-0 benefit is handled as wearing the weight-0 drawback is.** `UCataclysmItemModifiers::
+  AccumulateEnchantmentsInto` (`CataclysmItem.cpp` 1096) groups effect rows by enchantment name and grants each worn
+  name's rows; it never reads a weight. A weight is read only by the drop roll. `LoadAll` in the test file looks the name
+  up in the Positive table, which holds it.
+- **Every test wearing it, by grep**: 59 occurrences of `BenefitWithNoEffect` in that file, the definition, `LoadAll`'s
+  check and 57 uses across the file's tests (`Carrying`, `Wear`, `FWorn`, `HelmCarrying`, `FSummoner`, `FWearingPlayer`
+  and `FStriker`). **THE CONTROL**: the same grep finds `DrawbackWithNoEffect` 93 times. No use reads the benefit's words
+  or tags: a search of the file for "placeable" and "converted into a" found nothing before this layer's own comment
+  beside the constant, and its `Type.Trap` and `Slot.Ultimate` matches are other tests' own tags.
+- **A WIDER SEARCH FOUND A SECOND WEARER**: `FloorStartCapBenefit` in `CataclysmDungeonModifierEffectsTests.cpp` (the
+  floor-start cap's tests, issue #2190) was the same Ultimate trap sentence, "the enchantment tests' choice". Moved to the
+  same retired sentence. `CataclysmEnchantmentTests.cpp` already names the retired sentence among the three retired
+  benefits of `FCataclysmRetiredEnchantmentsNeverDrop`, which asserts that none of them ever drops; it is unchanged.
+
+### THE GENRE SOURCE
+
+From `trap_design_2026-10-19.md` section 2, every page fetched by the session that wrote that design, quoted as that
+session quoted it (the fetch tool's quotation of the page). Nothing was fetched in this session.
+
+| Game | Question | Quotation | URL |
+| :-- | :-- | :-- | :-- |
+| Path of Exile | A trap uses your skill for you (the conversion shape) | "Instead of using that skill, you will throw a trap that will use the skill for you when an enemy walks near it." | https://poedb.tw/us/Trap_Support |
+| Path of Exile | What a converted trap cannot use | "Traps cannot use channelling skills." | https://poedb.tw/us/Trap_Support |
+| Path of Exile | Duration of a converted skill's trap | "Trap lasts 4 seconds" | https://poedb.tw/us/Trap_Support |
+| Path of Exile | Trap damage is its own modifier family, applied to the skill the trap uses | "Supported Skills deal (6—20)% less Trap Damage" | https://poedb.tw/us/Trap_Support |
+| Path of Exile | Duration is per skill | "Traps remain armed for a limited duration, after which they expire. Trap duration is specific to each trap skill." | https://poedb.tw/us/Trap (from offset 100000) |
+| Path of Exile | Arming exists | "Once a thrown trap lands on the ground it must arm itself before it can be triggered." | https://poedb.tw/us/Trap |
+| Path of Exile | Arming time | **NOT FOUND** on any fetched page | - |
+| Path of Exile | Trigger radius | "Characters have a base trap trigger radius of 10." (unit not stated on the page) | https://poedb.tw/us/Trap |
+| Path of Exile | Trigger radius is its own stat | "(0—80)% increased Trap Trigger Area of Effect" | https://poedb.tw/us/Trap |
+| Path of Exile | Count cap | "There is a limit on the number of traps a character can have out at one time. By default, a character can have 15 traps." | https://poedb.tw/us/Trap |
+| Path of Exile | Consumed when triggered | "Triggering a trap also causes a trap/mine to be destroyed." | https://poedb.tw/us/Trap |
+| Path of Exile | The cooldown is spent by throwing, and can store uses | "Cooldown Time: 8.00 sec (3 Times)" (Seismic Trap); "Skills which Throw Traps have +(1—2) Cooldown Uses"; "30% reduced Cooldown Recovery Rate for throwing Traps" | https://poedb.tw/us/Seismic_Trap ; https://poedb.tw/us/Trap |
+| Path of Exile | Duration of ordinary trap skills | "Trap lasts 4 seconds" (Explosive Trap, Fire Trap) | https://poedb.tw/us/Explosive_Trap ; https://poedb.tw/us/Fire_Trap |
+| Path of Exile (mines) | Placement is thrown to a target | "When a Character uses a mine skill, they throw the mine(s) to the target location." | https://poedb.tw/us/Mine |
+| Path of Exile (mines) | Cap, and what exceeding it does | "By default, a character can have 15 mines active at once." "Throwing an additional mine that would exceed the active mine limit will cause the oldest mine to be destroyed." | https://poedb.tw/us/Mine |
+| Path of Exile (mines) | Expiry | "If a mine is not detonated before it expires, it is destroyed." | https://poedb.tw/us/Mine |
+| Path of Exile (mines) | Chains | "Once there are no more mines within proximity to the last one detonated, the detonation sequence will stop." | https://poedb.tw/us/Mine |
+| Diablo IV | Arming, trigger, cap (Poison Trap) | "Place a trap that arms after 0.25 seconds." "It activates when an enemy moves within range"; "You can have 4 armed traps out at once."; cooldown 10 seconds | https://www.purediablo.com/diablo4/Poison_Trap |
+| Diablo IV | Arming on an Ultimate trap (Death Trap) | "arms after 0.1 seconds"; "activates once an enemy is within range"; base cooldown 60 seconds; the Death Pit upgrade pulls enemies in | https://www.purediablo.com/diablo4/Death_Trap |
+| Diablo III | Chains of traps triggered together | "you have to set up a chain reaction of up to 10x Spike Trap Custom Trigger"; "A full chain reaction of 10x Spike Trap takes ~65 frames (~1.1 seconds) to complete." | https://maxroll.gg/d3/guides/natalya-spike-trap-demon-hunter-guide/2 |
+| Diablo III | Arming, radius, base cap | **NOT FOUND** (tooltip pages refused) | - |
+| Torchlight Infinite | Traps | **NOT FOUND**: no trap mechanic on any readable page | https://tlidb.com/en/Sentry (read; names none) |
+| Torchlight Infinite | Nearest analogue (a placed machine), its cap | "The max number of Sentries in a map is 4." "Sentries are unable to move but will automatically cast skills at enemies within their Tracking Area." | https://tlidb.com/en/Sentry |
+| Last Epoch | Every figure | **NOT FOUND** (that file's section 0: the pages refused or missing) | - |
+
+**WHAT THE RESEARCH SETTLES, as that file states it:** a trap is a thing placed that later uses a skill when an enemy comes
+within a radius, and the conversion shape is Path of Exile's Trap Support (R1); a trap arms before it can trigger (R2),
+the figure not settled; it is consumed when it triggers (R3); it expires (R4); there is a count cap, and Path of Exile's
+mines destroy the oldest beyond it (R5); the cooldown is spent by placing (R6); trap damage is its own modifier family
+on the skill the trap uses (R7). **NOT SETTLED, THIS GAME'S OWN, RULED:** every number, whether enemies strike a trap,
+the placing at the feet, the self buff, the precedence of a slot converted both ways.
+
+**T4'S OPTION NOT TAKEN, QUOTED FROM `rulings_2026-10-19_traps.md`, which the enchantment session fetched on 2026-10-19
+from https://poedb.tw/us/Trap (offset 100000):** "Most traps are triggered automatically when they expire, regardless of
+whether there are any enemies nearby." Not taken: here a trap that expires does not trigger (T4), so that "Traps do not
+expire, they remain armed until triggered" stays a clear gain.
+
+### WHAT WAS BUILT
+
+- **The trap** (`ACataclysmMinion`): `SkillTrapTypeName`; the constants `SkillTrapArmSeconds`, `SkillTrapTriggerRadiusCm`,
+  `SkillTrapSeconds`, `SkillTrapsMostPerPlayer`; the stat names `TrapArmingSpeedStat`, `TrapTriggerRadiusStat`;
+  `SkillTrapArmingSecondsFor`, `SkillTrapTriggerRadiusCmFor`, `SkillTrapsOf`, `PlaceSkillTrap`, `IsSkillTrap`,
+  `SkillTrapCastsAroundItsEnemy`, `SkillTrapsSkill`, `StepSkillTrap`, `TriggerSkillTrap`, `SkillTrapCasting` (two),
+  `SkillTrapTintFor`, `ShowSkillTrapTint`; the state `SkillTrapSlot`, `SkillTrapArmsAtAgeSeconds`, `bSkillTrapArmed`,
+  `SkillTrapTriggersMade`, `SkillTrapTintShown`. One block at the end of `CataclysmMinion.cpp` (2343 on), one in the
+  header after the Tyrant's Minion's fields.
+- **Reused, with lines:** `Spawn` (the type row, the summoner's side, the lifetime and `minion_duration`); the gadget's
+  refusal of a missing row in `PlaceSkillGadget`, copied; `HostilesWithin` for the search; `SkillGadgetMayCast` for what
+  a trap may cast; `StartPlayersSkillFromHere` and `UCataclysmTriggeredSkill::Trigger` for the free start, `CastBy` the
+  trap; `SkillGadgetSlotTags` and the press's debounce pattern; `UCataclysmGameplayAbility::CheckCooldown`, `CheckCost`,
+  `ApplyCost` and `ApplyCooldown` for the press; `UCataclysmCombatEvents::NoteSkillUsed`; `FlatOfStatNamingTag`'s way of
+  keeping the rows naming a tag; the skill bar's box and the HUD's line over it.
+- **Changed, existing lines:** `GadgetStep`'s first lines (one branch inserted, 555); `StartPlayersSkillFromHere`'s
+  signature, its `From` and its self-buff distance (2268 to 2315; both new parameters null keeps every caller as it
+  was); `HandleDeath`'s condition (1686); `PressOfASkillGadgetSlot`'s refusal (7870); `ApplyHit`'s increases bracket
+  and its tail (960, 961, 1094 to 1106); the bar's gadget condition (666).
+- **The press** (`UCataclysmAbilitySystemComponent`): `SkillSlotIsATrapStat`, `SlotIsASkillTrap`, `PressOfASkillTrapSlot`,
+  `ReleaseOfASkillTrapSlot`, `SkillTrapSlotsHeldDown`, `TrapDamageNamingTrap`; one block at the end of the file (7972
+  on), one in the header after `SkillGadgetBeingPriced`.
+- **The box:** `FCataclysmSkillBarSlot::bIsASkillTrap`, `bSkillTrapCastsNothing`, `SkillTrapsStanding`, `SkillTrapsMost`;
+  `UCataclysmSkillBar::SkillTrapName` and `SkillTrapTextFor`; one line drawn by the HUD, one gap higher when the
+  Fervour line is drawn.
+- **The generator:** the two events; `SKILL_SLOT_IS_A_TRAP_STAT`, `SKILL_SLOT_IS_A_TRAP_SLOT_TAGS` and
+  `refuse_a_skill_slot_trap_row_the_game_cannot_read` (11735 to 11795); `TRAP_INCREASE_STATS`,
+  `TRAP_INCREASE_REQUIRED_TAGS` and `refuse_a_trap_increase_row_the_game_cannot_read` (11799 to 11843); both run last by
+  `validate_enchantment_effects` (12314, 12316).
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+**One row of the Minion Types sheet, `SkillTrap`, cell by cell:** Minion Type `SkillTrap`; Family `Machine`; Base Health
+40; Health Per Level 18; Base Damage 0; Damage Per Level 0; Explosion Percent Of Own Damage 300; Attack Interval Seconds
+1.0; Move Speed 0; Threat Percent 0; Reach Cm 300; Notice Radius Cm 300; Target Mode `Nearest`; Tags `Type.Minion,
+Type.Deployable, Minion.Machine, Type.Trap`. Health 40 and 18 a level are the Spike Trap's (T9; the 18 a judgement, the
+Spike Trap's own rate); the 300 of Explosion Percent and the 1.0 s are what every machine row states, and neither does
+anything for a trap (its own damage is nought and no skill tells it an explosion radius); damage 0 keeps the brain's own
+swing at nothing, as `SkillGadget`'s does. Carried through `gen.minion_types` on a made-up sheet by
+`TestTheSkillTrapMinionType`.
+
+**Three rows of the Enchantment Effects sheet, cell by cell, one on each enchantment named in SAID FIRST:** Stat
+`skill_slot_is_a_trap`; Value Kind `flat`; Value Low 1; Value High 1; **Required Tags the slot's tag alone**:
+`Slot.Heavy` on `Positive_Your_heavy_attack_is_converted_into_a_placeable`, `Slot.Special` on
+`Positive_Your_special_ability_is_converted_into_a_placeab`, `Slot.Ultimate` on
+`Positive_Your_ultimate_ability_is_converted_into_a_placea`; and every other cell empty: no Condition, no Scale, no
+Action, no Action Event, no Fraction Of, no Trigger Cooldown, no Event Value, no Ailment, no Stack Seconds. The
+enchantment's own tags (`Type.Trap, Slot.X`) are not the row's. Each name is the generator's `row_name` of its sentence,
+checked against the shipped sheet by `test_the_proposed_rows_are_the_shipped_sentences`. When the rows are written,
+`skill_slot_is_a_trap` joins `FLAG_STATS` in `tools/tests/test_enchantment_effects_match_the_row_text.py`, as the gadget's
+flag did; it cannot join before, because that file refuses a flag no row states.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains three names, at its end.
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains three probes, the last entries of its table.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains two call sites, at its end, and one
+  dated line.
+- **The generator accepts two more events** and lists both as events whose character cannot be struck, so it refuses a
+  strike row on either; **it refuses five shapes on the flag** (a kind but `flat`, a tag but one built slot's, an action,
+  a figure but 1) **and three on the two increases** (a kind but `increased`, a tag but none or `Type.Trap`, an action).
+  No shipped row is on any of them.
+- No merged test's assertion changes, by reading: with nobody holding the flag no press is taken, no minion is a skill
+  trap, so `GadgetStep`'s new branch, `ApplyHit`'s read and `HandleDeath`'s narrower condition do nothing, and both new
+  parameters of `StartPlayersSkillFromHere` are null at every existing caller. Two tests' benefit with no effect changes
+  its name and not what it does.
+
+### Tests
+
+Nine Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapTests.cpp`, the group
+`Cataclysm.Traps.`, with its trailing dot; no other group's name began with `Cataclysm.Trap` before it (searched). The rig
+follows `Cataclysm.SkillGadgets.`: a possessed player character on the players' side holding a Demonic Whip, a weapon
+damage of 100, 10,000 health and 1,000 mana; creatures on the monsters' side with no defences and 50,000 health; groups
+100 m apart; every body at least 1 m from every other; every stat granted by hand. Two tests press the Heavy key (1, 8)
+and hold the mana it costs; the Heavy costs no Fervour. Every other trap is placed directly, and a trap's cast is free.
+The world's clock is moved by hand and a trap's step called directly, to 1.25 s after placing so no wait ends on the
+mark. Tests 4 and 7 compare blows' figures and pin `Cataclysm.CritRoll` at 100 after the world is made. Helper types are
+`FSkillTrapWorld`, `FSkillTrapRig`, `FSkillTrapRow` and `FSkillTrapEventCount`; the engine's headers declare none of them
+(searched, with `FScene` found as the control). **Assertions are counted for a passing run, 146 in all.**
+
+0. `TheSkillTrapRowIsAMachineTrapOfFortyHealthThatDealsDrawsAndWalksNothing`, 16. In order: set-up, the minion type
+   table; control, the same lookup finds the `SkillGadget` row; the table holds the `SkillTrap` row; its family is
+   Machine; health 40; 18 a level; damage 0; 0 a level; move speed 0; threat 0; reach 300, the trigger radius; notice
+   300; its tags name `Type.Minion`, `Type.Deployable`, `Minion.Machine` and `Type.Trap` (four).
+1. `APressPlacesATrapAtTheFeetPaysTheSkillsCostStartsItsCooldownAndASecondPressBeforeItPlacesNothing`, 18. In order: a
+   world; control, a player holding no row presses Heavy and the cooldown runs; it pays mana; it places no trap; the
+   converted press placed a skill trap of the Heavy slot; within 1 cm of the feet; of the `SkillTrap` type; a trap and
+   not a gadget; it paid what the control's press paid, within 0.01; the Heavy cooldown runs; `skill_use` once;
+   `trap_placed` once; the trap cast nothing as placed; a second press while the cooldown runs places nothing; pays
+   nothing; raises no second `skill_use`; a slot converted both ways places a trap; and no gadget.
+2. `ATrapArmsAfterASecondThenTriggersOnTheFirstEnemyWithinThreeMetresAndNotOneAtFour`, 13. In order: a world; set-up,
+   the two enemies (two); control, at 0.5 s the north trap is not armed; its enemy 2.5 m away is untouched; no
+   `trap_triggered`; at 1.25 s the north trap triggered on its enemy; `trap_triggered` once; the trap is used up; the
+   south trap is armed; its enemy 4 m away is untouched; it still stands; no second `trap_triggered`.
+3. `TheArmingSpeedIncreaseArmsATrapSoonerAndTheTriggerRadiusIncreaseWidensItsReach`, 17. In order: a world; set-up, three
+   enemies (three); control, the plain trap arms at 1 s; the quick trap (100% increased `trap_arming_speed`) at 0.5 s;
+   the wide trap at 1 s; control, the plain radius is 300 cm; the wide (50% increased `trap_trigger_radius`) 450 cm; at
+   0.75 s, control, the plain trap is not armed; the quick one is; the wide one is not; at 1.25 s, control, the plain trap
+   is armed; and does not trigger at 4 m; the wide trap triggered at 4 m; and was used up; the quick trap does not trigger
+   at 4 m.
+4. `ATriggerCastsTheHeavyAtItsEnemyAndTheUltimateAroundItPricedByATrapRowAndNotAGadgetRow`, 21. In order: a world;
+   set-up, the pin; set-up, six enemies (six); set-up, a Heavy trap fires from the trap, a Special and an Ultimate cast
+   around the enemy (three); set-up, The Gathering reaches between 13 and 14.5 m; control, the player's own cast of
+   Searing Lash from 2.5 m starts; it takes something; the control's Heavy trap's cast takes the same, within 0.1%; it was
+   used up; a 50% `minion_damage` row naming `Type.Trap` makes the cast take 1.5 times it, within 0.1%; a 30% gadget
+   `attack_damage` row leaves it the same, within 0.1%; the Ultimate trap's cast struck its enemy; and the enemy 15 m from
+   the trap and 12.5 m from its enemy; it was used up.
+5. `ASixthTrapDestroysTheOldestWithoutTriggeringAndATrapThatExpiresDoesNotTrigger`, 15. In order: a world; set-up, two
+   enemies (two); control, five stand; the oldest is first; with a sixth, five stand; the oldest is gone; the sixth stands;
+   the enemy 2 m from the oldest is untouched; no `trap_triggered`; control, a trap's lifespan is 20 s; with a 50%
+   `minion_duration` row naming `Type.Trap` it is 30 s; the second trap expired and is gone; the enemy 2 m from it is
+   untouched; no `trap_triggered`. The expiry is `LifeSpanExpired` called as the engine's lifespan timer calls it.
+6. `ThePlacedAndTriggeredEventsAreRaisedOnceWithTheTrapsTagsAndATrapsDeathRaisesNoGadgetDestroyed`, 18. Each player holds
+   two actions of the test's own, 10% of mana on `trap_placed` and 10% of health on `trap_triggered`: the tagged
+   player's requiring `Type.Trap`, the control's `Type.Summon`. In order: a world; set-up, three creatures (three);
+   control, `trap_placed` once; its row did not fire; the tagged player's `trap_placed` once; its row fired (mana 500 to
+   600); control, `trap_triggered` once; its row did not fire; the tagged player's once; its row fired (health 5000 to
+   6000); set-up, a skill gadget; control, the gadget died; and raised `gadget_destroyed` once; the trap died; and raised
+   no `gadget_destroyed`; nor `trap_triggered`.
+7. `ATrapsAreaCastStrikesItsSelfBlastWearerBesideTheTriggeringEnemyAndNotOneOutside`, 12. In order: a world; set-up, the
+   pin; set-up, two enemies (two); set-up, each wearer holds the flag (two); set-up, each trap is its wearer's deployable
+   (two); control, the outside trap's cast struck its enemy; the wearer 20.2 m from it loses nothing; the inside trap's
+   cast struck its enemy; the wearer 5.6 m from it is struck.
+8. `TheSkillBarBoxReadsTrapCountsTheTrapsSweepsWithTheCooldownAndATrapIsDimUntilArmed`, 16. In order: a world; control,
+   the Heavy box is drawn; is not a trap's; has no words; converted, it is a trap's; reads "Trap"; "Traps 0/5"; no sweep;
+   the Special box is not a trap's; after a press "Traps 1/5"; the sweep is the whole Heavy cooldown; a box whose trap
+   can never cast reads "Trap casts nothing"; control, the two tints differ; placed, the trap is dim; at 1.25 s it is
+   armed; and lit.
+
+Three probes join `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeSkillSlotIsATrap` (control, the
+Heavy slot is unconverted and the press is the skill's; with the flag at 1 it is converted and the press is the trap's),
+and `ProbeTrapIncrease` for each increase (control, 1 s or 300 cm; with 100 increased, half or twice).
+
+Python, in `tools/tests/test_generate_datatables.py`, on made-up sheets: `TestASlotIsConvertedIntoATrap`, nine tests (the
+Heavy row carried through and refused by nothing; the Special and Ultimate rows under their own sentences; the three
+names derived and found in the shipped sheet, a made-up one not; the three slots accepted, the Support, the basic, the
+Aura and a made-up one refused once each; the flag a stat with no attribute, with a control; the generator's names the
+engine's, the gadget flag's read by the same pattern as the control; each wrong shape refused once by its own sentence;
+a condition or a scale refused elsewhere; the whole sheet's validation runs the check); `TestATrapsArmingAndTriggerRadiusIncreases`,
+three (each row's shape carried through and refused by nothing; both stats with no attribute; each wrong shape refused
+once); `TestTheSkillTrapMinionType`, three (the proposed row carried through by `gen.minion_types`; the same row without
+`Minion.Machine` refused; the engine's type name and 3 m are the row's); and
+`test_the_two_trap_events_are_clockless_events_a_row_may_hang_on`.
+
+**Not tested:** a real row worn and the real `SkillTrap` asset (the enchantment session's); the press through the player
+controller, so the stun's refusal is read and not driven; a lock refusing the press; the Ultimate's press and its 50
+Fervour; a Special trap's cast (the Whip's Special is a shot, and no castable Demonic Special is an area all round); a
+shot or a rack from a trap, and its pricing after the trap is gone; a support trap and the 8 m (layer 2); the "more" half
+of the pricing read ("doubles"); `deployable_hit` raised for a trap's blow (no test counts it); a trap set off with no
+enemy (nothing in this layer does it); a trap whose slot is no longer converted, or whose player is dead or stunned; the
+floor clearing a trap; "Your traps ignore armor" and the gadget duration, health and evasion rows on a trap; a repeat
+row on a press; Mana Weaver's doubling; the tint on a drawn screen and the HUD's line; replication; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script: `CataclysmMinion.cpp` 947/947, 256/256, 11/11 before and after TR-I and TR-III;
+`CataclysmSkillEffects.cpp` 1595/1595, 449/449, 15/15 before and after TR-II). Each compiles alone by reading: TR-I
+compares a `float` with another `float` expression and leaves only a member unread; TR-II keeps `TrapIncreases` read,
+multiplied by nought; TR-III compares the same `int32`s with another operator. The prefix of all three is
+`Cataclysm.Traps.`, with its trailing dot, nine tests; every one that places a trap needs the `SkillTrap` row in
+`DT_MinionTypes`.
+
+**The events the tests' actors raise on the way, listed before counting.** On a player: `trap_placed` at each placing;
+for a press (tests 1, 8), `skill_use`, `attack_use` and `melee_attack_use` (Searing Lash carries `Type.Melee`), and for
+the control's press in test 1 the same through the skill's own commit; for each trigger, `trap_triggered`, and for the
+cast's blows on enemies `hit_dealt`, `first_hit_dealt`, `deployable_hit`, and `dot_applied` for Searing Lash's and The
+Gathering's burns, with whatever The Gathering's pull and knock-down raise on the player as their applier; in test 6
+`gadget_destroyed` once for the killed gadget; in test 7 `hit_taken` on the inside wearer. On a creature, nothing is
+worn. **ONLY TEST 6 HANGS ANYTHING ON AN EVENT**, its own two actions on `trap_placed` and `trap_triggered`; no break
+changes how often those are raised in test 6. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-I, a trap triggers before it is armed (T1) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (GetGameTimeSinceCreation() < SkillTrapArmsAtAgeSeconds - SkillGadgetClockAllowanceSeconds)` | `if (GetGameTimeSinceCreation() < 0.0f - SkillGadgetClockAllowanceSeconds)` | `ATrapArmsAfterASecondThenTriggersOnTheFirstEnemyWithinThreeMetresAndNotOneAtFour` | `TheArmingSpeedIncreaseArmsATrapSoonerAndTheTriggerRadiusIncreaseWidensItsReach` |
+| TR-II, the trap damage rows do not price the cast (T10) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `* (1.0f + Applying + Conditional + Bought + TrapIncreases)` | `* (1.0f + Applying + Conditional + Bought + 0.0f * TrapIncreases)` | `ATriggerCastsTheHeavyAtItsEnemyAndTheUltimateAroundItPricedByATrapRowAndNotAGadgetRow` | none |
+| TR-III, a sixth trap destroys nothing (T6) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `while (Standing.Num() >= SkillTrapsMostPerPlayer)` | `while (Standing.Num() > SkillTrapsMostPerPlayer)` | `ASixthTrapDestroysTheOldestWithoutTriggeringAndATrapThatExpiresDoesNotTrigger` | none |
+
+Failed assertions, by reading:
+
+- **TR-I, 5 in 2 tests.** Every trap arms on its first step. Test 2, 3: at 0.5 s the north trap arms and triggers, so
+  "half a second after placing, the north trap is not armed" (true), "so the enemy 2.5 m from it is untouched" (struck)
+  and "and no trap_triggered was raised" (1). At 1.25 s the north trap is gone and its step is skipped, so "triggered on
+  the enemy", "trap_triggered was raised once" and "used up" pass; the south trap's four lines pass. Test 3, 2: at
+  0.75 s "control: the plain trap is not armed" (true) and "and the wide trap is not" (it armed, and triggered at 4 m
+  in the same step); at 1.25 s the plain trap's two lines, the wide trap's "triggered" and "used up", and the quick trap's
+  line pass; the arming marks, which the break does not touch, pass. Tests 4 to 8 step only at 1.25 s, past every mark;
+  tests 0, 1 and 5 step nothing.
+- **TR-II, 1 in 1 test.** Test 4: "a minion_damage row naming Type.Trap prices the trap's cast (T10): 50% more" (1.0
+  times the control). The control's and the gadget row's lines pass. No other test holds a `minion_damage` row.
+- **TR-III, 2 in 1 test.** Test 5: "with a sixth placed, five still stand" (6) and "the oldest is gone". "And the sixth
+  stands", the untouched enemy, no `trap_triggered` and the expiry's lines pass. No other test places more than two traps
+  for one player.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading; the probes read
+`SkillTrapArmingSecondsFor`, `SkillTrapTriggerRadiusCmFor` and `SlotIsASkillTrap`, which no break touches.
+
+**A test and no proof:** the press paying and starting the cooldown, the second press refused, the trap winning over the
+gadget, the radius of 3 m and the increase widening it, the cast at and around the enemy, the gadget row not reaching
+it, the expiry, the two events' tags, the narrowed `gadget_destroyed`, the self-blast, the box and the tint.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-19 — A worn row can make every skill gadget its wearer commands fire once, at once, when the wearer dies: each casts its skill at the target its own clock would choose, at the whole of its damage, its clock left as it was; the gadget half of "When you die, all your active traps and gadgets immediately trigger simultaneously", with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bGadgetsCastNow`, the

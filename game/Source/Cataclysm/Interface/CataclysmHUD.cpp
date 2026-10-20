@@ -465,6 +465,18 @@ void ACataclysmHUD::DrawSkillBar()
 			DrawTextCentred(Idle, Ink, Centre, At.Y - SkillBarFervourGapPx,
 							SkillBarKeyScale);
 		}
+
+		// AND, ABOVE A SKILL TRAP'S BOX, ITS TRAPS STANDING OVER THE MOST, OR
+		// THAT IT CAN NEVER CAST ITS SKILL. Ruled 2026-10-19 (M7, T8). Where the
+		// Fervour line goes, and one line higher when that is drawn too: a
+		// trap's press pays the skill's Fervour, so its box may be short of it.
+		const FString Traps = UCataclysmSkillBar::SkillTrapTextFor(Box);
+		if (!Traps.IsEmpty())
+		{
+			DrawTextCentred(Traps, Ink, Centre,
+							At.Y - SkillBarFervourGapPx * (Fervour.IsEmpty() ? 1.0f : 2.0f),
+							SkillBarKeyScale);
+		}
 	}
 
 	// AND IN WORDS WHEN EVERY ONE OF THEM IS LOCKED. Issue #1810. Six boxes

@@ -940,10 +940,25 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
 		: 0.0f;
 
+	// A SKILL TRAP'S CAST IS PRICED AS THE TRAP'S, BY ONE ADDED READ, ruled 2026-10-19 (T10) for "Scales off trap
+	// damage": the player's `minion_damage` rows naming `Type.Trap`, their increases into the bucket below and their
+	// "more" on the whole blow. The cast carries `Type.Trap` and not `Type.Deployable`, so no gadget row reaches it and
+	// `GadgetsPlayer` is null for it. Nought and one for every other blow.
+	const ACataclysmMinion* const SkillTrap = SkillGadget ? nullptr : ACataclysmMinion::SkillTrapCasting(Delivery);
+	UCataclysmAbilitySystemComponent* const TrapsPlayer =
+		SkillTrap ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+	float TrapIncreases = 0.0f;
+	float TrapMore = 1.0f;
+	if (TrapsPlayer)
+	{
+		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore);
+	}
+
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat)
-			* (1.0f + Applying + Conditional + Bought)
+			* (1.0f + Applying + Conditional + Bought + TrapIncreases)
+			* TrapMore
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
 			// Issue #1833, timed grants. One for every other blow.
 			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent)
@@ -1075,16 +1090,20 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// blow is in `ACataclysmMinion::AttackTarget`, with the gadget's type tags, landed only when it was not evaded and
 	// not refused as immune to its attacker. Not for a share struck at an ally, and not for a tick.
 	PricedForTheGadget.End();
-	if (!GadgetsPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
+	// AND A SKILL TRAP'S BLOW ON AN ENEMY IS ANNOUNCED THE SAME WAY, with the trap's type tags (ruled 2026-10-19, M5), so a
+	// row on `deployable_hit` naming `Type.Trap` reaches the enemies a trap's cast strikes.
+	UCataclysmAbilitySystemComponent* const MachinesPlayer = GadgetsPlayer ? GadgetsPlayer : TrapsPlayer;
+	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
+	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
 	{
 		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
 			? Sent : 0.0f;
 	}
-	const FGameplayTagContainer GadgetsTags = SkillGadget->TypeTags;
+	const FGameplayTagContainer GadgetsTags = Machine->TypeTags;
 	FCataclysmDamageResult OwnResult;
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
-	GadgetsPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, 0.0f,
+	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, 0.0f,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
 	return bDealt ? Sent : 0.0f;
 }

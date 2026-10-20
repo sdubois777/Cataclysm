@@ -416,6 +416,22 @@ FString UCataclysmSkillBar::SkillGadgetTextFor(const FCataclysmSkillBarSlot& Slo
 	return Slot.bIsASkillGadget && Slot.bSkillGadgetCastsNothing ? FString(TEXT("Gadget casts nothing")) : FString();
 }
 
+FString UCataclysmSkillBar::SkillTrapName()
+{
+	return TEXT("Trap");
+}
+
+FString UCataclysmSkillBar::SkillTrapTextFor(const FCataclysmSkillBarSlot& Slot)
+{
+	if (!Slot.bIsASkillTrap)
+	{
+		return FString();
+	}
+	return Slot.bSkillTrapCastsNothing
+		? FString(TEXT("Trap casts nothing"))
+		: FString::Printf(TEXT("Traps %d/%d"), Slot.SkillTrapsStanding, Slot.SkillTrapsMost);
+}
+
 FString UCataclysmSkillBar::BasicGadgetTextFor(bool bConverted, bool bCastsNothing, bool bPlaced,
 											   float RemainingSeconds)
 {
@@ -647,7 +663,7 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 		if (const UCataclysmAbilitySystemComponent* Converting =
 				Cast<const UCataclysmAbilitySystemComponent>(Abilities))
 		{
-			if (Converting->SlotIsASkillGadget(Slot))
+			if (Converting->SlotIsASkillGadget(Slot) && !Converting->SlotIsASkillTrap(Slot))
 			{
 				Box.bIsASkillGadget = true;
 				Box.Name = SkillGadgetName();
@@ -668,6 +684,24 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 						  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
 					: nullptr;
 				Box.bSkillGadgetCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row);
+			}
+
+			// AND A SLOT CONVERTED INTO A SKILL TRAP SAYS SO, AND COUNTS ITS TRAPS. Ruled 2026-10-19 (M7, T12). Asked the
+			// way the press asks, `SlotIsASkillTrap`. The cost, the lock and the cooldown read above stay: the press pays,
+			// is refused and starts the cooldown as the skill does, so the sweep is the player's own.
+			if (Converting->SlotIsASkillTrap(Slot))
+			{
+				Box.bIsASkillTrap = true;
+				Box.Name = SkillTrapName();
+				Box.SkillTrapsStanding = ACataclysmMinion::SkillTrapsOf(Player).Num();
+				Box.SkillTrapsMost = ACataclysmMinion::SkillTrapsMostPerPlayer;
+				const UCataclysmWeaponSlotsComponent* Held =
+					Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+				const FCataclysmWeaponSkill* Row = Held
+					? Held->GetAvailableSkills().FindByPredicate(
+						  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
+					: nullptr;
+				Box.bSkillTrapCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row);
 			}
 		}
 
