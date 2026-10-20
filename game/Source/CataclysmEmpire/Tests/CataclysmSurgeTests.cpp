@@ -75,11 +75,21 @@ bool FCataclysmSurgeStaticTest::RunTest(const FString& Parameters)
 	// THE DEFAULT MODE, AND THE ONE THE OTHER THREE ARE MEASURED AGAINST. How
 	// surges escalate is an open tuning question; this is what "no escalation"
 	// has to mean for the sweep comparing them to say anything.
-	for (const int32 Index : { 0, 1, 5, 20, 100 })
+	//
+	// THE OPENING WAVE IS THE ONE EXCEPTION, since 2026-10-20: the first surge
+	// of a run brings `OpeningDungeonsPerSurge`, 12, and every later one
+	// `DungeonsPerSurge`, 8. Until then every wave here was 5. "The same wave
+	// for ever" is the 8 from index 1 on.
+	TestEqual(TEXT("the opening surge, at index 0, brings twelve dungeons"),
+			  CountAtIndex(Scheduler, 0), 12);
+	TestEqual(TEXT("and the gap after it is 90 days"),
+			  GapAtIndex(Scheduler, 0), 90.0f, 0.001f);
+
+	for (const int32 Index : { 1, 5, 20, 100 })
 	{
 		TestEqual(FString::Printf(
-			TEXT("surge %d still brings five dungeons"), Index),
-			CountAtIndex(Scheduler, Index), 5);
+			TEXT("surge %d still brings eight dungeons"), Index),
+			CountAtIndex(Scheduler, Index), 8);
 		TestEqual(FString::Printf(
 			TEXT("and the gap after surge %d is still 90 days"), Index),
 			GapAtIndex(Scheduler, Index), 90.0f, 0.001f);
@@ -129,10 +139,15 @@ bool FCataclysmSurgeAcceleratingTest::RunTest(const FString& Parameters)
 	// THE WAVE ITSELF DOES NOT GROW IN THIS MODE. That is the whole difference
 	// between accelerating and swelling, and a test that only checked the gap
 	// would pass if the two modes had been swapped.
-	TestEqual(TEXT("an accelerating surge still brings five dungeons"),
-			  CountAtIndex(Scheduler, 0), 5);
-	TestEqual(TEXT("and still five after twenty surges"),
-			  CountAtIndex(Scheduler, 20), 5);
+	//
+	// THE OPENING WAVE OF 12 AND THEN 8, as in a static run, since 2026-10-20.
+	// A swelling wave would be 8 + 0.5 x 20 = 18, capped at 14, after twenty.
+	TestEqual(TEXT("an accelerating surge opens with twelve dungeons"),
+			  CountAtIndex(Scheduler, 0), 12);
+	TestEqual(TEXT("then brings eight"),
+			  CountAtIndex(Scheduler, 1), 8);
+	TestEqual(TEXT("and still eight after twenty surges"),
+			  CountAtIndex(Scheduler, 20), 8);
 
 	return true;
 }
@@ -149,18 +164,27 @@ bool FCataclysmSurgeSwellingTest::RunTest(const FString& Parameters)
 		MakeScheduler(ECataclysmSurgeMode::Swelling);
 
 	// HALF A DUNGEON PER SURGE, TRUNCATED, so it grows every other surge rather
-	// than every one. 5, 5.5, 6, 6.5, 7 as a real number.
-	TestEqual(TEXT("the first wave is five"), CountAtIndex(Scheduler, 0), 5);
-	TestEqual(TEXT("the second is still five"), CountAtIndex(Scheduler, 1), 5);
-	TestEqual(TEXT("the third is six"), CountAtIndex(Scheduler, 2), 6);
-	TestEqual(TEXT("the fourth is still six"), CountAtIndex(Scheduler, 3), 6);
-	TestEqual(TEXT("the fifth is seven"), CountAtIndex(Scheduler, 4), 7);
+	// than every one. The opening wave is 12 + 0.5 x 0 = 12, and from index 1
+	// the growth is added to 8: 8.5, 9, 9.5, 10 as a real number. So a
+	// swelling run's second wave is SMALLER than its first, since 2026-10-20,
+	// as the model's is. Until then the ladder was 5, 5, 6, 6, 7.
+	TestEqual(TEXT("the first wave is the opening twelve"),
+			  CountAtIndex(Scheduler, 0), 12);
+	TestEqual(TEXT("the second is eight"), CountAtIndex(Scheduler, 1), 8);
+	TestEqual(TEXT("the third is nine"), CountAtIndex(Scheduler, 2), 9);
+	TestEqual(TEXT("the fourth is still nine"), CountAtIndex(Scheduler, 3), 9);
+	TestEqual(TEXT("the fifth is ten"), CountAtIndex(Scheduler, 4), 10);
 
-	// AND IT STOPS AT FOURTEEN. From 5 the ceiling is first reached at index
-	// 18: 5 + 0.5 x 18 is 14. From 4 it was first reached at index 20.
-	TestEqual(TEXT("by the eighteenth it is thirteen"),
-			  CountAtIndex(Scheduler, 17), 13);
-	TestEqual(TEXT("the nineteenth is the ceiling"),
+	// AND IT STOPS AT FOURTEEN. From 8 the ceiling is first reached at index
+	// 12: 8 + 0.5 x 12 is 14. From 5 it was first reached at index 18, and
+	// from 4 at index 20. The pair at 11 and 12 is the one that says where.
+	TestEqual(TEXT("by the twelfth it is thirteen"),
+			  CountAtIndex(Scheduler, 11), 13);
+	TestEqual(TEXT("the thirteenth is the ceiling"),
+			  CountAtIndex(Scheduler, 12), 14);
+	TestEqual(TEXT("the eighteenth is the ceiling, and was thirteen at 5 a wave"),
+			  CountAtIndex(Scheduler, 17), 14);
+	TestEqual(TEXT("the nineteenth is still the ceiling"),
 			  CountAtIndex(Scheduler, 18), 14);
 	TestEqual(TEXT("the twenty-first is the ceiling"),
 			  CountAtIndex(Scheduler, 20), 14);
@@ -193,7 +217,7 @@ bool FCataclysmSurgeBothTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("down to the same floor"),
 			  GapAtIndex(Scheduler, 13), 25.0f, 0.001f);
 	TestEqual(TEXT("and the wave grows like a swelling one"),
-			  CountAtIndex(Scheduler, 4), 7);
+			  CountAtIndex(Scheduler, 4), 10);
 	TestEqual(TEXT("up to the same ceiling"),
 			  CountAtIndex(Scheduler, 20), 14);
 
@@ -224,14 +248,18 @@ bool FCataclysmSurgeHereticTest::RunTest(const FString& Parameters)
 	UCataclysmSurgeScheduler* Heretic =
 		MakeScheduler(ECataclysmSurgeMode::Static, 2);
 
-	// SIX IS A FIFTH MORE THAN FIVE AND NOT A QUARTER. trunc(5 x 1.25) is 6.
-	// At a wave of four it was trunc(5.0) = 5, exactly a quarter more. The
-	// design document says "25% more dungeons"; this is on the owner's
-	// play-check list in `docs/DECISIONS.md`, 2026-10-13.
-	TestEqual(TEXT("Standard brings five"), Standard->DungeonsInNextSurge(), 5);
-	TestEqual(TEXT("Hardcore brings five as well"),
-			  Hardcore->DungeonsInNextSurge(), 5);
-	TestEqual(TEXT("and Heretic brings six"), Heretic->DungeonsInNextSurge(), 6);
+	// THE OPENING WAVE, since the three schedulers have fired nothing.
+	// FIFTEEN IS A QUARTER MORE THAN TWELVE: trunc(12 x 1.25) is 15, and a
+	// later wave's trunc(8 x 1.25) is 10, a quarter more again. At 5 a wave,
+	// from 2026-10-13 to 2026-10-20, it was trunc(6.25) = 6, a fifth more;
+	// at a wave of four it was trunc(5.0) = 5. The design document says "25%
+	// more dungeons".
+	TestEqual(TEXT("Standard opens with twelve"),
+			  Standard->DungeonsInNextSurge(), 12);
+	TestEqual(TEXT("Hardcore opens with twelve as well"),
+			  Hardcore->DungeonsInNextSurge(), 12);
+	TestEqual(TEXT("and Heretic opens with fifteen"),
+			  Heretic->DungeonsInNextSurge(), 15);
 
 	// THE ORDER IS THE WHOLE POINT, AND THIS IS THE ASSERTION THAT PROVES IT.
 	// The ceiling is 14. Multiplying by 1.25 BEFORE the ceiling gives
@@ -357,8 +385,8 @@ bool FCataclysmSurgeFrontierTest::RunTest(const FString& Parameters)
 
 	FRandomStream Stream(12345);
 
-	// FIVE HUNDRED ROLLS, NOT FIVE. A wave of five could miss a sealed city by
-	// luck; the point is that it cannot reach one at all.
+	// FIVE HUNDRED ROLLS, NOT A WAVE'S WORTH. A wave of eight or twelve could
+	// miss a sealed city by luck; the point is that it cannot reach one at all.
 	const TArray<int32> Landed = Scheduler->PickTargets(*Map, 500, Stream);
 
 	TestEqual(TEXT("five hundred dungeons were placed"), Landed.Num(), 500);
@@ -438,7 +466,11 @@ bool FCataclysmSurgeSeedTest::RunTest(const FString& Parameters)
 	const TArray<FCataclysmDungeon> WaveElse =
 		Scheduler->RollWave(*Map, 0, 0, Different);
 
-	if (!TestEqual(TEXT("a static wave is five dungeons"), WaveOne.Num(), 5))
+	// THE OPENING WAVE, because a new scheduler is at `SurgeIndex` 0: 12 since
+	// 2026-10-20, and 5 until then. The bare map has no dungeon caps, so
+	// every target `PickTargets` rolls becomes a dungeon.
+	if (!TestEqual(TEXT("a static opening wave is twelve dungeons"),
+				   WaveOne.Num(), 12))
 	{
 		return false;
 	}
@@ -506,27 +538,32 @@ bool FCataclysmSurgeDungeonDepthTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("at most"), Pillar.MostFloors, 60);
 
 	// THE DAMAGE IS POINTS, AND THE FOUR NUMBERS ARE WRITTEN OUT. Issue #1331.
-	// Each is the fraction it replaced multiplied by that tier's base maximum:
-	// 10% of 1,000, 9% of 3,000, 8% of 8,000 and 6% of 20,000. Written here as
-	// literals rather than as that product, because a test that recomputed the
-	// product would agree with the code by construction.
-	TestEqual(TEXT("an Outpost dungeon takes 100 defence points"),
-			  Outpost.DefenceDamage, 100.0f);
-	TestEqual(TEXT("and 250 people"), Outpost.PopulationDamage, 250.0f);
-	TestEqual(TEXT("a Bulwark dungeon takes 270"), Bulwark.DefenceDamage, 270.0f);
-	TestEqual(TEXT("and 1,000 people"), Bulwark.PopulationDamage, 1000.0f);
-	TestEqual(TEXT("a Sanctuary dungeon takes 640"), Sanctuary.DefenceDamage,
-			  640.0f);
-	TestEqual(TEXT("and 2,400 people"), Sanctuary.PopulationDamage, 2400.0f);
-	TestEqual(TEXT("and a Pillar dungeon takes 1,200"), Pillar.DefenceDamage,
-			  1200.0f);
-	TestEqual(TEXT("and 4,500 people"), Pillar.PopulationDamage, 4500.0f);
+	// Each was first the fraction it replaced multiplied by that tier's base
+	// maximum: 10% of 1,000, 9% of 3,000, 8% of 8,000 and 6% of 20,000, which
+	// is 100, 270, 640 and 1,200 defence and 250, 1,000, 2,400 and 4,500
+	// people. SINCE 2026-10-20 EACH IS 0.7 OF THAT, as the model's has been
+	// since 2026-10-16. Written here as literals rather than as either
+	// product, because a test that recomputed the product would agree with
+	// the code by construction.
+	TestEqual(TEXT("an Outpost dungeon takes 70 defence points"),
+			  Outpost.DefenceDamage, 70.0f);
+	TestEqual(TEXT("and 175 people"), Outpost.PopulationDamage, 175.0f);
+	TestEqual(TEXT("a Bulwark dungeon takes 189"), Bulwark.DefenceDamage, 189.0f);
+	TestEqual(TEXT("and 700 people"), Bulwark.PopulationDamage, 700.0f);
+	TestEqual(TEXT("a Sanctuary dungeon takes 448"), Sanctuary.DefenceDamage,
+			  448.0f);
+	TestEqual(TEXT("and 1,680 people"), Sanctuary.PopulationDamage, 1680.0f);
+	TestEqual(TEXT("and a Pillar dungeon takes 840"), Pillar.DefenceDamage,
+			  840.0f);
+	TestEqual(TEXT("and 3,150 people"), Pillar.PopulationDamage, 3150.0f);
 
 	// A BIGGER CITY TAKES MORE POINTS AND A SMALLER SHARE OF ITSELF, and both
 	// halves are asserted because each on its own would be satisfied by the
 	// wrong table. Before issue #1331 the first half was false -- a Sanctuary
 	// carried 0.08 against an Outpost's 0.10 -- so a test written against the
-	// old field would now fail rather than silently reverse.
+	// old field would now fail rather than silently reverse. Multiplying every
+	// row by 0.7 moves neither half: 448 against 70 points, and 5.6% against
+	// 7%.
 	TestTrue(TEXT("a Sanctuary dungeon takes more points than an Outpost one"),
 			 Sanctuary.DefenceDamage > Outpost.DefenceDamage);
 

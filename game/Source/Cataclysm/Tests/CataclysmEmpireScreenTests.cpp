@@ -758,8 +758,11 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("an accelerating run escalates"),
 			 Heretic->Surges->Mode == ECataclysmSurgeMode::Accelerating);
-	TestEqual(TEXT("and a Heretic run brings six dungeons rather than five"),
-			  Heretic->Surges->DungeonsInNextSurge(), 6);
+	// ITS NEXT SURGE IS THE OPENING ONE, because nothing has fired: 12 since
+	// 2026-10-20, and trunc(12 x 1.25) = 15 on Heretic. Until then it was
+	// trunc(5 x 1.25) = 6 against 5.
+	TestEqual(TEXT("and a Heretic run opens with fifteen dungeons rather than twelve"),
+			  Heretic->Surges->DungeonsInNextSurge(), 15);
 
 	// `GetOrBeginEmpireRun` KEEPS WHAT IS THERE. It is what a console command
 	// asking to see the empire calls, and it must not restart a campaign.
