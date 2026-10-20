@@ -1099,7 +1099,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
 			? Sent : 0.0f;
 	}
-	const FGameplayTagContainer GadgetsTags = Machine->TypeTags;
+	FGameplayTagContainer GadgetsTags = Machine->TypeTags;
+	// A SKILL TRAP IS NOT A GADGET (ruled 2026-10-07), SO ITS EVENT CARRIES ITS TYPE TAGS LESS `Type.Deployable` (ruled
+	// 2026-10-20, Q-A (a)): a gadget row on `deployable_hit` requiring that tag does not reach a trap's hit, and an
+	// untagged row still does. A skill gadget's event is unchanged.
+	if (!GadgetsPlayer && NamesGadgets.IsValid())
+	{
+		GadgetsTags.RemoveTag(NamesGadgets);
+	}
 	FCataclysmDamageResult OwnResult;
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);

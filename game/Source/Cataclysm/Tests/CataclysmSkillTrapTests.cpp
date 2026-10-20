@@ -1084,6 +1084,91 @@ CATACLYSM_TEST(FCataclysmSkillTrapBarAndTintTest,
 	return true;
 }
 
+// ==========================================================================
+// 9. A gadget row on deployable_hit reaches a skill gadget's hit and not a skill trap's (Q-A (a) of 2026-10-20)
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmSkillTrapGadgetRowTest,
+	"Cataclysm.Traps.TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit")
+{
+	using namespace CataclysmSkillTrapTest;
+
+	// TWO PLAYERS 100 M APART, EACH WEARING "Gadgets apply a 15%-25% armor reduction to enemies" AS THE ITEM BUILDS IT
+	// FROM ITS ROW (`game/Data/EnchantmentEffects.csv`: action `enemy_armor_removed` on `deployable_hit`, 15 to 25, Required
+	// Tags `Type.Deployable`, Stack Seconds 3, Scale Max Steps 1), rolled here at 20. The control's Heavy slot is a skill
+	// gadget's, placed 20 m north with its enemy 3 m east; the other's is a skill trap's, placed 20 m north with its enemy
+	// 2.5 m east.
+	FSkillTrapWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const FVector TrapHome(100.0f * M, 0.0f, 0.0f);
+	FSkillTrapRig GadgetPlayer(World, FVector::ZeroVector);
+	FSkillTrapRig TrapPlayer(World, TrapHome);
+	if (!GadgetPlayer.IsUsable(*this) || !TrapPlayer.IsUsable(*this))
+	{
+		return false;
+	}
+	GadgetPlayer.Holds({{FName(UCataclysmAbilitySystemComponent::SkillSlotIsAGadgetStat), 1.0f, ECataclysmStatBucket::Flat,
+						 TEXT("Slot.Heavy")}});
+	TrapPlayer.Holds({SkillTrapFlag(TEXT("Slot.Heavy"))});
+	const TCHAR* const ArmourRow = TEXT("Positive_Gadgets_apply_a_15_25_armor_reduction_to_enemi");
+	FCataclysmPoolAction Armour;
+	Armour.Event = FName(TEXT("deployable_hit"));
+	Armour.Pool = FName(UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction);
+	Armour.Percent = 20.0f;
+	Armour.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false));
+	Armour.PlacedKey = FName(*FString::Printf(TEXT("%s:%s"), ArmourRow, UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction));
+	Armour.StackSeconds = 3.0f;
+	Armour.StackCap = 1;
+	GadgetPlayer.System->SetPoolActions({Armour});
+	TrapPlayer.System->SetPoolActions({Armour});
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* GadgetEnemy = SkillTrapEnemy(World, North + FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* TrapEnemy = SkillTrapEnemy(World, TrapHome + North + FVector(2.5f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: the gadget's enemy"), GadgetEnemy)
+		|| !TestNotNull(TEXT("set-up: the trap's enemy"), TrapEnemy))
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* GadgetEnemySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(GadgetEnemy));
+	const UCataclysmAbilitySystemComponent* TrapEnemySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(TrapEnemy));
+	if (!TestTrue(TEXT("set-up: both enemies hold this project's ability system"), GadgetEnemySystem && TrapEnemySystem))
+	{
+		return false;
+	}
+	ACataclysmMinion* Gadget = ACataclysmMinion::PlaceSkillGadget(GadgetPlayer.Player, ECataclysmAbilitySlot::Heavy, North);
+	ACataclysmMinion* Trap = SkillTrapPlace(*this, TrapPlayer, ECataclysmAbilitySlot::Heavy, TrapHome + North);
+	if (!TestNotNull(TEXT("set-up: a skill gadget, which needs the SkillGadget row"), Gadget) || !Trap)
+	{
+		return false;
+	}
+	FSkillTrapEventCount TrapHits(TrapPlayer.System, TEXT("deployable_hit"));
+
+	// THE CONTROL, READ FIRST: THE SKILL GADGET'S HIT.
+	TestEqual(TEXT("control: before any blow the gadget's enemy has no armour taken"),
+		GadgetEnemySystem->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+	ACataclysmMinion::GadgetStep(Gadget);
+	TestEqual(TEXT("control: the skill gadget cast once"), Gadget->SkillGadgetCastsMade, 1);
+	TestEqual(TEXT("control: and its hit took the row's 20% of its enemy's armour"),
+		GadgetEnemySystem->ArmourRemovedPercentNow(), 20.0f, 0.001f);
+
+	// THE SKILL TRAP'S HIT.
+	SkillTrapPass(World, 1.25f);
+	SkillTrapStep(Trap);
+	TestTrue(*FString::Printf(TEXT("the skill trap's cast struck its enemy: %.2f"), SkillTrapTakenFrom(TrapEnemy)),
+		SkillTrapTakenFrom(TrapEnemy) > 0.0f);
+	TestTrue(*FString::Printf(TEXT("and raised deployable_hit: %d"), TrapHits.Count), TrapHits.Count > 0);
+	TestEqual(TEXT("which carries no Type.Deployable, so the gadget row took none of its enemy's armour"),
+		TrapEnemySystem->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS

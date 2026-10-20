@@ -11,10 +11,10 @@ skill, its tint; one branch at the top of `GadgetStep`; `StartPlayersSkillFromHe
 `CataclysmAbilitySystemComponent.h` and `.cpp` (the flag's name and reading, the press and its release, the pricing read
 `TrapDamageNamingTrap`, one include; the press is offered first in `AbilityInputTagPressed`, and
 `PressOfASkillGadgetSlot` leaves a slot converted both ways to it); `CataclysmSkillEffects.cpp` (`ApplyHit`: the one
-pricing read, and `deployable_hit` for a trap's blow), all under `game/Source/Cataclysm/AbilitySystem/`;
+pricing read, and `deployable_hit` for a trap's blow, carrying the trap's tags less `Type.Deployable`), all under `game/Source/Cataclysm/AbilitySystem/`;
 `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (three names at the end of `StatsWithNoAttribute`);
 `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` and `CataclysmHUD.cpp` (a converted slot's box);
-`game/Source/Cataclysm/Tests/CataclysmSkillTrapTests.cpp` (new, nine tests); `CataclysmStatExemptionTests.cpp` (three
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapTests.cpp` (new, ten tests); `CataclysmStatExemptionTests.cpp` (three
 probes); `CataclysmEnchantmentEffectTests.cpp` and `CataclysmDungeonModifierEffectsTests.cpp` (the benefit with no
 effect moved, one constant each); `tools/generate_datatables.py` (two events, the flag and the two increases with their
 refusals); `tools/tests/test_generate_datatables.py` (three classes and one test, at the end);
@@ -49,7 +49,9 @@ What a player would notice, once a row is worn:
   the Heavy at that enemy from the trap, the Special and the Ultimate from the enemy's own place. Then it is gone.
 - **ITS CAST IS THE PLAYER'S SKILL AT THE PLAYER'S NUMBERS, WITH THE TRAP DAMAGE ROWS ON TOP**: "Traps deal 20%-40%
   increased damage", the two per trap and per gadget, and "doubles" reach it as written; no gadget damage row does. Its
-  blows on enemies raise `deployable_hit` with the trap's tags. The cast is free and raises no `skill_use`.
+  blows on enemies raise `deployable_hit` with the trap's tags LESS `Type.Deployable` (Q-A (a) of 2026-10-20), so
+  "Gadgets apply a 15%-25% armor reduction to enemies" does not reach them and the untagged "Gadgets apply a 1-2
+  second stagger" does, as it reaches every machine's blow. The cast is free and raises no `skill_use`.
 - **AT MOST FIVE TRAPS STAND FOR A PLAYER, ACROSS EVERY CONVERTED SLOT**; a sixth destroys the oldest, which does not
   trigger. **A TRAP LASTS 20 S AND ONE THAT EXPIRES DOES NOT TRIGGER.** Enemies do not seek a trap (threat 0) but area
   blows hurt it; a trap killed raises nothing.
@@ -58,14 +60,14 @@ What a player would notice, once a row is worn:
 - **NOT IN PLAY UNTIL TWO THINGS LAND ABOVE THIS LAYER:** the `SkillTrap` row of the Minion Types sheet and the three flag
   rows, both the enchantment session's (below). Without the type row a press places nothing, pays nothing and logs why.
 - **FOUND, AND NOT CHANGED, EACH FOR A RULING IF IT IS WANTED:**
-  1. **T14 IS BUILT FOR THE SKILL TRAP ONLY. A SPIKE TRAP KILLED STILL RAISES `gadget_destroyed`.** Narrowing the event
+  1. **T14 IS BUILT FOR THE SKILL TRAP ONLY. A SPIKE TRAP KILLED STILL RAISES `gadget_destroyed`. ACCEPTED (Q-B, below).** Narrowing the event
      to `IsGadget()` would change the Spike Trap, which T15 and the brief leave as it is, and two merged tests assert
      that a killed Spike Trap raises it: `Cataclysm.GadgetAndResource.AKilledGadgetTellsItsSummonerOnceAndATrapIsAGadget`'s
      "and a trap is a gadget too" (`CataclysmGadgetAndResourceTests.cpp`) and
      `Cataclysm.Enchantments.AKilledGadgetGivesTheWearersGadgetsItsRolledDamageForFiveSeconds`, which kills a Spike Trap.
      So `ACataclysmMinion::HandleDeath` asks `IsDeployable() && !IsSkillTrap()`.
   2. **A TRAP CARRIES `Type.Deployable` (M1's tags), SO THE GADGET ROWS ON A MINION STAT REACH IT AS THEY REACH A SPIKE
-     TRAP:** "Gadgets last 30%-60% longer" lengthens its 20 s and "Gadgets have 40%-70% increased HP" its health, both
+     TRAP, AND STAY SO BY Q-A (a): changing those reads would change the Spike Trap (T15). On the play-check list:** "Gadgets last 30%-60% longer" lengthens its 20 s and "Gadgets have 40%-70% increased HP" its health, both
      asked by `Spawn` with the type tags; "Each active gadget increases your evasion chance by 5%-10%" counts it, through
      `deployables_active`. Its trigger radius is a constant of its own, so "Gadgets have 20%-40% increased attack range",
      which `Spawn` puts on the type's reach, does not move it.
@@ -92,6 +94,7 @@ What a player would notice, once a row is worn:
   Ultimate)
 - Iron Fortress's spike traps keep their 3 s timer and take none of the trap rows (T15): no arming, trigger, cap,
   duration rule or trap pricing of this layer reaches a Spike Trap
+- 'Gadgets last 30%-60% longer' and 'Gadgets have 40%-70% increased HP' also lengthen and strengthen your traps, and 'Gadgets apply a 1-2 second stagger' also staggers on a trap's hit
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -125,7 +128,26 @@ continues at 50% effectiveness during combat" (retired, weight 0); whether the d
 trap's cast is to be read, and if it does one test is written and this entry says that design layer 7 shrinks to its
 row's tests; and the `SkillTrap` Minion Types row and the three flag rows are the enchantment session's.
 
-**THE NUMBERS 1.0 S, 3 M, 20 S, 5 AND 40 ARE UNDER THE OWNER'S DELEGATION OF UNSTATED NUMBERS**, as ruled. No sentence
+When it read this layer at c2354adba on 2026-10-20, the coordinating session's rulings, verbatim as relayed:
+
+> TRAPS LAYER 1 (feat/traps-1 c2354adba): MECHANISM ACCEPTED.
+> Q-A: (a). A skill trap is not a gadget (2026-10-07), so its deployable_hit carries its type tags without
+> Type.Deployable, and "Gadgets apply a 15%-25% armor reduction" stops reaching it; test that (the armor row reaches a
+> skill gadget's hit and not a skill trap's). The untagged stagger row still reaches it, as every machine's blow. The
+> duration and HP rows keep reaching it through the minion's own tags, as they reach the Spike Trap; changing those reads
+> would change the Spike Trap (T15), so they stay. Put on the owner's play-check list: "'Gadgets last 30%-60% longer' and
+> 'Gadgets have 40%-70% increased HP' also lengthen and strengthen your traps, and 'Gadgets apply a 1-2 second stagger'
+> also staggers on a trap's hit". One fast-forward commit by the session that built it; recount TR-I to TR-III after it.
+> Q-B: ACCEPTED. A skill trap's death raises no gadget_destroyed; the Spike Trap's still does, as T15 and the two merged
+> tests require. The entry quotes T14 and T15 side by side.
+> The rest accepted as described, including the second moved constant (FloorStartCapBenefit), the AimedAt/CastFromPlace
+> widening with null defaults, and the judgements recorded in the entry. The SkillTrap health 40 + 18 per level (the
+> Spike Trap's rate) is a number under the owner's delegation; say so.
+
+**T14 AND T15 SIDE BY SIDE, as Q-B asks:** "T14 yes: gadget_destroyed narrowed to gadgets; a trap's death raises nothing until a row needs it." | "T15 no (the no-War mandate)." The skill trap's death raises nothing (T14); the Spike Trap's still raises `gadget_destroyed`, as T15 and the two merged tests named in SAID FIRST require.
+
+**THE NUMBERS 1.0 S, 3 M, 20 S, 5 AND 40 ARE UNDER THE OWNER'S DELEGATION OF UNSTATED NUMBERS**, as ruled. **SO IS THE
+`SkillTrap` HEALTH OF 40 + 18 PER LEVEL**, the Spike Trap's rate (Q-A's ruling of 2026-10-20). No sentence
 states any of them. Each is a constant of `ACataclysmMinion` (`SkillTrapArmSeconds`, `SkillTrapTriggerRadiusCm`,
 `SkillTrapSeconds`, `SkillTrapsMostPerPlayer`) or a cell of the type row (`BaseHealth` 40), for play to tune.
 
@@ -174,7 +196,7 @@ drawback's trap half, SHRINKS TO ITS ROW'S TESTS** (interaction 1).
 | `minion_duration` naming `Type.Trap` | no, built 2026-10-08 | `Spawn`'s lifetime | "Traps last 50%-100% longer before expiring", unchanged |
 | `trap_placed` | yes, an event | raised by `PlaceSkillTrap` (2440) | layer 3 ("Placing a trap generates a burst of evasion") |
 | `trap_triggered` | yes, an event | raised by `TriggerSkillTrap` (2544) | layers 3, 5 and 6 |
-| `deployable_hit` with the trap's tags | no, an existing event, newly raised for a trap's cast | `ApplyHit`'s tail (1096 to 1106) | layer 3's slow and bleed rows |
+| `deployable_hit` with the trap's tags less `Type.Deployable` | no, an existing event, newly raised for a trap's cast | `ApplyHit`'s tail (1096 to 1113) | layer 3's slow and bleed rows; the untagged gadget stagger row already |
 | `trap_cap_bonus`, `traps_do_not_expire` | **no** | nothing | layer 3 builds both reads with its rows |
 
 **THE TWO EVENTS, AND WHICH LISTS THEY JOIN.** Both join `ACTION_ONLY_EVENTS` (`tools/generate_datatables.py` 5969,
@@ -220,7 +242,8 @@ a row on one says which action it takes.
   (`more` 100 per gadget) reaches the cast. The option not taken: the increases alone, which would leave that row reaching
   only the Spike Trap.
 - **`deployable_hit` IS RAISED FOR A TRAP'S BLOW ON AN ENEMY** (design M5.4), so layer 3's slow and bleed rows are rows
-  only. Not for a share struck at the wearer or an ally, and not for a tick, as the gadget's.
+  only, WITH THE TRAP'S TYPE TAGS LESS `Type.Deployable` (Q-A (a), 2026-10-20: a trap is not a gadget), so a gadget
+  row on that event requiring `Type.Deployable` does not reach it. Not for a share struck at the wearer or an ally, and not for a tick, as the gadget's.
 - **THE TINT: dark grey while arming, ember orange when armed**, through the engine basic shape material's `Color`
   parameter, which the floor obstacles already paint by.
 - **THE GENERATOR ACCEPTS THE HEAVY, SPECIAL AND ULTIMATE SLOT TAGS ON THE FLAG AND REFUSES THE SUPPORT'S AND THE
@@ -399,7 +422,7 @@ and hold the mana it costs; the Heavy costs no Fervour. Every other trap is plac
 The world's clock is moved by hand and a trap's step called directly, to 1.25 s after placing so no wait ends on the
 mark. Tests 4 and 7 compare blows' figures and pin `Cataclysm.CritRoll` at 100 after the world is made. Helper types are
 `FSkillTrapWorld`, `FSkillTrapRig`, `FSkillTrapRow` and `FSkillTrapEventCount`; the engine's headers declare none of them
-(searched, with `FScene` found as the control). **Assertions are counted for a passing run, 146 in all.**
+(searched, with `FScene` found as the control). **Assertions are counted for a passing run, 157 in all.**
 
 0. `TheSkillTrapRowIsAMachineTrapOfFortyHealthThatDealsDrawsAndWalksNothing`, 16. In order: set-up, the minion type
    table; control, the same lookup finds the `SkillGadget` row; the table holds the `SkillTrap` row; its family is
@@ -449,6 +472,15 @@ mark. Tests 4 and 7 compare blows' figures and pin `Cataclysm.CritRoll` at 100 a
    the Special box is not a trap's; after a press "Traps 1/5"; the sweep is the whole Heavy cooldown; a box whose trap
    can never cast reads "Trap casts nothing"; control, the two tints differ; placed, the trap is dim; at 1.25 s it is
    armed; and lit.
+9. `TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit`, 11, added for Q-A (a) of 2026-10-20. Two
+   players each hold "Gadgets apply a 15%-25% armor reduction to enemies" as `UCataclysmItemModifiers::
+   AccumulateEnchantmentsInto` builds it from its row (action `enemy_armor_removed` on `deployable_hit`, Required Tags
+   `Type.Deployable`, placed key the enchantment and the action, Stack Seconds 3, Scale Max Steps 1 as the cap), written
+   by hand as an `FCataclysmPoolAction` with `SetPoolActions` at a roll of 20, as the file's other tests write their
+   actions. No blow figures are compared, so the roll is not pinned. In order: a world; set-up, two enemies (two);
+   set-up, both hold this project's ability system; set-up, a skill gadget; control, before any blow its enemy has no
+   armour taken; control, the gadget cast once; control, its hit took 20% of its enemy's armour; the trap's cast struck
+   its enemy; it raised `deployable_hit`; and that enemy has no armour taken.
 
 Three probes join `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: `ProbeSkillSlotIsATrap` (control, the
 Heavy slot is unconverted and the press is the skill's; with the flag at 1 it is converted and the press is the trap's),
@@ -469,7 +501,7 @@ once); `TestTheSkillTrapMinionType`, three (the proposed row carried through by 
 controller, so the stun's refusal is read and not driven; a lock refusing the press; the Ultimate's press and its 50
 Fervour; a Special trap's cast (the Whip's Special is a shot, and no castable Demonic Special is an area all round); a
 shot or a rack from a trap, and its pricing after the trap is gone; a support trap and the 8 m (layer 2); the "more" half
-of the pricing read ("doubles"); `deployable_hit` raised for a trap's blow (no test counts it); a trap set off with no
+of the pricing read ("doubles"); the stagger row on a trap's hit; a trap set off with no
 enemy (nothing in this layer does it); a trap whose slot is no longer converted, or whose player is dead or stunned; the
 floor clearing a trap; "Your traps ignore armor" and the gadget duration, health and evasion rows on a trap; a repeat
 row on a press; Mana Weaver's doubling; the tint on a drawn screen and the HUD's line; replication; anything in play.
@@ -479,10 +511,11 @@ row on a press; Mana Weaver's doubling; the tint on a drawn screen and the HUD's
 Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
 counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
 paired (counted by the same script: `CataclysmMinion.cpp` 947/947, 256/256, 11/11 before and after TR-I and TR-III;
-`CataclysmSkillEffects.cpp` 1595/1595, 449/449, 15/15 before and after TR-II). Each compiles alone by reading: TR-I
+`CataclysmSkillEffects.cpp` 1601/1601, 450/450, 15/15 before and after TR-II, and 1602/1602 round after TR-IV, which
+adds one pair). Each compiles alone by reading: TR-I
 compares a `float` with another `float` expression and leaves only a member unread; TR-II keeps `TrapIncreases` read,
 multiplied by nought; TR-III compares the same `int32`s with another operator. The prefix of all three is
-`Cataclysm.Traps.`, with its trailing dot, nine tests; every one that places a trap needs the `SkillTrap` row in
+`Cataclysm.Traps.`, with its trailing dot, ten tests; every one that places a trap needs the `SkillTrap` row in
 `DT_MinionTypes`.
 
 **The events the tests' actors raise on the way, listed before counting.** On a player: `trap_placed` at each placing;
@@ -518,6 +551,24 @@ Failed assertions, by reading:
 
 **Tests of another group expected to fail, to check in the window:** none, by reading; the probes read
 `SkillTrapArmingSecondsFor`, `SkillTrapTriggerRadiusCmFor` and `SlotIsASkillTrap`, which no break touches.
+
+**RECOUNTED ON 2026-10-20 AFTER Q-A (a)**, on the commit that strips `Type.Deployable` from a trap's `deployable_hit`:
+each anchor counted once again on that head; the brackets of `CataclysmSkillEffects.cpp` moved (the new condition),
+those of `CataclysmMinion.cpp` did not. **NO COUNT MOVED.** Test 9's events are a gadget's cast on one player
+(`hit_dealt`, `first_hit_dealt`, `dot_applied`, `deployable_hit` with `Type.Deployable`, on which its armour action
+hangs) and a trap's on the other (`trap_placed`, the same blow events with `deployable_hit` less `Type.Deployable`, and
+`trap_triggered`). TR-I: test 9 steps its trap only at 1.25 s, past the mark, and a gadget is not a trap. TR-II: test 9
+holds no `minion_damage` row. TR-III: test 9 places one trap. **None of the three covers the change, so a fourth is
+registered:**
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-IV, a trap's `deployable_hit` keeps `Type.Deployable` (Q-A (a)) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `GadgetsTags.RemoveTag(NamesGadgets);` | `GadgetsTags.RemoveTag(FGameplayTag());` | `TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit` | none |
+
+- **TR-IV, 1 in 1 test.** Test 9: "which carries no Type.Deployable, so the gadget row took none of its enemy's armour"
+  (20). The anchor counted once, the new text absent before and once after; it compiles alone, removing an empty tag,
+  and `NamesGadgets` stays read by the condition. No other test hangs an action on `deployable_hit`, so no other line
+  moves.
 
 **A test and no proof:** the press paying and starting the cooldown, the second press refused, the trap winning over the
 gadget, the radius of 3 m and the increase widening it, the cast at and around the enemy, the gadget row not reaching
