@@ -2,6 +2,400 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A worn row can make every skill gadget its wearer commands fire once, at once, when the wearer dies: each casts its skill at the target its own clock would choose, at the whole of its damage, its clock left as it was; the gadget half of "When you die, all your active traps and gadgets immediately trigger simultaneously", with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bGadgetsCastNow`, the
+struct's last member); `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`GadgetsCastNowAction`, and one branch of `ActOnEvent`'s row loop, the last before a pool is moved);
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the flag set from the row's Action);
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`CastPlayersSkillFromHere` gains the parameter
+`bEvenForADeadPlayer`, false by default; new `FireEveryGadgetAtTheDeathOf`, `FireForItsSummonersDeath`,
+`SkillGadgetDeathCastsMade`); `game/Source/Cataclysm/Tests/CataclysmDeathTriggersGadgetsTests.cpp`
+(new, three tests); `tools/generate_datatables.py` (`GADGETS_CAST_NOW_ACTION`, `GADGETS_CAST_NOW_EVENTS`,
+`_check_gadgets_cast_now_action` and the value's check); `tools/tests/test_generate_datatables.py` (one class);
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one constant, one test). One existing line of code
+is changed, the dead-player refusal in `CastPlayersSkillFromHere`, and the declaration and signature line it sits under;
+every other change is an insertion. No data row, no tag and no workbook cell is changed. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+- **THE SENTENCE'S TRAP HALF IS NOT YET BUILT.** It joins when traps are built. This layer fires skill gadgets only; a
+  trap is not a gadget (`ACataclysmMinion::IsGadget` is a deployable that is not a trap) and is left out of the walk.
+- **WAR'S GADGETS ARE NOT FIRED BY THIS ACTION** (the Bolt Turret, the Ballista and any other gadget that is not a skill
+  gadget), because of the owner's no-War mandate: code for them would be code for War alone, and could not be tested
+  without War. Ruled 2026-10-19 (J2 (a)). The walk takes skill gadgets only, and a gadget of any other kind fires
+  nothing.
+- **NOTHING CHANGES FOR A PLAYER UNTIL THE ROW IS WRITTEN ABOVE THIS LAYER**, by the enchantment session. This layer
+  authors no row.
+- **WHAT A PLAYER'S DEATH DOES TO ITS GADGETS, READ ON 6a9a43f1b: NOTHING REMOVES THEM BEFORE `player_death` IS RAISED, SO
+  RULING C5 DID NOT ARISE.** In order:
+  - `ACataclysmPlayerCharacter::HandleDeath` marks the player dead (`CataclysmPlayerCharacter.cpp` 1658,
+    `UCataclysmSkillEffects::MarkDead`), then raises `player_death` once (1710, `NotePlayerDeath`, which is
+    `ActOnEvent(player_death)`, `CataclysmAbilitySystemComponent.cpp` 3046 to 3049), then stops movement and input and
+    sets the respawn timer (1803). Nothing in it touches a gadget.
+  - While the player is dead, a skill gadget stands and its clock casts nothing: `CastPlayersSkillFromHere` refuses a
+    dead player (`CataclysmMinion.cpp` 974), which is S11 of 2026-10-16, "Gadgets stay through the player's death and
+    cast nothing".
+  - At the respawn, `ACataclysmPlayerCharacter::Revive`: INSIDE A BOUND EMPIRE DUNGEON, `EndTheDungeonForADeath` (1848)
+    reaches `LeaveEmpireDungeon` (`CataclysmDungeonGameMode.cpp` 14096), whose `EndEveryPlayersFollowers` (14239; the
+    function at 1575 to 1597) DESTROYS everything every player commands, gadgets included. With no empire dungeon bound,
+    or with `Cataclysm.DeathKeepsThePlayerInTheDungeon` at 1, nothing ends them. `ClearWhatDeathEnds` (1934) takes no
+    gadget; of the gadgets it clears only the last-skill record their copies read (`CataclysmAbilitySystemComponent.cpp`
+    2915 and 2916).
+  - So the gadgets are standing when `player_death` is raised, and in a dungeon of the empire they are gone
+    `RespawnDelaySeconds` later, at the respawn.
+- **THE DEATH CAST IS THE ONE CAST A DEAD PLAYER'S GADGET MAKES, A READING OF C2 AGAINST S11 (J1, ACCEPTED).** S11's
+  refusal of a dead player is lifted for that one cast and for nothing else (`bEvenForADeadPlayer`, false by default and
+  passed true by the death cast only); S11 holds for the clock while the player is dead, and the merged test
+  `Cataclysm.SkillGadgets.NothingIsCastWhileThePlayerIsDeadAndTheGadgetStays` reads that path unchanged.
+- **WHAT A PLAYER WOULD NOTICE:** at the moment of death, each skill gadget with an enemy within its skill's reach casts
+  its skill once, all of them in the same moment; one with none casts nothing; and none of them waits longer for its next
+  cast because of it.
+- **TWO THINGS ARE READ AND NOT TESTED**, listed under "Not tested" below: a death during the player's own ability's
+  activation casts nothing, and a Support self-buff gadget's buff granted to the dead player ends at the respawn.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the code,
+  the tests and this entry under the enchantment session's brief 56 and the rulings below. NOT COMPILED AND NOT RUN.
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+Nothing of the owner's is quoted here. The sentence is the enchantment's, `game/Data/EnchantmentsPositive.csv`, row
+`Positive_When_you_die_all_your_active_traps_and_gadgets`, weight 4, tags `Trigger.OnDeath, Type.Trap, Type.Deployable`:
+"When you die, all your active traps and gadgets immediately trigger simultaneously".
+
+The coordinating session's Q1 of 2026-10-19, as relayed: "YES for the gadget halves of #15 and #34 now; the trap halves
+join when traps exist (which is now scheduled, so the gap is short). Each entry says the sentence's trap half is not yet
+built."
+
+Its rulings on C1-C5, verbatim as relayed on 2026-10-19:
+
+> RULINGS: two separate layers, #34 first, as you recommend. (a) on every question.
+> #15 (brief 56): C1 gadgets_cast_now on player_death. C2 one cast each, at once, at the target its own clock would
+> choose, whole damage, ignoring its clock; no target, no cast. C3 all within the one event. C4 the clock unchanged. C5
+> if the gadgets are gone before player_death is raised, the second session stops and reports; nothing is moved.
+> Both entries say the sentence's trap half is not yet built and joins with traps.
+
+And, when it read this layer at 1c448a5b6, the coordinating session's rulings of 2026-10-19, verbatim as relayed:
+
+> J1 ACCEPTED: bEvenForADeadPlayer defaulting false, passed true by the death cast only; S11 holds for the clock while
+> the player is dead, and the merged NothingIsCastWhileThePlayerIsDeadAndTheGadgetStays test is unchanged. The entry
+> records it as a reading of C2 against S11.
+> J2 (a): REMOVE the non-skill-gadget branch (AttackTarget for War's Bolt Turret and Ballista). It is code for War
+> alone and cannot be tested without War. The entry says War's gadgets are not fired by this action and why (the no-War
+> mandate). Remove it in one small commit on this branch before #15's row layer ...; recount DG-I to DG-III after it.
+> The two read-not-tested points (a death during the player's own activation casts nothing; a Support self-buff
+> gadget's buff on the dead player ends at respawn) go in the entry as read and not tested.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree, after the J2 commit.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| Q1 | The gadget half now; the trap half joins with traps. | `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` (`CataclysmMinion.cpp` 1010) takes skill gadgets only (`IsSkillGadget`, 1019), which a trap never is. |
+| J1 | `bEvenForADeadPlayer` false by default, true for the death cast only; S11 holds for the clock. | The refusal at `CataclysmMinion.cpp` 974; the one caller passing true, 1044; the declaration, `CataclysmMinion.h` 511. |
+| J2 | No branch for a gadget that is not a skill gadget. | The walk's filter (1019) and `FireForItsSummonersDeath`'s first refusal, `!IsSkillGadget()` (1038). |
+| C1 | `gadgets_cast_now` on `player_death`. | `UCataclysmAbilitySystemComponent::GadgetsCastNowAction` (`CataclysmAbilitySystemComponent.cpp` 6709); the flag set in `CataclysmItem.cpp` 1441; the branch in `ActOnEvent` (`CataclysmAbilitySystemComponent.cpp` 6684 to 6692); the generator's `GADGETS_CAST_NOW_ACTION` and `GADGETS_CAST_NOW_EVENTS` (`tools/generate_datatables.py` 5433, 5437), the event checked in `_check_gadgets_cast_now_action` (6637). |
+| C2 | One cast each, at once, at the target its own clock would choose, whole damage, ignoring its clock; no target, no cast. | `FireForItsSummonersDeath` (`CataclysmMinion.cpp` 1035) calls the clock's own `CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true)` (1044) directly, so no clock is asked; that path aims by `StartPlayersSkillFromHere` (the highest-health row or the nearest enemy within the skill's reach; nothing within it, no cast) and starts the player's row free at a share of 1.0. The dead-player refusal lifted for this call only: 974. |
+| C3 | All within the one event. | The branch calls `FireEveryGadgetAtTheDeathOf` once inside the one `ActOnEvent` call; the list is taken once before the first fires (1015 to 1023) and each fires in turn (1024 to 1031). |
+| C4 | The clock unchanged. | `FireForItsSummonersDeath` writes neither `bSkillGadgetHasCast` nor `LastSkillGadgetCastAtAgeSeconds`; it counts `SkillGadgetDeathCastsMade` (1048) beside `SkillGadgetCastsMade`, which `CastPlayersSkillFromHere` counts. |
+| C5 | If the gadgets are gone before `player_death`, stop and report. | Did not arise: SAID FIRST gives the lines. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE GADGETS ARE FOUND BY WHAT THE WEARER COMMANDS** (`UCataclysmCommand::ThingsCommandedBy`, which leaves out the
+  dead), not by the press's record `UCataclysmAbilitySystemComponent::SkillGadgets`. The option not taken: the record,
+  which holds only gadgets placed by a press, and would miss a skill gadget placed any other way.
+- **THE WALK COLLECTS SKILL GADGETS ONLY, NOT EVERY `IsGadget()` FOLLOWER (after J2).** A gadget of any other kind could
+  only be refused one step later, so collecting it would say nothing and would put a War gadget into the list that C3
+  fires in order. The option not taken: collect every gadget and refuse the others in `FireForItsSummonersDeath`, which
+  refuses them as well, so either reading fires no War gadget.
+- **REMOVED BY J2**, at 1c448a5b6 and no longer built: a gadget that is not a skill gadget dealt its ordinary blow
+  (`AttackTarget`) once at its brain's target within reach, counted by `GadgetDeathShotsFired`.
+- **A GADGET THAT IS STUNNED OR KNOCKED DOWN FIRES NOTHING**, as its clock casts nothing then. The option not taken: fire
+  regardless.
+- **THE DEATH CAST LIFTS ONLY THE DEAD-PLAYER REFUSAL OF THE CLOCK'S PATH**, by a parameter defaulted to false, so every
+  existing caller is unchanged. The option not taken: a second copy of the path, which could drift from the clock's.
+- **A GADGET WHOSE CLOCK HAS NOT STARTED STAYS UNSTARTED**, so it casts on its first step after the respawn (C4 read
+  literally). The option not taken: starting its clock with the death cast, which would be C4's option (b).
+- **THE ROW TAKES NO TRIGGER COOLDOWN.** One death raises one `player_death`; the generator refuses a stated one, as it
+  does on every action that takes none. The option not taken: allow one, as the heal on death does.
+- **THE ROW'S VALUE IS 100 AND IS NOT READ**, as a cleanse's: every cast is whole (C2). The option not taken: read it as a
+  share of damage, which no ruling asks for.
+- **THE BRANCH IS THE LAST BEFORE A POOL IS MOVED**, keyed on the row's own flag, so no earlier branch can take the row.
+
+### THE GENRE SOURCE
+
+Fetched in this session. Each page was read through WebFetch, which summarises, so each line is that summary's account of
+the page, not a verbatim reading.
+
+- **PoE 1, Cast on Death Support** (https://poedb.tw/us/Cast_on_Death_Support): "Each supported spell skill will be
+  triggered when you die"; it "Cannot support skills used by totems, traps, or mines"; and it carries 0 to 152% more
+  damage while dead (304% before 3.19.0). Every supported spell is triggered by the one death.
+- **PoE 2, Cast on Death** (https://poe2db.tw/us/Cast_on_Death): a meta gem that "Triggers all Socketed Spells when you
+  Die", with "Socketed Skills deal 150% more Damage". The page names no restriction for traps, mines or minions.
+- **PoE 1, mines** (https://poedb.tw/us/Mine): detonating is a player's action, and a sequence: it starts "with the mine
+  closest to the target location" and continues "in an accelerating fashion", each mine 10% faster. The page says
+  nothing of what a death does to a mine or a trap.
+- **Last Epoch, Torchlight Infinite and Diablo: nothing found.** Web searches for an on-death trigger of traps, mines,
+  turrets or sentries returned no page for Last Epoch, none on tlidb.com for Torchlight Infinite, and for Diablo only
+  the Diablo III crossbow Helltrapper, a chance on hit to make a sentry, spike trap or caltrops (a search result, NOT
+  FETCHED). No page was fetched for these three.
+
+**WHAT THE RESEARCH SETTLES AND WHAT IT DOES NOT.** Path of Exile's trigger on death is a once-per-death trigger of every
+supported skill at the death, which is the shape of C2 and C3. No game read fires the player's own deployables at its
+death: PoE 1's on-death gem refuses traps, mines and totems, and its mines go off in a sequence the player starts, not
+together. So "your gadgets fire when you die" is this game's own sentence, built as ruled; and casting at the whole of
+the damage, not with PoE's "more damage while dead", is C2's "whole damage", not a genre figure.
+
+### WHAT WAS BUILT
+
+- **The flag and the name**: `FCataclysmPoolAction::bGadgetsCastNow`, `UCataclysmAbilitySystemComponent::GadgetsCastNowAction`,
+  and the item setting the flag from a row's Action.
+- **The branch**: once per row per event, on a landed event, it calls `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` with
+  the wearer's avatar. Each cast's blows raise `hit_dealt`, `first_hit_dealt`, `deployable_hit` and the like on the wearer
+  inside this call, at depth one, and are dropped (`ActOnEvent`'s guard, 6043).
+- **The walk and the fire**: `FireEveryGadgetAtTheDeathOf` and `FireForItsSummonersDeath`, with one counter read by
+  tests, `SkillGadgetDeathCastsMade`.
+- **The lifted refusal**: `CastPlayersSkillFromHere(bool bEvenForADeadPlayer = false)`.
+- **The generator**: the name, its one event, the refusals of its row, and its value of 100.
+
+### THE ROW THE ENCHANTMENT SESSION IS TO WRITE
+
+One row on the Enchantment Effects sheet: Enchantment `Positive_When_you_die_all_your_active_traps_and_gadgets`; Effect
+the whole sentence; Stat empty; **Action `gadgets_cast_now`**; **Action Event `player_death`**; **Value Low 100, Value High
+100**; and every other cell empty: no Value Kind, no Fraction Of, no Required Tags (the enchantment's own `Trigger.OnDeath,
+Type.Trap, Type.Deployable` are not a row's, and `player_death` carries no tags), no Condition, no Scale, no Scale Max
+Steps, no Trigger Cooldown (refused), no Event Value, no Ailment, no Stack Seconds, no Every Seconds, no Every Nth, no
+Damage Share. Carried through cell by cell and passed by the whole sheet's validation on a made-up sheet
+(`TestGadgetsCastNowAtTheWearersDeath`). **IN THE ROW LAYER**, by reading and not run: the 100 is in no word of the
+sentence, so `tools/tests/test_enchantment_effects_match_the_row_text.py` is expected to need a word for it, as
+`"cleanse": {"cleansed": 100.0}` and `"dot_remaining_nearby": {"remaining": 100.0}` are; "trigger" is the sentence's
+word, for the enchantment session to propose. It cannot be added before the row exists if that file refuses a word no
+row needs.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator now accepts one more action**, `gadgets_cast_now`, and refuses on it: any event but `player_death`, a
+  value but 100, a Trigger Cooldown, Required Tags, a Fraction Of, a Value Kind and a Scale (Scale Max Steps and an
+  Ailment are refused by the general checks). No row was accepted on it before, since it did not exist.
+- **`CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains `GadgetsCastNowAction`**,
+  at its end.
+- No merged test asserts anything different, by reading: with no row worn the branch is never reached, and every existing
+  caller of `CastPlayersSkillFromHere` passes nothing and keeps the refusal.
+
+### Tests
+
+Three Unreal tests in `game/Source/Cataclysm/Tests/CataclysmDeathTriggersGadgetsTests.cpp`, the group
+`Cataclysm.DeathTriggersGadgets.` (no existing group begins with it, by search), beside `Cataclysm.SkillGadgets.`, whose
+rig they follow: a possessed player character on the players' side holding a Demonic Whip with a weapon damage of 100,
+10,000 health and 1,000 mana, never refreshed, its Heavy (Searing Lash, a 5 m cone) and Ultimate (The Gathering, a 14 m
+point-blank strike) slots converted by the flag `skill_slot_is_a_gadget` flat 1 requiring each slot's tag; creatures of
+the monsters' side with no defences and 50,000 health. The death row is built by hand as the item builds it. The death is
+real: a creature's direct blow of 1,000,000 runs `HandleDeath`. Gadgets are placed with `PlaceSkillGadget` and NO KEY IS
+PRESSED, so no test needs a resource a skill costs. Each gadget's enemy stands 3 m east of it (6 m in one case); gadgets
+stand 20 m north and 30 m south of their player; every killer 3 m east of its player; players 100 m apart; so nothing
+stands within another gadget's reach. The world's clock is moved by hand and `GadgetStep` called directly. Tests 1 and 2
+pin `Cataclysm.CritRoll` at 100 after the world is made (`CataclysmTestWorld::FScopedCritRoll`), because each compares
+two blows' figures.
+
+1. `EachGadgetCastsOnceAtTheDeathBeforeItsClockAndAPlayerWithoutTheRowCastsNothing`, 25 assertions. In order: a world;
+   set-up, the roll is pinned; set-up, the six creatures, each by its own assertion; set-up, each of the four gadgets cast
+   once on its first step; set-up, both clocks are longer than the quarter second then waited; set-up, each first cast
+   struck its enemy; control, the player holding no row died; control, its Heavy gadget cast nothing more; control, its
+   Ultimate gadget nothing more; control, neither of their enemies took anything more (two); the wearer died; its death
+   raised `player_death` once; its Heavy gadget cast once more inside the death, before its clock had run; that was its
+   death cast; its Ultimate gadget cast once more inside the same death; that was its death cast; the Heavy gadget's death
+   cast struck its enemy; the Ultimate gadget's struck its enemy; and the killer, beyond every gadget's reach, took
+   nothing.
+2. `AGadgetWithNoEnemyInReachCastsNothingAndOneWithAnEnemyCastsItsWholeCast`, 16 assertions. In order: a world; set-up,
+   the roll is pinned; set-up, the four creatures, each by its own assertion; set-up, the Heavy gadget reaches more than
+   nought and less than 590 cm, short of its enemy's 600; control, its own step casts nothing with no enemy in its reach;
+   control, the living player's Ultimate gadget casts once on its own step; control, that cast takes something; the
+   wearer died; the Heavy gadget cast nothing at the death; and made no death cast; the enemy past its reach keeps its
+   health; the Ultimate gadget still cast once at the death; and its cast took what the living player's clock cast took,
+   within 0.01 (whole damage, at the target its clock would choose).
+3. `TheDeathCastLeavesEachGadgetsClockAsItWas`, 16 assertions. In order: a world; set-up, the three creatures, each by its
+   own assertion; set-up, the Heavy gadget cast and its clock (1.5 s) runs; control, the Ultimate gadget has not cast;
+   the wearer died; set-up, the Heavy gadget made its death cast; set-up, and the Ultimate gadget its own; the Heavy
+   gadget's last clock cast is where it was; its clock has the seconds left it had before the death; the Ultimate
+   gadget's clock is still not running; set-up, the wearer stood back up (`Revive`, called directly); a tenth of a
+   second short of its clock the Heavy gadget casts nothing; the Ultimate gadget casts on its first step; its clock run,
+   the Heavy gadget casts.
+
+Python: `TestGadgetsCastNowAtTheWearersDeath` in `tools/tests/test_generate_datatables.py`, on a made-up sheet: the row
+name is the shipped enchantment's and is in `EnchantmentsPositive.csv`; the ruled row carried through cell by cell; it
+passes the whole sheet's validation; the action takes no trigger cooldown and is no pool; control, the heal on death may
+state one; a stated one is refused; the name misspelt is refused; six other events refused; the event list is
+`player_death` alone and is an event the game fires; 50, 0 and 200 refused; Required Tags, Fraction Of, Value Kind and
+Scale each refused; Scale Max Steps and an Ailment refused by the general checks. And
+`test_the_generator_accepts_exactly_the_gadgets_cast_now_name_the_engine_has`: the engine's name is the generator's,
+and the item's line, the row loop's branch and the lifted refusal are in the code outside comments.
+
+**Not tested:** the real row worn (the enchantment session's real-row test); a press placing the gadgets (the tests place
+them directly); a death inside a dungeon of the empire, and the respawn's ending of the gadgets there; a stunned
+gadget; the highest-health row moving the death cast's aim; a Special or Support Debuff gadget, a Projectile cast, the
+basic attack's gadget; a slot no longer converted; War's gadgets, which this action does not fire (J2), so there is
+nothing of theirs to test; replication; anything in play. And two things READ AND NOT TESTED (ruled 2026-10-19):
+
+- **A DEATH DURING THE PLAYER'S OWN ABILITY'S ACTIVATION CASTS NOTHING.** A health cost or a reflected blow that kills
+  during a skill of the player's holds the player's ability list locked, and `UCataclysmTriggeredSkill::Trigger` then
+  takes back the deferred grant and returns false (the engine's `GiveAbility` under `ABILITYLIST_SCOPE_LOCK`, UE 5.8
+  `AbilitySystemComponent_Abilities.cpp` 316; the second rule of the 2026-10-04 memory note on one-use grants). C3 puts
+  every cast inside the one event, so nothing is queued for later.
+- **A SUPPORT SELF-BUFF GADGET'S BUFF ON THE DEAD PLAYER ENDS AT THE RESPAWN.** At the death the gadget grants its self
+  buff to the dead player within its 8 m, as its clock grants it to a living one, and the respawn's `ClearWhatDeathEnds`
+  ends it with every other buff.
+
+### GUARD PROOFS PROPOSED
+
+Not run. RECOUNTED AFTER THE J2 COMMIT, as ruled. Each old text was counted exactly once in
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` by a script at this layer's working tree after J2, and each new
+text counted absent before the break and once after it. Each break keeps the file's round, curly and square brackets
+paired (counted by the same script: 769/769, 217/217, 7/7 before; the same after DG-I and DG-III; 770/770 after DG-II,
+which adds one call; at 1c448a5b6 they were 772, 219 and 7, and the removed branch's five round and two curly pairs, less
+two round pairs added in its comments, are the difference) and compiles alone by reading: DG-I turns `!a && b` into
+`a || b` on the same two `bool`s, keeping the parameter read; DG-II adds two assignments of a `bool` and a `float` to
+members, inside a block; DG-III adds a `break;` inside a `for` loop's `if`. The prefix is `Cataclysm.DeathTriggersGadgets.`,
+with its trailing dot, three tests.
+
+**The events the tests' actors raise on the way, listed before counting.** On each player: whatever the killer's direct
+blow raises as a hit taken, on which no row hangs; `player_death` once, at its death, on which the wearer's death row
+hangs and the other player has none; inside that event, each death cast's blows raise `hit_dealt`, `first_hit_dealt`
+and `deployable_hit` on the wearer, which `ActOnEvent` drops at depth one, and no `kill` (every creature holds 50,000).
+On each gadget's first step and test 3's later steps, the cast's blows raise the same events on a living player, on
+which no row hangs. On a creature, nothing is worn. A gadget raises nothing of its own: every cast is the player's skill, so its blows are
+the player's. Test 3's `Revive` raises no `player_death`
+(`Cataclysm.NearbyAction.AHealOnDeathReachesNearbyEnemiesBeforeTheRespawnAndOnlyOnce` asserts it). Read from the code,
+not measured. **NO COUNT MOVED WITH J2**: every gadget of the three tests is a skill gadget, so the removed branch was
+never reached by them, and the walk's new filter keeps the same two gadgets in the same nearest-first order.
+
+| Proof | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|
+| DG-I, the death cast refused for a dead player (C2) | `(!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player))` | `(bEvenForADeadPlayer \|\| UCataclysmSkillEffects::IsDead(Player))` | `EachGadgetCastsOnceAtTheDeathBeforeItsClockAndAPlayerWithoutTheRowCastsNothing` | `AGadgetWithNoEnemyInReachCastsNothingAndOneWithAnEnemyCastsItsWholeCast`, `TheDeathCastLeavesEachGadgetsClockAsItWas` |
+| DG-II, the death cast restarts the clock (C4) | `++SkillGadgetDeathCastsMade;` | `++SkillGadgetDeathCastsMade; bSkillGadgetHasCast = true; LastSkillGadgetCastAtAgeSeconds = GetGameTimeSinceCreation();` | `TheDeathCastLeavesEachGadgetsClockAsItWas` | none |
+| DG-III, only the first gadget fires (C3) | `++Fired;` | `++Fired; break;` | `EachGadgetCastsOnceAtTheDeathBeforeItsClockAndAPlayerWithoutTheRowCastsNothing` | `TheDeathCastLeavesEachGadgetsClockAsItWas` |
+
+Failed assertions, by reading:
+
+- **DG-I, 13 in 3 tests.** Every death cast is refused, and every clock cast is as before. Test 1, 6: "its Heavy gadget
+  cast once more" (1), "and that cast was its death cast" (0), the same two of the Ultimate gadget, "the Heavy gadget's
+  death cast struck its enemy" and "the Ultimate gadget's" (each enemy's health unchanged); the `player_death` count and
+  the killer pass. Test 2, 2: "the Ultimate gadget ... still cast once at the death" (0) and "at the whole of its damage"
+  (0 against the control's take); the Heavy gadget's three lines pass. Test 3, 5: the two set-up death casts (0 each),
+  then after the respawn "the Ultimate gadget ... casts on its first step" (1, not 2: the count holds no death cast) and
+  "a tenth of a second short of its clock ... casts nothing" (1, not 2) and "its clock run, the Heavy gadget casts" (2,
+  not 3); the clock's lines pass, the death having touched nothing.
+- **DG-II, 5 in 1 test.** Test 3: "the Heavy gadget's last clock cast is where it was" (0.25 s later), "its clock has
+  the seconds left it had" (the whole 1.5 s), "the Ultimate gadget's clock is still not running" (it runs), "the
+  Ultimate gadget ... casts on its first step" (its 20 s clock now runs from the death: 1), and "its clock run, the Heavy
+  gadget casts" (1.3 s after the death, short of 1.5: 2). "A tenth of a second short ... casts nothing" passes. Tests 1
+  and 2 read counts and blows only.
+- **DG-III, 5 in 2 tests.** `ThingsCommandedBy` answers nearest first, measured from the player: the Heavy gadget at 20 m
+  fires, then the loop ends before the Ultimate gadget at 30 m. Test 1, 3: the Ultimate gadget's "cast once more" (1),
+  "that was its death cast" (0) and "struck its enemy". Test 3, 2: "and the Ultimate gadget its own" (0), and after the
+  respawn "the Ultimate gadget ... casts on its first step" (1). Test 2 passes: its Heavy gadget fires nothing, so
+  `++Fired` is not reached before the Ultimate gadget fires.
+
+**Outside the prefix:** no Unreal test, by reading: nothing else wears the row. Under DG-I the Python test
+`test_the_generator_accepts_exactly_the_gadgets_cast_now_name_the_engine_has` would fail on the lifted refusal's text,
+which matters only if the Python suite runs during the proof (CLAUDE.md forbids that).
+
+**A test and no proof:** a player without the row casting nothing, a gadget with no enemy in reach casting nothing, the
+whole damage, and a never-started clock staying unstarted.
+
+### THE MOVE AND THE ROW, BY THE ENCHANTMENT SESSION
+
+**The two commits of this layer were moved onto the deployable self-blast's top 0e81e2262** (#2454, whose files are
+what development holds once it merges), as e95a55850 and 6414c9a6a, from 1c448a5b6 and 61e7bb8af on 6a9a43f1b. Each
+kept its zero-context patch id (60d8b50cad10, e32710639ee4) and its count of removed lines (4 and 61), and the only
+lines of that top removed are this layer's own four. The conflicts were the decisions log (this entry placed above the
+self-blast's) and the generator's tests (this layer's 112 lines inserted after the self-blast's, the added lines
+checked to be exactly the commit's).
+
+One effect row, on the coordinating session's grant of the workbook for this row on 2026-10-19, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`:
+
+| Enchantment | Action | Action Event | Value Low | Value High | Every other cell |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `Positive_When_you_die_all_your_active_traps_and_gadgets` | `gadgets_cast_now` | `player_death` | 100 | 100 | empty |
+
+The name was derived with the generator's `row_name` from the sentence and checked against
+`game/Data/EnchantmentsPositive.csv`. The generator accepted the row. **678 rows over 543 enchantments**, from 677 over
+542, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in
+`docs/README.md`'s sheet table.
+
+**THE ROW-TEXT CHECK'S WORD FOR THE 100.** Measured with the row in and no word: `test_a_single_value_appears_in_its_words_outside_any_range`
+failed, "Positive_When_you_die_all_your_active_traps_and_gadgets#1: 100 against 'When you die, all your active traps
+and gadgets immediately trigger simultaneously'", 1 failed and 40 passed. With `"gadgets_cast_now": {"trigger": 100.0}`
+in `STATED_BY_WORD`, beside `cleanse`'s "cleansed" and `dot_remaining_nearby`'s "remaining": 41 passed. The value is
+read nowhere and the generator requires it, as a cleanse's is. **RULED BY THE COORDINATING SESSION ON 2026-10-19: "trigger"** (option a, over "all").
+**Proved needed with `tools/prove_guard.py`**, in a `git archive` copy of this layer's row commit so no other run read the break: the line removed, "PROVED: 1 failed, 40 passed in 0.73s | restored: 41 passed in 0.67s", the named failure `tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_single_value_appears_in_its_words_outside_any_range`.
+
+**`CALL_SITES` IS NO LONGER KEPT**, ruled by the coordinating session on 2026-10-19: "a number asserted nowhere that has
+drifted from what it describes is a stale figure, so fix it rather than file it", and "replace the constant with the
+count the check measures". The constant is gone from `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+and the failure message of `test_every_call_site_is_in_the_inventory` prints `len(found)`, the count it has just
+measured. Shown by removing one inventory entry in memory and calling the test: the message ended "165 call sites were
+found in this tree." The dated lines that recorded each addition are kept as the history.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornDeathTriggerGivesItsWearerTheActionThatFiresItsGadgetsAtItsDeath`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Two real players each wear a drawback with no effect; the control's
+benefit has no effect either, and the case's is this row. It counts the worn actions with `bGadgetsCastNow` set that
+answer `player_death`: the control holds none and the wearer one. What the death then does is this layer's group's,
+where gadgets are placed and the wearer dies. One assertion on the case, so on assets built before the row it fails
+once, and only there.
+
+### THE WINDOW'S RUN
+
+Run by the enchantment session from 2026-10-19 into 2026-10-20 under the lock enchant-dw, on development 4c206cb3f
+(the deployable self-blast's merge; this layer was built on its head 0e81e2262, whose files the merge holds, so the
+move onto it changed no file). Three commits, in this order: the mechanism (77dca29a3), the War branch's removal
+(3d53b3217) and the row with the real-row test (15d1d363e). Every step was as registered. The lock was taken once
+development's CI and Unreal runs on 4c206cb3f had succeeded, with no run in progress and no pull request open.
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 38 actions, 35 files compiled" (the
+  mechanism's first compile); "359 tests performed, 358 succeeded, 1 failed:
+  TheWornDeathTriggerGivesItsWearerTheActionThatFiresItsGadgetsAtItsDeath", with exactly 1 failed assertion in the run,
+  checked by its text: "wearing the death trigger, the wearer holds one action firing its gadgets on player_death". The
+  control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 2a87287b3, "Rebuild the enchantment DataTable asset for the death trigger's row", and pushed as
+  `feat/death-triggers-gadgets-t-1`.
+- **The whole Unreal suite:** "3953 tests performed, 3953 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3953 tests in the tree at 2a87287b3; 3953 performed, gap 0". Registered 3953 and 0: the 3949 measured at
+  the deployable self-blast's window, the three of `Cataclysm.DeathTriggersGadgets.` and the one real-row test. The
+  risks that could only be read passed on the first build: the player is marked dead before `player_death` is raised,
+  so the death cast needs J1's lifted refusal (DG-I below measures it); and a dead caster's cast deals what a living
+  caster's does (test 2: 385.00 for each).
+- **Python:** "6821 passed, 8 skipped"; JUnit tests 6829, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+- **A stall guard** watched every editor run from 23:19:49 to 00:10:11 and would have ended the editor and released the
+  lock after 20 minutes with no test completed. It did not fire.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.DeathTriggersGadgets.`, 3 tests, all in
+`CataclysmMinion.cpp`.** The stop condition for each was the set of tests that fail with the break in, by the beginnings
+of their names. The failed assertions had been counted by reading, after listing every event the tests' actors raise,
+by the second session and again after the War branch's removal, and were measured beside it. Each anchor was counted
+once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| DG-I | the dead player's refusal kept for the death cast | 3 failed: `EachGadgetCastsOnceAtTheDeath...`, `AGadgetWithNoEnemyInReach...`, `TheDeathCastLeavesEachGadgetsClock...` | 13 / 13 | 3 of 3 succeeded |
+| DG-II | the death cast restarts the gadget's clock | 1 failed, `TheDeathCastLeavesEachGadgetsClockAsItWas` | 5 / 5 | 3 of 3 succeeded |
+| DG-III | only the first gadget fires | 2 failed: `EachGadgetCastsOnceAtTheDeath...`, `TheDeathCastLeavesEachGadgetsClock...` | 5 / 5 | 3 of 3 succeeded |
+
+The measured lines include, under DG-I, "at the whole of its damage: it took 0.00, as the living player's clock cast
+took 385.00"; under DG-II, "so its clock has 1.250 s left, as before the death ... but it was 1.500000"; under DG-III,
+"its Ultimate gadget cast once more, inside the same death ... to be 2, but it was 1".
+
+**Not measured:** the real-row test under any break (outside the prefix); a death inside the player's own skill
+activation, and a Support gadget's buff on the dead player (read and not tested); War's gadgets (not fired, J2); a real
+wearer's gadgets in play; anything drawn on a screen.
+
+**THE SENTENCE'S TRAP HALF IS NOT YET BUILT** and joins with traps, scheduled 2026-10-19.
+
+---
+
 ## 2026-10-19 — A row can make its wearer's own deployable's blast strike the wearer standing inside it, at the whole of what an enemy standing there would take: one flag, a search for the wearer at five blow sites, and the blow carrying the 2026-10-15 share's mark, with no row authored and the sentence's trap half not yet built
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.h` and `.cpp` (new:

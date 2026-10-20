@@ -1436,6 +1436,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bTeleportRandomly = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::TeleportRandomlyAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT FIRES EVERY GADGET THE WEARER COMMANDS, ONCE, AT ONCE. Ruled 2026-10-19 (C1). The
+					// value is 100 and is not read.
+					Action.bGadgetsCastNow = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetsCastNowAction,
+						ESearchCase::IgnoreCase);
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
 					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(

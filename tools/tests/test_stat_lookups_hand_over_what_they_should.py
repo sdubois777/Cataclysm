@@ -210,7 +210,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: Corrected on 2026-10-19 when that layer was moved onto development: it
 #: was written as 67 beside "added one more", and the ally-buff refusal's
 #: 68 had landed below it, so the count after both is 69.
-CALL_SITES = 69
+#: NO FIGURE IS KEPT HERE ANY MORE, ruled by the coordinating session on
+#: 2026-10-19: a number asserted nowhere had drifted from what it described
+#: (69 written, 165 found), so the failure message below prints the count the
+#: check measures instead. The dated lines above are kept as the history.
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1135,7 +1138,7 @@ def test_every_call_site_is_in_the_inventory() -> None:
         "what it hands over, the way every entry there carries one. Issue #1992."
         f"\n\nScope: parsed by matching parentheses over comment-stripped and "
         f"string-stripped source, under {SOURCE_ROOT.name}, tests excluded. "
-        f"{CALL_SITES} call sites were measured on {MEASURED_AT[:8]}.")
+        f"{len(found)} call sites were found in this tree.")
 
 
 def test_the_inventory_holds_no_call_site_that_has_gone() -> None:

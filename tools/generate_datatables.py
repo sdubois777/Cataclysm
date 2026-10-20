@@ -5419,6 +5419,23 @@ MAX_TELEPORT_RANDOMLY_METRES = 20.0
 #: one event for which the engine holds whether the blow was a tick.
 TELEPORT_RANDOMLY_EVENTS = ("hit_taken",)
 
+#: The action that FIRES EVERY GADGET ITS WEARER COMMANDS, ONCE, AT ONCE: each
+#: skill gadget casts its skill once at the target its own clock would choose,
+#: at the whole of its damage, ignoring its clock and leaving it as it was.
+#: Ruled 2026-10-19 by the coordinating session (C1-C4), for "When you die, all
+#: your active traps and gadgets immediately trigger simultaneously": the
+#: sentence's gadget half; its trap half joins when traps are built.
+#: `UCataclysmAbilitySystemComponent::GadgetsCastNowAction` holds the same name.
+#:
+#: ITS VALUE IS 100 AND NOTHING ELSE, as a cleanse's is. The game does not read
+#: it: every cast is at the whole of its damage (C2), so the row has no size.
+#: NO TRIGGER COOLDOWN: its one event is raised once per death.
+GADGETS_CAST_NOW_ACTION = "gadgets_cast_now"
+
+#: The events it may hang on: the player's death and no other. Ruled
+#: 2026-10-19 (C1).
+GADGETS_CAST_NOW_EVENTS = ("player_death",)
+
 #: The action that CLEANSES THE WEARER: it removes every damage over time, stun,
 #: debuff and fear on the wearer that the wearer did not put there itself, which
 #: is what `UCataclysmDebuffs::Cleanse` removes. Issue #1833, ruled 2026-09-26
@@ -6053,6 +6070,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_teleport_randomly_action(index, who, action, event, fraction_of,
                                         kind, raw, headers)
         return
+    if action == GADGETS_CAST_NOW_ACTION:
+        _check_gadgets_cast_now_action(index, who, action, event, fraction_of,
+                                       kind, raw, headers)
+        return
     if action in SKILL_IN_HAND_ACTIONS:
         _check_repeat_skill_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -6117,6 +6138,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(REMAINING_DAMAGE_ACTIONS)}; or a status action, "
             f"{', '.join(ALL_APPLY_STATUS_ACTIONS)}; or {DAMAGE_IMMUNITY_ACTION}; "
             f"or {TELEPORT_RANDOMLY_ACTION}; "
+            f"or {GADGETS_CAST_NOW_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
             f"or {STUN_NEAR_THE_DYING_ACTION}; "
             f"or {CLEANSE_ACTION}; "
@@ -6601,6 +6623,35 @@ def _check_teleport_randomly_action(index: int, who: str, action: str, event: st
                 f"empty.")
 
 
+def _check_gadgets_cast_now_action(index: int, who: str, action: str, event: str,
+                                   fraction_of: str, kind: str, raw,
+                                   headers: dict[str, int]) -> None:
+    """Everything a row that fires its wearer's gadgets at its death must say,
+    and everything it must not. Ruled 2026-10-19 (C1). ON `player_death` ONLY,
+    the one event the engine acts on for it. Its value of 100 is checked where
+    the value is read. A fraction, a value kind and a scale each mean nothing
+    here, and `player_death` carries no tags for a scoped row to match, so each
+    is refused rather than dropped. A Trigger Cooldown is refused by the general
+    check, because the action takes none: one death raises one event.
+    """
+    if event not in GADGETS_CAST_NOW_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} fires its wearer's gadgets "
+            f"on the event {event or '(none)'!r}. The game fires them at the "
+            f"wearer's death and at nothing else: "
+            f"{', '.join(GADGETS_CAST_NOW_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale"))),
+                            ("Required Tags",
+                             clean(_cell(raw, headers, "Required Tags")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} fires its wearer's "
+                f"gadgets and states {column} {written!r}. It has no size and "
+                f"its event carries no tags, so the column must be empty.")
+
+
 def _check_ailment_rider_action(index: int, who: str, action: str, event: str,
                                 fraction_of: str, kind: str, raw,
                                 headers: dict[str, int]) -> None:
@@ -7025,6 +7076,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action not in ALL_APPLY_STATUS_ACTIONS \
                     and action != DAMAGE_IMMUNITY_ACTION \
                     and action != TELEPORT_RANDOMLY_ACTION \
+                    and action != GADGETS_CAST_NOW_ACTION \
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != BLAST_FROM_THE_DYING_ACTION \
                     and action != STUN_NEAR_THE_DYING_ACTION \
@@ -7368,6 +7420,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"{high:g} per cent off its carrier's maximum health. A "
                     f"lowered maximum takes above 0 and up to "
                     f"{MAX_AILMENT_MAX_HEALTH_REMOVED:g} per cent.")
+
+        # A ROW THAT FIRES THE WEARER'S GADGETS AT ITS DEATH STATES 100, which the
+        # game does not read: every cast is whole. Ruled 2026-10-19 (C2).
+        if action == GADGETS_CAST_NOW_ACTION:
+            if not (low == 100 and high == 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} fires its "
+                    f"wearer's gadgets and states the value {low:g} to "
+                    f"{high:g}. Each gadget casts at the whole of its damage, "
+                    f"so its value is 100 and nothing else.")
 
         # A CLEANSE'S VALUE IS 100, which the game does not read. Issue #1833.
         if action == CLEANSE_ACTION:

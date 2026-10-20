@@ -878,7 +878,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 676 SINCE THE ROW THAT REFUSES BUFFS FROM ALLIES, issue #1833, from 675.
 	//
 	// AND 677 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER, issue #1833, from 676.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    677)
+	//
+	// AND 678 SINCE THE ROW BY WHICH EVERY SKILL GADGET CASTS AT ITS WEARER'S DEATH, issue #1833, from 677.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    678)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
