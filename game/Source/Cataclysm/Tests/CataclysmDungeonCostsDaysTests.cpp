@@ -1566,7 +1566,13 @@ bool FCataclysmDeathResolvesNoQuestDungeonTest::RunTest(const FString& Parameter
 	// passes and make that control false. Until that date the timer had 3
 	// days left and ran out on the third. With 12 it runs the five days and
 	// reads 7. A death that touched the timer would leave some other figure.
-	const float QuestTimer = UCataclysmSurgeScheduler::QuestResolveDays;
+	//
+	// THE 25 IS SET HERE AND NOT READ FROM THE GAME. The test needs a Quest
+	// timer with 12 days left, because it runs five; any timer longer than that
+	// serves. Until 2026-10-19 this read the game's flat Quest timer, which was
+	// 25 days; since then a Quest dungeon's timer comes from its depth, as an
+	// ordinary dungeon's does, so there is no one figure to read.
+	const float QuestTimer = 25.0f;
 	const float QuestDaysLeft = 12.0f;
 
 	FAfterTheDays QuestDeath;

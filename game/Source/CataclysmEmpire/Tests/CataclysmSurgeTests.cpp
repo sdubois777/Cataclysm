@@ -2706,14 +2706,20 @@ bool FCataclysmSurgeQuestChanceTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A Quest dungeon is built to the Quest row of the spec, and its timer is flat.
+ * A Quest dungeon is built to the Quest row of the spec, and its timer comes
+ * from its depth as an ordinary dungeon's does.
  *
  * WHAT IT SHARES WITH A BASIC DUNGEON IS AS MUCH THE POINT AS WHAT IT DOES NOT.
- * One boss on the final floor, a rolled sub-type, and a walk of a day a floor
- * are all the ordinary rules; only the floor range and the timer differ.
+ * One boss on the final floor, a rolled sub-type, a walk of a day a floor, and
+ * since 2026-10-19 a timer drawn from the depth with the same jitter, are all
+ * the ordinary rules; only the floor range differs.
+ *
+ * **THIS WAS `...WithAFlatTimer` UNTIL 2026-10-19**, and asserted the timer was
+ * exactly 25 days. The owner ruled on 2026-10-16 that a Quest dungeon's timer
+ * follows its depth; `docs/DECISIONS.md`, 2026-10-19, has the change.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestDungeonTest,
-	"Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithAFlatTimer",
+	"Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
@@ -2774,6 +2780,14 @@ bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
 
 		TSet<int32> Depths;
 
+		// THE TIMERS, IN HUNDREDTHS OF A DAY, overall and by floor count. Rounded
+		// as `Cataclysm.Surge.ADungeonsTimerComesFromItsDepthAndThenVaries`
+		// rounds them, so two floats that differ only in their last bit are
+		// one value.
+		TSet<int32> Timers;
+		TMap<int32, TSet<int32>> TimersAtDepth;
+		TMap<int32, int32> RollsAtDepth;
+
 		for (int32 Roll = 0; Roll < 200; ++Roll)
 		{
 			const FCataclysmDungeon Made = Scheduler->MakeDungeon(
@@ -2792,11 +2806,29 @@ bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
 				Made.Floors >= Quest.LeastFloors
 				&& Made.Floors <= Quest.MostFloors);
 
-			// A FLAT TIMER, NOT ONE DRAWN FROM ITS DEPTH. Since 2026-10-13 it
-			// also hits the host city when it runs out; see `QuestResolveDays`.
-			TestEqual(TEXT("its timer is the flat relocation clock"),
-					  Made.ResolveDays,
-					  UCataclysmSurgeScheduler::QuestResolveDays);
+			// A TIMER FROM ITS DEPTH, PLUS OR MINUS THE JITTER, the same band
+			// an ordinary dungeon's timer lies in. Until 2026-10-19 this asserted
+			// a flat 25 days. The timer has hit the host city when it runs out
+			// since 2026-10-13, so a deeper Quest dungeon now bites on a slower
+			// schedule, which is the trade every other dungeon makes.
+			const float Base = UCataclysmDayClock::ResolveDaysFor(Made.Floors);
+			const float Least =
+				Base * (1.0f - UCataclysmSurgeScheduler::ResolveJitter);
+			const float Most =
+				Base * (1.0f + UCataclysmSurgeScheduler::ResolveJitter);
+
+			TestTrue(FString::Printf(
+				TEXT("a %s Quest dungeon of %d floors has a timer of %.2f days, "
+					 "within the jitter of %.2f"),
+				*UCataclysmEmpireMap::TierName(Tier), Made.Floors,
+				Made.ResolveDays, Base),
+				Made.ResolveDays >= Least - 0.001f
+				&& Made.ResolveDays <= Most + 0.001f);
+
+			const int32 Hundredths = FMath::RoundToInt(Made.ResolveDays * 100.0f);
+			Timers.Add(Hundredths);
+			TimersAtDepth.FindOrAdd(Made.Floors).Add(Hundredths);
+			++RollsAtDepth.FindOrAdd(Made.Floors);
 
 			// AND ITS OWN ROW CARRIES NO DAMAGE. What its timer takes from the
 			// host is the ordinary row of the host's tier, which is
@@ -2819,6 +2851,48 @@ bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
 			TEXT("%s Quest dungeons vary in depth: %d different ones in 200 "
 				 "rolls"), *UCataclysmEmpireMap::TierName(Tier), Depths.Num()),
 			Depths.Num() > 1);
+
+		// THE TIMERS VARY ACROSS THE ROLLS. A flat timer gives one value here,
+		// which is what this test asserted until 2026-10-19.
+		TestTrue(FString::Printf(
+			TEXT("%s Quest dungeon timers vary: %d different ones in 200 rolls"),
+			*UCataclysmEmpireMap::TierName(Tier), Timers.Num()),
+			Timers.Num() > 1);
+
+		// AND THEY VARY AT ONE DEPTH, WHICH ONLY THE JITTER DOES. The check
+		// above passes for a timer that is the depth's figure with no jitter,
+		// because the depths vary; two rolls of the same floor count would then
+		// share one timer. So this groups the rolls by floor count and asks for
+		// a floor count whose rolls carry more than one timer. Without the
+		// jitter every group holds one value and this fails.
+		//
+		// THE CONTROL FIRST: the grouping must have found a floor count rolled
+		// at least twice, or the jitter check below has nothing to compare and
+		// fails for a reason that says nothing about the jitter.
+		int32 MostRollsAtOneDepth = 0;
+		for (const TPair<int32, int32>& Pair : RollsAtDepth)
+		{
+			MostRollsAtOneDepth = FMath::Max(MostRollsAtOneDepth, Pair.Value);
+		}
+
+		int32 MostTimersAtOneDepth = 0;
+		for (const TPair<int32, TSet<int32>>& Pair : TimersAtDepth)
+		{
+			MostTimersAtOneDepth =
+				FMath::Max(MostTimersAtOneDepth, Pair.Value.Num());
+		}
+
+		TestTrue(FString::Printf(
+			TEXT("CONTROL: some %s floor count was rolled at least twice (at "
+				 "most %d times)"),
+			*UCataclysmEmpireMap::TierName(Tier), MostRollsAtOneDepth),
+			MostRollsAtOneDepth >= 2);
+
+		TestTrue(FString::Printf(
+			TEXT("%s Quest dungeons of the same floor count carry different "
+				 "timers: at most %d at one depth"),
+			*UCataclysmEmpireMap::TierName(Tier), MostTimersAtOneDepth),
+			MostTimersAtOneDepth >= 2);
 	}
 
 	// A BASIC DUNGEON IS UNCHANGED BY ALL OF THIS, checked here rather than left
@@ -2837,9 +2911,21 @@ bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("asked for nothing in particular, it is Basic"),
 				  Made.Type, ECataclysmDungeonType::Basic);
 		TestTrue(TEXT("and it is a kind that detonates"), Made.Resolves());
-		TestTrue(TEXT("and its timer came from its depth"),
-				 Made.ResolveDays
-					 != UCataclysmSurgeScheduler::QuestResolveDays);
+		// THE SAME BAND THE QUEST DUNGEONS ABOVE LIE IN. Until 2026-10-19 this
+		// asserted only that the timer was not the flat Quest figure of 25
+		// days; with that figure gone, the band is what says the timer came
+		// from the depth.
+		const float Base = UCataclysmDayClock::ResolveDaysFor(Made.Floors);
+		const float Least =
+			Base * (1.0f - UCataclysmSurgeScheduler::ResolveJitter);
+		const float Most =
+			Base * (1.0f + UCataclysmSurgeScheduler::ResolveJitter);
+
+		TestTrue(FString::Printf(
+			TEXT("and its timer of %.2f days came from its %d floors: within "
+				 "the jitter of %.2f"), Made.ResolveDays, Made.Floors, Base),
+			Made.ResolveDays >= Least - 0.001f
+			&& Made.ResolveDays <= Most + 0.001f);
 	}
 
 	return true;

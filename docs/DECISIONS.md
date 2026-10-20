@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-19 — A Quest dungeon's timer in the game comes from its depth, as an ordinary dungeon's does
+
+**The game follows the simulation.** `UCataclysmSurgeScheduler::MakeDungeon` now gives every kind of dungeon it builds
+the same timer: `UCataclysmDayClock::ResolveDaysFor(Floors) x (1 +/- ResolveJitter 0.15)`. The flat 25-day
+`QuestResolveDays` is removed. Branch `feat/game-quest-timer-by-depth-2`, on `development` at `a7b2bcfd9` (written on `6a9a43f1b` as
+`feat/game-quest-timer-by-depth-1` and moved with its zero-context patch ids unchanged); it follows
+the entry headed "In the simulation a Quest dungeon's timer is rolled from its own depth, as an ordinary dungeon's is".
+
+### SAID FIRST
+
+- **A QUEST DUNGEON LEFT ALONE HITS ITS HOST LESS OFTEN.** On an Outpost (20 to 30 floors) its timer is 42 to 58 days
+  before the jitter, against 25; on a Bulwark (30 to 45) 58 to 82; on a Sanctuary (30 to 50) 58 to 90; on a Pillar
+  (50 to 70) 90 to 122. Each of those is then varied by up to 15% either way, as an ordinary dungeon's is.
+- **NO RANDOM DRAW IS ADDED OR REMOVED.** The jitter was already drawn for a Quest dungeon and thrown away, so that
+  every kind took the same numbers off the stream. It is now used. A run with a given seed rolls the same dungeons, in
+  the same places, as before; only a Quest dungeon's timer differs.
+- **A CITY'S FLOOR UPGRADES NOW MOVE A QUEST DUNGEON'S TIMER TOO.** They already moved its floor count; the timer now
+  follows that count. The walk-cost upgrade still moves neither, as for any dungeon.
+- The size of a Quest dungeon's hit is unchanged: the ordinary row of its host's tier, ruled 2026-10-13.
+
+### What was ruled
+
+The owner, 2026-10-16: a Quest dungeon's timer scales with its depth like other dungeons, and the flat 25 days is
+retired. The simulation changed that day; the game held `QuestResolveDays = 25` until this layer. The design document
+already says "Its timer follows its depth as an ordinary dungeon's does".
+
+The coordinating session accepted the plan for this layer on 2026-10-19, with two changes to its tests: the Surge test
+must carry an assertion that fails when the jitter is missing (rolls of one floor count carrying different timers, with
+a control that some floor count was rolled twice), and the relocation campaign test that needs more than 200 Quest
+timers with a choice runs twice as many campaigns rather than having that 200 lowered.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`, `MakeDungeon`: the branch on the kind is gone;
+  `Dungeon.ResolveDays = Base * Jitter;` for every kind. The comment that the draws happen whatever the kind is kept.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`: `QuestResolveDays` and its comment removed; the comments on
+  `FCataclysmDungeon::Resolves` and `MakeDungeon` that named it now say the timer comes from the depth.
+
+### Tests
+
+Unreal, changed (none added, none removed):
+
+- `Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithAFlatTimer` is renamed
+  `Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth`. Old: every Quest dungeon's timer equals
+  `QuestResolveDays`. New: it lies within `ResolveDaysFor(Floors) x (1 -/+ ResolveJitter)`, the band
+  `Cataclysm.Surge.ADungeonsTimerComesFromItsDepthAndThenVaries` uses; the 200 rolls of each tier carry more than one
+  timer; and, the check that fails without the jitter, some floor count's rolls carry more than one timer, after a
+  control that some floor count was rolled at least twice. Its Basic dungeon check was "the timer is not
+  `QuestResolveDays`"; it is now the same band.
+- `Cataclysm.DungeonMode.ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing`, in
+  `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`: its Quest timer read `QuestResolveDays`; it is now `25.0f` set in the test. The test needs
+  a timer with 12 days left, because it runs five; any timer longer than that serves.
+- `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`: 20 campaigns became 40; the assertion that more than 200
+  timers had a choice is unchanged. An Outpost Quest timer is now about twice the old 25 days, so about half as many
+  run out in a campaign. No other test's campaigns changed.
+
+Python, in `tools/tests/test_surge_port.py`:
+
+- `test_the_model_rolls_its_timer_from_its_depth_and_the_game_not_yet` is replaced, as its docstring instructed, by
+  `test_both_kinds_take_their_timer_from_one_formula_in_both`: the model half as before; the game half asks that
+  `MakeDungeon` assigns `ResolveDays` once, as `Base * Jitter`, with no `Kind ==` or `Type ==` in that statement, and
+  that the header no longer names `QuestResolveDays`.
+- `test_the_game_does_not_roll_its_timer_from_its_depth` loses its two checks on the flat timer and is renamed
+  `test_the_jitter_is_drawn_whatever_the_kind`; the check that the jitter is drawn unconditionally is kept.
+
+### Proofs
+
+Both registered proofs PROVED, each half as registered. The Unreal halves ran in the window below with
+`unreal_build.prove_cpp_guard` on `0aaa674d`, prefix
+`Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth`; the Python halves ran with
+`tools/prove_guard.py` in a `git archive` copy of `0aaa674d`, on `tools/tests/test_surge_port.py`, before the Unreal
+halves and in a separate copy of the files.
+
+| break | Unreal, with the break in | Unreal, restored | Python, with the break in | Python, restored |
+|---|---|---|---|---|
+| PROOF 1: `MakeDungeon` gives a Quest dungeon `25.0f` again | "1 tests performed, 0 succeeded, 1 failed: AQuestDungeonIsBuiltToItsOwnSpecWithATimerFromItsDepth"; the band failed on all 600 rolls (200 a tier, three tiers), "timers vary" and "of the same floor count carry different timers" once a tier; both CONTROL assertions passed | "1 tests performed, 1 succeeded, 0 failed" | "1 failed, 59 passed": `test_both_kinds_take_their_timer_from_one_formula_in_both` | "60 passed" |
+| PROOF 2: a Quest dungeon's timer is `Base` without the jitter | the same test failed, on "of the same floor count carry different timers: at most 1 at one depth" once a tier (Outpost, Bulwark, Sanctuary) and on nothing else | "1 tests performed, 1 succeeded, 0 failed" | "1 failed, 59 passed": the same one-formula check | "60 passed" |
+
+Each failing assertion was read from the copied engine log of the broken run. Two asset-manager lines about
+`GameFeatureData` appear in the broken and the restored runs alike, so they are the engine starting up and not a test.
+
+### Run
+
+Run by the dungeon session on 2026-10-19 under the lock void-zones-w28, given by the coordinating session once
+`development`'s runs on `a7b2bcfd9` had completed with success, on `feat/game-quest-timer-by-depth-2` at `0aaa674d`.
+The five conditions were checked immediately before the lock was taken: both of `development`'s runs on `a7b2bcfd9`
+(Unreal and CI) succeeded; the three latest runs were completed and none in progress or queued; the lock was free; no
+cl, link, UnrealBuildTool or UnrealEditor process ran; no pull request was open. The lock was released before this
+was written.
+
+- **Build:** "Build: Succeeded - 69 actions, 59 files compiled".
+- **The whole Unreal suite:** "3940 tests performed, 3940 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3940 tests in the tree at 0aaa674d2; 3940 performed, gap 0; every declared test was reported by the
+  run." Registered 3940 and 0: the 3940 measured at `7056285c1` (merged as `a7b2bcfd9`) plus nothing, since one test
+  was renamed and none added. `AQuestDungeonMovesToAnAdjacentCity` passed at 40 campaigns, so more than 200 Quest
+  timers had a choice.
+- **Python:** "6789 passed, 8 skipped"; JUnit tests 6797, failures 0, errors 0, skipped 8. Registered from the run
+  before the window, 6790 passed and 7 skipped: the one difference is
+  `test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`, which skips once the checkout has built
+  modules ("this checkout has its modules built, so nothing is missing"), and the window had just built them. Lint:
+  "All checks passed!".
+
+---
+
 ## 2026-10-19 — A row can make its holder refuse every buff another character gives it: one flag on the receiver, asked of each ally by the shared buffs' step and by an aura's two passes, each taking back what is already held at its own next pass, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the flag's name
@@ -7977,6 +8081,9 @@ not measured for it.
 
 A reading that moved with the stream: `siege_urgency`'s prose says the median walk to a Sanctuary is 34 days; at
 8096ac39 the guard's 320 campaigns gave 38 and failed, at 3a48236a it passes again. Left as it is, by ruling.
+
+> 2026-10-19: the game follows from the entry of that day headed "A Quest dungeon's timer in the game comes
+> from its depth, as an ordinary dungeon's does", which removes `QuestResolveDays`.
 
 ---
 
