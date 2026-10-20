@@ -126,17 +126,17 @@ class TestTheCadence:
     # own. The game's layer moved both constants and deleted that file, as
     # the file said to. `docs/DECISIONS.md`, 2026-10-13.
     #
-    # `DungeonsPerSurge` IS OUT OF THIS TABLE AGAIN, SINCE 2026-10-16. The
-    # model went to an opening wave of 12 and then 8 a wave that day; the game
-    # keeps 5 a wave and has no opening size until its own layer. The ruling:
-    # "a 'model and not yet in the game' check file, as on 2026-10-13, failing
-    # when the game layer lands", a labelled judgement by the coordinating
-    # session under the owner's delegation, 2026-10-16. Both sides are pinned
-    # in
-    # `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`,
-    # which says what to do when the game's number moves: put the row back.
+    # `DungeonsPerSurge` WAS OUT OF THIS TABLE FROM 2026-10-16 TO 2026-10-20.
+    # The model went to an opening wave of 12 and then 8 a wave on the first
+    # of those days, and the game kept 5 a wave with no opening size until its
+    # own layer on the second, with the difference recorded in a file of its
+    # own as on 2026-10-13. The game's layer put the row back, added the
+    # opening size beside it, and took the wave checks out of that file, as
+    # the file said to. `docs/DECISIONS.md`, 2026-10-20.
     NUMBERS = {
         "IntervalDays": "surge_interval_days",
+        "DungeonsPerSurge": "surge_dungeon_count",
+        "OpeningDungeonsPerSurge": "surge_opening_count",
         "IntervalDecay": "surge_interval_decay",
         "LeastIntervalDays": "surge_interval_min",
         "CountGrowthPerSurge": "surge_count_growth",
@@ -168,6 +168,45 @@ class TestTheCadence:
                 < number(surge_header, "IntervalDays"))
         assert (number(surge_header, "MostDungeonsPerSurge")
                 > number(surge_header, "DungeonsPerSurge"))
+        assert (number(surge_header, "MostDungeonsPerSurge")
+                >= number(surge_header, "OpeningDungeonsPerSurge"))
+
+    def test_both_start_the_first_wave_from_the_opening_size(self, model):
+        """THE OPENING SIZE IS READ, AND READ ONLY AT WAVE INDEX 0, in both.
+
+        `TestTheCadence.NUMBERS` holds `OpeningDungeonsPerSurge` equal to
+        `surge_opening_count`, and that comparison would pass with a constant
+        nothing reads. So the model is asked for its first two waves at an
+        opening size that differs from the later one, and the game's
+        `DungeonsInNextSurge` is read for the choice it makes: the opening size
+        when `SurgeIndex` is 0 and `DungeonsPerSurge` otherwise, as
+        `Simulation.surge_count` chooses on `surge_index`. Since 2026-10-20 in
+        the game and 2026-10-16 in the model.
+        """
+        from types import SimpleNamespace
+
+        from cataclysm_sim.engine import Simulation
+
+        first = Simulation.surge_count(SimpleNamespace(cfg=model, surge_index=0))
+        second = Simulation.surge_count(SimpleNamespace(cfg=model, surge_index=1))
+        assert model.surge_opening_count != model.surge_dungeon_count, (
+            "CONTROL: the model's opening size equals its later wave, so the "
+            "two assertions below cannot tell which one a wave read")
+        assert (first, second) == (model.surge_opening_count,
+                                   model.surge_dungeon_count), (
+            f"the model's first two waves are {first} and {second}, not "
+            f"{model.surge_opening_count} and {model.surge_dungeon_count}")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        body = body_of(source, "int32 UCataclysmSurgeScheduler::DungeonsInNextSurge()")
+        assert re.search(
+            r"SurgeIndex\s*==\s*0\s*\?\s*OpeningDungeonsPerSurge\s*:\s*"
+            r"DungeonsPerSurge\b", body), (
+            "DungeonsInNextSurge no longer starts from OpeningDungeonsPerSurge "
+            "when SurgeIndex is 0 and from DungeonsPerSurge otherwise. The "
+            "model's Simulation.surge_count does: its first wave is "
+            "surge_opening_count. Code read: " + body[:300])
 
 
 class TestWhatACityFallingDoes:
@@ -597,18 +636,18 @@ class TestWhatADungeonIs:
     # Pillar and `TuningConfig.spec` raises when asked for another, so there are
     # thirteen pairs and not sixteen.
     #
-    # THE FOUR BASIC ROWS' DAMAGE IS THE GAME'S, SINCE 2026-10-16. That day the
-    # model's went to 0.7 of these (70 and 175 on an Outpost, 189 and 700 on a
-    # Bulwark, 448 and 1,680 on a Sanctuary, 840 and 3,150 on the Pillar) and
-    # the game's did not. The model's are pinned in
-    # `tools/tests/test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`
-    # and the model check below skips these eight numbers. When the game takes
-    # the new rows, write them here and take the skip out.
+    # THE FOUR BASIC ROWS' DAMAGE IS 0.7 OF WHAT IT WAS, in the model since
+    # 2026-10-16 and in the game since 2026-10-20. Until then they were 100
+    # and 250 on an Outpost, 270 and 1,000 on a Bulwark, 640 and 2,400 on a
+    # Sanctuary, 1,200 and 4,500 on the Pillar. Between those two days the
+    # model check below skipped these eight numbers and the two halves were
+    # pinned apart in a file of their own; the game's layer wrote the new rows
+    # here and took the skip out, as that file said to.
     SPECS = {
-        ("Basic", "Outpost"):        (8, 15, 100.0, 250.0),
-        ("Basic", "Bulwark"):        (15, 25, 270.0, 1000.0),
-        ("Basic", "Sanctuary"):      (25, 40, 640.0, 2400.0),
-        ("Basic", "Pillar"):         (40, 60, 1200.0, 4500.0),
+        ("Basic", "Outpost"):        (8, 15, 70.0, 175.0),
+        ("Basic", "Bulwark"):        (15, 25, 189.0, 700.0),
+        ("Basic", "Sanctuary"):      (25, 40, 448.0, 1680.0),
+        ("Basic", "Pillar"):         (40, 60, 840.0, 3150.0),
 
         ("Quest", "Outpost"):        (20, 30, 0.0, 0.0),
         ("Quest", "Bulwark"):        (30, 45, 0.0, 0.0),
@@ -727,12 +766,6 @@ class TestWhatADungeonIs:
                 f"{kind} on {tier_name}: this test expects {(least, most)} "
                 f"floors, the model has {spec.floors}")
 
-            # THE MODEL'S ORDINARY DAMAGE IS 0.7 OF THE GAME'S SINCE
-            # 2026-10-16 and is checked in
-            # `test_the_waves_and_the_hit_in_the_model_and_not_yet_in_the_game.py`.
-            # The floors above are still compared here.
-            if kind == "Basic":
-                continue
             assert spec.defense_damage == pytest.approx(defence), (
                 f"{kind} on {tier_name}: the model removes "
                 f"{spec.defense_damage} defence points and this test expects "
@@ -2169,33 +2202,29 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
 
     @staticmethod
     def the_games_cadence() -> dict:
-        """The game's interval and surge size, read out of its header.
+        """The game's interval, opening wave and later wave, read out of its
+        header.
 
-        THE LADDERS BELOW ARE THE MODEL'S ARITHMETIC AT THE GAME'S TWO
-        STARTING NUMBERS, since 2026-10-13. Both halves are 90 days and 5
-        dungeons since the game's layer of that day, and `TestTheCadence`
-        holds them equal, so this is also the ladder at `TuningConfig()`.
-        It is still read from the header: what this class holds is that
-        the model's FORMULA gives the Unreal test's figures from the
-        game's own constants. The figures in `CataclysmSurgeTests.cpp` and
-        below were taken at 120 and 4 until that layer and changed
-        together.
+        THE LADDERS BELOW ARE THE MODEL'S ARITHMETIC AT THE GAME'S THREE
+        STARTING NUMBERS: 90 days, an opening wave of 12 and 8 a wave after
+        it, in both halves since the game's layer of 2026-10-20, and
+        `TestTheCadence` holds them equal, so this is also the ladder at
+        `TuningConfig()`. It is still read from the header: what this class
+        holds is that the model's FORMULA gives the Unreal test's figures from
+        the game's own constants. The figures in `CataclysmSurgeTests.cpp` and
+        below were taken at 120 and 4 until 2026-10-13, at 90 and 5 with no
+        opening size until 2026-10-20, and changed together each time.
+
+        FROM 2026-10-16 TO 2026-10-20 THE MODEL WAS GIVEN AN OPENING SIZE
+        EQUAL TO `DungeonsPerSurge`, because the game had none; the ruling of
+        2026-10-16 said these checks would move with the game's layer, and
+        they did.
         """
         header = read(SURGE_HEADER)
-        # THE GAME HAS NO OPENING SIZE, so its first wave is `DungeonsPerSurge`
-        # like every other, and the model is given that too. Since 2026-10-16
-        # the model's own first wave is `surge_opening_count`, 12, and the
-        # ladders below ask wave index 0. The ruling: "the two hand-worked
-        # checks set the model's surge_opening_count equal to its
-        # surge_dungeon_count so they keep comparing the Unreal test's
-        # hand-worked ladder (they move with the game layer)", a labelled
-        # judgement by the coordinating session under the owner's
-        # delegation, 2026-10-16.
-        per_surge = int(number(header, "DungeonsPerSurge"))
         return dict(
             surge_interval_days=number(header, "IntervalDays"),
-            surge_dungeon_count=per_surge,
-            surge_opening_count=per_surge)
+            surge_dungeon_count=int(number(header, "DungeonsPerSurge")),
+            surge_opening_count=int(number(header, "OpeningDungeonsPerSurge")))
 
     def gap_at(self, mode, index: float) -> float:
         from cataclysm_sim.config import SurgeMode, TuningConfig
@@ -2227,23 +2256,32 @@ class TestTheHandWorkedFiguresInTheUnrealTest:
         assert self.gap_at("accelerating", 13) == pytest.approx(25.0, abs=0.01)
 
     def test_the_swelling_ladder_still_holds(self):
-        assert self.count_at("swelling", "standard", 0) == 5
-        assert self.count_at("swelling", "standard", 1) == 5
-        assert self.count_at("swelling", "standard", 2) == 6
-        assert self.count_at("swelling", "standard", 3) == 6
-        assert self.count_at("swelling", "standard", 4) == 7
-        assert self.count_at("swelling", "standard", 17) == 13
+        """The opening 12, then 8 plus half a dungeon a surge, truncated, to
+        the ceiling of 14, first reached at index 12. Until 2026-10-20 it was
+        5, 5, 6, 6, 7 and the ceiling at index 18."""
+        assert self.count_at("swelling", "standard", 0) == 12
+        assert self.count_at("swelling", "standard", 1) == 8
+        assert self.count_at("swelling", "standard", 2) == 9
+        assert self.count_at("swelling", "standard", 3) == 9
+        assert self.count_at("swelling", "standard", 4) == 10
+        assert self.count_at("swelling", "standard", 11) == 13
+        assert self.count_at("swelling", "standard", 12) == 14
+        assert self.count_at("swelling", "standard", 17) == 14
         assert self.count_at("swelling", "standard", 18) == 14
         assert self.count_at("swelling", "standard", 20) == 14
 
-    def test_heretic_brings_six_where_standard_brings_five(self):
-        """trunc(5 x 1.25). Six is a fifth more than five; at a wave of four
-        the same multiplier gave five, a quarter more. The design document
-        says "25% more dungeons", and that is on the owner's play-check
-        list in `docs/DECISIONS.md`, 2026-10-13."""
-        assert self.count_at("static", "standard", 0) == 5
-        assert self.count_at("static", "hardcore", 0) == 5
-        assert self.count_at("static", "heretic", 0) == 6
+    def test_heretic_brings_a_quarter_more_at_the_opening_and_after(self):
+        """trunc(12 x 1.25) = 15 at the opening wave and trunc(8 x 1.25) =
+        10 after it, a quarter more each time. At 5 a wave, until
+        2026-10-20, it was trunc(6.25) = 6, a fifth more; at a wave of four
+        it was 5, a quarter more. The design document says "25% more
+        dungeons"."""
+        assert self.count_at("static", "standard", 0) == 12
+        assert self.count_at("static", "hardcore", 0) == 12
+        assert self.count_at("static", "heretic", 0) == 15
+        assert self.count_at("static", "standard", 1) == 8
+        assert self.count_at("static", "hardcore", 1) == 8
+        assert self.count_at("static", "heretic", 1) == 10
 
     def test_heretic_at_the_ceiling_is_still_seventeen(self):
         """The figure the ordering argument turns on. If it ever equals the
