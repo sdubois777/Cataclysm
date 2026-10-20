@@ -456,6 +456,10 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # "CLEANSED" IS 100 ON `cleanse`: "You are cleansed every 5 seconds" removes
     # all of what a cleanse removes, and the generator requires 100. Issue #1833.
     "cleanse": {"cleansed": 100.0},
+    # "TRIGGER" IS 100 ON `gadgets_cast_now`: "When you die, all your active traps and gadgets immediately trigger
+    # simultaneously" fires every gadget, and the generator requires 100 and reads it nowhere. Ruled by the
+    # coordinating session on 2026-10-19.
+    "gadgets_cast_now": {"trigger": 100.0},
     # "ECHO" IS 100 ON `repeat_skill`, whose value is a chance: "Your spells
     # echo +1 time" repeats every time. Mechanism B2, ruled 2026-10-05: an
     # echo is read as a second free activation. The two rows that say "twice"
@@ -1010,8 +1014,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-19, from 675 over 540: one row on one enchantment.
 #: AND 677 OVER 542 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER,
 #: issue #1833, 2026-10-19, from 676 over 541: one row on one enchantment.
-AUTHORED_ROWS = 677
-AUTHORED_ENCHANTMENTS = 542
+#: AND 678 OVER 543 SINCE THE ROW BY WHICH EVERY SKILL GADGET CASTS AT ITS WEARER'S DEATH,
+#: issue #1833, 2026-10-19, from 677 over 542: one row on one enchantment.
+AUTHORED_ROWS = 678
+AUTHORED_ENCHANTMENTS = 543
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

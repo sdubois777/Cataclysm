@@ -304,6 +304,48 @@ which matters only if the Python suite runs during the proof (CLAUDE.md forbids 
 **A test and no proof:** a player without the row casting nothing, a gadget with no enemy in reach casting nothing, the
 whole damage, and a never-started clock staying unstarted.
 
+### THE MOVE AND THE ROW, BY THE ENCHANTMENT SESSION
+
+**The two commits of this layer were moved onto the deployable self-blast's top 0e81e2262** (#2454, whose files are
+what development holds once it merges), as e95a55850 and 6414c9a6a, from 1c448a5b6 and 61e7bb8af on 6a9a43f1b. Each
+kept its zero-context patch id (60d8b50cad10, e32710639ee4) and its count of removed lines (4 and 61), and the only
+lines of that top removed are this layer's own four. The conflicts were the decisions log (this entry placed above the
+self-blast's) and the generator's tests (this layer's 112 lines inserted after the self-blast's, the added lines
+checked to be exactly the commit's).
+
+One effect row, on the coordinating session's grant of the workbook for this row on 2026-10-19, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`:
+
+| Enchantment | Action | Action Event | Value Low | Value High | Every other cell |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `Positive_When_you_die_all_your_active_traps_and_gadgets` | `gadgets_cast_now` | `player_death` | 100 | 100 | empty |
+
+The name was derived with the generator's `row_name` from the sentence and checked against
+`game/Data/EnchantmentsPositive.csv`. The generator accepted the row. **678 rows over 543 enchantments**, from 677 over
+542, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in
+`docs/README.md`'s sheet table.
+
+**THE ROW-TEXT CHECK'S WORD FOR THE 100.** Measured with the row in and no word: `test_a_single_value_appears_in_its_words_outside_any_range`
+failed, "Positive_When_you_die_all_your_active_traps_and_gadgets#1: 100 against 'When you die, all your active traps
+and gadgets immediately trigger simultaneously'", 1 failed and 40 passed. With `"gadgets_cast_now": {"trigger": 100.0}`
+in `STATED_BY_WORD`, beside `cleanse`'s "cleansed" and `dot_remaining_nearby`'s "remaining": 41 passed. The value is
+read nowhere and the generator requires it, as a cleanse's is. **RULED BY THE COORDINATING SESSION ON 2026-10-19: "trigger"** (option a, over "all").
+**Proved needed with `tools/prove_guard.py`**, in a `git archive` copy of this layer's row commit so no other run read the break: the line removed, "PROVED: 1 failed, 40 passed in 0.73s | restored: 41 passed in 0.67s", the named failure `tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_single_value_appears_in_its_words_outside_any_range`.
+
+**`CALL_SITES` IS NO LONGER KEPT**, ruled by the coordinating session on 2026-10-19: "a number asserted nowhere that has
+drifted from what it describes is a stale figure, so fix it rather than file it", and "replace the constant with the
+count the check measures". The constant is gone from `tools/tests/test_stat_lookups_hand_over_what_they_should.py`,
+and the failure message of `test_every_call_site_is_in_the_inventory` prints `len(found)`, the count it has just
+measured. Shown by removing one inventory entry in memory and calling the test: the message ended "165 call sites were
+found in this tree." The dated lines that recorded each addition are kept as the history.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornDeathTriggerGivesItsWearerTheActionThatFiresItsGadgetsAtItsDeath`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Two real players each wear a drawback with no effect; the control's
+benefit has no effect either, and the case's is this row. It counts the worn actions with `bGadgetsCastNow` set that
+answer `player_death`: the control holds none and the wearer one. What the death then does is this layer's group's,
+where gadgets are placed and the wearer dies. One assertion on the case, so on assets built before the row it fails
+once, and only there.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.

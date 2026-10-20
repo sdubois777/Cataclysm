@@ -27757,4 +27757,48 @@ bool FCataclysmDeployableSelfBlastRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathTriggersGadgetsRowTest,
+	"Cataclysm.Enchantments.TheWornDeathTriggerGivesItsWearerTheActionThatFiresItsGadgetsAtItsDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When you die, all your active traps and gadgets immediately trigger simultaneously", the gadget half, ruled
+ * 2026-10-19 (Q1, C1-C5, J1, J2): the action `gadgets_cast_now` on `player_death`. WORN by a real player, against a
+ * CONTROL wearing a benefit with no effect, each with the same drawback with no effect. The test counts the worn
+ * actions that are this one and answer `player_death`; what the death then does to each skill gadget is
+ * `Cataclysm.DeathTriggersGadgets.`'s, where gadgets are placed and the wearer dies. ONE assertion on the case, so on
+ * assets built before the row it fails once, and only there.
+ */
+bool FCataclysmDeathTriggersGadgetsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* DeathTrigger = TEXT("Positive_When_you_die_all_your_active_traps_and_gadgets");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker Wearer(DeathTrigger, DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a striker wearing a benefit with no effect"), Control.Ready())
+		|| !TestTrue(TEXT("a striker wearing the death trigger"), Wearer.Ready()))
+	{
+		return false;
+	}
+
+	int32 Held[2] = {0, 0};
+	int32 Index = 0;
+	for (const CataclysmConsecutiveRowTest::FStriker* Striker : {&Control, &Wearer})
+	{
+		for (const FCataclysmPoolAction& Action : Striker->ASC->GetPoolActions())
+		{
+			Held[Index] += Action.bGadgetsCastNow && Action.Event == FName(TEXT("player_death")) ? 1 : 0;
+		}
+		++Index;
+	}
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, the wearer holds no such action.
+	TestEqual(TEXT("control: the wearer of a benefit with no effect holds no action firing its gadgets at its death"),
+			  Held[0], 0);
+	TestEqual(TEXT("wearing the death trigger, the wearer holds one action firing its gadgets on player_death. If not, "
+				   "DT_EnchantmentEffects may be older than the row: run tools/generate_datatable_assets.py"),
+			  Held[1], 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
