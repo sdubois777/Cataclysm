@@ -1022,8 +1022,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-19, from 677 over 542: one row on one enchantment.
 #: AND 681 OVER 546 SINCE THE THREE ROWS THAT CONVERT A SLOT INTO A PLACEABLE TRAP,
 #: issue #1833, 2026-10-20, from 678 over 543: three rows on three enchantments.
-AUTHORED_ROWS = 681
-AUTHORED_ENCHANTMENTS = 546
+#: AND 683 OVER 548 SINCE THE TWO ROWS THAT CONVERT THE SUPPORT AND BASIC SLOTS INTO TRAPS,
+#: issue #1833, 2026-10-21, from 681 over 546: two rows on two enchantments.
+AUTHORED_ROWS = 683
+AUTHORED_ENCHANTMENTS = 548
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
