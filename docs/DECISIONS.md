@@ -195,6 +195,29 @@ failure in the window is read against this list first.
 The sweep found no test that reads "Next surge in ... days, bringing N" with a literal N, and none that asserts the id
 of an opening-wave dungeon. Hand-placed dungeon ids are 700 and up, so the opening wave's ids 0 to 11 collide with none.
 
+**TWO OF THEM FAILED IN THE FIRST WINDOW, AND BOTH TESTS WERE CHANGED ON 2026-10-21, EVERY ASSERTION UNCHANGED.** The
+whole suite printed "3953 tests performed, 3951 succeeded, 2 failed: ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge,
+ADungeonResolvingTakesExactlyItsPointsOfDefence". The coordinating session ruled on 2026-10-21 that both proposals
+below are accepted.
+
+- **`Cataclysm.EmpireRun.ADungeonResolvingTakesExactlyItsPointsOfDefence`**, the HIGH entry above. It printed, for
+  example, "on day 46, Outpost (-1,-2) lost 70.00 defence, which is its dungeons' damage in points ... to be 0.000000,
+  but it was 70.000000", on eight such days, day 138 a Bulwark losing 189. **A FAULT IN THE TEST SINCE 2026-10-13,
+  EXPOSED BY THIS LAYER**, as predicted: the expected loss summed `Dungeon->DefenceDamage * Dungeon->BiteScale()` over
+  `Report.Resolved`, which is nought for a Quest dungeon, while `UCataclysmEmpireRun::ResolveDungeon` hits a standing
+  host with `SpecFor(Basic, Host->Tier)` at a scale of one. Old: the expected loss was that sum alone. New: it also adds
+  `UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, <the city's tier>).DefenceDamage` for each entry of
+  the day's `Report.QuestHits`, which holds one city id per hit, so a city hit twice is added twice, as the code takes
+  it twice. `FindOrAdd`, so a city with only a Quest hit that day is checked too (it already had a nought entry, since
+  the Quest dungeon's id is in `Resolved`). No resistance is applied, because no city in that run buys one, which is
+  also why the ordinary bite's expression has none.
+- **`Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`**, MEDIUM above. It printed
+  "Expected '0 of the 3 days a city fell had a fall's surge due and surged' to be true": the loop stopped at the third
+  fall, and with the larger waves this seed's first three falls all came within the least interval of a surge. Old:
+  `for (int32 Days = 0; Days < 600 && FallsSeen < 3; ++Days)`. New: `for (int32 Days = 0; Days < 600 && (FallsSeen < 3
+  || FallDaysDueThatSurged < 1); ++Days)`, so it watches until three falls have been seen and one fall day had a fall's
+  surge due and surged, still bounded at 600 days. The closing message's "%d of the %d days" counts the same variables.
+
 ### Proofs
 
 **Not yet run.** Two are registered, each to run with `tools/prove_guard.py` for the Python half in a `git archive` copy
@@ -214,7 +237,18 @@ in that half is not a prediction and not evidence either way.
 
 ### Run
 
-**Not yet run.** Nothing was built and no Unreal test was run by the writing session; the Unreal figures above are
+**THE FIRST WINDOW**, run by the dungeon session on 2026-10-20 under the lock `void-zones-w29` on f9a43874. "Build:
+Succeeded - 69 actions, 59 files compiled". The whole suite: "3953 tests performed, 3951 succeeded, 2 failed:
+ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge, ADungeonResolvingTakesExactlyItsPointsOfDefence"; "Declared:
+3953 tests in the tree at f9a438742; 3953 performed, gap 0". Python "6805 passed, 8 skipped"; JUnit tests 6813,
+failures 0, errors 0, skipped 8. Lint "All checks passed!". The window stopped before the proofs as registered. The two
+Python proof halves had been run in a `git archive` copy and PROVED: P1, `test_both_start_the_first_wave_from_the_opening_size`
+failed alone, "1 failed, 60 passed", restored "61 passed"; P2, `test_every_dungeon_spec_matches_in_the_game` failed
+alone, the same counts. The two failures are the two tests changed above, under the ruling of 2026-10-21.
+
+A second window, after these two test changes, runs the whole suite and the three Unreal proofs; not yet run.
+
+Nothing was built and no Unreal test was run by the writing session; the Unreal figures above are
 worked by hand. Python, on this branch before this entry was written, with every code and test change in place:
 "6806 passed, 7 skipped"; JUnit tests 6813, failures 0, errors 0, skipped 7. The run after this entry is in the hand-back
 of the writing session, not here, by the rule that nothing is recorded before the run that proves it. Lint: "All checks
