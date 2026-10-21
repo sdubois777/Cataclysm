@@ -246,7 +246,7 @@ Python proof halves had been run in a `git archive` copy and PROVED: P1, `test_b
 failed alone, "1 failed, 60 passed", restored "61 passed"; P2, `test_every_dungeon_spec_matches_in_the_game` failed
 alone, the same counts. The two failures are the two tests changed above, under the ruling of 2026-10-21.
 
-A second window, after these two test changes, runs the whole suite and the three Unreal proofs; not yet run.
+A second window, after these two test changes, runs the whole suite and the Unreal halves of the two registered proofs, as three runs: PROOF 1 once, and PROOF 2 once for each of its two tests (`ABiggerCityBreedsADeeperDungeon` and `RaisingACitysCeilingBuysMoreResolvesAtEveryTier`, which are in different test groups); not yet run.
 
 Nothing was built and no Unreal test was run by the writing session; the Unreal figures above are
 worked by hand. Python, on this branch before this entry was written, with every code and test change in place:
