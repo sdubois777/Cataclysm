@@ -615,7 +615,67 @@ with a ruling of its own; the generator refuses their slot tags on the flag unti
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**TWO WINDOWS, ON 2026-10-21. THE FIRST STOPPED AT THE WHOLE SUITE ON A FAILURE THAT NO ASSERTION RAISED; THE SECOND,
+RULED BY THE COORDINATING SESSION, RAN THE LAST THREE STEPS AND EVERY ONE WAS AS REGISTERED.** Both ran on development
+da6b31cb4 (the merge of the gadgets' death cast), with the lock taken once development's CI and Unreal runs on it had
+succeeded, with no run in progress and no pull request open. Three commits, in this order: the mechanism (c2354adba),
+the trap's `deployable_hit` tags (613d64749) and the four rows with the real-row test (ae1e8783e).
+
+**The first window, enchant-tp, 09:55:30 to 10:37:05 by its stall guard:**
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 38 actions, 35 files compiled" (the
+  mechanism's first compile, with no compile error); "360 tests performed, 359 succeeded, 1 failed:
+  TheWornTrapConversionsEachMakeTheirOwnSlotATrapAndNoOther", with exactly 3 failed assertions in the run, each checked
+  by its text ("wearing the heavy / special / ultimate conversion, the ... slot is a trap's"). The control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset`, `DT_MinionTypes.uasset` and
+  `datatable_asset_sources.json` changed, committed on the top as 4f7492608, "Rebuild the enchantment and minion type
+  DataTable assets for traps layer 1's rows", and pushed as `feat/traps-t-1`.
+- **The whole Unreal suite STOPPED THE WINDOW:** "3964 tests performed, 3963 succeeded, 1 failed:
+  APlayersThrallLosesThePlaguebearersBonus", printed twice by the wrapper. Every test of this layer passed. In the
+  editor's log, the failing test (`Cataclysm.DungeonModifierEffects.APlayersThrallLosesThePlaguebearersBonus`) holds no
+  "Error: Expected" line between its "Test Started" and "Test Completed" lines. Its only errors are
+  `LogModelContextProtocol: Error: Call to unknown method "server/discover"` at 16:01:30.671 and the same line echoed in
+  its events, followed by "Client requested protocol version '2025-11-25', negotiated '2025-11-25'" and "Initializing new
+  session: 5c8186294c1b8381034a3abd678febe1". **ITS CAUSE, BY READING, IS AN OUTSIDE MCP CLIENT CONNECTING TO THE
+  RUNNING EDITOR'S MODEL CONTEXT PROTOCOL SERVER WHILE THAT TEST RAN**; the engine counts any Error logged during a test
+  as its failure. Which client connected is not known. That error appears twice in the whole run, both inside that
+  test. This layer's one change to that test's file (`FloorStartCapBenefit`, about line 41685) is in another test.
+  Python and the proofs did not run.
+
+**The second window, enchant-tp2, 10:40:12 to 11:40:17 by its stall guard, ruled (b) by the coordinating session on
+2026-10-21:** steps 2 to 4 only, on `feat/traps-t-1` = 4f7492608, with steps 0 and 1 standing as the first window ran
+them; no session changed any MCP configuration; a failure would have been reported test by test, with its "Error:
+Expected" lines and any other Error lines, and not re-run.
+
+- **The whole Unreal suite:** "3964 tests performed, 3964 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3964 tests in the tree at 4f7492608; 3964 performed, gap 0". Registered 3964 and 0: the 3953 measured at
+  the gadgets' death cast window, the ten of `Cataclysm.Traps.` and the one real-row test. The risks that could only be
+  read passed: the press calling the ability's own cooldown and cost checks from the component, the tint's dynamic
+  material, `StartPlayersSkillFromHere`'s two new parameters, and test 0 reading the `SkillTrap` row through the rebuilt
+  `DT_MinionTypes`.
+- **Python:** "6837 passed, 8 skipped"; JUnit tests 6845, failures 0, errors 0, skipped 8. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 10 tests; four, the three-proof limit
+lifted for this layer by the coordinating session because the fourth guards a ruling no other proof touches.** The stop
+condition for each was the set of tests that fail with the break in, by the beginnings of their names. The failed
+assertions had been counted by reading and were measured beside it. Each anchor was counted once, and the file's hash was
+the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-I | a trap armed from the moment it is placed (`CataclysmMinion.cpp`) | 2 failed: `ATrapArmsAfterASecond...`, `TheArmingSpeedIncrease...` | 5 / 5 | 10 of 10 succeeded |
+| TR-II | a trap row's increases dropped from its cast (`CataclysmSkillEffects.cpp`) | 1 failed, `ATriggerCastsTheHeavyAtItsEnemyAndTheUltimateAroundItPricedByATrapRowAndNotAGadgetRow` | 1 / 1 | 10 of 10 succeeded |
+| TR-III | a sixth trap kept: the cap one too many (`CataclysmMinion.cpp`) | 1 failed, `ASixthTrapDestroysTheOldestWithoutTriggeringAndATrapThatExpiresDoesNotTrigger` | 2 / 2 | 10 of 10 succeeded |
+| TR-IV | a trap's `deployable_hit` keeps `Type.Deployable` (`CataclysmSkillEffects.cpp`) | 1 failed, `TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit` | 1 / 1 | 10 of 10 succeeded |
+
+The measured lines include, under TR-I, "control: so the enemy 2.5 m from it is untouched ... to be 50000.000000, but it
+was 49725.000000"; under TR-II, "a minion_damage row naming Type.Trap prices the trap's cast (T10): 50% more ... to be
+412.500000, but it was 275.000000"; under TR-III, "with a sixth placed, five still stand ... to be 5, but it was 6";
+under TR-IV, "which carries no Type.Deployable, so the gadget row took none of its enemy's armour ... to be 0.000000, but
+it was 20.000000".
+
+**Not measured:** the probes and the real-row test under any break (outside the prefix); everything this entry lists as
+not tested; anything drawn on a screen; anything in play.
 
 ---
 
