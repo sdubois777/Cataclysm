@@ -601,8 +601,9 @@ bool FCataclysmEmpireMapBiteTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireMap* Map = MakeMap();
 
 	// OUTPOST 0: 1,000 defence and 5,000 people. A tenth of its defence and a
-	// twentieth of its people is what a basic dungeon on an Outpost takes,
-	// before any scaling.
+	// twentieth of its people is what a basic dungeon on an Outpost took,
+	// before any scaling, until 2026-10-20; it is 7% and 3.5% since. The
+	// shares below are this test's own inputs.
 	TestFalse(TEXT("one bite does not take it"), Map->Bite(0, 0.10f, 0.05f));
 
 	const FCataclysmCity* City = Map->Find(0);
@@ -717,7 +718,8 @@ bool FCataclysmEmpireMapDamageIsPointsTest::RunTest(const FString& Parameters)
 			  0.01f);
 	TestEqual(TEXT("and it is still full"), Raised->Defence, 1200.0f, 0.01f);
 
-	// A HUNDRED POINTS EACH, which is what a basic dungeon on an Outpost takes.
+	// A HUNDRED POINTS EACH, which is what a basic dungeon on an Outpost took
+	// until 2026-10-20 (70 since). The figures are this test's own inputs.
 	TestFalse(TEXT("the plain city survives it"), Map->Damage(0, 100.0f, 250.0f));
 	TestFalse(TEXT("so does the raised one"), Map->Damage(1, 100.0f, 250.0f));
 
@@ -832,12 +834,20 @@ bool FCataclysmEmpireMapCeilingBuysResolvesTest::RunTest(const FString& Paramete
 		};
 
 	// tier, resolves without the upgrade, resolves with it. WRITTEN OUT BY HAND
-	// from the ceilings and the damage the design gives each tier:
+	// from the ceilings and the damage the design gives each tier. A city
+	// falls on the resolve that takes its defence to nothing or below, so the
+	// count is the ceiling over the row ROUNDED UP:
 	//
-	//   Outpost    1,000 / 100   = 10, and 1,200 / 100   = 12
-	//   Bulwark    3,000 / 270   = 12, and 3,600 / 270   = 14
-	//   Sanctuary  8,000 / 640   = 13, and 9,600 / 640   = 15
-	//   Pillar    20,000 / 1,200 = 17, and 24,000 / 1,200 = 20
+	//   Outpost    1,000 / 70  = 14.3 -> 15, and  1,200 / 70  = 17.1 -> 18
+	//   Bulwark    3,000 / 189 = 15.9 -> 16, and  3,600 / 189 = 19.05 -> 20
+	//   Sanctuary  8,000 / 448 = 17.9 -> 18, and  9,600 / 448 = 21.4 -> 22
+	//   Pillar    20,000 / 840 = 23.8 -> 24, and 24,000 / 840 = 28.6 -> 29
+	//
+	// SINCE 2026-10-20, when every ordinary row became 0.7 of what it was.
+	// At the old rows (100, 270, 640, 1,200) the counts were 10/12, 12/14,
+	// 13/15 and 17/20. No division lands on a whole number, so no count sits
+	// on a rounding edge of the float arithmetic: the nearest is the
+	// Bulwark's 19.05, 9 points clear.
 	struct FCase
 	{
 		ECataclysmCityTier Tier;
@@ -847,10 +857,10 @@ bool FCataclysmEmpireMapCeilingBuysResolvesTest::RunTest(const FString& Paramete
 	};
 
 	const TArray<FCase> Cases = {
-		{ ECataclysmCityTier::Outpost,   TEXT("Outpost"),   10, 12 },
-		{ ECataclysmCityTier::Bulwark,   TEXT("Bulwark"),   12, 14 },
-		{ ECataclysmCityTier::Sanctuary, TEXT("Sanctuary"), 13, 15 },
-		{ ECataclysmCityTier::Pillar,    TEXT("Pillar"),    17, 20 },
+		{ ECataclysmCityTier::Outpost,   TEXT("Outpost"),   15, 18 },
+		{ ECataclysmCityTier::Bulwark,   TEXT("Bulwark"),   16, 20 },
+		{ ECataclysmCityTier::Sanctuary, TEXT("Sanctuary"), 18, 22 },
+		{ ECataclysmCityTier::Pillar,    TEXT("Pillar"),    24, 29 },
 	};
 
 	for (const FCase& Row : Cases)
@@ -877,8 +887,9 @@ bool FCataclysmEmpireMapCeilingBuysResolvesTest::RunTest(const FString& Paramete
 	}
 
 	// WHAT THIS DOES NOT CLAIM. A Pillar holds twenty times an Outpost's defence
-	// and still lasts 17 resolves against 10, because a Pillar dungeon takes
-	// twelve times an Outpost dungeon's points. That ladder is a separate
+	// and still lasts 24 resolves against 15, because a Pillar dungeon takes
+	// twelve times an Outpost dungeon's points (17 against 10 at the rows
+	// before 2026-10-20; the 0.7 did not move the ratio). That ladder is a separate
 	// question from this defect, and `docs/DECISIONS.md` records that those
 	// numbers were measured and deliberately left where they were.
 
