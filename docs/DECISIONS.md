@@ -2,6 +2,41 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-21 — Divine Edicts are Celestial dungeon modifiers that each forbid or charge for one player action, and the Ascendant draws one more of them a floor
+
+**Design only; nothing is built.** `docs/Cataclysm_GDD_v2.md`, under Heaven's Wrath, now defines the Divine Edicts
+(eight, two of them existing modifiers) and the Ascendant, Heaven's Wrath's Quest dungeon. The sub-type paragraph
+points there. Branch `feat/docs-ascendant-and-edicts-1`.
+
+### What the owner said
+
+- 2026-10-19, choosing the Ascendant's design: "Full plan design": one more Edict each floor up to four, each 10%
+  stronger a floor deeper, a Heavenly Core on the last floor, an Edict left on its city for 30 days.
+- 2026-10-20, on what an Edict is, verbatim: "Edicts are part of the Celestial cataclysm already. I think they just need to be written but the design document should have some examples. They're basically divine decrees that prevent/punish the player from performing certain actions." On the open details: "From floor 1", "Core floor only", "One at
+  random".
+- 2026-10-21, on the list written from that: "All eight"; the numbers "Delegated, as proposed"; the Edicts in any
+  Celestial dungeon "Yes, any Celestial dungeon".
+- The coordinating session's rulings under the owner's delegation: a city carries at most one left Edict, and a new
+  hit replaces it and restarts the 30 days; when no Edict is left to draw, none is added.
+
+### Where the Edicts came from
+
+The design document named no Edict; its only line was the opening sentence of Heaven's Wrath. The design workbook's
+only Edict was the dungeon modifier Edict of Silence. The list was written by the dungeon session as decrees that each
+forbid or charge for one player action, after Path of Exile's Ultimatum and map modifiers (read on poedb.tw and
+maxroll.gg on 2026-10-20), which forbid or charge for one action each. Two of the eight are existing Celestial
+modifiers (Edict of Silence; Forced Tithes as the Edict of Tithe); six are new. "Edict" was used for two things, the
+Celestial modifier and the empire tree's "Edicts of Power" node; the design document now says the node is a different
+thing.
+
+### Not covered, and later
+
+- The six new Edicts need rows in the Dungeon Modifiers sheet of `docs/All_Things_Cataclysm.xlsx`, which the
+  enchantment session holds, and game code each; they come with the game layer for the Ascendant (G7).
+- The global Edicts named in Heaven's Wrath's opening sentence are not designed.
+
+---
+
 ## 2026-10-19 — A worn row can make every skill gadget its wearer commands fire once, at once, when the wearer dies: each casts its skill at the target its own clock would choose, at the whole of its damage, its clock left as it was; the gadget half of "When you die, all your active traps and gadgets immediately trigger simultaneously", with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (`FCataclysmPoolAction::bGadgetsCastNow`, the
