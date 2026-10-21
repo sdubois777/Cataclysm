@@ -4526,6 +4526,26 @@ public:
 	void TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target, float& OutIncreases,
 							  float& OutMore) const;
 
+	/**
+	 * TRAPS LAYER 2, THE BASIC ATTACK'S TRAP. Ruled 2026-10-21 by the coordinating session (L1, L2), for "Your basic
+	 * attack is converted into a placeable trap. When triggered, it fires your basic attack at the nearest enemy. Scales
+	 * off trap damage. Shares your basic attack cooldown across all placed copies." Its press is the click on an enemy,
+	 * `ACataclysmPlayerController::PressOnAnEnemy`, which asks `PressOfASkillTrapSlot` for `Slot.Basic` (L1, the skill
+	 * gadget's S15 path).
+	 *
+	 * ONE CLOCK FOR EVERY BASIC TRAP (L2): a basic trap is placed at most once per swing interval,
+	 * `UCataclysmBasicAttack::SecondsBetweenSwingsFor`, so attack speed shortens it, read as the skill gadget's S2 read
+	 * "basic attack cooldown". AND ONLY WHILE THE PLAYER COULD SWING, `UCataclysmBasicAttack::MaySwing`: not dead,
+	 * stunned, knocked down or feared. An interval of nought, a player who never swings, places none.
+	 */
+	bool BasicSkillTrapMayBePlacedNow() const;
+
+	/** Seconds until the next basic trap may be placed, or nought; nought too for an interval of nought. For the bar. */
+	float BasicSkillTrapSecondsLeft() const;
+
+	/** The world's time at which the last basic trap was placed: long ago until the first, as a first swing is. */
+	float BasicSkillTrapPlacedAtSeconds = -1000.0f;
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

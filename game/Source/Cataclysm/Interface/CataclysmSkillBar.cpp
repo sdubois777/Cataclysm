@@ -458,7 +458,8 @@ FString UCataclysmSkillBar::BasicGadgetTextOf(const AActor* Player)
 		? Cast<const UCataclysmAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Player))
 		: nullptr;
 	const ECataclysmAbilitySlot Basic = ECataclysmAbilitySlot::BasicAttack;
-	if (!Converting || !Converting->SlotIsASkillGadget(Basic))
+	// AND NOT FOR A BASIC ATTACK CONVERTED BOTH WAYS, WHOSE CLICK PLACES A TRAP (T17): the trap's line is drawn instead.
+	if (!Converting || !Converting->SlotIsASkillGadget(Basic) || Converting->SlotIsASkillTrap(Basic))
 	{
 		return FString();
 	}
@@ -477,6 +478,46 @@ FString UCataclysmSkillBar::BasicGadgetTextOf(const AActor* Player)
 		Standing->SkillGadgetClock(Remaining, Duration);
 	}
 	return BasicGadgetTextFor(/*bConverted=*/true, bCastsNothing, Standing != nullptr, Remaining);
+}
+
+FString UCataclysmSkillBar::BasicTrapTextFor(bool bConverted, bool bCastsNothing, float RemainingSeconds,
+											 int32 TrapsStanding, int32 TrapsMost)
+{
+	if (!bConverted)
+	{
+		return FString();
+	}
+	if (bCastsNothing)
+	{
+		return TEXT("Basic trap casts nothing");
+	}
+	const FString Wait = CooldownTextFor(RemainingSeconds);
+	return Wait.IsEmpty()
+		? FString::Printf(TEXT("Basic trap ready, traps %d/%d"), TrapsStanding, TrapsMost)
+		: FString::Printf(TEXT("Basic trap %ss, traps %d/%d"), *Wait, TrapsStanding, TrapsMost);
+}
+
+FString UCataclysmSkillBar::BasicTrapTextOf(const AActor* Player)
+{
+	// ASKED THE WAY THE CLICK ASKS, `SlotIsASkillTrap`, and timed by the clock the click is refused by, so the line and
+	// the click cannot disagree. Ruled 2026-10-21 (traps layer 2, L2).
+	const UCataclysmAbilitySystemComponent* Converting = Player
+		? Cast<const UCataclysmAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Player))
+		: nullptr;
+	const ECataclysmAbilitySlot Basic = ECataclysmAbilitySlot::BasicAttack;
+	if (!Converting || !Converting->SlotIsASkillTrap(Basic))
+	{
+		return FString();
+	}
+	const UCataclysmWeaponSlotsComponent* Held = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	const FCataclysmWeaponSkill* Row = Held
+		? Held->GetAvailableSkills().FindByPredicate(
+			  [Basic](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Basic; })
+		: nullptr;
+	const bool bCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row)
+		|| UCataclysmBasicAttack::SecondsBetweenSwingsFor(Converting) <= 0.0f;
+	return BasicTrapTextFor(/*bConverted=*/true, bCastsNothing, Converting->BasicSkillTrapSecondsLeft(),
+							ACataclysmMinion::SkillTrapsOf(Player).Num(), ACataclysmMinion::SkillTrapsMostPerPlayer);
 }
 
 FString UCataclysmSkillBar::LockedNotice()

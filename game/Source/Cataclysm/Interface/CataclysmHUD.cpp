@@ -551,7 +551,9 @@ void ACataclysmHUD::DrawSkillBar()
 			  UCataclysmSkillBar::FollowThroughLine(Cataclysm->FollowThroughSecondsLeft()),
 			  // AND THE BASIC ATTACK'S GADGET, while that slot is converted: the bar has no box for it. Ruled
 			  // 2026-10-16, skill gadgets stack 2 (item 6).
-			  UCataclysmSkillBar::BasicGadgetTextOf(Pawn)})
+			  UCataclysmSkillBar::BasicGadgetTextOf(Pawn),
+			  // AND THE BASIC ATTACK'S TRAP, while that slot is converted into one. Ruled 2026-10-21, traps layer 2 (L2).
+			  UCataclysmSkillBar::BasicTrapTextOf(Pawn)})
 		{
 			if (!Part.IsEmpty())
 			{

@@ -2532,8 +2532,12 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	AActor* const Enemy = IsValid(TriggeringEnemy) ? TriggeringEnemy : nullptr;
 	const FVector Place = Enemy ? Enemy->GetActorLocation() : GetActorLocation();
 	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SkillTrapSlot);
+	// THE BASIC ATTACK AND THE HEAVY "FIRE ... AT THE NEAREST ENEMY" (ruled 2026-10-21): at the nearest living enemy now,
+	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
+	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
 	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
-	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, Enemy, bFromThePlace ? &Place : nullptr))
+	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, AimedAtEnemy,
+								   bFromThePlace ? &Place : nullptr))
 	{
 		return false;
 	}
@@ -2577,4 +2581,31 @@ void ACataclysmMinion::ShowSkillTrapTint()
 			Paint->SetVectorParameterValue(TEXT("Color"), SkillTrapTintShown);
 		}
 	}
+}
+
+// ==========================================================================
+// Traps, layer 2: the basic attack's and the Heavy's aim. Ruled 2026-10-21 (L3, and the heavy trap's aim).
+// ==========================================================================
+
+bool ACataclysmMinion::SkillTrapFiresAtTheNearestEnemy(ECataclysmAbilitySlot Slot)
+{
+	// "FIRES YOUR BASIC ATTACK AT THE NEAREST ENEMY" AND "FIRES YOUR HEAVY ATTACK AT THE NEAREST ENEMY": the same words
+	// get the same reading (ruled 2026-10-21).
+	return Slot == ECataclysmAbilitySlot::BasicAttack || Slot == ECataclysmAbilitySlot::Heavy;
+}
+
+AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
+{
+	if (!IsValid(TriggeringEnemy))
+	{
+		return nullptr;
+	}
+
+	// NO FARTHER THAN THE ENEMY THAT SET IT OFF STANDS, so anything nearer is inside the search; the sphere finds that
+	// enemy itself, and the brain's measure along the floor keeps it, since a distance along the floor is never longer.
+	// The search leaves the dead out, so a triggering enemy already dead gives way to the nearest living one, and with
+	// none living the cast goes at the triggering enemy as layer 1's did.
+	const float NoFartherCm = FVector::Dist(GetActorLocation(), TriggeringEnemy->GetActorLocation());
+	const TArray<AActor*> Living = HostilesWithin(NoFartherCm);
+	return Living.IsEmpty() ? TriggeringEnemy : Living[0];
 }

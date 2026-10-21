@@ -2,6 +2,380 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-21 — A row can convert the Support slot or the basic attack into a placeable trap: the Support's self buff reaches the player within 8 m of the trap and its areas are measured from the triggering enemy; a left click on an enemy places a basic trap at the feet and swings nothing, at most once per swing interval on one clock; the basic and Heavy traps fire at the nearest living enemy when they trigger, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`SkillTrapFiresAtTheNearestEnemy` and
+`SkillTrapNearestEnemyTo`, new; `TriggerSkillTrap`'s aim, one line changed into three; two comments);
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`BasicSkillTrapMayBePlacedNow`, `BasicSkillTrapSecondsLeft` and
+`BasicSkillTrapPlacedAtSeconds`, new; in `PressOfASkillTrapSlot` the basic attack exempted from the lock and the basic
+trap's clock asked and set; one include), all under `game/Source/Cataclysm/AbilitySystem/`;
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (the click on an enemy offers the basic trap's
+press first; the release releases it; one comment); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` and
+`CataclysmHUD.cpp` (the basic trap's line above the bar; the basic gadget's line left out for a basic converted both
+ways); `game/Source/Cataclysm/Tests/CataclysmSkillTrapConversionsTests.cpp` (new, eight tests in `Cataclysm.Traps.`);
+`tools/generate_datatables.py` (the flag accepts the Support's and the basic attack's slot tags);
+`tools/tests/test_generate_datatables.py` (one test replaced, two added, in `TestASlotIsConvertedIntoATrap`). No data
+row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The two sentences, from `game/Data/EnchantmentsPositive.csv`; this layer builds their mechanism, and their rows are the
+enchantment session's:
+
+- `Positive_Your_support_ability_is_converted_into_a_placeab` (weight 4, `Type.Trap, Slot.Support, Type.Buff`): "Your
+  support ability is converted into a placeable trap. When triggered, it activates your support ability centered on the
+  triggering enemy. Scales off trap damage. All placed copies share the support ability cooldown."
+- `Positive_Your_basic_attack_is_converted_into_a_placeable` (weight 4, `Type.Trap, Slot.Basic, Scope.BasicOnly`): "Your
+  basic attack is converted into a placeable trap. When triggered, it fires your basic attack at the nearest enemy.
+  Scales off trap damage. Shares your basic attack cooldown across all placed copies."
+
+**THE HEAVY TRAP'S AIM CHANGES IN THIS LAYER, RULED 2026-10-21.** Layer 1 cast the Heavy at its triggering enemy. The
+basic sentence says "When triggered, it fires your basic attack at the nearest enemy", and the coordinating session ruled
+(L3 (b)) that a basic trap's cast goes at the nearest living enemy when it triggers. The Heavy sentence says the same
+words, "When triggered, it fires your heavy attack at the nearest enemy", and on the enchantment session's question the
+coordinating session ruled the same reading for it: "The same words get the same reading". So both now fire at the
+nearest living enemy when the trap triggers; the Special, the Support and the Ultimate ("centered on the triggering
+enemy") stay on the triggering enemy.
+
+**THROUGH A TRAP'S OWN STEP THE TWO ARE ALWAYS ONE ENEMY.** The step's triggering enemy is the nearest within the
+trigger radius (`HostilesWithin`, nearest first), and anything nearer than it would be within the radius too. They
+differ only for a trap set off by an enemy named some other way: the "nearby traps" actions of design layer 5 and P083's
+"When you die, all your active traps ... immediately trigger". So today the change is seen only by the two tests that
+set a trap off by naming its enemy, and by nothing in play. Layer 1's tests are unchanged, by reading (below).
+
+What a player would notice, once a row is worn:
+
+- **WITH THE SUPPORT CONVERTED, ITS KEY PLACES A TRAP**, as layer 1's keys do: a paid use, refused while its 4 s cooldown
+  runs or its 25 mana cannot be paid. When the trap triggers, a self buff (the Whip's Coil of Embers, for one) is granted
+  to the player **ONLY WHILE THE PLAYER STANDS WITHIN 8 M OF THE TRAP** (T7), and its enemy areas (Coil of Embers' 3 m
+  shove, Burning Wrath's and Held Fast's counts) are measured from the triggering enemy, so the coil pushes enemies away
+  from that enemy and not from the player. **A SUPPORT TRAP SET OFF WHILE THE PLAYER STANDS MORE THAN 8 M AWAY DOES
+  NOTHING AND STAYS ARMED**, triggering on a later step once the player is within 8 m and an enemy within its 3 m (layer
+  1's refusal, `TriggerSkillTrap`; tested here). A support that is not a self buff (a Wand's Hex of Cinders, a Staff's
+  Quarry) is cast from the triggering enemy's place at it (L4; layer 1's code). A support a trap can never cast is placed
+  and never triggers (T8).
+- **WITH THE BASIC ATTACK CONVERTED, A LEFT CLICK ON AN ENEMY PLACES A BASIC TRAP AT THE PLAYER'S FEET AND SWINGS
+  NOTHING**, and the player does not walk to the enemy; a click on the floor still moves the player (L1, the basic
+  gadget's S15). **A BASIC TRAP IS PLACED AT MOST ONCE PER SWING INTERVAL, ON ONE CLOCK FOR EVERY BASIC TRAP** (L2): with
+  an attack speed of 1.25 a second click inside 0.8 s places nothing, and swings nothing either; attack speed shortens it;
+  a basic trap destroyed or used up does not give the clock back. A click that places is the basic attack's use: it
+  raises `attack_use` (and `melee_attack_use` for a melee weapon) and, as for every basic attack, no `skill_use`. A stunned,
+  knocked-down, feared or dead player places none, as such a player swings none. A player who never swings (an attack
+  speed of nought) places none.
+- **A BASIC TRAP FIRES THE PLAYER'S BASIC ATTACK, FREE, FROM THE TRAP, AT THE NEAREST LIVING ENEMY**, priced with the trap
+  damage rows as layer 1's casts are. **A MELEE BASIC TRAP'S HIT PAYS THE PLAYER THE BASIC SLOT'S 6 MANA ON HIT**, as the
+  basic gadget's does (its P3), by reading; not tested.
+- **AT MOST FIVE TRAPS STAND ACROSS EVERY CONVERTED SLOT**, the basic and the Support with the others (T6).
+- **A BASIC ATTACK CONVERTED TO BOTH A GADGET AND A TRAP MAKES A TRAP** (T17): the click places a trap, and the gadget's
+  line is not drawn.
+- **ONE LINE ABOVE THE BAR, ON THE LINE THE BASIC GADGET'S SHARES**, since the bar draws no box for the basic attack:
+  "Basic trap 0.4s, traps 1/5" while the clock runs, "Basic trap ready, traps 1/5" when a click may place one, and
+  "Basic trap casts nothing" for a weapon with no basic attack (a Shield's) or a player who never swings. The Support's
+  box is layer 1's trap box ("Trap", "Traps 2/5", the Support cooldown's sweep).
+- **THE BASIC ATTACK IS NEVER LOCKED, AND NEITHER IS ITS TRAP**: Edict of Silence's "Only basic attacks function during
+  this period" still lets a click place one. By reading; not tested.
+- **NOT IN PLAY UNTIL THE TWO ROWS LAND ABOVE THIS LAYER** (below), the enchantment session's.
+- **THE BRIEF'S TEST LINE "a basic trap's trigger casting the basic at the triggering enemy" WAS WRITTEN BEFORE L3 WAS
+  RULED (b).** The test written casts it at the nearest living enemy, as the ruling requires.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 59 and the rulings below. NOT COMPILED AND NOT
+  RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- with the basic attack converted into a trap, a left click on an enemy places a trap and does not swing; the basic trap can be placed once per swing
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+Nothing of the owner's is quoted for traps here; layer 1's entry, below, says what the trap shape copies. The rulings are
+the coordinating session's of 2026-10-21 on the enchantment session's L1-L6, verbatim as relayed:
+
+> RULINGS, brief 59 (traps layer 2): (a) on L1, L2, L4, L5 and L6; (b) on L3.
+> L1 a left click on an enemy places a basic trap at the feet, swings nothing, does not walk; a floor click still moves
+> (S15).
+> L2 one shared clock: a basic trap at most once per swing interval (SecondsBetweenSwingsFor, so attack speed shortens
+> it), swept on the box (S2).
+> L3 (b), NOT (a): the basic sentence says "fires your basic attack at the nearest enemy", so the basic trap's cast goes
+> at the nearest living enemy when it triggers (usually the triggering one, but the sentence decides when they differ).
+> T13 was ruled for "the first enemy that triggers them", a different row. Test it with two enemies where the nearest is
+> not the one that walked in; free, priced as the trap's, crit pinned. The support sentence says "centered on the
+> triggering enemy", so the support stays on the triggering enemy.
+> L4 a support that is not a self buff is cast around the triggering enemy. L5 T7 as built. L6 the play-check line
+> verbatim.
+
+And on the heavy trap, ruled on the enchantment session's question that L3's reading reaches the heavy sentence, verbatim
+as relayed:
+
+> RULING: (a). The same words get the same reading: the heavy trap's cast also goes at the nearest living enemy when it
+> triggers, changed in layer 2 with the two-enemy test for the heavy too. #2456 merges as tested; layer 2's entry says
+> the heavy's aim changed there and why, quoting both sentences. Special, support and ultimate stay on the triggering
+> enemy.
+
+The options L1-L6 were put with, as `rulings_2026-10-21_traps2.md` gives them: L1 (a) the left click on an enemy, as the
+gadget's S15, or (b) a key of its own; L2 (a) once per swing interval on one shared clock, swept, or (b) no limit but the
+cap of 5; L3 (a) at the triggering enemy, or (b) at the nearest enemy when another is nearer; L4 (a) cast around the
+triggering enemy, or (b) refused; L5 (a) T7 as built, or (b) granted wherever the player is; L6 (a) the line above, or
+(b) none. T1-T19 of 2026-10-19 stand, quoted in layer 1's entry below.
+
+**NO NUMBER IS ADDED.** The 8 m (T7, S13), the 1.0 s, 3 m, 20 s, 5 and 40 of layer 1 are under the owner's delegation of
+unstated numbers, as layer 1's entry says, and are unchanged. The basic trap's clock is the player's own swing interval,
+which no constant of this layer states. The clock's starting mark of -1000 s is the player controller's own for a first
+swing (`LastSwingSeconds`), "long ago", and tunes nothing.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree, on development `770a400cf`.
+
+| | Ruling, quoted | Where it is |
+| :-- | :-- | :-- |
+| L1 | "a left click on an enemy places a basic trap at the feet, swings nothing, does not walk; a floor click still moves (S15)" | `ACataclysmPlayerController::PressOnAnEnemy` (`CataclysmPlayerController.cpp` 1268): `PressOfASkillTrapSlot(Slot.Basic)` at 1285, before the gadget's, clearing `PendingAttack` and returning; the release at 1363. A floor click names no enemy and is unchanged. The feet are `PressOfASkillTrapSlot`'s (T3). |
+| L2 | "one shared clock: a basic trap at most once per swing interval (SecondsBetweenSwingsFor, so attack speed shortens it), swept on the box (S2)" | `UCataclysmAbilitySystemComponent::BasicSkillTrapMayBePlacedNow` (`CataclysmAbilitySystemComponent.cpp` 8116), asked in `PressOfASkillTrapSlot` at 8043; the mark `BasicSkillTrapPlacedAtSeconds` (`.h` 4547) set at 8054; the sweep `BasicSkillTrapSecondsLeft` (8130) read by `UCataclysmSkillBar::BasicTrapTextOf` (`CataclysmSkillBar.cpp` 500), drawn by `CataclysmHUD.cpp` 556. |
+| L3 (b) | "the basic trap's cast goes at the nearest living enemy when it triggers" | `ACataclysmMinion::SkillTrapFiresAtTheNearestEnemy` (`CataclysmMinion.cpp` 2590) and `SkillTrapNearestEnemyTo` (2597), asked by `TriggerSkillTrap` at 2537. |
+| Heavy (a) | "the heavy trap's cast also goes at the nearest living enemy when it triggers" | The same two, `SkillTrapFiresAtTheNearestEnemy` answering yes for `Heavy` beside `BasicAttack`. |
+| L3, L4 | "the support stays on the triggering enemy"; "a support that is not a self buff is cast around the triggering enemy" | Layer 1's `SkillTrapCastsAroundItsEnemy` (2450), which names the Support; `TriggerSkillTrap` casts from the enemy's place (2533 to 2540). Nothing changed. |
+| L5, T7 | "L5 T7 as built"; "T7 the 8 m self-buff rule (S13)" | Layer 1's `StartPlayersSkillFromHere` (2268): the 8 m measured from the trap (`Here`, 2289), the cast made from the enemy's place (`From`, 2281) and given to `Trigger` (2338), so the buff's `CastOrigin` is the enemy's. Nothing changed. |
+| L6 | "the play-check line verbatim" | FOR THE OWNER'S PLAY-CHECK LIST, above. |
+| T6 | "at most 5 per player across all converted slots" | Layer 1's `PlaceSkillTrap` (2394; the loop at 2421) counts every slot's. Nothing changed. |
+| T8 | "placed, never triggers, the skill bar says so (S10)" | Layer 1's refusal in `TriggerSkillTrap` (2522); for the basic, the line's "Basic trap casts nothing" (`BasicTrapTextOf`). |
+| T10 | "one added read in ApplyHit of the built Type.Trap minion_damage rows" | Layer 1's; it reaches the basic trap's cast with no change. |
+| T17 | "the trap wins" | `PressOnAnEnemy` offers the trap's press first (1285), and layer 1's `PressOfASkillGadgetSlot` refuses a slot converted both ways (`CataclysmAbilitySystemComponent.cpp` 7872); `BasicGadgetTextOf` draws nothing for it (`CataclysmSkillBar.cpp` 462). |
+| T19 | "the press is the skill use; the trap's cast is not" | Layer 1's press sends the skill-used notice (8069); for the basic slot the character raises `attack_use` and not `skill_use` (`ACataclysmPlayerCharacter::OnSkillWasUsed`, ruled 2026-09-14). |
+
+### WHAT LAYER 1 ALREADY DID FOR THESE TWO, AND WHAT THIS LAYER ADDED
+
+**Already working, by reading, before this layer (line numbers of this working tree):**
+
+- `ACataclysmMinion::SkillTrapCastsAroundItsEnemy` (`CataclysmMinion.cpp` 2450) names the Support, so a Support trap is
+  cast from the triggering enemy's place (`TriggerSkillTrap`, 2533 to 2540) whatever its shape: L3's support half and L4.
+- `StartPlayersSkillFromHere` (2268) measures a self buff's 8 m from the trap (`Here`, 2289) and gives the enemy's place
+  to `Trigger` (2281, 2338): T7 and L5, both halves.
+- `PressOfASkillTrapSlot` (`CataclysmAbilitySystemComponent.cpp` 7987) takes any slot's tag, so the Support's key already
+  placed a paid Support trap once a row held the flag; it found the basic attack's spec by `Slot.Basic` too, whose cooldown
+  and cost questions pass (no cooldown, no mana).
+- `StepSkillTrap` (2474) asks `SlotIsASkillTrap` of the trap's own slot (2499) and `SkillTrapsSkill` (2457) reads any
+  slot's row, the basic attack's included; the cap (2421), the pricing read and the skill bar's trap box
+  (`CataclysmSkillBar.cpp` 733) are every slot's.
+
+**Not working before this layer:**
+
+- The generator refused both slot tags on `skill_slot_is_a_trap` (`SKILL_SLOT_IS_A_TRAP_SLOT_TAGS`,
+  `tools/generate_datatables.py` 11737), so neither row could be authored. Now accepted.
+- Nothing placed a basic trap: the basic attack has no key, and the click on an enemy asked only the gadget's press.
+  Now `PressOnAnEnemy` asks the trap's first (L1).
+- No limit but the cap on a basic trap's press, which has no cooldown. Now the swing interval's clock (L2).
+- The lock refused a basic trap's press as it refuses a keyed skill's, though the basic attack is never locked
+  (`UCataclysmSkillTemplate::CanActivateAbility`). Now exempt (`CataclysmAbilitySystemComponent.cpp` 8033).
+- The basic and the Heavy were cast at the triggering enemy. Now at the nearest living one (L3, the heavy ruling).
+- No line showed the basic trap, which has no box. Now the line above the bar (L2's sweep; the standing UI rule).
+- A basic attack converted both ways drew the gadget's line. Now the trap's (T17).
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE NEAREST LIVING ENEMY IS SEARCHED NO FARTHER THAN THE TRIGGERING ENEMY STANDS**, by `HostilesWithin`, nearest
+  first, which leaves out the dead. With none found (a triggering enemy already dead, and nobody nearer) the cast goes at
+  the triggering enemy, as layer 1's did; with no triggering enemy at all, at the trap's own place (T11). The option not
+  taken: a search of the trigger radius or of the skill's reach, which can never find anything nearer than the
+  triggering enemy and could only find the same enemy or a farther one.
+- **THE BASIC TRAP'S CLOCK IS THE PLAYER'S, ON THE ABILITY SYSTEM, AND ONLY A PLACING CLICK SETS IT.** A click the clock
+  refuses swings nothing and moves nothing. The option not taken: the player controller's own `LastSwingSeconds`, which
+  only a real swing sets, so the two could not be one clock without a swing.
+- **THE CLICK'S GATE IS THE SWING'S, `UCataclysmBasicAttack::MaySwing`**: not dead, stunned, knocked down or feared. Layer
+  1's keyed press reaches a stun through the player controller's check; the click on an enemy had none before the gadget's
+  press, which is free (S7). The option not taken: place under a stun, as the free gadget does; a trap's press is a paid
+  use (T19), and a basic attack is refused under those four.
+- **AN INTERVAL OF NOUGHT PLACES NO BASIC TRAP** (`IntervalHasPassed` answers no, as for a swing), and the line says
+  "Basic trap casts nothing". The option not taken: place one, as a Shield's basic gadget is placed and casts nothing.
+- **THE BASIC ATTACK IS EXEMPT FROM THE LOCK IN THE PRESS**, as its skill is. The option not taken: leave layer 1's lock
+  question as it was, which would let Edict of Silence stop the one thing it says still works.
+- **NO SEVENTH BOX: ONE LINE**, as the basic gadget's (its item 6), with the traps standing counted on it as a box counts
+  them. The option not taken: a box for the basic attack, which would change the bar's width.
+- **THE CAST IS MADE FROM THE TRAP AT THE NEAREST ENEMY WHATEVER THE BASIC'S OWN REACH**, as layer 1's Heavy, so a 1.5 m
+  Dagger basic can miss an enemy that set it off at 3 m. The option not taken: from the enemy's place, which "fires ...
+  at the nearest enemy" does not say.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. The rulings are this game's own, on the skill gadget's precedents (S2, S13,
+S15). Layer 1's entry, below, carries the trap sources `trap_design_2026-10-19.md` fetched; none of them settles a
+click-placed trap, a self buff granted from a trap, or a nearest-enemy aim.
+
+### WHAT WAS BUILT
+
+- **The aim** (`ACataclysmMinion`): `SkillTrapFiresAtTheNearestEnemy`, `SkillTrapNearestEnemyTo`, one block at the end of
+  `CataclysmMinion.cpp` (2586 on) and one in the header after `ShowSkillTrapTint`; reusing `HostilesWithin`.
+  `TriggerSkillTrap`'s call to `StartPlayersSkillFromHere` takes `AimedAtEnemy` (2537 to 2540) in place of the triggering
+  enemy.
+- **The click and its clock**: `PressOnAnEnemy`'s first offer and the release line (the player controller, reusing layer
+  1's `PressOfASkillTrapSlot` and `ReleaseOfASkillTrapSlot`); `BasicSkillTrapMayBePlacedNow`, `BasicSkillTrapSecondsLeft`
+  and `BasicSkillTrapPlacedAtSeconds`, one block at the end of `CataclysmAbilitySystemComponent.cpp` (8112 on) and one in
+  the header after `TrapDamageNamingTrap`, reusing `UCataclysmBasicAttack::MaySwing`, `IntervalHasPassed` and
+  `SecondsBetweenSwingsFor`; in `PressOfASkillTrapSlot`, the lock's exemption (8033), the clock asked (8043 to 8047) and
+  set (8050 to 8055).
+- **The line**: `UCataclysmSkillBar::BasicTrapTextFor` and `BasicTrapTextOf` (`CataclysmSkillBar.cpp` 483, 500), reusing
+  `CooldownTextFor`, `SkillGadgetMayCast` and `SkillTrapsOf`; the HUD's next-use line gains it as its last entry; the
+  gadget's line is left out for a basic converted both ways (462).
+- **The generator**: `Slot.Support` and `Slot.Basic` in `SKILL_SLOT_IS_A_TRAP_SLOT_TAGS` (11737), its comment, the
+  refusal's docstring and its message.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+**Two rows of the Enchantment Effects sheet, cell by cell, one on each enchantment named in SAID FIRST:** Stat
+`skill_slot_is_a_trap`; Value Kind `flat`; Value Low 1; Value High 1; **Required Tags the slot's tag alone**:
+`Slot.Support` on `Positive_Your_support_ability_is_converted_into_a_placeab`, `Slot.Basic` on
+`Positive_Your_basic_attack_is_converted_into_a_placeable`; and every other cell empty: no Condition, no Scale, no Action,
+no Action Event, no Fraction Of, no Trigger Cooldown, no Event Value, no Ailment, no Stack Seconds. The enchantments' own
+tags (`Type.Trap, Slot.Support, Type.Buff` and `Type.Trap, Slot.Basic, Scope.BasicOnly`) are not the rows'. Each name is
+the generator's `row_name` of its sentence, checked against the shipped sheet, words and tags, by
+`test_the_support_and_basic_names_are_the_shipped_sentences`; each row is carried through and refused by nothing under
+its sentence by `test_the_support_and_basic_rows_are_carried_through_under_their_sentences`, and refused once if it
+requires the sentence's whole tag list. No new minion type: both use layer 1's `SkillTrap`.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts `Slot.Support` and `Slot.Basic` on `skill_slot_is_a_trap`**, ruled 2026-10-21. The merged test
+  `TestASlotIsConvertedIntoATrap.test_the_three_built_slots_are_accepted_and_the_others_refused`, which asserted both
+  were refused once, is replaced by `test_each_of_the_five_slots_is_accepted`, which asserts the five accepted and keeps
+  `Slot.Aura` and a made-up `Slot.Nonsense` refused once each as its control, and says in its docstring what it replaced.
+- No merged Unreal test's assertion changes, by reading. For a player holding no trap flag on the basic attack, the click
+  and the release ask one stat and go on as before. `PressOfASkillTrapSlot` changes only for the basic slot. The
+  gadget's line changes only for a basic converted both ways, which no merged test holds. **Layer 1's tests that trigger
+  a Heavy trap** (`ATrapArmsAfterASecondThenTriggersOnTheFirstEnemyWithinThreeMetresAndNotOneAtFour`,
+  `TheArmingSpeedIncreaseArmsATrapSoonerAndTheTriggerRadiusIncreaseWidensItsReach`,
+  `ATriggerCastsTheHeavyAtItsEnemyAndTheUltimateAroundItPricedByATrapRowAndNotAGadgetRow`,
+  `ThePlacedAndTriggeredEventsAreRaisedOnceWithTheTrapsTagsAndATrapsDeathRaisesNoGadgetDestroyed`,
+  `TheGadgetArmourReductionRowReachesASkillGadgetsHitAndNotASkillTrapsHit`) each set a trap off by its step with no other
+  enemy as near as its triggering one (the nearest other is 40 m or more away), so the nearest living enemy is the
+  triggering enemy and every assertion holds as written; `ATriggerCasts...`'s "the control's Heavy trap cast Searing Lash
+  once at its enemy" still says what happens, because that enemy is the nearest.
+
+### Tests
+
+Eight Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapConversionsTests.cpp`, in layer 1's
+group `Cataclysm.Traps.`, numbered on from layer 1's ten. The rig is layer 1's with the game's own
+`ACataclysmPlayerController`, as the basic gadget's tests have it: a possessed player character holding a Demonic Whip, a
+weapon damage of 100, an attack speed of 1.25, 10,000 health and 1,000 mana; creatures of the monsters' side with no
+defences and 50,000 health; every body at least 1 m from every other, a basic trap's placing click made from a spot of
+its own; every stat granted by hand. NO KEY IS PRESSED: the click is the basic attack's press, which costs no mana and no
+Fervour, and every other trap is placed directly. The world's clock is moved by hand and a trap's step called directly,
+1.25 s after placing. Tests 14 and 15 compare blows' figures and pin `Cataclysm.CritRoll` at 100 after the world is made.
+Helper types are `FConvertedTrapWorld`, `FConvertedTrapRig`, `FConvertedTrapRow` and `FConvertedTrapEventCount`; the
+engine's headers declare none of them (searched, with `FScene` found as the control). **Assertions are counted for a
+passing run, 112 in all.**
+
+10. `ASupportTrapGrantsItsSelfBuffToThePlayerWithinEightMetresOfTheTrapAndNotBeyond`, 13. In order: a world; set-up, the
+    whip's Support is a self buff; set-up, the enemy; control, the Support box before the row is not a trap's; with the
+    flag it is; control, at 1.25 s the trap is armed; 9 m from it the player is granted no self buff; so it did not
+    trigger; it stands; no `trap_triggered`; at 7.5 m its trigger grants the self buff (one running); `trap_triggered`
+    once; used up.
+11. `ASupportTrapsSelfBuffMeasuresItsEnemyAreasFromTheTriggeringEnemy`, 8. In order: a world; set-up, three enemies
+    (three); set-up, the trap triggered and its self buff runs; the buff is cast from the triggering enemy's place,
+    within 1 cm; on its repeat, control, the enemy 2 m from the player is not shoved (within 1 cm); the enemy 2 m from
+    the triggering enemy is shoved further from it.
+12. `AClickOnAnEnemyPlacesABasicTrapAtTheFeetSwingsNothingAndABothWaysBasicMakesATrap`, 20. In order: a world; set-up,
+    three enemies (three); control, holding no row a click swings; and places no trap; set-up, the basic slot is
+    converted; a floor press places nothing; the click placed a skill trap of the basic slot; at the feet, within 1 cm;
+    no swing; the enemy took nothing; `attack_use` once; no `skill_use`; `trap_placed` once; the trap cast nothing;
+    converted both ways, the click places a trap; no gadget; no swing; the gadget's line is not drawn.
+13. `ABasicTrapIsPlacedAtMostOncePerSwingIntervalOnOneClockForEveryBasicTrap`, 15. In order: a world; set-up, two
+    enemies (two); control, the swing intervals 0.8 s and 0.4 s (two); the first clicks each place one (two); at 0.25 s
+    neither places (two); at 0.5 s the slow player places none and the quick one a second (two); set-up, the slow
+    player has its one trap; with it destroyed none stands; at 0.6 s a click places nothing; at 0.95 s it places one.
+14. `ABasicTrapFiresTheBasicAttackAtTheNearestLivingEnemyFreeAndPricedAsTheTraps`, 16. The player holds the basic flag and
+    50% increased `minion_damage` requiring `Type.Trap`; the trap is set off by naming the enemy 2.5 m east, with one 1.5 m
+    west. In order: a world; set-up, the pin; set-up, the basic is a Strike; set-up, three enemies (three); set-up, a
+    basic trap fires at the nearest; control, the player's own basic cast from 1.5 m starts; it takes something; the
+    trap casts; control, the enemy that set it off is untouched; the nearer enemy takes 1.5 times the player's own,
+    within 0.1%; no `attack_use`; the basic trap clock unmoved; `trap_triggered` once; used up.
+15. `AHeavyTrapFiresAtTheNearestLivingEnemyFreeAndPricedAsTheTraps`, 17. The same with the Heavy flag and Searing Lash.
+    In order: a world; set-up, the pin; set-up, three enemies (three); set-up, a Heavy trap fires at the nearest; and an
+    Ultimate trap does not; control, the own cast starts; it takes something; the trap casts; control, the enemy that
+    set it off is untouched; the nearer takes 1.5 times the own, within 0.1%; mana as it was; no Heavy cooldown; no
+    `skill_use`; `trap_triggered` once; used up.
+16. `FiveTrapsStandAcrossTheBasicSupportAndHeavySlotsAndANewOneDestroysTheOldest`, 9. In order: a world; control, five
+    stand across the three slots; the oldest is the first basic trap; with a Heavy and a Support more five stand; the
+    first basic trap is gone; the first Support trap is gone; one basic, two Support and two Heavy stand (three).
+17. `TheBasicTrapsLineAboveTheBarCountsTheTrapsAndSweepsTheSwingIntervalLeft`, 14. In order: the words, not converted
+    none, casts nothing, ready 0/5, "0.4s" 2/5 (four); a world; set-up, the shield holds no basic row; set-up, the enemy;
+    control, holding no row no line; converted, ready 0/5; set-up, the click placed one; "0.8s" 1/5; at 0.5 s "0.3s";
+    at 1 s ready 1/5; the shield player's line reads "Basic trap casts nothing".
+
+Python, in `tools/tests/test_generate_datatables.py`, `TestASlotIsConvertedIntoATrap`:
+`test_each_of_the_five_slots_is_accepted` (replacing the three-slot test, above);
+`test_the_support_and_basic_rows_are_carried_through_under_their_sentences` (each row under its real sentence and tags
+carried through cell by cell and refused by neither the check nor the whole sheet's validation; requiring the sentence's
+whole tag list, refused once); `test_the_support_and_basic_names_are_the_shipped_sentences` (each name derived and found
+with those words and tags; a made-up sentence's name not found). **Proved by `tools/prove_guard.py`** with layer 1's
+three-slot set put back: "PROVED: 2 failed, 9 passed, 986 deselected | restored: 11 passed, 986 deselected", the two
+named failures `test_each_of_the_five_slots_is_accepted` and
+`test_the_support_and_basic_rows_are_carried_through_under_their_sentences`.
+
+**Not tested:** a real row worn (the enchantment session's); the Support's key press (layer 1's press, unchanged);
+`Input_MoveToCursorStarted` itself, its cursor trace and the walk a floor click orders (a test world has no cursor);
+a stunned, feared or dead player's click; the lock's exemption under Edict of Silence; a Projectile basic trap (Wand,
+Crossbow, Staff); a melee basic trap's mana on hit; L4, a support that is not a self buff (no Demonic Whip support is
+one); T8 for a Support that cannot be cast; a dead triggering enemy, and a trap set off with no enemy; the nearest
+enemy through a trap's step (the two are always one enemy there); Cripple reaching the clock; the line drawn on a
+screen; replication; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script: `CataclysmMinion.cpp` 961/961, 259/259, 12/12 before and 960/960, 259/259, 12/12
+after TR-V, which drops one pair; `CataclysmAbilitySystemComponent.cpp` 3060/3060, 1007/1007, 31/31 before and after
+TR-VI; `CataclysmPlayerController.cpp` 624/624, 200/200, 2/2 before and after TR-VII). Each compiles alone by reading:
+TR-V leaves a ternary of two `AActor* const` and only a member function unreferenced; TR-VI passes a `float` literal where
+a `float` member stood, and the member stays read; TR-VII names another enumerator of the same enum. The prefix of all
+three is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten and these eight, eighteen; every one that places a trap
+needs the `SkillTrap` row.
+
+**The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing; for a click
+that places, `attack_use` and `melee_attack_use` (the whip's basic is melee) and no `skill_use`; for a click that swings
+(test 12's control, and every click under TR-VII), the same through the swing's own commit; for each trigger
+`trap_triggered`, and for a cast's blows on enemies `hit_dealt`, `first_hit_dealt` and `deployable_hit` (the trap's tags
+less `Type.Deployable`), and `dot_applied` for Searing Lash's burn (tests 14 and 15, and the players' own casts there
+`hit_dealt`, `first_hit_dealt` and the burn's); in test 11 `crowd_control` for the coil's shove. On a creature, nothing
+is worn. **NO NEW TEST HANGS ANYTHING ON AN EVENT**: none sets a pool action, and the counters read only `attack_use`,
+`skill_use`, `trap_placed` and `trap_triggered`. Layer 1's ten are as its entry lists. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-V, the basic and Heavy traps fire at their triggering enemy (L3, the heavy ruling) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;` | `SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? Enemy : Enemy;` | `ABasicTrapFiresTheBasicAttackAtTheNearestLivingEnemyFreeAndPricedAsTheTraps` | `AHeavyTrapFiresAtTheNearestLivingEnemyFreeAndPricedAsTheTraps` |
+| TR-VI, the basic trap's clock never runs (L2) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `IntervalHasPassed(BasicSkillTrapPlacedAtSeconds, Now,` | `IntervalHasPassed(-1000.0f, Now,` | `ABasicTrapIsPlacedAtMostOncePerSwingIntervalOnOneClockForEveryBasicTrap` | none |
+| TR-VII, the click asks a slot nobody converts into a trap (L1) | `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` | `Placing->PressOfASkillTrapSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack))` | `Placing->PressOfASkillTrapSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Aura))` | `AClickOnAnEnemyPlacesABasicTrapAtTheFeetSwingsNothingAndABothWaysBasicMakesATrap` | `ABasicTrapIsPlacedAtMostOncePerSwingIntervalOnOneClockForEveryBasicTrap`, `TheBasicTrapsLineAboveTheBarCountsTheTrapsAndSweepsTheSwingIntervalLeft` |
+
+Failed assertions, by reading:
+
+- **TR-V, 4 in 2 tests.** Test 14: "control: the enemy that set it off ... is untouched" (the basic Strike, 3 m, goes
+  east at it) and "the cast went at the nearest living enemy" (the nearer takes nothing). Test 15: the same two (Searing
+  Lash's 5 m cone goes east). The set-up lines ask `SkillTrapFiresAtTheNearestEnemy`, which the break leaves alone, and
+  pass; the cast still starts, is free, raises one `trap_triggered` and is used up. Layer 1's Heavy tests are unchanged
+  by the break as by the change: their nearest enemy is their triggering enemy.
+- **TR-VI, 5 in 1 test.** Test 13: at 0.25 s the slow and the quick player each place a second (2 against 1, twice); at
+  0.5 s the slow a third (3 against 1) and the quick a third (3 against 2); "set-up: the slow player has its one basic
+  trap to take away" (3 against 1), where the test returns. The two controls and the first clicks pass. Tests 12 and 17
+  click once per player and pass: the line reads the mark the placing still sets.
+- **TR-VII, 9 in 3 tests.** Every click on an enemy asks the Aura's trap, is answered no, asks the gadget's (no), and
+  swings. Test 12: "the click on the enemy placed 0 skill traps, not one" (an error), where it returns; its controls and
+  set-up pass. Test 13: the first clicks (0 against 1, twice), at 0.25 s (0 against 1, twice), at 0.5 s (0 against 1, 0
+  against 2), and the set-up "one basic trap to take away" (0 against 1), where it returns: 7. Test 17: "set-up: the
+  click placed a basic trap" (0 against 1), where it returns; the four words and the two lines before it pass: 1.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. The basic gadget's click test
+(`Cataclysm.SkillGadgets.AClickOnAnEnemyPlacesTheBasicGadgetSwingsNothingAndTheNextClickMovesIt`) holds no trap flag,
+so the trap's press answers no under every break, as it does without one.
+
+**A test and no proof:** the Support's 8 m and its areas (layer 1's code, which this layer does not change); the click's
+place at the feet, `attack_use` and no `skill_use`; the slot converted both ways; the pricing of the basic trap's cast;
+the free cast; the cap across slots; the line's words.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-20 — A row can convert the Heavy, Special or Ultimate slot into a placeable trap: its key, a paid use of the skill, places a trap at the player's feet that arms in a second, triggers on the first enemy within 3 m, casts the player's skill once from there priced with the trap damage rows, and is used up; at most five stand and one lasts 20 s, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the skill trap: its type name, its
