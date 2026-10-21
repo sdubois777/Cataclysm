@@ -7,7 +7,8 @@ Decisions made outside the Google Drive documents, newest first.
 **The game follows the simulation.** `UCataclysmEmpireRun::CityFell` no longer absorbs a Quest dungeon: it moves it to
 the city the new `UCataclysmSurgeScheduler::PickRefuge` answers, as `Simulation._fall` has done through
 `Simulation._quest_refuge` since the entry headed "In the simulation a Quest dungeon whose city falls moves to an
-adjacent city instead of being absorbed". Branch `feat/game-quest-moves-on-a-fall-1`, on `development` at `f045a9e68`.
+adjacent city instead of being absorbed". Branch `feat/game-quest-moves-on-a-fall-2`, on `development` at `991bcb962` (written on `f045a9e68` as
+`feat/game-quest-moves-on-a-fall-1` and moved with its zero-context patch ids unchanged).
 Not built and not run: see Proofs and Run.
 
 ### SAID FIRST
