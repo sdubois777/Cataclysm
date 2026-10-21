@@ -415,7 +415,66 @@ time or a double. **Corrected by the enchantment session, ruled (a) by the coord
 actual is `static_cast<float>(FVector::Dist(...))`, and the assertion, its expected figure and its tolerance are unchanged.
 A whole new five-step window followed.
 
-Not run. The enchantment session records its window here.
+**THE SECOND WINDOW, enchant-tt3, 13:31:36 to 14:30:29 by its stall guard, on the corrected top 44a3b73b6 (three commits
+on f045a9e68: the mechanism f16a88a4f, the rows c8e1c2929 and the cast 44a3b73b6). STEPS 0 TO 3 WERE AS REGISTERED:**
+
+- **The enchantments group on the assets as merged:** "Build: Succeeded - 4 actions, 1 file compiled:
+  Module.Cataclysm.27.cpp" (the unit holding the corrected test file); "361 tests performed, 360 succeeded, 1 failed:
+  TheWornSupportAndBasicTrapConversionsEachMakeTheirOwnSlotATrap", with exactly 2 failed assertions in the run, each
+  checked by its text ("wearing the support conversion, the support slot is a trap's" and "wearing the basic conversion,
+  the basic attack is a trap's"). The control passed.
+- **The asset rebuild:** exactly `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed, committed on
+  the top as 5a5822eb3, "Rebuild the enchantment DataTable asset for traps layer 2's rows", and pushed as
+  `feat/traps-2-t-1`.
+- **The whole Unreal suite:** "3973 tests performed, 3973 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3973 tests in the tree at 5a5822eb3; 3973 performed, gap 0". Registered 3973 and 0: the 3964 measured at
+  layer 1's window, the eight of this layer and the one real-row test. Every test of this layer passed on its first
+  compile.
+- **Python:** "6823 passed, 8 skipped"; JUnit tests 6831, failures 0, errors 0, skipped 8 (6831, not 6847, since the move
+  onto the merge of G2, whose Python port checks hold the difference). Lint: "All checks passed!".
+- **THE PROOFS CRASHED BEFORE ANY PROOF MEASURED ANYTHING.** TR-V's break was applied and built, and the test run then
+  raised `PermissionError: [WinError 32] The process cannot access the file because it is being used by another process:
+  '...\game\Saved\Logs\Cataclysm.log'` at `tools/unreal_build.py` line 807, `TEST_LOG.unlink(missing_ok=True)`, in
+  `run_automation_tests`, which deletes the editor's log before a test run. What held the log is not known. No proof
+  result exists from this window. `prove_cpp_guard`'s `finally` restored the file and rebuilt (its log carries no
+  failed-restore note): the restored `CataclysmMinion.cpp` was written at 14:29:55.99, its unity object
+  `Module.Cataclysm.4.cpp.obj` at 14:30:05.78 and `UnrealEditor-Cataclysm.dll` at 14:30:07.05. The coordinating session is
+  filing the crash in `tools/unreal_build.py` as its own issue; this layer does not change that file.
+
+**THE THIRD WINDOW, enchant-tt4, 14:32:35 to 14:33:08, STOPPED AT ITS FIRST CHECK, AS RULED.** Ruled (a): the proofs only,
+on 5a5822eb3, after a build that must compile `CataclysmMinion.cpp`. The build printed "Build: Succeeded - target
+already up to date, 0 actions, nothing compiled", because the crashed window's own restore build had already rebuilt the
+module from the restored source (the times above). So the binaries were back to the source before any measured proof.
+`CataclysmMinion.cpp` compiles inside the unity file `Module.Cataclysm.4.cpp`, which includes it.
+
+**THE FOURTH WINDOW, enchant-tt5, 14:34:23 to 14:38:01 by its stall guard, ruled (a): the proofs only, on 5a5822eb3, steps
+0 to 3 standing as enchant-tt3 ran them.** At its start: `Module.Cataclysm.4.cpp.obj` (14:30:05.78) and
+`UnrealEditor-Cataclysm.dll` (14:30:07.05) both newer than `CataclysmMinion.cpp` (14:29:55.99). Before each proof, the
+editor's log opened for writing at once.
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 18 tests.** The stop condition for each
+was the set of tests that fail with the break in, by the beginnings of their names. The failed assertions had been
+counted by reading, by the second session and again by the enchantment session, and were measured beside it. Each
+anchor was counted once, and the file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-V | the basic and heavy traps aimed at the triggering enemy (`CataclysmMinion.cpp`) | 2 failed: `ABasicTrapFiresTheBasicAttackAtTheNearest...`, `AHeavyTrapFiresAtTheNearest...` | 4 / 4 | 18 of 18 succeeded |
+| TR-VI | the basic trap's clock never set (`CataclysmAbilitySystemComponent.cpp`) | 1 failed, `ABasicTrapIsPlacedAtMostOncePerSwingIntervalOnOneClockForEveryBasicTrap` | 5 / 5 | 18 of 18 succeeded |
+| TR-VII | the click asks the Aura slot (`CataclysmPlayerController.cpp`) | 3 failed: `ABasicTrapIsPlacedAtMostOncePerSwing...`, `AClickOnAnEnemyPlacesABasicTrap...`, `TheBasicTrapsLineAboveTheBar...` | 8 / 9 | 18 of 18 succeeded |
+
+**TR-VII's 8 against 9 is a counting difference, not a missed failure.** The measure counts "Error: Expected" lines. Of
+the nine failures read, test 13's seven and test 17's "set-up: the click placed a basic trap" are assertions; test 12's is
+`AddError("the click on the enemy placed 0 skill traps, not one ...")` followed by `return false`, which logs an error and
+no "Expected" line. All three named tests failed, and nothing else did.
+
+The measured lines include, under TR-V, "the cast went at the nearest living enemy, 1.5 m away (L3), priced by the
+Type.Trap row: 50% more than the player's own ... to be 165.000000, but it was 0.000000"; under TR-VI, "half a second on,
+the slow player's click, short of its 0.8 s, still places nothing ... to be 1, but it was 3"; under TR-VII, "the slow
+player's first click places a basic trap ... to be 1, but it was 0".
+
+**Not measured:** the real-row test and the probes under any break (outside the prefix); everything this entry lists as
+read and not tested; a cursor-traced click in play; anything drawn on a screen.
 
 ---
 
