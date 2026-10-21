@@ -9658,15 +9658,19 @@ class TestASlotIsConvertedIntoATrap(GadgetRowsOnAMadeUpSheet):
         made_up = gen.row_name("Positive", "Your elbow is converted into a trap"[:48])
         assert made_up not in shipped
 
-    def test_the_three_built_slots_are_accepted_and_the_others_refused(self):
-        """THE CONTROL for the tag refusal: the three slots this layer builds
-        are accepted. The Support's and the basic attack's, a later layer's,
-        the Aura's and a made-up one are refused, once each."""
+    def test_each_of_the_five_slots_is_accepted(self):
+        """Traps layer 2, ruled 2026-10-21, LIFTED THE REFUSAL of the Support's
+        and the basic attack's slot tags that layer 1 made (this test was
+        `test_the_three_built_slots_are_accepted_and_the_others_refused`, which
+        asserted both were refused once). Now the five slots the sentences
+        convert are accepted. THE CONTROL for the tag refusal: the Aura's, which
+        no sentence converts, and a made-up one are still refused, once each."""
         row = {"Name": "X#1", "Stat": self.STAT, "ValueKind": "flat",
                "ValueLow": 1.0, "ValueHigh": 1.0}
-        for slot in ("Slot.Heavy", "Slot.Special", "Slot.Ultimate"):
+        for slot in ("Slot.Heavy", "Slot.Special", "Slot.Ultimate", "Slot.Support",
+                     "Slot.Basic"):
             assert self.refusals([dict(row, RequiredTags=slot)]) == [], slot
-        for slot in ("Slot.Support", "Slot.Basic", "Slot.Aura", "Slot.Nonsense"):
+        for slot in ("Slot.Aura", "Slot.Nonsense"):
             assert len(self.refusals([dict(row, RequiredTags=slot)])) == 1, slot
 
     def test_the_flag_is_a_stat_with_no_attribute(self):
@@ -9728,6 +9732,57 @@ class TestASlotIsConvertedIntoATrap(GadgetRowsOnAMadeUpSheet):
         problems = self.validation([dict(row, RequiredTags="")])
         assert any("under the required tags ''" in problem
                    and repr(self.STAT) in problem for problem in problems), problems
+
+    #: Traps layer 2's two sentences, as `game/Data/EnchantmentsPositive.csv`
+    #: carries them, with their own tags and the one slot tag each row requires.
+    LAYER_TWO = (
+        ("Your support ability is converted into a placeable trap. When "
+         "triggered, it activates your support ability centered on the "
+         "triggering enemy. Scales off trap damage. All placed copies share "
+         "the support ability cooldown.",
+         "Type.Trap, Slot.Support, Type.Buff", "Slot.Support"),
+        ("Your basic attack is converted into a placeable trap. When "
+         "triggered, it fires your basic attack at the nearest enemy. Scales "
+         "off trap damage. Shares your basic attack cooldown across all "
+         "placed copies.",
+         "Type.Trap, Slot.Basic, Scope.BasicOnly", "Slot.Basic"))
+
+    def test_the_support_and_basic_rows_are_carried_through_under_their_sentences(
+            self, tmp_path):
+        """Traps layer 2's two proposed rows, each under its real sentence and
+        the sentence's own tags, carried through as written and refused by
+        nothing. THE CONTROL: the same row requiring the sentence's whole tag
+        list is refused once, by the tag check, because the row requires the
+        slot's tag alone."""
+        for words, tags, slot in self.LAYER_TWO:
+            self.SENTENCE_TAGS = tags
+            out = self.out(tmp_path, words, [dict(self.ROW, **{"Required Tags": slot})])
+            assert [(row["Stat"], row["ValueKind"], row["ValueLow"], row["ValueHigh"],
+                     row["RequiredTags"], row["Condition"], row["Scale"],
+                     row["Action"], row["ActionEvent"]) for row in out] == [
+                (self.STAT, "flat", 1.0, 1.0, slot, "", "", "", "")], slot
+            assert self.refusals(out) == [], slot
+            assert self.validation(out, tuple(t.strip() for t in tags.split(","))) == [], slot
+            whole = self.refusals([dict(out[0], RequiredTags=tags)])
+            assert len(whole) == 1 and f"under the required tags {tags!r}" in whole[0], (
+                slot, whole)
+
+    def test_the_support_and_basic_names_are_the_shipped_sentences(self):
+        """THE NAMES ARE DERIVED, never typed: each of layer 2's sentences by
+        the generator's `row_name`, found in the shipped Positive sheet with
+        those words and those tags. THE CONTROL is a sentence no sheet has."""
+        import csv
+        path = (gen.PLAYER_CLASS_STATS_CPP.parents[3] / "Data"
+                / "EnchantmentsPositive.csv")
+        with path.open(encoding="utf-8") as handle:
+            shipped = {row["Name"]: row for row in csv.DictReader(handle)}
+        for words, tags, slot in self.LAYER_TWO:
+            name = gen.row_name("Positive", words[:48])
+            assert name in shipped, slot
+            assert shipped[name]["Effect"] == words, slot
+            assert shipped[name]["Tags"] == tags, slot
+        assert gen.row_name("Positive", "Your aura is converted into a placeable trap"[:48]) \
+            not in shipped
 
 
 class TestATrapsArmingAndTriggerRadiusIncreases(GadgetRowsOnAMadeUpSheet):

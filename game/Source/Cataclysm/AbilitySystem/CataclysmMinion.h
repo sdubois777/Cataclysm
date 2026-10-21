@@ -1116,7 +1116,7 @@ public:
 	/**
 	 * Whether a trap of `Slot` casts its skill FROM the triggering enemy's place, "centered on the triggering enemy":
 	 * the Special, the Support and the Ultimate. The Heavy and the basic attack "fire ... at the nearest enemy", and are
-	 * cast from the trap at that enemy.
+	 * cast from the trap at the nearest living enemy when it triggers (`SkillTrapFiresAtTheNearestEnemy`).
 	 */
 	static bool SkillTrapCastsAroundItsEnemy(ECataclysmAbilitySlot Slot);
 
@@ -1137,7 +1137,8 @@ public:
 	/**
 	 * Trigger this trap now at `TriggeringEnemy` (T13), or at its own place when that is null (T11): cast its player's
 	 * skill once, free, by `StartPlayersSkillFromHere` with `Type.Trap` and not `Type.Deployable` added to its tags; at
-	 * the enemy from here for the Heavy, from the enemy's place for `SkillTrapCastsAroundItsEnemy`. A SKILL THAT CANNOT
+	 * the nearest living enemy from here for the Heavy and the basic attack (`SkillTrapNearestEnemyTo`, ruled
+	 * 2026-10-21), from the enemy's place for `SkillTrapCastsAroundItsEnemy`. A SKILL THAT CANNOT
 	 * BE CAST NEVER TRIGGERS (T8): the trap stays armed and is not used up. A cast that starts raises `trap_triggered`
 	 * on the player with the trap's type tags and the enemy, and THEN the trap is used up: destroyed, with no explosion
 	 * and no `gadget_destroyed`.
@@ -1174,6 +1175,24 @@ public:
 
 	/** Give the stand-in body the colour of the state this trap is in now. */
 	void ShowSkillTrapTint();
+
+	/**
+	 * TRAPS LAYER 2 (ruled 2026-10-21, L3, and the heavy trap's aim on the same day): whether a trap of `Slot` FIRES AT
+	 * THE NEAREST LIVING ENEMY WHEN IT TRIGGERS. "When triggered, it fires your basic attack at the nearest enemy" and
+	 * "When triggered, it fires your heavy attack at the nearest enemy": the same words, the same reading, so the basic
+	 * attack and the Heavy. The Special, the Support and the Ultimate stay on the triggering enemy, "centered on the
+	 * triggering enemy" (`SkillTrapCastsAroundItsEnemy`).
+	 */
+	static bool SkillTrapFiresAtTheNearestEnemy(ECataclysmAbilitySlot Slot);
+
+	/**
+	 * The nearest living enemy to this trap now, for a trap set off by `TriggeringEnemy`, nearest first as
+	 * `HostilesWithin` answers. SEARCHED NO FARTHER THAN THAT ENEMY STANDS: anything nearer stands within that distance.
+	 * Through `StepSkillTrap` the two are always one enemy, since the step's triggering enemy is already the nearest within
+	 * the trigger radius; they differ only for a trap set off by an enemy named some other way. THE TRIGGERING ENEMY
+	 * ITSELF when the search finds nothing living, and null for null (T11).
+	 */
+	AActor* SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const;
 
 	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
