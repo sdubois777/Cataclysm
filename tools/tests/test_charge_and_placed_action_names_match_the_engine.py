@@ -138,6 +138,10 @@ CONSTANTS = {
     "KeptStacksFreeNextAbilityAction": "kept_stacks_free_next_ability",
     # AND THE ONE THAT FIRES EVERY GADGET THE WEARER COMMANDS AT ITS DEATH, ruled 2026-10-19.
     "GadgetsCastNowAction": "gadgets_cast_now",
+    # AND THE TWO OF TRAPS LAYER 3, ruled 2026-10-21: a damage over time at a
+    # size on the other character, and a slow at a strength on it.
+    "ApplyStatusSizedAction": "apply_status_sized",
+    "SlowForSecondsAction": "slow_for_seconds",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -478,3 +482,24 @@ def test_the_generator_accepts_exactly_the_gadgets_cast_now_name_the_engine_has(
     minion = code_of(SOURCE.parent / "CataclysmMinion.cpp")
     assert "(!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player))" in minion
     assert "CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true)" in minion
+
+
+def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_engine_has() -> None:
+    """Ruled 2026-10-21 (traps layer 3, M3). The sized status on another
+    character is a status action, the slow is not; and each is recognised by
+    the item from its constant. THE CONTROL: the to-self sized name, which the
+    new one must not replace."""
+    names = engine_names()
+    assert gen.APPLY_STATUS_SIZED_ACTION == names["ApplyStatusSizedAction"]
+    assert gen.APPLY_STATUS_SIZED_ACTION in gen.ALL_APPLY_STATUS_ACTIONS
+    assert names["ApplyStatusToSelfSizedAction"] in gen.ALL_APPLY_STATUS_ACTIONS
+    assert gen.APPLY_STATUS_SIZED_ACTION not in gen.APPLY_STATUS_TO_SELF_ACTIONS
+    assert gen.SLOW_FOR_SECONDS_ACTION == names["SlowForSecondsAction"]
+    assert gen.SLOW_FOR_SECONDS_ACTION not in gen.POOL_ACTIONS
+    assert gen.SLOW_FOR_SECONDS_ACTION not in gen.ALL_APPLY_STATUS_ACTIONS
+    item = (SOURCE.parents[1] / "Items" / "CataclysmItem.cpp").read_text(encoding="utf-8")
+    # THE COMPARISON ITSELF, which no comment holds.
+    assert re.search(r"Effect->Action\.Equals\(\s*UCataclysmAbilitySystemComponent::"
+                     r"ApplyStatusSizedAction,", item)
+    assert re.search(r"Action\.bSlowForSeconds = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::SlowForSecondsAction,", item)

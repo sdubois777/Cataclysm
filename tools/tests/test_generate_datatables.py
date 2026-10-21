@@ -9893,3 +9893,205 @@ def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():
         assert f"seconds_after_{event}" not in gen.CONDITIONS, event
         assert event in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK, event
         assert event not in gen.STRIKE_TARGET_EVENTS, event
+
+
+def shipped_positive_sentence(name: str) -> str:
+    """The words of the shipped Positive sentence named `name`, read and not
+    typed, so a sentence holding a dash keeps it."""
+    import csv
+    path = (gen.PLAYER_CLASS_STATS_CPP.parents[3] / "Data"
+            / "EnchantmentsPositive.csv")
+    with path.open(encoding="utf-8") as handle:
+        match = [row for row in csv.DictReader(handle) if row["Name"] == name]
+    assert len(match) == 1, name
+    return match[0]["Effect"]
+
+
+class TestTheTrapCapBonusAndTheNoExpireFlag(GadgetRowsOnAMadeUpSheet):
+    """`trap_cap_bonus` and `traps_do_not_expire`, ruled 2026-10-21 (traps
+    layer 3, M1, M2) and built ahead of their rows, for "Your trap skills get
+    +1-6 to max trap count" and "Traps do not expire, they remain armed until
+    triggered". Each is a flat figure asked off the player with `Type.Trap`
+    alone. The rows are the enchantment session's; this shows the generator
+    carries the shape the readers take and refuses the shapes they would read
+    as nothing."""
+
+    TAG = "Type.Trap"
+    CAP = ("Your trap skills get +1-6 to max trap count",
+           {"Stat": "trap_cap_bonus", "Value Kind": "flat", "Value Low": 1,
+            "Value High": 6, "Required Tags": "Type.Trap"})
+    EXPIRY = ("Positive_Traps_do_not_expire_they_remain_armed_until_tr",
+              {"Stat": "traps_do_not_expire", "Value Kind": "flat", "Value Low": 1,
+               "Value High": 1, "Required Tags": "Type.Trap"})
+
+    def refusals(self, rows):
+        return gen.refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_each_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, row in ((self.CAP[0], self.CAP[1]),
+                           (shipped_positive_sentence(self.EXPIRY[0]), self.EXPIRY[1])):
+            out = self.out(tmp_path, words, [row])
+            assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
+                     each["ValueHigh"], each["RequiredTags"], each["Action"])
+                    for each in out] == [
+                (row["Stat"], "flat", float(row["Value Low"]),
+                 float(row["Value High"]), "Type.Trap", "")], row["Stat"]
+            assert self.refusals(out) == [], row["Stat"]
+            assert self.validation(out) == [], row["Stat"]
+
+    def test_both_are_stats_with_no_attribute_named_as_the_engine_names_them(self):
+        """THE CONTROL is a made-up name on no list."""
+        for stat in (gen.TRAP_CAP_BONUS_STAT, gen.TRAPS_DO_NOT_EXPIRE_STAT):
+            assert stat in gen.stats_with_no_attribute(), stat
+        assert "trap_cap_bonuses" not in gen.stats_with_no_attribute()
+        engine = self.names_in_the_engine()
+        assert engine["TrapCapBonusStat"] == gen.TRAP_CAP_BONUS_STAT
+        assert engine["TrapsDoNotExpireStat"] == gen.TRAPS_DO_NOT_EXPIRE_STAT
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        cap = {"Name": "X#1", "Stat": "trap_cap_bonus", "ValueKind": "flat",
+               "ValueLow": 1.0, "ValueHigh": 6.0, "RequiredTags": "Type.Trap"}
+        flag = dict(cap, Stat="traps_do_not_expire", ValueHigh=1.0)
+        for row in (cap, flag):
+            assert self.refusals([row]) == [], row["Stat"]
+            assert self.refusals([dict(row, RequiredTags="")]) == [], row["Stat"]
+        for row, change, said in (
+                (cap, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (cap, {"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                (cap, {"Action": "strike_target"}, "with the action 'strike_target'"),
+                (cap, {"ValueLow": 0.0}, "whole number of traps from 1"),
+                (cap, {"ValueHigh": 2.5}, "whole number of traps from 1"),
+                (cap, {"ValueHigh": 21.0}, "whole number of traps from 1"),
+                (flag, {"ValueKind": "more"}, "value kind 'more'"),
+                (flag, {"RequiredTags": "Slot.Heavy"}, "under the required tags 'Slot.Heavy'"),
+                (flag, {"ValueHigh": 2.0}, "states 1 and nothing else")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(cap, Stat="minion_cap_bonus", ValueKind="increased")
+        assert self.refusals([other]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing above."""
+        out = self.out(tmp_path, self.CAP[0], [dict(self.CAP[1], **{"Value Kind": "increased"})])
+        problems = self.validation(out)
+        assert any("trap_cap_bonus" in problem and "'increased'" in problem
+                   for problem in problems), problems
+
+
+class TestTheSlowTheSizedBleedAndTheStacksThatLapseAlone(GadgetRowsOnAMadeUpSheet):
+    """The three things traps layer 3 added to what a row may say, ruled
+    2026-10-21 (M3, M4): `slow_for_seconds` on `trap_triggered`, the slow of a
+    stated strength on the enemy that set the trap off; `apply_status_sized` on
+    `deployable_hit`, a damage over time at a multiple of its size on every
+    enemy a trap's cast strikes; and an `own_stacks` row with no cap on
+    `trap_triggered`, whose stacks lapse alone. Each proposed row is carried
+    through under its real sentence and refused by nothing; each wrong shape
+    is refused by name."""
+
+    TAG = "Type.Trap"
+    SLOW_WORDS = "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds"
+    SLOW = {"Value Low": 20, "Value High": 35, "Required Tags": "Type.Trap",
+            "Action": "slow_for_seconds", "Action Event": "trap_triggered",
+            "Stack Seconds": 2, "Stack Seconds High": 4}
+    BLEED_WORDS = "Traps apply 1-2 bleed stacks to all enemies caught in their blast"
+    BLEED = {"Value Low": 1, "Value High": 2, "Required Tags": "Type.Trap",
+             "Action": "apply_status_sized", "Action Event": "deployable_hit",
+             "Ailment": "Bleed", "Trigger Cooldown": 0}
+    DAMAGE_WORDS = ("Each trap triggered in the last 10 seconds increases your "
+                    "damage by 8%-15%")
+    DAMAGE = [{"Stat": stat, "Value Kind": "increased", "Value Low": 8,
+               "Value High": 15, "Scale": "own_stacks", "Scale Step": 1,
+               "Action Event": "trap_triggered", "Stack Seconds": 10}
+              for stat in ("attack_damage", "spell_damage")]
+    EVASION_WORDS = ("Placing a trap generates a burst of evasion, granting "
+                     "10%-20% evasion chance for 3 seconds")
+    EVASION = {"Stat": "evasion", "Value Kind": "flat", "Value Low": 10,
+               "Value High": 20, "Scale": "own_stacks", "Scale Step": 1,
+               "Action Event": "trap_placed", "Scale Max Steps": 1,
+               "Stack Seconds": 3}
+
+    def test_the_slow_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.SLOW_WORDS, [self.SLOW])
+        assert [(row["Action"], row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
+                 row["StackSeconds"], row["StackSecondsHigh"], row["TriggerCooldown"],
+                 row["FractionOf"], row["Ailment"], row["RequiredTags"])
+                for row in out] == [
+            ("slow_for_seconds", "trap_triggered", 20.0, 35.0, 2.0, 4.0, 0.0, "", "",
+             "Type.Trap")]
+        assert self.validation(out) == []
+
+    def test_the_slow_is_refused_where_the_game_would_slow_nobody_or_drop_a_cell(
+            self, tmp_path):
+        """THE CONTROL is the row above, carried through."""
+        for change, said in (
+                ({"Action Event": "deployable_hit"}, "Only trap_triggered names"),
+                ({"Stack Seconds": None, "Stack Seconds High": None},
+                 "slows and states no Stack Seconds"),
+                ({"Ailment": "Cripple"}, "names the ailment 'Cripple'"),
+                ({"Value Kind": "flat"}, "states Value Kind 'flat'")):
+            with pytest.raises(gen.DataError, match=said):
+                self.out(tmp_path, self.SLOW_WORDS, [dict(self.SLOW, **change)])
+        # PAST CRIPPLE'S CAP, under made-up words that state the range, since
+        # the words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="up to 80"):
+            self.out(tmp_path, "Traps apply a 85%-90% slow to triggered enemies for 2-4 seconds",
+                     [dict(self.SLOW, **{"Value Low": 85, "Value High": 90})])
+
+    def test_the_bleed_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.BLEED_WORDS, [self.BLEED])
+        assert [(row["Action"], row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
+                 row["Ailment"], row["TriggerCooldown"], row["RequiredTags"])
+                for row in out] == [
+            ("apply_status_sized", "deployable_hit", 1.0, 2.0, "Bleed", 0.0, "Type.Trap")]
+        assert self.validation(out) == []
+
+    def test_the_sized_bleed_is_refused_where_the_game_would_lay_nothing(self, tmp_path):
+        """THE CONTROL is the row above, carried through."""
+        for change, said in (
+                ({"Ailment": "Cripple"}, "applies the status 'Cripple'"),
+                ({"Action Event": "trap_placed"}, "applies a status on the event 'trap_placed'")):
+            with pytest.raises(gen.DataError, match=said):
+                self.out(tmp_path, self.BLEED_WORDS, [dict(self.BLEED, **change)])
+        # A SIZE IS WHOLE AT EACH END, under made-up words that state the range,
+        # since the words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="times its ordinary size"):
+            self.out(tmp_path, "Traps apply 1.5-2 bleed stacks to all enemies caught in their blast",
+                     [dict(self.BLEED, **{"Value Low": 1.5})])
+
+    def test_the_damage_rows_with_no_cap_on_a_trap_triggered_are_carried_through(
+            self, tmp_path):
+        out = self.out(tmp_path, self.DAMAGE_WORDS, self.DAMAGE)
+        assert [(row["Stat"], row["Scale"], row["ActionEvent"], row["ScaleMaxSteps"],
+                 row["StackSeconds"]) for row in out] == [
+            ("attack_damage", "own_stacks", "trap_triggered", 0, 10.0),
+            ("spell_damage", "own_stacks", "trap_triggered", 0, 10.0)]
+
+    def test_an_own_stack_with_no_cap_is_still_refused_on_any_other_event(self, tmp_path):
+        """The guard against a cap forgotten stays everywhere else. THE CONTROL
+        is the evasion row on `trap_placed`, which states its cap of 1."""
+        out = self.out(tmp_path, self.EVASION_WORDS, [self.EVASION])
+        assert [(row["Stat"], row["ValueKind"], row["ActionEvent"], row["ScaleMaxSteps"],
+                 row["StackSeconds"]) for row in out] == [
+            ("evasion", "flat", "trap_placed", 1, 3.0)]
+        assert self.validation(out) == []
+        with pytest.raises(gen.DataError, match="states no cap in Scale Max Steps"):
+            self.out(tmp_path, self.EVASION_WORDS,
+                     [dict(self.EVASION, **{"Scale Max Steps": None})])
+
+    def test_the_lists_hold_one_event_each_and_the_item_reads_no_cap_as_lapsing_alone(self):
+        """The two events lists this layer adds name `trap_triggered` alone, and
+        the item marks an own-stack row of no cap as lapsing alone, read out of
+        the C++ that does it. THE CONTROL: a count of hits in a row is not
+        marked."""
+        import re
+        assert gen.SLOW_FOR_SECONDS_EVENTS == ("trap_triggered",)
+        assert gen.OWN_STACKS_LAPSING_ALONE_EVENTS == ("trap_triggered",)
+        item = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                / "CataclysmItem.cpp").read_text(encoding="utf-8")
+        assert re.search(r"Stack\.bOwnStacksLapseAlone = !bConsecutive && "
+                         r"Effect->ScaleMaxSteps <= 0;", item)

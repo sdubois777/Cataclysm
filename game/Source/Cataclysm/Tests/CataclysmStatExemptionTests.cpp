@@ -10015,6 +10015,40 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `trap_cap_bonus` and `traps_do_not_expire`, read off the player with `Type.Trap` by
+	 * `ACataclysmMinion::SkillTrapsMostFor` and `SkillTrapsDoNotExpireFor`, which a placing and the skill bar ask. Ruled
+	 * 2026-10-21 (traps layer 3, M1, M2). ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a cap
+	 * of five, or a trap that expires. Granted at a flat 3, a cap of eight; at a flat 1, no expiry.
+	 *
+	 * WHAT THIS DOES NOT REACH. A trap placed under them, the oldest destroyed and the bar's words: `Cataclysm.Traps.`.
+	 */
+	void ProbeTrapCapAndExpiry(FAutomationTestBase& Test, bool bCap)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		if (bCap)
+		{
+			Test.TestEqual(TEXT("control: with no trap_cap_bonus the most traps standing is the ruled five"),
+						   ACataclysmMinion::SkillTrapsMostFor(Fighter.Actor), 5);
+			GrantFlat(Fighter.Actor, ACataclysmMinion::TrapCapBonusStat, 3.0f);
+			Test.TestEqual(TEXT("with trap_cap_bonus at 3 it is eight, so SkillTrapsMostFor really reads it"),
+						   ACataclysmMinion::SkillTrapsMostFor(Fighter.Actor), 8);
+			return;
+		}
+		Test.TestFalse(TEXT("control: with no traps_do_not_expire a trap placed now expires"),
+					   ACataclysmMinion::SkillTrapsDoNotExpireFor(Fighter.Actor));
+		GrantFlat(Fighter.Actor, ACataclysmMinion::TrapsDoNotExpireStat, 1.0f);
+		Test.TestTrue(TEXT("with traps_do_not_expire at 1 it does not, so SkillTrapsDoNotExpireFor really reads it"),
+					  ACataclysmMinion::SkillTrapsDoNotExpireFor(Fighter.Actor));
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -10272,6 +10306,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_slot_is_a_trap"), &ProbeSkillSlotIsATrap},
 			{TEXT("trap_arming_speed"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/true); }},
 			{TEXT("trap_trigger_radius"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/false); }},
+			{TEXT("trap_cap_bonus"), [](FAutomationTestBase& Test) { ProbeTrapCapAndExpiry(Test, /*bCap=*/true); }},
+			{TEXT("traps_do_not_expire"), [](FAutomationTestBase& Test) { ProbeTrapCapAndExpiry(Test, /*bCap=*/false); }},
 		};
 		return Made;
 	}

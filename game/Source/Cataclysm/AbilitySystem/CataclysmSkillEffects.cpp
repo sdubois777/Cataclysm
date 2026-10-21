@@ -1110,7 +1110,11 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	FCataclysmDamageResult OwnResult;
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
-	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, 0.0f,
+	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
+	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps apply 1-2 bleed stacks to all enemies
+	// caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
+	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
+	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
 	return bDealt ? Sent : 0.0f;
 }

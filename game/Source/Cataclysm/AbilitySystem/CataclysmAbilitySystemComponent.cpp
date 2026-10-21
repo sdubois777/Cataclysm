@@ -2777,6 +2777,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 		Ended.Stacks += OwnStacksHeld(Held.Key);
 	}
 	OwnStacks.Empty();
+	OwnStacksLastingAlone.Empty();
 
 	// AND EVERY ROW'S KEPT STACKS. Ruled 2026-10-12. They have no lifetime, and a death is one of the four things
 	// that end them: see `GainKeptStack`. Counted as held now, so stacks of a dungeon already left add nothing.
@@ -5124,7 +5125,15 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			}
 			else if (!Action.StackKey.IsNone())
 			{
-				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+				// AND A ROW WITH NO CAP, WHOSE STACKS LAPSE ALONE (traps layer 3, M4).
+				if (Action.bOwnStacksLapseAlone)
+				{
+					GrantOwnStackLastingAlone(Action.StackKey, Action.StackSeconds);
+				}
+				else
+				{
+					GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+				}
 			}
 			// A CLEANSE ON A CLOCK: "You are cleansed every 5 seconds". Ruled 2026-09-26. Its wearer is the
 			// avatar, which is what the effects are on and what the dungeon game mode compares with its player.
@@ -5554,6 +5563,17 @@ int32 UCataclysmAbilitySystemComponent::OwnStacksHeld(FName StackKey) const
 	if (!Held || Held->Count <= 0 || !World)
 	{
 		return 0;
+	}
+	// A ROW WHOSE STACKS LAPSE ALONE COUNTS THOSE STILL INSIDE THEIR OWN WINDOWS (traps layer 3, M4).
+	if (const TArray<float>* Alone = OwnStacksLastingAlone.Find(StackKey))
+	{
+		const float Now = World->GetTimeSeconds();
+		int32 Standing = 0;
+		for (const float At : *Alone)
+		{
+			Standing += Now - At > Held->WindowSeconds ? 0 : 1;
+		}
+		return Standing;
 	}
 	const float Since = World->GetTimeSeconds() - Held->GrantedAtSeconds;
 	return Since > Held->WindowSeconds ? 0 : Held->Count;
@@ -6201,7 +6221,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				&& TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.StackKey);
-				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+				// AND A ROW WITH NO CAP, WHOSE STACKS LAPSE ALONE (traps layer 3, M4).
+				if (Action.bOwnStacksLapseAlone)
+				{
+					GrantOwnStackLastingAlone(Action.StackKey, Action.StackSeconds);
+				}
+				else
+				{
+					GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+				}
 				NoteTriggerFired(Action);
 			}
 			continue;
@@ -6658,7 +6686,9 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				// THE CHANCE, where 100 is always. Compared as at most rather than
 				// rolled, because `FRandRange` can return 100 itself.
 				const float Pinned = CVarStatusRoll.GetValueOnAnyThread();
+				// A SIZED ROW ALWAYS APPLIES: its value is a size and not a chance (traps layer 3).
 				const bool bComesUp = Action.ApplyStatus == ECataclysmApplyStatus::Seconds
+					|| Action.ApplyStatus == ECataclysmApplyStatus::Sized
 					|| Action.Percent >= 100.0f
 					|| (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f))
 						< Action.Percent;
@@ -6713,6 +6743,24 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				ACataclysmMinion::FireEveryGadgetAtTheDeathOf(GetAvatarActor());
+			}
+			continue;
+		}
+		// THE OTHER CHARACTER OF THE EVENT IS SLOWED BY THE ROW'S PER CENT FOR ITS STACK SECONDS. Ruled 2026-10-21 (traps
+		// layer 3, M3 (b)), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" on `trap_triggered`,
+		// whose other character is the enemy that set the trap off. Landed only, once per row per event; applied by the
+		// avatar, as a status is above. NO RULE OF A TENTH: a trigger is not a blow, and the event carries no amount.
+		if (Action.bSlowForSeconds)
+		{
+			AActor* Slowed = const_cast<AActor*>(EventTarget);
+			if (bLanded && Slowed && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				AActor* Slower = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+				if (Slower && UCataclysmAilments::ApplySlowOfStrength(Slower, Slowed, Action.Percent, Action.StackSeconds))
+				{
+					NoteTriggerFired(Action);
+				}
 			}
 			continue;
 		}
@@ -7549,8 +7597,11 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 		return false;
 	}
 	// AT THE NORMAL MAGNITUDE, because no sentence states one, and for the row's
-	// seconds in place of the status row's when it states them.
-	return UCataclysmAilments::Apply(Applier, Other, *Kind, /*Magnitude=*/1.0f,
+	// seconds in place of the status row's when it states them. AND AT THE ROW'S
+	// MULTIPLE OF ITS ORDINARY SIZE FOR A SIZED ROW, "1-2 bleed stacks" (traps
+	// layer 3; ruling 8 of 2026-10-07), once, since no ailment stacks.
+	const float Magnitude = Action.ApplyStatus == ECataclysmApplyStatus::Sized ? Action.Percent : 1.0f;
+	return UCataclysmAilments::Apply(Applier, Other, *Kind, Magnitude,
 		/*Skill=*/nullptr, NAME_None, bSeconds ? Action.Percent : 0.0f);
 }
 
@@ -8137,4 +8188,33 @@ float UCataclysmAbilitySystemComponent::BasicSkillTrapSecondsLeft() const
 	}
 	const float Now = World->GetTimeSeconds();
 	return FMath::Max(0.0f, BasicSkillTrapPlacedAtSeconds + Interval - Now);
+}
+
+// ==========================================================================
+// Traps, layer 3: a damage over time at a size and a slow at a strength on another character, and own stacks that
+// lapse alone. Ruled 2026-10-21 (M3, M4).
+// ==========================================================================
+
+const TCHAR* UCataclysmAbilitySystemComponent::ApplyStatusSizedAction = TEXT("apply_status_sized");
+const TCHAR* UCataclysmAbilitySystemComponent::SlowForSecondsAction = TEXT("slow_for_seconds");
+
+void UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone(FName StackKey, float WindowSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (StackKey.IsNone() || WindowSeconds <= 0.0f || !World)
+	{
+		return;
+	}
+
+	// EACH STACK ITS OWN GRANT TIME, the lapsed ones let go, and NO CAP (M4 (a): the sentence names none). The count
+	// and the window are written into `OwnStacks` too, so the line above the skill bar finds the row as it finds every
+	// own stack; `OwnStacksHeld` counts from the grant times.
+	const float Now = World->GetTimeSeconds();
+	TArray<float>& Granted = OwnStacksLastingAlone.FindOrAdd(StackKey);
+	Granted.RemoveAll([Now, WindowSeconds](float At) { return Now - At > WindowSeconds; });
+	Granted.Add(Now);
+	FOwnStack& Held = OwnStacks.FindOrAdd(StackKey);
+	Held.Count = Granted.Num();
+	Held.GrantedAtSeconds = Now;
+	Held.WindowSeconds = WindowSeconds;
 }
