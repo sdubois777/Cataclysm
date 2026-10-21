@@ -394,6 +394,20 @@ public:
 	static FString BasicGadgetTextOf(const AActor* Player);
 
 	/**
+	 * The line above the bar for the basic attack's TRAP, or empty while the basic attack is not converted into one.
+	 * Ruled 2026-10-21 (traps layer 2, L2: "swept on the box"), the basic gadget's line made over for a trap, because the
+	 * bar draws no box for the basic attack: "Basic trap 0.4s, traps 1/5", the seconds until the next click may place one
+	 * written as a box writes its wait (`CooldownTextFor`), which is the sweep; "Basic trap ready, traps 1/5" when it
+	 * may; and "Basic trap casts nothing" when the held weapon's basic attack can never be cast by a trap, or the player
+	 * never swings and so never places one (T8). The traps are every slot's, as a box counts them (T6).
+	 */
+	static FString BasicTrapTextFor(bool bConverted, bool bCastsNothing, float RemainingSeconds, int32 TrapsStanding,
+									int32 TrapsMost);
+
+	/** `BasicTrapTextFor`, read off a player. Empty for anything but a player whose basic attack is a trap's. */
+	static FString BasicTrapTextOf(const AActor* Player);
+
+	/**
 	 * The line above the bar naming the next-use charges held, or empty when
 	 * none are. Issue #1833, phase 2: the owner's rule that every system ships
 	 * with a basic interface, so a held charge can be seen in play.

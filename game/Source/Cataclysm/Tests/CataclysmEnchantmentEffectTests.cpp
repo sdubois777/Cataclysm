@@ -27862,4 +27862,50 @@ bool FCataclysmSkillTrapRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillTrapSupportBasicRowsTest,
+	"Cataclysm.Enchantments.TheWornSupportAndBasicTrapConversionsEachMakeTheirOwnSlotATrap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Traps layer 2, ruled 2026-10-21 (L1-L6): "Your support ability / basic attack is converted into a placeable trap",
+ * each the flag `skill_slot_is_a_trap` scoped to its slot's tag. WORN by real players, one sentence each, against a
+ * CONTROL wearing a benefit with no effect, each with the same drawback with no effect. It asks
+ * `UCataclysmAbilitySystemComponent::SlotIsASkillTrap`, the question the press, the click and the skill bar ask; what a
+ * trap then does is `Cataclysm.Traps.`'s. TWO assertions on the cases' own slots, so on assets built before the rows it
+ * fails twice, and only there.
+ */
+bool FCataclysmSkillTrapSupportBasicRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* SupportTrap = TEXT("Positive_Your_support_ability_is_converted_into_a_placeab");
+	const TCHAR* BasicTrap = TEXT("Positive_Your_basic_attack_is_converted_into_a_placeable");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker SupportWearer(SupportTrap, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker BasicWearer(BasicTrap, DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a striker wearing a benefit with no effect"), Control.Ready())
+		|| !TestTrue(TEXT("a striker wearing the support conversion"), SupportWearer.Ready())
+		|| !TestTrue(TEXT("a striker wearing the basic conversion"), BasicWearer.Ready()))
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, neither slot is a trap's.
+	TestFalse(TEXT("control: the support slot of the wearer of a benefit with no effect is not a trap's"),
+			  Control.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Support));
+	TestFalse(TEXT("control: nor its basic attack"), Control.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::BasicAttack));
+
+	const TCHAR* Stale = TEXT(" If not, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+	TestTrue(*(FString(TEXT("wearing the support conversion, the support slot is a trap's.")) + Stale),
+			 SupportWearer.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Support));
+	TestTrue(*(FString(TEXT("wearing the basic conversion, the basic attack is a trap's.")) + Stale),
+			 BasicWearer.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::BasicAttack));
+
+	// AND EACH SENTENCE CONVERTS ITS OWN SLOT AND NO OTHER: the Required Tags scope it.
+	TestFalse(TEXT("the support conversion leaves the basic attack alone"),
+			  SupportWearer.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::BasicAttack));
+	TestFalse(TEXT("the basic conversion leaves the support slot alone"),
+			  BasicWearer.ASC->SlotIsASkillTrap(ECataclysmAbilitySlot::Support));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
