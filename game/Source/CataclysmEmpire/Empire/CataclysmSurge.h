@@ -49,7 +49,10 @@ enum class ECataclysmSurgeMode : uint8
 //     and `UCataclysmEmpireRun::RelocateQuestDungeon` flips the coin and moves
 //     it. Issue #1324 slice 4. Issue #51 is the Hell on Earth quest mechanic
 //     for the Demonic Cataclysm specifically, which is a different thing from
-//     this kind.
+//     this kind. **And a fall does not take it**: since 2026-10-21 a Quest
+//     dungeon standing on a city that falls moves at once, with no coin, to
+//     the city `PickRefuge` answers, and `UCataclysmEmpireRun::CityFell` moves
+//     it.
 //   - **FallenCity** is what a city that has fallen becomes.
 //     `MakeFallenCityDungeon` builds it and `UCataclysmEmpireRun::CityFell`
 //     is the only caller. Issue #1324 slice 2.
@@ -202,9 +205,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 *
 	 * **IT IS NOT "THE TIER OF THE CITY THIS DUNGEON IS STANDING ON", AND A
 	 * QUEST DUNGEON IS WHERE THE TWO COME APART.** It is set once, by
-	 * `MakeDungeon` and `MakeFallenCityDungeon`, and `RelocateQuestDungeon`
-	 * deliberately leaves it alone when it moves a dungeon: read the host's tier
-	 * off the map with `Map->Find(CityId)->Tier` instead.
+	 * `MakeDungeon` and `MakeFallenCityDungeon`, and neither move touches it --
+	 * `RelocateQuestDungeon` on a timer, and `CityFell` when the dungeon's city
+	 * falls under it, since 2026-10-21: read the host's tier off the map with
+	 * `Map->Find(CityId)->Tier` instead.
 	 *
 	 * WHY IT MUST NOT MOVE. `BiteScale` is the only thing that reads it, and it
 	 * divides the floors the dungeon was rolled with (`Floors` less
@@ -1052,10 +1056,15 @@ public:
 	 * IT TAKES NOTHING FROM THE CITY EVER AGAIN. The city has already fallen and
 	 * there is nothing left to bite.
 	 *
-	 * @param DungeonsAbsorbed how many dungeons stood on the city when it fell.
-	 *        Sets both the floor count and the boss count. At least one in
-	 *        practice, because a city falls when a dungeon standing on it
-	 *        resolves, and that dungeon is absorbed with the rest.
+	 * @param DungeonsAbsorbed how many dungeons stood on the city when it fell
+	 *        and were absorbed by it. Sets both the floor count and the boss
+	 *        count. **IT CAN BE NOUGHT, AND THEN THE DUNGEON STILL HOLDS ONE
+	 *        BOSS.** Since 2026-10-21 a Quest dungeon standing on a falling city
+	 *        moves away and is not counted, so a city whose only dungeons were
+	 *        Quest dungeons -- one whose own Quest hit felled it -- absorbs
+	 *        none. This said, until then, that the count was at least one in
+	 *        practice. The coordinating session ruled on 2026-10-21 that such a
+	 *        city still becomes a Dungeon City with one boss.
 	 */
 	static FCataclysmDungeon MakeFallenCityDungeon(
 		int32 DungeonId, const FCataclysmCity& City, int32 Day,
@@ -1433,6 +1442,61 @@ public:
 	static int32 PickRelocation(
 		const UCataclysmEmpireMap& Map,
 		const FCataclysmCity& From,
+		FRandomStream& Stream,
+		bool bCarriesSiege = false,
+		const TArray<int32>& SiegesPerCityNow = TArray<int32>());
+
+	/**
+	 * Where a Quest dungeon standing on a city that has just fallen goes, or
+	 * `INDEX_NONE` when nowhere qualifies and it stays on the fallen city.
+	 *
+	 * **A FALL DOES NOT TAKE A QUEST DUNGEON.** The owner, 2026-10-16,
+	 * verbatim: "Quest dungeons don't go away when a city falls. They just move
+	 * to an adjacent city. So eventually they should be hitting something."
+	 * The simulation took it that day, in `Simulation._fall` and
+	 * `Simulation._quest_refuge`; the game follows since 2026-10-21.
+	 *
+	 * THE RELOCATION'S OWN FILTER, ruled by the coordinating session on
+	 * 2026-10-16: a city that is exposed -- so not fallen and not sealed -- and
+	 * is not the Pillar, and, when the dungeon carries a Siege, not one already
+	 * holding `SiegesPerCity` of them. The same three tests
+	 * `PickRelocation` makes.
+	 *
+	 * **AN ADJACENT CITY FIRST, AND THEN THE NEAREST ONE COUNTED IN LANES.**
+	 * When no neighbour qualifies it searches outward ring by ring, breadth
+	 * first over every link `AdjacentCities` names -- outward, inward and the
+	 * rim's perimeter -- and through any city, fallen and sealed ones
+	 * included, and takes the first ring holding a city that qualifies. That
+	 * is what makes this differ from `PickRelocation`, whose "nowhere adjacent"
+	 * is an answer: a Quest dungeon whose city has fallen cannot stay, so it
+	 * goes as far as it must.
+	 *
+	 * NO COIN. The move is certain, ruled on 2026-10-16; the coin is the
+	 * timer's, `QuestMoveChance`, and is not flipped for a fall.
+	 *
+	 * ONE DRAW WHEN THERE IS A CHOICE AND NONE WHEN THERE IS NOT, as
+	 * `Simulation._quest_refuge` does: its `self.rng.choice(targets)` is
+	 * guarded by `if targets`. Ties within the ring are broken by that one
+	 * draw. `INDEX_NONE` comes only when no exposed city but the Pillar is
+	 * left, or every one left already holds a Siege and the dungeon carries
+	 * one.
+	 *
+	 * IT DECIDES AND DOES NOT ACT, like `PickRelocation`.
+	 * `UCataclysmEmpireRun::CityFell` moves the dungeon, and counts the Sieges
+	 * standing and passes them in for the same reason `RelocateQuestDungeon`
+	 * does.
+	 *
+	 * @param Fallen the city that has just fallen. It must already read as
+	 *               fallen, so that the cities it shielded read as exposed.
+	 * @param bCarriesSiege whether the dungeon being moved has the Siege
+	 *                      sub-type.
+	 * @param SiegesPerCityNow how many Siege dungeons stand on each city now,
+	 *                         indexed by city identifier. Empty means the
+	 *                         caller did not say, and then nothing is refused.
+	 */
+	static int32 PickRefuge(
+		const UCataclysmEmpireMap& Map,
+		const FCataclysmCity& Fallen,
 		FRandomStream& Stream,
 		bool bCarriesSiege = false,
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>());

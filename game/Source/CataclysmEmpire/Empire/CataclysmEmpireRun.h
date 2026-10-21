@@ -71,16 +71,30 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	TArray<int32> Resolved;
 
 	/**
-	 * The dungeons that moved to another city today.
+	 * The dungeons that moved to another city today, for either of the two
+	 * reasons a dungeon moves.
 	 *
-	 * A SUBSET OF `Resolved` AND NEVER MORE THAN THAT. Only a Quest dungeon
-	 * moves, and only when its timer runs out; `docs/Cataclysm_GDD_v2.md`
-	 * section VIII says its timer "refreshes and it may move to an adjacent
-	 * city". Issue #1324 slice 4. One whose hit felled its host is absorbed
-	 * and does not move.
+	 * ONLY A QUEST DUNGEON MOVES, AND IT MOVES FOR TWO REASONS:
 	 *
-	 * **IT IS SHORTER THAN THE QUEST DUNGEONS IN `Resolved`, AND THAT IS THE
-	 * RULE RATHER THAN A LOSS.** The design's "MAY move" has two halves and a
+	 *   - **ITS TIMER RAN OUT**, and it is in `Resolved` too.
+	 *     `docs/Cataclysm_GDD_v2.md` section VIII says its timer "refreshes
+	 *     and it may move to an adjacent city". Issue #1324 slice 4.
+	 *   - **ITS CITY FELL UNDER IT**, since 2026-10-21, and it is in
+	 *     `MovedByAFall` too. A fall does not absorb a Quest dungeon; it moves
+	 *     at once to the city `UCataclysmSurgeScheduler::PickRefuge` answers.
+	 *     Such a dungeon need not be in `Resolved` at all.
+	 *
+	 * **SO IT IS NO LONGER A SUBSET OF `Resolved`**, which this comment said
+	 * until 2026-10-21. A timer's moves are this list less `MovedByAFall`.
+	 *
+	 * A DUNGEON CAN BE HERE TWICE. A Quest dungeon a fall moved can have its
+	 * own timer run out later the same day and move again; the coordinating
+	 * session ruled on 2026-10-21 that both moves stand. A dungeon moved by
+	 * two falls in one day is here twice as well.
+	 *
+	 * **OF THE TIMER'S MOVES, THERE ARE FEWER THAN QUEST DUNGEONS IN
+	 * `Resolved`, AND THAT IS THE RULE RATHER THAN A LOSS.** The design's "MAY
+	 * move" has two halves and a
 	 * dungeon that stays may be either. It had nowhere adjacent to go -- every
 	 * neighbour sealed, fallen, the Pillar, or already besieged if it carries a
 	 * Siege itself -- which is about one quest timer in four; or it had
@@ -93,12 +107,40 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 * NOTHING HERE SAYS WHICH OF THE TWO IT WAS, deliberately. A dungeon that
 	 * stayed is simply absent from this list either way.
 	 *
-	 * WHERE EACH ONE WENT IS READ OFF THE DUNGEON. `FCataclysmDungeon::CityId`
-	 * is already the new city by the time this report is returned, so recording
-	 * the destination here would be a second copy of it that could disagree.
+	 * WHERE A TIMER'S MOVE WENT IS READ OFF THE DUNGEON.
+	 * `FCataclysmDungeon::CityId` is already the new city by the time this
+	 * report is returned. A FALL'S MOVE IS RECORDED WITH ITS CITIES, in
+	 * `MovedByAFallFrom` and `MovedByAFallTo`, because a dungeon that moves
+	 * twice in a day is no longer where the first move put it.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Relocated;
+
+	/**
+	 * The Quest dungeons that moved today because the city they stood on fell,
+	 * one entry a move. Each is in `Relocated` as well.
+	 *
+	 * The owner, 2026-10-16, verbatim: "Quest dungeons don't go away when a
+	 * city falls. They just move to an adjacent city. So eventually they
+	 * should be hitting something." Built in the game on 2026-10-21; see
+	 * `UCataclysmEmpireRun::CityFell` and
+	 * `UCataclysmSurgeScheduler::PickRefuge`.
+	 *
+	 * A QUEST DUNGEON THAT FOUND NOWHERE TO GO IS NOT HERE. It stays on the
+	 * fallen city, which happens only once no exposed city but the Pillar is
+	 * left; it is not in `Absorbed` either, since nothing absorbed it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> MovedByAFall;
+
+	/** The city each move in `MovedByAFall` left, index for index: the city
+	 *  that fell. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> MovedByAFallFrom;
+
+	/** The city each move in `MovedByAFall` went to, index for index. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> MovedByAFallTo;
 
 	/**
 	 * The cities an ordinary dungeon hit today and then left, one entry a hit.
@@ -149,10 +191,16 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 *
 	 * THEY ARE ABSORBED RATHER THAN CLEARED. In the design they become part of
 	 * the Dungeon City the fallen city turns into, and its floor count is how
-	 * many were standing there when it fell. `CityFell` builds that dungeon
-	 * through `AddFallenCityDungeon`, since issue #1324 slice 2, so these are
-	 * removed from the map and counted into the one that replaces them. This
-	 * comment said nothing built it and that stopped being true at `c7e11f7`.
+	 * many were absorbed when it fell. `CityFell` builds that dungeon through
+	 * `AddFallenCityDungeon`, since issue #1324 slice 2, so these are removed
+	 * from the map and counted into the one that replaces them. This comment
+	 * said nothing built it and that stopped being true at `c7e11f7`.
+	 *
+	 * **NO QUEST DUNGEON IS HERE**, since 2026-10-21. A Quest dungeon on a
+	 * falling city moves, and is in `MovedByAFall`, or finds nowhere to go and
+	 * stays; either way it is not absorbed and not counted into the Dungeon
+	 * City. Until then every dungeon on the city was here, Quest dungeons
+	 * included.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Absorbed;
@@ -202,9 +250,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *      of its host city's defence and population and then leaves the map. A
  *      Quest dungeon takes an ordinary dungeon's hit for its host's tier, and
  *      then its timer is full again and it may move to an adjacent city.
- *   7. A city whose defence reached zero falls. Every dungeon standing on it is
- *      absorbed, and its fall fires a surge of its own when the last surge is
- *      at least 25 days behind. A fall sooner than that fires none.
+ *   7. A city whose defence reached zero falls. Every ordinary dungeon
+ *      standing on it is absorbed; a Quest dungeon moves to the nearest city
+ *      that will take it, an adjacent one first, since 2026-10-21. Its fall
+ *      fires a surge of its own when the last surge is at least 25 days
+ *      behind. A fall sooner than that fires none.
  *   8. If a Sanctuary has fallen, the Cataclysm can reach the Pillar.
  *   9. If nothing at all stands on the map, the Pillar cannot be reached and
  *      the last surge is at least 25 days behind, the next wave lands now.
@@ -704,8 +754,9 @@ public:
 	 * and a Quest dungeon's timer hitting its host. An ordinary dungeon whose
 	 * hit felled its city does not: the screen already shows a city lost.
 	 * `UCataclysmEmpireMapLayout::LastHitLine` turns the three fields into the
-	 * line. NONE OF THE THREE IS SAVED; a loaded run shows no line until the
-	 * next hit.
+	 * line, and turns `LastMoveDay` and the two beside it into a line about a
+	 * fall's move instead when that is as recent. NONE OF THE SIX IS SAVED; a
+	 * loaded run shows no line until the next hit or move.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 LastHitDay = 0;
@@ -718,6 +769,28 @@ public:
 	 *  dungeon that hit and left. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bLastHitWasAQuestTimer = false;
+
+	/**
+	 * The day a city's fall last moved a Quest dungeon, or 0 when none has
+	 * this run. Since 2026-10-21.
+	 *
+	 * FOR THE EMPIRE SCREEN'S ONE LINE, like `LastHitDay`, and set by
+	 * `CityFell` where the move is made. A move made by a Quest dungeon's own
+	 * timer does not set it: that one is in the day's report and the console's
+	 * account, and the screen's line is for the move a player would otherwise
+	 * not see coming, a dungeon leaving a city that has just been lost.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastMoveDay = 0;
+
+	/** The city that move left, which is the city that fell. `INDEX_NONE`
+	 *  when there has been none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastMoveFromCityId = INDEX_NONE;
+
+	/** The city that move went to. `INDEX_NONE` when there has been none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastMoveToCityId = INDEX_NONE;
 
 	/**
 	 * Of `UCataclysmSurgeScheduler::SurgesFired`, how many fired because the
@@ -1099,7 +1172,8 @@ private:
 	/**
 	 * A dungeon's timer ran out: an ordinary dungeon takes a NUMBER OF POINTS
 	 * off its host city and leaves the map, a Quest dungeon takes an ordinary
-	 * dungeon's points for its host's tier and stays, and either city may fall.
+	 * dungeon's points for its host's tier and stays on the map, and either
+	 * city may fall.
 	 *
 	 * POINTS AND NOT A SHARE. Issue #1331 and `UCataclysmEmpireMap::Damage`.
 	 *
@@ -1112,7 +1186,10 @@ private:
 	 * AND NOTHING ELSE. A Quest dungeon answers false and is handled in the
 	 * block that asks: its host takes the ordinary row of the host's tier, the
 	 * hit is counted in `QuestHits`, and unless the city fell the move follows
-	 * in `RelocateQuestDungeon` below. The clock has already put its timer back
+	 * in `RelocateQuestDungeon` below. When its hit fells the city, `CityFell`
+	 * moves it -- or, with nowhere to go, leaves it -- and it does not take the
+	 * timer's move as well that day, which is the model's rule; until
+	 * 2026-10-21 the fall absorbed it. The clock has already put its timer back
 	 * to full by the time this is called. A Fallen City and a Cataclysm take
 	 * nothing.
 	 *
@@ -1132,7 +1209,8 @@ private:
 	 * Quest dungeon "does not resolve -- refreshes and **may move to adjacent
 	 * city**". It now reads that the timer hits the host city first; the
 	 * refresh and the move are as they were, and a Quest dungeon whose hit
-	 * felled its host never reaches this function. The project owner ruled on
+	 * felled its host does not reach this function that day: the fall has
+	 * already moved it, or found it nowhere to go. The project owner ruled on
 	 * 2026-09-06, verbatim "Adjacent, and fix the simulation". Issue #1324
 	 * slice 4.
 	 *
@@ -1155,11 +1233,20 @@ private:
 	 * what a dungeon is and where it may be, this owns the dungeons actually
 	 * standing on the map.
 	 *
-	 * **IT IS THE ONLY THING IN THIS CLASS THAT MOVES A DUNGEON**, and it is
-	 * separate from `ResolveDungeon` for that reason rather than for length.
+	 * **IT IS ONE OF THE TWO THINGS IN THIS CLASS THAT MOVE A DUNGEON**, and it
+	 * is separate from `ResolveDungeon` for that reason rather than for length.
 	 * `ResolveDungeon` holds its dungeon by const pointer, so a reader can see
-	 * at a glance that the biting path cannot move anything, and this is where
-	 * to look when a dungeon has changed city.
+	 * at a glance that the biting path cannot move anything. The other is
+	 * `CityFell`, since 2026-10-21, which moves a Quest dungeon off a city that
+	 * has just fallen; until then this comment said it was the only one.
+	 *
+	 * **A QUEST DUNGEON ON A CITY THAT HAS ALREADY FALLEN STILL MOVES BY ITS
+	 * TIMER**, since 2026-10-21. One whose fall found it nowhere to go stays
+	 * on the ruin, and when its timer next runs out it hits nothing and then
+	 * tries this move from there, as `Simulation._resolve` does. Until then
+	 * this returned at once for a fallen city, which could not happen while
+	 * a fall absorbed every dungeon on it. Ruled by the coordinating session,
+	 * 2026-10-21.
 	 *
 	 * IT MOVES ONLY A QUEST DUNGEON. A Fallen City and a Cataclysm also refuse
 	 * to resolve and also reach here; a Fallen City *is* its city and cannot
@@ -1202,10 +1289,26 @@ private:
 	void ApplySiegeDamage(FCataclysmDayReport& OutReport);
 
 	/**
-	 * A city fell: its dungeons are absorbed into the one it becomes, and its
-	 * fall fires a surge when `UCataclysmSurgeScheduler::IsDueOnCityFall` says
-	 * one is due. A fall inside the least interval fires none and is not asked
-	 * about again. Issue #2380.
+	 * A city fell: its ordinary dungeons are absorbed into the one it becomes,
+	 * its Quest dungeons move, and its fall fires a surge when
+	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due. A fall
+	 * inside the least interval fires none and is not asked about again. Issue
+	 * #2380.
+	 *
+	 * **A QUEST DUNGEON IS NOT ABSORBED**, since 2026-10-21, following the
+	 * simulation's rule of 2026-10-16. Each one standing on the city moves at
+	 * once, with no coin, to the city `UCataclysmSurgeScheduler::PickRefuge`
+	 * answers, keeping its floors, its remaining timer and its sub-type, and
+	 * is named in `FCataclysmDayReport::Relocated` and `MovedByAFall`. With
+	 * nowhere to go it stays on the fallen city. The dungeon the player is
+	 * walking moves like any other and the walk goes on.
+	 *
+	 * **THE ORDINARY DUNGEON THE PLAYER IS WALKING IS STILL ABSORBED**, which
+	 * is a recorded difference from the model, issue #2399: `Simulation._fall`
+	 * spares it.
+	 *
+	 * THE MOVES' DRAWS COME BEFORE THE DUNGEON CITY AND THE FALL'S SURGE, the
+	 * order `Simulation._fall` takes them in.
 	 */
 	void CityFell(int32 CityId, FCataclysmDayReport& OutReport);
 
@@ -1220,7 +1323,9 @@ private:
 	 * city cannot be retaken, so a dungeon on one would be a reward the map
 	 * refuses to pay.
 	 *
-	 * @param DungeonsAbsorbed how many stood on it when it fell.
+	 * @param DungeonsAbsorbed how many it absorbed when it fell. A Quest
+	 *        dungeon that stood on it moved away and is not counted, since
+	 *        2026-10-21, so this can be nought.
 	 */
 	void AddFallenCityDungeon(int32 CityId, int32 DungeonsAbsorbed,
 							  FCataclysmDayReport& OutReport);

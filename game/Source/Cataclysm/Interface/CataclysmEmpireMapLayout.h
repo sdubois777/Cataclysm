@@ -241,11 +241,20 @@ public:
 	 * `UCataclysmEmpireRun::LastHitDay` and the two beside it; a list of the
 	 * day's events is the console command's.
 	 *
+	 * **OR A FALL'S MOVE, WHEN THAT IS AS RECENT.** Since 2026-10-21 a Quest
+	 * dungeon standing on a city that falls moves to another city instead of
+	 * being absorbed, and the line then reads "Day 37: a Quest dungeon moved
+	 * from Outpost (-3,0) to Outpost (-2,1) because Outpost (-3,0) fell." The
+	 * run keeps `UCataclysmEmpireRun::LastMoveDay` and the two beside it for
+	 * it. The later of the last hit and the last such move is shown, and on
+	 * the same day the move.
+	 *
 	 * A FUNCTION HERE RATHER THAN A `Printf` INSIDE THE WIDGET, for the reason
 	 * `ProgressLine` gives: a headless test cannot read a label.
 	 *
 	 * @param Run the run to describe. Null, one that has not begun, and one in
-	 *            which no hit has landed all answer an empty string.
+	 *            which no hit has landed and no fall has moved a Quest dungeon
+	 *            all answer an empty string.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString LastHitLine(const UCataclysmEmpireRun* Run);

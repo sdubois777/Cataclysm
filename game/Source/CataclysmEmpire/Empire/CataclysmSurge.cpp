@@ -722,10 +722,14 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 	Dungeon.CityTier = City.Tier;
 	Dungeon.SpawnedDay = Day;
 
-	// AT LEAST ONE, THOUGH IT SHOULD NEVER HAVE TO BE. A city falls because a
-	// dungeon standing on it resolved, and that dungeon is absorbed along with
-	// the rest, so the count is one or more by the time this is called. A
-	// bossless, zero-floor dungeon would be worse than a floor of one.
+	// AT LEAST ONE, AND SINCE 2026-10-21 IT CAN HAVE TO BE. A Quest dungeon
+	// standing on a falling city moves away rather than being absorbed, so a
+	// city whose own Quest dungeon's hit felled it, with nothing else standing
+	// there, absorbs none. The coordinating session ruled on 2026-10-21 that
+	// it still becomes a Dungeon City with one boss. Until then this said the
+	// count was one or more whenever this was called, because the dungeon
+	// that felled the city was always absorbed with the rest. A bossless,
+	// zero-floor dungeon would be worse than a floor of one.
 	const int32 Absorbed = FMath::Max(1, DungeonsAbsorbed);
 
 	// THE FLOOR IS THE SPEC'S SHALLOW END, which is the design's 20/40/60. A
@@ -859,6 +863,112 @@ int32 UCataclysmSurgeScheduler::PickRelocation(
 		return INDEX_NONE;
 	}
 
+	return Targets[Stream.RandRange(0, Targets.Num() - 1)];
+}
+
+int32 UCataclysmSurgeScheduler::PickRefuge(
+	const UCataclysmEmpireMap& Map,
+	const FCataclysmCity& Fallen,
+	FRandomStream& Stream,
+	bool bCarriesSiege,
+	const TArray<int32>& SiegesPerCityNow)
+{
+	// THE THREE TESTS THE TIMER'S MOVE MAKES, AND ONLY THOSE. Not the Pillar,
+	// exposed -- which a fallen or a sealed city is not -- and, for a dungeon
+	// carrying a Siege, not a city already holding one.
+	// `Simulation._quest_refuge` asks the same: `is_exposed`, not the
+	// Pillar, and its `allowed`. An empty count means the caller did not say
+	// and refuses nothing, the convention `RollWave` uses.
+	const auto Qualifies = [&Map, bCarriesSiege, &SiegesPerCityNow](int32 CityId)
+	{
+		if (CityId == Map.PillarId || !Map.IsExposed(CityId))
+		{
+			return false;
+		}
+
+		return !(bCarriesSiege
+				 && SiegesPerCityNow.IsValidIndex(CityId)
+				 && SiegesPerCityNow[CityId] >= SiegesPerCity);
+	};
+
+	TArray<int32> Targets;
+
+	// AN ADJACENT CITY FIRST. The owner's words name it -- "They just move to
+	// an adjacent city" -- and the model asks `adjacent_exposed_cities` first
+	// for the same reason.
+	for (const int32 CityId : AdjacentCities(Fallen))
+	{
+		if (Qualifies(CityId))
+		{
+			Targets.Add(CityId);
+		}
+	}
+
+	// THEN THE NEAREST QUALIFYING CITY, COUNTED IN LANES. Ring by ring,
+	// breadth first, over every link and through any city: a fallen or sealed
+	// city is not somewhere to stop, but it is somewhere to pass through. The
+	// first ring holding a city that qualifies is the answer's ring. The
+	// order a ring is built in is the model's -- each city of the ring before
+	// it in turn, each one's links in `AdjacentCities` order, each city once --
+	// so the one draw below picks from the same list there and here.
+	//
+	// RING ONE IS THE NEIGHBOURS AGAIN, and none of them qualified or this
+	// loop would not run. Searching it a second time costs nothing and keeps
+	// the shape the model's search has.
+	TArray<bool> Seen;
+	Seen.Init(false, Map.Cities.Num());
+	if (Seen.IsValidIndex(Fallen.CityId))
+	{
+		Seen[Fallen.CityId] = true;
+	}
+
+	TArray<int32> Frontier;
+	Frontier.Add(Fallen.CityId);
+
+	while (Targets.Num() == 0 && Frontier.Num() > 0)
+	{
+		TArray<int32> Ring;
+
+		for (const int32 Inner : Frontier)
+		{
+			const FCataclysmCity* InnerCity = Map.Find(Inner);
+			if (InnerCity == nullptr)
+			{
+				continue;
+			}
+
+			for (const int32 Next : AdjacentCities(*InnerCity))
+			{
+				if (Seen.IsValidIndex(Next) && !Seen[Next])
+				{
+					Seen[Next] = true;
+					Ring.Add(Next);
+				}
+			}
+		}
+
+		for (const int32 CityId : Ring)
+		{
+			if (Qualifies(CityId))
+			{
+				Targets.Add(CityId);
+			}
+		}
+
+		Frontier = MoveTemp(Ring);
+	}
+
+	if (Targets.Num() == 0)
+	{
+		// NOWHERE QUALIFIES ANYWHERE ON THE MAP, SO IT STAYS on the fallen
+		// city. That happens only once no exposed city but the Pillar is left,
+		// or every one left already holds a Siege and this dungeon carries
+		// one. NO DRAW IS TAKEN, which is the model's `if targets else None`.
+		return INDEX_NONE;
+	}
+
+	// ONE DRAW AMONG THE NEAREST RING'S CITIES THAT QUALIFY, and the tie is
+	// all it breaks. `self.rng.choice(targets)` in the model.
 	return Targets[Stream.RandRange(0, Targets.Num() - 1)];
 }
 

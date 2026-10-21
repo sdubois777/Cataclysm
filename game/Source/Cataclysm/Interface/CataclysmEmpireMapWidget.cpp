@@ -240,9 +240,11 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 
 		// AND THE LAST HIT A DUNGEON'S TIMER LANDED, ON THE END OF THIS LABEL.
 		// An ordinary dungeon leaves after it hits, so nothing else on the
-		// screen says what took a city's defence. Appended here so that no
-		// Widget Blueprint has to gain a label; empty until the first hit.
-		// See `UCataclysmEmpireMapLayout::LastHitLine`.
+		// screen says what took a city's defence. Or, when it is as recent,
+		// the last Quest dungeon a city's fall moved, since 2026-10-21.
+		// Appended here so that no Widget Blueprint has to gain a label; empty
+		// until the first hit or move. See
+		// `UCataclysmEmpireMapLayout::LastHitLine`.
 		const FString LastHit = UCataclysmEmpireMapLayout::LastHitLine(Run);
 
 		SurgeLabel->SetText(FText::FromString(FString::Printf(

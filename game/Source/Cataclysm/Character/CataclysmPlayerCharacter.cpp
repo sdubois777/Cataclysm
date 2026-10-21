@@ -4150,8 +4150,12 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 			// exactly that.
 			for (const FCataclysmDayReport& Report : Run->AdvanceDays(Days))
 			{
+				// A DAY WHOSE ONLY EVENT IS A MOVE IS NOT SKIPPED. Every move
+				// today comes with a timer in `Resolved` or a city in `Fallen`,
+				// so this asks `Relocated` for a line that cannot be lost to a
+				// later change in either. Since 2026-10-21.
 				if (Report.Spawned.IsEmpty() && Report.Resolved.IsEmpty()
-					&& Report.Fallen.IsEmpty())
+					&& Report.Fallen.IsEmpty() && Report.Relocated.IsEmpty())
 				{
 					continue;
 				}
@@ -4193,6 +4197,27 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 						? Run->Map->Find(CityId) : nullptr;
 					Parts.Add(FString::Printf(TEXT("%s FELL"),
 											  City ? *City->Name : TEXT("a city")));
+				}
+
+				// WHERE EACH QUEST DUNGEON A FALL MOVED WENT, one part a move,
+				// since 2026-10-21: a fall moves a Quest dungeon rather than
+				// absorbing it. Read from the report's own record of the two
+				// cities and not off the dungeon, which a later day may have
+				// moved again by the time this prints.
+				for (int32 Move = 0; Move < Report.MovedByAFall.Num(); ++Move)
+				{
+					const int32 FromId = Report.MovedByAFallFrom.IsValidIndex(Move)
+						? Report.MovedByAFallFrom[Move] : INDEX_NONE;
+					const int32 ToId = Report.MovedByAFallTo.IsValidIndex(Move)
+						? Report.MovedByAFallTo[Move] : INDEX_NONE;
+					const FCataclysmCity* From = Run->Map
+						? Run->Map->Find(FromId) : nullptr;
+					const FCataclysmCity* To = Run->Map
+						? Run->Map->Find(ToId) : nullptr;
+					const TCHAR* FromName = From ? *From->Name : TEXT("a city");
+					Parts.Add(FString::Printf(
+						TEXT("a Quest dungeon moved from %s to %s because %s fell"),
+						FromName, To ? *To->Name : TEXT("a city"), FromName));
 				}
 
 				Ar.Logf(TEXT("Day %d: %s"), Report.Day,

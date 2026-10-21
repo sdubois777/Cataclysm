@@ -616,8 +616,9 @@ public:
  *     `BasicDungeonsCleared`, `QuestObjectives`, `DungeonsDetonated` and
  *     `QuestHits` on `UCataclysmEmpireRun` are not written here, so a restored
  *     run would forget every quest objective earned and every dungeon beaten.
- *     Nor are `LastHitDay` and the two fields beside it, so a restored run's
- *     empire screen names no last hit until the next one. Issue
+ *     Nor are `LastHitDay` and the two fields beside it, or `LastMoveDay`
+ *     and its two, so a restored run's empire screen names no last hit or
+ *     move until the next one. Issue
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
  *   - **What tier the run is played at, and which Cataclysms it faces.**
  *     `UCataclysmEmpireRun::DifficultyTier` and `ActiveCataclysms` are not

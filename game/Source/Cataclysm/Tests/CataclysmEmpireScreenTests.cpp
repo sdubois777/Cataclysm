@@ -1052,4 +1052,183 @@ bool FCataclysmEmpireLastHitLineTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The empire screen's one line says where a city's fall moved a Quest
+ * dungeon, and says it in place of a hit on the same day.
+ *
+ * Since 2026-10-21 a Quest dungeon standing on a city that falls moves to the
+ * city `UCataclysmSurgeScheduler::PickRefuge` answers rather than being
+ * absorbed. The coordinating session ruled the same day that the screen shows
+ * it, verbatim in shape: "Day %d: a Quest dungeon moved from %s to %s because
+ * %s fell."
+ *
+ * THE PRECEDENCE IS ASSERTED, NOT ONLY THE TEXT. On day 2 a Quest dungeon's
+ * own hit fells its Outpost, so a hit and a move land on the same day and the
+ * move is shown. On day 3 an ordinary dungeon hits another city and leaves,
+ * and the line is then about that hit: the later of the two is shown.
+ *
+ * HEADLESS, like the test above: the hits and the fall are made by the run.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireFallMoveLineTest,
+	"Cataclysm.EmpireScreen.TheScreenSaysWhereACitysFallMovedAQuestDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireFallMoveLineTest::RunTest(const FString& Parameters)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+
+	// THE OPENING WAVE IS TAKEN OFF, both lists, as in the test above.
+	Run->AdvanceDay();
+	Run->Dungeons.Empty();
+	Run->Clock->Timers.Empty();
+
+	TestEqual(TEXT("CONTROL: a run with no hit and no move says nothing"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run), FString());
+
+	// THE FIRST TWO OUTPOSTS THAT STAND, found rather than assumed. The Quest
+	// dungeon's hit fells the first; the ordinary dungeon hits the second.
+	TArray<int32> Outposts;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (Outposts.Num() < 2 && City.Tier == ECataclysmCityTier::Outpost
+			&& !City.bFallen)
+		{
+			Outposts.Add(City.CityId);
+		}
+	}
+
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"),
+				   Outposts.Num(), 2)
+		|| !TestEqual(TEXT("set-up: the run is on day 1"), Run->Day(), 1))
+	{
+		return false;
+	}
+
+	/** Puts one dungeon on a city with a timer that runs out the next day. */
+	const auto PutDown = [Run](int32 DungeonId, ECataclysmDungeonType Type,
+							   int32 CityId, float DefencePoints)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = DungeonId;
+		Dungeon.Type = Type;
+		Dungeon.CityId = CityId;
+		Dungeon.CityTier = ECataclysmCityTier::Outpost;
+		Dungeon.Floors = 12;
+		Dungeon.ResolveDays = 30.0f;
+		Dungeon.DefenceDamage = DefencePoints;
+		Dungeon.SpawnedDay = Run->Day();
+
+		Run->Dungeons.Add(Dungeon);
+		Run->Clock->AddDungeon(DungeonId, Dungeon.Floors);
+		Run->Clock->SetResolveDays(DungeonId, 30.0f);
+
+		for (FCataclysmDungeonTimer& Counting : Run->Clock->Timers)
+		{
+			if (Counting.DungeonId == DungeonId)
+			{
+				Counting.DaysUntilResolve = 1.0f;
+			}
+		}
+	};
+
+	// THE FIRST OUTPOST IS LEFT WITH HALF AN ORDINARY HIT, so the Quest
+	// dungeon's hit fells it.
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const float FullDefence = Run->Map->Find(Outposts[0])->Defence;
+
+	if (!TestFalse(TEXT("set-up: taking the first Outpost down did not fell it"),
+				   Run->Map->Damage(Outposts[0],
+									FullDefence - 0.5f * OutpostRow.DefenceDamage, 0.0f)))
+	{
+		return false;
+	}
+
+	PutDown(9811, ECataclysmDungeonType::Quest, Outposts[0], 0.0f);
+
+	const FCataclysmDayReport FallDay = Run->AdvanceDay();
+
+	if (!TestEqual(TEXT("set-up: the day advanced is day 2"), FallDay.Day, 2)
+		|| !TestTrue(TEXT("set-up: the Quest dungeon's timer hit the first Outpost"),
+					 FallDay.QuestHits.Contains(Outposts[0]))
+		|| !TestTrue(TEXT("set-up: and the first Outpost fell"),
+					 FallDay.Fallen.Contains(Outposts[0]))
+		|| !TestTrue(TEXT("set-up: and the fall moved the Quest dungeon"),
+					 FallDay.MovedByAFall.Contains(9811))
+		|| !TestTrue(TEXT("set-up: the run keeps day 2 as its last hit, a Quest timer's"),
+					 Run->LastHitDay == 2 && Run->bLastHitWasAQuestTimer)
+		|| !TestNotNull(TEXT("set-up: the Quest dungeon is on the map"),
+						Run->FindDungeon(9811)))
+	{
+		return false;
+	}
+
+	const FString FallenName = Run->Map->Find(Outposts[0])->Name;
+	const int32 RefugeId = Run->FindDungeon(9811)->CityId;
+	const FCataclysmCity* Refuge = Run->Map->Find(RefugeId);
+	if (!TestNotNull(TEXT("set-up: the city it moved to is on the map"), Refuge)
+		|| !TestTrue(TEXT("set-up: the two cities have names, and different ones"),
+					 !FallenName.IsEmpty() && !Refuge->Name.IsEmpty()
+						 && FallenName != Refuge->Name))
+	{
+		return false;
+	}
+
+	// A HIT AND A MOVE ON ONE DAY: THE MOVE IS SHOWN.
+	TestEqual(TEXT("the line says where the fall moved the Quest dungeon, in place of the hit the same day"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run),
+			  FString::Printf(
+				  TEXT("Day 2: a Quest dungeon moved from %s to %s because %s fell."),
+				  *FallenName, *Refuge->Name, *FallenName));
+
+	// A LATER HIT: THE LINE IS ABOUT THE HIT. On a city other than the one the
+	// Quest dungeon moved to, so the city named says which event it is.
+	int32 HitId = Outposts[1];
+	if (HitId == RefugeId)
+	{
+		for (const FCataclysmCity& City : Run->Map->Cities)
+		{
+			if (City.Tier == ECataclysmCityTier::Outpost && !City.bFallen
+				&& City.CityId != RefugeId)
+			{
+				HitId = City.CityId;
+				break;
+			}
+		}
+	}
+
+	if (!TestNotEqual(TEXT("set-up: a standing Outpost other than the refuge was found"),
+					  HitId, RefugeId))
+	{
+		return false;
+	}
+
+	PutDown(9812, ECataclysmDungeonType::Basic, HitId, 100.0f);
+
+	const FCataclysmDayReport HitDay = Run->AdvanceDay();
+
+	if (!TestEqual(TEXT("set-up: the next day is day 3"), HitDay.Day, 3)
+		|| !TestTrue(TEXT("set-up: the ordinary dungeon hit its city and left"),
+					 HitDay.HitAndLeft.Contains(HitId))
+		|| !TestEqual(TEXT("set-up: and no fall moved anything that day"),
+					  HitDay.MovedByAFall.Num(), 0))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("CONTROL: a hit on a later day than the move is shown instead"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run),
+			  FString::Printf(TEXT("Day 3: a dungeon hit %s and left."),
+							  *Run->Map->Find(HitId)->Name));
+
+	// A NEW RUN HAS NO LAST MOVE. `Begin` clears the three fields.
+	Run->Begin(7);
+	TestEqual(TEXT("a run begun again says nothing"),
+			  UCataclysmEmpireMapLayout::LastHitLine(Run), FString());
+	TestEqual(TEXT("and keeps no last move"), Run->LastMoveDay, 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

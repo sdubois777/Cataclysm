@@ -3502,6 +3502,480 @@ bool FCataclysmSurgeSiegeRelocationTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// Where a Quest dungeon goes when its city falls -- 2026-10-21
+// ---------------------------------------------------------------------------
+//
+// The owner, 2026-10-16, verbatim: "Quest dungeons don't go away when a city
+// falls. They just move to an adjacent city. So eventually they should be
+// hitting something." `UCataclysmSurgeScheduler::PickRefuge` answers where:
+// an adjacent city that qualifies first, else the nearest one counted in
+// lanes, one draw among the ties, nothing and no draw when none qualifies.
+// These ask it on bare maps; `Cataclysm.EmpireRun.AFallMovesItsQuestDungeon
+// AndItsDungeonCityCountsOnlyWhatItAbsorbed` asks whether a fall calls it.
+
+namespace CataclysmRefugeTest
+{
+	/** Marks a city fallen, as `UCataclysmEmpireMap::Fall` would. */
+	void Fell(UCataclysmEmpireMap& Map, int32 CityId)
+	{
+		if (FCataclysmCity* City = Map.FindMutable(CityId))
+		{
+			City->bFallen = true;
+			City->Defence = 0.0f;
+		}
+	}
+
+	/** A rim Outpost with exactly two perimeter links, or `INDEX_NONE`. */
+	int32 RimOutpostWithTwoLinks(const UCataclysmEmpireMap& Map)
+	{
+		for (const FCataclysmCity& City : Map.Cities)
+		{
+			if (City.Ring() == 3 && City.Perimeter.Num() == 2)
+			{
+				return City.CityId;
+			}
+		}
+
+		return INDEX_NONE;
+	}
+
+	/**
+	 * The fewest lanes between two cities over every link, through any city,
+	 * or `INDEX_NONE` when one cannot be reached. WRITTEN HERE, a plain
+	 * breadth-first search, rather than read from the function under test.
+	 */
+	int32 LanesBetween(const UCataclysmEmpireMap& Map, int32 From, int32 To)
+	{
+		TArray<int32> Distance;
+		Distance.Init(INDEX_NONE, Map.Cities.Num());
+		if (!Distance.IsValidIndex(From) || !Distance.IsValidIndex(To))
+		{
+			return INDEX_NONE;
+		}
+
+		Distance[From] = 0;
+		TArray<int32> Queue;
+		Queue.Add(From);
+
+		for (int32 Head = 0; Head < Queue.Num(); ++Head)
+		{
+			const FCataclysmCity* City = Map.Find(Queue[Head]);
+			if (City == nullptr)
+			{
+				continue;
+			}
+
+			for (const int32 Next : UCataclysmSurgeScheduler::AdjacentCities(*City))
+			{
+				if (Distance.IsValidIndex(Next) && Distance[Next] == INDEX_NONE)
+				{
+					Distance[Next] = Distance[Queue[Head]] + 1;
+					Queue.Add(Next);
+				}
+			}
+		}
+
+		return Distance[To];
+	}
+
+	/** Whether a city could take a Quest dungeon off a fallen one, by the
+	 *  rule as this test states it: exposed, not the Pillar, and not already
+	 *  holding a Siege when the dungeon carries one. */
+	bool CouldTakeIt(const UCataclysmEmpireMap& Map, int32 CityId,
+					 bool bCarriesSiege, const TArray<int32>& Sieges)
+	{
+		return CityId != Map.PillarId && Map.IsExposed(CityId)
+			&& !(bCarriesSiege && Sieges.IsValidIndex(CityId)
+				 && Sieges[CityId] >= UCataclysmSurgeScheduler::SiegesPerCity);
+	}
+
+	/** Every city that could take it, with its lanes from `From`. */
+	TMap<int32, int32> EveryCityThatCouldTakeIt(
+		const UCataclysmEmpireMap& Map, int32 From, bool bCarriesSiege,
+		const TArray<int32>& Sieges)
+	{
+		TMap<int32, int32> Found;
+		for (const FCataclysmCity& City : Map.Cities)
+		{
+			if (CouldTakeIt(Map, City.CityId, bCarriesSiege, Sieges))
+			{
+				Found.Add(City.CityId, LanesBetween(Map, From, City.CityId));
+			}
+		}
+		return Found;
+	}
+}
+
+/**
+ * A Quest dungeon on a city that has just fallen goes to a neighbour when one
+ * will take it, and the choice among them is one draw.
+ *
+ * THE CONTROL is a city that could take it and is not adjacent: it exists on
+ * this map and is never answered, so "adjacent first" is not satisfied by a
+ * map on which only neighbours qualify.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRefugeNeighbourTest,
+	"Cataclysm.Surge.AFallenCitysQuestDungeonTakesRefugeOnANeighbourFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRefugeNeighbourTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+	using namespace CataclysmRefugeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+	const int32 FallenId = RimOutpostWithTwoLinks(*Map);
+	if (!TestTrue(TEXT("set-up: the map has a rim Outpost with two perimeter links"),
+				  FallenId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	Fell(*Map, FallenId);
+	const FCataclysmCity& Fallen = *Map->Find(FallenId);
+	const TArray<int32> NoSieges;
+
+	// THE NEIGHBOURS THAT COULD TAKE IT, in the order `AdjacentCities` names
+	// them, which is the order the one draw picks from.
+	TArray<int32> Neighbours;
+	for (const int32 Neighbour : UCataclysmSurgeScheduler::AdjacentCities(Fallen))
+	{
+		if (CouldTakeIt(*Map, Neighbour, false, NoSieges))
+		{
+			Neighbours.Add(Neighbour);
+		}
+	}
+
+	int32 FartherOption = INDEX_NONE;
+	for (const TPair<int32, int32>& Option :
+		 EveryCityThatCouldTakeIt(*Map, FallenId, false, NoSieges))
+	{
+		if (Option.Value > 1)
+		{
+			FartherOption = Option.Key;
+		}
+	}
+
+	if (!TestTrue(TEXT("set-up: at least two neighbours could take it, so the draw is a choice"),
+				  Neighbours.Num() >= 2)
+		|| !TestTrue(TEXT("set-up: CONTROL: a city that is not adjacent could take it too"),
+					 FartherOption != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FRandomStream Stream(31);
+	TSet<int32> Answered;
+
+	for (int32 Draw = 0; Draw < 200; ++Draw)
+	{
+		const int32 Refuge = UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Stream);
+
+		if (!Neighbours.Contains(Refuge))
+		{
+			AddError(FString::Printf(
+				TEXT("draw %d sent the Quest dungeon to city %d, which is not a neighbour that could take it"),
+				Draw, Refuge));
+			continue;
+		}
+
+		Answered.Add(Refuge);
+	}
+
+	TestEqual(TEXT("every neighbour that could take it was answered"),
+			  Answered.Num(), Neighbours.Num());
+	TestFalse(TEXT("CONTROL: the city that is not adjacent was never answered"),
+			  Answered.Contains(FartherOption));
+
+	// ONE DRAW, AND IT PICKS FROM THE NEIGHBOURS IN `AdjacentCities` ORDER.
+	// Two streams from one seed: one asked for the refuge, the other drawn
+	// once by hand over the same count. They end on the same seed, and the
+	// hand draw names the same city.
+	FRandomStream Asked(5);
+	FRandomStream ByHand(5);
+	const int32 Refuge = UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Asked);
+	const int32 Index = ByHand.RandRange(0, Neighbours.Num() - 1);
+
+	TestEqual(TEXT("asking took exactly one draw"),
+			  Asked.GetCurrentSeed(), ByHand.GetCurrentSeed());
+	TestEqual(TEXT("and that draw picked from the neighbours in their adjacency order"),
+			  Refuge, Neighbours[Index]);
+
+	return true;
+}
+
+/**
+ * With no neighbour left to take it, a Quest dungeon goes to the nearest city
+ * that will, counted in lanes.
+ *
+ * THE CONTROL is the timer's rule on the same map: `PickRelocation` answers
+ * nothing, so the answer below comes from the outward search and from nothing
+ * else. And a city farther out could take it too, so "nearest" is a choice.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRefugeOutwardTest,
+	"Cataclysm.Surge.AFallenCitysQuestDungeonWithNoNeighbourLeftGoesToTheNearestCityThatQualifies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRefugeOutwardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+	using namespace CataclysmRefugeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+	const int32 FallenId = RimOutpostWithTwoLinks(*Map);
+	if (!TestTrue(TEXT("set-up: the map has a rim Outpost with two perimeter links"),
+				  FallenId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// THE CITY AND EVERY NEIGHBOUR OF IT FALL.
+	Fell(*Map, FallenId);
+	for (const int32 Neighbour :
+		 UCataclysmSurgeScheduler::AdjacentCities(*Map->Find(FallenId)))
+	{
+		Fell(*Map, Neighbour);
+	}
+
+	const FCataclysmCity& Fallen = *Map->Find(FallenId);
+	const TArray<int32> NoSieges;
+
+	const TMap<int32, int32> Options =
+		EveryCityThatCouldTakeIt(*Map, FallenId, false, NoSieges);
+
+	int32 Nearest = INDEX_NONE;
+	int32 Farthest = INDEX_NONE;
+	for (const TPair<int32, int32>& Option : Options)
+	{
+		Nearest = Nearest == INDEX_NONE ? Option.Value : FMath::Min(Nearest, Option.Value);
+		Farthest = FMath::Max(Farthest, Option.Value);
+	}
+
+	TArray<int32> NearestRing;
+	for (const TPair<int32, int32>& Option : Options)
+	{
+		if (Option.Value == Nearest)
+		{
+			NearestRing.Add(Option.Key);
+		}
+	}
+
+	FRandomStream Stream(43);
+
+	if (!TestTrue(TEXT("set-up: the nearest city that could take it is two lanes away or more"),
+				  Nearest >= 2)
+		|| !TestTrue(TEXT("set-up: and one farther out could take it too"),
+					 Farthest > Nearest)
+		|| !TestEqual(TEXT("CONTROL: the timer's rule finds nowhere adjacent to go"),
+					  UCataclysmSurgeScheduler::PickRelocation(*Map, Fallen, Stream),
+					  static_cast<int32>(INDEX_NONE)))
+	{
+		return false;
+	}
+
+	TSet<int32> Answered;
+
+	for (int32 Draw = 0; Draw < 200; ++Draw)
+	{
+		const int32 Refuge = UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Stream);
+
+		if (!NearestRing.Contains(Refuge))
+		{
+			AddError(FString::Printf(
+				TEXT("draw %d sent the Quest dungeon to city %d, %d lanes away, where the nearest city that could take it is %d lanes away"),
+				Draw, Refuge, LanesBetween(*Map, FallenId, Refuge), Nearest));
+			continue;
+		}
+
+		Answered.Add(Refuge);
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("every city %d lanes away that could take it was answered"), Nearest),
+		Answered.Num(), NearestRing.Num());
+
+	// AND STILL ONE DRAW.
+	FRandomStream Asked(9);
+	FRandomStream ByHand(9);
+	UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Asked);
+	ByHand.RandRange(0, NearestRing.Num() - 1);
+
+	TestEqual(TEXT("the outward search took exactly one draw"),
+			  Asked.GetCurrentSeed(), ByHand.GetCurrentSeed());
+
+	return true;
+}
+
+/**
+ * A Quest dungeon carrying a Siege is not sent to a city that already holds
+ * one, and goes on past it to the nearest that does not.
+ *
+ * THE CONTROL is the same map and the same counts with a dungeon carrying
+ * nothing: it goes to a neighbour, besieged or not.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRefugeSiegeTest,
+	"Cataclysm.Surge.AFallenCitysQuestDungeonCarryingASiegeIsRefusedABesiegedCity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRefugeSiegeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+	using namespace CataclysmRefugeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+	const int32 FallenId = RimOutpostWithTwoLinks(*Map);
+	if (!TestTrue(TEXT("set-up: the map has a rim Outpost with two perimeter links"),
+				  FallenId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	Fell(*Map, FallenId);
+	const FCataclysmCity& Fallen = *Map->Find(FallenId);
+	const TArray<int32> Around = UCataclysmSurgeScheduler::AdjacentCities(Fallen);
+
+	// EVERY NEIGHBOUR ALREADY HOLDS A SIEGE.
+	TArray<int32> Sieges;
+	Sieges.AddZeroed(Map->Cities.Num());
+	for (const int32 Neighbour : Around)
+	{
+		Sieges[Neighbour] = UCataclysmSurgeScheduler::SiegesPerCity;
+	}
+
+	int32 Nearest = INDEX_NONE;
+	for (const TPair<int32, int32>& Option :
+		 EveryCityThatCouldTakeIt(*Map, FallenId, true, Sieges))
+	{
+		Nearest = Nearest == INDEX_NONE ? Option.Value : FMath::Min(Nearest, Option.Value);
+	}
+
+	if (!TestTrue(TEXT("set-up: a city with no Siege could take it, two lanes away or more"),
+				  Nearest >= 2))
+	{
+		return false;
+	}
+
+	FRandomStream Stream(53);
+
+	for (int32 Draw = 0; Draw < 100; ++Draw)
+	{
+		const int32 Refuge = UCataclysmSurgeScheduler::PickRefuge(
+			*Map, Fallen, Stream, /* bCarriesSiege */ true, Sieges);
+
+		TestFalse(FString::Printf(
+			TEXT("draw %d did not send a Siege to a neighbour already holding one"), Draw),
+			Around.Contains(Refuge));
+		TestTrue(FString::Printf(
+			TEXT("draw %d sent it to a city that could take it"), Draw),
+			CouldTakeIt(*Map, Refuge, true, Sieges));
+		TestEqual(FString::Printf(
+			TEXT("draw %d sent it to the nearest such city"), Draw),
+			LanesBetween(*Map, FallenId, Refuge), Nearest);
+	}
+
+	// THE CONTROL: CARRYING NOTHING, THE BESIEGED NEIGHBOURS TAKE IT.
+	for (int32 Draw = 0; Draw < 50; ++Draw)
+	{
+		const int32 Refuge = UCataclysmSurgeScheduler::PickRefuge(
+			*Map, Fallen, Stream, /* bCarriesSiege */ false, Sieges);
+
+		TestTrue(FString::Printf(
+			TEXT("CONTROL: draw %d sent a dungeon carrying no Siege to a neighbour"), Draw),
+			Around.Contains(Refuge));
+	}
+
+	return true;
+}
+
+/**
+ * When no city but the Pillar is left exposed, a Quest dungeon on a city that
+ * falls stays where it is, and no draw is taken.
+ *
+ * THE CONTROL is the same map with one rim Outpost standing again: then it
+ * goes there, and exactly one draw is taken, as `rng.choice` of one city
+ * takes one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRefugeNowhereTest,
+	"Cataclysm.Surge.AFallenCitysQuestDungeonWithNowhereToGoStaysAndTakesNoDraw",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRefugeNowhereTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+	using namespace CataclysmRefugeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+	const int32 FallenId = RimOutpostWithTwoLinks(*Map);
+	if (!TestTrue(TEXT("set-up: the map has a rim Outpost with two perimeter links"),
+				  FallenId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// EVERY CITY BUT THE PILLAR FALLS. The Pillar is then exposed, and still
+	// refused.
+	int32 OtherRimOutpost = INDEX_NONE;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.CityId != Map->PillarId)
+		{
+			Fell(*Map, City.CityId);
+		}
+		if (City.Ring() == 3 && City.CityId != FallenId
+			&& !UCataclysmSurgeScheduler::AdjacentCities(*Map->Find(FallenId)).Contains(City.CityId))
+		{
+			OtherRimOutpost = City.CityId;
+		}
+	}
+
+	const FCataclysmCity& Fallen = *Map->Find(FallenId);
+
+	if (!TestTrue(TEXT("set-up: the Pillar is exposed"), Map->IsExposed(Map->PillarId))
+		|| !TestTrue(TEXT("set-up: a rim Outpost not adjacent to the fallen one was found"),
+					 OtherRimOutpost != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FRandomStream Stream(17);
+	const int32 SeedBefore = Stream.GetCurrentSeed();
+
+	TestEqual(TEXT("nowhere takes it, so it stays"),
+			  UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Stream),
+			  static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and no draw was taken"), Stream.GetCurrentSeed(), SeedBefore);
+
+	// THE CONTROL: ONE RIM OUTPOST STANDS AGAIN, FAR FROM THE FALLEN ONE.
+	if (FCataclysmCity* Standing = Map->FindMutable(OtherRimOutpost))
+	{
+		Standing->bFallen = false;
+		Standing->Defence = Standing->MaxDefence;
+	}
+
+	FRandomStream Asked(17);
+	FRandomStream ByHand(17);
+	TestEqual(TEXT("CONTROL: with one rim Outpost standing again, it goes there"),
+			  UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Asked), OtherRimOutpost);
+	ByHand.RandRange(0, 0);
+	TestEqual(TEXT("CONTROL: and exactly one draw was taken for a choice of one"),
+			  Asked.GetCurrentSeed(), ByHand.GetCurrentSeed());
+
+	// AND A SIEGE IS STILL REFUSED THE ONE CITY LEFT WHEN IT HOLDS ONE.
+	TArray<int32> Sieges;
+	Sieges.AddZeroed(Map->Cities.Num());
+	Sieges[OtherRimOutpost] = UCataclysmSurgeScheduler::SiegesPerCity;
+
+	FRandomStream Refused(17);
+	TestEqual(TEXT("a dungeon carrying a Siege has nowhere to go when the one city left holds a Siege"),
+			  UCataclysmSurgeScheduler::PickRefuge(*Map, Fallen, Refused, true, Sieges),
+			  static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and no draw was taken for it either"),
+			  Refused.GetCurrentSeed(), SeedBefore);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Investment does not change the size of a dungeon's hit
 // ---------------------------------------------------------------------------
 
