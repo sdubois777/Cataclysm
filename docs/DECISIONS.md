@@ -370,6 +370,35 @@ so the trap's press answers no under every break, as it does without one.
 place at the feet, `attack_use` and no `skill_use`; the slot converted both ways; the pricing of the basic trap's cast;
 the free cast; the cap across slots; the line's words.
 
+### THE ROWS, AUTHORED BY THE ENCHANTMENT SESSION
+
+**ACCEPTED BY THE COORDINATING SESSION ON 2026-10-21**, with this layer's three judgements: the basic slot exempt from
+the lock check as the basic skill itself is; one line above the bar rather than a seventh box; and the aim finding in
+SAID FIRST. The replaced Python test is accepted, because its old assertion described the refusal this layer lifts.
+The untested list above is recorded as read and not tested.
+
+Two effect rows, on the coordinating session's grant of the workbook for them on 2026-10-21, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`, each Stat
+`skill_slot_is_a_trap`, Value Kind flat, Value Low 1 and Value High 1, every other cell empty but Required Tags:
+
+| Enchantment | Required Tags |
+| :-- | :-- |
+| `Positive_Your_support_ability_is_converted_into_a_placeab` | `Slot.Support` |
+| `Positive_Your_basic_attack_is_converted_into_a_placeable` | `Slot.Basic` |
+
+Each name was derived with the generator's `row_name` from its sentence and checked against
+`game/Data/EnchantmentsPositive.csv`; the generator accepted both. **683 rows over 548 enchantments**, from 681 over 546,
+in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in `docs/README.md`.
+`skill_slot_is_a_trap` is already in `FLAG_STATS`. **With these, all five "converted into a placeable trap" sentences
+have a row.**
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornSupportAndBasicTrapConversionsEachMakeTheirOwnSlotATrap`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Three real players: a control wearing a benefit with no effect, and one
+wearing each conversion, each with a drawback with no effect. It asks `SlotIsASkillTrap`, the question the press, the
+click and the skill bar ask. The control's support slot and basic attack are not a trap's; each wearer's own slot is; and
+each sentence leaves the other slot alone. Two assertions on the cases' own slots, so on assets built before the rows it
+fails twice, and only there.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
