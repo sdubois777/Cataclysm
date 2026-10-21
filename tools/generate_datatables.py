@@ -5246,6 +5246,17 @@ APPLY_STATUS_ACTIONS = (
     "apply_status_seconds",
 )
 
+#: AND A THIRD ON THE OTHER CHARACTER SINCE TRAPS LAYER 3, ruled 2026-10-21: its
+#: value is the SIZE of the one application, a whole number of times the
+#: ailment's ordinary size at each end, and it always applies. For "Traps apply
+#: 1-2 bleed stacks to all enemies caught in their blast", on `deployable_hit`
+#: (ruling 8 of 2026-10-07: one bleed at 1 to 2 times its size). It names one of
+#: the five damage over time `AILMENTS`, whose size is what a tick deals, on the
+#: events of `APPLY_STATUS_EVENTS`. Kept out of `APPLY_STATUS_ACTIONS`, whose two
+#: names a merged test pins. `UCataclysmAbilitySystemComponent::
+#: ApplyStatusSizedAction` holds the same name.
+APPLY_STATUS_SIZED_ACTION = "apply_status_sized"
+
 #: The events a status action may hang on: the ones naming the character the
 #: wearer struck, or the attacker it paid retaliation to. Issue #1833 group E
 #: part 1.
@@ -5347,7 +5358,8 @@ APPLY_STATUS_TO_SELF_ACTIONS = (
 )
 
 #: Every status action, on the other character or on the wearer.
-ALL_APPLY_STATUS_ACTIONS = APPLY_STATUS_ACTIONS + APPLY_STATUS_TO_SELF_ACTIONS
+ALL_APPLY_STATUS_ACTIONS = (APPLY_STATUS_ACTIONS + APPLY_STATUS_TO_SELF_ACTIONS
+                            + (APPLY_STATUS_SIZED_ACTION,))
 
 #: The events a status laid on the wearer may hang on. It needs no other
 #: character, so it may wait on a hit taken, a timer, or a skill ending.
@@ -5761,6 +5773,9 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == TELEPORT_RANDOMLY_ACTION
             or action == BLAST_FROM_THE_DYING_ACTION
             or action == STUN_NEAR_THE_DYING_ACTION
+            # A SLOW MAKES SOMETHING HAPPEN TOO. Traps layer 3, 2026-10-21: on
+            # `trap_triggered`, which no hit fires, so it takes none by default.
+            or action == SLOW_FOR_SECONDS_ACTION
             or action == STRIKE_TARGET_ACTION
             # AN EXECUTE MAY STATE ONE, AND TAKES NONE BY DEFAULT: see
             # `ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN`. The engine starts a
@@ -6143,6 +6158,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_ailment_rider_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
         return
+    if action == SLOW_FOR_SECONDS_ACTION:
+        _check_slow_for_seconds_action(index, who, action, event, fraction_of,
+                                       kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -6161,6 +6180,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {GADGETS_CAST_NOW_ACTION}; "
             f"or {REFLECT_BLOCKED_ACTION}; or {BLAST_FROM_THE_DYING_ACTION}; "
             f"or {STUN_NEAR_THE_DYING_ACTION}; "
+            f"or {SLOW_FOR_SECONDS_ACTION}; "
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
@@ -7100,6 +7120,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != REFLECT_BLOCKED_ACTION \
                     and action != BLAST_FROM_THE_DYING_ACTION \
                     and action != STUN_NEAR_THE_DYING_ACTION \
+                    and action != SLOW_FOR_SECONDS_ACTION \
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != STRIKE_TARGET_ACTION \
@@ -7467,13 +7488,13 @@ def enchantment_effects(book) -> list[dict]:
         # A STATUS ACTION'S VALUE IS A CHANCE, above 0 and up to 100, or SECONDS,
         # above 0 and up to the bound. Issue #1833 group E part 1. Neither has
         # stacks.
-        if action == "apply_status_to_self_sized":
+        if action in ("apply_status_to_self_sized", APPLY_STATUS_SIZED_ACTION):
             if not (low == int(low) and high == int(high)
                     and 1 <= low <= MAX_STATUS_SIZE
                     and 1 <= high <= MAX_STATUS_SIZE):
                 raise DataError(
-                    f"Enchantment Effects row {index}: {name} lays a status on "
-                    f"its wearer at {low:g} to {high:g} times its ordinary "
+                    f"Enchantment Effects row {index}: {name} lays a status "
+                    f"at {low:g} to {high:g} times its ordinary "
                     f"size. A size is a whole number from 1 to {MAX_STATUS_SIZE}.")
         if action in ("apply_status", "apply_status_to_self"):
             if not (0 < low <= 100 and 0 < high <= 100):
@@ -7488,6 +7509,14 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} applies a status "
                     f"for {low:g} to {high:g} seconds. It lasts above 0 and up to "
                     f"{MAX_STATUS_SECONDS:g}.")
+        # A SLOW'S VALUE IS ITS STRENGTH IN PER CENT, above 0 and up to
+        # Cripple's cap. Traps layer 3, ruled 2026-10-21 (M3).
+        if action == SLOW_FOR_SECONDS_ACTION:
+            if not (0 < low <= MAX_SLOW_PERCENT and 0 < high <= MAX_SLOW_PERCENT):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} slows by {low:g} "
+                    f"to {high:g} per cent. A slow is above 0 and up to "
+                    f"{MAX_SLOW_PERCENT:g}, Cripple's cap.")
 
         # A REMAINING DAMAGE ACTION'S VALUE IS A SHARE OF THAT DAMAGE, above 0 and
         # up to 100. Issue #1833 group D part 4.
@@ -7537,7 +7566,10 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} has stacks lasting "
                     f"{stack_seconds:g} seconds. They last above 0 and up to "
                     f"{MAX_STACK_SECONDS:g}.")
-            if scale_max_steps < 1:
+            # NO CAP ON THE EVENTS WHOSE UNCAPPED STACKS LAPSE ALONE. Traps
+            # layer 3, ruled 2026-10-21 (M4 (a)).
+            if scale_max_steps < 1 \
+                    and action_event not in OWN_STACKS_LAPSING_ALONE_EVENTS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} counts its own "
                     f"stacks and states no cap in Scale Max Steps. \"Up to 5 "
@@ -7590,6 +7622,22 @@ def enchantment_effects(book) -> list[dict]:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} stuns for "
                     f"{stack_seconds:g} seconds. A stun lasts above 0 and up to "
+                    f"{MAX_STATUS_SECONDS:g}.")
+        elif action == SLOW_FOR_SECONDS_ACTION:
+            # HOW LONG THE SLOW LASTS. Traps layer 3, ruled 2026-10-21 (M3): the
+            # duration here because the value is the strength, as the stun near
+            # the dying's is; required, and bounded as a stated status's seconds
+            # are.
+            if not stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} slows and states "
+                    f"no Stack Seconds. On {action} that column is how long the "
+                    f"slow lasts.")
+            stack_seconds = number(stack_text, "Stack Seconds", index)
+            if not 0.0 < stack_seconds <= MAX_STATUS_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} slows for "
+                    f"{stack_seconds:g} seconds. A slow lasts above 0 and up to "
                     f"{MAX_STATUS_SECONDS:g}.")
         elif not action and scale == "consecutive_hits":
             # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. The event must
@@ -7834,7 +7882,9 @@ def enchantment_effects(book) -> list[dict]:
                     f"Seconds High and no Stack Seconds, so it would be dropped.")
             # A STUN'S SECONDS KEEP THEIR OWN BOUND AT THE HIGH END TOO. Ruled
             # 2026-10-08. See `STUN_NEAR_THE_DYING_ACTION`.
-            longest = (MAX_STATUS_SECONDS if action == STUN_NEAR_THE_DYING_ACTION
+            longest = (MAX_STATUS_SECONDS
+                       if action in (STUN_NEAR_THE_DYING_ACTION,
+                                     SLOW_FOR_SECONDS_ACTION)
                        else MAX_STACK_SECONDS)
             if not stack_seconds < stack_seconds_high <= longest:
                 raise DataError(
@@ -7998,6 +8048,9 @@ def enchantment_effects(book) -> list[dict]:
             known = {"apply_status_seconds": APPLY_STATUSES_FOR_SECONDS,
                      "apply_status_to_self_seconds": APPLY_STATUSES_TO_SELF_FOR_SECONDS,
                      "apply_status_to_self_sized": (APPLIED_DOT_STATUS,),
+                     # AND `apply_status_sized` NAMES A DAMAGE OVER TIME, whose
+                     # size is what a tick deals. Traps layer 3, 2026-10-21.
+                     APPLY_STATUS_SIZED_ACTION: AILMENTS,
                      # AND `apply_status` ALONE MAY NAME ALL FIVE DAMAGE OVER
                      # TIME AILMENTS AT ONCE. The owner, 2026-10-08.
                      "apply_status": APPLY_STATUSES + (ALL_DOTS_STATUS,
@@ -11844,6 +11897,139 @@ def refuse_a_trap_increase_row_the_game_cannot_read(
     return problems
 
 
+#: The trap cap bonus and the no-expire flag, ruled 2026-10-21 by the
+#: coordinating session (traps layer 3, M1, M2): "Your trap skills get +1-6 to
+#: max trap count" and "Traps do not expire, they remain armed until
+#: triggered". Each is asked as a FLAT figure off the player, with `Type.Trap`
+#: alone, by `ACataclysmMinion::SkillTrapsMostFor` and
+#: `SkillTrapsDoNotExpireFor`, whose names `TrapCapBonusStat` and
+#: `TrapsDoNotExpireStat` hold. The cap is ONE CAP ACROSS EVERY CONVERTED SLOT,
+#: five and the bonus (M1 (a)); the flag leaves a trap placed while it is held
+#: with no life span (M2 (a)).
+TRAP_CAP_BONUS_STAT = "trap_cap_bonus"
+TRAPS_DO_NOT_EXPIRE_STAT = "traps_do_not_expire"
+
+#: The Required Tags a row on either may state: none, or the trap's own tag,
+#: the one tag both are asked with.
+TRAP_CAP_AND_EXPIRY_REQUIRED_TAGS = frozenset({"", "Type.Trap"})
+
+#: The most a row may add to the cap of five. A bound for typing mistakes, as
+#: `MAX_STATUS_SIZE` is; the one sentence is 1 to 6.
+MAX_TRAP_CAP_BONUS = 20
+
+
+def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `TRAP_CAP_BONUS_STAT` or `TRAPS_DO_NOT_EXPIRE_STAT` is one its
+    reader adds.
+
+    BOTH ARE READ AS A FLAT FIGURE, so any other kind works on a base of nought
+    and changes NOTHING; a tag but none or `Type.Trap` matches no trap; an
+    action is not a stat line. THE CAP BONUS IS A WHOLE NUMBER OF TRAPS at each
+    end, from 1 to `MAX_TRAP_CAP_BONUS`, since the game rounds what it rolls;
+    THE FLAG STATES 1 AND NOTHING ELSE. A CONDITION OR A SCALE IS REFUSED
+    ELSEWHERE, as on every stat not on those checks' lists. A PASSIVE NODE'S
+    ROW IS LEFT ALONE.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in (TRAP_CAP_BONUS_STAT, TRAPS_DO_NOT_EXPIRE_STAT) \
+                or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the flat figure itself, so the row must be "
+                f"'flat'; any other kind works on a base of nought and "
+                f"changes NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in TRAP_CAP_AND_EXPIRY_REQUIRED_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The game asks with 'Type.Trap' alone, so the row requires "
+                f"nothing or 'Type.Trap'; any other tag matches no trap.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. This is "
+                f"a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if stat == TRAPS_DO_NOT_EXPIRE_STAT and value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, and a row on this "
+                    f"flag states 1 and nothing else.")
+            if stat == TRAP_CAP_BONUS_STAT and not (
+                    value == int(value) and 1 <= value <= MAX_TRAP_CAP_BONUS):
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}. A bonus to the trap "
+                    f"cap is a whole number of traps from 1 to "
+                    f"{MAX_TRAP_CAP_BONUS}.")
+    return problems
+
+
+#: The action that SLOWS THE OTHER CHARACTER OF ITS EVENT by its value in per
+#: cent for its Stack Seconds, rolled with the value when Stack Seconds High is
+#: stated. Ruled 2026-10-21 by the coordinating session (traps layer 3, M3
+#: (b)): "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" is
+#: ONLY THE ENEMY THAT SET THE TRAP OFF, the other character of
+#: `trap_triggered`, and not every enemy the cast strikes. Cripple's slow at
+#: the stated strength, which `apply_status_seconds` cannot state: it lays
+#: Cripple at Cripple's own 30 (held 2026-10-07 for that reason).
+#: `UCataclysmAbilitySystemComponent::SlowForSecondsAction` holds the name.
+#:
+#: ON `trap_triggered` AND NO OTHER EVENT. A trigger is not a blow and carries
+#: no amount, so the owner's rule of a tenth (#917), which is about what a blow
+#: may lay, is not asked; on a blow's event it would be. No Ailment cell: the
+#: slow is always Cripple's.
+SLOW_FOR_SECONDS_ACTION = "slow_for_seconds"
+SLOW_FOR_SECONDS_EVENTS = ("trap_triggered",)
+
+#: The strongest slow the action may state, in per cent: Cripple's own cap in
+#: `game/Data/StatusEffects.csv`, which the game holds it to.
+MAX_SLOW_PERCENT = 80.0
+
+#: The events an `own_stacks` row MAY STATE NO CAP on, and whose stacks then
+#: LAPSE ALONE, each its own Stack Seconds after it was granted. Ruled
+#: 2026-10-21 by the coordinating session (traps layer 3, M4 (a)): "Each trap
+#: triggered in the last 10 seconds increases your damage by 8%-15%" is one
+#: stack per trigger, each lasting 10 s, and no cap, since the sentence names
+#: none. Everywhere else a cap is still required: a missing one is still a row
+#: written wrong. The item reads a cap of nought as
+#: `FCataclysmPoolAction::bOwnStacksLapseAlone`.
+OWN_STACKS_LAPSING_ALONE_EVENTS = ("trap_triggered",)
+
+
+def _check_slow_for_seconds_action(index: int, who: str, action: str,
+                                   event: str, fraction_of: str, kind: str,
+                                   raw, headers: dict[str, int]) -> None:
+    """Everything a slow must say, and everything it must not. Ruled
+    2026-10-21 (traps layer 3, M3 (b)). The event must be one whose other
+    character is the one the sentence slows; the strength is checked where the
+    value is read and the seconds where Stack Seconds is. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than
+    dropped.
+    """
+    if event not in SLOW_FOR_SECONDS_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} slows the other character "
+            f"of the event {event or '(none)'!r}. Only "
+            f"{', '.join(SLOW_FOR_SECONDS_EVENTS)} names the enemy the trap "
+            f"sentences slow.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} slows and states "
+                f"{column} {written!r}. Its value is the slow in per cent and "
+                f"nothing else, so the column must be empty.")
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -12315,6 +12501,10 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     problems.extend(refuse_a_skill_slot_trap_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
     problems.extend(refuse_a_trap_increase_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    # AND THE TRAP CAP BONUS AND THE NO-EXPIRE FLAG ARE FLAT, REQUIRING NOTHING
+    # OR `Type.Trap`, A WHOLE BONUS AND A FLAG OF 1. Ruled 2026-10-21 (M1, M2).
+    problems.extend(refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

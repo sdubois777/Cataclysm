@@ -3953,8 +3953,9 @@ enum class ECataclysmApplyStatus : uint8
 
 	/**
 	 * The value is the SIZE of the one application, in multiples of the status's ordinary size, and it always
-	 * applies: "When you apply a DOT, 1-4 stacks are applied to you". Ruled 2026-10-06. Only for a status laid on
-	 * the wearer.
+	 * applies: "When you apply a DOT, 1-4 stacks are applied to you". Ruled 2026-10-06. For a status laid on the
+	 * wearer, and since traps layer 3 (2026-10-21) for a damage over time laid on the other character of the event,
+	 * "Traps apply 1-2 bleed stacks to all enemies caught in their blast".
 	 *
 	 * NO AILMENT IN THIS GAME STACKS: a character carries one effect for each, and a repeat of the same size only
 	 * refreshes it. So "stacks" is read as size, and a 4 is one application four times as large.
@@ -4646,6 +4647,22 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * 100 and is not read. See `ACataclysmMinion::FireEveryGadgetAtTheDeathOf`.
 	 */
 	bool bGadgetsCastNow = false;
+
+	/**
+	 * Set, this action SLOWS THE OTHER CHARACTER OF ITS EVENT by `Percent` per cent for `StackSeconds` instead of moving a
+	 * pool: on this action that field holds no stack's time, as on `bStunNearTheDying`. Ruled 2026-10-21 (traps layer 3,
+	 * M3 (b)), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`. See
+	 * `UCataclysmAbilitySystemComponent::SlowForSecondsAction`.
+	 */
+	bool bSlowForSeconds = false;
+
+	/**
+	 * Set, the own stacks this action grants LAPSE ALONE, each `StackSeconds` after it was granted, and have NO CAP: the
+	 * row states none (`StackCap` 0). Ruled 2026-10-21 (traps layer 3, M4 (a)), for "Each trap triggered in the last 10
+	 * seconds increases your damage by 8%-15%". Clear, a grant restarts the window and the count lapses together, as
+	 * every own stack did before. See `UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone`.
+	 */
+	bool bOwnStacksLapseAlone = false;
 };
 
 /**

@@ -1195,6 +1195,23 @@ public:
 	AActor* SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const;
 
 	/**
+	 * TRAPS LAYER 3 (ruled 2026-10-21, M1 and M2): the two reads layer 1 left. "Your trap skills get +1-6 to max trap
+	 * count" is `TrapCapBonusStat`, a flat bonus added to `SkillTrapsMostPerPlayer`: ONE CAP ACROSS EVERY CONVERTED SLOT
+	 * (M1 (a)), which `PlaceSkillTrap` counts and the skill bar shows as "Traps N/M". "Traps do not expire, they remain
+	 * armed until triggered" is `TrapsDoNotExpireStat`, a flag: A TRAP PLACED WHILE IT IS HELD HAS NO LIFE SPAN (M2 (a)),
+	 * taken at placing, and the cap still destroys the oldest. Both are the player's, asked with `Type.Trap` alone, so
+	 * a row requiring nothing or `Type.Trap` reaches them. No gameplay attribute and no base.
+	 */
+	static const TCHAR* TrapCapBonusStat;
+	static const TCHAR* TrapsDoNotExpireStat;
+
+	/** The most skill traps `Player` may have standing: `SkillTrapsMostPerPlayer` plus the cap bonus, rounded, at least 1. */
+	static int32 SkillTrapsMostFor(const AActor* Player);
+
+	/** Whether a skill trap `Player` places now has no life span: the no-expire flag, read as above nought. */
+	static bool SkillTrapsDoNotExpireFor(const AActor* Player);
+
+	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
 	 * centimetres, how long it lasts in seconds, and the percent of the dead minion's own blow a sweep deals. Ruled
 	 * 2026-10-06 by the coordinating session under the owner's delegation; the row's sentence states none of them.

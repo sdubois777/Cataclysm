@@ -309,7 +309,10 @@ FString UCataclysmSkillBar::OwnStacksEntry(const TArray<FName>& Stats, int32 Hel
 		}
 		Name = FString::Join(Words, TEXT("/"));
 	}
-	return FString::Printf(TEXT("%s %d/%d%s"), *Name, Held, Cap,
+	// A ROW WITH NO CAP SHOWS ITS COUNT ALONE, "attack/spell damage 6" and not "6/0". Traps layer 3, ruled 2026-10-21
+	// (M4 (a)): "Each trap triggered in the last 10 seconds" names no cap.
+	const FString Count = Cap > 0 ? FString::Printf(TEXT("%d/%d"), Held, Cap) : FString::Printf(TEXT("%d"), Held);
+	return FString::Printf(TEXT("%s %s%s"), *Name, *Count,
 						   bConsecutiveHits ? TEXT(" (hits in a row)") : TEXT(""));
 }
 
@@ -517,7 +520,7 @@ FString UCataclysmSkillBar::BasicTrapTextOf(const AActor* Player)
 	const bool bCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row)
 		|| UCataclysmBasicAttack::SecondsBetweenSwingsFor(Converting) <= 0.0f;
 	return BasicTrapTextFor(/*bConverted=*/true, bCastsNothing, Converting->BasicSkillTrapSecondsLeft(),
-							ACataclysmMinion::SkillTrapsOf(Player).Num(), ACataclysmMinion::SkillTrapsMostPerPlayer);
+							ACataclysmMinion::SkillTrapsOf(Player).Num(), ACataclysmMinion::SkillTrapsMostFor(Player));
 }
 
 FString UCataclysmSkillBar::LockedNotice()
@@ -735,7 +738,7 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 				Box.bIsASkillTrap = true;
 				Box.Name = SkillTrapName();
 				Box.SkillTrapsStanding = ACataclysmMinion::SkillTrapsOf(Player).Num();
-				Box.SkillTrapsMost = ACataclysmMinion::SkillTrapsMostPerPlayer;
+				Box.SkillTrapsMost = ACataclysmMinion::SkillTrapsMostFor(Player);
 				const UCataclysmWeaponSlotsComponent* Held =
 					Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
 				const FCataclysmWeaponSkill* Row = Held

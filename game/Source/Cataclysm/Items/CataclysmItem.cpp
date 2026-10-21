@@ -1165,6 +1165,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				Stack.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(*Effect);
 				Stack.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 				Stack.StackCap = Effect->ScaleMaxSteps;
+				// AND AN OWN-STACK ROW WITH NO CAP HAS STACKS THAT LAPSE ALONE. Ruled 2026-10-21 (traps layer 3, M4 (a)):
+				// "Each trap triggered in the last 10 seconds" names no cap, and each stack lasts its own 10 s.
+				Stack.bOwnStacksLapseAlone = !bConsecutive && Effect->ScaleMaxSteps <= 0;
 				// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
 				Stack.EverySeconds = Effect->EverySeconds;
 				// AND THE THRESHOLD ITS EVENT CROSSES, AND A COOLDOWN ITS SENTENCE
@@ -1441,6 +1444,23 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bGadgetsCastNow = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::GadgetsCastNowAction,
 						ESearchCase::IgnoreCase);
+					// AND THE TWO OF TRAPS LAYER 3, ruled 2026-10-21 (M3). A DAMAGE OVER TIME LAID ON THE OTHER CHARACTER
+					// AT THE VALUE'S MULTIPLE OF ITS ORDINARY SIZE, "1-2 bleed stacks", named by the Ailment cell; and A
+					// SLOW OF THE VALUE'S PER CENT FOR THE ROW'S STACK SECONDS, a new use of that column, as the stun near
+					// the dying's.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::ApplyStatusSizedAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.ApplyStatus = ECataclysmApplyStatus::Sized;
+						Action.StatusName = Effect->Ailment.TrimStartAndEnd();
+					}
+					Action.bSlowForSeconds = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::SlowForSecondsAction,
+						ESearchCase::IgnoreCase);
+					if (Action.bSlowForSeconds)
+					{
+						Action.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
+					}
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
 					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(

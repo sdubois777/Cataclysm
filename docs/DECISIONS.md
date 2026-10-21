@@ -2,6 +2,454 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-21 — Eight trap rows can be written on traps layers 1 and 2: the trap cap bonus raises the one cap of five and a no-expire flag leaves a trap with no life span; and, for the three rows the actions could not state, a slow at a stated strength on the enemy that set a trap off, a damage over time at a multiple of its size on every enemy a trap's cast strikes, and own stacks with no cap that each lapse alone, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`TrapCapBonusStat`, `TrapsDoNotExpireStat`,
+`SkillTrapsMostFor`, `SkillTrapsDoNotExpireFor` and the helper `SkillTrapFigureOf`, new; in `PlaceSkillTrap` the cap
+asked of `SkillTrapsMostFor` and the life span taken away under the flag); `CataclysmAbilitySystemComponent.h` and `.cpp`
+(`ApplyStatusSizedAction`, `SlowForSecondsAction`, `GrantOwnStackLastingAlone` and `OwnStacksLastingAlone`, new;
+`OwnStacksHeld` counts a row's stacks that lapse alone; the two own-stack grants route a row of no cap to the new grant;
+death empties the new map; a sized status on another character always applies and is laid at its size; one branch in
+`ActOnEvent` for the slow); `CataclysmAilments.h` and `.cpp` (`ApplySlowOfStrength`, new); `CataclysmSkillEffects.cpp`
+(a skill trap's `deployable_hit` carries what its blow took from health); `CataclysmStatPipeline.h` (two fields of
+`FCataclysmPoolAction`, `bSlowForSeconds` and `bOwnStacksLapseAlone`; one comment), all under
+`game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the item reads the two new
+actions and an own-stack row of no cap); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two names at the
+end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (the trap box and the
+basic trap's line show the raised cap; an own-stack entry of no cap shows its count alone);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapRowsTests.cpp` (new, seven tests in `Cataclysm.Traps.`);
+`CataclysmStatExemptionTests.cpp` (two probes); `tools/generate_datatables.py` (the two stats and their refusal, the two
+actions, the own-stack cap allowed absent on `trap_triggered`); `tools/tests/test_generate_datatables.py` (two classes and a
+helper, at the end); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two constants, one test);
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (one call site, one dated line). No data row, no tag, no
+workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The eight sentences, from `game/Data/EnchantmentsPositive.csv`, every one tagged `Type.Trap`; their rows are the
+enchantment session's, below:
+
+| Design id | Name | Sentence |
+| :-- | :-- | :-- |
+| P319 | `Positive_Traps_arm_30_60_faster` | "Traps arm 30%-60% faster" |
+| P320 | `Positive_Traps_have_30_50_increased_trigger_radius` | "Traps have 30%-50% increased trigger radius" |
+| P052 | `Positive_Your_trap_skills_get_1_6_to_max_trap_count` | "Your trap skills get +1-6 to max trap count" |
+| P016 | `Positive_Traps_do_not_expire_they_remain_armed_until_tr` | "Traps do not expire — they remain armed until triggered" |
+| P323 | `Positive_Traps_apply_a_20_35_slow_to_triggered_enemies` | "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" |
+| P215 | `Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug` | "Traps apply 1-2 bleed stacks to all enemies caught in their blast" |
+| P057 | `Positive_Each_trap_triggered_in_the_last_10_seconds_incre` | "Each trap triggered in the last 10 seconds increases your damage by 8%-15%" |
+| P218 | `Positive_Placing_a_trap_generates_a_burst_of_evasion_gra` | "Placing a trap generates a burst of evasion, granting 10%-20% evasion chance for 3 seconds" |
+
+**THREE OF THE SIX ROWS THE BRIEF EXPECTED TO BE ROWS ONLY COULD NOT BE WRITTEN ON WHAT EXISTED, AND A PIECE WAS BUILT
+FOR EACH, NO WIDER THAN ITS ROW:**
+
+1. **THE SLOW (P323).** `apply_status_seconds` lays Cripple at Cripple's own 30% for stated seconds and cannot state a
+   strength: "Traps apply a 20%-35% slow" was HELD on 2026-10-07 for exactly that ("They wait for a status action on an
+   enemy that carries a strength or a size"), and M3 (b) puts it on the enemy that set the trap off, the other character
+   of `trap_triggered`, which no status action may hang on. Built: the action `slow_for_seconds`, on `trap_triggered`
+   alone, its value the slow in per cent and its Stack Seconds the seconds. **IT ASKS NO RULE OF A TENTH (#917)**: the
+   event carries no blow and no amount, so the rule would refuse every slow. A judgement, below; if the owner's rule is
+   meant to reach a trap's trigger, this action needs a ruling.
+2. **THE BLEED (P215).** `apply_status` lays an ailment at its ordinary size, and ruling 8 of 2026-10-07 reads "1-2 bleed
+   stacks" as one bleed at 1 to 2 times its size; the only sized action lays a status on its wearer. HELD on 2026-10-07
+   for that reason, quoted above. Built: the action `apply_status_sized` on the other character, on the events of
+   `apply_status`. **AND FOUND, AND FIXED HERE: A STATUS ROW ON A TRAP'S `deployable_hit` COULD NEVER LAY AN AILMENT.**
+   The event carried an amount of nought, and every ailment a row lays on another character first asks the owner's rule
+   of a tenth (`UCataclysmAilments::BlowCanCarryAnAilment`), so "a status action on `deployable_hit`" (ruling 7 of
+   2026-10-07) reached only the stagger, which is not an ailment. A skill trap's `deployable_hit` now carries what its blow
+   took from health. **A TRAP'S BLEED THEREFORE LANDS ONLY ON A BLOW THAT TOOK A TENTH OF THE ENEMY'S MAXIMUM HEALTH**, the
+   owner's rule as for every ailment a row lays; tested both ways.
+3. **THE DAMAGE STACKS (P057).** M4 (a) rules one stack per `trap_triggered`, each lasting 10 s, and no cap. Every own stack
+   before this layer had a cap the generator required, and its stacks lapsed together, 10 s after the LAST grant (a grant
+   restarts the window). Built: an `own_stacks` row may state no cap on `trap_triggered` alone, and such a row's stacks
+   each lapse alone, 10 s after their own trigger. Every other own stack, capped and on every other event, is unchanged.
+
+**AND THE TWO READS LAYER 1 LEFT**, as the brief gives them: `trap_cap_bonus` (M1) and `traps_do_not_expire` (M2), each a
+stat with no attribute, read by the trap and refused by the generator in its wrong shapes, as layer 1's increases and flag
+are. **P319, P320 AND P218 NEEDED NOTHING**: layer 1's two increases, and an own stack of a cap of 1 on layer 1's
+`trap_placed`.
+
+What a player would notice, once the rows are worn:
+
+- **"+1-6 TO MAX TRAP COUNT" RAISES THE ONE CAP OF FIVE ACROSS EVERY CONVERTED SLOT** (M1 (a)), rounded to a whole trap:
+  rolled at 3, eight traps stand, and the ninth destroys the oldest without triggering (T6). The trap box reads "Traps
+  6/8", and the basic trap's line above the bar counts against the raised cap too.
+- **"TRAPS DO NOT EXPIRE": A TRAP PLACED WHILE IT IS WORN HAS NO LIFE SPAN** (M2 (a)), and stays armed until it triggers,
+  the cap pushes it out, its floor is cleared or it is killed. A trap placed before the row is worn keeps its 20 s. "Traps
+  last 50%-100% longer before expiring" and "Gadgets last 30%-60% longer" mean nothing for such a trap.
+- **THE SLOW CRIPPLES ONLY THE ENEMY THAT SET THE TRAP OFF** (M3 (b)), by the rolled 20% to 35% for the rolled 2 to 4 s,
+  rolled together (a 35% slow lasts 4 s). Another enemy the cast strikes is not slowed. As Cripple: an enemy already
+  carrying a stronger Cripple keeps it, and a weaker one only refreshes the time (issue #1256's rule). A trap set off with
+  no enemy slows nobody.
+- **THE BLEED BLEEDS EVERY ENEMY THE TRAP'S CAST STRIKES** with a blow that takes a tenth of its maximum health, at 1 to 2
+  times a bleed's ordinary size, rolled continuously (1.4 times is a roll). A Spike Trap's own blow carries no amount, so
+  the row never reaches Iron Fortress (T15).
+- **"EACH TRAP TRIGGERED IN THE LAST 10 SECONDS" COUNTS TRIGGERS IN A SLIDING 10 S WINDOW, WITH NO CAP**: three triggers
+  and three more 6 s later are six stacks; 10.5 s after the first three, three stand. The line above the bar reads
+  "attack/spell damage 6", with no cap after the count.
+- **THE EVASION BURST IS 10 TO 20 POINTS OF EVASION CHANCE FOR 3 S AFTER EACH PLACING**, refreshed by the next placing and
+  never added to it (M5 (a)). A press that places a trap, and a basic trap's click, both place.
+- **FOUND, AND NOT CHANGED, FOR A RULING IF IT IS WANTED:** a bleed the row lays raises `dot_applied` on the player inside
+  the actions of `deployable_hit`, and `ActOnEvent` drops an event raised at that depth, so "Applying a DoT to an enemy
+  grants 5%-10% increased damage" does not hear a trap's bleed. By reading; not tested. The slow raises nothing.
+- **NOT IN PLAY UNTIL THE NINE EFFECT ROWS LAND ABOVE THIS LAYER**, the enchantment session's.
+- **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
+  code, the tests and this entry under the enchantment session's brief 60 and the rulings below. NOT COMPILED AND NOT
+  RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- 'Each trap triggered in the last 10 seconds increases your damage' has no cap; with 'Traps do not expire' and a larger trap count it can reach well over 100%
+- with 'Traps do not expire', placed traps stay until triggered or pushed out by the cap
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+Nothing of the owner's is quoted for traps here; layer 1's entry, below, says what the trap shape copies. The rulings are
+the coordinating session's of 2026-10-21 on the enchantment session's M1-M6, verbatim as relayed:
+
+> RULINGS, brief 60 (traps layer 3). The finding is accepted: build the two reads (trap_cap_bonus, traps_do_not_expire)
+> with their StatsWithNoAttribute lines and generator refusals, and dry-run every row through the whole generator.
+> M1 (a) one cap across all slots, 5 + the bonus; the bar shows "Traps N/M".
+> M2 (a) no life span for a trap placed while the row is worn; the cap still destroys the oldest.
+> M3 (b), NOT (a): only the enemy that set the trap off. The bleed row says "all enemies caught in their blast"; the slow
+> row says "triggered enemies", a different phrase in the same family of rows, so the two are read differently. Test it
+> with two enemies struck by the cast: the one that set it off is slowed, the other is not.
+> M4 (a) one stack per trap_triggered, each lasting 10 s, no stack cap since the sentence names none. Add to the owner's
+> play-check list: "'Each trap triggered in the last 10 seconds increases your damage' has no cap; with 'Traps do not
+> expire' and a larger trap count it can reach well over 100%".
+> M5 (a) flat evasion for 3 s on trap_placed, refreshed, not stacking.
+> M6 (a) the play-check line verbatim.
+> The TestEqual type list in the hand-back is accepted.
+
+And the note the rulings file carries with them: "M3 (b) MAY NEED MORE THAN A ROW: `apply_status` on `deployable_hit`
+reaches every enemy the cast strikes, so the slow on the triggering enemy alone needs a row on `trap_triggered`, which
+carries that enemy as its target. Layer 1 put `trap_triggered` in `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`, so the
+generator may refuse such a row. Find out by the dry run; if a change is needed, make the smallest one, say what it is, and
+say what else it lets a row do." **What the dry run found and what was built for it is SAID FIRST, item 1.** That list is
+read by the strike action alone: no status action may name `trap_triggered`, and none is added to it. The new action names
+one event, `trap_triggered`, and **lets a row do nothing else**: slow the enemy that set a trap off, by a stated strength
+for stated seconds.
+
+The options M1-M6 were put with, as `rulings_2026-10-21_traps3.md` gives them: M1 (a) added to the cap of 5 across all
+converted slots, the oldest destroyed past the new cap, or (b) per slot; M2 (a) no life span while the row is worn, taken
+at placing, the cap still destroying the oldest, or (b) the cap lifted too; M3 (a) every enemy the trap's cast strikes, on
+`deployable_hit` with `Type.Trap`, as the bleed row does, or (b) only the enemy that set the trap off; M4 (a) one stack
+per `trap_triggered`, each lasting 10 s, with no cap, or (b) a cap the coordinating session names; M5 (a) a flat 10-20
+points of evasion chance for 3 s on `trap_placed`, refreshed, not stacked, by a second placing within the 3 s, or (b)
+stacking per placing; M6 (a) the line "with 'Traps do not expire', placed traps stay until triggered or pushed out by the
+cap", or (b) none. T1-T19 of 2026-10-19 and L1-L6 of 2026-10-21 stand, quoted in the two entries below.
+
+**NO NUMBER PLAY READS IS ADDED.** Every figure in the rows is its sentence's. The cap of five, 20 s, 1.0 s and 3 m are
+layer 1's, under the owner's delegation of unstated numbers, as its entry says. Two bounds for typing mistakes are added
+to the generator, as its others are: `MAX_TRAP_CAP_BONUS` 20 and `MAX_SLOW_PERCENT` 80, the second Cripple's own cap in
+`game/Data/StatusEffects.csv`, which the game also holds a slow to.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's working tree, on development `991bcb962`.
+
+| | Ruling, quoted | Where it is |
+| :-- | :-- | :-- |
+| M1 (a) | "one cap across all slots, 5 + the bonus; the bar shows "Traps N/M"" | `ACataclysmMinion::SkillTrapsMostFor` (`CataclysmMinion.cpp` 2638), asked by `PlaceSkillTrap`'s loop (2422) and by the bar's trap box and basic trap line (`CataclysmSkillBar.cpp` 741, 523), which `SkillTrapTextFor` writes as "Traps N/M". |
+| M2 (a) | "no life span for a trap placed while the row is worn; the cap still destroys the oldest" | `SkillTrapsDoNotExpireFor` (2645), asked by `PlaceSkillTrap` after `Spawn` (2432), which then calls `SetLifeSpan(0)`, the skill gadget's "no lifespan"; the cap loop above it is unchanged. |
+| M3 (b) | "only the enemy that set the trap off" | `UCataclysmAbilitySystemComponent::SlowForSecondsAction` (`CataclysmAbilitySystemComponent.cpp` 8199), read by the item (`CataclysmItem.cpp` 1457) and acted on in `ActOnEvent` (6753) with `trap_triggered`'s other character, the enemy `TriggerSkillTrap` names; `UCataclysmAilments::ApplySlowOfStrength` (`CataclysmAilments.cpp` 714). |
+| M3, the bleed | "The bleed row says "all enemies caught in their blast"" | `ApplyStatusSizedAction` (8198), read by the item (1451); in `ActOnEvent` a sized row always applies (6691) and `ApplyStatusOf` lays it at its size (7603); the trap's blow's amount on `deployable_hit` (`CataclysmSkillEffects.cpp` 1116). |
+| M4 (a) | "one stack per trap_triggered, each lasting 10 s, no stack cap since the sentence names none" | The item marks an own-stack row of no cap (`CataclysmItem.cpp` 1170); `GrantOwnStackLastingAlone` (8201), granted from `ActOnEvent` (6227) and the timed grants (5131); `OwnStacksHeld` counts the stacks inside their windows (5568); death empties them (2780); the line's entry (`CataclysmSkillBar.cpp` 314). The generator allows the absent cap on `trap_triggered` alone (`OWN_STACKS_LAPSING_ALONE_EVENTS`, `tools/generate_datatables.py` 12004, asked at 7572). |
+| M5 (a) | "flat evasion for 3 s on trap_placed, refreshed, not stacking" | Nothing built: an own stack of a cap of 1 restarts its window on each grant (`GrantOwnStack`), on layer 1's `trap_placed` (`CataclysmMinion.cpp` `PlaceSkillTrap`). The row is below. |
+| M4, M6 | the two play-check lines | FOR THE OWNER'S PLAY-CHECK LIST, above, verbatim. |
+| T4 | "a trap that EXPIRES does NOT trigger" | Unchanged; tested again as the control of the no-expire test. |
+| T6 | "over the cap the oldest is destroyed without triggering" | Unchanged; the loop counts the raised cap. |
+| T15 | "T15 no (the no-War mandate)." | The cap, the flag and the slow are read only for a skill trap (`IsSkillTrap`); a Spike Trap's own blow raises `deployable_hit` with an amount of nought (`CataclysmMinion.cpp`, `AttackTarget`), so the bleed row does not reach it either. |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE SLOW ASKS NO RULE OF A TENTH.** A trap's trigger is not a blow: `trap_triggered` carries no amount, and the slow is
+  what the trap's triggering does, not what one of its blows carries. The reasoning is the one the generator already gives
+  for statuses a row lays on its wearer ("The owner's rule of 2026-09-02 (#917) is about what a blow may lay on its target;
+  these sentences state their status without condition, and most have no blow"). The options not taken: ask it with the
+  event's nought, which slows nobody ever; or with what the cast dealt that enemy, which the event does not carry and a
+  shot in flight has not dealt yet. **A ruling is wanted if the owner's rule is meant to reach a trigger.**
+- **THE SLOW IS CRIPPLE'S TAG AT A STATED STRENGTH**, capped at Cripple's 80, lengthened by the applier's Cripple duration
+  rows and by the target's own as every Cripple, read by the one reader every character's speed asks
+  (`UCataclysmSkillEffects::CrippleMultiplierOn`) and cleansed as a Cripple. The option not taken: a slow of its own tag,
+  which no reader of speed reads.
+- **THE SLOW'S STRENGTH AND SECONDS ROLL TOGETHER**, the seconds through `RolledStackSeconds` at the value's roll, as every
+  row stating Stack Seconds High rolls. The option not taken: two rolls, which no column carries.
+- **A SKILL TRAP'S `deployable_hit` CARRIES WHAT ITS BLOW TOOK FROM HEALTH; A SKILL GADGET'S AND A MACHINE'S STILL CARRY
+  NOUGHT.** The smallest change that lets the bleed meet the owner's rule. What else it lets a row do: any status row on
+  `deployable_hit` requiring `Type.Trap` or nothing now lays its ailment on a skill trap's blow that took a tenth. None is
+  shipped (the untagged gadget stagger is not an ailment and never asked the rule). `deployable_hit` does not join
+  `EVENTS_WITH_AN_AMOUNT`, so no row may take a share of it. The options not taken: skip the rule for the sized action,
+  against the owner's rule; or pass the amount for gadgets too, a change to a gadget no row asks for.
+- **THE BLEED'S SIZE ROLLS CONTINUOUSLY BETWEEN 1 AND 2**, as every value does and as the wearer's sized drawback does; the
+  generator requires whole numbers at the two ends, as for that drawback. The option not taken: a whole 1 or 2, which the
+  item's roll cannot give.
+- **THE BLEED ROW STATES A TRIGGER COOLDOWN OF 0**, "all enemies caught in their blast": `deployable_hit` is an event a hit
+  fires, whose default wait of 0.25 s would bleed only the first enemy one cast strikes. The option not taken: the
+  default.
+- **AN OWN STACK OF NO CAP IS MARKED BY AN EMPTY SCALE MAX STEPS, AND IS ALLOWED ON `trap_triggered` ALONE**; such a row's
+  stacks lapse alone. An uncapped count that lapsed together would grow without bound while a trap triggered every 10 s;
+  one that lapses alone is bounded by how often traps can trigger. The options not taken: a new scale name, which the
+  engine's scale table and the pipeline would need; or an absent cap allowed on every event, which would drop the guard
+  against a cap forgotten ("Up to 5 stacks" is 5). The grant `GrantOwnStack`, whose cap of nothing grants nothing (a merged
+  test asserts it), is not changed; the new grant is a function of its own.
+- **THE CAP BONUS IS ROUNDED TO A WHOLE TRAP AND THE CAP IS AT LEAST ONE**, as `MinionCapFor` treats a minion cap's bonus.
+  Both new reads ask with `Type.Trap` alone, the one tag the bar can ask with, holding no trap. The option not taken: the
+  trap's whole type tags, which the bar does not have.
+- **THE FLAG IS TAKEN AT PLACING** (M2 (a)), and the life span is taken away after `Spawn` has lengthened it, so a trap
+  placed under the flag never expires whatever the duration rows say. The option not taken: refresh standing traps when
+  the row is put on.
+- **THE ROWS' REQUIRED TAGS:** `Type.Trap` on the four stat rows and the two action rows; NONE on the three own-stack rows,
+  because an own stack's tags scope its stat and not its grant: `Type.Trap` on `attack_damage` would raise only a trap's
+  cast, where "increases your damage" is every blow, and on `evasion` would match no blow taken. The option not taken:
+  the sentence's own tag on every row: an enchantment's Tags column never becomes a row's Required Tags
+  (`UCataclysmItemModifiers::AccumulateEnchantmentsInto` reads only the effect row's).
+- **"10%-20% EVASION CHANCE" IS FLAT 10 TO 20 ON `evasion`**, the chance in points a blow's roll is compared with
+  (`UCataclysmDamageCalculation::Resolve`). The option not taken: `increased`, which "Your evasiveness is increased by
+  200-500" uses and which would multiply the player's own figure.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. Layer 1's entry, below, carries the trap sources `trap_design_2026-10-19.md`
+fetched: Path of Exile's "Characters have a base trap trigger radius of 10." and "(0—80)% increased Trap Trigger Area of
+Effect", its "By default, a character can have 15 traps.", and "Traps remain armed for a limited duration, after which
+they expire." stand behind the trigger radius increase, the cap and the expiry these rows change. None settles a slow on
+the triggering enemy, a sized bleed, a count of triggers in a window or an evasion burst on placing: those are this game's
+own sentences, ruled above.
+
+### WHAT WAS BUILT
+
+- **The two reads** (`ACataclysmMinion`): `TrapCapBonusStat`, `TrapsDoNotExpireStat`, `SkillTrapsMostFor`,
+  `SkillTrapsDoNotExpireFor` and `SkillTrapFigureOf`, one block at the end of `CataclysmMinion.cpp` (2620 on) and one in
+  the header after `SkillTrapNearestEnemyTo`, reusing `StatForSkill` and the file's `TagOfATrap`; in `PlaceSkillTrap`, the
+  loop's cap (2422, one expression) and the flag's six lines (2430 to 2435), reusing `SetLifeSpan(0)` as
+  `PlaceSkillGadget` does; the bar's two reads of the cap (`CataclysmSkillBar.cpp` 523, 741).
+- **The slow**: `SlowForSecondsAction`, the field `bSlowForSeconds`, the item's read (`CataclysmItem.cpp` 1457 to 1463,
+  reusing `RolledStackSeconds`), the branch in `ActOnEvent` (6749 to 6766, after the gadgets' and before the pool's), and
+  `UCataclysmAilments::ApplySlowOfStrength` (`CataclysmAilments.cpp` 714 on), reusing Cripple's kind, row and cap,
+  `AppliedDurationMultiplier` and `UCataclysmSkillEffects::ApplyTagForDuration`.
+- **The sized bleed**: `ApplyStatusSizedAction`, the item's read (1447 to 1456), the existing status branch's `Sized` (one
+  line, 6691) and `ApplyStatusOf`'s magnitude (7599 to 7604), reusing `UCataclysmAilments::Apply`, whose magnitude
+  already scales a damage over time's tick; and the trap's blow's amount (`CataclysmSkillEffects.cpp` 1113 to 1117).
+- **The stacks that lapse alone**: `bOwnStacksLapseAlone`, the item's read (1168 to 1170), `GrantOwnStackLastingAlone` and
+  `OwnStacksLastingAlone` (one block at the end of `CataclysmAbilitySystemComponent.cpp`, 8193 on, and one in the header
+  after `BasicSkillTrapPlacedAtSeconds`), the two grants' routing (5128 to 5136, 6224 to 6232), `OwnStacksHeld`'s count
+  (5567 to 5577), death's emptying (2780), and the line's entry (`CataclysmSkillBar.cpp` 312 to 316).
+- **The generator**: `APPLY_STATUS_SIZED_ACTION` (5258) in `ALL_APPLY_STATUS_ACTIONS` (5361), named on the status names'
+  table (8053) and the size's check (7491); `TRAP_CAP_BONUS_STAT`, `TRAPS_DO_NOT_EXPIRE_STAT`,
+  `TRAP_CAP_AND_EXPIRY_REQUIRED_TAGS`, `MAX_TRAP_CAP_BONUS` and `refuse_a_trap_cap_or_expiry_row_the_game_cannot_read`
+  (11900 to 11973), run last by `validate_enchantment_effects` (12507); `SLOW_FOR_SECONDS_ACTION`,
+  `SLOW_FOR_SECONDS_EVENTS`, `MAX_SLOW_PERCENT`, `OWN_STACKS_LAPSING_ALONE_EVENTS` and `_check_slow_for_seconds_action`
+  (11975 to 12031), the dispatch to it (6161), the "Known" message (6183), the slow's value (7514), its Stack Seconds
+  (7626) and their high end (7887), its trigger cooldown allowed (5778) and no fraction written for it (7123); the own
+  stack's cap allowed absent on `trap_triggered` (7572).
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+**Nine rows of the Enchantment Effects sheet, on the eight enchantments named in SAID FIRST, cell by cell.** Every cell
+not named is empty. Each enchantment's name and sentence were read from `game/Data/EnchantmentsPositive.csv` by script,
+each found once with `Type.Trap` among its tags; the enchantments' own tags are not the rows'.
+
+| Id | Stat | Value Kind | Low | High | Required Tags | Scale | Scale Step | Action | Action Event | Scale Max Steps | Stack Seconds | Stack Seconds High | Trigger Cooldown | Ailment |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| P319 | `trap_arming_speed` | increased | 30 | 60 | `Type.Trap` | | | | | | | | | |
+| P320 | `trap_trigger_radius` | increased | 30 | 50 | `Type.Trap` | | | | | | | | | |
+| P052 | `trap_cap_bonus` | flat | 1 | 6 | `Type.Trap` | | | | | | | | | |
+| P016 | `traps_do_not_expire` | flat | 1 | 1 | `Type.Trap` | | | | | | | | | |
+| P323 | | | 20 | 35 | `Type.Trap` | | | `slow_for_seconds` | `trap_triggered` | | 2 | 4 | | |
+| P215 | | | 1 | 2 | `Type.Trap` | | | `apply_status_sized` | `deployable_hit` | | | | 0 | Bleed |
+| P057 #1 | `attack_damage` | increased | 8 | 15 | | own_stacks | 1 | | `trap_triggered` | | 10 | | | |
+| P057 #2 | `spell_damage` | increased | 8 | 15 | | own_stacks | 1 | | `trap_triggered` | | 10 | | | |
+| P218 | `evasion` | flat | 10 | 20 | | own_stacks | 1 | | `trap_placed` | 1 | 3 | | | |
+
+**EACH WAS DRY-RUN THROUGH THE WHOLE GENERATOR**, as the first row of a new kind must be: on a copy of the tree as
+it stands at this layer (`git archive` of `991bcb962` with this layer's changed and new files written over it), the nine rows were written into the copy's
+workbook with openpyxl by a script reading every name and sentence from the copy's `EnchantmentsPositive.csv`, and
+`tools/generate_datatables.py --workbook <copy> --output-dir <copy>/game/Data` accepted all nine: "EnchantmentEffects.csv
+692 rows", "Wrote 29 CSVs", exit 0. The nine came out as the table says, with the generator's own fills: Fraction Of
+empty on both actions, Trigger Cooldown 0 on both (the slow's by default on an event no hit fires, the bleed's as
+stated), Scale Max Steps 0 on the two damage rows. The other 28 CSVs came out byte for byte as the control copy's, and
+`EnchantmentEffects.csv` differs from it by exactly the nine rows. **The whole Python suite was then run in that copy
+and in an untouched control copy**: the control "11 failed, 6819 passed, 13 skipped" (JUnit tests 6843,
+failures 11, errors 0, skipped 13), the copy with the rows "16 failed, 6814 passed, 13 skipped" (JUnit tests 6843,
+failures 16). The control's eleven are the copy having no `.git` (every one says "not a git repository") and are
+among the sixteen. **The five only the rows' copy fails** are the bookkeeping a new row always moves, and nothing
+else:
+
+- `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`: the asset rebuild,
+  which needs the editor, the one difference a data change is expected to make here.
+- `test_docs_readme_sheet_table_is_true.py::test_every_row_count_in_the_table_is_true`: "Enchantment Effects: 683,
+  692".
+- `test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: `CHECK_TABLE` in
+  `CataclysmDataTableTests.cpp`, "EnchantmentEffects.csv: 683, 692".
+- `test_enchantment_effects_match_the_row_text.py::test_the_coverage_is_what_it_is_measured_to_be`: "692 effect rows,
+  pinned at 683".
+- `test_enchantment_effects_match_the_row_text.py::test_a_single_value_appears_in_its_words_outside_any_range`: "Positive_
+  Traps_do_not_expire_they_remain_armed_until_tr#1: 1 against 'Traps do not expire — they remain armed until
+  triggered'", the flag's 1, which `FLAG_STATS` excuses for every flag.
+
+**With the bookkeeping applied in that copy** (`traps_do_not_expire` joined to `FLAG_STATS` after `skill_slot_is_a_trap`;
+`AUTHORED_ROWS` 683 to 692 and `AUTHORED_ENCHANTMENTS` 548 to 556 in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`; `docs/README.md`'s "| Enchantment Effects | 683 |" to 692;
+`CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv", 683)` to 692), those three files ran "49
+passed". The asset hash is the window's. **No text check refused a row's words**: the slow's 20-35 and 2-4, the
+bleed's 1-2, the damage rows' 8-15 and 10, the evasion row's 10-20 and 3, the increases' 30-60 and 30-50 and the cap
+bonus's 1-6 all passed.
+
+**THE BOOKKEEPING THE ENCHANTMENT SESSION DOES WITH THE ROWS**, measured above: the five lines in four files just named,
+and the asset rebuild. `trap_cap_bonus` needs no list: its 1-6 is in its words.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains two names, at its end;
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains two probes, the last entries of its table.
+- `INVENTORY` in `tools/tests/test_stat_lookups_hand_over_what_they_should.py` gains one call site, at its end, and one
+  dated line.
+- **The generator accepts two new actions and one new shape of an own-stack row**: `slow_for_seconds` on `trap_triggered`
+  alone, `apply_status_sized` on the events of `apply_status` naming one of the five damage over time ailments, and an
+  `own_stacks` row with no Scale Max Steps on `trap_triggered`, where it refused every own-stack row without a cap. It
+  refuses every other own-stack row without a cap as before. **It refuses the wrong shapes of the two new stats** (a kind
+  but `flat`, a tag but none or `Type.Trap`, an action, a cap bonus but a whole 1 to 20, a flag but 1). No shipped row is
+  on any of them.
+- `CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the two action names, at its
+  end, and the file one test. **`APPLY_STATUS_ACTIONS` is unchanged on purpose**, so the merged
+  `test_the_generator_accepts_exactly_the_status_names_the_engine_has`, which pins its two names, still asserts what it
+  did: the sized action is `APPLY_STATUS_SIZED_ACTION`, joined to `ALL_APPLY_STATUS_ACTIONS`.
+- **No merged test's assertion changes, by reading.** With no row worn: the cap is `SkillTrapsMostPerPlayer`
+  (`SkillTrapsMostFor` answers five with no bonus), no trap loses its life span, no action is a slow or a sized status, no
+  own stack lapses alone (the item marks one only for a row of no cap, and the generator refused every such row), and the
+  bar's words are as they were for every cap above nought. **The one changed figure an event carries is a skill trap's
+  `deployable_hit` amount**; the merged tests that hang on that event (layer 1's armour row, a placed stack) read no
+  amount. The line's entry changes only for a cap of nought, which no merged test passes.
+
+### Tests
+
+Seven Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapRowsTests.cpp`, in layer 1's group
+`Cataclysm.Traps.`, numbered on from layer 2's last (17). The rig is layer 1's: a possessed player character holding a
+Demonic Whip, a weapon damage of 100, 10,000 health and 1,000 mana; creatures of the monsters' side with no defences and
+50,000 health unless a case says otherwise; every body at least 1 m from every other; every stat and action written by
+hand as the item would build it from its row. NO KEY IS PRESSED: every trap is placed directly, and a trap's cast is free.
+The world's clock is moved by hand and a trap's step called directly, a second and a quarter after placing. Every test
+whose traps strike pins `Cataclysm.CritRoll` at 100 after the world is made (19 to 23). Helper types are
+`FTrapRowWorld`, `FTrapRowStat`, `FTrapRowRig` and `FTrapRowBleedCase`, in the namespace `CataclysmTrapRowTest`; the engine's
+headers declare none of them, and no other file of the module declares them (searched). **Assertions are counted for a
+passing run, 104 in all.**
+
+18. `TheCapBonusRaisesTheOneCapSoASixthTrapStandsAndTheBarShowsTrapsSixOfEight`, 11. In order: a world; control, the most
+    standing is five with no bonus; with a sixth, five stand; the first is gone; the box reads "Traps 5/5"; with a bonus of
+    3 the most is eight; six stand; the first still stands; the box reads "Traps 6/8"; with a ninth, eight stand; the first
+    is gone.
+19. `TheNoExpireFlagKeepsATrapArmedPastTwentySecondsAndWithoutItATrapExpires`, 14. In order: a world; set-up, the pin;
+    set-up, the two enemies (two); control, without the flag a trap lasts 20 s; a trap placed before the flag was held
+    does too; with the flag, no life span; 25 s on, control, the control's trap expired (`LifeSpanExpired` called as the
+    engine's timer would); and its enemy is untouched; the flagged trap stands; it triggers on its enemy; it is used up;
+    with six more flagged traps five stand; the oldest of them is gone.
+20. `TheArmingAndTriggerRadiusRowsAtThirtyPerCentArmATrapSoonerAndTriggerItFurtherOut`, 13. In order: a world; set-up, the
+    pin; set-up, two enemies (two); control, the plain trap arms at 1 s; 30% faster arms at 1/1.3 s; control, 3 m; 30%
+    wider 3.9 m; at 0.875 s, control, the plain trap is not armed; the quick one is; at 1.25 s, control, the plain trap
+    does not trigger at 3.75 m; the wide one does; and is used up.
+21. `TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOffByItsStrengthForItsSeconds`, 15. Ultimate traps (The Gathering, cast
+    around the enemy that set the trap off) with a second enemy 6 m on the other side of the trap, outside its 3 m. In
+    order: a world; set-up, the pin; set-up, the Cripple tag; set-up, four enemies (four); set-up, the control's cast
+    struck both; control, it cripples neither (two); set-up, the row's cast struck both; the enemy that set it off is
+    slowed; by 25, below Cripple's 30, within 0.01; for 3 s, within 0.01; the second enemy is not.
+22. `TheBleedRowBleedsEveryEnemyATrapsCastStrikesAtItsSizeWhenTheBlowTookATenth`, 25. Heavy traps (Searing Lash's 5 m
+    cone) with the enemy that sets each off 2.5 m away and a second 4 m away in the cone; creatures of 1,500 health but the
+    fourth case's 100,000. In order: a world; set-up, the pin; set-up, the Bleed tag; set-up, eight enemies (eight); set-up,
+    1,500 health; set-up, each of three casts took a tenth of each enemy (three); control, the cast bleeds neither (two);
+    rolled at 1, both bleed (two); rolled at 2, both bleed (two); rolled at 1 the bleed states a size; at 2 twice it, within
+    0.1%; set-up, the sturdy cast struck; a blow short of a tenth lays no bleed.
+23. `TheDamageRowGivesAStackForEachTrapTriggeredInTheLastTenSecondsEachLapsingAloneWithNoCap`, 20. Two players, each
+    setting off six Heavy traps by naming each trap's enemy, three at the start and three 6 s later; each holds 10% increased
+    `attack_damage` scaled by its own stacks; the control's grant has a cap of 5 and lapses together. In order: a world;
+    set-up, the pin; control, no stack; no increase; set-up, the first three triggered (three); three stacks; set-up, the
+    next three (three); control, the capped stacks hold five; six stacks, no cap; 60% increased; at 10.5 s, control, the
+    capped stacks still five; three stand; 30% increased; control, a capped entry reads "attack/spell damage 3/5"; one of
+    no cap "attack/spell damage 3"; at 16.5 s none.
+24. `TheEvasionRowGivesItsPointsForThreeSecondsOnPlacingATrapRefreshedAndNotStacked`, 6. In order: a world; control, no
+    burst; a placing grants 15 points; a second within 3 s still 15; 4.5 s after the first and 2.5 after the second still
+    15; 3.5 s after the second, nought.
+
+Two probes join `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, both `ProbeTrapCapAndExpiry`:
+`trap_cap_bonus` (control, the most is five; with a flat 3 it is eight) and `traps_do_not_expire` (control, a trap placed
+now expires; with a flat 1 it does not).
+
+Python, in `tools/tests/test_generate_datatables.py`, on made-up sheets: `TestTheTrapCapBonusAndTheNoExpireFlag`, four
+(each row's shape carried through and refused by nothing, the flag's under its real sentence read from the shipped sheet;
+both stats with no attribute and named as the engine names them, with a control; each wrong shape refused once by its own
+sentence; the whole sheet's validation runs the check); `TestTheSlowTheSizedBleedAndTheStacksThatLapseAlone`, seven (the
+slow row carried through, its Fraction Of empty; the slow refused on another event, without Stack Seconds, with an Ailment,
+with a Value Kind, past 80; the bleed row carried through with its cooldown of 0; the sized bleed refused for Cripple, on
+`trap_placed` and at a size not whole; the two damage rows carried through with no cap on `trap_triggered`; an own stack
+with no cap refused on `trap_placed`, with the capped evasion row as its control; the two events lists and the item's
+read). In `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
+`test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_engine_has`. **Proved by `tools/prove_guard.py`**, in a copy of the tree, with the refusal of the two stats made to read no stat (`if stat not in (TRAP_CAP_BONUS_STAT, TRAPS_DO_NOT_EXPIRE_STAT) \` made `if stat not in () \`, its anchor counted once): "PROVED: 2 failed, 2 passed, 1004 deselected | restored: 4 passed, 1004 deselected", the two named failures `test_every_shape_the_game_would_read_as_nothing_is_refused` and `test_the_whole_sheets_validation_runs_the_check`.
+
+**Not tested:** a real row worn (the enchantment session's); the item's building of the nine rows (the tests write the
+actions and stat lines by hand); a trap placed by a key press or a click under the rows (layer 1's and 2's presses
+unchanged); the basic trap's line showing the raised cap; a Cripple already stronger on the enemy; the slow's duration
+lengthened by a Cripple duration row; a trap set off with no enemy under the slow; the bleed on a Spike Trap's blow; a
+projectile trap's shot landing after the trap is used up (priced as the player's, with no `deployable_hit`, so no bleed:
+layer 1's item 5); the bleed's `dot_applied` being dropped; the timed own-stack grant's new routing; an uncapped stack
+lapsing at death; a trap's floor clearing a no-expire trap; replication; anything drawn; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired (counted by the same script: `CataclysmMinion.cpp` 905/905, 264/264, 12/12 before and 904/904, 264/264, 12/12
+after TR-VIII, which drops one pair; `CataclysmSkillEffects.cpp` 1564/1564, 450/450, 15/15 before and after TR-IX;
+`CataclysmAbilitySystemComponent.cpp` 3047/3047, 1019/1019, 32/32 before and after TR-X). Each compiles alone by reading:
+TR-VIII compares an `int32` with a `static constexpr int32`, and `SkillTrapsMostFor` stays called by the bar; TR-IX
+multiplies the same `float` by nought; TR-X looks up another `FName` in the same map. The prefix of all three is
+`Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight and these seven, twenty-five; every one that
+places a trap needs the `SkillTrap` row.
+
+**The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing (every test);
+for each trigger `trap_triggered` (19 to 23), and for a cast's blows on enemies `hit_dealt`, `first_hit_dealt` and
+`deployable_hit` (the trap's tags less `Type.Deployable`, now with the blow's amount), with `dot_applied` for Searing
+Lash's and The Gathering's burns, and in test 21 whatever The Gathering's pull and knock-down raise on their applier
+(`crowd_control`); in test 22 the bleed rows' own `dot_applied`, raised inside `deployable_hit`'s actions and dropped at
+that depth. On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 21's slow on `trap_triggered`; test 22's
+sized bleed on `deployable_hit`; test 23's two own-stack grants on `trap_triggered`; test 24's on `trap_placed`. No break
+changes how often an event is raised. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-VIII, the cap bonus is not read where traps are counted (M1) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `while (Standing.Num() >= SkillTrapsMostFor(Player))` | `while (Standing.Num() >= SkillTrapsMostPerPlayer)` | `TheCapBonusRaisesTheOneCapSoASixthTrapStandsAndTheBarShowsTrapsSixOfEight` | none |
+| TR-IX, a trap's blow carries no amount, so the rule of a tenth refuses every bleed (P215) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;` | `const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : 0.0f * Result->DealtToHealth;` | `TheBleedRowBleedsEveryEnemyATrapsCastStrikesAtItsSizeWhenTheBlowTookATenth` | none |
+| TR-X, stacks of no cap lapse together (M4) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (const TArray<float>* Alone = OwnStacksLastingAlone.Find(StackKey))` | `if (const TArray<float>* Alone = OwnStacksLastingAlone.Find(NAME_None))` | `TheDamageRowGivesAStackForEachTrapTriggeredInTheLastTenSecondsEachLapsingAloneWithNoCap` | none |
+
+Failed assertions, by reading:
+
+- **TR-VIII, 4 in 1 test.** Test 18: with a sixth placed the bonus player's first is destroyed, so "so with a sixth placed,
+  six stand" (5 against 6), "and the first still stands", "and the box reads six of eight" ("Traps 5/8"), and "with a ninth
+  placed, eight stand" (5 against 8). The control's lines, "the most traps standing is eight" (`SkillTrapsMostFor`, which
+  the break leaves) and "the first is gone" pass. Test 19's flagged player holds no bonus. No other test places more than
+  one trap for a player holding a bonus.
+- **TR-IX, 5 in 1 test.** Test 22: the four "bleeds" lines of the two rows' cases and "rolled at 1, the bleed states a
+  size" (no bleed states nothing); "twice that" is inside that check's `if` and is not reached. The set-up lines, the
+  controls and the sturdy case pass. Layer 1's armour row on `deployable_hit` reads no amount. No other test hangs a status
+  on `deployable_hit`.
+- **TR-X, 2 in 1 test.** Test 23: at 10.5 s the row's six stacks read as one count restarted by the last grant, so "each of
+  the first three lapsed alone ... three stand" (6 against 3) and "so 30% increased" (0.6 against 0.3). Before that every
+  line passes: the count written with each grant is the list's length; at 16.5 s the last grant is past its 10 s, so
+  "none" passes. Test 24's grant is capped and never reaches the new count.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. The probes read
+`SkillTrapsMostFor` and `SkillTrapsDoNotExpireFor`, which no break touches.
+
+**A test and no proof:** the no-expire flag and the cap still destroying the oldest under it; the arming and radius rows at
+their low ends; the slow on the one enemy, its strength and its seconds; the bleed's size, its every enemy and the rule of a
+tenth; the own stacks' lack of a cap; the line's entry; the evasion burst, refreshed and not stacked.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-21 — A row can convert the Support slot or the basic attack into a placeable trap: the Support's self buff reaches the player within 8 m of the trap and its areas are measured from the triggering enemy; a left click on an enemy places a basic trap at the feet and swings nothing, at most once per swing interval on one clock; the basic and Heavy traps fire at the nearest living enemy when they trigger, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`SkillTrapFiresAtTheNearestEnemy` and

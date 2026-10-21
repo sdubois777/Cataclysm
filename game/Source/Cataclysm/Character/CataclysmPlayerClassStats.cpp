@@ -899,6 +899,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("skill_slot_is_a_trap"),
 		TEXT("trap_arming_speed"),
 		TEXT("trap_trigger_radius"),
+		// Traps layer 3, ruled 2026-10-21 (M1, M2), for "Your trap skills get +1-6
+		// to max trap count" and "Traps do not expire, they remain armed until
+		// triggered": the flat bonus added to the cap of five, and the flag under
+		// which a trap is placed with no life span, both read off the player with
+		// `Type.Trap` by ACataclysmMinion::SkillTrapsMostFor and
+		// SkillTrapsDoNotExpireFor. No gameplay attribute and no base.
+		TEXT("trap_cap_bonus"),
+		TEXT("traps_do_not_expire"),
 	};
 	return Stats;
 }

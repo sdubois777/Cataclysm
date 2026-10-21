@@ -4546,6 +4546,40 @@ public:
 	/** The world's time at which the last basic trap was placed: long ago until the first, as a first swing is. */
 	float BasicSkillTrapPlacedAtSeconds = -1000.0f;
 
+	/**
+	 * TRAPS LAYER 3. Ruled 2026-10-21 by the coordinating session (M3, M4), for three trap rows the actions that existed
+	 * could not state. `APPLY_STATUS_SIZED_ACTION`, `SLOW_FOR_SECONDS_ACTION` and `OWN_STACKS_LAPSING_ALONE_EVENTS` in
+	 * `tools/generate_datatables.py` hold the same names.
+	 *
+	 * `ApplyStatusSizedAction` LAYS A DAMAGE OVER TIME ON THE OTHER CHARACTER OF ITS EVENT AT THE VALUE'S MULTIPLE OF ITS
+	 * ORDINARY SIZE, always: "Traps apply 1-2 bleed stacks to all enemies caught in their blast", on `deployable_hit`
+	 * with `Type.Trap` (ruling 8 of 2026-10-07: "1-2 bleed stacks" is one bleed at 1 to 2 times its size). The
+	 * `ECataclysmApplyStatus::Sized` form, which until now only `ApplyStatusToSelfSizedAction` took. The owner's rule of
+	 * a tenth (#917) is asked of it as of every status a blow lays on another.
+	 */
+	static const TCHAR* ApplyStatusSizedAction;
+
+	/**
+	 * `SlowForSecondsAction` SLOWS THE OTHER CHARACTER OF ITS EVENT BY THE VALUE IN PER CENT FOR `StackSeconds`: "Traps
+	 * apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`, whose other character is the enemy
+	 * that set the trap off and no other (M3 (b)). Cripple's tag at the stated strength, capped at Cripple's own cap, for
+	 * the stated seconds lengthened as a stated Cripple's are. A TRIGGER IS NOT A BLOW, so the rule of a tenth, which is
+	 * about what a blow may lay, is not asked. See `UCataclysmAilments::ApplySlowOfStrength`.
+	 */
+	static const TCHAR* SlowForSecondsAction;
+
+	/**
+	 * Grant one own stack under `StackKey` THAT LAPSES ALONE, `WindowSeconds` after it was granted, with NO CAP: "Each trap
+	 * triggered in the last 10 seconds increases your damage by 8%-15%" (M4 (a)). An own-stack row with no cap
+	 * (`FCataclysmPoolAction::bOwnStacksLapseAlone`) grants through this and not `GrantOwnStack`, whose stacks lapse
+	 * together and whose cap of nothing grants nothing. `OwnStacksHeld` counts the stacks still inside their windows. A
+	 * window of nothing grants nothing.
+	 */
+	void GrantOwnStackLastingAlone(FName StackKey, float WindowSeconds);
+
+	/** When each stack of a row whose stacks lapse alone was granted, by stack key. Emptied where `OwnStacks` is. */
+	TMap<FName, TArray<float>> OwnStacksLastingAlone;
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

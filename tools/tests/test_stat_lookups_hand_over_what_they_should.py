@@ -218,6 +218,9 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: press places a trap, asked by
 #: `UCataclysmAbilitySystemComponent::SlotIsASkillTrap`, and the lock of the
 #: skill that press uses, asked by `PressOfASkillTrapSlot`.
+#: Traps layer 3 added one more on 2026-10-21: the one helper
+#: `SkillTrapFigureOf` in `CataclysmMinion.cpp` that the trap cap bonus and the
+#: no-expire flag are asked through.
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1111,6 +1114,13 @@ INVENTORY = {
         "PressOfASkillTrapSlot with the skill's own tags as "
         "UCataclysmSkillTemplate::CanActivateAbility asks it; a press is "
         "not a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), FGameplayTagContainer(TagOfATrap()), 0.0f'):
+        "the trap cap bonus and the no-expire flag (traps layer 3, ruled "
+        "2026-10-21, M1 and M2), asked by SkillTrapFigureOf off the player "
+        "with Type.Trap alone from a placing and from the skill bar; a "
+        "placing is not a blow and neither row has a condition, so no blow "
+        "and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

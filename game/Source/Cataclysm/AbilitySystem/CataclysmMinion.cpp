@@ -2415,10 +2415,11 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		return nullptr;
 	}
 
-	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6): THE OLDEST ARE DESTROYED WITHOUT TRIGGERING, before
-	// the new one is told its slot, so it is not among them. Destroyed and not killed: no `HandleDeath`, no cast.
+	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6), AND THE CAP BONUS MORE (M1): THE OLDEST ARE DESTROYED
+	// WITHOUT TRIGGERING, before the new one is told its slot, so it is not among them. Destroyed and not killed: no
+	// `HandleDeath`, no cast.
 	TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
-	while (Standing.Num() >= SkillTrapsMostPerPlayer)
+	while (Standing.Num() >= SkillTrapsMostFor(Player))
 	{
 		Standing[0]->Destroy();
 		Standing.RemoveAt(0);
@@ -2426,6 +2427,12 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 
 	// OUTSIDE EVERY SUMMON CAP, as a skill gadget is (S8): its own cap is the one above.
 	Placed->bOutsideSummonCaps = true;
+	// AND NO LIFE SPAN WHILE THE PLAYER HOLDS "Traps do not expire, they remain armed until triggered" (M2 (a)), as a
+	// skill gadget has none: taken at placing, so a trap placed without it keeps its 20 s. The cap above still applies.
+	if (SkillTrapsDoNotExpireFor(Player))
+	{
+		Placed->SetLifeSpan(0.0f);
+	}
 	Placed->SkillTrapSlot = Slot;
 	Placed->SkillTrapArmsAtAgeSeconds =
 		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
@@ -2608,4 +2615,34 @@ AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
 	const float NoFartherCm = FVector::Dist(GetActorLocation(), TriggeringEnemy->GetActorLocation());
 	const TArray<AActor*> Living = HostilesWithin(NoFartherCm);
 	return Living.IsEmpty() ? TriggeringEnemy : Living[0];
+}
+
+// ==========================================================================
+// Traps, layer 3: the cap bonus and the no-expire flag. Ruled 2026-10-21 (M1, M2).
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapCapBonusStat = TEXT("trap_cap_bonus");
+const TCHAR* ACataclysmMinion::TrapsDoNotExpireStat = TEXT("traps_do_not_expire");
+
+namespace
+{
+	/** The player's own figure of `Stat` for its traps, asked with `Type.Trap` alone, or nought with no stat line. */
+	float SkillTrapFigureOf(const AActor* Player, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(TagOfATrap()), /*Fallback=*/0.0f) : 0.0f;
+	}
+}
+
+int32 ACataclysmMinion::SkillTrapsMostFor(const AActor* Player)
+{
+	// "+1-6 TO MAX TRAP COUNT" IS A WHOLE NUMBER OF TRAPS, so the rolled figure is rounded, as a minion cap's bonus is
+	// (`MinionCapFor`), and the cap is at least one, as that one is.
+	return FMath::Max(1, SkillTrapsMostPerPlayer + FMath::RoundToInt(SkillTrapFigureOf(Player, TrapCapBonusStat)));
+}
+
+bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)
+{
+	return SkillTrapFigureOf(Player, TrapsDoNotExpireStat) > 0.0f;
 }

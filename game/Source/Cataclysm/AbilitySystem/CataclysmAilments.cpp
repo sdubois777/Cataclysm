@@ -710,3 +710,25 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		return false;
 	}
 }
+
+bool UCataclysmAilments::ApplySlowOfStrength(AActor* Instigator, AActor* Target, float StrengthPercent, float Seconds)
+{
+	// CRIPPLE'S OWN TAG AND CAP, so the slow is read where every Cripple is read and is cleansed as one. Ruled 2026-10-21
+	// (traps layer 3, M3): the strength is the row's, which `Apply` cannot lay below Cripple's own 30.
+	const FCataclysmAilmentKind* Cripple = KindNamed(TEXT("Cripple"));
+	if (!Cripple || StrengthPercent <= 0.0f || Seconds <= 0.0f)
+	{
+		return false;
+	}
+	const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(Cripple->TagName), /*ErrorIfNotFound=*/false);
+	if (!Tag.IsValid())
+	{
+		return false;
+	}
+	const FCataclysmStatusEffectNumbers Row =
+		UCataclysmSkillEffects::StatusEffectNumbers(Cripple->StatusRow, Cripple->Ailment);
+	const float Strength = Row.StrengthCap > 0.0f ? FMath::Min(StrengthPercent, Row.StrengthCap) : StrengthPercent;
+	return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target, Tag,
+		Seconds * AppliedDurationMultiplier(Instigator, /*Skill=*/nullptr), Strength);
+}
