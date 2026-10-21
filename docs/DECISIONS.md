@@ -221,8 +221,11 @@ below are accepted.
 
 ### Proofs
 
-**Not yet run.** Two are registered, each to run with `tools/prove_guard.py` for the Python half in a `git archive` copy
-and `unreal_build.prove_cpp_guard` for the Unreal half, never both at once.
+**Both PROVED, every half that was run as predicted** (the second window, below). Two are registered, each run with
+`tools/prove_guard.py` for the Python half in a `git archive` copy and `unreal_build.prove_cpp_guard` for the Unreal
+half, never both at once. **PROOF 1's Unreal half ran the `Cataclysm.Surge.` group only**, so five of the eight tests
+predicted below were run under the break; the two `Cataclysm.EmpireRun.` tests and the `Cataclysm.EmpireScreen.` test
+were not.
 
 | break | Unreal, predicted to fail with the break in | Python, predicted to fail with the break in |
 |---|---|---|
@@ -247,7 +250,29 @@ Python proof halves had been run in a `git archive` copy and PROVED: P1, `test_b
 failed alone, "1 failed, 60 passed", restored "61 passed"; P2, `test_every_dungeon_spec_matches_in_the_game` failed
 alone, the same counts. The two failures are the two tests changed above, under the ruling of 2026-10-21.
 
-A second window, after these two test changes, runs the whole suite and the Unreal halves of the two registered proofs, as three runs: PROOF 1 once, and PROOF 2 once for each of its two tests (`ABiggerCityBreedsADeeperDungeon` and `RaisingACitysCeilingBuysMoreResolvesAtEveryTier`, which are in different test groups); not yet run.
+**THE SECOND WINDOW**, run by the dungeon session on 2026-10-21 under the lock `void-zones-w30`, given by the
+coordinating session once `development`'s runs on `770a400cf` (the traps merge) had completed with success, on
+`feat/game-waves-and-hit-2` at `e1c2ed9d`, after the two test changes. The five conditions were checked immediately
+before the lock was taken, and the lock was released before this was written.
+
+- **Build:** "Build: Succeeded - 49 actions, 44 files compiled".
+- **The whole Unreal suite:** "3964 tests performed, 3964 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3964 tests in the tree at e1c2ed9d3; 3964 performed, gap 0; every declared test was reported by the run."
+  Registered 3964 and 0: the 3953 of the first window plus the eleven of the traps merge. Both changed tests passed:
+  `ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` and `ADungeonResolvingTakesExactlyItsPointsOfDefence`.
+- **Python:** "6821 passed, 8 skipped"; JUnit tests 6829, failures 0, errors 0, skipped 8, as registered. Lint: "All
+  checks passed!".
+- **PROOF 1, Unreal, prefix `Cataclysm.Surge.`:** "PROVED: with the break in: 37 tests performed, 32 succeeded, 5
+  failed: AnAcceleratingSurgeShortensTheGapDownToAFloor, AStaticSurgeBringsTheSameWaveForEver,
+  ASwellingSurgeGrowsTheWaveUpToACeiling, HereticBringsAQuarterMoreDungeonsEvenAtTheCeiling,
+  TheSameSeedGivesTheSameWave"; restored, all 37 succeeded. The seven failing assertions, read from the broken run's
+  log, are each a first wave: "an accelerating surge opens with twelve dungeons", "the opening surge, at index 0, brings
+  twelve dungeons", "the first wave is the opening twelve", "Standard opens with twelve", "Hardcore opens with twelve as
+  well" (each 8 for 12), "and Heretic opens with fifteen" (10 for 15), "a static opening wave is twelve dungeons".
+- **PROOF 2, Unreal, run once for each of its two tests:** `ABiggerCityBreedsADeeperDungeon` "1 tests performed, 0
+  succeeded, 1 failed", on "an Outpost dungeon takes 70 defence points" (100) and "and 175 people" (250) only;
+  `RaisingACitysCeilingBuysMoreResolvesAtEveryTier` "1 tests performed, 0 succeeded, 1 failed", on "a Outpost survives
+  15 resolves" (10) and "and a Outpost survives 18 with the ceiling upgrade" (12) only. Each "1 succeeded" restored.
 
 Nothing was built and no Unreal test was run by the writing session; the Unreal figures above are
 worked by hand. Python, on this branch before this entry was written, with every code and test change in place:
