@@ -2,6 +2,226 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-21 — In the game a Quest dungeon whose city falls moves to the nearest city that will take it, an adjacent one first, instead of being absorbed
+
+**The game follows the simulation.** `UCataclysmEmpireRun::CityFell` no longer absorbs a Quest dungeon: it moves it to
+the city the new `UCataclysmSurgeScheduler::PickRefuge` answers, as `Simulation._fall` has done through
+`Simulation._quest_refuge` since the entry headed "In the simulation a Quest dungeon whose city falls moves to an
+adjacent city instead of being absorbed". Branch `feat/game-quest-moves-on-a-fall-1`, on `development` at `f045a9e68`.
+Not built and not run: see Proofs and Run.
+
+### SAID FIRST
+
+- **A FALL NO LONGER TAKES A QUEST DUNGEON.** Each Quest dungeon standing on a city that falls moves at once, with no
+  coin, to an adjacent city that is exposed, is not the Pillar and, when the dungeon carries a Siege, holds no Siege;
+  when no neighbour qualifies, to the nearest qualifying city counted in lanes (breadth first over every link, through
+  any city); ties by one draw; when nowhere qualifies, which needs every exposed city but the Pillar gone, it stays on
+  the fallen city. It keeps its floors, its remaining timer and its sub-type. Ordinary dungeons are absorbed as before.
+- **A DUNGEON CITY IS SMALLER BY THE QUEST DUNGEONS THAT STOOD THERE.** Its bosses, and its floors above the tier's
+  least, count only the dungeons it absorbed. A city whose only dungeons were Quest dungeons still becomes a Dungeon
+  City with one boss.
+- **THE WALKED QUEST DUNGEON MOVES AND THE WALK GOES ON**, and its clear earns the objective. The walked ordinary
+  dungeon is still absorbed with its city, which is the recorded difference from the model, issue #2399.
+- **A QUEST DUNGEON CAN NOW MOVE TWICE IN A DAY**: a fall moves it, and its own timer, running out later that day on
+  the city it was moved to, hits that city and may move it again.
+- **A QUEST DUNGEON LEFT ON A FALLEN CITY MOVES BY ITS TIMER FROM THERE.** Until now `RelocateQuestDungeon` returned at
+  once for a fallen city.
+- **THE EMPIRE SCREEN'S LAST-EVENT LINE** reads "Day 37: a Quest dungeon moved from Outpost (-3,0) to Outpost (-2,1)
+  because Outpost (-3,0) fell." when a fall's move is at least as recent as the last hit; on the same day the move is
+  shown. `Cataclysm.EmpireAdvance` prints "a Quest dungeon moved from X to Y because X fell" for each.
+- **WHICH RUN A SEED GIVES CHANGES FROM THE FIRST FALL THAT FINDS A QUEST DUNGEON ON ITS CITY.** Each move takes one
+  draw from the run's stream before the Dungeon City and the fall's surge, where none was taken before.
+
+### What was ruled
+
+The owner, 2026-10-16, verbatim: "Quest dungeons don't go away when a city falls. They just move to an adjacent city.
+So eventually they should be hitting something. Other than that they work the same as any other dungeon but provide
+quest progress and should probably be themed towards whatever the quest is for." The coordinating session ruled the
+same day the filter, the certain move, the adjacent-then-nearest search with one draw for ties, staying when nothing
+qualifies, the walked Quest dungeon moving with the walk going on, and that a Dungeon City counts only what it
+absorbed; the simulation took it that day (the entry named above).
+
+The coordinating session accepted this layer's plan on 2026-10-21 (`PickRefuge` beside `PickRelocation`, left
+unchanged; the move in `CityFell`; `FCataclysmDayReport::MovedByAFall`; the comments the change falsifies) and ruled:
+
+- **Q1**: a Quest dungeon left on a fallen city later moves by its timer, as the simulation does;
+  `RelocateQuestDungeon`'s early return for a fallen city goes.
+- **Q2**: the walked Quest dungeon moves and the walk goes on; its clear counts. Ordinary walked dungeons are still
+  taken with the city (#2399).
+- **Q3**: two moves in one day are allowed.
+- **Q4**: the empire screen's line shows the move, "Day %d: a Quest dungeon moved from %s to %s because %s fell.", and
+  the console keeps its line.
+
+From the earlier plan rulings of the same layer: Q4 there kept `FMath::Max(1, DungeonsAbsorbed)` in
+`MakeFallenCityDungeon` (a city that carried only Quest dungeons is still a Dungeon City with one boss), and Q9 there
+had the move shown to the player, which the line above does.
+
+The precedence on the screen (the later of the last hit and the last fall's move, the move on the same day) is this
+layer's reading under Q4, labelled as one: a fall that moves a dungeon is the larger event of the day, and the hit that
+felled the city is usually the same story; the console line names both.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`: new `static int32 PickRefuge(const
+  UCataclysmEmpireMap&, const FCataclysmCity& Fallen, FRandomStream&, bool bCarriesSiege, const TArray<int32>&
+  SiegesPerCityNow)`. It filters `AdjacentCities(Fallen)` by the three tests `PickRelocation` makes (not the Pillar,
+  `IsExposed`, and the Siege cap for a dungeon carrying one); when none qualifies it searches ring by ring over
+  `AdjacentCities` of each city of the last ring, each city once, through fallen and sealed ones, until a ring holds a
+  qualifying city; one `Stream.RandRange` among them; `INDEX_NONE` and no draw when none. The ring order is the model's,
+  so the draw picks from the same list. `PickRelocation` is unchanged. `MakeFallenCityDungeon`'s comment and its
+  `@param` now say the count can be nought; the `FMath::Max(1, ...)` stays.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, `CityFell`: for each dungeon on the city, a Quest dungeon
+  counts the Sieges standing now (as `RelocateQuestDungeon` does, again for each one), asks `PickRefuge` of the fallen
+  city, and when answered sets `CityId` (not `CityTier`) and is added to `Relocated`, `MovedByAFall`,
+  `MovedByAFallFrom` and `MovedByAFallTo`, and to the run's `LastMoveDay`, `LastMoveFromCityId` and
+  `LastMoveToCityId`; otherwise it stays. Every other dungeon is absorbed as before and counted, and
+  `AddFallenCityDungeon` receives that count instead of `Standing.Num()`. The moves come before
+  `AddFallenCityDungeon` and the fall's surge, as in `Simulation._fall`. One `FireSurge(` as before.
+- The same file, `RelocateQuestDungeon`: `if (From == nullptr || From->bFallen)` is now `if (From == nullptr)` (Q1).
+  `ResolveDungeon`'s Quest block still returns after a hit that fells the city: the fall has moved the dungeon (the
+  model refreshes it and gives no second move that day), or found it nowhere to go, where the model's timer move would
+  find no target either. `Begin` clears the three move fields.
+- `CataclysmEmpireRun.h`: `FCataclysmDayReport::MovedByAFall` (dungeon ids, one a move, each also in `Relocated`) and
+  two parallel lists, `MovedByAFallFrom` and `MovedByAFallTo`, beyond the plan's one field: a dungeon that moves twice
+  in a day is no longer where the fall put it, and the console prints after several days have run, so the destination
+  cannot be read off the dungeon. `Relocated`'s comment is rewritten (the timer's moves and the fall's; no longer a
+  subset of `Resolved`; a dungeon can be in it twice). Comments corrected: the class's step 7, `Absorbed`,
+  `ResolveDungeon`, `RelocateQuestDungeon` (no longer "the only thing in this class that moves a dungeon"), `CityFell`,
+  `AddFallenCityDungeon`, `LastHitDay`, and in the `.cpp` the two `AdvanceDay` comments and two in `ResolveDungeon`.
+  `FCataclysmDungeon::CityTier`'s comment names both moves.
+- `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp` and `.h`, `LastHitLine`: answers the move line when
+  `LastMoveDay > 0 && LastMoveDay >= LastHitDay`, else the hit line as before; empty only when neither has happened.
+  The widget's comment and `CataclysmSaveRecords.h`'s list of what is not saved name the move fields.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, `Cataclysm.EmpireAdvance`: a part per entry of
+  `MovedByAFall`, read from the report's two city lists; a day is skipped only when `Relocated` is empty too.
+- The empire module still includes nothing from the `Cataclysm` module.
+
+### Tests
+
+Unreal, `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`, changed (line numbers on this branch):
+
+- **`AQuestHitThatFellsItsCityAbsorbsTheQuestDungeonWithNoRefreshAndNoMove` is renamed
+  `Cataclysm.EmpireRun.AQuestHitThatFellsItsCityMovesTheQuestDungeonWithItsTimerFull`** (:5809), with a comment
+  saying so. Old -> new: "the Quest dungeon is named as absorbed" `TestTrue` -> "...is not named as absorbed"
+  `TestFalse` (:5879); "the Quest dungeon is off the map" `TestNull` -> "...is still on the map" `TestNotNull`, with
+  three new assertions inside it: not on the fallen city, on a city `AdjacentCities` of the fallen city contains, that
+  city exposed (:5885-5896); "no refresh: it has no timer" `TestNull` -> "its timer is still on the clock" `TestNotNull`
+  (:5899) and new "and full" 25 days (:5901); "no move: the report does not name it as relocated" `TestFalse` -> named
+  in `Relocated` exactly once (:5903) and in `MovedByAFall` (:5906); the Dungeon City check gains "it holds one boss,
+  for the one dungeon it absorbed" (:5912); the control gains "no fall moved it" (:5930). "and so is the dungeon beside
+  it" is reworded "and the dungeon beside it is" (:5881), unchanged in substance.
+- `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`: old, `Standing.Num() == 1` and that
+  one a Fallen City; new, exactly one Fallen City on the city and nothing else but Quest dungeons (:553, :556). Old,
+  every dungeon standing that morning `Absorbed`, off the map and off the clock; new, the same for every non-Quest one,
+  and for a Quest one not in `Absorbed`, still on the map, either still on the fallen city or in `Relocated`, and still
+  on the clock (:572-591). It now records which were Quest dungeons before the day.
+- `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself`: the carried count leaves Quest dungeons out
+  (:1778); "one dungeon stands on it" -> one Dungeon City and nothing else but Quest dungeons (:1825-1830);
+  `Bosses == WasCarrying` -> `Bosses == FMath::Max(1, WasCarrying)` (:1855). The floors check is unchanged.
+- `Cataclysm.EmpireRun.AQuestDungeonHitsItsCityAndThenRefreshes`: the absorbed branch (a missing Quest dungeon
+  asserted to be in `Absorbed`, counted as `AbsorbedByAFall`) -> a missing Quest dungeon is an error (:2133); one in
+  `MovedByAFall` is counted as `MovedByAFall`, asserted not absorbed and in `Relocated` (:2145-2154); the "moved exactly
+  when it did" check is not asked of one a fall moved (:2183); a city a fall moved a Quest dungeon onto today is skipped
+  in the clean-day measure (:2204); the closing line says "moved by" for "absorbed by".
+- `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`: the timer-move checks leave out `MovedByAFall` ids: in the
+  `Relocated` loop a fall's move is asserted only to be a Quest dungeon (:2439), the stayed-put check on a day its timer
+  did not fire skips one a fall moved (:2478); the absorbed branch (with `AbsorbedByAFall` and `MovedThenAbsorbed`) ->
+  a missing Quest dungeon is an error (:2503), and a resolved one in `MovedByAFall` is counted and left out of the
+  adjacency, kept-everything and take-up checks (:2517-2521). Its closing line is reworded.
+- Comments only: the clearing test's "its city fell while the player was inside" now says ordinary only, and the
+  stayed-put comment no longer points at the absorbed branch.
+
+New, nine registered names, each with a control:
+
+- `Cataclysm.Surge.AFallenCitysQuestDungeonTakesRefugeOnANeighbourFirst` (`CataclysmSurgeTests.cpp` :3618): 200 draws
+  all on qualifying neighbours, each answered; one draw, in adjacency order. CONTROL: a non-adjacent qualifying city is
+  never answered.
+- `Cataclysm.Surge.AFallenCitysQuestDungeonWithNoNeighbourLeftGoesToTheNearestCityThatQualifies` (:3716): every
+  neighbour felled; every answer at the nearest lane distance found by the test's own breadth-first search, each such
+  city answered; one draw. CONTROL: `PickRelocation` answers nothing there, and a farther city qualifies.
+- `Cataclysm.Surge.AFallenCitysQuestDungeonCarryingASiegeIsRefusedABesiegedCity` (:3817): every neighbour besieged; a
+  Siege carrier goes to the nearest unbesieged city. CONTROL: a dungeon carrying nothing goes to a neighbour.
+- `Cataclysm.Surge.AFallenCitysQuestDungeonWithNowhereToGoStaysAndTakesNoDraw` (:3899): every city but the Pillar
+  fallen; `INDEX_NONE` and the stream's seed unchanged, for a Siege carrier too. CONTROL: one far rim Outpost standing
+  again is answered with exactly one draw.
+- `Cataclysm.EmpireRun.AFallMovesItsQuestDungeonAndItsDungeonCityCountsOnlyWhatItAbsorbed` (:6339): a feller fells an
+  Outpost holding a bystander and a Quest Horde with 20 of 25 days left; the Quest dungeon is not absorbed, is on an
+  adjacent exposed city, named once in `Relocated` and in `MovedByAFall` with its two cities, keeps floors, sub-type,
+  tier, timer length and 19 days left; the Dungeon City has 2 bosses; the run's last move is day 2. CONTROL: a third
+  ordinary dungeon in its place is absorbed and the Dungeon City has 3.
+- `Cataclysm.EmpireRun.AQuestDungeonLeftOnAFallenCityLaterMovesByItsTimer` (:6501, Q1): twenty seeds, a Quest dungeon on
+  an Outpost felled through the map; its timer hits nothing, and it moves to an adjacent exposed city in some seed.
+  CONTROL: one beside it whose timer did not run out never moves.
+- `Cataclysm.EmpireRun.AQuestDungeonAFallMovedMayTakeItsOwnTimersMoveTheSameDay` (:6618, Q3): twenty seeds; the fall
+  moves it, its timer then hits the city it was moved to, and in some seed it moves again, to a city adjacent to that.
+  CONTROL: one whose timer did not run out moves once.
+- `Cataclysm.EmpireRun.AWalkedQuestDungeonWhoseCityFallsMovesAndItsClearStillCounts` (:6751, Q2): the clock's
+  `CurrentDungeonId` still names it, it is still found by its number, its timer stays, and `ClearDungeon` earns one
+  objective. CONTROL: an ordinary walked dungeon on the same city is absorbed, the clock forgets it and its clear fails
+  (#2399).
+- `Cataclysm.EmpireScreen.TheScreenSaysWhereACitysFallMovedAQuestDungeon` (`game/Source/Cataclysm/Tests/
+  CataclysmEmpireScreenTests.cpp` :1073, Q4): a Quest hit fells its Outpost on day 2 and the line is the move line
+  (:1180-1183), with the day's last hit asserted to be that Quest hit; CONTROL: an ordinary hit on day 3 makes it the
+  hit line; empty before either and after `Begin`.
+
+Python: new `tools/tests/test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py`, seven tests,
+each with a control: not absorbed in either while an ordinary dungeon is; a neighbour first then the outward search
+(control: neither timer move searches outward); the Siege cap and its number; one draw, none for nowhere, no coin
+(control: both timer moves flip one); the city falls, then the moves, then the Dungeon City, then the surge (control:
+every `CityFell` call follows a `Map->Damage` that felled the city); the game's Dungeon City counts only what it
+absorbed (control: the design's sentence); and the functions read are the ones that were read.
+`tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`: the failure text "The fall absorbed
+the dungeon" and "stops if the fall absorbed the dungeon" now say the fall moved it or found it nowhere to go; its
+docstring names the move and #2399. No assertion changed.
+
+### AT RISK: seeded tests whose outcome this layer moves and which cannot be worked out by hand
+
+From the first fall that finds a Quest dungeon on its city, each such fall takes a draw from the run's stream, a Quest
+dungeon stays on the map where it was taken off, and a Dungeon City has fewer bosses. These were changed only where the
+rule required it. HIGH: `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity` (`StayedHemmedIn > 0`,
+`CrossedATierBoundary > 0`, `Chose > 200` and the take-up band over a different sample),
+`...AQuestDungeonHitsItsCityAndThenRefreshes` (`CleanDaysChecked > 0`; and its clean-day measure, which a Quest
+dungeon moved by a fall onto a city hit only by its timer could still break if the skip added at :2204 were not
+enough), `...ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` (a fall's surge due and fired within 600 days),
+`...AFallenCityBecomesADungeonStandingOnItself` (its carried count is read before the day, so an ordinary dungeon that
+hit and left earlier on the fall day would still be miscounted, as before). MEDIUM: `...ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice`
+(`FallenCitiesRetaken > 0`, `AbsorbedInAll > 0`; its player walks Quest dungeons first and they now survive falls),
+`...ClearingAFallenCityTakesTheCityBackAtHalf`, `...AnIgnoredDungeonBitesTheSameCityAgainAndAgain` (Quest dungeons
+now outlive their city's fall, so more repeat offenders), `...ADungeonResolvingTakesExactlyItsPointsOfDefence` (a Quest
+dungeon moved by a fall that then hits a city the test does not expect it on), `...TheSameSeedGivesTheSameRunAndADifferentOneDoesNot`,
+`Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime`, `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`
+(a Quest dungeon of the opening wave whose city falls before its turn is now walked rather than gone),
+`Cataclysm.DungeonModifiers.ASacrificialDungeonInARunReallyGetsDouble`, `Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave`,
+`Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`. LOW: `...AnUnattendedEmpireAlwaysLosesThePathToThePillar`,
+`...OnlyAResolveThatCostACitySomethingIsCounted`, `...DescribeSaysWhatWasClearedAndWhichDungeonIsAQuest`,
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`, `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`,
+`Cataclysm.Roster.EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt`, `Cataclysm.FloorBrief.ADungeonOffTheMapReallyGetsItsSubTypesRule`.
+
+The four new seeded tests (twenty seeds each for the two coin tests) are not at risk in the same way: each asserts
+only rules and a count above nought where a seed's chance of giving none is about one in a million.
+
+### Proofs
+
+**Not yet run.** Three are registered, each to be run with `unreal_build.prove_cpp_guard` for the Unreal half and
+`tools/prove_guard.py` in a `git archive` copy for the Python half, never both at once. A seeded test in the at-risk
+list that also fails under a break is not a prediction and not evidence either way.
+
+| break | Unreal, predicted to fail with the break in | Python, predicted to fail with the break in |
+|---|---|---|
+| PROOF 1: `CityFell` absorbs a Quest dungeon again: in `CityFell`, `if (Dungeon->Type == ECataclysmDungeonType::Quest)` -> `if (Dungeon->Type == ECataclysmDungeonType::Cataclysm)`, a kind nothing creates | `Cataclysm.EmpireRun.AFallMovesItsQuestDungeonAndItsDungeonCityCountsOnlyWhatItAbsorbed`, `...AQuestHitThatFellsItsCityMovesTheQuestDungeonWithItsTimerFull`, `...AQuestDungeonAFallMovedMayTakeItsOwnTimersMoveTheSameDay`, `...AWalkedQuestDungeonWhoseCityFallsMovesAndItsClearStillCounts`, `Cataclysm.EmpireScreen.TheScreenSaysWhereACitysFallMovedAQuestDungeon`. Likely also, being seeded: `...AQuestDungeonHitsItsCityAndThenRefreshes` and `...AQuestDungeonMovesToAnAdjacentCity` (a Quest dungeon gone from the map is now an error, and the old sample had such days) | `test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py::test_in_both_a_fall_moves_a_quest_dungeon_and_absorbs_an_ordinary_one` |
+| PROOF 2: `PickRefuge` without the outward search: `while (Targets.Num() == 0 && Frontier.Num() > 0)` -> `while (Targets.Num() == 0 && Frontier.Num() > 1)`, so the search, which starts from one city, never runs | `Cataclysm.Surge.AFallenCitysQuestDungeonWithNoNeighbourLeftGoesToTheNearestCityThatQualifies`, `...AFallenCitysQuestDungeonCarryingASiegeIsRefusedABesiegedCity`, `...AFallenCitysQuestDungeonWithNowhereToGoStaysAndTakesNoDraw` (its control). Not `...TakesRefugeOnANeighbourFirst`, and no `Cataclysm.EmpireRun.` test built by hand: on an intact map a neighbour always qualifies | `test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py::test_in_both_the_refuge_is_a_neighbour_first_then_the_nearest_by_lanes` |
+| PROOF 3: the Fallen City dungeon counts Quest dungeons again: `AddFallenCityDungeon(CityId, DungeonsAbsorbed, OutReport);` -> `AddFallenCityDungeon(CityId, Standing.Num(), OutReport);` | `Cataclysm.EmpireRun.AFallMovesItsQuestDungeonAndItsDungeonCityCountsOnlyWhatItAbsorbed` (3 bosses for 2) and `...AQuestHitThatFellsItsCityMovesTheQuestDungeonWithItsTimerFull` (2 for 1). Possibly also `...AFallenCityBecomesADungeonStandingOnItself`, being seeded | `...::test_in_both_the_city_falls_then_the_moves_then_its_dungeon_and_surge` and `...::test_the_games_dungeon_city_counts_only_what_it_absorbed` |
+
+A prefix that covers the certain Unreal predictions is `Cataclysm.Surge.AFallenCitys` with `Cataclysm.EmpireRun.` and
+`Cataclysm.EmpireScreen.TheScreenSaysWhere` run separately, or the tests by name.
+
+### Run
+
+Not yet run. Nothing was built and no Unreal test was run by the writing session. Registered for the window: the
+base's last measured total plus the nine new names above (the renamed test is not new).
+
+---
+
 ## 2026-10-21 — Divine Edicts are Celestial dungeon modifiers that each forbid or charge for one player action, and the Ascendant draws one more of them a floor
 
 **Design only; nothing is built.** `docs/Cataclysm_GDD_v2.md`, under Heaven's Wrath, now defines the Divine Edicts
@@ -9888,6 +10108,11 @@ by ruling (owner quoted in each): the Quest hit that fells its city now moves it
 Quest dungeon after the fall; the ordinary-dungeon fall test asserts ordinary dungeons absorbed and the Quest dungeon
 moved. Two tests that had failed since the waves passed again: `test_quest_hits_land_and_the_result_carries_the_count`
 and `test_the_old_arithmetic_really_did_count_more`.
+
+**2026-10-21: the game follows.** `UCataclysmEmpireRun::CityFell` moves a Quest dungeon to the city the new
+`UCataclysmSurgeScheduler::PickRefuge` answers instead of absorbing it, and the Dungeon City counts only what it
+absorbed; see the entry of that day headed "In the game a Quest dungeon whose city falls moves to the nearest city that
+will take it".
 
 ---
 
