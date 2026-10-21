@@ -6,7 +6,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 **The game follows the simulation.** `UCataclysmSurgeScheduler` gains `OpeningDungeonsPerSurge = 12`, read by
 `DungeonsInNextSurge` at `SurgeIndex` 0; `DungeonsPerSurge` goes from 5 to 8; the four Basic rows of `SpecFor` become
-0.7 of what they were. Branch `feat/game-waves-and-hit-1`, written on `development` at `da6b31cb4`; it follows the entry
+0.7 of what they were. Branch `feat/game-waves-and-hit-2`, on `development` at `770a400cf` (written on `da6b31cb4` as
+`feat/game-waves-and-hit-1` and moved with its zero-context patch ids unchanged); it follows the entry
 headed "In the simulation the run opens with a wave of 12, later waves bring 8 every 90 days, and every ordinary dungeon
 hits for 0.7 of what it did". Not built and not run: see Proofs and Run.
 
