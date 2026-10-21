@@ -401,6 +401,20 @@ fails twice, and only there.
 
 ### THE WINDOW'S RUN
 
+**THE FIRST WINDOW, enchant-tt2, ON 2026-10-21, STOPPED AT STEP 0 ON A COMPILE ERROR IN THIS LAYER'S NEW TEST FILE.**
+It ran on development f045a9e68, where this layer was moved (mechanism f16a88a4f, rows c8e1c2929). "Build: Failed - 50
+actions, 45 files compiled ... Result: Failed (OtherCompilationError)"; no test ran and nothing was committed. The one
+error line in the build log:
+
+`CataclysmSkillTrapConversionsTests.cpp(487,2): error C2666: 'FAutomationTestBase::TestEqual': overloaded functions have
+similar conversions`
+
+In Unreal Engine 5.8 `FVector::Dist` returns a double, and the call's expected figure and tolerance (`0.0f`, `1.0f`) were
+floats, so both overloads fitted. Of the file's 56 `TestEqual` calls this was the only one reading a distance, a world
+time or a double. **Corrected by the enchantment session, ruled (a) by the coordinating session on 2026-10-21**: the
+actual is `static_cast<float>(FVector::Dist(...))`, and the assertion, its expected figure and its tolerance are unchanged.
+A whole new five-step window followed.
+
 Not run. The enchantment session records its window here.
 
 ---

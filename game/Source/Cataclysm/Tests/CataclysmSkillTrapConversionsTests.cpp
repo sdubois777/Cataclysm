@@ -487,7 +487,7 @@ CATACLYSM_TEST(FCataclysmSkillTrapSupportAreasTest,
 	TestEqual(*FString::Printf(TEXT("control: the enemy 2 m from the player, 10.2 m from the triggering enemy, is not "
 									"shoved: it moved %.2f cm"),
 							   FVector::Dist(ByThePlayer->GetActorLocation(), ByThePlayerBefore)),
-		FVector::Dist(ByThePlayer->GetActorLocation(), ByThePlayerBefore), 0.0f, 1.0f);
+		static_cast<float>(FVector::Dist(ByThePlayer->GetActorLocation(), ByThePlayerBefore)), 0.0f, 1.0f);
 	TestTrue(*FString::Printf(TEXT("the enemy 2 m from the triggering enemy is shoved away from it (L5): %.2f cm from it, "
 								   "from %.2f"),
 							  FVector::Dist2D(ByTheEnemy->GetActorLocation(), EnemyAt), ByTheEnemyBefore),
