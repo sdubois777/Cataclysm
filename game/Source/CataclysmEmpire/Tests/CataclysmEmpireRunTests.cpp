@@ -240,6 +240,36 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 				Dungeon->DefenceDamage * Dungeon->BiteScale();
 		}
 
+		// AND WHAT EACH QUEST TIMER HIT ITS HOST FOR. Since 2026-10-13 a Quest
+		// dungeon's timer hits a standing host with the ORDINARY row of the
+		// host's tier at a scale of one -- `SpecFor(Basic, Host->Tier)` in
+		// `UCataclysmEmpireRun::ResolveDungeon` -- and not with its own row,
+		// which is nought. The Quest dungeon's id is in `Resolved`, so the loop
+		// above gives its city an entry of nought; this adds the hit to the
+		// city it actually landed on. `QuestHits` holds one city id per hit, so
+		// a city hit by two Quest timers is added twice, as the code takes it
+		// twice. No city in this run has bought a resistance, so the row is
+		// what `Map->Damage` takes, the same as for the ordinary bite above.
+		// A host that fell is skipped below with every other fallen city.
+		//
+		// THIS WAS A FAULT IN THE TEST FROM 2026-10-13 UNTIL 2026-10-21. It
+		// printed, on day 46, "Outpost (-1,-2) lost 70.00 defence, which is its
+		// dungeons' damage in points" against an expected nought. It was
+		// exposed by the larger waves of 2026-10-20, which moved the run's
+		// random stream onto days with a Quest hit. Ruled by the coordinating
+		// session, 2026-10-21; `docs/DECISIONS.md`, the entry of 2026-10-20.
+		for (const int32 HostId : Report.QuestHits)
+		{
+			const FCataclysmCity* Host = Run->Map->Find(HostId);
+			if (Host == nullptr)
+			{
+				continue;
+			}
+
+			Expected.FindOrAdd(HostId) += UCataclysmSurgeScheduler::SpecFor(
+				ECataclysmDungeonType::Basic, Host->Tier).DefenceDamage;
+		}
+
 		for (const TPair<int32, float>& Pair : Expected)
 		{
 			const FCataclysmCity* City = Run->Map->Find(Pair.Key);
@@ -403,11 +433,21 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 	int32 FallsSeen = 0;
 
 	// HOW MANY OF THOSE DAYS HAD A FALL'S SURGE DUE AND DID SURGE. Counted for
-	// the closing assertion, so three fall days that were all inside the least
+	// the closing assertion, so fall days that were all inside the least
 	// interval do not pass this test having checked no surge at all.
 	int32 FallDaysDueThatSurged = 0;
 
-	for (int32 Days = 0; Days < 600 && FallsSeen < 3; ++Days)
+	// WATCHED UNTIL THREE FALLS HAVE BEEN SEEN AND ONE OF THEM HAD A FALL'S
+	// SURGE DUE AND SURGED, still bounded at six hundred days. Until 2026-10-21
+	// the loop stopped at the third fall, `FallsSeen < 3`, and with the larger
+	// waves of 2026-10-20 this seed's first three falls all came within the
+	// least interval of a surge, so it printed "0 of the 3 days a city fell had
+	// a fall's surge due and surged". Ruled by the coordinating session,
+	// 2026-10-21, with every assertion unchanged; `docs/DECISIONS.md`, the
+	// entry of 2026-10-20.
+	for (int32 Days = 0;
+		 Days < 600 && (FallsSeen < 3 || FallDaysDueThatSurged < 1);
+		 ++Days)
 	{
 		// What was standing where, before the day.
 		TMap<int32, TArray<int32>> StandingOn;
@@ -560,9 +600,11 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 		TEXT("%d cities fell within six hundred unattended days"), FallsSeen),
 		FallsSeen >= 1);
 
-	// AND AT LEAST ONE OF THE DAYS WATCHED HAD A SURGE DUE AND SURGED. Without
-	// this, a seed whose three fall days were all inside the least interval
-	// would pass with the surge never looked at.
+	// AND AT LEAST ONE OF THE DAYS WATCHED HAD A SURGE DUE AND SURGED. The loop
+	// above keeps watching past the third fall until one has, so this fails
+	// only when six hundred days bring no such fall at all. Without it, a seed
+	// whose fall days were all inside the least interval would pass with the
+	// surge never looked at.
 	TestTrue(FString::Printf(
 		TEXT("%d of the %d days a city fell had a fall's surge due and surged"),
 		FallDaysDueThatSurged, FallsSeen),
