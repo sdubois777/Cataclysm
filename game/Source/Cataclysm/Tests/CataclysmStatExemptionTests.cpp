@@ -9937,6 +9937,84 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `skill_slot_is_a_trap`, read by `UCataclysmAbilitySystemComponent::SlotIsASkillTrap` with the slot's skill tags,
+	 * which a slot's press, a trap's step and the skill bar ask. Ruled 2026-10-19, for "Your heavy attack ... special
+	 * ability ... ultimate ability is converted into a placeable trap". ONE PLAYER CHARACTER. THE CONTROL IS THE SAME
+	 * CHARACTER BEFORE THE STAT IS GRANTED: its Heavy slot is not converted and a press of the Heavy key is left to the
+	 * skill. Granted at a flat 1, the slot is converted and the press is the trap's.
+	 *
+	 * WHAT THIS DOES NOT REACH. The trap, its arming, its trigger, its cast and what the press pays: `Cataclysm.Traps.`
+	 * in `CataclysmSkillTrapTests.cpp`. The press answers true here whether or not `DT_MinionTypes` holds the `SkillTrap`
+	 * row.
+	 */
+	void ProbeSkillSlotIsATrap(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerCharacter* Player = SpawnPotionHolder(World);
+		UCataclysmAbilitySystemComponent* System = Player
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player))
+			: nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a player character with an ability system"), System))
+		{
+			return;
+		}
+		const FGameplayTag HeavyKey = CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Heavy);
+		Test.TestFalse(TEXT("control: a character holding no such row has its Heavy slot unconverted to a trap"),
+					   System->SlotIsASkillTrap(ECataclysmAbilitySlot::Heavy));
+		Test.TestFalse(TEXT("control: and a press of the Heavy key is left to the skill"),
+					   System->PressOfASkillTrapSlot(HeavyKey));
+		System->ReleaseOfASkillTrapSlot(HeavyKey);
+
+		GrantFlat(Player, UCataclysmAbilitySystemComponent::SkillSlotIsATrapStat, 1.0f);
+		Test.TestTrue(TEXT("with skill_slot_is_a_trap at 1 the Heavy slot is converted, so SlotIsASkillTrap really "
+						   "reads it"),
+					  System->SlotIsASkillTrap(ECataclysmAbilitySlot::Heavy));
+		Test.TestTrue(TEXT("and a press of the Heavy key is taken by the trap"), System->PressOfASkillTrapSlot(HeavyKey));
+		System->ReleaseOfASkillTrapSlot(HeavyKey);
+	}
+
+	/**
+	 * `trap_arming_speed` and `trap_trigger_radius`, increases read off the player with a trap's type tags by
+	 * `ACataclysmMinion::SkillTrapArmingSecondsFor` and `SkillTrapTriggerRadiusCmFor`, which a placing and a trap's step
+	 * ask. Ruled 2026-10-19 (M3, M4). ONE FIGHTER, asked with `Type.Trap`. THE CONTROL IS THE SAME FIGHTER BEFORE THE
+	 * STAT IS GRANTED: one second, or three metres. Granted at 100 increased, half the seconds, or twice the metres.
+	 *
+	 * WHAT THIS DOES NOT REACH. A trap arming or triggering by them: `Cataclysm.Traps.`.
+	 */
+	void ProbeTrapIncrease(FAutomationTestBase& Test, bool bArming)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const FGameplayTagContainer TrapTags(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+		const auto Read = [&Fighter, &TrapTags, bArming]()
+		{
+			return bArming ? ACataclysmMinion::SkillTrapArmingSecondsFor(Fighter.Actor, TrapTags)
+						   : ACataclysmMinion::SkillTrapTriggerRadiusCmFor(Fighter.Actor, TrapTags);
+		};
+		const float Plain = bArming ? ACataclysmMinion::SkillTrapArmSeconds : ACataclysmMinion::SkillTrapTriggerRadiusCm;
+		Test.TestEqual(TEXT("control: with no row the trap's figure is the ruled one"), Read(), Plain, 0.0001f);
+		Grant(Fighter.Actor, bArming ? ACataclysmMinion::TrapArmingSpeedStat : ACataclysmMinion::TrapTriggerRadiusStat,
+			  100.0f);
+		Test.TestEqual(*FString::Printf(TEXT("with %s at 100 increased it is %s, so the reader really reads it"),
+										bArming ? TEXT("trap_arming_speed") : TEXT("trap_trigger_radius"),
+										bArming ? TEXT("halved") : TEXT("doubled")),
+					   Read(), bArming ? Plain * 0.5f : Plain * 2.0f, 0.0001f);
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -10191,6 +10269,9 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeTimeLockRift(Test, UCataclysmTimeLockRift::DamageTakenMorePercentStat); }},
 			{TEXT("ally_buffs_refused"), &ProbeAllyBuffsRefused},
 			{TEXT("deployable_blasts_strike_self"), &ProbeDeployableBlastsStrikeSelf},
+			{TEXT("skill_slot_is_a_trap"), &ProbeSkillSlotIsATrap},
+			{TEXT("trap_arming_speed"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/true); }},
+			{TEXT("trap_trigger_radius"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/false); }},
 		};
 		return Made;
 	}

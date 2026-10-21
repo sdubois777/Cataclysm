@@ -9572,3 +9572,269 @@ class TestGadgetsCastNowAtTheWearersDeath:
     def test_an_ailment_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="so it would be dropped"):
             gen.enchantment_effects(self.fires(tmp_path, {"Ailment": "Burn"}))
+
+
+class TestASlotIsConvertedIntoATrap(GadgetRowsOnAMadeUpSheet):
+    """`skill_slot_is_a_trap`, ruled 2026-10-19 (T1-T19) and built ahead of its
+    rows, for "Your heavy attack is converted into a placeable trap. When
+    triggered, it fires your heavy attack at the nearest enemy. Scales off trap
+    damage. All placed copies share the heavy attack cooldown." and its Special
+    and Ultimate siblings. One flag at a flat 1 whose Required Tags is the
+    slot's tag: `UCataclysmAbilitySystemComponent::SlotIsASkillTrap` asks
+    whether it is above nought with the slot's skill tags, as the skill
+    gadget's flag is asked.
+
+    THE SENTENCE'S OWN TAGS ARE NOT THE ROW'S. The made-up sheet gives the
+    sentence `Type.Trap, Slot.Heavy`, as the real Heavy sentence carries, and
+    the row requires `Slot.Heavy` alone.
+    """
+
+    TAG = "Type.Trap"
+    WORDS = ("Your heavy attack is converted into a placeable trap. When "
+             "triggered, it fires your heavy attack at the nearest enemy. "
+             "Scales off trap damage. All placed copies share the heavy "
+             "attack cooldown.")
+    SENTENCE_TAGS = "Type.Trap, Slot.Heavy"
+    STAT = "skill_slot_is_a_trap"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Slot.Heavy"}
+
+    def refusals(self, rows):
+        return gen.refuse_a_skill_slot_trap_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows, tags=("Slot.Heavy",)):
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, set(tags) | {self.TAG})
+
+    def test_the_heavy_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert out[0]["Enchantment"] == (
+            "Positive_Your_heavy_attack_is_converted_into_a_placeable")
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Slot.Heavy", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert self.validation(out) == []
+
+    def test_the_special_and_ultimate_rows_are_carried_through_under_their_sentences(
+            self, tmp_path):
+        """The two other rows this layer proposes, each under its real
+        sentence and tags, refused by nothing."""
+        for words, tags, slot in (
+                ("Your special ability is converted into a placeable trap. When "
+                 "triggered, it activates your special ability centered on the "
+                 "triggering enemy. Scales off trap damage. All placed copies "
+                 "share the special ability cooldown.",
+                 "Type.Trap, Slot.Special", "Slot.Special"),
+                ("Your ultimate ability is converted into a placeable trap. When "
+                 "triggered, it fires your ultimate ability centered on the "
+                 "triggering enemy. Scales off trap damage. All placed copies "
+                 "share the ultimate cooldown.",
+                 "Type.Trap, Slot.Ultimate", "Slot.Ultimate")):
+            self.SENTENCE_TAGS = tags
+            out = self.out(tmp_path, words, [dict(self.ROW, **{"Required Tags": slot})])
+            assert out[0]["RequiredTags"] == slot
+            assert self.refusals(out) == [], slot
+            assert self.validation(out, (slot,)) == [], slot
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """THE NAMES ARE DERIVED, never typed: each sentence's name by the
+        generator's `row_name`, found in the shipped Positive sheet with those
+        words. THE CONTROL is a made-up sentence, whose name is not there."""
+        import csv
+        path = (gen.PLAYER_CLASS_STATS_CPP.parents[3] / "Data"
+                / "EnchantmentsPositive.csv")
+        with path.open(encoding="utf-8") as handle:
+            shipped = {row["Name"]: row for row in csv.DictReader(handle)}
+        for slot in ("heavy attack", "special ability", "ultimate ability"):
+            match = [row for row in shipped.values()
+                     if row["Effect"].startswith(
+                         f"Your {slot} is converted into a placeable trap.")]
+            assert len(match) == 1, slot
+            assert gen.row_name("Positive", match[0]["Effect"][:48]) == match[0]["Name"]
+        made_up = gen.row_name("Positive", "Your elbow is converted into a trap"[:48])
+        assert made_up not in shipped
+
+    def test_the_three_built_slots_are_accepted_and_the_others_refused(self):
+        """THE CONTROL for the tag refusal: the three slots this layer builds
+        are accepted. The Support's and the basic attack's, a later layer's,
+        the Aura's and a made-up one are refused, once each."""
+        row = {"Name": "X#1", "Stat": self.STAT, "ValueKind": "flat",
+               "ValueLow": 1.0, "ValueHigh": 1.0}
+        for slot in ("Slot.Heavy", "Slot.Special", "Slot.Ultimate"):
+            assert self.refusals([dict(row, RequiredTags=slot)]) == [], slot
+        for slot in ("Slot.Support", "Slot.Basic", "Slot.Aura", "Slot.Nonsense"):
+            assert len(self.refusals([dict(row, RequiredTags=slot)])) == 1, slot
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        assert gen.SKILL_SLOT_IS_A_TRAP_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "skill_slot_is_trap" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_names_the_engine_asks_for(self):
+        """Read from the files that define them. THE CONTROL is the gadget's
+        flag in the same file, read by the same pattern."""
+        import re
+        source_dir = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'(\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+        system = (source_dir / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        found = re.findall(pattern, system)
+        assert ("UCataclysmAbilitySystemComponent", "SkillSlotIsAGadgetStat",
+                gen.SKILL_SLOT_IS_A_GADGET_STAT) in found
+        assert ("UCataclysmAbilitySystemComponent", "SkillSlotIsATrapStat",
+                gen.SKILL_SLOT_IS_A_TRAP_STAT) in found
+        minion = self.names_in_the_engine()
+        assert minion["TrapArmingSpeedStat"] == "trap_arming_speed"
+        assert minion["TrapTriggerRadiusStat"] == "trap_trigger_radius"
+        assert set(gen.TRAP_INCREASE_STATS) == {
+            minion["TrapArmingSpeedStat"], minion["TrapTriggerRadiusStat"]}
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Trap"},
+                 "under the required tags 'Type.Trap'"),
+                ({"RequiredTags": "Type.Trap, Slot.Heavy"},
+                 "under the required tags 'Type.Trap, Slot.Heavy'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": 2.0, "ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == (2 if change.get("ValueLow") == 2.0 else 1), (
+                change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="traps_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.validation([row]) == []
+        problems = self.validation([dict(row, RequiredTags="")])
+        assert any("under the required tags ''" in problem
+                   and repr(self.STAT) in problem for problem in problems), problems
+
+
+class TestATrapsArmingAndTriggerRadiusIncreases(GadgetRowsOnAMadeUpSheet):
+    """`trap_arming_speed` and `trap_trigger_radius`, ruled 2026-10-19 (M3,
+    M4), read as increases with the trap's type tags. Their rows are a later
+    layer's; this shows the generator carries the shape the reader adds, for
+    "Traps arm 30%-60% faster" and "Traps have 30%-50% increased trigger
+    radius", and refuses the shapes it would read as nothing."""
+
+    TAG = "Type.Trap"
+
+    def refusals(self, rows):
+        return gen.refuse_a_trap_increase_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_each_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, stat, high in (("Traps arm 30%-60% faster", "trap_arming_speed", 60),
+                                  ("Traps have 30%-50% increased trigger radius",
+                                   "trap_trigger_radius", 50)):
+            out = self.out(tmp_path, words, [{
+                "Stat": stat, "Value Kind": "increased", "Value Low": 30,
+                "Value High": high, "Required Tags": "Type.Trap"}])
+            assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["RequiredTags"]) == (
+                stat, "increased", "Type.Trap")
+            assert self.refusals(out) == [], stat
+            assert gen.validate_enchantment_effects(
+                {"EnchantmentEffects": out}, {self.TAG}) == [], stat
+
+    def test_both_are_stats_with_no_attribute(self):
+        """THE CONTROL is a made-up name on no list."""
+        for stat in gen.TRAP_INCREASE_STATS:
+            assert stat in gen.stats_with_no_attribute(), stat
+        assert "trap_arming_rate" not in gen.stats_with_no_attribute()
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        row = {"Name": "X#1", "Stat": "trap_arming_speed", "ValueKind": "increased",
+               "ValueLow": 30.0, "ValueHigh": 60.0, "RequiredTags": "Type.Trap"}
+        assert self.refusals([row]) == []
+        assert self.refusals([dict(row, RequiredTags="")]) == []
+        for change, said in (
+                ({"ValueKind": "flat"}, "value kind 'flat'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                ({"RequiredTags": "Slot.Heavy"}, "under the required tags 'Slot.Heavy'"),
+                ({"Action": "strike_target"}, "with the action 'strike_target'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(row, Stat="minion_damage", ValueKind="flat")
+        assert self.refusals([other]) == []
+
+
+class TestTheSkillTrapMinionType:
+    """The `SkillTrap` row of the Minion Types sheet this layer proposes for
+    the enchantment session to author, ruled 2026-10-19 (M1, T9): a machine of
+    the trap's tags, health 40 and 18 a level (the Spike Trap's), no damage,
+    no movement and no threat, its reach and notice the trigger radius of 3 m.
+    Carried through `minion_types` on a made-up sheet, as its neighbours in
+    `tools/tests/test_minion_stat_blocks.py` are. THE CONTROL is the same row
+    without its family's tag, refused."""
+
+    HEADERS = ["Minion Type", "Family", "Base Health", "Health Per Level",
+               "Base Damage", "Damage Per Level", "Explosion Percent Of Own Damage",
+               "Attack Interval Seconds", "Move Speed", "Threat Percent",
+               "Reach Cm", "Notice Radius Cm", "Target Mode", "Tags"]
+    ROW = ["SkillTrap", "Machine", 40.0, 18.0, 0.0, 0.0, 300.0, 1.0, 0.0, 0.0,
+           300.0, 300.0, "Nearest",
+           "Type.Minion, Type.Deployable, Minion.Machine, Type.Trap"]
+
+    def book(self, tmp_path, row):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "trap.xlsx", {"Minion Types": [self.HEADERS, row]}))
+
+    def test_the_row_is_carried_through_as_proposed(self, tmp_path):
+        (row,) = gen.minion_types(self.book(tmp_path, list(self.ROW)))
+        assert row["Name"] == "SkillTrap"
+        assert [tag.strip() for tag in row["Tags"].split(",")] == [
+            "Type.Minion", "Type.Deployable", "Minion.Machine", "Type.Trap"]
+
+    def test_the_same_row_without_its_familys_tag_is_refused(self, tmp_path):
+        wrong = list(self.ROW)
+        wrong[-1] = "Type.Minion, Type.Deployable, Type.Trap"
+        with pytest.raises(gen.DataError, match="does not carry Minion.Machine"):
+            gen.minion_types(self.book(tmp_path, wrong))
+
+    def test_the_engine_names_the_row_and_the_trigger_radius_the_row_states(self):
+        """The type name the engine places by, and the 3 m the row's reach
+        repeats, read out of the C++ that holds them."""
+        import re
+        source_dir = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        cpp = (source_dir / "CataclysmMinion.cpp").read_text(encoding="utf-8")
+        header = (source_dir / "CataclysmMinion.h").read_text(encoding="utf-8")
+        assert re.search(r'ACataclysmMinion::SkillTrapTypeName\s*=\s*TEXT\("SkillTrap"\)', cpp)
+        radius = re.search(r"SkillTrapTriggerRadiusCm\s*=\s*([0-9.]+)f;", header)
+        assert radius and float(radius.group(1)) == self.ROW[10] == self.ROW[11]
+
+
+def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():
+    """Ruled 2026-10-19 (M2, M5): `trap_placed` and `trap_triggered` join
+    `ACTION_ONLY_EVENTS`, and, because each is raised with a character (the
+    trap, the triggering enemy) and no strike on either is ruled,
+    `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`. THE CONTROL: neither is a
+    clock, and neither is a strike event, whose eight a merged test pins."""
+    for event in ("trap_placed", "trap_triggered"):
+        assert event in gen.ACTION_ONLY_EVENTS, event
+        assert event in gen.action_events(), event
+        assert f"seconds_after_{event}" not in gen.CONDITIONS, event
+        assert event in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK, event
+        assert event not in gen.STRIKE_TARGET_EVENTS, event

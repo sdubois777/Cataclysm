@@ -214,6 +214,10 @@ MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 #: 2026-10-19: a number asserted nowhere had drifted from what it described
 #: (69 written, 165 found), so the failure message below prints the count the
 #: check measures instead. The dated lines above are kept as the history.
+#: The skill trap added two more on 2026-10-19: the flag by which a slot's
+#: press places a trap, asked by
+#: `UCataclysmAbilitySystemComponent::SlotIsASkillTrap`, and the lock of the
+#: skill that press uses, asked by `PressOfASkillTrapSlot`.
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -1093,6 +1097,20 @@ INVENTORY = {
         "blast is struck, before the wearer is looked for; a death blast "
         "has no skill to scope it, so no tags, and the row has no "
         "condition, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SkillSlotIsATrapStat), SkillGadgetSlotTags(Slot), 0.0f'):
+        "whether a slot is converted into a skill trap (ruled 2026-10-19), "
+        "asked by SlotIsASkillTrap from a slot's press, from a trap's step "
+        "and from the skill bar with the held skill's tags and the slot's "
+        "tag, as the gadget's flag is asked; a press is not a blow and the "
+        "row has no condition, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(UCataclysmSkillSlots::LockedStat), Template->SkillTags, 0.0f'):
+        "the lock of the skill a trap slot's press would use (ruled "
+        "2026-10-19, T5 and T19: the press is the skill use), asked by "
+        "PressOfASkillTrapSlot with the skill's own tags as "
+        "UCataclysmSkillTemplate::CanActivateAbility asks it; a press is "
+        "not a blow, so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only

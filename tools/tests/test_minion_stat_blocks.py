@@ -81,10 +81,15 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
     AND ONE MORE. `Warhound`, ruled 2026-10-18, is what Warlord's Will's
     six-piece summons on a blow taken: twice the Imp's health and no damage of
     its own, because each hit is a share of its summoner's armour.
+
+    AND ONE MORE MACHINE NO SKILL PRODUCES. `SkillTrap`, ruled 2026-10-19 and
+    2026-10-20, is the trap a slot converted by an enchantment places: it casts
+    the player's own skill when an enemy comes within 3 m, so its base damage
+    is 0, and it is a trap (`Type.Trap`) and not a gadget.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
                                   "SpikeTrap", "SkillGadget", "TyrantsMinion",
-                                  "Warhound"}
+                                  "Warhound", "SkillTrap"}
 
 
 

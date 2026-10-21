@@ -888,6 +888,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// blast radius", the deployable half. Flat 1; at nought nobody is
 		// struck. No gameplay attribute and no base.
 		TEXT("deployable_blasts_strike_self"),
+		// The skill trap, ruled 2026-10-19 (T1-T19), for "Your heavy attack /
+		// special ability / ultimate ability is converted into a placeable trap".
+		// The flag by which a slot's press places a trap, read with the slot's
+		// skill tags by UCataclysmAbilitySystemComponent::SlotIsASkillTrap, flat
+		// 1 requiring the slot's tag; and the two increases a trap's arming and
+		// its trigger radius are read by, with the trap's type tags, by
+		// ACataclysmMinion::SkillTrapArmingSecondsFor and
+		// SkillTrapTriggerRadiusCmFor. No gameplay attribute and no base.
+		TEXT("skill_slot_is_a_trap"),
+		TEXT("trap_arming_speed"),
+		TEXT("trap_trigger_radius"),
 	};
 	return Stats;
 }

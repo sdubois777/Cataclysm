@@ -29,6 +29,8 @@
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+// For the skill-used notice a skill trap's press sends, the press being the skill use. Ruled 2026-10-19 (T19).
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "Player/CataclysmPlayerState.h"
 // For AbilitySystemOf, which `WithTargetState` uses to read the health of the
 // character being hit. Issue #1515. An actor with no ability system is the
@@ -222,6 +224,13 @@ void UCataclysmAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag
 		return;
 	}
 
+	// A SLOT CONVERTED INTO A SKILL TRAP PLACES ONE AS A PAID USE AND QUEUES NOTHING, so the skill itself is never
+	// started from the player. Ruled 2026-10-19 (T5, T19). First, because a slot converted both ways makes a trap (T17).
+	if (PressOfASkillTrapSlot(InputTag))
+	{
+		return;
+	}
+
 	// A SLOT CONVERTED INTO A SKILL GADGET PLACES OR MOVES ITS GADGET AND QUEUES NOTHING, so the player's skill is
 	// never tried: no mana, no cooldown, no lock and no skill-used notice. Ruled 2026-10-16 (S7).
 	if (PressOfASkillGadgetSlot(InputTag))
@@ -252,6 +261,8 @@ void UCataclysmAbilitySystemComponent::AbilityInputTagReleased(const FGameplayTa
 
 	// THE KEY IS UP, so the next press of a converted slot may place or move its gadget again. Ruled 2026-10-16 (S7).
 	ReleaseOfASkillGadgetSlot(InputTag);
+	// AND A TRAP SLOT'S NEXT PRESS MAY PLACE A TRAP AGAIN. Ruled 2026-10-19.
+	ReleaseOfASkillTrapSlot(InputTag);
 
 	for (const FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
 	{
@@ -7854,7 +7865,9 @@ bool UCataclysmAbilitySystemComponent::SlotIsASkillGadget(ECataclysmAbilitySlot 
 bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTag& SlotTag)
 {
 	const ECataclysmAbilitySlot Slot = SkillGadgetSlotNamedBy(SlotTag);
-	if (!SlotIsASkillGadget(Slot))
+	// A SLOT CONVERTED INTO A TRAP AS WELL MAKES A TRAP (ruled 2026-10-19, T17), so it is left to the trap's press: the
+	// player controller offers the press here first, before its stun check.
+	if (!SlotIsASkillGadget(Slot) || SlotIsASkillTrap(Slot))
 	{
 		return false;
 	}
@@ -7953,4 +7966,128 @@ float UCataclysmAbilitySystemComponent::FlatOfStatNamingTag(
 	const FCataclysmStatConditions State =
 		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions()));
 	return FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State).Flat);
+}
+
+// ==========================================================================
+// Skill traps. Ruled 2026-10-19 (T1-T19).
+// ==========================================================================
+
+const TCHAR* UCataclysmAbilitySystemComponent::SkillSlotIsATrapStat = TEXT("skill_slot_is_a_trap");
+
+bool UCataclysmAbilitySystemComponent::SlotIsASkillTrap(ECataclysmAbilitySlot Slot) const
+{
+	// ASKED AS `SlotIsASkillGadget` ASKS ITS FLAG, with a fallback of nought: a character with no stat line has no
+	// slot converted.
+	return Slot != ECataclysmAbilitySlot::None
+		&& StatForSkill(FName(SkillSlotIsATrapStat), SkillGadgetSlotTags(Slot), 0.0f) > 0.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::PressOfASkillTrapSlot(const FGameplayTag& SlotTag)
+{
+	const ECataclysmAbilitySlot Slot = SkillGadgetSlotNamedBy(SlotTag);
+	if (!SlotIsASkillTrap(Slot))
+	{
+		return false;
+	}
+
+	// ONCE PER PRESS AND NOT ONCE PER FRAME, as the skill gadget's press; the release clears it.
+	if (SkillTrapSlotsHeldDown.Contains(Slot))
+	{
+		return true;
+	}
+	SkillTrapSlotsHeldDown.Add(Slot);
+
+	AActor* Player = GetAvatarActor();
+	if (!IsValid(Player) || !IsOwnerActorAuthoritative() || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return true;
+	}
+
+	// THE SKILL THE KEY WOULD HAVE STARTED: the spec carrying the slot's tag, as `AbilityInputTagPressed` finds it, and
+	// its instance. A SLOT HOLDING NO SKILL STILL PLACES A TRAP, which never triggers (T8) and costs nothing, as a slot
+	// holding none still places a skill gadget.
+	FGameplayAbilitySpecHandle Handle;
+	UCataclysmGameplayAbility* Ability = nullptr;
+	for (const FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
+	{
+		if (Spec.Ability && Spec.GetDynamicSpecSourceTags().HasTagExact(SlotTag))
+		{
+			Handle = Spec.Handle;
+			Ability = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
+			Ability = Ability ? Ability : Cast<UCataclysmGameplayAbility>(Spec.Ability);
+			break;
+		}
+	}
+	const FGameplayAbilityActorInfo* Info = AbilityActorInfo.Get();
+
+	// ONLY WHEN THE SLOT'S COOLDOWN IS READY, THE COST CAN BE PAID AND NO LOCK HOLDS THE SKILL (T5): the questions a
+	// press of the skill asks, by the same calls, so a trap is refused exactly when the skill would be. A refused press
+	// places nothing and pays nothing.
+	if (Ability && Info)
+	{
+		const UCataclysmSkillTemplate* Template = Cast<UCataclysmSkillTemplate>(Ability);
+		const bool bLocked = Template
+			&& StatForSkill(FName(UCataclysmSkillSlots::LockedStat), Template->SkillTags, 0.0f) > 0.0f;
+		if (bLocked || !Ability->CheckCooldown(Handle, Info, nullptr) || !Ability->CheckCost(Handle, Info, nullptr))
+		{
+			return true;
+		}
+	}
+
+	// AT THE CHARACTER'S FEET (T3).
+	const ACataclysmMinion* Placed = ACataclysmMinion::PlaceSkillTrap(Player, Slot, Player->GetActorLocation());
+	if (!Placed || !Ability || !Info)
+	{
+		return true;
+	}
+
+	// THE PRESS IS THE SKILL USE (T19): THE COST PAID AND THE COOLDOWN STARTED by the skill's own two calls, which a
+	// commit makes, and the skill-used notice sent, so `skill_use` is raised for the press. The trap's cast later is a
+	// free start and raises none. WHAT A USE DOES BESIDES, AND THE PRESS DOES NOT: a health cost (a skill with one is
+	// never cast by a trap), the next-use charges, the Nth-attack count and the windows a use opens.
+	const FGameplayAbilityActivationInfo Activation;
+	Ability->ApplyCost(Handle, Info, Activation);
+	Ability->ApplyCooldown(Handle, Info, Activation);
+	const FVector At = Placed->GetActorLocation();
+	UCataclysmCombatEvents::NoteSkillUsed(Player, Ability->DisplayedName(), Ability->SkillTagsForStats(), Slot, &At,
+										  /*bHasCooldown=*/Ability->GetBaseCooldown() > 0.0f);
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::ReleaseOfASkillTrapSlot(const FGameplayTag& SlotTag)
+{
+	SkillTrapSlotsHeldDown.Remove(SkillGadgetSlotNamedBy(SlotTag));
+}
+
+void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target,
+															 float& OutIncreases, float& OutMore) const
+{
+	OutIncreases = 0.0f;
+	OutMore = 1.0f;
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(TEXT("minion_damage")));
+	const FGameplayTag Trap = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	if (!Inputs || !Trap.IsValid())
+	{
+		return;
+	}
+
+	// THE ROWS NAMING `Type.Trap` AND NO OTHER `minion_damage` ROW (T10), as `FlatOfStatNamingTag` keeps the rows naming
+	// a tag: a row on every minion's damage is not trap damage.
+	TArray<FCataclysmStatModifier> Naming;
+	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+	{
+		if (Modifier.RequiredTags.HasTagExact(Trap))
+		{
+			Naming.Add(Modifier);
+		}
+	}
+	if (Naming.IsEmpty())
+	{
+		return;
+	}
+	const FCataclysmStatConditions State =
+		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions()));
+	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State);
+	OutIncreases = Result.SumOfIncreases / 100.0f;
+	OutMore = FMath::Max(0.0f, Result.MoreMultiplier);
 }

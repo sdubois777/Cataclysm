@@ -44,6 +44,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+// For a skill trap's tint, dim while arming and lit when armed. Ruled 2026-10-19 (T12).
+#include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -547,6 +549,15 @@ float ACataclysmMinion::VolleyEverySeconds() const
 void ACataclysmMinion::GadgetStep(AActor* Character)
 {
 	ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Character);
+
+	// A SKILL TRAP'S STEP, BEFORE THE REFUSAL OF WHAT IS NOT A GADGET, because a trap is not one (ruled 2026-10-07) and
+	// takes nothing of a gadget's step. Ruled 2026-10-19 (M4). Nothing for any other minion, a Spike Trap included.
+	if (Gadget && Gadget->IsSkillTrap())
+	{
+		Gadget->StepSkillTrap();
+		return;
+	}
+
 	if (!Gadget || !Gadget->IsGadget() || UCataclysmSkillEffects::IsDead(Gadget))
 	{
 		return;
@@ -1668,7 +1679,11 @@ void ACataclysmMinion::HandleDeath()
 	// "destroyed" means killed, so a gadget whose lifespan runs out, or one the
 	// summon cap removes to make room, raises nothing; neither reaches this
 	// function. A gadget is what `IsDeployable` says, traps included.
-	if (IsDeployable())
+	//
+	// A SKILL TRAP'S DEATH RAISES NOTHING, ruled 2026-10-19 (T14: `gadget_destroyed` narrowed to gadgets, "a trap's death
+	// raises nothing until a row needs it"). Narrowed for the skill trap alone: a Spike Trap still raises it, because the
+	// owner's no-War mandate leaves Iron Fortress's traps as they are (T15) and merged tests assert it does.
+	if (IsDeployable() && !IsSkillTrap())
 	{
 		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
 				UCataclysmTargeting::AbilitySystemOf(Summoner)))
@@ -2250,7 +2265,8 @@ bool ACataclysmMinion::CastPlayersUltimateFromHere()
 	return true;
 }
 
-bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm)
+bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm,
+												  AActor* AimedAt, const FVector* CastFromPlace)
 {
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
@@ -2259,15 +2275,18 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 		return false;
 	}
 
-	const FVector From = GetActorLocation();
+	// FROM A PLACE A SKILL TRAP NAMES, OR FROM HERE (ruled 2026-10-19, M5). The 8 m below is measured from this minion
+	// either way, so a support trap's self buff reaches the player standing within 8 m of the trap (T7).
+	const FVector Here = GetActorLocation();
+	const FVector From = CastFromPlace ? *CastFromPlace : Here;
 	FVector Aim = From;
 	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
 	{
 		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THIS MINION (S13; T4 for a Tyrant's Minion). Its enemy
-		// areas are measured from here, because the cast is made from here. NOT WHILE ONE THIS MINION GRANTED STILL
+		// areas are measured from where it is cast. NOT WHILE ONE THIS MINION GRANTED STILL
 		// RUNS: a second running copy would add a second "more" to the player, which the player's own press could
 		// never do.
-		if (FVector::Dist2D(From, Player->GetActorLocation()) > SkillGadgetSelfBuffReachCm + ReachAllowanceCm)
+		if (FVector::Dist2D(Here, Player->GetActorLocation()) > SkillGadgetSelfBuffReachCm + ReachAllowanceCm)
 		{
 			return false;
 		}
@@ -2279,6 +2298,16 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 				return false;
 			}
 		}
+	}
+	else if (IsValid(AimedAt))
+	{
+		// A SKILL TRAP'S TRIGGERING ENEMY (T13), aimed at whatever the skill's reach: the trap has chosen it.
+		Aim = AimedAt->GetActorLocation();
+	}
+	else if (CastFromPlace)
+	{
+		// A SKILL TRAP SET OFF WITH NO ENEMY NEAR CASTS AT ITS OWN PLACE (T11).
+		Aim = From;
 	}
 	else
 	{
@@ -2308,4 +2337,244 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 	// GRANTED TO THE PLAYER, FREE, FROM HERE, AT THE WHOLE OF ITS DAMAGE, CAST BY THIS MINION (S1; #7).
 	return UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/false, &From,
 											 /*CastBy=*/this);
+}
+
+// ==========================================================================
+// The skill trap. Ruled 2026-10-19 (T1-T19); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::SkillTrapTypeName = TEXT("SkillTrap");
+const TCHAR* ACataclysmMinion::TrapArmingSpeedStat = TEXT("trap_arming_speed");
+const TCHAR* ACataclysmMinion::TrapTriggerRadiusStat = TEXT("trap_trigger_radius");
+
+namespace
+{
+	/** The player's own increases of `Stat` for a trap of `TrapTags`, or nought. Floored at nought. */
+	float SkillTrapIncreasesOf(const AActor* Player, const TCHAR* Stat, const FGameplayTagContainer& TrapTags)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? FMath::Max(0.0f, Theirs->IncreasesForStat(FName(Stat), TrapTags)) : 0.0f;
+	}
+}
+
+float ACataclysmMinion::SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
+{
+	// FASTER IS A RATE, so the seconds are divided by one plus the increases, as "Gadgets fire 20%-40% faster" divides a
+	// gadget's clock. 60% faster arms in 1/1.6 of a second.
+	return SkillTrapArmSeconds / (1.0f + SkillTrapIncreasesOf(Player, TrapArmingSpeedStat, TrapTags));
+}
+
+float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
+{
+	// "INCREASED TRIGGER RADIUS" IS A SIZE, so the radius is multiplied by one plus the increases. NOT the type row's
+	// reach, which `Spawn` lengthens by "Gadgets have 20%-40% increased attack range" because a trap carries
+	// `Type.Deployable`: the radius is the constant of T2 and this stat alone.
+	return SkillTrapTriggerRadiusCm * (1.0f + SkillTrapIncreasesOf(Player, TrapTriggerRadiusStat, TrapTags));
+}
+
+TArray<ACataclysmMinion*> ACataclysmMinion::SkillTrapsOf(const AActor* Player)
+{
+	TArray<ACataclysmMinion*> Traps;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		ACataclysmMinion* AsTrap = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(AsTrap) && !AsTrap->IsActorBeingDestroyed() && AsTrap->IsSkillTrap())
+		{
+			Traps.Add(AsTrap);
+		}
+	}
+	Traps.Sort([](const ACataclysmMinion& Left, const ACataclysmMinion& Right)
+	{
+		return Left.SpawnOrder < Right.SpawnOrder;
+	});
+	return Traps;
+}
+
+ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location)
+{
+	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None)
+	{
+		return nullptr;
+	}
+
+	// ITS 20 S (T4), lengthened by `Spawn` with the summoner's `minion_duration` rows naming its tags: "Traps last
+	// 50%-100% longer before expiring". THE LIFESPAN IS THE EXPIRY: the engine destroys the actor, and no trigger runs.
+	ACataclysmMinion* Placed =
+		Spawn(Player, Location, SkillTrapSeconds, /*bBurns=*/false, FString(SkillTrapTypeName));
+	if (!Placed)
+	{
+		return nullptr;
+	}
+	if (Placed->TypeName != SkillTrapTypeName || !Placed->IsTrap())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The minion type '%s' is missing or is not a trap, so no skill trap was placed. Run "
+				 "tools/generate_datatable_assets.py."), SkillTrapTypeName);
+		Placed->Destroy();
+		return nullptr;
+	}
+
+	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6): THE OLDEST ARE DESTROYED WITHOUT TRIGGERING, before
+	// the new one is told its slot, so it is not among them. Destroyed and not killed: no `HandleDeath`, no cast.
+	TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
+	while (Standing.Num() >= SkillTrapsMostPerPlayer)
+	{
+		Standing[0]->Destroy();
+		Standing.RemoveAt(0);
+	}
+
+	// OUTSIDE EVERY SUMMON CAP, as a skill gadget is (S8): its own cap is the one above.
+	Placed->bOutsideSummonCaps = true;
+	Placed->SkillTrapSlot = Slot;
+	Placed->SkillTrapArmsAtAgeSeconds =
+		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
+	Placed->bSkillTrapArmed = false;
+	Placed->ShowSkillTrapTint();
+
+	// AND THE PLAYER IS TOLD, with the trap's tags, for a row on placing a trap (M2).
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)))
+	{
+		const FGameplayTagContainer TrapTags = Placed->TypeTags;
+		Theirs->ActOnEvent(FName(TEXT("trap_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
+	}
+	return Placed;
+}
+
+bool ACataclysmMinion::IsSkillTrap() const
+{
+	return SkillTrapSlot != ECataclysmAbilitySlot::None && IsTrap();
+}
+
+bool ACataclysmMinion::SkillTrapCastsAroundItsEnemy(ECataclysmAbilitySlot Slot)
+{
+	// "CENTERED ON THE TRIGGERING ENEMY", the words of the Special's, the Support's and the Ultimate's sentences.
+	return Slot == ECataclysmAbilitySlot::Special || Slot == ECataclysmAbilitySlot::Support
+		|| Slot == ECataclysmAbilitySlot::Ultimate;
+}
+
+bool ACataclysmMinion::SkillTrapsSkill(FCataclysmWeaponSkill& Out) const
+{
+	const UCataclysmWeaponSlotsComponent* Slots =
+		IsValid(Summoner) ? Summoner->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const ECataclysmAbilitySlot Slot = SkillTrapSlot;
+	const FCataclysmWeaponSkill* Held = Slots && Slot != ECataclysmAbilitySlot::None
+		? Slots->GetAvailableSkills().FindByPredicate(
+			  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
+		: nullptr;
+	if (!Held)
+	{
+		return false;
+	}
+	Out = *Held;
+	return true;
+}
+
+bool ACataclysmMinion::StepSkillTrap()
+{
+	if (!IsSkillTrap() || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this))
+	{
+		return false;
+	}
+
+	// ARMED ONCE ITS AGE REACHES THE MARK (T1, M3), with the skill gadget's thousandth of a second for a world time
+	// added up in floating point. The tint follows.
+	if (!bSkillTrapArmed)
+	{
+		if (GetGameTimeSinceCreation() < SkillTrapArmsAtAgeSeconds - SkillGadgetClockAllowanceSeconds)
+		{
+			return false;
+		}
+		bSkillTrapArmed = true;
+		ShowSkillTrapTint();
+	}
+
+	// A TRAP THAT CANNOT ACT, OF A PLAYER GONE OR DEAD, OR WHOSE SLOT IS NO LONGER CONVERTED, WAITS ARMED, as a skill
+	// gadget casts nothing then (S11 and the gadget's judgement on a row taken off).
+	AActor* const Player = Summoner.Get();
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (UCataclysmSkillEffects::CannotAct(this) || !IsValid(Player) || UCataclysmSkillEffects::IsDead(Player)
+		|| !Theirs || !Theirs->SlotIsASkillTrap(SkillTrapSlot))
+	{
+		return false;
+	}
+
+	// THE FIRST ENEMY WITHIN ITS RADIUS, NEAREST FIRST (T2, M4), by the brain's measure along the floor.
+	const TArray<AActor*> Near = HostilesWithin(SkillTrapTriggerRadiusCmFor(Player, TypeTags));
+	return !Near.IsEmpty() && TriggerSkillTrap(Near[0]);
+}
+
+bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
+{
+	AActor* const Player = Summoner.Get();
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!IsSkillTrap() || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this) || !Theirs
+		|| UCataclysmSkillEffects::IsDead(Player))
+	{
+		return false;
+	}
+
+	// A SKILL THAT CANNOT BE CAST NEVER TRIGGERS (T8, the gadget's S10): the trap stays as it is and is not used up.
+	FCataclysmWeaponSkill Skill;
+	if (!SkillTrapsSkill(Skill) || !SkillGadgetMayCast(Skill))
+	{
+		return false;
+	}
+
+	// THE PLAYER'S OWN ROW, WITH `Type.Trap` ADDED AND NOT `Type.Deployable` (M5), so the trap rows reach it and the
+	// gadget rows do not (a trap is not a gadget, 2026-10-07). AT THE ENEMY FROM HERE, OR FROM THE ENEMY'S PLACE; with
+	// no enemy, at this trap's own place (T11).
+	FCataclysmWeaponSkill AsTheTraps = Skill;
+	AsTheTraps.Tags.AddTag(TagOfATrap());
+	AActor* const Enemy = IsValid(TriggeringEnemy) ? TriggeringEnemy : nullptr;
+	const FVector Place = Enemy ? Enemy->GetActorLocation() : GetActorLocation();
+	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SkillTrapSlot);
+	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
+	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, Enemy, bFromThePlace ? &Place : nullptr))
+	{
+		return false;
+	}
+	++SkillTrapTriggersMade;
+
+	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it.
+	const FGameplayTagContainer TrapTags = TypeTags;
+	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Enemy);
+
+	// USED UP: destroyed, with no explosion and no `gadget_destroyed`, because `HandleDeath` is not run.
+	Destroy();
+	return true;
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillTrapCasting(const UGameplayAbility* Skill)
+{
+	const UCataclysmSkillTemplate* Template = Cast<const UCataclysmSkillTemplate>(Skill);
+	const ACataclysmMinion* Trap = Template ? Cast<const ACataclysmMinion>(Template->FreeRepeatCastBy.Get()) : nullptr;
+	return Trap && Trap->IsSkillTrap() ? Trap : nullptr;
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillTrapCasting(const FCataclysmHitDelivery& Delivery)
+{
+	const ACataclysmMinion* Carried = Cast<const ACataclysmMinion>(Delivery.CastBy.Get());
+	return Carried && Carried->IsSkillTrap() ? Carried : SkillTrapCasting(Delivery.Skill.Get());
+}
+
+FLinearColor ACataclysmMinion::SkillTrapTintFor(bool bArmed)
+{
+	// A JUDGEMENT OF THE WRITING SESSION: a dark grey that reads as "not yet" and an ember orange that reads as live.
+	return bArmed ? FLinearColor(1.0f, 0.35f, 0.05f) : FLinearColor(0.12f, 0.12f, 0.12f);
+}
+
+void ACataclysmMinion::ShowSkillTrapTint()
+{
+	SkillTrapTintShown = SkillTrapTintFor(bSkillTrapArmed);
+	if (PlaceholderBody)
+	{
+		if (UMaterialInstanceDynamic* Paint = PlaceholderBody->CreateDynamicMaterialInstance(0))
+		{
+			Paint->SetVectorParameterValue(TEXT("Color"), SkillTrapTintShown);
+		}
+	}
 }

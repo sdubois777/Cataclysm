@@ -4482,6 +4482,50 @@ public:
 	/** The skill gadget whose blow is being priced now, or null. See `FPricingASkillGadgetsBlow`. */
 	TWeakObjectPtr<const class ACataclysmMinion> SkillGadgetBeingPriced;
 
+	/**
+	 * SKILL TRAPS. Ruled 2026-10-19 by the coordinating session (T1-T19), for the rows "Your heavy attack / special
+	 * ability / ultimate ability is converted into a placeable trap ...". The trap is `ACataclysmMinion`'s; this is the
+	 * flag, the press and the pricing read.
+	 *
+	 * THE FLAG, `skill_slot_is_a_trap`: a flat 1 whose Required Tags is the slot's tag, asked with
+	 * `SkillGadgetSlotTags` as `SlotIsASkillGadget` asks its own, and read as above nought. No gameplay attribute and no
+	 * base. A SLOT CONVERTED TO BOTH A GADGET AND A TRAP MAKES A TRAP (T17): `PressOfASkillGadgetSlot` leaves such a
+	 * slot alone.
+	 */
+	static const TCHAR* SkillSlotIsATrapStat;
+
+	/** Whether `Slot` is converted into a skill trap now: the flag above, asked with `SkillGadgetSlotTags`. */
+	bool SlotIsASkillTrap(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * A press of a slot key, before anything is queued. FALSE, AND NOTHING DONE, for a slot that is not converted into a
+	 * trap. TRUE for one that is, and on the first frame of the press: THE PRESS IS THE SKILL USE (T5, T19). When the
+	 * slot's cooldown is ready, the skill's cost can be paid and no lock holds the skill, a trap is placed at the
+	 * character's feet (T3), the cost is paid, the cooldown is started and the skill-used notice is sent, so the press
+	 * raises `skill_use` as a use does; otherwise nothing is placed and nothing paid. Every later frame of the same press
+	 * does nothing. Called by `AbilityInputTagPressed`, so a stunned player, whose press the player controller drops
+	 * before it reaches the ability system, places nothing, as a stunned player uses no skill.
+	 *
+	 * ON THE AUTHORITY ONLY, as the skill gadget's press.
+	 */
+	bool PressOfASkillTrapSlot(const FGameplayTag& SlotTag);
+
+	/** The key of a slot is up: its next press may place a trap again. Called by `AbilityInputTagReleased`. */
+	void ReleaseOfASkillTrapSlot(const FGameplayTag& SlotTag);
+
+	/** The converted slots whose key is down and has already been answered in this press. */
+	TSet<ECataclysmAbilitySlot> SkillTrapSlotsHeldDown;
+
+	/**
+	 * "Scales off trap damage" (T10): the increases and the "more" of this character's `minion_damage` rows that NAME
+	 * `Type.Trap`, asked with `Tags` and against `Target`, worked out with the character's conditions now. The one read
+	 * `UCataclysmSkillEffects::ApplyHit` adds for a skill trap's cast: the increases join the blow's increases bucket and
+	 * the "more" multiplies it, so the built rows "Traps deal 20%-40% increased damage", the two per trap and per gadget
+	 * and "doubles" reach it as written. A FRACTION, 0.3 for 30%, and a multiplier of 1 with no such row.
+	 */
+	void TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target, float& OutIncreases,
+							  float& OutMore) const;
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

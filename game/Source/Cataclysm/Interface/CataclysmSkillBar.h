@@ -141,6 +141,26 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	/** Whether that gadget can never cast the skill the slot holds: a shapeless one, or one no row may cast (S10). */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	bool bSkillGadgetCastsNothing = false;
+
+	/**
+	 * Whether this slot is converted into a skill trap. Ruled 2026-10-19 (M7, T12): the box then reads
+	 * `UCataclysmSkillBar::SkillTrapName`, and its sweep is THE PLAYER'S OWN COOLDOWN, which the press starts (T5), so
+	 * it is read as any box's; its cost and its lock are read as any box's too, because the press pays and is refused
+	 * as the skill is. A slot converted both ways is a trap's (T17).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bIsASkillTrap = false;
+
+	/** Whether that trap can never cast the skill the slot holds, so it is placed and never triggers (T8). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bSkillTrapCastsNothing = false;
+
+	/** The player's skill traps standing, across every converted slot, and the most that may stand (T6). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	int32 SkillTrapsStanding = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	int32 SkillTrapsMost = 0;
 };
 
 /**
@@ -349,6 +369,16 @@ public:
 	 * player, so the words go over the box, where the Fervour line goes, which a gadget box never shows.
 	 */
 	static FString SkillGadgetTextFor(const FCataclysmSkillBarSlot& Slot);
+
+	/** What a box converted into a skill trap reads, "Trap". Ruled 2026-10-19 (M7). */
+	static FString SkillTrapName();
+
+	/**
+	 * The words over a box converted into a skill trap, or empty for any other box: "Trap casts nothing" when its trap
+	 * can never cast the slot's skill (T8), and otherwise the traps standing over the most, "Traps 2/5" (M7). Drawn where
+	 * the Fervour line goes, above it when that line is drawn too, because a trap's press may be short of Fervour.
+	 */
+	static FString SkillTrapTextFor(const FCataclysmSkillBarSlot& Slot);
 
 	/**
 	 * The line above the bar for the basic attack's gadget, or empty while the basic attack is not converted. Ruled
