@@ -65,6 +65,8 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 // For a random reachable point near a character. See `TeleportTheWearerRandomly`.
 #include "NavigationSystem.h"
+// For the swing interval and the swing's gate, which a basic attack's trap is placed by. Ruled 2026-10-21.
+#include "AbilitySystem/CataclysmBasicAttack.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
@@ -8025,8 +8027,10 @@ bool UCataclysmAbilitySystemComponent::PressOfASkillTrapSlot(const FGameplayTag&
 	// places nothing and pays nothing.
 	if (Ability && Info)
 	{
+		// THE BASIC ATTACK IS NEVER LOCKED, as `UCataclysmSkillTemplate::CanActivateAbility` exempts it by name ("Only
+		// basic attacks function during this period"), so neither is its trap. Ruled 2026-10-21 (L1).
 		const UCataclysmSkillTemplate* Template = Cast<UCataclysmSkillTemplate>(Ability);
-		const bool bLocked = Template
+		const bool bLocked = Template && Slot != ECataclysmAbilitySlot::BasicAttack
 			&& StatForSkill(FName(UCataclysmSkillSlots::LockedStat), Template->SkillTags, 0.0f) > 0.0f;
 		if (bLocked || !Ability->CheckCooldown(Handle, Info, nullptr) || !Ability->CheckCost(Handle, Info, nullptr))
 		{
@@ -8034,8 +8038,21 @@ bool UCataclysmAbilitySystemComponent::PressOfASkillTrapSlot(const FGameplayTag&
 		}
 	}
 
+	// THE BASIC ATTACK'S TRAP, AT MOST ONCE PER SWING INTERVAL ON ONE CLOCK FOR EVERY BASIC TRAP, and only while the
+	// player could swing (ruled 2026-10-21, L2). Its slot has no cooldown and costs nothing, so the questions above pass.
+	const bool bBasicTrap = Slot == ECataclysmAbilitySlot::BasicAttack;
+	if (bBasicTrap && !BasicSkillTrapMayBePlacedNow())
+	{
+		return true;
+	}
+
 	// AT THE CHARACTER'S FEET (T3).
 	const ACataclysmMinion* Placed = ACataclysmMinion::PlaceSkillTrap(Player, Slot, Player->GetActorLocation());
+	if (Placed && bBasicTrap)
+	{
+		const float Now = GetWorld()->GetTimeSeconds();
+		BasicSkillTrapPlacedAtSeconds = Now;
+	}
 	if (!Placed || !Ability || !Info)
 	{
 		return true;
@@ -8090,4 +8107,34 @@ void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagCo
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State);
 	OutIncreases = Result.SumOfIncreases / 100.0f;
 	OutMore = FMath::Max(0.0f, Result.MoreMultiplier);
+}
+
+// ==========================================================================
+// Traps, layer 2: the basic attack's trap clock. Ruled 2026-10-21 (L1, L2).
+// ==========================================================================
+
+bool UCataclysmAbilitySystemComponent::BasicSkillTrapMayBePlacedNow() const
+{
+	// THE SWING'S OWN TWO QUESTIONS, by the calls `ACataclysmPlayerController::TrySwingAt` makes: whether the player could
+	// swing, and whether one swing interval has passed since the last basic trap. AN INTERVAL OF NOUGHT ANSWERS NO.
+	const UWorld* World = GetWorld();
+	if (!World || !UCataclysmBasicAttack::MaySwing(GetAvatarActor()))
+	{
+		return false;
+	}
+	const float Now = World->GetTimeSeconds();
+	return UCataclysmBasicAttack::IntervalHasPassed(BasicSkillTrapPlacedAtSeconds, Now,
+													UCataclysmBasicAttack::SecondsBetweenSwingsFor(this));
+}
+
+float UCataclysmAbilitySystemComponent::BasicSkillTrapSecondsLeft() const
+{
+	const UWorld* World = GetWorld();
+	const float Interval = UCataclysmBasicAttack::SecondsBetweenSwingsFor(this);
+	if (!World || Interval <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	return FMath::Max(0.0f, BasicSkillTrapPlacedAtSeconds + Interval - Now);
 }

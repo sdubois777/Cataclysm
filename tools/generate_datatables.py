@@ -11728,19 +11728,21 @@ def refuse_a_deployable_self_blast_row_the_game_cannot_read(
 #: skill tags. `UCataclysmAbilitySystemComponent::SkillSlotIsATrapStat` holds
 #: the same name.
 #:
-#: THE THREE SLOTS THIS LAYER BUILDS. The Support's trap (its self buff) and
-#: the basic attack's (its click) are a later layer's, ruled 2026-10-19 in the
-#: build order: a row on either would be accepted and do nothing, or nothing
-#: the ruling settled, so both are refused until that layer.
+#: THE FIVE SLOTS THE SENTENCES CONVERT. The Heavy, the Special and the
+#: Ultimate since traps layer 1; the Support (its self buff, granted within
+#: 8 m of the trap, T7) and the basic attack (placed by a click on an enemy,
+#: once per swing interval) since traps layer 2, ruled 2026-10-21 (L1-L6),
+#: which lifted their refusal.
 SKILL_SLOT_IS_A_TRAP_STAT = "skill_slot_is_a_trap"
 SKILL_SLOT_IS_A_TRAP_SLOT_TAGS = frozenset({
-    "Slot.Heavy", "Slot.Special", "Slot.Ultimate"})
+    "Slot.Heavy", "Slot.Special", "Slot.Ultimate", "Slot.Support",
+    "Slot.Basic"})
 
 
 def refuse_a_skill_slot_trap_row_the_game_cannot_read(
         sheet: str, rows: list[dict]) -> list[str]:
     """A row on `SKILL_SLOT_IS_A_TRAP_STAT` is one its reader answers yes to,
-    for one slot this layer builds.
+    for one slot a sentence converts.
 
     THE SHAPE OF `refuse_a_skill_slot_gadget_row_the_game_cannot_read`, for
     the trap's flag, and for its reasons: a kind but `flat` works on a base of
@@ -11772,8 +11774,7 @@ def refuse_a_skill_slot_trap_row_the_game_cannot_read(
                 f"The row requires ONE slot's tag and nothing else, one of "
                 f"{sorted(SKILL_SLOT_IS_A_TRAP_SLOT_TAGS)}: the game asks "
                 f"with each slot's skill tags, so no tag converts every slot, "
-                f"and the Support's and the basic attack's traps are a later "
-                f"layer's.")
+                f"and no other slot has a trap.")
         action = str(row.get("Action") or "").strip()
         if action:
             problems.append(

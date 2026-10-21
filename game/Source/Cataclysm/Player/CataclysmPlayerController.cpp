@@ -1278,6 +1278,15 @@ void ACataclysmPlayerController::PressOnAnEnemy(AActor* Enemy)
 		// stops one (P4). A slot that is not converted answers false and goes on below as before.
 		if (UCataclysmAbilitySystemComponent* Placing = GetCataclysmAbilitySystem())
 		{
+			// AND WITH IT CONVERTED INTO A SKILL TRAP, THE CLICK PLACES A BASIC TRAP AT THE PLAYER'S FEET AND ORDERS NOTHING,
+			// the same way. Ruled 2026-10-21 (traps layer 2, L1). FIRST, because a slot converted both ways makes a trap
+			// (T17). The press answers true for a converted slot whatever it placed, so a click its clock refuses (L2)
+			// still swings nothing.
+			if (Placing->PressOfASkillTrapSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack)))
+			{
+				PendingAttack = nullptr;
+				return;
+			}
 			if (Placing->PressOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack)))
 			{
 				PendingAttack = nullptr;
@@ -1350,6 +1359,8 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 	if (UCataclysmAbilitySystemComponent* Releasing = GetCataclysmAbilitySystem())
 	{
 		Releasing->ReleaseOfASkillGadgetSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack));
+		// AND THE NEXT CLICK MAY PLACE A BASIC TRAP AGAIN. Ruled 2026-10-21 (traps layer 2, L1).
+		Releasing->ReleaseOfASkillTrapSlot(CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack));
 	}
 
 	// THE PRESS BEGAN ON AN OPEN SCREEN, so releasing it finishes nothing in the

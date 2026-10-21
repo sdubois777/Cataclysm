@@ -496,9 +496,9 @@ public:
 private:
 	/**
 	 * What a press of the left button on the world does once it knows the enemy under the cursor, or null for the
-	 * floor: remembers whether the press began on an enemy, and on one, places the basic attack's gadget when that
-	 * slot is converted (S15) or else takes it as the target and swings. Split out of `Input_MoveToCursorStarted` on
-	 * 2026-10-16 so a test can reach it.
+	 * floor: remembers whether the press began on an enemy, and on one, places the basic attack's trap or gadget when
+	 * that slot is converted (traps layer 2, L1; S15) or else takes it as the target and swings. Split out of
+	 * `Input_MoveToCursorStarted` on 2026-10-16 so a test can reach it.
 	 */
 	void PressOnAnEnemy(AActor* Enemy);
 
