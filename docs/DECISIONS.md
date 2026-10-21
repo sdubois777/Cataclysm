@@ -203,8 +203,11 @@ only rules and a count above nought where a seed's chance of giving none is abou
 
 ### Proofs
 
-**Not yet run.** Three are registered, each to be run with `unreal_build.prove_cpp_guard` for the Unreal half and
-`tools/prove_guard.py` in a `git archive` copy for the Python half, never both at once. A seeded test in the at-risk
+**All three PROVED, in both halves** (the window, below). Each was run with `unreal_build.prove_cpp_guard` for the
+Unreal half and `tools/prove_guard.py` in a `git archive` copy for the Python half, never both at once. **The Unreal
+halves were run narrowed**: PROOF 1 and PROOF 3 on `Cataclysm.EmpireRun.AFallMovesItsQuestDungeonAndItsDungeonCityCountsOnlyWhatItAbsorbed`
+alone, PROOF 2 on the four tests named `Cataclysm.Surge.AFallenCitysQuestDungeon...`. So of the predictions below, the
+other `Cataclysm.EmpireRun.`, `Cataclysm.EmpireScreen.` and seeded ones were not run under a break. A seeded test in the at-risk
 list that also fails under a break is not a prediction and not evidence either way.
 
 | break | Unreal, predicted to fail with the break in | Python, predicted to fail with the break in |
@@ -218,8 +221,33 @@ A prefix that covers the certain Unreal predictions is `Cataclysm.Surge.AFallenC
 
 ### Run
 
-Not yet run. Nothing was built and no Unreal test was run by the writing session. Registered for the window: the
-base's last measured total plus the nine new names above (the renamed test is not new).
+Nothing was built and no Unreal test was run by the writing session. The window was run by the dungeon session on
+2026-10-21 under the lock `void-zones-w31`, given by the coordinating session once `development`'s runs on `991bcb962`
+(the traps layer 2 merge) had completed with success, on `feat/game-quest-moves-on-a-fall-2` at `48ebcdf0`. The five
+conditions were checked immediately before the lock was taken, and the lock was released before this was written.
+
+- **Build:** "Build: Succeeded - 70 actions, 60 files compiled".
+- **The whole Unreal suite:** "3982 tests performed, 3982 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 3982 tests in the tree at 48ebcdf03; 3982 performed, gap 0; every declared test was reported by the run."
+  Registered 3982 and 0: the 3964 of the last waves window, the nine of the traps merge and the nine new names here.
+  Every high-risk seeded test passed: `AQuestDungeonMovesToAnAdjacentCity`, `AQuestDungeonHitsItsCityAndThenRefreshes`,
+  `ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`, `AFallenCityBecomesADungeonStandingOnItself`.
+- **Python:** "6830 passed, 8 skipped"; JUnit tests 6838, failures 0, errors 0, skipped 8, as registered (one more
+  skipped than before the window: the check that skips once modules are built). Lint: "All checks passed!".
+- **PROOF 1, Unreal:** "1 tests performed, 0 succeeded, 1 failed: AFallMovesItsQuestDungeonAndItsDungeonCityCountsOnlyWhatItAbsorbed";
+  the failing assertions, read from the broken run's log: "the Quest dungeon is not named as absorbed", "the two
+  ordinary dungeons are, and nothing else" (3 for 2), "the Quest dungeon is still on the map". Restored, 1 succeeded.
+  **Python:** `test_in_both_a_fall_moves_a_quest_dungeon_and_absorbs_an_ordinary_one` failed alone ("1 failed, 6
+  passed"); restored "7 passed".
+- **PROOF 2, Unreal:** "4 tests performed, 1 succeeded, 3 failed": `AFallenCitysQuestDungeonCarryingASiegeIsRefusedABesiegedCity`,
+  `AFallenCitysQuestDungeonWithNoNeighbourLeftGoesToTheNearestCityThatQualifies` and
+  `AFallenCitysQuestDungeonWithNowhereToGoStaysAndTakesNoDraw`; the neighbour-first test passed, as predicted. The
+  failing assertions read "draw N sent it to a city that could take it" and "draw N sent it to the nearest such city"
+  (2 expected, -1 found). Restored, 4 succeeded. **Python:**
+  `test_in_both_the_refuge_is_a_neighbour_first_then_the_nearest_by_lanes` failed alone; restored "7 passed".
+- **PROOF 3, Unreal:** "1 tests performed, 0 succeeded, 1 failed" on the same test, on "it holds two bosses, for the
+  two dungeons it absorbed" (3 for 2). Restored, 1 succeeded. **Python:** `test_in_both_the_city_falls_then_the_moves_then_its_dungeon_and_surge`
+  and `test_the_games_dungeon_city_counts_only_what_it_absorbed` failed ("2 failed, 5 passed"); restored "7 passed".
 
 ---
 
