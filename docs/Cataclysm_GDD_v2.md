@@ -4211,7 +4211,7 @@ Its timer follows its depth as an ordinary dungeon's does: a deeper Quest dungeo
 | Volatile | Dungeon modifiers change every floor. |
 | Cow Level | Enemies drop ridiculous amounts of loot. Time to complete is doubled and cannot be reduced. |
 
-Each Cataclysm's Quest dungeons are one sub-type, not rolled: War, Siege; Death (Dead Rising), Horde; Demonic (Hell on Earth), Elite; Pestilence, Timed; Famine, Sacrificial; Chaos, Volatile; Celestial (Heaven's Wrath), Ascendant; Void (The Void), Hollow. Ascendant and Hollow are new sub-types, and an ordinary dungeon never rolls either. The Hollow's rule is under The Void. The Ascendant's is still being designed; the simulation stands in for it with one more average modifier a floor, down to four. The owner, 2026-10-16, verbatim: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type." and "We probably need to come up with two more sub types. Also, I really thought you would have picked horde for dead rising... as the whole undead zombie swarm thing kinda makes sense there. I assumed hell on earth would be Elite." and "I kinda like Ascendant more. Any argument against?"
+Each Cataclysm's Quest dungeons are one sub-type, not rolled: War, Siege; Death (Dead Rising), Horde; Demonic (Hell on Earth), Elite; Pestilence, Timed; Famine, Sacrificial; Chaos, Volatile; Celestial (Heaven's Wrath), Ascendant; Void (The Void), Hollow. Ascendant and Hollow are new sub-types, and an ordinary dungeon never rolls either. The Hollow's rule is under The Void. The Ascendant's rule is under Heaven's Wrath. The simulation stands in for it with one more average modifier a floor, down to four; it does not model the Edicts, their strength, the Core or the Edict left on a city. The owner, 2026-10-16, verbatim: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be one specific type." and "We probably need to come up with two more sub types. Also, I really thought you would have picked horde for dead rising... as the whole undead zombie swarm thing kinda makes sense there. I assumed hell on earth would be Elite." and "I kinda like Ascendant more. Any argument against?"
 
   
 
@@ -6463,6 +6463,63 @@ Essential resources become scarce. A rationing system distributes limited suppli
 ## **Heaven's Wrath (Celestial)**
 
 Celestial gates open and angelic armies pour through, imposing Divine Edicts as global penalties. Gates reduce healing, empower enemies, and cause random smite attacks. Players must seal 10 gates by destroying their Heavenly Cores. Edicts are 50% stronger inside gate dungeons.
+
+**Divine Edicts.** A Divine Edict is a divine decree: it forbids one thing the player does, or makes the player pay
+for doing it. Each Edict is a Celestial dungeon modifier, and it can appear in any Celestial dungeon as an ordinary
+modifier. The owner, 2026-10-19 to 2026-10-21, verbatim: "Edicts are part of the Celestial cataclysm already. I think they just need to be written but the design document should have some examples. They're basically divine decrees that prevent/punish the player from performing certain actions." Asked whether the Edicts are ordinary Celestial
+modifiers: "Yes, any Celestial dungeon". Asked about the eight below: "All eight". Asked whose the numbers are:
+"Delegated, as proposed", so **every number in this table is under the owner's delegation**.
+
+| Edict | The player action | Forbids or punishes | Base effect |
+| :-- | :-- | :-- | :-- |
+| Edict of Silence | using a skill | forbids | every 90 seconds, for 15 seconds, no skill can be used; basic attacks still work |
+| Edict of Temperance | healing | forbids part of it | healing the player receives is halved, and life leech does nothing |
+| Edict of Patience | a skill's cooldown | punishes | every cooldown takes 50% longer |
+| Edict of Abstinence | spending mana | punishes | a quarter of a skill's mana cost is also taken from health |
+| Edict of Stillness | a movement skill (a dash, leap or teleport) | punishes | using one slows the player by 40% for 3 seconds |
+| Edict of Vigil | standing still | punishes | standing still for 3 seconds calls a smite on that spot for 10% of the player's maximum health, with the usual telegraph |
+| Edict of Humility | landing a critical strike | forbids part of it | a critical strike deals no extra damage |
+| Edict of Tithe | going down the stairs | punishes | taking the stairs down costs a tithe |
+
+- **Two are already in the game as modifiers.** Edict of Silence is the existing modifier of that name, unchanged.
+  Edict of Tithe is the existing modifier "Forced Tithes", unchanged. The other six are new Celestial modifiers.
+- **A forbidding Edict cannot be broken**: the action does not happen. **A punishing Edict charges its price every
+  time.** Where the dungeon also carries Angelic Wardens, which animate when the player violates "divine laws",
+  breaking a punishing Edict counts as violating a divine law.
+- **The other thirteen Celestial modifiers are not Edicts**: they strengthen the enemy or change the floor rather than
+  forbid or charge for one player action. Eternal Chorus also lengthens cooldowns, but only near the chorus and with
+  resource regeneration halved; it stays a modifier and is not the Edict of Patience.
+- **"Edicts of Power", the empire tree's node, is a different thing** that shares the word.
+- The global Edicts this section's opening sentence names (penalties across the whole world) are not designed yet.
+
+Precedents for decrees of this kind: Path of Exile's Ultimatum modifiers ("Drought: Cannot gain Flask Charges";
+"Hindering Flasks: Using a Flask Hinders you by 50% for 4 seconds"; mana costs taken as damage) and its map
+modifiers ("Players cannot Regenerate Life, Mana or Energy Shield"). They settle the shape, one decree for one
+action; which actions and every number are this game's own.
+
+**The Ascendant, Heaven's Wrath's Quest dungeon (its gate).**
+
+- **One more Edict each floor, up to four.** Floor 1 has one active Edict beyond the dungeon's ordinary modifiers,
+  floor 2 two, floor 3 three, and floor 4 and every floor after it four. Each new Edict is drawn from the Edicts not
+  already active, by their weights. When none is left to draw, no further Edict is added.
+- **Each Edict is 10% stronger a floor deeper, counted from floor 1.** On floor N an active Edict's numbers are
+  (1 + 0.10 x (N - 1)) times its base: 10% stronger on floor 2, 50% on floor 6. An Edict's numbers are the ones its
+  base effect states (Edict of Silence: how long the silence lasts); an Edict with no number does not scale.
+- **A Heavenly Core on the last floor.** The dungeon is not cleared, and its quest objective not gained, until the
+  Core is destroyed. While it stands, the Edicts on the Core's floor are 50% stronger. That is the opening
+  sentence's "Edicts are 50% stronger inside gate dungeons", on the Core's floor only.
+- **An Edict left on its city.** When its timer runs out and it hits its city, the Ascendant leaves one of its
+  active Edicts, drawn at random, at base strength, on that city for 30 days: every dungeon on that city, standing or
+  arriving, carries that Edict until the 30 days end. A city carries at most one left Edict; a new hit replaces it and
+  restarts the 30 days.
+
+Who decided what. The owner chose the design on 2026-10-19 ("Full plan design"), so its four Edicts, its 10%, its
+Core and its 30 days are the owner's. On 2026-10-20 the owner chose, verbatim, "From floor 1", "Core floor only" and
+"One at random". That a city carries one left Edict, and that nothing is added when no Edict is left, are the
+coordinating session's rulings under the owner's delegation. The design was proposed on 2026-10-16 with Path of
+Exile's Delirium (difficulty that rises the further the player goes) and Ultimatum (a modifier that escalates each
+round) as its precedents. Built in no half yet: the simulation approximates the Ascendant with one more average
+modifier a floor, and the game has neither the six new Edicts nor the Ascendant.
 
   
 
