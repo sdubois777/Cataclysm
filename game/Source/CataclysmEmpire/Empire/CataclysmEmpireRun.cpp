@@ -250,6 +250,10 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// resolves below on the city it was moved to, as the model's does.
 	ApplySiegeDamage(Report);
 
+	// A HOLLOW LOSES ITS FLOOR FOR THE DAY, before its timer is acted on, which
+	// is where `Simulation.step` calls `_hollow_shrink`. Since 2026-10-22.
+	ShrinkHollows(Today);
+
 	for (const int32 DungeonId : Resolved)
 	{
 		ResolveDungeon(DungeonId, Report);
@@ -504,8 +508,26 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 			const FCataclysmCity* Host = Map->Find(HostId);
 			if (Host != nullptr && !Host->bFallen)
 			{
-				const FCataclysmDungeonSpec Ordinary =
+				FCataclysmDungeonSpec Ordinary =
 					UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, Host->Tier);
+
+				// A HOLLOW ADDS VOID STACKS INSTEAD, since 2026-10-22, and takes
+				// no defence and no people: the Void's Quest dungeon, whose hit
+				// adds 1 to 3 by how far it has shrunk and never erases a city
+				// below eight. `Simulation._quest_hit` makes the same choice in
+				// the same place. SO ITS TWO FIGURES ARE NOUGHT, put through the
+				// very `Damage` call every Quest hit makes, and its stacks are
+				// worked out here, while `Dungeon` and `Host` still point at
+				// something. It is still counted, reported and refreshed below
+				// exactly as any Quest hit is.
+				const bool bHollow = Dungeon->IsHollow();
+				const int32 HollowStacks =
+					bHollow ? Dungeon->HollowStacksOnto(Host->VoidStacks) : 0;
+				if (bHollow)
+				{
+					Ordinary.DefenceDamage = 0.0f;
+					Ordinary.PopulationDamage = 0.0f;
+				}
 
 				++QuestHits;
 				OutReport.QuestHits.Add(HostId);
@@ -526,7 +548,15 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				// anywhere; so no draw is skipped by returning here. Until
 				// 2026-10-21 the fall absorbed it. `Dungeon` may point at nothing
 				// now, because the fall took other dungeons off the array.
-				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage))
+				//
+				// A HOLLOW'S STACKS ON THE SAME LINE, as the ordinary Void
+				// dungeon's are below and for the same reason: every `CityFell`
+				// in this file follows an `if (Map->Damage(...))` on one line.
+				// `Damage` takes nothing from a Hollow's city and answers that
+				// it stands; `AddVoidStacks` then fells and erases it at the
+				// tenth stack, and the fall moves this dungeon on as any fall
+				// does.
+				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))
 				{
 					CityFell(HostId, OutReport);
 					return;
@@ -640,6 +670,53 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 		LastHitDay = OutReport.Day;
 		LastHitCityId = CityId;
 		bLastHitWasAQuestTimer = false;
+	}
+}
+
+void UCataclysmEmpireRun::ShrinkHollows(int32 Today)
+{
+	if (Clock == nullptr)
+	{
+		return;
+	}
+
+	// THE ONE THE PLAYER IS INSIDE IS LEFT AS IT IS. Its walk was fixed when
+	// the player went in, and the game mode read its floors then.
+	const int32 Inside = Clock->CurrentDungeonId;
+
+	for (FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		// NOT ON THE DAY IT WAS MADE: a Hollow a surge landed this morning
+		// starts shrinking tomorrow, as the model's does.
+		if (!Dungeon.IsHollow() || Dungeon.SpawnedDay >= Today
+			|| Dungeon.DungeonId == Inside)
+		{
+			continue;
+		}
+
+		const int32 Lose = FMath::Min(
+			UCataclysmSurgeScheduler::HollowFloorsLostPerDay,
+			Dungeon.HollowFloorsLeftToLose());
+
+		if (Lose <= 0)
+		{
+			continue;
+		}
+
+		Dungeon.Floors -= Lose;
+
+		// THE WALK COMES DOWN BY WHAT THOSE FLOORS COST, AND NEVER BELOW A DAY.
+		// NOUGHT MEANS NOBODY SET IT, and then the walk already follows the
+		// floors -- see `FCataclysmDungeon::WalkDaysPerFloor` -- so it is left
+		// at nought rather than turned into a figure nobody chose.
+		if (Dungeon.WalkDays > 0.0f)
+		{
+			Dungeon.WalkDays = FMath::Max(
+				1.0f, Dungeon.WalkDays - Lose * UCataclysmDayClock::DaysPerFloor);
+		}
+
+		// AND THE CLOCK'S COPY OF ITS FLOORS, NOT ITS TIMER.
+		Clock->SetFloors(Dungeon.DungeonId, Dungeon.Floors);
 	}
 }
 

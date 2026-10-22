@@ -54,6 +54,63 @@ int32 FCataclysmDungeon::VoidStacksItAdds() const
 	return 1 + FMath::Clamp(Third, 0, 2);
 }
 
+bool FCataclysmDungeon::IsHollow() const
+{
+	return Type == ECataclysmDungeonType::Quest
+		&& SubType == ECataclysmDungeonSubType::Hollow;
+}
+
+int32 FCataclysmDungeon::HollowMinimum() const
+{
+	// HALF, ROUNDED UP, AND ONE AT LEAST. Every whole number up to sixteen
+	// million is exact as a float, and so is half of it, so the ceiling sees
+	// the true half and not a value a hair above it.
+	return FMath::Max(1, FMath::CeilToInt(
+		HollowFrom * UCataclysmSurgeScheduler::HollowShareKept));
+}
+
+int32 FCataclysmDungeon::HollowFloorsLeftToLose() const
+{
+	if (!IsHollow() || HollowFrom <= 0)
+	{
+		return 0;
+	}
+
+	// BY THE NATURAL FLOORS, AND NEVER DOWN TO NONE. The header says why both.
+	const int32 Natural = Floors - UpgradeFloors;
+	return FMath::Max(0, FMath::Min(Natural - HollowMinimum(), Floors - 1));
+}
+
+int32 FCataclysmDungeon::HollowStacksOnto(int32 CityStacks) const
+{
+	const int32 Span = HollowFrom - HollowMinimum();
+
+	// ONE THAT CANNOT SHRINK ADDS THE MOST, as one that has shrunk all the way
+	// does: `Simulation._hollow_stacks_for` answers 3 for it.
+	int32 Stacks = 3;
+
+	if (Span > 0)
+	{
+		const int32 Natural = Floors - UpgradeFloors;
+		const int32 Lost = FMath::Clamp(HollowFrom - Natural, 0, Span);
+
+		// ROUNDED HALF UP, as the model's `int(x + 0.5)` is. A share exactly
+		// halfway, a quarter or three quarters of the way down, is exact in a
+		// float, so it rounds up here as it does there.
+		Stacks = FMath::FloorToInt(1.0f + 2.0f * Lost / Span + 0.5f);
+	}
+
+	// NO SINGLE HIT ERASES A CITY BELOW EIGHT. The owner's sentence is quoted
+	// in the header.
+	if (CityStacks < UCataclysmSurgeScheduler::HollowCannotEraseBelow)
+	{
+		Stacks = FMath::Min(
+			Stacks, UCataclysmEmpireMap::VoidStacksToErase - 1 - CityStacks);
+	}
+
+	return FMath::Max(0, Stacks);
+}
+
 float FCataclysmDungeon::WalkDaysPerFloor() const
 {
 	const int32 Walked = FMath::Max(1, Floors);
@@ -99,6 +156,10 @@ float UCataclysmSurgeScheduler::SpawnWeightFor(ECataclysmDungeonSubType SubType)
 	case ECataclysmDungeonSubType::Elite:			return SpawnWeightElite;
 	case ECataclysmDungeonSubType::Volatile:		return SpawnWeightVolatile;
 	case ECataclysmDungeonSubType::Sacrificial:		return SpawnWeightSacrificial;
+	// NEVER ROLLED, since 2026-10-22. The Void's Quest dungeon is a Hollow and
+	// nothing else is; it is numbered past `Sacrificial`, so the roll never
+	// asks. Listed so the switch still names every value.
+	case ECataclysmDungeonSubType::Hollow:			return 0.0f;
 	}
 
 	return 0.0f;
@@ -115,6 +176,7 @@ FString UCataclysmSurgeScheduler::SubTypeName(ECataclysmDungeonSubType SubType)
 	case ECataclysmDungeonSubType::Elite:		return TEXT("Elite");
 	case ECataclysmDungeonSubType::Volatile:	return TEXT("Volatile");
 	case ECataclysmDungeonSubType::Sacrificial:	return TEXT("Sacrificial");
+	case ECataclysmDungeonSubType::Hollow:		return TEXT("Hollow");
 	default:									return FString();
 	}
 }
@@ -316,10 +378,11 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
 	ECataclysmType Cataclysm)
 {
-	// FIVE OF THE MODEL'S EIGHT, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
+	// SIX OF THE MODEL'S EIGHT, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
 	// the original; `tools/tests/test_dungeon_subtype_port.py` reads this switch
-	// and compares the five pairs with it. War, Celestial and the Void fall to
-	// `default` with `None`, which means "roll"; the header says why each one.
+	// and compares the six pairs with it. The Void's is the sixth, since
+	// 2026-10-22. War and Celestial fall to `default` with `None`, which means
+	// "roll"; the header says why each one.
 	switch (Cataclysm)
 	{
 	case ECataclysmType::Death:			return ECataclysmDungeonSubType::Horde;
@@ -327,6 +390,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
 	case ECataclysmType::Pestilence:	return ECataclysmDungeonSubType::Timed;
 	case ECataclysmType::Famine:		return ECataclysmDungeonSubType::Sacrificial;
 	case ECataclysmType::Chaos:			return ECataclysmDungeonSubType::Volatile;
+	case ECataclysmType::Void:			return ECataclysmDungeonSubType::Hollow;
 	default:							return ECataclysmDungeonSubType::None;
 	}
 }
@@ -1196,6 +1260,16 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 		&& Fixed != ECataclysmDungeonSubType::None)
 	{
 		Dungeon.SubType = Fixed;
+	}
+
+	// A HOLLOW REMEMBERS THE FLOORS IT WAS MADE WITH, since 2026-10-22, because
+	// it shrinks from them to half and its hit grows as it does; see
+	// `FCataclysmDungeon::HollowFrom`. `Rolled`, the plain roll: what the
+	// city's upgrades moved is not natural depth. Every other dungeon keeps
+	// nought. NO DRAW: the sub-type above was fixed without one.
+	if (Dungeon.IsHollow())
+	{
+		Dungeon.HollowFrom = Rolled;
 	}
 
 	// AND HOW LONG WALKING IT COSTS, WHICH IS NOT THE SAME QUESTION AS HOW DEEP

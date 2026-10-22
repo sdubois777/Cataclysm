@@ -78,6 +78,26 @@ bool UCataclysmDayClock::SetResolveDays(int32 DungeonId, float Days)
 	return true;
 }
 
+bool UCataclysmDayClock::SetFloors(int32 DungeonId, int32 Floors)
+{
+	FCataclysmDungeonTimer* Timer = Timers.FindByPredicate(
+		[DungeonId](const FCataclysmDungeonTimer& Candidate)
+		{
+			return Candidate.DungeonId == DungeonId;
+		});
+
+	if (Timer == nullptr)
+	{
+		return false;
+	}
+
+	// THE FLOORS AND NOT THE TIMER. See the header: a Hollow that shrinks
+	// still bites on the day it was always going to.
+	Timer->Floors = FMath::Max(1, Floors);
+
+	return true;
+}
+
 const FCataclysmDungeonTimer* UCataclysmDayClock::FindTimer(int32 DungeonId) const
 {
 	return Timers.FindByPredicate(

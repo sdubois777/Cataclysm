@@ -153,6 +153,26 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 		const FString Marked =
 			SubType.IsEmpty() ? FString() : SubType + TEXT(", ");
 
+		// A HOLLOW SAYS WHETHER IT IS STILL SHRINKING AND TO WHAT, since
+		// 2026-10-22. It loses a floor a day down to half its natural depth,
+		// and a player choosing which dungeon to walk wants to know how deep
+		// it will be when they get there. The figure is the floors at which it
+		// stops, `Floors` less what it has left to lose. Every other dungeon's
+		// line is as it was.
+		if (Dungeon->IsHollow())
+		{
+			const int32 LeftToLose = Dungeon->HollowFloorsLeftToLose();
+			const FString Shrinking = LeftToLose > 0
+				? FString::Printf(TEXT("shrinking by one a day to %d"),
+								  Dungeon->Floors - LeftToLose)
+				: FString(TEXT("no longer shrinking"));
+
+			Lines.Add(FString::Printf(TEXT("%s%d floors, %s, %.0f days until it bites"),
+									  *Marked, Dungeon->Floors, *Shrinking,
+									  Run->Clock->DaysUntilResolveFor(DungeonId)));
+			continue;
+		}
+
 		Lines.Add(FString::Printf(TEXT("%s%d floors, %.0f days until it bites"),
 								  *Marked, Dungeon->Floors,
 								  Run->Clock->DaysUntilResolveFor(DungeonId)));

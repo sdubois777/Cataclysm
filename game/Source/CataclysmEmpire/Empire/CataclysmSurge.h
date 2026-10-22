@@ -261,6 +261,28 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 UpgradeFloors = 0;
 
+	/**
+	 * A Hollow's natural floors when it was made, which its shrinking is
+	 * measured from; nought on every other dungeon.
+	 *
+	 * A PORT OF `Dungeon.hollow_from`, since 2026-10-22. `MakeDungeon` sets it
+	 * to the floors it rolled -- `Floors` less `UpgradeFloors` -- once the
+	 * sub-type is fixed, and only for a Hollow. THE PLAIN ROLL: the model's
+	 * depth is the row times the Void's 1.25 depth multiplier, which is not
+	 * ported (#53), as `VoidStacksItAdds` says.
+	 *
+	 * NOTHING MOVES IT AFTER THAT. `Floors` comes down by one a day, and the
+	 * minimum and the stacks a hit adds are read from this and from how far
+	 * the natural floors have come down; see `HollowMinimum` and
+	 * `HollowStacksOnto`. A Hollow built by hand with nought here never
+	 * shrinks, as the model's `_hollow_shrink` skips one.
+	 *
+	 * SAVED WITH THE DUNGEON, AND NOTHING LOADS IT BACK, because nothing loads
+	 * a run's dungeons back at all yet. Issue #753.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 HollowFrom = 0;
+
 	/** Days from spawning until it resolves undefeated, jitter included. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float ResolveDays = 0.0f;
@@ -401,8 +423,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 *
 	 * ORDINARY ONLY. A Void Siege's daily bite stays damage, ruled by the
 	 * coordinating session on 2026-10-16, and that bite is not this timer. A
-	 * Void Quest dungeon's hit is the ordinary Quest hit until the Hollow, the
-	 * Void's Quest dungeon, is built. A Fallen City is sent by nobody.
+	 * Void Quest dungeon is a Hollow since 2026-10-22, and its hit adds stacks
+	 * by a rule of its own, `HollowStacksOnto`, in the Quest block of
+	 * `UCataclysmEmpireRun::ResolveDungeon`; this still answers false for it.
+	 * Until then it took the ordinary Quest hit. A Fallen City is sent by
+	 * nobody.
 	 */
 	bool AddsVoidStacks() const;
 
@@ -428,6 +453,72 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * is clamped into 1 to 3.
 	 */
 	int32 VoidStacksItAdds() const;
+
+	/**
+	 * Whether this is a Hollow: the Void's Quest dungeon.
+	 *
+	 * A PORT OF `Simulation._hollow_adds_stacks`, without its switch, since
+	 * 2026-10-22: a Quest dungeon whose sub-type is `Hollow`. Only the Void's
+	 * Quest dungeons are, by `UCataclysmSurgeScheduler::QuestSubTypeFor`, and
+	 * nothing rolls one.
+	 */
+	bool IsHollow() const;
+
+	/**
+	 * The fewest natural floors this Hollow shrinks to: half of `HollowFrom`,
+	 * rounded up, and never below one.
+	 *
+	 * A PORT OF `Simulation.hollow_floor_minimum`, `max(1, ceil(hollow_from x
+	 * hollow_floor_share_kept))`; the share is
+	 * `UCataclysmSurgeScheduler::HollowShareKept`. A Hollow made with 20 floors
+	 * stops at 10, one made with 21 at 11, and one made with 1 at 1.
+	 */
+	int32 HollowMinimum() const;
+
+	/**
+	 * How many more floors this Hollow will lose before it stops shrinking.
+	 *
+	 * ITS NATURAL FLOORS LESS ITS MINIMUM, AND NEVER SO MANY THAT IT WOULD BE
+	 * LEFT WITH NONE: the model's `min(natural - minimum, floors - 1)` in
+	 * `Simulation._hollow_shrink`. A city whose upgrade took floors off leaves
+	 * a Hollow shallower than its natural depth, and a dungeon of no floors
+	 * cannot be walked. Nought for anything that is not a Hollow, and for a
+	 * Hollow with no `HollowFrom`.
+	 *
+	 * SO `Floors` LESS THIS IS WHERE IT STOPS, which the city screen names.
+	 */
+	int32 HollowFloorsLeftToLose() const;
+
+	/**
+	 * How many Void stacks this Hollow's hit adds to a city carrying
+	 * `CityStacks`: 1 at its full depth, rising evenly to 3 at its minimum,
+	 * and held so that a city below
+	 * `UCataclysmSurgeScheduler::HollowCannotEraseBelow` stacks is left one
+	 * short of erasure.
+	 *
+	 * A PORT OF `Simulation._hollow_stacks_for` AND
+	 * `Simulation.hollow_hit_stacks`, since 2026-10-22: `1 + 2 x lost / span`,
+	 * rounded half up, where `span` is `HollowFrom` less the minimum and `lost`
+	 * is how far its natural floors have come down from `HollowFrom`, held
+	 * between nought and `span`. 3 for a Hollow that cannot shrink at all.
+	 *
+	 * THE OWNER, 2026-10-16, ON THE VOID'S QUEST DUNGEONS, VERBATIM: "So, maybe
+	 * Hollow works, but we shouldn't just flat out erase a city if they player
+	 * can't get to it in time." So a city carrying fewer than
+	 * `HollowCannotEraseBelow` stacks takes at most enough to reach one short of
+	 * `UCataclysmEmpireMap::VoidStacksToErase`. A city at 8 or 9 is not held,
+	 * and the hit can erase it. Never below nought.
+	 *
+	 * NOT `VoidStacksItAdds`, which an ordinary Void dungeon adds by the thirds
+	 * of its row. A Hollow is a Quest dungeon and its hit is not sized by a row.
+	 *
+	 * THE NAME DOES NOT SAY "FLOORS" ON PURPOSE.
+	 * `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`
+	 * forbids that word in the Quest block of `ResolveDungeon`, which calls
+	 * this, because a Quest hit is not sized by depth. A Hollow's is, by
+	 * ruling, and only through here.
+	 */
+	int32 HollowStacksOnto(int32 CityStacks) const;
 
 	/**
 	 * Whether this dungeon is an ordinary one: the kind whose timer running out
@@ -676,6 +767,32 @@ public:
 	 * this with the model.
 	 */
 	static constexpr float VoidTargetPullAtFull = 1.0f;
+
+	/**
+	 * The share of its natural floors a Hollow keeps: it shrinks to half of
+	 * what it was made with, rounded up. `config.hollow_floor_share_kept`.
+	 *
+	 * A COPY, AND THE SIMULATION IS THE ORIGINAL, as are the two below.
+	 * `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py` reads all
+	 * three back out of this header and compares them with the model's.
+	 */
+	static constexpr float HollowShareKept = 0.5f;
+
+	/**
+	 * How many floors a Hollow loses a day, until it reaches its minimum.
+	 * `config.hollow_floors_lost_per_day`. See
+	 * `UCataclysmEmpireRun::ShrinkHollows`.
+	 */
+	static constexpr int32 HollowFloorsLostPerDay = 1;
+
+	/**
+	 * Below this many Void stacks a Hollow's hit cannot erase a city: it adds
+	 * at most enough to leave the city one short of
+	 * `UCataclysmEmpireMap::VoidStacksToErase`.
+	 * `config.hollow_hit_cannot_erase_below`. The owner's sentence is quoted at
+	 * `FCataclysmDungeon::HollowStacksOnto`.
+	 */
+	static constexpr int32 HollowCannotEraseBelow = 8;
 
 	/**
 	 * How much a wave slot sent by this Cataclysm wants this city.
@@ -997,19 +1114,21 @@ public:
 	 * The one sub-type a Cataclysm's Quest dungeons take, or `None` for "roll
 	 * one as any dungeon does".
 	 *
-	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR FIVE OF ITS EIGHT. The
+	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR SIX OF ITS EIGHT. The
 	 * owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
 	 * specific type." Death's are Horde, Demonic's Elite, Pestilence's Timed,
-	 * Famine's Sacrificial and Chaos's Volatile.
+	 * Famine's Sacrificial and Chaos's Volatile, since 2026-10-21, and the
+	 * Void's Hollow since 2026-10-22.
 	 *
-	 * THREE ANSWER `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR EACH OF THEM.
+	 * TWO ANSWER `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR EACH OF THEM.
 	 * War's are Sieges in the model and roll here, because the owner has ruled
-	 * War out of the game. Celestial's are Ascendant and the Void's Hollow in
-	 * the model, and neither sub-type is in `ECataclysmDungeonSubType` yet.
-	 * `None` itself, the Cataclysm nobody named, answers `None` too: a Quest
-	 * dungeon made without a sender rolls, as the model's does.
-	 * `tools/tests/test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`
-	 * holds the three; `docs/DECISIONS.md`, 2026-10-21, has the layer.
+	 * War out of the game. Celestial's are Ascendant in the model, and that
+	 * sub-type is not in `ECataclysmDungeonSubType` yet. `None` itself, the
+	 * Cataclysm nobody named, answers `None` too: a Quest dungeon made without
+	 * a sender rolls, as the model's does.
+	 * `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`
+	 * holds the two; `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the
+	 * layers.
 	 *
 	 * IT DRAWS NOTHING. `MakeDungeon` still takes the sub-type draw and then
 	 * discards it for a fixed Quest dungeon; see there for why.
@@ -1424,7 +1543,9 @@ public:
 	 * a Cataclysm that `QuestSubTypeFor` names one for takes that sub-type
 	 * rather than what it rolled -- a Famine Quest dungeon is Sacrificial, a
 	 * Death one a Horde. The draw is still taken and its answer discarded, so
-	 * the stream moves exactly as it did; see the implementation.
+	 * the stream moves exactly as it did; see the implementation. A Hollow,
+	 * the Void's, also records the floors it rolled in `HollowFrom`, since
+	 * 2026-10-22, and takes no draw for it.
 	 *
 	 * @param bSiegeAllowed whether this city may take a Siege. Passed straight
 	 *                      to `RollSubType`; see there. It defaults to allowing

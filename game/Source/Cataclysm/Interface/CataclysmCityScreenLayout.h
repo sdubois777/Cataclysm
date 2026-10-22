@@ -106,6 +106,11 @@ public:
 	 * "Horde, 12 floors, 9 days until it bites" -- THE SUB-TYPE LEADS when the
 	 * dungeon has one, and a dungeon without one reads "12 floors, 9 days until
 	 * it bites".
+	 *
+	 * A HOLLOW SAYS WHETHER IT IS STILL SHRINKING, since 2026-10-22: "Hollow,
+	 * 14 floors, shrinking by one a day to 10, 9 days until it bites", or at
+	 * its minimum "Hollow, 10 floors, no longer shrinking, 9 days until it
+	 * bites". The figure is the floors at which it stops.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FString> DungeonLinesFor(const UCataclysmEmpireRun* Run,

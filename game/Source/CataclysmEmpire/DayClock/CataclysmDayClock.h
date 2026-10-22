@@ -335,6 +335,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool SetResolveDays(int32 DungeonId, float Days);
 
+	/**
+	 * Replaces the floors a dungeon's timer records, and nothing else.
+	 *
+	 * FOR A HOLLOW, since 2026-10-22, which loses a floor a day; see
+	 * `UCataclysmEmpireRun::ShrinkHollows`. The clock reads `Floors` only in
+	 * `AddDungeon`, to set the timer, and THE TIMER IS NOT MOVED HERE: a
+	 * Hollow bites on the schedule it was made with, as the model's does. The
+	 * copy is kept true because the save writes the whole timer list --
+	 * `FCataclysmSaveGather::DungeonsFrom` -- so a stale one would be written
+	 * to disk. Ruled by the coordinating session that day.
+	 *
+	 * @param Floors how deep it is now. Below 1 is read as 1, as in
+	 *               `AddDungeon`.
+	 * @return whether the clock knew that dungeon
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	bool SetFloors(int32 DungeonId, int32 Floors);
+
 	/** The timer for a dungeon, or null if the clock does not know it. */
 	const FCataclysmDungeonTimer* FindTimer(int32 DungeonId) const;
 

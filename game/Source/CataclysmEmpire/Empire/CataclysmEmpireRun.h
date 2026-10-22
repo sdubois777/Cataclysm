@@ -1295,6 +1295,29 @@ private:
 	void ApplySiegeDamage(FCataclysmDayReport& OutReport);
 
 	/**
+	 * Every Hollow made before today loses a floor, down to its minimum.
+	 *
+	 * A PORT OF `Simulation._hollow_shrink`, since 2026-10-22, called where
+	 * `Simulation.step` calls it: after the day's Siege bites and before any
+	 * timer is acted on. `UCataclysmSurgeScheduler::HollowFloorsLostPerDay` a
+	 * day, never past `FCataclysmDungeon::HollowFloorsLeftToLose`.
+	 *
+	 * ITS WALK SHRINKS WITH IT AND ITS TIMER DOES NOT. `WalkDays` comes down by
+	 * what the lost floors cost, never below one day, ruled by the
+	 * coordinating session that day. The clock's copy of its floors follows,
+	 * `UCataclysmDayClock::SetFloors`; its timer is left alone, so a Hollow
+	 * bites on the schedule its first depth gave it. Depth and reward are one
+	 * axis and shrink together.
+	 *
+	 * NOT ON THE DAY IT WAS MADE, and NOT WHILE THE PLAYER IS INSIDE IT
+	 * (`UCataclysmDayClock::CurrentDungeonId`): the walk was fixed when the
+	 * player went in, a judgement the model makes and the game copies. It
+	 * resumes the day after the player leaves. A Hollow that has moved, or
+	 * stands on a fallen city, goes on shrinking.
+	 */
+	void ShrinkHollows(int32 Today);
+
+	/**
 	 * A city fell: its ordinary dungeons are absorbed into the one it becomes,
 	 * its Quest dungeons move, and its fall fires a surge when
 	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due. A fall

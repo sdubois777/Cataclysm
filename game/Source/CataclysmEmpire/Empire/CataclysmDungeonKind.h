@@ -55,6 +55,13 @@ enum class ECataclysmDungeonType : uint8
  * #41 as the work that would. That stopped being true when #1289 merged and
  * nothing noticed, because no test reads a comment. Issue #1324's reconnaissance
  * found it.
+ *
+ * HOLLOW IS NEVER ROLLED, since 2026-10-22. It is the Void's Quest dungeon and
+ * nothing else: `UCataclysmSurgeScheduler::QuestSubTypeFor` names it for the
+ * Void, and `RollSubType` walks from `Timed` to `Sacrificial` by name, so a
+ * value numbered past `Sacrificial` is never on its line. The model's
+ * `config.SUBTYPE_SPAWN_WEIGHTS` leaves it out the same way. It is added at the
+ * end, as new kinds are, so that no stored number changes its meaning.
  */
 UENUM(BlueprintType)
 enum class ECataclysmDungeonSubType : uint8
@@ -67,4 +74,5 @@ enum class ECataclysmDungeonSubType : uint8
 	Elite        = 5,
 	Volatile     = 6,
 	Sacrificial  = 7,
+	Hollow       = 8,
 };

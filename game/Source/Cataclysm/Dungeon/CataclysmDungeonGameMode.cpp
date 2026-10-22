@@ -229,7 +229,7 @@ namespace
 	 * THE LAST ENTRY IS SKIPPED. Every `UENUM` gains a hidden maximum entry
 	 * that `NumEnums` counts. It is added when the enum registers, by
 	 * `UEnum::SetEnums`, and NOT by Unreal's header tool -- the generated file
-	 * for this enum lists only the eight declared sub-types, so looking there
+	 * for this enum lists only the declared sub-types, so looking there
 	 * suggests no such entry exists. `EverySubType` in
 	 * `Tests/CataclysmFloorBriefTests.cpp` skips it for the same reason.
 	 */
@@ -348,7 +348,7 @@ namespace
 		TEXT("Cataclysm.DungeonSubType"),
 		GCataclysmDungeonSubTypeOverride,
 		TEXT("Which sub-type the dungeon is, by name: None, Timed, Horde, "
-			 "Siege, CowLevel, Elite, Volatile, Sacrificial. Letter case does "
+			 "Siege, CowLevel, Elite, Volatile, Sacrificial, Hollow. Letter case does "
 			 "not matter and \"Cow Level\" may be typed with its space. Horde "
 			 "is one arena walked as waves, Elite stands a boss at every "
 			 "floor's exit, and Volatile draws new modifiers on every floor. "
