@@ -4758,8 +4758,20 @@ bool FCataclysmSurgeVoidWaveWithoutStacksTest::RunTest(const FString& Parameters
 					  static_cast<int32>(B.Type), static_cast<int32>(A.Type));
 			TestEqual(TEXT("at the same depth"), B.Floors, A.Floors);
 			TestEqual(TEXT("with the same timer"), B.ResolveDays, A.ResolveDays);
-			TestEqual(TEXT("and the same sub-type"),
-					  static_cast<int32>(B.SubType), static_cast<int32>(A.SubType));
+			// A QUEST DUNGEON THE VOID SENDS IS A HOLLOW, since 2026-10-22, and
+			// the same dungeon sent by nobody rolls; ruled by the coordinating
+			// session that day. Every other dungeon's sub-type is compared.
+			if (B.Type == ECataclysmDungeonType::Quest)
+			{
+				TestEqual(TEXT("a Quest dungeon the Void sends is a Hollow"),
+						  static_cast<int32>(B.SubType),
+						  static_cast<int32>(ECataclysmDungeonSubType::Hollow));
+			}
+			else
+			{
+				TestEqual(TEXT("and the same sub-type"),
+						  static_cast<int32>(B.SubType), static_cast<int32>(A.SubType));
+			}
 			TestEqual(TEXT("each Void dungeon carries the Void"),
 					  static_cast<int32>(B.Cataclysm), static_cast<int32>(ECataclysmType::Void));
 			TestEqual(TEXT("and each of the other carries nobody"),

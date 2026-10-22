@@ -147,6 +147,13 @@ assertions walk `Timed` to `Sacrificial` and count `None`, and a Hollow is neith
 `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar`, whose Void campaigns now take stacks and not
 defence from their Quest dungeons. Every other seeded campaign that faces the Void: low.
 
+**The dungeon session's plan missed two tests**: its list of seeded tests at risk did not name
+`AQuestDungeonHitsItsCityAndThenRefreshes`, the nearest neighbour of the Quest-hit change, and it said G5's control test
+`AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks` would be unaffected without checking that it
+compares sub-types, which a Hollow changes. Both failed in the first window (lock void-zones-w36, on 8a8cdd74c,
+2026-10-22): "4047 tests performed, 4045 succeeded, 2 failed"; Python "6888 passed, 8 skipped" (JUnit 6896, 0
+failures); ruff "All checks passed!"; no proof ran. Both changed under "Tests changed" below.
+
 ### Tests changed
 
 - **H8, `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll` ->
@@ -193,6 +200,27 @@ defence from their Quest dungeons. Every other seeded campaign that faces the Vo
   `Cataclysm.FloorBrief.OnlyAHordeDungeonWidensWhatItsCreaturesNotice` and the "asked for and answered" loop of
   `Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType`; by reading, both treat it as the ordinary dungeon
   it is on the floor.
+- **Two tests the first window failed, ruled by the coordinating session on 2026-10-22**:
+  - `Cataclysm.EmpireRun.AQuestDungeonHitsItsCityAndThenRefreshes`. Printed, on Void campaigns whose Quest dungeons
+    are Hollows: "Expected '<Outpost> lost the defence an ordinary dungeon's hit takes from a city of its tier, for each
+    quest timer that ran out on it' to be 70.000000, but it was 0.000000", and the population line, 175 against 0
+    (lines 2254 and 2260). The ruling, verbatim: "the clean-day count leaves out a Hollow's timer; on a day a Hollow's
+    timer ran out, its city must have gained exactly that Hollow's stacks (read from HollowStacksOnto against the
+    city's stacks before the hit, not typed); the refresh and move checks stay for every Quest dungeon." Old: every
+    Quest timer that ran out on a clean city counted in `QuestTimersHere`, and the city lost `QuestTimersHere` ordinary
+    rows of defence and population. New: a Hollow's timer is left out of `QuestTimersHere`, so a city hit only by
+    Hollows must lose nought; the city's `VoidStacks` before the day are kept beside `DefenceWas`, and a new assertion,
+    "gained exactly the stacks of each Hollow whose timer ran out on it", expects those stacks plus each Hollow's
+    `HollowStacksOnto` applied in `Report.Resolved` order against the running total, each Hollow read as it stands
+    after the day (it shrank before its hit, and a move does not change its floors). The clean-day filter, the refresh
+    and the move checks are unchanged. The `AddInfo` line gains a count of Hollow hits checked; no minimum was added
+    for it.
+  - `Cataclysm.Surge.AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks`. Printed "Expected 'and the
+    same sub-type' to be N, but it was 8", 91 times (line 4763); every other comparison (count, city, kind, depth,
+    timer, stream end) passed. The ruling: "a Quest dungeon in the Void wave is expected to be Hollow; every other
+    dungeon's sub-type compared as now." Old: `B.SubType == A.SubType` for every dungeon. New: for a Quest dungeon,
+    `B.SubType == Hollow` ("a Quest dungeon the Void sends is a Hollow"); for every other, `B.SubType == A.SubType` as
+    before.
 
 ### New tests
 
