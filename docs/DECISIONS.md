@@ -151,15 +151,43 @@ restored "9 passed".
 
 ### Proofs
 
-Not yet run. Three to be registered by the dungeon session after reading the code:
+**All three PROVED** in the window below, each with `unreal_build.prove_cpp_guard`, registered by the dungeon session
+after reading the code. Each break text matched its file exactly once. **Narrowed**: P1 on the prefix
+`Cataclysm.EmpireRun.`, P2 and P3 on `Cataclysm.Surge.`. No Python half was registered for them; the Python check's own
+three breaks, run by the writing session, are under Python above.
 
-- **P1**: the Void branch removed, so a Void dungeon's timer damages its city as any ordinary dungeon's does.
-- **P2**: the third always 1, so every Void dungeon adds one stack whatever its depth.
-- **P3**: the Void's weight ignores stacks, so a Void slot weighs a city by its tier alone.
+- **P1**, the Void branch removed, so a Void dungeon's timer damages its city as any ordinary dungeon's does:
+  `const bool bVoid = Dungeon->AddsVoidStacks();` -> `const bool bVoid = false;` in `CataclysmEmpireRun.cpp`. Predicted:
+  the three Void resolve tests fail and the Void Siege test passes. Printed: "55 tests performed, 52 succeeded, 3 failed:
+  AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves, AShallowAMiddleAndADeepVoidDungeonAddOneTwoAndThreeStacks,
+  AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest"; restored "55 tests performed, 55 succeeded,
+  0 failed".
+- **P2**, the third always 1: `return 1 + FMath::Clamp(Third, 0, 2);` -> `return 1;` in `CataclysmSurge.cpp`.
+  Predicted: `AVoidDungeonAddsOneTwoOrThreeStacksByTheThirdOfItsRowsDepth` fails alone. Printed: "49 tests performed, 48
+  succeeded, 1 failed: AVoidDungeonAddsOneTwoOrThreeStacksByTheThirdOfItsRowsDepth"; restored "49 tests performed, 49
+  succeeded, 0 failed".
+- **P3**, the Void's weight ignores stacks: `return Weight * (1.0f + VoidTargetPullAtFull * Share);` -> `return Weight;`
+  in `CataclysmSurge.cpp`. Predicted: `TheVoidsWeightOnACityRisesWithItsStacksToTwiceAtTen` and
+  `AVoidSlotLandsOnACityCarryingStacksMoreOftenAndEachSlotKeepsItsSender` fail, and the zero-stack control
+  `AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks` passes. Printed: "49 tests performed, 47
+  succeeded, 2 failed: AVoidSlotLandsOnACityCarryingStacksMoreOftenAndEachSlotKeepsItsSender,
+  TheVoidsWeightOnACityRisesWithItsStacksToTwiceAtTen"; restored "49 tests performed, 49 succeeded, 0 failed".
 
 ### Run
 
-Not yet run.
+Nothing was built and no Unreal test was run by the writing session. The window was run by the dungeon session on
+2026-10-22 under the lock `void-zones-w35`, given by the coordinating session once `development`'s runs on `b235febb0`
+(the traps layer 4 merge, #2467) had completed with success, on `feat/game-void-stacks-2` at `42deef37b`. The five
+conditions were checked immediately before the lock was taken, and the lock was released before this was written.
+
+- **Build:** "Build: Succeeded - 70 actions, 60 files compiled". The first compile of this layer.
+- **The whole Unreal suite:** "4022 tests performed, 4022 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 4022 tests in the tree at 42deef37b; 4022 performed, gap 0; every declared test was reported by the run."
+  Registered 4022 and 0: the 4007 of the traps layer 4 merge and the fifteen new names here. Every seeded test listed as
+  at risk passed.
+- **Python:** "6867 passed, 8 skipped"; JUnit tests 6875, failures 0, errors 0, skipped 8, as registered (one more
+  skipped than before the window: the check that skips once modules are built). Lint: "All checks passed!".
+- **The proofs:** as under Proofs above.
 
 ---
 
