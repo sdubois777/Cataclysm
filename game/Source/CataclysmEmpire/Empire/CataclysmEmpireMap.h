@@ -47,9 +47,9 @@ enum class ECataclysmCityTier : uint8
  * ONLY THE MUTABLE HALF IS SAVED, AND THE SPLIT IS DELIBERATE. A save writes
  * only fields marked `SaveGame`, and the ones marked here are the ones a run can
  * change: the two maxima, which an upgrade raises; the current defence and
- * population; the three flags; and the upgrades bought. `CityId` is marked as
- * well, so a restore can check the record lines up with the map it is applied to
- * rather than trusting the order.
+ * population; the three flags; the Void stacks; and the upgrades bought.
+ * `CityId` is marked as well, so a restore can check the record lines up with
+ * the map it is applied to rather than trusting the order.
  *
  * THE NAME, TIER, POSITION AND THE THREE ADJACENCY LISTS ARE NOT SAVED, AND
  * MUST NOT BE. `UCataclysmEmpireMap::Build` recomputes every one of them
@@ -152,9 +152,12 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * Marked by the Void: if this city falls it is erased rather than merely
 	 * lost, and the lane it was sealing can never be closed again.
 	 *
-	 * NOTHING SETS THIS YET, and it is carried because `Retake` has to refuse an
-	 * erased city and a reader will look for the field the simulation has. The
-	 * Void is one of the seven Cataclysms that do not exist; that is issue #53.
+	 * SET BY THE TENTH VOID STACK, since 2026-10-22, and by nothing else.
+	 * `UCataclysmEmpireMap::AddVoidStacks` marks the city and then calls
+	 * `Fall`, which reads this mark and erases the city -- the erase path `Fall`
+	 * already had, kept rather than given a second one, as the coordinating
+	 * session ruled that day. Until then nothing set it. The simulation has no
+	 * such mark any more: its `_fall` reads `City.void_stacks` itself.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bDoomed = false;
@@ -162,6 +165,32 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	/** Fallen and gone for good. Only an erased city is ever both. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bErased = false;
+
+	/**
+	 * How many Void stacks this city carries. Ten erase it.
+	 *
+	 * A PORT OF `world.City.void_stacks`, since 2026-10-22. An ordinary dungeon
+	 * the Void sent adds 1, 2 or 3 when its timer runs out on this city, INSTEAD
+	 * of taking defence or people -- see `UCataclysmEmpireRun::ResolveDungeon`
+	 * and `FCataclysmDungeon::VoidStacksItAdds` -- and at
+	 * `UCataclysmEmpireMap::VoidStacksToErase` the city falls and is erased. The
+	 * owner, 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3
+	 * void stacks to a city instead of doing damage to the city or population
+	 * and at 10 stacks the city is erased."
+	 *
+	 * A CITY THAT FALLS WITH FEWER IS NOT ERASED, AND RETAKING IT CLEARS THEM.
+	 * See `UCataclysmEmpireMap::Retake`. A fallen city keeps the count it fell
+	 * with until then, so the city screen can say what retaking clears.
+	 *
+	 * THE VOID'S AIM READS THEM. A wave slot the Void sends weighs a city by its
+	 * stacks as well as its tier, up to twice at ten; see
+	 * `UCataclysmSurgeScheduler::TargetWeightForSender`.
+	 *
+	 * SAVED WITH THE REST OF THE CITY, AND NOTHING LOADS IT BACK, because nothing
+	 * loads a run's cities back at all yet. Issue #753.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 VoidStacks = 0;
 
 	/**
 	 * What this city has bought, in the order it bought them.
@@ -374,6 +403,15 @@ public:
 	 */
 	static constexpr float RetakenFraction = 0.5f;
 
+	/**
+	 * How many Void stacks erase a city. `config.void_stacks_to_erase`.
+	 *
+	 * A COPY, AND THE SIMULATION IS THE ORIGINAL.
+	 * `tools/tests/test_void_stacks_in_the_model_and_in_the_game.py` reads it
+	 * back out of this header and compares it with the model's.
+	 */
+	static constexpr int32 VoidStacksToErase = 10;
+
 	// ----------------------------------------------------------------------
 	// The map itself
 	// ----------------------------------------------------------------------
@@ -585,6 +623,28 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool Bite(int32 CityId, float DefenceFraction, float PopulationFraction);
 
+	/**
+	 * A city takes Void stacks instead of damage, and at `VoidStacksToErase`
+	 * it falls and is erased.
+	 *
+	 * A PORT OF THE STACK HALF OF `Simulation._resolve` and of the erase in
+	 * `Simulation._fall`. The ordinary Void dungeon whose timer ran out is the
+	 * only caller; its Siege's daily bite stays damage and goes through `Damage`.
+	 *
+	 * THE TENTH STACK MARKS THE CITY DOOMED AND THEN CALLS `Fall`, which erases
+	 * a doomed city. One erase path, not two: the coordinating session ruled on
+	 * 2026-10-22 that this reuse `Fall`'s. Defence and population are left as
+	 * they are, and `Fall` then sets defence to nought like any fall.
+	 *
+	 * @param Stacks how many to add. Negative is read as nought; nothing here
+	 *               takes stacks away, and `Retake` is what clears them.
+	 * @return whether the city fell as a result. False if it had already fallen
+	 *         or does not exist, and then nothing is added -- there is nothing
+	 *         left to mark.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	bool AddVoidStacks(int32 CityId, int32 Stacks);
+
 	// ----------------------------------------------------------------------
 	// City upgrades
 	// ----------------------------------------------------------------------
@@ -630,6 +690,10 @@ public:
 	/**
 	 * A city is retaken: the lane it was sealing closes again, and it comes back
 	 * with half its defence and half its people.
+	 *
+	 * AND WITH NO VOID STACKS, since 2026-10-22: retaking a city clears them, as
+	 * `Simulation._retake` does, ruled by the coordinating session on
+	 * 2026-10-16. An erased city cannot be retaken, so its stacks stay.
 	 *
 	 * @return whether it was retaken. False if it was not fallen, does not
 	 *         exist, or was erased rather than merely lost.

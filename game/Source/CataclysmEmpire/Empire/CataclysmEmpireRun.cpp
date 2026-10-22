@@ -389,6 +389,9 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	// dungeon made, asked in the order they are made, which is the order the
 	// loop that used to stand here walked the wave. `Stream` is not touched by
 	// it. So a seed sends the same Cataclysms to the same dungeons it did.
+	// Since 2026-10-22 `PickTargets` is what asks, once per city landed on and
+	// before that slot is rolled, because the Void aims by its stacks; the
+	// count and the order are the same.
 	//
 	// BEFORE THE CLOCK IS TOLD ANYTHING, so a dungeon cannot reach `Dungeons`
 	// carrying `None` and be corrected afterwards. There is no correcting it:
@@ -575,9 +578,26 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// `tools/tests/test_surge_port.py` fails if either half moves back.
 	++DungeonsDetonated;
 
-	// COPIED OUT BEFORE THE BITE. `Damage` can lead to `CityFell`, which removes
-	// dungeons from `Dungeons`, and `Dungeon` points into that array.
-	if (Map->Damage(CityId, Defence, Population))
+	// A VOID DUNGEON ADDS STACKS INSTEAD, since 2026-10-22: an ordinary
+	// dungeon the Void sent adds 1, 2 or 3 Void stacks and takes no defence and
+	// no people, and the tenth stack fells the city and erases it. The owner,
+	// 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void
+	// stacks to a city instead of doing damage to the city or population and
+	// at 10 stacks the city is erased." `Simulation._resolve` makes the same
+	// choice in the same place. It is still counted above and still leaves
+	// below, exactly as an ordinary dungeon that hit does.
+	//
+	// COPIED OUT BEFORE THE BITE. `Damage` and `AddVoidStacks` can lead to
+	// `CityFell`, which removes dungeons from `Dungeons`, and `Dungeon` points
+	// into that array. Both of `Dungeon`'s answers are read before either call.
+	const bool bFell = Dungeon->AddsVoidStacks()
+		? Map->AddVoidStacks(CityId, Dungeon->VoidStacksItAdds())
+		: Map->Damage(CityId, Defence, Population);
+
+	// ONE FALL, BY THE DAMAGE OR BY THE TENTH STACK. `AddVoidStacks` has
+	// already erased the city in the second case, so `CityFell` builds no
+	// Dungeon City on it -- see `AddFallenCityDungeon`.
+	if (bFell)
 	{
 		CityFell(CityId, OutReport);
 	}

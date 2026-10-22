@@ -49,10 +49,26 @@ FString UCataclysmCityScreenLayout::StatusTextFor(const UCataclysmEmpireRun* Run
 	{
 		// A FALLEN CITY IS NOT A DESTROYED ONE, and the screen says which,
 		// because retaking it is a thing a player can plan for.
-		return City->bErased
-				   ? TEXT("Erased by the Void. It can never be retaken.")
-				   : TEXT("Fallen. Nothing can be built here until it is "
-						  "retaken.");
+		if (City->bErased)
+		{
+			return TEXT("Erased by the Void. It can never be retaken.");
+		}
+
+		FString Fallen =
+			TEXT("Fallen. Nothing can be built here until it is retaken.");
+
+		// AND WHAT RETAKING CLEARS, when the Void had begun on it. A city that
+		// fell with fewer than ten stacks keeps them until it is retaken, and
+		// the retake is what clears them -- worth knowing before choosing which
+		// city to win back.
+		if (City->VoidStacks > 0)
+		{
+			Fallen += FString::Printf(
+				TEXT(" It holds %d Void stacks; retaking it clears them."),
+				City->VoidStacks);
+		}
+
+		return Fallen;
 	}
 
 	TArray<FString> Parts;
@@ -69,6 +85,14 @@ FString UCataclysmCityScreenLayout::StatusTextFor(const UCataclysmEmpireRun* Run
 
 	Parts.Add(FString::Printf(TEXT("%.0f of %.0f people"), City->Population,
 							  City->MaxPopulation));
+
+	// THE VOID'S COUNT, AND ONLY WHEN IT HAS BEGUN, so a city the Void has not
+	// touched reads exactly as it did. Out of the ten that erase it.
+	if (City->VoidStacks > 0)
+	{
+		Parts.Add(FString::Printf(TEXT("Void stacks %d / %d"), City->VoidStacks,
+								  UCataclysmEmpireMap::VoidStacksToErase));
+	}
 
 	Parts.Add(Run->Map->IsExposed(CityId) ? TEXT("exposed")
 										  : TEXT("sealed behind the frontier"));
