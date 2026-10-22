@@ -6833,4 +6833,337 @@ bool FCataclysmEmpireRunWalkedQuestMovesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// An ordinary Void dungeon adds Void stacks instead of damage -- 2026-10-22
+// ---------------------------------------------------------------------------
+//
+// The owner, 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3
+// void stacks to a city instead of doing damage to the city or population and
+// at 10 stacks the city is erased." Ruled by the coordinating session the same
+// day: the stacks go by the third of the row's depth, a Void Siege's daily bite
+// stays damage, and a city that falls with fewer than ten can be retaken.
+//
+// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND STOPS BY DAY 2, so no wave
+// lands while they run. Each has a control: the same dungeon sent by nobody.
+
+namespace CataclysmEmpireRunTest
+{
+	/**
+	 * Names who sent a dungeon `PlaceDungeon` put down and, when `Floors` is
+	 * more than nought, how deep it is, with no floors added by an upgrade.
+	 */
+	void SendFrom(UCataclysmEmpireRun& Run, int32 DungeonId, ECataclysmType Sender,
+				  int32 Floors)
+	{
+		for (FCataclysmDungeon& Standing : Run.Dungeons)
+		{
+			if (Standing.DungeonId == DungeonId)
+			{
+				Standing.Cataclysm = Sender;
+				if (Floors > 0)
+				{
+					Standing.Floors = Floors;
+					Standing.UpgradeFloors = 0;
+				}
+			}
+		}
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunVoidAddsStacksTest,
+	"Cataclysm.EmpireRun.AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunVoidAddsStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 VoidId = 9901;
+
+	// TWO RUNS FROM ONE SEED, THE SAME DUNGEON ON THE SAME OUTPOST, 11 FLOORS
+	// DEEP, ITS TIMER ONE DAY FROM RUNNING OUT. In `Run` the Void sent it; in
+	// `Control` nobody did.
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Run);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Control), CityId))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Each : { Run, Control })
+	{
+		PlaceDungeon(*Each, VoidId, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, *Each->Map->Find(CityId), 30.0f);
+		GiveDamageAndDaysLeft(*Each, VoidId, 100.0f, 40.0f, 1.0f);
+	}
+
+	SendFrom(*Run, VoidId, ECataclysmType::Void, 11);
+	SendFrom(*Control, VoidId, ECataclysmType::None, 11);
+
+	const FCataclysmDungeon* Placed = Run->FindDungeon(VoidId);
+	const FCataclysmDungeon* ControlPlaced = Control->FindDungeon(VoidId);
+	const FCataclysmCity* City = Run->Map->Find(CityId);
+	const FCataclysmCity* ControlCity = Control->Map->Find(CityId);
+	if (!TestNotNull(TEXT("set-up: the Void dungeon is on the map"), Placed)
+		|| !TestNotNull(TEXT("set-up: and the control's"), ControlPlaced)
+		|| !TestNotNull(TEXT("set-up: and the city"), City)
+		|| !TestNotNull(TEXT("set-up: and the control's city"), ControlCity)
+		|| !TestEqual(TEXT("set-up: an 11 floor Outpost dungeon adds 2"),
+					  Placed->VoidStacksItAdds(), 2))
+	{
+		return false;
+	}
+
+	const float DefenceBefore = City->Defence;
+	const float PopulationBefore = City->Population;
+	const float ControlDefenceBefore = ControlCity->Defence;
+	const float ControlHit = ControlPlaced->DefenceDamage * ControlPlaced->BiteScale();
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+	const FCataclysmDayReport ControlReport = Control->AdvanceDay();
+
+	TestTrue(TEXT("the Void dungeon's timer ran out"), Report.Resolved.Contains(VoidId));
+
+	// STACKS, AND NOTHING ELSE.
+	TestEqual(TEXT("its city carries the 2 stacks it adds"), City->VoidStacks, 2);
+	TestTrue(TEXT("and lost no defence"), City->Defence == DefenceBefore);
+	TestTrue(TEXT("and no people"), City->Population == PopulationBefore);
+	TestFalse(TEXT("and stands"), City->bFallen);
+
+	// AND OTHERWISE EXACTLY AN ORDINARY DUNGEON THAT HIT.
+	TestEqual(TEXT("it counts as one ordinary dungeon hitting a city"),
+			  Run->DungeonsDetonated, 1);
+	TestNull(TEXT("it is off the map"), Run->FindDungeon(VoidId));
+	TestNull(TEXT("and off the clock"), Run->Clock->FindTimer(VoidId));
+	TestEqual(TEXT("the report names one city as hit by a dungeon that left"),
+			  Report.HitAndLeft.Num(), 1);
+	TestTrue(TEXT("and it is this city"), Report.HitAndLeft.Contains(CityId));
+	TestEqual(TEXT("no city fell"), Report.Fallen.Num(), 0);
+	TestEqual(TEXT("and the run keeps day 2 as the last hit"), Run->LastHitDay, 2);
+
+	// THE CONTROL: THE SAME DUNGEON SENT BY NOBODY TAKES ITS POINTS.
+	TestEqual(TEXT("CONTROL: the city carries no stacks"), ControlCity->VoidStacks, 0);
+	TestEqual(TEXT("CONTROL: and lost one hit's defence"),
+			  ControlDefenceBefore - ControlCity->Defence, ControlHit, 0.01f);
+	TestTrue(TEXT("CONTROL: which is a real amount"), ControlHit > 1.0f);
+	TestEqual(TEXT("CONTROL: it counts as one hit too"), Control->DungeonsDetonated, 1);
+	TestTrue(TEXT("CONTROL: and left"), ControlReport.HitAndLeft.Contains(CityId));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunVoidThirdsTest,
+	"Cataclysm.EmpireRun.AShallowAMiddleAndADeepVoidDungeonAddOneTwoAndThreeStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunVoidThirdsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const TArray<int32> Outposts = StandingOutposts(*Run, 3);
+	const FCataclysmDungeonSpec Row = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+
+	if (!TestEqual(TEXT("set-up: the map has three Outposts standing"), Outposts.Num(), 3)
+		|| !TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 8 floors at least"), Row.LeastFloors, 8)
+		|| !TestEqual(TEXT("set-up: and 15 at most"), Row.MostFloors, 15))
+	{
+		return false;
+	}
+
+	// THE SHALLOWEST, ONE IN THE MIDDLE THIRD, AND THE DEEPEST.
+	const int32 Floors[] = { 8, 12, 15 };
+	const int32 Expected[] = { 1, 2, 3 };
+
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		const int32 DungeonId = 9911 + Index;
+		PlaceDungeon(*Run, DungeonId, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(Outposts[Index]), 30.0f);
+		GiveDamageAndDaysLeft(*Run, DungeonId, 100.0f, 40.0f, 1.0f);
+		SendFrom(*Run, DungeonId, ECataclysmType::Void, Floors[Index]);
+	}
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		const FCataclysmCity* City = Run->Map->Find(Outposts[Index]);
+		if (!TestNotNull(TEXT("the city is on the map"), City))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(TEXT("a %d floor Void dungeon added %d"), Floors[Index],
+								  Expected[Index]),
+				  City->VoidStacks, Expected[Index]);
+		TestTrue(FString::Printf(TEXT("and the city it hit, %d, stands at full defence"),
+								 Outposts[Index]),
+				 !City->bFallen && City->Defence == City->MaxDefence);
+	}
+
+	TestEqual(TEXT("all three count as hits"), Run->DungeonsDetonated, 3);
+	TestEqual(TEXT("and all three left"), Report.HitAndLeft.Num(), 3);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunVoidErasesTest,
+	"Cataclysm.EmpireRun.AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunVoidErasesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 VoidId = 9921;
+	const int32 BystanderId = 9922;
+
+	// TWO RUNS FROM ONE SEED. The same Outpost carries a 15 floor Void dungeon,
+	// which adds 3, and an ordinary one beside it that never resolves. In
+	// `Erased` the city already carries 7, so the hit brings it to exactly ten;
+	// in `Stood`, the control, it carries 6 and reaches nine.
+	UCataclysmEmpireRun* Erased = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Stood = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Erased);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Stood), CityId))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Each : { Erased, Stood })
+	{
+		const FCataclysmCity& Host = *Each->Map->Find(CityId);
+		PlaceDungeon(*Each, VoidId, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, Host, EmptyBoardNeverDays);
+		GiveDamageAndDaysLeft(*Each, VoidId, 100.0f, 40.0f, 1.0f);
+		SendFrom(*Each, VoidId, ECataclysmType::Void, 15);
+
+		PlaceDungeon(*Each, BystanderId, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::None, Host, EmptyBoardNeverDays);
+		GiveDamageAndDaysLeft(*Each, BystanderId, 100.0f, 40.0f, EmptyBoardNeverDays);
+	}
+
+	Erased->Map->FindMutable(CityId)->VoidStacks = 7;
+	Stood->Map->FindMutable(CityId)->VoidStacks = 6;
+
+	const FCataclysmDayReport Report = Erased->AdvanceDay();
+	const FCataclysmDayReport StoodReport = Stood->AdvanceDay();
+
+	const FCataclysmCity* City = Erased->Map->Find(CityId);
+	const FCataclysmCity* StoodCity = Stood->Map->Find(CityId);
+	if (!TestNotNull(TEXT("the city is still on the map"), City)
+		|| !TestNotNull(TEXT("and the control's"), StoodCity))
+	{
+		return false;
+	}
+
+	// TEN STACKS: FALLEN AND ERASED.
+	TestTrue(TEXT("the city fell"), Report.Fallen.Contains(CityId));
+	TestEqual(TEXT("carrying ten stacks"), City->VoidStacks, 10);
+	TestTrue(TEXT("and it is erased"), City->bErased);
+	TestFalse(TEXT("so it cannot be retaken"), Erased->Map->Retake(CityId));
+
+	// THE FALL ABSORBED BOTH DUNGEONS, the Void one that felled it included, and
+	// left no Dungeon City on a city there is nothing left of.
+	TestTrue(TEXT("the Void dungeon that erased it is named as absorbed"),
+			 Report.Absorbed.Contains(VoidId));
+	TestTrue(TEXT("and so is the ordinary one beside it"),
+			 Report.Absorbed.Contains(BystanderId));
+	TestNull(TEXT("the Void dungeon is off the map"), Erased->FindDungeon(VoidId));
+	TestNull(TEXT("and so is the one beside it"), Erased->FindDungeon(BystanderId));
+	TestEqual(TEXT("the report names no city as hit by a dungeon that left"),
+			  Report.HitAndLeft.Num(), 0);
+	TestEqual(TEXT("its hit is still counted as one ordinary dungeon hitting a city"),
+			  Erased->DungeonsDetonated, 1);
+	TestNull(TEXT("no Dungeon City stands on an erased city"), DungeonCityOn(*Erased, CityId));
+	TestEqual(TEXT("so nothing is left on the map"), Erased->DungeonCount(), 0);
+
+	// THE CONTROL: NINE STACKS, AND THE CITY STANDS.
+	TestEqual(TEXT("CONTROL: no city fell"), StoodReport.Fallen.Num(), 0);
+	TestEqual(TEXT("CONTROL: the city carries nine"), StoodCity->VoidStacks, 9);
+	TestFalse(TEXT("CONTROL: and is not erased"), StoodCity->bErased);
+	TestTrue(TEXT("CONTROL: the Void dungeon hit and left"),
+			 StoodReport.HitAndLeft.Contains(CityId));
+	TestNotNull(TEXT("CONTROL: the dungeon beside it still stands"),
+				Stood->FindDungeon(BystanderId));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunVoidSiegeBitesTest,
+	"Cataclysm.EmpireRun.AVoidSiegesDailyBiteStillTakesDefenceAndAddsNoStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunVoidSiegeBitesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 SiegeId = 9931;
+
+	// TWO RUNS FROM ONE SEED, A SIEGE ON THE SAME OUTPOST WHOSE TIMER CANNOT RUN
+	// OUT. In `Run` the Void sent it; in `Control` nobody did. Ruled by the
+	// coordinating session on 2026-10-16: a Void Siege's daily bite stays damage.
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Run);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Control), CityId))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Each : { Run, Control })
+	{
+		PlaceDungeon(*Each, SiegeId, ECataclysmDungeonType::Basic,
+					 ECataclysmDungeonSubType::Siege, *Each->Map->Find(CityId),
+					 EmptyBoardNeverDays);
+		GiveDamageAndDaysLeft(*Each, SiegeId, 100.0f, 40.0f, EmptyBoardNeverDays);
+	}
+
+	SendFrom(*Run, SiegeId, ECataclysmType::Void, 0);
+
+	const FCataclysmCity* City = Run->Map->Find(CityId);
+	const FCataclysmCity* ControlCity = Control->Map->Find(CityId);
+	if (!TestNotNull(TEXT("set-up: the city is on the map"), City)
+		|| !TestNotNull(TEXT("set-up: and the control's"), ControlCity))
+	{
+		return false;
+	}
+
+	const float DefenceBefore = City->Defence;
+	const float PopulationBefore = City->Population;
+	const float ControlDefenceBefore = ControlCity->Defence;
+	const float ControlPopulationBefore = ControlCity->Population;
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+	Control->AdvanceDay();
+
+	TestEqual(TEXT("set-up: no timer ran out"), Report.Resolved.Num(), 0);
+	TestTrue(TEXT("the Void Siege bit its city"), Report.Besieged.Contains(CityId));
+	TestTrue(TEXT("taking defence"), City->Defence < DefenceBefore);
+	TestEqual(TEXT("and adding no stacks"), City->VoidStacks, 0);
+
+	// THE CONTROL: EXACTLY WHAT A SIEGE NOBODY SENT TAKES.
+	TestEqual(TEXT("CONTROL: the same defence a Siege nobody sent takes"),
+			  DefenceBefore - City->Defence, ControlDefenceBefore - ControlCity->Defence,
+			  0.0001f);
+	TestEqual(TEXT("CONTROL: and the same people"),
+			  PopulationBefore - City->Population,
+			  ControlPopulationBefore - ControlCity->Population, 0.0001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

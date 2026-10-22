@@ -186,6 +186,73 @@ bool FCataclysmCityScreenFallenTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenVoidStacksTest,
+	"Cataclysm.CityScreen.AStandingCitysStatusCountsItsVoidStacksOutOfTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenVoidStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+
+	// THE CONTROL FIRST: A CITY THE VOID HAS NOT TOUCHED NEVER MENTIONS IT.
+	const FString Before = UCataclysmCityScreenLayout::StatusTextFor(Run, 0);
+	TestFalse(TEXT("CONTROL: a city with no stacks never mentions the Void"),
+			  Before.Contains(TEXT("Void")));
+
+	TestFalse(TEXT("set-up: four stacks do not fell city 0"), Run->Map->AddVoidStacks(0, 4));
+
+	const FString Status = UCataclysmCityScreenLayout::StatusTextFor(Run, 0);
+
+	TestTrue(TEXT("the status counts its stacks out of ten"),
+			 Status.Contains(TEXT("Void stacks 4 / 10")));
+
+	// ONE PART ADDED AND NOTHING ELSE MOVED.
+	TestEqual(TEXT("and is otherwise exactly what it was"),
+			  Status.Replace(TEXT("   Void stacks 4 / 10"), TEXT("")), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenFallenVoidStacksTest,
+	"Cataclysm.CityScreen.AFallenCityNamesItsVoidStacksAndThatRetakingClearsThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenFallenVoidStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+
+	if (!TestFalse(TEXT("set-up: four stacks do not fell city 0"), Run->Map->AddVoidStacks(0, 4))
+		|| !TestTrue(TEXT("set-up: city 0 falls"), Run->Map->Fall(0))
+		|| !TestTrue(TEXT("set-up: city 1 falls with no stacks"), Run->Map->Fall(1))
+		|| !TestTrue(TEXT("set-up: ten stacks erase city 3"), Run->Map->AddVoidStacks(3, 10)))
+	{
+		return false;
+	}
+
+	const FString Status = UCataclysmCityScreenLayout::StatusTextFor(Run, 0);
+
+	TestTrue(TEXT("it says the city has fallen"), Status.Contains(TEXT("Fallen")));
+	TestTrue(TEXT("names the stacks it holds"), Status.Contains(TEXT("4 Void stacks")));
+	TestTrue(TEXT("and that retaking it clears them"),
+			 Status.Contains(TEXT("retaking it clears them")));
+	TestFalse(TEXT("and still gives no defence figure"), Status.Contains(TEXT("defence")));
+
+	// THE CONTROLS: A CITY FALLEN WITH NO STACKS, AND AN ERASED ONE, READ AS
+	// THEY ALWAYS DID.
+	TestEqual(TEXT("CONTROL: a city fallen with no stacks reads as before"),
+			  UCataclysmCityScreenLayout::StatusTextFor(Run, 1),
+			  FString(TEXT("Fallen. Nothing can be built here until it is retaken.")));
+	TestEqual(TEXT("CONTROL: an erased city reads as before, its ten stacks unmentioned"),
+			  UCataclysmCityScreenLayout::StatusTextFor(Run, 3),
+			  FString(TEXT("Erased by the Void. It can never be retaken.")));
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenSlotsTest,
 	"Cataclysm.CityScreen.TheSlotLineCountsWhatIsFilledOfWhatIsAvailable",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

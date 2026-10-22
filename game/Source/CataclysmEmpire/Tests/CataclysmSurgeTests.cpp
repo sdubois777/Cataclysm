@@ -4479,4 +4479,431 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Void's stacks: which dungeon adds them, how many, and its aim -- 2026-10-22
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeOnlyVoidOrdinaryAddsStacksTest,
+	"Cataclysm.Surge.OnlyAnOrdinaryDungeonTheVoidSentAddsStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeOnlyVoidOrdinaryAddsStacksTest::RunTest(const FString& Parameters)
+{
+	FCataclysmDungeon Dungeon;
+	Dungeon.Type = ECataclysmDungeonType::Basic;
+	Dungeon.Cataclysm = ECataclysmType::Void;
+
+	TestTrue(TEXT("an ordinary dungeon the Void sent adds stacks"),
+			 Dungeon.AddsVoidStacks());
+
+	// THE VOID'S OTHER KINDS DO NOT. Its Quest dungeon's hit is the ordinary
+	// Quest hit until the Hollow is built; a Fallen City and a Cataclysm
+	// dungeon are not its timer's to add.
+	for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Quest,
+											  ECataclysmDungeonType::FallenCity,
+											  ECataclysmDungeonType::Cataclysm })
+	{
+		Dungeon.Type = Kind;
+		TestFalse(FString::Printf(TEXT("a %s dungeon the Void sent does not"),
+								  *UCataclysmSurgeScheduler::KindName(Kind)),
+				  Dungeon.AddsVoidStacks());
+	}
+
+	// THE CONTROL: EVERY OTHER SENDER'S ORDINARY DUNGEON DOES NOT, nobody's
+	// included.
+	Dungeon.Type = ECataclysmDungeonType::Basic;
+
+	TArray<ECataclysmType> Others = UCataclysmRoster::All();
+	Others.Remove(ECataclysmType::Void);
+	Others.Add(ECataclysmType::None);
+
+	if (!TestEqual(TEXT("set-up: seven other Cataclysms and nobody"), Others.Num(), 8))
+	{
+		return false;
+	}
+
+	for (const ECataclysmType Sender : Others)
+	{
+		Dungeon.Cataclysm = Sender;
+		TestFalse(FString::Printf(TEXT("CONTROL: an ordinary dungeon %s sent does not"),
+								  *UCataclysmRoster::NameFor(Sender).ToString()),
+				  Dungeon.AddsVoidStacks());
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeVoidStacksByThirdTest,
+	"Cataclysm.Surge.AVoidDungeonAddsOneTwoOrThreeStacksByTheThirdOfItsRowsDepth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeVoidStacksByThirdTest::RunTest(const FString& Parameters)
+{
+	auto StacksAt = [](ECataclysmCityTier Tier, int32 Floors, int32 UpgradeFloors)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.Type = ECataclysmDungeonType::Basic;
+		Dungeon.Cataclysm = ECataclysmType::Void;
+		Dungeon.CityTier = Tier;
+		Dungeon.Floors = Floors;
+		Dungeon.UpgradeFloors = UpgradeFloors;
+		return Dungeon.VoidStacksItAdds();
+	};
+
+	// THE TWO ROWS THE FIGURES BELOW ARE WORKED FROM. If a range moves, the
+	// boundaries move with it and this says so rather than failing on a figure.
+	const FCataclysmDungeonSpec Outpost = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const FCataclysmDungeonSpec Bulwark = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Bulwark);
+
+	if (!TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 8 floors at least"), Outpost.LeastFloors, 8)
+		|| !TestEqual(TEXT("set-up: and 15 at most"), Outpost.MostFloors, 15)
+		|| !TestEqual(TEXT("set-up: an ordinary Bulwark dungeon is 15 at least"), Bulwark.LeastFloors, 15)
+		|| !TestEqual(TEXT("set-up: and 25 at most"), Bulwark.MostFloors, 25))
+	{
+		return false;
+	}
+
+	struct FCase
+	{
+		ECataclysmCityTier Tier;
+		int32 Floors;
+		int32 Expected;
+		const TCHAR* What;
+	};
+
+	// `1 + clamp(int(3 x (natural - least) / (most - least)), 0, 2)`, worked
+	// out by hand for each line.
+	const FCase Cases[] = {
+		{ ECataclysmCityTier::Outpost, 8, 1, TEXT("the shallowest Outpost dungeon, 8 floors") },
+		{ ECataclysmCityTier::Outpost, 10, 1, TEXT("10 floors, the top of the first third (6 / 7 is 0)") },
+		{ ECataclysmCityTier::Outpost, 11, 2, TEXT("11 floors, the start of the second (9 / 7 is 1)") },
+		{ ECataclysmCityTier::Outpost, 12, 2, TEXT("12 floors, the top of the second (12 / 7 is 1)") },
+		{ ECataclysmCityTier::Outpost, 13, 3, TEXT("13 floors, the start of the third (15 / 7 is 2)") },
+		{ ECataclysmCityTier::Outpost, 15, 3, TEXT("the deepest Outpost dungeon, 15 floors (21 / 7 is 3, held at 2)") },
+		{ ECataclysmCityTier::Outpost, 5, 1, TEXT("5 floors, below the row, held at the first") },
+		{ ECataclysmCityTier::Outpost, 30, 3, TEXT("30 floors, above the row, held at the third") },
+		{ ECataclysmCityTier::Bulwark, 15, 1, TEXT("the shallowest Bulwark dungeon, 15 floors") },
+		{ ECataclysmCityTier::Bulwark, 18, 1, TEXT("18 floors, the top of the first third (9 / 10 is 0)") },
+		{ ECataclysmCityTier::Bulwark, 19, 2, TEXT("19 floors, the start of the second (12 / 10 is 1)") },
+		{ ECataclysmCityTier::Bulwark, 21, 2, TEXT("21 floors, the top of the second (18 / 10 is 1)") },
+		{ ECataclysmCityTier::Bulwark, 22, 3, TEXT("22 floors, the start of the third (21 / 10 is 2)") },
+		{ ECataclysmCityTier::Bulwark, 25, 3, TEXT("the deepest Bulwark dungeon, 25 floors") },
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		TestEqual(FString::Printf(TEXT("%s adds %d"), Case.What, Case.Expected),
+				  StacksAt(Case.Tier, Case.Floors, 0), Case.Expected);
+	}
+
+	// A CITY'S FLOOR UPGRADES MOVE NO STACKS. Each line has a control: the same
+	// floors with no upgrade counted come out in another third, so the upgrade
+	// floors really are what is left out.
+	TestEqual(TEXT("16 floors of which an upgrade added 5 are 11 natural and add 2"),
+			  StacksAt(ECataclysmCityTier::Outpost, 16, 5), 2);
+	TestEqual(TEXT("CONTROL: 16 floors all natural add 3"),
+			  StacksAt(ECataclysmCityTier::Outpost, 16, 0), 3);
+	TestEqual(TEXT("8 floors after an upgrade took 5 are 13 natural and add 3"),
+			  StacksAt(ECataclysmCityTier::Outpost, 8, -5), 3);
+	TestEqual(TEXT("CONTROL: 8 floors all natural add 1"),
+			  StacksAt(ECataclysmCityTier::Outpost, 8, 0), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeVoidWeightTest,
+	"Cataclysm.Surge.TheVoidsWeightOnACityRisesWithItsStacksToTwiceAtTen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeVoidWeightTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// ONE CITY OF EACH TIER, found rather than written out.
+	TArray<int32> OneOfEach;
+	for (const ECataclysmCityTier Tier : { ECataclysmCityTier::Outpost,
+										   ECataclysmCityTier::Bulwark,
+										   ECataclysmCityTier::Sanctuary,
+										   ECataclysmCityTier::Pillar })
+	{
+		OneOfEach.Append(CitiesAtTier(*Map, Tier, 1));
+	}
+
+	if (!TestEqual(TEXT("set-up: one city of each of the four tiers"), OneOfEach.Num(), 4))
+	{
+		return false;
+	}
+
+	const ECataclysmType Others[] = { ECataclysmType::None, ECataclysmType::Death,
+									  ECataclysmType::Chaos, ECataclysmType::Celestial };
+
+	for (const int32 CityId : OneOfEach)
+	{
+		FCataclysmCity City = *Map->Find(CityId);
+		const float Base = UCataclysmSurgeScheduler::TargetWeightFor(City.Tier);
+		const FString Tier = UCataclysmEmpireMap::TierName(City.Tier);
+
+		auto VoidAt = [&City](int32 Stacks)
+		{
+			City.VoidStacks = Stacks;
+			return UCataclysmSurgeScheduler::TargetWeightForSender(City, ECataclysmType::Void);
+		};
+
+		// EXACT, AND NOT WITHIN A TOLERANCE: a Void slot on a city with no stacks
+		// must weigh the very float an ordinary slot does, or a wave against an
+		// empire with no stacks would land somewhere else.
+		TestTrue(FString::Printf(TEXT("the Void wants a %s with no stacks exactly as much as anybody (%f)"),
+								 *Tier, Base),
+				 VoidAt(0) == Base);
+		TestTrue(FString::Printf(TEXT("half as much again at five stacks (%f)"), VoidAt(5)),
+				 VoidAt(5) == Base * 1.5f);
+		TestTrue(FString::Printf(TEXT("twice as much at ten (%f)"), VoidAt(10)),
+				 VoidAt(10) == Base * 2.0f);
+		TestTrue(FString::Printf(TEXT("and no more than twice at fifteen (%f)"), VoidAt(15)),
+				 VoidAt(15) == Base * 2.0f);
+
+		// THE CONTROL: ANY OTHER SENDER IGNORES THE STACKS.
+		City.VoidStacks = 10;
+		for (const ECataclysmType Sender : Others)
+		{
+			TestTrue(FString::Printf(TEXT("CONTROL: %s wants a %s at ten stacks only by its tier"),
+									 *UCataclysmRoster::NameFor(Sender).ToString(), *Tier),
+					 UCataclysmSurgeScheduler::TargetWeightForSender(City, Sender) == Base);
+		}
+	}
+
+	// AND THE MULTIPLICATION IS VISIBLE: an Outpost's tier weight is not nought.
+	TestTrue(TEXT("CONTROL: an Outpost's tier weight is more than nought"),
+			 UCataclysmSurgeScheduler::TargetWeightFor(ECataclysmCityTier::Outpost) > 0.0f);
+
+	return true;
+}
+
+/**
+ * A wave the Void sends lands where a wave nobody sends does, while no city
+ * carries a stack.
+ *
+ * THE STREAM CHECK FOR THE VOID'S AIM, ruled by the coordinating session on
+ * 2026-10-22. The same seed is rolled twice against the same map with no
+ * stacks on it, once with every slot sent by nobody and once with every slot
+ * sent by the Void. Everything drawn from the wave's stream must come out the
+ * same: the cities, the kinds, the depths, the timers and the sub-types. Then
+ * the same on a map where every rim city has a dungeon cap of two, so cities
+ * fill and leave the candidates part way through, which is where a total
+ * worked out afresh could part from the running one.
+ *
+ * WHAT WOULD BREAK IT: a Void slot summing its own total when no city carries
+ * a stack, or a sender drawn from the wave's stream rather than its own.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeVoidWaveWithoutStacksTest,
+	"Cataclysm.Surge.AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeVoidWaveWithoutStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler = MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	int32 Compared = 0;
+
+	for (int32 Seed = 1; Seed <= 60; ++Seed)
+	{
+		FRandomStream Plain(Seed);
+		FRandomStream Voided(Seed);
+
+		int32 VoidAsked = 0;
+		auto SentByNobody = []() { return ECataclysmType::None; };
+		auto SentByTheVoid = [&VoidAsked]()
+		{
+			++VoidAsked;
+			return ECataclysmType::Void;
+		};
+
+		const TArray<FCataclysmDungeon> Without =
+			Scheduler->RollWave(*Map, 1, 0, Plain, TArray<int32>(), TArray<int32>(),
+								SentByNobody);
+		const TArray<FCataclysmDungeon> With =
+			Scheduler->RollWave(*Map, 1, 0, Voided, TArray<int32>(), TArray<int32>(),
+								SentByTheVoid);
+
+		if (!TestEqual(FString::Printf(TEXT("seed %d: both waves land as many dungeons"), Seed),
+					   With.Num(), Without.Num()))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(TEXT("seed %d: the Void was asked once per dungeon"), Seed),
+				  VoidAsked, With.Num());
+
+		for (int32 Index = 0; Index < With.Num(); ++Index)
+		{
+			const FCataclysmDungeon& A = Without[Index];
+			const FCataclysmDungeon& B = With[Index];
+
+			TestEqual(TEXT("on the same city"), B.CityId, A.CityId);
+			TestEqual(TEXT("of the same kind"),
+					  static_cast<int32>(B.Type), static_cast<int32>(A.Type));
+			TestEqual(TEXT("at the same depth"), B.Floors, A.Floors);
+			TestEqual(TEXT("with the same timer"), B.ResolveDays, A.ResolveDays);
+			TestEqual(TEXT("and the same sub-type"),
+					  static_cast<int32>(B.SubType), static_cast<int32>(A.SubType));
+			TestEqual(TEXT("each Void dungeon carries the Void"),
+					  static_cast<int32>(B.Cataclysm), static_cast<int32>(ECataclysmType::Void));
+			TestEqual(TEXT("and each of the other carries nobody"),
+					  static_cast<int32>(A.Cataclysm), static_cast<int32>(ECataclysmType::None));
+			++Compared;
+		}
+
+		TestEqual(FString::Printf(TEXT("seed %d: and both streams end in the same place"), Seed),
+				  Voided.GetCurrentSeed(), Plain.GetCurrentSeed());
+	}
+
+	// CITIES THAT FILL. Every exposed city takes two at most, so a wave of 30
+	// fills all twelve and stops at 24.
+	UCataclysmEmpireMap* Capped = MakeMap();
+	for (const int32 CityId : Capped->ExposedCities())
+	{
+		Give(*Capped, CityId, ECataclysmCityUpgradeEffect::DungeonCap, 2.0f);
+	}
+
+	int32 Filled = 0;
+
+	for (int32 Seed = 1; Seed <= 30; ++Seed)
+	{
+		FRandomStream Plain(Seed);
+		FRandomStream Voided(Seed);
+		TArray<ECataclysmType> Senders;
+
+		const TArray<int32> Without = Scheduler->PickTargets(
+			*Capped, 30, Plain, NoDungeonsAnywhere(*Capped),
+			[]() { return ECataclysmType::None; });
+		const TArray<int32> With = Scheduler->PickTargets(
+			*Capped, 30, Voided, NoDungeonsAnywhere(*Capped),
+			[]() { return ECataclysmType::Void; }, &Senders);
+
+		TestTrue(FString::Printf(TEXT("seed %d: a capped wave the Void sends lands on the same cities in the same order"), Seed),
+				 With == Without);
+		TestEqual(FString::Printf(TEXT("seed %d: with one sender for each"), Seed),
+				  Senders.Num(), With.Num());
+
+		Filled += With.Num() == 24 ? 1 : 0;
+	}
+
+	AddInfo(FString::Printf(TEXT("%d dungeons compared; %d of 30 capped waves filled every city"),
+							Compared, Filled));
+
+	// THE CONTROLS. Something was compared, and the capped waves really did fill
+	// their cities, which is the case the second half is there for.
+	TestTrue(TEXT("CONTROL: dungeons were compared"), Compared > 0);
+	TestEqual(TEXT("CONTROL: every capped wave filled all twelve cities and stopped at 24"),
+			  Filled, 30);
+
+	return true;
+}
+
+/**
+ * A slot the Void sends lands on a city carrying stacks more often; the
+ * senders come back one per city landed on, in order.
+ *
+ * THE PULL REACHES THE WAVE. `TheVoidsWeightOnACityRisesWithItsStacksToTwiceAtTen`
+ * checks the weight; this checks that `PickTargets` uses it. On an intact map
+ * the twelve rim Outposts are the frontier, each weighing 5. One carries ten
+ * stacks, so a Void slot lands on it 10 times in 65 and a slot nobody sends 5
+ * times in 60. Expected landings in 2,400 slots: about 369 and about 200.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeVoidPullTest,
+	"Cataclysm.Surge.AVoidSlotLandsOnACityCarryingStacksMoreOftenAndEachSlotKeepsItsSender",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeVoidPullTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler = MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const TArray<int32> Rim = CitiesAtTier(*Map, ECataclysmCityTier::Outpost, 1);
+	if (!TestEqual(TEXT("set-up: an Outpost was found"), Rim.Num(), 1)
+		|| !TestEqual(TEXT("set-up: the frontier is the twelve rim Outposts"),
+					  Map->ExposedCities().Num(), 12))
+	{
+		return false;
+	}
+
+	const int32 Stacked = Rim[0];
+	Map->FindMutable(Stacked)->VoidStacks = 10;
+
+	constexpr int32 Slots = 2400;
+
+	FRandomStream VoidStream(31);
+	FRandomStream NobodyStream(31);
+	TArray<ECataclysmType> VoidSenders;
+
+	const TArray<int32> ByTheVoid = Scheduler->PickTargets(
+		*Map, Slots, VoidStream, TArray<int32>(),
+		[]() { return ECataclysmType::Void; }, &VoidSenders);
+	const TArray<int32> ByNobody = Scheduler->PickTargets(
+		*Map, Slots, NobodyStream, TArray<int32>(),
+		[]() { return ECataclysmType::None; });
+
+	const int32 VoidOn = ByTheVoid.FilterByPredicate(
+		[Stacked](int32 CityId) { return CityId == Stacked; }).Num();
+	const int32 NobodyOn = ByNobody.FilterByPredicate(
+		[Stacked](int32 CityId) { return CityId == Stacked; }).Num();
+
+	AddInfo(FString::Printf(TEXT("of %d slots the Void landed %d on the city at ten stacks, nobody %d"),
+							Slots, VoidOn, NobodyOn));
+
+	TestEqual(TEXT("every Void slot landed"), ByTheVoid.Num(), Slots);
+	TestTrue(TEXT("the Void lands on the stacked city more than half as often again"),
+			 VoidOn * 2 > NobodyOn * 3);
+	TestTrue(TEXT("and less than two and a half times as often"),
+			 VoidOn * 2 < NobodyOn * 5);
+
+	// ONE SENDER PER CITY LANDED ON, IN ORDER.
+	if (!TestEqual(TEXT("one sender came back for each city landed on"),
+				   VoidSenders.Num(), ByTheVoid.Num()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and every one is the Void"),
+			  VoidSenders.FilterByPredicate(
+				  [](ECataclysmType Sender) { return Sender == ECataclysmType::Void; }).Num(),
+			  Slots);
+
+	int32 Asked = 0;
+	TArray<ECataclysmType> Mixed;
+	FRandomStream MixedStream(31);
+	const TArray<int32> Alternating = Scheduler->PickTargets(
+		*Map, 9, MixedStream, TArray<int32>(),
+		[&Asked]()
+		{
+			return (Asked++ % 3 == 0) ? ECataclysmType::Death : ECataclysmType::Famine;
+		},
+		&Mixed);
+
+	TestEqual(TEXT("a mixed wave of nine was asked nine times"), Asked, 9);
+	if (TestEqual(TEXT("and returned nine senders"), Mixed.Num(), 9))
+	{
+		for (int32 Index = 0; Index < Mixed.Num(); ++Index)
+		{
+			TestEqual(FString::Printf(TEXT("slot %d carries the answer given for it"), Index),
+					  static_cast<int32>(Mixed[Index]),
+					  static_cast<int32>(Index % 3 == 0 ? ECataclysmType::Death
+														: ECataclysmType::Famine));
+		}
+	}
+
+	TestEqual(TEXT("CONTROL: and landed nine"), Alternating.Num(), 9);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
