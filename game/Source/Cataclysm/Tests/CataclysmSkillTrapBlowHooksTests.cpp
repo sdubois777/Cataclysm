@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -366,6 +367,32 @@ namespace CataclysmTrapBlowHookTest
 		Explodes.bExplodeVictimForKillingBlow = true;
 		Explodes.Percent = 50.0f;
 		return Explodes;
+	}
+
+	/**
+	 * "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" at 25 for 3 s, as layer 3's tests write it:
+	 * `slow_for_seconds` on `trap_triggered`, requiring `Type.Trap`, with no wait.
+	 */
+	FCataclysmPoolAction TrapBlowHookSlowRow()
+	{
+		FCataclysmPoolAction Slowing;
+		Slowing.Event = FName(TEXT("trap_triggered"));
+		Slowing.Pool = FName(UCataclysmAbilitySystemComponent::SlowForSecondsAction);
+		Slowing.RequiredTags.AddTag(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+		Slowing.TriggerKey = FName(TEXT("TrapBlowHookTest:trap_triggered:slow"));
+		Slowing.TriggerCooldownSeconds = 0.0f;
+		Slowing.bSlowForSeconds = true;
+		Slowing.Percent = 25.0f;
+		Slowing.StackSeconds = 3.0f;
+		return Slowing;
+	}
+
+	/** Whether `Who` carries `Tag` now. */
+	bool TrapBlowHookCarries(const AActor* Who, const FGameplayTag& Tag)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Who);
+		return Its && Tag.IsValid() && Its->HasMatchingGameplayTag(Tag);
 	}
 }
 
@@ -975,6 +1002,97 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookKillExplosionTest,
 	TestEqual(*FString::Printf(TEXT("a late shot's kill explodes too: its bystander 3 m away takes half the shot's figure: "
 									"%.2f against %.2f"), TrapBlowHookTakenFrom(LateInside), Shot * 0.5f),
 		TrapBlowHookTakenFrom(LateInside), Shot * 0.5f, Shot * 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// 35. A rearmed trap's late shot lays the slow its trigger left waiting (ruled 2026-10-22, G2)
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmTrapBlowHookRearmedSlowTest,
+	"Cataclysm.Traps.ARearmedProjectileTrapsLateShotSlowsTheEnemyThatSetItOffAsAUsedUpTrapsShotDoes")
+{
+	using namespace CataclysmTrapBlowHookTest;
+
+	// TWO PLAYERS 100 M APART, EACH HOLDING A DEMONIC WAND, WHOSE HEAVY MALEFICE IS A SHOT, THE HEAVY FLAG AND THE SLOW
+	// ROW: a Heavy trap 20 m north with the enemy that sets it off 2.5 m east of it, of 1,000 health, so the shot takes a
+	// tenth of it (the owner's rule of #917). THE CONTROL holds no rearm row, so its trap is used up as its cast starts and
+	// its shot lays the waiting slow by layer 3's path; THE OTHER holds the rearm chance at 100, so its trap stands while
+	// its shot flies and the shot lays the slow as a standing trap's blow.
+	FTrapBlowHookWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!TestTrue(TEXT("set-up: the Cripple tag exists"), Cripple.IsValid()))
+	{
+		return false;
+	}
+	constexpr float Frail = 1000.0f;
+	const FVector RearmedHome(100.0f * M, 0.0f, 0.0f);
+	FTrapBlowHookRig UsedUp(World, FVector::ZeroVector, TEXT("Wand"));
+	FTrapBlowHookRig Rearmed(World, RearmedHome, TEXT("Wand"));
+	if (!UsedUp.IsUsable(*this, ECataclysmSkillShape::Projectile)
+		|| !Rearmed.IsUsable(*this, ECataclysmSkillShape::Projectile))
+	{
+		return false;
+	}
+	UsedUp.Holds({TrapBlowHookHeavyFlag()});
+	Rearmed.Holds({TrapBlowHookHeavyFlag(), TrapBlowHookRow(ACataclysmMinion::TrapRearmChanceStat, 100.0f)});
+	UsedUp.System->SetPoolActions({TrapBlowHookSlowRow()});
+	Rearmed.System->SetPoolActions({TrapBlowHookSlowRow()});
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector Near(2.5f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* UsedUpSetter = TrapBlowHookEnemy(World, North + Near, Frail);
+	ACataclysmEnemyCharacter* RearmedSetter = TrapBlowHookEnemy(World, RearmedHome + North + Near, Frail);
+	if (!TestNotNull(TEXT("set-up: the control's enemy"), UsedUpSetter)
+		|| !TestNotNull(TEXT("set-up: the rearmed player's enemy"), RearmedSetter))
+	{
+		return false;
+	}
+	ACataclysmMinion* UsedUpTrap = TrapBlowHookPlaceTrap(*this, UsedUp, North);
+	ACataclysmMinion* RearmedTrap = TrapBlowHookPlaceTrap(*this, Rearmed, RearmedHome + North);
+	if (!UsedUpTrap || !RearmedTrap)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmMinion> UsedUpWatched(UsedUpTrap);
+	const TWeakObjectPtr<ACataclysmMinion> RearmedWatched(RearmedTrap);
+
+	// BOTH TRAPS TRIGGER; THEIR SHOTS ARE STILL IN FLIGHT, SO NO BLOW HAS QUALIFIED AND EACH SLOW WAITS.
+	TrapBlowHookPass(World, 1.25f);
+	TrapBlowHookStep(UsedUpTrap);
+	TrapBlowHookStep(RearmedTrap);
+	TestTrue(TEXT("set-up: the control's trap is used up as its cast starts"), TrapBlowHookGone(UsedUpWatched));
+	TestFalse(TEXT("set-up: the rearmed trap stands while its shot flies"), TrapBlowHookGone(RearmedWatched));
+	TestFalse(TEXT("set-up: nothing has slowed the control's enemy yet"), TrapBlowHookCarries(UsedUpSetter, Cripple));
+	TestFalse(TEXT("set-up: nor the rearmed player's"), TrapBlowHookCarries(RearmedSetter, Cripple));
+
+	// THE SHOTS LAND.
+	TSet<const ACataclysmProjectile*> Done;
+	TestTrue(TEXT("set-up: both shots landed"), TrapBlowHookLandEveryShot(World, Done) >= 2);
+	TestTrue(*FString::Printf(TEXT("set-up: the control's shot took a tenth or more of its enemy's 1,000: %.2f"),
+							  TrapBlowHookTakenFrom(UsedUpSetter, Frail)),
+		TrapBlowHookTakenFrom(UsedUpSetter, Frail) >= Frail / 10.0f);
+	TestTrue(TEXT("control: a used-up trap's late shot still slows by layer 3's path"),
+		TrapBlowHookCarries(UsedUpSetter, Cripple));
+	TestTrue(*FString::Printf(TEXT("set-up: the rearmed trap's shot took a tenth or more of its enemy's 1,000: %.2f"),
+							  TrapBlowHookTakenFrom(RearmedSetter, Frail)),
+		TrapBlowHookTakenFrom(RearmedSetter, Frail) >= Frail / 10.0f);
+	TestFalse(TEXT("set-up: and the trap still stood when it landed"), TrapBlowHookGone(RearmedWatched));
+	TestTrue(TEXT("the rearmed trap's late shot slows the enemy that set it off (G2)"),
+		TrapBlowHookCarries(RearmedSetter, Cripple));
+	TestEqual(TEXT("by the row's 25 per cent"), UCataclysmSkillEffects::StatedStrengthOn(RearmedSetter, Cripple), 25.0f,
+		0.01f);
+	TestEqual(TEXT("for the row's 3 seconds"), TrapBlowHookSecondsLeftOn(RearmedSetter, Cripple), 3.0f, 0.01f);
 	return true;
 }
 

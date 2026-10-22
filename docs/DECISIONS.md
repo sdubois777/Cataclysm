@@ -19,7 +19,8 @@ killing blow's figure before mitigation); `CataclysmStatPipeline.h` (`FCataclysm
 all under `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the
 kill site makes the trap kill's explosion); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (four names
 at the end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the item reads the new action);
-`game/Source/Cataclysm/Tests/CataclysmSkillTrapBlowHooksTests.cpp` (new, five tests in `Cataclysm.Traps.`);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapBlowHooksTests.cpp` (new, five tests in `Cataclysm.Traps.`, and a sixth
+added by the second commit with `ApplyHit`'s one line for a standing trap's waiting slow, G2);
 `CataclysmStatExemptionTests.cpp` (four probes); `tools/generate_datatables.py` (the four stats and their refusal, the
 action and its checks); `tools/tests/test_generate_datatables.py` (one class, at the end);
 `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one constant, one helper, one test, at the end).
@@ -78,15 +79,17 @@ What a player would notice, once the rows are worn:
      **A rack's axe landing after its rack's use has ended** (Butcher's Bill, the one rack a trap may cast; "THE AXES
      ALREADY THROWN FLY ON", `UCataclysmProjectileSkill::EndAbility`) names a skill that has been taken away, so its kill
      carries none either. By reading; not tested. A shot's kill does carry them: a projectile skill's use stays active
-     until its last shot has finished (`OnProjectileFinished`), so the skill is there when its shot kills.
-  2. **A REARMED TRAP'S LATE SHOT DOES NOT LAY LAYER 3'S WAITING SLOW.** A blow priced as a STANDING trap's keeps its
-     figure for the next `trap_triggered` (`NoteSkillTrapBlowOn`) and asks no waiting slow; only a used-up trap's blow
-     asks `LayALateSkillTrapSlow`. Before this layer a trap's late blow always found it used up. With the rearm row, a
-     Projectile trap's shot that lands while the trap stands again does not slow; the next trigger's slow is judged by
-     its own blows. By reading; not tested. One line in `ApplyHit` would ask it for a standing trap too.
+     until its last shot has finished (`OnProjectileFinished`), so the skill is there when its shot kills. **LEFT IN THIS
+     LAYER (G1 (a)), on the play-check list, and tracked as [#2465](https://github.com/sdubois777/Cataclysm/issues/2465)**,
+     a fault of kill events beyond traps, scheduled as its own layer after traps.
+  2. **FIXED IN THIS LAYER (G2 (a), the second commit): A REARMED TRAP'S LATE SHOT DID NOT LAY LAYER 3'S WAITING SLOW.** A
+     blow priced as a STANDING trap's kept its figure for the next `trap_triggered` (`NoteSkillTrapBlowOn`) and asked no
+     waiting slow; only a used-up trap's blow asked `LayALateSkillTrapSlow`. It now asks too, with the trap's identity
+     (`CataclysmSkillEffects.cpp` 1175), and test 35 shows it.
   3. **A REARMED TRAP KNOWS ONE TRIGGERING ENEMY, ITS LATEST.** A shot of an earlier trigger landing after the trap has
      triggered again is judged against the newer trigger's enemy, for the increase, the share and the damage over time.
      A trap rearms no sooner than its arming time, so only a slow shot can be caught so. By reading; not tested.
+     **ACCEPTED AS FOUND (G3 (a)), on the play-check list.**
 - **NOT IN PLAY UNTIL A ROW IS WORN.** **Nothing here was compiled and no Unreal test was run by the session that wrote
   it.** A second session wrote the code, the tests and this entry under the enchantment session's brief 62 and the
   rulings below. NOT COMPILED AND NOT RUN.
@@ -94,8 +97,44 @@ What a player would notice, once the rows are worn:
 ### FOR THE OWNER'S PLAY-CHECK LIST
 
 - 'Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP' takes the full share from a boss
+- an enemy killed by a buried weapon's leap does not explode, and no kill row requiring a tag answers a leap's kill
+- a rearmed trap judges a shot of an earlier trigger against its latest triggering enemy, for the increase on the first enemy, the share of its maximum HP and the damage over time
+- a slow a rearmed trap's earlier trigger left waiting can be laid by its next trigger's blow on that same enemy
 
 ### WHAT THE OWNER SAID, AND WHO RULED
+
+**THE COORDINATING SESSION'S RULINGS ON THIS LAYER'S FINDINGS, 2026-10-22, accepting dce3011c3**, verbatim:
+
+> G1 (a): left in this layer, with the play-check line as you wrote it. It is a fault in kill events beyond traps (a leap's
+> kill carries no skill tags, so no tag-requiring kill row answers it, a player's own Harrower axe included), so open ONE
+> issue for it now, naming the files and the kill rows it silences; I schedule it as its own small layer after traps.
+> G2 (a): fix it in this layer, one more commit by the second session: a standing (rearmed) trap's blow also asks
+> LayALateSkillTrapSlow with the trap's identity; one test with a control, and one guard proof.
+> G3 (a): accepted as found, with the play-check line, because it needs a shot still in flight after the 1 s re-arm and a
+> new trigger.
+> G4 (a): accepted; the entry records it as a judgement.
+
+And: the play-check line for G1, as the coordinating session put it, "an enemy killed by a buried weapon's leap does not
+explode, and no kill row requiring a tag answers a leap's kill"; the issue is open as
+[#2465](https://github.com/sdubois777/Cataclysm/issues/2465). G4 is the judgement that the trap's damage over time is not
+raised by the player's own damage over time stats, below.
+
+**G2, HOW IT IS BUILT AND WHY NO BLOW LAYS A SLOW TWICE FOR ONE TRIGGER.** `ApplyHit`, for a blow priced as a standing
+trap's, now asks `LayALateSkillTrapSlow(NamedCastBy, ...)` beside `NoteSkillTrapBlowOn` (`CataclysmSkillEffects.cpp`
+1175), `NamedCastBy` being the identity `SkillTrapCasting` found the standing trap by (the delivery's `CastBy`, else its
+skill's `FreeRepeatCastBy`). (1) **A laid slow stops waiting**: `LayALateSkillTrapSlow` removes the record it lays, and a
+record is matched by the trap's identity AND the enemy. (2) **A blow judged at `trap_triggered` never leaves a wait
+behind**: an instant blow of the cast lands inside the cast, before `trap_triggered` is raised, when no wait exists for
+that trigger; the slow action then judges the largest such blow, and leaves a wait ONLY when none qualified. So for one
+trigger the slow is laid at most once. A trap that never rearms is destroyed straight after `trap_triggered`, so no
+standing trap's blow ever meets its wait, and every merged test is unchanged. **WHEN THE TRAP HAS REARMED AND TRIGGERED
+AGAIN**: trigger 1's wait (its enemy E, at most 5 s) still stands, matched by the trap's identity and E. Any blow of that
+trap landing on E and taking a tenth lays it and ends it: trigger 1's own late shot, OR A BLOW OF TRIGGER 2'S CAST that
+strikes E. If E also set off trigger 2 and that same blow qualifies there, the slow action lays the slow again at
+trigger 2's `trap_triggered`, at the same strength and for the same seconds at the same moment, which as a Cripple only
+refreshes a time already the same (#1256's rule): the enemy carries one slow, unchanged, though two calls were made. A
+trigger-1 shot landing afterwards finds no wait. On the play-check list, the third new line above. By reading; test 35
+covers only the first case.
 
 **THE OWNER, ON 2026-10-21, FOR THE TRAP'S SLOW**, answer verbatim: "Follow the tenth rule". The coordinating session
 rules below that the owner holds it for every lasting effect a trap lays on an enemy (F9).
@@ -223,7 +262,8 @@ Each found where it is defined, not where it is used.
   No pin: the tests write 100 and nought. The option not taken: a console pin for the roll.
 - **"FIRST BLOW" IS THE FIRST BLOW PRICED ON THAT ENEMY, LANDED OR NOT**: the share is added when the blow is priced, before
   it is known whether it is evaded. The option not taken: the first that lands, which would price a blow twice.
-- **THE DAMAGE OVER TIME IS NOT RAISED BY THE PLAYER'S OWN DAMAGE OVER TIME STATS** (`bScalesWithInstigator` false), so it
+- **THE DAMAGE OVER TIME IS NOT RAISED BY THE PLAYER'S OWN DAMAGE OVER TIME STATS** (ACCEPTED, G4 (a), 2026-10-22;
+  `bScalesWithInstigator` false), so it
   deals the row's share of what the blow took over the sentence's 3 seconds, one tick a second; the target's own duration
   rows and resistances meet it as every tick. The blow it is a share of was priced with the player's numbers already.
   The option not taken: scale it as an ailment the player applies, which would let "Damage over Time Duration" lengthen a
@@ -354,7 +394,7 @@ the item would build it from its row. NO KEY IS PRESSED. The clock is moved by h
 stepped by hand. Every test pins `Cataclysm.CritRoll` at 100 after the world is made. Helper types are
 `FTrapBlowHookWorld`, `FTrapBlowHookStat`, `FTrapBlowHookRig` and `FTrapBlowHookEventCount`, in the namespace
 `CataclysmTrapBlowHookTest`; no other file of the module declares them (searched). **Assertions are counted for a passing
-run, 109 in all.**
+run, 126 in all**: 109 in the five of the first commit and 17 in test 35, added by the second (G2).
 
 30. `TheRearmRowAtAHundredKeepsATriggeredTrapStandingToArmAgainAndTriggerTwiceAndAtNoughtItIsUsedUp`, 20. Two Whip players,
     the control with no rearm row, the other at 100. In order: a world; set-up, the pin; set-up, two enemies (two);
@@ -398,6 +438,15 @@ run, 109 in all.**
     brittle bystander; whose death explodes nothing, the one 3 m beyond it untouched; set-up, the own blow killed; no
     explosion followed; set-up, the late shot's trap used up; set-up, both shots landed; set-up, the shot's figure kills 50;
     set-up, the late shot killed; its bystander 3 m away takes half the shot's figure, within 0.1%.
+35. `ARearmedProjectileTrapsLateShotSlowsTheEnemyThatSetItOffAsAUsedUpTrapsShotDoes`, 17, added by the second commit (G2).
+    Two Wand players, each with the Heavy flag and the slow row at 25 for 3 s as layer 3's tests write it, a Heavy trap
+    with its enemy of 1,000 health 2.5 m east of it; the control holds no rearm row, the other the rearm chance at 100. In
+    order: a world; set-up, the pin; set-up, the Cripple tag; set-up, two enemies (two); set-up, the control's trap used
+    up; set-up, the rearmed trap stands while its shot flies; set-up, nothing has slowed the control's enemy yet; set-up,
+    nor the rearmed player's; set-up, both shots landed; set-up, the control's shot took a tenth; control, a used-up
+    trap's late shot still slows by layer 3's path; set-up, the rearmed trap's shot took a tenth; set-up, the trap still
+    stood when it landed; the rearmed trap's late shot slows the enemy that set it off; by 25, within 0.01; for 3 s,
+    within 0.01.
 
 **Every earlier trap test is unchanged**, and expected to pass unchanged: layer 1's ten, layer 2's eight, layer 3's eight
 and layer 3b's four. None holds a row of this layer, and with none worn every reader answers nought.
@@ -420,7 +469,8 @@ a Heavy or basic trap whose cast goes at a nearer enemy than the one that set it
 damage over time ticking, its kill, its `dot_applied`, and its refresh's figures; the explosion of a zone's sweep's kill
 or of the damage over time's kill (refused by the kill site, by reading); a leap's and a rack's late kill (FOUND, item
 1); the explosion against a wearer of the overkill row too; the explosion's figure past a critical strike (the roll is
-pinned); anything drawn; anything in play.
+pinned); a waiting slow of a rearmed trap's earlier trigger laid by a later trigger's blow, and the two calls that can
+then make (G2, by reading); anything drawn; anything in play.
 
 ### GUARD PROOFS PROPOSED
 
@@ -432,16 +482,23 @@ after TR-XVI and TR-XVIII; `CataclysmAbilitySystemComponent.cpp` 3168/3168, 1040
 TR-XVI passes `nullptr` where a `const AActor*` stood, and `Player` is still read on the next line; TR-XVII assigns
 `nullptr` to a `TWeakObjectPtr<AActor>`, and `AsTrap` is still read on the next line; TR-XVIII passes a float literal
 where a float stood, and `DealtToHealth` is still read below; TR-XIX names another `static constexpr float` of the same
-class, which the file already names. The prefix is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's
-eight, layer 3's eight, layer 3b's four and these five, thirty-five.
+class, which the file already names. **TR-XX, added by the second commit (G2)**, counted the same way:
+`CataclysmSkillEffects.cpp` 1639/1639, 457/457, 15/15 before and 1640/1640 after, the break adding one pair; it binds an
+empty weak pointer to a `const TWeakObjectPtr<AActor>&`, and `NamedCastBy` is still read by the used-up trap's lookup.
+The prefix is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight, layer 3b's
+four and these six, thirty-six.
 
 **The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing and
 `trap_triggered` at each trigger, twice for test 30's rearming trap; for a blow of a cast on an enemy `hit_dealt` and
 `first_hit_dealt`, `deployable_hit` with the trap's tags (living or used up, test 32's two later blows included), and
 `dot_applied` for the burns of Searing Lash and Malefice and, in test 33, for the generic damage over time; in test 34
 `kill` for each death a player's blow or explosion causes (the doomed, the brittle, the own blow's). On a creature,
-nothing is worn. **WHAT HANGS ON AN EVENT:** test 34's explosion row on `kill` (four players). Nothing else: the four
-stats are read where a trap triggers and where a blow is priced, on no event. Read from the code, not measured.
+nothing is worn. **WHAT HANGS ON AN EVENT:** test 34's explosion row on `kill` (four players); test 35's slow row on
+`trap_triggered` (both players), which on each trigger finds no qualifying blow, the shot in flight, and leaves a wait.
+Nothing else: the four stats are read where a trap triggers and where a blow is priced, on no event. Test 35's actors
+raise what test 31's Wand players do: `trap_placed`, `trap_triggered`, then for each shot `hit_dealt`,
+`first_hit_dealt`, `deployable_hit` and Malefice's burn's `dot_applied`; the slow raises nothing. Read from the code, not
+measured.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
@@ -449,12 +506,19 @@ stats are read where a trap triggers and where a blow is priced, on no event. Re
 | TR-XVII, a used-up trap forgets the enemy that set it off (F4, F6) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Kept.TriggeringEnemy = AsTrap->SkillTrapTriggeringEnemy;` | `Kept.TriggeringEnemy = nullptr;` | `TheFirstEnemyRowRaisesEveryBlowOfATriggerOnTheEnemyThatSetItOffAndNoOtherEnemyALateShotIncluded` | `TheHealthShareRowAddsItsShareOfTheTriggeringEnemysMaximumHealthToItsFirstBlowOncePerTrigger` |
 | TR-XVIII, the damage over time asks no rule of a tenth (F9) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))` | `if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, 1.0e9f))` | `TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth` | none |
 | TR-XIX, the explosion reaches the overkill's 5 m (F11, the sentence's 4 m) | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `UCataclysmSkillEffects::KillingBlowExplosionRadiusCm);` | `UCataclysmSkillEffects::OverkillExplosionRadiusCm);` | `AnEnemyKilledByATrapsBlowExplodesForItsShareWithinFourMetresAndNoKillOfAnotherKindExplodes` | none |
+| TR-XX, a standing trap's blow asks no waiting slow (G2) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `MachinesPlayer->LayALateSkillTrapSlow(NamedCastBy, Target, Result->DealtToHealth);` | `MachinesPlayer->LayALateSkillTrapSlow(TWeakObjectPtr<AActor>(), Target, Result->DealtToHealth);` | `ARearmedProjectileTrapsLateShotSlowsTheEnemyThatSetItOffAsAUsedUpTrapsShotDoes` | none |
 
-Failed assertions, by reading:
+Failed assertions, by reading, RECOUNTED ON THE SECOND COMMIT after test 35 was added:
 
-- **TR-XVI, 1 in 1 test.** Test 30: the rearming trap is used up at its first trigger, so "and it is not used up: it
-  stands" fails, and the test returns there, as written, so no later line is reached. The control's lines and "at 100
-  the trap triggered" pass. No other test holds the rearm row.
+- **TR-XVI, 3 in 2 tests** (1 in 1 on the first commit). Test 30: the rearming trap is used up at its first trigger, so
+  "and it is not used up: it stands" fails, and the test returns there, as written, so no later line is reached. The
+  control's lines and "at 100 the trap triggered" pass. Test 35: "set-up: the rearmed trap stands while its shot flies"
+  and "set-up: and the trap still stood when it landed"; its slow lines pass, the used-up trap's path laying the slow
+  instead. No other test holds the rearm row.
+- **TR-XX, 3 in 1 test.** Test 35: "the rearmed trap's late shot slows the enemy that set it off (G2)", "by the row's 25
+  per cent" (-1, no slow stated) and "for the row's 3 seconds" (nought). The control's slow is laid by the used-up
+  trap's path, which the break leaves. No other test holds a waiting slow for a standing trap: test 30 holds no slow
+  row, and layer 3's slow tests' traps are used up.
 - **TR-XVII, 2 in 2 tests.** Test 31: "a late shot on the enemy that set the trap off takes the increase too" (the
   control's figure against twice it); the lash's lines pass, the trap standing. Test 32: "a late shot, the trigger's
   first blow on its enemy, takes the share too"; its later blow passes, since neither later blow then takes a share.
@@ -467,10 +531,14 @@ Failed assertions, by reading:
   the first dead, outside both.
 
 **AN EARLIER PROOF THIS LAYER'S TESTS MEET.** Layer 3b's TR-XIII (`Theirs->NoteSkillTrapSpent(nullptr, TypeTags);`, its
-anchor still counted once) keeps no used-up trap, so with this layer's tests it fails three lines more, in three tests:
+anchor still counted once) keeps no used-up trap, so with this layer's tests it fails four lines more, in four tests:
 test 30's "control: and kept among its player's used-up traps", test 31's late shot and test 32's late shot (no record:
-priced as the player's, with neither the increase nor the share). Test 32's later blows are then both the player's and
-equal; test 34's late kill still explodes. By reading.
+priced as the player's, with neither the increase nor the share), and test 35's "control: a used-up trap's late shot
+still slows by layer 3's path" (counted after the second commit). Test 32's later blows are then both the player's and
+equal; test 34's late kill still explodes; test 35's rearmed trap stands and is not in the record either way. **Layer 3's
+TR-XI** (`if (UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))`, its anchor still counted once, broken
+to `(Slowed, 1.0e9f)`) lays both of test 35's slows at the trigger, so it fails two lines more there: "set-up: nothing
+has slowed the control's enemy yet" and "set-up: nor the rearmed player's". By reading.
 
 **Tests of another group expected to fail, to check in the window:** none, by reading. The four probes read the four
 readers, which no break touches.
