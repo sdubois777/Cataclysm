@@ -467,6 +467,10 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # simultaneously" fires every gadget, and the generator requires 100 and reads it nowhere. Ruled by the
     # coordinating session on 2026-10-19.
     "gadgets_cast_now": {"trigger": 100.0},
+    # "ALL" IS 0 ON `trigger_traps_nearby` AT THE DEATH: "When you die, all your active traps and gadgets immediately
+    # trigger simultaneously", its trap half, sets off every standing trap wherever it stands, and the generator
+    # requires a radius of 0 on `player_death`. Ruled by the coordinating session on 2026-10-22 (traps layer 5, H8).
+    "trigger_traps_nearby": {"all": 0.0},
     # "ECHO" IS 100 ON `repeat_skill`, whose value is a chance: "Your spells
     # echo +1 time" repeats every time. Mechanism B2, ruled 2026-10-05: an
     # echo is read as a second free activation. The two rows that say "twice"
@@ -1031,8 +1035,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-21, from 683 over 548: nine rows on eight enchantments.
 #: AND 697 OVER 561 SINCE THE FIVE ROWS OF TRAPS LAYER 4,
 #: issue #1833, 2026-10-22, from 692 over 556: five rows on five enchantments.
-AUTHORED_ROWS = 697
-AUTHORED_ENCHANTMENTS = 561
+#: AND 703 OVER 566 SINCE THE SIX ROWS OF TRAPS LAYER 5,
+#: issue #1833, 2026-10-22, from 697 over 561: six rows, five on new enchantments and a second row on one.
+AUTHORED_ROWS = 703
+AUTHORED_ENCHANTMENTS = 566
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

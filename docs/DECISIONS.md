@@ -540,6 +540,24 @@ these tests. By reading.
 **A test and no proof:** arming as if the arming time had passed and raising no `trap_placed`; a gadget killed and a trap
 used up told apart (H7); P220's nearest; the death's every trap and the gadget half unchanged (H8); T11.
 
+### THE ROWS, AUTHORED BY THE ENCHANTMENT SESSION
+
+**Six effect rows on six enchantments**, five of them the enchantments' first rows and one the second row of "When you
+die, all your active traps and gadgets immediately trigger simultaneously" (its trap half, beside the gadget half's
+`gadgets_cast_now`), on the coordinating session's grant of the workbook for them on 2026-10-22, written into
+`docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`, cell for cell the
+rows this layer's second session dry-ran through the whole generator (the table above). The generator accepted all six,
+and the diff of `EnchantmentEffects.csv` is those six lines added and none removed. **703 rows over 566 enchantments**,
+from 697 over 561, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and
+in `docs/README.md`; and the word `"trigger_traps_nearby": {"all": 0.0}` in `STATED_BY_WORD`, which lands with the row.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornTrapLayerFiveRowsEachReachTheActionTheirSentenceNames`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Seven real players: a control wearing a benefit with no effect, and one
+wearing each of the six sentences, each with a drawback with no effect. For each it counts the worn actions that arm
+(`bArmTrapsNearby`) or set off (`bSetOffTrapsNearby`) the wearer's other traps on the row's event, nearest only or not
+(`bNearestTrapOnly`); the control holds none (one line). Six assertions on the cases, so on assets built before the rows
+it fails six times, and only there.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
