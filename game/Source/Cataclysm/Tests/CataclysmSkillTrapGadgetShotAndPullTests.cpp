@@ -894,7 +894,7 @@ CATACLYSM_TEST(FCataclysmForcedTrapPullsAndCountsTest,
 
 	// THREE PLAYERS 100 M APART HOLDING DEMONIC WHIPS, EACH WITH THE HEAVY TRAP FLAG, THE ULTIMATE GADGET FLAG AND THE SHOT
 	// ROW AT 300, ANY DISTANCE, EVERY THIRD TRAP. Each: traps 20 m, 28 m and 36 m north, each enemy 2.8 m east of its own
-	// trap, and a skill gadget 44 m north, which only the third trap's enemy stands within 14 m of. Only the first trap is
+	// trap, and a skill gadget 64 m north, which no enemy stands within 14 m of. Only the first trap is
 	// armed; the other two are set off by layer 5's "Traps trigger simultaneously" at 10 m, the second by the first and
 	// the third by the second. The lone player holds no chain row; the counting player the chain row; the pulling player
 	// the chain row and the pull at 5 m.
@@ -929,7 +929,9 @@ CATACLYSM_TEST(FCataclysmForcedTrapPullsAndCountsTest,
 
 	const FVector TrapsAt[] = {FVector(0.0f, 20.0f * M, 0.0f), FVector(0.0f, 28.0f * M, 0.0f),
 							   FVector(0.0f, 36.0f * M, 0.0f)};
-	const FVector GadgetAt(0.0f, 44.0f * M, 0.0f);
+	// 64 M NORTH, 28 M FROM THE THIRD ENEMY (traps layer 6b, #2471): no early shot's Gathering may haul the third enemy out
+	// of its trap's 3 m, so a skipped count shows as three shots in the counting line, not as one.
+	const FVector GadgetAt(0.0f, 64.0f * M, 0.0f);
 	const FVector East(2.8f * M, 0.0f, 0.0f);
 	const FGadgetShotPullRig* Rigs[] = {&Lone, &Counting, &Pulling};
 	ACataclysmMinion* Firsts[3] = {};
@@ -1014,6 +1016,122 @@ CATACLYSM_TEST(FCataclysmForcedTrapPullsAndCountsTest,
 			GadgetShotPullFloorDistance(FirstEnemies[2], Homes[2] + TrapsAt[0]), ACataclysmMinion::SkillTrapPullsToCm, 1.0f);
 		TestEqual(TEXT("its second trap, set off by the row, pulled its own enemy to 1 m too: forced traps pull (J8)"),
 			GadgetShotPullFloorDistance(SecondEnemies[2], Homes[2] + TrapsAt[1]), ACataclysmMinion::SkillTrapPullsToCm, 1.0f);
+	}
+	return true;
+}
+
+// ==========================================================================
+// 52. A shot earned by a trap that sets off its neighbours is not lost inside their casts (traps layer 6b, #2471)
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmGadgetShotSurvivesTheChainTest,
+	"Cataclysm.Traps.AGadgetsShotEarnedByATrapThatSetsOffItsNeighboursIsNotLostInsideTheirCasts")
+{
+	using namespace CataclysmGadgetShotAndPullTest;
+
+	// TWO PLAYERS 100 M APART HOLDING DEMONIC WHIPS, EACH WITH THE HEAVY TRAP FLAG, THE ULTIMATE GADGET FLAG AND THE SHOT
+	// ROW AT 100 WITHIN 10 M: a first trap 20 m north, two neighbours 6 m north and 6 m south of it, each enemy 2.5 m
+	// east of its own trap, and a skill gadget 5 m west of the first trap, within 10 m of all three. The control holds no
+	// chain row; the other also layer 5's "Traps trigger simultaneously" at 10 m and no pull row, so the first trap sets off
+	// both neighbours. EVERY ENEMY RESISTS CROWD CONTROL WHOLLY, so no shot's Gathering hauls a neighbour's enemy out of
+	// its trap's 3 m before that trap goes off: a shot then fires for each trigger, and only the lost one is missing.
+	FGadgetShotPullWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FVector Homes[] = {FVector::ZeroVector, FVector(100.0f * M, 0.0f, 0.0f)};
+	FGadgetShotPullRig Plain(World, Homes[0], TEXT("Whip"));
+	FGadgetShotPullRig Chaining(World, Homes[1], TEXT("Whip"));
+	if (!Plain.IsUsable(*this) || !Chaining.IsUsable(*this))
+	{
+		return false;
+	}
+	for (const FGadgetShotPullRig* Each : {&Plain, &Chaining})
+	{
+		Each->Holds({GadgetShotPullHeavyTrapFlag(), GadgetShotPullGadgetFlag(TEXT("Slot.Ultimate"))});
+	}
+	Plain.System->SetPoolActions({GadgetShotPullShotRow(100.0f, 10.0f, 0)});
+	Chaining.System->SetPoolActions({GadgetShotPullShotRow(100.0f, 10.0f, 0), GadgetShotPullChainRow()});
+
+	const FVector TrapsAt[] = {FVector(0.0f, 20.0f * M, 0.0f), FVector(0.0f, 26.0f * M, 0.0f),
+							   FVector(0.0f, 14.0f * M, 0.0f)};
+	const FVector GadgetAt = TrapsAt[0] + FVector(-5.0f * M, 0.0f, 0.0f);
+	const FVector East(2.5f * M, 0.0f, 0.0f);
+	const FGadgetShotPullRig* Rigs[] = {&Plain, &Chaining};
+	ACataclysmMinion* Traps[2][3] = {};
+	ACataclysmMinion* Gadgets[2] = {};
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		Traps[Index][0] = GadgetShotPullPlaceTrap(*this, *Rigs[Index], Homes[Index] + TrapsAt[0]);
+		if (!Traps[Index][0])
+		{
+			return false;
+		}
+	}
+	// ONLY THE FIRST TRAPS ARE STEPPED, SO ONLY THEY ARM; the neighbours are placed after and set off unarmed (H4).
+	GadgetShotPullPass(World, 1.25f);
+	GadgetShotPullStep(Traps[0][0]);
+	GadgetShotPullStep(Traps[1][0]);
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		Traps[Index][1] = GadgetShotPullPlaceTrap(*this, *Rigs[Index], Homes[Index] + TrapsAt[1]);
+		Traps[Index][2] = GadgetShotPullPlaceTrap(*this, *Rigs[Index], Homes[Index] + TrapsAt[2]);
+		Gadgets[Index] =
+			GadgetShotPullPlaceGadget(*this, *Rigs[Index], ECataclysmAbilitySlot::Ultimate, Homes[Index] + GadgetAt);
+		if (!Traps[Index][1] || !Traps[Index][2] || !Gadgets[Index])
+		{
+			return false;
+		}
+		for (int32 Which = 0; Which < 3; ++Which)
+		{
+			ACataclysmEnemyCharacter* Made = GadgetShotPullEnemy(World, Homes[Index] + TrapsAt[Which] + East);
+			if (!TestNotNull(*FString::Printf(TEXT("set-up: player %d's enemy of trap %d"), Index + 1, Which + 1), Made))
+			{
+				return false;
+			}
+			Made->GetAbilitySystemComponent()->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
+		}
+	}
+	if (!TestTrue(TEXT("set-up: each player's first trap is armed"),
+			Traps[0][0]->bSkillTrapArmed && Traps[1][0]->bSkillTrapArmed))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmMinion> PlainNorth(Traps[0][1]);
+	const TWeakObjectPtr<ACataclysmMinion> PlainSouth(Traps[0][2]);
+	const TWeakObjectPtr<ACataclysmMinion> RowNorth(Traps[1][1]);
+	const TWeakObjectPtr<ACataclysmMinion> RowSouth(Traps[1][2]);
+
+	// THE CONTROL, READ FIRST: WITH NO CHAIN ROW ONE TRAP GOES OFF AND ONE SHOT FIRES; ITS NEIGHBOURS STAND.
+	{
+		FGadgetShotPullEventCount Triggered(Plain.System, TEXT("trap_triggered"));
+		GadgetShotPullStep(Traps[0][0]);
+		TestEqual(TEXT("control: one trap triggered"), Triggered.Count, 1);
+		TestEqual(TEXT("control: its gadget fired one shot"), Gadgets[0]->SkillGadgetTrapShotsMade, 1);
+		TestFalse(TEXT("control: the north neighbour still stands"), GadgetShotPullGone(PlainNorth));
+		TestFalse(TEXT("control: and the south one"), GadgetShotPullGone(PlainSouth));
+	}
+
+	// THE ROW: THE FIRST TRAP SETS OFF BOTH NEIGHBOURS, AND EACH OF THE THREE TRIGGERS FIRES A SHOT. The first trap's shot
+	// is recorded before the neighbours go off and waits through their casts, whose blows' events end in the drain while
+	// the ability list is locked (#2471).
+	{
+		FGadgetShotPullEventCount Triggered(Chaining.System, TEXT("trap_triggered"));
+		GadgetShotPullStep(Traps[1][0]);
+		TestEqual(TEXT("three traps triggered, two of them set off by the row"), Triggered.Count, 3);
+		TestTrue(TEXT("the north neighbour went off and was used up"), GadgetShotPullGone(RowNorth));
+		TestTrue(TEXT("and the south one"), GadgetShotPullGone(RowSouth));
+		TestEqual(TEXT("the gadget fired three shots, one for each trigger: the first trap's was not lost inside its "
+					   "neighbours' casts (#2471)"), Gadgets[1]->SkillGadgetTrapShotsMade, 3);
+		TestEqual(TEXT("each by its clock's own path"), Gadgets[1]->SkillGadgetCastsMade, 3);
 	}
 	return true;
 }
