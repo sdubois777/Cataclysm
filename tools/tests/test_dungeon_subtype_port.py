@@ -2,9 +2,9 @@
 
 WHY THIS EXISTS AT ALL. `UCataclysmSurgeScheduler::RollSubType` in the
 `CataclysmEmpire` module rolls a sub-type for every dungeon a surge puts on the
-map -- and since 2026-10-21 a Quest dungeon sent by one of five Cataclysms then
-takes that Cataclysm's one sub-type instead, which `TestEachCataclysmsQuestSubType`
-below compares with the model -- and the weights it rolls from are a copy of `config.SUBTYPE_SPAWN_WEIGHTS`
+map -- and since 2026-10-21 a Quest dungeon sent by one of five Cataclysms,
+six since 2026-10-22, then takes that Cataclysm's one sub-type instead, which
+`TestEachCataclysmsQuestSubType` below compares with the model -- and the weights it rolls from are a copy of `config.SUBTYPE_SPAWN_WEIGHTS`
 in `sim/cataclysm_sim/config.py`. Two copies of a number are two numbers.
 `test_day_clock_port.py`, `test_surge_port.py` and `test_empire_map_port.py`
 beside this guard the same arrangement for the other constants in that module,
@@ -104,10 +104,24 @@ def weight(text: str, cpp_name: str) -> float:
 
 
 #: The Cataclysms whose Quest dungeons the game gives one fixed sub-type, since
-#: 2026-10-21. The model names one for all eight; the other three -- War,
-#: Celestial and the Void -- are held, with why, in
-#: `test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
-FIXED_IN_THE_GAME = ("Death", "Demonic", "Pestilence", "Famine", "Chaos")
+#: 2026-10-21, and the Void since 2026-10-22. The model names one for all eight;
+#: the other two -- War and Celestial -- are held, with why, in
+#: `test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
+FIXED_IN_THE_GAME = ("Death", "Demonic", "Pestilence", "Famine", "Chaos", "Void")
+
+#: The sub-types the game has and never rolls, spelled the same on both sides.
+#: THE VOID'S QUEST DUNGEON, THE HOLLOW, since 2026-10-22: a Quest dungeon the
+#: Void sends is one and nothing else is, so it is in neither side's spawn
+#: weights -- not in the model's `SUBTYPE_SPAWN_WEIGHTS` and not in `NAMES`
+#: above -- and it is numbered past `Sacrificial`, where `RollSubType` stops.
+NEVER_ROLLED = {"Hollow"}
+
+
+def game_name_for(model_name: str | None) -> str | None:
+    """The game's spelling of one of the model's sub-type names, rolled or not."""
+    if model_name in NEVER_ROLLED:
+        return model_name
+    return NAMES.get(model_name)
 
 
 def the_games_sub_type_names(kind_text: str) -> list[str]:
@@ -269,6 +283,9 @@ class TestTheEnumTheRollWalks:
         arrangement this checks. It is what a dungeon entered outside the empire
         carries, and what a Siege refused by the one-per-city cap becomes, so
         deleting the value would break both.
+
+        `NEVER_ROLLED` IS IN THE ENUM AND NOT IN THE DISTRIBUTION EITHER, since
+        2026-10-22: the Hollow, which only the Void's Quest dungeons are.
         """
         block = re.search(
             r"enum\s+class\s+ECataclysmDungeonSubType\s*:\s*uint8\s*\{(.*?)\}",
@@ -279,9 +296,10 @@ class TestTheEnumTheRollWalks:
 
         found = dict(re.findall(r"(\w+)\s*=\s*(\d+)", block.group(1)))
 
-        assert set(found) == set(NAMES.values()) | {"None"}, (
+        assert set(found) == set(NAMES.values()) | {"None"} | NEVER_ROLLED, (
             f"the enum names {sorted(found)}, the port covers "
-            f"{sorted(NAMES.values())} and expects a None beside them")
+            f"{sorted(NAMES.values())} and expects a None and "
+            f"{sorted(NEVER_ROLLED)} beside them")
 
     def test_the_roll_starts_past_no_sub_type(self, surge_source):
         """`RollSubType` must not begin its walk at zero.
@@ -305,7 +323,11 @@ class TestTheEnumTheRollWalks:
     def test_sacrificial_is_still_the_last_one(self, kind_source):
         """`RollSubType` stops at `Sacrificial` by name. A sub-type added after
         it would be walked; one added before it and numbered higher would not,
-        and would silently never spawn."""
+        and would silently never spawn.
+
+        THE LAST OF THE ROLLED ONES, since 2026-10-22. A sub-type in
+        `NEVER_ROLLED` is numbered past it on purpose, which is what keeps it off
+        the roll's line, and this checks that too."""
         block = re.search(
             r"enum\s+class\s+ECataclysmDungeonSubType\s*:\s*uint8\s*\{(.*?)\}",
             kind_source, re.DOTALL)
@@ -314,10 +336,18 @@ class TestTheEnumTheRollWalks:
                  for name, value in re.findall(r"(\w+)\s*=\s*(\d+)",
                                                block.group(1))}
 
-        assert found["Sacrificial"] == max(found.values()), (
-            "Sacrificial is no longer the highest-numbered sub-type, so "
-            "UCataclysmSurgeScheduler::RollSubType stops before the end of the "
-            "enum and whatever is above it can never be rolled")
+        rolled = {name: value for name, value in found.items()
+                  if name not in NEVER_ROLLED}
+        assert found["Sacrificial"] == max(rolled.values()), (
+            "Sacrificial is no longer the highest-numbered sub-type that is "
+            "rolled, so UCataclysmSurgeScheduler::RollSubType stops before the "
+            "end of the rolled ones and whatever is above it can never be rolled")
+
+        below = sorted(name for name in NEVER_ROLLED
+                       if found.get(name, -1) <= found["Sacrificial"])
+        assert below == [], (
+            f"{below} is never rolled and is numbered at or below Sacrificial, "
+            "so UCataclysmSurgeScheduler::RollSubType walks it and asks its weight")
 
 
 class TestWhatACowLevelCosts:
@@ -517,21 +547,24 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
 
 
 class TestEachCataclysmsQuestSubType:
-    """**FIVE CATACLYSMS' QUEST DUNGEONS ARE ONE SUB-TYPE IN BOTH HALVES.**
+    """**SIX CATACLYSMS' QUEST DUNGEONS ARE ONE SUB-TYPE IN BOTH HALVES.**
 
     The owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be
     one specific type." The model's `TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM` is
     the original and names one for all eight; the game's
-    `UCataclysmSurgeScheduler::QuestSubTypeFor` names one for the five in
-    `FIXED_IN_THE_GAME` since 2026-10-21, and this compares them BY NAME. The
-    other three differ on purpose and are held in their own file.
+    `UCataclysmSurgeScheduler::QuestSubTypeFor` names one for the six in
+    `FIXED_IN_THE_GAME` -- five since 2026-10-21 and the Void since
+    2026-10-22 -- and this compares them BY NAME. The other two differ on
+    purpose and are held in their own file.
 
     WHAT THIS CANNOT SEE. That a run actually lands them: the Unreal tests
-    `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` and
+    `Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType` (named
+    `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` until
+    2026-10-22) and
     `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` do that.
     """
 
-    def test_the_game_fixes_the_same_five_pairs_the_model_does(self, model):
+    def test_the_game_fixes_the_same_six_pairs_the_model_does(self, model):
         cases, default = the_games_quest_sub_types(
             read(SURGE_HEADER.parent / "CataclysmSurge.cpp"))
         wanted = model.QUEST_SUBTYPE_BY_CATACLYSM
@@ -540,19 +573,19 @@ class TestEachCataclysmsQuestSubType:
             assert cataclysm in cases, (
                 f"QuestSubTypeFor has no case for {cataclysm}, so its Quest "
                 "dungeons roll again")
-            assert cases[cataclysm] == NAMES.get(wanted.get(cataclysm)), (
+            assert cases[cataclysm] == game_name_for(wanted.get(cataclysm)), (
                 f"{cataclysm}: the game's Quest dungeons are {cases[cataclysm]}, "
                 f"the model's {wanted.get(cataclysm)}; "
                 "config.QUEST_SUBTYPE_BY_CATACLYSM is the original")
 
         assert sorted(cases) == sorted(FIXED_IN_THE_GAME), (
-            f"QuestSubTypeFor names {sorted(cases)}, not the five. A sixth is "
-            "one of the three held in "
-            "test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py; "
+            f"QuestSubTypeFor names {sorted(cases)}, not the six. A seventh is "
+            "one of the two held in "
+            "test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py; "
             "follow its failure message")
         assert default == "None", (
             f"QuestSubTypeFor answers {default} for a Cataclysm it does not "
-            "name, so War, Celestial and the Void stop rolling")
+            "name, so War and Celestial stop rolling")
 
     def test_the_comparison_sees_a_changed_pair(self, model):
         """**THE CONTROL.** The same parse of the same source with Famine's
@@ -570,7 +603,7 @@ class TestEachCataclysmsQuestSubType:
 
     def test_the_dungeon_maker_keeps_the_draw_and_fixes_the_sub_type_after_it(self):
         """`MakeDungeon` takes the sub-type draw for every dungeon and then,
-        for a Quest dungeon of the five, replaces the answer -- after the draw,
+        for a Quest dungeon of the six, replaces the answer -- after the draw,
         so the stream moves as it always did, and before the walk cost, which
         reads the sub-type. Ruled by the coordinating session, 2026-10-21."""
         source = read(SURGE_HEADER.parent / "CataclysmSurge.cpp")
