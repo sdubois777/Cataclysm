@@ -36,10 +36,13 @@ and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is change
   given "your spells leave a persistent AOE zone at the impact point"). **ITS SWEEPS RAISE NO `deployable_hit`**, so the trap
   bleed and every trap "on hit" row never reach a zone's ticks: a tick is not a hit. That was already so in the code; this
   layer tests it.
-- **THE LATE SLOW (layer 3, brief 60c) NOW SHARES THE ONE MATCH, AND SO REACHES A BURIED WEAPON'S LEAP TOO.** Layer 3's entry
-  says a leap "slow[s] nothing"; a leap is a blow from the trap's cast, so one that lands within the slow's 5 s wait on the
-  enemy that set the trap off and takes a tenth of its health now lays the slow, once, as a late shot does. Nothing else about
-  the slow changes. By reading; not tested.
+- **THE LATE SLOW (layer 3, brief 60c) NOW SHARES THE ONE MATCH, AND SO REACHES A BURIED WEAPON'S LEAP TOO.** A leap is a
+  blow from the trap's cast, so one that lands within the slow's 5 s wait on the enemy that set the trap off and takes a
+  tenth of its health now lays the slow, once, as a late shot does. Nothing else about the slow changes. By reading; not
+  tested. **Layer 3's merged sentence is corrected on this branch** (R-b, ruled 2026-10-21: "a branch must not ship a
+  statement it makes false"). It read: "a buried weapon's leap and a zone's blows, which do not carry the trap past its
+  death, slow nothing (brief 60c)". It now reads: "since traps layer 3b a buried weapon's leap carries the trap and can lay
+  the waiting slow, and a zone's sweeps still slow nothing (brief 60c; #2462)".
 - **NOTHING IS PRICED TWICE, ANNOUNCED TWICE OR SLOWS TWICE.** A blow is priced as a living gadget's, else as a living trap's,
   else as a used-up trap's, else as the player's, and the used-up trap is looked for only when no living machine priced the
   blow. It is announced once where it is dealt. The slow stops waiting when it is laid.
@@ -201,7 +204,27 @@ whether a blow landing after the trap is gone is the trap's, nor a zone's ticks:
   (`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`) asserted the text
   `LateTrapsPlayer->LayALateSkillTrapSlow(Delivery.CastBy, Target, Resolved->DealtToHealth);`, the late branch this layer
   removes. It now asserts `MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth);`, the same
-  meaning: `ApplyHit` hands a late blow to the slow.
+  meaning: `ApplyHit` hands a late blow to the slow. **Why the text changed:** the separate late-slow branch was folded into
+  the one lookup of a used-up trap, so the slow is now asked from that single match and with the identity it found. Accepted
+  by the coordinating session on 2026-10-21 (R-a).
+- **The new Python test strips comments by tracking `/* ... */` blocks across lines and `//` to the end of a line**, not by a
+  line's opening characters (R-c, ruled 2026-10-21; a line opening with `* ` is often a continued product). A `//` or `/*`
+  inside a string literal is treated as a comment opener too, which only shortens what is read; in the six files it reads
+  no string literal holds either, so nothing it asserts is cut (counted by script on this commit). One assertion holds that
+  ApplyHit's continued line `* TrapMore` is kept. **Proved with `tools/prove_guard.py`** in a copy of the tree (`git archive`
+  of 28194b108 with this commit's two files written over it), the stripper put back to the prefix rule (its old text
+  counted once): "PROVED: 1 failed, 37 passed in 1.02s | restored: 38 passed in 0.93s", the named failure
+  `test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced`, `proved` True.
+
+**OTHER MERGED SENTENCES SEARCHED** ("leap", "slows nothing", "finds no trap", "priced as the player's", over the whole
+file). Changed: layer 3's sentence above, and layer 1's item 5 ("A SHOT OR A RACK A TRAP CASTS THAT LANDS AFTER THE TRAP IS
+USED UP IS PRICED AS THE PLAYER'S"), a statement of behaviour, which keeps its words and gains "SINCE TRAPS LAYER 3B
+(2026-10-21, #2462) SUCH A BLOW IS PRICED AND ANNOUNCED AS THE TRAP'S". Left, each a record of what was read, built or not
+tested at its own commit and still true of that commit: layer 3's "HOW R1 IS BUILT" ("a shot lands later ... and finds no
+trap ... so it is priced as the player's"), its "Read first" (`CastBy.Get()` handed to a leap), its "What else could later
+read the record" and "FOUND AND NOT CHANGED" (the bleed and damage rows not reaching a late shot), its "Not tested" list,
+its section "THE LATE BLOWS THIS LAYER DOES NOT YET REACH, RULED THE NEXT TRAP LAYER" (which names this layer) and its
+window's "Not measured"; and the skill gadget entries' P5 lines, which this layer does not change.
 - **No merged Unreal test's assertion changes, by reading.** The one changed behaviour a merged test meets is that test 25's
   late shots now raise `deployable_hit` and are priced by trap rows; its players hold no row on that event and no trap damage
   row.
@@ -417,8 +440,9 @@ What a player would notice, once the rows are worn:
   grants 5%-10% increased damage" does not hear a trap's bleed. By reading; not tested. The slow raises nothing.
   **FOUND AND LEFT**, as the coordinating session ruled on 2026-10-21.
 - **THE SLOW NEEDS A BLOW**: a trap's cast that strikes the enemy that set it off for less than a tenth of its maximum
-  health, or misses it, slows nothing (R1); a shot landing more than 5 s after the trap triggered slows nothing; a
-  buried weapon's leap and a zone's blows, which do not carry the trap past its death, slow nothing (brief 60c).
+  health, or misses it, slows nothing (R1); a shot landing more than 5 s after the trap triggered slows nothing; since
+  traps layer 3b a buried weapon's leap carries the trap and can lay the waiting slow, and a zone's sweeps still slow
+  nothing (brief 60c; #2462).
 - **NOT IN PLAY UNTIL THE NINE EFFECT ROWS LAND ABOVE THIS LAYER**, the enchantment session's.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
   code, the tests and this entry under the enchantment session's brief 60 and the rulings below. NOT COMPILED AND NOT
@@ -2096,7 +2120,8 @@ What a player would notice, once a row is worn:
   5. **A SHOT OR A RACK A TRAP CASTS THAT LANDS AFTER THE TRAP IS USED UP IS PRICED AS THE PLAYER'S**, with no trap row and
      no `deployable_hit`: the trap is destroyed as its cast starts, and a destroyed trap is no trap, as a destroyed gadget
      is none (2026-10-16, stack 2, item 3). Every Strike and every no-speed landing lands inside the cast and is priced as
-     the trap's. A judgement, below.
+     the trap's. A judgement, below. **SINCE TRAPS LAYER 3B (2026-10-21, #2462) SUCH A BLOW IS PRICED AND ANNOUNCED AS
+     THE TRAP'S**: the used-up trap is kept on its player and found again by its identity; see that entry.
   6. **A SECOND TEST WORE THE ULTIMATE TRAP SENTENCE AS A BENEFIT WITH NO EFFECT**: `FloorStartCapBenefit` in
      `CataclysmDungeonModifierEffectsTests.cpp`, "the enchantment tests' choice". Moved with `BenefitWithNoEffect` (item 1
      below).
