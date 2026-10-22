@@ -439,6 +439,11 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 	// of a day the walk spent names it -- its timer in `Resolved`, its city in `HitAndLeft`, and it not in
 	// `Absorbed`. Any other dungeon missing still fails "dungeon N was left alone", and the message says what the
 	// reports give for it.
+	//
+	// OR THAT IT WENT WITH ITS CITY'S FALL. Ruled by the coordinating session on 2026-10-22, after the second window
+	// found dungeons 6 and 7 absorbed when city 8 fell on day 25: a dungeon also counts as left alone when a report
+	// of a day the walk spent lists it in `Absorbed` and its pre-walk city in `Fallen`. An absorption whose city is
+	// not in that report's `Fallen` still fails.
 	for (const int32 Id : StandingBefore)
 	{
 		if (Id == DungeonId)
@@ -455,7 +460,7 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 		}
 
 		const int32 ItsCity = CityBefore.FindRef(Id);
-		bool bLeftByItsOwnHit = false;
+		bool bLeftByItsHitOrItsCitysFall = false;
 		TArray<FString> Reasons;
 		for (int32 Index = ReportsBeforeTheWalk; Index < Bound.Mode->DaysSpentWalking.Num(); ++Index)
 		{
@@ -467,18 +472,25 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			if (bResolved && bAbsorbed)
+			if (bAbsorbed && !Report.Fallen.Contains(ItsCity))
 			{
+				Reasons.Add(FString::Printf(
+					TEXT("day %d: absorbed but city %d is not in Fallen"), Report.Day, ItsCity));
+			}
+			else if (bResolved && bAbsorbed)
+			{
+				bLeftByItsHitOrItsCitysFall = true;
 				Reasons.Add(FString::Printf(
 					TEXT("day %d: timer ran out and it was absorbed when city %d fell"), Report.Day, ItsCity));
 			}
 			else if (bAbsorbed)
 			{
+				bLeftByItsHitOrItsCitysFall = true;
 				Reasons.Add(FString::Printf(TEXT("day %d: absorbed when city %d fell"), Report.Day, ItsCity));
 			}
 			else if (Report.HitAndLeft.Contains(ItsCity))
 			{
-				bLeftByItsOwnHit = true;
+				bLeftByItsHitOrItsCitysFall = true;
 				Reasons.Add(FString::Printf(
 					TEXT("day %d: timer ran out, hit city %d and left"), Report.Day, ItsCity));
 			}
@@ -497,7 +509,7 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 
 		TestTrue(*FString::Printf(
 					 TEXT("dungeon %d was left alone (missing after the walk: %s)"), Id, *Reason),
-				 bLeftByItsOwnHit);
+				 bLeftByItsHitOrItsCitysFall);
 	}
 	TestEqual(TEXT("and nothing is being walked"),
 			  Bound.Mode->EmpireDungeonId, INDEX_NONE);

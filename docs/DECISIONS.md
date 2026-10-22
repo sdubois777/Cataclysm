@@ -206,10 +206,30 @@ entry, with your reading of the cause marked as a reading until the run confirms
 discarded: `SpendFloorTimeInTheEmpire` called `UCataclysmEmpireRun::AdvanceDay` and `SpendFloorTime` and dropped what
 both return. It now appends them. Nothing in play reads the record.
 
-**A READING, NOT YET CONFIRMED:** fixing five Cataclysms' Quest sub-types changes which dungeon is seed 1's first
-dungeon at the ordinary walk rate, or its depth, so the walk is longer, and ordinary dungeons whose timers run out
-during it hit their cities and leave the map under the 2026-10-13 rule. The second window will confirm or refute it:
-the failure message now names, for any dungeon that went another way, what the reports say happened to it.
+**The second window**, under the lock `void-zones-w33`, on `8d1ed934a`, 2026-10-22, printed "Build: Succeeded - 50
+actions, 45 files compiled" and "4000 tests performed, 3999 succeeded, 1 failed: ReachingTheBottomTakesTheDungeonOffTheMap",
+with these two messages at line 498 of the test, verbatim:
+
+- "Expected 'dungeon 6 was left alone (missing after the walk: day 25: absorbed when city 8 fell)' to be true."
+- "Expected 'dungeon 7 was left alone (missing after the walk: day 25: absorbed when city 8 fell)' to be true."
+
+Python printed "6850 passed, 8 skipped" (JUnit 6858 tests, 0 failures) and ruff "All checks passed!". No proof ran.
+
+- **Old:** a missing dungeon counted as left alone only if a walk-day report showed it leaving by its own hit.
+- **New:** it also counts as left alone when a walk-day report lists it in `Absorbed` and its pre-walk city in
+  `Fallen`; an absorption whose city is not in that report's `Fallen` fails with "day N: absorbed but city C is not
+  in Fallen", and every other missing dungeon still fails with its day and reason. Every other assertion, and the
+  check that the record is complete, is unchanged.
+
+Ruled by the coordinating session on 2026-10-22, verbatim: "A missing dungeon also counts as left alone when a
+walk-day report lists it in Absorbed AND lists its city in Fallen; any other missing dungeon still fails with its day
+and reason. Record old -> new in the entry, and say plainly that why seed 1's walk is long enough is not measured."
+
+**CONFIRMED by that run:** during the walk four dungeons, 1, 8, 9 and 10, left by their own hit, and two, 6 and 7, were
+absorbed when city 8 fell on day 25. **NOT MEASURED:** why seed 1's walk lasts long enough for this, and in particular
+whether fixing five Cataclysms' Quest sub-types is the reason. The reading written after the first window -- that the
+fix changes which dungeon is seed 1's first at the ordinary walk rate, or its depth, so the walk is longer -- is still
+A READING, NOT CONFIRMED.
 
 ### Run
 
