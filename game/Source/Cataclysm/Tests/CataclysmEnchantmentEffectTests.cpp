@@ -28010,4 +28010,74 @@ bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapLayerFourRowsTest,
+	"Cataclysm.Enchantments.TheWornTrapLayerFourRowsEachReachTheReadOrActionTheirSentenceNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Traps layer 4, ruled 2026-10-21 (F1-F12) and 2026-10-22 (G1-G4): five sentences, five rows. WORN by real players, one
+ * sentence each, against a CONTROL wearing a benefit with no effect, each with the same drawback with no effect. For
+ * each, the test asks the one read or worn action its row reaches: the rearm chance, the increase on the triggering
+ * enemy, the share of its maximum health and the share laid over time through `ACataclysmMinion`'s own readers, and the
+ * kill explosion as a worn action on `kill`. What each then does in play is `Cataclysm.Traps.`'s. FIVE assertions on the
+ * cases, one per worn sentence, so on assets built before the rows it fails five times, and only there.
+ */
+bool FCataclysmTrapLayerFourRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* Rearm = TEXT("Positive_Triggered_traps_have_a_25_50_chance_to_reset_a");
+	const TCHAR* FirstEnemy = TEXT("Positive_Traps_deal_100_200_increased_damage_to_the_fir");
+	const TCHAR* HealthShare = TEXT("Positive_Traps_deal_bonus_damage_equal_to_5_10_of_the_t");
+	const TCHAR* OverTime = TEXT("Positive_Traps_deal_30_50_of_their_damage_as_a_DoT_over");
+	const TCHAR* Explosion = TEXT("Positive_Enemies_killed_by_traps_explode_dealing_50_100");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker RearmWearer(Rearm, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker FirstEnemyWearer(FirstEnemy, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker HealthShareWearer(HealthShare, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker OverTimeWearer(OverTime, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker ExplosionWearer(Explosion, DrawbackWithNoEffect);
+	for (const CataclysmConsecutiveRowTest::FStriker* Striker : {&Control, &RearmWearer, &FirstEnemyWearer,
+			 &HealthShareWearer, &OverTimeWearer, &ExplosionWearer})
+	{
+		if (!TestTrue(TEXT("a striker for the trap layer 4 rows"), Striker->Ready()))
+		{
+			return false;
+		}
+	}
+
+	const auto CountExplosions = [](const CataclysmConsecutiveRowTest::FStriker& Striker)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+		{
+			Found += Action.bExplodeVictimForKillingBlow && Action.Event == FName(TEXT("kill")) ? 1 : 0;
+		}
+		return Found;
+	};
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, none of the five reaches anything.
+	TestEqual(TEXT("control: no rearm chance"), ACataclysmMinion::SkillTrapRearmChanceFor(Control.Character), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("control: no increase on the triggering enemy"),
+			  ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(Control.Character), 0.0f, 0.001f);
+	TestEqual(TEXT("control: no share of the triggering enemy's maximum health"),
+			  ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(Control.Character), 0.0f, 0.001f);
+	TestEqual(TEXT("control: no share laid over time"),
+			  ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(Control.Character), 0.0f, 0.001f);
+	TestEqual(TEXT("control: no kill explosion on kill"), CountExplosions(Control), 0);
+
+	const FString Stale = TEXT(" If not, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+	TestTrue(TEXT("wearing the rearm row, a triggered trap has a chance to rearm.") + Stale,
+			 ACataclysmMinion::SkillTrapRearmChanceFor(RearmWearer.Character) > 0.0f);
+	TestTrue(TEXT("wearing the first-enemy row, a trap's blow on its triggering enemy is increased.") + Stale,
+			 ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(FirstEnemyWearer.Character) > 0.0f);
+	TestTrue(TEXT("wearing the health-share row, a share of the triggering enemy's maximum health is added.") + Stale,
+			 ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(HealthShareWearer.Character) > 0.0f);
+	TestTrue(TEXT("wearing the damage-over-time row, a share of a trap's blow is laid over time.") + Stale,
+			 ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(OverTimeWearer.Character) > 0.0f);
+	TestEqual(TEXT("wearing the kill-explosion row, one kill explosion on kill.") + Stale,
+			  CountExplosions(ExplosionWearer), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
