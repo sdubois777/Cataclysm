@@ -10,7 +10,7 @@ shrinks with it and its timer does not; it does not shrink while the player is i
 standing city it takes no defence and no people and adds 1 Void stack at its full depth, rising evenly to 3 at its
 minimum, and a city below 8 stacks is left at most at 9. The simulation has done this since the entry headed "In the
 simulation the Hollow, the Void's Quest dungeon, loses a floor a day to half its depth, and its hit adds 1 to 3 void
-stacks instead of damage". Branch `feat/game-hollow-1` on `development` at `3c1147e48`. Not built and not run: see
+stacks instead of damage". Branch `feat/game-hollow-2` on `development` at `a58389c7c` (written on `3c1147e48` as `feat/game-hollow-1` and moved with its zero-context patch ids unchanged). Not built and not run: see
 Proofs and Run. **Two existing Unreal assertions outside this layer's rulings will fail as written and were not
 changed**; see AT RISK.
 
