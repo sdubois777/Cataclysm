@@ -724,4 +724,86 @@ bool FCataclysmDungeonModifierDescribedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModifierFamineQuestTest,
+	"Cataclysm.DungeonModifiers.AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModifierFamineQuestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+
+	// **A FAMINE QUEST DUNGEON IS SACRIFICIAL, SO IT DRAWS DOUBLE.** Since
+	// 2026-10-21 each of five Cataclysms' Quest dungeons is one sub-type, and
+	// Famine's is the one sub-type `CountFor` doubles. This is that rule on the
+	// path the day loop takes: `FireSurge` gives modifiers after the dungeon is
+	// made, so the count reads the fixed sub-type and not the rolled one.
+	//
+	// THE CONTROL IS A DEATH QUEST DUNGEON, a Horde, which carries the ordinary
+	// count. Both Cataclysms are the only two the run faces, set after `Begin`
+	// and before the first day, so the pool is their eight modifiers -- enough
+	// for six -- and every Quest dungeon is one or the other.
+	//
+	// SEARCHED FOR RATHER THAN ASSUMED, AND THE SEARCH IS ASSERTED. A Quest
+	// dungeon is 12 in 100 of what a surge lands, so no single campaign is
+	// guaranteed to land one from each. COPIES AND NOT POINTERS: `AdvanceDay`
+	// adds to and removes from `Run->Dungeons`.
+	FCataclysmDungeon Famine;
+	FCataclysmDungeon Death;
+	bool bFoundFamine = false;
+	bool bFoundDeath = false;
+
+	for (int32 Seed = 1; Seed <= 40 && !(bFoundFamine && bFoundDeath); ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed, /* DifficultyTier */ 3);
+		Run->ActiveCataclysms = { ECataclysmType::Famine, ECataclysmType::Death };
+
+		for (int32 Day = 0; Day < 600 && !(bFoundFamine && bFoundDeath)
+			 && Run->Map->ExposedCities().Num() >= 2; ++Day)
+		{
+			Run->AdvanceDay();
+
+			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.Type != ECataclysmDungeonType::Quest)
+				{
+					continue;
+				}
+
+				if (!bFoundFamine && Dungeon.Cataclysm == ECataclysmType::Famine)
+				{
+					Famine = Dungeon;
+					bFoundFamine = true;
+				}
+				else if (!bFoundDeath
+						 && Dungeon.Cataclysm == ECataclysmType::Death)
+				{
+					Death = Dungeon;
+					bFoundDeath = true;
+				}
+			}
+		}
+	}
+
+	if (!bFoundFamine || !bFoundDeath)
+	{
+		AddError(TEXT("40 campaigns landed no Famine Quest dungeon and a Death "
+					  "one to compare it with, so this test checked nothing."));
+		return false;
+	}
+
+	TestEqual(TEXT("the Famine Quest dungeon is Sacrificial"),
+			  static_cast<int32>(Famine.SubType),
+			  static_cast<int32>(ECataclysmDungeonSubType::Sacrificial));
+	TestEqual(TEXT("and at tier 3 it carries six modifiers"),
+			  Famine.Modifiers.Num(), 6);
+
+	TestEqual(TEXT("CONTROL: the Death Quest dungeon is a Horde"),
+			  static_cast<int32>(Death.SubType),
+			  static_cast<int32>(ECataclysmDungeonSubType::Horde));
+	TestEqual(TEXT("and carries the ordinary three"),
+			  Death.Modifiers.Num(), 3);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

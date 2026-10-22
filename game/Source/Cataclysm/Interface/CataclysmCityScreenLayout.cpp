@@ -118,8 +118,19 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 			continue;
 		}
 
-		Lines.Add(FString::Printf(TEXT("%d floors, %.0f days until it bites"),
-								  Dungeon->Floors,
+		// WHAT IT DOES DIFFERENTLY, FIRST, WHEN IT DOES ANYTHING. A Famine Quest
+		// dungeon is always Sacrificial and a Death one always a Horde since
+		// 2026-10-21, and a player deciding which dungeon to walk needs to see
+		// that before the floors. The words are `SubTypeName`'s, which the run's
+		// own description uses, and `None` adds nothing: most dungeons have a
+		// sub-type, and one without reads as it always did.
+		const FString SubType =
+			UCataclysmSurgeScheduler::SubTypeName(Dungeon->SubType);
+		const FString Marked =
+			SubType.IsEmpty() ? FString() : SubType + TEXT(", ");
+
+		Lines.Add(FString::Printf(TEXT("%s%d floors, %.0f days until it bites"),
+								  *Marked, Dungeon->Floors,
 								  Run->Clock->DaysUntilResolveFor(DungeonId)));
 	}
 
