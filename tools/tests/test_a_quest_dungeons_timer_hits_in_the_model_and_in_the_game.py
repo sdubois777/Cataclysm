@@ -29,7 +29,13 @@ both count the hit apart from an ordinary dungeon's.
 WHERE THE HALVES DIFFER, AND IT IS NOT HELD HERE. The game has no empire tree,
 so nothing reduces the hit there. The game's clock refills the timer before
 the hit and the model refills it after; no hit reads the timer. The model's
-fall spares the dungeon the player is inside and the game's does not.
+fall spares the ordinary dungeon the player is inside and the game's does not,
+issue #2399.
+
+A HIT THAT FELLS ITS CITY MOVES THE QUEST DUNGEON, in both, since the game
+followed the model on 2026-10-21: the fall sends it to a refuge rather than
+absorbing it, and it takes no timer move that day. Where it goes is held by
+`test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py`.
 
 A LINE THAT IS A COMMENT DOES NOT COUNT, in either language.
 """
@@ -118,8 +124,8 @@ def test_the_model_hits_before_it_refreshes_and_before_the_move() -> None:
 
     assert places == sorted(places) and places[3] < refresh < places[4], (
         f"{where} no longer asks the kind, then asks quest_timer_hits_city "
-        "and whether the city stands, then hits, then stops if the fall "
-        "absorbed the dungeon, then refreshes the timer, then moves, in that "
+        "and whether the city stands, then hits, then stops if the fall took "
+        "or moved the dungeon, then refreshes the timer, then moves, in that "
         "order.")
 
 
@@ -181,8 +187,8 @@ def test_the_game_hits_a_standing_host_before_the_move_and_a_fall_ends_it(
         + IF_THE_GAME_CHANGES)
     assert "return;" in block[block.index(fall):block.index(move)], (
         f"{where} goes on to the move after the hit felled the city. The "
-        "fall absorbed the dungeon; nothing is left to move and no draw may "
-        "be taken. " + IF_THE_GAME_CHANGES)
+        "fall has moved the dungeon, or found it nowhere to go, and it takes "
+        "no timer move that day; no draw may be taken. " + IF_THE_GAME_CHANGES)
 
     relocate = cpp_code_of(EMPIRE_RUN, RELOCATE)
     for call in ("Damage(", "Bite(", "CityFell("):

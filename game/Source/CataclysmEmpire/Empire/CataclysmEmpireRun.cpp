@@ -43,6 +43,9 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	LastHitDay = 0;
 	LastHitCityId = INDEX_NONE;
 	bLastHitWasAQuestTimer = false;
+	LastMoveDay = 0;
+	LastMoveFromCityId = INDEX_NONE;
+	LastMoveToCityId = INDEX_NONE;
 	SurgesFromEmptyBoard = 0;
 
 	Stream.Initialize(InSeed);
@@ -240,9 +243,11 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 
 	// A SIEGE TAKES ITS SHARE BEFORE ANY TIMER IS ACTED ON, so the day's two
 	// kinds of assault land together and after the repairs above. A city felled
-	// here loses its dungeons with it, and `ResolveDungeon` below finds nothing
-	// to resolve for them, which is the right answer: a city cannot be bitten
-	// twice for falling once.
+	// here loses its ordinary dungeons with it, and `ResolveDungeon` below
+	// finds nothing to resolve for them, which is the right answer: a city
+	// cannot be bitten twice for falling once. A Quest dungeon the fall moved
+	// is still on the map, since 2026-10-21, and if its timer ran out today it
+	// resolves below on the city it was moved to, as the model's does.
 	ApplySiegeDamage(Report);
 
 	for (const int32 DungeonId : Resolved)
@@ -258,8 +263,8 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// `Simulation._maybe_surge_on_empty_board`.
 	//
 	// LAST IN THE DAY, WHICH IS WHERE `Simulation.step` ASKS. Every removal the
-	// day itself makes is above this line -- `CityFell` absorbs the dungeons
-	// on a city that `ApplySiegeDamage` or `ResolveDungeon` felled, and
+	// day itself makes is above this line -- `CityFell` absorbs the ordinary
+	// dungeons on a city that `ApplySiegeDamage` or `ResolveDungeon` felled, and
 	// `ResolveDungeon` takes off an ordinary dungeon that hit its city -- and
 	// a dungeon the player cleared since yesterday is already gone. Since
 	// 2026-10-13 a wave of ordinary dungeons left alone empties the board by
@@ -498,9 +503,17 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				LastHitCityId = HostId;
 				bLastHitWasAQuestTimer = true;
 
-				// THE HIT FELLED THE CITY AND THE FALL ABSORBED THIS DUNGEON
-				// with every other dungeon on it. Nothing is left to move, so
-				// no draw is taken, and `Dungeon` points at nothing now.
+				// THE HIT FELLED THE CITY AND THE FALL MOVED THIS DUNGEON, since
+				// 2026-10-21: `CityFell` sends a Quest dungeon to the city
+				// `PickRefuge` answers rather than absorbing it. It has just hit,
+				// the clock has already refilled its timer, and it does not take
+				// the timer's own move as well that day -- `Simulation._resolve`
+				// refreshes it and returns. A fall that found nowhere to go left
+				// it on the fallen city, where the model then tries the timer's
+				// move and finds no target either, since nothing qualifies
+				// anywhere; so no draw is skipped by returning here. Until
+				// 2026-10-21 the fall absorbed it. `Dungeon` may point at nothing
+				// now, because the fall took other dungeons off the array.
 				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage))
 				{
 					CityFell(HostId, OutReport);
@@ -567,9 +580,10 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// city again each time the timer ran out.
 	//
 	// THE FALL COMES FIRST, SO THE DUNGEON THAT FELLS ITS CITY IS ABSORBED AND
-	// NOT REMOVED HERE. `CityFell` above has already taken every dungeon on
-	// the city off the map, `RemoveDungeon` then answers false, and the day's
-	// report names that dungeon in `Absorbed` and not in `HitAndLeft`.
+	// NOT REMOVED HERE. `CityFell` above has already taken every ordinary
+	// dungeon on the city off the map, `RemoveDungeon` then answers false, and
+	// the day's report names that dungeon in `Absorbed` and not in
+	// `HitAndLeft`.
 	//
 	// `RemoveDungeon` AND NOT `ClearDungeon`. Nobody beat it, so nothing is
 	// counted as cleared, no objective is earned and no city is repaired.
@@ -622,14 +636,18 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 	}
 
 	const FCataclysmCity* From = Map->Find(Dungeon->CityId);
-	if (From == nullptr || From->bFallen)
+	if (From == nullptr)
 	{
-		// ITS CITY FELL UNDERNEATH IT. In practice the dungeon is already gone
-		// -- `CityFell` absorbs everything standing on the city -- so this is
-		// belt and braces rather than a case seen in play. A dungeon standing
-		// on a ruin has no territory to drift through.
 		return;
 	}
+
+	// **A FALLEN CITY IS NOT A REASON TO STAY**, since 2026-10-21. A Quest
+	// dungeon whose city's fall found it nowhere to go is left standing on the
+	// ruin, and when its timer next runs out it tries this move from there:
+	// `Simulation._resolve` refreshes it and asks `adjacent_exposed_cities` of
+	// the fallen city as of any other. Ruled by the coordinating session,
+	// 2026-10-21. Until then this returned for a fallen city as well, which
+	// was belt and braces while a fall absorbed every dungeon standing on it.
 
 	// **WHAT A DUNGEON CARRYING A SIEGE MAY NOT WALK ONTO.** The design's Siege
 	// row says "Max 1 per city". `UCataclysmSurgeScheduler::RollSubType`
@@ -910,13 +928,116 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 {
 	OutReport.Fallen.Add(CityId);
 
-	// EVERY DUNGEON STANDING ON IT IS ABSORBED INTO THE ONE THE CITY BECOMES,
-	// and how many there were sets both its depth and how many bosses it holds.
+	// THE CITY THAT FELL, READ AFTER THE FALL. `UCataclysmEmpireMap::Fall` has
+	// already marked it, so the cities it shielded read as exposed when a
+	// Quest dungeon below looks for somewhere to go -- which is the order
+	// `Simulation._fall` takes: the city falls, then its dungeons are dealt
+	// with.
+	const FCataclysmCity* FallenCity = Map != nullptr ? Map->Find(CityId) : nullptr;
+
+	// EVERY ORDINARY DUNGEON STANDING ON IT IS ABSORBED INTO THE ONE THE CITY
+	// BECOMES, and how many were absorbed sets both its depth and how many
+	// bosses it holds.
 	const TArray<int32> Standing = DungeonsOn(CityId);
+
+	int32 DungeonsAbsorbed = 0;
 
 	for (const int32 DungeonId : Standing)
 	{
+		// LOOKED UP AGAIN FOR EACH ONE, because `RemoveDungeon` below takes
+		// dungeons out of the array a pointer from an earlier turn would point
+		// into.
+		FCataclysmDungeon* Dungeon = Dungeons.FindByPredicate(
+			[DungeonId](const FCataclysmDungeon& Candidate)
+			{
+				return Candidate.DungeonId == DungeonId;
+			});
+
+		if (Dungeon == nullptr)
+		{
+			continue;
+		}
+
+		// **A QUEST DUNGEON IS NOT ABSORBED: IT MOVES.** The owner, 2026-10-16,
+		// verbatim: "Quest dungeons don't go away when a city falls. They just
+		// move to an adjacent city. So eventually they should be hitting
+		// something." The simulation took it that day and the game follows
+		// since 2026-10-21. It moves at once, with no coin, to the city
+		// `PickRefuge` answers -- an adjacent one first, else the nearest that
+		// qualifies counted in lanes -- and keeps its floors, its remaining
+		// timer and its sub-type. Only `CityId` moves and `CityTier` does not,
+		// as on the timer's move; see `RelocateQuestDungeon`.
+		//
+		// THE WALKED ONE MOVES TOO AND THE WALK GOES ON, ruled by the
+		// coordinating session on 2026-10-21. Nothing here touches the clock,
+		// so `UCataclysmDayClock::CurrentDungeonId` still names it, and its
+		// clear counts when the player reaches the bottom. The ordinary
+		// dungeon the player is walking is still absorbed below, which is the
+		// recorded difference from the model, issue #2399.
+		//
+		// NOT COUNTED INTO THE DUNGEON CITY. The design's Dungeon City carries
+		// "one boss per dungeon that was standing on the city when it fell and
+		// was absorbed by it", and a Quest dungeon moves away instead.
+		if (Dungeon->Type == ECataclysmDungeonType::Quest)
+		{
+			if (FallenCity == nullptr)
+			{
+				continue;
+			}
+
+			// THE SIEGES STANDING NOW, COUNTED AGAIN FOR EACH QUEST DUNGEON, the
+			// way `RelocateQuestDungeon` counts them. A Quest dungeon an
+			// earlier turn of this loop moved is standing on its new city by
+			// now, so a second one carrying a Siege is refused that city, as
+			// the model's live `sieges_on` refuses it. An empty array for a
+			// dungeon carrying none is the "caller did not say" convention.
+			const bool bCarriesSiege =
+				Dungeon->SubType == ECataclysmDungeonSubType::Siege;
+
+			TArray<int32> SiegesStanding;
+
+			if (bCarriesSiege)
+			{
+				SiegesStanding.AddZeroed(Map->Cities.Num());
+
+				for (const FCataclysmDungeon& Other : Dungeons)
+				{
+					if (Other.SubType == ECataclysmDungeonSubType::Siege
+						&& SiegesStanding.IsValidIndex(Other.CityId))
+					{
+						++SiegesStanding[Other.CityId];
+					}
+				}
+			}
+
+			const int32 Refuge = UCataclysmSurgeScheduler::PickRefuge(
+				*Map, *FallenCity, Stream, bCarriesSiege, SiegesStanding);
+
+			if (Refuge == INDEX_NONE)
+			{
+				// NOWHERE QUALIFIES, SO IT STAYS ON THE FALLEN CITY, neither
+				// absorbed nor counted. Its timer goes on; when it next runs
+				// out it hits nothing and tries the timer's move from here.
+				continue;
+			}
+
+			Dungeon->CityId = Refuge;
+
+			OutReport.Relocated.Add(DungeonId);
+			OutReport.MovedByAFall.Add(DungeonId);
+			OutReport.MovedByAFallFrom.Add(CityId);
+			OutReport.MovedByAFallTo.Add(Refuge);
+
+			// FOR THE EMPIRE SCREEN'S ONE LINE. See `LastMoveDay`.
+			LastMoveDay = OutReport.Day;
+			LastMoveFromCityId = CityId;
+			LastMoveToCityId = Refuge;
+
+			continue;
+		}
+
 		OutReport.Absorbed.Add(DungeonId);
+		++DungeonsAbsorbed;
 
 		// `RemoveDungeon` AND NOT `ClearDungeon`. A dungeon absorbed by a city
 		// falling was not beaten by anybody, so it must not pay out what
@@ -930,7 +1051,14 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	// VIII: a fallen city "becomes a Dungeon City -- a staging ground with more
 	// floors and multiple boss fights", and it "must be retaken to restore it".
 	// `ClearDungeon` is where retaking happens.
-	AddFallenCityDungeon(CityId, Standing.Num(), OutReport);
+	//
+	// THE COUNT IS WHAT IT ABSORBED, Quest dungeons left out, since
+	// 2026-10-21. It can be nought, when only Quest dungeons stood there, and
+	// `MakeFallenCityDungeon` then still gives it one boss, ruled by the
+	// coordinating session on 2026-10-21.
+	//
+	// AFTER THE MOVES ABOVE, SO THEIR DRAWS COME FIRST, as in `Simulation._fall`.
+	AddFallenCityDungeon(CityId, DungeonsAbsorbed, OutReport);
 
 	// AND THE FALL FIRES A SURGE OF ITS OWN, WHEN ONE IS DUE. The design
 	// document says a city falling triggers one;
@@ -947,7 +1075,8 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	// A REFUSED FALL IS NOT TRIED AGAIN. The fall is a moment and not a
 	// standing state like an empty board, and the clock's wave still comes.
 	// Everything above this line has already happened either way: the city is
-	// down, its dungeons are absorbed and its Dungeon City stands.
+	// down, its ordinary dungeons are absorbed, its Quest dungeons have moved
+	// and its Dungeon City stands.
 	//
 	// THE DAY ON THE REPORT, which is today in `AdvanceDay` and the day it
 	// already is in `ResolveDungeonOnDeath`.

@@ -403,8 +403,10 @@ bool FCataclysmEmpireRunPersistTest::RunTest(const FString& Parameters)
  * AN UNATTENDED RUN FROM SEED 1, watched until a city has fallen on three
  * separate days or 600 days have passed.
  *
- * EVERY FALL OPENS THE LANE AND ABSORBS THE DUNGEONS. Those are asserted on
- * every city that falls.
+ * EVERY FALL OPENS THE LANE AND ABSORBS THE ORDINARY DUNGEONS. Those are
+ * asserted on every city that falls. A QUEST DUNGEON IS NOT ABSORBED, since
+ * 2026-10-21: it moves, or with nowhere to go stays, and what is asserted of
+ * it is that it is still on the map and on the clock and was not counted.
  *
  * NOT EVERY FALL FIRES A SURGE. Since issue #2380 a fall fires one only when
  * the last surge is at least 25 days behind, which is what
@@ -449,11 +451,18 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 		 Days < 600 && (FallsSeen < 3 || FallDaysDueThatSurged < 1);
 		 ++Days)
 	{
-		// What was standing where, before the day.
+		// What was standing where, before the day, and which were Quest
+		// dungeons.
 		TMap<int32, TArray<int32>> StandingOn;
+		TSet<int32> QuestDungeons;
 		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 		{
 			StandingOn.FindOrAdd(Dungeon.CityId).Add(Dungeon.DungeonId);
+
+			if (Dungeon.Type == ECataclysmDungeonType::Quest)
+			{
+				QuestDungeons.Add(Dungeon.DungeonId);
+			}
 		}
 
 		const int32 SurgesBefore = Run->Surges->SurgesFired;
@@ -503,33 +512,87 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 				}
 			}
 
-			// AND EVERY DUNGEON THAT WAS ON IT IS GONE, REPLACED BY THE ONE
-			// THE CITY BECAME. Until issue #1324 this asserted that nothing at
-			// all was left standing, which was true while a fall only removed
-			// dungeons. A fallen city is now a Dungeon City standing on itself,
-			// so the count is one rather than zero -- and it is checked to BE
-			// that dungeon rather than merely counted, because a count of one
-			// would also pass if an absorbed dungeon had been left behind.
+			// AND EVERY ORDINARY DUNGEON THAT WAS ON IT IS GONE, REPLACED BY THE
+			// ONE THE CITY BECAME. Until issue #1324 this asserted that nothing
+			// at all was left standing, which was true while a fall only
+			// removed dungeons. A fallen city is now a Dungeon City standing on
+			// itself, so the count is one rather than zero -- and it is checked
+			// to BE that dungeon rather than merely counted, because a count of
+			// one would also pass if an absorbed dungeon had been left behind.
+			//
+			// **AND A QUEST DUNGEON WITH NOWHERE TO GO MAY STAND THERE TOO**,
+			// since 2026-10-21: a fall moves a Quest dungeon to the nearest city
+			// that will take it, and one that finds none stays on the ruin.
+			// Until then this asserted that exactly one dungeon stood there. It
+			// now asserts exactly one Dungeon City and nothing else but Quest
+			// dungeons.
 			const TArray<int32> Standing = Run->DungeonsOn(CityId);
 
-			if (TestEqual(FString::Printf(
-					TEXT("only the dungeon %s became stands on it"),
-					*City->Name),
-					Standing.Num(), 1))
+			int32 DungeonCitiesHere = 0;
+			int32 NeitherHere = 0;
+
+			for (const int32 StandingId : Standing)
 			{
-				const FCataclysmDungeon* Left = Run->FindDungeon(Standing[0]);
-				if (TestNotNull(TEXT("and it is on the map"), Left))
+				const FCataclysmDungeon* Left = Run->FindDungeon(StandingId);
+				if (!TestNotNull(TEXT("and it is on the map"), Left))
 				{
-					TestEqual(FString::Printf(
-						TEXT("and %s became a Fallen City"), *City->Name),
-						Left->Type, ECataclysmDungeonType::FallenCity);
+					continue;
+				}
+
+				if (Left->Type == ECataclysmDungeonType::FallenCity)
+				{
+					++DungeonCitiesHere;
+				}
+				else if (Left->Type != ECataclysmDungeonType::Quest)
+				{
+					++NeitherHere;
 				}
 			}
+
+			TestEqual(FString::Printf(
+				TEXT("%s became one Fallen City standing on it"), *City->Name),
+				DungeonCitiesHere, 1);
+			TestEqual(FString::Printf(
+				TEXT("and nothing but a Quest dungeon with nowhere to go stands on %s beside it"),
+				*City->Name),
+				NeitherHere, 0);
 
 			if (const TArray<int32>* WasStanding = StandingOn.Find(CityId))
 			{
 				for (const int32 DungeonId : *WasStanding)
 				{
+					// A QUEST DUNGEON IS NOT ABSORBED, since 2026-10-21. It was
+					// moved -- by this fall, or by its own timer earlier in the
+					// day -- and every move is in `Relocated`; or it stayed on
+					// the fallen city because nothing would take it. Either way
+					// it is still on the map and on the clock.
+					if (QuestDungeons.Contains(DungeonId))
+					{
+						TestFalse(FString::Printf(
+							TEXT("quest dungeon %d was not recorded as absorbed"),
+							DungeonId),
+							Report.Absorbed.Contains(DungeonId));
+
+						const FCataclysmDungeon* Quest = Run->FindDungeon(DungeonId);
+						if (TestNotNull(FString::Printf(
+								TEXT("and quest dungeon %d is still on the map"),
+								DungeonId), Quest))
+						{
+							TestTrue(FString::Printf(
+								TEXT("and quest dungeon %d either stayed on %s or is in the day's moves"),
+								DungeonId, *City->Name),
+								Quest->CityId == CityId
+									|| Report.Relocated.Contains(DungeonId));
+						}
+
+						TestNotEqual(FString::Printf(
+							TEXT("and quest dungeon %d is still on the clock"),
+							DungeonId),
+							Run->Clock->DaysUntilResolveFor(DungeonId), -1.0f);
+
+						continue;
+					}
+
 					TestTrue(FString::Printf(
 						TEXT("dungeon %d was recorded as absorbed"), DungeonId),
 						Report.Absorbed.Contains(DungeonId));
@@ -1703,10 +1766,17 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 	{
 		// HOW MANY WERE STANDING, READ BEFORE THE DAY. The fall absorbs them,
 		// so afterwards the only record is the report.
+		//
+		// **QUEST DUNGEONS ARE NOT COUNTED**, since 2026-10-21. A fall moves a
+		// Quest dungeon rather than absorbing it, and the Dungeon City counts
+		// only what it absorbed. Until then every dungeon standing was counted.
 		TMap<int32, int32> StandingOn;
 		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 		{
-			++StandingOn.FindOrAdd(Dungeon.CityId);
+			if (Dungeon.Type != ECataclysmDungeonType::Quest)
+			{
+				++StandingOn.FindOrAdd(Dungeon.CityId);
+			}
 		}
 
 		const FCataclysmDayReport Report = Run->AdvanceDay();
@@ -1723,14 +1793,39 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 
 			const int32 WasCarrying = StandingOn.FindRef(CityId);
 
+			// ONE DUNGEON CITY STANDS ON IT, AND NOTHING ELSE BUT A QUEST
+			// DUNGEON THAT FOUND NOWHERE TO GO. Until 2026-10-21 this asserted
+			// that exactly one dungeon stood there; a fall now leaves a Quest
+			// dungeon on the ruin when no city anywhere will take it.
 			const TArray<int32> Standing = Run->DungeonsOn(CityId);
-			if (!TestEqual(TEXT("one dungeon stands on it"), Standing.Num(), 1))
+
+			const FCataclysmDungeon* Left = nullptr;
+			int32 DungeonCitiesHere = 0;
+			int32 NeitherHere = 0;
+
+			for (const int32 StandingId : Standing)
 			{
-				return false;
+				const FCataclysmDungeon* There = Run->FindDungeon(StandingId);
+				if (There == nullptr)
+				{
+					continue;
+				}
+
+				if (There->Type == ECataclysmDungeonType::FallenCity)
+				{
+					Left = There;
+					++DungeonCitiesHere;
+				}
+				else if (There->Type != ECataclysmDungeonType::Quest)
+				{
+					++NeitherHere;
+				}
 			}
 
-			const FCataclysmDungeon* Left = Run->FindDungeon(Standing[0]);
-			if (!TestNotNull(TEXT("and it is on the map"), Left))
+			if (!TestEqual(TEXT("one Dungeon City stands on it"), DungeonCitiesHere, 1)
+				|| !TestEqual(TEXT("and nothing but a Quest dungeon with nowhere to go stands beside it"),
+							  NeitherHere, 0)
+				|| !TestNotNull(TEXT("and it is on the map"), Left))
 			{
 				return false;
 			}
@@ -1750,10 +1845,15 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 				FMath::Max(WasCarrying, Spec.LeastFloors)),
 				Left->Floors, FMath::Max(WasCarrying, Spec.LeastFloors));
 
-			// ONE BOSS PER DUNGEON THAT WAS STANDING. The design's one stated
-			// exception to a boss on the final floor and nowhere else.
-			TestEqual(TEXT("and one boss per dungeon that was standing"),
-					  Left->Bosses, WasCarrying);
+			// ONE BOSS PER DUNGEON THAT WAS STANDING AND WAS ABSORBED. The
+			// design's one stated exception to a boss on the final floor and
+			// nowhere else. AT LEAST ONE, since 2026-10-21: a city whose own
+			// Quest dungeon's hit felled it with nothing else standing absorbs
+			// none and still holds one boss, ruled by the coordinating session
+			// that day. Until then this read `WasCarrying` alone, which was
+			// never nought while every dungeon on the city was absorbed.
+			TestEqual(TEXT("and one boss per dungeon that was standing and was absorbed, and at least one"),
+					  Left->Bosses, FMath::Max(1, WasCarrying));
 
 			// AND IT TAKES NOTHING MORE FROM THE CITY, EVER.
 			TestEqual(TEXT("it takes no defence"), Left->DefenceDamage, 0.0f);
@@ -1934,7 +2034,7 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 	int32 QuestsSeen = 0;
 	int32 TimersChecked = 0;
 	int32 CleanDaysChecked = 0;
-	int32 AbsorbedByAFall = 0;
+	int32 MovedByAFall = 0;
 
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
@@ -1945,9 +2045,10 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		// EVERY QUEST DUNGEON THAT ARRIVED, counted once by identifier. A census
-		// of the board at the end would miss the ones absorbed by a city
-		// falling, and identifiers are handed out in order and never reused.
+		// EVERY QUEST DUNGEON THAT ARRIVED, counted once by identifier, and
+		// identifiers are handed out in order and never reused. A census of the
+		// board at the end would miss the ones the player clears, and until
+		// 2026-10-21 the ones a city's fall absorbed.
 		TSet<int32> QuestsHere;
 
 		auto CountQuests = [&QuestsHere](const UCataclysmEmpireRun& Live)
@@ -2022,26 +2123,35 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 
 				if (Still == nullptr)
 				{
-					// UNLESS ITS CITY FELL UNDERNEATH IT TODAY, which is real
-					// behaviour rather than an exception carved out to make this
-					// pass. A city that falls absorbs everything standing on it
-					// into the Fallen City dungeon it becomes, and a Quest
-					// dungeon is not exempt: a day can resolve a Basic dungeon
-					// that fells the city and then reach the Quest dungeon
-					// standing beside it, by which time it is gone.
-					//
-					// MEASURED: 5 of 832 timers over twenty campaigns. The first
-					// run of this test asserted the dungeon was always still
-					// there and failed on exactly those five, which is how this
-					// case was found.
-					++AbsorbedByAFall;
-
-					TestTrue(FString::Printf(
-						TEXT("quest dungeon %d is gone, so its city fell and "
-							 "absorbed it"), DungeonId),
-						Report.Absorbed.Contains(DungeonId));
+					// A FALL NO LONGER TAKES A QUEST DUNGEON, since 2026-10-21:
+					// it moves to the nearest city that will take it, or stays
+					// on the ruin, so nothing in a day takes one off the map.
+					// Until then this branch counted the ones whose city fell
+					// underneath them -- measured at 5 of 832 timers over twenty
+					// campaigns -- and asserted they were in `Absorbed`.
+					AddError(FString::Printf(
+						TEXT("quest dungeon %d whose timer ran out is gone from "
+							 "the map. A fall moves a Quest dungeon rather than "
+							 "absorbing it"), DungeonId));
 
 					continue;
+				}
+
+				// MOVED BY A FALL TODAY, which is what the branch above used to
+				// count as absorbed. Not absorbed, and in `Relocated`.
+				const bool bMovedByAFall = Report.MovedByAFall.Contains(DungeonId);
+				if (bMovedByAFall)
+				{
+					++MovedByAFall;
+
+					TestFalse(FString::Printf(
+						TEXT("quest dungeon %d a fall moved is not named as "
+							 "absorbed"), DungeonId),
+						Report.Absorbed.Contains(DungeonId));
+					TestTrue(FString::Printf(
+						TEXT("and quest dungeon %d a fall moved is in the day's "
+							 "moves"), DungeonId),
+						Report.Relocated.Contains(DungeonId));
 				}
 
 				const FCataclysmDungeonTimer* Timer =
@@ -2062,13 +2172,21 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 				// is entitled to make: `Relocated` and the dungeon's own city
 				// say the same thing. Where it may move to is
 				// `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`.
+				//
+				// NOT ASKED OF ONE A FALL MOVED, since 2026-10-21. A dungeon
+				// that moved by its timer onto a city that then fell can be
+				// moved back by the fall to the city it stood on this morning,
+				// which the report rightly lists as two moves.
 				const bool bMoved =
 					Still->CityId != CityOf.FindRef(DungeonId);
 
-				TestEqual(FString::Printf(
-					TEXT("the report says quest dungeon %d moved exactly when "
-						 "it did"), DungeonId),
-					Report.Relocated.Contains(DungeonId), bMoved);
+				if (!bMovedByAFall)
+				{
+					TestEqual(FString::Printf(
+						TEXT("the report says quest dungeon %d moved exactly when "
+							 "it did"), DungeonId),
+						Report.Relocated.Contains(DungeonId), bMoved);
+				}
 
 				// THE CITY IT WAS ON THIS MORNING, AND NOT THE ONE IT IS ON
 				// NOW. What this test measures is that its host paid nothing
@@ -2082,7 +2200,8 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 				if (CitiesWithABiter.Contains(CityId)
 					|| Report.Fallen.Contains(CityId)
 					|| Report.Besieged.Contains(CityId)
-					|| FallenWas.Contains(CityId))
+					|| FallenWas.Contains(CityId)
+					|| Report.MovedByAFallTo.Contains(CityId))
 				{
 					// SOMETHING ELSE COULD HAVE HURT THIS CITY TODAY, so it
 					// says nothing about the quest dungeon. Skipped rather than
@@ -2090,6 +2209,11 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 					// today, which the morning's list cannot. A city that fell
 					// today is skipped because its defence stops at the fall,
 					// and one that had fallen before today is hit by nothing.
+					//
+					// AND A CITY A FALL MOVED A QUEST DUNGEON ONTO TODAY, since
+					// 2026-10-21. That dungeon's timer may run out later the
+					// same day and hit it, and it was not on the city this
+					// morning, so the count below would not expect its hit.
 					continue;
 				}
 
@@ -2148,9 +2272,9 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d campaigns: %d quest dungeons arrived, %d of their timers ran "
 			 "out, %d of those on a day nothing else could have hurt the city, "
-			 "and %d were absorbed by the city falling underneath them"),
+			 "and %d were moved by the city falling underneath them"),
 		Campaigns, QuestsSeen, TimersChecked, CleanDaysChecked,
-		AbsorbedByAFall));
+		MovedByAFall));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED. A run that never
 	// landed a quest dungeon, or never let one of their timers run out, would
@@ -2239,8 +2363,14 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	int32 Moves = 0;
 	int32 StayedPut = 0;
 	int32 AlongTheRim = 0;
-	int32 AbsorbedByAFall = 0;
-	int32 MovedThenAbsorbed = 0;
+
+	// QUEST DUNGEONS WHOSE TIMER RAN OUT ON A DAY A FALL ALSO MOVED THEM, since
+	// 2026-10-21. A fall's move is not the timer's -- it goes as far as it
+	// must, and may be followed by the timer's own move the same day -- so
+	// these are counted apart and left out of every check below, which are
+	// about the timer's move. Until then a fall absorbed them, and two
+	// counters here held the ones absorbed and the ones absorbed after moving.
+	int32 MovedByAFall = 0;
 
 	// **THE TWO REASONS A QUEST DUNGEON STAYS, COUNTED APART.** It was hemmed
 	// in -- every neighbour sealed, fallen, the Pillar, or already besieged if
@@ -2303,6 +2433,20 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 			// ruin it is standing on.
 			for (const int32 DungeonId : Report.Relocated)
 			{
+				// A FALL'S MOVE, since 2026-10-21. It need not be on a day its
+				// timer ran out, and the dungeon may have arrived today, so
+				// what is asked of it is only that it is a Quest dungeon.
+				if (Report.MovedByAFall.Contains(DungeonId))
+				{
+					const FCataclysmDungeon* Moved = Run->FindDungeon(DungeonId);
+					TestTrue(FString::Printf(
+						TEXT("dungeon %d a fall moved is a quest dungeon"),
+						DungeonId),
+						Moved != nullptr
+							&& Moved->Type == ECataclysmDungeonType::Quest);
+					continue;
+				}
+
 				TestTrue(FString::Printf(
 					TEXT("dungeon %d that moved was a quest dungeon this "
 						 "morning"), DungeonId),
@@ -2325,9 +2469,13 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 					// and must not have. A quest dungeon that wandered on an
 					// ordinary day would be a different bug from any this test
 					// is named for, and it would otherwise go unseen.
+					//
+					// A FALL MAY STILL HAVE MOVED IT, since 2026-10-21, and that
+					// move is not the timer's.
 					const FCataclysmDungeon* Idle = Run->FindDungeon(DungeonId);
 
-					if (Idle != nullptr)
+					if (Idle != nullptr
+						&& !Report.MovedByAFall.Contains(DungeonId))
 					{
 						TestEqual(FString::Printf(
 							TEXT("quest dungeon %d stayed put on a day its "
@@ -2344,67 +2492,31 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 
 				if (Still == nullptr)
 				{
-					// A CITY FELL UNDERNEATH IT AND ABSORBED IT. Real
-					// behaviour rather than an exception carved out to make
-					// this pass -- the same case
+					// A FALL NO LONGER TAKES A QUEST DUNGEON, since 2026-10-21,
+					// so nothing in a day takes one off the map. Until then a
+					// city that fell underneath one absorbed it -- the case
 					// `AQuestDungeonRefreshesInsteadOfBitingItsCity` found and
-					// measured at 5 of 832 timers.
-					++AbsorbedByAFall;
+					// measured at 5 of 832 timers -- and this branch checked
+					// that the city that took it was the one it stood on or one
+					// adjacent to it.
+					AddError(FString::Printf(
+						TEXT("quest dungeon %d whose timer ran out is gone from "
+							 "the map. A fall moves a Quest dungeon rather than "
+							 "absorbing it"), DungeonId));
 
-					TestTrue(FString::Printf(
-						TEXT("quest dungeon %d is gone, so it was absorbed by "
-							 "a fall"), DungeonId),
-						Report.Absorbed.Contains(DungeonId));
+					continue;
+				}
 
-					// **AND IT MAY HAVE MOVED FIRST, WHICH THE FIRST VERSION OF
-					// THIS TEST DENIED.** It asserted an absorbed dungeon was
-					// never in `Relocated` and failed on two of them, which is
-					// the test being wrong rather than the code: a day resolves
-					// its timers in order, so a quest dungeon can drift onto a
-					// city and then be absorbed when a LATER dungeon on that
-					// same city fells it the same day. `PickRelocation` refuses
-					// a city that has already fallen, so the destination was
-					// standing when it arrived.
-					//
-					// WHAT IS TRUE EITHER WAY: the city that took it was
-					// adjacent to where it stood this morning if it moved, and
-					// was that city itself if it did not. That is the claim
-					// worth making, and it still fails if a move ever crossed
-					// the map.
-					const FCataclysmCity* Left = Run->Map->Find(From);
-
-					if (Left == nullptr)
-					{
-						continue;
-					}
-
-					if (Report.Relocated.Contains(DungeonId))
-					{
-						++MovedThenAbsorbed;
-
-						bool bAdjacentCityFell = false;
-						for (const int32 Fell : Report.Fallen)
-						{
-							bAdjacentCityFell = bAdjacentCityFell
-								|| UCataclysmSurgeScheduler::AdjacentCities(
-									   *Left).Contains(Fell);
-						}
-
-						TestTrue(FString::Printf(
-							TEXT("quest dungeon %d moved off %s and the city "
-								 "that then absorbed it was adjacent to it"),
-							DungeonId, *Left->Name),
-							bAdjacentCityFell);
-					}
-					else
-					{
-						TestTrue(FString::Printf(
-							TEXT("quest dungeon %d did not move, so the city "
-								 "that absorbed it was %s, which fell"),
-							DungeonId, *Left->Name),
-							Report.Fallen.Contains(From));
-					}
-
+				// A FALL MOVED IT TODAY, before or after its timer ran out.
+				// That move goes as far as it must and is not the timer's, and
+				// one a fall moved before its timer ran out may also have taken
+				// the timer's own move -- the coordinating session ruled on
+				// 2026-10-21 that both stand. So it is counted and left out of
+				// the timer's checks below, which compare against where it
+				// stood this morning.
+				if (Report.MovedByAFall.Contains(DungeonId))
+				{
+					++MovedByAFall;
 					continue;
 				}
 
@@ -2430,9 +2542,10 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 					// anything, which was this block's original job.
 					//
 					// **READ AT THE END OF THE DAY, WHILE THE DECISION WAS MADE
-					// PART WAY THROUGH IT.** That is the same in-day ordering
-					// the absorbed branch above already documents: a day
-					// resolves its timers in order, so a city can fall AFTER
+					// PART WAY THROUGH IT.** That is the in-day ordering the
+					// absorbed branch above documented until 2026-10-21, when a
+					// fall stopped taking Quest dungeons: a day resolves its
+					// timers in order, so a city can fall AFTER
 					// this dungeon declined to move and open a neighbour that
 					// was sealed when `PickRelocation` looked at it. Reading
 					// exposure afterwards then reports an open neighbour that
@@ -2647,13 +2760,12 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d stayed -- %d "
 			 "with nowhere adjacent to go and %d declining a move they could "
 			 "have taken. %d of the moves were along the rim's perimeter, "
-			 "%d of the moves crossed a tier boundary, and %d were absorbed by "
-			 "a city falling underneath them, %d of those having moved onto it "
-			 "earlier the same day. %d neighbours were open by nightfall "
-			 "having been sealed when the dungeon declined to move, opened by "
-			 "the same day's falls"),
+			 "%d of the moves crossed a tier boundary, and %d were moved by "
+			 "a city falling underneath them the same day and left out. %d "
+			 "neighbours were open by nightfall having been sealed when the "
+			 "dungeon declined to move, opened by the same day's falls"),
 		Campaigns, TimersFired, Moves, StayedPut, StayedHemmedIn, Declined,
-		AlongTheRim, CrossedATierBoundary, AbsorbedByAFall, MovedThenAbsorbed,
+		AlongTheRim, CrossedATierBoundary, MovedByAFall,
 		OpenedByTheDaysOwnFalls));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
@@ -2905,7 +3017,9 @@ bool FCataclysmEmpireRunCountsProgressTest::RunTest(const FString& Parameters)
 			{
 				// ITS CITY FELL WHILE THE PLAYER WAS INSIDE. The dungeon was
 				// absorbed and there is nothing left to beat, which is a real
-				// outcome rather than a case carved out to make this pass.
+				// outcome rather than a case carved out to make this pass. Only
+				// an ordinary dungeon, since 2026-10-21: a fall moves a Quest
+				// dungeon, which is still here to be beaten.
 				continue;
 			}
 
@@ -5679,8 +5793,20 @@ bool FCataclysmEmpireRunQuestHitRowTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * A Quest dungeon whose own hit fells its city moves to a neighbour, with its
+ * timer full, and the dungeon beside it is absorbed.
+ *
+ * UNTIL 2026-10-21 THIS TEST HELD THE OPPOSITE, under the name
+ * `AQuestHitThatFellsItsCityAbsorbsTheQuestDungeonWithNoRefreshAndNoMove`: the
+ * fall absorbed the Quest dungeon, so it had no timer and was not in
+ * `Relocated`. The owner, 2026-10-16, verbatim: "Quest dungeons don't go away
+ * when a city falls. They just move to an adjacent city." The simulation's
+ * `_resolve` refreshes such a dungeon and gives it no second move that day,
+ * and that is what is asserted here: it is in `Relocated` once.
+ */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestHitFellsTest,
-	"Cataclysm.EmpireRun.AQuestHitThatFellsItsCityAbsorbsTheQuestDungeonWithNoRefreshAndNoMove",
+	"Cataclysm.EmpireRun.AQuestHitThatFellsItsCityMovesTheQuestDungeonWithItsTimerFull",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunQuestHitFellsTest::RunTest(const FString& Parameters)
@@ -5744,23 +5870,48 @@ bool FCataclysmEmpireRunQuestHitFellsTest::RunTest(const FString& Parameters)
 	const FCataclysmDayReport FellReport = Felled->AdvanceDay();
 	const FCataclysmDayReport StoodReport = Stood->AdvanceDay();
 
-	// THE HIT FELLED THE CITY AND THE FALL TOOK THE QUEST DUNGEON WITH IT.
+	// THE HIT FELLED THE CITY AND THE FALL MOVED THE QUEST DUNGEON. The
+	// dungeon beside it, an ordinary one, was absorbed.
 	TestTrue(TEXT("the Quest dungeon's timer ran out"),
 			 FellReport.Resolved.Contains(QuestId));
 	TestTrue(TEXT("the city fell to its hit"),
 			 FellReport.Fallen.Contains(CityId));
-	TestTrue(TEXT("the Quest dungeon is named as absorbed"),
-			 FellReport.Absorbed.Contains(QuestId));
-	TestTrue(TEXT("and so is the dungeon beside it"),
+	TestFalse(TEXT("the Quest dungeon is not named as absorbed"),
+			  FellReport.Absorbed.Contains(QuestId));
+	TestTrue(TEXT("and the dungeon beside it is"),
 			 FellReport.Absorbed.Contains(BystanderId));
-	TestNull(TEXT("the Quest dungeon is off the map"),
-			 Felled->FindDungeon(QuestId));
-	TestNull(TEXT("no refresh: it has no timer"),
-			 Felled->Clock->FindTimer(QuestId));
-	TestFalse(TEXT("no move: the report does not name it as relocated"),
-			  FellReport.Relocated.Contains(QuestId));
-	TestNotNull(TEXT("a Dungeon City stands on the fallen city"),
-				DungeonCityOn(*Felled, CityId));
+
+	const FCataclysmDungeon* Moved = Felled->FindDungeon(QuestId);
+	if (TestNotNull(TEXT("the Quest dungeon is still on the map"), Moved))
+	{
+		const FCataclysmCity* Fallen = Felled->Map->Find(CityId);
+
+		TestNotEqual(TEXT("and no longer on the city that fell"),
+					 Moved->CityId, CityId);
+		TestTrue(TEXT("it moved to a neighbour of the city that fell, which on an intact map always has one to take it"),
+				 Fallen != nullptr
+					 && UCataclysmSurgeScheduler::AdjacentCities(*Fallen)
+							.Contains(Moved->CityId));
+		TestTrue(TEXT("and that neighbour is exposed and standing"),
+				 Felled->Map->IsExposed(Moved->CityId));
+	}
+
+	TestNotNull(TEXT("its timer is still on the clock"),
+				Felled->Clock->FindTimer(QuestId));
+	TestEqual(TEXT("and full: the clock refilled it when it ran out"),
+			  Felled->Clock->DaysUntilResolveFor(QuestId), 25.0f, 0.001f);
+	TestEqual(TEXT("the report names it as moved once, by the fall, and not by its timer as well"),
+			  FellReport.Relocated.FilterByPredicate(
+				  [QuestId](int32 Id) { return Id == QuestId; }).Num(), 1);
+	TestTrue(TEXT("and names that move as a fall's"),
+			 FellReport.MovedByAFall.Contains(QuestId));
+
+	const FCataclysmDungeon* DungeonCity = DungeonCityOn(*Felled, CityId);
+	if (TestNotNull(TEXT("a Dungeon City stands on the fallen city"), DungeonCity))
+	{
+		TestEqual(TEXT("and it holds one boss, for the one dungeon it absorbed"),
+				  DungeonCity->Bosses, 1);
+	}
 	TestEqual(TEXT("the hit is counted as one Quest hit"), Felled->QuestHits, 1);
 
 	// THE CONTROL: AT FULL DEFENCE THE SAME TIMER LEAVES THE DUNGEON STANDING.
@@ -5776,6 +5927,8 @@ bool FCataclysmEmpireRunQuestHitFellsTest::RunTest(const FString& Parameters)
 			  Stood->Clock->DaysUntilResolveFor(QuestId), 25.0f, 0.001f);
 	TestFalse(TEXT("CONTROL: and nothing was absorbed"),
 			  StoodReport.Absorbed.Contains(QuestId));
+	TestFalse(TEXT("CONTROL: and no fall moved it"),
+			  StoodReport.MovedByAFall.Contains(QuestId));
 
 	return true;
 }
@@ -6139,6 +6292,543 @@ bool FCataclysmEmpireRunOrdinaryOnAFallenCityTest::RunTest(const FString& Parame
 	TestTrue(TEXT("CONTROL: the report names that city as hit by a dungeon that left"),
 			 ControlReport.HitAndLeft.Contains(CityId));
 	TestNull(TEXT("CONTROL: and the dungeon is off the map"), OnAStanding->FindDungeon(OrdinaryId));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A Quest dungeon whose city falls moves -- 2026-10-21
+// ---------------------------------------------------------------------------
+//
+// The owner, 2026-10-16, verbatim: "Quest dungeons don't go away when a city
+// falls. They just move to an adjacent city. So eventually they should be
+// hitting something." The simulation took it that day; `CityFell` does it in
+// the game since 2026-10-21, through `UCataclysmSurgeScheduler::PickRefuge`,
+// whose own tests are in `CataclysmSurgeTests.cpp`. These ask whether the run
+// calls it, and what the run does around it.
+
+namespace CataclysmEmpireRunTest
+{
+	/** How many times a dungeon is named in one of a report's lists. */
+	int32 TimesNamed(const TArray<int32>& List, int32 DungeonId)
+	{
+		int32 Times = 0;
+		for (const int32 Named : List)
+		{
+			if (Named == DungeonId)
+			{
+				++Times;
+			}
+		}
+		return Times;
+	}
+}
+
+/**
+ * A city that falls moves the Quest dungeon standing on it to a neighbour,
+ * keeping everything it carries, and its Dungeon City counts only the
+ * ordinary dungeons it absorbed.
+ *
+ * TWO RUNS FROM ONE SEED. In each the first Outpost carries a feller and a
+ * bystander, two ordinary dungeons, and the feller's hit fells it on day 2.
+ * In `Moved` a Quest dungeon carrying a Horde stands there too, with twenty
+ * of its twenty-five days left. In `Control` a third ordinary dungeon stands
+ * in its place.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallMovesQuestTest,
+	"Cataclysm.EmpireRun.AFallMovesItsQuestDungeonAndItsDungeonCityCountsOnlyWhatItAbsorbed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunFallMovesQuestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 FellerId = 9781;
+	const int32 BystanderId = 9782;
+	const int32 ThirdId = 9783;
+	const float QuestTimer = 25.0f;
+	const float QuestDaysLeft = 20.0f;
+
+	UCataclysmEmpireRun* Moved = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Moved);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+				  CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Control), CityId))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Run : { Moved, Control })
+	{
+		PlaceAFellerAndABystander(*Run, CityId, FellerId, BystanderId);
+		ResolveOnTheNextDay(*Run, FellerId);
+	}
+
+	PlaceDungeon(*Moved, ThirdId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::Horde, *Moved->Map->Find(CityId),
+				 QuestTimer);
+	GiveDamageAndDaysLeft(*Moved, ThirdId, 0.0f, 0.0f, QuestDaysLeft);
+
+	PlaceDungeon(*Control, ThirdId, ECataclysmDungeonType::Basic,
+				 ECataclysmDungeonSubType::None, *Control->Map->Find(CityId),
+				 EmptyBoardNeverDays);
+
+	const FCataclysmDayReport Report = Moved->AdvanceDay();
+	const FCataclysmDayReport ControlReport = Control->AdvanceDay();
+
+	if (!TestEqual(TEXT("set-up: the day advanced is day 2"), Report.Day, 2)
+		|| !TestTrue(TEXT("set-up: the Outpost fell"), Report.Fallen.Contains(CityId))
+		|| !TestTrue(TEXT("set-up: and in the control"), ControlReport.Fallen.Contains(CityId))
+		|| !TestFalse(TEXT("set-up: the Quest dungeon's own timer did not run out"),
+					  Report.Resolved.Contains(ThirdId)))
+	{
+		return false;
+	}
+
+	// NOT ABSORBED.
+	TestFalse(TEXT("the Quest dungeon is not named as absorbed"),
+			  Report.Absorbed.Contains(ThirdId));
+	TestEqual(TEXT("the two ordinary dungeons are, and nothing else"),
+			  Report.Absorbed.Num(), 2);
+	TestTrue(TEXT("the feller and the bystander are the two"),
+			 Report.Absorbed.Contains(FellerId) && Report.Absorbed.Contains(BystanderId));
+
+	// MOVED, TO A NEIGHBOUR THAT WILL TAKE IT. On an intact map a rim
+	// Outpost's perimeter links stand and are exposed, so a neighbour always
+	// qualifies and the outward search is not reached.
+	const FCataclysmDungeon* Quest = Moved->FindDungeon(ThirdId);
+	const FCataclysmCity* Fallen = Moved->Map->Find(CityId);
+	if (!TestNotNull(TEXT("the Quest dungeon is still on the map"), Quest)
+		|| !TestNotNull(TEXT("set-up: the fallen city is on the map"), Fallen))
+	{
+		return false;
+	}
+
+	const int32 Refuge = Quest->CityId;
+
+	TestNotEqual(TEXT("it is no longer on the city that fell"), Refuge, CityId);
+	TestTrue(TEXT("it is on a city adjacent to the one that fell"),
+			 UCataclysmSurgeScheduler::AdjacentCities(*Fallen).Contains(Refuge));
+	TestTrue(TEXT("and that city is exposed and standing"),
+			 Moved->Map->IsExposed(Refuge));
+	TestNotEqual(TEXT("and is not the Pillar"), Refuge, Moved->Map->PillarId);
+
+	// NAMED AS A FALL'S MOVE, ONCE, WITH ITS TWO CITIES.
+	TestEqual(TEXT("the report names it in Relocated once"),
+			  TimesNamed(Report.Relocated, ThirdId), 1);
+	if (TestEqual(TEXT("and one move by a fall today"), Report.MovedByAFall.Num(), 1)
+		&& TestEqual(TEXT("with one city it left"), Report.MovedByAFallFrom.Num(), 1)
+		&& TestEqual(TEXT("and one city it went to"), Report.MovedByAFallTo.Num(), 1))
+	{
+		TestEqual(TEXT("the move is the Quest dungeon's"), Report.MovedByAFall[0], ThirdId);
+		TestEqual(TEXT("it left the city that fell"), Report.MovedByAFallFrom[0], CityId);
+		TestEqual(TEXT("and went to the city it stands on"), Report.MovedByAFallTo[0], Refuge);
+	}
+
+	// IT KEPT EVERYTHING ELSE: floors, sub-type, the tier its depth was rolled
+	// on, its timer's length, and what was left of its timer.
+	TestEqual(TEXT("it kept its floors"), Quest->Floors, 20);
+	TestTrue(TEXT("and its sub-type"),
+			 Quest->SubType == ECataclysmDungeonSubType::Horde);
+	TestTrue(TEXT("and the tier its depth was rolled on"),
+			 Quest->CityTier == ECataclysmCityTier::Outpost);
+	TestEqual(TEXT("and its timer's length"), Quest->ResolveDays, QuestTimer, 0.001f);
+	TestEqual(TEXT("and what was left of its timer, one day less for the day that passed and not refilled"),
+			  Moved->Clock->DaysUntilResolveFor(ThirdId), QuestDaysLeft - 1.0f, 0.001f);
+
+	// THE DUNGEON CITY COUNTS THE TWO IT ABSORBED.
+	const FCataclysmDungeonSpec Spec = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::FallenCity, ECataclysmCityTier::Outpost);
+	const FCataclysmDungeon* DungeonCity = DungeonCityOn(*Moved, CityId);
+	if (TestNotNull(TEXT("a Dungeon City stands on the fallen city"), DungeonCity))
+	{
+		TestEqual(TEXT("it holds two bosses, for the two dungeons it absorbed"),
+				  DungeonCity->Bosses, 2);
+		TestEqual(TEXT("and is as deep as its tier's least"),
+				  DungeonCity->Floors, FMath::Max(2, Spec.LeastFloors));
+	}
+
+	// THE EMPIRE SCREEN'S RECORD OF THE MOVE.
+	TestEqual(TEXT("the run keeps day 2 as the last move"), Moved->LastMoveDay, 2);
+	TestEqual(TEXT("from the city that fell"), Moved->LastMoveFromCityId, CityId);
+	TestEqual(TEXT("to the city it went to"), Moved->LastMoveToCityId, Refuge);
+
+	FString Why;
+	TestTrue(TEXT("the dungeons and the timers still agree"),
+			 UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+				 Moved->Dungeons, Moved->Clock->Timers, Why));
+
+	// THE CONTROL: A THIRD ORDINARY DUNGEON IN ITS PLACE IS ABSORBED AND
+	// COUNTED, so the two bosses above are the Quest dungeon left out and not
+	// a count that never reached three.
+	TestEqual(TEXT("CONTROL: the report names three dungeons as absorbed"),
+			  ControlReport.Absorbed.Num(), 3);
+	TestTrue(TEXT("CONTROL: the third among them"),
+			 ControlReport.Absorbed.Contains(ThirdId));
+	TestEqual(TEXT("CONTROL: and no fall moved anything"),
+			  ControlReport.MovedByAFall.Num(), 0);
+	TestEqual(TEXT("CONTROL: nor did anything else"), ControlReport.Relocated.Num(), 0);
+	const FCataclysmDungeon* ControlCity = DungeonCityOn(*Control, CityId);
+	if (TestNotNull(TEXT("CONTROL: a Dungeon City stands on the fallen city"), ControlCity))
+	{
+		TestEqual(TEXT("CONTROL: it holds three bosses"), ControlCity->Bosses, 3);
+	}
+	TestEqual(TEXT("CONTROL: the run keeps no last move"), Control->LastMoveDay, 0);
+
+	return true;
+}
+
+/**
+ * A Quest dungeon left on a city that has fallen moves by its timer from
+ * there. Ruled by the coordinating session on 2026-10-21.
+ *
+ * THE STATE IS BUILT BY HAND. In play a fall leaves a Quest dungeon on the
+ * ruin only when no exposed city but the Pillar is left anywhere. Here the
+ * first Outpost is felled through the map, so no `CityFell` runs, and two
+ * Quest dungeons are put on it: one whose timer runs out the next day, and
+ * the control, whose timer does not.
+ *
+ * TWENTY SEEDS, BECAUSE THE TIMER'S MOVE IS A COIN. Each seed's run has drawn
+ * a different opening wave, so the coin is a different draw in each. Before
+ * 2026-10-21 `RelocateQuestDungeon` returned at once for a fallen city and no
+ * seed could move it; with a chance of one half, twenty seeds all declining
+ * is about one in a million.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestLeftOnARuinTest,
+	"Cataclysm.EmpireRun.AQuestDungeonLeftOnAFallenCityLaterMovesByItsTimer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestLeftOnARuinTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 DueId = 9791;
+	const int32 NotDueId = 9792;
+	constexpr int32 Seeds = 20;
+
+	int32 Moves = 0;
+	int32 Stays = 0;
+
+	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeEmptyRun(Seed);
+
+		const int32 CityId = FirstStandingOutpost(*Run);
+		if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+					  CityId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the Outpost was felled through the map"),
+						 Run->Map->Damage(CityId, 100000.0f, 0.0f)))
+		{
+			return false;
+		}
+
+		const FCataclysmCity* Ruin = Run->Map->Find(CityId);
+		PlaceDungeon(*Run, DueId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::None, *Ruin, 25.0f);
+		PlaceDungeon(*Run, NotDueId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::None, *Ruin, 25.0f);
+		ResolveOnTheNextDay(*Run, DueId);
+		GiveDamageAndDaysLeft(*Run, NotDueId, 0.0f, 0.0f, 5.0f);
+
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		if (!TestTrue(FString::Printf(
+				TEXT("set-up: seed %d: the due Quest dungeon's timer ran out"), Seed),
+				Report.Resolved.Contains(DueId)))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(
+			TEXT("seed %d: a Quest timer on a fallen city hits nothing"), Seed),
+			Report.QuestHits.Num(), 0);
+		TestFalse(FString::Printf(
+			TEXT("seed %d: and no fall moved it today"), Seed),
+			Report.MovedByAFall.Contains(DueId));
+
+		const FCataclysmDungeon* Due = Run->FindDungeon(DueId);
+		if (!TestNotNull(TEXT("the due Quest dungeon is still on the map"), Due))
+		{
+			return false;
+		}
+
+		if (Due->CityId == CityId)
+		{
+			++Stays;
+			TestFalse(FString::Printf(
+				TEXT("seed %d: it stayed and is not named as moved"), Seed),
+				Report.Relocated.Contains(DueId));
+		}
+		else
+		{
+			++Moves;
+			TestTrue(FString::Printf(
+				TEXT("seed %d: it moved and is named as moved"), Seed),
+				Report.Relocated.Contains(DueId));
+			TestTrue(FString::Printf(
+				TEXT("seed %d: to a city adjacent to the ruin"), Seed),
+				UCataclysmSurgeScheduler::AdjacentCities(*Ruin).Contains(Due->CityId));
+			TestTrue(FString::Printf(
+				TEXT("seed %d: that is exposed and standing"), Seed),
+				Run->Map->IsExposed(Due->CityId));
+		}
+
+		// THE CONTROL: THE SAME RUIN, A TIMER THAT DID NOT RUN OUT, NO MOVE.
+		const FCataclysmDungeon* NotDue = Run->FindDungeon(NotDueId);
+		if (TestNotNull(TEXT("CONTROL: the Quest dungeon not due is on the map"), NotDue))
+		{
+			TestEqual(FString::Printf(
+				TEXT("CONTROL: seed %d: the one whose timer did not run out is still on the ruin"), Seed),
+				NotDue->CityId, CityId);
+		}
+		TestFalse(FString::Printf(
+			TEXT("CONTROL: seed %d: and is not named as moved"), Seed),
+			Report.Relocated.Contains(NotDueId));
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d seeds: the Quest dungeon on the ruin moved by its timer in %d and stayed in %d"),
+		Seeds, Moves, Stays));
+
+	TestTrue(TEXT("a Quest dungeon on a fallen city moved by its timer in some seed"),
+			 Moves > 0);
+
+	return true;
+}
+
+/**
+ * A Quest dungeon a fall moved can take its own timer's move later the same
+ * day. Ruled by the coordinating session on 2026-10-21: both moves stand.
+ *
+ * THE ORDER IS THE CLOCK'S. Its timers run out in the order the dungeons were
+ * put on it, so the feller, put down first, fells the city before the Quest
+ * dungeon's timer is reached, and that timer then runs out on the city the
+ * fall moved it to: it hits that city, and may move on.
+ *
+ * TWENTY SEEDS, because the timer's move is a coin; the second move is
+ * asserted to happen in some seed and never to be other than adjacent.
+ *
+ * THE CONTROL is a second Quest dungeon on the same city whose timer does not
+ * run out: the fall moves it once and nothing moves it again.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunTwoMovesOneDayTest,
+	"Cataclysm.EmpireRun.AQuestDungeonAFallMovedMayTakeItsOwnTimersMoveTheSameDay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunTwoMovesOneDayTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 FellerId = 9801;
+	const int32 BystanderId = 9802;
+	const int32 DueId = 9803;
+	const int32 NotDueId = 9804;
+	constexpr int32 Seeds = 20;
+
+	int32 TwoMoves = 0;
+	int32 OneMove = 0;
+
+	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeEmptyRun(Seed);
+
+		const int32 CityId = FirstStandingOutpost(*Run);
+		if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+					  CityId != INDEX_NONE))
+		{
+			return false;
+		}
+
+		PlaceAFellerAndABystander(*Run, CityId, FellerId, BystanderId);
+		ResolveOnTheNextDay(*Run, FellerId);
+
+		PlaceDungeon(*Run, DueId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId), 25.0f);
+		ResolveOnTheNextDay(*Run, DueId);
+
+		PlaceDungeon(*Run, NotDueId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId), 25.0f);
+		GiveDamageAndDaysLeft(*Run, NotDueId, 0.0f, 0.0f, 5.0f);
+
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		const int32 FellerAt = Report.Resolved.IndexOfByKey(FellerId);
+		const int32 DueAt = Report.Resolved.IndexOfByKey(DueId);
+		const int32 DueMove = Report.MovedByAFall.IndexOfByKey(DueId);
+		const int32 NotDueMove = Report.MovedByAFall.IndexOfByKey(NotDueId);
+
+		if (!TestTrue(FString::Printf(TEXT("set-up: seed %d: the Outpost fell"), Seed),
+					  Report.Fallen.Contains(CityId))
+			|| !TestTrue(FString::Printf(
+					TEXT("set-up: seed %d: the feller's timer ran out before the Quest dungeon's"), Seed),
+					FellerAt != INDEX_NONE && DueAt != INDEX_NONE && FellerAt < DueAt)
+			|| !TestTrue(FString::Printf(
+					TEXT("set-up: seed %d: the fall moved both Quest dungeons"), Seed),
+					Report.MovedByAFallTo.IsValidIndex(DueMove)
+						&& Report.MovedByAFallTo.IsValidIndex(NotDueMove)))
+		{
+			return false;
+		}
+
+		const int32 Refuge = Report.MovedByAFallTo[DueMove];
+
+		// ITS TIMER RAN OUT ON THE CITY THE FALL MOVED IT TO, AND HIT IT.
+		TestTrue(FString::Printf(
+			TEXT("seed %d: the Quest dungeon's timer hit the city the fall moved it to"), Seed),
+			Report.QuestHits.Contains(Refuge));
+
+		const FCataclysmDungeon* Due = Run->FindDungeon(DueId);
+		if (!TestNotNull(TEXT("the due Quest dungeon is on the map"), Due))
+		{
+			return false;
+		}
+
+		const int32 Times = TimesNamed(Report.Relocated, DueId);
+
+		if (Times == 2)
+		{
+			++TwoMoves;
+			TestNotEqual(FString::Printf(
+				TEXT("seed %d: moved twice, it is no longer where the fall put it"), Seed),
+				Due->CityId, Refuge);
+			TestTrue(FString::Printf(
+				TEXT("seed %d: and its second move was to a city adjacent to where the fall put it"), Seed),
+				UCataclysmSurgeScheduler::AdjacentCities(*Run->Map->Find(Refuge))
+					.Contains(Due->CityId));
+		}
+		else
+		{
+			++OneMove;
+			TestEqual(FString::Printf(
+				TEXT("seed %d: moved once or twice, and here once"), Seed), Times, 1);
+			TestEqual(FString::Printf(
+				TEXT("seed %d: moved once, it is where the fall put it"), Seed),
+				Due->CityId, Refuge);
+		}
+
+		// THE CONTROL: MOVED BY THE FALL, AND NOTHING MORE.
+		const FCataclysmDungeon* NotDue = Run->FindDungeon(NotDueId);
+		TestEqual(FString::Printf(
+			TEXT("CONTROL: seed %d: the Quest dungeon whose timer did not run out moved once"), Seed),
+			TimesNamed(Report.Relocated, NotDueId), 1);
+		if (TestNotNull(TEXT("CONTROL: it is on the map"), NotDue))
+		{
+			TestEqual(FString::Printf(
+				TEXT("CONTROL: seed %d: and is where the fall put it"), Seed),
+				NotDue->CityId, Report.MovedByAFallTo[NotDueMove]);
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d seeds: the Quest dungeon a fall moved took its timer's move as well in %d and did not in %d"),
+		Seeds, TwoMoves, OneMove));
+
+	TestTrue(TEXT("a Quest dungeon moved twice in one day, by a fall and by its own timer, in some seed"),
+			 TwoMoves > 0);
+
+	return true;
+}
+
+/**
+ * The Quest dungeon the player is walking moves when its city falls, the
+ * walk goes on, and reaching its bottom still clears it. Ruled by the
+ * coordinating session on 2026-10-21.
+ *
+ * WHAT THE GAME MODE READS IS WHAT THIS ASKS. `ACataclysmDungeonGameMode`
+ * finds the walked dungeon by its number through `FindDungeon` and clears it
+ * through `ClearDungeon`, and the clock's `CurrentDungeonId` is what stops its
+ * timer while it is walked. The dungeon's number and those three are all this
+ * module holds, so they are asked here, headless.
+ *
+ * THE CONTROL is the recorded difference from the model, issue #2399: an
+ * ordinary dungeon being walked on the same city is still absorbed, the clock
+ * forgets it, and its clear counts for nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunWalkedQuestMovesTest,
+	"Cataclysm.EmpireRun.AWalkedQuestDungeonWhoseCityFallsMovesAndItsClearStillCounts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunWalkedQuestMovesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 FellerId = 9821;
+	const int32 BystanderId = 9822;
+	const int32 WalkedId = 9823;
+
+	UCataclysmEmpireRun* Walked = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Walked);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
+				  CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Control), CityId))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Run : { Walked, Control })
+	{
+		PlaceAFellerAndABystander(*Run, CityId, FellerId, BystanderId);
+		ResolveOnTheNextDay(*Run, FellerId);
+	}
+
+	// THE PLAYER IS INSIDE THE QUEST DUNGEON IN `Walked`, AND INSIDE THE
+	// ORDINARY BYSTANDER IN `Control`.
+	PlaceDungeon(*Walked, WalkedId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::None, *Walked->Map->Find(CityId), 25.0f);
+	Walked->Clock->EnterDungeon(WalkedId);
+	Control->Clock->EnterDungeon(BystanderId);
+
+	const FCataclysmDayReport Report = Walked->AdvanceDay();
+	const FCataclysmDayReport ControlReport = Control->AdvanceDay();
+
+	if (!TestTrue(TEXT("set-up: the Outpost fell"), Report.Fallen.Contains(CityId))
+		|| !TestTrue(TEXT("set-up: and in the control"), ControlReport.Fallen.Contains(CityId)))
+	{
+		return false;
+	}
+
+	// IT MOVED.
+	TestTrue(TEXT("the fall moved the walked Quest dungeon"),
+			 Report.MovedByAFall.Contains(WalkedId));
+	const FCataclysmDungeon* Dungeon = Walked->FindDungeon(WalkedId);
+	if (TestNotNull(TEXT("the run still has the walked Quest dungeon, so the game mode still finds it by its number"),
+					Dungeon))
+	{
+		TestNotEqual(TEXT("and it is no longer on the city that fell"),
+					 Dungeon->CityId, CityId);
+	}
+
+	// AND THE WALK GOES ON.
+	TestEqual(TEXT("the clock still has the player inside it"),
+			  Walked->Clock->CurrentDungeonId, WalkedId);
+	TestNotNull(TEXT("and its timer is still on the clock"),
+				Walked->Clock->FindTimer(WalkedId));
+
+	// REACHING ITS BOTTOM CLEARS IT, AND IT COUNTS.
+	const int32 ObjectivesBefore = Walked->QuestObjectives;
+	TestTrue(TEXT("clearing it succeeds"), Walked->ClearDungeon(WalkedId));
+	TestEqual(TEXT("and earns one quest objective"),
+			  Walked->QuestObjectives, ObjectivesBefore + 1);
+	TestEqual(TEXT("and the player has left it"),
+			  Walked->Clock->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
+
+	// THE CONTROL: AN ORDINARY WALKED DUNGEON IS STILL TAKEN WITH ITS CITY.
+	TestTrue(TEXT("CONTROL: the walked ordinary dungeon is absorbed"),
+			 ControlReport.Absorbed.Contains(BystanderId));
+	TestNull(TEXT("CONTROL: the run no longer has it"),
+			 Control->FindDungeon(BystanderId));
+	TestEqual(TEXT("CONTROL: the clock no longer has the player inside anything"),
+			  Control->Clock->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
+	TestFalse(TEXT("CONTROL: and reaching its bottom clears nothing"),
+			  Control->ClearDungeon(BystanderId));
+	TestEqual(TEXT("CONTROL: so nothing is counted as cleared"),
+			  Control->DungeonsCleared, 0);
 
 	return true;
 }

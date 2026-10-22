@@ -156,11 +156,37 @@ FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 
 FString UCataclysmEmpireMapLayout::LastHitLine(const UCataclysmEmpireRun* Run)
 {
-	// NOTHING TO SAY: no run, a run that has not begun, or no hit yet. Day 0 is
-	// what `UCataclysmEmpireRun::Begin` writes, and no day of a run is day 0.
-	if (Run == nullptr || Run->Map == nullptr || Run->LastHitDay <= 0)
+	// NOTHING TO SAY: no run, a run that has not begun, or no hit and no move
+	// yet. Day 0 is what `UCataclysmEmpireRun::Begin` writes, and no day of a
+	// run is day 0.
+	if (Run == nullptr || Run->Map == nullptr
+		|| (Run->LastHitDay <= 0 && Run->LastMoveDay <= 0))
 	{
 		return FString();
+	}
+
+	// A FALL'S MOVE OF A QUEST DUNGEON, WHEN IT IS AT LEAST AS RECENT AS THE
+	// LAST HIT. Since 2026-10-21 a Quest dungeon on a city that falls moves
+	// rather than being absorbed, and without this line a player sees the city
+	// lost and a Quest dungeon standing somewhere it was not. The later of the
+	// two is shown; ON THE SAME DAY THE MOVE IS SHOWN, because a fall that
+	// moved a dungeon is the larger event and the hit that felled the city is
+	// usually the same story. The line the console prints for the day names
+	// both.
+	if (Run->LastMoveDay > 0 && Run->LastMoveDay >= Run->LastHitDay)
+	{
+		const FCataclysmCity* From = Run->Map->Find(Run->LastMoveFromCityId);
+		const FCataclysmCity* To = Run->Map->Find(Run->LastMoveToCityId);
+		const FString FromName = From != nullptr
+			? From->Name : FString(TEXT("a city"));
+		const FString ToName = To != nullptr
+			? To->Name : FString(TEXT("a city"));
+
+		// THE CITY THAT FELL IS THE CITY IT MOVED FROM, named twice so the
+		// sentence says both where it was and why it left.
+		return FString::Printf(
+			TEXT("Day %d: a Quest dungeon moved from %s to %s because %s fell."),
+			Run->LastMoveDay, *FromName, *ToName, *FromName);
 	}
 
 	// THE CITY IS NAMED AS THE MAP NAMES IT. A number nobody can look up says
