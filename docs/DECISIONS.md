@@ -271,15 +271,48 @@ narrowed to the new file -- a check of the file and not a registered proof. Each
 
 ### Proofs
 
-Not yet run. Three to be registered by the dungeon session after reading the code:
+**All three PROVED** in the second window below, each with `unreal_build.prove_cpp_guard`, registered by the dungeon
+session after reading the code; each break text matched its file exactly once. **Narrowed**: P1 and P3 on the prefix
+`Cataclysm.EmpireRun.AHollow` (seven tests), P2 on `Cataclysm.EmpireRun.AHollowsHit` (two). No Python half was
+registered for them; the Python check's own three breaks, run by the writing session, are under Python above.
 
-- **P1**, the shrink step removed (`ShrinkHollows(Today);` out of `AdvanceDay`).
-- **P2**, the below-8 cap removed (the `HollowCannotEraseBelow` block out of `HollowStacksOnto`).
-- **P3**, the walked-dungeon guard removed (`|| Dungeon.DungeonId == Inside` out of `ShrinkHollows`).
+- **P1**, the shrink step removed: `ShrinkHollows(Today);` -> `/* the daily shrink removed */` in
+  `CataclysmEmpireRun.cpp`. Predicted: the four shrink tests fail and the three hit and timer tests pass. Printed: "7
+  tests performed, 3 succeeded, 4 failed: AHollowDoesNotShrinkOnTheDayItWasMade,
+  AHollowDoesNotShrinkWhileThePlayerIsInsideAndResumesWhenTheyLeave,
+  AHollowLosesAFloorADayToItsMinimumAndItsWalkFollowsButNotItsTimer, AHollowThatHasMovedOrStandsOnAFallenCityGoesOnShrinking";
+  restored "7 tests performed, 7 succeeded, 0 failed".
+- **P2**, the below-8 cap removed: `if (CityStacks < UCataclysmSurgeScheduler::HollowCannotEraseBelow)` ->
+  `if (CityStacks < 0)` in `CataclysmSurge.cpp` (a city's stacks are never negative). Predicted: both fail. Printed: "2
+  tests performed, 0 succeeded, 2 failed: AHollowsHitOnACityAtSevenStacksStopsItAtNine,
+  AHollowsHitThatTakesACityAtEightOrNineToTenErasesItAndTheHollowMoves"; restored "2 tests performed, 2 succeeded, 0
+  failed".
+- **P3**, the walked-dungeon guard removed: `|| Dungeon.DungeonId == Inside)` -> `|| (Inside == INDEX_NONE - 1 &&
+  Dungeon.DungeonId == Inside))` in `CataclysmEmpireRun.cpp` (no dungeon is ever inside at -2). Predicted:
+  `AHollowDoesNotShrinkWhileThePlayerIsInsideAndResumesWhenTheyLeave` fails alone. Printed: "7 tests performed, 6
+  succeeded, 1 failed: AHollowDoesNotShrinkWhileThePlayerIsInsideAndResumesWhenTheyLeave"; restored "7 tests performed,
+  7 succeeded, 0 failed".
 
 ### Run
 
-Not yet run.
+Nothing was built and no Unreal test was run by the writing session. Two windows were run by the dungeon session on
+2026-10-22, each given by the coordinating session, each with the five conditions checked immediately before the lock
+was taken and the lock released before anything was written here.
+
+- **First window** (lock `void-zones-w36`, `feat/game-hollow-2` at `8a8cdd74c`, on `a58389c7c`): "Build: Succeeded -
+  70 actions, 60 files compiled"; "4047 tests performed, 4045 succeeded, 2 failed:
+  AQuestDungeonHitsItsCityAndThenRefreshes, AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks". It
+  stopped there; no proof was run. The two tests and their rulings are under AT RISK and "Tests changed" above.
+- **Second window** (lock `void-zones-w37`, `feat/game-hollow-3` at `b1b84920e`, on `796f2d9f6`, the traps layer 6
+  merge, #2470, whose CI and Unreal runs had both completed with success and with no run in progress):
+  - **Build:** "Build: Succeeded - 53 actions, 48 files compiled".
+  - **The whole Unreal suite:** "4055 tests performed, 4055 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4055 tests in the tree at b1b84920e; 4055 performed, gap 0; every declared test was reported by the
+    run." Registered 4055 and 0: the 4032 of the traps layer 5 merge, the 8 of traps layer 6 and the fifteen new
+    names here. Both tests the first window failed passed.
+  - **Python:** "6895 passed, 8 skipped"; JUnit tests 6903, failures 0, errors 0, skipped 8, as registered. Lint: "All
+    checks passed!".
+  - **The proofs:** as under Proofs above.
 
 ---
 
