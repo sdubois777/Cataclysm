@@ -110,6 +110,7 @@ What a player would notice, once the rows are worn:
 
 - 'Each trap triggered in the last 10 seconds increases your damage' has no cap; with 'Traps do not expire' and a larger trap count it can reach well over 100%
 - with 'Traps do not expire', placed traps stay until triggered or pushed out by the cap
+- a trap whose skill is a projectile, a leap or a zone does not yet take trap damage rows or the trap bleed on those late blows; the next trap layer adds them
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -585,6 +586,37 @@ Failed assertions, by reading:
 **A test and no proof:** the no-expire flag and the cap still destroying the oldest under it; the arming and radius rows at
 their low ends; the slow on the one enemy, its strength and its seconds; the bleed's size, its every enemy and the rule of a
 tenth; the own stacks' lack of a cap; the line's entry; the evasion burst, refreshed and not stacked.
+
+### THE LATE BLOWS THIS LAYER DOES NOT YET REACH, RULED THE NEXT TRAP LAYER
+
+**Accepted by the coordinating session on 2026-10-21 (brief 60c), with L-A and L-B ruled (a) for this layer and made**
+**THE NEXT TRAP LAYER (3b), straight after this one merges and before design layer 4**: a skill trap's late projectile
+or rack blow, a buried weapon's leap and a zone are not yet priced as the trap's (`Type.Trap` `minion_damage`) nor
+announced as `deployable_hit`, so the trap damage rows and the trap bleed miss them. The record this layer built for the
+late slow is the carrier. Tracked as [#2462](https://github.com/sdubois777/Cataclysm/issues/2462); on the play-check
+list above.
+
+### THE MOVE AND THE ROWS, BY THE ENCHANTMENT SESSION
+
+**The three commits of this layer were moved onto development b7980dc48** (the Quest dungeon's move on a fall), as
+2a8779546, aac524395 and f149c93a2, from b3da10478, 3347fdca3 and badf35ca4 on 991bcb962. Each kept its zero-context
+patch id and its count of removed lines, the only conflict was this log (this entry placed on top), and outside this log
+the moved top differs from badf35ca4 by exactly that merge's own changes (the same files and the same patch id).
+
+**Nine effect rows on eight enchantments**, on the coordinating session's grant of the workbook for them on 2026-10-21,
+written into `docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`,
+cell for cell the rows this layer's second session dry-ran through the whole generator (the table above). The generator
+accepted all nine. **692 rows over 556 enchantments**, from 683 over 548, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`,
+in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in `docs/README.md`; `traps_do_not_expire` joins `FLAG_STATS`. The
+row-text check alone: 41 passed.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornTrapLayerThreeRowsEachReachTheReadOrActionTheirSentenceNames`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Nine real players: a control wearing a benefit with no effect, and one
+wearing each of the eight sentences, each with a drawback with no effect. For each it asks the read or worn action its
+row reaches: the arming-speed and trigger-radius increases on `Type.Trap`, `SkillTrapsMostFor` above the ruled 5,
+`SkillTrapsDoNotExpireFor`, one `slow_for_seconds` on `trap_triggered`, one sized bleed on `deployable_hit`, a stack
+lapsing alone on `trap_triggered`, and a stack capped at one on `trap_placed`; the control reaches none of them. Eight
+assertions on the cases, so on assets built before the rows it fails eight times, and only there.
 
 ### THE WINDOW'S RUN
 

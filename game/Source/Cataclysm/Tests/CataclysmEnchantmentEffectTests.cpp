@@ -27908,4 +27908,106 @@ bool FCataclysmSkillTrapSupportBasicRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapLayerThreeRowsTest,
+	"Cataclysm.Enchantments.TheWornTrapLayerThreeRowsEachReachTheReadOrActionTheirSentenceNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Traps layer 3, ruled 2026-10-21 (M1-M6, R1-R3, and the owner on the slow): eight sentences, nine rows. WORN by real
+ * players, one sentence each, against a CONTROL wearing a benefit with no effect, each with the same drawback with no
+ * effect. For each, the test asks the one read or worn action its row reaches: the arming and trigger-radius increases
+ * and the cap and no-expire reads through `ACataclysmMinion`'s own helpers, and the slow, the sized bleed and the two
+ * own-stack grants as worn actions. What each then does in play is `Cataclysm.Traps.`'s. EIGHT assertions on the cases,
+ * one per worn sentence, so on assets built before the rows it fails eight times, and only there.
+ */
+bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* Arming = TEXT("Positive_Traps_arm_30_60_faster");
+	const TCHAR* Radius = TEXT("Positive_Traps_have_30_50_increased_trigger_radius");
+	const TCHAR* Cap = TEXT("Positive_Your_trap_skills_get_1_6_to_max_trap_count");
+	const TCHAR* NoExpiry = TEXT("Positive_Traps_do_not_expire_they_remain_armed_until_tr");
+	const TCHAR* Slow = TEXT("Positive_Traps_apply_a_20_35_slow_to_triggered_enemies");
+	const TCHAR* Bleed = TEXT("Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug");
+	const TCHAR* Recent = TEXT("Positive_Each_trap_triggered_in_the_last_10_seconds_incre");
+	const TCHAR* Evasion = TEXT("Positive_Placing_a_trap_generates_a_burst_of_evasion_gra");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker ArmingWearer(Arming, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker RadiusWearer(Radius, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker CapWearer(Cap, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker NoExpiryWearer(NoExpiry, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker SlowWearer(Slow, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker BleedWearer(Bleed, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker RecentWearer(Recent, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker EvasionWearer(Evasion, DrawbackWithNoEffect);
+	for (const CataclysmConsecutiveRowTest::FStriker* Striker : {&Control, &ArmingWearer, &RadiusWearer, &CapWearer,
+			 &NoExpiryWearer, &SlowWearer, &BleedWearer, &RecentWearer, &EvasionWearer})
+	{
+		if (!TestTrue(TEXT("a striker for the trap rows"), Striker->Ready()))
+		{
+			return false;
+		}
+	}
+
+	const FGameplayTagContainer TrapTags(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap"))));
+	const auto CountActions = [](const CataclysmConsecutiveRowTest::FStriker& Striker,
+								 TFunctionRef<bool(const FCataclysmPoolAction&)> Matches)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+		{
+			Found += Matches(Action) ? 1 : 0;
+		}
+		return Found;
+	};
+	const auto IsSlow = [](const FCataclysmPoolAction& Action)
+	{
+		return Action.bSlowForSeconds && Action.Event == FName(TEXT("trap_triggered"));
+	};
+	const auto IsSizedBleed = [](const FCataclysmPoolAction& Action)
+	{
+		return Action.ApplyStatus == ECataclysmApplyStatus::Sized && Action.StatusName == TEXT("Bleed")
+			&& Action.Event == FName(TEXT("deployable_hit"));
+	};
+	const auto IsLapsingTriggerStack = [](const FCataclysmPoolAction& Action)
+	{
+		return !Action.StackKey.IsNone() && Action.bOwnStacksLapseAlone && Action.Event == FName(TEXT("trap_triggered"));
+	};
+	const auto IsPlacingStack = [](const FCataclysmPoolAction& Action)
+	{
+		return !Action.StackKey.IsNone() && Action.StackCap == 1 && Action.Event == FName(TEXT("trap_placed"));
+	};
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, none of the eight reaches anything.
+	TestEqual(TEXT("control: no arming-speed increase on a trap"),
+			  Control.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapArmingSpeedStat), TrapTags), 0.0f, 0.001f);
+	TestEqual(TEXT("control: no trigger-radius increase on a trap"),
+			  Control.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapTriggerRadiusStat), TrapTags), 0.0f, 0.001f);
+	TestEqual(TEXT("control: the cap is the ruled 5"), ACataclysmMinion::SkillTrapsMostFor(Control.Character),
+			  ACataclysmMinion::SkillTrapsMostPerPlayer);
+	TestFalse(TEXT("control: traps expire"), ACataclysmMinion::SkillTrapsDoNotExpireFor(Control.Character));
+	TestEqual(TEXT("control: no trap slow"), CountActions(Control, IsSlow), 0);
+	TestEqual(TEXT("control: no sized bleed"), CountActions(Control, IsSizedBleed), 0);
+	TestEqual(TEXT("control: no stack lapsing alone on trap_triggered"), CountActions(Control, IsLapsingTriggerStack), 0);
+	TestEqual(TEXT("control: no capped stack on trap_placed"), CountActions(Control, IsPlacingStack), 0);
+
+	const FString Stale = TEXT(" If not, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+	TestTrue(TEXT("wearing 'Traps arm faster', a trap's arming speed is increased.") + Stale,
+			 ArmingWearer.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapArmingSpeedStat), TrapTags) > 0.0f);
+	TestTrue(TEXT("wearing the trigger-radius row, a trap's trigger radius is increased.") + Stale,
+			 RadiusWearer.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapTriggerRadiusStat), TrapTags) > 0.0f);
+	TestTrue(TEXT("wearing the trap-count row, the cap is above the ruled 5.") + Stale,
+			 ACataclysmMinion::SkillTrapsMostFor(CapWearer.Character) > ACataclysmMinion::SkillTrapsMostPerPlayer);
+	TestTrue(TEXT("wearing 'Traps do not expire', traps do not expire.") + Stale,
+			 ACataclysmMinion::SkillTrapsDoNotExpireFor(NoExpiryWearer.Character));
+	TestEqual(TEXT("wearing the slow row, one trap slow on trap_triggered.") + Stale, CountActions(SlowWearer, IsSlow), 1);
+	TestEqual(TEXT("wearing the bleed row, one sized bleed on deployable_hit.") + Stale,
+			  CountActions(BleedWearer, IsSizedBleed), 1);
+	TestTrue(TEXT("wearing the recent-triggers row, a stack lapsing alone on trap_triggered.") + Stale,
+			 CountActions(RecentWearer, IsLapsingTriggerStack) > 0);
+	TestTrue(TEXT("wearing the evasion row, a stack capped at one on trap_placed.") + Stale,
+			 CountActions(EvasionWearer, IsPlacingStack) > 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
