@@ -51,9 +51,10 @@ FOR EACH, NO WIDER THAN ITS ROW:**
    alone, its value the slow in per cent and its Stack Seconds the seconds. **IT ASKS THE RULE OF A TENTH (#917), THE
    OWNER RULED 2026-10-21 (R1, below): the slow lands only if the trap's cast struck the enemy that set it off for at
    least a tenth of its maximum health.** The trap keeps what its cast's largest blow took from that enemy, and
-   `trap_triggered` carries it as its amount. **A CAST THAT LANDS AFTER THE TRAP IS USED UP (A SHOT IN FLIGHT) HAS TAKEN
-   NOTHING WHEN THE EVENT IS RAISED, SO SUCH A TRAP NEVER SLOWS.** The first version of this layer (b3da10478) asked no
-   rule; this one does.
+   `trap_triggered` carries it as its amount. **AND A CAST THAT LANDS AFTER THE TRAP IS USED UP (A SHOT IN FLIGHT, A
+   RACK'S THROW) IS DECIDED AT ITS BLOW** (ruled 2026-10-21, brief 60c): when no blow has qualified at the trigger, the
+   slow waits up to 5 s for a later blow of that cast on that enemy, and the first one taking a tenth lays it, once. The
+   first version of this layer (b3da10478) asked no rule; the second (3347fdca3) asked it at the trigger only.
 2. **THE BLEED (P215).** `apply_status` lays an ailment at its ordinary size, and ruling 8 of 2026-10-07 reads "1-2 bleed
    stacks" as one bleed at 1 to 2 times its size; the only sized action lays a status on its wearer. HELD on 2026-10-07
    for that reason, quoted above. Built: the action `apply_status_sized` on the other character, on the events of
@@ -98,7 +99,8 @@ What a player would notice, once the rows are worn:
   grants 5%-10% increased damage" does not hear a trap's bleed. By reading; not tested. The slow raises nothing.
   **FOUND AND LEFT**, as the coordinating session ruled on 2026-10-21.
 - **THE SLOW NEEDS A BLOW**: a trap's cast that strikes the enemy that set it off for less than a tenth of its maximum
-  health, or misses it, or reaches it only with a shot still in flight when the trap is used up, slows nothing (R1).
+  health, or misses it, slows nothing (R1); a shot landing more than 5 s after the trap triggered slows nothing; a
+  buried weapon's leap and a zone's blows, which do not carry the trap past its death, slow nothing (brief 60c).
 - **NOT IN PLAY UNTIL THE NINE EFFECT ROWS LAND ABOVE THIS LAYER**, the enchantment session's.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
   code, the tests and this entry under the enchantment session's brief 60 and the rulings below. NOT COMPILED AND NOT
@@ -144,6 +146,54 @@ condition the pipeline has not got, the triggering enemy carried on every delive
 `trap_triggered` now sees an amount; none takes a share of it, since `trap_triggered` is not in `EVENTS_WITH_AN_AMOUNT`,
 and layer 4's "the first enemy that triggers them" (P018) could read the same two fields.
 
+**THE SLOW DECIDED AT THE BLOW, SO A LATE SHOT STILL SLOWS.** The coordinating session, 2026-10-21, verbatim as relayed:
+
+> RULING: (b), in this layer. The owner's words cover a hit that lands later, and a row that never works for nine Demonic
+> projectile skills should not ship. ...
+> The decision moves to the blow: when a blow from a trap's cast lands on the enemy that set that trap off and takes at
+> least a tenth of its maximum health, it lays the slow there and then at the slow row's figures, once per trap. Build
+> the smallest way to let a late blow know its trap and its triggering enemy; the session chooses between keeping the
+> spent trap alive hidden or carrying the trap's record (its wearer, its triggering enemy, whether the slow was laid) on
+> the cast's projectiles or zones, and says why. Whichever it takes: a spent trap is not counted against the cap, cannot
+> trigger again, cannot be struck, and is not drawn; the meaning of tests 5 and 18 is unchanged (say how each is kept); a
+> cap on how long it waits (a few seconds) is a number under the owner's delegation; and it says what else could later
+> read the carried record.
+
+**Read first.** A projectile copies its use's `FreeRepeatCastBy` into `ACataclysmProjectile::CastBy` when it is fired
+(`CataclysmSkillTemplates.cpp`, the projectile and the rack's shots), and copies that weak pointer into each contact's
+`FCataclysmHitDelivery::CastBy` (`CataclysmProjectile.cpp`); a rack's no-speed throw sets `Delivery.CastBy` from it too.
+`UCataclysmBuriedWeapon` keeps a `CastBy` but hands its leap `CastBy.Get()`, which is null once the trap is gone, and a
+zone carries none. `ACataclysmMinion::SkillTrapCasting(Delivery)` answers null for a blow landing after the trap is used
+up, because a weak pointer's `Get` answers null for a destroyed actor and the use's own `FreeRepeatCastBy` names the same
+gone trap. **But the weak pointer in the delivery still holds the trap's identity**: `HasSameIndexAndSerialNumber`
+answers whether two weak pointers named one actor though it is gone (`==` would answer yes for any two stale ones).
+
+**The way taken: the record, kept on the wearer, matched by that identity.** When `trap_triggered` is raised,
+`TriggerSkillTrap` names its trap on the wearer's ability system (`SkillTrapRaisingItsTrigger`). The slow action, finding no
+blow yet qualified, leaves a `FLateSkillTrapSlow` there (the trap, the enemy that set it off, the slow's rolled strength
+and seconds, and the time it waits until). `UCataclysmSkillEffects::ApplyHit`, for a blow no gadget or living trap prices,
+asks `AwaitsALateSkillTrapSlow` with the delivery's `CastBy`; if one waits for that trap on that enemy, it deals the blow
+with a result and hands its `DealtToHealth` to `LayALateSkillTrapSlow`, which asks the rule of a tenth, lays the slow and
+stops waiting. A blow short of a tenth leaves it waiting for the next. **Why not the other way:** a spent trap kept alive
+hidden would still be an `ACataclysmMinion` that every reader of what a player commands meets: the cap's `SkillTrapsOf`,
+the counts `traps_active` and `deployables_active`, the self-blast's search for the wearer's deployables, enemies' and
+areas' searches, the floor clearing and the bar; each would need a new refusal. The record touches none of them, and needs
+nothing carried on a projectile that is not carried already.
+
+**What the rulings require of a spent trap, each kept because the trap is destroyed as before:** it is not counted
+against the cap (`SkillTrapsOf` leaves out a trap being destroyed; tested in test 25); it cannot trigger again (it is
+gone); it cannot be struck (gone); it is not drawn (gone). **TESTS 5 AND 18 KEEP THEIR MEANING**: nothing about a trap's
+life, its expiry or the cap changes, so test 5's sixth trap still destroys the oldest and its expired trap is still gone,
+and test 18's six and eight still count only standing traps. **How long a slow waits: 5 s**,
+`UCataclysmAbilitySystemComponent::SkillTrapLateSlowSeconds`, a number under the owner's delegation of unstated numbers.
+Emptied at death.
+
+**What else could later read the record:** a later row's "the trap's late blow" question: layer 4's "Traps deal 100%-200%
+increased damage to the first enemy that triggers them" (P018) for a shot landing late; and layer 1's item 5 (a late shot
+priced as the player's, with no `deployable_hit`), which could be priced as the trap's by the same identity. **FOUND AND
+NOT CHANGED: THE BLEED ROW (P215) AND THE TRAP DAMAGE ROWS DO NOT REACH A LATE SHOT EITHER**, for the reason the slow did
+not; the ruling names the slow alone.
+
 The rulings of 2026-10-21 on the enchantment session's M1-M6, verbatim as relayed:
 
 > RULINGS, brief 60 (traps layer 3). The finding is accepted: build the two reads (trap_cap_bonus, traps_do_not_expire)
@@ -181,7 +231,8 @@ cap", or (b) none. T1-T19 of 2026-10-19 and L1-L6 of 2026-10-21 stand, quoted in
 **NO NUMBER PLAY READS IS ADDED.** Every figure in the rows is its sentence's. The cap of five, 20 s, 1.0 s and 3 m are
 layer 1's, under the owner's delegation of unstated numbers, as its entry says. Two bounds for typing mistakes are added
 to the generator, as its others are: `MAX_TRAP_CAP_BONUS` 20 and `MAX_SLOW_PERCENT` 80, the second Cripple's own cap in
-`game/Data/StatusEffects.csv`, which the game also holds a slow to.
+`game/Data/StatusEffects.csv`, which the game also holds a slow to. **ONE NUMBER IS ADDED AFTER BRIEF 60C**: a slow waits
+5 s for a late blow of its trap's cast (`SkillTrapLateSlowSeconds`), under the owner's delegation of unstated numbers.
 
 ### THE RULINGS, AND WHERE EACH IS IN THE CODE
 
@@ -195,6 +246,7 @@ after it.
 | M3 (b) | "only the enemy that set the trap off" | `UCataclysmAbilitySystemComponent::SlowForSecondsAction` (`CataclysmAbilitySystemComponent.cpp` 8199), read by the item (`CataclysmItem.cpp` 1457) and acted on in `ActOnEvent` (6753) with `trap_triggered`'s other character, the enemy `TriggerSkillTrap` names; `UCataclysmAilments::ApplySlowOfStrength` (`CataclysmAilments.cpp` 714). |
 | R1 | "the slow asks the rule of a tenth against that blow's DealtToHealth; no qualifying blow on that enemy, no slow" | On the head after b3da10478: `TriggerSkillTrap` names the enemy and clears the figure (`CataclysmMinion.cpp` 2547, 2548) and raises `trap_triggered` with it (2560); `ApplyHit` hands each trap blow's `DealtToHealth` to `NoteSkillTrapBlowOn` (`CataclysmSkillEffects.cpp` 1121; `CataclysmMinion.cpp` 2656); the slow asks `BlowCanCarryAnAilment` (`CataclysmAbilitySystemComponent.cpp` 6759). |
 | R2 | "a skill trap's deployable_hit carries its blow's DealtToHealth; gadgets and machines unchanged" | As built in b3da10478 (`CataclysmSkillEffects.cpp`, `TrapsBlowDealt`). |
+| 60c | "when a blow from a trap's cast lands on the enemy that set that trap off and takes at least a tenth of its maximum health, it lays the slow there and then at the slow row's figures, once per trap" | On the third commit: the slow waits (`ActOnEvent`'s slow branch, `LateSkillTrapSlows.Add`); `TriggerSkillTrap` names its trap around the event (`SkillTrapRaisingItsTrigger`); `ApplyHit` hands a late blow to `AwaitsALateSkillTrapSlow` and `LayALateSkillTrapSlow`, at the end of `CataclysmAbilitySystemComponent.cpp`; death empties the waits. |
 | R3 | "all three pieces: slow_for_seconds (now with the rule), apply_status_sized, and the uncapped own stacks that lapse one by one, allowed only on trap_triggered" | The three rows of this table above and below. |
 | M3, the bleed | "The bleed row says "all enemies caught in their blast"" | `ApplyStatusSizedAction` (8198), read by the item (1451); in `ActOnEvent` a sized row always applies (6691) and `ApplyStatusOf` lays it at its size (7603); the trap's blow's amount on `deployable_hit` (`CataclysmSkillEffects.cpp` 1116). |
 | M4 (a) | "one stack per trap_triggered, each lasting 10 s, no stack cap since the sentence names none" | The item marks an own-stack row of no cap (`CataclysmItem.cpp` 1170); `GrantOwnStackLastingAlone` (8201), granted from `ActOnEvent` (6227) and the timed grants (5131); `OwnStacksHeld` counts the stacks inside their windows (5568); death empties them (2780); the line's entry (`CataclysmSkillBar.cpp` 314). The generator allows the absent cap on `trap_triggered` alone (`OWN_STACKS_LAPSING_ALONE_EVENTS`, `tools/generate_datatables.py` 12004, asked at 7572). |
@@ -381,7 +433,7 @@ The world's clock is moved by hand and a trap's step called directly, a second a
 whose traps strike pins `Cataclysm.CritRoll` at 100 after the world is made (19 to 23). Helper types are
 `FTrapRowWorld`, `FTrapRowStat`, `FTrapRowRig` and `FTrapRowBleedCase`, in the namespace `CataclysmTrapRowTest`; the engine's
 headers declare none of them, and no other file of the module declares them (searched). **Assertions are counted for a
-passing run, 107 in all.**
+passing run, 130 in all.**
 
 18. `TheCapBonusRaisesTheOneCapSoASixthTrapStandsAndTheBarShowsTrapsSixOfEight`, 11. In order: a world; control, the most
     standing is five with no bonus; with a sixth, five stand; the first is gone; the box reads "Traps 5/5"; with a bonus of
@@ -417,6 +469,15 @@ passing run, 107 in all.**
     next three (three); control, the capped stacks hold five; six stacks, no cap; 60% increased; at 10.5 s, control, the
     capped stacks still five; three stand; 30% increased; control, a capped entry reads "attack/spell damage 3/5"; one of
     no cap "attack/spell damage 3"; at 16.5 s none.
+25. `AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItTakesATenthAndTheSpentTrapCountsForNothing`, 23, added for
+    brief 60c. Four players holding a Demonic Wand, whose Heavy Malefice is a shot; a Heavy trap each with its enemy
+    2.5 m away; creatures of 1,000 health but the third player's 100,000; the three but the control hold the slow at 25
+    and 3. In order: a world; set-up, the pin; set-up, the Cripple tag; set-up, the wand's Heavy is a shot a trap may
+    cast; set-up, four enemies (four); after three triggers, set-up, the trap is used up; its enemy is untouched (the shot
+    in flight); nothing slowed yet; the used-up trap is not among the player's traps; five more stand; set-up, three shots
+    landed; set-up, the control's shot took a tenth; control, it slows nothing; set-up, the second took a tenth; the late
+    shot slows its enemy; by 25; for 3 s; set-up, the third took less than a tenth; so no slow; the fourth trap triggered
+    and its shot landed 5.5 s later: set-up, it took a tenth; but no slow, past the wait of 5 s.
 24. `TheEvasionRowGivesItsPointsForThreeSecondsOnPlacingATrapRefreshedAndNotStacked`, 6. In order: a world; control, no
     burst; a placing grants 15 points; a second within 3 s still 15; 4.5 s after the first and 2.5 after the second still
     15; 3.5 s after the second, nought.
@@ -439,8 +500,8 @@ read). In `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
 **Not tested:** a real row worn (the enchantment session's); the item's building of the nine rows (the tests write the
 actions and stat lines by hand); a trap placed by a key press or a click under the rows (layer 1's and 2's presses
 unchanged); the basic trap's line showing the raised cap; a Cripple already stronger on the enemy; the slow's duration
-lengthened by a Cripple duration row; a trap set off with no enemy under the slow; a Projectile trap's slow (by reading, never: its shot has not landed when
-`trap_triggered` is raised); a cast striking the enemy that set it off twice, the larger blow kept; the bleed on a Spike Trap's blow; a
+lengthened by a Cripple duration row; a trap set off with no enemy under the slow; a rack's late throw slowing (by reading, as a shot); a buried weapon's leap and a zone's blows
+not slowing (by reading); two traps' waits on one enemy; a cast striking the enemy that set it off twice, the larger blow kept; the bleed on a Spike Trap's blow; a
 projectile trap's shot landing after the trap is used up (priced as the player's, with no `deployable_hit`, so no bleed:
 layer 1's item 5); the bleed's `dot_applied` being dropped; the timed own-stack grant's new routing; an uncapped stack
 lapsing at death; a trap's floor clearing a no-expire trap; replication; anything drawn; anything in play.
@@ -456,7 +517,7 @@ COMMIT, AFTER R1** (each anchor once again, the new text absent before and once 
 266/266, 12/12 before and 908/908 after TR-VIII; `CataclysmSkillEffects.cpp` 1566/1566, 451/451, 15/15 before and after
 TR-IX; `CataclysmAbilitySystemComponent.cpp` 3048/3048, 1019/1019, 32/32 before and after TR-X and TR-XI. Each compiles alone by reading:
 TR-VIII compares an `int32` with a `static constexpr int32`, and `SkillTrapsMostFor` stays called by the bar; TR-IX
-multiplies the same `float` by nought; TR-X looks up another `FName` in the same map. The prefix of all four is
+multiplies the same `float` by nought; TR-X looks up another `FName` in the same map. The prefix of all five is
 `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight and these seven, twenty-five; every one that
 places a trap needs the `SkillTrap` row.
 
@@ -492,7 +553,21 @@ Failed assertions, by reading:
   line passes: the count written with each grant is the list's length; at 16.5 s the last grant is past its 10 s, so
   "none" passes. Test 24's grant is capped and never reaches the new count.
 
-- **TR-XI, 1 in 1 test.** Test 21: the third case's enemy, struck for less than a tenth, is slowed by the break ("so the
+- **RECOUNTED ON THE THIRD COMMIT, AFTER BRIEF 60C**, each anchor once again on that head, after listing the events
+  test 25 adds (Malefice's shots raise on the player `hit_dealt`, `first_hit_dealt` and the burn's `dot_applied`, and no
+  `deployable_hit`, since no living trap prices them; `trap_placed` and `trap_triggered` as before): **TR-VIII 4 in 1
+  test, TR-IX 5 in 1, TR-X 2 in 1, unchanged** (test 25 places at most five traps for one player and holds no bonus,
+  hangs nothing on `deployable_hit`, and grants no own stack). TR-XI's anchor is now `if
+  (UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))`, broken to `(Slowed, 1.0e9f)`, and fails **4 in 2
+  tests**: test 21's line below, and in test 25 "so nothing is slowed yet" (the break lays the slow at the trigger),
+  "so its enemy is not slowed: the rule of a tenth" and the fourth case's "not slowed, past the wait" (laid at the
+  trigger; a test world's timers never end it). **TR-XII, the late path never asked**: `CataclysmSkillEffects.cpp`, `if
+  (LateTrapsPlayer && LateTrapsPlayer->AwaitsALateSkillTrapSlow(Delivery.CastBy, Target))` made `...(TWeakObjectPtr<AActor>(),
+  Target))` (an explicitly null pointer answers no); test 25's "the late shot slows", "by 25" and "for 3 s" fail, **3 in 1
+  test**; test 21's casts land at once and are judged at the trigger. Brackets: `CataclysmMinion.cpp` 910/910, 266/266,
+  12/12 (909 after TR-VIII); `CataclysmSkillEffects.cpp` 1571/1571, 452/452, 15/15 (1572 round after TR-XII, one pair
+  added); `CataclysmAbilitySystemComponent.cpp` 3083/3083, 1029/1029, 36/36.
+- **TR-XI, 1 in 1 test (on the second commit).** Test 21: the third case's enemy, struck for less than a tenth, is slowed by the break ("so the
   enemy that set it off is not slowed: the rule of a tenth"). Every other line passes: the second case's enemy is slowed
   with or without the rule, the second enemies never are (the event names only the enemy that set the trap off), and the
   controls hold no row. TR-XI compiles alone by reading: a float literal where a float stood, and `EventAmount` stays read

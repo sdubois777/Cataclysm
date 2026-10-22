@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -19,6 +20,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -165,7 +167,7 @@ namespace CataclysmTrapRowTest
 	/** A possessed player character holding a Demonic Whip, its ability system and its weapon slots. */
 	struct FTrapRowRig
 	{
-		FTrapRowRig(UWorld* World, const FVector& Where)
+		FTrapRowRig(UWorld* World, const FVector& Where, const TCHAR* Weapon = TEXT("Whip"))
 		{
 			ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
 			APlayerController* Controller = World->SpawnActor<APlayerController>();
@@ -183,7 +185,7 @@ namespace CataclysmTrapRowTest
 				return;
 			}
 			Slots->SetDamageType(TEXT("Demonic"));
-			Slots->EquipWeaponType(TEXT("Whip"));
+			Slots->EquipWeaponType(Weapon);
 			Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
 			Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
 			Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 10000.0f);
@@ -202,7 +204,7 @@ namespace CataclysmTrapRowTest
 			if (!Player || !System || !Slots || !HoldsARowFor(ECataclysmAbilitySlot::Heavy)
 				|| !HoldsARowFor(ECataclysmAbilitySlot::Ultimate))
 			{
-				Test.AddError(TEXT("set-up: a possessed player holding a Demonic Whip with a Heavy and an Ultimate row. If "
+				Test.AddError(TEXT("set-up: a possessed player holding a Demonic weapon with a Heavy and an Ultimate row. If "
 								   "a row is missing, DT_WeaponSkills may be older than game/Data/WeaponSkills.csv: run "
 								   "tools/generate_datatable_assets.py"));
 				return false;
@@ -321,6 +323,39 @@ namespace CataclysmTrapRowTest
 		Grant.bOwnStacksLapseAlone = Cap <= 0;
 		Grant.TriggerKey = FName(*FString::Printf(TEXT("%s:%s"), *Key.ToString(), Event));
 		return Grant;
+	}
+
+	/**
+	 * Step every projectile in the world not in `Done` by a twentieth of a second until each has finished, adding each to
+	 * `Done`, as `Cataclysm.BasicReach.` lands its shots: a test world never ticks. How many finished in this call.
+	 */
+	int32 TrapRowLandEveryShot(UWorld* World, TSet<const ACataclysmProjectile*>& Done)
+	{
+		int32 Finished = 0;
+		for (int32 Round = 0; Round < 200; ++Round)
+		{
+			TArray<ACataclysmProjectile*> Flying;
+			for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
+			{
+				if (IsValid(*It) && !Done.Contains(*It))
+				{
+					Flying.Add(*It);
+				}
+			}
+			if (Flying.IsEmpty())
+			{
+				break;
+			}
+			for (ACataclysmProjectile* Shot : Flying)
+			{
+				if (IsValid(Shot) && !Shot->Step(0.05f))
+				{
+					Done.Add(Shot);
+					++Finished;
+				}
+			}
+		}
+		return Finished;
 	}
 }
 
@@ -971,6 +1006,147 @@ CATACLYSM_TEST(FCataclysmTrapRowEvasionTest,
 		Evasion() - Before, 15.0f, 0.001f);
 	TrapRowPass(World, 1.0f);
 	TestEqual(TEXT("3.5 s after the second, the burst is over"), Evasion() - Before, 0.0f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// 25. The slow decided at a late blow: a projectile trap's shot that lands after the trap is used up (brief 60c)
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmTrapRowLateSlowTest,
+	"Cataclysm.Traps.AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItTakesATenthAndTheSpentTrapCountsForNothing")
+{
+	using namespace CataclysmTrapRowTest;
+
+	// FOUR PLAYERS 100 M APART, EACH HOLDING A DEMONIC WAND, WHOSE HEAVY MALEFICE IS A SHOT: a Heavy trap 20 m north with
+	// the enemy that sets it off 2.5 m east of it. The control holds the Heavy flag alone; the other three also hold the
+	// slow as the item builds it from its row (`slow_for_seconds` on `trap_triggered`, rolled at 25 and 3). The control's,
+	// the second's and the fourth's creatures hold 1,000 health, the third's 100,000. THE TRAP IS USED UP AS ITS CAST
+	// STARTS, so the shot lands after it is gone, and the slow is decided at that blow (ruled 2026-10-21, brief 60c). The
+	// fourth player's shot is landed 5.5 s after its trap triggered, past the slow's wait of 5 s.
+	FTrapRowWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!TestTrue(TEXT("set-up: the Cripple tag exists"), Cripple.IsValid()))
+	{
+		return false;
+	}
+	constexpr float Frail = 1000.0f;
+	constexpr float Sturdy = 100000.0f;
+	const FVector SlowHome(100.0f * M, 0.0f, 0.0f);
+	const FVector GlancingHome(200.0f * M, 0.0f, 0.0f);
+	const FVector LateHome(300.0f * M, 0.0f, 0.0f);
+	FTrapRowRig Plain(World, FVector::ZeroVector, TEXT("Wand"));
+	FTrapRowRig Slow(World, SlowHome, TEXT("Wand"));
+	FTrapRowRig Glancing(World, GlancingHome, TEXT("Wand"));
+	FTrapRowRig Late(World, LateHome, TEXT("Wand"));
+	if (!Plain.IsUsable(*this) || !Slow.IsUsable(*this) || !Glancing.IsUsable(*this) || !Late.IsUsable(*this))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill* Held = Plain.Slots->GetAvailableSkills().FindByPredicate(
+		[](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == ECataclysmAbilitySlot::Heavy; });
+	if (!TestTrue(TEXT("set-up: the wand's Heavy is a shot a trap may cast"),
+			Held && Held->Shape == ECataclysmSkillShape::Projectile && ACataclysmMinion::SkillGadgetMayCast(*Held)))
+	{
+		return false;
+	}
+	for (const FTrapRowRig* Each : {&Plain, &Slow, &Glancing, &Late})
+	{
+		Each->Holds({TrapRowSlotFlag(TEXT("Slot.Heavy"))});
+	}
+	FCataclysmPoolAction Slowing = TrapRowAction(TEXT("trap_triggered"), UCataclysmAbilitySystemComponent::SlowForSecondsAction);
+	Slowing.bSlowForSeconds = true;
+	Slowing.Percent = 25.0f;
+	Slowing.StackSeconds = 3.0f;
+	for (const FTrapRowRig* Each : {&Slow, &Glancing, &Late})
+	{
+		Each->System->SetPoolActions({Slowing});
+	}
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector Near(2.5f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* PlainSetter = TrapRowEnemy(World, North + Near, Frail);
+	ACataclysmEnemyCharacter* SlowSetter = TrapRowEnemy(World, SlowHome + North + Near, Frail);
+	ACataclysmEnemyCharacter* GlancingSetter = TrapRowEnemy(World, GlancingHome + North + Near, Sturdy);
+	ACataclysmEnemyCharacter* LateSetter = TrapRowEnemy(World, LateHome + North + Near, Frail);
+	if (!TestNotNull(TEXT("set-up: the control's enemy"), PlainSetter)
+		|| !TestNotNull(TEXT("set-up: the second player's enemy"), SlowSetter)
+		|| !TestNotNull(TEXT("set-up: the third player's sturdy enemy"), GlancingSetter)
+		|| !TestNotNull(TEXT("set-up: the fourth player's enemy"), LateSetter))
+	{
+		return false;
+	}
+	ACataclysmMinion* PlainTrap = TrapRowPlace(*this, Plain, ECataclysmAbilitySlot::Heavy, North);
+	ACataclysmMinion* SlowTrap = TrapRowPlace(*this, Slow, ECataclysmAbilitySlot::Heavy, SlowHome + North);
+	ACataclysmMinion* GlancingTrap = TrapRowPlace(*this, Glancing, ECataclysmAbilitySlot::Heavy, GlancingHome + North);
+	ACataclysmMinion* LateTrap = TrapRowPlace(*this, Late, ECataclysmAbilitySlot::Heavy, LateHome + North);
+	if (!PlainTrap || !SlowTrap || !GlancingTrap || !LateTrap)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmMinion> SlowWatched(SlowTrap);
+
+	// THREE TRAPS TRIGGER; THEIR SHOTS ARE STILL IN FLIGHT.
+	TrapRowPass(World, 1.25f);
+	TrapRowStep(PlainTrap);
+	TrapRowStep(SlowTrap);
+	TrapRowStep(GlancingTrap);
+	TestTrue(TEXT("set-up: the trap is used up as its cast starts"), TrapRowGone(SlowWatched));
+	TestEqual(TEXT("set-up: and its enemy is untouched: the shot is still in flight"), TrapRowTakenFrom(SlowSetter, Frail),
+		0.0f, 0.001f);
+	TestFalse(TEXT("so nothing is slowed yet"), TrapRowCarries(SlowSetter, Cripple));
+
+	// A SPENT TRAP IS NOT COUNTED AGAINST THE CAP (T6): with its shot in flight, none stands, and five more stand.
+	TestEqual(TEXT("with its shot in flight the used-up trap is not among the player's traps"),
+		ACataclysmMinion::SkillTrapsOf(Slow.Player).Num(), 0);
+	for (int32 Index = 1; Index <= 5; ++Index)
+	{
+		if (!TrapRowPlace(*this, Slow, ECataclysmAbilitySlot::Heavy,
+				SlowHome - FVector(0.0f, (20.0f + 10.0f * static_cast<float>(Index)) * M, 0.0f)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("and five more stand: the cap counts none for it"), ACataclysmMinion::SkillTrapsOf(Slow.Player).Num(), 5);
+
+	// THE SHOTS LAND.
+	TSet<const ACataclysmProjectile*> Done;
+	const int32 Landed = TrapRowLandEveryShot(World, Done);
+	TestTrue(*FString::Printf(TEXT("set-up: the three shots landed: %d"), Landed), Landed >= 3);
+	TestTrue(*FString::Printf(TEXT("set-up: the control's shot took a tenth or more of its enemy's 1,000: %.2f"),
+							  TrapRowTakenFrom(PlainSetter, Frail)),
+		TrapRowTakenFrom(PlainSetter, Frail) >= Frail / 10.0f);
+	TestFalse(TEXT("control: with no row, the shot slows nothing"), TrapRowCarries(PlainSetter, Cripple));
+	TestTrue(*FString::Printf(TEXT("set-up: the second shot took a tenth or more of its enemy's 1,000: %.2f"),
+							  TrapRowTakenFrom(SlowSetter, Frail)),
+		TrapRowTakenFrom(SlowSetter, Frail) >= Frail / 10.0f);
+	TestTrue(TEXT("the late shot slows the enemy that set the trap off (brief 60c)"), TrapRowCarries(SlowSetter, Cripple));
+	TestEqual(TEXT("by the row's 25 per cent"), UCataclysmSkillEffects::StatedStrengthOn(SlowSetter, Cripple), 25.0f, 0.01f);
+	TestEqual(TEXT("for the row's 3 seconds"), TrapRowSecondsLeftOn(SlowSetter, Cripple), 3.0f, 0.01f);
+	TestTrue(*FString::Printf(TEXT("set-up: the third shot struck for less than a tenth: %.2f of 100,000"),
+							  TrapRowTakenFrom(GlancingSetter, Sturdy)),
+		TrapRowTakenFrom(GlancingSetter, Sturdy) > 0.0f && TrapRowTakenFrom(GlancingSetter, Sturdy) < Sturdy / 10.0f);
+	TestFalse(TEXT("so its enemy is not slowed: the rule of a tenth"), TrapRowCarries(GlancingSetter, Cripple));
+
+	// THE FOURTH: ITS SHOT LANDS 5.5 S AFTER ITS TRAP TRIGGERED, PAST THE SLOW'S WAIT.
+	TrapRowStep(LateTrap);
+	TrapRowPass(World, UCataclysmAbilitySystemComponent::SkillTrapLateSlowSeconds + 0.5f);
+	TrapRowLandEveryShot(World, Done);
+	TestTrue(*FString::Printf(TEXT("set-up: the fourth shot took a tenth or more of its enemy's 1,000: %.2f"),
+							  TrapRowTakenFrom(LateSetter, Frail)),
+		TrapRowTakenFrom(LateSetter, Frail) >= Frail / 10.0f);
+	TestFalse(TEXT("but it landed past the slow's wait of 5 s, so its enemy is not slowed"),
+		TrapRowCarries(LateSetter, Cripple));
 	return true;
 }
 

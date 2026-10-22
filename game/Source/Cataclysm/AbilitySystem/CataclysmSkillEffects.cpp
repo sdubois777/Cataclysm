@@ -1094,6 +1094,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// row on `deployable_hit` naming `Type.Trap` reaches the enemies a trap's cast strikes.
 	UCataclysmAbilitySystemComponent* const MachinesPlayer = GadgetsPlayer ? GadgetsPlayer : TrapsPlayer;
 	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
+	// AND A LATE BLOW OF A TRAP ALREADY USED UP, a shot or a rack's throw whose delivery still names it: when the slow
+	// waits for it on this enemy, the blow is dealt here, so its figure decides the slow (ruled 2026-10-21, brief 60c).
+	// Every other blow passes on unchanged.
+	UCataclysmAbilitySystemComponent* const LateTrapsPlayer = !MachinesPlayer && !bAShareOnAnAlly
+		&& !Arrived.bIsDamageOverTime ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+	if (LateTrapsPlayer && LateTrapsPlayer->AwaitsALateSkillTrapSlow(Delivery.CastBy, Target))
+	{
+		FCataclysmDamageResult LateResult;
+		FCataclysmDamageResult* const Resolved = OutResolved ? OutResolved : &LateResult;
+		const bool bLateDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Resolved);
+		LateTrapsPlayer->LayALateSkillTrapSlow(Delivery.CastBy, Target, Resolved->DealtToHealth);
+		return bLateDealt ? Sent : 0.0f;
+	}
 	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
 	{
 		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)

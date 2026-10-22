@@ -11988,8 +11988,11 @@ def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
 #: of its maximum health." The event's amount is the largest blow the trap's
 #: cast dealt the enemy that set it off (`ACataclysmMinion::
 #: SkillTrapTookFromItsEnemy`), and the rule is asked against it, as for every
-#: ailment a row lays on another character. No Ailment cell: the slow is always
-#: Cripple's.
+#: ailment a row lays on another character. AND WHEN NO BLOW HAS YET QUALIFIED,
+#: the slow waits up to 5 s for a later blow of the same cast on that enemy (a
+#: shot that lands after the trap is used up), and that blow decides it (ruled
+#: 2026-10-21, brief 60c). The row's cells are the same either way. No Ailment
+#: cell: the slow is always Cripple's.
 SLOW_FOR_SECONDS_ACTION = "slow_for_seconds"
 SLOW_FOR_SECONDS_EVENTS = ("trap_triggered",)
 
