@@ -2,6 +2,192 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-21 — In the game five Cataclysms' Quest dungeons are one fixed sub-type: Death's a Horde, Demonic's Elite, Pestilence's Timed, Famine's Sacrificial and Chaos's Volatile; War's, Celestial's and the Void's still roll
+
+**The game follows the simulation for five of its eight.** A Quest dungeon a Death, Demonic, Pestilence, Famine or
+Chaos surge lands takes that Cataclysm's sub-type, as `Simulation._make_dungeon` has done since the entry headed "In
+the simulation each Cataclysm's Quest dungeons are one fixed sub-type…". Branch `feat/game-quest-subtype-by-cataclysm-1`,
+on `development` at `b7980dc48`. Not built and not run: see Proofs and Run.
+
+### SAID FIRST
+
+- **WHAT A PLAYER MEETS.** A Death Quest dungeon is a Horde, so its floors come in waves. A Demonic one is Elite, so
+  each floor has a boss. A Chaos one is Volatile, so its modifiers are re-drawn each floor. A Famine one is
+  Sacrificial and carries double the modifiers. A Pestilence one is Timed, and **Timed is a label only**: the game has
+  no Timed behaviour yet, so a Pestilence Quest dungeon plays as a dungeon with no sub-type rule, and
+  `UCataclysmEnemyScore` gives Timed no difficulty weight.
+- **WAR'S, CELESTIAL'S AND THE VOID'S QUEST DUNGEONS STILL ROLL.** War's are Sieges in the simulation; the owner has
+  ruled War out of the game, so they roll at the ordinary weights and can still be a Siege (ruling 4 below). Celestial's
+  are Ascendant and the Void's Hollow in the simulation, and neither sub-type exists in the game.
+- **THE CITY SCREEN NAMES EACH DUNGEON'S SUB-TYPE**: "Horde, 12 floors, 9 days until it bites". A dungeon with no
+  sub-type reads as before, "30 floors, 40 days until it bites".
+- **A SEED STILL LANDS THE SAME WAVES ON THE SAME CITIES AT THE SAME DEPTHS, AND SENDS THEM FROM THE SAME
+  CATACLYSMS.** What moves is downstream: a fixed Quest dungeon that would have rolled a Siege or a Cow Level is not
+  one, so the cities it would have besieged, the walk it would have doubled and every later draw a different city
+  history causes (a fall's surge, a refuge, the modifiers drawn) move with it.
+
+### What was ruled
+
+The owner, 2026-10-16, verbatim, quoted in `TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM` and in the entry of 2026-10-18
+named above: "Oh I should be more clear. War quest dungeons WILL be sieges. Each cataclysm's quest dungeons will be
+one specific type." And: "I really thought you would have picked horde for dead rising... as the whole undead zombie
+swarm thing kinda makes sense there. I assumed hell on earth would be Elite." Pestilence Timed, Famine Sacrificial and
+Chaos Volatile were proposed by the coordinating session and confirmed by the owner.
+
+The coordinating session accepted this layer's plan on 2026-10-21 (`QuestSubTypeFor` on the scheduler; an optional
+Cataclysm on `MakeDungeon`; an optional Cataclysm draw on `RollWave`; `FireSurge` passing its own; the screen line) and
+ruled:
+
+- **Ruling 1**: the one sub-type draw in `MakeDungeon` is kept and its answer discarded for a fixed Quest dungeon, so
+  the wave's stream does not move; the fixed sub-type is set before the walk cost and the jitter.
+- **Ruling 2**: `RollWave` takes an optional callback that draws each dungeon's Cataclysm, called once per dungeon made,
+  after a missing city is skipped and before the dungeon is made; existing callers compile unchanged.
+- **Ruling 3**: the city screen's dungeon line names the sub-type.
+- **Ruling 4**: War's Quest dungeons keep rolling at the ordinary weights and can be Sieges. **This is a deliberate
+  gap under the owner's mandate that War is not in the game**, not an oversight; the model's War Quest rules (always a
+  Siege, at most two a wave, a quarter of a Siege's damage, a besieged city re-drawn) are not in the game.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`: new `static ECataclysmDungeonSubType
+  QuestSubTypeFor(ECataclysmType)`, a switch: Death Horde, Demonic Elite, Pestilence Timed, Famine Sacrificial, Chaos
+  Volatile, and `default` `None`, meaning "roll", for War, Celestial, the Void and `None`. `MakeDungeon` gains a last
+  parameter `ECataclysmType Cataclysm = ECataclysmType::None`; after `Dungeon.SubType = RollSubType(Stream,
+  bSiegeAllowed, Kind);`, which is unchanged, a Quest dungeon whose `QuestSubTypeFor(Cataclysm)` is not `None` takes
+  that instead, before the walk cost (which reads Cow Level) and the jitter. `RollWave` gains a last parameter `const
+  TFunction<ECataclysmType()>& DrawCataclysm`, empty by default; when present it is asked once per dungeon made, after
+  the null-city skip and after `RollKind`, and the answer is passed to `MakeDungeon` and stamped on
+  `Dungeon.Cataclysm`. Comments corrected: `MakeDungeon`'s header ("it still rolls a sub-type"), `RollWave`'s ("is made
+  plain instead", which has been false since 2026-09-06), and `FCataclysmDungeon::Cataclysm`'s "who sets it".
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, `FireSurge`: passes `[this]() { return RollCataclysm();
+  }` to `RollWave`, and the loop that stamped `Dungeon.Cataclysm = RollCataclysm();` after the wave was made is gone.
+  `GiveModifiers(Dungeon)` still runs after the dungeon is made, so `CountFor` reads the fixed sub-type. Its comments
+  are rewritten; "so the order does not matter today" was false once the count reads a fixed sub-type.
+- `game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.cpp` and `.h`, `DungeonLinesFor`: the line leads with
+  `UCataclysmSurgeScheduler::SubTypeName` and a comma when that is not empty.
+- The empire module still includes nothing from the `Cataclysm` module.
+
+**THE STREAMS.**
+
+- `Stream`, the run's main one: unchanged. Every dungeon still takes the sub-type draw, and the discarded answer
+  costs the same one number it always did. `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` holds it.
+- `CataclysmStream`: one draw per dungeon made, in the order they are made -- the order the removed loop walked the
+  wave -- so a seed sends the same Cataclysms to the same dungeons. The draws are now interleaved with `Stream`'s
+  rather than after them, which does not matter because the two streams are separate.
+- `ModifierStream`: **moves**. A Famine Quest dungeon draws double where it drew the ordinary count unless it rolled
+  Sacrificial, and a Quest dungeon of the other four that rolled Sacrificial now draws the ordinary count; every later
+  modifier draw in the run shifts with it.
+
+### Tests
+
+No existing assertion was changed. `Cataclysm.CityScreen.DungeonsAreListedSoonestToBiteFirst` reads its lines with
+`Contains` on dungeons placed with no sub-type, so the new line format does not reach it.
+
+Unreal, new, five registered names, each with a control:
+
+- `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll` (`CataclysmSurgeTests.cpp` :4118): the five pairs,
+  written out by hand, and `None` for War, Celestial, the Void and `None`. CONTROL: the five answers are five
+  different sub-types and none is `None`.
+- `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` (:4202), the stream check. **How the rule is turned off
+  for the comparison:** no flag. Sixty seeds each roll the opening wave twice against the same map, once with no
+  callback (every dungeon carries `None`, so nothing is fixed: the wave as it was before this layer) and once with a
+  callback drawing a Cataclysm for each dungeon from a stream of its own over all eight. The targets, kinds, depths and
+  timers must be equal; the callback must have been asked once per dungeon and each dungeon must carry its answer; a
+  fixed Quest dungeon must carry its sender's sub-type and anything else the sub-type it rolled, except a later
+  dungeon keeping a Siege the one-per-city cap refused it in the plain wave, because a fixed Quest dungeon that rolled
+  the Siege no longer is one (same draw; counted, not compared). CONTROL: fixed Quest dungeons were made and some of
+  them differ from what they rolled.
+- `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` (:4343): tier 8 runs, all eight Cataclysms,
+  up to 80 campaigns of up to 600 days, until each of the five has landed three Quest dungeons; every one is its
+  sub-type, written out by hand. CONTROLS: War's, Celestial's and the Void's Quest dungeons each show two sub-types or
+  more, and the five's ordinary dungeons show two or more.
+- `Cataclysm.DungeonModifiers.AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot` (`CataclysmDungeonModifierTests.cpp`
+  :728): tier 3 runs with the hand-built pool and `ActiveCataclysms` set to Famine and Death before the first day, up
+  to 40 campaigns, until one Quest dungeon of each is found; the Famine one is Sacrificial with 6 modifiers. CONTROL:
+  the Death one is a Horde with 3.
+- `Cataclysm.CityScreen.ADungeonLineNamesItsSubType` (`game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp` :598):
+  "Horde, 12 floors, 9 days until it bites" and "Cow Level, 20 floors, 25 days until it bites", exactly. CONTROL: a
+  dungeon with no sub-type reads "30 floors, 40 days until it bites".
+
+Python:
+
+- `tools/tests/test_each_cataclysms_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py` is renamed
+  `tools/tests/test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py` and narrowed: its
+  restore text assumed the game would take all eight at once. It now holds War, Celestial and the Void.
+  `test_the_game_still_rolls_a_quest_dungeons_sub_type` (which read `RollSubType`'s one assignment line and still
+  would have passed) is replaced by `test_the_game_still_rolls_this_cataclysms_quest_dungeons`, three cases, reading
+  `QuestSubTypeFor`'s switch (no case of their own, default `None`), and `test_the_game_has_neither_new_sub_type`
+  (Ascendant and Hollow missing from the enum). `test_the_model_gives_each_cataclysms_quest_dungeons_one_sub_type`
+  now asks the model for all three and rolls a War surge rather than a Death one. The control
+  `test_the_two_really_do_differ` is replaced by `test_the_three_really_do_differ_and_the_other_five_do_not`, which also
+  asserts the switch parsed five cases, each the model's. Each of the three has its own restore text. Three test
+  functions, three collected tests, became four functions, six collected tests.
+- `tools/tests/test_dungeon_subtype_port.py`: new `TestEachCataclysmsQuestSubType`, four tests: the five pairs by name
+  against `QUEST_SUBTYPE_BY_CATACLYSM`, no other case and a `None` default; CONTROL, the same parse of the source with
+  Famine's answer changed disagrees; `MakeDungeon` takes the draw as its own statement, then `QuestSubTypeFor(Cataclysm)`,
+  then the walk; `RollWave` hands `MakeDungeon` the sender it stamps and `FireSurge` passes `RollCataclysm` and no
+  longer stamps afterwards. Two helpers, `the_games_sub_type_names` and `the_games_quest_sub_types`, and
+  `FIXED_IN_THE_GAME`. The docstring's "rolls a sub-type for every dungeon" now says a Quest dungeon of the five then
+  takes a fixed one.
+- `tools/tests/test_surge_port.py` is unchanged and its `MakeDungeon` and `RollWave` text checks pass.
+
+### AT RISK: seeded tests whose outcome this layer moves and which cannot be worked out by hand
+
+From the first Quest dungeon a fixed Cataclysm sends that would have rolled a Siege, a Cow Level or a different
+modifier count, a run's cities and its modifier draws move; a run at tier 1 faces one Cataclysm, five in eight of them
+fixed. None of these was changed. `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` (its assertions
+should hold -- no fixed sub-type is `None` -- but **its comment's measured figures, 1,488 dungeons, 108 Cow Levels and
+125 Sieges at 40 campaigns, go stale**), `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`,
+`Cataclysm.Roster.EveryDungeonASurgeLandsNamesTheCataclysmThatSentIt`,
+`Cataclysm.DungeonModifiers.EveryDungeonASurgeLandsCarriesModifiers`, `...TheSameSeedDrawsTheSameModifiers`,
+`...TheDrawDoesNotShiftAnythingElseTheRunRolls`, `...ASacrificialDungeonInARunReallyGetsDouble` (the first Sacrificial
+it finds may now be a Famine Quest dungeon, which still carries six),
+`Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone`, `...ACityNeverHoldsTwoSieges`,
+`...AQuestDungeonHitsItsCityAndThenRefreshes`, `...AQuestDungeonMovesToAnAdjacentCity`. Lower, not read one by one:
+`Cataclysm.DungeonMode.WalkingADungeonCarriesItsSubTypeIn`, `Cataclysm.DungeonMode.AHordeDungeonsLastWaveIsClearedRatherThanThinnedToATenth`,
+`Cataclysm.FloorBrief.ADungeonOffTheMapReallyGetsItsSubTypesRule`, `Cataclysm.FloorBrief.EnteringADungeonCarriesTheModifiersItsFloorsMayDraw`,
+`Cataclysm.DungeonModifiers.EnteringADungeonCarriesItsModifierScoreOver`, `Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave`,
+and any other `Cataclysm.EmpireRun.` test that runs a seeded campaign for long enough to land a Quest dungeon.
+
+The three new seeded tests search and assert their search: each stops when it has seen what it needs, and a seed
+range that showed nothing fails by saying so rather than passing.
+
+### Gaps
+
+- **War's Quest dungeons roll and can be Sieges**, under the owner's no-War mandate (ruling 4).
+- **What a restored run draws next is not what the live run would have drawn.** `UCataclysmRunSave` writes each
+  dungeon whole, its `Cataclysm` and `SubType` included, and the main stream's position, but not `CataclysmStream`,
+  `ModifierStream` or `ActiveCataclysms` (`CataclysmSaveRecords.h`'s list of what is absent). An older gap, widened:
+  the Cataclysm draw now also decides a Quest dungeon's sub-type.
+- **The game's `RollCataclysm` is uniform over the active set**, where the model weights each Cataclysm by its
+  `count_mult` (#53), so how often each fixed sub-type reaches the map differs from the model's.
+
+### Proofs
+
+**Not yet run. Three registered**, each for `unreal_build.prove_cpp_guard` on `game/Source/CataclysmEmpire/Empire/
+CataclysmSurge.cpp` and `tools/prove_guard.py` in a `git archive` copy, never both at once. The Python column was
+checked by the writing session in a scratch copy of the working tree with `prove_guard.break_and_run`, narrowed to
+`test_dungeon_subtype_port.py`, the three-Cataclysm file, `test_surge_port.py` and
+`test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`: each break failed exactly the tests named and the
+restored run passed (96 passed). That is a check of the prediction and not the registered proof, which is the whole
+suite.
+
+| break | Unreal, predicted to fail with the break in | Python, predicted to fail with the break in |
+|---|---|---|
+| PROOF 1: the fixed sub-type ignored, every Quest dungeon keeps what it rolled: `QuestSubTypeFor(Cataclysm);` -> `QuestSubTypeFor(ECataclysmType::None);` | `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType`, `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` (a fixed Quest dungeon not its sender's sub-type, and its control), and, being seeded, likely `Cataclysm.DungeonModifiers.AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot` (it passes only if the Famine and Death Quest dungeons it finds both rolled Sacrificial and Horde). Not `...FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll` | `test_dungeon_subtype_port.py::TestEachCataclysmsQuestSubType::test_the_dungeon_maker_keeps_the_draw_and_fixes_the_sub_type_after_it` |
+| PROOF 2: the discarded draw removed, a fixed Quest dungeon skips `RollSubType`'s draw: `\tDungeon.SubType = RollSubType(Stream, bSiegeAllowed, Kind);` -> `\tDungeon.SubType = (Kind == ECataclysmDungeonType::Quest && QuestSubTypeFor(Cataclysm) != ECataclysmDungeonSubType::None) ? ECataclysmDungeonSubType::None : RollSubType(Stream, bSiegeAllowed, Kind);` | `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` (the fixed dungeon's own timer, and every later dungeon's city, depth and timer). Not the other four new tests, which ask only for sub-types and counts | `test_dungeon_subtype_port.py::TestEachCataclysmsQuestSubType::test_the_dungeon_maker_keeps_the_draw_and_fixes_the_sub_type_after_it` |
+| PROOF 3: Famine's mapping set to Elite: `case ECataclysmType::Famine:\t\treturn ECataclysmDungeonSubType::Sacrificial;` -> `...::Elite;` | `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll` (the Famine pair, and the control's five different answers), `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType`, `Cataclysm.DungeonModifiers.AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot`. Not `...AFixedQuestSubTypeMovesNothingElseAWaveRolls`, which reads `QuestSubTypeFor` itself | `test_dungeon_subtype_port.py::TestEachCataclysmsQuestSubType::test_the_game_fixes_the_same_five_pairs_the_model_does`, `...::test_the_comparison_sees_a_changed_pair` (its anchor is gone), `test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py::test_the_three_really_do_differ_and_the_other_five_do_not` |
+
+A prefix that covers the Unreal predictions is `Cataclysm.Surge.` with
+`Cataclysm.DungeonModifiers.AFamineQuestDungeon` run separately, or the four tests by name.
+
+### Run
+
+Not yet run. Nothing was built and no Unreal test was run by the writing session. Unreal registration: the base's last
+measured total plus the five new names above.
+
+---
+
 ## 2026-10-21 — In the game a Quest dungeon whose city falls moves to the nearest city that will take it, an adjacent one first, instead of being absorbed
 
 **The game follows the simulation.** `UCataclysmEmpireRun::CityFell` no longer absorbs a Quest dungeon: it moves it to
@@ -5454,6 +5640,10 @@ owner's lines, the sentence after the spawn-weight table, and World War.
   The not-yet file above fails when it changes. Ruled by the coordinating session on 2026-10-17 for the game layer:
   a Quest dungeon moved because its city fell is listed among the moved dungeons in the end-of-day report.
 - The Void's stacks, Hollow and Ascendant: the next three layers.
+
+On 2026-10-21 the game followed for five of the eight: a Death, Demonic, Pestilence, Famine or Chaos Quest dungeon
+takes its Cataclysm's sub-type there, and War's, Celestial's and the Void's still roll (the entry headed "In the game
+five Cataclysms' Quest dungeons are one fixed sub-type…").
 
 ---
 
