@@ -6162,6 +6162,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_slow_for_seconds_action(index, who, action, event, fraction_of,
                                        kind, raw, headers)
         return
+    if action == KILLING_BLOW_EXPLOSION_ACTION:
+        _check_killing_blow_explosion_action(index, who, action, event,
+                                             fraction_of, kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -6183,6 +6187,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {SLOW_FOR_SECONDS_ACTION}; "
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
+            f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
             f"or {EXECUTE_TARGET_ACTION}; "
             f"or {TEMPORARY_ABSORB_ACTION}; "
@@ -7123,6 +7128,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != SLOW_FOR_SECONDS_ACTION \
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
+                    and action != KILLING_BLOW_EXPLOSION_ACTION \
                     and action != STRIKE_TARGET_ACTION \
                     and action != EXECUTE_TARGET_ACTION \
                     and action != TEMPORARY_ABSORB_ACTION \
@@ -7381,6 +7387,16 @@ def enchantment_effects(book) -> list[dict]:
                     f"enemy for {low:g} to {high:g} per cent of its overkill. "
                     f"The share is above 0 and up to "
                     f"{MAX_OVERKILL_EXPLOSION_SHARE:g}.")
+        # AND A KILLING BLOW EXPLOSION'S IS A SHARE OF THAT BLOW, the same way.
+        # Ruled 2026-10-21 (traps layer 4, F10).
+        if action == KILLING_BLOW_EXPLOSION_ACTION:
+            if not (0 < low <= MAX_KILLING_BLOW_EXPLOSION_SHARE
+                    and 0 < high <= MAX_KILLING_BLOW_EXPLOSION_SHARE):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} explodes a killed "
+                    f"enemy for {low:g} to {high:g} per cent of the blow that "
+                    f"killed it. The share is above 0 and up to "
+                    f"{MAX_KILLING_BLOW_EXPLOSION_SHARE:g}.")
 
         # A STRIKE'S VALUE IS A PERCENTAGE OF THE WEARER'S ATTACK DAMAGE, above
         # 0 and up to the bound. Ruled 2026-10-07.
@@ -12037,6 +12053,146 @@ def _check_slow_for_seconds_action(index: int, who: str, action: str,
                 f"nothing else, so the column must be empty.")
 
 
+#: The four stats of traps layer 4, ruled 2026-10-21 by the coordinating
+#: session (F1 to F9), each asked off the player with `Type.Trap` alone by a
+#: reader of `ACataclysmMinion`, whose names `TrapRearmChanceStat`,
+#: `TrapDamageToTriggeringEnemyStat`, `TrapTriggeringEnemyMaxHealthDamageStat`
+#: and `TrapDamageOverTimeShareStat` hold:
+#:
+#: - "Triggered traps have a 25%-50% chance to reset and rearm instead of being
+#:   consumed": a FLAT chance in per cent, rolled at every trigger (F1, F2);
+#: - "Traps deal 100%-200% increased damage to the first enemy that triggers
+#:   them": an INCREASE on the blows of a trigger's cast on the enemy that set it
+#:   off, joined to the trap rows' increases (F4);
+#: - "Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum
+#:   HP": a FLAT share in per cent of that enemy's maximum health, added before
+#:   the increases once per trigger (F5, F6, F7);
+#: - "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered
+#:   enemies": a FLAT share in per cent of what a blow on that enemy took from
+#:   health, laid on it over the sentence's 3 seconds, under the owner's rule of
+#:   a tenth (F8, F9).
+TRAP_REARM_CHANCE_STAT = "trap_rearm_chance"
+TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT = "trap_damage_to_triggering_enemy"
+TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT = \
+    "trap_triggering_enemy_max_health_damage"
+TRAP_DAMAGE_OVER_TIME_SHARE_STAT = "trap_damage_over_time_share"
+
+#: The one value kind each is read as. Any other works on a base of nought, or
+#: is an increase of a figure nothing supplies, and changes NOTHING.
+TRAP_BLOW_STAT_KINDS = {
+    TRAP_REARM_CHANCE_STAT: "flat",
+    TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT: "increased",
+    TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT: "flat",
+    TRAP_DAMAGE_OVER_TIME_SHARE_STAT: "flat",
+}
+
+#: The Required Tags a row on any of them may state: none, or the trap's own
+#: tag, the one tag all four are asked with.
+TRAP_BLOW_STAT_REQUIRED_TAGS = frozenset({"", "Type.Trap"})
+
+#: The most each may state, in per cent. A chance is at most 100; the three
+#: others are bounds for typing mistakes, as `MAX_TRAP_CAP_BONUS` is: the
+#: sentences say 200, 10 and 50.
+TRAP_BLOW_STAT_MOST = {
+    TRAP_REARM_CHANCE_STAT: 100.0,
+    TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT: 1000.0,
+    TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT: 100.0,
+    TRAP_DAMAGE_OVER_TIME_SHARE_STAT: 100.0,
+}
+
+
+def refuse_a_trap_blow_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on one of `TRAP_BLOW_STAT_KINDS` is one its reader adds.
+
+    EACH IS READ AS ONE KIND, so a row of any other kind changes NOTHING; a tag
+    but none or `Type.Trap` matches no trap, since all four are asked with
+    `Type.Trap` alone; an action is not a stat line; and each figure is above
+    nought and at most its bound, a chance at most 100. A CONDITION OR A SCALE
+    IS REFUSED ELSEWHERE, as on every stat not on those checks' lists. A
+    PASSIVE NODE'S ROW IS LEFT ALONE.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in TRAP_BLOW_STAT_KINDS or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != TRAP_BLOW_STAT_KINDS[stat]:
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads this stat as '{TRAP_BLOW_STAT_KINDS[stat]}' and "
+                f"nothing else, so any other kind changes NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in TRAP_BLOW_STAT_REQUIRED_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The game asks with 'Type.Trap' alone, so the row requires "
+                f"nothing or 'Type.Trap'; any other tag matches no trap.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. This is "
+                f"a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not 0.0 < value <= TRAP_BLOW_STAT_MOST[stat]:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, which is above 0 "
+                    f"and at most {TRAP_BLOW_STAT_MOST[stat]:g}.")
+    return problems
+
+
+#: The action that makes an enemy the wearer kills EXPLODE FOR A SHARE OF THE
+#: BLOW THAT KILLED IT, with its value as the share of that blow's figure
+#: before the victim's mitigation, in per cent, dealt to every enemy within 4
+#: metres of the body. Ruled 2026-10-21 by the coordinating session (traps
+#: layer 4, F10 to F12): "Enemies killed by traps explode, dealing 50%-100% of
+#: the trap's damage to all enemies within 4 meters", whose row requires
+#: `Type.Trap`, which the kill carries as the killing skill's tags for a blow
+#: of a trap's cast. `UCataclysmAbilitySystemComponent::
+#: ExplodeVictimForKillingBlowAction` holds the same name.
+#:
+#: ON `kill` AND NO OTHER EVENT, as `OVERKILL_EXPLOSION_ACTION`: the event loop
+#: only records the share, and the kill site takes it once the loop has
+#: returned and makes the explosion, for a kill by a hit and never by a tick.
+KILLING_BLOW_EXPLOSION_ACTION = "explode_victim_for_killing_blow"
+KILLING_BLOW_EXPLOSION_EVENTS = ("kill",)
+
+#: The most its share may be, in per cent. A bound for typing mistakes, as
+#: `MAX_OVERKILL_EXPLOSION_SHARE` is; the one sentence is 50 to 100.
+MAX_KILLING_BLOW_EXPLOSION_SHARE = 1000.0
+
+
+def _check_killing_blow_explosion_action(index: int, who: str, action: str,
+                                         event: str, fraction_of: str,
+                                         kind: str, raw,
+                                         headers: dict[str, int]) -> None:
+    """Everything a killing blow explosion row must say, and everything it
+    must not. Ruled 2026-10-21 (traps layer 4, F10 to F12). ON `kill` ONLY,
+    for the reason `_check_overkill_explosion_action` gives; the share is
+    checked where the value is read. A fraction, a value kind and a scale each
+    mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in KILLING_BLOW_EXPLOSION_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} explodes a killed enemy "
+            f"for a share of the blow that killed it on the event "
+            f"{event or '(none)'!r}. Only a kill has a victim and a killing "
+            f"blow: {', '.join(KILLING_BLOW_EXPLOSION_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} explodes a killed enemy "
+                f"for a share of the blow that killed it and states {column} "
+                f"{written!r}. Its value is that share and nothing else, so the "
+                f"column must be empty.")
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -12512,6 +12668,10 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE TRAP CAP BONUS AND THE NO-EXPIRE FLAG ARE FLAT, REQUIRING NOTHING
     # OR `Type.Trap`, A WHOLE BONUS AND A FLAG OF 1. Ruled 2026-10-21 (M1, M2).
     problems.extend(refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    # AND THE FOUR STATS OF A TRAP'S BLOW EACH STATE THEIR ONE KIND, REQUIRING
+    # NOTHING OR `Type.Trap`, WITHIN THEIR BOUNDS. Ruled 2026-10-21 (F1 to F9).
+    problems.extend(refuse_a_trap_blow_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

@@ -4630,6 +4630,13 @@ public:
 	{
 		TWeakObjectPtr<AActor> Trap;
 		FGameplayTagContainer TypeTags;
+		/**
+		 * SINCE TRAPS LAYER 4 (F4, F6): the enemy that set off the trigger it was used up by, and whether that trigger's
+		 * share of the enemy's maximum health was already added, so a late blow of its cast on that enemy takes the
+		 * increase and the share as an instant one does. Read off the trap by `NoteSkillTrapSpent`.
+		 */
+		TWeakObjectPtr<AActor> TriggeringEnemy;
+		bool bGaveItsEnemysHealthShare = false;
 	};
 	TArray<FSpentSkillTrap> SpentSkillTraps;
 
@@ -4644,6 +4651,43 @@ public:
 	 * identity, so a weak pointer to a trap that is gone still finds it; an explicitly empty one finds nothing.
 	 */
 	bool SpentSkillTrapNamed(const TWeakObjectPtr<AActor>& CastBy, FSpentSkillTrap& OutSpent) const;
+
+	/**
+	 * TRAPS LAYER 4 (F6): the used-up trap `CastBy` names has added its trigger's share of its enemy's maximum health, by
+	 * a late blow of its cast, so no later blow of the same trigger adds it again. Nothing for a trap not kept.
+	 */
+	void NoteSpentSkillTrapGaveItsEnemysHealthShare(const TWeakObjectPtr<AActor>& CastBy);
+
+	/**
+	 * TRAPS LAYER 4, "Enemies killed by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4
+	 * meters". Ruled 2026-10-21 by the coordinating session (F10 to F12). The action that makes an enemy the wearer kills
+	 * EXPLODE FOR A SHARE OF THE BLOW THAT KILLED IT, the value the share in per cent: on `kill` and no other event,
+	 * requiring `Type.Trap`, which the kill carries as the killing skill's tags for a blow of a trap's cast, instant or a
+	 * late shot (F12). `tools/generate_datatables.py` holds the same name as `KILLING_BLOW_EXPLOSION_ACTION`. See
+	 * `FCataclysmPoolAction::bExplodeVictimForKillingBlow`.
+	 *
+	 * THE EVENT LOOP ONLY RECORDS THE SHARE, as the overkill explosion's row does and for its reason: the kill site takes
+	 * it once the loop has returned (`ACataclysmPlayerCharacter::OnSomethingDied`) and makes the explosion there, the
+	 * killing blow's own figure before the victim's mitigation at the share (F10), through the overkill explosion's blast,
+	 * `UCataclysmSkillEffects::ExplodeForOverkill`, at `UCataclysmSkillEffects::KillingBlowExplosionRadiusCm` (F11). NOT
+	 * FOR A KILL BY A TICK (F12): a zone's sweep and the trap's own damage over time are no hit.
+	 */
+	static const TCHAR* ExplodeVictimForKillingBlowAction;
+
+	/** The share the rows recorded for the kill in hand, read once and cleared; nought while the event loop runs. */
+	float TakePendingKillingBlowExplosionSharePercent()
+	{
+		if (PoolActionDepth > 0)
+		{
+			return 0.0f;
+		}
+		const float Was = PendingKillingBlowExplosionSharePercent;
+		PendingKillingBlowExplosionSharePercent = 0.0f;
+		return Was;
+	}
+
+	/** What the rows recorded for the kill in hand. See `TakePendingKillingBlowExplosionSharePercent`. */
+	float PendingKillingBlowExplosionSharePercent = 0.0f;
 
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */

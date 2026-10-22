@@ -1461,6 +1461,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.StackSeconds = UCataclysmItemModifiers::RolledStackSeconds(*Effect, Roll);
 					}
+					// AND WHETHER AN ENEMY THE WEARER KILLS EXPLODES FOR A SHARE OF THE BLOW THAT KILLED IT. Ruled
+					// 2026-10-21 (traps layer 4, F10 to F12). The value is the share, in per cent.
+					Action.bExplodeVictimForKillingBlow = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction,
+						ESearchCase::IgnoreCase);
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
 					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(

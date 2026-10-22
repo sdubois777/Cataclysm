@@ -966,10 +966,41 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	{
 		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore);
 	}
+	// AND A BLOW OF A TRAP'S CAST ON THE ENEMY THAT SET THAT TRIGGER OFF (traps layer 4, ruled 2026-10-21, F4 to F7), of a
+	// trap standing or used up, a late blow included, and no other enemy the cast strikes: "Traps deal 100%-200%
+	// increased damage to the first enemy that triggers them" joins the trap rows' increases; and the trigger's FIRST such
+	// blow adds "bonus damage equal to 5%-10% of the triggering enemy's maximum HP" flat before the increases, once per
+	// trigger, in full against a boss. Not for a tick, which is no hit.
+	const AActor* const TrapsTriggeringEnemy = SkillTrap
+		? SkillTrap->SkillTrapTriggeringEnemy.Get()
+		: (bASpentTrapsBlow ? SpentTrap.TriggeringEnemy.Get() : nullptr);
+	const bool bOnTrapsTriggeringEnemy =
+		TrapsPlayer && Target && Target == TrapsTriggeringEnemy && !Delivery.bIsDamageOverTime;
+	float TrapsEnemyHealthFlat = 0.0f;
+	if (bOnTrapsTriggeringEnemy)
+	{
+		TrapIncreases += ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(Instigator);
+		const float EnemyHealthSharePercent = ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(Instigator);
+		const bool bEnemyHealthShareGiven =
+			SkillTrap ? SkillTrap->bSkillTrapGaveItsEnemysHealthShare : SpentTrap.bGaveItsEnemysHealthShare;
+		if (EnemyHealthSharePercent > 0.0f && !bEnemyHealthShareGiven)
+		{
+			TrapsEnemyHealthFlat = Defender->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+				* EnemyHealthSharePercent / 100.0f;
+			if (SkillTrap)
+			{
+				SkillTrap->bSkillTrapGaveItsEnemysHealthShare = true;
+			}
+			else
+			{
+				TrapsPlayer->NoteSpentSkillTrapGaveItsEnemysHealthShare(NamedCastBy);
+			}
+		}
+	}
 
 	const float Damage = ModifiedDamage(
 		Source,
-		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat)
+		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat)
 			* (1.0f + Applying + Conditional + Bought + TrapIncreases)
 			* TrapMore
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
@@ -1142,6 +1173,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	{
 		MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth);
 	}
+	// AND "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies" (traps layer 4, F8, F9): AN
+	// EXTRA damage over time on top of this blow, which is unchanged, a share of what it took from health, on the enemy
+	// that set the trap off and no other, when the blow took a tenth of its maximum health.
+	if (bOnTrapsTriggeringEnemy && bDealt)
+	{
+		ACataclysmMinion::LaySkillTrapsDamageOverTime(Instigator, Target, Result->DealtToHealth);
+	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
 	return bDealt ? Sent : 0.0f;
@@ -1283,7 +1321,7 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 }
 
 int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* Victim, const FVector& At,
-												 float Overkill, float SharePercent)
+												 float Overkill, float SharePercent, float RadiusCm)
 {
 	const float Damage = Overkill * SharePercent / 100.0f;
 	if (!IsValid(Killer) || Overkill <= 0.0f || SharePercent <= 0.0f || Damage <= 0.0f)
@@ -1292,7 +1330,7 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 	}
 
 	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-		Killer->GetWorld(), Killer, At, OverkillExplosionRadiusCm);
+		Killer->GetWorld(), Killer, At, RadiusCm);
 
 	// AREA DAMAGE, NOT RETALIATED AGAINST, as `ACataclysmMinion::DeathBlast` delivers a blast at a death. AND
 	// NEVER A CRITICAL STRIKE, said here because a direct blow in a player's name is rolled for one otherwise.

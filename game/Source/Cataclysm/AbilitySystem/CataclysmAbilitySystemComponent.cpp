@@ -6112,6 +6112,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	if (Event == KillEventName)
 	{
 		PendingOverkillExplosionSharePercent = 0.0f;
+		// AND THE TRAP KILL'S EXPLOSION, for the same reason (traps layer 4, F10 to F12).
+		PendingKillingBlowExplosionSharePercent = 0.0f;
 	}
 
 	// A COPY, because applying one writes an attribute, and an attribute write
@@ -6585,6 +6587,20 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				PendingOverkillExplosionSharePercent =
 					FMath::Max(PendingOverkillExplosionSharePercent, Action.Percent);
+			}
+			continue;
+		}
+		// AN ENEMY KILLED EXPLODES FOR A SHARE OF THE BLOW THAT KILLED IT. Ruled 2026-10-21 (traps layer 4, F10 to F12), for
+		// "Enemies killed by traps explode", whose row requires `Type.Trap`. ONLY RECORDED HERE, once per row per event,
+		// the largest share of the rows that asked, as the overkill explosion is above and for its reason; the kill site
+		// takes it. See `TakePendingKillingBlowExplosionSharePercent`. No roll and no trigger cooldown.
+		if (Action.bExplodeVictimForKillingBlow)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				PendingKillingBlowExplosionSharePercent =
+					FMath::Max(PendingKillingBlowExplosionSharePercent, Action.Percent);
 			}
 			continue;
 		}
@@ -8284,6 +8300,13 @@ void UCataclysmAbilitySystemComponent::NoteSkillTrapSpent(AActor* Trap, const FG
 	FSpentSkillTrap& Kept = SpentSkillTraps.AddDefaulted_GetRef();
 	Kept.Trap = Trap;
 	Kept.TypeTags = TrapTypeTags;
+	// AND, SINCE TRAPS LAYER 4, THE ENEMY THAT SET IT OFF AND WHETHER ITS TRIGGER'S SHARE OF THAT ENEMY'S HEALTH WAS
+	// ADDED (F4, F6), read off the trap, so a late blow of its cast on that enemy is priced as an instant one is.
+	if (const ACataclysmMinion* AsTrap = Cast<const ACataclysmMinion>(Trap))
+	{
+		Kept.TriggeringEnemy = AsTrap->SkillTrapTriggeringEnemy;
+		Kept.bGaveItsEnemysHealthShare = AsTrap->bSkillTrapGaveItsEnemysHealthShare;
+	}
 }
 
 bool UCataclysmAbilitySystemComponent::SpentSkillTrapNamed(const TWeakObjectPtr<AActor>& CastBy,
@@ -8305,4 +8328,27 @@ bool UCataclysmAbilitySystemComponent::SpentSkillTrapNamed(const TWeakObjectPtr<
 	}
 	OutSpent = *Found;
 	return true;
+}
+
+// ==========================================================================
+// Traps, layer 4: a used-up trap's share of its enemy's health, and an enemy a trap kills exploding. Ruled 2026-10-21
+// (F6, F10 to F12).
+// ==========================================================================
+
+const TCHAR* UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction = TEXT("explode_victim_for_killing_blow");
+
+void UCataclysmAbilitySystemComponent::NoteSpentSkillTrapGaveItsEnemysHealthShare(const TWeakObjectPtr<AActor>& CastBy)
+{
+	// BY THE TRAP'S IDENTITY, as `SpentSkillTrapNamed` finds it.
+	if (CastBy.IsExplicitlyNull())
+	{
+		return;
+	}
+	if (FSpentSkillTrap* Found = SpentSkillTraps.FindByPredicate([&CastBy](const FSpentSkillTrap& Spent)
+		{
+			return Spent.Trap.HasSameIndexAndSerialNumber(CastBy);
+		}))
+	{
+		Found->bGaveItsEnemysHealthShare = true;
+	}
 }
