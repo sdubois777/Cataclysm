@@ -6,8 +6,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 **The game follows the simulation for five of its eight.** A Quest dungeon a Death, Demonic, Pestilence, Famine or
 Chaos surge lands takes that Cataclysm's sub-type, as `Simulation._make_dungeon` has done since the entry headed "In
-the simulation each Cataclysm's Quest dungeons are one fixed sub-type…". Branch `feat/game-quest-subtype-by-cataclysm-1`,
-on `development` at `b7980dc48`. Not built and not run: see Proofs and Run.
+the simulation each Cataclysm's Quest dungeons are one fixed sub-type…". Branch `feat/game-quest-subtype-by-cataclysm-2`,
+on `development` at `ada79f1fd` (written on `b7980dc48` as `feat/game-quest-subtype-by-cataclysm-1` and moved with its
+zero-context patch ids unchanged). Not built and not run: see Proofs and Run.
 
 ### SAID FIRST
 
