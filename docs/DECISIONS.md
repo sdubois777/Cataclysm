@@ -492,7 +492,51 @@ them (two lines). Three assertions on the cases, so on assets built before the r
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**ONE WINDOW, enchant-t6w, ON 2026-10-22, 14:14:52 to 15:30:38 by its stall guard, on 24ba141f7 (this layer's commit
+eca971fad and the rows on development a58389c7c; development did not move, so nothing was moved). Every step exited 0
+with the figures registered before it; nothing was re-run. ONE MEASURED FIGURE DIFFERS FROM ITS REGISTRATION, below.**
+The pre-checks, run just before the lock was taken: development's CI and Unreal runs on a58389c7c succeeded, no run in
+progress, no pull request open, the lock free, no Excel, editor or build process, the worktree clean at 24ba141f7.
+
+- **Step 0, the `Cataclysm.Enchantments.` group on the assets as merged:** "Build: Succeeded - 39 actions, 36 files
+  compiled", the first compile of this layer's C++; "365 tests performed, 364 succeeded, 1 failed:
+  TheWornTrapLayerSixRowsEachReachTheReadOrActionTheirSentenceNames", as registered, with 3 "Error: Expected" lines, each
+  registered text once.
+- **Step 1, the asset rebuild:** exactly `game/Content/Data/DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; committed as 00574cde0 on `feat/traps-6-t-1` and pushed.
+- **Step 2, the whole Unreal suite:** "4040 tests performed, 4040 succeeded, 0 failed", registered 4040 and 0 (4032 of
+  development, this layer's seven and the one real-row test). 40 skipped part of what they check (the Paragon art is not
+  in a worktree). "Declared: 4040 tests in the tree at 00574cde0; 4040 performed, gap 0".
+- **Step 3, Python of record on 00574cde0:** "6880 passed, 8 skipped in 341.09s"; JUnit tests 6888, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 52 tests.** Each anchor was counted
+once (TR-XXVII's two), the stop condition for each was the set of tests failing with the break in, by the beginnings of
+their names, and the failed assertions read from the code were measured beside it. The file's hash was the same after
+each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XXV | the shot fired at depth one, inside the acting row (`CataclysmAbilitySystemComponent.cpp`) | 1 failed, `ATrapTriggeredWithinTenMetres...` | 1 / 1 | 52 of 52 succeeded |
+| TR-XXVI | every trap triggered counted as the Nth (`CataclysmAbilitySystemComponent.cpp`) | 3 failed: `EveryThirdTrapTriggered...`, `TheCountOfTrapsTriggered...`, `ATrapSetOffByARowPulls...` | **12 / 13** | 52 of 52 succeeded |
+| TR-XXVII | the pull made after the cast has started (`CataclysmMinion.cpp`, two edits) | 1 failed, `ATrapPullsAnEnemyWithin...` | 1 / 1 | 52 of 52 succeeded |
+| TR-XXVIII | the shot's "more" not passed on (`CataclysmAbilitySystemComponent.cpp`) | 1 failed, `EveryThirdTrapTriggered...` | 1 / 1 | 52 of 52 succeeded |
+
+**TR-XXVI MEASURED 12 FAILED ASSERTIONS WHERE THE READING PREDICTED 13, AND THE CAUSE IS NOT ESTABLISHED.** The
+three named tests failed and nothing else did, which is the stop condition, so the proof stands. Test 47 failed its six
+lines and test 48 its four, as read; test 51 failed two, its lone player's "control: one trigger, no shot" and its
+pulling player's "and the third fired the gadget once", where three were read: its counting player's "and the third, a
+forced trap, fired the gadget once (J4)" did not fail with the break in. Why that player's gadget fired once and not
+three times under the break is not read here; it is recorded as found and not explained. Until it is, that line is not shown to
+detect the count being skipped.
+
+The measured lines include, under TR-XXV, "'the shot is the gadget's hit: its deployable_hit answered the row requiring
+Type.Deployable, at depth nought (J2): 0 stacks' to be true"; under TR-XXVI, "'after the fourth, still one shot: the count
+started again after the third' to be 1, but it was 3"; under TR-XXVII, "'and the trap's cast struck it there: pulled
+before the cast (J7): 0.00' to be true"; under TR-XXVIII, "'the overcharged shot struck the measure for the row's 300% of
+the gadget's normal blow (J6): 385.00 against 1155.00' to be 1155.000000, but it was 385.000000".
+
+**Not measured:** everything this entry lists as read and not tested; anything drawn on a screen.
 
 ---
 
