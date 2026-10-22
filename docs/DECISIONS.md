@@ -33,9 +33,10 @@ changed**; see AT RISK.
 ### The rulings
 
 The coordinating session accepted this layer's plan on 2026-10-22 as H1 to H10, with two changes: H4 was verified and
-the clock's copy of the floors is updated, and H8 renames two tests. The brief this entry was written from labels H2 and
-H4 to H9 and states the rest by content; **H1, H3 and H10 are not restated here by label**, and their content is among
-the rules below.
+the clock's copy of the floors is updated, and H8 renames two tests. The brief this entry was written from labelled H2 and
+H4 to H9; the other three, by label: **H1**, the shrink comes after the Siege bite and before the hits, as the model's
+does; **H3**, a Hollow's natural depth is its plain rolled depth, with no 1.25 multiplier, as J1 ruled for the Void's
+ordinary dungeons; **H10**, what is not in it, below.
 
 - **The Void's Quest dungeons are Hollows**, `QuestSubTypeFor(Void)`; nothing rolls one, and `MakeDungeon` keeps the
   discarded sub-type draw, so no other draw moves.
@@ -124,9 +125,10 @@ dungeon field.
 
 ### AT RISK
 
-**READ, NOT RUN: TWO EXISTING ASSERTIONS WILL FAIL AS WRITTEN, AND WERE NOT CHANGED.** Both count the reflected
-`ECataclysmDungeonSubType`, which now has nine values with `None`, and neither is among the tests the rulings name, so
-the writing session stopped there and did not change them:
+**FOUND BY READING: TWO EXISTING ASSERTIONS WOULD HAVE FAILED AS WRITTEN.** Both count the reflected
+`ECataclysmDungeonSubType`, which now has nine values with `None`, and neither was among the tests the rulings named, so
+the writing session stopped there and did not change them; the coordinating session ruled on them on 2026-10-22, and
+both changed under "Tests changed" below:
 
 - `Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType`
   (`game/Source/Cataclysm/Tests/CataclysmDungeonGameModeTests.cpp`, about line 800): `TestEqual(TEXT("the reflected
@@ -137,7 +139,7 @@ the writing session stopped there and did not change them:
   list found the seven and None"), All.Num() == 8)`.
 
 No code shape avoids them: the Hollow has to be a value of the enum for `QuestSubTypeFor`, the save and the city
-screen. Each needs a ruling, 8 to 9 with its message, before this layer's Unreal run can pass.
+screen.
 
 From the plan, seeded tests whose outcome can move: `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`, low, because
 a Hollow does not shrink on the day it is made; `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`, whose
@@ -173,6 +175,24 @@ defence from their Quest dungeons. Every other seeded campaign that faces the Vo
   `test_the_three_really_do_differ_and_the_other_five_do_not` -> renamed
   `test_the_two_really_do_differ_and_the_other_six_do_not`, `len(cases) == 5` -> `len(cases) == 6`, and its name
   comparison `NAMES.get(...)` -> `game_name_for(...)`.
+- **Three enum-count lines, ruled by the coordinating session on 2026-10-22 as a direct consequence of the owner's new
+  sub-type**:
+  - `Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType`: `TestEqual(TEXT("the reflected enum holds the
+    eight designed sub-types"), All.Num(), 8)` -> `TestEqual(TEXT("the reflected enum holds the eight designed
+    sub-types and the Hollow"), All.Num(), 9)`; and in the same test the message "the enum carries one entry more than
+    the eight sub-types" -> "... the nine sub-types". That second assertion compares with `All.Num() + 1` and its value
+    did not change; only its message had become untrue.
+  - `Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt`: `TestTrue(TEXT("the
+    reflected sub-type list found the seven and None"), All.Num() == 8)` -> `TestTrue(TEXT("the reflected sub-type
+    list found the seven, the Hollow and None"), All.Num() == 9)`.
+- **The console and the dungeon mode, accepted by the same ruling.** `Cataclysm.DungeonSubType` builds its list from the
+  enum, so it takes "Hollow" (its help text names it, which
+  `Cataclysm.DungeonMode.TheSubTypeControlNamesEverySubTypeItTakes` requires). No floor rule names the Hollow, so a
+  Hollow is built and walked as an ordinary dungeon; everything that makes it a Hollow is in the empire. Two existing
+  tests loop over every sub-type and now include it, unchanged:
+  `Cataclysm.FloorBrief.OnlyAHordeDungeonWidensWhatItsCreaturesNotice` and the "asked for and answered" loop of
+  `Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType`; by reading, both treat it as the ordinary dungeon
+  it is on the floor.
 
 ### New tests
 

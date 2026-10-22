@@ -1057,8 +1057,8 @@ bool FCataclysmFloorBriefHordeOneArenaTest::RunTest(const FString& Parameters)
 	// **THE CONTROL, AND IT IS THE HALF THAT MATTERS.** Rule 4 must not leak:
 	// no other sub-type reuses a space, walks a wave in, or is one wave at all.
 	const TArray<ECataclysmDungeonSubType> All = EverySubType();
-	TestTrue(TEXT("the reflected sub-type list found the seven and None"),
-			 All.Num() == 8);
+	TestTrue(TEXT("the reflected sub-type list found the seven, the Hollow and None"),
+			 All.Num() == 9);
 
 	for (const ECataclysmDungeonSubType SubType : All)
 	{
