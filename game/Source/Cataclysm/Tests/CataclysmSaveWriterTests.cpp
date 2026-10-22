@@ -1052,6 +1052,77 @@ bool FCataclysmSaveWriterGathersTheCities::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersVoidStacks,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesACitysVoidStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersVoidStacks::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	Run->Begin(1);
+
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	// THREE OUTPOSTS: one carrying four stacks and standing, one erased by ten,
+	// and one the Void never touched, which is the control.
+	TArray<int32> Outposts;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost && Outposts.Num() < 3)
+		{
+			Outposts.Add(City.CityId);
+		}
+	}
+
+	if (!TestEqual(TEXT("three Outposts were found"), Outposts.Num(), 3))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("four stacks do not fell the first"), Map->AddVoidStacks(Outposts[0], 4));
+	TestTrue(TEXT("ten erase the second"), Map->AddVoidStacks(Outposts[1], 10));
+
+	if (!TestTrue(TEXT("a run that has begun reads"),
+				  FCataclysmSaveGather::CitiesFrom(*Run, *Record)))
+	{
+		return false;
+	}
+
+	// GUARDED, for the reason `AGatheredRunRecordCarriesTheCitiesAndWhatTheyHaveLeft`
+	// gives: indexing a record a broken gather left empty would crash the editor
+	// rather than fail.
+	for (const int32 CityId : Outposts)
+	{
+		if (!TestTrue(TEXT("the record carries the city to read"),
+					  Record->Cities.IsValidIndex(CityId)))
+		{
+			return false;
+		}
+	}
+
+	const FCataclysmCity& Stacked = Record->Cities[Outposts[0]];
+	const FCataclysmCity& Gone = Record->Cities[Outposts[1]];
+	const FCataclysmCity& Untouched = Record->Cities[Outposts[2]];
+
+	TestEqual(TEXT("the record lines up by city identifier"), Stacked.CityId, Outposts[0]);
+	TestEqual(TEXT("the standing city's four stacks are carried"), Stacked.VoidStacks, 4);
+	TestFalse(TEXT("and it is carried standing"), Stacked.bFallen);
+
+	TestEqual(TEXT("the erased city's ten are carried"), Gone.VoidStacks, 10);
+	TestTrue(TEXT("and it is carried erased"), Gone.bErased);
+	TestTrue(TEXT("and marked"), Gone.bDoomed);
+
+	TestEqual(TEXT("CONTROL: the untouched city carries none"), Untouched.VoidStacks, 0);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheCities,
 	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheCitiesThroughTheFile",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

@@ -906,10 +906,12 @@ bool FCataclysmEmpireMapErasedTest::RunTest(const FString& Parameters)
 
 	UCataclysmEmpireMap* Map = MakeMap();
 
-	// NOTHING IN THE GAME MARKS A CITY DOOMED YET -- that is the Void, one of the
-	// seven Cataclysms that do not exist, issue #53. The rule is carried because
-	// `Retake` has to obey it and because a lane a doomed city was sealing can
-	// never be closed again, which changes what the map means.
+	// THE MARK IS SET BY HAND HERE. In play `AddVoidStacks` sets it at a city's
+	// tenth Void stack, since 2026-10-22, and
+	// `Cataclysm.EmpireMap.VoidStacksAddUpAndTheTenthErasesTheCity` reaches it
+	// that way. Until then nothing in the game set it. `Retake` has to obey it,
+	// and a lane a doomed city was sealing can never be closed again, which
+	// changes what the map means.
 	FCataclysmCity* Doomed = Map->FindMutable(3);
 	if (!TestNotNull(TEXT("Outpost 3 exists"), Doomed))
 	{
@@ -930,6 +932,161 @@ bool FCataclysmEmpireMapErasedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Outpost 0 falls"), Map->Fall(0));
 	TestFalse(TEXT("and is not erased"), Map->Find(0)->bErased);
 	TestTrue(TEXT("so it can be retaken"), Map->Retake(0));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void stacks -- 2026-10-22
+// ---------------------------------------------------------------------------
+//
+// The owner, 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3
+// void stacks to a city instead of doing damage to the city or population and
+// at 10 stacks the city is erased." What the map does with the stacks is here;
+// which dungeon adds them, and how many, is `CataclysmEmpireRunTests.cpp` and
+// `CataclysmSurgeTests.cpp`.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapVoidStacksEraseTest,
+	"Cataclysm.EmpireMap.VoidStacksAddUpAndTheTenthErasesTheCity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireMapVoidStacksEraseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireMapTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const FCataclysmCity* City = Map->Find(3);
+	const FCataclysmCity* Beside = Map->Find(0);
+	if (!TestNotNull(TEXT("set-up: Outpost 3 exists"), City)
+		|| !TestNotNull(TEXT("set-up: and Outpost 0"), Beside))
+	{
+		return false;
+	}
+
+	const float DefenceBefore = City->Defence;
+	const float PopulationBefore = City->Population;
+
+	// NINE, THREE AT A TIME, AND THE CITY STANDS UNTOUCHED. Stacks take no
+	// defence and no people.
+	TestFalse(TEXT("three stacks do not fell it"), Map->AddVoidStacks(3, 3));
+	TestFalse(TEXT("nor six"), Map->AddVoidStacks(3, 3));
+	TestFalse(TEXT("nor nine"), Map->AddVoidStacks(3, 3));
+	TestEqual(TEXT("it carries nine"), City->VoidStacks, 9);
+	TestFalse(TEXT("it has not fallen"), City->bFallen);
+	TestFalse(TEXT("and is not marked to be erased"), City->bDoomed);
+	TestTrue(TEXT("its defence is untouched"), City->Defence == DefenceBefore);
+	TestTrue(TEXT("and so are its people"), City->Population == PopulationBefore);
+
+	// THE TENTH, EXACTLY TEN, ERASES IT.
+	TestTrue(TEXT("the tenth stack fells it"), Map->AddVoidStacks(3, 1));
+	TestEqual(TEXT("it carries ten"), City->VoidStacks, 10);
+	TestTrue(TEXT("it has fallen"), City->bFallen);
+	TestTrue(TEXT("and is erased rather than merely lost"), City->bErased);
+	TestFalse(TEXT("so it cannot be retaken"), Map->Retake(3));
+	TestTrue(TEXT("and it stays fallen"), City->bFallen);
+	TestTrue(TEXT("the lane it sealed is open: the Bulwark behind it is exposed"),
+			 Map->IsExposed(2));
+
+	// THE CONTROL: NINE AT ONCE ON ANOTHER CITY, AND A FALL THAT IS NOT THE
+	// TENTH STACK, ERASE NOTHING. Without it an erase on every fall would pass
+	// everything above.
+	TestFalse(TEXT("CONTROL: nine stacks at once do not fell Outpost 0"),
+			  Map->AddVoidStacks(0, 9));
+	TestFalse(TEXT("CONTROL: it stands"), Beside->bFallen);
+	TestTrue(TEXT("CONTROL: a fall by hand fells it"), Map->Fall(0));
+	TestFalse(TEXT("CONTROL: and does not erase it"), Beside->bErased);
+	TestTrue(TEXT("CONTROL: so it can be retaken"), Map->Retake(0));
+
+	// TEN IS THE MAP'S CONSTANT, the model's `void_stacks_to_erase`.
+	TestEqual(TEXT("ten stacks erase a city"),
+			  UCataclysmEmpireMap::VoidStacksToErase, 10);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapVoidStacksRetakenTest,
+	"Cataclysm.EmpireMap.ACityFallenWithFewerThanTenVoidStacksIsRetakenWithNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireMapVoidStacksRetakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireMapTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const FCataclysmCity* City = Map->Find(3);
+	if (!TestNotNull(TEXT("set-up: Outpost 3 exists"), City))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("four stacks do not fell it"), Map->AddVoidStacks(3, 4));
+
+	// FELLED BY DAMAGE WITH FOUR STACKS ON IT.
+	if (!TestTrue(TEXT("damage fells it"), Map->Damage(3, 100000.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a city that falls with four stacks is not erased"),
+			  City->bErased);
+	TestEqual(TEXT("and keeps the four it fell with"), City->VoidStacks, 4);
+
+	// RETAKEN, AND THE STACKS GO WITH THE RETAKE.
+	TestTrue(TEXT("it is retaken"), Map->Retake(3));
+	TestFalse(TEXT("it stands again"), City->bFallen);
+	TestEqual(TEXT("and carries no stacks"), City->VoidStacks, 0);
+
+	// THE CONTROL: THE SAME RETAKE STILL GIVES BACK HALF, so the clearing is an
+	// addition to the retake and not a different one.
+	TestEqual(TEXT("CONTROL: it comes back with half its defence"),
+			  City->Defence, City->MaxDefence * UCataclysmEmpireMap::RetakenFraction,
+			  0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapVoidStacksOnTheFallenTest,
+	"Cataclysm.EmpireMap.VoidStacksOnAFallenOrMissingCityAddNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireMapVoidStacksOnTheFallenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireMapTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const FCataclysmCity* Fallen = Map->Find(3);
+	const FCataclysmCity* Standing = Map->Find(0);
+	if (!TestNotNull(TEXT("set-up: Outpost 3 exists"), Fallen)
+		|| !TestNotNull(TEXT("set-up: and Outpost 0"), Standing)
+		|| !TestTrue(TEXT("set-up: Outpost 3 falls"), Map->Fall(3)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("three stacks on a fallen city fell nothing"),
+			  Map->AddVoidStacks(3, 3));
+	TestEqual(TEXT("and add nothing"), Fallen->VoidStacks, 0);
+
+	// NOT EVEN TEN. There is nothing left to mark, and a fallen city erased by
+	// stacks it could not take would have lost the retake it is owed.
+	TestFalse(TEXT("ten stacks on a fallen city fell nothing"),
+			  Map->AddVoidStacks(3, 10));
+	TestEqual(TEXT("and add nothing"), Fallen->VoidStacks, 0);
+	TestFalse(TEXT("it is not marked"), Fallen->bDoomed);
+	TestFalse(TEXT("nor erased"), Fallen->bErased);
+	TestTrue(TEXT("so it can still be retaken"), Map->Retake(3));
+
+	TestFalse(TEXT("a city that does not exist takes nothing"),
+			  Map->AddVoidStacks(99, 3));
+	TestFalse(TEXT("nor does no city at all"), Map->AddVoidStacks(INDEX_NONE, 3));
+
+	// THE CONTROL: A STANDING CITY TAKES THEM.
+	TestFalse(TEXT("CONTROL: three stacks on a standing city fell nothing"),
+			  Map->AddVoidStacks(0, 3));
+	TestEqual(TEXT("CONTROL: and it carries three"), Standing->VoidStacks, 3);
 
 	return true;
 }
