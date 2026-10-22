@@ -9,8 +9,9 @@ runs out its timer on a standing city, it adds 1, 2 or 3 to the city's new `Void
 people. At ten the city falls and is erased. Retaking a city that fell with fewer clears them. A wave slot the Void
 sends weighs each city by its stacks, up to twice at ten. The city screen shows them. The simulation has done all of
 this since the entry headed "In the simulation an ordinary Void dungeon adds 1 to 3 void stacks to its city instead of
-damage, and ten stacks erase the city". Branch `feat/game-void-stacks-1` on `development` at `69b3e7ebf`. Not built and
-not run: see Proofs and Run.
+damage, and ten stacks erase the city". Branch `feat/game-void-stacks-2` on `development` at `b235febb0` (written on `69b3e7ebf`
+as `feat/game-void-stacks-1` and moved with its zero-context patch ids unchanged). Not built and not run: see Proofs and
+Run.
 
 ### What changed and why
 
@@ -71,7 +72,8 @@ The coordinating session accepted this layer's plan on 2026-10-22, with seven ru
   `tools/tests/test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py::test_in_both_the_city_falls_then_the_moves_then_its_dungeon_and_surge`
   then failed ("calls CityFell 3 times and 2 of them follow a Map->Damage"), because it reads every `CityFell` in the
   file as following an `if (Map->Damage(...))` on one line. Its assertion was not changed; the code took a shape it
-  accepts. `ApplySiegeDamage` is untouched, so a Void Siege's daily bite stays damage. `FireSurge`'s comment says
+  accepts. The coordinating session accepted that shape on 2026-10-22: one guarded line, `Damage` first, which takes
+  nothing from a Void dungeon's city and answers false, then `AddVoidStacks`, with the existing check unchanged. `ApplySiegeDamage` is untouched, so a Void Siege's daily bite stays damage. `FireSurge`'s comment says
   where the sender is now drawn.
 - `game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.cpp` and `.h`, `StatusTextFor`: as ruled in J5. An
   erased city still reads "Erased by the Void. It can never be retaken."
