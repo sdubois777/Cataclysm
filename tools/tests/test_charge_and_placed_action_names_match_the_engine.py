@@ -701,7 +701,10 @@ def test_a_gadgets_shot_at_a_traps_enemy_is_recorded_and_fired_at_depth_nought_a
                      r"ON_SCOPE_EXIT\s*\{\s*DrainQueuedAfflictedDeaths\(\);", engine)
     assert re.search(r"if \(CountedToNth\(Action\) && QueueGadgetShotAtTrapEnemy\(Action, EventTarget\)\)", engine)
     assert "Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier);" in engine
-    assert re.search(r"if \(PoolActionDepth > 0 \|\| bDrainingQueuedGadgetShotsAtTrapEnemies\)", engine)
+    # AND NOT WHILE AN ABILITY IS ACTIVATING (traps layer 6b, #2471): a grant under the engine's ability-list lock is
+    # deferred and refused, and the shot would be lost.
+    assert re.search(r"if \(PoolActionDepth > 0 \|\| bDrainingQueuedGadgetShotsAtTrapEnemies "
+                     r"\|\| AbilityScopeLockCount > 0\)", engine)
     minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
     assert "CastPlayersSkillFromHere(false, Enemy, ShotDamageMultiplier)" in minion
     assert re.search(r"StartPlayersSkillFromHere\(Player, AsTheGadgets, SkillGadgetReachCm\(Skill\), AimedAt, nullptr,\s*"

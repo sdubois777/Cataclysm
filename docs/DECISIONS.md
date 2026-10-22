@@ -2,6 +2,180 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — A skill gadget's shot earned by a trap is no longer lost when that trap sets off another: the shot drain waits while an ability is activating, and fires the shot at the end of the event that recorded it
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
+(`DrainQueuedGadgetShotsAtTrapEnemies`, one condition and its comment);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapGadgetShotAndPullTests.cpp` (test 51's gadget moved from 44 m to 64 m, with
+its comments; test 52, new, at the end); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one
+assertion of layer 6's test reads the new condition). No data row, no tag, no workbook cell, nothing under `game/Data/`,
+`game/Content/` or `game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed.
+**This closes [#2471](https://github.com/sdubois777/Cataclysm/issues/2471).**
+
+### SAID FIRST
+
+**A FAULT OF TRAPS LAYER 6, FOUND BY READING IN THE FOLLOW-UP TO ITS GUARD PROOF TR-XXVI (brief 64b) AND FIXED HERE.**
+With "When a trap is triggered near an active gadget, the gadget fires an immediate bonus shot at the triggering enemy"
+(P064) or "For every 3 traps triggered, your nearest gadget fires a massive overcharged shot dealing 200%-400% of its
+normal damage" (P022) worn beside "Traps trigger simultaneously when any one of them is triggered, if within 8-12 meters
+of each other" (P054), the shot earned by a trap that set off a neighbour was lost: one bonus shot fewer per chain for
+P064, and the overcharged shot for P022 when its third count fell on such a trap, its count started again all the same.
+Now every shot fires. A player would notice one more gadget shot per chain.
+
+**NOTHING HERE WAS COMPILED AND NO UNREAL TEST WAS RUN** by the session that wrote it. NOT COMPILED AND NOT RUN.
+
+### WHO RULED
+
+The coordinating session's ruling of 2026-10-22 on brief 64b, verbatim as relayed:
+
+> RULING on the lost gadget shot (brief 64b):
+> 1. (a), with your fix as proposed. It is its own small change (traps layer 6b): the second session for layer 6 writes it
+> as one commit from #2470's merge. The commit contains the AbilityScopeLockCount > 0 return in
+> DrainQueuedGadgetShotsAtTrapEnemies, the new chain test with its control, test 51's gadget moved to 64 m, one guard
+> proof that removes the lock condition, and the entry. TR-XXVI's registration moves to 13. Then a window of steps 2-4.
+> Do not use the reordering alternative.
+
+**THE OPTION NOT TAKEN**, ruled out: running the shot drain before layer 5's set-off drain in `ActOnEvent`.
+
+### THE CAUSE (as #2471 states it, read on traps layer 6, eca971fad)
+
+1. **Where shots are queued.** The action `gadget_fires_at_trap_enemy` on `trap_triggered` only records the shot:
+   `UCataclysmAbilitySystemComponent::QueueGadgetShotAtTrapEnemy` (`CataclysmAbilitySystemComponent.cpp`, about 8536).
+2. **Where they are fired.** `DrainQueuedGadgetShotsAtTrapEnemies` (about 8563) runs from an `ON_SCOPE_EXIT` in
+   `ActOnEvent` (about 6112-6118) at the end of every outermost call at depth nought. It takes each record off the queue
+   (`RemoveAt(0)`) and THEN fires it through `ACataclysmMinion::FireSkillGadgetAtTrapEnemy` → `CastPlayersSkillFromHere` →
+   `StartPlayersSkillFromHere` → `UCataclysmTriggeredSkill::Trigger`.
+3. **Why the firing was refused.** `UAbilitySystemComponent::InternalTryActivateAbility` holds `ABILITYLIST_SCOPE_LOCK()`
+   while an ability activates (engine `Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/AbilitySystemComponent_Abilities.cpp`,
+   line 1724). Under that lock `GiveAbility` only queues the spec in `AbilityPendingAdds` (lines 309-312). So `Trigger`
+   finds no instance, calls `ClearAbility` and returns false (`CataclysmTriggeredSkill.cpp`, about 80-90, "NO INSTANCE MEANS
+   THE GRANT WAS DEFERRED"). The record was already off the queue, so the shot was lost.
+4. **When the drain ran inside an activation.** A trap's cast raises `deployable_hit`, `hit_dealt`, `first_hit_dealt`,
+   `dot_applied` and `skill_end` on the player inside its own activation, at depth nought, and each ends in the drain. At a
+   `trap_triggered`, layer 5's set-off drain (`DrainQueuedSkillTrapSetOffs`) runs before the gadget-shot drain, so when the
+   trap that queued a shot set off a neighbour, the neighbour's own blows drained the pending shot inside the neighbour's
+   activation. A neighbour that pulled first (P216) fired it early, outside any activation, from its pull's
+   `crowd_control`, which is why traps layer 6's window measured the pulling player at 2 and the counting player at 1
+   under TR-XXVI.
+
+### WHAT WAS CHANGED
+
+- **The fix** (`CataclysmAbilitySystemComponent.cpp` 8567 to 8575): `DrainQueuedGadgetShotsAtTrapEnemies` also returns
+  while `AbilityScopeLockCount > 0` (8572). That member is `UAbilitySystemComponent`'s own, protected (engine
+  `Public/AbilitySystemComponent.h`, line 1710, under the `protected:` of line 1681), so the subclass reads it. A pending
+  shot stays queued; the end of the event that recorded it, a `trap_triggered` raised by `ACataclysmMinion::TriggerSkillTrap`
+  after its cast's start has returned and so outside any activation, fires it. Nothing else in the code is changed.
+- **Test 51** (`ATrapSetOffByARowPullsItsOwnEnemiesAndCountsTowardsTheThirdTrapsShot`): the gadget moves from 44 m to 64 m
+  north, 28 m from the third enemy, so no early shot's Gathering can haul that enemy out of its trap's 3 m, and the
+  counting player's line "and the third, a forced trap, fired the gadget once (J4)" detects a skipped count. No assertion
+  changes. Traps layer 6's entry below describes the test as it was built, at 44 m.
+- **Test 52**, new: below.
+- **Layer 6's Python test**
+  `test_a_gadgets_shot_at_a_traps_enemy_is_recorded_and_fired_at_depth_nought_and_the_pull_comes_first` asserts the
+  drain's guard as it now reads, the lock condition included.
+
+### THE OTHER DRAINS AND PATHS THAT END IN `UCataclysmTriggeredSkill::Trigger`, READ
+
+Every call of `Trigger`, `StartPlayersSkillFromHere`, `CastPlayersSkillFromHere` and `TriggerSkillTrap` outside the tests
+was listed by search and read. **Found, and left as it is:**
+
+- **Layer 5's set-off drain** (`DrainQueuedSkillTrapSetOffs`, `CataclysmAbilitySystemComponent.cpp` about 8426 to 8461,
+  → `TriggerSkillTrap` → `Trigger`). Its records are made at `trap_triggered`, `gadget_destroyed` and `player_death`, and
+  it is drained at the end of the same event; while it drains it returns at once (`bDrainingQueuedSkillTrapSetOffs`), so
+  a trap's cast inside it never drains it again. `trap_triggered` is raised outside any activation. **`player_death` CAN
+  BE RAISED INSIDE ONE OF THE PLAYER'S OWN ACTIVATIONS**, by reading: a skill gadget's cast is the player's own ability,
+  and with "Your deployables and traps deal full damage to you in their blast" (the deployable self-blast, #34) its area
+  blow can kill the player inside it. Then the trap half of "When you die, all your active traps and gadgets immediately
+  trigger simultaneously" sets its traps off under the lock and each `TriggerSkillTrap` is refused at `Trigger`: the trap
+  is not used up and stays standing. Layer 5's entry already lists "a forced trigger inside one of the player's own skill
+  activations" as not tested. Not measured.
+- **#15's death casts** (`FireEveryGadgetAtTheDeathOf` → `FireForItsSummonersDeath` → `CastPlayersSkillFromHere`, from
+  the action `gadgets_cast_now` on `player_death`): reached inside an activation by the same death, and then each gadget's
+  cast is refused, by reading. Not measured.
+- **`gadget_destroyed` inside an activation**: not found. The player's area blows strike enemies, and a skill gadget is
+  the player's ally; a gadget's own drain runs on its step.
+
+**Not affected, by reading:** the skill gadget's clock, its copy of the last skill and the Tyrant's Minion's Ultimate
+(each on a minion's quarter-second step); Follow Through, Wild Magic, Echo Chamber, the trigger of a held skill and the
+casts bought with kept stacks (each made on the next tick, `ACataclysmPlayerCharacter`, about 1104 to 1119, "This runs
+inside the used skill's activation, where a skill cannot be granted").
+
+### Tests
+
+Test 52 in `game/Source/Cataclysm/Tests/CataclysmSkillTrapGadgetShotAndPullTests.cpp`, `Cataclysm.Traps.`, on traps layer
+6's rig (Demonic Whip; The Gathering from an Ultimate skill gadget), crit pinned at 100 after the world is made, bodies at
+least 1 m apart, real teams, no key pressed and no gadget stepped. No assertion compares health lost with a figure sent.
+
+52. `AGadgetsShotEarnedByATrapThatSetsOffItsNeighboursIsNotLostInsideTheirCasts`, 18. Two players with the Heavy trap flag,
+    the Ultimate gadget flag and the shot row at 100 within 10 m: a first trap 20 m north, neighbours 6 m north and 6 m
+    south of it, each enemy 2.5 m east of its own trap, a skill gadget 5 m west of the first trap (7.8 m from each
+    neighbour). Every enemy has a crowd control resistance of 100, so no Gathering hauls a neighbour's enemy away before
+    its trap goes off. The control holds no chain row; the other layer 5's "Traps trigger simultaneously" at 10 m and no
+    pull row. In order: a world; set-up, the pin; set-up, six enemies (six); set-up, the first traps armed; control, one
+    trap triggered; control, one shot; control, the north neighbour stands; and the south one; three traps triggered; the
+    north neighbour used up; and the south one; three shots, one for each trigger (#2471); three casts by the clock's own
+    path.
+
+Test 51 is test 51 of traps layer 6, its 19 assertions unchanged. The file now holds eight tests, 130 assertions.
+
+**Not tested:** P022's overcharged shot surviving a chain; the lost-shot path at a player's death inside an activation
+(above); a shot queued and left waiting past the event that recorded it, which by reading cannot happen; anything in play.
+
+### GUARD PROOF PROPOSED
+
+Not run. The old text was counted exactly once in `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
+by a script at this commit's working tree (CRLF read as LF), the new text absent before the break and once after it; the
+file's brackets stay paired, 3302/3302, 1075/1075, 40/40, before and after. It compiles alone by reading: a condition is
+shortened. The prefix is `Cataclysm.Traps.`, fifty-three tests.
+
+**The events test 52's actors raise, listed before counting.** On each player: `trap_placed` at each placing; `trap_triggered`
+at each trigger, a set-off trap's at depth nought from layer 5's drain; for each trap's lash, inside its activation under
+the ability-list lock and at depth nought, `hit_dealt`, `first_hit_dealt`, `deployable_hit` with the trap's tags less
+`Type.Deployable`, the burn's `dot_applied` and `skill_end`, each ending in the shot drain; for each Gathering a shot casts,
+`hit_dealt`, `first_hit_dealt` and `deployable_hit` with the gadget's tags for each of the three enemies within its 14 m,
+the burn's `dot_applied` and `skill_end`, but no `crowd_control`, since every enemy resists its pull and knockdown wholly.
+No creature dies: each takes its lash and three Gatherings, 1,430 of 1,500, by reading. On a creature, nothing is worn.
+WHAT HANGS ON AN EVENT: the shot row and, for the chaining player, the chain row, on `trap_triggered`.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-XXIX, the shot drain run inside an activation (#2471) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (PoolActionDepth > 0 \|\| bDrainingQueuedGadgetShotsAtTrapEnemies \|\| AbilityScopeLockCount > 0)` | `if (PoolActionDepth > 0 \|\| bDrainingQueuedGadgetShotsAtTrapEnemies)` | `AGadgetsShotEarnedByATrapThatSetsOffItsNeighboursIsNotLostInsideTheirCasts` | none |
+
+**TR-XXIX, 2 in 1 test, by reading.** The first trap's shot is drained by the north neighbour's first blow inside its
+activation and lost; the neighbours' own shots fire at the end of their own `trap_triggered`. Test 52: "the gadget fired
+three shots" (2) and "each by its clock's own path" (2). Its control fires its one shot at the first trap's own event's
+end, outside any activation, and passes. Test 51 passes: with the count in place its only shot is queued at the third
+trap's event and fired at that event's end, while no cast activates. Tests 45 to 50 queue a shot only after the one trap's
+cast has ended. **Outside the prefix**, layer 6's Python test reads the guard as text and fails under this break.
+
+**THE RECOUNT OF THE PROOFS TEST 51 MEETS, with its gadget at 64 m and the fix in**, by reading:
+
+- **Layer 6's TR-XXVI (every trigger counted as the Nth): 13, as the ruling registers.** Test 47, 6, and test 48, 4, as
+  measured in layer 6's window. Test 51, 3: "control: one trigger, no shot" (1); the counting player's "and the third, a
+  forced trap, fired the gadget once" (3: the first trap's shot now waits through the second trap's cast, and no Gathering
+  reaches the third enemy, so all three fire); the pulling player's "and the third fired the gadget once" (3). Test 52
+  passes: its row counts nothing (Every Nth nought).
+- **Layer 5's TR-XXI (a set-off trap at depth one): 4 in test 51, unchanged.** The second trap's event is dropped, so the
+  chain stops there: the counting and pulling players' "three traps triggered" (2) and "fired the gadget once" (0). Its two
+  distances pass. Test 52 under TR-XXI: "three traps triggered" (3, both neighbours recorded by the first trap and each
+  broadcast before it is dropped) passes, the neighbours are used up, and "three shots" (1) and "three casts" (1) fail, 2
+  more.
+- **Layer 5's TR-XXII (the trap that began the chain not put in it): 2 in test 51, unchanged.** The first trap goes off
+  again inside its chain: the counting and pulling players' "three traps triggered" (4); the shot still fires once, on the
+  first trap's second trigger, at the end of its own event. Test 52 under TR-XXII: the first trap is set off again by the
+  north neighbour, so "three traps triggered" (4), "three shots" (4) and "three casts" (4) fail, 3 more.
+- **Layer 5's TR-XXIV (a set-off trap with no triggering enemy): 2 in test 51, unchanged.** The third trigger has no enemy:
+  the counting and pulling players' "fired the gadget once" (0). Test 52 under TR-XXIV: the neighbours' triggers carry no
+  enemy and fire no shot, so "three shots" (1) and "three casts" (1) fail, 2 more.
+- Layer 6's TR-XXV, TR-XXVII and TR-XXVIII pass test 52, by reading: its counters do not depend on the depth of a shot's
+  events, it holds no pull, and it reads no figure of damage.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-22 — A row can make the wearer's nearest skill gadget fire its skill once at the enemy that set a trap off, near the trap or on every third trap triggered at a row's multiple of its normal blow, and a trap can pull every enemy within a row's metres to 1 m of it before its cast, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
