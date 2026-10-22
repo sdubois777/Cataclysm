@@ -13968,7 +13968,7 @@ void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 	// rate to read; a floor costs the ordinary day.
 	if ((Dungeon == nullptr && !bBoundToAnAbsorbedDungeon) || Run->Clock == nullptr)
 	{
-		Run->AdvanceDay();
+		DaysSpentWalking.Add(Run->AdvanceDay());
 		return;
 	}
 
@@ -13976,7 +13976,8 @@ void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 	// upgrade lowered it. `SpendDays` advances a whole day for each whole day
 	// that accumulates, so timers move and dungeons resolve exactly as they
 	// would have.
-	Run->SpendFloorTime(Dungeon != nullptr ? Dungeon->WalkDaysPerFloor() : EmpireDungeonWalkDaysPerFloorOnEntry);
+	DaysSpentWalking.Append(
+		Run->SpendFloorTime(Dungeon != nullptr ? Dungeon->WalkDaysPerFloor() : EmpireDungeonWalkDaysPerFloorOnEntry));
 }
 
 bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)

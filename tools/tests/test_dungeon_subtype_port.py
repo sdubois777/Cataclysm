@@ -2,7 +2,9 @@
 
 WHY THIS EXISTS AT ALL. `UCataclysmSurgeScheduler::RollSubType` in the
 `CataclysmEmpire` module rolls a sub-type for every dungeon a surge puts on the
-map, and the weights it rolls from are a copy of `config.SUBTYPE_SPAWN_WEIGHTS`
+map -- and since 2026-10-21 a Quest dungeon sent by one of five Cataclysms then
+takes that Cataclysm's one sub-type instead, which `TestEachCataclysmsQuestSubType`
+below compares with the model -- and the weights it rolls from are a copy of `config.SUBTYPE_SPAWN_WEIGHTS`
 in `sim/cataclysm_sim/config.py`. Two copies of a number are two numbers.
 `test_day_clock_port.py`, `test_surge_port.py` and `test_empire_map_port.py`
 beside this guard the same arrangement for the other constants in that module,
@@ -99,6 +101,44 @@ def constant(text: str, name: str, pattern: str, where: str) -> str:
 def weight(text: str, cpp_name: str) -> float:
     return float(constant(text, f"SpawnWeight{cpp_name}", r"[0-9.]+f?",
                           SURGE_HEADER.name).rstrip("f"))
+
+
+#: The Cataclysms whose Quest dungeons the game gives one fixed sub-type, since
+#: 2026-10-21. The model names one for all eight; the other three -- War,
+#: Celestial and the Void -- are held, with why, in
+#: `test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
+FIXED_IN_THE_GAME = ("Death", "Demonic", "Pestilence", "Famine", "Chaos")
+
+
+def the_games_sub_type_names(kind_text: str) -> list[str]:
+    """The names in the game's `ECataclysmDungeonSubType`, as written."""
+    body = re.search(
+        r"enum\s+class\s+ECataclysmDungeonSubType\s*:\s*uint8\s*\{(.*?)\}",
+        kind_text, re.DOTALL)
+    assert body, (f"ECataclysmDungeonSubType is gone from {KIND_HEADER.name}; "
+                  "has it been renamed?")
+    return re.findall(r"^\s*(\w+)\s*=", body.group(1), re.MULTILINE)
+
+
+def the_games_quest_sub_types(source: str) -> tuple[dict[str, str], str]:
+    """`UCataclysmSurgeScheduler::QuestSubTypeFor`, read out of its switch.
+
+    Returns its cases as Cataclysm name against sub-type name, both spelled as
+    the enumerators are, and what its `default` answers."""
+    body = re.search(
+        r"ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor"
+        r"\((.*?)\n\}\n", source, re.DOTALL)
+    assert body, ("UCataclysmSurgeScheduler::QuestSubTypeFor is gone from "
+                  "CataclysmSurge.cpp, so nothing in the game gives a Quest "
+                  "dungeon its Cataclysm's sub-type")
+    cases = dict(re.findall(
+        r"case\s+ECataclysmType::(\w+)\s*:\s*return\s+"
+        r"ECataclysmDungeonSubType::(\w+)\s*;", body.group(1)))
+    default = re.search(
+        r"default\s*:\s*return\s+ECataclysmDungeonSubType::(\w+)\s*;",
+        body.group(1))
+    assert default, "QuestSubTypeFor no longer answers for the Cataclysms it does not name"
+    return cases, default.group(1)
 
 
 @pytest.fixture(scope="module")
@@ -474,6 +514,99 @@ class TestWhichSubTypesAKindOfDungeonMayNotRoll:
             stand.group(1), (
                 "Simulation._open_last_stand works its walk out without the "
                 "sub-type again, which is the shape issue #1333 was about")
+
+
+class TestEachCataclysmsQuestSubType:
+    """**FIVE CATACLYSMS' QUEST DUNGEONS ARE ONE SUB-TYPE IN BOTH HALVES.**
+
+    The owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be
+    one specific type." The model's `TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM` is
+    the original and names one for all eight; the game's
+    `UCataclysmSurgeScheduler::QuestSubTypeFor` names one for the five in
+    `FIXED_IN_THE_GAME` since 2026-10-21, and this compares them BY NAME. The
+    other three differ on purpose and are held in their own file.
+
+    WHAT THIS CANNOT SEE. That a run actually lands them: the Unreal tests
+    `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` and
+    `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` do that.
+    """
+
+    def test_the_game_fixes_the_same_five_pairs_the_model_does(self, model):
+        cases, default = the_games_quest_sub_types(
+            read(SURGE_HEADER.parent / "CataclysmSurge.cpp"))
+        wanted = model.QUEST_SUBTYPE_BY_CATACLYSM
+
+        for cataclysm in FIXED_IN_THE_GAME:
+            assert cataclysm in cases, (
+                f"QuestSubTypeFor has no case for {cataclysm}, so its Quest "
+                "dungeons roll again")
+            assert cases[cataclysm] == NAMES.get(wanted.get(cataclysm)), (
+                f"{cataclysm}: the game's Quest dungeons are {cases[cataclysm]}, "
+                f"the model's {wanted.get(cataclysm)}; "
+                "config.QUEST_SUBTYPE_BY_CATACLYSM is the original")
+
+        assert sorted(cases) == sorted(FIXED_IN_THE_GAME), (
+            f"QuestSubTypeFor names {sorted(cases)}, not the five. A sixth is "
+            "one of the three held in "
+            "test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py; "
+            "follow its failure message")
+        assert default == "None", (
+            f"QuestSubTypeFor answers {default} for a Cataclysm it does not "
+            "name, so War, Celestial and the Void stop rolling")
+
+    def test_the_comparison_sees_a_changed_pair(self, model):
+        """**THE CONTROL.** The same parse of the same source with Famine's
+        answer changed must disagree with the model, or the comparison above
+        could not fail."""
+        source = read(SURGE_HEADER.parent / "CataclysmSurge.cpp")
+        famine = ("case ECataclysmType::Famine:\t\treturn "
+                  "ECataclysmDungeonSubType::Sacrificial;")
+        assert source.count(famine) == 1, (
+            "Famine's case is no longer written as this control expects; "
+            "rewrite the control, not the comparison")
+        broken, _ = the_games_quest_sub_types(
+            source.replace(famine, famine.replace("Sacrificial", "Elite")))
+        assert broken["Famine"] != NAMES[model.QUEST_SUBTYPE_BY_CATACLYSM["Famine"]]
+
+    def test_the_dungeon_maker_keeps_the_draw_and_fixes_the_sub_type_after_it(self):
+        """`MakeDungeon` takes the sub-type draw for every dungeon and then,
+        for a Quest dungeon of the five, replaces the answer -- after the draw,
+        so the stream moves as it always did, and before the walk cost, which
+        reads the sub-type. Ruled by the coordinating session, 2026-10-21."""
+        source = read(SURGE_HEADER.parent / "CataclysmSurge.cpp")
+        made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        made = made.split("return Dungeon;", 1)[0]
+
+        draw = "\n\tDungeon.SubType = RollSubType(Stream, bSiegeAllowed, Kind);\n"
+        fixed = "QuestSubTypeFor(Cataclysm)"
+        walk = "Dungeon.WalkDays ="
+        for mark in (draw, fixed, walk):
+            assert made.count(mark) == 1, (
+                f"MakeDungeon holds {mark.strip()!r} {made.count(mark)} times; "
+                "one is the rule. The draw is a statement of its own, taken for "
+                "every dungeon, and its answer is replaced afterwards")
+        assert made.index(draw) < made.index(fixed) < made.index(walk), (
+            "MakeDungeon no longer draws the sub-type, then fixes a Quest "
+            "dungeon's, then works the walk, in that order")
+        assert "Dungeon.SubType = Fixed;" in made
+
+    def test_the_wave_asks_for_the_sender_before_it_makes_the_dungeon(self):
+        """The Cataclysm reaches `MakeDungeon`, because the run hands
+        `RollWave` its draw rather than stamping the wave afterwards."""
+        source = read(SURGE_HEADER.parent / "CataclysmSurge.cpp")
+        wave = source.split("UCataclysmSurgeScheduler::RollWave(", 1)[1]
+        wave = wave.split("\n}\n", 1)[0]
+        assert "Kind, Sender);" in wave and "Dungeon.Cataclysm = Sender;" in wave, (
+            "RollWave no longer hands MakeDungeon the Cataclysm it stamps")
+
+        run = read(SURGE_HEADER.parent / "CataclysmEmpireRun.cpp")
+        fire = run.split("UCataclysmEmpireRun::FireSurge(", 1)[1]
+        fire = fire.split("\n}\n", 1)[0]
+        assert "return RollCataclysm();" in fire, (
+            "FireSurge no longer hands RollWave the run's Cataclysm draw")
+        assert "Dungeon.Cataclysm = RollCataclysm();" not in fire, (
+            "FireSurge stamps the wave after it is made again, so a Quest "
+            "dungeon's sub-type is fixed by nobody")
 
 
 def spawn_table_in(document: str) -> dict[str, float]:

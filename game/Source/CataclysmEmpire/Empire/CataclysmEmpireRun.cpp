@@ -372,36 +372,45 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 		}
 	}
 
-	TArray<FCataclysmDungeon> Wave =
-		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
-						 SiegesStanding);
-
-	// AND EACH ONE IS STAMPED WITH THE CATACLYSM THAT SENT IT. Issue #1357.
+	// EACH DUNGEON IS STAMPED WITH THE CATACLYSM THAT SENT IT, AS IT IS MADE.
+	// Issue #1357 for the stamp; `docs/DECISIONS.md`, 2026-10-21, for moving it.
 	//
-	// HERE AND NOT IN THE SCHEDULER, which is where the model puts it too:
-	// `Simulation.trigger_surge` sets `d.source` after `_make_dungeon` has
-	// returned. The scheduler is deliberately ignorant of which Cataclysms this
-	// campaign faces -- it must stay able to roll a wave against a bare map in a
-	// test, the same reason the dungeon and siege counts are passed in -- and
-	// the active set belongs to the run.
+	// THE RUN DRAWS IT AND THE SCHEDULER ASKS FOR IT. The scheduler is
+	// deliberately ignorant of which Cataclysms this campaign faces -- it must
+	// stay able to roll a wave against a bare map in a test, the same reason the
+	// dungeon and siege counts are passed in -- so the active set stays here and
+	// `RollWave` is handed a way to draw from it. Until 2026-10-21 the run
+	// stamped the wave after `RollWave` returned. It moved because a Quest
+	// dungeon's sub-type now depends on its sender, so the sender has to be
+	// known while the dungeon is made: `Simulation.trigger_surge` sets
+	// `making_for` around `_make_dungeon` for the same reason.
+	//
+	// THE CATACLYSM STREAM TAKES THE SAME DRAWS IN THE SAME ORDER: one per
+	// dungeon made, asked in the order they are made, which is the order the
+	// loop that used to stand here walked the wave. `Stream` is not touched by
+	// it. So a seed sends the same Cataclysms to the same dungeons it did.
 	//
 	// BEFORE THE CLOCK IS TOLD ANYTHING, so a dungeon cannot reach `Dungeons`
 	// carrying `None` and be corrected afterwards. There is no correcting it:
 	// `ClearDungeon` reads this field to decide which Cataclysm an objective
 	// counts for, and a dungeon that reached the map unstamped would earn the
 	// player nothing when they cleared it.
+	TArray<FCataclysmDungeon> Wave =
+		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
+						 SiegesStanding,
+						 [this]() { return RollCataclysm(); });
+
 	for (FCataclysmDungeon& Dungeon : Wave)
 	{
-		Dungeon.Cataclysm = RollCataclysm();
-
-		// AND ITS MODIFIERS, HERE FOR THE SAME REASON AND IN THE SAME PLACE.
-		// The scheduler knows neither which Cataclysms this campaign faces nor
-		// what tier it is played at, and the draw needs both. Issue #41.
+		// AND ITS MODIFIERS, HERE AND NOT IN THE SCHEDULER. The scheduler knows
+		// neither which Cataclysms this campaign faces nor what tier it is
+		// played at, and the draw needs both. Issue #41.
 		//
-		// AFTER THE CATACLYSM AND NOT BEFORE IT, because the pool is the union
-		// of the ACTIVE Cataclysms' modifiers and not the sender's -- so the
-		// order does not matter today. It is written this way round so that if
-		// the pool ever narrows to the sender, the field is already set.
+		// AFTER THE DUNGEON IS MADE, AND THE ORDER MATTERS NOW. How many it
+		// draws comes from `CountFor`, which reads the sub-type, and since
+		// 2026-10-21 a Famine Quest dungeon's sub-type is Sacrificial whatever
+		// it rolled -- so it draws double. The pool is still the union of the
+		// ACTIVE Cataclysms' modifiers and not the sender's.
 		GiveModifiers(Dungeon);
 	}
 

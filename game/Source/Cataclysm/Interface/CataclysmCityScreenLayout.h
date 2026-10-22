@@ -98,6 +98,10 @@ public:
 	 *
 	 * SOONEST TO RESOLVE FIRST, because the whole reason to look at a city is to
 	 * decide whether it is about to be bitten and by what.
+	 *
+	 * "Horde, 12 floors, 9 days until it bites" -- THE SUB-TYPE LEADS when the
+	 * dungeon has one, and a dungeon without one reads "12 floors, 9 days until
+	 * it bites".
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FString> DungeonLinesFor(const UCataclysmEmpireRun* Run,

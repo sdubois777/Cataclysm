@@ -187,11 +187,13 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * is made from what a city was carrying rather than sent by anybody. It
 	 * counts towards no Cataclysm.
 	 *
-	 * WHO SETS IT IS THE DAY LOOP AND NOT THIS SCHEDULER, which is where the
-	 * model puts it too: `Simulation.trigger_surge` assigns `d.source` after
-	 * `_make_dungeon` has returned, and `UCataclysmEmpireRun::TriggerSurge`
-	 * stamps a wave the same way. The scheduler does not know which Cataclysms
-	 * are active; the run does.
+	 * WHO DRAWS IT IS THE DAY LOOP AND NOT THIS SCHEDULER. The scheduler does
+	 * not know which Cataclysms are active; the run does.
+	 * `UCataclysmEmpireRun::FireSurge` hands `RollWave` its `RollCataclysm`,
+	 * and `RollWave` stamps each dungeon with the answer BEFORE it is made,
+	 * since 2026-10-21, because a Quest dungeon's sub-type now depends on its
+	 * sender. The model does the same: `Simulation.trigger_surge` sets
+	 * `making_for` around `_make_dungeon` and assigns `d.source` after it.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmType Cataclysm = ECataclysmType::None;
@@ -920,6 +922,29 @@ public:
 		ECataclysmDungeonType Type = ECataclysmDungeonType::Basic);
 
 	/**
+	 * The one sub-type a Cataclysm's Quest dungeons take, or `None` for "roll
+	 * one as any dungeon does".
+	 *
+	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR FIVE OF ITS EIGHT. The
+	 * owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
+	 * specific type." Death's are Horde, Demonic's Elite, Pestilence's Timed,
+	 * Famine's Sacrificial and Chaos's Volatile.
+	 *
+	 * THREE ANSWER `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR EACH OF THEM.
+	 * War's are Sieges in the model and roll here, because the owner has ruled
+	 * War out of the game. Celestial's are Ascendant and the Void's Hollow in
+	 * the model, and neither sub-type is in `ECataclysmDungeonSubType` yet.
+	 * `None` itself, the Cataclysm nobody named, answers `None` too: a Quest
+	 * dungeon made without a sender rolls, as the model's does.
+	 * `tools/tests/test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`
+	 * holds the three; `docs/DECISIONS.md`, 2026-10-21, has the layer.
+	 *
+	 * IT DRAWS NOTHING. `MakeDungeon` still takes the sub-type draw and then
+	 * discards it for a fixed Quest dungeon; see there for why.
+	 */
+	static ECataclysmDungeonSubType QuestSubTypeFor(ECataclysmType Cataclysm);
+
+	/**
 	 * The floor range and the bites for one kind of dungeon on one tier of city.
 	 * `config.DUNGEON_SPECS`.
 	 *
@@ -1294,11 +1319,16 @@ public:
 	 * Its timer comes from its depth like any dungeon's, jitter and all; until
 	 * 2026-10-19 it was a flat 25 days, and the owner ruled on 2026-10-16 that
 	 * it follow the depth. Everything else is the same code: the city's floor
-	 * upgrades still move its floors and so its timer, it still rolls a
-	 * sub-type, its walk still costs a day a floor less whatever the city
+	 * upgrades still move its floors and so its timer, it still takes the
+	 * sub-type draw, its walk still costs a day a floor less whatever the city
 	 * bought, and it still carries the design's one boss on the final floor.
-	 * Nothing about a Quest dungeon says otherwise, and giving it its own maker
-	 * would have been two copies of the shared rules.
+	 * Giving it its own maker would have been two copies of the shared rules.
+	 *
+	 * AND ONE THING MORE SINCE 2026-10-21: ITS SUB-TYPE. A Quest dungeon sent by
+	 * a Cataclysm that `QuestSubTypeFor` names one for takes that sub-type
+	 * rather than what it rolled -- a Famine Quest dungeon is Sacrificial, a
+	 * Death one a Horde. The draw is still taken and its answer discarded, so
+	 * the stream moves exactly as it did; see the implementation.
 	 *
 	 * @param bSiegeAllowed whether this city may take a Siege. Passed straight
 	 *                      to `RollSubType`; see there. It defaults to allowing
@@ -1313,11 +1343,17 @@ public:
 	 *                      rather than as a half-made Fallen City -- see the
 	 *                      implementation. `MakeFallenCityDungeon` is how a
 	 *                      Fallen City is built and nothing builds a Cataclysm.
+	 * @param Cataclysm     which Cataclysm is sending it, read only for a Quest
+	 *                      dungeon's sub-type; see `QuestSubTypeFor`. IT DOES
+	 *                      NOT STAMP THE DUNGEON -- `RollWave` does that -- and
+	 *                      it defaults to `None`, which fixes nothing, so every
+	 *                      caller that predates it makes what it always made.
 	 */
 	FCataclysmDungeon MakeDungeon(
 		int32 DungeonId, const FCataclysmCity& City, int32 Day,
 		FRandomStream& Stream, bool bSiegeAllowed = true,
-		ECataclysmDungeonType Type = ECataclysmDungeonType::Basic) const;
+		ECataclysmDungeonType Type = ECataclysmDungeonType::Basic,
+		ECataclysmType Cataclysm = ECataclysmType::None) const;
 
 	/**
 	 * Which kind of dungeon the next one a surge lands is.
@@ -1512,8 +1548,9 @@ public:
 	 * can. `MakeDungeon` is deliberately ignorant of what already stands on a
 	 * city, and it is also called on its own by tests; the wave is the smallest
 	 * thing that can see both what was already there and what it is about to
-	 * add. A dungeon that rolls Siege for a city that already has one is made
-	 * plain instead. See `SiegesPerCity`.
+	 * add. A dungeon that rolls Siege for a city that already has one has the
+	 * same draw spread across the other six sub-types instead. See
+	 * `SiegesPerCity`.
 	 *
 	 * @param FirstDungeonId what to number the first dungeon; the rest follow
 	 *                       from it.
@@ -1525,10 +1562,23 @@ public:
 	 *                       class deliberately does not. Sieges this wave itself
 	 *                       creates are counted whether or not it is supplied,
 	 *                       so one wave can never land two on one city.
+	 * @param DrawCataclysm  which Cataclysm sends each dungeon, asked ONCE PER
+	 *                       DUNGEON MADE, in the order they are made, after a
+	 *                       target that is not on the map has been skipped and
+	 *                       before the dungeon is made. What it answers is
+	 *                       stamped on the dungeon and handed to `MakeDungeon`,
+	 *                       because a Quest dungeon's sub-type depends on it.
+	 *                       `UCataclysmEmpireRun::FireSurge` passes its own
+	 *                       `RollCataclysm`; this class still does not know
+	 *                       which Cataclysms a campaign faces. EMPTY BY
+	 *                       DEFAULT, and then every dungeon is made and left
+	 *                       carrying `None`, as before this was added.
 	 */
 	TArray<FCataclysmDungeon> RollWave(
 		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
 		FRandomStream& Stream,
 		const TArray<int32>& DungeonsPerCity = TArray<int32>(),
-		const TArray<int32>& SiegesPerCityNow = TArray<int32>()) const;
+		const TArray<int32>& SiegesPerCityNow = TArray<int32>(),
+		const TFunction<ECataclysmType()>& DrawCataclysm =
+			TFunction<ECataclysmType()>()) const;
 };
