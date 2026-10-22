@@ -6101,8 +6101,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		return;
 	}
 	// DECLARED BEFORE THE GUARD SO IT RUNS AFTER IT: the queued deaths are
-	// acted on once this call is at depth nought again.
-	ON_SCOPE_EXIT { DrainQueuedAfflictedDeaths(); };
+	// acted on once this call is at depth nought again, and then the traps a row chose to set off (traps layer 5).
+	ON_SCOPE_EXIT
+	{
+		DrainQueuedAfflictedDeaths();
+		DrainQueuedSkillTrapSetOffs();
+	};
 	TGuardValue<int32> Depth(PoolActionDepth, 1);
 
 	// A NEW KILL BEGINS WITH NO EXPLOSION PENDING, as a new use begins with nothing pending in `ActOnSkillUse`.
@@ -6794,6 +6798,20 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					Late.Seconds = Action.StackSeconds;
 					Late.UntilSeconds = GetWorld()->GetTimeSeconds() + SkillTrapLateSlowSeconds;
 					LateSkillTrapSlows.Add(Late);
+				}
+			}
+			continue;
+		}
+		// THE PLAYER'S OTHER TRAPS ARMED, OR SET OFF. Ruled 2026-10-22 (traps layer 5, H1 to H11). Landed only, once per
+		// row per event; NO TRIGGER COOLDOWN (H9): each event is bounded by the chain guard and the cap on standing traps.
+		if (Action.bArmTrapsNearby || Action.bSetOffTrapsNearby)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				if (ActOnSkillTrapsNearby(Action, Event, EventTarget) > 0)
+				{
+					NoteTriggerFired(Action);
 				}
 			}
 			continue;
@@ -8351,4 +8369,126 @@ void UCataclysmAbilitySystemComponent::NoteSpentSkillTrapGaveItsEnemysHealthShar
 	{
 		Found->bGaveItsEnemysHealthShare = true;
 	}
+}
+
+// ==========================================================================
+// Traps, layer 5: the player's other traps armed or set off, the queue and the chain guard. Ruled 2026-10-22 (H1 to
+// H11; H5 (b) by the owner). The header carries the rulings.
+// ==========================================================================
+
+const TCHAR* UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction = TEXT("arm_traps_nearby");
+const TCHAR* UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction = TEXT("trigger_traps_nearby");
+
+void UCataclysmAbilitySystemComponent::QueueSkillTrapSetOff(AActor* Trap, bool bEvenForADeadPlayer)
+{
+	if (!Trap)
+	{
+		return;
+	}
+	FQueuedSkillTrapSetOff& Queued = QueuedSkillTrapSetOffs.AddDefaulted_GetRef();
+	Queued.Trap = Trap;
+	Queued.bEvenForADeadPlayer = bEvenForADeadPlayer;
+}
+
+void UCataclysmAbilitySystemComponent::DrainQueuedSkillTrapSetOffs()
+{
+	// ONLY THE OUTERMOST CALL, AT DEPTH NOUGHT: a drain reached from inside a trap it sets off (its blows' events, its own
+	// `trap_triggered`) returns at once, and the loop below takes up whatever that trap's event recorded, at the end, in
+	// the order recorded.
+	if (PoolActionDepth > 0 || bDrainingQueuedSkillTrapSetOffs)
+	{
+		return;
+	}
+	{
+		TGuardValue<bool> Draining(bDrainingQueuedSkillTrapSetOffs, true);
+		while (!QueuedSkillTrapSetOffs.IsEmpty())
+		{
+			// THE WEARER GONE: what waited is dropped, as a queued death is.
+			if (!GetAvatarActor())
+			{
+				QueuedSkillTrapSetOffs.Reset();
+				break;
+			}
+			const FQueuedSkillTrapSetOff Next = QueuedSkillTrapSetOffs[0];
+			QueuedSkillTrapSetOffs.RemoveAt(0);
+
+			// A TRAP GONE SINCE IT WAS RECORDED IS SKIPPED, and a dead one `TriggerSkillTrap` refuses. ITS TRIGGERING ENEMY
+			// IS CHOSEN NOW, as it goes off (H6). A WHOLE TRIGGER (G-1 (a)): its cast, its blows' events and its own
+			// `trap_triggered` are all at depth nought, so every row answers them.
+			ACataclysmMinion* Trap = Cast<ACataclysmMinion>(Next.Trap.Get());
+			if (!IsValid(Trap) || Trap->IsActorBeingDestroyed())
+			{
+				continue;
+			}
+			Trap->TriggerSkillTrap(Trap->SkillTrapEnemyForAForcedTrigger(), Next.bEvenForADeadPlayer);
+		}
+	}
+	// THE CHAIN ENDS HERE: the event that began it and every trap it set off have been answered.
+	SkillTrapsSetOffThisChain.Reset();
+}
+
+int32 UCataclysmAbilitySystemComponent::ActOnSkillTrapsNearby(const FCataclysmPoolAction& Action, FName Event,
+															  const AActor* EventTarget)
+{
+	AActor* Wearer = GetAvatarActor();
+	if (!Wearer)
+	{
+		return 0;
+	}
+	static const FName TrapTriggeredName(TEXT("trap_triggered"));
+	static const FName GadgetDestroyedName(TEXT("gadget_destroyed"));
+	static const FName PlayerDeathName(TEXT("player_death"));
+
+	// MEASURED FROM THE TRAP THAT TRIGGERED, WHICH IS NEVER ONE OF THEM, OR FROM THE GADGET DESTROYED (H3); EVERY TRAP AT
+	// THE PLAYER'S DEATH (H8). The trap that triggered stands while its event is raised, since every trap a row sets off
+	// is set off by the drain, at depth nought, by its own `TriggerSkillTrap` (G-1 (a)).
+	FVector From = FVector::ZeroVector;
+	const AActor* TrapThatTriggered = nullptr;
+	if (Event == TrapTriggeredName && SkillTrapRaisingItsTrigger.IsValid())
+	{
+		TrapThatTriggered = SkillTrapRaisingItsTrigger.Get();
+		From = TrapThatTriggered->GetActorLocation();
+	}
+	else if (Event == GadgetDestroyedName)
+	{
+		// A GADGET KILLED, which is what raises `gadget_destroyed` (H7, T14). A Spike Trap killed raises it too (T15), and
+		// that is a trap's death and not a gadget's (H7), so it arms and sets off nothing.
+		const ACataclysmMinion* Destroyed = Cast<const ACataclysmMinion>(EventTarget);
+		if (!Destroyed || !Destroyed->IsGadget())
+		{
+			return 0;
+		}
+		From = Destroyed->GetActorLocation();
+	}
+	else if (Event != PlayerDeathName)
+	{
+		return 0;
+	}
+	const bool bAtTheDeath = Event == PlayerDeathName;
+	// THE ROW'S METRES, IN CENTIMETRES (H10).
+	const float RadiusCm = Action.Percent * 100.0f;
+	if (Action.bArmTrapsNearby)
+	{
+		return bAtTheDeath || RadiusCm <= 0.0f
+			? 0
+			: ACataclysmMinion::ArmSkillTrapsNear(Wearer, From, RadiusCm, Action.bNearestTrapOnly, TrapThatTriggered);
+	}
+
+	// THE TRAP THAT BEGAN THE CHAIN IS IN IT (H5 (b)), so nothing this sets in motion sets it off again, though it may
+	// stand, rearming.
+	if (TrapThatTriggered
+		&& !SkillTrapsSetOffThisChain.ContainsByPredicate([TrapThatTriggered](const TWeakObjectPtr<AActor>& Fired)
+		{
+			return Fired.Get() == TrapThatTriggered;
+		}))
+	{
+		SkillTrapsSetOffThisChain.Add(SkillTrapRaisingItsTrigger);
+	}
+	if (!bAtTheDeath && RadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+	return ACataclysmMinion::SetOffSkillTrapsNear(Wearer, bAtTheDeath ? nullptr : &From, RadiusCm,
+												  Action.bNearestTrapOnly, TrapThatTriggered,
+												  /*bEvenForADeadPlayer=*/bAtTheDeath);
 }

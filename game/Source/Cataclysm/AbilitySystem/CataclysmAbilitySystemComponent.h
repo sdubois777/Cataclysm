@@ -4689,6 +4689,60 @@ public:
 	/** What the rows recorded for the kill in hand. See `TakePendingKillingBlowExplosionSharePercent`. */
 	float PendingKillingBlowExplosionSharePercent = 0.0f;
 
+	/**
+	 * TRAPS LAYER 5, the player's other traps. Ruled 2026-10-22 by the coordinating session (H1 to H11), and H5 (b) by the
+	 * owner: "Chain the group (Recommended)" — "Every trap in a connected group within range goes off, each at most once.
+	 * Each counts as triggered, so it slows its own enemy and adds a damage stack. Needs a small queue in the code."
+	 *
+	 * TWO ACTIONS, each with its value the radius in metres from the trap that triggered (`trap_triggered`) or the gadget
+	 * destroyed (`gadget_destroyed`), and Scale Max Steps 1 for the nearest trap alone, empty for every one:
+	 * `ArmTrapsNearbyAction` arms the player's standing unarmed traps there (`ACataclysmMinion::ArmSkillTrapsNear`), for
+	 * "When a trap is triggered, the nearest unarmed trap within 10 meters arms instantly", "When a trap triggers it
+	 * releases a shockwave that arms all traps within 15 meters instantly" and "When a gadget is destroyed it arms all
+	 * traps within 12 meters instantly"; `TriggerTrapsNearbyAction` sets them off (`ACataclysmMinion::SetOffSkillTrapsNear`),
+	 * for "Traps trigger simultaneously when any one of them is triggered, if within 8-12 meters of each other", "When a
+	 * gadget is destroyed, the nearest active trap within 10 meters is triggered immediately" and, on `player_death` with a
+	 * radius of nought for every trap, the trap half of "When you die, all your active traps and gadgets immediately
+	 * trigger simultaneously". `tools/generate_datatables.py` holds the same names. No trigger cooldown (H9).
+	 */
+	static const TCHAR* ArmTrapsNearbyAction;
+	static const TCHAR* TriggerTrapsNearbyAction;
+
+	/**
+	 * THE QUEUE (H5 (b), and G-1 (a) of 2026-10-22: a trap set off by a row is a whole trigger): the traps a row's action has
+	 * chosen to set off, recorded by `ACataclysmMinion::SetOffSkillTrapsNear` while that row acts, and set off by
+	 * `DrainQueuedSkillTrapSetOffs` once the outermost call is at depth nought again, each by its ordinary
+	 * `TriggerSkillTrap`. So its own `trap_triggered` and every event its instant blows raise are answered as a trap's an
+	 * enemy set off are. Each trap compared by identity; `bEvenForADeadPlayer` for the traps the player's death sets off.
+	 */
+	struct FQueuedSkillTrapSetOff
+	{
+		TWeakObjectPtr<AActor> Trap;
+		bool bEvenForADeadPlayer = false;
+	};
+	TArray<FQueuedSkillTrapSetOff> QueuedSkillTrapSetOffs;
+
+	/**
+	 * THE CHAIN GUARD (H5 (b)): every skill trap set off in the chain in hand, the trap that began it included, each added
+	 * WHEN IT IS RECORDED, before it goes off, so no trap is recorded twice; a trap here is never chosen again until the chain
+	 * ends. ONE CHAIN IS ONE EVENT ACTED ON AT DEPTH NOUGHT AND EVERYTHING IT RECORDED: emptied when the outermost drain
+	 * ends. So each trap goes off at most once a chain, a rearmed one included, and the queue holds at most one record for
+	 * each trap standing when the chain began.
+	 */
+	TArray<TWeakObjectPtr<AActor>> SkillTrapsSetOffThisChain;
+
+	/** Whether the queue is being drained now, so a drain reached from inside it returns at once. */
+	bool bDrainingQueuedSkillTrapSetOffs = false;
+
+	/** Record `Trap` to be set off once the row acting now has finished. */
+	void QueueSkillTrapSetOff(AActor* Trap, bool bEvenForADeadPlayer);
+
+	/** Set off each recorded trap in the order recorded, at depth nought, then end the chain. Only the outermost call acts. */
+	void DrainQueuedSkillTrapSetOffs();
+
+	/** Arm or set off the player's traps as `Action` states for `Event`, naming `EventTarget`. How many. */
+	int32 ActOnSkillTrapsNearby(const FCataclysmPoolAction& Action, FName Event, const AActor* EventTarget);
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

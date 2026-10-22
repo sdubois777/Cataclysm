@@ -28080,4 +28080,82 @@ bool FCataclysmTrapLayerFourRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapLayerFiveRowsTest,
+	"Cataclysm.Enchantments.TheWornTrapLayerFiveRowsEachReachTheActionTheirSentenceNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Traps layer 5, ruled 2026-10-22 (H1-H11, H5 (b) by the owner, G-1): six sentences, six rows, one of them the second row
+ * of "When you die, all your active traps and gadgets immediately trigger simultaneously". WORN by real players, one
+ * sentence each, against a CONTROL wearing a benefit with no effect, each with the same drawback with no effect. For
+ * each, the test asks the one worn action its row reaches: arm or set off, on its event, nearest only or not. What each
+ * then does in play is `Cataclysm.Traps.`'s. SIX assertions on the cases, one per worn sentence, so on assets built before
+ * the rows it fails six times, and only there.
+ */
+bool FCataclysmTrapLayerFiveRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* NearestArms = TEXT("Positive_When_a_trap_is_triggered_the_nearest_unarmed_tr");
+	const TCHAR* Shockwave = TEXT("Positive_When_a_trap_triggers_it_releases_a_shockwave_tha");
+	const TCHAR* GadgetArms = TEXT("Positive_When_a_gadget_is_destroyed_it_arms_all_traps_wit");
+	const TCHAR* Together = TEXT("Positive_Traps_trigger_simultaneously_when_any_one_of_the");
+	const TCHAR* GadgetSetsOff = TEXT("Positive_When_a_gadget_is_destroyed_the_nearest_active_t");
+	const TCHAR* AtTheDeath = TEXT("Positive_When_you_die_all_your_active_traps_and_gadgets");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker NearestArmsWearer(NearestArms, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker ShockwaveWearer(Shockwave, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker GadgetArmsWearer(GadgetArms, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker TogetherWearer(Together, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker GadgetSetsOffWearer(GadgetSetsOff, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker AtTheDeathWearer(AtTheDeath, DrawbackWithNoEffect);
+	for (const CataclysmConsecutiveRowTest::FStriker* Striker : {&Control, &NearestArmsWearer, &ShockwaveWearer,
+			 &GadgetArmsWearer, &TogetherWearer, &GadgetSetsOffWearer, &AtTheDeathWearer})
+	{
+		if (!TestTrue(TEXT("a striker for the trap layer 5 rows"), Striker->Ready()))
+		{
+			return false;
+		}
+	}
+
+	// HOW MANY WORN ACTIONS ARM (`bArm`) OR SET OFF (not `bArm`) THE WEARER'S OTHER TRAPS ON `Event`, NEAREST ONLY OR NOT.
+	const auto CountTrapActions = [](const CataclysmConsecutiveRowTest::FStriker& Striker, bool bArm, const TCHAR* Event,
+									 bool bNearestOnly)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+		{
+			const bool bKind = bArm ? Action.bArmTrapsNearby : Action.bSetOffTrapsNearby;
+			Found += bKind && Action.Event == FName(Event) && Action.bNearestTrapOnly == bNearestOnly ? 1 : 0;
+		}
+		return Found;
+	};
+	const auto CountAnyTrapAction = [](const CataclysmConsecutiveRowTest::FStriker& Striker)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+		{
+			Found += Action.bArmTrapsNearby || Action.bSetOffTrapsNearby ? 1 : 0;
+		}
+		return Found;
+	};
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, no action arms or sets off a trap.
+	TestEqual(TEXT("control: no action arms or sets off the wearer's other traps"), CountAnyTrapAction(Control), 0);
+
+	const FString Stale = TEXT(" If not, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+	TestEqual(TEXT("wearing the nearest-unarmed row, one action arms the nearest trap on trap_triggered.") + Stale,
+			  CountTrapActions(NearestArmsWearer, /*bArm=*/true, TEXT("trap_triggered"), /*bNearestOnly=*/true), 1);
+	TestEqual(TEXT("wearing the shockwave row, one action arms every trap in reach on trap_triggered.") + Stale,
+			  CountTrapActions(ShockwaveWearer, /*bArm=*/true, TEXT("trap_triggered"), /*bNearestOnly=*/false), 1);
+	TestEqual(TEXT("wearing the gadget-arms row, one action arms every trap in reach on gadget_destroyed.") + Stale,
+			  CountTrapActions(GadgetArmsWearer, /*bArm=*/true, TEXT("gadget_destroyed"), /*bNearestOnly=*/false), 1);
+	TestEqual(TEXT("wearing the trigger-together row, one action sets off every trap in reach on trap_triggered.") + Stale,
+			  CountTrapActions(TogetherWearer, /*bArm=*/false, TEXT("trap_triggered"), /*bNearestOnly=*/false), 1);
+	TestEqual(TEXT("wearing the gadget-sets-off row, one action sets off the nearest trap on gadget_destroyed.") + Stale,
+			  CountTrapActions(GadgetSetsOffWearer, /*bArm=*/false, TEXT("gadget_destroyed"), /*bNearestOnly=*/true), 1);
+	TestEqual(TEXT("wearing the death row, one action sets off every trap on player_death.") + Stale,
+			  CountTrapActions(AtTheDeathWearer, /*bArm=*/false, TEXT("player_death"), /*bNearestOnly=*/false), 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

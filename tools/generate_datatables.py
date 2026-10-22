@@ -6166,6 +6166,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_killing_blow_explosion_action(index, who, action, event,
                                              fraction_of, kind, raw, headers)
         return
+    if action in TRAPS_NEARBY_ACTIONS:
+        _check_traps_nearby_action(index, who, action, event, fraction_of,
+                                   kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -6188,6 +6192,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {CLEANSE_ACTION}; "
             f"or {OVERKILL_EXPLOSION_ACTION}; "
             f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
+            f"or an action on the wearer's other traps, "
+            f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {STRIKE_TARGET_ACTION}; "
             f"or {EXECUTE_TARGET_ACTION}; "
             f"or {TEMPORARY_ABSORB_ACTION}; "
@@ -7129,6 +7135,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != CLEANSE_ACTION \
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != KILLING_BLOW_EXPLOSION_ACTION \
+                    and action not in TRAPS_NEARBY_ACTIONS \
                     and action != STRIKE_TARGET_ACTION \
                     and action != EXECUTE_TARGET_ACTION \
                     and action != TEMPORARY_ABSORB_ACTION \
@@ -7223,7 +7230,8 @@ def enchantment_effects(book) -> list[dict]:
             if not scale and action not in NEXT_USE_ACTIONS \
                     and action not in PLACED_ACTIONS \
                     and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
-                    and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION:
+                    and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
+                    and action not in TRAPS_NEARBY_ACTIONS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has a cap of "
                     f"{cap:g} steps and no scale. A cap limits how many steps "
@@ -7397,6 +7405,38 @@ def enchantment_effects(book) -> list[dict]:
                     f"enemy for {low:g} to {high:g} per cent of the blow that "
                     f"killed it. The share is above 0 and up to "
                     f"{MAX_KILLING_BLOW_EXPLOSION_SHARE:g}.")
+
+        # AN ACTION ON THE WEARER'S OTHER TRAPS STATES A RADIUS IN METRES, above
+        # 0 and up to the bound, OR NOUGHT AT THE WEARER'S DEATH, every trap; and
+        # its Scale Max Steps is 1, the nearest trap alone, or empty, every trap.
+        # Ruled 2026-10-22 (traps layer 5, H10, H11).
+        if action in TRAPS_NEARBY_ACTIONS:
+            if action_event in TRAPS_NEARBY_EVERY_TRAP_EVENTS:
+                if not (low == 0 and high == 0):
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} acts on the "
+                        f"wearer's traps on {action_event!r} within {low:g} to "
+                        f"{high:g} metres. That event names no place to measure "
+                        f"from, so the radius is 0, every trap.")
+                if scale_max_steps:
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} acts on the "
+                        f"wearer's traps on {action_event!r} and states Scale "
+                        f"Max Steps {scale_max_steps}. That event acts on every "
+                        f"trap, so the column must be empty.")
+            elif not (0 < low <= MAX_TRAPS_NEARBY_METRES
+                      and 0 < high <= MAX_TRAPS_NEARBY_METRES):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts on the "
+                    f"wearer's traps within {low:g} to {high:g} metres. The "
+                    f"radius is above 0 and up to "
+                    f"{MAX_TRAPS_NEARBY_METRES:g}.")
+            if scale_max_steps not in (0, 1):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts on the "
+                    f"wearer's traps and states Scale Max Steps "
+                    f"{scale_max_steps}. It is 1, the nearest trap alone, or "
+                    f"empty, every trap.")
 
         # A STRIKE'S VALUE IS A PERCENTAGE OF THE WEARER'S ATTACK DAMAGE, above
         # 0 and up to the bound. Ruled 2026-10-07.
@@ -12191,6 +12231,86 @@ def _check_killing_blow_explosion_action(index: int, who: str, action: str,
                 f"for a share of the blow that killed it and states {column} "
                 f"{written!r}. Its value is that share and nothing else, so the "
                 f"column must be empty.")
+
+
+#: The two actions of traps layer 5, ruled 2026-10-22 by the coordinating
+#: session (H1 to H11) and, on H5, by the owner: what a row does to the
+#: wearer's OTHER skill traps. `ARM_TRAPS_NEARBY_ACTION` ARMS each standing,
+#: unarmed trap of the wearer's within the row's metres, as if its arming time
+#: had passed, and sets off none: "When a trap is triggered, the nearest unarmed
+#: trap within 10 meters arms instantly", "When a trap triggers it releases a
+#: shockwave that arms all traps within 15 meters instantly" and "When a gadget
+#: is destroyed it arms all traps within 12 meters instantly".
+#: `TRIGGER_TRAPS_NEARBY_ACTION` SETS EACH OFF as its own trigger does, each at
+#: its own triggering enemy: "Traps trigger simultaneously when any one of them
+#: is triggered, if within 8-12 meters of each other", "When a gadget is
+#: destroyed, the nearest active trap within 10 meters is triggered
+#: immediately" and the trap half of "When you die, all your active traps and
+#: gadgets immediately trigger simultaneously". A trap a row sets off counts as
+#: triggered, and its own `trap_triggered` is answered after the row (the
+#: owner's H5 (b)), each trap once a chain.
+#: `UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction` and
+#: `TriggerTrapsNearbyAction` hold the same names.
+#:
+#: THE VALUE IS THE RADIUS IN METRES (H10), measured from the trap that
+#: triggered or the gadget destroyed. ON `player_death` IT IS NOUGHT, every
+#: trap: that event names no place. SCALE MAX STEPS IS THE COUNT (H11): 1 for
+#: "the nearest" trap alone, empty for every trap; no other count is stated by
+#: any sentence. NO TRIGGER COOLDOWN (H9), which `takes_a_trigger_cooldown`
+#: refuses for them.
+ARM_TRAPS_NEARBY_ACTION = "arm_traps_nearby"
+TRIGGER_TRAPS_NEARBY_ACTION = "trigger_traps_nearby"
+TRAPS_NEARBY_ACTIONS = (ARM_TRAPS_NEARBY_ACTION, TRIGGER_TRAPS_NEARBY_ACTION)
+
+#: The events each may hang on: the ones its sentences name. A trap's
+#: triggering and a gadget's destruction carry the place measured from; the
+#: wearer's death sets off every trap, and arms none.
+TRAPS_NEARBY_EVENTS = {
+    ARM_TRAPS_NEARBY_ACTION: ("trap_triggered", "gadget_destroyed"),
+    TRIGGER_TRAPS_NEARBY_ACTION: ("trap_triggered", "gadget_destroyed",
+                                  "player_death"),
+}
+
+#: The event on which the radius is nought, every trap, and the count every
+#: trap.
+TRAPS_NEARBY_EVERY_TRAP_EVENTS = ("player_death",)
+
+#: The largest radius a row may state, in metres. A bound for typing mistakes,
+#: as `MAX_TELEPORT_RANDOMLY_METRES` is; the sentences say 8 to 15.
+MAX_TRAPS_NEARBY_METRES = 50.0
+
+
+def _check_traps_nearby_action(index: int, who: str, action: str, event: str,
+                               fraction_of: str, kind: str, raw,
+                               headers: dict[str, int]) -> None:
+    """Everything a row on the wearer's other traps must say, and everything
+    it must not. Ruled 2026-10-22 (traps layer 5, H1 to H11). The event must be
+    one its sentences name; the radius and the count are checked where the
+    value and Scale Max Steps are read. A fraction, a value kind and a scale
+    each mean nothing here, so each is refused rather than dropped, and
+    `player_death` carries no tags for a scoped row to match.
+    """
+    if event not in TRAPS_NEARBY_EVENTS[action]:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts on the wearer's "
+            f"other traps with {action} on the event {event or '(none)'!r}. "
+            f"The game does it on {', '.join(TRAPS_NEARBY_EVENTS[action])} "
+            f"and on nothing else.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} acts on the wearer's "
+                f"other traps and states {column} {written!r}. Its value is a "
+                f"radius in metres and nothing else, so the column must be "
+                f"empty.")
+    tags = clean(_cell(raw, headers, "Required Tags"))
+    if event in TRAPS_NEARBY_EVERY_TRAP_EVENTS and tags:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts on the wearer's "
+            f"traps on {event!r} and states Required Tags {tags!r}. That event "
+            f"carries no tags, so the row would never fire.")
 
 
 #: The scales that count bodies standing inside a radius.
