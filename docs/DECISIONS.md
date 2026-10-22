@@ -560,7 +560,50 @@ it fails six times, and only there.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**THE LAYER WAS MOVED BEFORE ITS WINDOW** onto development 3c1147e48 (#2468, the Void's stacks on cities), as efa2290f4
+and 9536d422f, from 0976c4d55 and 74fac076e on b235febb0. Each kept its whole patch id, its patch id outside this log and
+its count of removed lines (14 and 313); the only conflict was this log (this entry placed on top); and outside this log
+the moved top differs from 74fac076e by exactly that merge's own files and patch id. The rows (a0c3f9a92) were authored
+on the moved top.
+
+**ONE WINDOW, enchant-t5w, ON 2026-10-22, 10:14:23 to 11:34:19 by its stall guard, on a0c3f9a92. Every step exited 0
+with the figures registered before it; nothing was re-run.** The pre-checks, run just before the lock was taken:
+development's CI and Unreal runs on 3c1147e48 succeeded, no run in progress, no pull request open, the lock free, no
+Excel, editor or build process, the worktree clean at a0c3f9a92.
+
+- **Step 0, the `Cataclysm.Enchantments.` group on the assets as merged:** "Build: Succeeded - 51 actions, 46 files
+  compiled"; "364 tests performed, 363 succeeded, 1 failed: TheWornTrapLayerFiveRowsEachReachTheActionTheirSentenceNames",
+  as registered, with 6 "Error: Expected" lines, each registered text once.
+- **Step 1, the asset rebuild:** exactly `game/Content/Data/DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; committed as 44147a218 on `feat/traps-5-t-1` and pushed.
+- **Step 2, the whole Unreal suite:** "Build: Succeeded - target already up to date, 0 actions, nothing compiled"; "4032
+  tests performed, 4032 succeeded, 0 failed", registered 4032 and 0 (4022 of development after #2468, this layer's nine
+  and the one real-row test). 40 skipped part of what they check (the Paragon art is not in a worktree). "Declared: 4032
+  tests in the tree at 44147a218; 4032 performed, gap 0".
+- **Step 3, Python of record on 44147a218:** "6873 passed, 8 skipped in 322.98s"; JUnit tests 6881, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 45 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XXI | a set-off trap goes off at depth one, inside the acting row (`CataclysmAbilitySystemComponent.cpp`) | 4 failed: `TrapsTriggerTogether...`, `AChainedTrapsInstantBlow...`, `AnEnemyAChainedTraps...`, `AtThePlayersDeathATrapsBlow...` | 12 / 12 | 45 of 45 succeeded |
+| TR-XXII | the trap that began the chain is not put in it (`CataclysmAbilitySystemComponent.cpp`) | 3 failed: `TrapsTriggerTogether...`, `ATrapSetOffByARow...`, `AnEnemyAChainedTraps...` | 6 / 6 | 45 of 45 succeeded |
+| TR-XXIII | the count read the wrong way round (`CataclysmMinion.cpp`) | 2 failed: `WhenATrapTriggersTheNearest...`, `TheShockwaveAndAGadget...` | 3 / 3 | 45 of 45 succeeded |
+| TR-XXIV | a set-off trap has no triggering enemy of its own (`CataclysmAbilitySystemComponent.cpp`) | 3 failed: `TrapsTriggerTogether...`, `AGadgetKilledSetsOff...`, `ATrapSetOffByARow...` | 5 / 5 | 45 of 45 succeeded |
+
+The measured lines include, under TR-XXI, "'and that instant blow of the chained trap bleeds its enemy: a whole trigger
+(G-1 (a))' to be true" and "'three damage stacks, one for each trap that went off' to be 3, but it was 1"; under TR-XXII,
+"'its first trap went off once, though it stood rearmed within reach of the second (H5 (b))' to be 1, but it was 2";
+under TR-XXIII, "'the unarmed trap 9 m away, within the 10 m but not the nearest, is not armed' to be false"; under
+TR-XXIV, "'its triggering enemy is the nearer of its own two enemies, not the first trap's (H6 (a))' to be true".
+
+The window script's last step was labelled "the five registered proofs", a label copied from traps layer 4's script;
+four were registered and four ran.
+
+**Not measured:** everything this entry lists as read and not tested; anything drawn on a screen.
 
 ---
 
