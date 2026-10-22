@@ -2778,6 +2778,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	OwnStacks.Empty();
 	OwnStacksLastingAlone.Empty();
+	LateSkillTrapSlows.Empty();
 
 	// AND EVERY ROW'S KEPT STACKS. Ruled 2026-10-12. They have no lifetime, and a death is one of the four things
 	// that end them: see `GainKeptStack`. Counted as held now, so stacks of a dungeon already left add nothing.
@@ -6755,14 +6756,27 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		if (Action.bSlowForSeconds)
 		{
 			AActor* Slowed = const_cast<AActor*>(EventTarget);
-			if (bLanded && Slowed && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
-				&& UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))
+			if (bLanded && Slowed && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				AActor* Slower = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
-				if (Slower && UCataclysmAilments::ApplySlowOfStrength(Slower, Slowed, Action.Percent, Action.StackSeconds))
+				if (UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))
 				{
-					NoteTriggerFired(Action);
+					if (Slower && UCataclysmAilments::ApplySlowOfStrength(Slower, Slowed, Action.Percent, Action.StackSeconds))
+					{
+						NoteTriggerFired(Action);
+					}
+				}
+				// NO BLOW HAS QUALIFIED YET: THE SLOW WAITS FOR A LATER BLOW OF THE SAME CAST (brief 60c), at these figures.
+				else if (GetWorld() && SkillTrapRaisingItsTrigger.IsValid())
+				{
+					FLateSkillTrapSlow Late;
+					Late.Trap = SkillTrapRaisingItsTrigger;
+					Late.Enemy = Slowed;
+					Late.StrengthPercent = Action.Percent;
+					Late.Seconds = Action.StackSeconds;
+					Late.UntilSeconds = GetWorld()->GetTimeSeconds() + SkillTrapLateSlowSeconds;
+					LateSkillTrapSlows.Add(Late);
 				}
 			}
 			continue;
@@ -8220,4 +8234,48 @@ void UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone(FName StackKey,
 	Held.Count = Granted.Num();
 	Held.GrantedAtSeconds = Now;
 	Held.WindowSeconds = WindowSeconds;
+}
+
+bool UCataclysmAbilitySystemComponent::AwaitsALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy,
+																 const AActor* Struck) const
+{
+	// BY THE TRAP'S IDENTITY, WHICH A WEAK POINTER KEEPS AFTER THE TRAP IS GONE: its `Get` answers null then, and
+	// `HasSameIndexAndSerialNumber` still answers whether two name one actor (`==` answers yes for ANY two stale ones).
+	const UWorld* World = GetWorld();
+	if (!World || !Struck || CastBy.IsExplicitlyNull() || LateSkillTrapSlows.IsEmpty())
+	{
+		return false;
+	}
+	const float Now = World->GetTimeSeconds();
+	return LateSkillTrapSlows.ContainsByPredicate([&CastBy, Struck, Now](const FLateSkillTrapSlow& Late)
+	{
+		return Late.Trap.HasSameIndexAndSerialNumber(CastBy) && Late.Enemy.Get() == Struck && Now <= Late.UntilSeconds;
+	});
+}
+
+bool UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck,
+															  float DealtToHealth)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Struck)
+	{
+		return false;
+	}
+	const float Now = World->GetTimeSeconds();
+	LateSkillTrapSlows.RemoveAll([Now](const FLateSkillTrapSlow& Late) { return Now > Late.UntilSeconds; });
+	const int32 Waiting = LateSkillTrapSlows.IndexOfByPredicate([&CastBy, Struck](const FLateSkillTrapSlow& Late)
+	{
+		return Late.Trap.HasSameIndexAndSerialNumber(CastBy) && Late.Enemy.Get() == Struck;
+	});
+	// THE OWNER'S RULE OF A TENTH AGAINST THIS BLOW (the owner, 2026-10-21: "Follow the tenth rule"). A blow short of it
+	// leaves the slow waiting for the next.
+	if (Waiting == INDEX_NONE || !UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	{
+		return false;
+	}
+	const FLateSkillTrapSlow Late = LateSkillTrapSlows[Waiting];
+	// ONCE PER TRAP: no longer waiting, whether or not it took.
+	LateSkillTrapSlows.RemoveAt(Waiting);
+	AActor* Slower = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	return Slower && UCataclysmAilments::ApplySlowOfStrength(Slower, Struck, Late.StrengthPercent, Late.Seconds);
 }

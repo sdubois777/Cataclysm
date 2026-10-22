@@ -2557,8 +2557,12 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
 	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
 	const FGameplayTagContainer TrapTags = TypeTags;
+	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
+	// cast (ruled 2026-10-21, brief 60c).
+	Theirs->SkillTrapRaisingItsTrigger = this;
 	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
 					   /*bLanded=*/true, Enemy);
+	Theirs->SkillTrapRaisingItsTrigger.Reset();
 
 	// USED UP: destroyed, with no explosion and no `gadget_destroyed`, because `HandleDeath` is not run.
 	Destroy();

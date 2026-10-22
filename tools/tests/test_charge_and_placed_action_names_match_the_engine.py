@@ -506,10 +506,15 @@ def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_en
     # AND THE SLOW ASKS THE RULE OF A TENTH against what the trap's cast took
     # from the enemy that set it off, which `trap_triggered` carries. The owner,
     # 2026-10-21: "Follow the tenth rule".
+    # WHEN NONE HAS QUALIFIED YET, IT WAITS FOR A LATER BLOW OF THE SAME CAST,
+    # which `ApplyHit` hands it (ruled 2026-10-21, brief 60c).
     engine = SOURCE.read_text(encoding="utf-8")
-    assert re.search(r"if \(bLanded && Slowed && !StackedThisEvent\.Contains\(Action\.TriggerKey\) "
-                     r"&& TriggerReady\(Action\)\s*&& UCataclysmAilments::BlowCanCarryAnAilment"
-                     r"\(Slowed, EventAmount\)\)", engine)
+    assert re.search(r"if \(UCataclysmAilments::BlowCanCarryAnAilment\(Slowed, EventAmount\)\)\s*\{\s*"
+                     r"if \(Slower && UCataclysmAilments::ApplySlowOfStrength\(", engine)
+    assert "LateSkillTrapSlows.Add(Late);" in engine
+    effects = (SOURCE.parent / "CataclysmSkillEffects.cpp").read_text(encoding="utf-8")
+    assert re.search(r"LateTrapsPlayer->LayALateSkillTrapSlow\(Delivery\.CastBy, Target, "
+                     r"Resolved->DealtToHealth\);", effects)
     minion = (SOURCE.parent / "CataclysmMinion.cpp").read_text(encoding="utf-8")
     assert re.search(r'ActOnEvent\(FName\(TEXT\("trap_triggered"\)\), &TrapTags, '
                      r'/\*EventAmount=\*/SkillTrapTookFromItsEnemy,', minion)
