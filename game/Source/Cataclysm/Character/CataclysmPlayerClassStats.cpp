@@ -922,6 +922,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("trap_damage_to_triggering_enemy"),
 		TEXT("trap_triggering_enemy_max_health_damage"),
 		TEXT("trap_damage_over_time_share"),
+		// Traps layer 6, ruled 2026-10-22 (J7, J8), for "When a trap triggers, all
+		// enemies within 4-6 meters are pulled toward the blast center": the radius
+		// in metres every living enemy within is pulled to 1 m of the trap before its
+		// cast, read off the player with `Type.Trap` by
+		// ACataclysmMinion::SkillTrapPullRadiusCmFor. No gameplay attribute and no
+		// base.
+		TEXT("trap_pull_radius"),
 	};
 	return Stats;
 }

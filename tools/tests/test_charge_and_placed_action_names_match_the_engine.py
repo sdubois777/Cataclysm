@@ -149,6 +149,9 @@ CONSTANTS = {
     # armed, or set off.
     "ArmTrapsNearbyAction": "arm_traps_nearby",
     "TriggerTrapsNearbyAction": "trigger_traps_nearby",
+    # AND THE ONE OF TRAPS LAYER 6, ruled 2026-10-22: the wearer's nearest skill
+    # gadget fires at the enemy that set a trap off.
+    "GadgetFiresAtTrapEnemyAction": "gadget_fires_at_trap_enemy",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -671,3 +674,38 @@ def test_the_two_trap_actions_of_traps_layer_five_set_off_a_recorded_trap_whole_
     assert re.search(r"Theirs->SkillTrapsSetOffThisChain\.Add\(TWeakObjectPtr<AActor>\(Each\)\);\s*"
                      r"Theirs->QueueSkillTrapSetOff\(Each, bEvenForADeadPlayer\);", minion)
     assert "SkillTrapEnemyForAForcedTrigger(), bEvenForADeadPlayer)" not in minion
+
+
+def test_a_gadgets_shot_at_a_traps_enemy_is_recorded_and_fired_at_depth_nought_and_the_pull_comes_first() -> None:
+    """Ruled 2026-10-22 (traps layer 6, J1 to J10, J2 changed: skill gadgets
+    only). The generator's name is the engine's; the item recognises the row by
+    its constant; the event loop COUNTS, then RECORDS the shot, and fires
+    nothing itself; a drain of its own, in an `ON_SCOPE_EXIT` declared before
+    the queued deaths' so it runs after them, fires each recorded shot by
+    `FireSkillGadgetAtTrapEnemy` at its "more", so the shot's blows are at
+    depth nought; the shot casts by the clock's own path, aimed at the enemy;
+    and a trap's pull is made in `TriggerSkillTrap` BEFORE its cast starts.
+    Read from the code with comments taken out by tracking `/* ... */` and
+    `//` (R-c). THE CONTROL: the same reading finds layer 5's drain of set-off
+    traps, which stays as it was."""
+    names = engine_names()
+    assert gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION == names["GadgetFiresAtTrapEnemyAction"]
+    assert gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bGadgetFiresAtTrapEnemy = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"ON_SCOPE_EXIT\s*\{\s*DrainQueuedAfflictedDeaths\(\);\s*"
+                     r"DrainQueuedSkillTrapSetOffs\(\);\s*\};", engine)
+    assert re.search(r"ON_SCOPE_EXIT\s*\{\s*DrainQueuedGadgetShotsAtTrapEnemies\(\);\s*\};\s*"
+                     r"ON_SCOPE_EXIT\s*\{\s*DrainQueuedAfflictedDeaths\(\);", engine)
+    assert re.search(r"if \(CountedToNth\(Action\) && QueueGadgetShotAtTrapEnemy\(Action, EventTarget\)\)", engine)
+    assert "Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier);" in engine
+    assert re.search(r"if \(PoolActionDepth > 0 \|\| bDrainingQueuedGadgetShotsAtTrapEnemies\)", engine)
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert "CastPlayersSkillFromHere(false, Enemy, ShotDamageMultiplier)" in minion
+    assert re.search(r"StartPlayersSkillFromHere\(Player, AsTheGadgets, SkillGadgetReachCm\(Skill\), AimedAt, nullptr,\s*"
+                     r"ShotDamageMultiplier\)", minion)
+    trigger = minion[minion.index("bool ACataclysmMinion::TriggerSkillTrap("):]
+    assert trigger.index("PullEnemiesToThisSkillTrap(Player);") \
+        < trigger.index("StartPlayersSkillFromHere(Player, AsTheTraps,")

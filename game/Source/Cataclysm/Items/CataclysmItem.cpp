@@ -1475,6 +1475,17 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction, ESearchCase::IgnoreCase);
 					Action.bNearestTrapOnly =
 						(Action.bArmTrapsNearby || Action.bSetOffTrapsNearby) && Effect->ScaleMaxSteps == 1;
+					// AND WHETHER THE WEARER'S NEAREST SKILL GADGET FIRES AT THE ENEMY THAT SET A TRAP OFF. Ruled 2026-10-22
+					// (traps layer 6, J1 to J10). The value is a "more" in per cent on that one shot, 100 for none; the
+					// Event Value, read above, the metres from the trap, nought for any distance; and Every Nth, above one,
+					// the count of triggered traps it fires on, WITH NO WINDOW (J4), so the Stack Seconds are not read.
+					Action.bGadgetFiresAtTrapEnemy = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction, ESearchCase::IgnoreCase);
+					if (Action.bGadgetFiresAtTrapEnemy && Effect->EveryNth > 1)
+					{
+						Action.EveryNth = Effect->EveryNth;
+						Action.CountWindowSeconds = 0.0f;
+					}
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
 					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(

@@ -978,7 +978,7 @@ bool ACataclysmMinion::StepSkillGadget()
 	return true;
 }
 
-bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer)
+bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor* AimedAt, float ShotDamageMultiplier)
 {
 	// A SKILL GADGET, STANDING AND ABLE TO ACT, OF A PLAYER STILL HERE AND ALIVE. S11: the gadgets stay through the
 	// player's death and cast nothing while it lasts; THE ONE CAST THE DEATH ITSELF MAKES is the exception (ruled
@@ -1013,7 +1013,10 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer)
 	// running copy (S13), the highest-health row and the nearest enemy (S4, S9), and the free start (S1) are there.
 	FCataclysmWeaponSkill AsTheGadgets = Skill;
 	AsTheGadgets.Tags.AddTag(DeployableTag());
-	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill)))
+	// AND, FOR A SHOT A TRAP'S ROW ASKS (traps layer 6, J2, J3, J6), AT THE ENEMY IT NAMES AND AT ITS "MORE"; null and one
+	// for the clock's own cast and the death's.
+	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
+								   ShotDamageMultiplier))
 	{
 		return false;
 	}
@@ -2268,7 +2271,7 @@ bool ACataclysmMinion::CastPlayersUltimateFromHere()
 }
 
 bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm,
-												  AActor* AimedAt, const FVector* CastFromPlace)
+												  AActor* AimedAt, const FVector* CastFromPlace, float ShotDamageMultiplier)
 {
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
@@ -2336,9 +2339,10 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 		Aim = Target->GetActorLocation();
 	}
 
-	// GRANTED TO THE PLAYER, FREE, FROM HERE, AT THE WHOLE OF ITS DAMAGE, CAST BY THIS MINION (S1; #7).
-	return UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/false, &From,
-											 /*CastBy=*/this);
+	// GRANTED TO THE PLAYER, FREE, FROM HERE, AT THE WHOLE OF ITS DAMAGE, CAST BY THIS MINION (S1; #7). OR AT A TRAP ROW'S
+	// "MORE" ON THE WHOLE OF THIS ONE CAST (traps layer 6, J6), the share every damage path of a use reads.
+	return UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim, /*DamageShare=*/ShotDamageMultiplier, /*bPaysCost=*/false,
+											 &From, /*CastBy=*/this);
 }
 
 // ==========================================================================
@@ -2532,6 +2536,11 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	{
 		return false;
 	}
+
+	// "WHEN A TRAP TRIGGERS, ALL ENEMIES WITHIN 4-6 METERS ARE PULLED TOWARD THE BLAST CENTER" (traps layer 6, J7, J8):
+	// BEFORE THE CAST, so the pulled are in the blast, and before the place and the aim below are read, so a cast centred
+	// on the triggering enemy is centred where the pull has left it. Nothing without the row; a forced trap pulls too.
+	PullEnemiesToThisSkillTrap(Player);
 
 	// THE PLAYER'S OWN ROW, WITH `Type.Trap` ADDED AND NOT `Type.Deployable` (M5), so the trap rows reach it and the
 	// gadget rows do not (a trap is not a gadget, 2026-10-07). AT THE ENEMY FROM HERE, OR FROM THE ENEMY'S PLACE; with
@@ -2866,4 +2875,114 @@ AActor* ACataclysmMinion::SkillTrapEnemyForAForcedTrigger() const
 	// ITS OWN TRIGGER RADIUS, as its step measures it, nearest first and leaving out the dead.
 	const TArray<AActor*> Near = HostilesWithin(SkillTrapTriggerRadiusCmFor(Summoner.Get(), TypeTags));
 	return Near.IsEmpty() ? nullptr : Near[0];
+}
+
+// ==========================================================================
+// Traps, layer 6: a nearby skill gadget fires at a trap's enemy, and a trap pulls enemies into its blast. Ruled
+// 2026-10-22 (J1 to J10, J2 changed: skill gadgets only); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapPullRadiusStat = TEXT("trap_pull_radius");
+
+ACataclysmMinion* ACataclysmMinion::SkillGadgetNearestTo(const AActor* Player, const FVector& Place, float RadiusCm)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs)
+	{
+		return nullptr;
+	}
+
+	// SKILL GADGETS ONLY (J2): a War gadget, a trap, an imp and a mote are passed over. STANDING, ABLE TO ACT AND OF A SLOT
+	// STILL CONVERTED, as a gadget that could cast nothing is no active gadget. ALONG THE FLOOR, the oldest first, so a
+	// later gadget at the same distance does not displace an earlier one.
+	ACataclysmMinion* Nearest = nullptr;
+	double NearestSquared = 0.0;
+	TArray<ACataclysmMinion*> Standing;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		ACataclysmMinion* AsGadget = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(AsGadget) && !AsGadget->IsActorBeingDestroyed() && AsGadget->IsSkillGadget()
+			&& !UCataclysmSkillEffects::IsDead(AsGadget) && !UCataclysmSkillEffects::CannotAct(AsGadget)
+			&& Theirs->SlotIsASkillGadget(AsGadget->SkillGadgetSlot))
+		{
+			Standing.Add(AsGadget);
+		}
+	}
+	Standing.Sort([](const ACataclysmMinion& Left, const ACataclysmMinion& Right)
+	{
+		return Left.SpawnOrder < Right.SpawnOrder;
+	});
+	for (ACataclysmMinion* Each : Standing)
+	{
+		const double Squared = FVector::DistSquared2D(Place, Each->GetActorLocation());
+		// A RADIUS OF NOUGHT IS ANY DISTANCE (J5).
+		if (RadiusCm > 0.0f && Squared > FMath::Square(static_cast<double>(RadiusCm + ReachAllowanceCm)))
+		{
+			continue;
+		}
+		if (!Nearest || Squared < NearestSquared)
+		{
+			Nearest = Each;
+			NearestSquared = Squared;
+		}
+	}
+	return Nearest;
+}
+
+bool ACataclysmMinion::FireSkillGadgetAtTrapEnemy(AActor* Enemy, float ShotDamageMultiplier)
+{
+	// AT THAT ENEMY OR NOT AT ALL (J3): none, dead or gone, no shot. A SKILL GADGET ONLY (J2).
+	if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || !IsSkillGadget() || UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this))
+	{
+		return false;
+	}
+
+	// ITS SKILL ONCE BY ITS CLOCK'S OWN PATH, AIMED AT THE ENEMY, AT THE ROW'S "MORE" (J2, J6), THE CLOCK LEFT AS IT WAS.
+	if (!CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/false, Enemy, ShotDamageMultiplier))
+	{
+		return false;
+	}
+	++SkillGadgetTrapShotsMade;
+	return true;
+}
+
+float ACataclysmMinion::SkillTrapPullRadiusCmFor(const AActor* Player)
+{
+	// THE ROW'S METRES, IN CENTIMETRES.
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapPullRadiusStat)) * 100.0f;
+}
+
+int32 ACataclysmMinion::PullEnemiesToThisSkillTrap(AActor* Player)
+{
+	const float PullRadiusCm = SkillTrapPullRadiusCmFor(Player);
+	if (PullRadiusCm <= 0.0f || !IsValid(Player))
+	{
+		return 0;
+	}
+
+	// THE LIST TAKEN ONCE, BEFORE THE FIRST IS MOVED: every living enemy within the rolled metres, by the step's measure
+	// along the floor, the enemy that set the trap off among them (J8).
+	const FVector TrapPlace = GetActorLocation();
+	int32 Pulled = 0;
+	for (AActor* Each : HostilesWithin(PullRadiusCm))
+	{
+		if (!IsValid(Each) || UCataclysmSkillEffects::IsDead(Each))
+		{
+			continue;
+		}
+		// TO 1 M FROM THE TRAP, so bodies do not overlap; ONE ALREADY THAT NEAR STAYS, since a pull of nought would be
+		// a pull of the whole way.
+		const float Gap = static_cast<float>(FVector::Dist2D(TrapPlace, Each->GetActorLocation()));
+		if (Gap <= SkillTrapPullsToCm + ReachAllowanceCm)
+		{
+			continue;
+		}
+		if (UCataclysmSkillEffects::ApplyPullFrom(Player, Each, TrapPlace, Gap - SkillTrapPullsToCm))
+		{
+			++Pulled;
+		}
+	}
+	return Pulled;
 }

@@ -10101,6 +10101,30 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `trap_pull_radius`, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapPullRadiusCmFor`, which a
+	 * trap's trigger asks before its cast. Ruled 2026-10-22 (traps layer 6, J7, J8). ONE FIGHTER. THE CONTROL IS THE SAME
+	 * FIGHTER BEFORE THE STAT IS GRANTED: nought. Granted at a flat 5, the reader answers 500 centimetres.
+	 *
+	 * WHAT THIS DOES NOT REACH. An enemy pulled, the cast striking it, a boss: `Cataclysm.Traps.`.
+	 */
+	void ProbeTrapPullRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Test.TestEqual(TEXT("control: with no trap_pull_radius a trap pulls from nought centimetres"),
+					   ACataclysmMinion::SkillTrapPullRadiusCmFor(Fighter.Actor), 0.0f, 0.0001f);
+		GrantFlat(Fighter.Actor, ACataclysmMinion::TrapPullRadiusStat, 5.0f);
+		Test.TestEqual(TEXT("with trap_pull_radius at 5 it pulls from 500 cm, so SkillTrapPullRadiusCmFor really reads it"),
+					   ACataclysmMinion::SkillTrapPullRadiusCmFor(Fighter.Actor), 500.0f, 0.0001f);
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -10369,6 +10393,7 @@ namespace CataclysmStatExemptionTest
 			 { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapTriggeringEnemyMaxHealthDamageStat); }},
 			{TEXT("trap_damage_over_time_share"),
 			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapDamageOverTimeShareStat); }},
+			{TEXT("trap_pull_radius"), &ProbeTrapPullRadius},
 		};
 		return Made;
 	}

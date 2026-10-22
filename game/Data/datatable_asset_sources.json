@@ -52,8 +52,8 @@
     {
       "asset": "DT_EnchantmentEffects",
       "csv": "EnchantmentEffects.csv",
-      "rows": 703,
-      "csv_sha256": "224226b30d2a1d2d2daee1af3373c314d45e98c2814dfa7db9cfcdf7ac854aff"
+      "rows": 706,
+      "csv_sha256": "9da2bf89bb83c536ab51baa1530720ab41f6dcf52dee40a84c9f33727f4a9ea4"
     },
     {
       "asset": "DT_EnchantmentsNegative",
