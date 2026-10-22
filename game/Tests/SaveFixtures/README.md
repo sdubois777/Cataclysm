@@ -257,6 +257,25 @@ both to add a field the record had gained:
   compares the field on a live dungeon no upgrade touched, so it compares 0
   with 0.
 
+`Run_v1.json` was edited a fifteenth time on 2026-10-22:
+
+- `VoidStacks` on both cities, because a city now carries the Void stacks its
+  ordinary Void dungeons added, and ten erase it. `docs/DECISIONS.md` has the
+  entry, "In the game an ordinary Void dungeon adds 1 to 3 Void stacks to its
+  city instead of damage…".
+
+  **City 7 holds 4 and city 0 holds 0.** Four is not the field's default, so
+  the fixture shows a value surviving a round trip rather than being
+  re-defaulted on load, and it differs from city 7's identifier, so one
+  written into the other would be noticed. City 7 is fallen and not erased
+  with four stacks, which is a state play can reach: a city felled by damage
+  keeps its stacks until it is retaken. **It is also marked doomed, which
+  play cannot reach without erasing it**; that mark predates the stacks and
+  is left as it was.
+
+  **Nothing loads a run's cities back yet** (issue #753), so the stacks are
+  written and never read; that is the gap every city field has.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

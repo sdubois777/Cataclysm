@@ -392,6 +392,44 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	float BiteScale() const;
 
 	/**
+	 * Whether this dungeon's timer adds Void stacks to its city instead of
+	 * taking defence and people: an ordinary dungeon the Void sent.
+	 *
+	 * A PORT OF `Simulation._adds_void_stacks`, since 2026-10-22. The model asks
+	 * whether the sender's attack pattern erases cities, and only the Void's
+	 * does; the game has no patterns (#53), so this names the Void.
+	 *
+	 * ORDINARY ONLY. A Void Siege's daily bite stays damage, ruled by the
+	 * coordinating session on 2026-10-16, and that bite is not this timer. A
+	 * Void Quest dungeon's hit is the ordinary Quest hit until the Hollow, the
+	 * Void's Quest dungeon, is built. A Fallen City is sent by nobody.
+	 */
+	bool AddsVoidStacks() const;
+
+	/**
+	 * How many Void stacks this dungeon adds when its timer runs out: 1, 2 or 3,
+	 * by which third of its row's floor range its natural floors fall in.
+	 *
+	 * A PORT OF `Simulation._void_stacks_for`, `1 + clamp(int(3 x (natural -
+	 * least) / (most - least)), 0, 2)`, and 1 when the range is a single depth.
+	 * Ruled by the coordinating session on 2026-10-16.
+	 *
+	 * THE ROW'S PLAIN RANGE, AND THE MODEL'S IS 1.25 TIMES IT. The model rolls a
+	 * Void dungeon's depth from the row times the Void pattern's `floors_mult`
+	 * and reads the thirds of that same scaled range. The game rolls the Void's
+	 * dungeons from the plain row, because no Cataclysm's depth multiplier is
+	 * ported (#53), so the thirds are of the range the depth was rolled from.
+	 * Ruled by the coordinating session on 2026-10-22: the multiplier stays with
+	 * issue #53.
+	 *
+	 * BY THE NATURAL FLOORS, `Floors` less `UpgradeFloors`, the depth
+	 * `BiteScale` reads: a city's floor upgrades move no stacks, as they move no
+	 * damage. A depth outside the row, which only a dungeon built by hand has,
+	 * is clamped into 1 to 3.
+	 */
+	int32 VoidStacksItAdds() const;
+
+	/**
 	 * Whether this dungeon is an ordinary one: the kind whose timer running out
 	 * takes its OWN row's damage from its host, scaled by depth, and which then
 	 * leaves the map.
@@ -463,7 +501,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     Celestial one is a handful of deep ones -- and weights how much of a wave
  *     each contributes by that shape. Everything below is still uniform pressure
  *     on the frontier weighted by tier, and the Cataclysm a dungeon carries
- *     changes nothing about where it lands or how deep it is. Issue #53.
+ *     changes nothing about how deep it is, and nothing about where it lands
+ *     unless it is the Void: since 2026-10-22 a wave slot the Void sends
+ *     weighs each city by its Void stacks as well, `TargetWeightForSender`.
+ *     Issue #53.
  *   - **The Demonic Cataclysm's rifts, which ignore the frontier entirely.**
  *     That is the one pattern the vertical slice would actually use, and it
  *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
@@ -622,6 +663,37 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static float TargetWeightFor(ECataclysmCityTier Tier);
+
+	/**
+	 * How much more a wave slot the Void sends wants a city at
+	 * `UCataclysmEmpireMap::VoidStacksToErase` stacks than one with none, less
+	 * one. A port of the `1.0 x` in `patterns._void`.
+	 *
+	 * ONE, SO AT MOST TWICE: the owner's choice of 2026-10-18 among 2, 3 and 5
+	 * times and the lost-defence reading the Void had before, verbatim "Stacks,
+	 * up to 2x". `docs/DECISIONS.md` has the measured table.
+	 * `tools/tests/test_void_stacks_in_the_model_and_in_the_game.py` compares
+	 * this with the model.
+	 */
+	static constexpr float VoidTargetPullAtFull = 1.0f;
+
+	/**
+	 * How much a wave slot sent by this Cataclysm wants this city.
+	 *
+	 * `TargetWeightFor` the city's tier, for every sender but the Void. For the
+	 * Void, that times `1 + VoidTargetPullAtFull x min(1, stacks / ten)`: a port
+	 * of `patterns._void`, since 2026-10-22. The Void fixates on what it has
+	 * already hurt, and what it hurts now is stacks, not defence.
+	 *
+	 * A VOID SLOT ON A CITY WITH NO STACKS WEIGHS EXACTLY WHAT ANY SLOT DOES, the
+	 * same float and not merely an equal number, so a wave against an empire
+	 * carrying no stacks lands where it always did whoever sends it.
+	 *
+	 * THE OTHER CATACLYSMS' AIMS ARE NOT PORTED, issue #53; they weigh by tier
+	 * alone, as every slot did before this.
+	 */
+	static float TargetWeightForSender(const FCataclysmCity& City,
+									   ECataclysmType Sender);
 
 	// ----------------------------------------------------------------------
 	// What a dungeon is
@@ -1277,11 +1349,32 @@ public:
 	 * existed. Anything that took an extra draw would shift every later roll and
 	 * change runs that have nothing to do with the upgrade.
 	 *
+	 * EACH SLOT'S SENDER IS DRAWN HERE, BEFORE THE SLOT IS ROLLED, since
+	 * 2026-10-22, because the Void aims by its stacks: a slot the Void sends
+	 * weighs each city by `TargetWeightForSender`, and the other senders by
+	 * tier alone. Ruled by the coordinating session that day. One sender is
+	 * drawn per city landed on, immediately before that slot's draw from
+	 * `Stream`, so exactly as many are drawn as `RollWave` used to draw after
+	 * the targets were picked, and in the same order. The sender comes from the
+	 * run's Cataclysm stream, not from `Stream`, so asking moves no draw here.
+	 *
+	 * NO STACKS ANYWHERE, NO DRAW MOVES. A Void slot whose every candidate
+	 * carries no stacks rolls against the very weights and total an ordinary
+	 * slot does. Only when some candidate carries stacks is the slot's total
+	 * worked out afresh from the candidates still holding room.
+	 *
 	 * @param DungeonsPerCity how many dungeons already stand on each city,
 	 *                        indexed by city identifier. Empty means the caller
 	 *                        does not know, and then no cap is applied --
 	 *                        `UCataclysmEmpireRun` owns the dungeons and this
 	 *                        class deliberately does not.
+	 * @param DrawCataclysm  which Cataclysm sends each slot, asked once per city
+	 *                       landed on, before that slot is rolled. EMPTY BY
+	 *                       DEFAULT, and then every slot is sent by `None` and
+	 *                       weighs by tier, as before this was added.
+	 * @param OutSenders     when given, emptied and then filled with each landed
+	 *                       slot's sender, one per entry of the answer and in
+	 *                       the same order. `RollWave` stamps them.
 	 * @return one city identifier per dungeon, in the order they were rolled.
 	 *         Empty when nothing is exposed, which cannot happen on a built map
 	 *         because the rim always is. SHORTER THAN `Count` only when every
@@ -1289,7 +1382,10 @@ public:
 	 */
 	TArray<int32> PickTargets(
 		const UCataclysmEmpireMap& Map, int32 Count, FRandomStream& Stream,
-		const TArray<int32>& DungeonsPerCity = TArray<int32>()) const;
+		const TArray<int32>& DungeonsPerCity = TArray<int32>(),
+		const TFunction<ECataclysmType()>& DrawCataclysm =
+			TFunction<ECataclysmType()>(),
+		TArray<ECataclysmType>* OutSenders = nullptr) const;
 
 	/**
 	 * How many more dungeons a city will accept before its cap is reached.
@@ -1563,11 +1659,14 @@ public:
 	 *                       creates are counted whether or not it is supplied,
 	 *                       so one wave can never land two on one city.
 	 * @param DrawCataclysm  which Cataclysm sends each dungeon, asked ONCE PER
-	 *                       DUNGEON MADE, in the order they are made, after a
-	 *                       target that is not on the map has been skipped and
-	 *                       before the dungeon is made. What it answers is
-	 *                       stamped on the dungeon and handed to `MakeDungeon`,
-	 *                       because a Quest dungeon's sub-type depends on it.
+	 *                       CITY LANDED ON, in the order they are landed on.
+	 *                       Since 2026-10-22 `PickTargets` asks it, before each
+	 *                       slot is rolled, because the Void aims by its stacks;
+	 *                       until then this asked it after a target not on the
+	 *                       map had been skipped, which no built map has. What it
+	 *                       answers is stamped on the dungeon and handed to
+	 *                       `MakeDungeon`, because a Quest dungeon's sub-type
+	 *                       depends on it.
 	 *                       `UCataclysmEmpireRun::FireSurge` passes its own
 	 *                       `RollCataclysm`; this class still does not know
 	 *                       which Cataclysms a campaign faces. EMPTY BY

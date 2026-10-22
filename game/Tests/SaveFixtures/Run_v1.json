@@ -54,6 +54,7 @@
 			"bFallen": false,
 			"bDoomed": false,
 			"bErased": false,
+			"VoidStacks": 0,
 			"Upgrades": [
 				{
 					"RowName": "Architect_This_city_repairs_5_defense_every_7_d",
@@ -75,6 +76,7 @@
 			"bFallen": true,
 			"bDoomed": true,
 			"bErased": false,
+			"VoidStacks": 4,
 			"Upgrades": [
 				{
 					"RowName": "Architect_Restore_citys_defenses_by_50",

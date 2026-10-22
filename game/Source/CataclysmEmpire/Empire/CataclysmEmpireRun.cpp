@@ -389,6 +389,9 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	// dungeon made, asked in the order they are made, which is the order the
 	// loop that used to stand here walked the wave. `Stream` is not touched by
 	// it. So a seed sends the same Cataclysms to the same dungeons it did.
+	// Since 2026-10-22 `PickTargets` is what asks, once per city landed on and
+	// before that slot is rolled, because the Void aims by its stacks; the
+	// count and the order are the same.
 	//
 	// BEFORE THE CLOCK IS TOLD ANYTHING, so a dungeon cannot reach `Dungeons`
 	// carrying `None` and be corrected afterwards. There is no correcting it:
@@ -555,9 +558,21 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// POINTS AND NOT A SHARE OF THE CITY, WHICH IS ISSUE #1331. `Map->Damage`
 	// and not `Map->Bite`: the city's own maximum is deliberately not a factor
 	// here, so raising a city's ceiling raises how many resolves it survives.
+	//
+	// A VOID DUNGEON ADDS STACKS INSTEAD, since 2026-10-22: an ordinary
+	// dungeon the Void sent adds 1, 2 or 3 Void stacks and takes no defence and
+	// no people, and the tenth stack fells the city and erases it. The owner,
+	// 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void
+	// stacks to a city instead of doing damage to the city or population and
+	// at 10 stacks the city is erased." `Simulation._resolve` makes the same
+	// choice in the same place. SO ITS POINTS ARE NOUGHT, and its stacks are
+	// worked out here, while `Dungeon` still points at it.
+	const bool bVoid = Dungeon->AddsVoidStacks();
+	const int32 Stacks = bVoid ? Dungeon->VoidStacksItAdds() : 0;
+
 	const float Scale = Dungeon->BiteScale();
-	const float Defence = Dungeon->DefenceDamage * Scale;
-	const float Population = Dungeon->PopulationDamage * Scale;
+	const float Defence = bVoid ? 0.0f : Dungeon->DefenceDamage * Scale;
+	const float Population = bVoid ? 0.0f : Dungeon->PopulationDamage * Scale;
 
 	// THE EMPIRE IS ABOUT TO PAY, SO THIS IS WHERE IT IS COUNTED. Every return
 	// above this line leaves the city untouched -- a kind that does not
@@ -575,9 +590,25 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// `tools/tests/test_surge_port.py` fails if either half moves back.
 	++DungeonsDetonated;
 
-	// COPIED OUT BEFORE THE BITE. `Damage` can lead to `CityFell`, which removes
-	// dungeons from `Dungeons`, and `Dungeon` points into that array.
-	if (Map->Damage(CityId, Defence, Population))
+	// ONE HIT AND ONE FALL, BY THE DAMAGE OR BY THE TENTH VOID STACK. A Void
+	// dungeon's points are nought, so `Damage` takes nothing from its city and
+	// answers that it stands, and its stacks are added after; the tenth fells
+	// the city, and `AddVoidStacks` has erased it before answering, so
+	// `CityFell` builds no Dungeon City on it -- see `AddFallenCityDungeon`. A
+	// Void dungeon is still counted above and still leaves below, exactly as an
+	// ordinary dungeon that hit does.
+	//
+	// ON ONE LINE, AND THE ONE `CityFell`, ON PURPOSE.
+	// `tools/tests/test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py`
+	// reads every `CityFell` in this file as following an `if (Map->Damage(...))`
+	// on one line, which is how it knows the city already reads as fallen when
+	// its Quest dungeons look for somewhere to go. `AddVoidStacks` fells the
+	// city before it answers, so that still holds.
+	//
+	// COPIED OUT BEFORE THE BITE. `Damage` and `AddVoidStacks` can lead to
+	// `CityFell`, which removes dungeons from `Dungeons`, and `Dungeon` points
+	// into that array; nothing here reads it.
+	if (Map->Damage(CityId, Defence, Population) || (bVoid && Map->AddVoidStacks(CityId, Stacks)))
 	{
 		CityFell(CityId, OutReport);
 	}
