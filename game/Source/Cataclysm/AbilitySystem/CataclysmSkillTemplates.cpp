@@ -2187,11 +2187,12 @@ int32 UCataclysmProjectileSkill::Land()
 	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". NOT A
 	// BEAM THAT PIERCES, whose line is a path and not a blast, and NOT A LANDING LIMITED TO ONE TARGET, which is a
 	// single-target blow: both judgements of the writing session. In the same attack as the enemies, after them, as
-	// `UCataclysmStrikeSkill::SwingOnce` strikes it.
+	// `UCataclysmStrikeSkill::SwingOnce` strikes it. AND A SKILL TRAP ALREADY USED UP IS FOUND BY THE USE'S IDENTITY OF
+	// IT (traps layer 7, K1, ruled 2026-10-22), for a landing a row's cast delay holds back until the trap is gone.
 	AActor* const StruckWearer = Pierces > 0 || Params.MaxTargets == 1
 		? nullptr
 		: UCataclysmDeployableSelfBlast::WearerInSphere(
-			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm());
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm(), FreeRepeatCastBy);
 	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
 	HitTargets(Targets);
 	if (StruckWearer)

@@ -28,12 +28,31 @@ bool UCataclysmDeployableSelfBlast::IsTheWearersDeployable(const AActor* Wearer,
 	return Wearer && Deployable && Deployable->IsDeployable() && Deployable->Summoner.Get() == Wearer;
 }
 
-AActor* UCataclysmDeployableSelfBlast::WearerInSphere(const UWorld* World, AActor* Wearer, const AActor* CastFrom,
-													  const FVector& Origin, float RadiusCm)
+bool UCataclysmDeployableSelfBlast::IsTheWearersUsedUpTrap(const AActor* Wearer, const TWeakObjectPtr<AActor>& CastBy)
 {
-	// THE CHEAP QUESTIONS FIRST, so every blow of every character without the flag costs one stat read.
-	if (!World || RadiusCm <= 0.0f || !IsTheWearersDeployable(Wearer, CastFrom) || UCataclysmSkillEffects::IsDead(Wearer)
-		|| !HeldBy(Wearer))
+	// AN EMPTY POINTER NAMES NOTHING, the answer for every use no deployable cast, so it is asked first.
+	if (!Wearer || CastBy.IsExplicitlyNull())
+	{
+		return false;
+	}
+
+	// THE WEARER'S OWN RECORD OF ITS USED-UP TRAPS (traps layer 3b), matched by identity as the trap's pricing matches
+	// it, so the blast and the price of one late blow are one decision on one trap (K1, ruled 2026-10-22).
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Wearer));
+	UCataclysmAbilitySystemComponent::FSpentSkillTrap Spent;
+	return Cataclysm && Cataclysm->SpentSkillTrapNamed(CastBy, Spent);
+}
+
+AActor* UCataclysmDeployableSelfBlast::WearerInSphere(const UWorld* World, AActor* Wearer, const AActor* CastFrom,
+													  const FVector& Origin, float RadiusCm,
+													  const TWeakObjectPtr<AActor>& UsedUpCastBy)
+{
+	// THE CHEAP QUESTIONS FIRST, so every blow of every character without the flag costs one stat read. A skill trap
+	// already used up (K1) is asked only when no standing deployable answered.
+	if (!World || RadiusCm <= 0.0f
+		|| !(IsTheWearersDeployable(Wearer, CastFrom) || IsTheWearersUsedUpTrap(Wearer, UsedUpCastBy))
+		|| UCataclysmSkillEffects::IsDead(Wearer) || !HeldBy(Wearer))
 	{
 		return nullptr;
 	}
