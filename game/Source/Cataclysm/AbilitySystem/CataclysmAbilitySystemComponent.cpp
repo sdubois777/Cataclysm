@@ -2779,6 +2779,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	OwnStacks.Empty();
 	OwnStacksLastingAlone.Empty();
 	LateSkillTrapSlows.Empty();
+	SpentSkillTraps.Empty();
 
 	// AND EVERY ROW'S KEPT STACKS. Ruled 2026-10-12. They have no lifetime, and a death is one of the four things
 	// that end them: see `GainKeptStack`. Counted as held now, so stacks of a dungeon already left add nothing.
@@ -8236,23 +8237,6 @@ void UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone(FName StackKey,
 	Held.WindowSeconds = WindowSeconds;
 }
 
-bool UCataclysmAbilitySystemComponent::AwaitsALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy,
-																 const AActor* Struck) const
-{
-	// BY THE TRAP'S IDENTITY, WHICH A WEAK POINTER KEEPS AFTER THE TRAP IS GONE: its `Get` answers null then, and
-	// `HasSameIndexAndSerialNumber` still answers whether two name one actor (`==` answers yes for ANY two stale ones).
-	const UWorld* World = GetWorld();
-	if (!World || !Struck || CastBy.IsExplicitlyNull() || LateSkillTrapSlows.IsEmpty())
-	{
-		return false;
-	}
-	const float Now = World->GetTimeSeconds();
-	return LateSkillTrapSlows.ContainsByPredicate([&CastBy, Struck, Now](const FLateSkillTrapSlow& Late)
-	{
-		return Late.Trap.HasSameIndexAndSerialNumber(CastBy) && Late.Enemy.Get() == Struck && Now <= Late.UntilSeconds;
-	});
-}
-
 bool UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck,
 															  float DealtToHealth)
 {
@@ -8278,4 +8262,47 @@ bool UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow(const TWeakObjectPt
 	LateSkillTrapSlows.RemoveAt(Waiting);
 	AActor* Slower = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 	return Slower && UCataclysmAilments::ApplySlowOfStrength(Slower, Struck, Late.StrengthPercent, Late.Seconds);
+}
+
+// ==========================================================================
+// Traps, layer 3b: a trap's late blows, priced and announced as the trap's. Ruled 2026-10-21 (#2462, Z1).
+// ==========================================================================
+
+void UCataclysmAbilitySystemComponent::NoteSkillTrapSpent(AActor* Trap, const FGameplayTagContainer& TrapTypeTags)
+{
+	if (!Trap)
+	{
+		return;
+	}
+
+	// THE OLDEST LET GO FIRST, past the delegated count: the record has no clock, so a buried weapon's leap is the
+	// trap's however late it comes, and the list would otherwise grow by one with every trap a long floor triggers.
+	while (SpentSkillTraps.Num() >= SpentSkillTrapsKept)
+	{
+		SpentSkillTraps.RemoveAt(0);
+	}
+	FSpentSkillTrap& Kept = SpentSkillTraps.AddDefaulted_GetRef();
+	Kept.Trap = Trap;
+	Kept.TypeTags = TrapTypeTags;
+}
+
+bool UCataclysmAbilitySystemComponent::SpentSkillTrapNamed(const TWeakObjectPtr<AActor>& CastBy,
+														   FSpentSkillTrap& OutSpent) const
+{
+	// BY THE TRAP'S IDENTITY, AS THE LATE SLOW MATCHES IT (`LayALateSkillTrapSlow`): `HasSameIndexAndSerialNumber`
+	// answers whether two weak pointers named one actor although it is gone, where `==` answers yes for any two stale ones.
+	if (CastBy.IsExplicitlyNull())
+	{
+		return false;
+	}
+	const FSpentSkillTrap* Found = SpentSkillTraps.FindByPredicate([&CastBy](const FSpentSkillTrap& Spent)
+	{
+		return Spent.Trap.HasSameIndexAndSerialNumber(CastBy);
+	});
+	if (!Found)
+	{
+		return false;
+	}
+	OutSpent = *Found;
+	return true;
 }

@@ -945,8 +945,21 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// "more" on the whole blow. The cast carries `Type.Trap` and not `Type.Deployable`, so no gadget row reaches it and
 	// `GadgetsPlayer` is null for it. Nought and one for every other blow.
 	const ACataclysmMinion* const SkillTrap = SkillGadget ? nullptr : ACataclysmMinion::SkillTrapCasting(Delivery);
+	// AND A BLOW OF A SKILL TRAP ALREADY USED UP IS PRICED THE SAME WAY (ruled 2026-10-21, #2462): a shot or a rack's
+	// throw landing late, a buried weapon's leap, a later blow of the use. The trap is named by what the blow carries,
+	// the delivery's `CastBy`, else its skill's `FreeRepeatCastBy` while that use runs, and found BY IDENTITY among the
+	// player's used-up traps (`SpentSkillTrapNamed`), so a skill gadget's late blow, which is never kept there, stays the
+	// player's (P5). Asked only when no living gadget or trap prices the blow, so no blow is priced twice.
+	const UCataclysmSkillTemplate* const DeliveredBy = Cast<const UCataclysmSkillTemplate>(Delivery.Skill.Get());
+	const TWeakObjectPtr<AActor> NamedCastBy = !Delivery.CastBy.IsExplicitlyNull()
+		? Delivery.CastBy
+		: (DeliveredBy ? DeliveredBy->FreeRepeatCastBy : TWeakObjectPtr<AActor>());
+	UCataclysmAbilitySystemComponent* const SpentTrapsPlayer =
+		SkillGadget || SkillTrap ? nullptr : Cast<UCataclysmAbilitySystemComponent>(Source);
+	UCataclysmAbilitySystemComponent::FSpentSkillTrap SpentTrap;
+	const bool bASpentTrapsBlow = SpentTrapsPlayer && SpentTrapsPlayer->SpentSkillTrapNamed(NamedCastBy, SpentTrap);
 	UCataclysmAbilitySystemComponent* const TrapsPlayer =
-		SkillTrap ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+		SkillTrap || bASpentTrapsBlow ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
 	float TrapIncreases = 0.0f;
 	float TrapMore = 1.0f;
 	if (TrapsPlayer)
@@ -1094,25 +1107,15 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// row on `deployable_hit` naming `Type.Trap` reaches the enemies a trap's cast strikes.
 	UCataclysmAbilitySystemComponent* const MachinesPlayer = GadgetsPlayer ? GadgetsPlayer : TrapsPlayer;
 	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
-	// AND A LATE BLOW OF A TRAP ALREADY USED UP, a shot or a rack's throw whose delivery still names it: when the slow
-	// waits for it on this enemy, the blow is dealt here, so its figure decides the slow (ruled 2026-10-21, brief 60c).
-	// Every other blow passes on unchanged.
-	UCataclysmAbilitySystemComponent* const LateTrapsPlayer = !MachinesPlayer && !bAShareOnAnAlly
-		&& !Arrived.bIsDamageOverTime ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
-	if (LateTrapsPlayer && LateTrapsPlayer->AwaitsALateSkillTrapSlow(Delivery.CastBy, Target))
-	{
-		FCataclysmDamageResult LateResult;
-		FCataclysmDamageResult* const Resolved = OutResolved ? OutResolved : &LateResult;
-		const bool bLateDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Resolved);
-		LateTrapsPlayer->LayALateSkillTrapSlow(Delivery.CastBy, Target, Resolved->DealtToHealth);
-		return bLateDealt ? Sent : 0.0f;
-	}
 	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
 	{
 		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
 			? Sent : 0.0f;
 	}
-	FGameplayTagContainer GadgetsTags = Machine->TypeTags;
+	// AND A LATE BLOW OF A TRAP ALREADY USED UP IS ANNOUNCED AS THE TRAP'S, with the tags it was kept with (ruled
+	// 2026-10-21, #2462), as a living trap's blow is below. A ZONE'S SWEEP NEVER REACHES HERE: it is dealt through
+	// `ApplyDirectDamage` as damage over time, and a tick is not a hit (Z1 (a)).
+	FGameplayTagContainer GadgetsTags = Machine ? Machine->TypeTags : SpentTrap.TypeTags;
 	// A SKILL TRAP IS NOT A GADGET (ruled 2026-10-07), SO ITS EVENT CARRIES ITS TYPE TAGS LESS `Type.Deployable` (ruled
 	// 2026-10-20, Q-A (a)): a gadget row on `deployable_hit` requiring that tag does not reach a trap's hit, and an
 	// untagged row still does. A skill gadget's event is unchanged.
@@ -1128,10 +1131,16 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
 	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
 	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
-	// 2026-10-21: "Follow the tenth rule").
-	if (!GadgetsPlayer)
+	// 2026-10-21: "Follow the tenth rule"). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
+	// cast on this enemy is asked instead (ruled 2026-10-21, brief 60c), with the identity the used-up trap was found by
+	// above, so one match decides the price, the event and the slow, and each happens once for the blow.
+	if (Machine && !GadgetsPlayer)
 	{
 		Machine->NoteSkillTrapBlowOn(Target, Result->DealtToHealth);
+	}
+	else if (!Machine)
+	{
+		MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth);
 	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);

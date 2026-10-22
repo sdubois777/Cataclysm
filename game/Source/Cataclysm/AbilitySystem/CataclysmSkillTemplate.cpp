@@ -3367,8 +3367,29 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveZoneAlong(
 						* WithSpentIncrease(AbilitySystem);
 	PricedForTheGadget.End();
 
+	// AND A SKILL TRAP'S GROUND IS PRICED AS THE TRAP'S, WHEN IT IS LAID. Ruled 2026-10-21 by the coordinating session
+	// (Z1 (a)): "A trap's zone is priced as the trap's when it is laid (the Type.Trap minion_damage increases and more),
+	// and its sweeps raise no deployable_hit". The trap standing (a Strike's ground, laid in the cast) or already used up
+	// (a shot's ground, laid where it ends, after the trap is gone), found as `UCataclysmSkillEffects::ApplyHit` finds
+	// it. Its increases join the bucket the caster's own are in, as they join a blow's, and its "more" multiplies the
+	// whole; the zone's target is not known, so none is given. Nothing for every other use.
+	UCataclysmAbilitySystemComponent* const LaysForATrap =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	UCataclysmAbilitySystemComponent::FSpentSkillTrap SpentTrap;
+	float TrapsPartOfTheTick = 1.0f;
+	if (LaysForATrap && !ACataclysmMinion::SkillGadgetCasting(this)
+		&& (ACataclysmMinion::SkillTrapCasting(this) || LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)))
+	{
+		float TrapIncreases = 0.0f;
+		float TrapMore = 1.0f;
+		LaysForATrap->TrapDamageNamingTrap(SkillTags, /*Target=*/nullptr, TrapIncreases, TrapMore);
+		const float Folded = UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem);
+		TrapsPartOfTheTick =
+			(1.0f + Folded + TrapIncreases) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER) * TrapMore;
+	}
+
 	ACataclysmGroundZone* Zone = LeaveAZoneFor(
-		Self, Start, End, RadiusCm, Seconds, PerTick, SkillTags,
+		Self, Start, End, RadiusCm, Seconds, PerTick * TrapsPartOfTheTick, SkillTags,
 		// A ROW'S ZONE IS HANDED THE SKILL'S DAMAGE TYPE BY NAME. Ruled 2026-10-06. A skill's own ground is
 		// left without one, as it was before this, and deals its owner's.
 		/*HandedDamageType=*/bTheSkillsOwnGround ? FName() : DamageTypeName(),

@@ -513,8 +513,63 @@ def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_en
                      r"if \(Slower && UCataclysmAilments::ApplySlowOfStrength\(", engine)
     assert "LateSkillTrapSlows.Add(Late);" in engine
     effects = (SOURCE.parent / "CataclysmSkillEffects.cpp").read_text(encoding="utf-8")
-    assert re.search(r"LateTrapsPlayer->LayALateSkillTrapSlow\(Delivery\.CastBy, Target, "
-                     r"Resolved->DealtToHealth\);", effects)
+    # SINCE TRAPS LAYER 3B (#2462) THE LATE BLOW IS FOUND ONCE, by the used-up
+    # trap's identity, and the slow is asked with that identity beside the
+    # trap's `deployable_hit`.
+    assert re.search(r"MachinesPlayer->LayALateSkillTrapSlow\(SpentTrap\.Trap, Target, "
+                     r"Result->DealtToHealth\);", effects)
     minion = (SOURCE.parent / "CataclysmMinion.cpp").read_text(encoding="utf-8")
     assert re.search(r'ActOnEvent\(FName\(TEXT\("trap_triggered"\)\), &TrapTags, '
                      r'/\*EventAmount=\*/SkillTrapTookFromItsEnemy,', minion)
+
+
+def test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced() -> None:
+    """Ruled 2026-10-21 (traps layer 3b, #2462, Z1 (a)). A skill trap is kept
+    on its player as it is used up, and found again by its identity where a
+    blow is priced and announced and where a zone is priced as it is laid; a
+    buried weapon hands the identity on and never through `Get`. Read from the
+    code with comment lines left out. THE CONTROL: the same reading finds the
+    buried weapon's `Caster.Get()`, so a pattern that saw no `.Get()` at all
+    could not pass the check that `CastBy` is never read through one.
+
+    COMMENTS ARE STRIPPED BY TRACKING THEM, `/* ... */` across lines and `//`
+    to the end of a line, and never by a line's opening characters (ruled
+    2026-10-21, R-c): a wrapped product continues on a line opening with
+    `* `, which a prefix rule drops. A `//` or `/*` inside a string literal is
+    read as a comment too; it only shortens what is read, and none of the
+    files read holds one. THE CONTROL ON THE STRIPPER: `ApplyHit`'s continued
+    line `* TrapMore` is kept."""
+    def code_of(path: Path) -> str:
+        text = path.read_text(encoding="utf-8")
+        kept = []
+        at = 0
+        while at < len(text):
+            if text.startswith("/*", at):
+                end = text.find("*/", at + 2)
+                end = len(text) if end < 0 else end + 2
+                kept.append("\n" * text.count("\n", at, end))
+                at = end
+            elif text.startswith("//", at):
+                end = text.find("\n", at)
+                at = len(text) if end < 0 else end
+            else:
+                kept.append(text[at])
+                at += 1
+        return "".join(kept)
+
+    minion = code_of(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r"Theirs->NoteSkillTrapSpent\(this, TypeTags\);\s*Destroy\(\);", minion)
+    effects = code_of(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"^\s*\* TrapMore$", effects, re.MULTILINE)
+    assert "SpentTrapsPlayer->SpentSkillTrapNamed(NamedCastBy, SpentTrap)" in effects
+    assert "FGameplayTagContainer GadgetsTags = Machine ? Machine->TypeTags : SpentTrap.TypeTags;" in effects
+    template = code_of(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    assert "LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)" in template
+    assert "PerTick * TrapsPartOfTheTick" in template
+    buried = code_of(SOURCE.parent / "CataclysmBuriedWeapon.cpp")
+    assert "Buried->Caster.Get()" in buried
+    assert "CastBy.Get()" not in buried
+    templates = code_of(SOURCE.parent / "CataclysmSkillTemplates.cpp")
+    assert re.search(r"Params\.bBurns, FreeRepeatCastBy\)\)", templates)
+    engine = code_of(SOURCE)
+    assert "SpentSkillTraps.Empty();" in engine

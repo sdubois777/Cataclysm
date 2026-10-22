@@ -2,6 +2,378 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-21 — A skill trap's late blows are the trap's: a shot or a rack's throw landing after the trap is used up, and every leap of a buried weapon its cast left, are priced with the trap damage rows and announced as its `deployable_hit`, and a zone its cast lays is priced with them when it is laid while its sweeps stay no hit, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`FSpentSkillTrap`,
+`SpentSkillTraps`, `SpentSkillTrapsKept`, `NoteSkillTrapSpent` and `SpentSkillTrapNamed`, new, one block in each after
+layer 3's; death empties the record beside layer 3's waits; `AwaitsALateSkillTrapSlow` removed, its one caller gone; two
+comments); `CataclysmMinion.cpp` (`TriggerSkillTrap` keeps the trap on its player as it is used up) and `CataclysmMinion.h`
+(two comments); `CataclysmSkillEffects.cpp` (`ApplyHit` finds a used-up trap by identity, prices and announces its late blow,
+and asks layer 3's late slow from that one match); `CataclysmSkillTemplate.cpp` (`LeaveZoneAlong` prices a trap's zone as
+the trap's when it is laid); `CataclysmBuriedWeapon.h` and `.cpp` (`BuryIn` takes the weak pointer, and a leap hands it on as
+it was kept, never through `Get`); `CataclysmSkillTemplates.cpp` (`BuryInStruck` passes the use's weak pointer), all under
+`game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Tests/CataclysmSkillTrapLateBlowsTests.cpp` (new, four tests in
+`Cataclysm.Traps.`); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one assertion moved to the new
+call, one test). No data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`,
+and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. **Closes
+[#2462](https://github.com/sdubois777/Cataclysm/issues/2462).**
+
+### SAID FIRST
+
+- **A TRAP WHOSE SKILL IS A SHOT NOW TAKES THE TRAP DAMAGE ROWS AND THE TRAP BLEED.** A skill trap is used up as its cast
+  starts (layer 1), so a shot, a rack's throw or a buried weapon's leap lands after it is gone; until this layer such a blow
+  was priced as the player's own, raised no `deployable_hit`, and so missed "Traps deal 20%-40% increased damage", the other
+  three `Type.Trap` `minion_damage` rows and "Traps apply 1-2 bleed stacks to all enemies caught in their blast". Now each
+  such blow is priced and announced exactly as a blow of the cast landing while the trap stands. Malefice, Carom and Compel
+  (Heavy), Harrower, Emberhurl, Skewer and Tether (Special) and Butcher's Bill (Ultimate) are the Demonic Projectile skills a
+  trap may cast; Blood Pyre, the ninth, is refused by layer 1's rule for its health cost.
+- **A BURIED WEAPON OF A TRAP'S CAST IS THE TRAP'S AT EVERY LEAP, HOWEVER LATE.** Nothing bounds it by time; a player keeps
+  the last 64 traps used up (`SpentSkillTrapsKept`, a number under the owner's delegation), so an axe whose trap is more than
+  64 triggers old leaps as the player's. A skill gadget's axe is unchanged: the gadget's while it stands and the player's once
+  it is gone (P5 of 2026-10-16).
+- **A TRAP'S ZONE IS PRICED AS THE TRAP'S WHEN IT IS LAID (Z1 (a)), BOTH KINDS:** a Strike's own ground laid in the cast while
+  the trap stands (Molten Cleave), and a zone laid where a shot ends after the trap is gone (Emberhurl's burning path; a shot
+  given "your spells leave a persistent AOE zone at the impact point"). **ITS SWEEPS RAISE NO `deployable_hit`**, so the trap
+  bleed and every trap "on hit" row never reach a zone's ticks: a tick is not a hit. That was already so in the code; this
+  layer tests it.
+- **THE LATE SLOW (layer 3, brief 60c) NOW SHARES THE ONE MATCH, AND SO REACHES A BURIED WEAPON'S LEAP TOO.** A leap is a
+  blow from the trap's cast, so one that lands within the slow's 5 s wait on the enemy that set the trap off and takes a
+  tenth of its health now lays the slow, once, as a late shot does. Nothing else about the slow changes. By reading; not
+  tested. **Layer 3's merged sentence is corrected on this branch** (R-b, ruled 2026-10-21: "a branch must not ship a
+  statement it makes false"). It read: "a buried weapon's leap and a zone's blows, which do not carry the trap past its
+  death, slow nothing (brief 60c)". It now reads: "since traps layer 3b a buried weapon's leap carries the trap and can lay
+  the waiting slow, and a zone's sweeps still slow nothing (brief 60c; #2462)".
+- **NOTHING IS PRICED TWICE, ANNOUNCED TWICE OR SLOWS TWICE.** A blow is priced as a living gadget's, else as a living trap's,
+  else as a used-up trap's, else as the player's, and the used-up trap is looked for only when no living machine priced the
+  blow. It is announced once where it is dealt. The slow stops waiting when it is laid.
+- **NOT IN PLAY UNTIL A ROW IS WORN** (the trap damage rows and the bleed row are authored). **Nothing here was compiled and no
+  Unreal test was run by the session that wrote it.** A second session wrote the code, the tests and this entry under the
+  enchantment session's brief 61. NOT COMPILED AND NOT RUN.
+- **THE LAYER-3 PLAY-CHECK LINE IS REPLACED**, as Z1 rules, in that entry below: "a trap whose skill is a projectile, a leap or
+  a zone does not yet take trap damage rows or the trap bleed on those late blows; the next trap layer adds them" is now "a
+  trap's zone takes the trap damage rows when it is laid, but its ticks lay no trap bleed and set off no trap 'on hit' row".
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+Nothing new from the owner. The coordinating session ruled, on layer 3's L-A and L-B, verbatim:
+
+> L-A and L-B: (a) for this layer, with one change: they are not left to an open-ended issue. A row that does not reach
+> nine projectile skills is the same fault I would not ship for the slow, so they become THE NEXT TRAP LAYER (3b) ...: a
+> trap's late shot, a buried weapon's leap and a zone are priced and announced as the trap's (Type.Trap minion_damage and
+> deployable_hit), carried by the record built here.
+
+And Z1, the zone's ticks, on 2026-10-21, verbatim:
+
+> Z1: (a). A trap's zone is priced as the trap's when it is laid (the Type.Trap minion_damage increases and more), and its
+> sweeps raise no deployable_hit: a tick is not a hit, as the skill gadget's zone was ruled (P2, 2026-10-16). So the trap
+> bleed does not reach a zone's sweeps. Put that in the entry and replace layer 3's play-check line with one that is true
+> after this layer: "a trap's zone takes the trap damage rows when it is laid, but its ticks lay no trap bleed and set off
+> no trap 'on hit' row".
+
+T1-T19 of 2026-10-19, L1-L6 and M1-M6 of 2026-10-21, R1-R3 and brief 60c's ruling stand, quoted in the entries below.
+
+### WHAT WAS READ FIRST, AND WHERE THE BRIEF WAS WRONG
+
+On ada79f1fd, development after #2463.
+
+1. **Right.** The pricing is in `ApplyHit` (`CataclysmSkillEffects.cpp` 947) and the announcing after the blow (about 1093 to
+   1138); `ACataclysmMinion::SkillTrapCasting(Delivery)` reads `Delivery.CastBy.Get()`, then the delivery's skill's
+   `FreeRepeatCastBy.Get()`, both null once `TriggerSkillTrap` has destroyed the trap; `Machine->TypeTags` and
+   `NoteSkillTrapBlowOn` need the living trap.
+2. **Right, with one correction.** A projectile copies its weak `CastBy` into each contact's delivery in `HitOne`
+   (`CataclysmProjectile.cpp` 659); line 791 is the wearer's self-blast delivery (`StrikeTheWearerInItsBlast`), not a second
+   contact path. A rack's no-speed throw sets `Delivery.CastBy = FreeRepeatCastBy` (`CataclysmSkillTemplates.cpp` 1939).
+   Layer 3's late slow matched by `HasSameIndexAndSerialNumber`, and its record existed only while a slow row waited.
+3. **Wrong in its timing, and in two of its names.** A shot's buried weapon is buried in `OnProjectileFinished`, when the
+   shot finishes, which is after a trap that cast it is used up, so `BuryInStruck`'s `FreeRepeatCastBy.Get()` was already null:
+   the identity was lost AT BURYING, not "on the first leap after the trap is gone". Anathema and Quarry state `OnDeathRange`
+   with `OnDeath=SpreadDebuff`, which buries nothing and deals no blow; Harrower is the one `OnDeath=Leap` row.
+4. **Right about the zone, wrong about two of the skills.** A zone is priced once in `LeaveZoneAlong`
+   (`CataclysmSkillTemplate.cpp` 3333 on) and swept through `ApplyDirectDamage` as damage over time
+   (`CataclysmGroundZone.cpp` 446). But a trap may cast neither Buried Fire (`DisarmsUntilRecalled`) nor Pyroclasm
+   (`Type.Channel`) nor Blood Pyre (a health cost): `UCataclysmDungeonModifierEffects::WildMagicLeavesOut` refuses each, so
+   Molten Cleave is the Strike's kind and Emberhurl the Projectile's kind among the shipped Demonic skills, besides any skill
+   given the zone-at-impact row.
+5. **Right, but Blood Pyre** (refused, item 4).
+
+**No other late carrier.** Every route to `ApplyHit` was searched: a glance (`LetItGlance`) and a return (`BeginReturn`) are
+the same projectile, carrying its `CastBy`; a beam or no-speed shot (`LandThenFinish`, `Return`) lands inside the cast while
+the trap stands; Chorus's repeat is a minion's blow, credited to the minion; a row's strike action, the self-blast and the
+three monster routes are not a trap's cast; a spent store (`CataclysmSkillTemplates.cpp` 2920) is dealt through
+`ApplyDirectDamage` and was never priced as anything's. **One more route was found and covered**: a later blow the use deals
+through its own `HitTargets` carries no `CastBy`, only `Delivery.Skill`, whose `FreeRepeatCastBy` still holds the trap's
+identity until the use ends.
+
+### THE WAY TAKEN, AND WHY
+
+**(A), the record, as the ruling says ("carried by the record built here").** `TriggerSkillTrap` keeps the trap on its
+player as it is used up (`NoteSkillTrapSpent`, with its type tags). `ApplyHit`, for a blow no living gadget or trap prices,
+names the trap by what the blow carries (`Delivery.CastBy`, else the delivery's skill's `FreeRepeatCastBy`) and looks for it
+among the player's used-up traps BY IDENTITY (`SpentSkillTrapNamed`, `HasSameIndexAndSerialNumber`, as layer 3's slow).
+Found, the blow is priced with `TrapDamageNamingTrap` exactly as a living trap's is, dealt, announced as `deployable_hit`
+with the kept tags less `Type.Deployable` (Q-A) and its `DealtToHealth` (R2), landed only when not evaded and not refused,
+not for a share on an ally and never for a tick; and layer 3's late slow is asked with the same identity. `LeaveZoneAlong`
+asks the same for its use's `FreeRepeatCastBy`, or finds the living trap, and multiplies the tick by the trap's part. A
+buried weapon keeps the weak pointer as it came (`BuryIn`'s parameter) and hands it on as it is at every leap.
+
+**Why not (B), the carriers keeping the trap's tags themselves.** The identity is already carried by everything but the buried
+weapon, which needed only its pointer kept weak. (B) would add the trap's tags to `FCataclysmHitDelivery`,
+`ACataclysmProjectile`, `UCataclysmBuriedWeapon` and the skill template, set at `UCataclysmTriggeredSkill::Trigger` and copied
+at the three shot sites, the rack's throw and the three delivery builders `HitTargets`, `ShareTheBlowWithAllies` and
+`StrikeTheWearerInItsDeployablesBlast`, which `TestAShareOfAPointBlankSkillsBlowOnAnAlly` and
+`TestADeployablesBlastStrikesItsWearer` hold field for field. (A) touches one write, one read and the zone. Its cost is a list
+on the player, bounded by a count and not a clock, so a leap is never bounded by how late it comes.
+
+**How the late slow and the new path share one match.** The slow's own record (`FLateSkillTrapSlow`) is unchanged; it is now
+asked only inside the used-up trap's branch, with `SpentTrap.Trap`, the identity the record was found by. So the price, the
+event and the slow are one decision on one identity: a blow priced as a used-up trap's is the only kind that asks the slow, and
+the slow is removed when it is laid. `AwaitsALateSkillTrapSlow`, which asked separately with `Delivery.CastBy` alone, had no
+caller left and is removed.
+
+**What else could later read the record:** a later trap row's question about a late blow: "Traps deal 100%-200% increased
+damage to the first enemy that triggers them" (P018) and "bonus damage equal to 5%-10% of the triggering enemy's maximum HP"
+(P055), if the triggering enemy is kept beside the tags; "30%-50% of their damage as a DoT" (P217), which needs only that a
+blow is a trap's; and "Enemies killed by traps explode" (P056), for a kill a late blow makes. Layer 3's late slow could be
+folded into it.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's commit, on ada79f1fd.
+
+| | Ruling, quoted | Where it is |
+| :-- | :-- | :-- |
+| L-A, L-B | "a trap's late shot, a buried weapon's leap and a zone are priced and announced as the trap's (Type.Trap minion_damage and deployable_hit), carried by the record built here" | The record kept, `TriggerSkillTrap` (`CataclysmMinion.cpp` 2570), `NoteSkillTrapSpent` (`CataclysmAbilitySystemComponent.cpp` 8271); found, `ApplyHit` (`CataclysmSkillEffects.cpp` 953 to 962), by `SpentSkillTrapNamed` (8289); priced through `TrapsPlayer` as a living trap's (962 on); announced with the kept tags (1118) and its amount (1132); the leap's identity, `CataclysmBuriedWeapon.cpp` 96 and 148, and `CataclysmSkillTemplates.cpp` 2110. |
+| Z1 (a) | "A trap's zone is priced as the trap's when it is laid (the Type.Trap minion_damage increases and more), and its sweeps raise no deployable_hit" | `LeaveZoneAlong` (`CataclysmSkillTemplate.cpp` 3370 to 3392); the sweeps unchanged, through `ApplyDirectDamage` as damage over time (`CataclysmGroundZone.cpp` 446), never through `ApplyHit`. |
+| Q-A (a) | a trap's event carries "its type tags less `Type.Deployable`" | Unchanged code, now with the kept tags (`CataclysmSkillEffects.cpp` 1118 to 1125). |
+| R2 | "a skill trap's deployable_hit carries its blow's DealtToHealth" | Unchanged code (`TrapsBlowDealt`, 1132), reached by the late blow. |
+| 60c | "when a blow from a trap's cast lands on the enemy that set that trap off and takes at least a tenth of its maximum health, it lays the slow there and then at the slow row's figures, once per trap" | `ApplyHit` asks `LayALateSkillTrapSlow` with the found identity (1143). |
+| P5, 2026-10-16 | a gadget's axe "is priced as the gadget's ... once the gadget is destroyed it is the player's" | Unchanged: no gadget is kept in the record, and `SkillGadgetCasting` still reads `Delivery.CastBy.Get()`. Tested again (test 29). |
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE RECORD HAS NO CLOCK AND KEEPS THE LAST 64 USED-UP TRAPS OF A PLAYER** (`SpentSkillTrapsKept`), under the owner's
+  delegation of unstated numbers, emptied at death. The reason for a bound at all: the list grows by one with every trap
+  triggered, and a basic trap triggers up to once a swing. The options not taken: a clock (a few seconds, as the slow waits),
+  which would end a buried weapon's leaps as the trap's; no bound.
+- **THE TRAP IS NAMED BY THE DELIVERY'S `CastBy`, ELSE ITS SKILL'S `FreeRepeatCastBy`**, as `SkillTrapCasting` reads the
+  living trap. The option not taken: `Delivery.CastBy` alone, as the late slow was asked, which misses a blow the use deals
+  through `HitTargets` after the trap is gone.
+- **A ZONE'S TRAP PART JOINS THE BUCKET THE CASTER'S INCREASES ARE IN**: the tick is multiplied by `(1 + F + T) / (1 + F)` and
+  by the "more", where `F` is the attack damage increases the attribute holds and `T` the trap rows' increases, so a zone and a
+  blow of the same cast take the rows alike. Asked with no target, which a zone has not got when it is laid. The option not
+  taken: `(1 + T)` as a multiplier of its own, which would price a player holding other increases higher than an instant blow.
+- **THE LATE SLOW IS ASKED FOR EVERY BLOW A USED-UP TRAP'S CAST DEALS**, a buried weapon's leap and a later `HitTargets` blow
+  included, since brief 60c's ruling names "a blow from a trap's cast". The option not taken: keep the slow on `Delivery.CastBy`
+  alone, a second match beside this one.
+- **`AwaitsALateSkillTrapSlow` IS REMOVED**, its one caller gone. The option not taken: leave a function nothing calls.
+- **THE LEAP'S TEST BURIES THE WEAPON AS `BuryInStruck` DOES, NOT BY A THROWN HARROWER.** A Special trap casts around its
+  enemy (layer 1), so a shot from the enemy's place at the enemy has no length and flies along the caster's facing, which no
+  test fixes. The option not taken: a real throw.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. Layer 1's entry, below, carries the trap sources `trap_design_2026-10-19.md`
+fetched; the one behind this layer is Path of Exile's Trap Support, quoted there:
+
+```
+"Supported Skills deal (6—20)% less Trap Damage" (https://poedb.tw/us/Trap_Support)
+```
+
+SUMMARY: trap damage is its own modifier family, applied to the skill the trap uses (R7 of that file). It does not settle
+whether a blow landing after the trap is gone is the trap's, nor a zone's ticks: those are this game's, ruled above.
+
+### WHAT WAS BUILT
+
+- **The record** (`UCataclysmAbilitySystemComponent`): `FSpentSkillTrap` (the trap, weak; its type tags), `SpentSkillTraps`,
+  `SpentSkillTrapsKept` 64, `NoteSkillTrapSpent` and `SpentSkillTrapNamed`, one block in the header after layer 3's and one at
+  the end of the `.cpp` (8267 on); `SpentSkillTraps.Empty()` at death (2782). Written by `TriggerSkillTrap` before `Destroy`
+  (`CataclysmMinion.cpp` 2567 to 2570).
+- **The late blow** (`ApplyHit`): the identity and the lookup (953 to 960), `TrapsPlayer` set for it (962); layer 3's separate
+  late branch removed, so the blow reaches the machine branch; the tags taken from the record when no living machine priced it
+  (1118); the late slow asked in place of `NoteSkillTrapBlowOn` (1135 to 1144).
+- **The zone** (`LeaveZoneAlong`, 3370 to 3392): the living trap or the used-up one, `TrapDamageNamingTrap` and
+  `IncreasesBehindAttackDamage`, and the tick handed to the zone multiplied by the trap's part; nothing for any other use.
+- **The buried weapon**: `BuryIn`'s last parameter a `const TWeakObjectPtr<AActor>&`; the leap's delivery takes the kept
+  pointer (96) and the next burying hands it on (148); `BuryInStruck` passes the use's `FreeRepeatCastBy` (2110).
+- **Comments** made true: `SkillTrapCasting` and `SkillTrapTookFromItsEnemy` in `CataclysmMinion.h`, `FLateSkillTrapSlow` and
+  `LayALateSkillTrapSlow` in the ability system's header.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- `test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_engine_has`
+  (`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`) asserted the text
+  `LateTrapsPlayer->LayALateSkillTrapSlow(Delivery.CastBy, Target, Resolved->DealtToHealth);`, the late branch this layer
+  removes. It now asserts `MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth);`, the same
+  meaning: `ApplyHit` hands a late blow to the slow. **Why the text changed:** the separate late-slow branch was folded into
+  the one lookup of a used-up trap, so the slow is now asked from that single match and with the identity it found. Accepted
+  by the coordinating session on 2026-10-21 (R-a).
+- **The new Python test strips comments by tracking `/* ... */` blocks across lines and `//` to the end of a line**, not by a
+  line's opening characters (R-c, ruled 2026-10-21; a line opening with `* ` is often a continued product). A `//` or `/*`
+  inside a string literal is treated as a comment opener too, which only shortens what is read; in the six files it reads
+  no string literal holds either, so nothing it asserts is cut (counted by script on this commit). One assertion holds that
+  ApplyHit's continued line `* TrapMore` is kept. **Proved with `tools/prove_guard.py`** in a copy of the tree (`git archive`
+  of 28194b108 with this commit's two files written over it), the stripper put back to the prefix rule (its old text
+  counted once): "PROVED: 1 failed, 37 passed in 1.02s | restored: 38 passed in 0.93s", the named failure
+  `test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced`, `proved` True.
+
+**OTHER MERGED SENTENCES SEARCHED** ("leap", "slows nothing", "finds no trap", "priced as the player's", over the whole
+file). Changed: layer 3's sentence above, and layer 1's item 5 ("A SHOT OR A RACK A TRAP CASTS THAT LANDS AFTER THE TRAP IS
+USED UP IS PRICED AS THE PLAYER'S"), a statement of behaviour, which keeps its words and gains "SINCE TRAPS LAYER 3B
+(2026-10-21, #2462) SUCH A BLOW IS PRICED AND ANNOUNCED AS THE TRAP'S". Left, each a record of what was read, built or not
+tested at its own commit and still true of that commit: layer 3's "HOW R1 IS BUILT" ("a shot lands later ... and finds no
+trap ... so it is priced as the player's"), its "Read first" (`CastBy.Get()` handed to a leap), its "What else could later
+read the record" and "FOUND AND NOT CHANGED" (the bleed and damage rows not reaching a late shot), its "Not tested" list,
+its section "THE LATE BLOWS THIS LAYER DOES NOT YET REACH, RULED THE NEXT TRAP LAYER" (which names this layer) and its
+window's "Not measured"; and the skill gadget entries' P5 lines, which this layer does not change.
+- **No merged Unreal test's assertion changes, by reading.** The one changed behaviour a merged test meets is that test 25's
+  late shots now raise `deployable_hit` and are priced by trap rows; its players hold no row on that event and no trap damage
+  row.
+
+### Tests
+
+Four Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapLateBlowsTests.cpp`, in layer 1's group
+`Cataclysm.Traps.`, numbered on from layer 3's last (25). The rig is layer 3's: a possessed player character holding a Demonic
+weapon, a weapon damage of 100, 10,000 health and 1,000 mana; creatures of the monsters' side with no defences and 50,000
+health unless a case says otherwise; every body at least 1 m from every other; every stat and action written by hand. NO KEY
+IS PRESSED. The clock is moved by hand, a trap's or gadget's step called directly, shots stepped by hand, a zone's sweep
+called. Every test pins `Cataclysm.CritRoll` at 100 after the world is made. Helper types are `FTrapLateBlowWorld`,
+`FTrapLateBlowStat`, `FTrapLateBlowRig` and `FTrapLateBlowEventCount`, in the namespace `CataclysmTrapLateBlowTest`; no other
+file of the module declares them (searched). **Assertions are counted for a passing run, 94 in all.**
+
+26. `AProjectileTrapsLateShotIsPricedByATrapDamageRowAndItsDeployableHitBleedsTheEnemyItStrikes`, 18. Three Wand players
+    (Malefice, a shot): the control with the Heavy flag; one also with 50% increased `minion_damage` requiring `Type.Trap`; one
+    with the bleed row, its creature 1,000 health. In order: a world; set-up, the pin; set-up, the Bleed tag; set-up, the
+    Heavy is a shot; set-up, three enemies (three); set-up, the trap is used up; set-up, its enemy untouched with the shot in
+    flight; control, nothing announced yet; set-up, three shots landed; control, the late shot struck; control, no bleed
+    without the row; the late shot priced by the row, once (1.5 times, within 0.1%); it raised `deployable_hit`; once for each
+    blow (the count of `deployable_hit` equals that of `hit_dealt`); set-up, the bleeding shot took a tenth; the late shot's
+    event bleeds its enemy.
+27. `ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot`, 31. One Whip player with the
+    Heavy flag, the trap damage row and the bleed row; its Heavy trap triggered and used up; two chains of three creatures of
+    500 health; a weapon buried in each chain's first, the same tags (`Type.Trap`) and 100%, one with the used-up trap's
+    identity and one with none. In order: a world; set-up, the pin; set-up, the two tags; set-up, the trap's enemy; set-up, the
+    trap used up; set-up, six creatures (six); set-up, the two buryings (two); control, the thrown weapon leaps; control, it
+    strikes; control, no `deployable_hit`; control, no bleed; the trap's weapon leaps; its first leap priced 1.5 times; one
+    `deployable_hit`; it bleeds; control, the thrown weapon leaps again; control, its second leap equals its first; control, no
+    `deployable_hit` added; the trap's leaps again; set-up, two leaps on; its second leap priced 1.5 times; a second
+    `deployable_hit`; it bleeds; control, the thrown third does not; four leaps, four `hit_dealt`.
+28. `ATrapsZoneIsPricedByATrapDamageRowWhenLaidAndItsSweepsRaiseNoDeployableHitAndLayNoTrapBleed`, 29. Two Greataxe players
+    (Molten Cleave, a 4 m cone leaving 4 m of ground at the trap) and two Wand players holding `zone_at_impact_seconds` at 4
+    (Malefice's zone where the shot ends), each pair a control and one with the trap damage row and the bleed row; bystanders of
+    100 health inside each priced zone and outside its cast. In order: a world; set-up, the pin; set-up, the Bleed tag; set-up,
+    the two Heavies' shapes (two); set-up, five creatures (five); set-up, one zone each for the cleaves (two); control, the
+    ground deals something; the trap's Strike ground priced 1.5 times when laid; control, the cleave's blow took a tenth;
+    control, a hit of the trap's cast bleeds; set-up, the bystander untouched by the cleave; set-up, the sweep burned the
+    bystander for a tenth; the sweep raised no `deployable_hit`; no bleed; set-up, no zone while the shots fly; set-up, one zone
+    each for the shots (two); control, the zone deals something; the used-up trap's shot's zone priced 1.5 times when laid;
+    set-up, the bystander made inside it; set-up, the sweep burned it for a tenth; no `deployable_hit`; no bleed.
+29. `ASkillGadgetsShotLandingAfterTheGadgetIsGoneIsThePlayersAndNoTrapsLateBlow`, 16. Two Wand players with the Heavy
+    converted into a gadget and "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit" at 3, the trap damage row
+    and the bleed row; both gadgets cast, and the second is destroyed before its shot lands. In order: a world; set-up, the pin;
+    set-up, the Bleed tag; set-up, two enemies and two gadgets (four); set-up, each gadget cast (two); set-up, the second gone;
+    set-up, both shots landed; control, the standing gadget's shot raised `deployable_hit`; control, it took the flat row;
+    set-up, the late shot struck; it raised no `deployable_hit`; no bleed.
+
+**Layer 3's late-slow tests are unchanged**, and are expected to pass unchanged:
+`AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItTakesATenthAndTheSpentTrapCountsForNothing` (25) and
+`TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOffByItsStrengthForItsSecondsWhenTheCastTookATenth` (21).
+
+Python, in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
+`test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced`, read from the code with comment lines left
+out, its control the buried weapon's `Caster.Get()`. **Proved by `tools/prove_guard.py`**, in a copy of the tree (`git
+archive` of ada79f1fd with this layer's files written over it), with `Theirs->NoteSkillTrapSpent(this, TypeTags);` (counted
+once) made `Theirs->NoteSkillTrapSpent(nullptr, TypeTags);`: "PROVED: 1 failed, 37 passed in 0.97s | restored: 38 passed in
+0.90s", the named failure `test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced`.
+
+**Not tested:** a real row worn; a rack's late throw (by reading, as a shot: its axe carries `CastBy`); a real Harrower thrown
+by a trap and `BuryInStruck`'s passing of the identity (by reading, and the Python check); Emberhurl's own burning path (the
+shot's kind is tested with the zone-at-impact row on Malefice); a later blow of the use through `HitTargets` after the trap is
+gone; the late slow laid by a leap; the 65th used-up trap letting the first go; the record emptied at death; a late blow
+evaded or refused by immunity (the event's landed flag); a late blow's share on an ally; the trap's "more" row on a zone; a
+zone of a player holding other increases; anything drawn; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree, each new text counted
+absent before the break and once after it, and each break keeps the file's round, curly and square brackets paired:
+`CataclysmMinion.cpp` 995/995, 266/266, 12/12 before and after TR-XIII; `CataclysmSkillTemplate.cpp` 1065/1065, 333/333, 3/3
+before and 1066/1066 after TR-XIV, which adds one pair; `CataclysmBuriedWeapon.cpp` 42/42, 11/11, 1/1 before and 44/44 after
+TR-XV, which adds two. Each compiles alone by reading: TR-XIII passes `nullptr` where an `AActor*` stood; TR-XIV binds an
+empty weak pointer to a `const TWeakObjectPtr<AActor>&`, and `FreeRepeatCastBy` is a member, so nothing is left unused;
+TR-XV makes a weak pointer of a raw one on one side of a conditional whose other side is already a weak pointer. The prefix
+is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight and these four, thirty.
+
+**The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing and
+`trap_triggered` at each trigger (26 to 28); for a blow of a cast on an enemy `hit_dealt` and `first_hit_dealt`, and the
+burn's `dot_applied` for Malefice, Molten Cleave and Searing Lash; `deployable_hit` for every blow of a trap's cast, living
+(the cleaves, test 27's lash) or used up (the shots, the trap's leaps), and for the standing gadget's shot (29), each with its
+machine's tags and, for a trap, its amount; the bleed row's own `dot_applied`, raised inside `deployable_hit`'s actions and
+dropped at that depth. A zone's sweep raises no player event this layer reads. On a creature, nothing is worn. **WHAT HANGS ON
+AN EVENT:** the bleed row on `deployable_hit` (26's third player, 27, 28's two priced players, 29); layer 3's slow on
+`trap_triggered` (25, 21). Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-XIII, no used-up trap is ever kept | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `Theirs->NoteSkillTrapSpent(this, TypeTags);` | `Theirs->NoteSkillTrapSpent(nullptr, TypeTags);` | `AProjectileTrapsLateShotIsPricedByATrapDamageRowAndItsDeployableHitBleedsTheEnemyItStrikes` | `ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot`, `ATrapsZoneIsPricedByATrapDamageRowWhenLaidAndItsSweepsRaiseNoDeployableHitAndLayNoTrapBleed`, `AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItTakesATenthAndTheSpentTrapCountsForNothing` |
+| TR-XIV, a zone laid after its trap is gone does not find it | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` | `LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)` | `LaysForATrap->SpentSkillTrapNamed(TWeakObjectPtr<AActor>(), SpentTrap)` | `ATrapsZoneIsPricedByATrapDamageRowWhenLaidAndItsSweepsRaiseNoDeployableHitAndLayNoTrapBleed` | none |
+| TR-XV, a leap hands on the identity through `Get` | `game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.cpp` | `Delivery.CastBy = Buried->Caster.IsValid() ? Buried->CastBy : TWeakObjectPtr<AActor>();` | `Delivery.CastBy = Buried->Caster.IsValid() ? TWeakObjectPtr<AActor>(Buried->CastBy.Get()) : TWeakObjectPtr<AActor>();` | `ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot` | none |
+
+Failed assertions, by reading:
+
+- **TR-XIII, 14 in 4 tests.** Test 26, 4: the late shot priced 1.5 times (1.0), "raised deployable_hit" (0), "once for each
+  blow" (0 against the blows), and the bleed. Test 27, 6: the first leap priced, "deployable_hit once" (0), its bleed, the
+  second leap priced, "once more" (0 against 2), its bleed; the controls compare with the count before them and pass, and the
+  leap count and the four `hit_dealt` are unchanged. Test 28, 1: the shot's zone priced 1.5 times; the cleave's ground is
+  priced by the living trap, and every sweep line passes. Test 25, 3: "the late shot slows", "by the row's 25 per cent" and
+  "for the row's 3 seconds", since the slow is asked only for a blow of a kept trap. Test 29 keeps no trap. Test 21's casts
+  land while the trap stands.
+- **TR-XIV, 1 in 1 test.** Test 28: the shot's zone priced 1.5 times (1.0). The bystander's sweep still takes a tenth of 100
+  at the unpriced tick, so its three lines pass.
+- **TR-XV, 6 in 1 test.** Test 27: the six lines TR-XIII fails there; the burying, the leap count and the controls pass.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No other group places a skill trap; a
+skill gadget's buried weapon (`Cataclysm.SkillGadgets.`) reads `Get` of a living gadget under TR-XV as before.
+
+**A test and no proof:** the zone's sweep raising no `deployable_hit` (no code of this layer to break: it is the sweep's own
+route); the gadget's late shot staying the player's; the controls of each test.
+
+### THE WINDOW'S RUN
+
+**ONE WINDOW, enchant-t3bw, ON 2026-10-21, 22:37:27 to 23:26:17 by its stall guard, on fd2c6dc3c (this layer's two
+commits on ada79f1fd). Every step exited 0 with the figures registered before it; nothing was re-run.** The pre-checks,
+run just before the lock was taken: development's CI and Unreal runs on ada79f1fd succeeded, no run in progress, no pull
+request open, the lock free, no Excel, editor or build process, the worktree clean at fd2c6dc3c. No row and no asset, so
+no old-asset step and no rebuild.
+
+- **The whole Unreal suite:** "Build: Succeeded - 39 actions, 36 files compiled", the first compile of this layer's C++;
+  "3995 tests performed, 3995 succeeded, 0 failed", registered 3995 and 0 (the 3991 of traps layer 3's window and this
+  layer's four). 40 skipped part of what they check (the Paragon art is not in a worktree). "Declared: 3995 tests in the
+  tree at fd2c6dc3c; 3995 performed, gap 0".
+- **Python of record on fd2c6dc3c:** "6843 passed, 8 skipped in 261.26s"; JUnit tests 6851, failures 0, errors 0,
+  skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 30 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XIII | a used-up trap never kept: `NoteSkillTrapSpent(nullptr, TypeTags)` (`CataclysmMinion.cpp`) | 4 failed: `AProjectileTrapsLateShotIsPriced...`, `ABuriedWeaponOfAUsedUpTrapsCast...`, `ATrapsZoneIsPriced...`, `AProjectileTrapsLateShotSlows...` | 14 / 14 | 30 of 30 succeeded |
+| TR-XIV | the zone's lookup given no trap (`CataclysmSkillTemplate.cpp`) | 1 failed, `ATrapsZoneIsPricedByATrapDamageRowWhenLaidAndItsSweepsRaiseNoDeployableHitAndLayNoTrapBleed` | 1 / 1 | 30 of 30 succeeded |
+| TR-XV | the buried weapon's identity read through `Get` (`CataclysmBuriedWeapon.cpp`) | 1 failed, `ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot` | 6 / 6 | 30 of 30 succeeded |
+
+The measured lines include, under TR-XIII, "'the late shot is priced by the minion_damage row naming Type.Trap, once: 50%
+more, 250.00 against 250.00' to be 375.000000, but it was 250.000000" and "'by the row's 25 per cent' to be 25.000000, but
+it was -1.000000"; under TR-XIV, "'the zone a used-up trap's shot lays is priced by the row when laid: 50% more, 25.00
+against 25.00' to be 37.500000, but it was 25.000000"; under TR-XV, "'its second leap is still the trap's: 50% more,
+110.00 against 110.00' to be 165.000000, but it was 110.000000".
+
+**Not measured:** everything this entry lists as read and not tested (a rack's late throw, a real Harrower thrown by a
+trap, `BuryInStruck` passing the identity, Emberhurl's own burning path, a leap laying the late slow, the 65th used-up
+trap letting the first go, the record emptied at death); anything drawn on a screen.
+
+---
+
 ## 2026-10-21 — Eight trap rows can be written on traps layers 1 and 2: the trap cap bonus raises the one cap of five and a no-expire flag leaves a trap with no life span; and, for the three rows the actions could not state, a slow at a stated strength on the enemy that set a trap off, a damage over time at a multiple of its size on every enemy a trap's cast strikes, and own stacks with no cap that each lapse alone, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`TrapCapBonusStat`, `TrapsDoNotExpireStat`,
@@ -99,8 +471,9 @@ What a player would notice, once the rows are worn:
   grants 5%-10% increased damage" does not hear a trap's bleed. By reading; not tested. The slow raises nothing.
   **FOUND AND LEFT**, as the coordinating session ruled on 2026-10-21.
 - **THE SLOW NEEDS A BLOW**: a trap's cast that strikes the enemy that set it off for less than a tenth of its maximum
-  health, or misses it, slows nothing (R1); a shot landing more than 5 s after the trap triggered slows nothing; a
-  buried weapon's leap and a zone's blows, which do not carry the trap past its death, slow nothing (brief 60c).
+  health, or misses it, slows nothing (R1); a shot landing more than 5 s after the trap triggered slows nothing; since
+  traps layer 3b a buried weapon's leap carries the trap and can lay the waiting slow, and a zone's sweeps still slow
+  nothing (brief 60c; #2462).
 - **NOT IN PLAY UNTIL THE NINE EFFECT ROWS LAND ABOVE THIS LAYER**, the enchantment session's.
 - **Nothing here was compiled and no Unreal test was run by the session that wrote it.** A second session wrote the
   code, the tests and this entry under the enchantment session's brief 60 and the rulings below. NOT COMPILED AND NOT
@@ -110,7 +483,7 @@ What a player would notice, once the rows are worn:
 
 - 'Each trap triggered in the last 10 seconds increases your damage' has no cap; with 'Traps do not expire' and a larger trap count it can reach well over 100%
 - with 'Traps do not expire', placed traps stay until triggered or pushed out by the cap
-- a trap whose skill is a projectile, a leap or a zone does not yet take trap damage rows or the trap bleed on those late blows; the next trap layer adds them
+- a trap's zone takes the trap damage rows when it is laid, but its ticks lay no trap bleed and set off no trap 'on hit' row
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -1778,7 +2151,8 @@ What a player would notice, once a row is worn:
   5. **A SHOT OR A RACK A TRAP CASTS THAT LANDS AFTER THE TRAP IS USED UP IS PRICED AS THE PLAYER'S**, with no trap row and
      no `deployable_hit`: the trap is destroyed as its cast starts, and a destroyed trap is no trap, as a destroyed gadget
      is none (2026-10-16, stack 2, item 3). Every Strike and every no-speed landing lands inside the cast and is priced as
-     the trap's. A judgement, below.
+     the trap's. A judgement, below. **SINCE TRAPS LAYER 3B (2026-10-21, #2462) SUCH A BLOW IS PRICED AND ANNOUNCED AS
+     THE TRAP'S**: the used-up trap is kept on its player and found again by its identity; see that entry.
   6. **A SECOND TEST WORE THE ULTIMATE TRAP SENTENCE AS A BENEFIT WITH NO EFFECT**: `FloorStartCapBenefit` in
      `CataclysmDungeonModifierEffectsTests.cpp`, "the enchantment tests' choice". Moved with `BenefitWithNoEffect` (item 1
      below).

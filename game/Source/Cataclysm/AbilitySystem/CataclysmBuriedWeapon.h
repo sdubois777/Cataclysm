@@ -50,13 +50,17 @@ public:
 	 *                        mitigated the way that skill's blows should be
 	 * @param bInBurns        whether it sets what it strikes alight
 	 * @param InCastBy        the actor the throwing use was cast from, when its caller named one: a skill gadget,
-	 *                        carried into every later blow. Ruled 2026-10-16, skill gadgets stack 2 (P5).
+	 *                        carried into every later blow. Ruled 2026-10-16, skill gadgets stack 2 (P5). A WEAK
+	 *                        POINTER KEPT AS IT CAME, so a skill trap already used up is still named by its identity
+	 *                        (ruled 2026-10-21, #2462): its `Get` answers null, and the identity is what the trap's
+	 *                        player finds its used-up trap by.
 	 * @return the component, or null if the creature cannot take one
 	 */
 	static UCataclysmBuriedWeapon* BuryIn(AActor* Target, AActor* Caster,
 										  float RangeCm, float InDamagePercent,
 										  const FGameplayTagContainer& InSkillTags,
-										  bool bInBurns, AActor* InCastBy = nullptr);
+										  bool bInBurns,
+										  const TWeakObjectPtr<AActor>& InCastBy = TWeakObjectPtr<AActor>());
 
 	/**
 	 * Tear free of a dying creature and bury in the nearest living enemy.
@@ -99,7 +103,10 @@ public:
 	/**
 	 * The actor the throwing use was cast from, or empty. A SKILL GADGET'S AXE IS THE GADGET'S WHILE THE GADGET STANDS:
 	 * each leap's blow carries it as `FCataclysmHitDelivery::CastBy`, so it is priced as the gadget's long after the
-	 * use ended; once the gadget is destroyed it is the player's. Ruled 2026-10-16, skill gadgets stack 2 (P5).
+	 * use ended; once the gadget is destroyed it is the player's. Ruled 2026-10-16, skill gadgets stack 2 (P5). A
+	 * SKILL TRAP'S AXE IS THE TRAP'S AT EVERY LEAP, the trap being used up as its cast starts: this keeps the trap's
+	 * identity, handed on as it is at each leap and never through `Get`, and the trap's player keeps the used-up trap
+	 * (`UCataclysmAbilitySystemComponent::SpentSkillTrapNamed`). Ruled 2026-10-21, #2462.
 	 */
 	UPROPERTY()
 	TWeakObjectPtr<AActor> CastBy;

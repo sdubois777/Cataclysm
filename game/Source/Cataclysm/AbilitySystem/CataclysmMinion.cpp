@@ -2564,6 +2564,11 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 					   /*bLanded=*/true, Enemy);
 	Theirs->SkillTrapRaisingItsTrigger.Reset();
 
+	// AND KEPT ON THE PLAYER AS USED UP, with its type tags, so a blow of its cast landing after it is gone (a shot, a
+	// rack's throw, a buried weapon's leap, a zone laid where a shot ends) is still priced and announced as the trap's
+	// (ruled 2026-10-21, #2462).
+	Theirs->NoteSkillTrapSpent(this, TypeTags);
+
 	// USED UP: destroyed, with no explosion and no `gadget_destroyed`, because `HandleDeath` is not run.
 	Destroy();
 	return true;

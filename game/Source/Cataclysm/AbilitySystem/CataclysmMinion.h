@@ -1160,7 +1160,9 @@ public:
 	 * The skill trap whose cast `Delivery` is a blow of, or null, read as `SkillGadgetCasting` reads a gadget: the actor
 	 * the delivery carries, then its skill's `FreeRepeatCastBy`. Read by `UCataclysmSkillEffects::ApplyHit` to price
 	 * the blow with the player's `Type.Trap` `minion_damage` rows (T10). A TRAP IS USED UP AS ITS CAST STARTS, so a
-	 * blow landing after that (a shot in flight) finds no trap and is priced as the player's.
+	 * blow landing after that (a shot in flight) finds no trap here; since traps layer 3b (#2462) `ApplyHit` then finds
+	 * the used-up trap on its player by identity (`UCataclysmAbilitySystemComponent::SpentSkillTrapNamed`) and prices
+	 * the blow as the trap's all the same.
 	 */
 	static const ACataclysmMinion* SkillTrapCasting(const struct FCataclysmHitDelivery& Delivery);
 	static const ACataclysmMinion* SkillTrapCasting(const class UGameplayAbility* Skill);
@@ -1217,7 +1219,8 @@ public:
 	 * its maximum health." `TriggerSkillTrap` names the enemy and clears the figure before the cast starts;
 	 * `UCataclysmSkillEffects::ApplyHit` keeps the largest blow's `DealtToHealth` on that enemy while the cast is the
 	 * trap's (`NoteSkillTrapBlowOn`); `trap_triggered` then carries it as its amount. A blow landing after the trap is
-	 * used up (a shot in flight) finds no trap and is not counted, so such a cast slows nobody.
+	 * used up (a shot in flight) is not counted here: it is judged at its own blow, by
+	 * `UCataclysmAbilitySystemComponent::LayALateSkillTrapSlow` (brief 60c; traps layer 3b).
 	 */
 	TWeakObjectPtr<AActor> SkillTrapTriggeringEnemy;
 	mutable float SkillTrapTookFromItsEnemy = 0.0f;
