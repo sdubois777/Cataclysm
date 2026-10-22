@@ -4673,6 +4673,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * `UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction`.
 	 */
 	bool bExplodeVictimForKillingBlow = false;
+
+	/**
+	 * Set, this action ARMS, or SETS OFF, ITS WEARER'S STANDING SKILL TRAPS within `Percent` metres of the trap that
+	 * triggered (`trap_triggered`) or the gadget destroyed (`gadget_destroyed`), or every one at the wearer's death
+	 * (`player_death`, `Percent` nought), instead of moving a pool; `bNearestTrapOnly` for the nearest one alone, the
+	 * row's Scale Max Steps of 1. Ruled 2026-10-22 (traps layer 5, H1 to H11; H5 (b) by the owner). See
+	 * `UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction` and `TriggerTrapsNearbyAction`.
+	 */
+	bool bArmTrapsNearby = false;
+	bool bSetOffTrapsNearby = false;
+	bool bNearestTrapOnly = false;
 };
 
 /**

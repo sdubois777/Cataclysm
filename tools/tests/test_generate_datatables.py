@@ -10231,3 +10231,131 @@ class TestTheFiveHooksOnATrapsOwnBlow(GadgetRowsOnAMadeUpSheet):
             self.out(tmp_path, "Enemies killed by traps explode, dealing 1500%-2000% of the "
                      "trap's damage to all enemies within 4 meters",
                      [dict(self.EXPLOSION, **{"Value Low": 1500, "Value High": 2000})])
+
+
+class TestTheTwoActionsOnTheWearersOtherTraps(GadgetRowsOnAMadeUpSheet):
+    """Traps layer 5, ruled 2026-10-22 by the coordinating session (H1 to H11)
+    and, on H5, by the owner, built ahead of its rows: `arm_traps_nearby` and
+    `trigger_traps_nearby`, each with its value the radius in metres (nought at
+    the wearer's death) and Scale Max Steps 1 for the nearest trap alone. Each
+    of the six proposed rows is carried through under its real sentence, read
+    from the shipped sheet by the name `row_name` derives, and refused by
+    nothing; each wrong shape is refused by name."""
+
+    TAG = "Type.Trap"
+    #: Each proposed row: design id, the sentence's words, and the cells.
+    ROWS = [
+        ("P212", "When a trap is triggered, the nearest unarmed trap within 10 "
+                 "meters arms instantly",
+         {"Action": "arm_traps_nearby", "Action Event": "trap_triggered",
+          "Value Low": 10, "Required Tags": "Type.Trap", "Scale Max Steps": 1}),
+        ("P017", "When a trap triggers it releases a shockwave that arms all traps "
+                 "within 15 meters instantly",
+         {"Action": "arm_traps_nearby", "Action Event": "trap_triggered",
+          "Value Low": 15, "Required Tags": "Type.Trap"}),
+        ("P065", "When a gadget is destroyed it arms all traps within 12 meters "
+                 "instantly",
+         {"Action": "arm_traps_nearby", "Action Event": "gadget_destroyed",
+          "Value Low": 12, "Required Tags": "Type.Deployable"}),
+        ("P054", "Traps trigger simultaneously when any one of them is triggered, "
+                 "if within 8-12 meters of each other",
+         {"Action": "trigger_traps_nearby", "Action Event": "trap_triggered",
+          "Value Low": 8, "Value High": 12, "Required Tags": "Type.Trap"}),
+        ("P220", "When a gadget is destroyed, the nearest active trap within 10 "
+                 "meters is triggered immediately",
+         {"Action": "trigger_traps_nearby", "Action Event": "gadget_destroyed",
+          "Value Low": 10, "Required Tags": "Type.Deployable", "Scale Max Steps": 1}),
+        ("P083", "When you die, all your active traps and gadgets immediately "
+                 "trigger simultaneously",
+         {"Action": "trigger_traps_nearby", "Action Event": "player_death",
+          "Value Low": 0}),
+    ]
+
+    def validation(self, rows):
+        """Told that both tags the rows require are tags the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Type.Trap", "Type.Deployable"})
+
+    def row(self, design):
+        return next((words, cells) for each, words, cells in self.ROWS if each == design)
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """The name each row is written under is `row_name` of its words, and
+        the shipped sheet holds exactly those words under that name."""
+        for _, words, _ in self.ROWS:
+            assert shipped_positive_sentence(gen.row_name("Positive", words[:48])) == words
+
+    def test_each_row_is_carried_through_cell_by_cell_and_is_not_refused(self, tmp_path):
+        for design, words, cells in self.ROWS:
+            out = self.out(tmp_path, words, [cells])
+            high = float(cells.get("Value High", cells["Value Low"]))
+            assert [(row["Stat"], row["Action"], row["ActionEvent"], row["ValueLow"],
+                     row["ValueHigh"], row["ScaleMaxSteps"], row["RequiredTags"],
+                     row["FractionOf"], row["TriggerCooldown"]) for row in out] == [
+                ("", cells["Action"], cells["Action Event"], float(cells["Value Low"]),
+                 high, cells.get("Scale Max Steps", 0), cells.get("Required Tags", ""),
+                 "", 0.0)], design
+            assert self.validation(out) == [], design
+
+    def test_the_names_are_the_engines_and_neither_is_a_pool_or_takes_a_trigger_cooldown(self):
+        """Read out of the C++ that defines them. THE CONTROL: a pool and an
+        action that takes a cooldown answer the other way."""
+        import re
+        engine = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAbilitySystemComponent.cpp").read_text(encoding="utf-8")
+        defined = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Action)\s*=\s*TEXT\("([^"]+)"\)', engine))
+        assert defined["ArmTrapsNearbyAction"] == gen.ARM_TRAPS_NEARBY_ACTION
+        assert defined["TriggerTrapsNearbyAction"] == gen.TRIGGER_TRAPS_NEARBY_ACTION
+        for action in gen.TRAPS_NEARBY_ACTIONS:
+            assert action not in gen.POOL_ACTIONS, action
+            assert not gen.takes_a_trigger_cooldown(action), action
+            assert set(gen.TRAPS_NEARBY_EVENTS[action]) <= gen.action_events(), action
+        assert "health" in gen.POOL_ACTIONS
+        assert gen.takes_a_trigger_cooldown(gen.SLOW_FOR_SECONDS_ACTION)
+
+    def test_every_wrong_shape_is_refused_by_name(self, tmp_path):
+        """THE CONTROL is each row above, carried through."""
+        import re
+        for design, change, said in (
+                ("P212", {"Action Event": "kill"}, "on the event 'kill'"),
+                ("P212", {"Action Event": "player_death"}, "on the event 'player_death'"),
+                ("P054", {"Action Event": "hit_dealt"}, "on the event 'hit_dealt'"),
+                ("P017", {"Fraction Of": "maximum"}, "states Fraction Of 'maximum'"),
+                ("P017", {"Value Kind": "flat"}, "states Value Kind 'flat'"),
+                ("P017", {"Scale Max Steps": 2}, "It is 1, the nearest trap alone"),
+                ("P212", {"Trigger Cooldown": 1}, "states a Trigger Cooldown"),
+                ("P083", {"Value Low": 5}, "so the radius is 0, every trap"),
+                ("P083", {"Scale Max Steps": 1}, "acts on every trap, so the column"),
+                ("P083", {"Required Tags": "Type.Trap"}, "That event carries no tags"),
+                ("P220", {"Value Low": 0}, "The radius is above 0")):
+            words, cells = self.row(design)
+            with pytest.raises(gen.DataError, match=re.escape(said)):
+                self.out(tmp_path, words, [dict(cells, **change)])
+        # PAST THE BOUND, under made-up words that state the figure, since the
+        # words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="up to 50"):
+            self.out(tmp_path, "When a trap triggers it releases a shockwave that arms all "
+                     "traps within 60 meters instantly",
+                     [dict(self.row("P017")[1], **{"Value Low": 60})])
+        # AND THE NAME MISSPELT.
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            words, cells = self.row("P017")
+            self.out(tmp_path, words, [dict(cells, Action="arm_trap_nearby")])
+
+    def test_the_item_reads_the_count_and_the_two_flags(self):
+        """The item marks the row by its constant and reads Scale Max Steps 1
+        as the nearest trap alone, read out of the C++ with comments taken out.
+        THE CONTROL: the killing blow explosion's own line is found the same
+        way."""
+        import re
+        text = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                / "CataclysmItem.cpp").read_text(encoding="utf-8")
+        item = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+        assert re.search(r"Action\.bExplodeVictimForKillingBlow = Effect->Action\.Equals\(", item)
+        assert re.search(r"Action\.bArmTrapsNearby = Effect->Action\.Equals\(\s*"
+                         r"UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction,", item)
+        assert re.search(r"Action\.bSetOffTrapsNearby = Effect->Action\.Equals\(\s*"
+                         r"UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction,", item)
+        assert re.search(r"Action\.bNearestTrapOnly =\s*\(Action\.bArmTrapsNearby \|\| "
+                         r"Action\.bSetOffTrapsNearby\) && Effect->ScaleMaxSteps == 1;", item)

@@ -2515,13 +2515,13 @@ bool ACataclysmMinion::StepSkillTrap()
 	return !Near.IsEmpty() && TriggerSkillTrap(Near[0]);
 }
 
-bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
+bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForADeadPlayer)
 {
 	AActor* const Player = Summoner.Get();
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
 	if (!IsSkillTrap() || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this) || !Theirs
-		|| UCataclysmSkillEffects::IsDead(Player))
+		|| (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
 	{
 		return false;
 	}
@@ -2562,11 +2562,16 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
 	const FGameplayTagContainer TrapTags = TypeTags;
 	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
-	// cast (ruled 2026-10-21, brief 60c).
-	Theirs->SkillTrapRaisingItsTrigger = this;
-	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
-					   /*bLanded=*/true, Enemy);
-	Theirs->SkillTrapRaisingItsTrigger.Reset();
+	// cast (ruled 2026-10-21, brief 60c), AND WHERE IT STANDS, which the rows on the player's other traps measure from
+	// (traps layer 5, H3). PUT BACK AS IT WAS AFTERWARDS, not emptied: a trap a row sets off is triggered inside the
+	// event of the trap that triggered first, whose later rows still read it.
+	{
+		TGuardValue<TWeakObjectPtr<AActor>> RaisingItsTrigger(Theirs->SkillTrapRaisingItsTrigger,
+															  TWeakObjectPtr<AActor>(this));
+		TGuardValue<FVector> RaisingItsTriggerAt(Theirs->SkillTrapRaisingItsTriggerPlace, GetActorLocation());
+		Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
+						   /*bLanded=*/true, Enemy);
+	}
 
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
@@ -2752,4 +2757,124 @@ bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struc
 	const float Ticks = SkillTrapDamageOverTimeSeconds / UCataclysmSkillEffects::BaseSecondsPerTick;
 	return UCataclysmSkillEffects::ApplyDamageOverTime(Player, Struck, Whole / Ticks, SkillTrapDamageOverTimeSeconds,
 													   Generic, /*bScalesWithInstigator=*/false);
+}
+
+// ==========================================================================
+// Traps, layer 5: arming and setting off the player's other traps. Ruled 2026-10-22 (H1 to H11; H5 (b) by the owner);
+// the header carries the rulings.
+// ==========================================================================
+
+namespace
+{
+	/**
+	 * `Player`'s standing skill traps other than `Except`, within `RadiusCm` of `Place` along the floor, or every one for
+	 * a null `Place`, the oldest first. A dead trap is not standing.
+	 */
+	TArray<ACataclysmMinion*> SkillTrapsStandingNear(const AActor* Player, const FVector* Place, float RadiusCm,
+													 const AActor* Except)
+	{
+		TArray<ACataclysmMinion*> Near = ACataclysmMinion::SkillTrapsOf(Player);
+		Near.RemoveAll([Place, RadiusCm, Except](const ACataclysmMinion* Each)
+		{
+			return Each == Except || UCataclysmSkillEffects::IsDead(Each)
+				|| (Place && FVector::Dist2D(*Place, Each->GetActorLocation()) > RadiusCm);
+		});
+		return Near;
+	}
+
+	/** Of `Traps`, only the one nearest `Place` along the floor, the older of two at one distance; none stays none. */
+	void KeepTheSkillTrapNearest(TArray<ACataclysmMinion*>& Traps, const FVector& Place)
+	{
+		ACataclysmMinion* Nearest = nullptr;
+		double NearestSquared = 0.0;
+		// OLDEST FIRST, so a later trap at the same distance does not displace an earlier one.
+		for (ACataclysmMinion* Each : Traps)
+		{
+			const double Squared = FVector::DistSquared2D(Place, Each->GetActorLocation());
+			if (!Nearest || Squared < NearestSquared)
+			{
+				Nearest = Each;
+				NearestSquared = Squared;
+			}
+		}
+		Traps.Reset();
+		if (Nearest)
+		{
+			Traps.Add(Nearest);
+		}
+	}
+}
+
+int32 ACataclysmMinion::ArmSkillTrapsNear(const AActor* Player, const FVector& Place, float RadiusCm, bool bNearestOnly,
+										  const AActor* Except)
+{
+	// ONLY THE UNARMED ARE COUNTED, so "the nearest unarmed trap" passes over an armed one nearer (H2).
+	TArray<ACataclysmMinion*> Unarmed = SkillTrapsStandingNear(Player, &Place, RadiusCm, Except);
+	Unarmed.RemoveAll([](const ACataclysmMinion* Each) { return Each->bSkillTrapArmed; });
+	if (bNearestOnly)
+	{
+		KeepTheSkillTrapNearest(Unarmed, Place);
+	}
+	for (ACataclysmMinion* Each : Unarmed)
+	{
+		// AS IF ITS ARMING TIME HAD PASSED, AND DRAWN ARMED (H2). Nothing else of it is touched: no event, its life span and
+		// the cap as they were.
+		Each->bSkillTrapArmed = true;
+		Each->SkillTrapArmsAtAgeSeconds = FMath::Min(Each->SkillTrapArmsAtAgeSeconds, Each->GetGameTimeSinceCreation());
+		Each->ShowSkillTrapTint();
+	}
+	return Unarmed.Num();
+}
+
+int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
+											 const AActor* Except, TArray<TWeakObjectPtr<AActor>>& SetOffThisChain,
+											 bool bEvenForADeadPlayer)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs)
+	{
+		return 0;
+	}
+
+	// THE LIST TAKEN ONCE, BEFORE THE FIRST IS SET OFF, as `FireEveryGadgetAtTheDeathOf` takes its own: armed and unarmed
+	// alike (H4), none already set off in this chain (H5 (b)), none that cannot act or whose slot is no longer converted,
+	// as its own step casts nothing then.
+	TArray<ACataclysmMinion*> Standing = SkillTrapsStandingNear(Player, Place, RadiusCm, Except);
+	Standing.RemoveAll([&SetOffThisChain, Theirs](const ACataclysmMinion* Each)
+	{
+		// A STANDING TRAP IS ITSELF IN THE LIST WHILE IT STANDS, so comparing what the list names now is enough here.
+		const bool bSetOffAlready = SetOffThisChain.ContainsByPredicate([Each](const TWeakObjectPtr<AActor>& Fired)
+		{
+			return Fired.Get() == Each;
+		});
+		return bSetOffAlready || UCataclysmSkillEffects::CannotAct(Each) || !Theirs->SlotIsASkillTrap(Each->SkillTrapSlot);
+	});
+	if (bNearestOnly && Place)
+	{
+		KeepTheSkillTrapNearest(Standing, *Place);
+	}
+
+	int32 SetOffCount = 0;
+	for (ACataclysmMinion* Each : Standing)
+	{
+		if (!IsValid(Each) || Each->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		// INTO THE CHAIN BEFORE IT GOES OFF, so nothing its own `trap_triggered` sets in motion can set it off again.
+		SetOffThisChain.Add(TWeakObjectPtr<AActor>(Each));
+		if (Each->TriggerSkillTrap(Each->SkillTrapEnemyForAForcedTrigger(), bEvenForADeadPlayer))
+		{
+			++SetOffCount;
+		}
+	}
+	return SetOffCount;
+}
+
+AActor* ACataclysmMinion::SkillTrapEnemyForAForcedTrigger() const
+{
+	// ITS OWN TRIGGER RADIUS, as its step measures it, nearest first and leaving out the dead.
+	const TArray<AActor*> Near = HostilesWithin(SkillTrapTriggerRadiusCmFor(Summoner.Get(), TypeTags));
+	return Near.IsEmpty() ? nullptr : Near[0];
 }

@@ -1144,9 +1144,11 @@ public:
 	 * and no `gadget_destroyed`; or, since traps layer 4, it rearms instead when its player's rearm chance rolls
 	 * (`SkillTrapRollsToRearm`).
 	 *
+	 * @param bEvenForADeadPlayer  true for the traps a player's death sets off (traps layer 5, H8), as the skill gadget's
+	 *        death cast is let through (`CastPlayersSkillFromHere`): a dead player is then not refused. False otherwise.
 	 * @return whether the cast started, the trap then used up or rearmed
 	 */
-	bool TriggerSkillTrap(AActor* TriggeringEnemy);
+	bool TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForADeadPlayer = false);
 
 	/** Its age at which it arms, set when it is placed. */
 	float SkillTrapArmsAtAgeSeconds = 0.0f;
@@ -1290,6 +1292,40 @@ public:
 
 	/** Whether this trigger's share of its enemy's maximum health has been added, by its first blow on it. */
 	mutable bool bSkillTrapGaveItsEnemysHealthShare = false;
+
+	/**
+	 * TRAPS LAYER 5 (ruled 2026-10-22 by the coordinating session, H1 to H11, and by the owner on H5): what two row
+	 * actions do to the player's OTHER traps. `UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction` and
+	 * `TriggerTrapsNearbyAction` call these. ONLY THE PLAYER'S OWN SKILL TRAPS (H1), as `SkillTrapsOf` finds them: never
+	 * a Spike Trap (T15) and never another player's. MEASURED ALONG THE FLOOR FROM `Place` (H3): where the trap that
+	 * triggered stood, or the gadget destroyed; `Except`, the trap that triggered, is never one of them. "NEAREST" IS ONE
+	 * TRAP, by that distance, the older of two at one distance (the lower `SpawnOrder`).
+	 *
+	 * "Arms instantly" ARMS A STANDING, UNARMED TRAP NOW, as if its arming time had passed, and drawn armed (H2): it does
+	 * not set it off, raises no `trap_placed`, and changes nothing of its life span or the cap. An armed trap is left
+	 * alone; a rearmed trap waiting to arm again (layer 4) is unarmed. Whether each was armed, as a count.
+	 */
+	static int32 ArmSkillTrapsNear(const AActor* Player, const FVector& Place, float RadiusCm, bool bNearestOnly,
+								   const AActor* Except);
+
+	/**
+	 * SETS OFF THE PLAYER'S STANDING TRAPS within `RadiusCm` of `Place`, or every one when `Place` is null (the player's
+	 * death, H8), each by its ordinary `TriggerSkillTrap` (H4): armed and unarmed alike, each at its own triggering
+	 * enemy, `SkillTrapEnemyForAForcedTrigger` (H6). THE CHAIN GUARD (H5 (b), the owner's): a trap in `SetOffThisChain`
+	 * is never set off, and each trap is added to it BEFORE it is set off, so each trap goes off at most once in a chain.
+	 * The list is taken once, before the first is set off. A trap that cannot act, or whose slot is no longer converted,
+	 * is not set off, as its own step does nothing then. `bEvenForADeadPlayer` for the player's death alone. How many
+	 * cast.
+	 */
+	static int32 SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
+									  const AActor* Except, TArray<TWeakObjectPtr<AActor>>& SetOffThisChain,
+									  bool bEvenForADeadPlayer);
+
+	/**
+	 * THE TRIGGERING ENEMY OF A TRAP SET OFF BY A ROW (H6 (a)): the nearest living enemy within this trap's own trigger
+	 * radius, as its step would find it, or null, and then it casts at its own place with no triggering enemy (T11).
+	 */
+	AActor* SkillTrapEnemyForAForcedTrigger() const;
 
 	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in

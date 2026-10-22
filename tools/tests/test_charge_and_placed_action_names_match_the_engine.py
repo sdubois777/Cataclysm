@@ -145,6 +145,10 @@ CONSTANTS = {
     # AND THE ONE OF TRAPS LAYER 4, ruled 2026-10-21: an enemy killed explodes
     # for a share of the blow that killed it.
     "ExplodeVictimForKillingBlowAction": "explode_victim_for_killing_blow",
+    # AND THE TWO OF TRAPS LAYER 5, ruled 2026-10-22: the wearer's other traps
+    # armed, or set off.
+    "ArmTrapsNearbyAction": "arm_traps_nearby",
+    "TriggerTrapsNearbyAction": "trigger_traps_nearby",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -631,3 +635,40 @@ def test_the_killing_blow_explosion_of_traps_layer_four_is_recorded_and_made_at_
     events = code_without_comments(SOURCE.parent / "CataclysmCombatEvents.cpp")
     assert "Blow.KillingBlowDamage = Hit.Damage;" in events
     assert "Notice.KillingBlowDamage = Blow.KillingBlowDamage;" in events
+
+
+def test_the_two_trap_actions_of_traps_layer_five_queue_a_set_off_traps_trigger_once_a_chain() -> None:
+    """Ruled 2026-10-22 (traps layer 5, H1 to H11; H5 (b) by the owner). The
+    generator's names are the engine's; the item recognises each row by its
+    constant; `ActOnEvent` keeps a `trap_triggered` heard at depth one beside
+    `afflicted_death` and drains it after the queued deaths; the action sets a
+    trap off only after putting it into the chain; and `TriggerSkillTrap` puts
+    back the trap and place it names around its event rather than emptying
+    them. Read from the code with comments taken out by tracking `/* ... */`
+    and `//` (R-c). THE CONTROL: the same reading finds the queue of
+    `afflicted_death` it copies."""
+    names = engine_names()
+    assert gen.ARM_TRAPS_NEARBY_ACTION == names["ArmTrapsNearbyAction"]
+    assert gen.TRIGGER_TRAPS_NEARBY_ACTION == names["TriggerTrapsNearbyAction"]
+    for action in gen.TRAPS_NEARBY_ACTIONS:
+        assert action not in gen.POOL_ACTIONS, action
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bArmTrapsNearby = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction,", item)
+    assert re.search(r"Action\.bSetOffTrapsNearby = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r'Event == FName\(TEXT\("afflicted_death"\)\)\)\s*\{\s*'
+                     r"QueueAfflictedDeath\(Event, EventTags, EventAmount, EventTarget\);", engine)
+    assert re.search(r'Event == FName\(TEXT\("trap_triggered"\)\)\)\s*\{\s*'
+                     r"QueueSkillTrapTrigger\(EventTags, EventAmount, EventTarget\);", engine)
+    assert re.search(r"ON_SCOPE_EXIT\s*\{\s*DrainQueuedAfflictedDeaths\(\);\s*"
+                     r"DrainQueuedSkillTrapTriggers\(\);\s*\};", engine)
+    assert "SkillTrapsSetOffThisChain.Reset();" in engine
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r"SetOffThisChain\.Add\(TWeakObjectPtr<AActor>\(Each\)\);\s*"
+                     r"if \(Each->TriggerSkillTrap\(Each->SkillTrapEnemyForAForcedTrigger\(\), "
+                     r"bEvenForADeadPlayer\)\)", minion)
+    assert re.search(r"TGuardValue<TWeakObjectPtr<AActor>> RaisingItsTrigger\("
+                     r"Theirs->SkillTrapRaisingItsTrigger,", minion)
+    assert "SkillTrapRaisingItsTrigger.Reset();" not in minion
