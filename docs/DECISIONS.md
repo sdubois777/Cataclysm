@@ -2,6 +2,165 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — In the game an ordinary Void dungeon adds 1 to 3 Void stacks to its city instead of damage, ten erase the city, retaking clears them, the Void's targeting reads stacks up to 2x, and the city screen shows them
+
+**The game follows the simulation for the Void's ordinary dungeons.** When an ordinary (`Basic`) dungeon the Void sent
+runs out its timer on a standing city, it adds 1, 2 or 3 to the city's new `VoidStacks` and takes no defence and no
+people. At ten the city falls and is erased. Retaking a city that fell with fewer clears them. A wave slot the Void
+sends weighs each city by its stacks, up to twice at ten. The city screen shows them. The simulation has done all of
+this since the entry headed "In the simulation an ordinary Void dungeon adds 1 to 3 void stacks to its city instead of
+damage, and ten stacks erase the city". Branch `feat/game-void-stacks-1` on `development` at `69b3e7ebf`. Not built and
+not run: see Proofs and Run.
+
+### What changed and why
+
+- **WHAT A PLAYER MEETS.** An ordinary Void dungeon left to run out no longer knocks a city's walls down. It marks the
+  city instead, and the city screen counts the marks: "Void stacks 4 / 10". The tenth mark erases the city: it falls,
+  it can never be retaken, no Dungeon City stands on it, and the lane it sealed stays open for the rest of the run. A
+  city that falls some other way with fewer than ten is not erased; its screen says how many it holds and that
+  retaking it clears them, and retaking it does.
+- **THE VOID COMES BACK TO WHAT IT HAS MARKED.** A slot of a wave the Void sends weighs a city by its tier times
+  `1 + min(1, stacks / 10)`, so a city at ten draws it twice as often as one with none. The owner chose the size on
+  2026-10-18 among 2, 3 and 5 times and the lost-defence reading the Void had before, verbatim: "Stacks, up to 2x". The
+  measured table is in the simulation entry named above.
+- **WHY.** The owner, 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of
+  doing damage to the city or population and at 10 stacks the city is erased." The simulation took it on 2026-10-18;
+  until this entry the game's empire layer did nothing with a dungeon's sender being the Void, and
+  `FCataclysmCity::bDoomed` was carried with the comment "NOTHING SETS THIS YET".
+- **A SEED WITH NO STACKS ON THE MAP LANDS ITS WAVES WHERE IT DID.** Each slot's sender is now drawn before the slot is
+  rolled rather than after the whole wave is picked, from the same separate Cataclysm stream, one per city landed on
+  and in the same order; a Void slot over cities carrying no stacks rolls against the same weights and total, the same
+  floats, as any slot. What moves is downstream of the rule: a Void campaign's cities stop losing defence to its
+  ordinary dungeons, so falls, fall surges and every later draw a different city history causes move with it.
+
+### The rulings
+
+The coordinating session accepted this layer's plan on 2026-10-22, with seven rulings, each accepted as proposed:
+
+- **J1**: the thirds are of the row's plain floor range, without the model's 1.25 multiplier; the Void's depth
+  multiplier, like every Cataclysm's, stays with issue #53.
+- **J2**: ten stacks set the existing `FCataclysmCity::bDoomed` and reuse `UCataclysmEmpireMap::Fall`'s existing erase
+  path, and the fall then goes through `ResolveDungeon`'s single `CityFell`.
+- **J3**: each landed slot's sender is drawn inside `PickTargets` immediately before that slot's roll, and a slot the
+  Void sends weighs each candidate by `TargetWeightFor(Tier) x (1 + min(1, VoidStacks / 10))`, with the room cap, the
+  removal of a full city and the early break kept as they were.
+- **J4**: an ordinary Void dungeon still counts in `DungeonsDetonated`, still goes in the day report's `HitAndLeft`, and
+  still leaves the map, exactly as any ordinary dungeon that hit.
+- **J5**: the city screen's status gives a standing city's stacks as "Void stacks N / 10", and a fallen, not erased,
+  city's stacks with the fact that retaking clears them, without the word "defence"; a city with none reads as before.
+- **J6**: `game/Tests/SaveFixtures/Run_v1.json` carries `VoidStacks` on both cities, non-zero on one.
+- **J7**: the two simulation entries that say the game has no Void each gain a sentence pointing here.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `.cpp`: `FCataclysmCity::VoidStacks` (`SaveGame`,
+  `BlueprintReadOnly`); `UCataclysmEmpireMap::VoidStacksToErase = 10`; `AddVoidStacks(CityId, Stacks)`, which on a
+  standing city adds the stacks and, at ten or more, sets `bDoomed` and calls `Fall`, and answers whether the city fell
+  (a fallen or missing city gets nothing and answers false); `Retake` sets `VoidStacks = 0`. The comments on `bDoomed`
+  and in `Fall` that said nothing sets the mark are rewritten.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`: `FCataclysmDungeon::AddsVoidStacks` (an ordinary
+  dungeon whose `Cataclysm` is the Void) and `VoidStacksItAdds` (`1 + clamp(3 x (natural - least) / (most - least), 0,
+  2)` in whole numbers, 1 for a single-depth row, the natural floors being `Floors - UpgradeFloors` as `BiteScale`
+  reads them). `UCataclysmSurgeScheduler::VoidTargetPullAtFull = 1.0f` and `TargetWeightForSender(City, Sender)`.
+  `PickTargets` gains two defaulted parameters, the sender draw and an out array of senders; `RollWave` passes both
+  and stamps each dungeon with its slot's sender instead of drawing its own. Existing callers compile unchanged.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, `ResolveDungeon`: a Void dungeon's points are nought and
+  its stacks are worked out before the count, and the one hit is `if (Map->Damage(CityId, Defence, Population) ||
+  (bVoid && Map->AddVoidStacks(CityId, Stacks)))`, then the one `CityFell` and the one `RemoveDungeon` as before.
+  **The plan's shape was a ternary choosing one call or the other, and the first commit built it;**
+  `tools/tests/test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py::test_in_both_the_city_falls_then_the_moves_then_its_dungeon_and_surge`
+  then failed ("calls CityFell 3 times and 2 of them follow a Map->Damage"), because it reads every `CityFell` in the
+  file as following an `if (Map->Damage(...))` on one line. Its assertion was not changed; the code took a shape it
+  accepts. `ApplySiegeDamage` is untouched, so a Void Siege's daily bite stays damage. `FireSurge`'s comment says
+  where the sender is now drawn.
+- `game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.cpp` and `.h`, `StatusTextFor`: as ruled in J5. An
+  erased city still reads "Erased by the Void. It can never be retaken."
+- The empire module still includes nothing from the `Cataclysm` module.
+
+### The save
+
+**A city is written whole, so `VoidStacks` is saved with no other change**: `FCataclysmSaveGather::CitiesFrom` copies
+`Map->Cities` into the run record and the field is marked `SaveGame`. `Run_v1.json` gains `"VoidStacks": 0` on city 0
+and `"VoidStacks": 4` on city 7, and the fixtures' `README.md` records it as the fifteenth edit.
+**NOTHING LOADS A RUN'S CITIES BACK (issue #753), the existing gap that also drops stacks on load**: no code reads a
+run record's cities into a map, so a restored campaign would start its cities with no stacks, as it would start them
+with full defence.
+
+### What is not in it
+
+- **The Hollow**, the Void's Quest dungeon, which loses floors and adds stacks with its hit in the simulation. A Void
+  Quest dungeon's hit in the game is still the ordinary Quest hit, and its sub-type still rolls (`QuestSubTypeFor` is
+  unchanged).
+- **The Void's count and depth multipliers (0.8 and 1.25 in the model) and every other Cataclysm's targeting**, issue
+  #53. The game's other senders still weigh a city by tier alone, and `RollCataclysm` is still uniform.
+- **The policy rule.** The model's `policies._resolve_fells` treats a Void dungeon as fatal when its stacks would reach
+  ten. It is a rule of the model's simulated players and is not ported.
+
+### AT RISK: seeded tests whose outcome this layer moves and which cannot be worked out by hand
+
+Not enumerated. Any Unreal test that runs a seeded campaign whose active Cataclysms include the Void now sees that
+campaign's ordinary Void dungeons add stacks rather than defence damage, so its falls, fall surges and later draws can
+move; at tier 1 a run faces one Cataclysm, so some seeds are Void campaigns and others are untouched. Waves on maps with no stacks
+are unchanged, which `Cataclysm.Surge.AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks` holds. No
+existing assertion was changed. One existing comment was: `Cataclysm.EmpireMap.AnErasedCityCannotBeRetaken` said
+nothing in the game marks a city doomed.
+
+### New tests
+
+Unreal, fifteen registered names, each with a control:
+
+- `CataclysmEmpireMapTests.cpp`: `Cataclysm.EmpireMap.VoidStacksAddUpAndTheTenthErasesTheCity`,
+  `Cataclysm.EmpireMap.ACityFallenWithFewerThanTenVoidStacksIsRetakenWithNone`,
+  `Cataclysm.EmpireMap.VoidStacksOnAFallenOrMissingCityAddNothing`.
+- `CataclysmSurgeTests.cpp`: `Cataclysm.Surge.OnlyAnOrdinaryDungeonTheVoidSentAddsStacks`,
+  `Cataclysm.Surge.AVoidDungeonAddsOneTwoOrThreeStacksByTheThirdOfItsRowsDepth` (8, 10, 11, 12, 13 and 15 floors on
+  an Outpost, 15, 18, 19, 21, 22 and 25 on a Bulwark, depths outside the row, and upgrade floors left out),
+  `Cataclysm.Surge.TheVoidsWeightOnACityRisesWithItsStacksToTwiceAtTen` (0, 5, 10 and 15 stacks, compared exactly),
+  `Cataclysm.Surge.AWaveTheVoidSendsLandsWhereANobodysWaveDoesWhileNoCityCarriesStacks` (the J3 control: sixty seeds
+  of a wave all sent by the Void against the same seeds sent by nobody, and thirty capped waves that fill every city),
+  `Cataclysm.Surge.AVoidSlotLandsOnACityCarryingStacksMoreOftenAndEachSlotKeepsItsSender`.
+- `CataclysmEmpireRunTests.cpp`: `Cataclysm.EmpireRun.AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves`,
+  `Cataclysm.EmpireRun.AShallowAMiddleAndADeepVoidDungeonAddOneTwoAndThreeStacks`,
+  `Cataclysm.EmpireRun.AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest`,
+  `Cataclysm.EmpireRun.AVoidSiegesDailyBiteStillTakesDefenceAndAddsNoStacks`.
+- `game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp`:
+  `Cataclysm.CityScreen.AStandingCitysStatusCountsItsVoidStacksOutOfTen`,
+  `Cataclysm.CityScreen.AFallenCityNamesItsVoidStacksAndThatRetakingClearsThem`.
+- `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp`:
+  `Cataclysm.SaveWriter.AGatheredRunRecordCarriesACitysVoidStacks`.
+
+### Python
+
+`tools/tests/test_void_stacks_in_the_model_and_in_the_game.py`, nine tests: the game's `VoidStacksItAdds` read for its
+numbers and run against `Simulation._void_stacks_for` (asked with a depth multiplier of one, ruling J1) over every
+ordinary row and every depth from three below to three above it; the game's pull against `patterns._void` at 0 to 20
+stacks; `VoidStacksToErase` against `void_stacks_to_erase`; `Retake` and `_retake` clearing the stacks;
+`AddsVoidStacks` and `_adds_void_stacks` naming only an ordinary Void dungeon, and `ResolveDungeon`'s hit. Two of them
+are controls that read altered copies of the source (thirds as halves, a pull of 2) and assert the comparison
+disagrees. No existing Python test asserted that the game has no Void stacks or that `ResolveDungeon` ignores the
+Cataclysm; a search of `tools/tests` and `sim/tests` found none.
+
+Checked by the writing session in a `git archive` copy of the branch, with `tools/prove_guard.py`, narrowed to the new
+file -- a check of the file and not a registered proof: `Retake` keeping the stacks failed
+`test_retaking_a_city_clears_its_stacks_in_both` alone ("1 failed, 8 passed"); `VoidStacksToErase = 9` failed
+`test_the_games_pull_is_the_models` and `test_ten_stacks_erase_a_city_in_both` ("2 failed, 7 passed"); a Quest Void
+dungeon adding stacks failed `test_only_an_ordinary_void_dungeon_adds_them_in_both` ("1 failed, 8 passed"); each
+restored "9 passed".
+
+### Proofs
+
+Not yet run. Three to be registered by the dungeon session after reading the code:
+
+- **P1**: the Void branch removed, so a Void dungeon's timer damages its city as any ordinary dungeon's does.
+- **P2**: the third always 1, so every Void dungeon adds one stack whatever its depth.
+- **P3**: the Void's weight ignores stacks, so a Void slot weighs a city by its tier alone.
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-21 — In the game five Cataclysms' Quest dungeons are one fixed sub-type: Death's a Horde, Demonic's Elite, Pestilence's Timed, Famine's Sacrificial and Chaos's Volatile; War's, Celestial's and the Void's still roll
 
 **The game follows the simulation for five of its eight.** A Quest dungeon a Death, Demonic, Pestilence, Famine or
@@ -5547,6 +5706,7 @@ its ten-piece's cull and spawn are all in play.
 ## 2026-10-18 — In the simulation the Hollow, the Void's Quest dungeon, loses a floor a day to half its depth, and its hit adds 1 to 3 void stacks instead of damage
 
 **Simulation only; the game has no Void (#53).** Branch `feat/sim-hollow`, on top of the entry headed "In the simulation an ordinary Void dungeon adds 1 to 3 void stacks…".
+Since the entry headed "In the game an ordinary Void dungeon adds 1 to 3 Void stacks to its city instead of damage…" (2026-10-22) the game has the Void's ordinary-dungeon stacks; the Hollow is still not in the game.
 
 ### SAID FIRST
 
@@ -6070,6 +6230,7 @@ Soul Strike. The set's ten-piece bonus is the next layer.
 standing city, it adds 1, 2 or 3 to `City.void_stacks` and takes no defence or population. It still counts as a
 resolve and still leaves the map. At `TuningConfig.void_stacks_to_erase` (10) the city falls and is erased, and
 an erased city leaves no Fallen City dungeon. Branch `feat/sim-void-stacks`, on top of the entry headed "In the simulation each Cataclysm's Quest dungeons are one fixed sub-type…".
+Since the entry headed "In the game an ordinary Void dungeon adds 1 to 3 Void stacks to its city instead of damage…" (2026-10-22) the game has the Void's ordinary-dungeon stacks too, read by thirds of the plain row rather than of 1.25 times it.
 
 ### SAID FIRST
 
