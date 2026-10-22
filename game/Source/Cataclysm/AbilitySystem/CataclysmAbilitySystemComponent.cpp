@@ -6083,13 +6083,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 {
 	// ANNOUNCED FIRST, before either early return below. Issue #1821: a
 	// listener asking again for a cached stat needs every event, and most
-	// characters carry no action to fire. A QUEUED `trap_triggered` IS ANNOUNCED ONCE, when it was raised: the call that
-	// answers it is told so by the drain, and does not announce it again (traps layer 5).
-	if (!bQueuedSkillTrapTriggerAnnounced)
-	{
-		OnActionEvent.Broadcast(Event);
-	}
-	bQueuedSkillTrapTriggerAnnounced = false;
+	// characters carry no action to fire.
+	OnActionEvent.Broadcast(Event);
 
 	// DEPTH ONE, BY CONSTRUCTION. See `PoolActionDepth` for why this is stated
 	// rather than left to hold by accident.
@@ -6103,20 +6098,14 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		{
 			QueueAfflictedDeath(Event, EventTags, EventAmount, EventTarget);
 		}
-		// AND A SECOND: a trap set off by a row's own action, whose `trap_triggered` is answered after that row has
-		// finished, each trap once a chain (traps layer 5, H5 (b), the owner's). See `QueuedSkillTrapTriggers`.
-		if (PoolActionDepth > 0 && bLanded && Event == FName(TEXT("trap_triggered")))
-		{
-			QueueSkillTrapTrigger(EventTags, EventAmount, EventTarget);
-		}
 		return;
 	}
 	// DECLARED BEFORE THE GUARD SO IT RUNS AFTER IT: the queued deaths are
-	// acted on once this call is at depth nought again, and then the queued triggers of traps a row set off.
+	// acted on once this call is at depth nought again, and then the traps a row chose to set off (traps layer 5).
 	ON_SCOPE_EXIT
 	{
 		DrainQueuedAfflictedDeaths();
-		DrainQueuedSkillTrapTriggers();
+		DrainQueuedSkillTrapSetOffs();
 	};
 	TGuardValue<int32> Depth(PoolActionDepth, 1);
 
@@ -6800,9 +6789,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					}
 				}
 				// NO BLOW HAS QUALIFIED YET: THE SLOW WAITS FOR A LATER BLOW OF THE SAME CAST (brief 60c), at these figures.
-				// THE TRAP NAMED EVEN WHEN USED UP: a queued trigger is answered after its trap is gone (traps layer 5), and
-				// the wait matches it by identity.
-				else if (GetWorld() && !SkillTrapRaisingItsTrigger.IsExplicitlyNull())
+				else if (GetWorld() && SkillTrapRaisingItsTrigger.IsValid())
 				{
 					FLateSkillTrapSlow Late;
 					Late.Trap = SkillTrapRaisingItsTrigger;
@@ -8392,59 +8379,51 @@ void UCataclysmAbilitySystemComponent::NoteSpentSkillTrapGaveItsEnemysHealthShar
 const TCHAR* UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction = TEXT("arm_traps_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction = TEXT("trigger_traps_nearby");
 
-void UCataclysmAbilitySystemComponent::QueueSkillTrapTrigger(const FGameplayTagContainer* EventTags, float EventAmount,
-															 const AActor* EventTarget)
+void UCataclysmAbilitySystemComponent::QueueSkillTrapSetOff(AActor* Trap, bool bEvenForADeadPlayer)
 {
-	// ONLY WHEN A WORN ROW HANGS ON IT, as a death is kept only for a row that blasts on it.
-	static const FName TrapTriggeredName(TEXT("trap_triggered"));
-	if (!PoolActions.ContainsByPredicate([](const FCataclysmPoolAction& Action) { return Action.Event == TrapTriggeredName; }))
+	if (!Trap)
 	{
 		return;
 	}
-	// EVERYTHING READ NOW: the trap and where it stood, which `TriggerSkillTrap` names around the event, and the event's
-	// own tags, amount and enemy.
-	FQueuedSkillTrapTrigger& Queued = QueuedSkillTrapTriggers.AddDefaulted_GetRef();
-	Queued.Trap = SkillTrapRaisingItsTrigger;
-	Queued.Place = SkillTrapRaisingItsTriggerPlace;
-	if (EventTags)
-	{
-		Queued.TrapTags = *EventTags;
-	}
-	Queued.TookFromItsEnemy = EventAmount;
-	Queued.Enemy = const_cast<AActor*>(EventTarget);
+	FQueuedSkillTrapSetOff& Queued = QueuedSkillTrapSetOffs.AddDefaulted_GetRef();
+	Queued.Trap = Trap;
+	Queued.bEvenForADeadPlayer = bEvenForADeadPlayer;
 }
 
-void UCataclysmAbilitySystemComponent::DrainQueuedSkillTrapTriggers()
+void UCataclysmAbilitySystemComponent::DrainQueuedSkillTrapSetOffs()
 {
-	// ONLY THE OUTERMOST CALL, AT DEPTH NOUGHT: a drain reached from inside an event it answers returns at once, and the
-	// loop below takes up whatever that event queued, at the end, in the order heard.
-	if (PoolActionDepth > 0 || bDrainingQueuedSkillTrapTriggers)
+	// ONLY THE OUTERMOST CALL, AT DEPTH NOUGHT: a drain reached from inside a trap it sets off (its blows' events, its own
+	// `trap_triggered`) returns at once, and the loop below takes up whatever that trap's event recorded, at the end, in
+	// the order recorded.
+	if (PoolActionDepth > 0 || bDrainingQueuedSkillTrapSetOffs)
 	{
 		return;
 	}
 	{
-		TGuardValue<bool> Draining(bDrainingQueuedSkillTrapTriggers, true);
-		while (!QueuedSkillTrapTriggers.IsEmpty())
+		TGuardValue<bool> Draining(bDrainingQueuedSkillTrapSetOffs, true);
+		while (!QueuedSkillTrapSetOffs.IsEmpty())
 		{
 			// THE WEARER GONE: what waited is dropped, as a queued death is.
 			if (!GetAvatarActor())
 			{
-				QueuedSkillTrapTriggers.Reset();
+				QueuedSkillTrapSetOffs.Reset();
 				break;
 			}
-			const FQueuedSkillTrapTrigger Next = QueuedSkillTrapTriggers[0];
-			QueuedSkillTrapTriggers.RemoveAt(0);
+			const FQueuedSkillTrapSetOff Next = QueuedSkillTrapSetOffs[0];
+			QueuedSkillTrapSetOffs.RemoveAt(0);
 
-			// ANSWERED AS THAT TRAP'S OWN `trap_triggered`, its trap and its place named as `TriggerSkillTrap` names them,
-			// so the slow, the damage stacks, the arm rows and the chain answer it as they answer a trap an enemy set off.
-			TGuardValue<TWeakObjectPtr<AActor>> RaisingItsTrigger(SkillTrapRaisingItsTrigger, Next.Trap);
-			TGuardValue<FVector> RaisingItsTriggerAt(SkillTrapRaisingItsTriggerPlace, Next.Place);
-			bQueuedSkillTrapTriggerAnnounced = true;
-			ActOnEvent(FName(TEXT("trap_triggered")), &Next.TrapTags, Next.TookFromItsEnemy, /*bLanded=*/true,
-					   Next.Enemy.Get());
+			// A TRAP GONE SINCE IT WAS RECORDED IS SKIPPED, and a dead one `TriggerSkillTrap` refuses. ITS TRIGGERING ENEMY
+			// IS CHOSEN NOW, as it goes off (H6). A WHOLE TRIGGER (G-1 (a)): its cast, its blows' events and its own
+			// `trap_triggered` are all at depth nought, so every row answers them.
+			ACataclysmMinion* Trap = Cast<ACataclysmMinion>(Next.Trap.Get());
+			if (!IsValid(Trap) || Trap->IsActorBeingDestroyed())
+			{
+				continue;
+			}
+			Trap->TriggerSkillTrap(Trap->SkillTrapEnemyForAForcedTrigger(), Next.bEvenForADeadPlayer);
 		}
 	}
-	// THE CHAIN ENDS HERE: the event that began it and all it queued have been answered.
+	// THE CHAIN ENDS HERE: the event that began it and every trap it set off have been answered.
 	SkillTrapsSetOffThisChain.Reset();
 }
 
@@ -8461,13 +8440,14 @@ int32 UCataclysmAbilitySystemComponent::ActOnSkillTrapsNearby(const FCataclysmPo
 	static const FName PlayerDeathName(TEXT("player_death"));
 
 	// MEASURED FROM THE TRAP THAT TRIGGERED, WHICH IS NEVER ONE OF THEM, OR FROM THE GADGET DESTROYED (H3); EVERY TRAP AT
-	// THE PLAYER'S DEATH (H8).
+	// THE PLAYER'S DEATH (H8). The trap that triggered stands while its event is raised, since every trap a row sets off
+	// is set off by the drain, at depth nought, by its own `TriggerSkillTrap` (G-1 (a)).
 	FVector From = FVector::ZeroVector;
 	const AActor* TrapThatTriggered = nullptr;
-	if (Event == TrapTriggeredName && !SkillTrapRaisingItsTrigger.IsExplicitlyNull())
+	if (Event == TrapTriggeredName && SkillTrapRaisingItsTrigger.IsValid())
 	{
-		From = SkillTrapRaisingItsTriggerPlace;
 		TrapThatTriggered = SkillTrapRaisingItsTrigger.Get();
+		From = TrapThatTriggered->GetActorLocation();
 	}
 	else if (Event == GadgetDestroyedName)
 	{
@@ -8496,10 +8476,10 @@ int32 UCataclysmAbilitySystemComponent::ActOnSkillTrapsNearby(const FCataclysmPo
 
 	// THE TRAP THAT BEGAN THE CHAIN IS IN IT (H5 (b)), so nothing this sets in motion sets it off again, though it may
 	// stand, rearming.
-	if (Event == TrapTriggeredName && !SkillTrapRaisingItsTrigger.IsExplicitlyNull()
-		&& !SkillTrapsSetOffThisChain.ContainsByPredicate([this](const TWeakObjectPtr<AActor>& Fired)
+	if (TrapThatTriggered
+		&& !SkillTrapsSetOffThisChain.ContainsByPredicate([TrapThatTriggered](const TWeakObjectPtr<AActor>& Fired)
 		{
-			return Fired.HasSameIndexAndSerialNumber(SkillTrapRaisingItsTrigger);
+			return Fired.Get() == TrapThatTriggered;
 		}))
 	{
 		SkillTrapsSetOffThisChain.Add(SkillTrapRaisingItsTrigger);
@@ -8509,6 +8489,6 @@ int32 UCataclysmAbilitySystemComponent::ActOnSkillTrapsNearby(const FCataclysmPo
 		return 0;
 	}
 	return ACataclysmMinion::SetOffSkillTrapsNear(Wearer, bAtTheDeath ? nullptr : &From, RadiusCm,
-												  Action.bNearestTrapOnly, TrapThatTriggered, SkillTrapsSetOffThisChain,
+												  Action.bNearestTrapOnly, TrapThatTriggered,
 												  /*bEvenForADeadPlayer=*/bAtTheDeath);
 }

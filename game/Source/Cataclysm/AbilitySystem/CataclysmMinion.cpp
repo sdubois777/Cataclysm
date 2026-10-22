@@ -2562,16 +2562,11 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
 	const FGameplayTagContainer TrapTags = TypeTags;
 	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
-	// cast (ruled 2026-10-21, brief 60c), AND WHERE IT STANDS, which the rows on the player's other traps measure from
-	// (traps layer 5, H3). PUT BACK AS IT WAS AFTERWARDS, not emptied: a trap a row sets off is triggered inside the
-	// event of the trap that triggered first, whose later rows still read it.
-	{
-		TGuardValue<TWeakObjectPtr<AActor>> RaisingItsTrigger(Theirs->SkillTrapRaisingItsTrigger,
-															  TWeakObjectPtr<AActor>(this));
-		TGuardValue<FVector> RaisingItsTriggerAt(Theirs->SkillTrapRaisingItsTriggerPlace, GetActorLocation());
-		Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
-						   /*bLanded=*/true, Enemy);
-	}
+	// cast (ruled 2026-10-21, brief 60c).
+	Theirs->SkillTrapRaisingItsTrigger = this;
+	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
+					   /*bLanded=*/true, Enemy);
+	Theirs->SkillTrapRaisingItsTrigger.Reset();
 
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
@@ -2827,11 +2822,10 @@ int32 ACataclysmMinion::ArmSkillTrapsNear(const AActor* Player, const FVector& P
 }
 
 int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
-											 const AActor* Except, TArray<TWeakObjectPtr<AActor>>& SetOffThisChain,
-											 bool bEvenForADeadPlayer)
+											 const AActor* Except, bool bEvenForADeadPlayer)
 {
-	const UCataclysmAbilitySystemComponent* Theirs =
-		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
 	if (!Theirs)
 	{
 		return 0;
@@ -2841,6 +2835,7 @@ int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Plac
 	// alike (H4), none already set off in this chain (H5 (b)), none that cannot act or whose slot is no longer converted,
 	// as its own step casts nothing then.
 	TArray<ACataclysmMinion*> Standing = SkillTrapsStandingNear(Player, Place, RadiusCm, Except);
+	const TArray<TWeakObjectPtr<AActor>>& SetOffThisChain = Theirs->SkillTrapsSetOffThisChain;
 	Standing.RemoveAll([&SetOffThisChain, Theirs](const ACataclysmMinion* Each)
 	{
 		// A STANDING TRAP IS ITSELF IN THE LIST WHILE IT STANDS, so comparing what the list names now is enough here.
@@ -2855,21 +2850,15 @@ int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Plac
 		KeepTheSkillTrapNearest(Standing, *Place);
 	}
 
-	int32 SetOffCount = 0;
+	// RECORDED, NOT SET OFF HERE (G-1 (a)): the outermost drain sets each off at depth nought, as a whole trigger. INTO THE
+	// CHAIN WHEN RECORDED, before it goes off, so it is never recorded twice and nothing its own `trap_triggered` sets in
+	// motion can choose it again.
 	for (ACataclysmMinion* Each : Standing)
 	{
-		if (!IsValid(Each) || Each->IsActorBeingDestroyed())
-		{
-			continue;
-		}
-		// INTO THE CHAIN BEFORE IT GOES OFF, so nothing its own `trap_triggered` sets in motion can set it off again.
-		SetOffThisChain.Add(TWeakObjectPtr<AActor>(Each));
-		if (Each->TriggerSkillTrap(Each->SkillTrapEnemyForAForcedTrigger(), bEvenForADeadPlayer))
-		{
-			++SetOffCount;
-		}
+		Theirs->SkillTrapsSetOffThisChain.Add(TWeakObjectPtr<AActor>(Each));
+		Theirs->QueueSkillTrapSetOff(Each, bEvenForADeadPlayer);
 	}
-	return SetOffCount;
+	return Standing.Num();
 }
 
 AActor* ACataclysmMinion::SkillTrapEnemyForAForcedTrigger() const

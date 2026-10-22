@@ -1062,6 +1062,333 @@ CATACLYSM_TEST(FCataclysmNearbyTrapsForcedTriggeringEnemyTest,
 	return true;
 }
 
+// ==========================================================================
+// 42. A trap set off by "Traps trigger simultaneously" is a whole trigger: its instant blow lays the trap bleed (G-1 (a))
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmNearbyTrapsChainedBleedTest,
+	"Cataclysm.Traps.AChainedTrapsInstantBlowLaysTheTrapBleedAsTheFirstTrapsDoes")
+{
+	using namespace CataclysmNearbyTrapsTest;
+
+	// TWO PLAYERS 100 M APART, EACH WITH THE HEAVY FLAG AND THE CHAIN ROW AT 10 M: a first trap 20 m north with its enemy
+	// 2.5 m east, which sets it off, and a second trap 8 m beyond it, unarmed, with its own enemy 2.5 m east. The control
+	// holds no bleed row; the other holds "Traps apply 1-2 bleed stacks to all enemies caught in their blast" at 1, as
+	// layer 3's tests write it: `apply_status_sized` on `deployable_hit`, requiring `Type.Trap`, the Ailment Bleed.
+	FNearbyTrapsWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	if (!TestTrue(TEXT("set-up: the Bleed tag exists"), Bleed.IsValid()))
+	{
+		return false;
+	}
+	const FVector RowHome(100.0f * M, 0.0f, 0.0f);
+	FNearbyTrapsRig Plain(World, FVector::ZeroVector);
+	FNearbyTrapsRig Bleeding(World, RowHome);
+	if (!Plain.IsUsable(*this) || !Bleeding.IsUsable(*this))
+	{
+		return false;
+	}
+	Plain.Holds({NearbyTrapsHeavyFlag()});
+	Bleeding.Holds({NearbyTrapsHeavyFlag()});
+	const FCataclysmPoolAction Together =
+		NearbyTrapsRow(TEXT("trap_triggered"), /*bArms=*/false, 10.0f, /*bNearestOnly=*/false, TEXT("Type.Trap"));
+	FCataclysmPoolAction BleedRow;
+	BleedRow.Event = FName(TEXT("deployable_hit"));
+	BleedRow.Pool = FName(UCataclysmAbilitySystemComponent::ApplyStatusSizedAction);
+	BleedRow.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+	BleedRow.TriggerKey = FName(TEXT("NearbyTrapsTest:deployable_hit:bleed"));
+	BleedRow.TriggerCooldownSeconds = 0.0f;
+	BleedRow.ApplyStatus = ECataclysmApplyStatus::Sized;
+	BleedRow.StatusName = TEXT("Bleed");
+	BleedRow.Percent = 1.0f;
+	Plain.System->SetPoolActions({Together});
+	Bleeding.System->SetPoolActions({Together, BleedRow});
+
+	const FVector First(0.0f, 20.0f * M, 0.0f);
+	const FVector Second(0.0f, 28.0f * M, 0.0f);
+	const FVector East(2.5f * M, 0.0f, 0.0f);
+	ACataclysmMinion* PlainFirst = NearbyTrapsPlace(*this, Plain, First);
+	ACataclysmMinion* RowFirst = NearbyTrapsPlace(*this, Bleeding, RowHome + First);
+	if (!PlainFirst || !RowFirst)
+	{
+		return false;
+	}
+	NearbyTrapsPass(World, 1.25f);
+	ACataclysmEnemyCharacter* PlainFirstsEnemy = NearbyTrapsEnemy(World, First + East);
+	ACataclysmEnemyCharacter* PlainSecondsEnemy = NearbyTrapsEnemy(World, Second + East);
+	ACataclysmEnemyCharacter* RowFirstsEnemy = NearbyTrapsEnemy(World, RowHome + First + East);
+	ACataclysmEnemyCharacter* RowSecondsEnemy = NearbyTrapsEnemy(World, RowHome + Second + East);
+	if (!TestNotNull(TEXT("set-up: the control's first trap's enemy"), PlainFirstsEnemy)
+		|| !TestNotNull(TEXT("set-up: the control's second trap's enemy"), PlainSecondsEnemy)
+		|| !TestNotNull(TEXT("set-up: the bleeding player's first trap's enemy"), RowFirstsEnemy)
+		|| !TestNotNull(TEXT("set-up: the bleeding player's second trap's enemy"), RowSecondsEnemy))
+	{
+		return false;
+	}
+	ACataclysmMinion* PlainSecond = NearbyTrapsPlace(*this, Plain, Second);
+	ACataclysmMinion* RowSecond = NearbyTrapsPlace(*this, Bleeding, RowHome + Second);
+	if (!PlainSecond || !RowSecond)
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmMinion> PlainSecondWatched(PlainSecond);
+	const TWeakObjectPtr<ACataclysmMinion> RowSecondWatched(RowSecond);
+
+	// THE CONTROL, READ FIRST: THE CHAIN SETS THE SECOND OFF, AND WITH NO ROW NOTHING BLEEDS.
+	NearbyTrapsStep(PlainFirst);
+	TestTrue(TEXT("control: the second trap went off with the first and was used up"), NearbyTrapsGone(PlainSecondWatched));
+	TestTrue(*FString::Printf(TEXT("control: its cast struck its own enemy for a tenth: %.2f"),
+							  NearbyTrapsTakenFrom(PlainSecondsEnemy)),
+		NearbyTrapsTakenFrom(PlainSecondsEnemy) >= NearbyTrapsEnemyHealth / 10.0f);
+	TestFalse(TEXT("control: and with no row its enemy does not bleed"), NearbyTrapsCarries(PlainSecondsEnemy, Bleed));
+
+	// THE ROW: THE FIRST TRAP'S BLOW BLEEDS ITS ENEMY, AS LAYER 3 BUILT; AND THE CHAINED TRAP'S BLOW BLEEDS ITS OWN.
+	NearbyTrapsStep(RowFirst);
+	TestTrue(TEXT("the first trap's own blow bleeds its enemy"), NearbyTrapsCarries(RowFirstsEnemy, Bleed));
+	TestTrue(TEXT("the second trap went off with it and was used up"), NearbyTrapsGone(RowSecondWatched));
+	TestTrue(*FString::Printf(TEXT("its cast struck its own enemy for a tenth: %.2f"), NearbyTrapsTakenFrom(RowSecondsEnemy)),
+		NearbyTrapsTakenFrom(RowSecondsEnemy) >= NearbyTrapsEnemyHealth / 10.0f);
+	TestTrue(TEXT("and that instant blow of the chained trap bleeds its enemy: a whole trigger (G-1 (a))"),
+		NearbyTrapsCarries(RowSecondsEnemy, Bleed));
+	return true;
+}
+
+// ==========================================================================
+// 43. A chained trap's kill explodes, "Enemies killed by traps explode" (G-1 (a))
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmNearbyTrapsChainedKillExplodesTest,
+	"Cataclysm.Traps.AnEnemyAChainedTrapsBlowKillsExplodesForItsShareOfTheBlowAsSent")
+{
+	using namespace CataclysmNearbyTrapsTest;
+
+	// TWO PLAYERS 100 M APART, EACH WITH THE HEAVY FLAG AND THE CHAIN ROW AT 10 M: a first trap 20 m north with its enemy
+	// 2.5 m east, whose lash is the measure; and a second trap 8 m beyond it, unarmed, with a doomed enemy of 50 health 2.5
+	// m east of it and a bystander 3.5 m north of the doomed, inside 4 m of it and outside the second lash's cone. The
+	// control holds no explosion row; the other holds "Enemies killed by traps explode" at 50, as layer 4's tests write
+	// it: `explode_victim_for_killing_blow` on `kill`, requiring `Type.Trap`.
+	FNearbyTrapsWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FVector RowHome(100.0f * M, 0.0f, 0.0f);
+	FNearbyTrapsRig Plain(World, FVector::ZeroVector);
+	FNearbyTrapsRig Exploding(World, RowHome);
+	if (!Plain.IsUsable(*this) || !Exploding.IsUsable(*this))
+	{
+		return false;
+	}
+	// THE WHIP IS SLASHING, so what the measure loses is the lash as sent and its 10% to health (`SubtypeBonus`), while
+	// the explosion is a share of the lash as sent (layer 4, R-ii).
+	if (!TestTrue(TEXT("set-up: the Whip is a Slashing weapon, as a blow's resolution reads it"),
+			UCataclysmWeaponSlotsComponent::SubTypeOf(Exploding.Player) == TEXT("Slashing")))
+	{
+		return false;
+	}
+	Plain.Holds({NearbyTrapsHeavyFlag()});
+	Exploding.Holds({NearbyTrapsHeavyFlag()});
+	const FCataclysmPoolAction Together =
+		NearbyTrapsRow(TEXT("trap_triggered"), /*bArms=*/false, 10.0f, /*bNearestOnly=*/false, TEXT("Type.Trap"));
+	FCataclysmPoolAction Explodes;
+	Explodes.Event = FName(TEXT("kill"));
+	Explodes.Pool = FName(UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction);
+	Explodes.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+	Explodes.TriggerKey = FName(TEXT("NearbyTrapsTest:kill:explode"));
+	Explodes.bExplodeVictimForKillingBlow = true;
+	Explodes.Percent = 50.0f;
+	Plain.System->SetPoolActions({Together});
+	Exploding.System->SetPoolActions({Together, Explodes});
+
+	const FVector First(0.0f, 20.0f * M, 0.0f);
+	const FVector Second(0.0f, 28.0f * M, 0.0f);
+	const FVector East(2.5f * M, 0.0f, 0.0f);
+	const FVector BeyondTheDoomed(0.0f, 3.5f * M, 0.0f);
+	constexpr float Doomed = 50.0f;
+	ACataclysmMinion* PlainFirst = NearbyTrapsPlace(*this, Plain, First);
+	ACataclysmMinion* RowFirst = NearbyTrapsPlace(*this, Exploding, RowHome + First);
+	if (!PlainFirst || !RowFirst)
+	{
+		return false;
+	}
+	NearbyTrapsPass(World, 1.25f);
+	ACataclysmEnemyCharacter* PlainMeasure = NearbyTrapsEnemy(World, First + East);
+	ACataclysmEnemyCharacter* PlainDoomed = NearbyTrapsEnemy(World, Second + East, Doomed);
+	ACataclysmEnemyCharacter* PlainBystander = NearbyTrapsEnemy(World, Second + East + BeyondTheDoomed);
+	ACataclysmEnemyCharacter* RowMeasure = NearbyTrapsEnemy(World, RowHome + First + East);
+	ACataclysmEnemyCharacter* RowDoomed = NearbyTrapsEnemy(World, RowHome + Second + East, Doomed);
+	ACataclysmEnemyCharacter* RowBystander = NearbyTrapsEnemy(World, RowHome + Second + East + BeyondTheDoomed);
+	if (!TestNotNull(TEXT("set-up: the control's measure"), PlainMeasure)
+		|| !TestNotNull(TEXT("set-up: the control's doomed enemy"), PlainDoomed)
+		|| !TestNotNull(TEXT("set-up: the control's bystander"), PlainBystander)
+		|| !TestNotNull(TEXT("set-up: the exploding player's measure"), RowMeasure)
+		|| !TestNotNull(TEXT("set-up: the exploding player's doomed enemy"), RowDoomed)
+		|| !TestNotNull(TEXT("set-up: the exploding player's bystander"), RowBystander))
+	{
+		return false;
+	}
+	ACataclysmMinion* PlainSecond = NearbyTrapsPlace(*this, Plain, Second);
+	ACataclysmMinion* RowSecond = NearbyTrapsPlace(*this, Exploding, RowHome + Second);
+	if (!PlainSecond || !RowSecond)
+	{
+		return false;
+	}
+
+	// THE CONTROL, READ FIRST: THE CHAINED TRAP'S LASH KILLS, AND WITH NO ROW NOTHING EXPLODES.
+	NearbyTrapsStep(PlainFirst);
+	TestTrue(TEXT("control: the chained trap's lash killed the doomed enemy"), UCataclysmSkillEffects::IsDead(PlainDoomed));
+	TestEqual(TEXT("control: and with no row its bystander 3.5 m away is untouched"), NearbyTrapsTakenFrom(PlainBystander),
+		0.0f, 0.01f);
+
+	// THE ROW: THE CHAINED TRAP'S KILL EXPLODES FOR HALF THE KILLING LASH AS SENT.
+	NearbyTrapsStep(RowFirst);
+	const float LashTook = NearbyTrapsTakenFrom(RowMeasure);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: the first trap's lash struck the measure: %.2f"), LashTook), LashTook > 1.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the chained trap's lash killed the doomed enemy"), UCataclysmSkillEffects::IsDead(RowDoomed));
+	const float LashAsSent = LashTook / (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f);
+	const float Expected = LashAsSent * 0.5f;
+	TestEqual(*FString::Printf(TEXT("and that kill explodes: its bystander 3.5 m away takes half the killing lash as sent, "
+									"before the Slashing step the measure lost it with (G-1 (a)): %.2f against %.2f"),
+							   NearbyTrapsTakenFrom(RowBystander), Expected),
+		NearbyTrapsTakenFrom(RowBystander), Expected, Expected * 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// 44. At the player's death the traps' blows answer a hit_dealt row, and the gadget half's still do not (G-1 (a), H8)
+// ==========================================================================
+
+CATACLYSM_TEST(FCataclysmNearbyTrapsDeathTrapsAnswerHitDealtTest,
+	"Cataclysm.Traps.AtThePlayersDeathATrapsBlowAnswersAHitDealtRowWhereTheGadgetHalfsDoesNot")
+{
+	using namespace CataclysmNearbyTrapsTest;
+
+	// TWO PLAYERS 100 M APART, EACH WITH THE HEAVY TRAP FLAG AND THE ULTIMATE GADGET FLAG: a trap 20 m north, armed, its
+	// enemy 2.5 m east; a skill gadget 40 m east with a sturdy enemy 3 m east; a killer 3 m west. Both hold the gadget
+	// half's row and a row of their own granting one stack on `hit_dealt`; the wearer also the trap half's row. The control
+	// shows the gadget half's death cast, made inside the death's row action, answering no `hit_dealt` row (#15 as built).
+	FNearbyTrapsWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FVector WearerHome(100.0f * M, 0.0f, 0.0f);
+	FNearbyTrapsRig Plain(World, FVector::ZeroVector);
+	FNearbyTrapsRig Wearer(World, WearerHome);
+	if (!Plain.IsUsable(*this) || !Wearer.IsUsable(*this))
+	{
+		return false;
+	}
+	FCataclysmPoolAction GadgetHalf;
+	GadgetHalf.Event = FName(TEXT("player_death"));
+	GadgetHalf.Pool = FName(UCataclysmAbilitySystemComponent::GadgetsCastNowAction);
+	GadgetHalf.Percent = 100.0f;
+	GadgetHalf.bGadgetsCastNow = true;
+	GadgetHalf.TriggerKey = FName(TEXT("NearbyTrapsTest:gadgets_cast_now:player_death"));
+	const FName HitKey(TEXT("NearbyTrapsTest:HitDealtStacks"));
+	FCataclysmPoolAction OnHit;
+	OnHit.Event = FName(TEXT("hit_dealt"));
+	OnHit.StackKey = HitKey;
+	OnHit.StackSeconds = 10.0f;
+	OnHit.StackCap = 10;
+	OnHit.TriggerKey = FName(TEXT("NearbyTrapsTest:HitDealtStacks:hit_dealt"));
+	for (const FNearbyTrapsRig* Each : {&Plain, &Wearer})
+	{
+		Each->Holds({NearbyTrapsHeavyFlag(), NearbyTrapsUltimateGadgetFlag()});
+	}
+	Plain.System->SetPoolActions({GadgetHalf, OnHit});
+	Wearer.System->SetPoolActions({GadgetHalf, NearbyTrapsRow(TEXT("player_death"), /*bArms=*/false, 0.0f,
+															  /*bNearestOnly=*/false, nullptr), OnHit});
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector Gadget(40.0f * M, 0.0f, 0.0f);
+	ACataclysmMinion* PlainTrap = NearbyTrapsPlace(*this, Plain, North);
+	ACataclysmMinion* WearerTrap = NearbyTrapsPlace(*this, Wearer, WearerHome + North);
+	if (!PlainTrap || !WearerTrap)
+	{
+		return false;
+	}
+	NearbyTrapsPass(World, 1.25f);
+	NearbyTrapsStep(PlainTrap);
+	NearbyTrapsStep(WearerTrap);
+	ACataclysmMinion* PlainGadget = NearbyTrapsPlaceGadget(*this, Plain, Gadget);
+	ACataclysmMinion* WearerGadget = NearbyTrapsPlaceGadget(*this, Wearer, WearerHome + Gadget);
+	if (!PlainGadget || !WearerGadget
+		|| !TestTrue(TEXT("set-up: each player's trap is armed"), PlainTrap->bSkillTrapArmed && WearerTrap->bSkillTrapArmed))
+	{
+		return false;
+	}
+	constexpr float Sturdy = 100000.0f;
+	const FVector East(2.5f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* PlainTrapsEnemy = NearbyTrapsEnemy(World, North + East);
+	ACataclysmEnemyCharacter* WearerTrapsEnemy = NearbyTrapsEnemy(World, WearerHome + North + East);
+	ACataclysmEnemyCharacter* PlainGadgetsEnemy = NearbyTrapsEnemy(World, Gadget + FVector(3.0f * M, 0.0f, 0.0f), Sturdy);
+	ACataclysmEnemyCharacter* WearerGadgetsEnemy =
+		NearbyTrapsEnemy(World, WearerHome + Gadget + FVector(3.0f * M, 0.0f, 0.0f), Sturdy);
+	ACataclysmEnemyCharacter* PlainKiller = NearbyTrapsEnemy(World, FVector(-3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* WearerKiller = NearbyTrapsEnemy(World, WearerHome + FVector(-3.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: the control's trap's enemy"), PlainTrapsEnemy)
+		|| !TestNotNull(TEXT("set-up: the wearer's trap's enemy"), WearerTrapsEnemy)
+		|| !TestNotNull(TEXT("set-up: the control's gadget's enemy"), PlainGadgetsEnemy)
+		|| !TestNotNull(TEXT("set-up: the wearer's gadget's enemy"), WearerGadgetsEnemy)
+		|| !TestNotNull(TEXT("set-up: the control's killer"), PlainKiller)
+		|| !TestNotNull(TEXT("set-up: the wearer's killer"), WearerKiller))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmMinion> WearerTrapWatched(WearerTrap);
+
+	// THE CONTROL, READ FIRST: AT ITS DEATH ITS GADGET'S CAST STRIKES AND ANSWERS NO hit_dealt ROW.
+	TestEqual(TEXT("control: before the death, no stack"), Plain.System->OwnStacksHeld(HitKey), 0);
+	if (!TestTrue(TEXT("control: the player holding the gadget half died"), Plain.DiesTo(PlainKiller)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: its gadget cast once at the death"), PlainGadget->SkillGadgetDeathCastsMade, 1);
+	TestTrue(*FString::Printf(TEXT("control: that cast struck its enemy: %.2f"), NearbyTrapsTakenFrom(PlainGadgetsEnemy, Sturdy)),
+		NearbyTrapsTakenFrom(PlainGadgetsEnemy, Sturdy) > 1.0f);
+	TestEqual(TEXT("control: and its blow, made inside the death's row action, granted no hit_dealt stack"),
+		Plain.System->OwnStacksHeld(HitKey), 0);
+
+	// THE WEARER: ITS TRAP GOES OFF AT THE DEATH, A WHOLE TRIGGER, AND ITS BLOW ANSWERS THE hit_dealt ROW.
+	if (!TestTrue(TEXT("the wearer died"), Wearer.DiesTo(WearerKiller)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("its trap went off at the death and was used up"), NearbyTrapsGone(WearerTrapWatched));
+	TestTrue(*FString::Printf(TEXT("its cast struck its enemy: %.2f"), NearbyTrapsTakenFrom(WearerTrapsEnemy)),
+		NearbyTrapsTakenFrom(WearerTrapsEnemy) > 1.0f);
+	TestEqual(TEXT("one hit_dealt stack: the trap's blow answered the row (G-1 (a)), and the gadget's did not"),
+		Wearer.System->OwnStacksHeld(HitKey), 1);
+	TestEqual(TEXT("its gadget cast once at the death, the gadget half unchanged"), WearerGadget->SkillGadgetDeathCastsMade, 1);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_DEV_AUTOMATION_TESTS
