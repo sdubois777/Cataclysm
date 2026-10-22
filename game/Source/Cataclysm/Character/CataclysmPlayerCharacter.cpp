@@ -1234,6 +1234,41 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				}
 			}
 
+			// AND THE EXPLOSION OF AN ENEMY A TRAP KILLED. Ruled 2026-10-21 (traps layer 4, F10 to F12): "Enemies killed
+			// by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters". A row on `kill`
+			// requiring `Type.Trap` recorded its share above, which the killing skill's tags carry for a blow of a trap's
+			// cast, instant or a late shot. THE KILLING BLOW'S OWN FIGURE BEFORE THE VICTIM'S MITIGATION, AT THAT SHARE
+			// (F10), through the overkill explosion's blast at 4 m and handed to the announcer as that one is (F11): not a
+			// trap's blow, so it raises no `deployable_hit` and takes no trap row, and a kill it makes carries no skill's
+			// tags, so it explodes nothing in turn. NOT FOR A KILL BY A TICK (F12): a zone's sweep and the trap's own
+			// damage over time are no hit. Taken either way, so no later kill finds it.
+			const float TrapKillExplosionShare = Acting->TakePendingKillingBlowExplosionSharePercent();
+			if (TrapKillExplosionShare > 0.0f && !Notice.bByDamageOverTime && Notice.KillingBlowDamage > 0.0f)
+			{
+				const TWeakObjectPtr<ACataclysmPlayerCharacter> TrapKiller(this);
+				const TWeakObjectPtr<const AActor> TrapKilled(Notice.Victim);
+				const FVector TrapKilledAt = Notice.Location;
+				const float KillingBlowFigure = Notice.KillingBlowDamage;
+				TFunction<void()> ExplodeForTheTrap =
+					[TrapKiller, TrapKilled, TrapKilledAt, KillingBlowFigure, TrapKillExplosionShare]()
+				{
+					if (TrapKiller.IsValid())
+					{
+						UCataclysmSkillEffects::ExplodeForOverkill(TrapKiller.Get(), TrapKilled.Get(), TrapKilledAt,
+																   KillingBlowFigure, TrapKillExplosionShare,
+																   UCataclysmSkillEffects::KillingBlowExplosionRadiusCm);
+					}
+				};
+				if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
+				{
+					Events->AfterThisDeathIsHeard(MoveTemp(ExplodeForTheTrap));
+				}
+				else
+				{
+					ExplodeForTheTrap();
+				}
+			}
+
 			// AND AN ENEMY ITS NECROSIS KILLED MAY RISE FOR IT. Issue #1833 group E
 			// part 4b: "Enemies killed by necrosis rise as temporary minions for 5-10
 			// seconds". The killing tags, which a lethal tick fills with its ailment,

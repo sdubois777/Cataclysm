@@ -907,6 +907,21 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// SkillTrapsDoNotExpireFor. No gameplay attribute and no base.
 		TEXT("trap_cap_bonus"),
 		TEXT("traps_do_not_expire"),
+		// Traps layer 4, ruled 2026-10-21 (F1 to F9), for "Triggered traps have a
+		// 25%-50% chance to reset and rearm instead of being consumed", "Traps deal
+		// 100%-200% increased damage to the first enemy that triggers them",
+		// "Traps deal bonus damage equal to 5%-10% of the triggering enemy's
+		// maximum HP" and "Traps deal 30%-50% of their damage as a DoT over 3
+		// seconds to triggered enemies": the rearm chance, the increase on the
+		// triggering enemy, the share of its maximum health and the share laid
+		// over time, all read off the player with `Type.Trap` by
+		// ACataclysmMinion::SkillTrapRearmChanceFor, SkillTrapIncreaseOnItsEnemyFor,
+		// SkillTrapShareOfItsEnemysHealthFor and SkillTrapShareAsDamageOverTimeFor.
+		// No gameplay attribute and no base.
+		TEXT("trap_rearm_chance"),
+		TEXT("trap_damage_to_triggering_enemy"),
+		TEXT("trap_triggering_enemy_max_health_damage"),
+		TEXT("trap_damage_over_time_share"),
 	};
 	return Stats;
 }

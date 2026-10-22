@@ -142,6 +142,9 @@ CONSTANTS = {
     # size on the other character, and a slow at a strength on it.
     "ApplyStatusSizedAction": "apply_status_sized",
     "SlowForSecondsAction": "slow_for_seconds",
+    # AND THE ONE OF TRAPS LAYER 4, ruled 2026-10-21: an enemy killed explodes
+    # for a share of the blow that killed it.
+    "ExplodeVictimForKillingBlowAction": "explode_victim_for_killing_blow",
 }
 
 AILMENTS_SOURCE = SOURCE.parent / "CataclysmAilments.cpp"
@@ -573,3 +576,58 @@ def test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_pri
     assert re.search(r"Params\.bBurns, FreeRepeatCastBy\)\)", templates)
     engine = code_of(SOURCE)
     assert "SpentSkillTraps.Empty();" in engine
+
+
+def code_without_comments(path: Path) -> str:
+    """The file's text with comments taken out by TRACKING them, `/* ... */`
+    across lines and `//` to the end of a line, never by a line's opening
+    characters (ruled 2026-10-21, R-c): a wrapped product continues on a line
+    opening with `* `. A `//` or `/*` inside a string literal is read as a
+    comment too, which only shortens what is read."""
+    text = path.read_text(encoding="utf-8")
+    kept = []
+    at = 0
+    while at < len(text):
+        if text.startswith("/*", at):
+            end = text.find("*/", at + 2)
+            end = len(text) if end < 0 else end + 2
+            kept.append("\n" * text.count("\n", at, end))
+            at = end
+        elif text.startswith("//", at):
+            end = text.find("\n", at)
+            at = len(text) if end < 0 else end
+        else:
+            kept.append(text[at])
+            at += 1
+    return "".join(kept)
+
+
+def test_the_killing_blow_explosion_of_traps_layer_four_is_recorded_and_made_at_the_kill() -> None:
+    """Ruled 2026-10-21 (traps layer 4, F10 to F12). The generator's name is
+    the engine's; the item recognises the row by its constant; the event loop
+    records the share; and the kill site takes it, makes the explosion with
+    the killing blow's own figure at 4 m, and refuses a kill by a tick. Read
+    from the code with comments taken out. THE CONTROL: the same reading finds
+    the overkill explosion's own call, so a pattern blind to the kill site
+    could not pass."""
+    names = engine_names()
+    assert gen.KILLING_BLOW_EXPLOSION_ACTION == names["ExplodeVictimForKillingBlowAction"]
+    assert gen.KILLING_BLOW_EXPLOSION_EVENTS == ("kill",)
+    assert gen.KILLING_BLOW_EXPLOSION_ACTION not in gen.POOL_ACTIONS
+    item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
+    assert re.search(r"Action\.bExplodeVictimForKillingBlow = Effect->Action\.Equals\(\s*"
+                     r"UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction,", item)
+    engine = code_without_comments(SOURCE)
+    assert re.search(r"PendingKillingBlowExplosionSharePercent =\s*"
+                     r"FMath::Max\(PendingKillingBlowExplosionSharePercent, Action\.Percent\);", engine)
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmSkillEffects::ExplodeForOverkill\(Killer\.Get\(\), SlainActor\.Get\(\), At, "
+                     r"Overkill,", player)
+    assert "Acting->TakePendingKillingBlowExplosionSharePercent();" in player
+    assert re.search(r"if \(TrapKillExplosionShare > 0\.0f && !Notice\.bByDamageOverTime && "
+                     r"Notice\.KillingBlowDamage > 0\.0f\)", player)
+    assert re.search(r"KillingBlowFigure, TrapKillExplosionShare,\s*"
+                     r"UCataclysmSkillEffects::KillingBlowExplosionRadiusCm\);", player)
+    events = code_without_comments(SOURCE.parent / "CataclysmCombatEvents.cpp")
+    assert "Blow.KillingBlowDamage = Hit.Damage;" in events
+    assert "Notice.KillingBlowDamage = Blow.KillingBlowDamage;" in events

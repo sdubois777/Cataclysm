@@ -10095,3 +10095,139 @@ class TestTheSlowTheSizedBleedAndTheStacksThatLapseAlone(GadgetRowsOnAMadeUpShee
                 / "CataclysmItem.cpp").read_text(encoding="utf-8")
         assert re.search(r"Stack\.bOwnStacksLapseAlone = !bConsecutive && "
                          r"Effect->ScaleMaxSteps <= 0;", item)
+
+
+class TestTheFiveHooksOnATrapsOwnBlow(GadgetRowsOnAMadeUpSheet):
+    """Traps layer 4, ruled 2026-10-21 by the coordinating session (F1 to
+    F12), built ahead of its rows: four stats a trap's trigger and its blows
+    are read by, each asked off the player with `Type.Trap` alone, and one
+    action on `kill`. Each proposed row is carried through under its real
+    sentence, read from the shipped sheet by the name `row_name` derives, and
+    refused by nothing; each wrong shape is refused by name."""
+
+    TAG = "Type.Trap"
+    #: The four stat rows: the sentence the brief quotes, and the cells.
+    STATS = [
+        ("Triggered traps have a 25%-50% chance to reset and rearm instead of "
+         "being consumed",
+         {"Stat": "trap_rearm_chance", "Value Kind": "flat", "Value Low": 25,
+          "Value High": 50, "Required Tags": "Type.Trap"}),
+        ("Traps deal 100%-200% increased damage to the first enemy that "
+         "triggers them",
+         {"Stat": "trap_damage_to_triggering_enemy", "Value Kind": "increased",
+          "Value Low": 100, "Value High": 200, "Required Tags": "Type.Trap"}),
+        ("Traps deal bonus damage equal to 5%-10% of the triggering enemy's "
+         "maximum HP",
+         {"Stat": "trap_triggering_enemy_max_health_damage", "Value Kind": "flat",
+          "Value Low": 5, "Value High": 10, "Required Tags": "Type.Trap"}),
+        ("Traps deal 30%-50% of their damage as a DoT over 3 seconds to "
+         "triggered enemies",
+         {"Stat": "trap_damage_over_time_share", "Value Kind": "flat",
+          "Value Low": 30, "Value High": 50, "Required Tags": "Type.Trap"}),
+    ]
+    EXPLOSION_WORDS = ("Enemies killed by traps explode, dealing 50%-100% of the "
+                       "trap's damage to all enemies within 4 meters")
+    EXPLOSION = {"Value Low": 50, "Value High": 100, "Required Tags": "Type.Trap",
+                 "Action": "explode_victim_for_killing_blow", "Action Event": "kill"}
+
+    def refusals(self, rows):
+        return gen.refuse_a_trap_blow_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """The name each row is written under is `row_name` of its words, and
+        the shipped sheet holds exactly those words under that name."""
+        for words, _ in self.STATS + [(self.EXPLOSION_WORDS, None)]:
+            assert shipped_positive_sentence(gen.row_name("Positive", words[:48])) == words
+
+    def test_each_stat_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, row in self.STATS:
+            out = self.out(tmp_path, words, [row])
+            assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
+                     each["ValueHigh"], each["RequiredTags"], each["Action"])
+                    for each in out] == [
+                (row["Stat"], row["Value Kind"], float(row["Value Low"]),
+                 float(row["Value High"]), "Type.Trap", "")], row["Stat"]
+            assert self.refusals(out) == [], row["Stat"]
+            assert self.validation(out) == [], row["Stat"]
+
+    def test_the_four_are_stats_with_no_attribute_named_as_the_engine_names_them(self):
+        """THE CONTROL is a made-up name on no list."""
+        names = (gen.TRAP_REARM_CHANCE_STAT, gen.TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT,
+                 gen.TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT,
+                 gen.TRAP_DAMAGE_OVER_TIME_SHARE_STAT)
+        assert set(names) == set(gen.TRAP_BLOW_STAT_KINDS)
+        for stat in names:
+            assert stat in gen.stats_with_no_attribute(), stat
+        assert "trap_rearm_chances" not in gen.stats_with_no_attribute()
+        engine = self.names_in_the_engine()
+        assert engine["TrapRearmChanceStat"] == gen.TRAP_REARM_CHANCE_STAT
+        assert engine["TrapDamageToTriggeringEnemyStat"] == \
+            gen.TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT
+        assert engine["TrapTriggeringEnemyMaxHealthDamageStat"] == \
+            gen.TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT
+        assert engine["TrapDamageOverTimeShareStat"] == gen.TRAP_DAMAGE_OVER_TIME_SHARE_STAT
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        rearm = {"Name": "X#1", "Stat": "trap_rearm_chance", "ValueKind": "flat",
+                 "ValueLow": 25.0, "ValueHigh": 50.0, "RequiredTags": "Type.Trap"}
+        first = dict(rearm, Stat="trap_damage_to_triggering_enemy", ValueKind="increased",
+                     ValueLow=100.0, ValueHigh=200.0)
+        health = dict(rearm, Stat="trap_triggering_enemy_max_health_damage",
+                      ValueLow=5.0, ValueHigh=10.0)
+        over_time = dict(rearm, Stat="trap_damage_over_time_share", ValueLow=30.0,
+                         ValueHigh=50.0)
+        for row in (rearm, first, health, over_time):
+            assert self.refusals([row]) == [], row["Stat"]
+            assert self.refusals([dict(row, RequiredTags="")]) == [], row["Stat"]
+        for row, change, said in (
+                (rearm, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (first, {"ValueKind": "flat"}, "value kind 'flat'"),
+                (health, {"ValueKind": "more"}, "value kind 'more'"),
+                (over_time, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (rearm, {"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                (over_time, {"RequiredTags": "Keyword.DoT.Generic"},
+                 "under the required tags 'Keyword.DoT.Generic'"),
+                (health, {"Action": "strike_target"}, "with the action 'strike_target'"),
+                (rearm, {"ValueHigh": 101.0}, "at most 100"),
+                (health, {"ValueLow": 0.0}, "above 0"),
+                (over_time, {"ValueHigh": 150.0}, "at most 100")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(rearm, Stat="trap_cap_bonus")
+        assert self.refusals([other]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing above."""
+        words, row = self.STATS[0]
+        out = self.out(tmp_path, words, [dict(row, **{"Value Kind": "increased"})])
+        problems = self.validation(out)
+        assert any("trap_rearm_chance" in problem and "'increased'" in problem
+                   for problem in problems), problems
+
+    def test_the_explosion_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.EXPLOSION_WORDS, [self.EXPLOSION])
+        assert [(row["Stat"], row["Action"], row["ActionEvent"], row["ValueLow"],
+                 row["ValueHigh"], row["FractionOf"], row["RequiredTags"])
+                for row in out] == [
+            ("", "explode_victim_for_killing_blow", "kill", 50.0, 100.0, "", "Type.Trap")]
+        assert self.validation(out) == []
+
+    def test_the_explosion_is_refused_where_the_game_would_explode_nothing(self, tmp_path):
+        """THE CONTROL is the row above, carried through."""
+        for change, said in (
+                ({"Action Event": "hit_dealt"}, "Only a kill has a victim and a killing blow"),
+                ({"Value Kind": "flat"}, "states Value Kind 'flat'"),
+                ({"Fraction Of": "maximum"}, "states Fraction Of 'maximum'")):
+            with pytest.raises(gen.DataError, match=said):
+                self.out(tmp_path, self.EXPLOSION_WORDS, [dict(self.EXPLOSION, **change)])
+        # PAST THE BOUND, under made-up words that state the range, since the
+        # words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="up to 1000"):
+            self.out(tmp_path, "Enemies killed by traps explode, dealing 1500%-2000% of the "
+                     "trap's damage to all enemies within 4 meters",
+                     [dict(self.EXPLOSION, **{"Value Low": 1500, "Value High": 2000})])

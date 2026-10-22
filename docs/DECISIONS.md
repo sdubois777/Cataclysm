@@ -2,6 +2,687 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — Five hooks on a skill trap's own blow: a chance rolled at every trigger to rearm instead of being used up; an increase and a share of the triggering enemy's maximum health on the blows of each trigger's cast on the enemy that set it off; an extra damage over time of a share of such a blow under the rule of a tenth; and an enemy a trap's cast kills exploding for a share of the killing blow within 4 m, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the four stat names, the four readers,
+`SkillTrapRollsToRearm`, `LaySkillTrapsDamageOverTime`, `SkillTrapDamageOverTimeSeconds` and
+`bSkillTrapGaveItsEnemysHealthShare`, new, one block in each after layer 3's; in `TriggerSkillTrap` the share's flag
+cleared at each trigger and the rearm branch before the trap is kept as used up; two comments; one include);
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`FSpentSkillTrap` gains the triggering enemy and the share's flag, which
+`NoteSkillTrapSpent` reads off the trap; `NoteSpentSkillTrapGaveItsEnemysHealthShare`, `ExplodeVictimForKillingBlowAction`,
+`TakePendingKillingBlowExplosionSharePercent` and `PendingKillingBlowExplosionSharePercent`, new, one block in each after
+layer 3b's; in `ActOnEvent` the pending share cleared at a kill and one branch beside the overkill explosion's);
+`CataclysmSkillEffects.h` and `.cpp` (`ApplyHit` reads the increase and the share on a trap's blow on its triggering
+enemy and lays the damage over time after it is dealt; `ExplodeForOverkill` takes a radius, by default the one it had;
+`KillingBlowExplosionRadiusCm`, new); `CataclysmCombatEvents.h` and `.cpp` (the last blow and the death notice carry the
+killing blow's figure before mitigation); `CataclysmStatPipeline.h` (`FCataclysmPoolAction::bExplodeVictimForKillingBlow`),
+all under `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the
+kill site makes the trap kill's explosion); `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (four names
+at the end of `StatsWithNoAttribute`); `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the item reads the new action);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapBlowHooksTests.cpp` (new, five tests in `Cataclysm.Traps.`, and a sixth
+added by the second commit with `ApplyHit`'s one line for a standing trap's waiting slow, G2);
+`CataclysmStatExemptionTests.cpp` (four probes); `tools/generate_datatables.py` (the four stats and their refusal, the
+action and its checks); `tools/tests/test_generate_datatables.py` (one class, at the end);
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one constant, one helper, one test, at the end).
+No data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The five sentences, from `game/Data/EnchantmentsPositive.csv`, every one tagged `Type.Trap`, none with an effect row;
+each name is `row_name` of its words, checked against the shipped sheet by script and by
+`test_the_proposed_rows_are_the_shipped_sentences`:
+
+| Design id | Name | Sentence |
+| :-- | :-- | :-- |
+| P214 | `Positive_Triggered_traps_have_a_25_50_chance_to_reset_a` | "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" |
+| P018 | `Positive_Traps_deal_100_200_increased_damage_to_the_fir` | "Traps deal 100%-200% increased damage to the first enemy that triggers them" |
+| P055 | `Positive_Traps_deal_bonus_damage_equal_to_5_10_of_the_t` | "Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP" |
+| P217 | `Positive_Traps_deal_30_50_of_their_damage_as_a_DoT_over` | "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies" |
+| P056 | `Positive_Enemies_killed_by_traps_explode_dealing_50_100` | "Enemies killed by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters" |
+
+**F9 WAS RULED AGAINST ITS RECOMMENDATION: THE RULE OF A TENTH APPLIES TO THE TRAP'S DAMAGE OVER TIME, WITHOUT
+CONDITION.** The owner's answer of 2026-10-21 for the trap's slow, "Follow the tenth rule", is held by the owner for every
+lasting effect a trap lays on an enemy, the coordinating session ruled. Both halves are tested.
+
+What a player would notice, once the rows are worn:
+
+- **A TRIGGERED TRAP MAY STAY, AND TRIGGER AGAIN.** At each trigger the rearm chance is rolled (F2). A trap that passes is
+  not used up: it stays where it is, is drawn dim again, and arms again after the ordinary arming time (one second, or
+  less under "Traps arm 30%-60% faster"), so it cannot trigger twice on one step; it keeps the life span it was placed
+  with (20 s, or none under "Traps do not expire") and still counts against the cap (F1). Its `trap_triggered` is raised
+  at every trigger, so the slow, the damage stacks and every row on that event answer each one (F3).
+- **THE ENEMY THAT SET A TRAP OFF TAKES MORE FROM THAT TRIGGER'S CAST.** "Traps deal 100%-200% increased damage to the
+  first enemy that triggers them" joins the trap rows' increases on every blow of that trigger's cast on that enemy, a
+  shot landing after the trap is gone included, and on no other enemy the cast strikes (F4, T13). For a Heavy or basic
+  trap, whose cast goes at the nearest enemy (L3), it is the enemy that set it off that takes it.
+- **AND ITS FIRST BLOW FROM THAT CAST TAKES A SHARE OF ITS MAXIMUM HEALTH AS DAMAGE.** "bonus damage equal to 5%-10% of the
+  triggering enemy's maximum HP" is added flat before the increases (F5), so "Traps deal 20%-40% increased damage" and
+  the row above raise it; once per trigger, on the first blow of the cast on that enemy (F6); IN FULL AGAINST A BOSS (F7,
+  on the owner's play-check list below).
+- **AND EVERY BLOW OF THE CAST ON THAT ENEMY THAT TAKES A TENTH OF ITS MAXIMUM HEALTH LAYS A DAMAGE OVER TIME OF THE ROW'S
+  SHARE OF WHAT IT TOOK, OVER 3 SECONDS**, on top of the blow, which is unchanged (F8). Only on the enemy that set the trap
+  off; a generic damage over time, not a bleed, burn or other ailment; a second within the 3 s lays over the first and
+  never stacks (F9). A blow short of a tenth lays none. Not raised by the player's own damage over time stats (a
+  judgement, below).
+- **AN ENEMY A TRAP'S CAST KILLS EXPLODES**: every enemy within 4 m of the body takes the row's share of the killing blow's
+  own figure before the dead enemy's mitigation (F10), through the overkill explosion's blast (F11): area damage, never a
+  critical strike, never retaliated against, firing none of the player's on-hit rows, and NOT A TRAP'S BLOW, so it takes
+  no trap row and raises no `deployable_hit`. An enemy it kills does not explode in turn. A kill by an instant blow of the
+  cast or by a shot landing late explodes; a kill by a zone's sweep or by the trap's own damage over time does not (F12).
+- **FOUND, AND NOT CHANGED, EACH FOR A RULING IF IT IS WANTED:**
+  1. **A BURIED WEAPON'S LEAP CARRIES NO SKILL, SO AN ENEMY ITS LEAP KILLS DOES NOT EXPLODE**, even a trap's axe priced
+     as the trap's since layer 3b. The kill event carries the killing skill's tags read off the blow's effect, from the
+     skill that dealt it (`UCataclysmCombatEvents::NoteDeath`, `Notice.KillingSkillTags = &Skill->SkillTags`), and a
+     leap's delivery names no skill (`CataclysmBuriedWeapon.cpp`, the leap's `FCataclysmHitDelivery`), so the row's
+     `Type.Trap` finds no tags: true of every leap, the player's own too, and of every row on `kill` that requires a tag.
+     **A rack's axe landing after its rack's use has ended** (Butcher's Bill, the one rack a trap may cast; "THE AXES
+     ALREADY THROWN FLY ON", `UCataclysmProjectileSkill::EndAbility`) names a skill that has been taken away, so its kill
+     carries none either. By reading; not tested. A shot's kill does carry them: a projectile skill's use stays active
+     until its last shot has finished (`OnProjectileFinished`), so the skill is there when its shot kills. **LEFT IN THIS
+     LAYER (G1 (a)), on the play-check list, and tracked as [#2465](https://github.com/sdubois777/Cataclysm/issues/2465)**,
+     a fault of kill events beyond traps, scheduled as its own layer after traps.
+  2. **FIXED IN THIS LAYER (G2 (a), the second commit): A REARMED TRAP'S LATE SHOT DID NOT LAY LAYER 3'S WAITING SLOW.** A
+     blow priced as a STANDING trap's kept its figure for the next `trap_triggered` (`NoteSkillTrapBlowOn`) and asked no
+     waiting slow; only a used-up trap's blow asked `LayALateSkillTrapSlow`. It now asks too, with the trap's identity
+     (`CataclysmSkillEffects.cpp` 1175), and test 35 shows it.
+  3. **A REARMED TRAP KNOWS ONE TRIGGERING ENEMY, ITS LATEST.** A shot of an earlier trigger landing after the trap has
+     triggered again is judged against the newer trigger's enemy, for the increase, the share and the damage over time.
+     A trap rearms no sooner than its arming time, so only a slow shot can be caught so. By reading; not tested.
+     **ACCEPTED AS FOUND (G3 (a)), on the play-check list.**
+- **NOT IN PLAY UNTIL A ROW IS WORN.** **Nothing here was compiled and no Unreal test was run by the session that wrote
+  it.** A second session wrote the code, the tests and this entry under the enchantment session's brief 62 and the
+  rulings below. NOT COMPILED AND NOT RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- 'Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP' takes the full share from a boss
+- an enemy killed by a buried weapon's leap does not explode, and no kill row requiring a tag answers a leap's kill
+- a rearmed trap judges a shot of an earlier trigger against its latest triggering enemy, for the increase on the first enemy, the share of its maximum HP and the damage over time
+- a slow a rearmed trap's earlier trigger left waiting can be laid by its next trigger's blow on that same enemy
+- with a Slashing weapon, a trap kill's explosion is a share of the blow before the 10% Slashing bonus, and the trap's damage over time a share of what it took after it
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+**THE COORDINATING SESSION'S RULINGS ON THIS LAYER'S FINDINGS, 2026-10-22, accepting dce3011c3**, verbatim:
+
+> G1 (a): left in this layer, with the play-check line as you wrote it. It is a fault in kill events beyond traps (a leap's
+> kill carries no skill tags, so no tag-requiring kill row answers it, a player's own Harrower axe included), so open ONE
+> issue for it now, naming the files and the kill rows it silences; I schedule it as its own small layer after traps.
+> G2 (a): fix it in this layer, one more commit by the second session: a standing (rearmed) trap's blow also asks
+> LayALateSkillTrapSlow with the trap's identity; one test with a control, and one guard proof.
+> G3 (a): accepted as found, with the play-check line, because it needs a shot still in flight after the 1 s re-arm and a
+> new trigger.
+> G4 (a): accepted; the entry records it as a judgement.
+
+And: the play-check line for G1, as the coordinating session put it, "an enemy killed by a buried weapon's leap does not
+explode, and no kill row requiring a tag answers a leap's kill"; the issue is open as
+[#2465](https://github.com/sdubois777/Cataclysm/issues/2465). G4 is the judgement that the trap's damage over time is not
+raised by the player's own damage over time stats, below.
+
+**G2, HOW IT IS BUILT AND WHY NO BLOW LAYS A SLOW TWICE FOR ONE TRIGGER.** `ApplyHit`, for a blow priced as a standing
+trap's, now asks `LayALateSkillTrapSlow(NamedCastBy, ...)` beside `NoteSkillTrapBlowOn` (`CataclysmSkillEffects.cpp`
+1175), `NamedCastBy` being the identity `SkillTrapCasting` found the standing trap by (the delivery's `CastBy`, else its
+skill's `FreeRepeatCastBy`). (1) **A laid slow stops waiting**: `LayALateSkillTrapSlow` removes the record it lays, and a
+record is matched by the trap's identity AND the enemy. (2) **A blow judged at `trap_triggered` never leaves a wait
+behind**: an instant blow of the cast lands inside the cast, before `trap_triggered` is raised, when no wait exists for
+that trigger; the slow action then judges the largest such blow, and leaves a wait ONLY when none qualified. So for one
+trigger the slow is laid at most once. A trap that never rearms is destroyed straight after `trap_triggered`, so no
+standing trap's blow ever meets its wait, and every merged test is unchanged. **WHEN THE TRAP HAS REARMED AND TRIGGERED
+AGAIN**: trigger 1's wait (its enemy E, at most 5 s) still stands, matched by the trap's identity and E. Any blow of that
+trap landing on E and taking a tenth lays it and ends it: trigger 1's own late shot, OR A BLOW OF TRIGGER 2'S CAST that
+strikes E. If E also set off trigger 2 and that same blow qualifies there, the slow action lays the slow again at
+trigger 2's `trap_triggered`, at the same strength and for the same seconds at the same moment, which as a Cripple only
+refreshes a time already the same (#1256's rule): the enemy carries one slow, unchanged, though two calls were made. A
+trigger-1 shot landing afterwards finds no wait. On the play-check list, the third new line above. By reading; test 35
+covers only the first case.
+
+**THE OWNER, ON 2026-10-21, FOR THE TRAP'S SLOW**, answer verbatim: "Follow the tenth rule". The coordinating session
+rules below that the owner holds it for every lasting effect a trap lays on an enemy (F9).
+
+The coordinating session's rulings of 2026-10-21 on brief 62, verbatim as relayed:
+
+> RULINGS, brief 62 (traps layer 4), the coordinating session, 2026-10-21: (a) on F1 to F12, as you wrote them, with one
+> change on F9 and two notes.
+> F1 (a) the trap stays, re-arms after the ordinary arming time, life span runs on from placing, still counts against the
+> cap. F2 (a) rolled at every trigger. F3 (a) trap_triggered at every trigger; a rearmed trap is not in the used-up record.
+> F4 (a) T13: the blows of that trigger's cast on the enemy that set off that trigger, late blows included (extend
+> FSpentSkillTrap with the triggering enemy).
+> F5 (a) a flat before the increases (S5 d precedent). F6 (a) once per trigger, its first blow on the triggering enemy. F7
+> (a) in full against a boss, with the play-check line as written; I will tell the owner directly, since a share of a
+> boss's maximum health per trigger is a balance question they may want to cap.
+> F8 (a) an extra damage over time on top of the blow, recorded as a judgement.
+> F9 CHANGED: only the enemy that set the trap off; a generic damage over time, not an ailment; refreshed, not stacked;
+> and THE RULE OF A TENTH APPLIES, whatever the reading of #917's scope: the owner answered on 2026-10-21 "Follow the
+> tenth rule" for a trap's slow, and the owner holds that rule for every lasting effect a trap lays on an enemy. Test both
+> halves.
+> F10 (a) the killing blow's figure before mitigation, at the row's share. F11 (a) through an existing blast action if one
+> carries the figure, not a trap's blow, no chain unless the ruled chain rule says otherwise (quote it). F12 (a) kills by
+> a trap's cast, instant or late, read by Type.Trap on kill; not a zone sweep's kill or P217's tick's kill; check and say
+> what the kill event carries.
+
+**THE OPTIONS NOT TAKEN**, as brief 62 put them: F1 (b) armed again at once, (c) its life span restarts; F2 (b) once per
+trap; F3 (b) no `trap_triggered` for a rearmed trigger; F4 (b) only the blow landing first; F5 (b) added after the
+increases; F6 (b) on every blow on that enemy, (c) on every blow of the cast on any enemy, sized by the triggering enemy's
+health; F7 (b) a reduced share against a boss; F8 (b) a conversion, the blow dealing the rest at once; F9's recommendation
+(a) asked the rule of a tenth only if #917's scope covered it, and (b) every enemy the cast strikes, (c) stacking; F10 (b)
+the whole cast's total on that enemy; F11 (b) a trap's blow, chaining; F12 (b) every kill including ticks. T1-T19 of
+2026-10-19, L1-L6, M1-M6, R1-R3, brief 60c's ruling, L-A, L-B and Z1 stand, quoted in the entries below.
+
+**F11'S CHAIN RULE, QUOTED AS ASKED.** The overkill explosion's, ruled 2026-10-07
+(`UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`): "An enemy the explosion kills is a kill of
+its own and must explode in turn". It chains because its sentence is "Enemies killed by you explode", and a kill by the
+explosion is a kill by you. **It does not say otherwise for this row:** "Enemies killed by traps explode", and a kill by
+the explosion is not a kill by a trap. The explosion's blow names no skill, so its kill carries no tags and this row's
+`Type.Trap` refuses it: no chain. A wearer of BOTH rows has the overkill row explode such a body for its own overkill, as
+its ruling says. The other blast action, `blast_from_the_dying`, chains through its queue for "afflicted" deaths and is
+not used here.
+
+**F12, WHAT THE KILL EVENT CARRIES.** `kill` is raised once per kill by the killer's `OnSomethingDied`
+(`CataclysmPlayerCharacter.cpp`), with `Notice.KillingSkillTags` as its tags: the `SkillTags` of the skill whose effect
+dealt the lethal blow, read from the effect's context (`UCataclysmCombatEvents::NoteBlow`, `Blow.Skill`; `NoteDeath`).
+A trap's cast is the player's skill stamped with `Type.Trap` (`TriggerSkillTrap`, `UCataclysmWeaponSkills::StampOnto`:
+`SkillTags = Skill.Tags`), so: an instant blow of the cast, dealt inside its activation, carries `Type.Trap`; a shot
+landing after the trap is used up carries it too, its use running until the shot has finished; a buried weapon's leap
+and a rack's late axe carry no tags (FOUND, item 1); a zone's sweep and the damage over time carry tags or not, but are
+refused by the kill site because the death is by damage over time (`Notice.bByDamageOverTime`). Its amount is the dead
+enemy's maximum health and its other character the dead. **Built: the death notice now also carries the killing blow's
+figure before mitigation** (`FCataclysmDeathNotice::KillingBlowDamage`, from `FCataclysmIncomingHit::Damage` of the lethal
+blow), which nothing carried before.
+
+**NO NUMBER UNDER THE OWNER'S DELEGATION IS ADDED.** Every figure in the rows is its sentence's; the 3 s of the damage
+over time and the 4 m of the explosion are the sentences' own numbers, held as `SkillTrapDamageOverTimeSeconds` and
+`KillingBlowExplosionRadiusCm`. The generator's bounds for typing mistakes (a chance at most 100, the two shares at most
+100, the increase at most 1000, the explosion's share at most 1000) are read by no play. Layer 1's 1.0 s arming time,
+which a rearmed trap arms again after, stays under the owner's delegation as that entry says.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this layer's commit, on development `cd5c85e82`.
+
+| | Ruling, quoted | Where it is |
+| :-- | :-- | :-- |
+| F1 (a) | "the trap stays, re-arms after the ordinary arming time, life span runs on from placing, still counts against the cap" | `TriggerSkillTrap` (`CataclysmMinion.cpp` 2576 to 2582): disarmed, `SkillTrapArmsAtAgeSeconds` set by `SkillTrapArmingSecondsFor` as at placing, tint shown, returns before `NoteSkillTrapSpent` and `Destroy`; the life span is not touched; `SkillTrapsOf` still finds it. |
+| F2 (a) | "rolled at every trigger" | `SkillTrapRollsToRearm` (`CataclysmMinion.cpp` 2706), asked at each trigger, reading `trap_rearm_chance` by `SkillTrapRearmChanceFor`. |
+| F3 (a) | "trap_triggered at every trigger; a rearmed trap is not in the used-up record" | The event is raised before the roll (2566 to 2569, unchanged); the rearm returns before `NoteSkillTrapSpent` (2587). |
+| F4 (a) | "the blows of that trigger's cast on the enemy that set off that trigger, late blows included (extend FSpentSkillTrap with the triggering enemy)" | `ApplyHit` (`CataclysmSkillEffects.cpp` 974 to 983): the living trap's `SkillTrapTriggeringEnemy` or the used-up trap's `FSpentSkillTrap::TriggeringEnemy` (`CataclysmAbilitySystemComponent.h` 4638), written by `NoteSkillTrapSpent` (`.cpp` 8307); `SkillTrapIncreaseOnItsEnemyFor` joined to `TrapIncreases`. |
+| F5 (a) | "a flat before the increases (S5 d precedent)" | `TrapsEnemyHealthFlat` beside `GadgetFlat` inside the bracket the increases multiply (`CataclysmSkillEffects.cpp` 1003). |
+| F6 (a) | "once per trigger, its first blow on the triggering enemy" | `bSkillTrapGaveItsEnemysHealthShare`, cleared at each trigger (`CataclysmMinion.cpp` 2552), set by the first blow priced (`CataclysmSkillEffects.cpp` 984 to 997); kept into the used-up record and set there by `NoteSpentSkillTrapGaveItsEnemysHealthShare` (`CataclysmAbilitySystemComponent.cpp` 8340). |
+| F7 (a) | "in full against a boss, with the play-check line as written" | No boss is asked for; the line is in FOR THE OWNER'S PLAY-CHECK LIST. |
+| F8 (a) | "an extra damage over time on top of the blow, recorded as a judgement" | `ApplyHit` after the blow is dealt (`CataclysmSkillEffects.cpp` 1179 to 1182); `LaySkillTrapsDamageOverTime` (`CataclysmMinion.cpp` 2729). The judgement is below. |
+| F9, changed | "only the enemy that set the trap off; a generic damage over time, not an ailment; refreshed, not stacked; and THE RULE OF A TENTH APPLIES" | `bOnTrapsTriggeringEnemy` (`CataclysmSkillEffects.cpp` 977); `Keyword.DoT.Generic` through `ApplyDamageOverTime`, whose one running effect per tag a second blow refreshes or replaces; `UCataclysmAilments::BlowCanCarryAnAilment` against the blow's `DealtToHealth` (`CataclysmMinion.cpp` 2743). |
+| F10 (a) | "the killing blow's figure before mitigation, at the row's share" | `FCataclysmLastBlow::KillingBlowDamage` (`CataclysmCombatEvents.cpp` 188) to `FCataclysmDeathNotice::KillingBlowDamage` (295); taken at the kill site (`CataclysmPlayerCharacter.cpp` 1245 to 1270). |
+| F11 (a) | "through an existing blast action if one carries the figure, not a trap's blow, no chain unless the ruled chain rule says otherwise (quote it)" | `UCataclysmSkillEffects::ExplodeForOverkill`, the overkill explosion's blast, which deals any figure it is given at a share; given a radius (`CataclysmSkillEffects.h` 1130), `KillingBlowExplosionRadiusCm` 400 (1133). The chain rule is quoted above. |
+| F12 (a) | "kills by a trap's cast, instant or late, read by Type.Trap on kill; not a zone sweep's kill or P217's tick's kill; check and say what the kill event carries" | The action recorded in `ActOnEvent` (`CataclysmAbilitySystemComponent.cpp` 6597) under the row's Required Tags; the kill site refuses `Notice.bByDamageOverTime` (`CataclysmPlayerCharacter.cpp` 1246). What the event carries is above. |
+| T13 | "T13 each trigger's own triggering enemy." | `SkillTrapTriggeringEnemy`, set at each trigger. |
+| T15 | "T15 no (the no-War mandate)." | Every hook asks a skill trap (`SkillTrapCasting`, the used-up record, `TriggerSkillTrap`); a Spike Trap's own blow is none of them. |
+
+### WHAT WAS READ FIRST, FOR EACH OF THE FIVE
+
+Each found where it is defined, not where it is used.
+
+1. **P214, the rearm.** No stat, event or action rearms a trap: `TriggerSkillTrap` (`CataclysmMinion.cpp`) destroyed the
+   trap after every cast that started, and arming is set only by `PlaceSkillTrap`. **The smallest addition:** a flat
+   stat read with `Type.Trap` by layer 3's `SkillTrapFigureOf`, and one branch in `TriggerSkillTrap` reusing
+   `SkillTrapArmingSecondsFor` and `ShowSkillTrapTint`. **What else it lets a row do:** grant any chance to rearm, scoped
+   to traps; nothing for a Spike Trap or a gadget.
+2. **P018, the increase.** `TrapDamageNamingTrap` reads `minion_damage` rows naming `Type.Trap` and knows no target; no
+   condition of the pipeline asks "the target is the enemy that set this trap off" (`ECataclysmStatCondition`, searched),
+   and layer 3 put the triggering enemy on the living trap (`SkillTrapTriggeringEnemy`) and 3b kept no enemy in the
+   used-up record. **The smallest addition:** an increased stat read in `ApplyHit` where the trap's blow is priced, when
+   the target is that enemy, and the record extended with it, as F4 rules, rather than a second record. **What else it
+   lets a row do:** any increase on a trap's blows on its triggering enemy.
+3. **P055, the share of the enemy's health.** The skill gadget's "bonus damage equal to 3%-6% of your maximum HP per hit"
+   is `attack_damage` flat scaled per point of the PLAYER's maximum health (`FlatOfStatNamingTag`, S5 d); no scale reads
+   the target's maximum health (`ECataclysmStatScale`, searched). **The smallest addition:** a flat stat whose figure is
+   the share in per cent, read in `ApplyHit` and multiplied by the defender's maximum health there, beside `GadgetFlat`,
+   with a once-per-trigger flag on the trap and in the record. **What else:** any share, once per trigger.
+4. **P217, the damage over time.** `apply_status` and layer 3's `apply_status_sized` lay one of the five ailments at its
+   ordinary or a multiple of its size; none lays a share of a blow, and none knows the triggering enemy on
+   `deployable_hit`. `UCataclysmSkillEffects::ApplyDamageOverTime` lays any figure a tick for any seconds under any tag,
+   and `Keyword.DoT.Generic` is a tag the game has (`game/Config/Tags/CataclysmTags.ini`) that no code applied.
+   **The smallest addition:** a flat stat whose figure is the share, read in `ApplyHit` after the blow, asking the rule of
+   a tenth and laying the generic damage over time. **What else:** any share, on the enemy that set the trap off only.
+5. **P056, the explosion.** `explode_victim_for_overkill` records a share at `kill` and the kill site explodes the body
+   for its OVERKILL through `ExplodeForOverkill` at 5 m; `blast_from_the_dying` blasts for a share of the event's amount
+   (the dead's maximum health) on `afflicted_death` and puts the wearer's ailments on what it strikes. Neither carries the
+   killing blow's figure: the death notice carried the overkill and not the blow. **The smallest addition:** the figure on
+   the last blow and the notice; a sibling action of the overkill row, `explode_victim_for_killing_blow`, recorded and
+   taken the same way; and a radius for `ExplodeForOverkill`, which already deals any figure at a share. **What else:**
+   any row on `kill` may now explode a body for a share of the blow that killed it, scoped by its Required Tags to the
+   killing skill's tags: requiring nothing, every kill by a hit.
+
+**THE DRY RUN OF EACH ROW THROUGH THE WHOLE GENERATOR** is under THE ROWS THE ENCHANTMENT SESSION IS TO WRITE.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **FOUR STATS AND ONE ACTION, THE STATS READ WITH `Type.Trap` ALONE**, as layer 3's two reads are, so the generator can
+  refuse every other tag. The option not taken: ask with the cast's skill tags, which would let a row scope a hook to a
+  trap's spells, and which no sentence asks.
+- **THE ROLL: A CHANCE OF 100 ALWAYS, NOUGHT NEVER, BETWEEN THEM A ROLL BELOW IT**, as a held skill's trigger compares.
+  No pin: the tests write 100 and nought. The option not taken: a console pin for the roll.
+- **"FIRST BLOW" IS THE FIRST BLOW PRICED ON THAT ENEMY, LANDED OR NOT**: the share is added when the blow is priced, before
+  it is known whether it is evaded. The option not taken: the first that lands, which would price a blow twice.
+- **THE DAMAGE OVER TIME IS NOT RAISED BY THE PLAYER'S OWN DAMAGE OVER TIME STATS** (ACCEPTED, G4 (a), 2026-10-22;
+  `bScalesWithInstigator` false), so it
+  deals the row's share of what the blow took over the sentence's 3 seconds, one tick a second; the target's own duration
+  rows and resistances meet it as every tick. The blow it is a share of was priced with the player's numbers already.
+  The option not taken: scale it as an ailment the player applies, which would let "Damage over Time Duration" lengthen a
+  sentence that states its time. **ITS 3 S IS A CONSTANT, `SkillTrapDamageOverTimeSeconds`, the sentence's own number**,
+  not a Stack Seconds cell, since the row is a stat line. It still raises `dot_applied` on the player, as every damage over
+  time applied to an enemy does.
+- **"REFRESHED, NOT STACKED" IS THE GAME'S ONE RUNNING EFFECT PER TAG** (issue #1503): a second blow's damage over time
+  replaces the first when it deals more a second and otherwise refreshes its time. The option not taken: always replace.
+- **THE EXPLOSION IS A SIBLING ACTION OF THE OVERKILL ROW**, recorded in the loop and made at the kill site after every
+  listener has heard the death, for that row's ruled reason. The options not taken: a stat read at the kill site (the
+  ruling reads "on kill"), and an action that explodes inside the loop, where its kills would reach no row.
+- **4 M IS A CONSTANT, `KillingBlowExplosionRadiusCm`, THE SENTENCE'S OWN NUMBER**, as the overkill explosion's 5 m is.
+- **A KILL BY A TICK IS REFUSED AT THE KILL SITE, BY THE DEATH NOTICE'S `bByDamageOverTime`**, for every row on this
+  action. The option not taken: refuse it by tags, which a zone's sweep may carry.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. Layer 1's entry, below, carries the trap sources `trap_design_2026-10-19.md`
+fetched; the one this layer's first sentence departs from is Path of Exile's, quoted there:
+
+```
+"Triggering a trap also causes a trap/mine to be destroyed." (https://poedb.tw/us/Trap)
+```
+
+SUMMARY: a trap is used up when it triggers (R3 of that file); "reset and rearm instead of being consumed" is a row's
+exception to that, which the rulings shape. Nothing fetched settles an increase on the triggering enemy, a share of its
+maximum health, a share of a blow as damage over time or an explosion on a trap's kill: those are this game's own
+sentences, ruled above.
+
+### WHAT WAS BUILT
+
+- **The rearm** (`ACataclysmMinion`): `TrapRearmChanceStat`, `SkillTrapRearmChanceFor`, `SkillTrapRollsToRearm`, in the
+  layer-4 block at the end of `CataclysmMinion.cpp` (2691 on) and in the header after `NoteSkillTrapBlowOn` (1232 to
+  1292); the branch in `TriggerSkillTrap` (2571 to 2582).
+- **The triggering enemy's two hooks**: `TrapDamageToTriggeringEnemyStat`, `TrapTriggeringEnemyMaxHealthDamageStat`,
+  `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `bSkillTrapGaveItsEnemysHealthShare` in the
+  same blocks; the flag cleared in `TriggerSkillTrap` (2552); the read in `ApplyHit` (`CataclysmSkillEffects.cpp` 969 to
+  999) and the flat in the bracket (1003); `FSpentSkillTrap::TriggeringEnemy` and `bGaveItsEnemysHealthShare`, written by
+  `NoteSkillTrapSpent` off the trap (`CataclysmAbilitySystemComponent.cpp` 8303 to 8309), so its one call in
+  `TriggerSkillTrap` is unchanged; `NoteSpentSkillTrapGaveItsEnemysHealthShare` (8340).
+- **The damage over time**: `TrapDamageOverTimeShareStat`, `SkillTrapShareAsDamageOverTimeFor`,
+  `SkillTrapDamageOverTimeSeconds` and `LaySkillTrapsDamageOverTime` (2729 to 2755), reusing `ApplyDamageOverTime` and
+  `BlowCanCarryAnAilment`; asked in `ApplyHit` after the blow (1176 to 1182).
+- **The explosion**: `ExplodeVictimForKillingBlowAction`, `TakePendingKillingBlowExplosionSharePercent` and
+  `PendingKillingBlowExplosionSharePercent` (header 4661 to 4690); the item's read (`CataclysmItem.cpp` 1464 to 1468);
+  `ActOnEvent`'s clearing at a kill (6116) and its branch (6593 to 6606); `FCataclysmPoolAction::bExplodeVictimForKillingBlow`
+  (`CataclysmStatPipeline.h` 4675); the kill site (`CataclysmPlayerCharacter.cpp` 1237 to 1270), reusing the overkill
+  explosion's hand-over to `UCataclysmCombatEvents::AfterThisDeathIsHeard`; `ExplodeForOverkill`'s radius (one parameter,
+  defaulted to `OverkillExplosionRadiusCm`, so its two callers are unchanged); the killing blow's figure on the last blow
+  and the death notice (`CataclysmCombatEvents.h` 340 to 346, 251 to 255; `.cpp` 188, 295).
+- **The generator**: `TRAP_REARM_CHANCE_STAT`, `TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT`,
+  `TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT`, `TRAP_DAMAGE_OVER_TIME_SHARE_STAT`, `TRAP_BLOW_STAT_KINDS`,
+  `TRAP_BLOW_STAT_REQUIRED_TAGS`, `TRAP_BLOW_STAT_MOST` and `refuse_a_trap_blow_row_the_game_cannot_read` (12056 on), run
+  last by `validate_enchantment_effects` (12674); `KILLING_BLOW_EXPLOSION_ACTION`, `KILLING_BLOW_EXPLOSION_EVENTS`,
+  `MAX_KILLING_BLOW_EXPLOSION_SHARE` and `_check_killing_blow_explosion_action` (12148 on), its dispatch (6165), the
+  "Known" message (6190), no fraction written for it (7131) and its share's bound (7392).
+- **`StatsWithNoAttribute`** gains the four names at its end (`CataclysmPlayerClassStats.cpp` 910 to 924).
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+**Five rows of the Enchantment Effects sheet, one on each enchantment named in SAID FIRST, cell by cell.** Every cell not
+named is empty. The enchantments' own tags are not the rows'.
+
+| Id | Stat | Value Kind | Low | High | Required Tags | Action | Action Event |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| P214 | `trap_rearm_chance` | flat | 25 | 50 | `Type.Trap` | | |
+| P018 | `trap_damage_to_triggering_enemy` | increased | 100 | 200 | `Type.Trap` | | |
+| P055 | `trap_triggering_enemy_max_health_damage` | flat | 5 | 10 | `Type.Trap` | | |
+| P217 | `trap_damage_over_time_share` | flat | 30 | 50 | `Type.Trap` | | |
+| P056 | | | 50 | 100 | `Type.Trap` | `explode_victim_for_killing_blow` | `kill` |
+
+**EACH WAS DRY-RUN THROUGH THE WHOLE GENERATOR**, as the first row of a new kind must be: on a copy of the tree as it
+stands at this layer (`git archive` of `cd5c85e82` with this layer's changed and new files written over it), the five rows
+were written into the copy's workbook with openpyxl by a script that DERIVES each name by the copy's `row_name` from the
+sentence the brief quotes and asserts the copy's `EnchantmentsPositive.csv` holds that name with those words once, and
+`tools/generate_datatables.py --workbook <copy> --output-dir <copy>/game/Data` accepted all five: "Wrote 29 CSVs", exit 0.
+The five came out as the table says, with the generator's own fills: Fraction Of empty on the action (no fraction is
+written for it), Trigger Cooldown 0, Scale Max Steps 0. The other 28 CSVs came out byte for byte as the same generator's
+run on the untouched control copy, and `EnchantmentEffects.csv` differs from it by exactly the five rows, 692 to 697.
+**The whole Python suite was then run in that copy and in the control copy**: the control "11 failed, 6835 passed, 13
+skipped" (JUnit tests 6859, failures 11, errors 0, skipped 13), the copy with the rows "15 failed, 6831 passed, 13
+skipped" (JUnit tests 6859, failures 15). The control's eleven are the copy having no `.git` (each says "not a git
+repository") and are among the fifteen. **The four only the rows' copy fails** are the bookkeeping a new row always
+moves, and nothing else:
+
+- `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`: the asset rebuild,
+  which needs the editor.
+- `test_docs_readme_sheet_table_is_true.py::test_every_row_count_in_the_table_is_true`: "Enchantment Effects: 692,
+  697".
+- `test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: `CHECK_TABLE` in
+  `CataclysmDataTableTests.cpp`, "EnchantmentEffects.csv: 692, 697".
+- `test_enchantment_effects_match_the_row_text.py::test_the_coverage_is_what_it_is_measured_to_be`: "697 effect rows,
+  pinned at 692".
+
+**With the bookkeeping applied in that copy** (`AUTHORED_ROWS` 692 to 697 and `AUTHORED_ENCHANTMENTS` 556 to 561 in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`; `docs/README.md`'s "| Enchantment Effects | 692 |" to 697;
+`CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    692)` to 697), those three files ran "49
+passed". The asset hash is the window's. **No text check refused a row's words**: the 25-50, 100-200, 5-10, 30-50 and
+50-100 each passed. No row is a flag, so nothing joins `FLAG_STATS`.
+
+**THE BOOKKEEPING THE ENCHANTMENT SESSION DOES WITH THE ROWS**, measured above: the four lines in three files just named,
+and the asset rebuild.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- `UCataclysmPlayerClassStats::StatsWithNoAttribute()` gains four names, at its end;
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains four probes, the last entries of its table, each
+  `ProbeTrapBlowHook`.
+- **The generator accepts four new stats and one new action**, and refuses the wrong shapes of each: a stat of any other
+  kind than its one, under a tag but none or `Type.Trap`, with an action, or at a figure of nought or past its bound (a
+  chance past 100, the share of health and the share as damage over time past 100, the increase past 1000); the action on
+  any event but `kill`, with a Fraction Of, a Value Kind or a Scale, or past a share of 1000. No shipped row is on any of
+  them.
+- `CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the action's name, at its end.
+- **No merged test's assertion changes, by reading.** With no row worn: the rearm chance is nought, so every trap is used up
+  as before; the increase is nought, no share is added and no damage over time laid; no action records an explosion
+  share; `ExplodeForOverkill`'s two callers pass no radius and get its 5 m. The changed figures a blow or a death carries:
+  the used-up record's two new fields and the death notice's `KillingBlowDamage`, which no merged code reads.
+
+### Tests
+
+Five Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapBlowHooksTests.cpp`, in layer 1's group
+`Cataclysm.Traps.`, numbered on from layer 3b's last (29). The rig is layer 3b's: a possessed player character holding a
+Demonic Whip (Searing Lash, a 5 m cone struck while the trap stands) or Wand (Malefice, a shot that lands after the trap is
+used up), a weapon damage of 100, 10,000 health and 1,000 mana; creatures of the monsters' side with no defences and 50,000
+health unless a case says otherwise; every body at least 1 m from every other; every stat and action written by hand as
+the item would build it from its row. NO KEY IS PRESSED. The clock is moved by hand, a trap's step called directly, shots
+stepped by hand. Every test pins `Cataclysm.CritRoll` at 100 after the world is made. Helper types are
+`FTrapBlowHookWorld`, `FTrapBlowHookStat`, `FTrapBlowHookRig` and `FTrapBlowHookEventCount`, in the namespace
+`CataclysmTrapBlowHookTest`; no other file of the module declares them (searched). **Assertions are counted for a passing
+run, 128 in all**: 109 in the five of the first commit, 17 in test 35, added by the second (G2), and one set-up line
+in each of tests 32 and 34, added by brief 62d.
+
+30. `TheRearmRowAtAHundredKeepsATriggeredTrapStandingToArmAgainAndTriggerTwiceAndAtNoughtItIsUsedUp`, 20. Two Whip players,
+    the control with no rearm row, the other at 100. In order: a world; set-up, the pin; set-up, two enemies (two);
+    control, the control's trap triggered once; control, used up; control, kept among the used-up traps; at 100 it
+    triggered, raising `trap_triggered`; it is not used up; it is disarmed; drawn dim; not kept among the used-up traps
+    (F3); one trap stands for its player, so it counts against the cap; it arms again an ordinary arming time later; a
+    second step at once does not trigger it; nor half a second later; armed again, it triggers a second time, raising
+    `trap_triggered` again; it has triggered twice; it stands again; set-up, its enemy was struck by both casts.
+31. `TheFirstEnemyRowRaisesEveryBlowOfATriggerOnTheEnemyThatSetItOffAndNoOtherEnemyALateShotIncluded`, 17. Two Whip players
+    with a second enemy 4 m out in the cone, two Wand players; in each pair the control and the row at 100 increased. In
+    order: a world; set-up, the pin; set-up, six enemies (six); control, the lash struck the enemy that set it off; control,
+    and the second enemy; the enemy that set the trap off takes twice the control's, within 0.1%; the second enemy the
+    same, within 0.1%; set-up, the shot's trap used up; set-up, its enemy untouched in flight; set-up, both shots landed;
+    control, the control's late shot struck; a late shot on the enemy that set the trap off takes twice the control's.
+32. `TheHealthShareRowAddsItsShareOfTheTriggeringEnemysMaximumHealthToItsFirstBlowOncePerTrigger`, 18 (17 before brief 62d). The same four players,
+    the row at 10: 5,000 of each 50,000 enemy's maximum. In order: a world; set-up, the pin; set-up, six enemies (six);
+    control, the lash struck; the enemy that set the trap off takes the control's figure and 5,000, within 0.5; the second
+    enemy the control's, within 0.5; set-up, the shot's enemy untouched in flight; set-up, both shots landed; control, the
+    control's late shot struck; the late shot, the trigger's first blow on its enemy, takes the control's and 5,000; then a
+    second blow of each used-up trap's cast on its enemy, by `ApplyHit` with the trap's identity on the delivery, as the
+    use's own `HitTargets` strikes a later blow: control, the control's struck; the row's equals it, within 0.5: no second
+    share.
+33. `TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth`, 23. Four Whip
+    players, the control and three with the row at 50: the row's (enemies of 1,500, a second 4 m out in the cone), the
+    sturdy one's (its enemy 100,000), and one with two traps either side of its enemy. In order: a world; set-up, the pin;
+    set-up, the `Keyword.DoT.Generic` tag; set-up, six enemies (six); set-up, the row's lash took a tenth; control, the
+    control's lash lays no generic damage over time on the enemy that set it off; control, nor on the second; the row lays
+    one on the enemy that set the trap off; worth half of what the blow took from health, within 0.1%; over 3 s, within
+    0.01; on top of the blow, which equals the control's, within 0.1%; set-up, the second enemy struck for a tenth by the
+    same cast; it is given none; set-up, the sturdy enemy struck for less than a tenth; it is given none (the rule of a
+    tenth); set-up, the first of two casts laid one; set-up, the second cast struck the same enemy; still one: it lays over
+    the first and does not stack.
+34. `AnEnemyKilledByATrapsBlowExplodesForItsShareWithinFourMetresAndNoKillOfAnotherKindExplodes`, 33 (32 before brief 62d). Seven players: a Whip
+    and a Wand measure (the flag alone and a 50,000 enemy, whose loss is the whole of the lash's and the shot's figure);
+    the control (no row); the row at 50; the chain (the row, a brittle bystander of 10 health 3.5 m from the dead and a
+    second 3 m beyond it); the own blow (the row, its doomed enemy killed by the player's own `ApplyHit`, no trap's); the
+    late shot (a Wand, the row). Every doomed enemy holds 50 health. In order: a world; set-up, the pin; set-up, fourteen
+    creatures (fourteen); set-up, the lash's figure kills 50; set-up, the control's lash killed; control, with no row its
+    bystander 3.5 m away is untouched; set-up, the row's lash killed; its bystander 3.5 m away takes half the lash's
+    figure, within 0.1%; one 5 m away takes nothing; set-up, the chain's lash killed; set-up, the explosion killed the
+    brittle bystander; whose death explodes nothing, the one 3 m beyond it untouched; set-up, the own blow killed; no
+    explosion followed; set-up, the late shot's trap used up; set-up, both shots landed; set-up, the shot's figure kills 50;
+    set-up, the late shot killed; its bystander 3 m away takes half the shot's figure, within 0.1%.
+35. `ARearmedProjectileTrapsLateShotSlowsTheEnemyThatSetItOffAsAUsedUpTrapsShotDoes`, 17, added by the second commit (G2).
+    Two Wand players, each with the Heavy flag and the slow row at 25 for 3 s as layer 3's tests write it, a Heavy trap
+    with its enemy of 1,000 health 2.5 m east of it; the control holds no rearm row, the other the rearm chance at 100. In
+    order: a world; set-up, the pin; set-up, the Cripple tag; set-up, two enemies (two); set-up, the control's trap used
+    up; set-up, the rearmed trap stands while its shot flies; set-up, nothing has slowed the control's enemy yet; set-up,
+    nor the rearmed player's; set-up, both shots landed; set-up, the control's shot took a tenth; control, a used-up
+    trap's late shot still slows by layer 3's path; set-up, the rearmed trap's shot took a tenth; set-up, the trap still
+    stood when it landed; the rearmed trap's late shot slows the enemy that set it off; by 25, within 0.01; for 3 s,
+    within 0.01.
+
+**Every earlier trap test is unchanged**, and expected to pass unchanged: layer 1's ten, layer 2's eight, layer 3's eight
+and layer 3b's four. None holds a row of this layer, and with none worn every reader answers nought.
+
+Four probes join `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, each `ProbeTrapBlowHook`: control, the
+reader answers nought; granted at 40 (increased for the increase, flat for the rest), it answers 0.4 or 40.
+
+Python, in `tools/tests/test_generate_datatables.py`, on made-up sheets: `TestTheFiveHooksOnATrapsOwnBlow`, seven (the five
+names are `row_name` of their shipped words; each stat row carried through under its real sentence and refused by nothing;
+the four named as the engine names them and among the stats with no attribute, with a made-up name as the control; each
+wrong shape refused once by its own sentence, ten shapes; the whole sheet's validation runs the check; the explosion row
+carried through with no fraction written; the explosion refused on `hit_dealt`, with a Value Kind, with a Fraction Of and
+past its bound). In `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
+`test_the_killing_blow_explosion_of_traps_layer_four_is_recorded_and_made_at_the_kill`, read from the code with comments
+taken out by tracking `/* ... */` and `//` (R-c), its control the overkill explosion's own call at the kill site.
+
+**Not tested:** a real row worn (the enchantment session's); the item's building of the five rows; a rearm chance between
+nought and 100; a rearmed trap's life span and its trap placed under "Traps do not expire"; the increase and the share on
+a Heavy or basic trap whose cast goes at a nearer enemy than the one that set it off; a boss; the first blow evaded; the
+damage over time ticking, its kill, its `dot_applied`, and its refresh's figures; the explosion of a zone's sweep's kill
+or of the damage over time's kill (refused by the kill site, by reading); a leap's and a rack's late kill (FOUND, item
+1); the explosion against a wearer of the overkill row too; the explosion's figure past a critical strike (the roll is
+pinned); a waiting slow of a rearmed trap's earlier trigger laid by a later trigger's blow, and the two calls that can
+then make (G2, by reading); anything drawn; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this layer's working tree (CRLF read as
+LF, as `prove_cpp_guard` reads it), each new text counted absent before the break and once after it, and each break
+keeps the file's round, curly and square brackets paired: `CataclysmMinion.cpp` 1040/1040, 275/275, 12/12 before and
+after TR-XVI and TR-XVIII; `CataclysmAbilitySystemComponent.cpp` 3168/3168, 1040/1040, 37/37 before and after TR-XVII;
+`CataclysmPlayerCharacter.cpp` 1753/1753, 384/384, 87/87 before and after TR-XIX. Each compiles alone by reading:
+TR-XVI passes `nullptr` where a `const AActor*` stood, and `Player` is still read on the next line; TR-XVII assigns
+`nullptr` to a `TWeakObjectPtr<AActor>`, and `AsTrap` is still read on the next line; TR-XVIII passes a float literal
+where a float stood, and `DealtToHealth` is still read below; TR-XIX names another `static constexpr float` of the same
+class, which the file already names. **TR-XX, added by the second commit (G2)**, counted the same way:
+`CataclysmSkillEffects.cpp` 1639/1639, 457/457, 15/15 before and 1640/1640 after, the break adding one pair; it binds an
+empty weak pointer to a `const TWeakObjectPtr<AActor>&`, and `NamedCastBy` is still read by the used-up trap's lookup.
+The prefix is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight, layer 3b's
+four and these six, thirty-six.
+
+**The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing and
+`trap_triggered` at each trigger, twice for test 30's rearming trap; for a blow of a cast on an enemy `hit_dealt` and
+`first_hit_dealt`, `deployable_hit` with the trap's tags (living or used up, test 32's two later blows included), and
+`dot_applied` for the burns of Searing Lash and Malefice and, in test 33, for the generic damage over time; in test 34
+`kill` for each death a player's blow or explosion causes (the doomed, the brittle, the own blow's). On a creature,
+nothing is worn. **WHAT HANGS ON AN EVENT:** test 34's explosion row on `kill` (four players); test 35's slow row on
+`trap_triggered` (both players), which on each trigger finds no qualifying blow, the shot in flight, and leaves a wait.
+Nothing else: the four stats are read where a trap triggers and where a blow is priced, on no event. Test 35's actors
+raise what test 31's Wand players do: `trap_placed`, `trap_triggered`, then for each shot `hit_dealt`,
+`first_hit_dealt`, `deployable_hit` and Malefice's burn's `dot_applied`; the slow raises nothing. Read from the code, not
+measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-XVI, the rearm chance never rolls (F1, F2) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))` | `if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(nullptr))` | `TheRearmRowAtAHundredKeepsATriggeredTrapStandingToArmAgainAndTriggerTwiceAndAtNoughtItIsUsedUp` | none |
+| TR-XVII, a used-up trap forgets the enemy that set it off (F4, F6) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Kept.TriggeringEnemy = AsTrap->SkillTrapTriggeringEnemy;` | `Kept.TriggeringEnemy = nullptr;` | `TheFirstEnemyRowRaisesEveryBlowOfATriggerOnTheEnemyThatSetItOffAndNoOtherEnemyALateShotIncluded` | `TheHealthShareRowAddsItsShareOfTheTriggeringEnemysMaximumHealthToItsFirstBlowOncePerTrigger` |
+| TR-XVIII, the damage over time asks no rule of a tenth (F9) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))` | `if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, 1.0e9f))` | `TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth` | none |
+| TR-XIX, the explosion reaches the overkill's 5 m (F11, the sentence's 4 m) | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `UCataclysmSkillEffects::KillingBlowExplosionRadiusCm);` | `UCataclysmSkillEffects::OverkillExplosionRadiusCm);` | `AnEnemyKilledByATrapsBlowExplodesForItsShareWithinFourMetresAndNoKillOfAnotherKindExplodes` | none |
+| TR-XX, a standing trap's blow asks no waiting slow (G2) | `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` | `MachinesPlayer->LayALateSkillTrapSlow(NamedCastBy, Target, Result->DealtToHealth);` | `MachinesPlayer->LayALateSkillTrapSlow(TWeakObjectPtr<AActor>(), Target, Result->DealtToHealth);` | `ARearmedProjectileTrapsLateShotSlowsTheEnemyThatSetItOffAsAUsedUpTrapsShotDoes` | none |
+
+Failed assertions, by reading, RECOUNTED ON THE SECOND COMMIT after test 35 was added:
+
+- **TR-XVI, 3 in 2 tests** (1 in 1 on the first commit). Test 30: the rearming trap is used up at its first trigger, so
+  "and it is not used up: it stands" fails, and the test returns there, as written, so no later line is reached. The
+  control's lines and "at 100 the trap triggered" pass. Test 35: "set-up: the rearmed trap stands while its shot flies"
+  and "set-up: and the trap still stood when it landed"; its slow lines pass, the used-up trap's path laying the slow
+  instead. No other test holds the rearm row.
+- **TR-XX, 3 in 1 test.** Test 35: "the rearmed trap's late shot slows the enemy that set it off (G2)", "by the row's 25
+  per cent" (-1, no slow stated) and "for the row's 3 seconds" (nought). The control's slow is laid by the used-up
+  trap's path, which the break leaves. No other test holds a waiting slow for a standing trap: test 30 holds no slow
+  row, and layer 3's slow tests' traps are used up.
+- **TR-XVII, 2 in 2 tests.** Test 31: "a late shot on the enemy that set the trap off takes the increase too" (the
+  control's figure against twice it); the lash's lines pass, the trap standing. Test 32: "a late shot, the trigger's
+  first blow on its enemy, takes the share too"; its later blow passes, since neither later blow then takes a share.
+  Test 33 strikes nothing late; test 34's late kill carries its tags from the skill, not the record.
+- **TR-XVIII, 1 in 1 test.** Test 33: "so it is given no damage over time: the owner's rule of a tenth", the sturdy
+  enemy now given one. The row's lines pass, its blow taking a tenth with or without the rule; the second enemy and the
+  control are never given one.
+- **TR-XIX, 1 in 1 test.** Test 34: "and one 5 m away, beyond the 4 m, takes nothing", its body inside the 5 m sphere.
+  The bystanders 3.5 m and 3 m from the dead are inside either radius; the chain's farther bystander stands 6.5 m from
+  the first dead, outside both.
+
+**AN EARLIER PROOF THIS LAYER'S TESTS MEET.** Layer 3b's TR-XIII (`Theirs->NoteSkillTrapSpent(nullptr, TypeTags);`, its
+anchor still counted once) keeps no used-up trap, so with this layer's tests it fails four lines more, in four tests:
+test 30's "control: and kept among its player's used-up traps", test 31's late shot and test 32's late shot (no record:
+priced as the player's, with neither the increase nor the share), and test 35's "control: a used-up trap's late shot
+still slows by layer 3's path" (counted after the second commit). Test 32's later blows are then both the player's and
+equal; test 34's late kill still explodes; test 35's rearmed trap stands and is not in the record either way. **Layer 3's
+TR-XI** (`if (UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))`, its anchor still counted once, broken
+to `(Slowed, 1.0e9f)`) lays both of test 35's slows at the trigger, so it fails two lines more there: "set-up: nothing
+has slowed the control's enemy yet" and "set-up: nor the rearmed player's". By reading.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. The four probes read the four
+readers, which no break touches.
+
+**A test and no proof:** the share once per trigger (test 32's later blow); the increase and the share not on the second
+enemy; the damage over time on the enemy that set the trap off only, and laid over and not stacked; the explosion's
+share, its refusal of the player's own blow's kill and of the explosion's own kill; `trap_triggered` raised at every
+trigger.
+
+### THE ROWS, AUTHORED BY THE ENCHANTMENT SESSION
+
+**Five effect rows on five enchantments**, on the coordinating session's grant of the workbook for them on 2026-10-22,
+written into `docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`, cell
+for cell the rows this layer's second session dry-ran through the whole generator (the table above). The generator
+accepted all five, and the diff of `EnchantmentEffects.csv` is those five lines added and none removed. **697 rows over
+561 enchantments**, from 692 over 556, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s
+`CHECK_TABLE` and in `docs/README.md`.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornTrapLayerFourRowsEachReachTheReadOrActionTheirSentenceNames`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Six real players: a control wearing a benefit with no effect, and one
+wearing each of the five sentences, each with a drawback with no effect. For each it asks the read or worn action its row
+reaches: `SkillTrapRearmChanceFor`, `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and
+`SkillTrapShareAsDamageOverTimeFor` above nought, and one `explode_victim_for_killing_blow` action on `kill`; the
+control reaches none of them (five lines). Five assertions on the cases, so on assets built before the rows it fails five
+times, and only there.
+
+### THE WINDOW'S STOP, AND THE TWO EXPECTED FIGURES (brief 62d)
+
+**The whole Unreal suite stopped with 2 of 4007 tests failed, as measured, at 75161c459** (the asset commit on
+`feat/traps-4-t-1`), each with one "Error: Expected" line and no other, verbatim:
+
+- test 34: "Expected 'the dead enemy explodes: its bystander 3.5 m away takes half the killing blow's own figure: 125.00
+  against 137.50' to be 137.500000, but it was 125.000000 and outside tolerance 0.275000."
+- test 32: "Expected 'the enemy that set the trap off takes a tenth of its 50,000 maximum on top: 5775.00 against
+  275.00' to be 5275.000000, but it was 5775.000000 and outside tolerance 0.500000."
+
+**FOUND (brief 62c, by reading): THE WHIP IS A SLASHING WEAPON, AND A SLASHING WEAPON'S BLOW TAKES 10% MORE TO HEALTH
+AFTER `ApplyHit` HANDS IT ON.** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` reads the attacker's equipped
+sub-type off the effect's causer, the player for a trap's cast (`UCataclysmWeaponSlotsComponent::SubTypeOf`, `Weapon_Whip`
+`Slashing` in `game/Data/ItemBases.csv`), and `UCataclysmDamageCalculation::Resolve`, step 9 ("Health takes the
+remainder", `CataclysmDamageCalculation.cpp`), multiplies what reaches health by `1 + SubtypeBonus / 100`, where
+`UCataclysmDamageCalculation::SubtypeBonus` is 10 (`CataclysmDamageCalculation.h` line 949). A Wand is `Magic`, whose
+bonus meets only an energy shield, so the Wand's shots showed none. The lash is sent at 250 (`FCataclysmIncomingHit::Damage`,
+which `KillingBlowDamage` records) and takes 275; with the share's flat 5,000 inside the blow it is sent at 5,250 and takes
+5,775. The tests had assumed that what a creature loses is what was sent.
+
+The coordinating session's rulings of 2026-10-22, verbatim:
+
+> R-i: F5 stays as built: the health-share flat is part of the blow and meets the Slashing step like the rest of it.
+> R-ii: F10 stays as built: "before mitigation" is the figure sent; record the P217/P056 difference as found, with the
+> play-check line verbatim.
+> R-iii: only the two expected figures change, each computed from UCataclysmDamageCalculation::SubtypeBonus read, not
+> typed, each message saying why; each test gains a set-up line asserting the Whip is Slashing via SubTypeOf. Every other
+> assertion and set-up unchanged; the entry records old -> new for both.
+
+**FOUND AND LEFT, AS R-ii RULES: P217 AND P056 READ THE BLOW ON EITHER SIDE OF THE SLASHING STEP.** The trap's damage over
+time is a share of `DealtToHealth`, after the 10%; the trap kill's explosion is a share of the blow as sent, before it. On
+the owner's play-check list, verbatim: "with a Slashing weapon, a trap kill's explosion is a share of the blow before the
+10% Slashing bonus, and the trap's damage over time a share of what it took after it".
+
+**OLD -> NEW, the two expected figures** (`CataclysmSkillTrapBlowHooksTests.cpp`; no game file changes):
+
+- Test 32, "the enemy that set the trap off takes a tenth of its 50,000 maximum on top": `PlainSetterTook + Bonus` ->
+  `PlainSetterTook + Bonus * (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)`, its message now saying the flat
+  is raised as the rest of the blow by the Slashing bonus to health: 5,275 -> 5,775 at the window's figures.
+- Test 34, "the dead enemy explodes: its bystander 3.5 m away takes half the killing blow's own figure": `Lash * 0.5f` ->
+  `LashAsSent * 0.5f`, with `LashAsSent = Lash / (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)`, its message
+  now saying the explosion is a share of the blow as sent, before the Slashing bonus the measure lost it with: 137.5 ->
+  125. The tolerance is unchanged.
+- **Each test gains one set-up line, read first**: both Whip players' (test 32: the lash control and row; test 34: the
+  lash measure and the row) `UCataclysmWeaponSlotsComponent::SubTypeOf(Player)` is "Slashing", as a blow's resolution reads
+  it; the test returns there if not, so the figures are never read against another sub-type. `SubTypeOf` is
+  `static FString SubTypeOf(const AActor* Actor)`, public; `SubtypeBonus` is a public `static constexpr float`, reached
+  through `CataclysmAbilitySystemComponent.h`, which includes `CataclysmDamageCalculation.h` and which the test file includes.
+- **Assertions, 128 in all**: test 32 18, test 34 33. Every other assertion and set-up is unchanged.
+
+**THE PROOFS RE-READ.** None of TR-XVI to TR-XX trips the changed or the new lines differently, by reading. The two new
+set-up lines read the weapon sub-type, which no break touches, and pass under every one. TR-XVI (the rearm) reaches neither
+test. TR-XVII still fails only test 32's late-shot line, which is unchanged; the changed lash line is a standing trap's
+blow and does not read the used-up record. TR-XVIII reaches neither. TR-XIX still fails only test 34's line on the
+bystander 5 m away; the changed line's bystander 3.5 m away is inside either radius, and its figure does not depend on the
+radius. TR-XX reaches neither. Layer 3b's TR-XIII still fails test 32's late-shot line and not the changed one. **Every
+count stands: TR-XVI 3 in 2 tests, TR-XVII 2 in 2, TR-XVIII 1 in 1, TR-XIX 1 in 1, TR-XX 3 in 1.**
+
+### THE WINDOW'S RUN
+
+**THE LAYER WAS MOVED BEFORE ITS WINDOW** onto development 69b3e7ebf (#2466, the fixed Quest sub-types), as 42b7241b4,
+7e5c6ffa7 and 55e7d215f, from dce3011c3, 58b760d60 and 8ba10ebca on cd5c85e82. Each kept its zero-context patch id
+outside this log and its count of removed lines, the two later ones their whole patch ids as well; the only conflict was
+this log (this entry placed on top); and outside this log the moved top differs from 8ba10ebca by exactly that merge's
+own files and patch id.
+
+**TWO WINDOWS, ON 2026-10-22. THE FIRST STOPPED AT THE WHOLE SUITE ON TWO EXPECTED FIGURES; THE SECOND, OF STEPS 2 TO 4
+AS RULED, PASSED EVERY STEP AS REGISTERED. Nothing was re-run on the session's own account.**
+
+**THE FIRST WINDOW, enchant-t4w, 01:49:53 (its stall guard's start) to 02:33:34 (its log's last write), on 55e7d215f.**
+The pre-checks, run just before the lock was taken: development's CI and Unreal runs on 69b3e7ebf succeeded, no run in
+progress, no pull request open, the lock free, no Excel, editor or build process, the worktree clean.
+
+- **Step 0, the `Cataclysm.Enchantments.` group on the assets as merged:** "Build: Succeeded - 50 actions, 45 files
+  compiled"; "363 tests performed, 362 succeeded, 1 failed: TheWornTrapLayerFourRowsEachReachTheReadOrActionTheirSentenceNames",
+  as registered, with 5 "Error: Expected" lines, each registered text once.
+- **Step 1, the asset rebuild:** exactly `game/Content/Data/DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; committed as 75161c459 on `feat/traps-4-t-1` and pushed.
+- **Step 2, the whole suite, STOPPED:** "4007 tests performed, 4005 succeeded, 2 failed", tests 32 and 34, one "Error:
+  Expected" line each and no other Error line (quoted in the section above). The window stopped as registered and released
+  the lock. The cause, the rulings (a) and R-i to R-iii, and the two expected figures are the section above.
+
+**THE SECOND WINDOW, enchant-t4bw, 02:51:19 to 03:42:34 by its stall guard, on 3a5a6f2e4 (the figures' commit on
+75161c459), steps 2 to 4, steps 0 and 1 standing as the first window ran them.** The same pre-checks, run just before the
+lock was taken, all as above, the worktree clean at 3a5a6f2e4.
+
+- **Step 2, the whole Unreal suite:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp"; "4007
+  tests performed, 4007 succeeded, 0 failed", registered 4007 and 0 (4000 of development after #2466, this layer's six
+  and the one real-row test). 40 skipped part of what they check (the Paragon art is not in a worktree). "Declared: 4007
+  tests in the tree at 3a5a6f2e4; 4007 performed, gap 0".
+- **Step 3, Python of record on 3a5a6f2e4:** "6858 passed, 8 skipped in 257.09s"; JUnit tests 6866, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 36 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XVI | the rearm roll asked of no player (`CataclysmMinion.cpp`) | 2 failed: `TheRearmRowAtAHundred...`, `ARearmedProjectileTrapsLateShot...` | 3 / 3 | 36 of 36 succeeded |
+| TR-XVII | a used-up trap keeps no triggering enemy (`CataclysmAbilitySystemComponent.cpp`) | 2 failed: `TheFirstEnemyRow...`, `TheHealthShareRow...` | 2 / 2 | 36 of 36 succeeded |
+| TR-XVIII | the damage over time's rule of a tenth broken (`CataclysmMinion.cpp`) | 1 failed, `TheDamageOverTimeRow...` | 1 / 1 | 36 of 36 succeeded |
+| TR-XIX | the kill explosion at the overkill's radius (`CataclysmPlayerCharacter.cpp`) | 1 failed, `AnEnemyKilledByATrapsBlow...` | 1 / 1 | 36 of 36 succeeded |
+| TR-XX | a standing trap's blow asks the late slow with no trap (`CataclysmSkillEffects.cpp`) | 1 failed, `ARearmedProjectileTrapsLateShot...` | 3 / 3 | 36 of 36 succeeded |
+
+The measured lines include, under TR-XVII, "'a late shot on the enemy that set the trap off takes the increase too:
+250.00 against 250.00' to be 500.000000, but it was 250.000000"; under TR-XVIII, "'so it is given no damage over time:
+the owner's rule of a tenth' to be 0, but it was 1"; under TR-XIX, "'and one 5 m away, beyond the 4 m, takes nothing' to
+be 0.000000, but it was 125.000000"; under TR-XX, "'by the row's 25 per cent' to be 25.000000, but it was -1.000000".
+
+**Not measured:** everything this entry lists as read and not tested (a real worn row in play, a rearm chance between
+nought and 100, a boss, the damage over time ticking or killing, a kill by a tick refused at the kill site, an evaded
+first blow, a leap's kill (#2465), the slow laid twice by a rearmed trap's next trigger); anything drawn on a screen.
+
+---
+
 ## 2026-10-21 — In the game five Cataclysms' Quest dungeons are one fixed sub-type: Death's a Horde, Demonic's Elite, Pestilence's Timed, Famine's Sacrificial and Chaos's Volatile; War's, Celestial's and the Void's still roll
 
 **The game follows the simulation for five of its eight.** A Quest dungeon a Death, Demonic, Pestilence, Famine or

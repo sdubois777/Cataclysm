@@ -10049,6 +10049,58 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
+	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
+	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
+	 * CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: nought. Granted at 40, increased for the one increase and
+	 * flat for the other three, the reader answers 0.4 or 40.
+	 *
+	 * WHAT THIS DOES NOT REACH. A trap rearming, a blow priced by them, a damage over time laid: `Cataclysm.Traps.`.
+	 */
+	void ProbeTrapBlowHook(FAutomationTestBase& Test, const TCHAR* Stat)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const FString Named(Stat);
+		const bool bIncrease = Named == ACataclysmMinion::TrapDamageToTriggeringEnemyStat;
+		const auto Read = [&Fighter, &Named]()
+		{
+			if (Named == ACataclysmMinion::TrapRearmChanceStat)
+			{
+				return ACataclysmMinion::SkillTrapRearmChanceFor(Fighter.Actor);
+			}
+			if (Named == ACataclysmMinion::TrapDamageToTriggeringEnemyStat)
+			{
+				return ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(Fighter.Actor);
+			}
+			if (Named == ACataclysmMinion::TrapTriggeringEnemyMaxHealthDamageStat)
+			{
+				return ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(Fighter.Actor);
+			}
+			return ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(Fighter.Actor);
+		};
+		Test.TestEqual(*FString::Printf(TEXT("control: with no %s its reader answers nought"), Stat), Read(), 0.0f,
+					   0.0001f);
+		if (bIncrease)
+		{
+			Grant(Fighter.Actor, Named, 40.0f);
+		}
+		else
+		{
+			GrantFlat(Fighter.Actor, Named, 40.0f);
+		}
+		Test.TestEqual(*FString::Printf(TEXT("with %s at 40 its reader answers %s, so it really reads it"), Stat,
+										bIncrease ? TEXT("0.4") : TEXT("40")),
+					   Read(), bIncrease ? 0.4f : 40.0f, 0.0001f);
+	}
+
+	/**
 	 * `resistance_<type>`, for one of the eight damage types by its place in `UCataclysmItemModifiers::DamageTypeNames`,
 	 * read by `UCataclysmDamageCalculation::TypedResistanceOf` through
 	 * `UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`. Ruled 2026-10-18, for Brute's Heart's
@@ -10308,6 +10360,15 @@ namespace CataclysmStatExemptionTest
 			{TEXT("trap_trigger_radius"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/false); }},
 			{TEXT("trap_cap_bonus"), [](FAutomationTestBase& Test) { ProbeTrapCapAndExpiry(Test, /*bCap=*/true); }},
 			{TEXT("traps_do_not_expire"), [](FAutomationTestBase& Test) { ProbeTrapCapAndExpiry(Test, /*bCap=*/false); }},
+			{TEXT("trap_rearm_chance"),
+			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapRearmChanceStat); }},
+			{TEXT("trap_damage_to_triggering_enemy"),
+			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapDamageToTriggeringEnemyStat); }},
+			{TEXT("trap_triggering_enemy_max_health_damage"),
+			 [](FAutomationTestBase& Test)
+			 { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapTriggeringEnemyMaxHealthDamageStat); }},
+			{TEXT("trap_damage_over_time_share"),
+			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapDamageOverTimeShareStat); }},
 		};
 		return Made;
 	}

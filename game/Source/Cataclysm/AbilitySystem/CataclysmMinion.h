@@ -1141,9 +1141,10 @@ public:
 	 * 2026-10-21), from the enemy's place for `SkillTrapCastsAroundItsEnemy`. A SKILL THAT CANNOT
 	 * BE CAST NEVER TRIGGERS (T8): the trap stays armed and is not used up. A cast that starts raises `trap_triggered`
 	 * on the player with the trap's type tags and the enemy, and THEN the trap is used up: destroyed, with no explosion
-	 * and no `gadget_destroyed`.
+	 * and no `gadget_destroyed`; or, since traps layer 4, it rearms instead when its player's rearm chance rolls
+	 * (`SkillTrapRollsToRearm`).
 	 *
-	 * @return whether the cast started and the trap was used up
+	 * @return whether the cast started, the trap then used up or rearmed
 	 */
 	bool TriggerSkillTrap(AActor* TriggeringEnemy);
 
@@ -1153,7 +1154,7 @@ public:
 	/** Whether it is armed. */
 	bool bSkillTrapArmed = false;
 
-	/** How many times it has triggered, at most once, since it is then used up. Read by tests before that. */
+	/** How many times it has triggered: once before it is used up, or more for a trap that rearms. Read by tests. */
 	int32 SkillTrapTriggersMade = 0;
 
 	/**
@@ -1227,6 +1228,68 @@ public:
 
 	/** Keep `DealtToHealth` if `Struck` is the enemy that set this trap off and the blow is the largest on it so far. */
 	void NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const;
+
+	/**
+	 * TRAPS LAYER 4 (ruled 2026-10-21 by the coordinating session, F1 to F12): four hooks on a trap's own blow, each a
+	 * stat of the player asked with `Type.Trap` alone, as layer 3's reads are, so a row requiring nothing or `Type.Trap`
+	 * reaches it. No gameplay attribute and no base.
+	 *
+	 * "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" is `TrapRearmChanceStat`, a
+	 * chance in per cent ROLLED AT EVERY TRIGGER (F2). A trap that passes STAYS where it is, unarmed, and ARMS AGAIN after
+	 * the ordinary arming time, so it cannot trigger twice on one step; its life span runs on from its placing and it
+	 * still counts against the cap (F1). Its `trap_triggered` is raised as at every trigger, and it is not kept among
+	 * its player's used-up traps, since it is not used up (F3).
+	 *
+	 * "Traps deal 100%-200% increased damage to the first enemy that triggers them" is `TrapDamageToTriggeringEnemyStat`,
+	 * an increase joined to the trap rows' increases on every blow of a trigger's cast on THE ENEMY THAT SET THAT TRIGGER
+	 * OFF, and on no other enemy the cast strikes; a late blow of the cast included (F4, T13).
+	 *
+	 * "Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP" is
+	 * `TrapTriggeringEnemyMaxHealthDamageStat`, a share in per cent of that enemy's maximum health ADDED FLAT BEFORE THE
+	 * INCREASES (F5, as the skill gadget's S5 d), ONCE PER TRIGGER, on the first blow of its cast on that enemy (F6), and
+	 * in full against a boss (F7).
+	 *
+	 * "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies" is `TrapDamageOverTimeShareStat`:
+	 * AN EXTRA DAMAGE OVER TIME ON TOP OF THE BLOW, which is unchanged (F8), worth the share of what the blow took from
+	 * health, over `SkillTrapDamageOverTimeSeconds`. ONLY ON THE ENEMY THAT SET THE TRAP OFF; a generic damage over time,
+	 * not an ailment; refreshed, not stacked; and ONLY WHEN THE BLOW TOOK A TENTH OF THAT ENEMY'S MAXIMUM HEALTH (F9: the
+	 * owner holds the rule of a tenth, #917, for every lasting effect a trap lays on an enemy).
+	 *
+	 * The fifth sentence, "Enemies killed by traps explode", is an action on `kill`:
+	 * `UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction`.
+	 */
+	static const TCHAR* TrapRearmChanceStat;
+	static const TCHAR* TrapDamageToTriggeringEnemyStat;
+	static const TCHAR* TrapTriggeringEnemyMaxHealthDamageStat;
+	static const TCHAR* TrapDamageOverTimeShareStat;
+
+	/** The 3 seconds of "as a DoT over 3 seconds", the sentence's own number. */
+	static constexpr float SkillTrapDamageOverTimeSeconds = 3.0f;
+
+	/** `Player`'s chance in per cent that a trap of its rearms when it triggers, or nought. */
+	static float SkillTrapRearmChanceFor(const AActor* Player);
+
+	/** Whether a trap of `Player`'s triggering now rearms: its chance rolled, where 100 is always and nought never. */
+	static bool SkillTrapRollsToRearm(const AActor* Player);
+
+	/** `Player`'s increases, as a fraction, of a trap's blows on the enemy that set the trap off, or nought. */
+	static float SkillTrapIncreaseOnItsEnemyFor(const AActor* Player);
+
+	/** `Player`'s share in per cent of the triggering enemy's maximum health a trigger's first blow on it adds, or nought. */
+	static float SkillTrapShareOfItsEnemysHealthFor(const AActor* Player);
+
+	/** `Player`'s share in per cent of a trap's blow on the enemy that set it off laid on it over time, or nought. */
+	static float SkillTrapShareAsDamageOverTimeFor(const AActor* Player);
+
+	/**
+	 * Lay `Player`'s share of `DealtToHealth`, what a blow of its trap's cast took from `Struck`, the enemy that set the
+	 * trap off, on `Struck` as a generic damage over time over `SkillTrapDamageOverTimeSeconds`, when the blow took a
+	 * tenth of its maximum health. Whether anything was laid or refreshed. Asked by `UCataclysmSkillEffects::ApplyHit`.
+	 */
+	static bool LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth);
+
+	/** Whether this trigger's share of its enemy's maximum health has been added, by its first blow on it. */
+	mutable bool bSkillTrapGaveItsEnemysHealthShare = false;
 
 	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in

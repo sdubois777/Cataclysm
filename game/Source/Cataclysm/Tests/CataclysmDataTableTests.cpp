@@ -887,7 +887,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 683 SINCE THE TWO ROWS THAT CONVERT THE SUPPORT AND BASIC SLOTS INTO TRAPS, issue #1833, from 681.
 	//
 	// AND 692 SINCE THE NINE ROWS OF TRAPS LAYER 3, issue #1833, from 683.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    692)
+	//
+	// AND 697 SINCE THE FIVE ROWS OF TRAPS LAYER 4, issue #1833, from 692.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    697)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
