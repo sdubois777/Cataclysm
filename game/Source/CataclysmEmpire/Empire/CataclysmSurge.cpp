@@ -286,6 +286,24 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 		ECataclysmDungeonSubType::Siege, Barred);
 }
 
+ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
+	ECataclysmType Cataclysm)
+{
+	// FIVE OF THE MODEL'S EIGHT, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
+	// the original; `tools/tests/test_dungeon_subtype_port.py` reads this switch
+	// and compares the five pairs with it. War, Celestial and the Void fall to
+	// `default` with `None`, which means "roll"; the header says why each one.
+	switch (Cataclysm)
+	{
+	case ECataclysmType::Death:			return ECataclysmDungeonSubType::Horde;
+	case ECataclysmType::Demonic:		return ECataclysmDungeonSubType::Elite;
+	case ECataclysmType::Pestilence:	return ECataclysmDungeonSubType::Timed;
+	case ECataclysmType::Famine:		return ECataclysmDungeonSubType::Sacrificial;
+	case ECataclysmType::Chaos:			return ECataclysmDungeonSubType::Volatile;
+	default:							return ECataclysmDungeonSubType::None;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Where a wave lands
 // ---------------------------------------------------------------------------
@@ -974,7 +992,8 @@ int32 UCataclysmSurgeScheduler::PickRefuge(
 
 FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	int32 DungeonId, const FCataclysmCity& City, int32 Day,
-	FRandomStream& Stream, bool bSiegeAllowed, ECataclysmDungeonType Type) const
+	FRandomStream& Stream, bool bSiegeAllowed, ECataclysmDungeonType Type,
+	ECataclysmType Cataclysm) const
 {
 	// A SURGE ROLLS TWO KINDS AND `RollKind` IS WHERE THAT IS DECIDED. A Fallen
 	// City is built by `MakeFallenCityDungeon` from what the city was carrying,
@@ -1047,6 +1066,29 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// rule `RollSubType` knows about -- a Cataclysm may not be a Cow Level -- is
 	// wired up rather than waiting to be remembered.
 	Dungeon.SubType = RollSubType(Stream, bSiegeAllowed, Kind);
+
+	// **A QUEST DUNGEON TAKES ITS CATACLYSM'S SUB-TYPE, AND THE DRAW ABOVE IS
+	// STILL TAKEN AND THROWN AWAY.** The owner, 2026-10-16: "Each cataclysm's
+	// quest dungeons will be one specific type." Five Cataclysms name one in the
+	// game; see `QuestSubTypeFor`, which answers `None` -- roll -- for the rest.
+	//
+	// WHY THE DRAW IS NOT SKIPPED. `RollSubType` promises one draw, always, so
+	// that what one dungeon rolled never moves the dungeons after it. A fixed
+	// Quest dungeon that skipped it would take one number fewer off the stream,
+	// and every later depth, timer and sub-type in the run would shift with
+	// which Cataclysm happened to send a Quest dungeon. Discarding the answer
+	// keeps the stream exactly where it was before this rule existed. The model
+	// skips its draw instead; its stream is its own, and nothing compares the
+	// two roll by roll. Ruled by the coordinating session, 2026-10-21.
+	//
+	// HERE, BEFORE THE WALK COST, because the walk cost reads the sub-type: a
+	// fixed sub-type must not leave a discarded Cow Level doubling the walk.
+	const ECataclysmDungeonSubType Fixed = QuestSubTypeFor(Cataclysm);
+	if (Kind == ECataclysmDungeonType::Quest
+		&& Fixed != ECataclysmDungeonSubType::None)
+	{
+		Dungeon.SubType = Fixed;
+	}
 
 	// AND HOW LONG WALKING IT COSTS, WHICH IS NOT THE SAME QUESTION AS HOW DEEP
 	// IT IS. One floor costs one day to begin with, so this starts at the floor
@@ -1122,7 +1164,8 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
 	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity,
-	const TArray<int32>& SiegesPerCityNow) const
+	const TArray<int32>& SiegesPerCityNow,
+	const TFunction<ECataclysmType()>& DrawCataclysm) const
 {
 	TArray<FCataclysmDungeon> Wave;
 
@@ -1169,9 +1212,21 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		// affect is how deep it is, through the tier's Quest row.
 		const ECataclysmDungeonType Kind = RollKind(Stream);
 
+		// AND WHICH CATACLYSM SENDS IT, BEFORE IT IS MADE, because a Quest
+		// dungeon's sub-type depends on it. Since 2026-10-21; until then the run
+		// stamped the wave after this function returned. Asked once per dungeon
+		// made and in the same order, so the run's Cataclysm stream takes the
+		// same draws it always took. The run's draw comes from a stream of its
+		// own and not from `Stream`, so asking here moves nothing above or
+		// below. With no callback the dungeon carries `None` and nothing is
+		// fixed.
+		const ECataclysmType Sender =
+			DrawCataclysm ? DrawCataclysm() : ECataclysmType::None;
+
 		FCataclysmDungeon Dungeon = MakeDungeon(FirstDungeonId + Index, *City,
 												Day, Stream, bSiegeAllowed,
-												Kind);
+												Kind, Sender);
+		Dungeon.Cataclysm = Sender;
 
 		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 		{

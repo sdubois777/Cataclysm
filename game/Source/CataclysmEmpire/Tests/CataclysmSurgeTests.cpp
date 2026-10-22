@@ -4101,4 +4101,382 @@ bool FCataclysmSurgeFloorUpgradeHitTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Each Cataclysm's Quest dungeons are one sub-type -- 2026-10-21
+// ---------------------------------------------------------------------------
+
+/**
+ * `QuestSubTypeFor` names five pairs and answers `None` for the rest.
+ *
+ * THE OWNER, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
+ * specific type." The model's `config.QUEST_SUBTYPE_BY_CATACLYSM` is the
+ * original; `tools/tests/test_dungeon_subtype_port.py` compares the five pairs
+ * with it by name. This is the function answering them, written out by hand so
+ * that a pair changed in the switch is caught here as well as there.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeForTest,
+	"Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
+{
+	// A LOCAL PAIRING RATHER THAN `TPair`, so the table below is plain
+	// aggregate initialisation.
+	struct FPairing
+	{
+		ECataclysmType Cataclysm;
+		ECataclysmDungeonSubType SubType;
+	};
+
+	const FPairing Fixed[] = {
+		{ ECataclysmType::Death,		ECataclysmDungeonSubType::Horde },
+		{ ECataclysmType::Demonic,		ECataclysmDungeonSubType::Elite },
+		{ ECataclysmType::Pestilence,	ECataclysmDungeonSubType::Timed },
+		{ ECataclysmType::Famine,		ECataclysmDungeonSubType::Sacrificial },
+		{ ECataclysmType::Chaos,		ECataclysmDungeonSubType::Volatile },
+	};
+
+	TSet<ECataclysmDungeonSubType> Answered;
+
+	for (const FPairing& Pair : Fixed)
+	{
+		const ECataclysmDungeonSubType Got =
+			UCataclysmSurgeScheduler::QuestSubTypeFor(Pair.Cataclysm);
+
+		TestEqual(FString::Printf(
+			TEXT("%s's Quest dungeons are %s"),
+			*UCataclysmRoster::NameFor(Pair.Cataclysm).ToString(),
+			*UCataclysmSurgeScheduler::SubTypeName(Pair.SubType)),
+			static_cast<int32>(Got), static_cast<int32>(Pair.SubType));
+
+		Answered.Add(Got);
+	}
+
+	// WAR, CELESTIAL AND THE VOID ROLL. War is ruled out of the game by the
+	// owner, and Ascendant and Hollow are not sub-types the game has yet. `None`
+	// is the Cataclysm nobody named.
+	for (const ECataclysmType Rolls : { ECataclysmType::War,
+										ECataclysmType::Celestial,
+										ECataclysmType::Void,
+										ECataclysmType::None })
+	{
+		TestEqual(FString::Printf(
+			TEXT("Cataclysm %d answers None, so its Quest dungeons roll"),
+			static_cast<int32>(Rolls)),
+			static_cast<int32>(UCataclysmSurgeScheduler::QuestSubTypeFor(Rolls)),
+			static_cast<int32>(ECataclysmDungeonSubType::None));
+	}
+
+	// THE CONTROL. Five different answers, none of them `None`: a function that
+	// answered one sub-type for every Cataclysm, or nothing for any, would fail
+	// one of these where it could pass a check of a single pair.
+	TestEqual(TEXT("the five name five different sub-types"), Answered.Num(), 5);
+	TestFalse(TEXT("and none of the five answers None"),
+			  Answered.Contains(ECataclysmDungeonSubType::None));
+
+	return true;
+}
+
+/**
+ * A fixed Quest sub-type moves nothing else a wave rolls.
+ *
+ * **THE STREAM CHECK, AND HOW IT TURNS THE RULE OFF.** There is no flag. The
+ * same seed is rolled twice against the same map: once with no Cataclysm
+ * callback, so every dungeon carries `None` and nothing is fixed -- what a wave
+ * was before this layer -- and once with a callback that names a Cataclysm for
+ * each dungeon, drawn from a stream of its own over all eight, so five in eight
+ * Quest dungeons take a fixed sub-type. Everything drawn from the wave's stream
+ * must come out the same: the targets, the kinds, the depths and the timers.
+ *
+ * WHAT WOULD BREAK IT. `MakeDungeon` keeps the sub-type draw and discards its
+ * answer for a fixed Quest dungeon. Skipping the draw instead would leave every
+ * later dungeon in the wave one number behind, at a different depth on a
+ * different city. `docs/DECISIONS.md`, 2026-10-21, registers that break.
+ *
+ * AND THE CATACLYSM HALF. The callback records what it answered; each dungeon
+ * must carry the answer given for it, one per dungeon and in order, which is
+ * what keeps the run's Cataclysm stream on the draws it took when the run
+ * stamped the wave afterwards.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeStreamTest,
+	"Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const TArray<ECataclysmType>& All = UCataclysmRoster::All();
+
+	int32 Compared = 0;
+	int32 FixedQuests = 0;
+	int32 Overridden = 0;
+	int32 SiegesFreed = 0;
+
+	for (int32 Seed = 1; Seed <= 60; ++Seed)
+	{
+		FRandomStream Plain(Seed);
+		FRandomStream Fixing(Seed);
+		FRandomStream Senders(Seed * 7919 + 13);
+
+		TArray<ECataclysmType> Asked;
+		auto Draw = [&Senders, &All, &Asked]()
+		{
+			const ECataclysmType Sender =
+				All[Senders.RandRange(0, All.Num() - 1)];
+			Asked.Add(Sender);
+			return Sender;
+		};
+
+		const TArray<FCataclysmDungeon> Without =
+			Scheduler->RollWave(*Map, 1, 0, Plain);
+		const TArray<FCataclysmDungeon> With =
+			Scheduler->RollWave(*Map, 1, 0, Fixing, TArray<int32>(),
+								TArray<int32>(), Draw);
+
+		if (!TestEqual(FString::Printf(
+				TEXT("seed %d: both waves land as many dungeons"), Seed),
+				With.Num(), Without.Num()))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(
+			TEXT("seed %d: the callback was asked once per dungeon made"), Seed),
+			Asked.Num(), With.Num());
+
+		for (int32 Index = 0; Index < With.Num(); ++Index)
+		{
+			const FCataclysmDungeon& A = Without[Index];
+			const FCataclysmDungeon& B = With[Index];
+
+			TestEqual(TEXT("on the same city"), B.CityId, A.CityId);
+			TestEqual(TEXT("of the same kind"),
+					  static_cast<int32>(B.Type), static_cast<int32>(A.Type));
+			TestEqual(TEXT("at the same depth"), B.Floors, A.Floors);
+			TestEqual(TEXT("with the same timer"), B.ResolveDays, A.ResolveDays);
+
+			TestEqual(TEXT("a wave with no callback stamps nobody"),
+					  static_cast<int32>(A.Cataclysm),
+					  static_cast<int32>(ECataclysmType::None));
+			if (Asked.IsValidIndex(Index))
+			{
+				TestEqual(TEXT("and with one, each dungeon carries its own answer"),
+						  static_cast<int32>(B.Cataclysm),
+						  static_cast<int32>(Asked[Index]));
+			}
+
+			const ECataclysmDungeonSubType Wanted =
+				UCataclysmSurgeScheduler::QuestSubTypeFor(B.Cataclysm);
+
+			if (B.Type == ECataclysmDungeonType::Quest
+				&& Wanted != ECataclysmDungeonSubType::None)
+			{
+				++FixedQuests;
+				TestEqual(TEXT("a fixed Quest dungeon takes its sender's sub-type"),
+						  static_cast<int32>(B.SubType),
+						  static_cast<int32>(Wanted));
+				if (A.SubType != B.SubType)
+				{
+					++Overridden;
+				}
+			}
+			else if (B.SubType == ECataclysmDungeonSubType::Siege
+					 && A.SubType != ECataclysmDungeonSubType::Siege)
+			{
+				// THE ONE DIFFERENCE THAT IS ALLOWED, AND IT IS NOT A DRAW. A
+				// fixed Quest dungeon that rolled a Siege is no longer one, so a
+				// later dungeon on the same city may now keep the Siege the
+				// one-per-city cap refused it in the plain wave -- the same
+				// draw, read without the re-read. Never the other way round.
+				++SiegesFreed;
+			}
+			else
+			{
+				TestEqual(TEXT("anything else keeps the sub-type it rolled"),
+						  static_cast<int32>(B.SubType),
+						  static_cast<int32>(A.SubType));
+			}
+
+			++Compared;
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d dungeons compared, %d fixed Quest dungeons, %d of them a "
+			 "different sub-type from the one rolled; %d Sieges a fixed one "
+			 "left room for"),
+		Compared, FixedQuests, Overridden, SiegesFreed));
+
+	// THE CONTROL. Unless some fixed Quest dungeon really came out different
+	// from what it rolled, the two waves never differed and the comparison
+	// above shows nothing about the draw being kept.
+	TestTrue(TEXT("some fixed Quest dungeons were made"), FixedQuests > 0);
+	TestTrue(TEXT("and some of them differ from what was rolled"),
+			 Overridden > 0);
+
+	return true;
+}
+
+/**
+ * In a run, five Cataclysms' Quest dungeons are their one sub-type, and the
+ * rest still roll.
+ *
+ * THE PATH THE DAY LOOP TAKES. A run at difficulty tier 8 faces all eight
+ * Cataclysms, and `FireSurge` hands `RollWave` the run's own Cataclysm draw.
+ * Every Quest dungeon a Death, Demonic, Pestilence, Famine or Chaos surge lands
+ * must be its one sub-type; the expected sub-types are written out here rather
+ * than read from `QuestSubTypeFor`, so a pair changed there fails this too.
+ *
+ * TWO CONTROLS, BOTH SEARCHED FOR AND ASSERTED. War's, Celestial's and the
+ * Void's Quest dungeons still vary -- each shows two sub-types at least -- and
+ * the five's ORDINARY dungeons still vary, so the rule is about Quest dungeons
+ * and not about the sender. Campaigns are run until all of that has been seen,
+ * up to a limit: Quest dungeons are 12 in 100, and one Cataclysm in eight
+ * sends each, so a single campaign shows too few.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeRunTest,
+	"Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
+{
+	constexpr int32 MostCampaigns = 80;
+	constexpr int32 MostDays = 600;
+	constexpr int32 EnoughOfEach = 3;
+
+	TMap<ECataclysmType, ECataclysmDungeonSubType> Expected;
+	Expected.Add(ECataclysmType::Death, ECataclysmDungeonSubType::Horde);
+	Expected.Add(ECataclysmType::Demonic, ECataclysmDungeonSubType::Elite);
+	Expected.Add(ECataclysmType::Pestilence, ECataclysmDungeonSubType::Timed);
+	Expected.Add(ECataclysmType::Famine, ECataclysmDungeonSubType::Sacrificial);
+	Expected.Add(ECataclysmType::Chaos, ECataclysmDungeonSubType::Volatile);
+
+	const ECataclysmType Rolling[] = { ECataclysmType::War,
+									   ECataclysmType::Celestial,
+									   ECataclysmType::Void };
+
+	TMap<ECataclysmType, int32> FixedSeen;
+	TMap<ECataclysmType, TSet<ECataclysmDungeonSubType>> RolledSeen;
+	TSet<ECataclysmDungeonSubType> OrdinaryFromTheFive;
+	int32 Wrong = 0;
+	int32 Campaigns = 0;
+
+	auto Enough = [&]()
+	{
+		for (const TPair<ECataclysmType, ECataclysmDungeonSubType>& Pair : Expected)
+		{
+			if (FixedSeen.FindRef(Pair.Key) < EnoughOfEach)
+			{
+				return false;
+			}
+		}
+		for (const ECataclysmType Cataclysm : Rolling)
+		{
+			const TSet<ECataclysmDungeonSubType>* Seen = RolledSeen.Find(Cataclysm);
+			if (Seen == nullptr || Seen->Num() < 2)
+			{
+				return false;
+			}
+		}
+		return OrdinaryFromTheFive.Num() >= 2;
+	};
+
+	for (int32 Seed = 1; Seed <= MostCampaigns && !Enough(); ++Seed)
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
+				   /* InDifficultyTier */ 8);
+		++Campaigns;
+
+		if (!TestEqual(TEXT("a tier 8 run faces all eight"),
+					   Run->ActiveCataclysms.Num(), 8))
+		{
+			return false;
+		}
+
+		TSet<int32> Counted;
+
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			Run->AdvanceDay();
+			++Advanced;
+
+			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				bool bAlready = false;
+				Counted.Add(Dungeon.DungeonId, &bAlready);
+				if (bAlready || Dungeon.Type == ECataclysmDungeonType::FallenCity)
+				{
+					continue;
+				}
+
+				const ECataclysmDungeonSubType* Fixed =
+					Expected.Find(Dungeon.Cataclysm);
+
+				if (Dungeon.Type == ECataclysmDungeonType::Quest)
+				{
+					if (Fixed != nullptr)
+					{
+						++FixedSeen.FindOrAdd(Dungeon.Cataclysm);
+						if (Dungeon.SubType != *Fixed)
+						{
+							++Wrong;
+							AddError(FString::Printf(
+								TEXT("seed %d: dungeon %d, a %s Quest dungeon, "
+									 "is %s and not %s"),
+								Seed, Dungeon.DungeonId,
+								*UCataclysmRoster::NameFor(Dungeon.Cataclysm).ToString(),
+								*UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType),
+								*UCataclysmSurgeScheduler::SubTypeName(*Fixed)));
+						}
+					}
+					else
+					{
+						RolledSeen.FindOrAdd(Dungeon.Cataclysm).Add(Dungeon.SubType);
+					}
+				}
+				else if (Fixed != nullptr)
+				{
+					OrdinaryFromTheFive.Add(Dungeon.SubType);
+				}
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns: %d fixed Quest dungeons came out wrong"),
+		Campaigns, Wrong));
+
+	for (const TPair<ECataclysmType, ECataclysmDungeonSubType>& Pair : Expected)
+	{
+		TestTrue(FString::Printf(
+			TEXT("at least %d %s Quest dungeons were landed (%d)"),
+			EnoughOfEach, *UCataclysmRoster::NameFor(Pair.Key).ToString(),
+			FixedSeen.FindRef(Pair.Key)),
+			FixedSeen.FindRef(Pair.Key) >= EnoughOfEach);
+	}
+
+	for (const ECataclysmType Cataclysm : Rolling)
+	{
+		const TSet<ECataclysmDungeonSubType>* Seen = RolledSeen.Find(Cataclysm);
+		TestTrue(FString::Printf(
+			TEXT("CONTROL: %s's Quest dungeons still roll, two sub-types or more"),
+			*UCataclysmRoster::NameFor(Cataclysm).ToString()),
+			Seen != nullptr && Seen->Num() >= 2);
+	}
+
+	TestTrue(TEXT("CONTROL: the five's ordinary dungeons still roll"),
+			 OrdinaryFromTheFive.Num() >= 2);
+
+	TestEqual(TEXT("no fixed Quest dungeon came out another sub-type"), Wrong, 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
