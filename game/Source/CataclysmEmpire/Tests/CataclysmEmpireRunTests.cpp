@@ -2035,6 +2035,7 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 	int32 TimersChecked = 0;
 	int32 CleanDaysChecked = 0;
 	int32 MovedByAFall = 0;
+	int32 HollowHitsChecked = 0;
 
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
@@ -2073,11 +2074,13 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 			// from `Dungeons`.
 			TMap<int32, float> DefenceWas;
 			TMap<int32, float> PopulationWas;
+			TMap<int32, int32> StacksWas;
 			TSet<int32> FallenWas;
 			for (const FCataclysmCity& City : Run->Map->Cities)
 			{
 				DefenceWas.Add(City.CityId, City.Defence);
 				PopulationWas.Add(City.CityId, City.Population);
+				StacksWas.Add(City.CityId, City.VoidStacks);
 				if (City.bFallen)
 				{
 					FallenWas.Add(City.CityId);
@@ -2091,10 +2094,18 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 			TMap<int32, ECataclysmDungeonType> KindOf;
 			TMap<int32, int32> CityOf;
 			TSet<int32> CitiesWithABiter;
+			TSet<int32> Hollows;
 			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 			{
 				KindOf.Add(Dungeon.DungeonId, Dungeon.Type);
 				CityOf.Add(Dungeon.DungeonId, Dungeon.CityId);
+
+				// A HOLLOW'S TIMER ADDS VOID STACKS AND TAKES NOTHING, since
+				// 2026-10-22, so its hit is checked by the stacks below.
+				if (Dungeon.IsHollow())
+				{
+					Hollows.Add(Dungeon.DungeonId);
+				}
 
 				if (Dungeon.Resolves()
 					|| Dungeon.SubType == ECataclysmDungeonSubType::Siege)
@@ -2225,18 +2236,52 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 
 				++CleanDaysChecked;
 
+				if (Hollows.Contains(DungeonId))
+				{
+					++HollowHitsChecked;
+				}
+
 				// HOW MANY QUEST TIMERS RAN OUT ON THIS CITY TODAY, counted
 				// from the morning's positions and not from the report's own
 				// `QuestHits`, so a hit the code failed to make is not also
 				// missing from what is expected. Two on one city is two hits.
+				//
+				// A HOLLOW'S IS NOT COUNTED HERE, since 2026-10-22: it takes no
+				// defence and no people and adds Void stacks instead, ruled by
+				// the coordinating session that day. Its stacks are worked out
+				// from `HollowStacksOnto`, in the order the timers ran out,
+				// each against the running total, starting from the city's
+				// stacks this morning. The dungeon is read as it stands now:
+				// it shrank this morning before its hit, and a move does not
+				// change its floors. The clean-day filter above already keeps
+				// out a city with an ordinary dungeon on it, so nothing else
+				// adds stacks to a city checked here.
 				int32 QuestTimersHere = 0;
+				int32 StacksExpected = StacksWas.FindRef(CityId);
 				for (const int32 OtherId : Report.Resolved)
 				{
-					if (KindOf.FindRef(OtherId) == ECataclysmDungeonType::Quest
-						&& CityOf.FindRef(OtherId) == CityId)
+					if (KindOf.FindRef(OtherId) != ECataclysmDungeonType::Quest
+						|| CityOf.FindRef(OtherId) != CityId)
+					{
+						continue;
+					}
+
+					if (!Hollows.Contains(OtherId))
 					{
 						++QuestTimersHere;
+						continue;
 					}
+
+					const FCataclysmDungeon* Hollow = Run->FindDungeon(OtherId);
+					if (Hollow == nullptr)
+					{
+						AddError(FString::Printf(
+							TEXT("Hollow %d whose timer ran out is gone from the "
+								 "map"), OtherId));
+						continue;
+					}
+
+					StacksExpected += Hollow->HollowStacksOnto(StacksExpected);
 				}
 
 				// THE ORDINARY ROW OF THE HOST'S TIER, READ FROM THE TABLE.
@@ -2261,6 +2306,10 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 					TEXT("%s lost that hit's population as well"), *City->Name),
 					PopulationWas.FindRef(CityId) - City->Population,
 					PopulationExpected, 0.01f);
+				TestEqual(FString::Printf(
+					TEXT("%s gained exactly the stacks of each Hollow whose "
+						 "timer ran out on it"), *City->Name),
+					City->VoidStacks, StacksExpected);
 			}
 
 			CountQuests(*Run);
@@ -2272,9 +2321,10 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d campaigns: %d quest dungeons arrived, %d of their timers ran "
 			 "out, %d of those on a day nothing else could have hurt the city, "
-			 "and %d were moved by the city falling underneath them"),
+			 "%d of those a Hollow's, and %d were moved by the city falling "
+			 "underneath them"),
 		Campaigns, QuestsSeen, TimersChecked, CleanDaysChecked,
-		MovedByAFall));
+		HollowHitsChecked, MovedByAFall));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED. A run that never
 	// landed a quest dungeon, or never let one of their timers run out, would
