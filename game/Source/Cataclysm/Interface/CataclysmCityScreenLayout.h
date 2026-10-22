@@ -85,6 +85,10 @@ public:
 	/**
 	 * What the city is worth right now: defence, population, and whether the
 	 * Cataclysm can reach it.
+	 *
+	 * AND ITS VOID STACKS OUT OF TEN, WHEN IT CARRIES ANY, since 2026-10-22. A
+	 * fallen city that carries some says how many and that retaking it clears
+	 * them, still without a defence figure. A city with none reads as before.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString StatusTextFor(const UCataclysmEmpireRun* Run, int32 CityId);

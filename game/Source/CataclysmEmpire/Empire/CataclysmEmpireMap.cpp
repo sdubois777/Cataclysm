@@ -507,6 +507,31 @@ bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
 				  City->MaxPopulation * FMath::Max(0.0f, PopulationFraction));
 }
 
+bool UCataclysmEmpireMap::AddVoidStacks(int32 CityId, int32 Stacks)
+{
+	FCataclysmCity* City = FindMutable(CityId);
+	if (City == nullptr || City->bFallen)
+	{
+		return false;
+	}
+
+	// NO DEFENCE AND NO PEOPLE ARE TAKEN. That is the whole of the owner's
+	// rule: the Void's ordinary dungeons add stacks "instead of doing damage to
+	// the city or population". So the city's two resistances, which are read in
+	// `Damage`, do not reach this.
+	City->VoidStacks += FMath::Max(0, Stacks);
+
+	if (City->VoidStacks < VoidStacksToErase)
+	{
+		return false;
+	}
+
+	// THE TENTH STACK. The mark first, so `Fall` erases rather than merely
+	// fells, as it does for any doomed city.
+	City->bDoomed = true;
+	return Fall(CityId);
+}
+
 // ---------------------------------------------------------------------------
 // City upgrades
 // ---------------------------------------------------------------------------
@@ -615,8 +640,8 @@ bool UCataclysmEmpireMap::Fall(int32 CityId)
 	City->Defence = 0.0f;
 	City->bFallen = true;
 
-	// THE VOID'S CITIES DO NOT COME BACK. Nothing marks a city doomed yet; see
-	// `FCataclysmCity::bDoomed`.
+	// THE VOID'S CITIES DO NOT COME BACK. `AddVoidStacks` marks a city doomed
+	// at its tenth Void stack and then calls this; see `FCataclysmCity::bDoomed`.
 	if (City->bDoomed)
 	{
 		City->bErased = true;
@@ -636,6 +661,11 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 	City->bFallen = false;
 	City->Defence = City->MaxDefence * RetakenFraction;
 	City->Population = City->MaxPopulation * RetakenFraction;
+
+	// A RETAKEN CITY'S VOID STACKS ARE CLEARED, as `Simulation._retake` clears
+	// them, ruled by the coordinating session on 2026-10-16. It fell with fewer
+	// than ten, or it would have been erased and refused above.
+	City->VoidStacks = 0;
 
 	return true;
 }

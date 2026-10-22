@@ -27,6 +27,33 @@ float FCataclysmDungeon::BiteScale() const
 	return Typical <= 0.0f ? 1.0f : (Floors - UpgradeFloors) / Typical;
 }
 
+bool FCataclysmDungeon::AddsVoidStacks() const
+{
+	return Type == ECataclysmDungeonType::Basic
+		&& Cataclysm == ECataclysmType::Void;
+}
+
+int32 FCataclysmDungeon::VoidStacksItAdds() const
+{
+	// THE ROW'S PLAIN RANGE; the header says why it is not the model's 1.25
+	// times it.
+	const FCataclysmDungeonSpec Spec =
+		UCataclysmSurgeScheduler::SpecFor(Type, CityTier);
+
+	const int32 Span = Spec.MostFloors - Spec.LeastFloors;
+	if (Span <= 0)
+	{
+		return 1;
+	}
+
+	// WHOLE-NUMBER DIVISION, WHICH CUTS TOWARDS NOUGHT AS THE MODEL'S `int()`
+	// DOES. Every operand is whole, so the answer is exact and no rounding of a
+	// fraction can carry a depth across a third.
+	const int32 Natural = Floors - UpgradeFloors;
+	const int32 Third = 3 * (Natural - Spec.LeastFloors) / Span;
+	return 1 + FMath::Clamp(Third, 0, 2);
+}
+
 float FCataclysmDungeon::WalkDaysPerFloor() const
 {
 	const int32 Walked = FMath::Max(1, Floors);
@@ -317,6 +344,26 @@ float UCataclysmSurgeScheduler::TargetWeightFor(ECataclysmCityTier Tier)
 	case ECataclysmCityTier::Pillar:	return PillarTargetWeight;
 	default:							return OutpostTargetWeight;
 	}
+}
+
+float UCataclysmSurgeScheduler::TargetWeightForSender(
+	const FCataclysmCity& City, ECataclysmType Sender)
+{
+	const float Weight = TargetWeightFor(City.Tier);
+
+	if (Sender != ECataclysmType::Void)
+	{
+		return Weight;
+	}
+
+	// NOUGHT STACKS MULTIPLY BY EXACTLY ONE, so a Void slot on a city with none
+	// weighs the same float an ordinary slot does. Ten or more pull by the
+	// whole `VoidTargetPullAtFull`.
+	const float Share = FMath::Min(
+		1.0f, static_cast<float>(City.VoidStacks)
+				  / static_cast<float>(UCataclysmEmpireMap::VoidStacksToErase));
+
+	return Weight * (1.0f + VoidTargetPullAtFull * Share);
 }
 
 // ---------------------------------------------------------------------------
@@ -612,9 +659,16 @@ int32 UCataclysmSurgeScheduler::RoomLeftOn(
 
 TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 	const UCataclysmEmpireMap& Map, int32 Count, FRandomStream& Stream,
-	const TArray<int32>& DungeonsPerCity) const
+	const TArray<int32>& DungeonsPerCity,
+	const TFunction<ECataclysmType()>& DrawCataclysm,
+	TArray<ECataclysmType>* OutSenders) const
 {
 	TArray<int32> Landed;
+
+	if (OutSenders != nullptr)
+	{
+		OutSenders->Reset();
+	}
 
 	// THE FRONTIER, AND THE PILLAR IS NOT IN IT. `ExposedCities` leaves the
 	// Pillar out unless asked for, which is the same rule
@@ -673,16 +727,63 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 
 	Landed.Reserve(Count);
 
+	// A VOID SLOT'S OWN WEIGHTS, rebuilt for each such slot from the candidates
+	// still holding room. Kept outside the loop only so it is not reallocated.
+	TArray<float> Pulled;
+
 	for (int32 Rolled = 0; Rolled < Count; ++Rolled)
 	{
+		// WHO SENDS THIS SLOT, ASKED BEFORE IT IS ROLLED, since 2026-10-22,
+		// because the Void aims by its stacks. One ask per city landed on, as
+		// `RollWave` asked after the targets until then; the answer comes off
+		// the run's own Cataclysm stream, so `Stream` below takes the draw it
+		// always took.
+		const ECataclysmType Sender =
+			DrawCataclysm ? DrawCataclysm() : ECataclysmType::None;
+
+		// THE TIER WEIGHTS AND THEIR RUNNING TOTAL, UNLESS THE VOID SENDS THE
+		// SLOT AND SOME CANDIDATE CARRIES STACKS. Only then is a second set of
+		// weights summed afresh. A Void slot on an empire with no stacks keeps
+		// `Weights` and `Total` themselves -- not a recomputed sum, which after
+		// a full city has been taken out could differ from `Total` in its last
+		// bit and move the city a roll lands on.
+		const TArray<float>* SlotWeights = &Weights;
+		float SlotTotal = Total;
+
+		if (Sender == ECataclysmType::Void)
+		{
+			Pulled.Reset(Candidates.Num());
+
+			float PulledTotal = 0.0f;
+			bool bAnyPulled = false;
+
+			for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+			{
+				const FCataclysmCity* City = Map.Find(Candidates[Index]);
+				const float Weight = City
+					? TargetWeightForSender(*City, Sender)
+					: Weights[Index];
+
+				bAnyPulled = bAnyPulled || Weight != Weights[Index];
+				Pulled.Add(Weight);
+				PulledTotal += Weight;
+			}
+
+			if (bAnyPulled)
+			{
+				SlotWeights = &Pulled;
+				SlotTotal = PulledTotal;
+			}
+		}
+
 		// WITH REPLACEMENT. Two dungeons of one wave may land on the same city,
 		// which is how a wave concentrates rather than spreading evenly.
-		float Roll = Stream.FRand() * Total;
+		float Roll = Stream.FRand() * SlotTotal;
 
 		int32 Chosen = Candidates.Num() - 1;
 		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
 		{
-			Roll -= Weights[Index];
+			Roll -= (*SlotWeights)[Index];
 			if (Roll <= 0.0f)
 			{
 				Chosen = Index;
@@ -691,6 +792,11 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 		}
 
 		Landed.Add(Candidates[Chosen]);
+
+		if (OutSenders != nullptr)
+		{
+			OutSenders->Add(Sender);
+		}
 
 		// AND THAT CITY HAS ONE LESS ROOM. A city one short of its cap can be
 		// chosen twice in one wave, because the roll is with replacement, so
@@ -708,6 +814,8 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 		// `Total` has to lose its weight with it or every later roll would be
 		// scaled against a total that includes a city it can no longer pick, and
 		// the walk would fall off the end onto whichever city happens to be last.
+		// THE TIER WEIGHT, whoever sent this slot: `Total` is the tier weights'
+		// total, and a later Void slot sums its own.
 		Total -= Weights[Chosen];
 
 		Candidates.RemoveAt(Chosen);
@@ -1169,8 +1277,13 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 {
 	TArray<FCataclysmDungeon> Wave;
 
+	// THE SENDERS COME BACK WITH THE TARGETS, one per city landed on, because
+	// `PickTargets` draws each before rolling its slot; see there.
+	TArray<ECataclysmType> Senders;
+
 	const TArray<int32> Targets =
-		PickTargets(Map, DungeonsInNextSurge(), Stream, DungeonsPerCity);
+		PickTargets(Map, DungeonsInNextSurge(), Stream, DungeonsPerCity,
+					DrawCataclysm, &Senders);
 
 	Wave.Reserve(Targets.Num());
 
@@ -1214,14 +1327,18 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 
 		// AND WHICH CATACLYSM SENDS IT, BEFORE IT IS MADE, because a Quest
 		// dungeon's sub-type depends on it. Since 2026-10-21; until then the run
-		// stamped the wave after this function returned. Asked once per dungeon
-		// made and in the same order, so the run's Cataclysm stream takes the
-		// same draws it always took. The run's draw comes from a stream of its
-		// own and not from `Stream`, so asking here moves nothing above or
-		// below. With no callback the dungeon carries `None` and nothing is
-		// fixed.
+		// stamped the wave after this function returned. SINCE 2026-10-22 IT
+		// WAS DRAWN BY `PickTargets`, before this slot's target was rolled,
+		// because the Void aims by its stacks: still one draw per city landed
+		// on and in the same order, so the run's Cataclysm stream takes the
+		// same draws it always took. With no callback the dungeon carries
+		// `None` and nothing is fixed.
+		//
+		// A TARGET NOT ON THE MAP, skipped above, still had its sender drawn.
+		// No built map has one, since every target comes from the map's own
+		// exposed cities.
 		const ECataclysmType Sender =
-			DrawCataclysm ? DrawCataclysm() : ECataclysmType::None;
+			Senders.IsValidIndex(Index) ? Senders[Index] : ECataclysmType::None;
 
 		FCataclysmDungeon Dungeon = MakeDungeon(FirstDungeonId + Index, *City,
 												Day, Stream, bSiegeAllowed,

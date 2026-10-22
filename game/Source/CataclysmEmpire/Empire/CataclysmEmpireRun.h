@@ -1182,6 +1182,12 @@ private:
 	 * the city in `FCataclysmDayReport::HitAndLeft`. One standing on a city
 	 * already fallen takes nothing and stays.
 	 *
+	 * AN ORDINARY DUNGEON THE VOID SENT ADDS VOID STACKS INSTEAD OF POINTS, since
+	 * 2026-10-22: `FCataclysmDungeon::VoidStacksItAdds` of them, through
+	 * `UCataclysmEmpireMap::AddVoidStacks`, and the tenth erases the city.
+	 * Everything else is the same -- it is counted in `DungeonsDetonated`, it
+	 * leaves and is named in `HitAndLeft`, or its city's fall absorbs it.
+	 *
 	 * `FCataclysmDungeon::Resolves` STILL ANSWERS TRUE FOR AN ORDINARY DUNGEON
 	 * AND NOTHING ELSE. A Quest dungeon answers false and is handled in the
 	 * block that asks: its host takes the ordinary row of the host's tier, the
