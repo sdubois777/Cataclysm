@@ -28158,4 +28158,73 @@ bool FCataclysmTrapLayerFiveRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapLayerSixRowsTest,
+	"Cataclysm.Enchantments.TheWornTrapLayerSixRowsEachReachTheReadOrActionTheirSentenceNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Traps layer 6, ruled 2026-10-22 (J1-J10): three sentences, three rows. WORN by real players, one sentence each, against
+ * a CONTROL wearing a benefit with no effect, each with the same drawback with no effect. For each, the test asks the one
+ * read or worn action its row reaches: the gadget's shot at a trap's enemy on `trap_triggered` within its 10 m, the same
+ * action on every third, and the trap's pull radius through `ACataclysmMinion`'s own reader. What each then does in play
+ * is `Cataclysm.Traps.`'s. THREE assertions on the cases, one per worn sentence, so on assets built before the rows it
+ * fails three times, and only there.
+ */
+bool FCataclysmTrapLayerSixRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* NearbyGadgetFires = TEXT("Positive_When_a_trap_is_triggered_near_an_active_gadget");
+	const TCHAR* EveryThirdShot = TEXT("Positive_For_every_3_traps_triggered_your_nearest_gadget");
+	const TCHAR* TrapPulls = TEXT("Positive_When_a_trap_triggers_all_enemies_within_4_6_met");
+	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker NearbyGadgetWearer(NearbyGadgetFires, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker EveryThirdWearer(EveryThirdShot, DrawbackWithNoEffect);
+	CataclysmConsecutiveRowTest::FStriker PullWearer(TrapPulls, DrawbackWithNoEffect);
+	for (const CataclysmConsecutiveRowTest::FStriker* Striker : {&Control, &NearbyGadgetWearer, &EveryThirdWearer,
+			 &PullWearer})
+	{
+		if (!TestTrue(TEXT("a striker for the trap layer 6 rows"), Striker->Ready()))
+		{
+			return false;
+		}
+	}
+
+	// HOW MANY WORN ACTIONS FIRE A GADGET AT A TRAP'S ENEMY ON `trap_triggered`, on every `EveryNthWanted`th (nought for
+	// every one) within `ReachMetres` (nought for any distance).
+	const auto CountGadgetShots = [](const CataclysmConsecutiveRowTest::FStriker& Striker, int32 EveryNthWanted,
+									 float ReachMetres)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+		{
+			Found += Action.bGadgetFiresAtTrapEnemy && Action.Event == FName(TEXT("trap_triggered"))
+				&& Action.EveryNth == EveryNthWanted && FMath::IsNearlyEqual(Action.EventValue, ReachMetres) ? 1 : 0;
+		}
+		return Found;
+	};
+	const auto CountAnyGadgetShot = [](const CataclysmConsecutiveRowTest::FStriker& Striker)
+	{
+		int32 Found = 0;
+		for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+		{
+			Found += Action.bGadgetFiresAtTrapEnemy ? 1 : 0;
+		}
+		return Found;
+	};
+
+	// THE CONTROL, READ FIRST: wearing a benefit with no effect, no gadget shot and no pull.
+	TestEqual(TEXT("control: no action fires a gadget at a trap's enemy"), CountAnyGadgetShot(Control), 0);
+	TestEqual(TEXT("control: no trap pull radius"), ACataclysmMinion::SkillTrapPullRadiusCmFor(Control.Character), 0.0f,
+			  0.001f);
+
+	const FString Stale = TEXT(" If not, DT_EnchantmentEffects may be older than the rows: run tools/generate_datatable_assets.py");
+	TestEqual(TEXT("wearing the nearby-gadget row, one action fires the gadget within 10 m on every trap_triggered.") + Stale,
+			  CountGadgetShots(NearbyGadgetWearer, /*EveryNthWanted=*/0, /*ReachMetres=*/10.0f), 1);
+	TestEqual(TEXT("wearing the every-third row, one action fires the nearest gadget on every third trap_triggered.") + Stale,
+			  CountGadgetShots(EveryThirdWearer, /*EveryNthWanted=*/3, /*ReachMetres=*/0.0f), 1);
+	TestTrue(TEXT("wearing the pull row, a trap pulls enemies within its radius.") + Stale,
+			 ACataclysmMinion::SkillTrapPullRadiusCmFor(PullWearer.Character) > 0.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

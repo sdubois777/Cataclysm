@@ -471,6 +471,25 @@ fails for both, 2 more. TR-XXIII passes these tests.
 the count emptied at death (test 48); the pull to 1 m, beyond not pulled and a boss (tests 49 and 50); a forced trap pulls
 (test 51).
 
+### THE ROWS, AUTHORED BY THE ENCHANTMENT SESSION
+
+**Three effect rows on three enchantments**, on the coordinating session's grant of the workbook for them on 2026-10-22,
+written into `docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`, cell
+for cell the rows this layer's second session dry-ran through the whole generator (the table above). The generator
+accepted all three, and the diff of `EnchantmentEffects.csv` is those three lines added and none removed; the generated
+Every Nth is 3 on the every-third row and Event Value 10 on the nearby-gadget row. **706 rows over 569 enchantments**,
+from 703 over 566, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s `CHECK_TABLE` and in
+`docs/README.md`; and the word `"gadget_fires_at_trap_enemy": {"shot": 100.0}` in `STATED_BY_WORD`, which lands with the
+row. Event Value is read by `ActOnEvent` as a threshold only on `health_falls_below` (`EventThresholdCrossed`), so the
+nearby-gadget row's 10 m is read as its radius and nowhere as a threshold.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornTrapLayerSixRowsEachReachTheReadOrActionTheirSentenceNames`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Four real players: a control wearing a benefit with no effect, and one
+wearing each of the three sentences, each with a drawback with no effect. For each it asks the read or worn action its
+row reaches: one `gadget_fires_at_trap_enemy` on `trap_triggered` with no Every Nth and an Event Value of 10; one with
+an Every Nth of 3 and an Event Value of nought; and `SkillTrapPullRadiusCmFor` above nought; the control reaches none of
+them (two lines). Three assertions on the cases, so on assets built before the rows it fails three times, and only there.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.

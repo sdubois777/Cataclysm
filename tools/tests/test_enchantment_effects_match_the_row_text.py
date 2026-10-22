@@ -471,6 +471,10 @@ STATED_BY_WORD: dict[str, dict[str, float]] = {
     # trigger simultaneously", its trap half, sets off every standing trap wherever it stands, and the generator
     # requires a radius of 0 on `player_death`. Ruled by the coordinating session on 2026-10-22 (traps layer 5, H8).
     "trigger_traps_nearby": {"all": 0.0},
+    # "SHOT" IS 100 ON `gadget_fires_at_trap_enemy`: "When a trap is triggered near an active gadget, the gadget fires an
+    # immediate bonus shot at the triggering enemy" fires one whole shot, a "more" of 100 per cent; the every-third row
+    # states its own 200%-400%. Ruled by the coordinating session on 2026-10-22 (traps layer 6, J2, J6).
+    "gadget_fires_at_trap_enemy": {"shot": 100.0},
     # "ECHO" IS 100 ON `repeat_skill`, whose value is a chance: "Your spells
     # echo +1 time" repeats every time. Mechanism B2, ruled 2026-10-05: an
     # echo is read as a second free activation. The two rows that say "twice"
@@ -1037,8 +1041,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-22, from 692 over 556: five rows on five enchantments.
 #: AND 703 OVER 566 SINCE THE SIX ROWS OF TRAPS LAYER 5,
 #: issue #1833, 2026-10-22, from 697 over 561: six rows, five on new enchantments and a second row on one.
-AUTHORED_ROWS = 703
-AUTHORED_ENCHANTMENTS = 566
+#: AND 706 OVER 569 SINCE THE THREE ROWS OF TRAPS LAYER 6,
+#: issue #1833, 2026-10-22, from 703 over 566: three rows on three enchantments.
+AUTHORED_ROWS = 706
+AUTHORED_ENCHANTMENTS = 569
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
