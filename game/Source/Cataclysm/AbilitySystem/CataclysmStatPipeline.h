@@ -4663,6 +4663,16 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * every own stack did before. See `UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone`.
 	 */
 	bool bOwnStacksLapseAlone = false;
+
+	/**
+	 * Set, this action makes an enemy its wearer kills EXPLODE FOR A SHARE OF THE BLOW THAT KILLED IT: `Percent` is the
+	 * share in per cent of that blow's figure before the victim's mitigation each enemy within 4 m of the body takes.
+	 * Ruled 2026-10-21 (traps layer 4, F10 to F12), for "Enemies killed by traps explode, dealing 50%-100% of the trap's
+	 * damage to all enemies within 4 meters", requiring `Type.Trap`. On the event `kill` and no other. THE EVENT LOOP
+	 * ONLY RECORDS THE SHARE, as for `bExplodeVictimForOverkill`. See
+	 * `UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction`.
+	 */
+	bool bExplodeVictimForKillingBlow = false;
 };
 
 /**

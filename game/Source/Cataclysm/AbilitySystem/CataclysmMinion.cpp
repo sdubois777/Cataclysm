@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
+#include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -2546,6 +2548,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	// the slow's rule of a tenth (the owner, 2026-10-21).
 	SkillTrapTriggeringEnemy = Enemy;
 	SkillTrapTookFromItsEnemy = 0.0f;
+	// AND THIS TRIGGER'S SHARE OF THAT ENEMY'S MAXIMUM HEALTH NOT YET ADDED: once per trigger (traps layer 4, F6).
+	bSkillTrapGaveItsEnemysHealthShare = false;
 	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
 	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, AimedAtEnemy,
 								   bFromThePlace ? &Place : nullptr))
@@ -2563,6 +2567,19 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
 					   /*bLanded=*/true, Enemy);
 	Theirs->SkillTrapRaisingItsTrigger.Reset();
+
+	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
+	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
+	// STAYS where it is and is ARMED AGAIN after the ordinary arming time, so it cannot trigger twice on one step; it
+	// keeps the life span it was placed with and still counts against the cap; and, not used up, it is not kept among the
+	// used-up traps, so a later blow of its cast finds it standing.
+	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
+	{
+		bSkillTrapArmed = false;
+		SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, TypeTags);
+		ShowSkillTrapTint();
+		return true;
+	}
 
 	// AND KEPT ON THE PLAYER AS USED UP, with its type tags, so a blow of its cast landing after it is gone (a shot, a
 	// rack's throw, a buried weapon's leap, a zone laid where a shot ends) is still priced and announced as the trap's
@@ -2669,4 +2686,70 @@ void ACataclysmMinion::NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHe
 	{
 		SkillTrapTookFromItsEnemy = FMath::Max(SkillTrapTookFromItsEnemy, DealtToHealth);
 	}
+}
+
+// ==========================================================================
+// Traps, layer 4: the rearm chance, and the three hooks on a trap's blow on its triggering enemy. Ruled 2026-10-21
+// (F1 to F9); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapRearmChanceStat = TEXT("trap_rearm_chance");
+const TCHAR* ACataclysmMinion::TrapDamageToTriggeringEnemyStat = TEXT("trap_damage_to_triggering_enemy");
+const TCHAR* ACataclysmMinion::TrapTriggeringEnemyMaxHealthDamageStat = TEXT("trap_triggering_enemy_max_health_damage");
+const TCHAR* ACataclysmMinion::TrapDamageOverTimeShareStat = TEXT("trap_damage_over_time_share");
+
+float ACataclysmMinion::SkillTrapRearmChanceFor(const AActor* Player)
+{
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapRearmChanceStat));
+}
+
+bool ACataclysmMinion::SkillTrapRollsToRearm(const AActor* Player)
+{
+	// A CHANCE OF 100 IS ALWAYS AND ONE OF NOUGHT NEVER, compared rather than rolled, as a held skill's trigger compares
+	// its chance; between them a roll below the chance passes.
+	const float Chance = SkillTrapRearmChanceFor(Player);
+	return Chance >= 100.0f || (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance);
+}
+
+float ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(const AActor* Player)
+{
+	return SkillTrapIncreasesOf(Player, TrapDamageToTriggeringEnemyStat, FGameplayTagContainer(TagOfATrap()));
+}
+
+float ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(const AActor* Player)
+{
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapTriggeringEnemyMaxHealthDamageStat));
+}
+
+float ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(const AActor* Player)
+{
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapDamageOverTimeShareStat));
+}
+
+bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth)
+{
+	// A GENERIC DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag, so a second blow lays over it as every damage over
+	// time does, the stronger a second replacing it and a weaker refreshing its time, and it never stacks.
+	const FGameplayTag Generic =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Generic")), /*ErrorIfNotFound=*/false);
+	const float SharePercent = SkillTrapShareAsDamageOverTimeFor(Player);
+	if (SharePercent <= 0.0f || !Generic.IsValid() || !IsValid(Struck) || UCataclysmSkillEffects::IsDead(Struck))
+	{
+		return false;
+	}
+
+	// THE OWNER'S RULE OF A TENTH (#917), against what this blow took from that enemy's health: "Follow the tenth rule",
+	// which the owner holds for every lasting effect a trap lays on an enemy (F9).
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	{
+		return false;
+	}
+
+	// THE SHARE OF WHAT THE BLOW TOOK, OVER THE SENTENCE'S 3 SECONDS AT ONE TICK A SECOND, and NOT RAISED BY THE PLAYER'S
+	// OWN DAMAGE OVER TIME STATS: the blow it is a share of was priced with the player's numbers already, and the
+	// sentence states its time. The target's own resistances and duration rows still meet it, as every tick.
+	const float Whole = DealtToHealth * SharePercent / 100.0f;
+	const float Ticks = SkillTrapDamageOverTimeSeconds / UCataclysmSkillEffects::BaseSecondsPerTick;
+	return UCataclysmSkillEffects::ApplyDamageOverTime(Player, Struck, Whole / Ticks, SkillTrapDamageOverTimeSeconds,
+													   Generic, /*bScalesWithInstigator=*/false);
 }

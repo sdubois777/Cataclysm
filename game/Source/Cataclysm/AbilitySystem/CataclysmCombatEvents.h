@@ -247,6 +247,12 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 * striker for every other listener. See `FCataclysmLastBlow::bAreaSkillShareOnAnAlly`.
 	 */
 	bool bByAnAreaSkillShareOnAnAlly = false;
+
+	/**
+	 * The figure of the blow that killed, before the victim's mitigation. Ruled 2026-10-21 (traps layer 4, F10). Nought
+	 * for a death with no lethal blow on record. See `FCataclysmLastBlow::KillingBlowDamage`.
+	 */
+	float KillingBlowDamage = 0.0f;
 };
 
 /**
@@ -330,6 +336,14 @@ struct CATACLYSM_API FCataclysmLastBlow
 	 * death notice as `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`.
 	 */
 	bool bAreaSkillShareOnAnAlly = false;
+
+	/**
+	 * This blow's figure before the victim's mitigation, `FCataclysmIncomingHit::Damage`, AND ONLY WHEN IT WAS LETHAL, as
+	 * `Overkill` is. Ruled 2026-10-21 (traps layer 4, F10), for "Enemies killed by traps explode, dealing 50%-100% of the
+	 * trap's damage": the trap's damage is the killing blow's own figure as dealt. Handed to the death notice as
+	 * `FCataclysmDeathNotice::KillingBlowDamage`.
+	 */
+	float KillingBlowDamage = 0.0f;
 
 	bool IsOnRecord() const { return WorldSeconds >= 0.0; }
 };

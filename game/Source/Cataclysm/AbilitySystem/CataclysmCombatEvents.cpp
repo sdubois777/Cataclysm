@@ -184,6 +184,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 				Blow.KillingTags.AppendTags(Granted);
 				// AND HOW FAR IT WENT PAST THE HEALTH HELD, for the same blow only. Ruled 2026-10-07.
 				Blow.Overkill = Outcome.Overkill;
+				// AND ITS FIGURE BEFORE THE VICTIM'S MITIGATION, for the same blow only. Ruled 2026-10-21 (traps layer 4).
+				Blow.KillingBlowDamage = Hit.Damage;
 			}
 
 			Cataclysm->RecordLastBlow(MoveTemp(Blow));
@@ -289,6 +291,8 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 		Notice.Overkill = Blow.Overkill;
 		// AND WHETHER THAT BLOW WAS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT THIS ALLY. Ruled 2026-10-15.
 		Notice.bByAnAreaSkillShareOnAnAlly = Blow.bAreaSkillShareOnAnAlly;
+		// AND THE KILLING BLOW'S FIGURE BEFORE MITIGATION. Ruled 2026-10-21 (traps layer 4, F10).
+		Notice.KillingBlowDamage = Blow.KillingBlowDamage;
 	}
 
 	++Events->Deaths;

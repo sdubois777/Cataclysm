@@ -1116,12 +1116,21 @@ public:
 	 * and when the second part is wired it explodes in turn. So a target is asked again whether it is still
 	 * there and alive before it is struck: an explosion further down the chain may have killed it first.
 	 *
+	 * SINCE TRAPS LAYER 4 (2026-10-21, F10, F11) IT ALSO CARRIES "Enemies killed by traps explode, dealing 50%-100% of
+	 * the trap's damage to all enemies within 4 meters": `Overkill` is then the killing blow's own figure before the
+	 * victim's mitigation, and `RadiusCm` is `KillingBlowExplosionRadiusCm`. Every other caller leaves the radius as it
+	 * was.
+	 *
 	 * @param Victim  the enemy killed, which takes nothing. May be null.
 	 * @param At      where the body is.
+	 * @param RadiusCm  how far it reaches from `At`.
 	 * @return how many enemies a blow was sent at. Nought for an overkill or a share of nought.
 	 */
 	static int32 ExplodeForOverkill(AActor* Killer, const AActor* Victim, const FVector& At, float Overkill,
-									float SharePercent);
+									float SharePercent, float RadiusCm = OverkillExplosionRadiusCm);
+
+	/** How far "Enemies killed by traps explode" reaches from the body: the sentence's 4 meters. Traps layer 4. */
+	static constexpr float KillingBlowExplosionRadiusCm = 400.0f;
 
 	/**
 	 * The chance, in percent, that a damage over time ailment this character applied explodes when it ends by
