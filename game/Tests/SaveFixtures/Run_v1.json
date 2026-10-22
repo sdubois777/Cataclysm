@@ -22,6 +22,7 @@
 			"CityTier": "Outpost",
 			"Floors": 12,
 			"UpgradeFloors": 0,
+			"HollowFrom": 16,
 			"ResolveDays": 33.5,
 			"WalkDays": 12.0,
 			"Bosses": 4,

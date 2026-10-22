@@ -276,6 +276,27 @@ both to add a field the record had gained:
   **Nothing loads a run's cities back yet** (issue #753), so the stacks are
   written and never read; that is the gap every city field has.
 
+`Run_v1.json` was edited a sixteenth time on 2026-10-22:
+
+- `HollowFrom` on its one dungeon, because a dungeon now records the natural
+  floors a Hollow -- the Void's Quest dungeon -- was made with, which it
+  shrinks from. `docs/DECISIONS.md` has the entry, "In the game the Void's
+  Quest dungeon is a Hollow…".
+
+  **It holds 16 rather than the default of 0**, for the reason `Bosses` holds
+  4: a fixture carrying a field's default cannot show that the value survives
+  a round trip rather than being re-defaulted on load. Sixteen is not the
+  dungeon's `Floors`, 12, nor any other number on it, so one written into
+  another would be noticed.
+
+  **The fixture is test data rather than a reachable game state.** The
+  dungeon is an ordinary Siege, and in play only a Hollow carries a
+  `HollowFrom` that is not nought. Nothing reads the field on a dungeon that
+  is not a Hollow, so no other test that loads this file changes meaning.
+
+  **Nothing loads a run's dungeons back yet** (issue #753), so the field is
+  written and never read, as every dungeon field is.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 
