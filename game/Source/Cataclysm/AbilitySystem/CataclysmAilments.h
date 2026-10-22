@@ -358,4 +358,15 @@ public:
 					  const FCataclysmAilmentKind& Kind, float Magnitude,
 					  const UGameplayAbility* Skill = nullptr,
 					  FName DamageType = NAME_None, float Seconds = 0.0f);
+
+	/**
+	 * Lay Cripple's slow on `Target` AT A STATED STRENGTH, in per cent (30 is 30% slower), for `Seconds`. Ruled
+	 * 2026-10-21 (traps layer 3, M3), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds": a strength
+	 * BELOW Cripple's own 30, which `Apply` cannot lay, since its magnitude only raises the strength. Capped at Cripple's
+	 * row's cap; the seconds are lengthened by the instigator's Cripple duration rows, as a stated Cripple's are, and
+	 * `ApplyTagForDuration` does the rest, as for every Cripple. Nothing for a strength or seconds of nought.
+	 *
+	 * @return whether anything was applied
+	 */
+	static bool ApplySlowOfStrength(AActor* Instigator, AActor* Target, float StrengthPercent, float Seconds);
 };

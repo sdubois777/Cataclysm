@@ -1094,6 +1094,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// row on `deployable_hit` naming `Type.Trap` reaches the enemies a trap's cast strikes.
 	UCataclysmAbilitySystemComponent* const MachinesPlayer = GadgetsPlayer ? GadgetsPlayer : TrapsPlayer;
 	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
+	// AND A LATE BLOW OF A TRAP ALREADY USED UP, a shot or a rack's throw whose delivery still names it: when the slow
+	// waits for it on this enemy, the blow is dealt here, so its figure decides the slow (ruled 2026-10-21, brief 60c).
+	// Every other blow passes on unchanged.
+	UCataclysmAbilitySystemComponent* const LateTrapsPlayer = !MachinesPlayer && !bAShareOnAnAlly
+		&& !Arrived.bIsDamageOverTime ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+	if (LateTrapsPlayer && LateTrapsPlayer->AwaitsALateSkillTrapSlow(Delivery.CastBy, Target))
+	{
+		FCataclysmDamageResult LateResult;
+		FCataclysmDamageResult* const Resolved = OutResolved ? OutResolved : &LateResult;
+		const bool bLateDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Resolved);
+		LateTrapsPlayer->LayALateSkillTrapSlow(Delivery.CastBy, Target, Resolved->DealtToHealth);
+		return bLateDealt ? Sent : 0.0f;
+	}
 	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
 	{
 		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
@@ -1110,7 +1123,17 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	FCataclysmDamageResult OwnResult;
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
-	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, 0.0f,
+	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
+	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps apply 1-2 bleed stacks to all enemies
+	// caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
+	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
+	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
+	// 2026-10-21: "Follow the tenth rule").
+	if (!GadgetsPlayer)
+	{
+		Machine->NoteSkillTrapBlowOn(Target, Result->DealtToHealth);
+	}
+	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
 	return bDealt ? Sent : 0.0f;
 }

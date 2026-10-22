@@ -443,6 +443,9 @@ public:
 	 * A COUNT OF HITS IN A ROW ON ONE ENEMY says so after the count, "attack/
 	 * spell damage 3/8 (hits in a row)". Issue #1833, phase 2: without it the
 	 * entry would read exactly as a timed stack of the same stats does.
+	 *
+	 * A ROW WITH NO CAP (a `Cap` of nought) shows its count alone, "attack/spell
+	 * damage 6". Traps layer 3, ruled 2026-10-21 (M4 (a)).
 	 */
 	static FString OwnStacksEntry(const TArray<FName>& Stats, int32 Held, int32 Cap,
 								  bool bConsecutiveHits = false);

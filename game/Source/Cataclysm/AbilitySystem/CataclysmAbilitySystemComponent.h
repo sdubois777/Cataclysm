@@ -4546,6 +4546,76 @@ public:
 	/** The world's time at which the last basic trap was placed: long ago until the first, as a first swing is. */
 	float BasicSkillTrapPlacedAtSeconds = -1000.0f;
 
+	/**
+	 * TRAPS LAYER 3. Ruled 2026-10-21 by the coordinating session (M3, M4), for three trap rows the actions that existed
+	 * could not state. `APPLY_STATUS_SIZED_ACTION`, `SLOW_FOR_SECONDS_ACTION` and `OWN_STACKS_LAPSING_ALONE_EVENTS` in
+	 * `tools/generate_datatables.py` hold the same names.
+	 *
+	 * `ApplyStatusSizedAction` LAYS A DAMAGE OVER TIME ON THE OTHER CHARACTER OF ITS EVENT AT THE VALUE'S MULTIPLE OF ITS
+	 * ORDINARY SIZE, always: "Traps apply 1-2 bleed stacks to all enemies caught in their blast", on `deployable_hit`
+	 * with `Type.Trap` (ruling 8 of 2026-10-07: "1-2 bleed stacks" is one bleed at 1 to 2 times its size). The
+	 * `ECataclysmApplyStatus::Sized` form, which until now only `ApplyStatusToSelfSizedAction` took. The owner's rule of
+	 * a tenth (#917) is asked of it as of every status a blow lays on another.
+	 */
+	static const TCHAR* ApplyStatusSizedAction;
+
+	/**
+	 * `SlowForSecondsAction` SLOWS THE OTHER CHARACTER OF ITS EVENT BY THE VALUE IN PER CENT FOR `StackSeconds`: "Traps
+	 * apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`, whose other character is the enemy
+	 * that set the trap off and no other (M3 (b)). Cripple's tag at the stated strength, capped at Cripple's own cap, for
+	 * the stated seconds lengthened as a stated Cripple's are. THE RULE OF A TENTH IS ASKED (the owner, 2026-10-21: "Follow
+	 * the tenth rule") against the event's amount, the largest blow the trap's cast dealt that enemy
+	 * (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). WHEN NO BLOW HAS YET QUALIFIED, the slow waits for a later blow of
+	 * the same cast (`LateSkillTrapSlows`, ruled 2026-10-21, brief 60c). See `UCataclysmAilments::ApplySlowOfStrength`.
+	 */
+	static const TCHAR* SlowForSecondsAction;
+
+	/**
+	 * Grant one own stack under `StackKey` THAT LAPSES ALONE, `WindowSeconds` after it was granted, with NO CAP: "Each trap
+	 * triggered in the last 10 seconds increases your damage by 8%-15%" (M4 (a)). An own-stack row with no cap
+	 * (`FCataclysmPoolAction::bOwnStacksLapseAlone`) grants through this and not `GrantOwnStack`, whose stacks lapse
+	 * together and whose cap of nothing grants nothing. `OwnStacksHeld` counts the stacks still inside their windows. A
+	 * window of nothing grants nothing.
+	 */
+	void GrantOwnStackLastingAlone(FName StackKey, float WindowSeconds);
+
+	/** When each stack of a row whose stacks lapse alone was granted, by stack key. Emptied where `OwnStacks` is. */
+	TMap<FName, TArray<float>> OwnStacksLastingAlone;
+
+	/**
+	 * THE SLOW DECIDED AT A LATE BLOW. Ruled 2026-10-21 by the coordinating session (brief 60c): "when a blow from a trap's
+	 * cast lands on the enemy that set that trap off and takes at least a tenth of its maximum health, it lays the slow
+	 * there and then at the slow row's figures, once per trap". A blow already landed when the trap triggers is judged at
+	 * `trap_triggered` (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). When none qualified, the slow action leaves one of
+	 * these, and a later blow of that cast (a shot in flight, a rack's throw) whose delivery's `CastBy` IS THAT TRAP,
+	 * compared by identity although the trap is gone, lays it, once, if it takes a tenth. Each waits at most
+	 * `SkillTrapLateSlowSeconds`. Emptied at death.
+	 */
+	struct FLateSkillTrapSlow
+	{
+		TWeakObjectPtr<AActor> Trap;
+		TWeakObjectPtr<AActor> Enemy;
+		float StrengthPercent = 0.0f;
+		float Seconds = 0.0f;
+		float UntilSeconds = 0.0f;
+	};
+	TArray<FLateSkillTrapSlow> LateSkillTrapSlows;
+
+	/** How long a slow waits for a late blow of its trap's cast: a number under the owner's delegation of unstated numbers. */
+	static constexpr float SkillTrapLateSlowSeconds = 5.0f;
+
+	/** The skill trap whose `trap_triggered` is being raised now, set by `ACataclysmMinion::TriggerSkillTrap` around it. */
+	TWeakObjectPtr<AActor> SkillTrapRaisingItsTrigger;
+
+	/** Whether a slow waits for a blow of the trap `CastBy` names on `Struck`. Asked by `UCataclysmSkillEffects::ApplyHit`. */
+	bool AwaitsALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, const AActor* Struck) const;
+
+	/**
+	 * A blow of the trap `CastBy` names has landed on `Struck`, taking `DealtToHealth`: if a slow waits for it and the blow
+	 * takes a tenth (the owner's rule, #917), lay the slow and stop waiting. Whether a slow was laid.
+	 */
+	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth);
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

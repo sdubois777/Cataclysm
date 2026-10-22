@@ -318,7 +318,10 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # Traps layer 1, ruled 2026-10-19 (T1-T19) and 2026-10-20: the flag by which a slot,
               # named by its Required Tags, is converted into a placeable trap. Each of its rows
               # states 1 and the sentences name no number.
-              "skill_slot_is_a_trap"}
+              "skill_slot_is_a_trap",
+              # Traps layer 3, ruled 2026-10-21 (M2): the flag by which a trap placed while it is worn
+              # has no life span. Its row states 1 and the sentence names no number.
+              "traps_do_not_expire"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -1024,8 +1027,10 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-20, from 678 over 543: three rows on three enchantments.
 #: AND 683 OVER 548 SINCE THE TWO ROWS THAT CONVERT THE SUPPORT AND BASIC SLOTS INTO TRAPS,
 #: issue #1833, 2026-10-21, from 681 over 546: two rows on two enchantments.
-AUTHORED_ROWS = 683
-AUTHORED_ENCHANTMENTS = 548
+#: AND 692 OVER 556 SINCE THE NINE ROWS OF TRAPS LAYER 3,
+#: issue #1833, 2026-10-21, from 683 over 548: nine rows on eight enchantments.
+AUTHORED_ROWS = 692
+AUTHORED_ENCHANTMENTS = 556
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

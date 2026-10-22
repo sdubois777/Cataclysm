@@ -2415,10 +2415,11 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		return nullptr;
 	}
 
-	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6): THE OLDEST ARE DESTROYED WITHOUT TRIGGERING, before
-	// the new one is told its slot, so it is not among them. Destroyed and not killed: no `HandleDeath`, no cast.
+	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6), AND THE CAP BONUS MORE (M1): THE OLDEST ARE DESTROYED
+	// WITHOUT TRIGGERING, before the new one is told its slot, so it is not among them. Destroyed and not killed: no
+	// `HandleDeath`, no cast.
 	TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
-	while (Standing.Num() >= SkillTrapsMostPerPlayer)
+	while (Standing.Num() >= SkillTrapsMostFor(Player))
 	{
 		Standing[0]->Destroy();
 		Standing.RemoveAt(0);
@@ -2426,6 +2427,12 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 
 	// OUTSIDE EVERY SUMMON CAP, as a skill gadget is (S8): its own cap is the one above.
 	Placed->bOutsideSummonCaps = true;
+	// AND NO LIFE SPAN WHILE THE PLAYER HOLDS "Traps do not expire, they remain armed until triggered" (M2 (a)), as a
+	// skill gadget has none: taken at placing, so a trap placed without it keeps its 20 s. The cap above still applies.
+	if (SkillTrapsDoNotExpireFor(Player))
+	{
+		Placed->SetLifeSpan(0.0f);
+	}
 	Placed->SkillTrapSlot = Slot;
 	Placed->SkillTrapArmsAtAgeSeconds =
 		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
@@ -2535,6 +2542,10 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	// THE BASIC ATTACK AND THE HEAVY "FIRE ... AT THE NEAREST ENEMY" (ruled 2026-10-21): at the nearest living enemy now,
 	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
 	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
+	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
+	// the slow's rule of a tenth (the owner, 2026-10-21).
+	SkillTrapTriggeringEnemy = Enemy;
+	SkillTrapTookFromItsEnemy = 0.0f;
 	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
 	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, AimedAtEnemy,
 								   bFromThePlace ? &Place : nullptr))
@@ -2543,9 +2554,15 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	}
 	++SkillTrapTriggersMade;
 
-	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it.
+	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
+	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
 	const FGameplayTagContainer TrapTags = TypeTags;
-	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Enemy);
+	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
+	// cast (ruled 2026-10-21, brief 60c).
+	Theirs->SkillTrapRaisingItsTrigger = this;
+	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
+					   /*bLanded=*/true, Enemy);
+	Theirs->SkillTrapRaisingItsTrigger.Reset();
 
 	// USED UP: destroyed, with no explosion and no `gadget_destroyed`, because `HandleDeath` is not run.
 	Destroy();
@@ -2608,4 +2625,43 @@ AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
 	const float NoFartherCm = FVector::Dist(GetActorLocation(), TriggeringEnemy->GetActorLocation());
 	const TArray<AActor*> Living = HostilesWithin(NoFartherCm);
 	return Living.IsEmpty() ? TriggeringEnemy : Living[0];
+}
+
+// ==========================================================================
+// Traps, layer 3: the cap bonus and the no-expire flag. Ruled 2026-10-21 (M1, M2).
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapCapBonusStat = TEXT("trap_cap_bonus");
+const TCHAR* ACataclysmMinion::TrapsDoNotExpireStat = TEXT("traps_do_not_expire");
+
+namespace
+{
+	/** The player's own figure of `Stat` for its traps, asked with `Type.Trap` alone, or nought with no stat line. */
+	float SkillTrapFigureOf(const AActor* Player, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(TagOfATrap()), /*Fallback=*/0.0f) : 0.0f;
+	}
+}
+
+int32 ACataclysmMinion::SkillTrapsMostFor(const AActor* Player)
+{
+	// "+1-6 TO MAX TRAP COUNT" IS A WHOLE NUMBER OF TRAPS, so the rolled figure is rounded, as a minion cap's bonus is
+	// (`MinionCapFor`), and the cap is at least one, as that one is.
+	return FMath::Max(1, SkillTrapsMostPerPlayer + FMath::RoundToInt(SkillTrapFigureOf(Player, TrapCapBonusStat)));
+}
+
+bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)
+{
+	return SkillTrapFigureOf(Player, TrapsDoNotExpireStat) > 0.0f;
+}
+
+void ACataclysmMinion::NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const
+{
+	// THE LARGEST SINGLE BLOW, since the rule of a tenth is asked of one blow and not of a sum.
+	if (Struck && Struck == SkillTrapTriggeringEnemy.Get())
+	{
+		SkillTrapTookFromItsEnemy = FMath::Max(SkillTrapTookFromItsEnemy, DealtToHealth);
+	}
 }
