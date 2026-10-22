@@ -520,4 +520,56 @@ bool FCataclysmDayClockAdvanceDaysTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * Setting a dungeon's floors moves its floors and nothing else.
+ *
+ * FOR A HOLLOW, since 2026-10-22, whose floors come down a day at a time while
+ * it bites on the schedule it was made with. The clock reads `Floors` only in
+ * `AddDungeon`, and the save writes the whole timer, so the copy is kept true.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDayClockSetFloorsTest,
+	"Cataclysm.DayClock.SettingADungeonsFloorsMovesNeitherItsTimerNorWhatItRefillsTo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDayClockSetFloorsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDayClockTest;
+
+	UCataclysmDayClock* Clock = MakeClock();
+	if (!TestNotNull(TEXT("a day clock was made"), Clock))
+	{
+		return false;
+	}
+
+	Clock->AddDungeon(1, /*Floors=*/20);
+	Clock->SetResolveDays(1, 30.0f);
+	Clock->AdvanceDay();
+
+	TestTrue(TEXT("a known dungeon's floors can be set"), Clock->SetFloors(1, 12));
+
+	const FCataclysmDungeonTimer* Timer = Clock->FindTimer(1);
+	if (!TestNotNull(TEXT("the timer is still there"), Timer))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it records the new floors"), Timer->Floors, 12);
+	TestEqual(TEXT("its timer still refills to the 30 days it was given"),
+			  Timer->ResolveDays, 30.0f, 0.001f);
+	TestEqual(TEXT("and still has the 29 it had left"), Timer->DaysUntilResolve, 29.0f, 0.001f);
+
+	// THE CONTROL: 12 FLOORS WOULD HAVE GIVEN ANOTHER TIMER, so the two
+	// assertions above are about the timer being left alone and not about the
+	// two figures happening to agree.
+	TestNotEqual(TEXT("CONTROL: a 12 floor dungeon's own timer is not 30 days"),
+				 UCataclysmDayClock::ResolveDaysFor(12), 30.0f);
+
+	// BELOW ONE IS ONE, AND AN UNKNOWN DUNGEON IS REFUSED.
+	Clock->SetFloors(1, 0);
+	TestEqual(TEXT("no floors is read as one"), Clock->FindTimer(1)->Floors, 1);
+	TestFalse(TEXT("a dungeon the clock does not know is refused"), Clock->SetFloors(99, 5));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
