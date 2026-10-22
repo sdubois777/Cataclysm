@@ -627,7 +627,59 @@ count stands: TR-XVI 3 in 2 tests, TR-XVII 2 in 2, TR-XVIII 1 in 1, TR-XIX 1 in 
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**THE LAYER WAS MOVED BEFORE ITS WINDOW** onto development 69b3e7ebf (#2466, the fixed Quest sub-types), as 42b7241b4,
+7e5c6ffa7 and 55e7d215f, from dce3011c3, 58b760d60 and 8ba10ebca on cd5c85e82. Each kept its zero-context patch id
+outside this log and its count of removed lines, the two later ones their whole patch ids as well; the only conflict was
+this log (this entry placed on top); and outside this log the moved top differs from 8ba10ebca by exactly that merge's
+own files and patch id.
+
+**TWO WINDOWS, ON 2026-10-22. THE FIRST STOPPED AT THE WHOLE SUITE ON TWO EXPECTED FIGURES; THE SECOND, OF STEPS 2 TO 4
+AS RULED, PASSED EVERY STEP AS REGISTERED. Nothing was re-run on the session's own account.**
+
+**THE FIRST WINDOW, enchant-t4w, 01:49:53 (its stall guard's start) to 02:33:34 (its log's last write), on 55e7d215f.**
+The pre-checks, run just before the lock was taken: development's CI and Unreal runs on 69b3e7ebf succeeded, no run in
+progress, no pull request open, the lock free, no Excel, editor or build process, the worktree clean.
+
+- **Step 0, the `Cataclysm.Enchantments.` group on the assets as merged:** "Build: Succeeded - 50 actions, 45 files
+  compiled"; "363 tests performed, 362 succeeded, 1 failed: TheWornTrapLayerFourRowsEachReachTheReadOrActionTheirSentenceNames",
+  as registered, with 5 "Error: Expected" lines, each registered text once.
+- **Step 1, the asset rebuild:** exactly `game/Content/Data/DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; committed as 75161c459 on `feat/traps-4-t-1` and pushed.
+- **Step 2, the whole suite, STOPPED:** "4007 tests performed, 4005 succeeded, 2 failed", tests 32 and 34, one "Error:
+  Expected" line each and no other Error line (quoted in the section above). The window stopped as registered and released
+  the lock. The cause, the rulings (a) and R-i to R-iii, and the two expected figures are the section above.
+
+**THE SECOND WINDOW, enchant-t4bw, 02:51:19 to 03:42:34 by its stall guard, on 3a5a6f2e4 (the figures' commit on
+75161c459), steps 2 to 4, steps 0 and 1 standing as the first window ran them.** The same pre-checks, run just before the
+lock was taken, all as above, the worktree clean at 3a5a6f2e4.
+
+- **Step 2, the whole Unreal suite:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp"; "4007
+  tests performed, 4007 succeeded, 0 failed", registered 4007 and 0 (4000 of development after #2466, this layer's six
+  and the one real-row test). 40 skipped part of what they check (the Paragon art is not in a worktree). "Declared: 4007
+  tests in the tree at 3a5a6f2e4; 4007 performed, gap 0".
+- **Step 3, Python of record on 3a5a6f2e4:** "6858 passed, 8 skipped in 257.09s"; JUnit tests 6866, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 36 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XVI | the rearm roll asked of no player (`CataclysmMinion.cpp`) | 2 failed: `TheRearmRowAtAHundred...`, `ARearmedProjectileTrapsLateShot...` | 3 / 3 | 36 of 36 succeeded |
+| TR-XVII | a used-up trap keeps no triggering enemy (`CataclysmAbilitySystemComponent.cpp`) | 2 failed: `TheFirstEnemyRow...`, `TheHealthShareRow...` | 2 / 2 | 36 of 36 succeeded |
+| TR-XVIII | the damage over time's rule of a tenth broken (`CataclysmMinion.cpp`) | 1 failed, `TheDamageOverTimeRow...` | 1 / 1 | 36 of 36 succeeded |
+| TR-XIX | the kill explosion at the overkill's radius (`CataclysmPlayerCharacter.cpp`) | 1 failed, `AnEnemyKilledByATrapsBlow...` | 1 / 1 | 36 of 36 succeeded |
+| TR-XX | a standing trap's blow asks the late slow with no trap (`CataclysmSkillEffects.cpp`) | 1 failed, `ARearmedProjectileTrapsLateShot...` | 3 / 3 | 36 of 36 succeeded |
+
+The measured lines include, under TR-XVII, "'a late shot on the enemy that set the trap off takes the increase too:
+250.00 against 250.00' to be 500.000000, but it was 250.000000"; under TR-XVIII, "'so it is given no damage over time:
+the owner's rule of a tenth' to be 0, but it was 1"; under TR-XIX, "'and one 5 m away, beyond the 4 m, takes nothing' to
+be 0.000000, but it was 125.000000"; under TR-XX, "'by the row's 25 per cent' to be 25.000000, but it was -1.000000".
+
+**Not measured:** everything this entry lists as read and not tested (a real worn row in play, a rearm chance between
+nought and 100, a boss, the damage over time ticking or killing, a kill by a tick refused at the kill site, an evaded
+first blow, a leap's kill (#2465), the slow laid twice by a rearmed trap's next trigger); anything drawn on a screen.
 
 ---
 
