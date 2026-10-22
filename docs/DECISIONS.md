@@ -620,7 +620,43 @@ assertions on the cases, so on assets built before the rows it fails eight times
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**ONE WINDOW, enchant-t3w, ON 2026-10-21, 20:23:00 (its stall guard's start) to 21:14:36 (its log's last write), on
+9fafb77c1. Every step exited 0 with the figures registered before it; nothing was re-run.** The pre-checks, run just
+before the lock was taken: development's CI and Unreal runs on b7980dc48 succeeded, no run in progress, no pull request
+open, the lock free, no Excel, editor or build process, the worktree clean at 9fafb77c1.
+
+- **Step 0, the `Cataclysm.Enchantments.` group on the assets as merged:** "Build: Succeeded - 50 actions, 45 files
+  compiled"; "362 tests performed, 361 succeeded, 1 failed: TheWornTrapLayerThreeRowsEachReachTheReadOrActionTheirSentenceNames",
+  as registered. The run's log held 8 "Error: Expected" lines, and each of the eight registered assertion texts once.
+- **Step 1, the asset rebuild:** exactly `game/Content/Data/DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; committed as 5b4b61421 on `feat/traps-3-t-1` and pushed.
+- **Step 2, the whole Unreal suite:** "Build: Succeeded - target already up to date, 0 actions, nothing compiled";
+  "3991 tests performed, 3991 succeeded, 0 failed", registered 3991 and 0 (the 3982 of the Quest dungeon's window, this
+  layer's eight and the one real-row test). 40 skipped part of what they check (the Paragon art is not in a worktree).
+  "Declared: 3991 tests in the tree at 5b4b61421; 3991 performed, gap 0".
+- **Step 3, Python of record on 5b4b61421:** "6842 passed, 8 skipped in 257.96s"; JUnit tests 6850, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!". (On 9fafb77c1, before the rebuild, the same run gave 1
+  failed, 6841 passed, 8 skipped: the asset-currency check naming `EnchantmentEffects.csv`, as expected.)
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 26 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-VIII | the cap bonus ignored (`CataclysmMinion.cpp`) | 1 failed, `TheCapBonusRaisesTheOneCapSoASixthTrapStandsAndTheBarShowsTrapsSixOfEight` | 4 / 4 | 26 of 26 succeeded |
+| TR-IX | a trap's `deployable_hit` amount back to nought (`CataclysmSkillEffects.cpp`) | 1 failed, `TheBleedRowBleedsEveryEnemyATrapsCastStrikesAtItsSizeWhenTheBlowTookATenth` | 5 / 5 | 26 of 26 succeeded |
+| TR-X | the lapse-alone record never found (`CataclysmAbilitySystemComponent.cpp`) | 1 failed, `TheDamageRowGivesAStackForEachTrapTriggeredInTheLastTenSecondsEachLapsingAloneWithNoCap` | 2 / 2 | 26 of 26 succeeded |
+| TR-XI | the slow's rule of a tenth at the trigger broken (`CataclysmAbilitySystemComponent.cpp`) | 2 failed, `AProjectileTrapsLateShotSlows...`, `TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOff...` | 4 / 4 | 26 of 26 succeeded |
+| TR-XII | the late slow's lookup given no trap (`CataclysmSkillEffects.cpp`) | 1 failed, `AProjectileTrapsLateShotSlowsTheEnemyThatSetItOffWhenItTakesATenthAndTheSpentTrapCountsForNothing` | 3 / 3 | 26 of 26 succeeded |
+
+The measured lines include, under TR-VIII, "'and the box reads six of eight' to be "Traps 6/8", but it was "Traps
+5/8""; under TR-X, "'so 30% increased' to be 0.300000, but it was 0.600000"; under TR-XII, "'by the row's 25 per cent'
+to be 25.000000, but it was -1.000000".
+
+**Not measured:** the real-row test and the probes under any break (outside the prefix); everything this entry lists as
+read and not tested; a trap's late projectile, leap or zone priced by trap damage rows or carrying the trap bleed (not
+built: the next trap layer, issue #2462); anything drawn on a screen.
 
 ---
 
