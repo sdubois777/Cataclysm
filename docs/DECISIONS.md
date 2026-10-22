@@ -339,7 +339,38 @@ route); the gadget's late shot staying the player's; the controls of each test.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**ONE WINDOW, enchant-t3bw, ON 2026-10-21, 22:37:27 to 23:26:17 by its stall guard, on fd2c6dc3c (this layer's two
+commits on ada79f1fd). Every step exited 0 with the figures registered before it; nothing was re-run.** The pre-checks,
+run just before the lock was taken: development's CI and Unreal runs on ada79f1fd succeeded, no run in progress, no pull
+request open, the lock free, no Excel, editor or build process, the worktree clean at fd2c6dc3c. No row and no asset, so
+no old-asset step and no rebuild.
+
+- **The whole Unreal suite:** "Build: Succeeded - 39 actions, 36 files compiled", the first compile of this layer's C++;
+  "3995 tests performed, 3995 succeeded, 0 failed", registered 3995 and 0 (the 3991 of traps layer 3's window and this
+  layer's four). 40 skipped part of what they check (the Paragon art is not in a worktree). "Declared: 3995 tests in the
+  tree at fd2c6dc3c; 3995 performed, gap 0".
+- **Python of record on fd2c6dc3c:** "6843 passed, 8 skipped in 261.26s"; JUnit tests 6851, failures 0, errors 0,
+  skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 30 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XIII | a used-up trap never kept: `NoteSkillTrapSpent(nullptr, TypeTags)` (`CataclysmMinion.cpp`) | 4 failed: `AProjectileTrapsLateShotIsPriced...`, `ABuriedWeaponOfAUsedUpTrapsCast...`, `ATrapsZoneIsPriced...`, `AProjectileTrapsLateShotSlows...` | 14 / 14 | 30 of 30 succeeded |
+| TR-XIV | the zone's lookup given no trap (`CataclysmSkillTemplate.cpp`) | 1 failed, `ATrapsZoneIsPricedByATrapDamageRowWhenLaidAndItsSweepsRaiseNoDeployableHitAndLayNoTrapBleed` | 1 / 1 | 30 of 30 succeeded |
+| TR-XV | the buried weapon's identity read through `Get` (`CataclysmBuriedWeapon.cpp`) | 1 failed, `ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot` | 6 / 6 | 30 of 30 succeeded |
+
+The measured lines include, under TR-XIII, "'the late shot is priced by the minion_damage row naming Type.Trap, once: 50%
+more, 250.00 against 250.00' to be 375.000000, but it was 250.000000" and "'by the row's 25 per cent' to be 25.000000, but
+it was -1.000000"; under TR-XIV, "'the zone a used-up trap's shot lays is priced by the row when laid: 50% more, 25.00
+against 25.00' to be 37.500000, but it was 25.000000"; under TR-XV, "'its second leap is still the trap's: 50% more,
+110.00 against 110.00' to be 165.000000, but it was 110.000000".
+
+**Not measured:** everything this entry lists as read and not tested (a rack's late throw, a real Harrower thrown by a
+trap, `BuryInStruck` passing the identity, Emberhurl's own burning path, a leap laying the late slow, the 65th used-up
+trap letting the first go, the record emptied at death); anything drawn on a screen.
 
 ---
 
