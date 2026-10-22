@@ -503,3 +503,13 @@ def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_en
                      r"ApplyStatusSizedAction,", item)
     assert re.search(r"Action\.bSlowForSeconds = Effect->Action\.Equals\(\s*"
                      r"UCataclysmAbilitySystemComponent::SlowForSecondsAction,", item)
+    # AND THE SLOW ASKS THE RULE OF A TENTH against what the trap's cast took
+    # from the enemy that set it off, which `trap_triggered` carries. The owner,
+    # 2026-10-21: "Follow the tenth rule".
+    engine = SOURCE.read_text(encoding="utf-8")
+    assert re.search(r"if \(bLanded && Slowed && !StackedThisEvent\.Contains\(Action\.TriggerKey\) "
+                     r"&& TriggerReady\(Action\)\s*&& UCataclysmAilments::BlowCanCarryAnAilment"
+                     r"\(Slowed, EventAmount\)\)", engine)
+    minion = (SOURCE.parent / "CataclysmMinion.cpp").read_text(encoding="utf-8")
+    assert re.search(r'ActOnEvent\(FName\(TEXT\("trap_triggered"\)\), &TrapTags, '
+                     r'/\*EventAmount=\*/SkillTrapTookFromItsEnemy,', minion)

@@ -1114,6 +1114,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps apply 1-2 bleed stacks to all enemies
 	// caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
 	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
+	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
+	// 2026-10-21: "Follow the tenth rule").
+	if (!GadgetsPlayer)
+	{
+		Machine->NoteSkillTrapBlowOn(Target, Result->DealtToHealth);
+	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
 	return bDealt ? Sent : 0.0f;

@@ -6749,11 +6749,14 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// THE OTHER CHARACTER OF THE EVENT IS SLOWED BY THE ROW'S PER CENT FOR ITS STACK SECONDS. Ruled 2026-10-21 (traps
 		// layer 3, M3 (b)), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" on `trap_triggered`,
 		// whose other character is the enemy that set the trap off. Landed only, once per row per event; applied by the
-		// avatar, as a status is above. NO RULE OF A TENTH: a trigger is not a blow, and the event carries no amount.
+		// avatar, as a status is above. AND THE OWNER'S RULE OF A TENTH (#917), as for every ailment a row lays on another
+		// character, against the event's amount: what the trap's cast took from that enemy in its largest blow. The owner,
+		// 2026-10-21: "Follow the tenth rule".
 		if (Action.bSlowForSeconds)
 		{
 			AActor* Slowed = const_cast<AActor*>(EventTarget);
-			if (bLanded && Slowed && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			if (bLanded && Slowed && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
+				&& UCataclysmAilments::BlowCanCarryAnAilment(Slowed, EventAmount))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				AActor* Slower = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();

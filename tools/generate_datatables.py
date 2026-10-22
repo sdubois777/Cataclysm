@@ -11982,10 +11982,14 @@ def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
 #: Cripple at Cripple's own 30 (held 2026-10-07 for that reason).
 #: `UCataclysmAbilitySystemComponent::SlowForSecondsAction` holds the name.
 #:
-#: ON `trap_triggered` AND NO OTHER EVENT. A trigger is not a blow and carries
-#: no amount, so the owner's rule of a tenth (#917), which is about what a blow
-#: may lay, is not asked; on a blow's event it would be. No Ailment cell: the
-#: slow is always Cripple's.
+#: ON `trap_triggered` AND NO OTHER EVENT, AND UNDER THE OWNER'S RULE OF A
+#: TENTH (#917). The owner, 2026-10-21: "Follow the tenth rule" — "The slow
+#: lands only if the trap's cast then hits that same enemy for at least a tenth
+#: of its maximum health." The event's amount is the largest blow the trap's
+#: cast dealt the enemy that set it off (`ACataclysmMinion::
+#: SkillTrapTookFromItsEnemy`), and the rule is asked against it, as for every
+#: ailment a row lays on another character. No Ailment cell: the slow is always
+#: Cripple's.
 SLOW_FOR_SECONDS_ACTION = "slow_for_seconds"
 SLOW_FOR_SECONDS_EVENTS = ("trap_triggered",)
 
