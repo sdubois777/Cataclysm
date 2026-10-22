@@ -4689,6 +4689,67 @@ public:
 	/** What the rows recorded for the kill in hand. See `TakePendingKillingBlowExplosionSharePercent`. */
 	float PendingKillingBlowExplosionSharePercent = 0.0f;
 
+	/**
+	 * TRAPS LAYER 5, the player's other traps. Ruled 2026-10-22 by the coordinating session (H1 to H11), and H5 (b) by the
+	 * owner: "Chain the group (Recommended)" — "Every trap in a connected group within range goes off, each at most once.
+	 * Each counts as triggered, so it slows its own enemy and adds a damage stack. Needs a small queue in the code."
+	 *
+	 * TWO ACTIONS, each with its value the radius in metres from the trap that triggered (`trap_triggered`) or the gadget
+	 * destroyed (`gadget_destroyed`), and Scale Max Steps 1 for the nearest trap alone, empty for every one:
+	 * `ArmTrapsNearbyAction` arms the player's standing unarmed traps there (`ACataclysmMinion::ArmSkillTrapsNear`), for
+	 * "When a trap is triggered, the nearest unarmed trap within 10 meters arms instantly", "When a trap triggers it
+	 * releases a shockwave that arms all traps within 15 meters instantly" and "When a gadget is destroyed it arms all
+	 * traps within 12 meters instantly"; `TriggerTrapsNearbyAction` sets them off (`ACataclysmMinion::SetOffSkillTrapsNear`),
+	 * for "Traps trigger simultaneously when any one of them is triggered, if within 8-12 meters of each other", "When a
+	 * gadget is destroyed, the nearest active trap within 10 meters is triggered immediately" and, on `player_death` with a
+	 * radius of nought for every trap, the trap half of "When you die, all your active traps and gadgets immediately
+	 * trigger simultaneously". `tools/generate_datatables.py` holds the same names. No trigger cooldown (H9).
+	 */
+	static const TCHAR* ArmTrapsNearbyAction;
+	static const TCHAR* TriggerTrapsNearbyAction;
+
+	/** Where the trap `SkillTrapRaisingItsTrigger` names stood when it triggered, set with it. */
+	FVector SkillTrapRaisingItsTriggerPlace = FVector::ZeroVector;
+
+	/**
+	 * THE QUEUE (H5 (b)): a trap's `trap_triggered` heard while this character is already acting on an event, which only a
+	 * trap a row sets off raises, kept with everything read then, as `afflicted_death` is kept, and answered by
+	 * `DrainQueuedSkillTrapTriggers` after the acting row has finished. Its trap compared by identity, since it may be used
+	 * up by then.
+	 */
+	struct FQueuedSkillTrapTrigger
+	{
+		TWeakObjectPtr<AActor> Trap;
+		FVector Place = FVector::ZeroVector;
+		FGameplayTagContainer TrapTags;
+		float TookFromItsEnemy = 0.0f;
+		TWeakObjectPtr<AActor> Enemy;
+	};
+	TArray<FQueuedSkillTrapTrigger> QueuedSkillTrapTriggers;
+
+	/**
+	 * THE CHAIN GUARD (H5 (b)): every skill trap set off in the chain in hand, the trap that began it included; a trap here
+	 * is never set off again until the chain ends. ONE CHAIN IS ONE EVENT ACTED ON AT DEPTH NOUGHT AND EVERYTHING IT QUEUED:
+	 * emptied when the outermost drain ends. So each trap goes off at most once a chain, a rearmed one included, and the
+	 * queue holds at most one record for each trap standing when the chain began.
+	 */
+	TArray<TWeakObjectPtr<AActor>> SkillTrapsSetOffThisChain;
+
+	/** Whether the queue is being drained now, so a drain reached from inside it returns at once. */
+	bool bDrainingQueuedSkillTrapTriggers = false;
+
+	/** Set by the drain for the one `ActOnEvent` that answers a queued record, which was announced when it was raised. */
+	bool bQueuedSkillTrapTriggerAnnounced = false;
+
+	/** Keep a `trap_triggered` heard at depth one, if a worn row hangs on it. */
+	void QueueSkillTrapTrigger(const FGameplayTagContainer* EventTags, float EventAmount, const AActor* EventTarget);
+
+	/** Answer each queued record in the order heard, at depth nought, then end the chain. Only the outermost call acts. */
+	void DrainQueuedSkillTrapTriggers();
+
+	/** Arm or set off the player's traps as `Action` states for `Event`, naming `EventTarget`. How many. */
+	int32 ActOnSkillTrapsNearby(const FCataclysmPoolAction& Action, FName Event, const AActor* EventTarget);
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

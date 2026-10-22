@@ -1466,6 +1466,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bExplodeVictimForKillingBlow = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT ARMS, OR SETS OFF, THE WEARER'S OTHER TRAPS. Ruled 2026-10-22 (traps layer 5, H1 to
+					// H11). The value is the radius in metres, nought at the wearer's death for every trap; a Scale Max
+					// Steps of 1 is the nearest trap alone, and an empty one every trap.
+					Action.bArmTrapsNearby = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction, ESearchCase::IgnoreCase);
+					Action.bSetOffTrapsNearby = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction, ESearchCase::IgnoreCase);
+					Action.bNearestTrapOnly =
+						(Action.bArmTrapsNearby || Action.bSetOffTrapsNearby) && Effect->ScaleMaxSteps == 1;
 					// AND WHETHER IT REPEATS THE SKILL JUST USED. Mechanism B2. The value is the chance. The share
 					// is the row's Damage Share, and the whole of the damage when the row states none.
 					Action.bRepeatSkill = Effect->Action.Equals(
