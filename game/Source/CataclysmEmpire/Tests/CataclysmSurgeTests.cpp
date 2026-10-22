@@ -4106,16 +4106,19 @@ bool FCataclysmSurgeFloorUpgradeHitTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 /**
- * `QuestSubTypeFor` names five pairs and answers `None` for the rest.
+ * `QuestSubTypeFor` names six pairs and answers `None` for the rest.
+ *
+ * NAMED `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll`
+ * UNTIL 2026-10-22, when the Void's Hollow became the sixth pair.
  *
  * THE OWNER, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
  * specific type." The model's `config.QUEST_SUBTYPE_BY_CATACLYSM` is the
- * original; `tools/tests/test_dungeon_subtype_port.py` compares the five pairs
+ * original; `tools/tests/test_dungeon_subtype_port.py` compares the six pairs
  * with it by name. This is the function answering them, written out by hand so
  * that a pair changed in the switch is caught here as well as there.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeForTest,
-	"Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll",
+	"Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
@@ -4134,6 +4137,7 @@ bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
 		{ ECataclysmType::Pestilence,	ECataclysmDungeonSubType::Timed },
 		{ ECataclysmType::Famine,		ECataclysmDungeonSubType::Sacrificial },
 		{ ECataclysmType::Chaos,		ECataclysmDungeonSubType::Volatile },
+		{ ECataclysmType::Void,		ECataclysmDungeonSubType::Hollow },
 	};
 
 	TSet<ECataclysmDungeonSubType> Answered;
@@ -4152,12 +4156,11 @@ bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
 		Answered.Add(Got);
 	}
 
-	// WAR, CELESTIAL AND THE VOID ROLL. War is ruled out of the game by the
-	// owner, and Ascendant and Hollow are not sub-types the game has yet. `None`
-	// is the Cataclysm nobody named.
+	// WAR AND CELESTIAL ROLL. War is ruled out of the game by the owner, and
+	// Ascendant is not a sub-type the game has yet. `None` is the Cataclysm
+	// nobody named. The Void rolled here too until 2026-10-22.
 	for (const ECataclysmType Rolls : { ECataclysmType::War,
 										ECataclysmType::Celestial,
-										ECataclysmType::Void,
 										ECataclysmType::None })
 	{
 		TestEqual(FString::Printf(
@@ -4167,11 +4170,11 @@ bool FCataclysmSurgeQuestSubTypeForTest::RunTest(const FString& Parameters)
 			static_cast<int32>(ECataclysmDungeonSubType::None));
 	}
 
-	// THE CONTROL. Five different answers, none of them `None`: a function that
+	// THE CONTROL. Six different answers, none of them `None`: a function that
 	// answered one sub-type for every Cataclysm, or nothing for any, would fail
 	// one of these where it could pass a check of a single pair.
-	TestEqual(TEXT("the five name five different sub-types"), Answered.Num(), 5);
-	TestFalse(TEXT("and none of the five answers None"),
+	TestEqual(TEXT("the six name six different sub-types"), Answered.Num(), 6);
+	TestFalse(TEXT("and none of the six answers None"),
 			  Answered.Contains(ECataclysmDungeonSubType::None));
 
 	return true;
@@ -4323,24 +4326,28 @@ bool FCataclysmSurgeQuestSubTypeStreamTest::RunTest(const FString& Parameters)
 }
 
 /**
- * In a run, five Cataclysms' Quest dungeons are their one sub-type, and the
+ * In a run, six Cataclysms' Quest dungeons are their one sub-type, and the
  * rest still roll.
+ *
+ * NAMED `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType`
+ * UNTIL 2026-10-22, when the Void's Quest dungeons became Hollows.
  *
  * THE PATH THE DAY LOOP TAKES. A run at difficulty tier 8 faces all eight
  * Cataclysms, and `FireSurge` hands `RollWave` the run's own Cataclysm draw.
- * Every Quest dungeon a Death, Demonic, Pestilence, Famine or Chaos surge lands
- * must be its one sub-type; the expected sub-types are written out here rather
- * than read from `QuestSubTypeFor`, so a pair changed there fails this too.
+ * Every Quest dungeon a Death, Demonic, Pestilence, Famine, Chaos or Void surge
+ * lands must be its one sub-type; the expected sub-types are written out here
+ * rather than read from `QuestSubTypeFor`, so a pair changed there fails this
+ * too.
  *
- * TWO CONTROLS, BOTH SEARCHED FOR AND ASSERTED. War's, Celestial's and the
- * Void's Quest dungeons still vary -- each shows two sub-types at least -- and
- * the five's ORDINARY dungeons still vary, so the rule is about Quest dungeons
- * and not about the sender. Campaigns are run until all of that has been seen,
+ * TWO CONTROLS, BOTH SEARCHED FOR AND ASSERTED. War's and Celestial's Quest
+ * dungeons still vary -- each shows two sub-types at least -- and the six's
+ * ORDINARY dungeons still vary, so the rule is about Quest dungeons and not
+ * about the sender. Campaigns are run until all of that has been seen,
  * up to a limit: Quest dungeons are 12 in 100, and one Cataclysm in eight
  * sends each, so a single campaign shows too few.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestSubTypeRunTest,
-	"Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType",
+	"Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
@@ -4355,10 +4362,10 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 	Expected.Add(ECataclysmType::Pestilence, ECataclysmDungeonSubType::Timed);
 	Expected.Add(ECataclysmType::Famine, ECataclysmDungeonSubType::Sacrificial);
 	Expected.Add(ECataclysmType::Chaos, ECataclysmDungeonSubType::Volatile);
+	Expected.Add(ECataclysmType::Void, ECataclysmDungeonSubType::Hollow);
 
 	const ECataclysmType Rolling[] = { ECataclysmType::War,
-									   ECataclysmType::Celestial,
-									   ECataclysmType::Void };
+									   ECataclysmType::Celestial };
 
 	TMap<ECataclysmType, int32> FixedSeen;
 	TMap<ECataclysmType, TSet<ECataclysmDungeonSubType>> RolledSeen;
@@ -4471,7 +4478,7 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 			Seen != nullptr && Seen->Num() >= 2);
 	}
 
-	TestTrue(TEXT("CONTROL: the five's ordinary dungeons still roll"),
+	TestTrue(TEXT("CONTROL: the six's ordinary dungeons still roll"),
 			 OrdinaryFromTheFive.Num() >= 2);
 
 	TestEqual(TEXT("no fixed Quest dungeon came out another sub-type"), Wrong, 0);
@@ -4902,6 +4909,253 @@ bool FCataclysmSurgeVoidPullTest::RunTest(const FString& Parameters)
 	}
 
 	TestEqual(TEXT("CONTROL: and landed nine"), Alternating.Num(), 9);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Hollow, the Void's Quest dungeon -- 2026-10-22
+// ---------------------------------------------------------------------------
+//
+// The owner, 2026-10-16, on the Void's Quest dungeons, verbatim: "So, maybe
+// Hollow works, but we shouldn't just flat out erase a city if they player
+// can't get to it in time." `Simulation.hollow_floor_minimum`,
+// `_hollow_stacks_for` and `hollow_hit_stacks` are the originals, and
+// `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py` compares the
+// game's arithmetic with them for every depth. These check the dungeon's own
+// answers, worked out by hand.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeVoidQuestIsHollowTest,
+	"Cataclysm.Surge.TheVoidsQuestDungeonIsAHollowThatRemembersItsNaturalFloors",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeVoidQuestIsHollowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// TWO OUTPOSTS, ONE OF WHICH MAKES ITS DUNGEONS FIVE FLOORS DEEPER, so the
+	// floors an upgrade added are seen to be left out of `HollowFrom`.
+	const TArray<int32> Rim = CitiesAtTier(*Map, ECataclysmCityTier::Outpost, 2);
+	if (!TestEqual(TEXT("set-up: two Outposts were found"), Rim.Num(), 2))
+	{
+		return false;
+	}
+
+	Give(*Map, Rim[1], ECataclysmCityUpgradeEffect::DungeonFloorsMore, 5.0f);
+
+	TArray<ECataclysmType> Senders = UCataclysmRoster::All();
+	Senders.Add(ECataclysmType::None);
+
+	int32 Hollows = 0;
+	int32 Others = 0;
+
+	for (int32 Seed = 1; Seed <= 20; ++Seed)
+	{
+		for (const int32 CityId : Rim)
+		{
+			const FCataclysmCity& City = *Map->Find(CityId);
+
+			// THE SAME SEED FOR NOBODY'S QUEST DUNGEON, so the Void's is seen to
+			// take exactly the draws any Quest dungeon takes.
+			FRandomStream Plain(Seed);
+			const FCataclysmDungeon Nobody = Scheduler->MakeDungeon(
+				0, City, 1, Plain, true, ECataclysmDungeonType::Quest,
+				ECataclysmType::None);
+
+			for (const ECataclysmType Sender : Senders)
+			{
+				for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Basic,
+														  ECataclysmDungeonType::Quest })
+				{
+					FRandomStream Stream(Seed);
+					const FCataclysmDungeon Made = Scheduler->MakeDungeon(
+						0, City, 1, Stream, true, Kind, Sender);
+
+					if (Kind == ECataclysmDungeonType::Quest
+						&& Sender == ECataclysmType::Void)
+					{
+						++Hollows;
+						TestEqual(TEXT("the Void's Quest dungeon is a Hollow"),
+								  static_cast<int32>(Made.SubType),
+								  static_cast<int32>(ECataclysmDungeonSubType::Hollow));
+						TestTrue(TEXT("and answers that it is one"), Made.IsHollow());
+						TestEqual(TEXT("it was made with its natural floors"),
+								  Made.HollowFrom, Made.Floors - Made.UpgradeFloors);
+						TestEqual(TEXT("which leave out what the city's upgrade added"),
+								  Made.UpgradeFloors, CityId == Rim[1] ? 5 : 0);
+						TestEqual(TEXT("and it is as deep as nobody's Quest dungeon from the same draws"),
+								  Made.Floors, Nobody.Floors);
+						TestEqual(TEXT("with the same timer"),
+								  Made.ResolveDays, Nobody.ResolveDays);
+					}
+					else
+					{
+						++Others;
+						TestEqual(TEXT("CONTROL: no other dungeon remembers a depth"),
+								  Made.HollowFrom, 0);
+						TestFalse(TEXT("CONTROL: and none is a Hollow"), Made.IsHollow());
+					}
+				}
+			}
+		}
+	}
+
+	TestEqual(TEXT("forty Hollows were made"), Hollows, 40);
+	TestEqual(TEXT("CONTROL: and six hundred and eighty other dungeons"), Others, 680);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeHollowMinimumTest,
+	"Cataclysm.Surge.AHollowShrinksToHalfItsNaturalFloorsRoundedUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeHollowMinimumTest::RunTest(const FString& Parameters)
+{
+	auto Hollow = [](int32 MadeWith, int32 Floors, int32 UpgradeFloors)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.Type = ECataclysmDungeonType::Quest;
+		Dungeon.SubType = ECataclysmDungeonSubType::Hollow;
+		Dungeon.Cataclysm = ECataclysmType::Void;
+		Dungeon.HollowFrom = MadeWith;
+		Dungeon.Floors = Floors;
+		Dungeon.UpgradeFloors = UpgradeFloors;
+		return Dungeon;
+	};
+
+	// `max(1, ceil(made with x 0.5))`, worked out by hand.
+	TestEqual(TEXT("one made with 1 floor stops at 1"), Hollow(1, 1, 0).HollowMinimum(), 1);
+	TestEqual(TEXT("one made with 2 stops at 1"), Hollow(2, 2, 0).HollowMinimum(), 1);
+	TestEqual(TEXT("one made with 3 stops at 2, half rounded up"), Hollow(3, 3, 0).HollowMinimum(), 2);
+	TestEqual(TEXT("one made with 20 stops at 10"), Hollow(20, 20, 0).HollowMinimum(), 10);
+	TestEqual(TEXT("one made with 21 stops at 11"), Hollow(21, 21, 0).HollowMinimum(), 11);
+
+	// HOW FAR IT HAS LEFT TO GO.
+	TestEqual(TEXT("one made with 20 and still at 20 has 10 to lose"),
+			  Hollow(20, 20, 0).HollowFloorsLeftToLose(), 10);
+	TestEqual(TEXT("at 14 it has 4"), Hollow(20, 14, 0).HollowFloorsLeftToLose(), 4);
+	TestEqual(TEXT("at 10 it has none"), Hollow(20, 10, 0).HollowFloorsLeftToLose(), 0);
+	TestEqual(TEXT("one made with 1 cannot shrink"), Hollow(1, 1, 0).HollowFloorsLeftToLose(), 0);
+
+	// BY THE NATURAL FLOORS, AND NEVER DOWN TO NONE. An upgrade that added 3
+	// leaves 17 floors of which 14 are natural, so it stops at 13. One that
+	// took 15 off leaves 5 floors with all 20 natural: it would lose 10 by its
+	// natural floors, and loses 4, stopping at one.
+	TestEqual(TEXT("17 floors of which 3 an upgrade added have 4 to lose"),
+			  Hollow(20, 17, 3).HollowFloorsLeftToLose(), 4);
+	TestEqual(TEXT("5 floors after an upgrade took 15 have 4 to lose, never reaching nought"),
+			  Hollow(20, 5, -15).HollowFloorsLeftToLose(), 4);
+
+	// THE CONTROLS: THE SUB-TYPE DECIDES, AND A HOLLOW NOBODY GAVE A DEPTH TO
+	// KEEPS ITS FLOORS.
+	FCataclysmDungeon Horde = Hollow(20, 20, 0);
+	Horde.SubType = ECataclysmDungeonSubType::Horde;
+	TestEqual(TEXT("CONTROL: a Horde carrying the same figures has nothing to lose"),
+			  Horde.HollowFloorsLeftToLose(), 0);
+	TestEqual(TEXT("CONTROL: a Hollow made with nought has nothing to lose"),
+			  Hollow(0, 20, 0).HollowFloorsLeftToLose(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeHollowStacksTest,
+	"Cataclysm.Surge.AHollowsHitAddsOneAtFullDepthRisingToThreeAtItsMinimum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeHollowStacksTest::RunTest(const FString& Parameters)
+{
+	auto StacksAt = [](int32 MadeWith, int32 Natural)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.Type = ECataclysmDungeonType::Quest;
+		Dungeon.SubType = ECataclysmDungeonSubType::Hollow;
+		Dungeon.HollowFrom = MadeWith;
+		Dungeon.Floors = Natural;
+		return Dungeon.HollowStacksOnto(0);
+	};
+
+	// `1 + 2 x lost / span`, rounded half up, worked out by hand. Made with 20
+	// it stops at 10, so the span is 10.
+	TestEqual(TEXT("at its full 20 floors it adds 1"), StacksAt(20, 20), 1);
+	TestEqual(TEXT("at 18, 2 lost, 1.4 rounds to 1"), StacksAt(20, 18), 1);
+	TestEqual(TEXT("at 17, 3 lost, 1.6 rounds to 2"), StacksAt(20, 17), 2);
+	TestEqual(TEXT("in the middle, at 15, it adds 2"), StacksAt(20, 15), 2);
+	TestEqual(TEXT("at 12, 8 lost, 2.6 rounds to 3"), StacksAt(20, 12), 3);
+	TestEqual(TEXT("at its minimum, 10, it adds 3"), StacksAt(20, 10), 3);
+
+	// HALFWAY ROUNDS UP. Made with 8 it stops at 4, so one floor lost is 1.5.
+	TestEqual(TEXT("made with 8, one floor down, 1.5 rounds up to 2"), StacksAt(8, 7), 2);
+	TestEqual(TEXT("made with 8, three down, 2.5 rounds up to 3"), StacksAt(8, 5), 3);
+
+	// ONE THAT CANNOT SHRINK ADDS THE MOST.
+	TestEqual(TEXT("one made with 1 floor, which cannot shrink, adds 3"), StacksAt(1, 1), 3);
+
+	// AND OUTSIDE ITS RANGE IT IS HELD: deeper than it was made reads as full
+	// depth, shallower than its minimum as the minimum.
+	TestEqual(TEXT("deeper than it was made adds 1"), StacksAt(20, 25), 1);
+	TestEqual(TEXT("below its minimum adds 3"), StacksAt(20, 6), 3);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeHollowCapTest,
+	"Cataclysm.Surge.AHollowsHitLeavesACityBelowEightStacksOneShortOfErasure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeHollowCapTest::RunTest(const FString& Parameters)
+{
+	// A HOLLOW AT ITS MINIMUM, WHICH ADDS 3 UNHELD.
+	FCataclysmDungeon Shrunk;
+	Shrunk.Type = ECataclysmDungeonType::Quest;
+	Shrunk.SubType = ECataclysmDungeonSubType::Hollow;
+	Shrunk.HollowFrom = 20;
+	Shrunk.Floors = 10;
+
+	if (!TestEqual(TEXT("set-up: eight is the line"),
+				   UCataclysmSurgeScheduler::HollowCannotEraseBelow, 8)
+		|| !TestEqual(TEXT("set-up: and ten erase"),
+					  UCataclysmEmpireMap::VoidStacksToErase, 10))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("on a city with none it adds its 3"), Shrunk.HollowStacksOnto(0), 3);
+	TestEqual(TEXT("on a city at 6 its 3 reach 9, which is allowed"), Shrunk.HollowStacksOnto(6), 3);
+	TestEqual(TEXT("on a city at 7 its 3 become 2, ending at 9"), Shrunk.HollowStacksOnto(7), 2);
+
+	// AT 8 OR 9 IT IS NOT HELD, and the hit can erase.
+	TestEqual(TEXT("on a city at 8 it adds its 3"), Shrunk.HollowStacksOnto(8), 3);
+	TestEqual(TEXT("on a city at 9 it adds its 3"), Shrunk.HollowStacksOnto(9), 3);
+
+	// A HIT THAT WOULD NOT REACH TEN ANYWAY IS NOT TOUCHED.
+	FCataclysmDungeon Full = Shrunk;
+	Full.Floors = 20;
+	TestEqual(TEXT("a Hollow at full depth on a city at 7 adds its 1"), Full.HollowStacksOnto(7), 1);
+
+	// NEVER BELOW NOUGHT, AND NEVER TO TEN FROM BELOW EIGHT, at every count.
+	for (int32 CityStacks = 0; CityStacks <= 12; ++CityStacks)
+	{
+		for (int32 Floors = 10; Floors <= 20; ++Floors)
+		{
+			FCataclysmDungeon Any = Shrunk;
+			Any.Floors = Floors;
+			const int32 Added = Any.HollowStacksOnto(CityStacks);
+
+			if (Added < 0 || Added > 3
+				|| (CityStacks < 8 && CityStacks + Added >= 10))
+			{
+				AddError(FString::Printf(
+					TEXT("a Hollow at %d floors adds %d to a city at %d"),
+					Floors, Added, CityStacks));
+				return false;
+			}
+		}
+	}
 
 	return true;
 }

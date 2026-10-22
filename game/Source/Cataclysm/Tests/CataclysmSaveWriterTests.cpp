@@ -1123,6 +1123,91 @@ bool FCataclysmSaveWriterGathersVoidStacks::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersHollowFrom,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesADungeonsHollowFrom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersHollowFrom::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	Run->Begin(1);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first wave put two dungeons on the map at least"),
+				  Run->Dungeons.Num() >= 2))
+	{
+		return false;
+	}
+
+	// THE FIRST IS MADE A HOLLOW BY HAND, made with the natural floors it has,
+	// so tomorrow it loses one. The next that is not a Hollow is the control.
+	FCataclysmDungeon& Made = Run->Dungeons[0];
+	Made.Type = ECataclysmDungeonType::Quest;
+	Made.SubType = ECataclysmDungeonSubType::Hollow;
+	Made.Cataclysm = ECataclysmType::Void;
+	Made.HollowFrom = Made.Floors - Made.UpgradeFloors;
+
+	const int32 HollowId = Made.DungeonId;
+	const int32 MadeWith = Made.HollowFrom;
+	const int32 FloorsBefore = Made.Floors;
+
+	int32 ControlId = INDEX_NONE;
+	for (int32 Index = 1; Index < Run->Dungeons.Num(); ++Index)
+	{
+		if (!Run->Dungeons[Index].IsHollow())
+		{
+			ControlId = Run->Dungeons[Index].DungeonId;
+			break;
+		}
+	}
+
+	if (!TestTrue(TEXT("set-up: it was made with more than one floor, so it can shrink"),
+				  MadeWith > 1 && Made.HollowFloorsLeftToLose() > 0)
+		|| !TestTrue(TEXT("set-up: and another dungeon that is not a Hollow stands"),
+					 ControlId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// A DAY, SO THE HOLLOW SHRINKS BEFORE IT IS GATHERED.
+	Run->AdvanceDay();
+
+	FString Why;
+	if (!TestTrue(TEXT("a run that has begun is gathered"),
+				  FCataclysmSaveGather::DungeonsFrom(*Run, *Record, Why)))
+	{
+		AddError(FString::Printf(TEXT("it said: %s"), *Why));
+		return false;
+	}
+
+	const FCataclysmDungeon* Hollow = Record->Dungeons.FindByPredicate(
+		[HollowId](const FCataclysmDungeon& Dungeon) { return Dungeon.DungeonId == HollowId; });
+	const FCataclysmDungeon* Control = Record->Dungeons.FindByPredicate(
+		[ControlId](const FCataclysmDungeon& Dungeon) { return Dungeon.DungeonId == ControlId; });
+	const FCataclysmDungeonTimer* Timer = Record->DungeonTimers.FindByPredicate(
+		[HollowId](const FCataclysmDungeonTimer& Counting) { return Counting.DungeonId == HollowId; });
+
+	if (!TestNotNull(TEXT("the record carries the Hollow"), Hollow)
+		|| !TestNotNull(TEXT("and the control"), Control)
+		|| !TestNotNull(TEXT("and the Hollow's timer"), Timer))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the Hollow's HollowFrom is carried"), Hollow->HollowFrom, MadeWith);
+	TestEqual(TEXT("and it is carried a Hollow"),
+			  static_cast<int32>(Hollow->SubType),
+			  static_cast<int32>(ECataclysmDungeonSubType::Hollow));
+	TestEqual(TEXT("one floor shallower than the day before"), Hollow->Floors, FloorsBefore - 1);
+	TestEqual(TEXT("and its timer in the record says the same floors"), Timer->Floors, Hollow->Floors);
+
+	TestEqual(TEXT("CONTROL: a dungeon that is not a Hollow carries nought"), Control->HollowFrom, 0);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheCities,
 	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheCitiesThroughTheFile",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

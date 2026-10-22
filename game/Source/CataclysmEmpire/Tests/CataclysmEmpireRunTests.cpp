@@ -7166,4 +7166,583 @@ bool FCataclysmEmpireRunVoidSiegeBitesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Hollow: it shrinks a floor a day, and its hit adds stacks -- 2026-10-22
+// ---------------------------------------------------------------------------
+//
+// The owner, 2026-10-16, on the Void's Quest dungeons, verbatim: "So, maybe
+// Hollow works, but we shouldn't just flat out erase a city if they player
+// can't get to it in time." Ruled by the coordinating session on 2026-10-22:
+// it shrinks to half its natural floors and its walk with it, never while the
+// player is inside, its timer does not move, and its hit adds 1 to 3 stacks
+// and no damage, never erasing a city below eight.
+//
+// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND STOPS WELL BEFORE DAY 26, so
+// no wave lands while they run. Each has a control.
+
+namespace CataclysmEmpireRunTest
+{
+	/** The run's own copy of a dungeon, for a test to arrange, or null. */
+	FCataclysmDungeon* Arrange(UCataclysmEmpireRun& Run, int32 DungeonId)
+	{
+		return Run.Dungeons.FindByPredicate(
+			[DungeonId](const FCataclysmDungeon& Standing)
+			{
+				return Standing.DungeonId == DungeonId;
+			});
+	}
+
+	/**
+	 * Puts a Hollow on a city: a Quest dungeon the Void sent, made with
+	 * `MadeWith` natural floors and standing at `Floors`, none of them added
+	 * by an upgrade, with its walk written out as one day for each floor so
+	 * that its shrinking shows. The clock's copy of its floors is set to match.
+	 */
+	void PlaceHollow(UCataclysmEmpireRun& Run, int32 DungeonId,
+					 const FCataclysmCity& City, float ResolveDays,
+					 int32 MadeWith, int32 Floors)
+	{
+		PlaceDungeon(Run, DungeonId, ECataclysmDungeonType::Quest,
+					 ECataclysmDungeonSubType::Hollow, City, ResolveDays);
+
+		if (FCataclysmDungeon* Hollow = Arrange(Run, DungeonId))
+		{
+			Hollow->Cataclysm = ECataclysmType::Void;
+			Hollow->HollowFrom = MadeWith;
+			Hollow->Floors = Floors;
+			Hollow->UpgradeFloors = 0;
+			Hollow->WalkDays = Floors * UCataclysmDayClock::DaysPerFloor;
+		}
+
+		Run.Clock->SetFloors(DungeonId, Floors);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowShrinksTest,
+	"Cataclysm.EmpireRun.AHollowLosesAFloorADayToItsMinimumAndItsWalkFollowsButNotItsTimer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowShrinksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 HollowId = 9951;
+	const int32 HordeId = 9952;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	// A HOLLOW MADE WITH 20 FLOORS, WHICH STOPS AT 10. On the other Outpost,
+	// the control: a Quest dungeon of the same depth Death sent, a Horde, with
+	// the same walk. Both timers are 60 days, so neither runs out here.
+	PlaceHollow(*Run, HollowId, *Run->Map->Find(Outposts[0]), 60.0f, 20, 20);
+	PlaceDungeon(*Run, HordeId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::Horde, *Run->Map->Find(Outposts[1]), 60.0f);
+
+	FCataclysmDungeon* Horde = Arrange(*Run, HordeId);
+	if (!TestNotNull(TEXT("set-up: the Horde is on the map"), Horde))
+	{
+		return false;
+	}
+	Horde->Cataclysm = ECataclysmType::Death;
+	Horde->WalkDays = 20.0f;
+
+	for (int32 Day = 1; Day <= 12; ++Day)
+	{
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		const FCataclysmDungeon* Hollow = Run->FindDungeon(HollowId);
+		const FCataclysmDungeonTimer* Timer = Run->Clock->FindTimer(HollowId);
+		if (!TestEqual(TEXT("set-up: no timer ran out"), Report.Resolved.Num(), 0)
+			|| !TestNotNull(TEXT("the Hollow is on the map"), Hollow)
+			|| !TestNotNull(TEXT("and on the clock"), Timer))
+		{
+			return false;
+		}
+
+		// ONE A DAY UNTIL 10, AND THEN NONE.
+		const int32 Expected = FMath::Max(10, 20 - Day);
+
+		TestEqual(FString::Printf(TEXT("after %d days it is %d floors deep"), Day, Expected),
+				  Hollow->Floors, Expected);
+		TestEqual(FString::Printf(TEXT("after %d days its walk is %d days"), Day, Expected),
+				  Hollow->WalkDays, static_cast<float>(Expected), 0.001f);
+		TestEqual(FString::Printf(TEXT("after %d days the clock's copy of its floors is %d"),
+								  Day, Expected),
+				  Timer->Floors, Expected);
+
+		// THE TIMER IS THE ONE IT WAS MADE WITH, COUNTING DOWN AS ANY DOES.
+		TestEqual(FString::Printf(TEXT("after %d days it still refills to 60"), Day),
+				  Timer->ResolveDays, 60.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("after %d days it has %d left"), Day, 60 - Day),
+				  Timer->DaysUntilResolve, static_cast<float>(60 - Day), 0.001f);
+	}
+
+	const FCataclysmDungeon* Stopped = Run->FindDungeon(HollowId);
+	if (TestNotNull(TEXT("the Hollow is still on the map"), Stopped))
+	{
+		TestEqual(TEXT("it stopped at its minimum"), Stopped->Floors, Stopped->HollowMinimum());
+		TestEqual(TEXT("and still remembers the 20 it was made with"), Stopped->HollowFrom, 20);
+	}
+
+	// THE CONTROL: A QUEST DUNGEON THAT IS NOT A HOLLOW KEEPS ITS DEPTH.
+	const FCataclysmDungeon* Kept = Run->FindDungeon(HordeId);
+	const FCataclysmDungeonTimer* KeptTimer = Run->Clock->FindTimer(HordeId);
+	if (TestNotNull(TEXT("CONTROL: the Horde is on the map"), Kept)
+		&& TestNotNull(TEXT("CONTROL: and on the clock"), KeptTimer))
+	{
+		TestEqual(TEXT("CONTROL: it is still 20 floors deep"), Kept->Floors, 20);
+		TestEqual(TEXT("CONTROL: with its 20 day walk"), Kept->WalkDays, 20.0f, 0.001f);
+		TestEqual(TEXT("CONTROL: and the clock's copy says 20"), KeptTimer->Floors, 20);
+		TestEqual(TEXT("CONTROL: its timer counted down the same 12 days"),
+				  KeptTimer->DaysUntilResolve, 48.0f, 0.001f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowMadeTodayTest,
+	"Cataclysm.EmpireRun.AHollowDoesNotShrinkOnTheDayItWasMade",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowMadeTodayTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 NewId = 9953;
+	const int32 OldId = 9954;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	// TWO HOLLOWS MADE WITH 20. `New` carries the day about to begin, as one a
+	// surge lands that morning does; `Old`, the control, yesterday's.
+	PlaceHollow(*Run, NewId, *Run->Map->Find(Outposts[0]), 60.0f, 20, 20);
+	PlaceHollow(*Run, OldId, *Run->Map->Find(Outposts[1]), 60.0f, 20, 20);
+
+	FCataclysmDungeon* New = Arrange(*Run, NewId);
+	if (!TestNotNull(TEXT("set-up: the new Hollow is on the map"), New))
+	{
+		return false;
+	}
+	New->SpawnedDay = Run->Day() + 1;
+
+	Run->AdvanceDay();
+
+	const FCataclysmDungeon* NewAfterOne = Run->FindDungeon(NewId);
+	const FCataclysmDungeon* OldAfterOne = Run->FindDungeon(OldId);
+	if (!TestNotNull(TEXT("the new Hollow is on the map"), NewAfterOne)
+		|| !TestNotNull(TEXT("and the old one"), OldAfterOne))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("on the day it was made it keeps its 20 floors"), NewAfterOne->Floors, 20);
+	TestEqual(TEXT("CONTROL: one made the day before loses one"), OldAfterOne->Floors, 19);
+
+	Run->AdvanceDay();
+
+	TestEqual(TEXT("the next day it loses its first"), Run->FindDungeon(NewId)->Floors, 19);
+	TestEqual(TEXT("CONTROL: and the old one its second"), Run->FindDungeon(OldId)->Floors, 18);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowWalkedTest,
+	"Cataclysm.EmpireRun.AHollowDoesNotShrinkWhileThePlayerIsInsideAndResumesWhenTheyLeave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowWalkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 WalkedId = 9955;
+	const int32 LeftAloneId = 9956;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	PlaceHollow(*Run, WalkedId, *Run->Map->Find(Outposts[0]), 60.0f, 20, 20);
+	PlaceHollow(*Run, LeftAloneId, *Run->Map->Find(Outposts[1]), 60.0f, 20, 20);
+
+	// THE PLAYER GOES INTO ONE, which is `UCataclysmDayClock::CurrentDungeonId`.
+	Run->Clock->EnterDungeon(WalkedId);
+
+	Run->AdvanceDays(3);
+
+	const FCataclysmDungeon* Walked = Run->FindDungeon(WalkedId);
+	const FCataclysmDungeon* LeftAlone = Run->FindDungeon(LeftAloneId);
+	if (!TestNotNull(TEXT("the walked Hollow is on the map"), Walked)
+		|| !TestNotNull(TEXT("and the other"), LeftAlone))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("three days inside it and it is still 20 floors deep"), Walked->Floors, 20);
+	TestEqual(TEXT("with its 20 day walk"), Walked->WalkDays, 20.0f, 0.001f);
+	TestEqual(TEXT("and the clock's copy still says 20"),
+			  Run->Clock->FindTimer(WalkedId)->Floors, 20);
+	TestEqual(TEXT("CONTROL: the one nobody is inside lost three"), LeftAlone->Floors, 17);
+
+	// THE PLAYER LEAVES, AND IT RESUMES.
+	Run->Clock->LeaveDungeon();
+	Run->AdvanceDay();
+
+	TestEqual(TEXT("the day after the player leaves it loses one"),
+			  Run->FindDungeon(WalkedId)->Floors, 19);
+	TestEqual(TEXT("CONTROL: and the other its fourth"),
+			  Run->FindDungeon(LeftAloneId)->Floors, 16);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowMovedOrFallenTest,
+	"Cataclysm.EmpireRun.AHollowThatHasMovedOrStandsOnAFallenCityGoesOnShrinking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowMovedOrFallenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 OnTheFallenId = 9957;
+	const int32 MovedId = 9958;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const TArray<int32> Outposts = StandingOutposts(*Run, 3);
+	if (!TestEqual(TEXT("set-up: the map has three Outposts standing"), Outposts.Num(), 3))
+	{
+		return false;
+	}
+
+	// ONE ON A CITY THAT THEN FALLS. A fall the run did not cause leaves it
+	// there, which is the case `CityFell` finds nowhere to send one.
+	PlaceHollow(*Run, OnTheFallenId, *Run->Map->Find(Outposts[0]), 60.0f, 20, 20);
+	if (!TestTrue(TEXT("set-up: the city under it falls"), Run->Map->Fall(Outposts[0])))
+	{
+		return false;
+	}
+
+	// ONE THAT HAS MOVED: made on one Outpost and standing on another, as a
+	// move leaves it.
+	PlaceHollow(*Run, MovedId, *Run->Map->Find(Outposts[1]), 60.0f, 20, 20);
+	if (FCataclysmDungeon* Moved = Arrange(*Run, MovedId))
+	{
+		Moved->CityId = Outposts[2];
+	}
+
+	Run->AdvanceDays(2);
+
+	const FCataclysmDungeon* OnTheFallen = Run->FindDungeon(OnTheFallenId);
+	const FCataclysmDungeon* Moved = Run->FindDungeon(MovedId);
+	if (!TestNotNull(TEXT("the Hollow on the fallen city is on the map"), OnTheFallen)
+		|| !TestNotNull(TEXT("and the one that moved"), Moved))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("set-up: it still stands on the fallen city"), OnTheFallen->CityId, Outposts[0]);
+	TestEqual(TEXT("and has lost two floors in two days"), OnTheFallen->Floors, 18);
+	TestEqual(TEXT("set-up: the other still stands where it moved to"), Moved->CityId, Outposts[2]);
+	TestEqual(TEXT("and has lost two as well"), Moved->Floors, 18);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowHitTest,
+	"Cataclysm.EmpireRun.AHollowsTimerAddsItsStacksTakesNoDefenceOrPeopleAndRefreshes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowHitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9961;
+
+	// TWO RUNS FROM ONE SEED, A QUEST DUNGEON OF 10 FLOORS ON THE SAME OUTPOST
+	// WITH ONE DAY LEFT. In `Run` it is a Hollow made with 20, at its minimum,
+	// so its hit adds 3. In `Control` it is a Horde Death sent.
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Run);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Control), CityId))
+	{
+		return false;
+	}
+
+	PlaceHollow(*Run, QuestId, *Run->Map->Find(CityId), 25.0f, 20, 10);
+	ResolveOnTheNextDay(*Run, QuestId);
+
+	PlaceDungeon(*Control, QuestId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::Horde, *Control->Map->Find(CityId), 25.0f);
+	SendFrom(*Control, QuestId, ECataclysmType::Death, 10);
+	ResolveOnTheNextDay(*Control, QuestId);
+
+	const FCataclysmDungeon* Placed = Run->FindDungeon(QuestId);
+	const FCataclysmCity* City = Run->Map->Find(CityId);
+	const FCataclysmCity* ControlCity = Control->Map->Find(CityId);
+	if (!TestNotNull(TEXT("set-up: the Hollow is on the map"), Placed)
+		|| !TestNotNull(TEXT("set-up: and the city"), City)
+		|| !TestNotNull(TEXT("set-up: and the control's city"), ControlCity)
+		|| !TestEqual(TEXT("set-up: a Hollow at its minimum adds 3"),
+					  Placed->HollowStacksOnto(0), 3)
+		|| !TestEqual(TEXT("set-up: and has nothing left to lose"),
+					  Placed->HollowFloorsLeftToLose(), 0))
+	{
+		return false;
+	}
+
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+
+	const float DefenceBefore = City->Defence;
+	const float PopulationBefore = City->Population;
+	const float ControlDefenceBefore = ControlCity->Defence;
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+	const FCataclysmDayReport ControlReport = Control->AdvanceDay();
+
+	TestTrue(TEXT("the Hollow's timer ran out"), Report.Resolved.Contains(QuestId));
+
+	// STACKS, AND NOTHING ELSE.
+	TestEqual(TEXT("its city carries the 3 stacks it adds"), City->VoidStacks, 3);
+	TestTrue(TEXT("and lost no defence"), City->Defence == DefenceBefore);
+	TestTrue(TEXT("and no people"), City->Population == PopulationBefore);
+	TestFalse(TEXT("and stands"), City->bFallen);
+
+	// AND OTHERWISE EXACTLY A QUEST HIT.
+	TestEqual(TEXT("it is counted as one Quest hit"), Run->QuestHits, 1);
+	TestTrue(TEXT("and the report names the city it hit"), Report.QuestHits.Contains(CityId));
+	TestEqual(TEXT("and not as an ordinary dungeon hitting a city"), Run->DungeonsDetonated, 0);
+	TestNotNull(TEXT("it is still on the map"), Run->FindDungeon(QuestId));
+	TestEqual(TEXT("with its timer full again"),
+			  Run->Clock->DaysUntilResolveFor(QuestId), 25.0f, 0.001f);
+	TestEqual(TEXT("and the run keeps day 2 as the last hit"), Run->LastHitDay, 2);
+
+	// THE CONTROL: A HORDE OF THE SAME DEPTH TAKES THE ORDINARY ROW.
+	TestTrue(TEXT("CONTROL: the Horde's timer ran out"), ControlReport.Resolved.Contains(QuestId));
+	TestEqual(TEXT("CONTROL: the city carries no stacks"), ControlCity->VoidStacks, 0);
+	TestEqual(TEXT("CONTROL: and lost the ordinary row's defence"),
+			  ControlDefenceBefore - ControlCity->Defence, OutpostRow.DefenceDamage, 0.01f);
+	TestTrue(TEXT("CONTROL: which is a real amount"), OutpostRow.DefenceDamage > 1.0f);
+	TestEqual(TEXT("CONTROL: it is counted as one Quest hit too"), Control->QuestHits, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowCapTest,
+	"Cataclysm.EmpireRun.AHollowsHitOnACityAtSevenStacksStopsItAtNine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9962;
+
+	// TWO RUNS FROM ONE SEED, THE SAME HOLLOW AT ITS MINIMUM, WHICH ADDS 3, ON
+	// THE SAME OUTPOST. In `Held` the city carries 7, so 3 would erase it; in
+	// `Control` it carries 5, and 3 bring it to 8 unheld.
+	UCataclysmEmpireRun* Held = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Held);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE)
+		|| !TestEqual(TEXT("set-up: and it is the same Outpost in the control"),
+					  FirstStandingOutpost(*Control), CityId))
+	{
+		return false;
+	}
+
+	for (UCataclysmEmpireRun* Each : { Held, Control })
+	{
+		PlaceHollow(*Each, QuestId, *Each->Map->Find(CityId), 25.0f, 20, 10);
+		ResolveOnTheNextDay(*Each, QuestId);
+	}
+
+	Held->Map->FindMutable(CityId)->VoidStacks = 7;
+	Control->Map->FindMutable(CityId)->VoidStacks = 5;
+
+	const FCataclysmDayReport Report = Held->AdvanceDay();
+	const FCataclysmDayReport ControlReport = Control->AdvanceDay();
+
+	const FCataclysmCity* City = Held->Map->Find(CityId);
+	const FCataclysmCity* ControlCity = Control->Map->Find(CityId);
+	if (!TestNotNull(TEXT("the city is on the map"), City)
+		|| !TestNotNull(TEXT("and the control's"), ControlCity))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the Hollow's timer ran out"), Report.Resolved.Contains(QuestId));
+	TestEqual(TEXT("the city at 7 stops at 9"), City->VoidStacks, 9);
+	TestFalse(TEXT("and stands"), City->bFallen);
+	TestEqual(TEXT("no city fell"), Report.Fallen.Num(), 0);
+	TestEqual(TEXT("the hit still counts"), Held->QuestHits, 1);
+
+	TestEqual(TEXT("CONTROL: the city at 5 takes all 3 and reaches 8"), ControlCity->VoidStacks, 8);
+	TestEqual(TEXT("CONTROL: and no city fell"), ControlReport.Fallen.Num(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHollowErasesTest,
+	"Cataclysm.EmpireRun.AHollowsHitThatTakesACityAtEightOrNineToTenErasesItAndTheHollowMoves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunHollowErasesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9963;
+
+	// THREE RUNS FROM ONE SEED, THE SAME HOLLOW AT ITS MINIMUM, WHICH ADDS 3, ON
+	// THE SAME OUTPOST. At 8 and at 9 the hit is not held and erases the city;
+	// at 7, the control, it is held at 9 and the city stands.
+	const int32 Before[] = { 8, 9, 7 };
+	UCataclysmEmpireRun* Runs[] = { MakeEmptyRun(1), MakeEmptyRun(1), MakeEmptyRun(1) };
+
+	const int32 CityId = FirstStandingOutpost(*Runs[0]);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		UCataclysmEmpireRun& Each = *Runs[Index];
+		if (!TestEqual(TEXT("set-up: the same Outpost in every run"),
+					   FirstStandingOutpost(Each), CityId))
+		{
+			return false;
+		}
+
+		PlaceHollow(Each, QuestId, *Each.Map->Find(CityId), 25.0f, 20, 10);
+		ResolveOnTheNextDay(Each, QuestId);
+		Each.Map->FindMutable(CityId)->VoidStacks = Before[Index];
+	}
+
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		UCataclysmEmpireRun& Each = *Runs[Index];
+		const FCataclysmDayReport Report = Each.AdvanceDay();
+		const FCataclysmCity* City = Each.Map->Find(CityId);
+		if (!TestNotNull(TEXT("the city is still on the map"), City))
+		{
+			return false;
+		}
+
+		// UNHELD: ALL 3 ADDED, AND THE CITY FELL AND WAS ERASED.
+		TestTrue(FString::Printf(TEXT("from %d the city fell"), Before[Index]),
+				 Report.Fallen.Contains(CityId));
+		TestEqual(FString::Printf(TEXT("from %d it carries all 3 more"), Before[Index]),
+				  City->VoidStacks, Before[Index] + 3);
+		TestTrue(FString::Printf(TEXT("from %d it is erased"), Before[Index]), City->bErased);
+		TestNull(TEXT("and no Dungeon City stands on it"), DungeonCityOn(Each, CityId));
+		TestEqual(TEXT("the hit counts as one Quest hit"), Each.QuestHits, 1);
+
+		// THE HOLLOW MOVED, AS A QUEST DUNGEON DOES ON A FALL.
+		const FCataclysmDungeon* Moved = Each.FindDungeon(QuestId);
+		if (TestNotNull(TEXT("the Hollow is still on the map"), Moved))
+		{
+			TestNotEqual(TEXT("and no longer on the erased city"), Moved->CityId, CityId);
+			TestTrue(TEXT("and stands on a city that is exposed and standing"),
+					 Each.Map->IsExposed(Moved->CityId));
+		}
+		TestTrue(TEXT("the report names its move as a fall's"),
+				 Report.MovedByAFall.Contains(QuestId));
+		TestFalse(TEXT("and does not name it as absorbed"), Report.Absorbed.Contains(QuestId));
+	}
+
+	// THE CONTROL: AT 7 THE HIT IS HELD AND THE CITY STANDS.
+	const FCataclysmDayReport ControlReport = Runs[2]->AdvanceDay();
+	const FCataclysmCity* ControlCity = Runs[2]->Map->Find(CityId);
+	if (TestNotNull(TEXT("CONTROL: the city is on the map"), ControlCity))
+	{
+		TestEqual(TEXT("CONTROL: from 7 no city fell"), ControlReport.Fallen.Num(), 0);
+		TestEqual(TEXT("CONTROL: and it carries 9"), ControlCity->VoidStacks, 9);
+		TestFalse(TEXT("CONTROL: and is not erased"), ControlCity->bErased);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunNotAHollowTest,
+	"Cataclysm.EmpireRun.AQuestDungeonThatIsNotAHollowNeitherShrinksNorAddsStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunNotAHollowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 QuestId = 9964;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+
+	const int32 CityId = FirstStandingOutpost(*Run);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// A HORDE DEATH SENT, 20 FLOORS DEEP, CARRYING THE SAME `HollowFrom` A
+	// HOLLOW WOULD, so it is the sub-type that decides and not the field. Its
+	// timer runs out on the sixth day.
+	PlaceDungeon(*Run, QuestId, ECataclysmDungeonType::Quest,
+				 ECataclysmDungeonSubType::Horde, *Run->Map->Find(CityId), 25.0f);
+	FCataclysmDungeon* Horde = Arrange(*Run, QuestId);
+	if (!TestNotNull(TEXT("set-up: the Horde is on the map"), Horde))
+	{
+		return false;
+	}
+	Horde->Cataclysm = ECataclysmType::Death;
+	Horde->HollowFrom = 20;
+	Horde->WalkDays = 20.0f;
+
+	Run->AdvanceDays(4);
+
+	const FCataclysmDungeon* Kept = Run->FindDungeon(QuestId);
+	if (!TestNotNull(TEXT("the Horde is on the map"), Kept))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("four days on it is still 20 floors deep"), Kept->Floors, 20);
+	TestEqual(TEXT("with its 20 day walk"), Kept->WalkDays, 20.0f, 0.001f);
+
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const FCataclysmCity* City = Run->Map->Find(CityId);
+	const float DefenceBefore = City->Defence;
+
+	ResolveOnTheNextDay(*Run, QuestId);
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	TestTrue(TEXT("its timer ran out"), Report.Resolved.Contains(QuestId));
+	TestEqual(TEXT("its city lost the ordinary row's defence"),
+			  DefenceBefore - City->Defence, OutpostRow.DefenceDamage, 0.01f);
+	TestEqual(TEXT("and carries no stacks"), City->VoidStacks, 0);
+	TestEqual(TEXT("the hit counts as one Quest hit"), Run->QuestHits, 1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
