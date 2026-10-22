@@ -797,8 +797,8 @@ bool FCataclysmDungeonModeSubTypeControlTest::RunTest(const FString& Parameters)
 	// is declared. That is the whole failure this issue is: a sub-type that
 	// exists in the enum and cannot be reached from anywhere.
 	const TArray<ECataclysmDungeonSubType> All = EverySubType();
-	if (!TestEqual(TEXT("the reflected enum holds the eight designed sub-types"),
-				   All.Num(), 8))
+	if (!TestEqual(TEXT("the reflected enum holds the eight designed sub-types and the Hollow"),
+				   All.Num(), 9))
 	{
 		return false;
 	}
@@ -912,7 +912,7 @@ bool FCataclysmDungeonModeSubTypeControlTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		TestEqual(TEXT("the enum carries one entry more than the eight sub-types"),
+		TestEqual(TEXT("the enum carries one entry more than the nine sub-types"),
 				  Reflected->NumEnums(), All.Num() + 1);
 
 		const FString Hidden = Reflected->GetNameStringByIndex(Reflected->NumEnums() - 1);

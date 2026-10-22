@@ -721,4 +721,69 @@ bool FCataclysmCityScreenDungeonSubTypeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenHollowLinesTest,
+	"Cataclysm.CityScreen.AHollowSaysWhetherItIsStillShrinkingAndToWhat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenHollowLinesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	// **SINCE 2026-10-22 THE VOID'S QUEST DUNGEON IS A HOLLOW**, which loses a
+	// floor a day down to half the floors it was made with. A player choosing
+	// which dungeon to walk has to see how deep it will be by the time they
+	// get there, and when it has stopped.
+	UCataclysmEmpireRun* Run = MakeRun();
+
+	const int32 CityId = Run->Map->PillarId;
+
+	// THREE HOLLOWS MADE WITH 20, WHICH STOP AT 10: one at 14; one at its
+	// minimum; one at 17 of which a city upgrade added 3, so 14 natural and it
+	// stops at 13. And a Horde, the control.
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 720, /* Floors */ 14,
+				 /* ResolveDays */ 9.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 721, /* Floors */ 10,
+				 /* ResolveDays */ 25.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 722, /* Floors */ 17,
+				 /* ResolveDays */ 31.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 723, /* Floors */ 30,
+				 /* ResolveDays */ 40.0f);
+
+	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.DungeonId < 720 || Dungeon.DungeonId > 723)
+		{
+			continue;
+		}
+
+		Dungeon.Type = ECataclysmDungeonType::Quest;
+		Dungeon.SubType = (Dungeon.DungeonId == 723)
+			? ECataclysmDungeonSubType::Horde
+			: ECataclysmDungeonSubType::Hollow;
+		Dungeon.HollowFrom = (Dungeon.DungeonId == 723) ? 0 : 20;
+		Dungeon.UpgradeFloors = (Dungeon.DungeonId == 722) ? 3 : 0;
+	}
+
+	const TArray<FString> Lines =
+		UCataclysmCityScreenLayout::DungeonLinesFor(Run, CityId);
+
+	if (!TestEqual(TEXT("four dungeons are listed"), Lines.Num(), 4))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Hollow above its minimum says it is shrinking and to what"), Lines[0],
+			  FString(TEXT("Hollow, 14 floors, shrinking by one a day to 10, 9 days until it bites")));
+	TestEqual(TEXT("one at its minimum says it is no longer shrinking"), Lines[1],
+			  FString(TEXT("Hollow, 10 floors, no longer shrinking, 25 days until it bites")));
+	TestEqual(TEXT("one whose city added floors stops that many higher"), Lines[2],
+			  FString(TEXT("Hollow, 17 floors, shrinking by one a day to 13, 31 days until it bites")));
+
+	// THE CONTROL. Any other dungeon's line is exactly as it was.
+	TestEqual(TEXT("CONTROL: a Horde's line is as it was"), Lines[3],
+			  FString(TEXT("Horde, 30 floors, 40 days until it bites")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
