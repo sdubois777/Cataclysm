@@ -590,4 +590,68 @@ bool FCataclysmCityScreenMapClickTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// What a dungeon does differently
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenDungeonSubTypeTest,
+	"Cataclysm.CityScreen.ADungeonLineNamesItsSubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenDungeonSubTypeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	// **SINCE 2026-10-21 A QUEST DUNGEON'S SUB-TYPE SAYS WHICH CATACLYSM SENT
+	// IT** -- a Death one is always a Horde, a Famine one always Sacrificial --
+	// and a player choosing which dungeon to walk has to be able to see it. The
+	// line leads with the sub-type in `SubTypeName`'s words.
+	UCataclysmEmpireRun* Run = MakeRun();
+
+	const int32 CityId = Run->Map->PillarId;
+
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 710, /* Floors */ 12,
+				 /* ResolveDays */ 9.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 711, /* Floors */ 20,
+				 /* ResolveDays */ 25.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 712, /* Floors */ 30,
+				 /* ResolveDays */ 40.0f);
+
+	// SET AFTER PLACING, on the run's own copies. `PlaceDungeon` leaves the
+	// sub-type at `None`, which the third keeps.
+	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.DungeonId == 710)
+		{
+			Dungeon.SubType = ECataclysmDungeonSubType::Horde;
+		}
+		else if (Dungeon.DungeonId == 711)
+		{
+			Dungeon.SubType = ECataclysmDungeonSubType::CowLevel;
+		}
+	}
+
+	const TArray<FString> Lines =
+		UCataclysmCityScreenLayout::DungeonLinesFor(Run, CityId);
+
+	if (!TestEqual(TEXT("three dungeons are listed"), Lines.Num(), 3))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Horde's line names it first"), Lines[0],
+			  FString(TEXT("Horde, 12 floors, 9 days until it bites")));
+
+	// TWO WORDS, NOT THE IDENTIFIER, so the words are `SubTypeName`'s.
+	TestEqual(TEXT("a Cow Level's line says Cow Level"), Lines[1],
+			  FString(TEXT("Cow Level, 20 floors, 25 days until it bites")));
+
+	// THE CONTROL. A dungeon without a sub-type reads as every line did before
+	// this layer, and does not say "None".
+	TestEqual(TEXT("a dungeon with no sub-type adds nothing"), Lines[2],
+			  FString(TEXT("30 floors, 40 days until it bites")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
