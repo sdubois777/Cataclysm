@@ -4587,8 +4587,8 @@ public:
 	 * cast lands on the enemy that set that trap off and takes at least a tenth of its maximum health, it lays the slow
 	 * there and then at the slow row's figures, once per trap". A blow already landed when the trap triggers is judged at
 	 * `trap_triggered` (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). When none qualified, the slow action leaves one of
-	 * these, and a later blow of that cast (a shot in flight, a rack's throw) whose delivery's `CastBy` IS THAT TRAP,
-	 * compared by identity although the trap is gone, lays it, once, if it takes a tenth. Each waits at most
+	 * these, and a later blow of that cast (a shot in flight, a rack's throw, since traps layer 3b a buried weapon's
+	 * leap) that names THAT TRAP, compared by identity although the trap is gone, lays it, once, if it takes a tenth. Each waits at most
 	 * `SkillTrapLateSlowSeconds`. Emptied at death.
 	 */
 	struct FLateSkillTrapSlow
@@ -4607,14 +4607,43 @@ public:
 	/** The skill trap whose `trap_triggered` is being raised now, set by `ACataclysmMinion::TriggerSkillTrap` around it. */
 	TWeakObjectPtr<AActor> SkillTrapRaisingItsTrigger;
 
-	/** Whether a slow waits for a blow of the trap `CastBy` names on `Struck`. Asked by `UCataclysmSkillEffects::ApplyHit`. */
-	bool AwaitsALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, const AActor* Struck) const;
-
 	/**
 	 * A blow of the trap `CastBy` names has landed on `Struck`, taking `DealtToHealth`: if a slow waits for it and the blow
-	 * takes a tenth (the owner's rule, #917), lay the slow and stop waiting. Whether a slow was laid.
+	 * takes a tenth (the owner's rule, #917), lay the slow and stop waiting. Whether a slow was laid. Asked by
+	 * `UCataclysmSkillEffects::ApplyHit` for every blow of a used-up trap's cast, with the identity `SpentSkillTrapNamed`
+	 * found it by (traps layer 3b), so a blow no slow waits for lays nothing.
 	 */
 	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth);
+
+	/**
+	 * TRAPS LAYER 3B, A TRAP'S LATE BLOWS. Ruled 2026-10-21 by the coordinating session (#2462): "a trap's late shot, a
+	 * buried weapon's leap and a zone are priced and announced as the trap's (Type.Trap minion_damage and
+	 * deployable_hit), carried by the record built here." A SKILL TRAP ALREADY USED UP, kept on its player: the trap,
+	 * compared by identity although it is gone as `FLateSkillTrapSlow::Trap` is, and its type tags. Written by
+	 * `ACataclysmMinion::TriggerSkillTrap` as the trap is used up; read by `UCataclysmSkillEffects::ApplyHit` for a blow
+	 * no living gadget or trap prices, and by `UCataclysmSkillTemplate::LeaveZoneAlong` for a zone laid after the trap
+	 * is gone. NO CLOCK, so a buried weapon's leap is the trap's however late it comes; at most `SpentSkillTrapsKept`
+	 * are kept, the oldest let go first. Emptied at death. A skill gadget is never written here, so its late blows stay
+	 * the player's (P5, 2026-10-16).
+	 */
+	struct FSpentSkillTrap
+	{
+		TWeakObjectPtr<AActor> Trap;
+		FGameplayTagContainer TypeTags;
+	};
+	TArray<FSpentSkillTrap> SpentSkillTraps;
+
+	/** How many used-up traps a player keeps for their late blows: a number under the owner's delegation of unstated numbers. */
+	static constexpr int32 SpentSkillTrapsKept = 64;
+
+	/** `Trap` is being used up: keep it, with `TrapTypeTags`, for its cast's late blows. Nothing for a null trap. */
+	void NoteSkillTrapSpent(AActor* Trap, const FGameplayTagContainer& TrapTypeTags);
+
+	/**
+	 * Whether `CastBy` names a skill trap of this player's already used up, and if so the kept record in `OutSpent`. By
+	 * identity, so a weak pointer to a trap that is gone still finds it; an explicitly empty one finds nothing.
+	 */
+	bool SpentSkillTrapNamed(const TWeakObjectPtr<AActor>& CastBy, FSpentSkillTrap& OutSpent) const;
 
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */

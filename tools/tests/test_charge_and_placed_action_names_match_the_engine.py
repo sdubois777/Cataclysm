@@ -513,8 +513,41 @@ def test_the_generator_accepts_exactly_the_two_names_of_traps_layer_three_the_en
                      r"if \(Slower && UCataclysmAilments::ApplySlowOfStrength\(", engine)
     assert "LateSkillTrapSlows.Add(Late);" in engine
     effects = (SOURCE.parent / "CataclysmSkillEffects.cpp").read_text(encoding="utf-8")
-    assert re.search(r"LateTrapsPlayer->LayALateSkillTrapSlow\(Delivery\.CastBy, Target, "
-                     r"Resolved->DealtToHealth\);", effects)
+    # SINCE TRAPS LAYER 3B (#2462) THE LATE BLOW IS FOUND ONCE, by the used-up
+    # trap's identity, and the slow is asked with that identity beside the
+    # trap's `deployable_hit`.
+    assert re.search(r"MachinesPlayer->LayALateSkillTrapSlow\(SpentTrap\.Trap, Target, "
+                     r"Result->DealtToHealth\);", effects)
     minion = (SOURCE.parent / "CataclysmMinion.cpp").read_text(encoding="utf-8")
     assert re.search(r'ActOnEvent\(FName\(TEXT\("trap_triggered"\)\), &TrapTags, '
                      r'/\*EventAmount=\*/SkillTrapTookFromItsEnemy,', minion)
+
+
+def test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced() -> None:
+    """Ruled 2026-10-21 (traps layer 3b, #2462, Z1 (a)). A skill trap is kept
+    on its player as it is used up, and found again by its identity where a
+    blow is priced and announced and where a zone is priced as it is laid; a
+    buried weapon hands the identity on and never through `Get`. Read from the
+    code with comment lines left out. THE CONTROL: the same reading finds the
+    buried weapon's `Caster.Get()`, so a pattern that saw no `.Get()` at all
+    could not pass the check that `CastBy` is never read through one."""
+    def code_of(path: Path) -> str:
+        return "\n".join(line for line in path.read_text(encoding="utf-8").splitlines()
+                         if not line.lstrip().startswith(("//", "* ", "/*", "*/"))
+                         and line.strip() != "*")
+
+    minion = code_of(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r"Theirs->NoteSkillTrapSpent\(this, TypeTags\);\s*Destroy\(\);", minion)
+    effects = code_of(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert "SpentTrapsPlayer->SpentSkillTrapNamed(NamedCastBy, SpentTrap)" in effects
+    assert "FGameplayTagContainer GadgetsTags = Machine ? Machine->TypeTags : SpentTrap.TypeTags;" in effects
+    template = code_of(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    assert "LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)" in template
+    assert "PerTick * TrapsPartOfTheTick" in template
+    buried = code_of(SOURCE.parent / "CataclysmBuriedWeapon.cpp")
+    assert "Buried->Caster.Get()" in buried
+    assert "CastBy.Get()" not in buried
+    templates = code_of(SOURCE.parent / "CataclysmSkillTemplates.cpp")
+    assert re.search(r"Params\.bBurns, FreeRepeatCastBy\)\)", templates)
+    engine = code_of(SOURCE)
+    assert "SpentSkillTraps.Empty();" in engine

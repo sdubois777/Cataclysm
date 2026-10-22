@@ -14,7 +14,7 @@
 
 UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	AActor* Target, AActor* Caster, float RangeCm, float InDamagePercent,
-	const FGameplayTagContainer& InSkillTags, bool bInBurns, AActor* InCastBy)
+	const FGameplayTagContainer& InSkillTags, bool bInBurns, const TWeakObjectPtr<AActor>& InCastBy)
 {
 	if (!IsValid(Target) || RangeCm <= 0.0f)
 	{
@@ -89,8 +89,11 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// AND WHO THE THROWING USE WAS CAST FROM, so a skill gadget's axe is still priced as the gadget's while the gadget
 	// stands. Empty for every axe a player threw by hand, which is the delivery this always sent. Stack 2 (P5). AND
 	// ONLY WHILE THE THROWER IS HERE: when it has gone the dying creature is credited, and its blow is no gadget's.
+	// AND AS IT WAS KEPT, NOT THROUGH `Get`, so a skill trap used up before this leap is still named by its identity and
+	// the leap is priced and announced as the trap's (ruled 2026-10-21, #2462). A gadget gone still answers null to
+	// `SkillGadgetCasting`, so its axe is the player's then, as before (P5).
 	FCataclysmHitDelivery Delivery;
-	Delivery.CastBy = Buried->Caster.IsValid() ? Buried->CastBy.Get() : nullptr;
+	Delivery.CastBy = Buried->Caster.IsValid() ? Buried->CastBy : TWeakObjectPtr<AActor>();
 
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
@@ -142,7 +145,7 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	UCataclysmBuriedWeapon* Moved = BuryIn(NextHost, Credited, Buried->RangeCm,
 										  Buried->DamagePercent,
 										  Buried->SkillTags, Buried->bBurns,
-										  Buried->CastBy.Get());
+										  Buried->CastBy);
 	if (Moved)
 	{
 		Moved->Leaps = Buried->Leaps + 1;

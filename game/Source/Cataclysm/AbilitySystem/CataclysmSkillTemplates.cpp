@@ -2102,10 +2102,12 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// either off the character at the moment it leaps would credit the blow
 		// to whatever the player used last.
 		// AND WHO THE USE WAS CAST BY, so a skill gadget's axe leaping long after is still the gadget's while the
-		// gadget stands. Ruled 2026-10-16, stack 2 (P5).
+		// gadget stands. Ruled 2026-10-16, stack 2 (P5). THE WEAK POINTER ITSELF, NOT `Get`: a shot is buried when it
+		// finishes, after a skill trap that cast it is used up, and only the identity still names that trap (ruled
+		// 2026-10-21, #2462).
 		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
 										   GetDamagePercent(), SkillTags,
-										   Params.bBurns, FreeRepeatCastBy.Get()))
+										   Params.bBurns, FreeRepeatCastBy))
 		{
 			++Buried;
 		}
