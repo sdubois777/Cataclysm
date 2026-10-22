@@ -1168,6 +1168,11 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	if (Machine && !GadgetsPlayer)
 	{
 		Machine->NoteSkillTrapBlowOn(Target, Result->DealtToHealth);
+		// AND, SINCE A TRAP MAY REARM (traps layer 4, ruled 2026-10-22, G2), A STANDING TRAP'S BLOW ASKS A WAITING SLOW
+		// TOO, with the trap's identity, as a used-up trap's does below: a shot of an earlier trigger landing while the
+		// rearmed trap stands lays the slow that trigger left waiting. A blow of a trap that never rearmed finds none,
+		// since its cast's blows land before `trap_triggered` leaves one.
+		MachinesPlayer->LayALateSkillTrapSlow(NamedCastBy, Target, Result->DealtToHealth);
 	}
 	else if (!Machine)
 	{
