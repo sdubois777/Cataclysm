@@ -16,8 +16,10 @@ struct FGameplayTagContainer;
  *
  * THE SENTENCE, from `game/Data/EnchantmentsNegative.csv`, row `Negative_Your_deployables_and_traps_deal_full_damage_to_y`:
  * "Your deployables and traps deal full damage to you if you are within their blast radius". Ruled 2026-10-19 by the
- * coordinating session, B1 to B6 in the entry of that date in `docs/DECISIONS.md`. THE DEPLOYABLE HALF ONLY (Q1): the
- * sentence's trap half is not yet built and joins when traps are.
+ * coordinating session, B1 to B6 in the entry of that date in `docs/DECISIONS.md`. THE DEPLOYABLE HALF FIRST (Q1); THE
+ * TRAP HALF SINCE TRAPS LAYER 7 (ruled 2026-10-22, K1 to K6): a standing skill trap is a deployable of its wearer's and
+ * was reached from traps layer 1, and a shot or a landing of a skill trap already used up is found by its identity,
+ * `IsTheWearersUsedUpTrap`.
  *
  * WHICH BLOWS (B2): every INSTANT AREA blow of a skill the wearer's deployable casts -- an area strike or a nova
  * (`UCataclysmStrikeSkill::SwingOnce`), a projectile's landing in a radius (`UCataclysmProjectileSkill::Land`) and its
@@ -68,12 +70,25 @@ public:
 	static bool IsTheWearersDeployable(const AActor* Wearer, const AActor* CastFrom);
 
 	/**
+	 * TRAPS LAYER 7 (K1, ruled 2026-10-22): whether `CastBy` names a skill trap of `Wearer`'s ALREADY USED UP, so a
+	 * shot or a landing of its cast that strikes after it is gone is still its blast. FOUND BY IDENTITY among the
+	 * wearer's used-up traps (`UCataclysmAbilitySystemComponent::SpentSkillTrapNamed`, traps layer 3b), which only a
+	 * trap of the wearer's own is ever written into, so one found there is a deployable whose summoner was the wearer, as
+	 * `IsTheWearersDeployable` asks of a standing one. False for an empty pointer, which every use no deployable cast
+	 * carries, and for a skill gadget gone, which is never kept (P5, 2026-10-16).
+	 */
+	static bool IsTheWearersUsedUpTrap(const AActor* Wearer, const TWeakObjectPtr<AActor>& CastBy);
+
+	/**
 	 * `Wearer`, when it holds the flag, is alive, `CastFrom` is its deployable, and the sphere touches its body; or null.
 	 * THE SPHERE `UCataclysmTargeting::FindEnemiesInSphere` overlaps for the same blow, so the wearer is inside exactly
-	 * when an enemy standing there would be.
+	 * when an enemy standing there would be. OR, SINCE TRAPS LAYER 7, `UsedUpCastBy` names a skill trap of the wearer's
+	 * already used up (`IsTheWearersUsedUpTrap`): the identity of what the use was cast by, which a site whose blow can
+	 * land after its trap is gone hands over; empty by default, which asks nothing more.
 	 */
 	static AActor* WearerInSphere(const UWorld* World, AActor* Wearer, const AActor* CastFrom, const FVector& Origin,
-								  float RadiusCm);
+								  float RadiusCm,
+								  const TWeakObjectPtr<AActor>& UsedUpCastBy = TWeakObjectPtr<AActor>());
 
 	/**
 	 * `Wearer` inside the cone `UCataclysmTargeting::FindEnemiesInCone` searches with the same arguments, on the same

@@ -1014,9 +1014,11 @@ void ACataclysmProjectile::Finish()
 			// AND THE FIRER ITSELF, WHEN ITS DEPLOYABLE CAST THE USE AND IT STANDS INSIDE THE BLAST. Ruled 2026-10-19 (B2,
 			// B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". THE
 			// DEPLOYABLE IS THE ONE THE SHOT CARRIES, `CastBy`, so a shot landing after its use has ended still knows it.
-			// The wearer is no landing: the count below is the enemies'.
+			// The wearer is no landing: the count below is the enemies'. AND A SKILL TRAP ALREADY USED UP IS FOUND BY
+			// THE IDENTITY THE SHOT CARRIES (traps layer 7, K1, ruled 2026-10-22), since every shot of a trap's cast
+			// lands after the trap is gone and `Get` then answers null.
 			if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
-					GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm))
+					GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm, CastBy))
 			{
 				StrikeTheWearerInItsBlast(Wearer, LandedBefore);
 			}
