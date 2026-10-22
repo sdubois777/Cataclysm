@@ -2,6 +2,239 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — In the game the Void's Quest dungeon is a Hollow: it loses a floor a day to half its natural depth, never while the player is inside, and its hit adds 1 to 3 Void stacks instead of damage, never erasing a city below 8 stacks
+
+**The game follows the simulation for the Void's Quest dungeon.** A Quest dungeon the Void sends is a Hollow. From the
+day after it is made it loses one floor a day, down to half the natural floors it was made with (rounded up); its walk
+shrinks with it and its timer does not; it does not shrink while the player is inside it. When its timer runs out on a
+standing city it takes no defence and no people and adds 1 Void stack at its full depth, rising evenly to 3 at its
+minimum, and a city below 8 stacks is left at most at 9. The simulation has done this since the entry headed "In the
+simulation the Hollow, the Void's Quest dungeon, loses a floor a day to half its depth, and its hit adds 1 to 3 void
+stacks instead of damage". Branch `feat/game-hollow-1` on `development` at `3c1147e48`. Not built and not run: see
+Proofs and Run. **Two existing Unreal assertions outside this layer's rulings will fail as written and were not
+changed**; see AT RISK.
+
+### What changed and why
+
+- **WHAT A PLAYER MEETS.** The city screen names a Hollow and says where it is going: "Hollow, 14 floors, shrinking by
+  one a day to 10, 9 days until it bites", and at its minimum "Hollow, 10 floors, no longer shrinking, 9 days until it
+  bites". A Hollow left alone is quicker to walk and worth less each day, and its hit grows from 1 stack to 3 as it
+  shrinks. It never erases a city carrying fewer than 8 stacks in one hit; a city at 8 or 9 it can erase, and the
+  erased city's fall moves the Hollow on, as any fall moves a Quest dungeon.
+- **WHY.** The owner, 2026-10-16, on the Void's Quest dungeons, verbatim: "So, maybe Hollow works, but we shouldn't just
+  flat out erase a city if they player can't get to it in time." The simulation entry named above built the rule on
+  2026-10-18 and the coordinating session accepted it on 2026-10-19 under the owner's delegation. Until this entry the
+  game's Void Quest dungeons rolled a sub-type like any dungeon and hit as the ordinary Quest hit.
+- **NO DRAW MOVES.** The Hollow is fixed after `MakeDungeon`'s sub-type draw, which is still taken and discarded, as for
+  the five Cataclysms of 2026-10-21; the shrink and the stacks draw nothing. What moves is downstream: a Void
+  campaign's Quest dungeons stop rolling Sieges and Cow Levels, stop taking defence and shrink, so its falls and every
+  later draw a different city history causes can move with it.
+
+### The rulings
+
+The coordinating session accepted this layer's plan on 2026-10-22 as H1 to H10, with two changes: H4 was verified and
+the clock's copy of the floors is updated, and H8 renames two tests. The brief this entry was written from labels H2 and
+H4 to H9 and states the rest by content; **H1, H3 and H10 are not restated here by label**, and their content is among
+the rules below.
+
+- **The Void's Quest dungeons are Hollows**, `QuestSubTypeFor(Void)`; nothing rolls one, and `MakeDungeon` keeps the
+  discarded sub-type draw, so no other draw moves.
+- **`HollowFrom` is the natural floors it was made with**, `Floors - UpgradeFloors` at creation: the plain roll,
+  without the model's 1.25 depth multiplier (issue #53, as ruling J1 of 2026-10-22 has it for the ordinary Void
+  dungeon's thirds).
+- **The minimum** is `max(1, ceil(HollowFrom x 0.5))`.
+- **The shrink**, each day after `ApplySiegeDamage` and before the `ResolveDungeon` loop in
+  `UCataclysmEmpireRun::AdvanceDay`: every Hollow with `SpawnedDay < Today` that is not `Clock->CurrentDungeonId` loses
+  `min(1, natural - minimum, Floors - 1)` floors. **H2**: `WalkDays` comes down by the lost floors times `DaysPerFloor`,
+  never below one day. **H5**: it goes on shrinking after it moves and on a fallen city. Its timer is not changed.
+- **H4, verified, and the clock's copy updated.** The brief's finding, measured at `3c1147e48`: the timer's
+  `FCataclysmDungeonTimer::Floors` is read in `UCataclysmDayClock::AddDungeon` alone, to set `ResolveDays`
+  (`CataclysmDayClock.cpp` lines 43 and 44), and the save writes the whole timer list, `Record.DungeonTimers =
+  Clock->Timers` (`game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` line 300). **Re-searched by the writing session
+  and found the same**: no other source, test or Python check reads a timer's `Floors`. `DungeonsAgreeWithTimers`
+  compares identifiers only; the save fixture holds the field and the fixture check compares it as data. So the shrink
+  calls a new `UCataclysmDayClock::SetFloors`, which sets the timer's `Floors` and not its `ResolveDays` or
+  `DaysUntilResolve`, so the copy the save writes is true.
+- **The stacks**: `span = HollowFrom - minimum`; 3 when `span <= 0`; otherwise `lost = clamp(HollowFrom - natural, 0,
+  span)` and `floor(1 + 2 x lost / span + 0.5)`, half up as the model's `int(x + 0.5)`.
+- **H6, the cap**, in `FCataclysmDungeon::HollowStacksOnto(CityStacks)`: a city below 8 stacks takes at most `10 - 1 -
+  stacks`, never below nought; at 8 or 9 it is not held. The name does not say "Floors", because the timer-hit check
+  forbids the word in the Quest block.
+- **The hit**: a Hollow takes no defence and no people and adds `HollowStacksOnto(Host->VoidStacks)` stacks through
+  `Map->AddVoidStacks`; `QuestHits`, the day report's `QuestHits`, the last-hit fields and `RelocateQuestDungeon` are
+  unchanged.
+- **H7**: the city screen's two Hollow lines, quoted above; the "to N" figure is where it stops, `HollowMinimum() +
+  UpgradeFloors`, at least 1. Every other dungeon's line is as it was.
+- **H8**: `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll` is renamed
+  `Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll`, and
+  `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` is renamed
+  `Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType`. Earlier entries keep the old names.
+- **H9**: the two Python files below; `test_enemy_score_port.py` unchanged, and `SubTypeWeightFor` in
+  `CataclysmEnemyScore.cpp` has no Hollow case, so a Hollow scores as the model's `.get(..., 0.0)` does.
+
+### How it is built
+
+- `game/Source/CataclysmEmpire/Empire/CataclysmDungeonKind.h`: `ECataclysmDungeonSubType::Hollow = 8`, after
+  `Sacrificial`. `RollSubType`, `TotalSpawnWeight` and `SubTypeAtPoint` walk from `Timed` to `Sacrificial` by name, so
+  it is never on the roll's line.
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`: `FCataclysmDungeon::HollowFrom` (`SaveGame`,
+  `BlueprintReadOnly`), set in `MakeDungeon` to `Rolled` after the sub-type is fixed, for a Hollow only;
+  `IsHollow`, `HollowMinimum`, `HollowFloorsLeftToLose` and `HollowStacksOnto`;
+  `UCataclysmSurgeScheduler::HollowShareKept = 0.5f`, `HollowFloorsLostPerDay = 1` and `HollowCannotEraseBelow = 8`;
+  `SubTypeName` answers "Hollow"; `QuestSubTypeFor` names the Void; `SpawnWeightFor` lists Hollow at nought.
+- `game/Source/CataclysmEmpire/DayClock/CataclysmDayClock.h` and `.cpp`: `SetFloors(DungeonId, Floors)`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`: the private `ShrinkHollows(Today)`, called
+  between `ApplySiegeDamage(Report)` and the resolve loop; in `ResolveDungeon`'s Quest block, `bHollow` and
+  `HollowStacks` worked out while `Dungeon` and `Host` still point at something, `Ordinary`'s two figures set to
+  nought for a Hollow, and the one hit:
+  `if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))`.
+  **Why that shape:** `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py` requires that
+  exact `Map->Damage` text once in the Quest block and in order, and forbids "Floors", "BiteScale" and
+  "Dungeon->DefenceDamage" there;
+  `tools/tests/test_a_quest_dungeon_moves_when_its_city_falls_in_the_model_and_in_the_game.py` requires every
+  `CityFell` in the file to follow an `if (Map->Damage(...))` on one line; and
+  `tools/tests/test_void_stacks_in_the_model_and_in_the_game.py` requires `AddsVoidStacks` to stay ordinary and Void
+  only and `Dungeon->VoidStacksItAdds()` once. The zero damage goes through `Ordinary`, so `Damage` takes nothing and
+  answers that the city stands, and `AddVoidStacks` fells and erases at the tenth stack, as G5's ordinary Void
+  dungeon does on the line below it. All three checks pass unchanged.
+- `game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.cpp` and `.h`, `DungeonLinesFor`: as ruled in H7.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: the `Cataclysm.DungeonSubType` console control's help
+  names Hollow, so that `Cataclysm.DungeonMode.TheSubTypeControlNamesEverySubTypeItTakes`, which requires the help to
+  name every value of the enum, holds unchanged. A comment there that said the generated file lists "the eight"
+  sub-types no longer gives a count.
+- The empire module still includes nothing from the `Cataclysm` module.
+
+### The save
+
+**A dungeon is written whole, so `HollowFrom` is saved with no other change**: `FCataclysmSaveGather::DungeonsFrom`
+copies `Run.Dungeons`, and the field is marked `SaveGame`. The timer list is written whole as well, and its `Floors`
+now follows a shrinking Hollow (H4). `Run_v1.json` gains `"HollowFrom": 16` on its one dungeon, an ordinary Siege, so
+test data rather than a reachable state, and the fixtures' `README.md` records it as the sixteenth edit.
+**NOTHING LOADS A RUN'S DUNGEONS OR CITIES BACK (issue #753)**, so a restored campaign would lose it as it loses every
+dungeon field.
+
+### What is not in it
+
+- **The Void's 1.25 depth multiplier**, issue #53. A Hollow is made from the plain Quest row, and `HollowFrom` is that.
+- **The Ascendant**, Celestial's Quest dungeon: the next layer, G7. Celestial's Quest dungeons still roll.
+- **The wording of the empire map widget and of `UCataclysmEmpireRun::Describe`** beyond the sub-type name they already
+  print through `SubTypeName`. Neither says that a Hollow is shrinking.
+- **The policy rule.** The model's `policies._quest_hit_fells` sees a Hollow's hit as fatal when its stacks would erase
+  the city. It is a rule of the model's simulated players and is not ported.
+
+### AT RISK
+
+**READ, NOT RUN: TWO EXISTING ASSERTIONS WILL FAIL AS WRITTEN, AND WERE NOT CHANGED.** Both count the reflected
+`ECataclysmDungeonSubType`, which now has nine values with `None`, and neither is among the tests the rulings name, so
+the writing session stopped there and did not change them:
+
+- `Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType`
+  (`game/Source/Cataclysm/Tests/CataclysmDungeonGameModeTests.cpp`, about line 800): `TestEqual(TEXT("the reflected
+  enum holds the eight designed sub-types"), All.Num(), 8)`, and it returns false when that fails, so the per-name
+  checks after it do not run.
+- `Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt`
+  (`game/Source/Cataclysm/Tests/CataclysmFloorBriefTests.cpp`, about line 1060): `TestTrue(TEXT("the reflected sub-type
+  list found the seven and None"), All.Num() == 8)`.
+
+No code shape avoids them: the Hollow has to be a value of the enum for `QuestSubTypeFor`, the save and the city
+screen. Each needs a ruling, 8 to 9 with its message, before this layer's Unreal run can pass.
+
+From the plan, seeded tests whose outcome can move: `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`, low, because
+a Hollow does not shrink on the day it is made; `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`, whose
+assertions walk `Timed` to `Sacrificial` and count `None`, and a Hollow is neither;
+`Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThePathToThePillar`, whose Void campaigns now take stacks and not
+defence from their Quest dungeons. Every other seeded campaign that faces the Void: low.
+
+### Tests changed
+
+- **H8, `Cataclysm.Surge.FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll` ->
+  `Cataclysm.Surge.SixCataclysmsNameTheirQuestSubTypeAndTheRestRoll`**: the fixed table gains `Void -> Hollow`; the
+  list that rolls loses the Void (War, Celestial and `None` remain); "the five name five different sub-types", 5 ->
+  "the six name six different sub-types", 6; "and none of the five answers None" -> "and none of the six answers
+  None".
+- **H8, `Cataclysm.Surge.InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType` ->
+  `Cataclysm.Surge.InARunSixCataclysmsQuestDungeonsAreTheirOneSubType`**: `Expected` gains `Void -> Hollow`; `Rolling`
+  loses the Void; "CONTROL: the five's ordinary dungeons still roll" -> "CONTROL: the six's ordinary dungeons still
+  roll".
+- **H9, `tools/tests/test_dungeon_subtype_port.py`**: `FIXED_IN_THE_GAME` gains "Void"; a new `NEVER_ROLLED =
+  {"Hollow"}` and `game_name_for`; `test_the_enum_names_every_sub_type_the_port_covers_and_no_sub_type`,
+  `set(found) == set(NAMES.values()) | {"None"}` -> `... | {"None"} | NEVER_ROLLED`;
+  `test_sacrificial_is_still_the_last_one`, `found["Sacrificial"] == max(found.values())` -> the maximum of the values
+  not in `NEVER_ROLLED`, and a new assertion that each value in `NEVER_ROLLED` is numbered past `Sacrificial`;
+  `test_the_game_fixes_the_same_five_pairs_the_model_does`, renamed `..._six_pairs_...`, `cases[c] ==
+  NAMES.get(wanted.get(c))` -> `cases[c] == game_name_for(wanted.get(c))`, its message "not the five" -> "not the
+  six", and the comment naming the run test now names the new one.
+- **H9, `tools/tests/test_three_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py` -> renamed
+  `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`**, by the writing
+  session's judgement that "three" had become false; the file's docstring records its four names. Following its own
+  restore text for the Void: `THE_THREE` -> `THE_TWO`, without the Void; `test_the_game_still_rolls_this_cataclysms_quest_dungeons[Void]`
+  goes; `test_the_game_has_neither_new_sub_type`, `missing == ["Ascendant", "Hollow"]` -> renamed
+  `test_the_game_has_no_ascendant`, `missing == ["Ascendant"]`;
+  `test_the_three_really_do_differ_and_the_other_five_do_not` -> renamed
+  `test_the_two_really_do_differ_and_the_other_six_do_not`, `len(cases) == 5` -> `len(cases) == 6`, and its name
+  comparison `NAMES.get(...)` -> `game_name_for(...)`.
+
+### New tests
+
+Unreal, fifteen registered names:
+
+- `CataclysmSurgeTests.cpp`: `Cataclysm.Surge.TheVoidsQuestDungeonIsAHollowThatRemembersItsNaturalFloors`,
+  `Cataclysm.Surge.AHollowShrinksToHalfItsNaturalFloorsRoundedUp`,
+  `Cataclysm.Surge.AHollowsHitAddsOneAtFullDepthRisingToThreeAtItsMinimum`,
+  `Cataclysm.Surge.AHollowsHitLeavesACityBelowEightStacksOneShortOfErasure`.
+- `CataclysmEmpireRunTests.cpp`:
+  `Cataclysm.EmpireRun.AHollowLosesAFloorADayToItsMinimumAndItsWalkFollowsButNotItsTimer`,
+  `Cataclysm.EmpireRun.AHollowDoesNotShrinkOnTheDayItWasMade`,
+  `Cataclysm.EmpireRun.AHollowDoesNotShrinkWhileThePlayerIsInsideAndResumesWhenTheyLeave`,
+  `Cataclysm.EmpireRun.AHollowThatHasMovedOrStandsOnAFallenCityGoesOnShrinking`,
+  `Cataclysm.EmpireRun.AHollowsTimerAddsItsStacksTakesNoDefenceOrPeopleAndRefreshes`,
+  `Cataclysm.EmpireRun.AHollowsHitOnACityAtSevenStacksStopsItAtNine`,
+  `Cataclysm.EmpireRun.AHollowsHitThatTakesACityAtEightOrNineToTenErasesItAndTheHollowMoves`,
+  `Cataclysm.EmpireRun.AQuestDungeonThatIsNotAHollowNeitherShrinksNorAddsStacks` (the control the plan asked for).
+- `CataclysmDayClockTests.cpp`: `Cataclysm.DayClock.SettingADungeonsFloorsMovesNeitherItsTimerNorWhatItRefillsTo`.
+- `game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp`:
+  `Cataclysm.CityScreen.AHollowSaysWhetherItIsStillShrinkingAndToWhat`.
+- `game/Source/Cataclysm/Tests/CataclysmSaveWriterTests.cpp`:
+  `Cataclysm.SaveWriter.AGatheredRunRecordCarriesADungeonsHollowFrom` (and the record's timer floors after a shrink).
+
+### Python
+
+`tools/tests/test_the_hollow_in_the_model_and_in_the_game.py`, sixteen tests: the game's `HollowMinimum`, read for its
+numbers, against `Simulation.hollow_floor_minimum` for every Hollow made with 1 to 60 floors; `HollowStacksOnto`, read
+for its numbers and worked in single precision, against `Simulation.hollow_hit_stacks` for those, at every depth from
+three below the minimum to three above, on a city at 0 to 11 stacks; one day's loss, `HollowFloorsLostPerDay` and
+`HollowFloorsLeftToLose`, against a day of the model's own `_hollow_shrink`, with a city upgrade adding or taking up to
+five floors; the three constants against `TuningConfig`; the shrink's place in both days; the two skips in both, and
+the model's run; who is a Hollow; `HollowFrom` in `MakeDungeon` and `_make_dungeon`; and the hit. Six are controls on
+altered copies (a share of 0.6; a rise of 3 and the half cut off; a cap two short and a line at 9; a shrink to no
+floors; the shrink moved after the resolves; the walked-dungeon guard taken out).
+
+Checked by the writing session in a `git archive` copy of the branch at `e63ff5f37`, with `tools/prove_guard.py`,
+narrowed to the new file -- a check of the file and not a registered proof. Each PROVED, restored "16 passed":
+
+- The stacks rounded down rather than half up (`+ 0.5f);` -> `+ 0.0f);` in `HollowStacksOnto`): "2 failed, 14
+  passed", `test_the_games_stacks_are_the_models` and `test_the_stacks_comparison_sees_a_changed_rise_and_a_changed_rounding`
+  (the second because its anchor was gone).
+- The game's `ShrinkHollows(Today);` call removed: "2 failed, 14 passed",
+  `test_both_halves_shrink_after_the_siege_and_before_the_resolves` and
+  `test_the_day_order_check_sees_a_shrink_moved_after_the_resolves` (its anchor was gone).
+- The model's walked-dungeon skip removed from `_hollow_shrink`: "2 failed, 14 passed",
+  `test_both_halves_leave_a_new_hollow_and_the_walked_one_alone` and `test_the_models_skips_are_real`.
+
+### Proofs
+
+Not yet run. Three to be registered by the dungeon session after reading the code:
+
+- **P1**, the shrink step removed (`ShrinkHollows(Today);` out of `AdvanceDay`).
+- **P2**, the below-8 cap removed (the `HollowCannotEraseBelow` block out of `HollowStacksOnto`).
+- **P3**, the walked-dungeon guard removed (`|| Dungeon.DungeonId == Inside` out of `ShrinkHollows`).
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-22 — Two actions on the player's other traps: the nearest or every unarmed skill trap within a row's metres of a trap that triggered or a gadget killed arms at once, and the nearest or every standing one within them, or every one at the player's death, is recorded and then set off as a whole trigger at its own triggering enemy once the acting row has finished, each trap once a chain, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ArmTrapsNearbyAction`,
@@ -1495,6 +1728,7 @@ on `development` at `cd5c85e82` (written on `b7980dc48` as `feat/game-quest-subt
 - **WAR'S, CELESTIAL'S AND THE VOID'S QUEST DUNGEONS STILL ROLL.** War's are Sieges in the simulation; the owner has
   ruled War out of the game, so they roll at the ordinary weights and can still be a Siege (ruling 4 below). Celestial's
   are Ascendant and the Void's Hollow in the simulation, and neither sub-type exists in the game.
+  Since the entry headed "In the game the Void's Quest dungeon is a Hollow…" (2026-10-22) the Void's are Hollows in the game as well, and the file that holds the rest is `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`.
 - **THE CITY SCREEN NAMES EACH DUNGEON'S SUB-TYPE**: "Horde, 12 floors, 9 days until it bites". A dungeon with no
   sub-type reads as before, "30 floors, 40 days until it bites".
 - **A SEED STILL LANDS THE SAME WAVES ON THE SAME CITIES AT THE SAME DEPTHS, AND SENDS THEM FROM THE SAME
@@ -7023,6 +7257,7 @@ its ten-piece's cull and spawn are all in play.
 
 **Simulation only; the game has no Void (#53).** Branch `feat/sim-hollow`, on top of the entry headed "In the simulation an ordinary Void dungeon adds 1 to 3 void stacks…".
 Since the entry headed "In the game an ordinary Void dungeon adds 1 to 3 Void stacks to its city instead of damage…" (2026-10-22) the game has the Void's ordinary-dungeon stacks; the Hollow is still not in the game.
+Since the entry headed "In the game the Void's Quest dungeon is a Hollow…" (2026-10-22) the game has the Hollow too, made from the plain row rather than from 1.25 times it.
 
 ### SAID FIRST
 
