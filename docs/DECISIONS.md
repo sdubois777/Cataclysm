@@ -165,8 +165,12 @@ range that showed nothing fails by saying so rather than passing.
 
 ### Proofs
 
-**Not yet run. Three registered**, each for `unreal_build.prove_cpp_guard` on `game/Source/CataclysmEmpire/Empire/
-CataclysmSurge.cpp` and `tools/prove_guard.py` in a `git archive` copy, never both at once. The Python column was
+**All three PROVED, in both halves** (the third window, under Run below). Each was run with
+`unreal_build.prove_cpp_guard` on `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp` and `tools/prove_guard.py`
+in a `git archive` copy, never both at once. **The Unreal halves were run narrowed**: PROOF 1 and PROOF 3 on the prefix
+`Cataclysm.Surge.`, PROOF 2 on `Cataclysm.Surge.AFixedQuestSubTypeMovesNothingElseAWaveRolls` alone. So the seeded
+`Cataclysm.DungeonModifiers.AFamineQuestDungeonCarriesDoubleAndADeathOneDoesNot`, predicted below for PROOF 1 (likely)
+and PROOF 3, was not run under a break. The Python column was
 checked by the writing session in a scratch copy of the working tree with `prove_guard.break_and_run`, narrowed to
 `test_dungeon_subtype_port.py`, the three-Cataclysm file, `test_surge_port.py` and
 `test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`: each break failed exactly the tests named and the
@@ -233,8 +237,37 @@ A READING, NOT CONFIRMED.
 
 ### Run
 
-Not yet run. Nothing was built and no Unreal test was run by the writing session. Unreal registration: the base's last
-measured total plus the five new names above.
+Nothing was built and no Unreal test was run by the writing session. Three windows were run by the dungeon session,
+each given by the coordinating session, each with the five conditions checked immediately before the lock was taken and
+the lock released before anything was written here.
+
+- **First window** (lock `void-zones-w32`, `feat/game-quest-subtype-by-cataclysm-2` at `2e1340429`, on `ada79f1fd`,
+  2026-10-21): "Build: Succeeded - 70 actions, 60 files compiled"; "3996 tests performed, 3995 succeeded, 1 failed:
+  ReachingTheBottomTakesTheDungeonOffTheMap"; Python "6849 passed, 8 skipped". Stopped there; no proof was run. The
+  test and the two rulings are under "The seeded test this changed", above.
+- **Second window** (lock `void-zones-w33`, `8d1ed934a`): as recorded above.
+- **Third window** (lock `void-zones-w34`, `feat/game-quest-subtype-by-cataclysm-3` at `680469780`, on `cd5c85e82`,
+  the traps layer 3b merge, 2026-10-22):
+  - **Build:** "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.17.cpp".
+  - **The whole Unreal suite:** "4000 tests performed, 4000 succeeded, 0 failed. 40 skipped part of what they check";
+    "Declared: 4000 tests in the tree at 680469780; 4000 performed, gap 0; every declared test was reported by the
+    run." Registered 4000 and 0: the 3995 of the traps layer 3b merge and the five new names here.
+    `ReachingTheBottomTakesTheDungeonOffTheMap` passed.
+  - **Python:** "6850 passed, 8 skipped"; JUnit tests 6858, failures 0, errors 0, skipped 8, as registered. Lint: "All
+    checks passed!".
+  - **PROOF 1, Unreal:** "44 tests performed, 42 succeeded, 2 failed: AFixedQuestSubTypeMovesNothingElseAWaveRolls,
+    InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType"; restored, 44 succeeded. **Python:**
+    `test_the_dungeon_maker_keeps_the_draw_and_fixes_the_sub_type_after_it` failed alone ("1 failed, 88 passed");
+    restored "89 passed".
+  - **PROOF 2, Unreal:** "1 tests performed, 0 succeeded, 1 failed: AFixedQuestSubTypeMovesNothingElseAWaveRolls";
+    restored, 1 succeeded. **Python:** the same test as PROOF 1 failed alone ("1 failed, 88 passed"); restored "89
+    passed".
+  - **PROOF 3, Unreal:** "44 tests performed, 42 succeeded, 2 failed: FiveCataclysmsNameTheirQuestSubTypeAndTheRestRoll,
+    InARunFiveCataclysmsQuestDungeonsAreTheirOneSubType"; restored, 44 succeeded. **Python:**
+    `test_the_game_fixes_the_same_five_pairs_the_model_does`, `test_the_comparison_sees_a_changed_pair` and
+    `test_the_three_really_do_differ_and_the_other_five_do_not` failed ("3 failed, 86 passed"); restored "89 passed".
+  - **The Python halves were run after the window**, on 2026-10-22 in a `git archive` copy of `680469780`, because the
+    output of an earlier run on the first branch had not been kept.
 
 ---
 
