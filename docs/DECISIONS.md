@@ -182,6 +182,35 @@ suite.
 A prefix that covers the Unreal predictions is `Cataclysm.Surge.` with
 `Cataclysm.DungeonModifiers.AFamineQuestDungeon` run separately, or the four tests by name.
 
+### The seeded test this changed
+
+`Cataclysm.DungeonMode.ReachingTheBottomTakesTheDungeonOffTheMap`, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`. The first window printed "3996 tests performed, 3995
+succeeded, 1 failed", and the one failure was this test: "Expected 'dungeon N was left alone' to be not null" at line
+424, for dungeons 1, 6, 7, 8, 9 and 10.
+
+- **Old:** every dungeon standing before the walk, other than the one walked, must still be on the map after it.
+- **New:** a dungeon missing after the walk counts as left alone only if a day report of a day the walk spent has its
+  timer in `Resolved`, its pre-walk city in `HitAndLeft` and it not in `Absorbed`; any other missing dungeon fails
+  "dungeon N was left alone (missing after the walk: <reason>)", the reason giving each report's day and what it says
+  of the dungeon, or "no report names it". Every other assertion in the test is unchanged, and one is added: the
+  record below holds exactly one report for each day the descents spent.
+
+Ruled by the coordinating session on 2026-10-21, verbatim: "a dungeon missing after the walk counts as left alone ONLY
+IF the run's day reports during the walk name it as having left by its own hit (the 2026-10-13 rule); any other
+missing dungeon still fails "dungeon N was left alone". Add to the failure message, for each missing dungeon, the day
+and the reason the reports give (or "no report names it"). Every other assertion unchanged; record old -> new in the
+entry, with your reading of the cause marked as a reading until the run confirms it."
+
+**A new game-mode record, `ACataclysmDungeonGameMode::DaysSpentWalking`**, because the reports the test needs were
+discarded: `SpendFloorTimeInTheEmpire` called `UCataclysmEmpireRun::AdvanceDay` and `SpendFloorTime` and dropped what
+both return. It now appends them. Nothing in play reads the record.
+
+**A READING, NOT YET CONFIRMED:** fixing five Cataclysms' Quest sub-types changes which dungeon is seed 1's first
+dungeon at the ordinary walk rate, or its depth, so the walk is longer, and ordinary dungeons whose timers run out
+during it hit their cities and leave the map under the 2026-10-13 rule. The second window will confirm or refute it:
+the failure message now names, for any dungeon that went another way, what the reports say happened to it.
+
 ### Run
 
 Not yet run. Nothing was built and no Unreal test was run by the writing session. Unreal registration: the base's last

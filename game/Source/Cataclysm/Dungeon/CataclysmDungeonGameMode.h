@@ -9,6 +9,7 @@
 #include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Templates/SubclassOf.h"
 #include "CataclysmDungeonGameMode.generated.h"
 
@@ -433,6 +434,21 @@ public:
 	 * reason.
 	 */
 	void SetEmpireRunForTests(class UCataclysmEmpireRun* Run);
+
+	/**
+	 * The report of every empire day the floors of a dungeon spent, in order.
+	 *
+	 * KEPT SO A TEST CAN SAY WHY A DUNGEON LEFT THE MAP DURING A WALK. Since
+	 * 2026-10-13 an ordinary dungeon whose timer runs out hits its city once and
+	 * leaves, so a long walk can take dungeons off the map that the walk never
+	 * touched, and until 2026-10-21 the reports that said so were thrown away
+	 * here. `SpendFloorTimeInTheEmpire` appends to it: the day it advances, or
+	 * the days `UCataclysmEmpireRun::SpendFloorTime` spent.
+	 *
+	 * NOTHING IN PLAY READS IT. It grows by at most one report a floor walked,
+	 * and nothing clears it.
+	 */
+	TArray<FCataclysmDayReport> DaysSpentWalking;
 
 	// ----------------------------------------------------------------------
 	// Looking at another floor without rebuilding
