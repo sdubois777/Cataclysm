@@ -1309,17 +1309,17 @@ public:
 								   const AActor* Except);
 
 	/**
-	 * SETS OFF THE PLAYER'S STANDING TRAPS within `RadiusCm` of `Place`, or every one when `Place` is null (the player's
-	 * death, H8), each by its ordinary `TriggerSkillTrap` (H4): armed and unarmed alike, each at its own triggering
-	 * enemy, `SkillTrapEnemyForAForcedTrigger` (H6). THE CHAIN GUARD (H5 (b), the owner's): a trap in `SetOffThisChain`
-	 * is never set off, and each trap is added to it BEFORE it is set off, so each trap goes off at most once in a chain.
-	 * The list is taken once, before the first is set off. A trap that cannot act, or whose slot is no longer converted,
-	 * is not set off, as its own step does nothing then. `bEvenForADeadPlayer` for the player's death alone. How many
-	 * cast.
+	 * RECORDS THE PLAYER'S STANDING TRAPS TO SET OFF within `RadiusCm` of `Place`, or every one when `Place` is null (the
+	 * player's death, H8): armed and unarmed alike (H4). The player's outermost drain,
+	 * `UCataclysmAbilitySystemComponent::DrainQueuedSkillTrapSetOffs`, sets each off at depth nought by its ordinary
+	 * `TriggerSkillTrap`, at its own triggering enemy, `SkillTrapEnemyForAForcedTrigger` (H6): a whole trigger, every
+	 * event of it answered (G-1 (a)). THE CHAIN GUARD (H5 (b), the owner's): a trap in the player's
+	 * `SkillTrapsSetOffThisChain` is never chosen, and each trap is added to it WHEN RECORDED, so each trap goes off at most
+	 * once in a chain. The list is taken once. A trap that cannot act, or whose slot is no longer converted, is not
+	 * chosen, as its own step does nothing then. `bEvenForADeadPlayer` for the player's death alone. How many recorded.
 	 */
 	static int32 SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
-									  const AActor* Except, TArray<TWeakObjectPtr<AActor>>& SetOffThisChain,
-									  bool bEvenForADeadPlayer);
+									  const AActor* Except, bool bEvenForADeadPlayer);
 
 	/**
 	 * THE TRIGGERING ENEMY OF A TRAP SET OFF BY A ROW (H6 (a)): the nearest living enemy within this trap's own trigger

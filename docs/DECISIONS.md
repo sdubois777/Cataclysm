@@ -2,24 +2,24 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-10-22 — Two actions on the player's other traps: the nearest or every unarmed skill trap within a row's metres of a trap that triggered or a gadget killed arms at once, and the nearest or every standing one within them, or every one at the player's death, is set off at its own triggering enemy; a trap so set off counts as triggered, its `trap_triggered` queued and answered after the acting row, each trap once a chain, with no row authored
+## 2026-10-22 — Two actions on the player's other traps: the nearest or every unarmed skill trap within a row's metres of a trap that triggered or a gadget killed arms at once, and the nearest or every standing one within them, or every one at the player's death, is recorded and then set off as a whole trigger at its own triggering enemy once the acting row has finished, each trap once a chain, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ArmTrapsNearbyAction`,
-`TriggerTrapsNearbyAction`, `SkillTrapRaisingItsTriggerPlace`, `FQueuedSkillTrapTrigger`, `QueuedSkillTrapTriggers`,
-`SkillTrapsSetOffThisChain`, `bDrainingQueuedSkillTrapTriggers`, `bQueuedSkillTrapTriggerAnnounced`,
-`QueueSkillTrapTrigger`, `DrainQueuedSkillTrapTriggers` and `ActOnSkillTrapsNearby`, new, one block in each after layer
-4's; in `ActOnEvent` the announcement of a queued trigger made once, the queue beside `afflicted_death`'s in the early
-return, its drain in the same `ON_SCOPE_EXIT`, the action's branch after the slow's, and the slow's wait naming a trap
-already used up); `CataclysmMinion.h` and `.cpp` (`ArmSkillTrapsNear`, `SetOffSkillTrapsNear`,
+`TriggerTrapsNearbyAction`, `FQueuedSkillTrapSetOff`, `QueuedSkillTrapSetOffs`, `SkillTrapsSetOffThisChain`,
+`bDrainingQueuedSkillTrapSetOffs`, `QueueSkillTrapSetOff`, `DrainQueuedSkillTrapSetOffs` and `ActOnSkillTrapsNearby`,
+new, one block in each after layer 4's; in `ActOnEvent` the drain in the same `ON_SCOPE_EXIT` as the queued deaths' and
+the action's branch after the slow's); `CataclysmMinion.h` and `.cpp` (`ArmSkillTrapsNear`, `SetOffSkillTrapsNear`,
 `SkillTrapEnemyForAForcedTrigger` and two helpers, new, one block in each after layer 4's; `TriggerSkillTrap` gains
-`bEvenForADeadPlayer`, defaulted, and puts back the trap and place it names around its event instead of emptying them);
-`CataclysmStatPipeline.h` (`FCataclysmPoolAction::bArmTrapsNearby`, `bSetOffTrapsNearby`, `bNearestTrapOnly`), all under
-`game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Items/CataclysmItem.cpp` (the item reads the two actions and
-the count); `game/Source/Cataclysm/Tests/CataclysmSkillTrapNearbyTrapsTests.cpp` (new, six tests in `Cataclysm.Traps.`);
+`bEvenForADeadPlayer`, defaulted); `CataclysmStatPipeline.h` (`FCataclysmPoolAction::bArmTrapsNearby`,
+`bSetOffTrapsNearby`, `bNearestTrapOnly`), all under `game/Source/Cataclysm/AbilitySystem/`;
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the item reads the two actions and the count);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapNearbyTrapsTests.cpp` (new, nine tests in `Cataclysm.Traps.`);
 `tools/generate_datatables.py` (the two actions and their checks); `tools/tests/test_generate_datatables.py` (one class, at
 the end); `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two constants, one test, at the end). No
 data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
 `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+**TWO COMMITS**: the first (`0976c4d55`) queued a set-off trap's `trap_triggered`; the second, on the coordinating
+session's G-1 (a), queues the TRIGGER itself, and this entry describes the second throughout.
 
 ### SAID FIRST
 
@@ -36,22 +36,20 @@ words, checked against the shipped sheet by script and by `test_the_proposed_row
 | P083 | `Positive_When_you_die_all_your_active_traps_and_gadgets` | "When you die, all your active traps and gadgets immediately trigger simultaneously" (its row `#1` is the gadget half, #15; the trap half is row `#2`, this layer's) |
 
 **H5 IS THE OWNER'S, (b), AND IT OVERRIDES THE RECOMMENDATION.** "Traps trigger simultaneously" CHAINS THROUGH THE
-CONNECTED GROUP: a trap set off by a row counts as triggered, so its own `trap_triggered` is answered (queued while the
-row acts, answered after it), and it slows its own enemy, adds a damage stack, answers the arm rows and sets off its own
-neighbours within the radius in turn; each trap goes off at most once a chain, a rearmed one included. The queue and its
-guard were sized before the build, below.
+CONNECTED GROUP: a trap set off by a row is a WHOLE TRIGGER (G-1 (a)): the row records it, and once the row has finished it
+goes off by its ordinary trigger at depth nought, so its own `trap_triggered` and every event its blows raise are answered.
+It slows its own enemy, adds a damage stack, answers the arm rows, lays the trap bleed, explodes the enemies it kills,
+answers the player's on-hit rows and sets off its own neighbours within the radius in turn; each trap goes off at most once
+a chain, a rearmed one included. The queue and its guard are below.
 
-**FOUND, AND NOT CHANGED, FOR A RULING IF ONE IS WANTED: A TRAP SET OFF BY A ROW CASTS INSIDE THAT ROW'S ACTION, SO THE
-EVENTS ITS INSTANT BLOWS RAISE ON THE PLAYER ARE DROPPED.** `deployable_hit`, `hit_dealt`, `first_hit_dealt`, `kill` and
-`dot_applied` of a set-off trap's instant blows reach `ActOnEvent` at depth one and are dropped, as the skill gadget's
-death cast's are (#15). So layer 3's trap bleed ("Traps apply 1-2 bleed stacks to all enemies caught in their blast", on
-`deployable_hit`), layer 4's trap kill explosion (on `kill`) and every on-hit row of the player answer NO INSTANT BLOW OF
-A TRAP SET OFF BY "Traps trigger simultaneously", by a gadget's death or by the player's; a shot of such a trap that lands
-later is answered as every late blow is. The brief's H5 (a) said the bleed answers them; it does not, under (a) or (b).
-What a set-off trap's cast DOES carry: it is priced as the trap's (T10, read in `ApplyHit`, no event), takes layer 4's
-hooks on its own triggering enemy (read in `ApplyHit`), and its `trap_triggered` is answered (H5 (b)). **The option not
-taken**: set the trap off from the drain, at depth nought, so every event its blows raise is answered; it would make the
-whole cast count, and it is a different mechanism from the ruled one ("a forced trigger's trap_triggered is queued").
+**FOUND AND CLOSED IN THIS LAYER (G-1 (a)): A TRAP SET OFF BY A ROW CAST INSIDE THAT ROW'S ACTION, SO THE EVENTS ITS
+INSTANT BLOWS RAISED ON THE PLAYER WERE DROPPED.** In the first commit (`0976c4d55`) `deployable_hit`, `hit_dealt`,
+`first_hit_dealt`, `kill` and `dot_applied` of a set-off trap's instant blows reached `ActOnEvent` at depth one and were
+dropped, as the skill gadget's death cast's still are (#15), so layer 3's trap bleed, layer 4's trap kill explosion and every
+on-hit row of the player answered no instant blow of a trap set off by "Traps trigger simultaneously", by a gadget's death
+or by the player's. The brief's H5 (a) said the bleed answers them; it did not. The coordinating session ruled G-1 (a): the
+trigger itself is queued. It is now, and tests 42, 43 and 44 show the bleed, the explosion and a `hit_dealt` row answering
+a set-off trap's blow. The play-check line the first commit wrote for the gap is dropped.
 
 What a player would notice, once the rows are worn:
 
@@ -61,7 +59,7 @@ What a player would notice, once the rows are worn:
   armed trap is passed over, even a nearer one. A trap rearming after layer 4's roll is unarmed and is armed.
 - **A TRAP TRIGGERING SETS OFF EVERY OTHER STANDING TRAP WITHIN THE ROLLED 8-12 M OF IT, AND EACH OF THOSE SETS OFF ITS
   OWN NEIGHBOURS IN TURN** (P054, H5 (b)): armed or not (H4), each at the nearest enemy within its own 3 m, or at its own
-  place with none (H6, T11), each used up or rolling to rearm, each counting as triggered. Each trap goes off once a
+  place with none (H6, T11), each used up or rolling to rearm, each a whole trigger (G-1 (a)). Each trap goes off once a
   chain.
 - **A GADGET KILLED SETS OFF THE NEAREST STANDING TRAP WITHIN 10 M OF IT** (P220), armed or not ("active" read as
   standing, H4). A gadget lasting its time or moved by a second press raises nothing, as before (H7).
@@ -75,7 +73,6 @@ What a player would notice, once the rows are worn:
 ### FOR THE OWNER'S PLAY-CHECK LIST
 
 - traps set off by 'Traps trigger simultaneously' set off their own neighbours in range, each once, and each counts as triggered
-- a trap set off by another trap, a gadget's death or your own death lays no trap bleed and sets off no trap kill explosion or on-hit row with its instant blows; only its slow, damage stack and the trap damage rows count
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -96,81 +93,83 @@ The coordinating session's rulings of 2026-10-22 on brief 63, verbatim as relaye
 > 'Traps trigger simultaneously' set off their own neighbours in range, each once, and each counts as triggered".
 > H6 (a) each forced trap's triggering enemy is the nearest living enemy within its own trigger radius; T11 with none.
 
+**THE COORDINATING SESSION'S RULING ON THE FIRST COMMIT, 2026-10-22, accepting `0976c4d55`**, verbatim:
+
+> TRAPS LAYER 5 (0976c4d55): ACCEPTED, with G-1 (a). A forced trap must be a whole trigger, as the owner's "Each counts as
+> triggered" says: queue the TRIGGER, not only its event. The action records which traps to set off; the same outermost
+> drain at depth nought calls TriggerSkillTrap for each, so its instant blows' events (deployable_hit, hit_dealt,
+> first_hit_dealt, kill, dot_applied) and its own trap_triggered are all answered. The chain guard (SkillTrapsSetOffThisChain,
+> added before each goes off, emptied when the outermost drain ends) is unchanged. This covers P220's and P083's forced
+> traps too. Tests: a chained trap's instant blow lays the trap bleed, against a control; a chained trap's kill explodes;
+> P083's traps' blows answer a hit_dealt row. Drop the play-check line about the gap; record it as found and closed in this
+> layer. Recount the proofs (four allowed) after the change. The rest is accepted as described, including the correction to
+> your brief's point 2 (a Spike Trap killed still raises gadget_destroyed; the new actions refuse a non-gadget).
+
 **THE OPTIONS NOT TAKEN**, as brief 63 put them: H1 (b) every trap; H2 (b) it also triggers; H3 (b) measured from the
-player; H4 (b) armed traps only; H5 (a) one step, the engine's drop as the guard (the owner chose (b)); H6 (b) the first
+player; H4 (b) armed traps only; H5 (a) one step, the engine's drop as the guard (the owner chose (b)), and G-1's option
+not taken, the first commit's queue of the event alone; H6 (b) the first
 trap's triggering enemy for all of them; H7 (b) every way a gadget ends; H8 (b) the traps removed at death without
 triggering; H9 (b) a cooldown the coordinating session names; H10 (b) constants in code; H11 (b) one action per sentence.
 T1-T19 of 2026-10-19, L1-L6, M1-M6, R1-R3, brief 60c's ruling, L-A, L-B, Z1 and F1-F12 stand, quoted in the entries below.
 
-### THE QUEUE AND ITS GUARD, SIZED BEFORE THE BUILD (H5 (b), the owner's)
+### THE QUEUE AND ITS GUARD (H5 (b), the owner's; reshaped by G-1 (a))
 
-Written before any code of this layer, as the rulings ask, its line numbers those of development `b235febb0`; the
-build follows it.
+The first commit sized a queue of a set-off trap's `trap_triggered` before any code, as the rulings asked; G-1 (a) replaced
+it with a queue of the TRIGGERS. Line numbers are of the second commit.
 
-1. **Where `afflicted_death` is queued today.** `UCataclysmAbilitySystemComponent::ActOnEvent` returns at once when
-   `PoolActionDepth > 0` (`CataclysmAbilitySystemComponent.cpp` 6091), after announcing the event on `OnActionEvent`
-   (6086). Inside that return one event is kept: `afflicted_death`, landed, by `QueueAfflictedDeath` (6097 to 6100),
-   which reads everything then. `ActOnEvent` declares `ON_SCOPE_EXIT { DrainQueuedAfflictedDeaths(); }` BEFORE its
-   depth guard (6105, 6106), so the drain runs after the guard has put the depth back to nought; the drain acts only at
-   depth nought, one record at a time, each at depth one again, so a death a blast causes joins the end of the queue.
-2. **What is queued, and when.** `trap_triggered`, landed, heard at depth one, is kept beside `afflicted_death` in the
-   same early return: by `QueueSkillTrapTrigger`, with everything read then: the trap's identity (the weak pointer
-   `SkillTrapRaisingItsTrigger`, compared by identity as the late slow compares it, since the trap may be used up by
-   the time the record is answered), WHERE IT STOOD, its type tags, the event's amount (what its cast took from its
-   enemy, for the slow's rule of a tenth) and its enemy. Kept only when a worn row hangs on `trap_triggered`. The one
-   place a `trap_triggered` is heard at depth one is a trap set off by a row's own action
-   (`ACataclysmMinion::SetOffSkillTrapsNear`): a trap an enemy sets off is set off on its own quarter-second step, at
-   depth nought.
-3. **How it is drained.** `ActOnEvent`'s same `ON_SCOPE_EXIT` calls `DrainQueuedSkillTrapTriggers` after
-   `DrainQueuedAfflictedDeaths`. It acts only at depth nought and only in the outermost call (a flag,
-   `bDrainingQueuedSkillTrapTriggers`, makes a drain inside a drain return at once), and answers each record in the
-   order heard by calling `ActOnEvent` with the record's event, tags, amount and enemy, with `SkillTrapRaisingItsTrigger`
-   and its place set to the record's for that call. So every row on `trap_triggered` answers a forced trap exactly as it
-   answers a trap an enemy set off: the slow on its own enemy, the damage stacks, the arm rows and "Traps trigger
-   simultaneously" again, from that trap's place. A trap that row sets off in turn is heard at depth one and joins the
-   end of the same queue. **The event is announced once**: `OnActionEvent` heard it when it was raised, so the call that
-   answers it does not announce it a second time (`bQueuedSkillTrapTriggerAnnounced`, read and cleared as that call's
-   first line).
-4. **What marks a trap as set off in this chain.** `SkillTrapsSetOffThisChain`, a list of weak pointers on the player's
-   component, compared by identity. The action that sets traps off adds the trap whose `trap_triggered` it answers (the
-   first trap), and adds every trap it sets off BEFORE it sets it off; it never sets off a trap already in the list. The
-   list is emptied when the outermost drain ends, which is when the event that began the chain, and everything it
-   queued, has been answered: ONE CHAIN IS ONE EVENT AT DEPTH NOUGHT AND ALL IT QUEUED. A trap set off at a gadget's
-   death (P220) or at the player's (P083) is in the list as well, so a chain through "Traps trigger simultaneously"
-   from it sets off neither it nor the first.
-5. **Why a loop cannot happen.** Each record in the queue is the `trap_triggered` of a trap the action has just set off,
-   and the action sets off only a trap not in the list, adding it first. The list only grows during the chain. So each
-   of the player's traps is set off at most once per chain and puts at most one record in the queue, and the queue holds
-   at most as many records as the player has skill traps standing when the chain begins, less the first: AT MOST
-   `SkillTrapsMostFor(Player)`, five, or eleven with "+1-6 to max trap count" at the sentence's top (M1), and that many at the
-   player's death, where no trap began the chain. **A REARMED TRAP REJOINS NO CHAIN IT ALREADY FIRED IN**: a trap that
-   rolls to rearm (layer 4, F1) stands, unarmed, and stays in the list until the chain ends, so neither "Traps trigger
-   simultaneously" nor a gadget's death sets it off again in that chain, though it is the nearest standing trap. No trap
-   is placed inside a chain: a trap is placed only by a press of its slot (`PlaceSkillTrap`), and no row's action or
-   trap's cast presses a key. A trap the chain arms (P212, P017) and has not set off may still be set off once in it.
-   **No numeric cap is added**: the bound is the cap on standing traps, by construction, and a second number would be one
-   no ruling states.
-6. **What the queue does not carry.** Only `trap_triggered` is kept. A forced trap's cast deals its instant blows inside
-   the action, at depth one, so the events those blows raise on the player (`deployable_hit`, `hit_dealt`, `kill`,
-   `dot_applied`) are still dropped, as the skill gadget's death cast's are (#15, `FireEveryGadgetAtTheDeathOf`'s
-   comment). Said first in SAID FIRST, with the option not taken.
+1. **What is queued, and when.** A row's action (`trigger_traps_nearby`) RECORDS the traps it chooses, in
+   `ACataclysmMinion::SetOffSkillTrapsNear` (`CataclysmMinion.cpp` 2824), each by `QueueSkillTrapSetOff`
+   (`CataclysmAbilitySystemComponent.cpp` 8382) with its identity and, at the player's death alone,
+   `bEvenForADeadPlayer`. It sets off nothing itself. Nothing else is kept: the old record of an event, its "announced
+   once" flag, the trap's place and the queue of `trap_triggered` in `ActOnEvent`'s early return are removed, since
+   nothing uses them. `afflicted_death`'s queue is as it was.
+2. **How it is drained.** `ActOnEvent`'s `ON_SCOPE_EXIT` calls `DrainQueuedSkillTrapSetOffs` (8393) after
+   `DrainQueuedAfflictedDeaths` (6105 to 6109), once the depth guard has put the depth back to nought. It acts only at depth
+   nought and only in the outermost call (`bDrainingQueuedSkillTrapSetOffs` makes a drain inside a drain return at once).
+   For each record, in order, it calls the trap's ordinary `TriggerSkillTrap`, its triggering enemy chosen THEN by
+   `SkillTrapEnemyForAForcedTrigger` (H6), so the trap casts, is priced, raises its own `trap_triggered` and is used up or
+   rolls to rearm exactly as when an enemy sets it off, at depth nought: every event of it is answered. A trap that a set-off
+   trap's own `trap_triggered` records joins the end of the same queue.
+3. **What marks a trap as set off in this chain.** `SkillTrapsSetOffThisChain`, unchanged: the trap whose `trap_triggered`
+   began the chain (8477 to 8486) and every trap WHEN IT IS RECORDED, before it goes off (`CataclysmMinion.cpp` 2858), so no
+   trap is recorded twice. Emptied when the outermost drain ends (8427): ONE CHAIN IS ONE EVENT ACTED ON AT DEPTH NOUGHT AND
+   EVERYTHING IT RECORDED.
+4. **Why a loop cannot happen.** A trap is recorded only if it is not in the list, and is added to it as it is recorded;
+   the list only grows until the chain ends. So each of the player's traps is recorded at most once a chain and the queue
+   holds at most as many records as the player has skill traps standing when the chain began, `SkillTrapsMostFor(Player)`:
+   five, or eleven at the top of "+1-6 to max trap count" (M1). A REARMED TRAP REJOINS NO CHAIN IT ALREADY FIRED IN: it stays
+   in the list until the chain ends. **The trap that began the chain is still standing while the chain runs** (its own
+   trigger rolls its rearm and is used up after its event returns, and the drain runs inside that event's call), so it is
+   in the list from its own event on, and nothing chooses it. No trap is placed inside a chain (only a press places one).
+   No numeric cap is added.
+5. **The order of going off.** First in, first out: the traps one action records, oldest first (`SpawnOrder`, the order
+   `SkillTrapsOf` gives), then the traps each of those records in turn, at the end. So a chain goes off outward from the
+   first trap, one ring after another.
+6. **A trap recorded and then gone before the drain reaches it is skipped**: one destroyed (`!IsValid` or
+   `IsActorBeingDestroyed`, 8419) is passed over, and one killed is refused by `TriggerSkillTrap`'s own check of a dead
+   trap. Within one frame nothing places a trap, so the cap destroys none meanwhile. It stays in the list, so it is not
+   chosen again in that chain.
+7. **The wearer dying or leaving mid-chain.** Leaving (no avatar): the rest of the queue is dropped, as a queued death is.
+   Dying of something during a chain begun elsewhere: `TriggerSkillTrap` refuses a dead player for every record but the
+   death's own (`bEvenForADeadPlayer` false), so the rest of that chain does not go off and those traps stay standing. At
+   the death itself (P083) every record carries `bEvenForADeadPlayer`, and the traps go off as H8 rules.
 
 ### THE RULINGS, AND WHERE EACH IS IN THE CODE
 
-Line numbers are of this layer's commit, on development `b235febb0`.
+Line numbers are of this layer's second commit, on development `b235febb0`.
 
 | | Ruling, quoted from brief 63's (a) as ruled | Where it is |
 | :-- | :-- | :-- |
-| H1 (a) | "only the wearer's own skill traps, in every sentence (T6's one cap is per player; "traps" in an enchantment are the wearer's). Never War's spike traps (T15) and never another player's." | Both actions take their traps from `ACataclysmMinion::SkillTrapsOf(Player)` (the player's commanded things that are skill traps) through `SkillTrapsStandingNear` (`CataclysmMinion.cpp` 2773). |
-| H2 (a) | ""arms instantly" sets a standing, unarmed trap of the wearer armed now, drawn armed, as if its arming time had passed; it does not trigger it, raises no `trap_placed`, and changes nothing about its life span or the cap. An armed trap is left alone. A rearmed trap (layer 4) waiting to re-arm counts as unarmed." | `ArmSkillTrapsNear` (`CataclysmMinion.cpp` 2808): the armed passed over before the nearest is chosen; `bSkillTrapArmed`, `SkillTrapArmsAtAgeSeconds` brought to now, `ShowSkillTrapTint` (2822 to 2824); nothing else touched. |
-| H3 (a) | "the distance from the trap that triggered (P212, P017, P054) or from the gadget destroyed (P065, P220) to each other trap's place, within the row's metres; the trap that triggered is never one of them (it is used up, or rearming). "Nearest" (P212, P220) is by that distance, one trap, ties by the lower actor index." | `ActOnSkillTrapsNearby` (`CataclysmAbilitySystemComponent.cpp` 8451): from `SkillTrapRaisingItsTriggerPlace`, excluding `SkillTrapRaisingItsTrigger`, or from the gadget's place (8463 to 8486); along the floor (`Dist2D`) in `SkillTrapsStandingNear`; `KeepTheSkillTrapNearest` (`CataclysmMinion.cpp` 2786), the older first. |
-| H4 (a) | "a forced trigger runs the trap's ordinary `TriggerSkillTrap`, so it casts, is used up or rolls to rearm, and is priced and announced as every trigger is; it triggers ARMED AND UNARMED standing traps alike ("active" read as standing, since a forced trigger needs no enemy to step on it); P054's "if within 8-12 meters of each other" is the row's rolled radius from the trap that triggered." | `SetOffSkillTrapsNear` (`CataclysmMinion.cpp` 2829) calls `TriggerSkillTrap` on each, which never asks the armed state; the radius is the row's rolled `Percent` in centimetres (`CataclysmAbilitySystemComponent.cpp` 8489). "Announced": its `trap_triggered` is (H5 (b)); its instant blows' events are dropped (FOUND, SAID FIRST). |
-| H5 (b), the owner's | "a chain: each forced trap's `trap_triggered` is queued and answered after, every trap at most once per first trigger, so a connected group within the radius all triggers; it needs a queue and a guard of its own, sized by the second session first." | The queue: `ActOnEvent`'s early return (6106 to 6111), `QueueSkillTrapTrigger` (8395), drained by `DrainQueuedSkillTrapTriggers` (8417) from `ON_SCOPE_EXIT` (6116 to 6120). The guard: `SkillTrapsSetOffThisChain`, the first trap added (8497 to 8506) and each set-off trap before it goes off (`CataclysmMinion.cpp` 2866), emptied as the outermost drain ends (8448). Announced once: 6086 to 6092. The slow's wait names a used-up trap (6805). |
-| H6 (a) | "the nearest living enemy within that trap's own trigger radius is its triggering enemy (for P018, P055, P217 and the slow); with none, T11: it casts at its own place and has no triggering enemy, so those rows add nothing for it." | `SkillTrapEnemyForAForcedTrigger` (`CataclysmMinion.cpp` 2875), the step's own search; null gives `TriggerSkillTrap` T11. |
-| H7 (a) | "exactly what raises `gadget_destroyed` today, a gadget killed (T14); not a trap's death or use, and whatever the second session finds for a gadget pushed out by the cap or expiring (point 2), said and left as it is." | `ActOnSkillTrapsNearby` acts on `gadget_destroyed` only for a destroyed minion that `IsGadget` (8474 to 8481), so a Spike Trap's death, which raises it too, arms and sets off nothing. Point 2 is below. |
-| H8 (a) | "a second row on the same enchantment, the trap action on `player_death` with no radius limit: every standing trap of the wearer triggers, as H4, the cast priced as the player's at the moment of death, as the gadget half's `bEvenForADeadPlayer` (#15); the order of the two halves does not matter." | `ActOnSkillTrapsNearby` passes no place and `bEvenForADeadPlayer` on `player_death` (8511 to 8513); `TriggerSkillTrap`'s new parameter (`CataclysmMinion.cpp` 2524). |
-| H9 (a) | "no trigger cooldown on any of these rows; they answer every event, since each event is bounded by H5 and by the cap of standing traps." | The branch in `ActOnEvent` (6818 to 6831) asks no `TriggerReady`; the generator refuses a Trigger Cooldown (`takes_a_trigger_cooldown` does not list them). |
-| H10 (a) | "the sentences' own metres (10, 15, 12, 8-12 rolled, 10, none), held in the rows' values; centimetres in the code." | The rows' Value Low and High; `Action.Percent * 100.0f` (8489). |
+| H1 (a) | "only the wearer's own skill traps, in every sentence (T6's one cap is per player; "traps" in an enchantment are the wearer's). Never War's spike traps (T15) and never another player's." | Both actions take their traps from `ACataclysmMinion::SkillTrapsOf(Player)` (the player's commanded things that are skill traps) through `SkillTrapsStandingNear` (`CataclysmMinion.cpp` 2768). |
+| H2 (a) | ""arms instantly" sets a standing, unarmed trap of the wearer armed now, drawn armed, as if its arming time had passed; it does not trigger it, raises no `trap_placed`, and changes nothing about its life span or the cap. An armed trap is left alone. A rearmed trap (layer 4) waiting to re-arm counts as unarmed." | `ArmSkillTrapsNear` (`CataclysmMinion.cpp` 2803): the armed passed over before the nearest is chosen; `bSkillTrapArmed`, `SkillTrapArmsAtAgeSeconds` brought to now, `ShowSkillTrapTint` (2817 to 2819); nothing else touched. |
+| H3 (a) | "the distance from the trap that triggered (P212, P017, P054) or from the gadget destroyed (P065, P220) to each other trap's place, within the row's metres; the trap that triggered is never one of them (it is used up, or rearming). "Nearest" (P212, P220) is by that distance, one trap, ties by the lower actor index." | `ActOnSkillTrapsNearby` (`CataclysmAbilitySystemComponent.cpp` 8430): from the place of `SkillTrapRaisingItsTrigger`, which it excludes, or from the gadget's place (8443 to 8466); along the floor (`Dist2D`) in `SkillTrapsStandingNear`; `KeepTheSkillTrapNearest` (`CataclysmMinion.cpp` 2781), the older first. |
+| H4 (a) | "a forced trigger runs the trap's ordinary `TriggerSkillTrap`, so it casts, is used up or rolls to rearm, and is priced and announced as every trigger is; it triggers ARMED AND UNARMED standing traps alike ("active" read as standing, since a forced trigger needs no enemy to step on it); P054's "if within 8-12 meters of each other" is the row's rolled radius from the trap that triggered." | `SetOffSkillTrapsNear` (`CataclysmMinion.cpp` 2824) records each, and the drain calls `TriggerSkillTrap` (`CataclysmAbilitySystemComponent.cpp` 8423), which never asks the armed state; at depth nought, so it is announced and answered as every trigger is (G-1 (a)); the radius is the row's rolled `Percent` in centimetres (8469). |
+| H5 (b), the owner's, with G-1 (a) | "a chain: each forced trap's `trap_triggered` is queued and answered after, every trap at most once per first trigger, so a connected group within the radius all triggers; it needs a queue and a guard of its own, sized by the second session first." G-1 (a): "queue the TRIGGER, not only its event." | The queue: `QueueSkillTrapSetOff` (8382), `DrainQueuedSkillTrapSetOffs` (8393), from `ON_SCOPE_EXIT` (6105 to 6109). The guard: `SkillTrapsSetOffThisChain`, the first trap added (8477 to 8486) and each trap as it is recorded (`CataclysmMinion.cpp` 2858), emptied as the outermost drain ends (8427). |
+| H6 (a) | "the nearest living enemy within that trap's own trigger radius is its triggering enemy (for P018, P055, P217 and the slow); with none, T11: it casts at its own place and has no triggering enemy, so those rows add nothing for it." | `SkillTrapEnemyForAForcedTrigger` (`CataclysmMinion.cpp` 2864), the step's own search, asked by the drain as the trap goes off (8423); null gives `TriggerSkillTrap` T11. |
+| H7 (a) | "exactly what raises `gadget_destroyed` today, a gadget killed (T14); not a trap's death or use, and whatever the second session finds for a gadget pushed out by the cap or expiring (point 2), said and left as it is." | `ActOnSkillTrapsNearby` acts on `gadget_destroyed` only for a destroyed minion that `IsGadget` (8454 to 8461), so a Spike Trap's death, which raises it too, arms and sets off nothing. Point 2 is below. |
+| H8 (a) | "a second row on the same enchantment, the trap action on `player_death` with no radius limit: every standing trap of the wearer triggers, as H4, the cast priced as the player's at the moment of death, as the gadget half's `bEvenForADeadPlayer` (#15); the order of the two halves does not matter." | `ActOnSkillTrapsNearby` passes no place and `bEvenForADeadPlayer` on `player_death` (8491 to 8493), which the record carries to `TriggerSkillTrap`'s new parameter (`CataclysmMinion.cpp` 2524). |
+| H9 (a) | "no trigger cooldown on any of these rows; they answer every event, since each event is bounded by H5 and by the cap of standing traps." | The branch in `ActOnEvent` (6805 to 6818) asks no `TriggerReady`; the generator refuses a Trigger Cooldown (`takes_a_trigger_cooldown` does not list them). |
+| H10 (a) | "the sentences' own metres (10, 15, 12, 8-12 rolled, 10, none), held in the rows' values; centimetres in the code." | The rows' Value Low and High; `Action.Percent * 100.0f` (8469). |
 | H11 (a) | "two new actions, `arm_traps_nearby` (value: the radius in metres; a count column of 1 or all) and `trigger_traps_nearby` (the same, a radius of nought meaning unlimited for P083), each allowed on the events its sentences name (`trap_triggered`, `gadget_destroyed`, `player_death`) and refused on others by the generator, as layer 4's actions are." | The count column is Scale Max Steps (a judgement, below); `FCataclysmPoolAction::bNearestTrapOnly` (`CataclysmStatPipeline.h` 4686) read by the item (`CataclysmItem.cpp` 1469 to 1477); `_check_traps_nearby_action` (`tools/generate_datatables.py` 12283) and the radius and count check (7413). |
 | T11 | "T11 casts at its own place." | Unchanged in `TriggerSkillTrap`; reached by H6's null. First tested here (tests 40 and 41). |
 | T15 | "T15 no (the no-War mandate)." | Every trap is a skill trap (`SkillTrapsOf` asks `IsSkillTrap`); a Spike Trap's death is refused (H7). |
@@ -181,8 +180,8 @@ On development `b235febb0`, each found where it is defined.
 
 1. **RIGHT, WITH ONE CORRECTION.** `ActOnEvent` drops every event while `PoolActionDepth > 0` (6091) and keeps only
    `afflicted_death` (6097). The correction is H5 (a)'s "the forced traps' casts are ... announced as `deployable_hit` (the
-   bleed answers them)": a set-off trap's instant blows raise `deployable_hit` at depth one, and it is dropped, so the
-   bleed does not answer them (SAID FIRST). H5 (b) replaces the drop for `trap_triggered` alone.
+   bleed answers them)": in the first commit a set-off trap's instant blows raised `deployable_hit` at depth one, and it
+   was dropped, so the bleed did not answer them. G-1 (a) closes it: a set-off trap now goes off at depth nought.
 2. **PARTLY WRONG: `gadget_destroyed` IS NARROWED FOR THE SKILL TRAP, NOT TO GADGETS.** `ACataclysmMinion::HandleDeath`
    raises it for `IsDeployable() && !IsSkillTrap()` (`CataclysmMinion.cpp` 1688), so a Spike Trap killed raises it too (T15
    and merged tests keep that); this layer's actions refuse it there (H7). A skill trap used up raises none: it is
@@ -226,8 +225,10 @@ any radius up to the generator's bound, the nearest one or every one.
   the same.
 - **ON `gadget_destroyed` THE ROWS REQUIRE `Type.Deployable`**, as the shipped "When any of your gadgets is destroyed" rows
   do on the same event. The option not taken: no tag, which the event's own gadget tags pass equally.
-- **THE QUEUE HOLDS ONLY WHEN A WORN ROW HANGS ON `trap_triggered`**, as `afflicted_death` is kept only for a row that
-  blasts on it. The option not taken: always queue, answering nothing.
+- **THE ORDER OF GOING OFF IS FIRST RECORDED, FIRST SET OFF**, oldest first within one action, so a chain spreads ring by
+  ring from the first trap. The option not taken: the nearest first, which no sentence asks.
+- **A TRAP RECORDED AND GONE BEFORE ITS TURN IS SKIPPED, AND STAYS IN THE CHAIN.** The option not taken: choose another in
+  its place, which would make the count of a "nearest" row depend on timing within one frame.
 - **THE CHAIN ENDS WITH THE OUTERMOST DRAIN**, so two traps an enemy sets off on two steps begin two chains, and a trap
   that rearmed in one may go off in the next. The option not taken: a chain by time (a window of seconds), which no
   ruling states.
@@ -242,25 +243,25 @@ guard; those are this game's own sentences, ruled above, and the chain is the ow
 ### WHAT WAS BUILT
 
 - **The two actions in the engine**: `ArmTrapsNearbyAction` and `TriggerTrapsNearbyAction` with
-  `ActOnSkillTrapsNearby` (`CataclysmAbilitySystemComponent.cpp` 8387 to 8514, header 4692 to 4751), reached by the branch
-  in `ActOnEvent` (6818 to 6831); `ArmSkillTrapsNear`, `SetOffSkillTrapsNear`, `SkillTrapEnemyForAForcedTrigger`,
-  `SkillTrapsStandingNear` and `KeepTheSkillTrapNearest` (`CataclysmMinion.cpp` 2762 to 2880, header 1296 to 1328).
-- **The queue and the guard**: `QueueSkillTrapTrigger`, `DrainQueuedSkillTrapTriggers`, `QueuedSkillTrapTriggers`,
-  `SkillTrapsSetOffThisChain`, `bDrainingQueuedSkillTrapTriggers`, `bQueuedSkillTrapTriggerAnnounced` and
-  `SkillTrapRaisingItsTriggerPlace`; in `ActOnEvent` the announcement once (6086 to 6092), the queue (6106 to 6111) and the
-  drain (6116 to 6120). `TriggerSkillTrap` names its trap and place with `TGuardValue` around its event (2564 to 2574), so
-  a trap set off inside another's event puts back the first's for the rows after.
+  `ActOnSkillTrapsNearby` (`CataclysmAbilitySystemComponent.cpp` 8374 to 8494, header 4692 to 4744), reached by the branch
+  in `ActOnEvent` (6805 to 6818); `ArmSkillTrapsNear`, `SetOffSkillTrapsNear`, `SkillTrapEnemyForAForcedTrigger`,
+  `SkillTrapsStandingNear` and `KeepTheSkillTrapNearest` (`CataclysmMinion.cpp` 2757 to 2869, header 1296 to 1328).
+- **The queue of triggers and the guard**: `FQueuedSkillTrapSetOff`, `QueuedSkillTrapSetOffs`, `QueueSkillTrapSetOff`,
+  `DrainQueuedSkillTrapSetOffs`, `bDrainingQueuedSkillTrapSetOffs` and `SkillTrapsSetOffThisChain`; the drain called in
+  `ActOnEvent`'s `ON_SCOPE_EXIT` (6105 to 6109).
 - **A dead player's traps**: `TriggerSkillTrap(..., bEvenForADeadPlayer)`, defaulted false, so its three callers before
-  this layer are unchanged.
-- **The slow's wait** asks `!SkillTrapRaisingItsTrigger.IsExplicitlyNull()` where it asked `IsValid()` (6805): a set-off
-  trap used up before its queued trigger is answered still leaves a wait for its late shot, matched by identity as
-  before. For a trap an enemy sets off the trap is alive at its event, so nothing changes there.
+  this layer are unchanged. Nothing else in `TriggerSkillTrap` changed: the first commit's `TGuardValue` around its event
+  is undone, a trap set off by a row being triggered after the row's loop has finished.
 - **The item**: `bArmTrapsNearby`, `bSetOffTrapsNearby` and `bNearestTrapOnly` from the row (`CataclysmItem.cpp` 1469 to
   1477; `CataclysmStatPipeline.h` 4677 to 4686).
 - **The generator**: `ARM_TRAPS_NEARBY_ACTION`, `TRIGGER_TRAPS_NEARBY_ACTION`, `TRAPS_NEARBY_ACTIONS`,
   `TRAPS_NEARBY_EVENTS`, `TRAPS_NEARBY_EVERY_TRAP_EVENTS`, `MAX_TRAPS_NEARBY_METRES` and `_check_traps_nearby_action`
   (12236 on); its dispatch (6169), the "Known" message (6195), no fraction written (7138), Scale Max Steps allowed with no
   scale (7234), and the radius and count (7413).
+- **REMOVED BY THE SECOND COMMIT, nothing using them**: the queue of a set-off trap's `trap_triggered`
+  (`QueueSkillTrapTrigger`, `FQueuedSkillTrapTrigger`, its branch in `ActOnEvent`'s early return), the flag that announced
+  a queued event once, `SkillTrapRaisingItsTriggerPlace`, and the slow's wait asking `IsExplicitlyNull` (back to
+  `IsValid()`, since the trap stands at its own event again).
 
 ### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
 
@@ -292,9 +293,10 @@ skipped" (JUnit tests 6872, failures 12, errors 0, skipped 13), the copy with th
 (JUnit tests 6872, failures 17). Eleven of the control's twelve are the copy having no `.git` (each says "not a git
 repository"). **THE TWELFTH WAS THIS LAYER'S OWN FAULT, FOUND BY THE DRY RUN AND FIXED**:
 `test_pool_action_names_match_the_engine.py::test_the_parser_read_every_comparison_and_every_call` ("45 calls of
-ActOnEvent and only 44 pass a name written as FName(TEXT("..."))"): the drain named its event through a constant. It now
-writes `FName(TEXT("trap_triggered"))`, and that file and its sibling pass, "45 passed"; the two copies predate the fix,
-which changes no generator code. **The five only the rows' copy fails** are the bookkeeping these rows move:
+ActOnEvent and only 44 pass a name written as FName(TEXT("..."))"): the first commit's drain named its event through a
+constant. It was fixed in that commit, and the second commit's drain calls no `ActOnEvent` at all; that file and its sibling
+pass ("45 passed" after each commit). The two copies predate the fix, which changes no generator code. The dry run was
+not repeated after the second commit, which changes no generator code and no Python check of the rows. **The five only the rows' copy fails** are the bookkeeping these rows move:
 
 - `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`: the asset rebuild,
   which needs the editor.
@@ -327,15 +329,13 @@ which changes no generator code. **The five only the rows' copy fails** are the 
   Cooldown; a radius of nought or past 50 m on the first two events, and any radius but nought on `player_death`; Scale
   Max Steps but 1 or empty, and any on `player_death`; Required Tags on `player_death`. No shipped row is on either.
 - `CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the two names, at its end.
-- **No merged test's assertion changes, by reading.** With no row of this layer worn no action has either flag, so no
-  trap is set off by a row, no `trap_triggered` is heard at depth one and the queue stays empty; the drain then empties a
-  chain list that was empty; the announcement flag is never set, so every event is announced as before;
-  `TriggerSkillTrap` puts back an empty name where it used to empty it; a trap an enemy sets off is alive at its event,
-  so the slow's wait is made as before.
+- **No merged test's assertion changes, by reading.** With no row of this layer worn no action has either flag, so nothing is
+  recorded and the drain empties an empty chain list; `ActOnEvent`'s announcement, its early return and the slow's wait are
+  as they were; `TriggerSkillTrap`'s new parameter is defaulted false.
 
 ### Tests
 
-Six Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapNearbyTrapsTests.cpp`, in layer 1's group
+Nine Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapNearbyTrapsTests.cpp`, in layer 1's group
 `Cataclysm.Traps.`, numbered on from layer 4's last (35). The rig is layer 4's: a possessed player character holding a
 Demonic Whip (Searing Lash, a 5 m cone at 45 degrees, struck at once), a weapon damage of 100, 10,000 health and 1,000
 mana; creatures of the monsters' side of 1,500 health with no defences unless a case says otherwise; every body at least
@@ -343,10 +343,12 @@ mana; creatures of the monsters' side of 1,500 health with no defences unless a 
 would build it. NO KEY IS PRESSED. The clock is moved by hand and a trap's step called directly; a trap that must be
 armed is stepped once before any enemy stands near it. Every test pins `Cataclysm.CritRoll` at 100 after the world is
 made. Helper types are `FNearbyTrapsWorld`, `FNearbyTrapsStat`, `FNearbyTrapsRig` and `FNearbyTrapsEventCount`, in the
-namespace `CataclysmNearbyTrapsTest`; no other file of the module declares them (searched). NO ASSERTION COMPARES HEALTH
-LOST WITH A FIGURE SENT: each reads a loss against nought, one point or a tenth of 1,500, which a lash of 250 sent (275
-taken after the Whip's 10% Slashing step, `UCataclysmDamageCalculation::SubtypeBonus`) passes either way. **Assertions are
-counted for a passing run, 127 in all.**
+namespace `CataclysmNearbyTrapsTest`; no other file of the module declares them (searched). ONE ASSERTION COMPARES HEALTH
+LOST WITH A FIGURE SENT, test 43's explosion, and it allows for the Whip's 10% Slashing step to health
+(`UCataclysmDamageCalculation::SubtypeBonus`, read and not typed), with a set-up line that the Whip is Slashing; every
+other reads a loss against nought, one point or a tenth of 1,500, which a lash of 250 sent (275 taken) passes either way.
+**Assertions are counted for a passing run, 174 in all**: 127 in tests 36 to 41 (first commit), 47 in tests 42 to 44
+(second commit).
 
 36. `WhenATrapTriggersTheNearestUnarmedTrapWithinTenMetresArmsAndNoFartherOneAndNoArmedOneIsTouched`, 16. Two players, the
     control with no row and the other with `arm_traps_nearby` 10 m, the nearest alone, on `trap_triggered`; each a first
@@ -399,6 +401,39 @@ counted for a passing run, 127 in all.**
     first went off once; control, its triggering enemy is the one that walked in; the second went off; its triggering
     enemy is the nearer of its own two and not the first trap's (H6 (a)); its cast struck that enemy; the third went off
     with no enemy near (T11); and has no triggering enemy.
+42. `AChainedTrapsInstantBlowLaysTheTrapBleedAsTheFirstTrapsDoes`, 14 (second commit). Two players with the chain row at
+    10 m: a first trap with its enemy 2.5 m east and a second 8 m beyond it, unarmed, with its own enemy 2.5 m east. The
+    control holds no bleed row; the other holds "Traps apply 1-2 bleed stacks to all enemies caught in their blast" at 1 as
+    layer 3's tests write it (`apply_status_sized` on `deployable_hit`, requiring `Type.Trap`, Ailment Bleed). In order: a
+    world; set-up, the pin; set-up, the Bleed tag; set-up, four creatures (four); control, the second trap went off and was
+    used up; control, its cast struck its enemy for a tenth; control, that enemy does not bleed; the first trap's own blow
+    bleeds its enemy; the second went off and was used up; its cast struck its enemy for a tenth; that chained trap's
+    instant blow bleeds its enemy (G-1 (a)).
+43. `AnEnemyAChainedTrapsBlowKillsExplodesForItsShareOfTheBlowAsSent`, 14 (second commit). Two players with the chain row at
+    10 m: a first trap with a measure of 1,500 health 2.5 m east, and a second 8 m beyond it, unarmed, with a doomed enemy of
+    50 health 2.5 m east and a bystander 3.5 m north of the doomed, inside 4 m of it and outside the second lash's 45 degree
+    cone. The control holds no explosion row; the other holds "Enemies killed by traps explode" at 50 as layer 4's tests
+    write it (`explode_victim_for_killing_blow` on `kill`, requiring `Type.Trap`). In order: a world; set-up, the pin;
+    set-up, the Whip is Slashing; set-up, six creatures (six); control, the chained lash killed the doomed; control, its
+    bystander untouched, within 0.01; set-up, the first lash struck the measure; the chained lash killed the doomed; its
+    bystander takes half the killing lash as sent (the measure's loss divided by one plus `SubtypeBonus` over 100), within
+    0.1%.
+44. `AtThePlayersDeathATrapsBlowAnswersAHitDealtRowWhereTheGadgetHalfsDoesNot`, 19 (second commit). Two players with the
+    Heavy trap flag and the Ultimate gadget flag: a trap 20 m north, armed, its enemy 2.5 m east; a skill gadget 40 m east
+    with an enemy of 100,000 health 3 m east; a killer 3 m west. Both hold `gadgets_cast_now` and an own stack granted on
+    `hit_dealt` (cap 10, 10 s); the wearer also `trigger_traps_nearby` 0 on `player_death`. In order: a world; set-up, the
+    pin; set-up, each trap armed; set-up, six creatures (six); control, no stack before the death; control, the player
+    died; control, its gadget cast once at the death; control, that cast struck its enemy; control, and granted no
+    `hit_dealt` stack (the gadget half's cast is made inside the death's row action, #15 as built); the wearer died; its
+    trap went off and was used up; its cast struck its enemy; one `hit_dealt` stack, the trap's blow answered and the
+    gadget's not (G-1 (a)); its gadget cast once, unchanged.
+
+**TEST 38 IS UNCHANGED, AND NONE OF ITS ASSERTIONS CHANGES WHAT IT SAYS.** Each `trap_triggered` is now raised once by the
+set-off trap's own trigger at depth nought instead of being queued and answered with its announcement held back, so "three
+trap_triggered, each announced once" counts the same three; the slow on each trap's own enemy and the three stacks are
+answered at the trap's own event instead of at a queued copy of it. What is NEW under it and not asserted there: the set-off
+traps' lashes now also raise answered `deployable_hit`, `hit_dealt` and `dot_applied` (no row of test 38 hangs on them).
+Tests 39, 40 and 41 are unchanged likewise.
 
 **Every earlier trap test is unchanged**, and expected to pass unchanged: layer 1's ten, layer 2's eight, layer 3's eight,
 layer 3b's four and layer 4's six. None holds a row of this layer, and with none worn nothing here acts (CHANGES TO WHAT A
@@ -410,80 +445,95 @@ passing the whole sheet's validation; the names are the engine's, neither is a p
 event is one the generator knows, with a pool and the slow as the controls; eleven wrong shapes refused by name, a radius
 past the bound and a misspelt name; the item's three reads, read from the code with comments taken out, the killing blow
 explosion's read the control). In `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
-`test_the_two_trap_actions_of_traps_layer_five_queue_a_set_off_traps_trigger_once_a_chain`, read from the code with
-comments taken out by tracking `/* ... */` and `//` (R-c), its control the queue of `afflicted_death` it copies.
+`test_the_two_trap_actions_of_traps_layer_five_set_off_a_recorded_trap_whole_once_a_chain` (renamed and rewritten by the
+second commit), read from the code with comments taken out by tracking `/* ... */` and `//` (R-c): the action records and
+the drain sets off at the trap's own enemy, and no `trap_triggered` is kept at depth one; its control the queue of
+`afflicted_death`, which stays.
 
 **Not tested:** a real row worn (the enchantment session's); the item's building of the six rows; P054 at the ends of its
 roll (8 and 12) and P017 and P065 at other metres; a chain begun by a gadget's death or the player's death running on
-through "Traps trigger simultaneously"; an arm row answering a set-off trap's queued trigger; a set-off trap's late shot
-laying the slow through the wait that now names a used-up trap (every test casts the Whip's lash); layer 4's increase,
-share and damage over time on a set-off trap's own triggering enemy; the dropped events of a set-off trap's instant blows
-(FOUND); a Spike Trap's death refused (no War); a set-off trap that cannot act, whose slot is no longer converted or whose
+through "Traps trigger simultaneously"; an arm row answering a set-off trap's trigger; a set-off trap's late shot (every
+test casts the Whip's lash); layer 4's increase, share and damage over time on a set-off trap's own triggering enemy; a
+set-off trap's blow answering a `first_hit_dealt` or `dot_applied` row; the order of going off; a recorded trap gone
+before its turn; the wearer leaving or dying mid-chain; a Spike Trap's death refused (no War); a set-off trap that cannot act, whose slot is no longer converted or whose
 skill cannot be cast; a forced trigger inside one of the player's own skill activations, where `UCataclysmTriggeredSkill::Trigger`
 refuses a grant (by reading, the trap is then not set off and stays in the chain); the stacks and slows granted to a dead
 player at its death; anything drawn but the armed tint; anything in play.
 
 ### GUARD PROOFS PROPOSED
 
-Not run. Each old text was counted exactly once in its file by a script at this layer's working tree (CRLF read as LF,
-as `prove_cpp_guard` reads it), each new text counted absent before the break and once after it, and each break keeps
-the file's round, curly and square brackets paired: `CataclysmAbilitySystemComponent.cpp` 3252/3252, 1064/1064, 40/40
-before, and after TR-XXI the same and after TR-XXII 3253/3253 (the break adds one pair); `CataclysmMinion.cpp`
-1107/1107, 296/296, 17/17 before, and after TR-XXIII the same and after TR-XXIV 1106/1106. Each compiles alone by
-reading: TR-XXI leaves an expression statement on a parameter, the other two parameters still read above; TR-XXII adds
-an empty weak pointer of the list's own type; TR-XXIII negates a `bool`; TR-XXIV passes `nullptr` where an `AActor*`
-stood. The prefix is `Cataclysm.Traps.`, with its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight, layer
-3b's four, layer 4's six and these six, forty-two.
+Not run. **RECOUNTED BY THE SECOND COMMIT**: TR-XXI's old anchor (`QueueSkillTrapTrigger(...)`) is gone with the code it
+broke, so TR-XXI is now a proof of the new path, the reason G-1 (a) was ruled: a set-off trap going off at depth one,
+inside the row, as the first commit did. TR-XXIV's anchor moved into the drain. Each old text was counted exactly once in
+its file by a script at the second commit's working tree (CRLF read as LF, as `prove_cpp_guard` reads it), each new text
+counted absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired: `CataclysmAbilitySystemComponent.cpp` 3245/3245, 1061/1061, 39/39 before; after TR-XXI 3246/3246, 1062/1062
+(the break adds a pair of each); after TR-XXII 3246/3246; after TR-XXIV 3244/3244. `CataclysmMinion.cpp` 1101/1101,
+293/293, 17/17 before and after TR-XXIII. Each compiles alone by reading: TR-XXI wraps the call in a block holding a
+`TGuardValue<int32>` of this class's own protected `PoolActionDepth`; TR-XXII adds an empty weak pointer of the list's own
+type; TR-XXIII negates a `bool`; TR-XXIV passes `nullptr` where an `AActor*` stood. The prefix is `Cataclysm.Traps.`, with
+its trailing dot: layer 1's ten, layer 2's eight, layer 3's eight, layer 3b's four, layer 4's six and these nine,
+forty-five.
 
 **The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing;
-`trap_triggered` at each trigger, a set-off trap's announced once, when it is raised; for the first trap's lash, struck at
-depth nought, `hit_dealt`, `first_hit_dealt`, `deployable_hit` with the trap's tags and Searing Lash's burn's
-`dot_applied`, acted on; for a set-off trap's lash, struck at depth one, the same four, announced and dropped; in tests 37
-and 39 `gadget_destroyed` at a gadget's death; in test 40 `player_death` at each player's death, and inside it the gadget's
-death cast's and the traps' events, at depth one. No creature dies (each takes one lash of 275 from 1,500), so no `kill`.
-On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 36 the arm row on `trap_triggered`; test 37 the
-shockwave on `trap_triggered` and the gadget row on `gadget_destroyed`; test 38 the chain row, the slow and the stack
-grant on `trap_triggered`; test 39 the gadget row on `gadget_destroyed`; test 40 `gadgets_cast_now` and the trap row on
-`player_death`; test 41 the chain row on `trap_triggered`. Read from the code, not measured.
+`trap_triggered` at each trigger, a set-off trap's raised by its own trigger at depth nought; for every lash, the first
+trap's and every set-off trap's alike, `hit_dealt`, `first_hit_dealt`, `deployable_hit` with the trap's tags and Searing
+Lash's burn's `dot_applied`, all acted on; in tests 37 and 39 `gadget_destroyed` at a gadget's death; in tests 40 and 44
+`player_death`, inside which the gadget's death cast's events are at depth one and dropped (#15), while the traps it
+records go off after it at depth nought; in test 43 `kill` for each doomed enemy's death (and its `afflicted_death` if it
+carries the burn). No other creature dies. On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 36 the arm row on
+`trap_triggered`; test 37 the shockwave on `trap_triggered` and the gadget row on `gadget_destroyed`; test 38 the chain
+row, the slow and the stack grant on `trap_triggered`; test 39 the gadget row on `gadget_destroyed`; test 40
+`gadgets_cast_now` and the trap row on `player_death`; test 41 the chain row on `trap_triggered`; test 42 the chain row on
+`trap_triggered` and the bleed on `deployable_hit`; test 43 the chain row and the explosion on `kill`; test 44 the two death
+rows and the stack grant on `hit_dealt`. Read from the code, not measured.
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| TR-XXI, a set-off trap's `trap_triggered` is dropped, not queued (H5 (b)) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `QueueSkillTrapTrigger(EventTags, EventAmount, EventTarget);` | `(void)EventTarget;` | `TrapsTriggerTogetherThroughTheConnectedGroupWithinTheRadiusEachOnceEachCountingAsTriggered` | none |
-| TR-XXII, the trap that began the chain is not put into it (H5 (b), the guard) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `SkillTrapsSetOffThisChain.Add(SkillTrapRaisingItsTrigger);` | `SkillTrapsSetOffThisChain.Add(TWeakObjectPtr<AActor>());` | `TrapsTriggerTogetherThroughTheConnectedGroupWithinTheRadiusEachOnceEachCountingAsTriggered` | `ATrapSetOffByARowHasTheNearestEnemyWithinItsOwnRadiusAsItsTriggeringEnemyAndWithNoneCastsAtItsPlace` |
+| TR-XXI, a set-off trap goes off at depth one, inside the row (G-1 (a)) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Trap->TriggerSkillTrap(Trap->SkillTrapEnemyForAForcedTrigger(), Next.bEvenForADeadPlayer);` | `{ TGuardValue<int32> AtDepthOne(PoolActionDepth, 1); Trap->TriggerSkillTrap(Trap->SkillTrapEnemyForAForcedTrigger(), Next.bEvenForADeadPlayer); }` | `AChainedTrapsInstantBlowLaysTheTrapBleedAsTheFirstTrapsDoes` | `TrapsTriggerTogetherThroughTheConnectedGroupWithinTheRadiusEachOnceEachCountingAsTriggered`, `AnEnemyAChainedTrapsBlowKillsExplodesForItsShareOfTheBlowAsSent`, `AtThePlayersDeathATrapsBlowAnswersAHitDealtRowWhereTheGadgetHalfsDoesNot` |
+| TR-XXII, the trap that began the chain is not put into it (H5 (b), the guard) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `SkillTrapsSetOffThisChain.Add(SkillTrapRaisingItsTrigger);` | `SkillTrapsSetOffThisChain.Add(TWeakObjectPtr<AActor>());` | `TrapsTriggerTogetherThroughTheConnectedGroupWithinTheRadiusEachOnceEachCountingAsTriggered` | `ATrapSetOffByARowHasTheNearestEnemyWithinItsOwnRadiusAsItsTriggeringEnemyAndWithNoneCastsAtItsPlace`, `AnEnemyAChainedTrapsBlowKillsExplodesForItsShareOfTheBlowAsSent` |
 | TR-XXIII, the count read the wrong way round (H11) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `if (bNearestOnly)` (with its tab and line end, in `ArmSkillTrapsNear`) | `if (!bNearestOnly)` | `WhenATrapTriggersTheNearestUnarmedTrapWithinTenMetresArmsAndNoFartherOneAndNoArmedOneIsTouched` | `TheShockwaveAndAGadgetKilledArmEveryUnarmedTrapWithinTheirMetresAndNoneBeyondAndATrapUsedUpArmsNothing` |
-| TR-XXIV, a set-off trap has no triggering enemy of its own (H6) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `Each->TriggerSkillTrap(Each->SkillTrapEnemyForAForcedTrigger(), bEvenForADeadPlayer)` | `Each->TriggerSkillTrap(nullptr, bEvenForADeadPlayer)` | `ATrapSetOffByARowHasTheNearestEnemyWithinItsOwnRadiusAsItsTriggeringEnemyAndWithNoneCastsAtItsPlace` | `TrapsTriggerTogetherThroughTheConnectedGroupWithinTheRadiusEachOnceEachCountingAsTriggered`, `AGadgetKilledSetsOffTheNearestStandingTrapWithinTenMetresArmedOrNotAndNoOther` |
+| TR-XXIV, a set-off trap has no triggering enemy of its own (H6) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Trap->TriggerSkillTrap(Trap->SkillTrapEnemyForAForcedTrigger(), Next.bEvenForADeadPlayer);` | `Trap->TriggerSkillTrap(nullptr, Next.bEvenForADeadPlayer);` | `ATrapSetOffByARowHasTheNearestEnemyWithinItsOwnRadiusAsItsTriggeringEnemyAndWithNoneCastsAtItsPlace` | `TrapsTriggerTogetherThroughTheConnectedGroupWithinTheRadiusEachOnceEachCountingAsTriggered`, `AGadgetKilledSetsOffTheNearestStandingTrapWithinTenMetresArmedOrNotAndNoOther` |
+
+TR-XXI and TR-XXIV share one anchor; each is applied alone.
 
 Failed assertions, by reading:
 
-- **TR-XXI, 9 in 1 test.** Test 38, the chain player: the second's `trap_triggered` is dropped, so the third is never set
-  off and the second neither slows nor stacks: "three trap_triggered" (2), "the third ... went off too", "the third
-  trap's its own" (struck for nothing), "the second trap's own enemy" slowed, "the third trap's own enemy" slowed, "by the
-  row's 25 per cent" (no slow stated) and "three damage stacks" (1); the rearming player: "still three trap_triggered" (2)
-  and "its third went off once" (0). The first, second and fourth traps' lines pass, the second being set off by the
-  first's own event. Test 41's second and third are set off by the first's own event too, so it passes; tests 36, 37, 39
-  and 40 hold no row on `trap_triggered` that a set-off trap reaches.
-- **TR-XXII, 3 in 2 tests.** Test 38, the rearming player: the first trap, rearmed and standing 8 m from the second, is set
-  off again by the second's queued trigger, then is in the list: "still three trap_triggered" (4) and "its first went off
-  once" (2). Test 41: the second's queued trigger sets the rearmed first off again, 6 m away: "control: the first trap
-  went off once" (2), its other lines passing. The chain player's first trap is used up, so it passes. The break cannot
-  loop: the first trap joins the list when it is set off the second time.
-- **TR-XXIII, 3 in 2 tests.** Test 36: the nearest-only row arms every unarmed trap within 10 m: "the unarmed trap 9 m
-  away ... is not armed". Test 37: the every-trap rows arm only the nearest: "and the one 12 m away" and "and the one 10 m
-  from it". The set-off actions' own nearest (`if (bNearestOnly && Place)`) is untouched.
+- **TR-XXI, 12 in 4 tests.** Each set-off trap still goes off (its record was made at depth nought by the first trap's own
+  event), but at depth one, so its `trap_triggered` and its blows' events are dropped. Test 38, the chain player: the third
+  trap is never recorded and the second neither slows nor stacks: "three trap_triggered" (2), "the third ... went off
+  too", "the third trap's its own" (struck for nothing), "the second trap's own enemy" slowed, "the third trap's own
+  enemy" slowed, "by the row's 25 per cent" and "three damage stacks" (1); the rearming player: "still three
+  trap_triggered" (2) and "its third went off once" (0). Test 42: "that chained trap's instant blow bleeds its enemy". Test
+  43: "and that kill explodes" (the `kill` dropped, and `TakePendingKillingBlowExplosionSharePercent` answers nought at
+  depth one). Test 44: "one hit_dealt stack" (0). Tests 39, 40 and 41 pass: their set-off traps cast, are used up or stand,
+  and are announced, and nothing they assert hangs on a set-off trap's event.
+- **TR-XXII, 6 in 3 tests.** The first trap STANDS WHILE ITS CHAIN RUNS (it is used up only after its event returns), so
+  the second trap's own event records it again. Test 38, the chain player: the first goes off a second time inside the
+  chain, then is in the list: "three trap_triggered" (4) and "three damage stacks" (4), its other lines passing; the
+  rearming player: "still three trap_triggered" (4) and "its first went off once" (2). Test 41: "control: the first trap
+  went off once" (2). Test 43: the first lash strikes the measure twice, so "and that kill explodes" is compared with
+  twice its figure. Test 42's lines read no count and pass. The break cannot loop: the first trap joins the list when it is
+  recorded the second time.
+- **TR-XXIII, 3 in 2 tests.** Test 36: "the unarmed trap 9 m away ... is not armed". Test 37: "and the one 12 m away" and
+  "and the one 10 m from it". The set-off actions' own nearest (`if (bNearestOnly && Place)`) is untouched.
 - **TR-XXIV, 5 in 3 tests.** With no triggering enemy each set-off trap casts at its own place, its Strike facing the
   player's own facing, east, and carries no enemy to its `trap_triggered`. Test 38, the chain player: "the second trap's
   own enemy" slowed, "the third trap's own enemy" slowed and "by the row's 25 per cent"; the lashes still strike the
-  enemies 2.5 m east. Test 39: "its cast struck its own enemy", that enemy standing 2.5 m north, outside a 45 degree cone
-  facing east. Test 41: "its triggering enemy is the nearer of its own two enemies", the lash still striking that enemy 2 m
-  east. Test 40's set-off trap's enemy stands east of it, so it passes (the dying player's actor is not turned, by
-  reading `ACataclysmPlayerCharacter::HandleDeath`). **Outside the prefix**, the Python test
-  `test_the_two_trap_actions_of_traps_layer_five_queue_a_set_off_traps_trigger_once_a_chain` reads that line as text and
-  fails under this break; it is not part of the Unreal proof.
+  enemies 2.5 m east. Test 39: "its cast struck its own enemy", that enemy 2.5 m north, outside a 45 degree cone facing
+  east. Test 41: "its triggering enemy is the nearer of its own two enemies". Tests 40, 42, 43 and 44 pass: each set-off
+  trap's enemy stands east of it, so the lash still strikes, bleeds, kills (the bystander at 54 degrees still outside the
+  cone) and answers `hit_dealt`; the dying player's actor is not turned (`ACataclysmPlayerCharacter::HandleDeath`, by
+  reading). **Outside the prefix**, the Python test
+  `test_the_two_trap_actions_of_traps_layer_five_set_off_a_recorded_trap_whole_once_a_chain` reads that line as text and
+  fails under this break and under TR-XXI; it is not part of the Unreal proof.
 
-**EARLIER PROOFS THIS LAYER'S TESTS MEET.** Layer 4's TR-XVI (the rearm roll asked of no player, its anchor still counted
-once) makes every trap used up, so it fails two lines more, each a set-up line that returns: test 38's "set-up: every trap
-of the rearming player stands" and test 41's "set-up: all three traps stand after going off". Layer 3's TR-XI (the slow's
-rule of a tenth broken to always pass) lays no slow these tests expect absent, and passes them. By reading.
+**EARLIER PROOFS THIS LAYER'S TESTS MEET.** Layer 4's TR-XVI (the rearm roll asked of no player) fails two set-up lines that
+return: test 38's "set-up: every trap of the rearming player stands" and test 41's "set-up: all three traps stand after
+going off". Layer 3's TR-IX (a trap's `deployable_hit` amount nought, so the rule of a tenth refuses every bleed) fails test
+42's two bleed lines: "the first trap's own blow bleeds its enemy" and "that chained trap's instant blow bleeds its enemy".
+Layer 4's TR-XIX (the explosion at 5 m) passes test 43, its bystander 3.5 m from the doomed. Layer 3's TR-X and TR-XI pass
+these tests. By reading.
 
 **Tests of another group expected to fail, to check in the window:** none, by reading.
 

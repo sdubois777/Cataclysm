@@ -4708,44 +4708,37 @@ public:
 	static const TCHAR* ArmTrapsNearbyAction;
 	static const TCHAR* TriggerTrapsNearbyAction;
 
-	/** Where the trap `SkillTrapRaisingItsTrigger` names stood when it triggered, set with it. */
-	FVector SkillTrapRaisingItsTriggerPlace = FVector::ZeroVector;
-
 	/**
-	 * THE QUEUE (H5 (b)): a trap's `trap_triggered` heard while this character is already acting on an event, which only a
-	 * trap a row sets off raises, kept with everything read then, as `afflicted_death` is kept, and answered by
-	 * `DrainQueuedSkillTrapTriggers` after the acting row has finished. Its trap compared by identity, since it may be used
-	 * up by then.
+	 * THE QUEUE (H5 (b), and G-1 (a) of 2026-10-22: a trap set off by a row is a whole trigger): the traps a row's action has
+	 * chosen to set off, recorded by `ACataclysmMinion::SetOffSkillTrapsNear` while that row acts, and set off by
+	 * `DrainQueuedSkillTrapSetOffs` once the outermost call is at depth nought again, each by its ordinary
+	 * `TriggerSkillTrap`. So its own `trap_triggered` and every event its instant blows raise are answered as a trap's an
+	 * enemy set off are. Each trap compared by identity; `bEvenForADeadPlayer` for the traps the player's death sets off.
 	 */
-	struct FQueuedSkillTrapTrigger
+	struct FQueuedSkillTrapSetOff
 	{
 		TWeakObjectPtr<AActor> Trap;
-		FVector Place = FVector::ZeroVector;
-		FGameplayTagContainer TrapTags;
-		float TookFromItsEnemy = 0.0f;
-		TWeakObjectPtr<AActor> Enemy;
+		bool bEvenForADeadPlayer = false;
 	};
-	TArray<FQueuedSkillTrapTrigger> QueuedSkillTrapTriggers;
+	TArray<FQueuedSkillTrapSetOff> QueuedSkillTrapSetOffs;
 
 	/**
-	 * THE CHAIN GUARD (H5 (b)): every skill trap set off in the chain in hand, the trap that began it included; a trap here
-	 * is never set off again until the chain ends. ONE CHAIN IS ONE EVENT ACTED ON AT DEPTH NOUGHT AND EVERYTHING IT QUEUED:
-	 * emptied when the outermost drain ends. So each trap goes off at most once a chain, a rearmed one included, and the
-	 * queue holds at most one record for each trap standing when the chain began.
+	 * THE CHAIN GUARD (H5 (b)): every skill trap set off in the chain in hand, the trap that began it included, each added
+	 * WHEN IT IS RECORDED, before it goes off, so no trap is recorded twice; a trap here is never chosen again until the chain
+	 * ends. ONE CHAIN IS ONE EVENT ACTED ON AT DEPTH NOUGHT AND EVERYTHING IT RECORDED: emptied when the outermost drain
+	 * ends. So each trap goes off at most once a chain, a rearmed one included, and the queue holds at most one record for
+	 * each trap standing when the chain began.
 	 */
 	TArray<TWeakObjectPtr<AActor>> SkillTrapsSetOffThisChain;
 
 	/** Whether the queue is being drained now, so a drain reached from inside it returns at once. */
-	bool bDrainingQueuedSkillTrapTriggers = false;
+	bool bDrainingQueuedSkillTrapSetOffs = false;
 
-	/** Set by the drain for the one `ActOnEvent` that answers a queued record, which was announced when it was raised. */
-	bool bQueuedSkillTrapTriggerAnnounced = false;
+	/** Record `Trap` to be set off once the row acting now has finished. */
+	void QueueSkillTrapSetOff(AActor* Trap, bool bEvenForADeadPlayer);
 
-	/** Keep a `trap_triggered` heard at depth one, if a worn row hangs on it. */
-	void QueueSkillTrapTrigger(const FGameplayTagContainer* EventTags, float EventAmount, const AActor* EventTarget);
-
-	/** Answer each queued record in the order heard, at depth nought, then end the chain. Only the outermost call acts. */
-	void DrainQueuedSkillTrapTriggers();
+	/** Set off each recorded trap in the order recorded, at depth nought, then end the chain. Only the outermost call acts. */
+	void DrainQueuedSkillTrapSetOffs();
 
 	/** Arm or set off the player's traps as `Action` states for `Event`, naming `EventTarget`. How many. */
 	int32 ActOnSkillTrapsNearby(const FCataclysmPoolAction& Action, FName Event, const AActor* EventTarget);
