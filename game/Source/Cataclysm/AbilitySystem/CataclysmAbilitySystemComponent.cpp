@@ -2816,6 +2816,15 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 
 	// AND EVERY "EVERY Nth" COUNT, ruled 2026-09-24. Issue #1833, phase 2.
 	NthCounts.Empty();
+	// AND THE COUNT OF TRAPS TRIGGERED TOWARDS A GADGET'S SHOT, emptied at death as the counts above are (traps layer 6, J4).
+	// Only that action's: a nearby action's count of events in quick succession is left as it was.
+	for (const FCataclysmPoolAction& Counting : PoolActions)
+	{
+		if (Counting.bGadgetFiresAtTrapEnemy)
+		{
+			EventCountTimes.Remove(Counting.TriggerKey);
+		}
+	}
 
 	// AND EVERY HELD NEXT-USE CHARGE, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
@@ -6100,6 +6109,13 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		}
 		return;
 	}
+	// AND THE SHOTS A ROW ASKED OF THE WEARER'S SKILL GADGETS (traps layer 6), DECLARED FIRST SO IT RUNS LAST: after the
+	// guard below has put the depth back to nought, and after the queued deaths and the set-off traps, whose own events may
+	// record shots of their own.
+	ON_SCOPE_EXIT
+	{
+		DrainQueuedGadgetShotsAtTrapEnemies();
+	};
 	// DECLARED BEFORE THE GUARD SO IT RUNS AFTER IT: the queued deaths are
 	// acted on once this call is at depth nought again, and then the traps a row chose to set off (traps layer 5).
 	ON_SCOPE_EXIT
@@ -6810,6 +6826,23 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				if (ActOnSkillTrapsNearby(Action, Event, EventTarget) > 0)
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// THE WEARER'S NEAREST SKILL GADGET FIRES AT THE ENEMY THAT SET THE TRAP OFF. Ruled 2026-10-22 (traps layer 6, J1 to
+		// J10). Landed only, once per row per event; NO TRIGGER COOLDOWN (J9). FOR A ROW THAT COUNTS, ONLY ON THE Nth TRAP
+		// TRIGGERED, with no window (J4), counted before the gadget and the enemy are asked, so a third trigger with no enemy
+		// or no gadget still starts the count again (J5). RECORDED HERE AND FIRED AT DEPTH NOUGHT, by the drain above.
+		if (Action.bGadgetFiresAtTrapEnemy)
+		{
+			// THE KEY TAKEN BEFORE THE COUNT, so two copies of the row count one trap once: one count per player (J4).
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				if (CountedToNth(Action) && QueueGadgetShotAtTrapEnemy(Action, EventTarget))
 				{
 					NoteTriggerFired(Action);
 				}
@@ -8491,4 +8524,69 @@ int32 UCataclysmAbilitySystemComponent::ActOnSkillTrapsNearby(const FCataclysmPo
 	return ACataclysmMinion::SetOffSkillTrapsNear(Wearer, bAtTheDeath ? nullptr : &From, RadiusCm,
 												  Action.bNearestTrapOnly, TrapThatTriggered,
 												  /*bEvenForADeadPlayer=*/bAtTheDeath);
+}
+
+// ==========================================================================
+// Traps, layer 6: the wearer's nearest skill gadget fires at a trap's enemy, recorded by the row and fired at depth
+// nought. Ruled 2026-10-22 (J1 to J10, J2 changed). The header carries the rulings.
+// ==========================================================================
+
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction = TEXT("gadget_fires_at_trap_enemy");
+
+bool UCataclysmAbilitySystemComponent::QueueGadgetShotAtTrapEnemy(const FCataclysmPoolAction& Action,
+																  const AActor* EventTarget)
+{
+	// AT THE ENEMY THAT SET THE TRAP OFF, LIVING (J3), FROM THE TRAP WHOSE EVENT THIS IS, WHICH STANDS WHILE IT IS RAISED.
+	AActor* Wearer = GetAvatarActor();
+	const AActor* TrapThatTriggered = SkillTrapRaisingItsTrigger.Get();
+	if (!Wearer || !TrapThatTriggered || !IsValid(EventTarget) || UCataclysmSkillEffects::IsDead(EventTarget))
+	{
+		return false;
+	}
+
+	// THE NEAREST SKILL GADGET TO THAT TRAP, within the row's metres or at any distance for nought (J1, J5).
+	ACataclysmMinion* Gadget = ACataclysmMinion::SkillGadgetNearestTo(Wearer, TrapThatTriggered->GetActorLocation(),
+																	   Action.EventValue * 100.0f);
+	if (!Gadget)
+	{
+		return false;
+	}
+
+	// THE ROW'S PER CENT AS A MULTIPLIER OF THE WHOLE SHOT (J6): 100 is its normal blow, 300 three times it.
+	FQueuedGadgetShotAtTrapEnemy& Queued = QueuedGadgetShotsAtTrapEnemies.AddDefaulted_GetRef();
+	Queued.Gadget = Gadget;
+	Queued.Enemy = const_cast<AActor*>(EventTarget);
+	Queued.DamageMultiplier = FMath::Max(0.0f, Action.Percent) / 100.0f;
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::DrainQueuedGadgetShotsAtTrapEnemies()
+{
+	// ONLY THE OUTERMOST CALL, AT DEPTH NOUGHT: a drain reached from inside a shot (its blows' events) returns at once, and
+	// the loop below takes up whatever those events recorded, at the end.
+	if (PoolActionDepth > 0 || bDrainingQueuedGadgetShotsAtTrapEnemies)
+	{
+		return;
+	}
+	TGuardValue<bool> Draining(bDrainingQueuedGadgetShotsAtTrapEnemies, true);
+	while (!QueuedGadgetShotsAtTrapEnemies.IsEmpty())
+	{
+		// THE WEARER GONE: what waited is dropped, as a queued death is.
+		if (!GetAvatarActor())
+		{
+			QueuedGadgetShotsAtTrapEnemies.Reset();
+			return;
+		}
+		const FQueuedGadgetShotAtTrapEnemy Next = QueuedGadgetShotsAtTrapEnemies[0];
+		QueuedGadgetShotsAtTrapEnemies.RemoveAt(0);
+
+		// A GADGET GONE SINCE IT WAS CHOSEN FIRES NOTHING, and no other is chosen in its place; an enemy gone or dead takes
+		// no shot (J3). AT DEPTH NOUGHT, so every event of its blows is answered (J2).
+		ACataclysmMinion* Shooter = Cast<ACataclysmMinion>(Next.Gadget.Get());
+		if (!IsValid(Shooter) || Shooter->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier);
+	}
 }

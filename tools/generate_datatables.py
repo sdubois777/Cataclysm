@@ -6170,6 +6170,11 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
         return
+    if action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
+        _check_gadget_fires_at_trap_enemy_action(index, who, action, event,
+                                                 fraction_of, kind, raw,
+                                                 headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -6194,6 +6199,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {KILLING_BLOW_EXPLOSION_ACTION}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
+            f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
             f"or {STRIKE_TARGET_ACTION}; "
             f"or {EXECUTE_TARGET_ACTION}; "
             f"or {TEMPORARY_ABSORB_ACTION}; "
@@ -7136,6 +7142,7 @@ def enchantment_effects(book) -> list[dict]:
                     and action != OVERKILL_EXPLOSION_ACTION \
                     and action != KILLING_BLOW_EXPLOSION_ACTION \
                     and action not in TRAPS_NEARBY_ACTIONS \
+                    and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                     and action != STRIKE_TARGET_ACTION \
                     and action != EXECUTE_TARGET_ACTION \
                     and action != TEMPORARY_ABSORB_ACTION \
@@ -7437,6 +7444,19 @@ def enchantment_effects(book) -> list[dict]:
                     f"wearer's traps and states Scale Max Steps "
                     f"{scale_max_steps}. It is 1, the nearest trap alone, or "
                     f"empty, every trap.")
+
+        # A GADGET'S SHOT AT A TRAP'S ENEMY STATES ITS "MORE" IN PER CENT, above
+        # 0 and up to the bound: 100 is the gadget's normal blow. Ruled
+        # 2026-10-22 (traps layer 6, J6, J10).
+        if action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
+            if not (0 < low <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT
+                    and 0 < high <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} fires a gadget at "
+                    f"a trap's enemy at {low:g} to {high:g} per cent of its "
+                    f"normal blow. The figure is above 0 and up to "
+                    f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT:g}; 100 is its "
+                    f"normal blow.")
 
         # A STRIKE'S VALUE IS A PERCENTAGE OF THE WEARER'S ATTACK DAMAGE, above
         # 0 and up to the bound. Ruled 2026-10-07.
@@ -7847,6 +7867,23 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} counts its events in "
                     f"a window of {stack_seconds:g} seconds. It is above 0 and up "
                     f"to {MAX_STACK_SECONDS:g}.")
+        elif action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION and nth_text:
+            # A GADGET'S SHOT ON THE Nth TRAP TRIGGERED, WITH NO WINDOW. Ruled
+            # 2026-10-22 (traps layer 6, J4, J10): "For every 3 traps
+            # triggered" is Every Nth 3, one count per player that starts again
+            # after each third and at death. A window would be one no sentence
+            # states, so Stack Seconds is refused.
+            nth = number(nth_text, "Every Nth", index)
+            if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts every "
+                    f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
+            every_nth = int(nth)
+            if stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts {every_nth} "
+                    f"traps triggered and states Stack Seconds. The count has no "
+                    f"window (ruled 2026-10-22, J4), so they would be dropped.")
         elif nth_text:
             raise DataError(
                 f"Enchantment Effects row {index}: {name} states Every Nth and "
@@ -8088,6 +8125,18 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} has an Event Value "
                     f"of {event_value:g}. It is a share of maximum health above 0 "
                     f"and below 100.")
+        elif action == GADGET_FIRES_AT_TRAP_ENEMY_ACTION:
+            # OR THE METRES FROM THE TRAP A GADGET MUST STAND WITHIN, for a
+            # gadget's shot at a trap's enemy: empty or nought is any distance.
+            # Ruled 2026-10-22 (traps layer 6, J1, J5, J10).
+            if event_value_text:
+                event_value = number(event_value_text, "Event Value", index)
+                if not 0 <= event_value <= MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} fires the "
+                        f"gadget within {event_value:g} metres of a trap. The "
+                        f"radius is 0, any distance, up to "
+                        f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:g}.")
         elif event_value_text:
             raise DataError(
                 f"Enchantment Effects row {index}: {name} states an Event Value on "
@@ -12313,6 +12362,119 @@ def _check_traps_nearby_action(index: int, who: str, action: str, event: str,
             f"carries no tags, so the row would never fire.")
 
 
+#: The action of traps layer 6, ruled 2026-10-22 by the coordinating session
+#: (J1 to J10, J2 changed: skill gadgets only): THE WEARER'S NEAREST STANDING
+#: SKILL GADGET FIRES ONCE AT THE ENEMY THAT SET A TRAP OFF, casting its skill
+#: once, free, at that enemy, priced and announced as its clock's cast, its
+#: clock unchanged: "When a trap is triggered near an active gadget, the gadget
+#: fires an immediate bonus shot at the triggering enemy" and "For every 3 traps
+#: triggered, your nearest gadget fires a massive overcharged shot dealing
+#: 200%-400% of its normal damage". War's gadgets do not fire, by the no-War
+#: mandate. `UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction`
+#: holds the same name.
+#:
+#: THE VALUE IS A "MORE" IN PER CENT ON THAT ONE SHOT (J6): 100 the gadget's
+#: normal blow, 200 to 400 the overcharged shot. EVENT VALUE IS THE METRES FROM
+#: THE TRAP the gadget must stand within, 10 for "near" (J1), empty or nought for
+#: any distance (J5). EVERY NTH, when stated, is the count of the wearer's
+#: triggered traps it fires on, with no window (J4). NO TRIGGER COOLDOWN (J9),
+#: which `takes_a_trigger_cooldown` refuses for it.
+GADGET_FIRES_AT_TRAP_ENEMY_ACTION = "gadget_fires_at_trap_enemy"
+
+#: The event it may hang on: a trap's triggering, which names the trap and the
+#: enemy that set it off.
+GADGET_FIRES_AT_TRAP_ENEMY_EVENTS = ("trap_triggered",)
+
+#: The most its "more" may be, in per cent. A bound for typing mistakes, as
+#: `MAX_KILLING_BLOW_EXPLOSION_SHARE` is; the sentences say 100 and 200 to 400.
+MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT = 1000.0
+
+#: The largest radius a row may state, in metres, as `MAX_TRAPS_NEARBY_METRES`.
+MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES = 50.0
+
+
+def _check_gadget_fires_at_trap_enemy_action(index: int, who: str, action: str,
+                                             event: str, fraction_of: str,
+                                             kind: str, raw,
+                                             headers: dict[str, int]) -> None:
+    """Everything a row firing the wearer's gadget at a trap's enemy must say,
+    and everything it must not. Ruled 2026-10-22 (traps layer 6, J1 to J10). ON
+    `trap_triggered` ONLY; the "more", the radius and the count are checked
+    where the value, Event Value and Every Nth are read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than
+    dropped."""
+    if event not in GADGET_FIRES_AT_TRAP_ENEMY_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} fires the wearer's gadget "
+            f"at a trap's enemy on the event {event or '(none)'!r}. Only a "
+            f"trap's triggering names the trap and its enemy: "
+            f"{', '.join(GADGET_FIRES_AT_TRAP_ENEMY_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} fires the wearer's "
+                f"gadget at a trap's enemy and states {column} {written!r}. Its "
+                f"value is the shot's \"more\" in per cent and nothing else, so "
+                f"the column must be empty.")
+
+
+#: The stat of traps layer 6, ruled 2026-10-22 by the coordinating session (J7,
+#: J8), asked off the player with `Type.Trap` alone by
+#: `ACataclysmMinion::SkillTrapPullRadiusCmFor`, whose name
+#: `TrapPullRadiusStat` holds: "When a trap triggers, all enemies within 4-6
+#: meters are pulled toward the blast center", A FLAT RADIUS IN METRES, every
+#: living enemy within which a trap pulls to 1 m of itself before its cast.
+TRAP_PULL_RADIUS_STAT = "trap_pull_radius"
+
+#: The largest radius it may state, in metres; the sentence says 4 to 6.
+MAX_TRAP_PULL_RADIUS_METRES = 50.0
+
+
+def refuse_a_trap_pull_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `TRAP_PULL_RADIUS_STAT` is one its reader adds.
+
+    IT IS READ AS FLAT, so a row of any other kind changes NOTHING; a tag but
+    none or `Type.Trap` matches no trap, since it is asked with `Type.Trap`
+    alone; an action is not a stat line; and the radius is above nought and at
+    most the bound. A CONDITION OR A SCALE IS REFUSED ELSEWHERE, as on every
+    stat not on those checks' lists. A PASSIVE NODE'S ROW IS LEFT ALONE.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat != TRAP_PULL_RADIUS_STAT or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads this stat as 'flat' and nothing else, so any other "
+                f"kind changes NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in TRAP_BLOW_STAT_REQUIRED_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The game asks with 'Type.Trap' alone, so the row requires "
+                f"nothing or 'Type.Trap'; any other tag matches no trap.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. This is "
+                f"a stat line the game asks for, and an action row is not "
+                f"one.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if not 0.0 < value <= MAX_TRAP_PULL_RADIUS_METRES:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}, which is above 0 "
+                    f"and at most {MAX_TRAP_PULL_RADIUS_METRES:g}.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -12792,6 +12954,10 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE FOUR STATS OF A TRAP'S BLOW EACH STATE THEIR ONE KIND, REQUIRING
     # NOTHING OR `Type.Trap`, WITHIN THEIR BOUNDS. Ruled 2026-10-21 (F1 to F9).
     problems.extend(refuse_a_trap_blow_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    # AND THE TRAP'S PULL RADIUS IS FLAT, REQUIRING NOTHING OR `Type.Trap`,
+    # WITHIN ITS BOUND. Ruled 2026-10-22 (J7, J8).
+    problems.extend(refuse_a_trap_pull_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

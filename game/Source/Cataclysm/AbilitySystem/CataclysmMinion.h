@@ -507,8 +507,14 @@ public:
 	 *
 	 * @param bEvenForADeadPlayer  true for the one cast a player's death makes (`FireForItsSummonersDeath`): a dead
 	 *        player is then not refused, and every other refusal stands. False, the default, for the clock's cast.
+	 * @param AimedAt  since traps layer 6, the enemy a trap's row names (`FireSkillGadgetAtTrapEnemy`): aimed at it
+	 *        whatever the skill's reach, as `StartPlayersSkillFromHere` aims at a trap's enemy. Null, the default, is the
+	 *        clock's own choice above.
+	 * @param ShotDamageMultiplier  since traps layer 6, a "more" on the whole of this one cast, the free start's damage
+	 *        share (`UCataclysmTriggeredSkill::Trigger`). One, the default, is the whole of its damage.
 	 */
-	bool CastPlayersSkillFromHere(bool bEvenForADeadPlayer = false);
+	bool CastPlayersSkillFromHere(bool bEvenForADeadPlayer = false, AActor* AimedAt = nullptr,
+								  float ShotDamageMultiplier = 1.0f);
 
 	/**
 	 * A PLAYER'S DEATH FIRES ITS GADGETS. Ruled 2026-10-19 by the coordinating session (C1-C5), for "When you die, all
@@ -1034,10 +1040,14 @@ public:
 	 * the skill is aimed (T11). Both null, as every caller before the trap passes, is the search above from here. A self
 	 * buff's 8 m is measured from this minion either way.
 	 *
+	 * WIDENED FOR TRAPS LAYER 6 (ruled 2026-10-22, J6): `ShotDamageMultiplier` is the free start's damage share, a
+	 * "more" on the whole of this one cast; one, the default every earlier caller passes, is the whole of its damage.
+	 *
 	 * @return whether `UCataclysmTriggeredSkill::Trigger` started it
 	 */
 	bool StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm,
-								   AActor* AimedAt = nullptr, const FVector* CastFromPlace = nullptr);
+								   AActor* AimedAt = nullptr, const FVector* CastFromPlace = nullptr,
+								   float ShotDamageMultiplier = 1.0f);
 
 	/** How many Ultimates this Tyrant's Minion has cast for the ten-piece. Read by tests. */
 	int32 TyrantsUltimateCastsMade = 0;
@@ -1326,6 +1336,58 @@ public:
 	 * radius, as its step would find it, or null, and then it casts at its own place with no triggering enemy (T11).
 	 */
 	AActor* SkillTrapEnemyForAForcedTrigger() const;
+
+	/**
+	 * TRAPS LAYER 6 (ruled 2026-10-22 by the coordinating session, J1 to J10, J2 changed): a nearby gadget fires at a
+	 * trap's enemy, and a trap pulls enemies into its blast.
+	 *
+	 * "When a trap is triggered near an active gadget, the gadget fires an immediate bonus shot at the triggering enemy"
+	 * and "For every 3 traps triggered, your nearest gadget fires a massive overcharged shot dealing 200%-400% of its
+	 * normal damage" are the row action `UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction`, which chooses
+	 * the gadget by `SkillGadgetNearestTo` and has it fire by `FireSkillGadgetAtTrapEnemy` once the acting row has
+	 * finished. SKILL GADGETS ONLY (J2): War's gadgets do not fire, by the no-War mandate.
+	 *
+	 * The wearer's standing skill gadget nearest `Place` along the floor, within `RadiusCm` of it, or at any distance
+	 * for a radius of nought (J1, J5): one able to act whose slot is still converted, as a gadget that could not cast is
+	 * no active gadget; the older of two at one distance (the lower `SpawnOrder`). Null for none.
+	 */
+	static ACataclysmMinion* SkillGadgetNearestTo(const AActor* Player, const FVector& Place, float RadiusCm);
+
+	/**
+	 * This skill gadget fires once, now, at `Enemy` (J2, J3): it casts its player's skill by the path its clock casts by,
+	 * `CastPlayersSkillFromHere`, aimed at `Enemy` whatever the skill's reach, free, priced and announced as its clock's
+	 * cast (its gadget rows, its `deployable_hit`, its kills), with `ShotDamageMultiplier` a "more" on the whole of that
+	 * one cast (J6). ITS CLOCK IS LEFT AS IT WAS: `bSkillGadgetHasCast` and `LastSkillGadgetCastAtAgeSeconds` are not
+	 * touched. Nothing for an enemy gone or dead, or a gadget that is no skill gadget, dead or unable to act. Whether it
+	 * fired; each counted in `SkillGadgetTrapShotsMade` and in `SkillGadgetCastsMade`.
+	 */
+	bool FireSkillGadgetAtTrapEnemy(AActor* Enemy, float ShotDamageMultiplier);
+
+	/** How many shots it has fired at a trap's enemy. Read by tests. Each is counted in `SkillGadgetCastsMade` too. */
+	int32 SkillGadgetTrapShotsMade = 0;
+
+	/**
+	 * "When a trap triggers, all enemies within 4-6 meters are pulled toward the blast center" is `TrapPullRadiusStat`, a
+	 * flat figure in metres of the player's, asked with `Type.Trap` alone as layer 3's reads are (J7). Read in
+	 * `TriggerSkillTrap` BEFORE THE CAST, by `PullEnemiesToThisSkillTrap`, so the pulled are in the blast. No gameplay
+	 * attribute and no base.
+	 */
+	static const TCHAR* TrapPullRadiusStat;
+
+	/** How near the trap a pull brings each enemy, in centimetres: 1 m (J8), a number under the owner's delegation. */
+	static constexpr float SkillTrapPullsToCm = 100.0f;
+
+	/** `Player`'s pull radius in centimetres, or nought with no row. */
+	static float SkillTrapPullRadiusCmFor(const AActor* Player);
+
+	/**
+	 * Pull every living enemy within `SkillTrapPullRadiusCmFor(Player)` of this trap along the floor toward it, each to
+	 * `SkillTrapPullsToCm` from it (J8), by `UCataclysmSkillEffects::ApplyPullFrom` with `Player` as the instigator and
+	 * its rules unchanged: the instigator's health ceiling, a running skill's immunity, crowd control resistance, the
+	 * halving of a second displacement within 5 s, the swept move and the stagger. A BOSS IS PULLED, as every
+	 * displacement moves one. One already within the 1 m is not moved. How many were pulled.
+	 */
+	int32 PullEnemiesToThisSkillTrap(AActor* Player);
 
 	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in

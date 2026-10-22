@@ -4684,6 +4684,19 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bArmTrapsNearby = false;
 	bool bSetOffTrapsNearby = false;
 	bool bNearestTrapOnly = false;
+
+	/**
+	 * Set, this action MAKES THE WEARER'S NEAREST STANDING SKILL GADGET FIRE ONCE AT THE ENEMY THAT SET A TRAP OFF instead of
+	 * moving a pool: on `trap_triggered` and no other, the gadget casting its skill once, free, at that enemy, priced and
+	 * announced as its clock's cast, its clock unchanged. `Percent` is a "more" in per cent on that one shot, 100 for none;
+	 * `EventValue` the metres from the trap the gadget must stand within, nought for any distance; `EveryNth`, when above
+	 * one, the count of the wearer's triggered traps it fires on, with no window (`CountWindowSeconds` nought). Ruled
+	 * 2026-10-22 (traps layer 6, J1 to J10), for "When a trap is triggered near an active gadget, the gadget fires an
+	 * immediate bonus shot at the triggering enemy" and "For every 3 traps triggered, your nearest gadget fires a massive
+	 * overcharged shot dealing 200%-400% of its normal damage". SKILL GADGETS ONLY (J2). See
+	 * `UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction`.
+	 */
+	bool bGadgetFiresAtTrapEnemy = false;
 };
 
 /**

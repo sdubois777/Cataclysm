@@ -10359,3 +10359,144 @@ class TestTheTwoActionsOnTheWearersOtherTraps(GadgetRowsOnAMadeUpSheet):
                          r"UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction,", item)
         assert re.search(r"Action\.bNearestTrapOnly =\s*\(Action\.bArmTrapsNearby \|\| "
                          r"Action\.bSetOffTrapsNearby\) && Effect->ScaleMaxSteps == 1;", item)
+
+
+class TestAGadgetsShotAtATrapsEnemyAndATrapsPull(GadgetRowsOnAMadeUpSheet):
+    """Traps layer 6, ruled 2026-10-22 by the coordinating session (J1 to J10,
+    J2 changed: skill gadgets only), built ahead of its rows: the action
+    `gadget_fires_at_trap_enemy` on `trap_triggered`, its value a "more" in per
+    cent on the one shot, its Event Value the metres from the trap (nought any
+    distance) and its Every Nth the count of triggered traps; and the stat
+    `trap_pull_radius`, a flat radius in metres asked with `Type.Trap` alone.
+    Each of the three proposed rows is carried through under its real
+    sentence, read from the shipped sheet by the name `row_name` derives, and
+    refused by nothing; each wrong shape is refused by name."""
+
+    TAG = "Type.Trap"
+    #: Each proposed row: design id, the sentence's words, and the cells.
+    ROWS = [
+        ("P064", "When a trap is triggered near an active gadget, the gadget fires an "
+                 "immediate bonus shot at the triggering enemy",
+         {"Action": "gadget_fires_at_trap_enemy", "Action Event": "trap_triggered",
+          "Value Low": 100, "Required Tags": "Type.Trap", "Event Value": 10}),
+        ("P022", "For every 3 traps triggered, your nearest gadget fires a massive "
+                 "overcharged shot dealing 200%-400% of its normal damage",
+         {"Action": "gadget_fires_at_trap_enemy", "Action Event": "trap_triggered",
+          "Value Low": 200, "Value High": 400, "Required Tags": "Type.Trap",
+          "Every Nth": 3}),
+        ("P216", "When a trap triggers, all enemies within 4-6 meters are pulled "
+                 "toward the blast center",
+         {"Stat": "trap_pull_radius", "Value Kind": "flat", "Value Low": 4,
+          "Value High": 6, "Required Tags": "Type.Trap"}),
+    ]
+
+    def validation(self, rows):
+        """Told that both tags the sentences carry are tags the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Type.Trap", "Type.Deployable"})
+
+    def row(self, design):
+        return next((words, cells) for each, words, cells in self.ROWS if each == design)
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """The name each row is written under is `row_name` of its words, and
+        the shipped sheet holds exactly those words under that name."""
+        for _, words, _ in self.ROWS:
+            assert shipped_positive_sentence(gen.row_name("Positive", words[:48])) == words
+
+    def test_each_row_is_carried_through_cell_by_cell_and_is_not_refused(self, tmp_path):
+        for design, words, cells in self.ROWS:
+            out = self.out(tmp_path, words, [cells])
+            high = float(cells.get("Value High", cells["Value Low"]))
+            assert [(row["Stat"], row["ValueKind"], row["Action"], row["ActionEvent"],
+                     row["ValueLow"], row["ValueHigh"], row["RequiredTags"],
+                     row["FractionOf"], row["TriggerCooldown"], row["EventValue"],
+                     row["EveryNth"], row["StackSeconds"]) for row in out] == [
+                (cells.get("Stat", ""), cells.get("Value Kind", ""), cells.get("Action", ""),
+                 cells.get("Action Event", ""), float(cells["Value Low"]), high, "Type.Trap",
+                 "", 0.0, float(cells.get("Event Value", 0)), cells.get("Every Nth", 0),
+                 0.0)], design
+            assert self.validation(out) == [], design
+            assert gen.refuse_a_trap_pull_row_the_game_cannot_read(
+                "EnchantmentEffects", out) == [], design
+
+    def test_the_names_are_the_engines_and_the_action_is_no_pool_and_takes_no_cooldown(self):
+        """Read out of the C++ that defines them. THE CONTROL: a pool, an
+        action that takes a cooldown and a made-up stat answer the other way."""
+        import re
+        engine = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAbilitySystemComponent.cpp").read_text(encoding="utf-8")
+        defined = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Action)\s*=\s*TEXT\("([^"]+)"\)', engine))
+        assert defined["GadgetFiresAtTrapEnemyAction"] == gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION
+        action = gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION
+        assert action not in gen.POOL_ACTIONS
+        assert not gen.takes_a_trigger_cooldown(action)
+        assert set(gen.GADGET_FIRES_AT_TRAP_ENEMY_EVENTS) <= gen.action_events()
+        assert "health" in gen.POOL_ACTIONS
+        assert gen.takes_a_trigger_cooldown(gen.SLOW_FOR_SECONDS_ACTION)
+        assert self.names_in_the_engine()["TrapPullRadiusStat"] == gen.TRAP_PULL_RADIUS_STAT
+        assert gen.TRAP_PULL_RADIUS_STAT in gen.stats_with_no_attribute()
+        assert "trap_pull_radii" not in gen.stats_with_no_attribute()
+
+    def test_every_wrong_shape_of_the_action_is_refused_by_name(self, tmp_path):
+        """THE CONTROL is each row above, carried through."""
+        import re
+        for design, change, said in (
+                ("P064", {"Action Event": "kill"}, "on the event 'kill'"),
+                ("P064", {"Action Event": "deployable_hit"}, "on the event 'deployable_hit'"),
+                ("P064", {"Fraction Of": "maximum"}, "states Fraction Of 'maximum'"),
+                ("P064", {"Value Kind": "flat"}, "states Value Kind 'flat'"),
+                ("P064", {"Trigger Cooldown": 1}, "states a Trigger Cooldown"),
+                ("P064", {"Event Value": 60}, "up to 50"),
+                ("P064", {"Value Low": 0}, "The figure is above 0"),
+                ("P022", {"Every Nth": 1}, "N is a whole number from 2"),
+                ("P022", {"Every Nth": 2.5}, "N is a whole number from 2"),
+                ("P022", {"Stack Seconds": 3}, "The count has no window")):
+            words, cells = self.row(design)
+            with pytest.raises(gen.DataError, match=re.escape(said)):
+                self.out(tmp_path, words, [dict(cells, **change)])
+        # AND THE NAME MISSPELT.
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            words, cells = self.row("P064")
+            self.out(tmp_path, words, [dict(cells, Action="gadget_fire_at_trap_enemy")])
+
+    def test_every_shape_of_the_pull_the_game_would_read_as_nothing_is_refused(self, tmp_path):
+        """By the check of the finished sheet, not only by the function called
+        by hand. THE CONTROL is the right row and one requiring nothing,
+        refused by nothing."""
+        pull = {"Name": "X#1", "Stat": "trap_pull_radius", "ValueKind": "flat",
+                "ValueLow": 4.0, "ValueHigh": 6.0, "RequiredTags": "Type.Trap"}
+        refusals = gen.refuse_a_trap_pull_row_the_game_cannot_read
+        assert refusals("EnchantmentEffects", [pull]) == []
+        assert refusals("EnchantmentEffects", [dict(pull, RequiredTags="")]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Keyword.CC"}, "under the required tags 'Keyword.CC'"),
+                ({"Action": "strike_target"}, "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "above 0"),
+                ({"ValueHigh": 60.0}, "at most 50")):
+            problems = refusals("EnchantmentEffects", [dict(pull, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        assert refusals("EnchantmentEffects", [dict(pull, Stat="trap_cap_bonus")]) == []
+        words, cells = self.row("P216")
+        out = self.out(tmp_path, words, [dict(cells, **{"Value Kind": "increased"})])
+        assert any("trap_pull_radius" in problem and "'increased'" in problem
+                   for problem in self.validation(out)), self.validation(out)
+
+    def test_the_item_reads_the_action_and_its_count_with_no_window(self):
+        """The item marks the row by its constant, and gives a count of Every
+        Nth with a window of nought, read out of the C++ with comments taken
+        out by tracking `/* ... */` and `//` (R-c). THE CONTROL: the nearest
+        trap's own line is found the same way."""
+        import re
+        text = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                / "CataclysmItem.cpp").read_text(encoding="utf-8")
+        item = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+        assert re.search(r"Action\.bNearestTrapOnly =\s*\(Action\.bArmTrapsNearby", item)
+        assert re.search(r"Action\.bGadgetFiresAtTrapEnemy = Effect->Action\.Equals\(\s*"
+                         r"UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction,", item)
+        assert re.search(r"if \(Action\.bGadgetFiresAtTrapEnemy && Effect->EveryNth > 1\)\s*\{\s*"
+                         r"Action\.EveryNth = Effect->EveryNth;\s*"
+                         r"Action\.CountWindowSeconds = 0\.0f;", item)

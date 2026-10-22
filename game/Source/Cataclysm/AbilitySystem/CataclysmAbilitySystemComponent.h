@@ -4743,6 +4743,49 @@ public:
 	/** Arm or set off the player's traps as `Action` states for `Event`, naming `EventTarget`. How many. */
 	int32 ActOnSkillTrapsNearby(const FCataclysmPoolAction& Action, FName Event, const AActor* EventTarget);
 
+	/**
+	 * TRAPS LAYER 6, a nearby gadget fires at a trap's enemy. Ruled 2026-10-22 by the coordinating session (J1 to J10), J2
+	 * CHANGED: "SKILL GADGETS ONLY. "Every kind of gadget the player can have" without War is the skill gadget; a branch for
+	 * a machine gadget's ordinary blow would be code for War's Bolt Turret and Ballista alone". So War's gadgets do not
+	 * fire.
+	 *
+	 * ONE ACTION on `trap_triggered` (J10), for "When a trap is triggered near an active gadget, the gadget fires an
+	 * immediate bonus shot at the triggering enemy" (value 100, Event Value 10: the nearest skill gadget within 10 m of
+	 * the trap, J1) and "For every 3 traps triggered, your nearest gadget fires a massive overcharged shot dealing
+	 * 200%-400% of its normal damage" (value 200 to 400, a "more" on that one shot, J6; Event Value nought, any distance,
+	 * J5; Every Nth 3 with no window, one count per player, forced triggers included, emptied at death, J4). AT THE
+	 * TRIGGER'S TRIGGERING ENEMY (J3): none, dead or gone, no shot. NO TRIGGER COOLDOWN (J9).
+	 * `tools/generate_datatables.py` holds the same name as `GADGET_FIRES_AT_TRAP_ENEMY_ACTION`.
+	 */
+	static const TCHAR* GadgetFiresAtTrapEnemyAction;
+
+	/**
+	 * THE QUEUE OF SHOTS, as traps layer 5's queue of set-off traps (G-1 (a)): the row CHOOSES the gadget and records the
+	 * shot while it acts, at depth one, where every event the shot's blows raised would be dropped; the outermost call
+	 * fires it once it is at depth nought again (`DrainQueuedGadgetShotsAtTrapEnemies`), so the gadget's `deployable_hit`,
+	 * `hit_dealt`, `first_hit_dealt`, `kill` and `dot_applied` are answered as its clock's cast's are (J2: "priced and
+	 * announced as its clock's cast"). Each gadget and enemy compared by identity; the "more" as a multiplier.
+	 */
+	struct FQueuedGadgetShotAtTrapEnemy
+	{
+		TWeakObjectPtr<AActor> Gadget;
+		TWeakObjectPtr<AActor> Enemy;
+		float DamageMultiplier = 1.0f;
+	};
+	TArray<FQueuedGadgetShotAtTrapEnemy> QueuedGadgetShotsAtTrapEnemies;
+
+	/** Whether the queue of shots is being drained now, so a drain reached from inside a shot returns at once. */
+	bool bDrainingQueuedGadgetShotsAtTrapEnemies = false;
+
+	/**
+	 * Choose the gadget `Action` names for the trap whose `trap_triggered` is being raised (`SkillTrapRaisingItsTrigger`) and
+	 * record its shot at `EventTarget`. Whether one was recorded: not for no enemy, no gadget, or no trap raising its event.
+	 */
+	bool QueueGadgetShotAtTrapEnemy(const FCataclysmPoolAction& Action, const AActor* EventTarget);
+
+	/** Fire each recorded shot in the order recorded, at depth nought. Only the outermost call acts. */
+	void DrainQueuedGadgetShotsAtTrapEnemies();
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;

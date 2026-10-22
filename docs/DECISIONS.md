@@ -2,6 +2,481 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — A row can make the wearer's nearest skill gadget fire its skill once at the enemy that set a trap off, near the trap or on every third trap triggered at a row's multiple of its normal blow, and a trap can pull every enemy within a row's metres to 1 m of it before its cast, with no row authored
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`GadgetFiresAtTrapEnemyAction`, `FQueuedGadgetShotAtTrapEnemy`, `QueuedGadgetShotsAtTrapEnemies`,
+`bDrainingQueuedGadgetShotsAtTrapEnemies`, `QueueGadgetShotAtTrapEnemy` and `DrainQueuedGadgetShotsAtTrapEnemies`, new, one
+block in each after layer 5's; in `ActOnEvent` a second `ON_SCOPE_EXIT` declared before the queued deaths' and the
+action's branch after layer 5's; in `ClearWhatDeathEnds` the action's count emptied); `CataclysmMinion.h` and `.cpp`
+(`SkillGadgetNearestTo`, `FireSkillGadgetAtTrapEnemy`, `SkillGadgetTrapShotsMade`, `TrapPullRadiusStat`,
+`SkillTrapPullsToCm`, `SkillTrapPullRadiusCmFor` and `PullEnemiesToThisSkillTrap`, new, one block in each after layer 5's;
+`CastPlayersSkillFromHere` gains `AimedAt` and `ShotDamageMultiplier` and `StartPlayersSkillFromHere` gains
+`ShotDamageMultiplier`, all defaulted; `TriggerSkillTrap` pulls before its cast); `CataclysmStatPipeline.h`
+(`FCataclysmPoolAction::bGadgetFiresAtTrapEnemy`), all under `game/Source/Cataclysm/AbilitySystem/`;
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (the item reads the action and its count);
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one name at the end of `StatsWithNoAttribute`);
+`game/Source/Cataclysm/Tests/CataclysmSkillTrapGadgetShotAndPullTests.cpp` (new, seven tests in `Cataclysm.Traps.`);
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp` (one probe); `tools/generate_datatables.py` (the action
+and its checks, the stat and its refusal); `tools/tests/test_generate_datatables.py` (one class, at the end);
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one constant, one test, at the end). No data row,
+no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of
+`CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. Issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### SAID FIRST
+
+The three sentences, from `game/Data/EnchantmentsPositive.csv`, none with an effect row; each name is `row_name` of its
+words, checked against the shipped sheet by script and by `test_the_proposed_rows_are_the_shipped_sentences`:
+
+| Design id | Name | Sentence | Tags |
+| :-- | :-- | :-- | :-- |
+| P064 | `Positive_When_a_trap_is_triggered_near_an_active_gadget` | "When a trap is triggered near an active gadget, the gadget fires an immediate bonus shot at the triggering enemy" | Type.Trap, Type.Deployable |
+| P022 | `Positive_For_every_3_traps_triggered_your_nearest_gadget` | "For every 3 traps triggered, your nearest gadget fires a massive overcharged shot dealing 200%-400% of its normal damage" | Type.Trap, Type.Deployable |
+| P216 | `Positive_When_a_trap_triggers_all_enemies_within_4_6_met` | "When a trap triggers, all enemies within 4-6 meters are pulled toward the blast center" | Type.Trap, Keyword.CC |
+
+**J2 IS CHANGED FROM ITS RECOMMENDATION: SKILL GADGETS ONLY, AND NO MACHINE GADGET FIRES.** War's Bolt Turret
+(`War_Crossbow_Special`) and Ballista (`War_Spear_Special`) are the only other gadgets a player can have standing, and a
+branch for their ordinary blow would be code for War alone, which the no-War mandate rules out, as it did for #15's
+gadget half (J2 of 2026-10-19). So with either row worn, a War turret near a trap fires nothing; the nearest SKILL gadget
+does, and a War gadget is never chosen as the nearest.
+
+**FOUND AND CLOSED IN THIS LAYER: A SHOT CAST INSIDE THE ROW'S ACTION WOULD HAVE BEEN AT DEPTH ONE, SO EVERY EVENT ITS
+BLOWS RAISED WOULD HAVE BEEN DROPPED** (`ActOnEvent` returns at once while `PoolActionDepth > 0`, as layer 5's G-1 found
+for a forced trap). The ruling says the shot is "priced and announced as its clock's cast", and its `deployable_hit` is how
+a gadget's rows answer it, so the row RECORDS the shot (the gadget chosen, the enemy, the "more") and a drain of its own,
+run once the outermost call is at depth nought again, fires it. Every event the shot and the pull raise is listed under
+THE EVENTS THE SHOT AND THE PULL RAISE, each at depth nought; none is dropped.
+
+What a player would notice, once the rows are worn:
+
+- **A TRAP TRIGGERED WITHIN 10 M OF ONE OF THE PLAYER'S SKILL GADGETS MAKES THE NEAREST ONE CAST ITS SKILL ONCE AT THE
+  ENEMY THAT SET THE TRAP OFF** (P064), whatever its own reach, free, as its own cast in every way (its gadget rows, its
+  `deployable_hit`, its kills); its own clock is not moved. A trap set off with no enemy, or whose enemy is dead or gone,
+  fires nothing.
+- **EVERY THIRD TRAP THE PLAYER TRIGGERS, traps set off by "Traps trigger simultaneously" included, MAKES THE SKILL GADGET
+  NEAREST THAT THIRD TRAP, AT ANY DISTANCE, CAST ITS SKILL ONCE AT THAT TRAP'S ENEMY AT THE ROLLED 200%-400% OF ITS NORMAL
+  BLOW** (P022); the count starts again after each third, and at death. With no enemy or no gadget the third fires nothing
+  and the count still starts again.
+- **A TRIGGERED TRAP PULLS EVERY LIVING ENEMY WITHIN THE ROLLED 4-6 M TO 1 M OF ITSELF BEFORE IT CASTS** (P216), so its
+  cast strikes them there; the enemy that set it off is pulled too, a boss is pulled as every displacement moves one, and a
+  trap set off by a row pulls as well.
+- **NO TRIGGER COOLDOWN** on any of them (J9).
+- **NOT IN PLAY UNTIL A ROW IS WORN.** **Nothing here was compiled and no Unreal test was run by the session that wrote
+  it.** A second session wrote the code, the tests and this entry under the enchantment session's brief 64 and the
+  rulings below. NOT COMPILED AND NOT RUN.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+Proposed by the writing session; none is ruled:
+
+- with "When a trap is triggered near an active gadget" worn, a trap triggered within 10 m of a skill gadget makes the
+  nearest one cast its skill once at the enemy that set the trap off; War's turrets and ballistas never fire for it
+- "For every 3 traps triggered" counts traps set off by "Traps trigger simultaneously", so one chain of three fires the
+  overcharged shot
+- "all enemies within 4-6 meters are pulled toward the blast center" pulls every enemy in reach to 1 m of the trap before
+  it fires, a boss included
+
+### WHAT THE OWNER SAID, AND WHO RULED
+
+The owner was not asked. The coordinating session's rulings of 2026-10-22 on brief 64, verbatim as relayed:
+
+> RULINGS, brief 64 (traps layer 6), 2026-10-22: (a) on J1 to J10, with one change to J1/J2.
+> J1 (a) the wearer's nearest standing gadget within 10 m of the trap (a number under the owner's delegation), one gadget.
+> J2 (a), CHANGED: SKILL GADGETS ONLY. "Every kind of gadget the player can have" without War is the skill gadget; a
+> branch for a machine gadget's ordinary blow would be code for War's Bolt Turret and Ballista alone, which was removed
+> from #15 for that reason (J2 of 2026-10-19). So the extra firing is the skill gadget casting its skill once, free, at the
+> given enemy, priced and announced as its clock's cast, with its clock unchanged. The entry says War's gadgets do not fire
+> and why.
+> J3 (a) at that trigger's triggering enemy; none, dead or gone, no shot.
+> J4 (a) one count per player, forced triggers included, no window, reset after each third and at death.
+> J5 (a) nearest the trap that made the third trigger, any distance; no enemy or no gadget, nothing, and the count still
+> resets.
+> J6 (a) a "more" of 2-4 on that one shot.
+> J7 (a) the pull before the cast, as a stat read in TriggerSkillTrap.
+> J8 (a) every living enemy within the rolled metres pulled to 1 m (a number under the owner's delegation) by ApplyPullFrom
+> with its existing rules; forced traps pull too.
+> J9 (a) no trigger cooldowns. J10 (a) one action for P064 and P022, the stat for P216; say whether EveryNth with a window
+> of nought counts every third without end.
+> The added check (every event the shot and the pull raise, with its depth) is accepted.
+
+**THE OPTIONS NOT TAKEN**, as brief 64 put them: J1 (b) every gadget within the radius, (c) another radius; J2 (a)'s
+machine-gadget half (its ordinary blow), and J2 (b) a fixed shot of a figure the sentence does not state; J3 (b) the
+gadget's own target choice when there is no triggering enemy; J4 (b) a window; J5 (b) nearest the player; J6 (b) the share
+added as a flat; J7 (b) after the cast, as an action on `trap_triggered`; J8 (b) a fixed pull distance; J9 (b) a cooldown;
+J10 (b) one action per sentence. T1-T19 of 2026-10-19, L1-L6, M1-M6, R1-R3, brief 60c's ruling, L-A, L-B, Z1, F1-F12 and
+H1-H11 stand, quoted in the entries below.
+
+### THE RULINGS, AND WHERE EACH IS IN THE CODE
+
+Line numbers are of this commit's working tree, on development `a58389c7c`.
+
+| | Ruling, as quoted above | Where it is |
+| :-- | :-- | :-- |
+| J1 (a) | "the wearer's nearest standing gadget within 10 m of the trap (a number under the owner's delegation), one gadget." | `ACataclysmMinion::SkillGadgetNearestTo` (`CataclysmMinion.cpp` 2887): one gadget, the nearest along the floor, the older of two at one distance; the radius is the row's Event Value, 10, in centimetres (`QueueGadgetShotAtTrapEnemy`, `CataclysmAbilitySystemComponent.cpp` 8536), measured from the trap raising its event (`SkillTrapRaisingItsTrigger`). |
+| J2 (a), changed | "SKILL GADGETS ONLY. ... the extra firing is the skill gadget casting its skill once, free, at the given enemy, priced and announced as its clock's cast, with its clock unchanged." | `SkillGadgetNearestTo` takes only `IsSkillGadget()`; `FireSkillGadgetAtTrapEnemy` (2933) casts by `CastPlayersSkillFromHere`, the clock's own path (`Type.Deployable` added, cast by the gadget, so `ApplyHit`'s S5 block prices it and raises its `deployable_hit`), and touches neither `bSkillGadgetHasCast` nor `LastSkillGadgetCastAtAgeSeconds`; fired at depth nought by `DrainQueuedGadgetShotsAtTrapEnemies` (8563), so its events are answered. |
+| J3 (a) | "at that trigger's triggering enemy; none, dead or gone, no shot." | The event's target, `trap_triggered`'s enemy: refused when null or dead at recording (`QueueGadgetShotAtTrapEnemy`) and again when fired (`FireSkillGadgetAtTrapEnemy`); aimed at it whatever the skill's reach through `StartPlayersSkillFromHere`'s `AimedAt`. |
+| J4 (a) | "one count per player, forced triggers included, no window, reset after each third and at death." | `CountedToNth` (`CataclysmAbilitySystemComponent.cpp` 3127) with the row's Every Nth and a window of nought (`CataclysmItem.cpp` 1484), keyed by the row's `TriggerKey`, its key taken before the count so two copies count once (6835 to 6851); forced triggers are raised at depth nought by layer 5's drain and counted; emptied in `ClearWhatDeathEnds` (2819 to 2827). |
+| J5 (a) | "nearest the trap that made the third trigger, any distance; no enemy or no gadget, nothing, and the count still resets." | The count is asked before the gadget and the enemy (6845), so the third trigger starts it again whatever follows; Event Value nought is any distance in `SkillGadgetNearestTo`. |
+| J6 (a) | "a "more" of 2-4 on that one shot." | The row's per cent over 100 (`QueueGadgetShotAtTrapEnemy`), carried to `UCataclysmTriggeredSkill::Trigger` as the free start's damage share (`StartPlayersSkillFromHere`, `CataclysmMinion.cpp` 2344), which `UCataclysmSkillTemplate` writes into `LastNextUseMoreMultiplier`: the per-use "more" every hit, projectile, rack throw and ground of the use reads, multiplying the whole blow after its rows (`ApplyHit`'s `DamageMultiplierSpent`), and not its damage over time. |
+| J7 (a) | "the pull before the cast, as a stat read in TriggerSkillTrap." | `trap_pull_radius`, `ACataclysmMinion::TrapPullRadiusStat`, read by `SkillTrapPullRadiusCmFor` (2951) with `Type.Trap` alone, in `TriggerSkillTrap` (2543) after its refusal of a skill that cannot be cast (T8) and before the cast's place, aim and start. |
+| J8 (a) | "every living enemy within the rolled metres pulled to 1 m (a number under the owner's delegation) by ApplyPullFrom with its existing rules; forced traps pull too." | `PullEnemiesToThisSkillTrap` (2957): every living enemy within the radius by the trap's own measure along the floor (`HostilesWithin`), each by `UCataclysmSkillEffects::ApplyPullFrom(Player, Each, the trap's place, gap less 1 m)`; `SkillTrapPullsToCm` 100. Every trigger runs it, a forced one included. |
+| J9 (a) | "no trigger cooldowns." | The branch asks no `TriggerReady`; the generator refuses a Trigger Cooldown (`takes_a_trigger_cooldown` does not list the action). |
+| J10 (a) | "one action for P064 and P022, the stat for P216; say whether EveryNth with a window of nought counts every third without end." | `gadget_fires_at_trap_enemy` (`tools/generate_datatables.py` 12382) and `trap_pull_radius` (12429). **YES**: `CountedToNth` removes an event only when `CountWindowSeconds > 0`, so with nought it keeps every event, acts on the Nth and empties itself (`Times.Reset()`), every third without end. |
+
+### WHAT WAS READ FIRST, AND WHERE THE BRIEF WAS RIGHT OR WRONG
+
+On development `a58389c7c`, each found where it is defined.
+
+1. **RIGHT.** `TriggerSkillTrap` (`CataclysmMinion.cpp` 2518 before this layer) starts the cast by
+   `StartPlayersSkillFromHere`, then raises `trap_triggered`, then rolls to rearm or is used up. An instant blow lands
+   inside the start (layer 5's tests read it straight after a step), so a row on `trap_triggered` acts after it; hence
+   J7's stat in place of an action.
+2. **RIGHT.** `ApplyPullFrom(Instigator, Target, From, DistanceCm)` (`CataclysmSkillEffects.h` 3019, `.cpp` 3791) moves
+   through the one body every displacement uses, `CataclysmDisplace` (`.cpp` 3389), whose rules are: the instigator's
+   health ceiling (`CrowdControlRefusedByHealthCeiling`, "You cannot apply CC effects to enemies above 50% HP"); a running
+   skill's immunity (`IsImmuneTo(Target, "Displacement")`); crowd control resistance shortening the move, 100 stopping it;
+   the halving of each displacement within 5 s (`TakeNextDisplacementShare`); a swept move; and, landed, a stagger and the
+   instigator's `crowd_control`. **NO BOSS RULE IS IN THE CODE**, and section VI of `docs/Cataclysm_GDD_v2.md` says why:
+   "There is no damage threshold, no immunity flag and no boss exemption". A boss is pulled.
+3. **RIGHT, WITH TWO FINDINGS.** `FCataclysmPoolAction::EveryNth` (`CataclysmStatPipeline.h` 4182) and
+   `CountWindowSeconds` (4631) are read by `CountedToNth` (`CataclysmAbilitySystemComponent.cpp` 3127, then 3118), and a
+   window of nought counts every third without end (J10's answer, above). The findings: the item gives a count only to
+   the nearby actions (`CataclysmItem.cpp` 1602), so this action's own read was added; and `CountedToNth`'s times,
+   `EventCountTimes`, are NOT emptied at death (only the every-Nth kinds' `NthCounts` are, 2818), so J4's reset at death is
+   this action's keys removed there, the nearby actions' counts left as they were.
+4. **ANSWERED.** A player can have standing two kinds of gadget on development: the SKILL GADGET of the five "converted
+   into a deployable gadget" rows (authored), and War's machine gadgets, the Bolt Turret and the Ballista
+   (`War_Crossbow_Special`, `War_Spear_Special`; the Spike Trap is a trap). Before this layer nothing fired either once at
+   a target it was given: `FireEveryGadgetAtTheDeathOf` (#15) fires each skill gadget at the target its own clock would
+   choose; a machine's blow `AttackTarget(Target)` strikes a given target, and is War's alone (J2). So
+   `CastPlayersSkillFromHere` was widened with `AimedAt`, as `StartPlayersSkillFromHere` was widened for the trap (M5).
+5. **RIGHT.** Layer 5's drain calls `TriggerSkillTrap` at depth nought (G-1 (a)), so a forced trap's `trap_triggered` is
+   answered: it is counted (J4) and it pulls (J8).
+
+**What the action and the stat stand on**: `SkillTrapRaisingItsTrigger` (layer 3), the trap whose event is raised;
+`UCataclysmCommand::ThingsCommandedBy` and `IsSkillGadget`; `CastPlayersSkillFromHere` and `StartPlayersSkillFromHere`;
+the free start's damage share (`UCataclysmTriggeredSkill::Trigger`, `FreeRepeatDamageShare`); `CountedToNth`; layer 5's
+queue as the pattern for the shot's; `SkillTrapFigureOf` (layer 3) for the stat; `HostilesWithin` and `ApplyPullFrom`
+for the pull. **The radius column**: Event Value, which the item already copies into every action
+(`FCataclysmPoolAction::EventValue`, `CataclysmItem.cpp` 1352) and which `EventThresholdCrossed` reads only for
+`health_falls_below`, so it means nothing else on `trap_triggered`. **What else they let a row do**: fire the nearest skill
+gadget at a trap's enemy at any "more" up to the generator's bound and any radius up to 50 m, every trigger or every Nth;
+pull to 1 m from any radius up to 50 m.
+
+**THE DRY RUN OF EACH ROW THROUGH THE WHOLE GENERATOR** is under THE ROWS THE ENCHANTMENT SESSION IS TO WRITE.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE RADIUS IS THE ROW'S EVENT VALUE, IN METRES, NOUGHT OR EMPTY FOR ANY DISTANCE**, a column an existing row uses
+  (`health_falls_below`'s threshold) and the item already reads into every action, as J10 asked. The options not taken:
+  Condition Value, which belongs to a condition and is read into one; Scale Max Steps, layer 5's count; a constant in code.
+- **THE COUNT IS `CountedToNth`, THE NEARBY ACTIONS' COUNT, WITH A WINDOW OF NOUGHT**, and the death's reset is this
+  action's keys alone. The options not taken: an every-Nth kind of `NthCounts` (it is emptied at death already, but is
+  built for three named actions, each with its own percent-due readers); emptying every `EventCountTimes` entry at death,
+  which would change the nearby actions' "in quick succession" counts.
+- **THE KEY IS TAKEN BEFORE THE COUNT**, so two copies of the row count one trap once. The nearby actions take it after,
+  so a second copy counts again; theirs is left as it is. The option not taken: their order.
+- **"AN ACTIVE GADGET" IS A SKILL GADGET STANDING, ABLE TO ACT AND OF A SLOT STILL CONVERTED**, as the gadget that could
+  cast nothing is passed over, and the nearest of the rest is chosen, as layer 5's set-off passes over a trap that cannot
+  act. The option not taken: the nearest standing gadget, firing nothing when it cannot.
+- **THE GADGET IS CHOSEN WHEN THE ROW ACTS, AND FIRES WHEN THE DRAIN REACHES IT**; a gadget gone by then fires nothing and
+  no other is chosen in its place, as layer 5's recorded trap is skipped. The option not taken: choose at the drain, when
+  the trap may be gone and its place unknown.
+- **A SELF BUFF SKILL GADGET'S SHOT IS ITS SELF BUFF**, granted as its clock's cast is (within 8 m of the gadget, S13), at
+  no enemy. The option not taken: refuse a self buff gadget, which the ruling's "casting its skill once" does not.
+- **THE PULL IS MADE BEFORE THE CAST'S PLACE AND AIM ARE READ**, so a Special, Support or Ultimate trap's cast "centered on
+  the triggering enemy" is centred where the pull left it, and a Heavy or basic trap fires at the nearest enemy after the
+  pull. The option not taken: read the place first, so the cast lands where the enemy stood before it was moved.
+- **AN ENEMY ALREADY WITHIN 1 M IS NOT MOVED**, since `ApplyPullFrom` reads a distance of nought as the whole way. The
+  option not taken: pull it onto the trap.
+- **A TRAP WHOSE CAST THEN FAILS TO START HAS STILL PULLED** (the pull comes first, T8's refusal before it); it is not used
+  up and pulls again when it next triggers. Reached only by a cast refused inside another activation. The option not
+  taken: pull after the start, which J7 rules out.
+
+### THE GENRE SOURCE
+
+Nothing was fetched, as the brief required. Layer 1's entry, below, carries the trap sources `trap_design_2026-10-19.md`
+fetched. SUMMARY: nothing fetched settles a gadget answering a trap, a count of traps, or a pull before a trap's blast;
+those are this game's own sentences, ruled above.
+
+### WHAT WAS BUILT
+
+- **The action in the engine**: `GadgetFiresAtTrapEnemyAction`, the branch in `ActOnEvent` (6835 to 6851),
+  `QueueGadgetShotAtTrapEnemy` and `DrainQueuedGadgetShotsAtTrapEnemies` (8529 to 8592, header 4746 to 4787), the drain
+  in an `ON_SCOPE_EXIT` of its own declared before the queued deaths' (6112 to 6118), so it runs last, after the depth is
+  back to nought; and the count's keys emptied in `ClearWhatDeathEnds` (2819 to 2827).
+- **The gadget's side**: `SkillGadgetNearestTo` and `FireSkillGadgetAtTrapEnemy` (`CataclysmMinion.cpp` 2880 to 2949,
+  header 1340 to 1367); `CastPlayersSkillFromHere(..., AimedAt, ShotDamageMultiplier)` and
+  `StartPlayersSkillFromHere(..., ShotDamageMultiplier)`, both defaulted to null and one, so every earlier caller is
+  unchanged (the trap's, the Tyrant's Minion's, the clock's and the death's).
+- **The pull**: `TrapPullRadiusStat`, `SkillTrapPullsToCm`, `SkillTrapPullRadiusCmFor` and `PullEnemiesToThisSkillTrap`
+  (2951 to 2988, header 1369 to 1390), called once in `TriggerSkillTrap` (2540 to 2543).
+- **The item**: `bGadgetFiresAtTrapEnemy` and, for a count above one, `EveryNth` with `CountWindowSeconds` nought
+  (`CataclysmItem.cpp` 1478 to 1488; `CataclysmStatPipeline.h` 4688 to 4699).
+- **The stat with no attribute**: `trap_pull_radius` at the end of `StatsWithNoAttribute`, with its probe
+  `ProbeTrapPullRadius` in `CataclysmStatExemptionTests.cpp`.
+- **The generator**: `GADGET_FIRES_AT_TRAP_ENEMY_ACTION`, `GADGET_FIRES_AT_TRAP_ENEMY_EVENTS`,
+  `MAX_GADGET_SHOT_AT_TRAP_ENEMY_PERCENT`, `MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES` and
+  `_check_gadget_fires_at_trap_enemy_action`; its dispatch (6173), the "Known" message (6202), no fraction written (7145),
+  its "more" (7451), its Every Nth (7870) and its Event Value (8128); `TRAP_PULL_RADIUS_STAT`,
+  `MAX_TRAP_PULL_RADIUS_METRES` and `refuse_a_trap_pull_row_the_game_cannot_read`, called by the whole sheet's check
+  (12960).
+
+### THE EVENTS THE SHOT AND THE PULL RAISE
+
+Read from the code, not measured. **NONE IS RAISED AT DEPTH ONE.**
+
+- **The shot**: `DrainQueuedGadgetShotsAtTrapEnemies` runs only at depth nought, and calls `FireSkillGadgetAtTrapEnemy`,
+  whose cast is the player's free start. On the player, for each blow of the gadget's cast on an enemy: `hit_dealt`,
+  `first_hit_dealt`, `deployable_hit` with the gadget's type tags (amount nought, as every skill gadget's), `dot_applied`
+  for an ailment it lays (The Gathering's and Searing Lash's burn), `crowd_control` for a pull, knockdown or stun of the
+  cast (The Gathering's), `critical_strike` for a critical, `striking_a_boss` on a boss, `kill` and, for an enemy dying
+  with the player's ailment, `afflicted_death`; and `skill_end` as the one-use grant ends. All at DEPTH NOUGHT, so answered.
+  Had the action cast in its own branch, every one would have been raised at depth one and dropped (`ActOnEvent`'s guard,
+  which keeps only `afflicted_death`); that is the finding said first, closed by the queue.
+- **The pull**: `crowd_control` on the player, once for each enemy moved (`CataclysmSkillEffectsNoteCrowdControl`), raised
+  inside `TriggerSkillTrap`, which runs only from a trap's step and from layer 5's drain, both at DEPTH NOUGHT. The stagger
+  it leaves raises nothing, and a creature wears nothing.
+- **The row itself** raises nothing: it records.
+
+### THE ROWS THE ENCHANTMENT SESSION IS TO WRITE
+
+**Three rows of the Enchantment Effects sheet, cell by cell**, the first row of each enchantment. Every cell not named is
+empty. The enchantments' own tags are not the rows'.
+
+| Id | Row | Stat | Value Kind | Value Low | Value High | Required Tags | Action | Action Event | Every Nth | Event Value |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| P064 | `#1` | | | 100 | 100 | `Type.Trap` | `gadget_fires_at_trap_enemy` | `trap_triggered` | | 10 |
+| P022 | `#1` | | | 200 | 400 | `Type.Trap` | `gadget_fires_at_trap_enemy` | `trap_triggered` | 3 | |
+| P216 | `#1` | `trap_pull_radius` | `flat` | 4 | 6 | `Type.Trap` | | | | |
+
+**EACH WAS DRY-RUN THROUGH THE WHOLE GENERATOR**, as the first row of a new kind must be: on a copy of the tree as it
+stood at this layer (`git archive` of `a58389c7c` with this layer's changed files written over it), the three rows were
+written into the copy's workbook with openpyxl by a script that DERIVES each name by the copy's `row_name` from the
+sentence the brief quotes, asserts the copy's `EnchantmentsPositive.csv` holds that name with those words once, and asserts
+none has a row yet; `tools/generate_datatables.py --workbook <copy> --output-dir <copy>/game/Data` accepted all three:
+"Wrote 29 CSVs". They came out as the table says, with the generator's own fills: Fraction Of empty; Trigger Cooldown 0;
+Event Value 10 and 0; Every Nth 0 and 3. `EnchantmentEffects.csv` differs from the same generator's output on an untouched
+control copy by exactly the three rows, 705 to 707, none removed, and the other 28 CSVs are byte for byte the same; the
+control's output is byte for byte the committed `EnchantmentEffects.csv`.
+
+**The whole Python suite was then run in that copy and in the control copy**: the control "11 failed, 6864 passed, 13
+skipped" (JUnit tests 6888, failures 11, errors 0, skipped 13), the copy with the rows "16 failed, 6859 passed, 13 skipped"
+(JUnit tests 6888, failures 16, errors 0). The control's eleven are the copy having no `.git`, and the rows' copy fails the
+same eleven. **The five only the rows' copy fails** are the bookkeeping these rows move:
+
+- `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded`: the asset rebuild,
+  which needs the editor.
+- `test_docs_readme_sheet_table_is_true.py::test_every_row_count_in_the_table_is_true`: "Enchantment Effects: 703, 706".
+- `test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: `CHECK_TABLE` in
+  `CataclysmDataTableTests.cpp`, "EnchantmentEffects.csv: 703, 706".
+- `test_enchantment_effects_match_the_row_text.py::test_the_coverage_is_what_it_is_measured_to_be`: "706 effect rows,
+  pinned at 703".
+- **`test_enchantment_effects_match_the_row_text.py::test_a_single_value_appears_in_its_words_outside_any_range`**:
+  "Positive_When_a_trap_is_triggered_near_an_active_gadget#1: 100 against 'When a trap is triggered near an active
+  gadget, the gadget fires an immediate bonus shot at the triggering enemy'". P064's "more" of 100 is stated by no number
+  of its words. It needs a word in `STATED_BY_WORD`, as layer 5's "all" is: `"gadget_fires_at_trap_enemy": {"shot":
+  100.0}` (the shot is the gadget's normal blow). **THE WORD LANDS WITH THE ROW AND NOT BEFORE**: written into the control
+  copy alone, `test_every_word_stated_value_is_still_needed` refused it, "no row needs 'shot' to state 100 on
+  gadget_fires_at_trap_enemy". P022's 200 to 400 and its 3, and P216's 4 to 6, are its words' own figures.
+
+**With the bookkeeping applied in that copy** (`AUTHORED_ROWS` 703 to 706 and `AUTHORED_ENCHANTMENTS` 566 to 569 in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, and the word above after `trigger_traps_nearby`'s;
+`docs/README.md`'s "| Enchantment Effects | 703 |" to 706; `CHECK_TABLE(FCataclysmEnchantmentEffectRow,
+"EnchantmentEffects.csv",    703)` to 706), those three files ran "49 passed". No row is a flag, so nothing joins
+`FLAG_STATS`.
+
+**THE BOOKKEEPING THE ENCHANTMENT SESSION DOES WITH THE ROWS**, measured above: the four counts in three files, the one
+`STATED_BY_WORD` word, and the asset rebuild.
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+- **The generator accepts one new action**, `gadget_fires_at_trap_enemy`, and refuses it: on any event but
+  `trap_triggered`; with a Fraction Of, a Value Kind or a Scale; with a Trigger Cooldown; with a value of nought or past
+  1,000; with an Event Value past 50 or below nought; with an Every Nth not a whole number from 2; with Stack Seconds beside
+  an Every Nth. It now accepts an Event Value on this action and on `health_falls_below` alone, and an Every Nth on it
+  beside the every-Nth and nearby actions.
+- **The generator accepts one new stat with no attribute**, `trap_pull_radius`, and refuses a row on it of any kind but
+  flat, under any tag but none or `Type.Trap`, with an action, or above 50 or at nought.
+- `CONSTANTS` in `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` gains the action's name, at its end.
+- **No merged test's assertion changes, by reading.** With no row of this layer worn no action has the flag and no player
+  the stat: nothing is recorded, the drain empties an empty queue, `PullEnemiesToThisSkillTrap` returns at once,
+  `ClearWhatDeathEnds` removes nothing, and the two widened functions' defaults make the calls they made before
+  (`DamageShare` 1).
+
+### Tests
+
+Seven Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmSkillTrapGadgetShotAndPullTests.cpp`, in layer
+1's group `Cataclysm.Traps.`, numbered on from layer 5's last (44). The rig is layer 5's: a possessed player character
+holding a Demonic Whip (Searing Lash, a 5 m cone at 45 degrees; The Gathering, a 14 m ring an Ultimate skill gadget casts
+from its own place, hauling what it strikes to the gadget) or a Demonic Dagger (Emberpierce, a 2.5 m cone striking one
+enemy), a weapon damage of 100, 10,000 health and 1,000 mana; creatures of the monsters' side of 1,500 health with no
+armour, evasion, block, resistance or crowd control resistance unless a case says otherwise; every body at least 1 m from
+every other; every stat and action written by hand as the item would build it. NO KEY IS PRESSED and NO GADGET IS
+STEPPED, so no gadget casts by its clock. The clock is moved by hand and a trap's step called directly; a trap that must
+be armed is stepped once before any enemy stands near it. Every test pins `Cataclysm.CritRoll` at 100 after the world is
+made. Helper types are `FGadgetShotPullWorld`, `FGadgetShotPullStat`, `FGadgetShotPullRig` and
+`FGadgetShotPullEventCount`, in the namespace `CataclysmGadgetShotAndPullTest`; no other file of the module declares them
+(searched). ONE ASSERTION COMPARES HEALTH LOST WITH HEALTH LOST, test 47's overcharged shot, and the Whip's 10% Slashing
+step to health (`UCataclysmDamageCalculation::SubtypeBonus`, step 9 of `Resolve`) multiplies both blows and cancels in the
+ratio; NO ASSERTION COMPARES HEALTH LOST WITH A FIGURE SENT. **Assertions are counted for a passing run, 112 in all.**
+
+45. `ATrapTriggeredWithinTenMetresOfAGadgetMakesItFireOnceAtTheTriggeringEnemyAsItsOwnHitItsClockUnchanged`, 17. Two
+    players with Whips, the Heavy trap flag and the Ultimate gadget flag: a trap 20 m north, its enemy 2.5 m east, a skill
+    gadget 6 m west of the trap. Both hold a stack grant on `deployable_hit` requiring `Type.Deployable`; the other also the
+    shot row at 100 within 10 m. In order: a world; set-up, the pin; set-up, both traps armed; set-up, the two enemies
+    (two); control, its trap triggered once; control, its gadget fired no shot; and cast nothing; control, the lash struck
+    its enemy; control, the trap's own blow answered no row requiring `Type.Deployable`; the row's trap triggered once; its
+    gadget fired one shot (J1); counted as one of its casts (J2); the shot struck the enemy on top of the lash (J3); the
+    gadget's `deployable_hit` answered the row, at depth nought (J2); its clock still counts as having cast; and its last
+    cast is still the one written before (the clock unchanged).
+46. `OnlyTheNearestGadgetWithinTenMetresFiresAndNoneTwelveMetresAwayOrForATrapWithNoTriggeringEnemy`, 13. Two players
+    with Whips and the shot row at 100 within 10 m: the near one with a trap and its enemy 2.5 m east, an Ultimate gadget
+    4 m west of the trap, a Support gadget 7 m south of it, and a second trap 8 m west of the first with no enemy within
+    10 m; the far one with a trap and its enemy and an Ultimate gadget 12 m from the trap. In order: a world; set-up, the
+    pin; set-up, the first traps armed; set-up, two enemies (two); control, the second trap went off with no triggering
+    enemy (T11); control, the gadget 4 m from it fired no shot (J3); the near trap triggered once; the nearest gadget fired
+    one shot; the Support gadget, also within 10 m, fired none (one gadget, J1); the far trap triggered once; its gadget
+    12 m away fired no shot (J1); and cast nothing.
+47. `EveryThirdTrapTriggeredFiresTheNearestGadgetAtTheRowsMultipleOfItsNormalBlowAndTheCountStartsAgain`, 19. One player
+    with a Whip and the shot row at 300, any distance, Every Nth 3: a skill gadget with a measure of 10,000 health 3 m
+    west of it, and four traps, each with its enemy 2.5 m east: 20 m and 30 m north of the gadget, 6 m east of it (its
+    enemy 8.5 m from the gadget, inside The Gathering's 14 m), and 20 m south. In order: a world; set-up, the pin;
+    set-up, all four traps armed; set-up, the measure; control, the gadget cast by its clock's own path; control, its
+    normal blow struck the measure; set-up, the four enemies (four); the first trap triggered; no shot; the second
+    triggered; no shot; the third triggered; one shot (J4, J5); the overcharged shot struck the measure for the row's
+    300% of the gadget's normal blow, within 0.1% (J6); the fourth triggered; still one shot (the count started again).
+48. `TheCountOfTrapsTriggeredTowardsAGadgetsShotIsEmptiedAtDeath`, 13. One player with a Whip and the shot row at 300, any
+    distance, Every Nth 3: a skill gadget and five traps on a line, 10 m apart, each with its enemy. In order: a world;
+    set-up, the pin; set-up, all five armed; set-up, five enemies (five); control, two triggered, no shot; then
+    `ClearWhatDeathEnds`; the third triggered; and fired no shot (J4: the death emptied the count); after the fourth,
+    none; the fifth, the third since the death, fired one shot.
+49. `ATrapPullsAnEnemyWithinTheRolledMetresToOneMetreBeforeItsCastSoTheCastStrikesItAndNoneBeyond`, 17. Two players with
+    Daggers and the Heavy trap flag: a trap with its enemy 2.8 m east (inside the 3 m that sets it off, outside
+    Emberpierce's 2.5 m) and a bystander 6.5 m north. The control holds nothing else; the other the pull at 5 m. In order:
+    a world; set-up, the pin; set-up, both armed; set-up, four creatures (four); control, the trap triggered once; control,
+    its enemy still 2.8 m away; control, so the 2.5 m strike did not reach it; control, no crowd control; the row's trap
+    triggered once; its enemy pulled to 1 m (J8); and the cast struck it there, pulled before the cast (J7); the bystander
+    beyond 5 m not pulled; nor struck; one `crowd_control`.
+50. `ATrapPullsEveryEnemyWithinTheRolledMetresTheOneThatSetItOffAndABossAmongThem`, 14. One player with a Dagger, the Heavy
+    trap flag and the pull at 5 m: a trap with its enemy 2.8 m east, a Boss (by its rarity) 4 m west and a bystander 6.5 m
+    north. In order: a world; set-up, the pin; set-up, armed; set-up, three creatures (three); set-up, the Boss is a boss;
+    control, the Boss 4 m away; control, no crowd control; the trap triggered once; the enemy that set it off pulled to
+    1 m (J8); the Boss pulled to within 1.5 m (its body is twice the size, so the bodies may stop it short of 1 m); the
+    bystander not pulled; two `crowd_control`.
+51. `ATrapSetOffByARowPullsItsOwnEnemiesAndCountsTowardsTheThirdTrapsShot`, 19. Three players with Whips, the Heavy trap
+    flag, the Ultimate gadget flag and the shot row at 300, any distance, Every Nth 3: traps 20 m, 28 m and 36 m north, each
+    enemy 2.8 m east of its own trap, a skill gadget 44 m north (only the third enemy within its 14 m); only the first trap
+    armed. The lone player has the first trap alone and no chain row; the counting player layer 5's "Traps trigger
+    simultaneously" at 10 m; the pulling player that and the pull at 5 m. In order: a world; set-up, the pin; set-up, the
+    enemies (seven); set-up, the first traps armed; control, the lone trap triggered once; control, no shot; the counting
+    player's three traps triggered, two set off by the row; the third, a forced trap, fired the gadget once (J4); with no
+    pull row its second trap's enemy still 2.8 m from it; the pulling player's three triggered; the gadget fired once; its
+    first trap pulled its enemy to 1 m; its second, set off by the row, pulled its own enemy to 1 m (J8).
+
+**Every earlier trap test is unchanged**, and expected to pass unchanged: layer 1's ten, layer 2's eight, layer 3's eight,
+layer 3b's four, layer 4's six and layer 5's nine. None holds a row of this layer, and with none worn nothing here acts
+(CHANGES TO WHAT A CHECK ACCEPTS). `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains the probe of
+`trap_pull_radius`: three assertions, a world, the control's nought and the reader's 500 cm at a flat 5.
+
+Python, in `tools/tests/test_generate_datatables.py`, on made-up sheets: `TestAGadgetsShotAtATrapsEnemyAndATrapsPull`, six
+(the three names are `row_name` of their shipped words; each row carried through cell by cell under its real sentence
+and passing the whole sheet's validation; the names are the engine's, the action is no pool and takes no trigger
+cooldown, the stat is one with no attribute, with a pool, the slow and a made-up stat as the controls; ten wrong shapes of
+the action refused by name and a misspelt name; five wrong shapes of the stat refused and two right ones not, by the
+function and by the whole sheet's check; the item's two reads, read from the code with comments taken out, layer 5's line
+the control). In `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`:
+`test_a_gadgets_shot_at_a_traps_enemy_is_recorded_and_fired_at_depth_nought_and_the_pull_comes_first`, read from the code
+with comments taken out by tracking `/* ... */` and `//` (R-c): the action counts then records, the drain of its own is
+declared before the queued deaths' and fires each shot at its "more" only at depth nought, the shot casts by the clock's
+own path aimed at the enemy, and the pull comes before the trap's cast starts; its control layer 5's drain, as it was.
+
+**Not tested:** a real row worn (the enchantment session's); the item's building of the three rows; P022 at the ends of
+its roll (200 and 400) and the pull at 4 m and 6 m; P064 and P022 worn together; two copies of a row counting one trap
+once; a gadget that cannot act, or whose slot is no longer converted, passed over for the next nearest; a gadget or an
+enemy gone between the row and the drain; a self buff gadget's shot; a Projectile gadget's late shot at the "more" (by
+reading, the shot carries it in `SpentMoreMultiplier`); the shot's kill and its `hit_dealt` answered (only
+`deployable_hit` is asserted); the pull halved by an earlier displacement, refused by crowd control resistance, by a
+running skill's immunity or by the player's health ceiling; a Special, Support or Ultimate trap's cast centred where the
+pull left its enemy; a War gadget passed over (no War); anything drawn; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as LF,
+as `prove_cpp_guard` reads it), each new text counted absent before the break and once after it, and each break keeps
+the file's round, curly and square brackets paired: `CataclysmAbilitySystemComponent.cpp` 3300/3300, 1075/1075, 40/40
+before; after TR-XXV 3301/3301, 1076/1076 (the break adds a pair of each); after TR-XXVI and TR-XXVIII 3299/3299.
+`CataclysmMinion.cpp` 1165/1165, 311/311, 18/18 before and after TR-XXVII. Each compiles alone by reading: TR-XXV wraps the
+call in a block holding a `TGuardValue<int32>` of this class's own protected `PoolActionDepth`, as layer 5's TR-XXI did;
+TR-XXVI drops a call from a condition; TR-XXVII moves one call of a member function four statements later in the same
+function; TR-XXVIII writes a float literal where a float expression stood. The prefix is `Cataclysm.Traps.`, with its
+trailing dot: layer 1's ten, layer 2's eight, layer 3's eight, layer 3b's four, layer 4's six, layer 5's nine and these
+seven, fifty-two.
+
+**The events the tests' actors raise, listed before counting.** On a player: `trap_placed` at each placing;
+`trap_triggered` at each trigger, a forced one's by its own trigger at depth nought; for every trap's lash or Emberpierce,
+`hit_dealt`, `first_hit_dealt`, `deployable_hit` with the trap's tags less `Type.Deployable`, the burn's `dot_applied` and
+`skill_end`; for every cast of The Gathering by a gadget (test 47's normal blow and every shot), `hit_dealt`,
+`first_hit_dealt`, `deployable_hit` with the gadget's tags, the burn's `dot_applied`, `crowd_control` for its pull and
+knockdown, and `skill_end`; for each enemy a trap pulls, `crowd_control`. All at depth nought. No creature dies in a
+passing run (test 47's and test 51's third enemies take a lash and one overcharged Gathering, 1,430 of 1,500, by
+reading). On a creature, nothing is worn. **WHAT HANGS ON AN EVENT:** test 45 the shot row on `trap_triggered` and the
+stack grant on `deployable_hit`; tests 46, 47 and 48 the shot row on `trap_triggered`; tests 49 and 50 nothing (the pull
+is a stat); test 51 the shot row and the chain row on `trap_triggered`. Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| TR-XXV, the shot fired at depth one, inside the acting row (J2) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier);` | `{ TGuardValue<int32> AtDepthOne(PoolActionDepth, 1); Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier); }` | `ATrapTriggeredWithinTenMetresOfAGadgetMakesItFireOnceAtTheTriggeringEnemyAsItsOwnHitItsClockUnchanged` | none |
+| TR-XXVI, every trap triggered counted as the Nth (J4) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `if (CountedToNth(Action) && QueueGadgetShotAtTrapEnemy(Action, EventTarget))` | `if (QueueGadgetShotAtTrapEnemy(Action, EventTarget))` | `EveryThirdTrapTriggeredFiresTheNearestGadgetAtTheRowsMultipleOfItsNormalBlowAndTheCountStartsAgain` | `TheCountOfTrapsTriggeredTowardsAGadgetsShotIsEmptiedAtDeath`, `ATrapSetOffByARowPullsItsOwnEnemiesAndCountsTowardsTheThirdTrapsShot` |
+| TR-XXVII, the pull made after the cast has started (J7) | `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` | `PullEnemiesToThisSkillTrap(Player);` (with its tab and line end, in `TriggerSkillTrap`), and `++SkillTrapTriggersMade;` (with its tab and line end) | nothing, and `++SkillTrapTriggersMade;` followed by `PullEnemiesToThisSkillTrap(Player);` on its own line | `ATrapPullsAnEnemyWithinTheRolledMetresToOneMetreBeforeItsCastSoTheCastStrikesItAndNoneBeyond` | none |
+| TR-XXVIII, the shot's "more" not passed on (J6) | `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` | `Queued.DamageMultiplier = FMath::Max(0.0f, Action.Percent) / 100.0f;` | `Queued.DamageMultiplier = 1.0f;` | `EveryThirdTrapTriggeredFiresTheNearestGadgetAtTheRowsMultipleOfItsNormalBlowAndTheCountStartsAgain` | none |
+
+TR-XXV and TR-XXVI are applied alone; TR-XXVII's two edits are one break.
+
+Failed assertions, by reading:
+
+- **TR-XXV, 1 in 1 test.** The shot still fires and is counted, but at depth one, so its `deployable_hit` is dropped. Test
+  45: "the shot is the gadget's hit: its deployable_hit answered the row" (0 stacks). Every other line of tests 45 to 51
+  reads a counter, a distance or a loss, which the depth does not change.
+- **TR-XXVI, 13 in 3 tests.** Every trigger fires the gadget. Test 47: the first shot's Gathering also strikes the third
+  trap's enemy, 8.5 m from the gadget, and hauls it to the gadget, out of the third trap's 3 m, so the third trap never
+  triggers: "after the first, no shot" (1), "after the second, no shot" (2), "the third trap triggered" (0), "after the
+  third, one shot" (2), "the overcharged shot struck the measure for the row's 300%" (six times the normal blow, two shots
+  at three times), "after the fourth, still one shot" (3). Test 48: "control: two traps triggered, no shot" (2), "and fired
+  no shot" (3), "after the fourth, still none" (4), "the fifth ... fired one shot" (5). Test 51: "control: one trigger, no
+  shot" (1); the counting player's and the pulling player's "fired the gadget once" (2 each: the first and second traps'
+  shots fire as the second trap's event ends, their Gathering hauls the third trap's enemy away, and the third trap goes
+  off with no enemy, T11, firing nothing). Tests 45 and 46 pass: their rows count nothing (Every Nth nought).
+- **TR-XXVII, 1 in 1 test.** The enemy is pulled after the instant cast. Test 49: "and the trap's cast struck it there:
+  pulled before the cast" (nought). Its "pulled to 1 m" and every line of tests 50 and 51 pass: the pull is still made,
+  and the Whip's lash reaches 2.8 m.
+- **TR-XXVIII, 1 in 1 test.** Every shot at its normal blow. Test 47: "the overcharged shot struck the measure for the
+  row's 300% of the gadget's normal blow" (once the normal blow). Test 51 reads only counters.
+
+**Outside the prefix**, the Python test
+`test_a_gadgets_shot_at_a_traps_enemy_is_recorded_and_fired_at_depth_nought_and_the_pull_comes_first` reads three of
+these lines as text and fails under TR-XXV, TR-XXVI and TR-XXVII; it is not part of the Unreal proof.
+
+**EARLIER PROOFS THIS LAYER'S TESTS MEET**, by reading. Layer 5's TR-XXI (a set-off trap at depth one): test 51's chain
+stops at the second trap, whose event is dropped: the counting and pulling players' "three traps triggered" (2: the
+broadcast precedes the drop) and "fired the gadget once" (0) fail, 4 more; its two distances pass. TR-XXII (the trap that
+began the chain not put in it): the first trap goes off again inside its chain, "three traps triggered" (4) fails for the
+counting and pulling players, 2 more; the third trigger is then the first trap's second, so the shot still fires once.
+TR-XXIV (a set-off trap with no triggering enemy): the third trap's trigger has no enemy, so "fired the gadget once" (0)
+fails for both, 2 more. TR-XXIII passes these tests.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading.
+
+**A test and no proof:** J1's 10 m and its one gadget (test 46); J3's no enemy (test 46); the clock unchanged (test 45);
+the count emptied at death (test 48); the pull to 1 m, beyond not pulled and a boss (tests 49 and 50); a forced trap pulls
+(test 51).
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-22 — Two actions on the player's other traps: the nearest or every unarmed skill trap within a row's metres of a trap that triggered or a gadget killed arms at once, and the nearest or every standing one within them, or every one at the player's death, is recorded and then set off as a whole trigger at its own triggering enemy once the acting row has finished, each trap once a chain, with no row authored
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (`ArmTrapsNearbyAction`,
