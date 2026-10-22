@@ -581,19 +581,21 @@ CATACLYSM_TEST(FCataclysmTrapRowArmingAndRadiusTest,
 }
 
 // ==========================================================================
-// 21. The slow: only the enemy that set the trap off (M3 (b))
+// 21. The slow: only the enemy that set the trap off, and only when the cast took a tenth of it (M3 (b), R1)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapRowSlowTest,
-	"Cataclysm.Traps.TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOffByItsStrengthForItsSeconds")
+	"Cataclysm.Traps.TheSlowRowSlowsOnlyTheEnemyThatSetTheTrapOffByItsStrengthForItsSecondsWhenTheCastTookATenth")
 {
 	using namespace CataclysmTrapRowTest;
 
-	// TWO PLAYERS 100 M APART, EACH WITH AN ULTIMATE TRAP 20 M NORTH, THE ENEMY THAT SETS IT OFF 2.5 M EAST OF IT AND A
-	// SECOND ENEMY 6 M WEST OF IT, OUTSIDE ITS 3 M AND INSIDE THE GATHERING'S 14 M AROUND THE FIRST. The control holds the
-	// Ultimate flag alone; the other also holds "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds" as the
-	// item builds it from its row (action `slow_for_seconds` on `trap_triggered`, requiring Type.Trap, the strength the
-	// value and the seconds Stack Seconds), rolled at 25 and 3.
+	// THREE PLAYERS 100 M APART, EACH WITH A HEAVY TRAP 20 M NORTH, THE ENEMY THAT SETS IT OFF 2.5 M EAST OF IT AND A
+	// SECOND 4 M EAST OF IT, OUTSIDE ITS 3 M AND INSIDE SEARING LASH'S 5 M CONE, SO THE ONE CAST STRIKES BOTH. The control
+	// holds the Heavy flag alone; the other two also hold "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds"
+	// as the item builds it from its row (action `slow_for_seconds` on `trap_triggered`, requiring Type.Trap, the strength
+	// the value and the seconds Stack Seconds), rolled at 25 and 3. The control's and the second player's creatures hold
+	// 1,500 health, so the lash's blow takes more than a tenth of it; the third player's 100,000, so it takes far less (the
+	// owner, 2026-10-21: "Follow the tenth rule").
 	FTrapRowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -610,64 +612,82 @@ CATACLYSM_TEST(FCataclysmTrapRowSlowTest,
 	{
 		return false;
 	}
+	constexpr float Frail = 1500.0f;
+	constexpr float Sturdy = 100000.0f;
 	const FVector SlowHome(100.0f * M, 0.0f, 0.0f);
+	const FVector GlancingHome(200.0f * M, 0.0f, 0.0f);
 	FTrapRowRig Plain(World, FVector::ZeroVector);
 	FTrapRowRig Slow(World, SlowHome);
-	if (!Plain.IsUsable(*this) || !Slow.IsUsable(*this))
+	FTrapRowRig Glancing(World, GlancingHome);
+	if (!Plain.IsUsable(*this) || !Slow.IsUsable(*this) || !Glancing.IsUsable(*this))
 	{
 		return false;
 	}
-	Plain.Holds({TrapRowSlotFlag(TEXT("Slot.Ultimate"))});
-	Slow.Holds({TrapRowSlotFlag(TEXT("Slot.Ultimate"))});
+	for (const FTrapRowRig* Each : {&Plain, &Slow, &Glancing})
+	{
+		Each->Holds({TrapRowSlotFlag(TEXT("Slot.Heavy"))});
+	}
 	FCataclysmPoolAction Slowing = TrapRowAction(TEXT("trap_triggered"), UCataclysmAbilitySystemComponent::SlowForSecondsAction);
 	Slowing.bSlowForSeconds = true;
 	Slowing.Percent = 25.0f;
 	Slowing.StackSeconds = 3.0f;
 	Slow.System->SetPoolActions({Slowing});
+	Glancing.System->SetPoolActions({Slowing});
 
 	const FVector North(0.0f, 20.0f * M, 0.0f);
-	const FVector East(2.5f * M, 0.0f, 0.0f);
-	const FVector West(-6.0f * M, 0.0f, 0.0f);
-	ACataclysmEnemyCharacter* PlainSetter = TrapRowEnemy(World, North + East);
-	ACataclysmEnemyCharacter* PlainOther = TrapRowEnemy(World, North + West);
-	ACataclysmEnemyCharacter* SlowSetter = TrapRowEnemy(World, SlowHome + North + East);
-	ACataclysmEnemyCharacter* SlowOther = TrapRowEnemy(World, SlowHome + North + West);
+	const FVector Near(2.5f * M, 0.0f, 0.0f);
+	const FVector Behind(4.0f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* PlainSetter = TrapRowEnemy(World, North + Near, Frail);
+	ACataclysmEnemyCharacter* PlainOther = TrapRowEnemy(World, North + Behind, Frail);
+	ACataclysmEnemyCharacter* SlowSetter = TrapRowEnemy(World, SlowHome + North + Near, Frail);
+	ACataclysmEnemyCharacter* SlowOther = TrapRowEnemy(World, SlowHome + North + Behind, Frail);
+	ACataclysmEnemyCharacter* GlancingSetter = TrapRowEnemy(World, GlancingHome + North + Near, Sturdy);
 	if (!TestNotNull(TEXT("set-up: the control's enemy that sets its trap off"), PlainSetter)
 		|| !TestNotNull(TEXT("set-up: the control's second enemy"), PlainOther)
-		|| !TestNotNull(TEXT("set-up: the other player's enemy that sets its trap off"), SlowSetter)
-		|| !TestNotNull(TEXT("set-up: the other player's second enemy"), SlowOther))
+		|| !TestNotNull(TEXT("set-up: the second player's enemy that sets its trap off"), SlowSetter)
+		|| !TestNotNull(TEXT("set-up: the second player's second enemy"), SlowOther)
+		|| !TestNotNull(TEXT("set-up: the third player's sturdy enemy"), GlancingSetter))
 	{
 		return false;
 	}
-	ACataclysmMinion* PlainTrap = TrapRowPlace(*this, Plain, ECataclysmAbilitySlot::Ultimate, North);
-	ACataclysmMinion* SlowTrap = TrapRowPlace(*this, Slow, ECataclysmAbilitySlot::Ultimate, SlowHome + North);
-	if (!PlainTrap || !SlowTrap)
+	ACataclysmMinion* PlainTrap = TrapRowPlace(*this, Plain, ECataclysmAbilitySlot::Heavy, North);
+	ACataclysmMinion* SlowTrap = TrapRowPlace(*this, Slow, ECataclysmAbilitySlot::Heavy, SlowHome + North);
+	ACataclysmMinion* GlancingTrap = TrapRowPlace(*this, Glancing, ECataclysmAbilitySlot::Heavy, GlancingHome + North);
+	if (!PlainTrap || !SlowTrap || !GlancingTrap)
 	{
 		return false;
 	}
 
-	// THE CONTROL, READ FIRST: THE CAST STRIKES BOTH AND LAYS NO SLOW OF ITS OWN.
+	// THE CONTROL, READ FIRST: THE CAST STRIKES BOTH, EACH FOR A TENTH OR MORE, AND LAYS NO SLOW OF ITS OWN.
 	TrapRowPass(World, 1.25f);
 	TrapRowStep(PlainTrap);
-	TestTrue(*FString::Printf(TEXT("set-up: the control's cast struck the enemy that set it off (%.2f) and the second "
-								   "(%.2f)"), TrapRowTakenFrom(PlainSetter), TrapRowTakenFrom(PlainOther)),
-		TrapRowTakenFrom(PlainSetter) > 0.0f && TrapRowTakenFrom(PlainOther) > 0.0f);
+	TestTrue(*FString::Printf(TEXT("set-up: the control's cast took a tenth or more of the enemy that set it off (%.2f) and "
+								   "of the second (%.2f)"), TrapRowTakenFrom(PlainSetter, Frail), TrapRowTakenFrom(PlainOther, Frail)),
+		TrapRowTakenFrom(PlainSetter, Frail) >= Frail / 10.0f && TrapRowTakenFrom(PlainOther, Frail) >= Frail / 10.0f);
 	TestFalse(TEXT("control: the cast itself cripples nothing: not the enemy that set it off"),
 		TrapRowCarries(PlainSetter, Cripple));
 	TestFalse(TEXT("control: nor the second"), TrapRowCarries(PlainOther, Cripple));
 
-	// THE ROW.
+	// THE ROW, ON A CAST THAT TOOK A TENTH.
 	TrapRowStep(SlowTrap);
-	TestTrue(*FString::Printf(TEXT("set-up: this cast struck the enemy that set it off (%.2f) and the second (%.2f)"),
-							  TrapRowTakenFrom(SlowSetter), TrapRowTakenFrom(SlowOther)),
-		TrapRowTakenFrom(SlowSetter) > 0.0f && TrapRowTakenFrom(SlowOther) > 0.0f);
-	TestTrue(TEXT("the enemy that set the trap off is slowed (M3 (b))"), TrapRowCarries(SlowSetter, Cripple));
+	TestTrue(*FString::Printf(TEXT("set-up: this cast took a tenth or more of the enemy that set it off (%.2f) and of the "
+								   "second (%.2f)"), TrapRowTakenFrom(SlowSetter, Frail), TrapRowTakenFrom(SlowOther, Frail)),
+		TrapRowTakenFrom(SlowSetter, Frail) >= Frail / 10.0f && TrapRowTakenFrom(SlowOther, Frail) >= Frail / 10.0f);
+	TestTrue(TEXT("the enemy that set the trap off, struck for a tenth, is slowed (M3 (b), R1)"),
+		TrapRowCarries(SlowSetter, Cripple));
 	TestEqual(TEXT("by the row's 25 per cent, below Cripple's own 30"),
 		UCataclysmSkillEffects::StatedStrengthOn(SlowSetter, Cripple), 25.0f, 0.01f);
 	TestEqual(TEXT("for the row's 3 seconds"), TrapRowSecondsLeftOn(SlowSetter, Cripple), 3.0f, 0.01f);
-	TestFalse(TEXT("and the second enemy, struck by the same cast, is not: \"triggered enemies\" is the one that set it "
-				   "off"),
+	TestFalse(TEXT("and the second enemy, struck for a tenth by the same cast, is not: \"triggered enemies\" is the one "
+				   "that set it off"),
 		TrapRowCarries(SlowOther, Cripple));
+
+	// AND ON A CAST THAT TOOK LESS THAN A TENTH: NO SLOW (the owner, 2026-10-21).
+	TrapRowStep(GlancingTrap);
+	TestTrue(*FString::Printf(TEXT("set-up: the third cast struck its enemy for less than a tenth: %.2f of 100,000"),
+							  TrapRowTakenFrom(GlancingSetter, Sturdy)),
+		TrapRowTakenFrom(GlancingSetter, Sturdy) > 0.0f && TrapRowTakenFrom(GlancingSetter, Sturdy) < Sturdy / 10.0f);
+	TestFalse(TEXT("so the enemy that set it off is not slowed: the rule of a tenth"), TrapRowCarries(GlancingSetter, Cripple));
 	return true;
 }
 

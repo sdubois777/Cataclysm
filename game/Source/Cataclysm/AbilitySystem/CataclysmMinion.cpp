@@ -2542,6 +2542,10 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	// THE BASIC ATTACK AND THE HEAVY "FIRE ... AT THE NEAREST ENEMY" (ruled 2026-10-21): at the nearest living enemy now,
 	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
 	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SkillTrapSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
+	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
+	// the slow's rule of a tenth (the owner, 2026-10-21).
+	SkillTrapTriggeringEnemy = Enemy;
+	SkillTrapTookFromItsEnemy = 0.0f;
 	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
 	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, AimedAtEnemy,
 								   bFromThePlace ? &Place : nullptr))
@@ -2550,9 +2554,11 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy)
 	}
 	++SkillTrapTriggersMade;
 
-	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it.
+	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
+	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
 	const FGameplayTagContainer TrapTags = TypeTags;
-	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Enemy);
+	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
+					   /*bLanded=*/true, Enemy);
 
 	// USED UP: destroyed, with no explosion and no `gadget_destroyed`, because `HandleDeath` is not run.
 	Destroy();
@@ -2645,4 +2651,13 @@ int32 ACataclysmMinion::SkillTrapsMostFor(const AActor* Player)
 bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)
 {
 	return SkillTrapFigureOf(Player, TrapsDoNotExpireStat) > 0.0f;
+}
+
+void ACataclysmMinion::NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const
+{
+	// THE LARGEST SINGLE BLOW, since the rule of a tenth is asked of one blow and not of a sum.
+	if (Struck && Struck == SkillTrapTriggeringEnemy.Get())
+	{
+		SkillTrapTookFromItsEnemy = FMath::Max(SkillTrapTookFromItsEnemy, DealtToHealth);
+	}
 }

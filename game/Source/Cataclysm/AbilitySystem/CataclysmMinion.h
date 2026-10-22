@@ -1212,6 +1212,20 @@ public:
 	static bool SkillTrapsDoNotExpireFor(const AActor* Player);
 
 	/**
+	 * WHAT THIS TRAP'S CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth. The owner, 2026-10-21:
+	 * "Follow the tenth rule" — "The slow lands only if the trap's cast then hits that same enemy for at least a tenth of
+	 * its maximum health." `TriggerSkillTrap` names the enemy and clears the figure before the cast starts;
+	 * `UCataclysmSkillEffects::ApplyHit` keeps the largest blow's `DealtToHealth` on that enemy while the cast is the
+	 * trap's (`NoteSkillTrapBlowOn`); `trap_triggered` then carries it as its amount. A blow landing after the trap is
+	 * used up (a shot in flight) finds no trap and is not counted, so such a cast slows nobody.
+	 */
+	TWeakObjectPtr<AActor> SkillTrapTriggeringEnemy;
+	mutable float SkillTrapTookFromItsEnemy = 0.0f;
+
+	/** Keep `DealtToHealth` if `Struck` is the enemy that set this trap off and the blow is the largest on it so far. */
+	void NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const;
+
+	/**
 	 * The chaos pool a killed minion leaves, where its commander carries `minions_leave_chaos_pools`: its radius in
 	 * centimetres, how long it lasts in seconds, and the percent of the dead minion's own blow a sweep deals. Ruled
 	 * 2026-10-06 by the coordinating session under the owner's delegation; the row's sentence states none of them.

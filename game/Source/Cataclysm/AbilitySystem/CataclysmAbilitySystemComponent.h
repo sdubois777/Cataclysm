@@ -4563,8 +4563,9 @@ public:
 	 * `SlowForSecondsAction` SLOWS THE OTHER CHARACTER OF ITS EVENT BY THE VALUE IN PER CENT FOR `StackSeconds`: "Traps
 	 * apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`, whose other character is the enemy
 	 * that set the trap off and no other (M3 (b)). Cripple's tag at the stated strength, capped at Cripple's own cap, for
-	 * the stated seconds lengthened as a stated Cripple's are. A TRIGGER IS NOT A BLOW, so the rule of a tenth, which is
-	 * about what a blow may lay, is not asked. See `UCataclysmAilments::ApplySlowOfStrength`.
+	 * the stated seconds lengthened as a stated Cripple's are. THE RULE OF A TENTH IS ASKED (the owner, 2026-10-21: "Follow
+	 * the tenth rule") against the event's amount, the largest blow the trap's cast dealt that enemy
+	 * (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). See `UCataclysmAilments::ApplySlowOfStrength`.
 	 */
 	static const TCHAR* SlowForSecondsAction;
 
