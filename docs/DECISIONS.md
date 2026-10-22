@@ -100,6 +100,7 @@ What a player would notice, once the rows are worn:
 - an enemy killed by a buried weapon's leap does not explode, and no kill row requiring a tag answers a leap's kill
 - a rearmed trap judges a shot of an earlier trigger against its latest triggering enemy, for the increase on the first enemy, the share of its maximum HP and the damage over time
 - a slow a rearmed trap's earlier trigger left waiting can be laid by its next trigger's blow on that same enemy
+- with a Slashing weapon, a trap kill's explosion is a share of the blow before the 10% Slashing bonus, and the trap's damage over time a share of what it took after it
 
 ### WHAT THE OWNER SAID, AND WHO RULED
 
@@ -394,7 +395,8 @@ the item would build it from its row. NO KEY IS PRESSED. The clock is moved by h
 stepped by hand. Every test pins `Cataclysm.CritRoll` at 100 after the world is made. Helper types are
 `FTrapBlowHookWorld`, `FTrapBlowHookStat`, `FTrapBlowHookRig` and `FTrapBlowHookEventCount`, in the namespace
 `CataclysmTrapBlowHookTest`; no other file of the module declares them (searched). **Assertions are counted for a passing
-run, 126 in all**: 109 in the five of the first commit and 17 in test 35, added by the second (G2).
+run, 128 in all**: 109 in the five of the first commit, 17 in test 35, added by the second (G2), and one set-up line
+in each of tests 32 and 34, added by brief 62d.
 
 30. `TheRearmRowAtAHundredKeepsATriggeredTrapStandingToArmAgainAndTriggerTwiceAndAtNoughtItIsUsedUp`, 20. Two Whip players,
     the control with no rearm row, the other at 100. In order: a world; set-up, the pin; set-up, two enemies (two);
@@ -409,7 +411,7 @@ run, 126 in all**: 109 in the five of the first commit and 17 in test 35, added 
     and the second enemy; the enemy that set the trap off takes twice the control's, within 0.1%; the second enemy the
     same, within 0.1%; set-up, the shot's trap used up; set-up, its enemy untouched in flight; set-up, both shots landed;
     control, the control's late shot struck; a late shot on the enemy that set the trap off takes twice the control's.
-32. `TheHealthShareRowAddsItsShareOfTheTriggeringEnemysMaximumHealthToItsFirstBlowOncePerTrigger`, 17. The same four players,
+32. `TheHealthShareRowAddsItsShareOfTheTriggeringEnemysMaximumHealthToItsFirstBlowOncePerTrigger`, 18 (17 before brief 62d). The same four players,
     the row at 10: 5,000 of each 50,000 enemy's maximum. In order: a world; set-up, the pin; set-up, six enemies (six);
     control, the lash struck; the enemy that set the trap off takes the control's figure and 5,000, within 0.5; the second
     enemy the control's, within 0.5; set-up, the shot's enemy untouched in flight; set-up, both shots landed; control, the
@@ -427,7 +429,7 @@ run, 126 in all**: 109 in the five of the first commit and 17 in test 35, added 
     same cast; it is given none; set-up, the sturdy enemy struck for less than a tenth; it is given none (the rule of a
     tenth); set-up, the first of two casts laid one; set-up, the second cast struck the same enemy; still one: it lays over
     the first and does not stack.
-34. `AnEnemyKilledByATrapsBlowExplodesForItsShareWithinFourMetresAndNoKillOfAnotherKindExplodes`, 32. Seven players: a Whip
+34. `AnEnemyKilledByATrapsBlowExplodesForItsShareWithinFourMetresAndNoKillOfAnotherKindExplodes`, 33 (32 before brief 62d). Seven players: a Whip
     and a Wand measure (the flag alone and a 50,000 enemy, whose loss is the whole of the lash's and the shot's figure);
     the control (no row); the row at 50; the chain (the row, a brittle bystander of 10 health 3.5 m from the dead and a
     second 3 m beyond it); the own blow (the row, its doomed enemy killed by the player's own `ApplyHit`, no trap's); the
@@ -564,6 +566,64 @@ reaches: `SkillTrapRearmChanceFor`, `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrap
 `SkillTrapShareAsDamageOverTimeFor` above nought, and one `explode_victim_for_killing_blow` action on `kill`; the
 control reaches none of them (five lines). Five assertions on the cases, so on assets built before the rows it fails five
 times, and only there.
+
+### THE WINDOW'S STOP, AND THE TWO EXPECTED FIGURES (brief 62d)
+
+**The whole Unreal suite stopped with 2 of 4007 tests failed, as measured, at 75161c459** (the asset commit on
+`feat/traps-4-t-1`), each with one "Error: Expected" line and no other, verbatim:
+
+- test 34: "Expected 'the dead enemy explodes: its bystander 3.5 m away takes half the killing blow's own figure: 125.00
+  against 137.50' to be 137.500000, but it was 125.000000 and outside tolerance 0.275000."
+- test 32: "Expected 'the enemy that set the trap off takes a tenth of its 50,000 maximum on top: 5775.00 against
+  275.00' to be 5275.000000, but it was 5775.000000 and outside tolerance 0.500000."
+
+**FOUND (brief 62c, by reading): THE WHIP IS A SLASHING WEAPON, AND A SLASHING WEAPON'S BLOW TAKES 10% MORE TO HEALTH
+AFTER `ApplyHit` HANDS IT ON.** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` reads the attacker's equipped
+sub-type off the effect's causer, the player for a trap's cast (`UCataclysmWeaponSlotsComponent::SubTypeOf`, `Weapon_Whip`
+`Slashing` in `game/Data/ItemBases.csv`), and `UCataclysmDamageCalculation::Resolve`, step 9 ("Health takes the
+remainder", `CataclysmDamageCalculation.cpp`), multiplies what reaches health by `1 + SubtypeBonus / 100`, where
+`UCataclysmDamageCalculation::SubtypeBonus` is 10 (`CataclysmDamageCalculation.h` line 949). A Wand is `Magic`, whose
+bonus meets only an energy shield, so the Wand's shots showed none. The lash is sent at 250 (`FCataclysmIncomingHit::Damage`,
+which `KillingBlowDamage` records) and takes 275; with the share's flat 5,000 inside the blow it is sent at 5,250 and takes
+5,775. The tests had assumed that what a creature loses is what was sent.
+
+The coordinating session's rulings of 2026-10-22, verbatim:
+
+> R-i: F5 stays as built: the health-share flat is part of the blow and meets the Slashing step like the rest of it.
+> R-ii: F10 stays as built: "before mitigation" is the figure sent; record the P217/P056 difference as found, with the
+> play-check line verbatim.
+> R-iii: only the two expected figures change, each computed from UCataclysmDamageCalculation::SubtypeBonus read, not
+> typed, each message saying why; each test gains a set-up line asserting the Whip is Slashing via SubTypeOf. Every other
+> assertion and set-up unchanged; the entry records old -> new for both.
+
+**FOUND AND LEFT, AS R-ii RULES: P217 AND P056 READ THE BLOW ON EITHER SIDE OF THE SLASHING STEP.** The trap's damage over
+time is a share of `DealtToHealth`, after the 10%; the trap kill's explosion is a share of the blow as sent, before it. On
+the owner's play-check list, verbatim: "with a Slashing weapon, a trap kill's explosion is a share of the blow before the
+10% Slashing bonus, and the trap's damage over time a share of what it took after it".
+
+**OLD -> NEW, the two expected figures** (`CataclysmSkillTrapBlowHooksTests.cpp`; no game file changes):
+
+- Test 32, "the enemy that set the trap off takes a tenth of its 50,000 maximum on top": `PlainSetterTook + Bonus` ->
+  `PlainSetterTook + Bonus * (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)`, its message now saying the flat
+  is raised as the rest of the blow by the Slashing bonus to health: 5,275 -> 5,775 at the window's figures.
+- Test 34, "the dead enemy explodes: its bystander 3.5 m away takes half the killing blow's own figure": `Lash * 0.5f` ->
+  `LashAsSent * 0.5f`, with `LashAsSent = Lash / (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)`, its message
+  now saying the explosion is a share of the blow as sent, before the Slashing bonus the measure lost it with: 137.5 ->
+  125. The tolerance is unchanged.
+- **Each test gains one set-up line, read first**: both Whip players' (test 32: the lash control and row; test 34: the
+  lash measure and the row) `UCataclysmWeaponSlotsComponent::SubTypeOf(Player)` is "Slashing", as a blow's resolution reads
+  it; the test returns there if not, so the figures are never read against another sub-type. `SubTypeOf` is
+  `static FString SubTypeOf(const AActor* Actor)`, public; `SubtypeBonus` is a public `static constexpr float`, reached
+  through `CataclysmAbilitySystemComponent.h`, which includes `CataclysmDamageCalculation.h` and which the test file includes.
+- **Assertions, 128 in all**: test 32 18, test 34 33. Every other assertion and set-up is unchanged.
+
+**THE PROOFS RE-READ.** None of TR-XVI to TR-XX trips the changed or the new lines differently, by reading. The two new
+set-up lines read the weapon sub-type, which no break touches, and pass under every one. TR-XVI (the rearm) reaches neither
+test. TR-XVII still fails only test 32's late-shot line, which is unchanged; the changed lash line is a standing trap's
+blow and does not read the used-up record. TR-XVIII reaches neither. TR-XIX still fails only test 34's line on the
+bystander 5 m away; the changed line's bystander 3.5 m away is inside either radius, and its figure does not depend on the
+radius. TR-XX reaches neither. Layer 3b's TR-XIII still fails test 32's late-shot line and not the changed one. **Every
+count stands: TR-XVI 3 in 2 tests, TR-XVII 2 in 2, TR-XVIII 1 in 1, TR-XIX 1 in 1, TR-XX 3 in 1.**
 
 ### THE WINDOW'S RUN
 

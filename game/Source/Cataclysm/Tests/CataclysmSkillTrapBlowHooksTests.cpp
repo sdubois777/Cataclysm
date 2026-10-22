@@ -646,6 +646,12 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookHealthShareTest,
 	{
 		return false;
 	}
+	if (!TestTrue(TEXT("set-up: both Whip players' weapon sub-type is Slashing, as a blow's resolution reads it"),
+			UCataclysmWeaponSlotsComponent::SubTypeOf(LashPlain.Player).Equals(TEXT("Slashing"), ESearchCase::IgnoreCase)
+			&& UCataclysmWeaponSlotsComponent::SubTypeOf(LashRow.Player).Equals(TEXT("Slashing"), ESearchCase::IgnoreCase)))
+	{
+		return false;
+	}
 	const FTrapBlowHookStat HealthShare =
 		TrapBlowHookRow(ACataclysmMinion::TrapTriggeringEnemyMaxHealthDamageStat, ShareOfAMaximum);
 	LashPlain.Holds({TrapBlowHookHeavyFlag()});
@@ -690,9 +696,13 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookHealthShareTest,
 	const float PlainOtherTook = TrapBlowHookTakenFrom(LashPlainOther);
 	TestTrue(*FString::Printf(TEXT("control: the control's lash struck the enemy that set it off: %.2f"), PlainSetterTook),
 		PlainSetterTook > 0.0f);
-	TestEqual(*FString::Printf(TEXT("the enemy that set the trap off takes a tenth of its 50,000 maximum on top: %.2f "
-									"against %.2f"), TrapBlowHookTakenFrom(LashRowSetter), PlainSetterTook),
-		TrapBlowHookTakenFrom(LashRowSetter), PlainSetterTook + Bonus, 0.5f);
+	// THE FLAT IS PART OF THE BLOW (F5, R-i), AND A SLASHING WEAPON'S BLOW TAKES `SubtypeBonus` PER CENT MORE TO HEALTH
+	// (`UCataclysmDamageCalculation::Resolve`, step 9), so the 5,000 arrives raised by it, as the rest of the lash does.
+	TestEqual(*FString::Printf(TEXT("the enemy that set the trap off takes a tenth of its 50,000 maximum on top, raised as "
+									"the rest of the blow by the Slashing bonus to health: %.2f against %.2f"),
+							   TrapBlowHookTakenFrom(LashRowSetter), PlainSetterTook),
+		TrapBlowHookTakenFrom(LashRowSetter),
+		PlainSetterTook + Bonus * (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f), 0.5f);
 	TestEqual(*FString::Printf(TEXT("the second enemy the same cast strikes takes none: %.2f against %.2f"),
 							   TrapBlowHookTakenFrom(LashRowOther), PlainOtherTook),
 		TrapBlowHookTakenFrom(LashRowOther), PlainOtherTook, 0.5f);
@@ -908,6 +918,12 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookKillExplosionTest,
 	{
 		return false;
 	}
+	if (!TestTrue(TEXT("set-up: the Whip measure's and the row's weapon sub-type is Slashing, as a blow's resolution reads it"),
+			UCataclysmWeaponSlotsComponent::SubTypeOf(LashMeasure.Player).Equals(TEXT("Slashing"), ESearchCase::IgnoreCase)
+			&& UCataclysmWeaponSlotsComponent::SubTypeOf(Row.Player).Equals(TEXT("Slashing"), ESearchCase::IgnoreCase)))
+	{
+		return false;
+	}
 	for (const FTrapBlowHookRig* Each : {&LashMeasure, &ShotMeasure, &Plain, &Row, &Chain, &OwnBlow, &LateShot})
 	{
 		Each->Holds({TrapBlowHookHeavyFlag()});
@@ -970,9 +986,13 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookKillExplosionTest,
 	TestEqual(TEXT("control: with no row its bystander 3.5 m from the dead is untouched"),
 		TrapBlowHookTakenFrom(PlainInside), 0.0f, 0.001f);
 	TestTrue(TEXT("set-up: the row's lash killed its doomed enemy"), UCataclysmSkillEffects::IsDead(RowDoomed));
+	// THE EXPLOSION IS A SHARE OF THE BLOW AS SENT, BEFORE THE SLASHING BONUS (F10, R-ii), while the measure enemy lost the
+	// blow after it (`UCataclysmDamageCalculation::Resolve`, step 9), so the measure is divided by that bonus.
+	const float LashAsSent = Lash / (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f);
 	TestEqual(*FString::Printf(TEXT("the dead enemy explodes: its bystander 3.5 m away takes half the killing blow's own "
-									"figure: %.2f against %.2f"), TrapBlowHookTakenFrom(RowInside), Lash * 0.5f),
-		TrapBlowHookTakenFrom(RowInside), Lash * 0.5f, Lash * 0.001f);
+									"figure as sent, before the Slashing bonus the measure lost it with: %.2f against "
+									"%.2f"), TrapBlowHookTakenFrom(RowInside), LashAsSent * 0.5f),
+		TrapBlowHookTakenFrom(RowInside), LashAsSent * 0.5f, Lash * 0.001f);
 	TestEqual(TEXT("and one 5 m away, beyond the 4 m, takes nothing"), TrapBlowHookTakenFrom(RowOutside), 0.0f, 0.001f);
 
 	// A KILL BY THE EXPLOSION DOES NOT EXPLODE AGAIN (F11).
