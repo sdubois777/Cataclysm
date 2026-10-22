@@ -548,6 +548,23 @@ enemy; the damage over time on the enemy that set the trap off only, and laid ov
 share, its refusal of the player's own blow's kill and of the explosion's own kill; `trap_triggered` raised at every
 trigger.
 
+### THE ROWS, AUTHORED BY THE ENCHANTMENT SESSION
+
+**Five effect rows on five enchantments**, on the coordinating session's grant of the workbook for them on 2026-10-22,
+written into `docs/All_Things_Cataclysm.xlsx` with openpyxl and generated into `game/Data/EnchantmentEffects.csv`, cell
+for cell the rows this layer's second session dry-ran through the whole generator (the table above). The generator
+accepted all five, and the diff of `EnchantmentEffects.csv` is those five lines added and none removed. **697 rows over
+561 enchantments**, from 692 over 556, in `AUTHORED_ROWS` / `AUTHORED_ENCHANTMENTS`, in `CataclysmDataTableTests.cpp`'s
+`CHECK_TABLE` and in `docs/README.md`.
+
+**The real-row test**, `Cataclysm.Enchantments.TheWornTrapLayerFourRowsEachReachTheReadOrActionTheirSentenceNames`
+(`CataclysmEnchantmentEffectTests.cpp`, last). Six real players: a control wearing a benefit with no effect, and one
+wearing each of the five sentences, each with a drawback with no effect. For each it asks the read or worn action its row
+reaches: `SkillTrapRearmChanceFor`, `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and
+`SkillTrapShareAsDamageOverTimeFor` above nought, and one `explode_victim_for_killing_blow` action on `kill`; the
+control reaches none of them (five lines). Five assertions on the cases, so on assets built before the rows it fails five
+times, and only there.
+
 ### THE WINDOW'S RUN
 
 Not run. The enchantment session records its window here.
