@@ -265,7 +265,25 @@ None. No Python check, generator or validator is changed.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-22, window t67w, under the editor lock as `enchant-t67w`, at 8e469ec44 (this
+commit moved from ccf1bc6b4 onto development 195d154cc, #2477; the move kept its zero-context patch id, whole and outside
+this file, and its 3 removed lines). Every figure was registered with the coordinating session before the run, and every
+one is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 52 actions, 47 files compiled"; "4089 tests performed, 4089 succeeded,
+  0 failed" (4086 on development + this commit's 3); "Declared: 4089 tests in the tree at 8e469ec44; 4089 performed, gap 0".
+  40 tests skipped part of what they check, as the worktree has no Paragon art.
+- **Python of record:** "6904 passed, 8 skipped"; JUnit 6912 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **LK-I, the leap's delivery names no tags** (`CataclysmBuriedWeapon.cpp`, `Delivery.SkillTagsWithNoSkill =
+  &Buried->SkillTags;` to `= nullptr;`, anchor counted once): PROVED. With the break in, 3 tests performed, 3 failed, the
+  three registered; 7 failed assertions, 7 registered. Restored, 3 performed, 3 succeeded. The file's hash is the same
+  after.
+- **LK-II, a blow inside the leap's application takes the leap's tags** (`CataclysmSkillEffects.cpp`, the
+  `FSkillEffectsBlowNamingNoSkill` line given the fallback to `BlowNamingNoSkillBeingApplied.Tags`, anchor counted once):
+  PROVED. With the break in, 3 performed, 1 failed, `ATrapsBuriedWeaponLeapKillExplodesForItsShareAndTheExplosionsOwnKillDoesNot`;
+  1 failed assertion, 1 registered ("whose own death explodes nothing ... 25.000000"). Restored, 3 performed, 3 succeeded.
+  The file's hash is the same after.
 
 ---
 
