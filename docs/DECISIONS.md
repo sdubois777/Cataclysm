@@ -55,6 +55,7 @@ brief 68. Nothing was compiled and no Unreal test was run by the session that wr
 
 - a trap's rack axe that kills after the trap's use has ended now explodes its kill under traps layer 4's row
 - a leap's hit now answers hit rows requiring the throwing skill's tags
+- a skill gadget's or trap's shot landing after its use has ended now counts as that skill's blow for hit and kill rows, including the ranged cooldown refund
 
 ### WHO RULED
 
@@ -169,6 +170,12 @@ its copy on the record, as before, because a death can be announced later than t
   (`FCataclysmLastBlow`'s comment); (b) only when `FiringSkill.Get()` is null, which is the same as (a) for a creature's
   shot. For a blow that names its skill, (a) would change one thing more: a death announced after that skill is
   removed, from a blow that did not kill, would name the tags. Not taken either way.
+  **ACCEPTED by the coordinating session on 2026-10-23 (R1)**: "set the tags only when FiringSkill.IsStale(). N1's rule is
+  about a skill's own blows. Enemy shots fired with no skill object are not a skill's blows and must not gain tags." Those
+  shots are listed under SAID FIRST: the Brute's rock, the Corrupted Sentinel's bolt and mortar, the Gatekeeper's
+  soulfall, the Succubus's soulfire, and the Infernal Rain fireball. The play-check line for every late shot of a one-use
+  grant (a skill gadget's or a trap's) was ruled the same day (R2) and is in the play-check list above; the "not tested"
+  line R2 asked for, the ranged cooldown refund on a late rack axe's kill, was already in this entry's list below.
 - **THE HIT NOTICE NAMES THE DELIVERY'S POINTER, NOT A COPY.** The notice is read only while it is handed out, so no copy
   is needed, as no copy of the effect's tags is made for `EffectTags`. The option not taken: a copy, as the record keeps.
 - **NO SKILL NAME IS GIVEN.** `SkillName` stays None at both sites, as `KillingSkillName` does for a leap, because no skill
@@ -295,7 +302,28 @@ None. No Python check, generator or validator is changed.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-23, window t68w, under the editor lock as `enchant-t68w`, at d4914811a (this
+commit moved from 9b8ba9172 on 0c6f0c933 to 5437faca6 on 3f2017e90, then onto development 32aa7b010, #2480; each move kept
+its zero-context patch id, whole and outside this file, and its 24 removed lines). This was the commit's first compile.
+Every figure was registered with the coordinating session before the run, and every one is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 55 actions, 50 files compiled"; "4105 tests performed, 4105 succeeded,
+  0 failed" (4103 on development + this commit's 2); "Declared: 4105 tests in the tree at d4914811a; 4105 performed, gap
+  0". 40 tests skipped part of what they check. No set-up line failed, so the three set-up assumptions made by reading
+  (the trap's rack throws at its one enemy, the one-use grant reads gone after the last throw, one axe deals more than 10)
+  held.
+- **Python of record:** "6913 passed, 8 skipped"; JUnit 6921 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **NS-I, a late shot's delivery names no tags** (`CataclysmProjectile.cpp`, `HitOne`'s assignment to `= nullptr;`, anchor
+  counted once): PROVED. With the break in, 2 tests performed, 1 failed,
+  `ATrapsRackAxeLandingAfterItsUseHasEndedCarriesTheRacksTagsAndItsKillExplodes`; 2 failed assertions, 2 registered (the
+  hit notices naming the rack's tags, 0 against 30; the explosion, 0.00 against 7.00). Restored, 2 performed, 2
+  succeeded. The file's hash is the same after.
+- **NS-II, the hit notice names no tags for a blow naming no skill** (`CataclysmCombatEvents.cpp`, `Notice.SkillTags =
+  UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec);` to `Notice.SkillTags = nullptr;`, anchor counted
+  once): PROVED. With the break in, 2 performed, 2 failed; 4 failed assertions, 4 registered (the leap's hit notice has
+  tags, Type.Ranged among them, the ranged hit row reset the cooldown; and the rack test's hit notices, 0 against 30).
+  Restored, 2 performed, 2 succeeded. The file's hash is the same after.
 
 ---
 
