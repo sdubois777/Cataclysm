@@ -2,6 +2,270 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — The player's death, hit and skill-use listeners are replaced rather than added, so a second set-up of one pawn hears each death, hit and skill use once
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` (three `FDelegateHandle` members; two comments
+corrected); `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (`ACataclysmPlayerCharacter::InitAbilityActorInfo`
+removes each of the three bindings by its handle before adding it; the comment above them rewritten; two comments
+corrected); `game/Source/Cataclysm/Tests/CataclysmPlayerListenersBoundOnceTests.cpp` (new, two tests in the new group
+`Cataclysm.PlayerListenersBoundOnce.`). No data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/`
+or `game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. **This closes
+[#2290](https://github.com/sdubois777/Cataclysm/issues/2290).**
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN SINGLE PLAY, BY READING AND NOT BY MEASUREMENT.** In single play `InitAbilityActorInfo` runs once,
+  from `PossessedBy`, so the three listeners were bound once already. A player would notice nothing.
+- **WHAT CHANGES IS A SECOND RUN OF `InitAbilityActorInfo` ON ONE PAWN**, which by reading comes only from a client whose
+  player state replicates more than once, or from a second possession; no game code possesses the player's pawn a second
+  time (searched for `Possess(` and `RestartPlayer` outside the tests). Before this change such a run bound the death, hit
+  and skill-use listeners a second time, and the character then heard every death, hit and skill use twice: two kills
+  counted on the player state and on each worn weapon, every `kill`, `hit_dealt`, `first_hit_dealt`, `critical_strike`,
+  `nearby_death` and `skill_use` row acting twice, and everything else in `OnSomethingDied` done twice.
+- **ONE SIDE EFFECT, BY READING:** after a second run the player's three bindings are the newest on their delegates, so
+  the engine (which calls a multicast's listeners in reverse order of binding) calls the player before the dungeon game
+  mode, where before the second run it called the dungeon first. **The order two listeners hear a death in is #2290's
+  part (b), now [#2482](https://github.com/sdubois777/Cataclysm/issues/2482), and is NOT built here.**
+- **"ON A LISTEN SERVER BOTH HAPPEN" IS DOUBTFUL, BY READING THE ENGINE; NOT TESTED.** Each place that said it keeps its
+  words and gains a sentence beginning "SINCE #2290" saying what the reading found.
+- **NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+  brief 72. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### WHO RULED
+
+Nothing of the owner's is quoted here. The coordinating session's ruling of 2026-10-23, verbatim as relayed in brief 72:
+
+> #2290 (a): the three handles plus the new test. Also correct the "on a listen server both happen" comment to what your
+> reading found, labelled as not tested.
+
+The issue's comment of the same day narrows #2290 to part (a), the double binding; part (b) is #2482.
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `c514b6746`, before this change; engine lines are of Unreal Engine 5.8 as installed.
+
+1. **Every call of `InitAbilityActorInfo` on a player.** `ACataclysmPlayerCharacter::PossessedBy` (`CataclysmPlayerCharacter.cpp`
+   2072, the call at 2077) and `ACataclysmPlayerCharacter::OnRep_PlayerState` (2470, the call at 2478). The function itself
+   is at 2481 and is protected (`CataclysmPlayerCharacter.h` 580, under `protected:` at 579); `OnRep_PlayerState` is public
+   (323, under `public:` at 58). No other source outside the tests calls the player's.
+2. **The six bindings removed before they are added**, each with a handle in the header: the Cripple tag (2526 to 2527,
+   `CrippleChangedHandle`, header 833), `OnChannellingChanged` (2534 to 2536, `ChannellingChangedHandle`, 841), movement speed
+   (2538 to 2540, `MovementSpeedChangedHandle`, 827), the class resource (2571 to 2573, `ClassResourceChangedHandle`, 851),
+   the maximum class resource (2578 to 2580, `MaxClassResourceChangedHandle`, 852) and `OnActionEvent` (2587 to 2589,
+   `ActionEventHandle`, 860).
+3. **The three added with no handle and no removal:** `Events->OnDeath.AddUObject(this, &OnSomethingDied)` (2601),
+   `Events->OnHit.AddUObject(this, &OnSomethingWasHit)` (2612) and `Events->OnSkillUsed.AddUObject(this, &OnSkillWasUsed)`
+   (2614). The comment above them (2595 to 2598) argued only lifetime. The three delegates are native multicasts
+   (`CataclysmCombatEvents.h` 369 to 371, members 441 to 443).
+4. **Every place in `game/Source` outside `/Tests/` that claims `PossessedBy` and `OnRep_PlayerState` both run on one
+   machine**, searched case-ignored for `listen server`, `both happen`, `runs? twice`, `more than once` and
+   `OnRep_PlayerState`. Four do: `CataclysmPlayerCharacter.cpp` 2430 to 2431 ("on a listen server both happen", in
+   `GiveStartingWeapon`) and 2515 to 2516 ("on a listen server it does"); `CataclysmPlayerCharacter.h` 795 to 796
+   ("Possession happens more than once on a listen server") and 825 to 826 ("on a listen server both happen"). Three more
+   say the function runs more than once but give the reason as two machines, the server from `PossessedBy` and a client from
+   `OnRep_PlayerState` (`.cpp` 2087 to 2088 and 2657 to 2659, `.h` 807 to 809); they make no claim about one machine and
+   are not changed. `game/docs/ability-system.md` ("Where `InitAbilityActorInfo` is called") says the same two-machine
+   thing and is not changed.
+5. **The engine.** `APawn::OnRep_PlayerState` (`Engine/Source/Runtime/Engine/Private/Pawn.cpp` 647) is the RepNotify of
+   `APawn::PlayerState` (`Classes/GameFramework/Pawn.h` 178, `replicatedUsing=OnRep_PlayerState`; declared 286). No engine
+   runtime `.cpp` calls it: the only `OnRep_PlayerState()` in `Engine/Source/Runtime/**/*.cpp` are its definition and
+   `AController::OnRep_PlayerState`'s (`Controller.cpp` 587). `APawn::PossessedBy` (671) calls `SetPlayerState` (685), not
+   `OnRep_PlayerState`. So in single play and for a listen server's own pawn only `PossessedBy` should reach
+   `InitAbilityActorInfo`. **Read, not run.**
+6. **What a second binding would double**, in `OnSomethingDied` (1139): `NoteKill` (1172), `NoteKillOnWornWeapons`
+   (1177), the `kill` event (1188), `NoteKillUnderDeathSentence` (1195), `SpawnOneAtAKill` (1201), the two explosions'
+   hand-overs (1212, 1245; each takes its pending share, so the second call would find nothing, by reading),
+   `RiseOnNecrosisKill` (1276), `RestoreHealthOnKillAtNoCost` (1299), Follow Through (1306), `nearby_death` (1335),
+   `GainOnEnemyDeathNearby` (1350), `EndCrowdControlAppliedBy` (1382) and `RestoreHealthOnKill` (1397); in
+   `OnSomethingWasHit` (929) `AskToCullOnHit` (1033), `hit_dealt` (1035), `first_hit_dealt` (1047) and `critical_strike`
+   (1064); in `OnSkillWasUsed` (1070) `ActOnSkillUse` (1097, 1101) and `NoteSkillGadgetsCopy` (1135).
+7. **How a test can run `InitAbilityActorInfo` twice on one pawn.** The earlier tests reach it once each, by one of two
+   paths: possession, `Controller->SetPlayerState` then `Controller->Possess` (`CataclysmKillCounterTest::SpawnPossessedPlayer`,
+   `CataclysmEnchantmentEffectTests.cpp` 9293) or the pawn's half alone, `Character->PossessedBy(Controller)`
+   (`Cataclysm.PlayerStats.BeingPossessedIsWhatAppliesTheClassLine`, `CataclysmPlayerClassStatsTests.cpp` 1337); or the
+   client path, `SetPlayerState` then `OnRep_PlayerState` (`CataclysmDrainDeathNotedOnceTests.cpp` 61 to 62 and many
+   more). A static search of the tests, grouping `->Possess(`, `->PossessedBy(` and `->OnRep_PlayerState()` by the nearest
+   enclosing definition, found no function making two of them; with the new file in place it finds the new helper alone,
+   which is its control. A helper called for two pawns is not two set-ups of one. The new test uses `Controller->Possess`
+   and then `OnRep_PlayerState`, because `InitAbilityActorInfo` is protected.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| the three handles | "the three handles" | `SomethingDiedHandle`, `SomethingWasHitHandle` and `SkillWasUsedHandle` (`CataclysmPlayerCharacter.h` 877, 880, 883, each with a short comment, after `ActionEventHandle`). In `InitAbilityActorInfo`: `Events->OnDeath.Remove(SomethingDiedHandle);` then `SomethingDiedHandle = Events->OnDeath.AddUObject(...)` (`CataclysmPlayerCharacter.cpp` 2618 to 2620); the same for `OnHit` (2630 to 2632) and `OnSkillUsed` (2633 to 2635). The same shape as the six above them. |
+| the comment above them | (brief 72: say why they are now removed first, keep the lifetime reason) | 2606 to 2615: "REPLACED RATHER THAN ADDED, as the bindings above are. Issue #2290 ..." then the lifetime reason, kept, now headed "NOT UNBOUND WHEN THE CHARACTER GOES, AND THAT IS SAFE". |
+| the new test | "plus the new test" | `CataclysmPlayerListenersBoundOnceTests.cpp`, below. |
+| the comments | "correct the "on a listen server both happen" comment to what your reading found, labelled as not tested" | the four places of point 4 above, each keeping its words, below. |
+
+**THE COMMENT ABOVE THE THREE BINDINGS**, before (`.cpp` 2595 to 2598 at `c514b6746`):
+
+> NOT UNBOUND, AND THAT IS SAFE, for the reason the dungeon game mode gives where it binds the same announcement: the
+> subsystem belongs to the world, so it cannot outlive this character, and a binding to a destroyed object is skipped
+> rather than called.
+
+and after (2606 to 2615):
+
+> REPLACED RATHER THAN ADDED, as the bindings above are. Issue #2290: these three were added with no handle, so a second
+> run of this function bound each a second time, and the character heard every death, every hit and every skill use
+> twice -- two kills counted, every `kill`, `hit_dealt` and `skill_use` row acting twice.
+>
+> NOT UNBOUND WHEN THE CHARACTER GOES, AND THAT IS SAFE, for the reason the dungeon game mode gives where it binds the
+> same announcement: the subsystem belongs to the world, so it cannot outlive this character, and a binding to a destroyed
+> object is skipped rather than called.
+
+**THE FOUR CORRECTED COMMENTS.** Each keeps its words; the sentence beginning "SINCE #2290" is added after them.
+
+1. `GiveStartingWeapon`, `.cpp` 2429 to 2434 before and unchanged, then 2435 to 2441 added:
+
+   > ASKED RATHER THAN REMEMBERED, so that running twice cannot produce two axes. InitAbilityActorInfo runs from
+   > PossessedBy and from OnRep_PlayerState, and on a listen server both happen. Anything at all in either weapon slot
+   > means there is nothing to do: either this already ran, or the character loaded a save holding something better, and
+   > replacing that would be worse than doing nothing.
+
+   > SINCE #2290: by reading the engine, not by running it, "both happen" is doubtful. `APawn::OnRep_PlayerState` is a
+   > RepNotify that no engine runtime source calls directly, and `APawn::PossessedBy` calls `SetPlayerState` and not
+   > `OnRep_PlayerState`, so in single play and for a listen server's own pawn only PossessedBy should reach
+   > InitAbilityActorInfo. A second call would come on a client whose player state replicates more than once, or from a
+   > second possession. NOT TESTED.
+
+2. `InitAbilityActorInfo`, `.cpp` 2515 to 2517 before, unchanged (now 2522 to 2524), then 2525 to 2528 added:
+
+   > Removed before adding, because this function is safe to run twice and on a listen server it does. Without this a
+   > second call would leave two handlers on one pawn.
+
+   > SINCE #2290: by reading the engine, not by running it, that a listen server runs it twice is doubtful; see
+   > GiveStartingWeapon above. A second call is still possible, from a client or a second possession, so every binding
+   > below is replaced rather than added. NOT TESTED.
+
+3. `GiveStartingWeapon`'s declaration, `.h` 794 to 797 before, unchanged, then 798 to 803 added:
+
+   > ASKS WHETHER A WEAPON IS WORN RATHER THAN KEEPING A FLAG, so that running twice cannot produce two axes. Possession
+   > happens more than once on a listen server, and everything else in InitAbilityActorInfo is written to survive that.
+
+   > SINCE #2290: by reading the engine, not by running it, that is doubtful. No game code possesses the player's pawn a
+   > second time, and in single play and for a listen server's own pawn only PossessedBy should reach
+   > InitAbilityActorInfo; see `MovementSpeedChangedHandle`. Asking rather than keeping a flag is still right for a second
+   > possession or a client's second call. NOT TESTED.
+
+4. `MovementSpeedChangedHandle`, `.h` 824 to 826 before, unchanged (830 to 832 now; the closing `*/` moves to the new last line), then 833 to 839
+   added:
+
+   > So that a second InitAbilityActorInfo replaces the binding rather than adding a second one. That function runs from
+   > both PossessedBy and OnRep_PlayerState, and on a listen server both happen.
+
+   > SINCE #2290: by reading the engine, not by running it, that is doubtful. `APawn::OnRep_PlayerState` is a RepNotify
+   > that no engine runtime source calls directly, and `APawn::PossessedBy` calls `SetPlayerState` and not
+   > `OnRep_PlayerState`, so in single play and for a listen server's own pawn only PossessedBy should reach it. A second
+   > call would come from a client whose player state replicates more than once, or from a second possession. NOT TESTED.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE HANDLES ARE NAMED AFTER THEIR HANDLERS** (`SomethingDiedHandle` for `OnSomethingDied`), as `MovementSpeedChangedHandle`
+  is for `OnMovementSpeedChanged`. No other name in `game/Source` is any of the three (searched, whole words, with
+  `ActionEventHandle` as the control, found in the same two files), and none is a parameter or local of the class's files.
+  The option not taken: `DeathHandle`, `HitHandle`, `SkillUsedHandle`, named after the delegates.
+- **FOUR COMMENTS ARE CORRECTED, NOT ONE.** The ruling names "the" comment; the brief asks for each place found that makes the
+  claim, and four do (point 4). The three that give two machines as the reason are left, being true. The option not taken:
+  only the two that say "both happen" word for word.
+- **THE SECOND SET-UP IN THE TEST IS POSSESSION AND THEN `OnRep_PlayerState`**, both public, on one pawn. The option not taken:
+  `OnRep_PlayerState` twice, which is the client path twice and leaves the possession path, the one single play uses, out
+  of the test.
+- **THE TESTS ARE IN A GROUP OF THEIR OWN, `Cataclysm.PlayerListenersBoundOnce.`**, in a new file beside
+  `CataclysmDrainDeathNotedOnceTests.cpp`, whose shape (a control test, then the case, with a shared helper) they follow. The
+  options not taken: `Cataclysm.KillCounter.`, whose rig the kill half copies but which is about the counts themselves and
+  lives in the shared `CataclysmEnchantmentEffectTests.cpp`; and `Cataclysm.CombatEvents.`, which is about the announcer
+  and not a listener. No test name begins with `Cataclysm.PlayerListenersBoundOnce` today (searched).
+- **THE KILL IS ANNOUNCED BY HAND**, `ApplyHit` and then `UCataclysmCombatEvents::NoteDeath`, as
+  `Cataclysm.KillCounter.APlayersKillRaisesBothCountsAndTheConditionsReadThem` announces it, rather than by a blow that kills,
+  which would also run the creature's `HandleDeath` (drops, the ailment spread) for nothing the test asks. The hit and the
+  skill use are in the same tests because they are as cheap to read.
+
+### THE GENRE SOURCE
+
+None. This is a fault of this game's own binding code; it proposes no formula, affix or mechanic, and brief 72 names no
+source. Nothing was fetched.
+
+### Tests
+
+Two Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmPlayerListenersBoundOnceTests.cpp`, group
+`Cataclysm.PlayerListenersBoundOnce.`. Each makes its own world with no game mode, so the player's binding is the only
+listener to the three announcements; pins the critical strike roll at 100 after the world is made; spawns a player state,
+a player controller and a player character at the origin (the players' side, by its constructor), puts the player state on
+the controller and possesses the pawn, and in the second test then calls `OnRep_PlayerState` on the same pawn; and spawns
+one creature of the monsters' side 1.5 m east, rarity step 0, 100,000 health and no attack damage. **WHAT IS READ, ONCE FOR
+EACH THING DONE:** a listener the test binds to the player's own `OnActionEvent`, which `ActOnEvent` announces before its
+early returns, counting `kill`, `hit_dealt` and `skill_use` (raised, outside the tests, only by `OnSomethingDied`,
+`OnSomethingWasHit` and `ActOnSkillUse`, which only `OnSkillWasUsed` reaches here; every `ActOnEvent` call outside the tests
+searched); the player state's run kill count; and the announcer's own counts of hits, deaths and skill uses sent, so a
+count of two can only be two listeners. Then one hit (`ApplyHit`, 100%), one death (`NoteDeath`) and one skill use
+(`NoteSkillUsed`, the Heavy slot, a skill the player does not hold, no tags). Nothing waits on a tick. **Assertions are
+counted for a passing run, 16 in each test, 32 in all**; the shared helper's 13 come first in each.
+
+1. `APlayerSetUpOnceHearsOneKillOneHitAndOneSkillUseOnce`, the control, 16. In order: set-up, a world; set-up, a possessed
+   player, its player state, its ability system, a creature and the world's announcer (five); control, no kill counted
+   before; control, no event heard before; set-up, the hit leaves the creature alive; set-up, the hit, the death and the
+   skill use were each announced once (three); the kill counted on the player state (one more); then **set up once: the
+   kill, the hit and the skill use are each heard once** (three).
+2. `APlayerSetUpTwiceStillHearsOneKillOneHitAndOneSkillUseOnce`, 16. The same, with the second set-up; **set up twice: the
+   kill, the hit and the skill use are each heard once** (three). Before this change, by reading, the kill counted on the
+   player state and each of the three heard counts would read two.
+
+**Every earlier test is unchanged, and expected to pass unchanged.** Every earlier test runs `InitAbilityActorInfo` once on
+each player pawn (point 7), and for one run removing an unset handle removes nothing, so each binding is made as before.
+`Cataclysm.KillCounter.APlayersKillRaisesBothCountsAndTheConditionsReadThem` asserts one kill through the possession path
+and is the evidence, by reading, that possession alone binds `OnDeath` once.
+
+**Not tested:** a real client; a real second possession in play; a listen server; the side effect on the order of the
+player's and the dungeon's listeners (#2482); `first_hit_dealt`, `critical_strike` and `nearby_death` (the same notices);
+anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each anchor was counted exactly once in `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` by a
+script at this commit's working tree (CRLF read as LF). Each break deletes a whole statement and keeps the file's brackets
+paired: round 1756/1756, curly 384/384, square 87/87 before; round 1755/1755 after PL-I and 1754/1754 after PL-II, curly
+and square unchanged. Each compiles alone by reading: the handle members are still assigned on the next line, so nothing
+becomes unused. The prefix is `Cataclysm.PlayerListenersBoundOnce.`, with its trailing dot, two tests.
+
+**The events the tests' actors raise, listed before counting, each with its depth.** The hit, the death and the skill use
+are made by the test, outside any `ActOnEvent`, so each event is raised at depth nought. On the player: from the hit,
+`hit_dealt`, then `first_hit_dealt` (its first blow on that creature), each returning before the next; no
+`critical_strike` (the pin). From the death, `kill`, then `nearby_death` (the body 1.5 m away, inside 3 m). From the skill
+use, `skill_use`, then `attack_use`; no `healing_skill_use` or `melee_attack_use` (no tags). On the creature, the
+defender's own events of the hit (`hit_taken` and any its blow raises); it wears nothing. Nothing is worn by the player
+that hangs on any of these (an Everyday starting weapon, no rows), so no event raises another. With a listener bound
+twice each of the player's events above is raised twice, each at depth nought, so none is dropped by the depth guard.
+Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| PL-I, the death listener is added without removal, as before #2290 | `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` | `Events->OnDeath.Remove(SomethingDiedHandle);` | (nothing) | `APlayerSetUpTwiceStillHearsOneKillOneHitAndOneSkillUseOnce` | none |
+| PL-II, the hit and skill-use listeners are added without removal, as before #2290 | the same | `Events->OnHit.Remove(SomethingWasHitHandle);` and `Events->OnSkillUsed.Remove(SkillWasUsedHandle);` | (nothing), each | `APlayerSetUpTwiceStillHearsOneKillOneHitAndOneSkillUseOnce` | none |
+
+Failed assertions, by reading:
+
+- **PL-I, 2 in 1 test.** "the kill counted on the player state" (2 against 1) and "set up twice: the kill is heard once" (2
+  against 1). The hit and skill use read 1; every set-up passes, the announcer counting one of each either way. The control
+  test binds once and passes: removing an unset handle removes nothing.
+- **PL-II, 2 in 1 test.** "set up twice: the hit is heard once" (2 against 1) and "set up twice: the skill use is heard
+  once" (2 against 1). The kill reads 1. The control passes.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No earlier test runs
+`InitAbilityActorInfo` twice on one pawn (point 7).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No Python check, generator or validator is changed.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-23 — A shot whose firing skill has gone carries the tags it was fired with, so a trap's rack axe landing after the trap's use has ended explodes its kill; and a blow naming no skill object names its skill's tags on its hit notice, so a leap's hit answers hit rows requiring the throwing skill's tags
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` (`ACataclysmProjectile::HitOne` and
