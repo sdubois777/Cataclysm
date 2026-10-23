@@ -477,7 +477,38 @@ check); a held-back swing's figure against an enemy's; the wearer's events on it
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**ONE WINDOW, enchant-t7w, ON 2026-10-22, 19:00:09 to 19:54:34 by its stall guard, on aabe1b4a0 (this layer's three
+commits on development 8b31fda27: 942d095a4, 13a36624f and the comments commit aabe1b4a0), steps 2 to 4 (no row and no
+asset). Every step exited 0 with the figures registered before it; nothing was re-run.** The pre-checks, run just before
+the lock was taken: development's CI and Unreal runs on 8b31fda27 succeeded, no run in progress, no pull request open,
+the lock free, no Excel, editor or build process, the worktree clean at aabe1b4a0.
+
+- **Step 2, the whole Unreal suite:** "Build: Succeeded - 39 actions, 36 files compiled", the first compile of this
+  layer's C++; "4063 tests performed, 4063 succeeded, 0 failed", registered 4063 and 0 (4056 of development and tests 53
+  to 59). 40 skipped part of what they check (the Paragon art is not in a worktree). "Declared: 4063 tests in the tree at
+  aabe1b4a0; 4063 performed, gap 0".
+- **Step 3, Python of record on aabe1b4a0:** "6896 passed, 8 skipped in 299.93s"; JUnit tests 6904, failures 0, errors
+  0, skipped 8, as registered. Lint: "All checks passed!".
+
+**The guard proofs, run with `prove_cpp_guard` on the prefix `Cataclysm.Traps.`, 60 tests.** Each anchor was counted
+once, the stop condition for each was the set of tests failing with the break in, by the beginnings of their names, and
+the failed assertions read from the code were measured beside it. The file's hash was the same after each proof.
+
+| Proof | The break | With the break in | Failed assertions, measured / read | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| TR-XXX | the shot hands no identity (`CataclysmProjectile.cpp`) | 1 failed, `AUsedUpTrapsShotStrikes...` (test 53) | 2 / 2 | 60 of 60 succeeded |
+| TR-XXXI | the used-up record asked with no identity (`CataclysmDeployableSelfBlast.cpp`) | 2 failed: `AUsedUpTrapsShotStrikes...` (53), `AUsedUpTrapsSwingHeldBack...` (59) | 4 / 4 | 60 of 60 succeeded |
+| TR-XXXII | the wearer struck at half the figure (`CataclysmProjectile.cpp`) | 1 failed, `AUsedUpTrapsShotStrikes...` (53) | 1 / 1 | 60 of 60 succeeded |
+| TR-XXXIII | the held-back swing hands no identity (`CataclysmSkillTemplates.cpp`) | 1 failed, `AUsedUpTrapsSwingHeldBack...` (59), L-1's own proof | 1 / 1 | 60 of 60 succeeded |
+
+The measured lines include, under TR-XXX, "'the used-up trap's shot struck the wearer inside its blast: it lost 0.00' to
+be true"; under TR-XXXI, "'set-up: the gone trap's identity names a used-up trap of its wearer's' to be true"; under
+TR-XXXII, "'at the figure the enemy beside it took, the wearer holding an enemy's defences: 125.00 against 250.00' to be
+250.000000, but it was 125.000000"; under TR-XXXIII, "'the used-up trap's held-back swing struck the wearer inside its
+ring (L-1): 0.00 lost' to be true".
+
+**Not measured:** everything this entry lists as read and not tested; #2472 (a death inside the player's own
+activation) and #2475 (two blows of a skill that still carry no skill tags); anything drawn on a screen.
 
 ---
 
