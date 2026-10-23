@@ -281,9 +281,12 @@ def test_every_edict_the_game_lists_is_a_celestial_row() -> None:
     body = source[source.index("UCataclysmDungeonModifierRules::EdictKeys()"):]
     body = body[:body.index("return Keys;")]
     keys = re.findall(r'TEXT\("(\w+)"\)', body)
-    assert keys == ["Celestial_Edict_of_Silence", "Celestial_Forced_Tithes"], (
-        f"EdictKeys lists {keys}; the two Edicts that are rows are the Edict of "
-        "Silence and Forced Tithes, in that order. G7b adds six")
+    assert keys == ["Celestial_Edict_of_Silence", "Celestial_Edict_of_Temperance",
+                    "Celestial_Edict_of_Patience", "Celestial_Edict_of_Stillness",
+                    "Celestial_Forced_Tithes"], (
+        f"EdictKeys lists {keys}; the five Edicts that are rows are the Edicts of "
+        "Silence, Temperance, Patience and Stillness and Forced Tithes, in the "
+        "design's order. G7c adds three")
     rows = {row["Name"]: row for row in csv.DictReader(
         io.StringIO(TABLE.read_bytes().decode("utf-8-sig")))}
     for key in keys:

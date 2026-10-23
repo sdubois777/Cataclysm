@@ -2458,11 +2458,14 @@ bool FCataclysmFloorBriefUnstableTwistedTest::RunTest(const FString& Parameters)
 
 namespace CataclysmFloorBriefTest
 {
-	/** An Ascendant built by hand, its pool holding the two Edicts at their table dangers. */
+	/** An Ascendant built by hand, its pool holding every Edict that is a row, at their table dangers. */
 	FCataclysmDungeonIdentity AnAscendant(int32 DungeonSeed = 7)
 	{
 		FCataclysmDungeonIdentity Out = Dungeon(ECataclysmDungeonSubType::Ascendant, DungeonSeed);
 		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Silence"), ECataclysmType::Celestial, 20.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Temperance"), ECataclysmType::Celestial, 20.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Patience"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Stillness"), ECataclysmType::Celestial, 10.0f));
 		Out.ModifierPool.Add(Make(TEXT("Celestial_Forced_Tithes"), ECataclysmType::Celestial, 15.0f));
 		return Out;
 	}
@@ -2473,7 +2476,9 @@ namespace CataclysmFloorBriefTest
 		float Total = 0.0f;
 		for (const FName& Edict : Edicts)
 		{
-			Total += Edict == FName(TEXT("Celestial_Edict_of_Silence")) ? 20.0f : 15.0f;
+			const bool bTwenty = Edict == FName(TEXT("Celestial_Edict_of_Silence"))
+				|| Edict == FName(TEXT("Celestial_Edict_of_Temperance"));
+			Total += bTwenty ? 20.0f : Edict == FName(TEXT("Celestial_Edict_of_Stillness")) ? 10.0f : 15.0f;
 		}
 		return Total;
 	}
@@ -2504,9 +2509,11 @@ bool FCataclysmFloorBriefAscendantEdictsTest::RunTest(const FString& Parameters)
 			Expected.Append(Edicts);
 			TestTrue(FString::Printf(TEXT("seed %d floor %d carries its own and then its Edicts"), Seed, Floor),
 					 Brief.Modifiers == Expected);
-			TestEqual(FString::Printf(TEXT("seed %d floor %d: one Edict a floor, two when both are drawn"), Seed,
-									  Floor),
-					  Brief.Modifiers.Num(), Ascendant.Modifiers.Num() + FMath::Min(Floor, 2));
+			TestEqual(FString::Printf(TEXT("seed %d floor %d: one Edict a floor, up to four"), Seed, Floor),
+					  Brief.Modifiers.Num(),
+					  Ascendant.Modifiers.Num()
+						  + FMath::Min3(Floor, UCataclysmDungeonModifierRules::AscendantMostEdicts,
+									   UCataclysmDungeonModifierRules::EdictKeys().Num()));
 			TestEqual(FString::Printf(TEXT("seed %d floor %d: their danger is added to the floor's score"), Seed,
 									  Floor),
 					  Brief.ModifierScore, Ascendant.ModifierScore + EdictDanger(Edicts), 0.001f);
@@ -2542,7 +2549,6 @@ bool FCataclysmFloorBriefAscendantAlreadyTest::RunTest(const FString& Parameters
 	using namespace CataclysmFloorBriefTest;
 
 	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
-	const FName Tithe(TEXT("Celestial_Forced_Tithes"));
 
 	FCataclysmDungeonIdentity Ascendant = AnAscendant(11);
 	Ascendant.Modifiers.Add(Silence);
@@ -2552,16 +2558,20 @@ bool FCataclysmFloorBriefAscendantAlreadyTest::RunTest(const FString& Parameters
 	{
 		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Ascendant, Floor);
 		int32 Silences = 0;
-		int32 Tithes = 0;
 		for (const FName& Key : Brief.Modifiers)
 		{
 			Silences += Key == Silence ? 1 : 0;
-			Tithes += Key == Tithe ? 1 : 0;
 		}
+		const TArray<FName> Added = UCataclysmDungeonModifierRules::EdictsOnFloor(11, Ascendant.Modifiers, Floor);
+		TArray<FName> Expected = Ascendant.Modifiers;
+		Expected.Append(Added);
 		TestEqual(FString::Printf(TEXT("floor %d carries the Edict of Silence once"), Floor), Silences, 1);
-		TestEqual(FString::Printf(TEXT("floor %d adds the Edict of Tithe, the only one left"), Floor), Tithes, 1);
-		TestEqual(FString::Printf(TEXT("floor %d adds only its danger"), Floor), Brief.ModifierScore,
-				  Ascendant.ModifierScore + 15.0f, 0.001f);
+		TestTrue(FString::Printf(TEXT("floor %d adds the others, one a floor up to four"), Floor),
+				 Brief.Modifiers == Expected
+					 && Added.Num() == FMath::Min3(Floor, UCataclysmDungeonModifierRules::AscendantMostEdicts,
+												   UCataclysmDungeonModifierRules::EdictKeys().Num() - 1));
+		TestEqual(FString::Printf(TEXT("floor %d adds only their danger"), Floor), Brief.ModifierScore,
+				  Ascendant.ModifierScore + EdictDanger(Added), 0.001f);
 	}
 	return true;
 }
