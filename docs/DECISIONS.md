@@ -399,19 +399,53 @@ counts what it does record: built, partly built, not built. Old -> new:
 
 ### The editor step
 
-Not yet run: the dungeon session rebuilds DT_DungeonModifiers under the lock before the window.
+Run by the dungeon session on 2026-10-23 as its own locked step before the window (ruling 5), under the lock
+`void-zones-ed7b`, on `feat/game-edicts-3` at `2d60aa406`, once `development`'s CI and Unreal runs on `3f2017e90` (the
+#2479 merge) had completed with success and with no run in progress; the five conditions were checked immediately before
+the lock was taken. "Build: Succeeded - 70 actions, 60 files compiled"; then `python tools/run_editor_python.py
+tools/generate_datatable_assets.py` exited 0 and changed exactly `game/Content/Data/DT_DungeonModifiers.uasset` and
+`game/Data/datatable_asset_sources.json` (its `DungeonModifiers.csv` entry: rows 117 -> 120 and the CSV's hash, nothing
+else). Both were committed as `92018d46e` and pushed (a Git LFS dry-run push afterwards listed nothing left to upload),
+and the lock was released. Python on that head: "6913 passed, 8 skipped" (JUnit 6921, 0 failures): the stale-asset
+check `test_datatable_assets_are_current.py` passes from then on.
 
 ### Proofs
 
-Not yet run. Three to be registered by the dungeon session after reading the code:
+**All three PROVED** in the window below, each with `unreal_build.prove_cpp_guard`, registered by the dungeon session
+after reading the code; each break text matched its file exactly once. **Narrowed**: P1 and P2 on the one test each
+names, P3 on the prefix `Cataclysm.DungeonModifierEffects.TheEdictOfStillness` (three tests). No Python half was
+registered for them; the Python check's own three breaks, run by the writing session, are under Python above.
 
-- **P1**, `EdictStrength` not passed, so it stays 1.
-- **P2**, Temperance's leech removal dropped.
-- **P3**, Stillness's beat slow removed.
+- **P1**, `EdictStrength` not applied, so Temperance and Patience stay at strength 1:
+  `EdictOfTemperanceHealingLessPercentAt(EdictStrength);` and `EdictOfPatienceCooldownLongerPercentAt(EdictStrength);`
+  -> `...At(EdictStrength * 0.0f + 1.0f);` in `CataclysmDungeonModifierEffects.cpp` (the parameter still read, so no
+  unused warning). Predicted: `InAnAscendantTheThreeEdictsAreStrongerAFloorDeeperUpToTheirCaps` fails. Printed: "1
+  tests performed, 0 succeeded, 1 failed: InAnAscendantTheThreeEdictsAreStrongerAFloorDeeperUpToTheirCaps"; restored
+  "1 tests performed, 1 succeeded, 0 failed".
+- **P2**, Temperance's leech removal dropped: `Effects.TemperanceHealingLessPercent > 0.0f);` -> `... < 0.0f);` (its
+  condition can never hold). Predicted: `TheEdictOfTemperanceHalvesHealingUpToNinetyAndRemovesLifeLeechAtEveryStrength`
+  fails. Printed: "1 tests performed, 0 succeeded, 1 failed:
+  TheEdictOfTemperanceHalvesHealingUpToNinetyAndRemovesLifeLeechAtEveryStrength"; restored "1 tests performed, 1
+  succeeded, 0 failed".
+- **P3**, Stillness's beat slow removed: `StepEdictOfStillness(Player, AbilitySystem);` -> a comment in
+  `CataclysmDungeonGameMode.cpp`. Predicted: the two tests that run the beat fail and the pure-function one passes.
+  Printed: "3 tests performed, 1 succeeded, 2 failed: TheEdictOfStillnessAndASingularityWellEachSlowAndTheTwoMultiply,
+  TheEdictOfStillnessSlowsOnlyForThreeSecondsAfterAMovementSkill"; restored "3 tests performed, 3 succeeded, 0 failed".
 
 ### Run
 
-Not yet run.
+Nothing was built and no Unreal test was run by the writing session. The window was run by the dungeon session on
+2026-10-23 under the lock `void-zones-w39`, on `feat/game-edicts-3` at `92018d46e` (the editor step's head), with the
+five conditions checked again immediately before the lock was taken and the lock released before this was written.
+
+- **Build:** "Build: Succeeded - target already up to date, 0 actions, nothing compiled" -- the editor step had built
+  this source, and its commit changed no code.
+- **The whole Unreal suite:** "4103 tests performed, 4103 succeeded, 0 failed. 40 skipped part of what they check";
+  "Declared: 4103 tests in the tree at 92018d46e; 4103 performed, gap 0; every declared test was reported by the run."
+  Registered 4103 and 0: the 4092 of the #2479 merge and the eleven new names here.
+- **Python:** "6913 passed, 8 skipped"; JUnit tests 6921, failures 0, errors 0, skipped 8, as registered. Lint: "All
+  checks passed!".
+- **The proofs:** as under Proofs above.
 
 ---
 
