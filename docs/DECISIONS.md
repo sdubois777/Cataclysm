@@ -343,7 +343,22 @@ activation is known.
 
 ### THE WINDOW'S RUN (STEP B)
 
-Not run. The enchantment session records its window here.
+Run by the enchantment session on 2026-10-22, window t66bw, under the editor lock as `enchant-t66bw`, at d108885b9 (the
+branch's four commits moved from 1b9a384ee onto development 0c6f0c933, #2478; every commit kept its zero-context patch id,
+whole and outside this file, and its removed lines). Every figure was registered with the coordinating session before the
+run, and every one is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 39 actions, 36 files compiled"; "4092 tests performed, 4092 succeeded,
+  0 failed" (4089 on development + step A's 3); "Declared: 4092 tests in the tree at d108885b9; 4092 performed, gap 0". 40
+  tests skipped part of what they check. So step A's two in-activation tests, which failed in step A's window, pass.
+- **Python of record:** "6904 passed, 8 skipped"; JUnit 6912 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **DA-I, the lock read as free** (`CataclysmAbilitySystemComponent.cpp`, `return AbilityScopeLockCount > 0;` to `return
+  false;`, anchor counted once): PROVED. With the break in, 3 tests performed, 1 succeeded, 2 failed, the two registered
+  (`KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast`, `KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff`);
+  9 failed assertions, 9 registered, the nine step A's window measured (the Heavy and the Ultimate gadgets' death casts 0
+  and their enemies untouched; 0 `trap_triggered`, and both traps and both their enemies untouched). Restored, 3 performed,
+  3 succeeded. The file's hash is the same after.
 
 ---
 
