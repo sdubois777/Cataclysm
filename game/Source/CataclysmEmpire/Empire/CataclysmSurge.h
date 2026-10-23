@@ -124,7 +124,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonSpec
  * the surge system and it does not exist". This is that thing.
  *
  * WHAT IS ON IT. The sub-type, since issue #1289; which Cataclysm sent it, since
- * issue #1357; and, since issue #41's modifier slice, which of the 120 dungeon
+ * issue #1357; and, since issue #41's modifier slice, which of the 123 dungeon
  * modifiers in `game/Data/DungeonModifiers.csv` it carries and how much danger
  * they add -- see `Modifiers` and `ModifierScore`.
  *
@@ -625,7 +625,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     That is the one pattern the vertical slice would actually use, and it
  *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
  *     records what it would mean for the lane rule.
- *   - **The 120 dungeon modifiers**, which THIS CLASS does not do and
+ *   - **The 123 dungeon modifiers**, which THIS CLASS does not do and
  *     `UCataclysmEmpireRun::GiveModifiers` does. They are drawn where the
  *     Cataclysm that sent a dungeon is stamped, and for the same reason: the
  *     draw needs the run's active Cataclysms and its difficulty tier, and this
