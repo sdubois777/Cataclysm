@@ -776,9 +776,13 @@ public:
 	 *
 	 * A BASELINE OF ONE ATTACK A SECOND, which is what the row's own numbers
 	 * assume: thirty axes at 0.333 seconds is 10 seconds exactly, and 10 seconds
-	 * is what the description states. So dividing by the attribute directly
+	 * is what the description states. So dividing by the attack speed directly
 	 * leaves the stated figures intact at one attack a second and shortens the
 	 * rack above it.
+	 *
+	 * THE ATTACK SPEED IS ASKED OF THE STAT LINE WITH THE SKILL'S TAGS, the
+	 * attribute the fallback, so a row raising it under a condition or by a
+	 * scale reaches the rack. Issue #2233. Asked once, when the rack starts.
 	 *
 	 * THE COUNT DOES NOT MOVE, which is the point `ScalesWithAttackSpeed`'s own
 	 * header makes: thirty axes are thrown whatever the speed, and a faster

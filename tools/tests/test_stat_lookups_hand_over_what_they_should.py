@@ -1121,6 +1121,13 @@ INVENTORY = {
         "with Type.Trap alone from a placing and from the skill bar; a "
         "placing is not a blow and neither row has a condition, so no blow "
         "and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(TEXT("attack_speed")), SkillTags, Attribute'):
+        "the attack speed a rack's seconds between throws are divided by "
+        "(issue #2233, ruled 2026-10-23), asked by SecondsBetweenThrows "
+        "with the skill's own tags once, when BeginEmptyingTheRack starts "
+        "the rack, the attribute the fallback; the throws have not landed, "
+        "so no blow and no target are handed over",
 }
 
 #: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
