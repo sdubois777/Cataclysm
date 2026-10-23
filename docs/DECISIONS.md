@@ -182,7 +182,31 @@ in-activation tests are themselves the measurement. Step B proposes its own.
 
 ### THE WINDOW'S RUN
 
-Not run. The enchantment session records its window here.
+**ONE MEASURING WINDOW, enchant-t66w, ON 2026-10-22, 20:01:08 to 20:02:41 by its stall guard, on d9a4defa6. It ran the
+`Cataclysm.DeathInActivation.` group alone, as ruled (no whole suite, no proofs). THE READING IS CONFIRMED: the figures
+are the registered ones, the control passed, and every set-up line passed; nothing was re-run.** The pre-checks, run
+just before the lock was taken: development's CI and Unreal runs on 8b31fda27 succeeded, no run in progress, no pull
+request open, the lock free, no Excel, editor or build process, the worktree clean at d9a4defa6.
+
+- "Build: Succeeded - 39 actions, 36 files compiled"; "3 tests performed, 1 succeeded, 2 failed:
+  KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast, KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff",
+  as registered. The control, `KilledByAnEnemysBlowOutsideAnyActivationEveryGadgetCastsAndEveryTrapGoesOff`, passed.
+- **9 "Error: Expected" lines, as registered (4 + 5)**, every one an assertion marked "(expected to fail until #2472 is
+  fixed)":
+  - the gadget half: "'the Heavy gadget made its death cast ...' to be 1, but it was 0"; "'and its death cast struck its
+    enemy: 50000.00 of 50000.00 left ...' to be true"; "'the Ultimate gadget, whose cast killed the player, made its death
+    cast too ...' to be 1, but it was 0"; "'and its death cast struck its enemy after the killing blow: 49615.00 left,
+    49615.00 at the death ...' to be true";
+  - the trap half: "'two trap_triggered, one for each standing trap ...' to be 2, but it was 0"; "'the north trap went off
+    at the death and was used up ...' to be true"; "'and its cast struck its enemy: 50000.00 of 50000.00 left ...' to be
+    true"; the same two lines for the east trap.
+- **Two other Error lines, where the registration said none: the engine's own "Test Completed. Result={Fail}" line for
+  each of the two failing tests.** They mark a failed test's end and are no assertion; the registration should have
+  allowed for them.
+
+So the set-up lines held: the player died to the gadget's own blow, `player_death` was raised once, and the gadget's
+cast was still activating when it was. Under that activation every death cast and every trap's cast was refused, as
+#2472's reading says. Step B, the fix, follows.
 
 ---
 
