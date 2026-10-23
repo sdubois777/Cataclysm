@@ -65,6 +65,11 @@ struct CATACLYSM_API FCataclysmHitNotice
 	/**
 	 * That skill's own tags, its whole set. Null when no skill dealt the blow.
 	 * Points at the skill's own container, which outlives the notice.
+	 *
+	 * AND FOR A BLOW THAT NAMES NO SKILL OBJECT BUT IS A BLOW OF A SKILL, the tags its delivery named
+	 * (`FCataclysmHitDelivery::SkillTagsWithNoSkill`): a buried weapon's leap, and a shot whose firing skill has gone,
+	 * with no skill name. #2475, under #2465's ruling N1. That pointer is the delivery's, valid while the notice is
+	 * handed out, as every pointer here is.
 	 */
 	const FGameplayTagContainer* SkillTags = nullptr;
 
@@ -207,8 +212,9 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	FName KillingSkillName;
 
 	/**
-	 * That skill's own tags, or null. AND FOR A LAST BLOW THAT NAMED NO SKILL OBJECT, a buried weapon's leap, the tags of
-	 * the skill it was a blow of, which the victim's record of its last blow keeps
+	 * That skill's own tags, or null. AND FOR A LAST BLOW THAT NAMED NO SKILL OBJECT, a buried weapon's leap or a shot
+	 * whose firing skill has gone (#2475), the tags of the skill it was a blow of, which the victim's record of its last
+	 * blow keeps
 	 * (`FCataclysmLastBlow::SkillTagsWithNoSkill`), with no skill name. Ruled 2026-10-22 (#2465, N1 (a), N2 (a)).
 	 */
 	const FGameplayTagContainer* KillingSkillTags = nullptr;
@@ -351,8 +357,8 @@ struct CATACLYSM_API FCataclysmLastBlow
 
 	/**
 	 * For a blow that named no skill object, the tags of the skill it was a blow of, copied from
-	 * `FCataclysmHitDelivery::SkillTagsWithNoSkill`: a buried weapon's leap's throwing skill's. Ruled 2026-10-22 (#2465,
-	 * N1 (a), N2 (a)). Written for every such blow on record, as `Skill` is, and empty for every other blow, so an
+	 * `FCataclysmHitDelivery::SkillTagsWithNoSkill`: a buried weapon's leap's throwing skill's, or the tags a shot whose
+	 * firing skill has gone was fired with (#2475). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)). Written for every such blow on record, as `Skill` is, and empty for every other blow, so an
 	 * ordinary hit costs no allocation here. The death notice's `KillingSkillTags` points at it when no skill is named.
 	 */
 	FGameplayTagContainer SkillTagsWithNoSkill;

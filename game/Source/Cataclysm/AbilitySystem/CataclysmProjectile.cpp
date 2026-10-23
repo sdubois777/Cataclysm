@@ -658,6 +658,12 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// grant has ended is still priced as the gadget's. Ruled 2026-10-16, stack 2.
 	Delivery.CastBy = CastBy;
 
+	// AND, FOR A SHOT WHOSE FIRING SKILL HAS GONE SINCE IT WAS FIRED, THE TAGS IT WAS FIRED WITH, so its hit and its kill
+	// carry them as every other blow of a skill carries that skill's: a trap's rack axe landing after the trap's one-use
+	// grant was removed. #2475, under #2465's ruling N1. ONLY WHEN `FiringSkill` IS STALE: a shot whose skill is still
+	// there names it, and a shot fired with no skill at all, a creature's, names no tags, as before.
+	Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;
+
 	// AND WHERE ITS USE WAS CAST FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
 	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
 	Delivery.StruckFromPoint = StrikesFromPoint;
@@ -789,6 +795,7 @@ void ACataclysmProjectile::StrikeTheWearerInItsBlast(AActor* Wearer, int32 Conta
 	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
 	Delivery.Skill = FiringSkill;
 	Delivery.CastBy = CastBy;
+	Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;
 	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
 	Delivery.StruckFromPoint = StrikesFromPoint;
 	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
