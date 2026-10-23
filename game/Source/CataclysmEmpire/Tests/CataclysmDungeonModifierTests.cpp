@@ -1060,4 +1060,58 @@ bool FCataclysmEdictLeftTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Three more Edicts are rows: Temperance, Patience and Stillness -- 2026-10-22, G7b
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictsEachDrawnTest,
+	"Cataclysm.DungeonModifiers.AnAscendantCanDrawEachOfItsEdictsAndNamesEachAsTheDesignDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictsEachDrawnTest::RunTest(const FString& Parameters)
+{
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const FName Temperance(TEXT("Celestial_Edict_of_Temperance"));
+	const FName Patience(TEXT("Celestial_Edict_of_Patience"));
+	const FName Stillness(TEXT("Celestial_Edict_of_Stillness"));
+
+	// THE THREE ARE EDICTS, NAMED AS THE DESIGN NAMES THEM.
+	TestTrue(TEXT("the Edict of Temperance is an Edict"), Rules::IsEdict(Temperance));
+	TestTrue(TEXT("and the Edict of Patience"), Rules::IsEdict(Patience));
+	TestTrue(TEXT("and the Edict of Stillness"), Rules::IsEdict(Stillness));
+	TestEqual(TEXT("shown as the Edict of Temperance"), Rules::EdictName(Temperance), FString(TEXT("Edict of Temperance")));
+	TestEqual(TEXT("shown as the Edict of Patience"), Rules::EdictName(Patience), FString(TEXT("Edict of Patience")));
+	TestEqual(TEXT("shown as the Edict of Stillness"), Rules::EdictName(Stillness), FString(TEXT("Edict of Stillness")));
+
+	// EVERY EDICT ON THE LIST COMES FIRST ON SOME SEED, AND IS HELD FROM FLOOR 4 ON SOME SEED.
+	TSet<FName> First;
+	TSet<FName> HeldByFour;
+	int32 NotAnEdict = 0;
+	for (int32 Seed = 1; Seed <= 400; ++Seed)
+	{
+		First.Add(Rules::EdictsOnFloor(Seed, TArray<FName>(), 1)[0]);
+		for (const FName& Edict : Rules::EdictsOnFloor(Seed, TArray<FName>(), Rules::AscendantMostEdicts))
+		{
+			HeldByFour.Add(Edict);
+			NotAnEdict += Rules::EdictName(Edict).IsEmpty() ? 1 : 0;
+		}
+	}
+	for (const FName& Edict : Rules::EdictKeys())
+	{
+		TestTrue(FString::Printf(TEXT("%s comes first on some seed"), *Edict.ToString()), First.Contains(Edict));
+		TestTrue(FString::Printf(TEXT("%s is held from floor 4 on some seed"), *Edict.ToString()),
+				 HeldByFour.Contains(Edict));
+	}
+	TestTrue(TEXT("the three new ones among them"),
+			 First.Contains(Temperance) && First.Contains(Patience) && First.Contains(Stillness));
+	TestEqual(TEXT("and every one drawn has an Edict's name"), NotAnEdict, 0);
+
+	// THE CONTROL: nothing drawn is outside the list, so "every one comes first" is not a list of anything.
+	TestEqual(TEXT("CONTROL: no more Edicts come first than are listed"), First.Num(), Rules::EdictKeys().Num());
+	TestFalse(TEXT("CONTROL: Golden Spires, a Celestial row, is never drawn as an Edict"),
+			  HeldByFour.Contains(FName(TEXT("Celestial_Golden_Spires"))));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -56624,4 +56624,577 @@ bool FCataclysmAscendantTitheTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Edicts of Temperance, Patience and Stillness -- 2026-10-22, G7b
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName TemperanceRow(UCataclysmDungeonModifierEffects::EdictOfTemperanceKey);
+	const FName PatienceRow(UCataclysmDungeonModifierEffects::EdictOfPatienceKey);
+	const FName StillnessRow(UCataclysmDungeonModifierEffects::EdictOfStillnessKey);
+
+	/** The share of healing the player's attribute withholds. */
+	float HealingWithheldOf(const FPossessedPlayer& Player)
+	{
+		return Player.Read(UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute());
+	}
+
+	/** The player's walking speed. */
+	float WalkingSpeedOf(const FPossessedPlayer& Player)
+	{
+		return Player.Read(UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThreeEdictsBuiltTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictsOfTemperancePatienceAndStillnessAreBuiltRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThreeEdictsBuiltTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	for (const FName& Row : {TemperanceRow, PatienceRow, StillnessRow})
+	{
+		TestEqual(FString::Printf(TEXT("%s is built"), *Row.ToString()), static_cast<int32>(Effects::BuiltStateOf(Row)),
+				  static_cast<int32>(ECataclysmModifierBuilt::Built));
+		TestTrue(FString::Printf(TEXT("%s has a rule"), *Row.ToString()), Effects::KeysWithARule().Contains(Row));
+		TestTrue(FString::Printf(TEXT("%s is an Edict"), *Row.ToString()), UCataclysmDungeonModifierRules::IsEdict(Row));
+	}
+
+	// THE CONTROL: a row that waits on systems that do not exist is still not built.
+	TestEqual(TEXT("CONTROL: War Supply Lines is not built"),
+			  static_cast<int32>(Effects::BuiltStateOf(FName(TEXT("War_Supply_Lines")))),
+			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemperanceNumbersTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfTemperanceHalvesHealingUpToNinetyAndRemovesLifeLeechAtEveryStrength",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTemperanceNumbersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	TestEqual(TEXT("at base it withholds half"), Effects::PlayerEffectsFor({TemperanceRow}, 6).TemperanceHealingLessPercent,
+			  50.0f, 0.001f);
+	TestEqual(TEXT("on an Ascendant's floor 6, three quarters"),
+			  Effects::PlayerEffectsFor({TemperanceRow}, 6, 0, Rules::EdictStrengthOn(6, false)).TemperanceHealingLessPercent,
+			  75.0f, 0.001f);
+	TestEqual(TEXT("on floor 70, held at 90 where it would be 395"),
+			  Effects::PlayerEffectsFor({TemperanceRow}, 70, 0, Rules::EdictStrengthOn(70, false))
+				  .TemperanceHealingLessPercent,
+			  90.0f, 0.001f);
+	TestEqual(TEXT("and with its Core standing, still 90"),
+			  Effects::EdictOfTemperanceHealingLessPercentAt(Rules::EdictStrengthOn(70, true)), 90.0f, 0.001f);
+
+	// LIFE LEECH REMOVED AT EVERY STRENGTH, AND THE HEALING SHARE A FLAT ADDITION.
+	for (const float Strength : {0.5f, 1.0f, 1.5f, 7.9f, 11.85f})
+	{
+		FCataclysmPlayerFloorEffects Under;
+		Under.TemperanceHealingLessPercent = Effects::EdictOfTemperanceHealingLessPercentAt(Strength);
+		const TMap<FName, TArray<FCataclysmStatModifier>> All = Effects::StatModifiersFor(Under);
+		const TArray<FCataclysmStatModifier> Leech = ModifiersOn(All, TEXT("life_leech"));
+		if (TestEqual(FString::Printf(TEXT("at strength %.2f one modifier on life_leech"), Strength), Leech.Num(), 1))
+		{
+			TestTrue(TEXT("which removes it"), Leech[0].Bucket == ECataclysmStatBucket::Removed);
+			TestEqual(TEXT("so 5% life leech becomes nothing"),
+					  UCataclysmStatPipeline::Evaluate(5.0f, Leech, FGameplayTagContainer()).Final, 0.0f, 0.0001f);
+		}
+		const TArray<FCataclysmStatModifier> Healing = ModifiersOn(All, TEXT("healing_received_reduction"));
+		if (TestEqual(TEXT("one modifier on healing_received_reduction"), Healing.Num(), 1))
+		{
+			TestTrue(TEXT("flat"), Healing[0].Bucket == ECataclysmStatBucket::Flat);
+			TestEqual(TEXT("the share"), Healing[0].Value, Under.TemperanceHealingLessPercent, 0.001f);
+		}
+	}
+
+	FCataclysmPlayerFloorEffects AtBase;
+	AtBase.TemperanceHealingLessPercent = 50.0f;
+	TestFalse(TEXT("a floor doing this is not empty"), AtBase.IsEmpty());
+	TestTrue(TEXT("and the panel names it"),
+			 Effects::Describe(AtBase).Contains(TEXT("healing 50% less and no life leech, by the Edict of Temperance")));
+
+	// THE CONTROLS: a floor without the row withholds nothing and leaves life leech alone; mana leech is not life leech.
+	TestEqual(TEXT("CONTROL: no row, nothing withheld"), Effects::PlayerEffectsFor({}, 6).TemperanceHealingLessPercent,
+			  0.0f, 0.0001f);
+	const TMap<FName, TArray<FCataclysmStatModifier>> UnderBase = Effects::StatModifiersFor(AtBase);
+	TestEqual(TEXT("CONTROL: mana leech is untouched"), ModifiersOn(UnderBase, TEXT("mana_leech")).Num(), 0);
+	TestEqual(TEXT("CONTROL: an empty floor writes no life leech modifier"),
+			  ModifiersOn(Effects::StatModifiersFor(FCataclysmPlayerFloorEffects()), TEXT("life_leech")).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPatienceNumbersTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfPatienceLengthensEveryCooldownByHalfAndHasNoCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPatienceNumbersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const FCataclysmPlayerFloorEffects AtBase = Effects::PlayerEffectsFor({PatienceRow}, 6);
+	TestEqual(TEXT("at base every cooldown is 50 longer"), AtBase.PatienceCooldownLongerPercent, 50.0f, 0.001f);
+	TestEqual(TEXT("on an Ascendant's floor 6, 75"),
+			  Effects::PlayerEffectsFor({PatienceRow}, 6, 0, Rules::EdictStrengthOn(6, false)).PatienceCooldownLongerPercent,
+			  75.0f, 0.001f);
+	TestEqual(TEXT("on floor 70, 395: no cap"),
+			  Effects::PlayerEffectsFor({PatienceRow}, 70, 0, Rules::EdictStrengthOn(70, false))
+				  .PatienceCooldownLongerPercent,
+			  395.0f, 0.01f);
+	TestEqual(TEXT("and with its Core standing, 592.5"),
+			  Effects::EdictOfPatienceCooldownLongerPercentAt(Rules::EdictStrengthOn(70, true)), 592.5f, 0.01f);
+
+	const TArray<FCataclysmStatModifier> Cooldown =
+		ModifiersOn(Effects::StatModifiersFor(AtBase), TEXT("cooldown_lengthening"));
+	if (TestEqual(TEXT("one modifier on cooldown_lengthening"), Cooldown.Num(), 1))
+	{
+		TestTrue(TEXT("flat"), Cooldown[0].Bucket == ECataclysmStatBucket::Flat);
+		TestEqual(TEXT("fifty"), Cooldown[0].Value, 50.0f, 0.001f);
+	}
+	TestTrue(TEXT("the panel names it"),
+			 Effects::Describe(AtBase).Contains(TEXT("cooldowns 50% longer, by the Edict of Patience")));
+
+	// THE CONTROL: its own field, so Eternal Chorus's is untouched and a floor without the row lengthens nothing.
+	TestEqual(TEXT("CONTROL: Eternal Chorus's field is not written"), AtBase.ChorusCooldownLongerPercent, 0.0f, 0.0001f);
+	TestEqual(TEXT("CONTROL: no row, no lengthening"), Effects::PlayerEffectsFor({}, 6).PatienceCooldownLongerPercent,
+			  0.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStillnessNumbersTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfStillnessSlowsForThreeSecondsAfterAMovementSkillUpToNinety",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStillnessNumbersTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	TestEqual(TEXT("at base, just after a movement skill, 40"), Effects::EdictOfStillnessSlowPercentAt(1.0f, 0.0f), 40.0f,
+			  0.001f);
+	TestEqual(TEXT("and still 40 at 2.9 seconds"), Effects::EdictOfStillnessSlowPercentAt(1.0f, 2.9f), 40.0f, 0.001f);
+	TestEqual(TEXT("on an Ascendant's floor 6, 60"),
+			  Effects::EdictOfStillnessSlowPercentAt(Rules::EdictStrengthOn(6, false), 1.0f), 60.0f, 0.001f);
+	TestEqual(TEXT("on floor 70, held at 90 where it would be 316"),
+			  Effects::EdictOfStillnessSlowPercentAt(Rules::EdictStrengthOn(70, false), 1.0f), 90.0f, 0.001f);
+	TestEqual(TEXT("its 3 seconds do not scale: on floor 70 nothing at 3.1"),
+			  Effects::EdictOfStillnessSlowPercentAt(Rules::EdictStrengthOn(70, false), 3.1f), 0.0f, 0.0001f);
+
+	// THE CONTROLS: nothing at 3 seconds, and nothing before any movement skill.
+	TestEqual(TEXT("CONTROL: nothing at 3 seconds"), Effects::EdictOfStillnessSlowPercentAt(1.0f, 3.0f), 0.0f, 0.0001f);
+	TestEqual(TEXT("CONTROL: nothing when none was ever used"), Effects::EdictOfStillnessSlowPercentAt(1.0f, -1.0f), 0.0f,
+			  0.0001f);
+	TestEqual(TEXT("CONTROL: the floor's own rules leave it to the beat"),
+			  Effects::PlayerEffectsFor({StillnessRow}, 6).StillnessMovementLessPercent, 0.0f, 0.0001f);
+
+	FCataclysmPlayerFloorEffects Slowed;
+	Slowed.StillnessMovementLessPercent = 40.0f;
+	const TArray<FCataclysmStatModifier> Speed = ModifiersOn(Effects::StatModifiersFor(Slowed), TEXT("movement_speed"));
+	if (TestEqual(TEXT("one modifier on movement_speed"), Speed.Num(), 1))
+	{
+		TestTrue(TEXT("a multiplier"), Speed[0].Bucket == ECataclysmStatBucket::More);
+		TestEqual(TEXT("forty less"), Speed[0].Value, -40.0f, 0.001f);
+	}
+	TestFalse(TEXT("a player slowed by it is not on an empty floor"), Slowed.IsEmpty());
+	TestTrue(TEXT("the panel names it"),
+			 Effects::Describe(Slowed).Contains(TEXT("movement speed 40% less after a movement skill, by the Edict of Stillness")));
+	return true;
+}
+
+// THE #1765 TRAP: THE BEAT ASSIGNS DEATH'S EMBRACE'S SHARE, AND TEMPERANCE'S MUST STILL BE THERE AFTER IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTemperanceBesideEmbraceTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfTemperanceSurvivesTheBeatBesideDeathsEmbraceAndTheTwoAdd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTemperanceBesideEmbraceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {TemperanceRow, DeathsEmbrace};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("on arriving, Temperance withholds half"), HealingWithheldOf(Player), 50.0f, 0.01f);
+	const FCataclysmStatModifier* Leech = DungeonRuleOn(Player.AbilitySystem, TEXT("life_leech"));
+	TestTrue(TEXT("and life leech is removed"), Leech && Leech->Bucket == ECataclysmStatBucket::Removed);
+
+	// TEN SECONDS IN, DEATH'S EMBRACE'S FIRST STACK: THE BEAT RE-APPLIES, AND THE TWO ADD.
+	Beat(Mode, 39);
+	TestEqual(TEXT("ten seconds in, one stack of Embrace beside Temperance: 60"), HealingWithheldOf(Player),
+			  50.0f + Effects::DeathsEmbracePercentPerStack, 0.01f);
+	Leech = DungeonRuleOn(Player.AbilitySystem, TEXT("life_leech"));
+	TestTrue(TEXT("and life leech is still removed after the beat"),
+			 Leech && Leech->Bucket == ECataclysmStatBucket::Removed);
+
+	// THE CONTROL: Death's Embrace alone, on the next floor, withholds nothing on arriving and leaves life leech.
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	if (!TestTrue(TEXT("CONTROL: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("CONTROL: without Temperance nothing is withheld on arriving"), HealingWithheldOf(Player), 0.0f, 0.01f);
+	TestNull(TEXT("CONTROL: and no rule touches life leech"), DungeonRuleOn(Player.AbilitySystem, TEXT("life_leech")));
+	return true;
+}
+
+// THE SAME TRAP FOR PATIENCE: ETERNAL CHORUS'S SHARE COMES AND GOES ON THE BEAT, AND PATIENCE'S STAYS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPatienceBesideChorusTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfPatienceSurvivesTheBeatBesideEternalChorusAndTheTwoAdd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPatienceBesideChorusTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {PatienceRow, FName(Effects::EternalChorusKey)};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Sources = Mode->EternalChorusSourcesNow();
+	if (!TestTrue(TEXT("the floor has a chorus source"), Sources.Num() > 0))
+	{
+		return false;
+	}
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	const FVector Near = Sources[0]->GetActorLocation() + FVector(0.5f * Effects::EternalChorusEarshotCm, 0.0f, 0.0f);
+
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("out of earshot, Patience's 50"), PlayerStat(Player, TEXT("cooldown_lengthening")), 50.0f, 0.01f);
+
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("within earshot, the chorus's 50 added to it"), PlayerStat(Player, TEXT("cooldown_lengthening")), 100.0f,
+			  0.01f);
+
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("out of earshot again, Patience's 50 is still there"), PlayerStat(Player, TEXT("cooldown_lengthening")),
+			  50.0f, 0.01f);
+
+	// THE CONTROL: the chorus alone, on the next floor, out of earshot, lengthens nothing.
+	Mode->DungeonModifiers = {FName(Effects::EternalChorusKey)};
+	if (!TestTrue(TEXT("CONTROL: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	const FVector Entrance3 = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance3.X, Entrance3.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("CONTROL: without Patience, out of earshot, nothing"), PlayerStat(Player, TEXT("cooldown_lengthening")),
+			  0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStillnessInPlayTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfStillnessSlowsOnlyForThreeSecondsAfterAMovementSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStillnessInPlayTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {StillnessRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const float FullSpeed = WalkingSpeedOf(Player);
+	if (!TestTrue(TEXT("set-up: the player has a walking speed to lose"), FullSpeed > 0.0f))
+	{
+		return false;
+	}
+
+	// A SKILL THAT IS NOT A MOVEMENT SKILL SLOWS NOTHING.
+	Player.AbilitySystem->NoteSupportSkillUsed();
+	Beat(Mode, 1);
+	TestEqual(TEXT("a support skill slows nothing"), WalkingSpeedOf(Player), FullSpeed, 0.01f);
+
+	// A MOVEMENT SKILL SLOWS BY 40 FOR 3 SECONDS.
+	const float Share = 1.0f - Effects::EdictOfStillnessSlowPercent / 100.0f;
+	Player.AbilitySystem->NoteMovementSkillUsed();
+	Beat(Mode, 1);
+	TestEqual(TEXT("just after a movement skill, 40% slower"), WalkingSpeedOf(Player), FullSpeed * Share, 0.05f);
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("two seconds on, still slowed"), WalkingSpeedOf(Player), FullSpeed * Share, 0.05f);
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("three and a half seconds on, not slowed"), WalkingSpeedOf(Player), FullSpeed, 0.01f);
+
+	// THE CONTROL: a floor without the row does not slow after a movement skill.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("CONTROL: floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Player.AbilitySystem->NoteMovementSkillUsed();
+	Beat(Mode, 1);
+	TestEqual(TEXT("CONTROL: without the row a movement skill slows nothing"), WalkingSpeedOf(Player), FullSpeed, 0.01f);
+	return true;
+}
+
+// THE SAME TRAP FOR STILLNESS: SINGULARITY WELLS' SLOW IS WRITTEN ON THE SAME BEAT, ON THE SAME STAT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStillnessBesideWellsTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictOfStillnessAndASingularityWellEachSlowAndTheTwoMultiply",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStillnessBesideWellsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {SingularityWells, StillnessRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	const FIntPoint Cell = ThreeFloorCellsAlongX(Mode->CurrentFloor->GetPlan());
+	if (!TestTrue(TEXT("set-up: three floor cells along X"), Cell.X >= 0))
+	{
+		return false;
+	}
+	const FVector Centre = CellAtThePlayersHeight(Mode, Player, Cell + FIntPoint(1, 0));
+	const float FullSpeed = WalkingSpeedOf(Player);
+	if (!TestNotNull(TEXT("set-up: a well placed"), Mode->PlaceASingularityWellAt(Centre, 0.0f)))
+	{
+		return false;
+	}
+	StandThePlayerAt(Player, Centre);
+	Beat(Mode, 1);
+	const float WellShare = 1.0f - Effects::SingularityWellsSlowPercent / 100.0f;
+	TestEqual(TEXT("in the well, its slow alone"), WalkingSpeedOf(Player), FullSpeed * WellShare, 0.05f);
+
+	Player.AbilitySystem->NoteMovementSkillUsed();
+	Beat(Mode, 1);
+	const float StillShare = 1.0f - Effects::EdictOfStillnessSlowPercent / 100.0f;
+	TestEqual(TEXT("in the well just after a movement skill, both, multiplied"), WalkingSpeedOf(Player),
+			  FullSpeed * WellShare * StillShare, 0.05f);
+
+	// THE CONTROL: the Edict's 3 seconds run out, and the well's slow is still there.
+	CataclysmTestWorld::RunClock(World, 3.5f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("CONTROL: once its 3 seconds have run, the well's slow alone again"), WalkingSpeedOf(Player),
+			  FullSpeed * WellShare, 0.05f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictsInAnAscendantTest,
+	"Cataclysm.DungeonModifierEffects.InAnAscendantTheThreeEdictsAreStrongerAFloorDeeperUpToTheirCaps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictsInAnAscendantTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const float FullSpeed = WalkingSpeedOf(Player);
+
+	// THE THREE AMONG THE DUNGEON'S OWN MODIFIERS, so every floor carries them whatever the draw adds.
+	Mode->DungeonModifiers = {TemperanceRow, PatienceRow, StillnessRow};
+	struct FCase { ECataclysmDungeonSubType SubType; int32 Floor; float Healing; float Cooldown; float Slow; };
+	const FCase Cases[] = {
+		{ECataclysmDungeonSubType::Ascendant, 6, 75.0f, 75.0f, 60.0f},
+		{ECataclysmDungeonSubType::Ascendant, 70, 90.0f, 395.0f, 90.0f},
+		// THE CONTROL: floor 70 of a dungeon that is no Ascendant is at base strength.
+		{ECataclysmDungeonSubType::None, 70, 50.0f, 50.0f, 40.0f},
+	};
+	for (const FCase& Case : Cases)
+	{
+		Mode->DungeonSubType = Case.SubType;
+		if (!TestTrue(FString::Printf(TEXT("floor %d was reached"), Case.Floor), Mode->GoToFloor(Case.Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		const FString Where = FString::Printf(TEXT("%s floor %d"),
+											  Case.SubType == ECataclysmDungeonSubType::Ascendant ? TEXT("an Ascendant's")
+																							  : TEXT("an ordinary dungeon's"),
+											  Case.Floor);
+		TestEqual(FString::Printf(TEXT("%s: Temperance withholds %.0f"), *Where, Case.Healing), HealingWithheldOf(Player),
+				  Case.Healing, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s: Patience lengthens by %.0f"), *Where, Case.Cooldown),
+				  PlayerStat(Player, TEXT("cooldown_lengthening")), Case.Cooldown, 0.05f);
+		Player.AbilitySystem->NoteMovementSkillUsed();
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("%s: Stillness slows by %.0f"), *Where, Case.Slow), WalkingSpeedOf(Player),
+				  FullSpeed * (1.0f - Case.Slow / 100.0f), 0.05f);
+		const FCataclysmStatModifier* Leech = DungeonRuleOn(Player.AbilitySystem, TEXT("life_leech"));
+		TestTrue(FString::Printf(TEXT("%s: life leech removed"), *Where),
+				 Leech && Leech->Bucket == ECataclysmStatBucket::Removed);
+		CataclysmTestWorld::RunClock(World, 3.5f);
+		Beat(Mode, 1);
+	}
+	return true;
+}
+
+// THE CORE'S FLOOR: TEMPERANCE AND PATIENCE ARE WRITTEN ONCE A FLOOR, SO DESTROYING THE CORE MUST PUT THEM BACK.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictsAfterTheCoreTest,
+	"Cataclysm.DungeonModifierEffects.DestroyingTheHeavenlyCoreTakesPatienceBackToItsFloorsStrength",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictsAfterTheCoreTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+
+	// A TWO-FLOOR ASCENDANT CARRYING THE EDICT OF PATIENCE AMONG ITS OWN MODIFIERS.
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		Chosen = Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel ? Index : INDEX_NONE;
+	}
+	if (!TestTrue(TEXT("set-up: the run has a dungeon to walk"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+	FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+	Dungeon.Floors = 2;
+	Dungeon.Type = ECataclysmDungeonType::Quest;
+	Dungeon.SubType = ECataclysmDungeonSubType::Ascendant;
+	Dungeon.Cataclysm = ECataclysmType::Celestial;
+	Dungeon.Modifiers = {PatienceRow};
+	Dungeon.ModifierScore = 15.0f;
+	if (!TestTrue(TEXT("set-up: the dungeon was entered"), Mode->EnterEmpireDungeon(Dungeon.DungeonId))
+		|| !TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("and is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Core = Mode->HeavenlyCoreNow();
+	if (!TestNotNull(TEXT("the last floor has a Heavenly Core"), Core))
+	{
+		return false;
+	}
+
+	// WHILE IT STANDS: 1.1 TIMES 1.5, SO 82.5; AND A BEAT CHANGES NOTHING.
+	Beat(Mode, 1);
+	TestEqual(TEXT("while the Core stands, cooldowns 82.5 longer"), PlayerStat(Player, TEXT("cooldown_lengthening")),
+			  82.5f, 0.05f);
+
+	WoundCreatureTo(Core, 100.0f, 0.0f);
+	Core->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Core, 100000.0f);
+	if (!TestTrue(TEXT("the Core was destroyed"), UCataclysmSkillEffects::IsDead(Core)))
+	{
+		return false;
+	}
+
+	// THE NEXT BEAT TAKES IT TO THE FLOOR'S 1.1: 55.
+	Beat(Mode, 1);
+	TestEqual(TEXT("a beat after the Core falls, cooldowns 55 longer"), PlayerStat(Player, TEXT("cooldown_lengthening")),
+			  55.0f, 0.05f);
+
+	// THE CONTROL: and further beats leave it there.
+	Beat(Mode, 4);
+	TestEqual(TEXT("CONTROL: and it stays at 55"), PlayerStat(Player, TEXT("cooldown_lengthening")), 55.0f, 0.05f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
