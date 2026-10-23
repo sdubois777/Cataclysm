@@ -532,6 +532,20 @@ bool UCataclysmEmpireMap::AddVoidStacks(int32 CityId, int32 Stacks)
 	return Fall(CityId);
 }
 
+bool UCataclysmEmpireMap::LeaveEdict(int32 CityId, FName Edict, int32 Today)
+{
+	FCataclysmCity* City = FindMutable(CityId);
+	if (City == nullptr || Edict.IsNone())
+	{
+		return false;
+	}
+
+	// ONE AT A TIME: the new one replaces the old and its days start again.
+	City->LeftEdict = Edict;
+	City->LeftEdictUntilDay = Today + LeftEdictDays;
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // City upgrades
 // ---------------------------------------------------------------------------

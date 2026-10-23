@@ -89,6 +89,10 @@ public:
 	 * AND ITS VOID STACKS OUT OF TEN, WHEN IT CARRIES ANY, since 2026-10-22. A
 	 * fallen city that carries some says how many and that retaking it clears
 	 * them, still without a defence figure. A city with none reads as before.
+	 *
+	 * AND THE EDICT AN ASCENDANT LEFT ON IT, WHILE ITS DAYS RUN, since
+	 * 2026-10-22: "Edict of Silence, 12 days left". A city carrying none reads
+	 * as before.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString StatusTextFor(const UCataclysmEmpireRun* Run, int32 CityId);
@@ -111,6 +115,10 @@ public:
 	 * 14 floors, shrinking by one a day to 10, 9 days until it bites", or at
 	 * its minimum "Hollow, 10 floors, no longer shrinking, 9 days until it
 	 * bites". The figure is the floors at which it stops.
+	 *
+	 * AN ASCENDANT SAYS WHAT IT HOLDS, since 2026-10-22: "Ascendant, 30
+	 * floors, 2 Edicts by its last floor and a Heavenly Core, 9 days until it
+	 * bites". The count is the Edicts it adds by its deepest floor.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FString> DungeonLinesFor(const UCataclysmEmpireRun* Run,

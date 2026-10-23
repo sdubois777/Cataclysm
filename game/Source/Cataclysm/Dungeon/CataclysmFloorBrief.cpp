@@ -34,6 +34,25 @@ namespace
 			FloorSeed, FCataclysmDungeonFloorRules::ModifierSalt));
 	}
 
+	/**
+	 * What a row is worth on this dungeon's floors: its danger score from the
+	 * dungeon's pool, or from every built row, or nought when neither holds it.
+	 */
+	float CataclysmFloorBriefDangerOf(const FCataclysmDungeonIdentity& Dungeon, FName RowKey)
+	{
+		for (const TArray<FCataclysmDungeonModifier>* Rows : { &Dungeon.ModifierPool, &Dungeon.EveryBuiltModifier })
+		{
+			for (const FCataclysmDungeonModifier& Row : *Rows)
+			{
+				if (Row.RowKey == RowKey)
+				{
+					return Row.Danger;
+				}
+			}
+		}
+		return 0.0f;
+	}
+
 	/** The pool with everything these row keys name taken out of it. */
 	TArray<FCataclysmDungeonModifier> CataclysmFloorBriefPoolWithout(
 		const TArray<FCataclysmDungeonModifier>& Pool,
@@ -231,6 +250,21 @@ void FCataclysmDungeonFloorRules::ModifiersFor(
 	}
 
 	// RULE 3, UNSTABLE DIMENSIONS, IS DRAWN LAST, BELOW, since 2026-10-01.
+
+	// RULE 6. AN ASCENDANT'S DIVINE EDICTS, since 2026-10-22: one on floor 1, one
+	// more a floor, four from floor 4, never one already in force, each drawn
+	// evenly on the dungeon's own stream so floor N holds floor N-1's. See
+	// `UCataclysmDungeonModifierRules::EdictsOnFloor`. Here, before rule 4, so
+	// Reality Twister leaves them out of what it may add.
+	if (Dungeon.SubType == ECataclysmDungeonSubType::Ascendant)
+	{
+		const int32 EdictSeed = Dungeon.EdictSeed != 0 ? Dungeon.EdictSeed : Dungeon.DungeonSeed;
+		for (const FName& Edict : UCataclysmDungeonModifierRules::EdictsOnFloor(EdictSeed, OutModifiers, FloorNumber))
+		{
+			OutModifiers.Add(Edict);
+			OutScore += CataclysmFloorBriefDangerOf(Dungeon, Edict);
+		}
+	}
 
 	// RULE 4. REALITY TWISTER, AS THE OWNER DECIDED ON 2026-09-26: "Each floor, one
 	// random dungeon modifier from any Cataclysm is added, even one this dungeon

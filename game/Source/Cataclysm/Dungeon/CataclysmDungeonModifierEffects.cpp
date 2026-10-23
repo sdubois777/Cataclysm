@@ -1197,6 +1197,13 @@ bool UCataclysmDungeonModifierEffects::EdictOfSilenceIsDue(float SecondsSinceLas
 	return SecondsSinceLast >= EdictOfSilenceEverySeconds;
 }
 
+float UCataclysmDungeonModifierEffects::EdictOfSilenceLastsSecondsAt(float Strength)
+{
+	// SCALED, AND THEN HELD INSIDE THE CYCLE. See the header for why the cap.
+	return FMath::Min(EdictOfSilenceLastsSeconds * FMath::Max(0.0f, Strength),
+					  EdictOfSilenceMostLastsSeconds);
+}
+
 float UCataclysmDungeonModifierEffects::SkillsLockedWhile(bool bSilenced)
 {
 	// EVERY SILENCE IS THE SAME. The row describes one that prevents all skill

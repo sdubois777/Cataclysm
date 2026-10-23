@@ -2168,6 +2168,57 @@ public:
 	TArray<FName> StairsSealedBy() const;
 
 	/**
+	 * What `StairsSealedBy` names while an Ascendant's Heavenly Core stands on
+	 * its last floor. Not a row of the modifier table: the Core is the
+	 * Ascendant's, not a modifier's. Since 2026-10-22.
+	 */
+	static constexpr const TCHAR* HeavenlyCoreSealKey = TEXT("Heavenly_Core");
+
+	/**
+	 * Mixed into the floor's seed for where the Heavenly Core stands, with
+	 * `EternalChorusCells`, as the other floor sources are placed. The
+	 * letters "core".
+	 */
+	static constexpr int32 HeavenlyCoreCellsSalt = 0x636F7265;
+
+	/**
+	 * The Ascendant's Heavenly Core on this floor while it stands, or null.
+	 * Since 2026-10-22. Placed only on an Ascendant's last floor.
+	 */
+	class ACataclysmEnemyCharacter* HeavenlyCoreNow() const;
+
+	/** Whether a Heavenly Core stands on this floor. */
+	bool HeavenlyCoreStands() const { return HeavenlyCoreNow() != nullptr; }
+
+	/**
+	 * Whether the Heavenly Core seals the stairs: on an Ascendant's last floor,
+	 * while it stands. Those stairs are the way out that clears the dungeon --
+	 * `GoDownOneFloor` calls `ClearEmpireDungeon` there -- so the seal holds
+	 * back both the clear and the quest objective, as the design says. THE
+	 * LAST FLOOR IS SEALED HERE, unlike every row that seals the stairs, whose
+	 * last floor is not.
+	 */
+	bool HeavenlyCoreSealsTheStairs() const;
+
+	/**
+	 * The health a Heavenly Core is given: the floor boss's,
+	 * `ACataclysmGameMode::GatekeeperHealth`, at Common. Ruled 2026-10-22,
+	 * "that depth's floor boss's health"; no creature's health grows with
+	 * depth in the game, so this is the boss's at every depth, and its rung
+	 * is not rolled.
+	 */
+	float HeavenlyCoreHealth() const { return GatekeeperHealth; }
+
+	/**
+	 * What a Divine Edict's numbers are multiplied by on the floor being
+	 * walked: `UCataclysmDungeonModifierRules::EdictStrengthOn` for an
+	 * Ascendant -- the floor's number, and whether the Heavenly Core stands
+	 * on it -- and 1 everywhere else, which is the base strength an Edict left
+	 * on a city is carried at. Since 2026-10-22.
+	 */
+	float EdictStrengthHere() const;
+
+	/**
 	 * Singularity Wells: a well at this point dealing this much a second, as the rule places one -- typed by its row,
 	 * burning once a second with the others, turning projectiles -- and counted toward the cap. Public so a test can
 	 * place one where it means to. Null when the row will not load or nothing could be spawned. Issues #1605, #41.
@@ -3149,6 +3200,12 @@ private:
 
 	/** Every spire and its zone destroyed and forgotten. */
 	void ForgetTheSpires();
+
+	/** The Ascendant's Heavenly Core, placed on its last floor where a new arena is populated. 2026-10-22. */
+	void PlaceTheHeavenlyCore();
+
+	/** The Heavenly Core destroyed and forgotten. */
+	void ForgetTheHeavenlyCore();
 
 	/** Pestilent Empowerment: this arena's beacons, placed where a new arena is populated. */
 	void PlaceTheBeacons();
@@ -5086,6 +5143,9 @@ private:
 	/** Golden Spires: this arena's spires, and how many the panel last said. */
 	TArray<FGoldenSpire> GoldenSpires;
 	int32 GoldenSpiresPanelStanding = -1;
+
+	/** The Ascendant's Heavenly Core on this floor, or nothing. 2026-10-22. */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> HeavenlyCore;
 
 	/** Pestilent Empowerment: one beacon, and whether it has been counted, so a Horde arena's counts once. */
 	struct FPlagueBeacon

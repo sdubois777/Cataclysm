@@ -62,6 +62,13 @@ enum class ECataclysmDungeonType : uint8
  * value numbered past `Sacrificial` is never on its line. The model's
  * `config.SUBTYPE_SPAWN_WEIGHTS` leaves it out the same way. It is added at the
  * end, as new kinds are, so that no stored number changes its meaning.
+ *
+ * ASCENDANT IS NEVER ROLLED EITHER, since 2026-10-22, for the same reason: it is
+ * the Celestial Cataclysm's Quest dungeon and nothing else, named by
+ * `QuestSubTypeFor` for Celestial and numbered past `Sacrificial`. What makes
+ * it an Ascendant -- one more Edict a floor up to four, each stronger a floor
+ * deeper, a Heavenly Core on its last floor, and an Edict left on its city --
+ * is in `UCataclysmDungeonModifierRules` and the dungeon game mode.
  */
 UENUM(BlueprintType)
 enum class ECataclysmDungeonSubType : uint8
@@ -75,4 +82,5 @@ enum class ECataclysmDungeonSubType : uint8
 	Volatile     = 6,
 	Sacrificial  = 7,
 	Hollow       = 8,
+	Ascendant    = 9,
 };

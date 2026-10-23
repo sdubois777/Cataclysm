@@ -963,6 +963,35 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	TArray<int32> DungeonsOn(int32 CityId) const;
 
+	/**
+	 * The Divine Edict this dungeon carries today because an Ascendant left it
+	 * on the dungeon's city, or none.
+	 *
+	 * EVERY DUNGEON ON THAT CITY, STANDING OR ARRIVING, while the 30 days run,
+	 * the design's rule since 2026-10-22: what is asked is the city the
+	 * dungeon stands on now and the run's day now, so a dungeon that arrives
+	 * after the hit carries it and one that moves away stops. The day is
+	 * `Day()`, the clock's; `ACataclysmDungeonGameMode::EnterEmpireDungeon`
+	 * asks on entry, so a walk carries what its city held the day it began.
+	 */
+	FName LeftEdictCarriedBy(int32 DungeonId) const;
+
+	/**
+	 * The modifiers a walk of this dungeon carries: its own, and then, beyond
+	 * its count, the Edict left on its city while it carries one. One already
+	 * among its own is not added twice. Ruled 2026-10-22.
+	 */
+	TArray<FName> ModifiersCarriedBy(int32 DungeonId) const;
+
+	/**
+	 * Its modifier score as a walk carries it: its own `ModifierScore`, plus
+	 * the left Edict's danger score when `ModifiersCarriedBy` added it. The
+	 * danger is read from `ModifierPool`; a run whose pool was never filled
+	 * adds nought, as it gives every dungeon nought. Ruled 2026-10-22: the
+	 * left Edict adds to the modifier score of every dungeon on its city.
+	 */
+	float ModifierScoreCarriedBy(int32 DungeonId) const;
+
 	/** How many dungeons are on the map. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	int32 DungeonCount() const { return Dungeons.Num(); }

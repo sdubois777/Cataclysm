@@ -100,6 +100,19 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * `FCataclysmDungeonFloorRules::DarkFloorSalt` for that floor; this field mixes nothing.
 	 */
 	bool bTheDarkFloor = false;
+
+	/**
+	 * The seed of the dungeon as a whole, which an Ascendant's Edicts are drawn
+	 * on, or nought for "the same as `DungeonSeed`". Since 2026-10-22.
+	 *
+	 * NOT THE FLOOR'S SEED AND NOT THE DARK FLOOR'S. The Edicts are drawn once
+	 * for the whole dungeon, so floor N holds floor N-1's, and the empire draws
+	 * the same order from `FCataclysmDungeon::WalkSeed` for the Edict an
+	 * Ascendant leaves on its city. `ACataclysmDungeonGameMode::DungeonIdentity`
+	 * sets it to the dungeon's own seed, which on the dark floor a fall leads
+	 * to is not `DungeonSeed`. A struct built by hand leaves it at nought.
+	 */
+	int32 EdictSeed = 0;
 };
 
 /**
@@ -470,6 +483,14 @@ public:
 	 *      Unstable Dimensions that Reality Twister adds imposes a reality too, and
 	 *      a Volatile floor that re-drew the row does. It adds nothing to the score.
 	 *      Answered through `OutEveryCreatureModifier`.
+	 *   6. **An Ascendant adds one Divine Edict a floor, up to four**, since
+	 *      2026-10-22: `UCataclysmDungeonModifierRules::EdictsOnFloor`, beyond
+	 *      the modifiers rules 1 and 2 left, passing over an Edict already
+	 *      among them, on a stream of the dungeon's own (`EdictSeed`) and not
+	 *      the floor's. Their danger scores are added to the floor's score.
+	 *      AFTER RULE 2 AND BEFORE RULE 4, so Reality Twister never draws an
+	 *      Edict already in force. Not a pool draw: a dungeon whose pools were
+	 *      never filled still carries its Edicts, at a danger of nought.
 	 *
 	 * **THE DRAW IS SEEDED FROM THE FLOOR AND NOT FROM THE RUN.** Its stream
 	 * comes from the dungeon's seed and the floor number, so the same floor of
