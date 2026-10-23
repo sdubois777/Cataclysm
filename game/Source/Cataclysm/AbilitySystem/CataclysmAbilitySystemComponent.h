@@ -1586,7 +1586,8 @@ public:
 	/**
 	 * The action that FIRES EVERY GADGET THE WEARER COMMANDS, ONCE, AT ONCE, on `player_death`. Ruled 2026-10-19 by
 	 * the coordinating session (C1), for "When you die, all your active traps and gadgets immediately trigger
-	 * simultaneously": the sentence's gadget half; its trap half joins when traps are built.
+	 * simultaneously": the sentence's gadget half; its trap half joins when traps are built. SINCE TRAPS LAYER 5
+	 * (2026-10-22) THE TRAP HALF IS BUILT, as `trigger_traps_nearby` on `player_death` (`TriggerTrapsNearbyAction`).
 	 * `tools/generate_datatables.py` holds the same name in `GADGETS_CAST_NOW_ACTION`. See
 	 * `FCataclysmPoolAction::bGadgetsCastNow` and `ACataclysmMinion::FireEveryGadgetAtTheDeathOf`.
 	 */

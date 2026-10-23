@@ -458,14 +458,17 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius": the same
 	// sphere or cone, measured from the deployable's place. A STRIKE LIMITED TO ONE TARGET IS A SINGLE-TARGET BLOW AND
 	// STRIKES NOBODY HERE, a judgement of the writing session: the basic attack's swing is one. Null for a user without
-	// the row and for every use no deployable cast.
+	// the row and for every use no deployable cast. AND A SKILL TRAP ALREADY USED UP IS FOUND BY THE USE'S IDENTITY OF
+	// IT (traps layer 7, L-1, ruled 2026-10-22), for a swing a row's cast delay holds back until the trap is gone.
 	AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == 1
 		? nullptr
 		: ThisUseHitsAllWithinCm > 0.0f
 		? UCataclysmDeployableSelfBlast::WearerInSphere(
-			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()),
+			FreeRepeatCastBy)
 		: UCataclysmDeployableSelfBlast::WearerInCone(
-			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees());
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees(),
+			FreeRepeatCastBy);
 
 	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
 	// than tidy. Quench gives an enemy whose fire was just put out 50% more
@@ -2187,11 +2190,12 @@ int32 UCataclysmProjectileSkill::Land()
 	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". NOT A
 	// BEAM THAT PIERCES, whose line is a path and not a blast, and NOT A LANDING LIMITED TO ONE TARGET, which is a
 	// single-target blow: both judgements of the writing session. In the same attack as the enemies, after them, as
-	// `UCataclysmStrikeSkill::SwingOnce` strikes it.
+	// `UCataclysmStrikeSkill::SwingOnce` strikes it. AND A SKILL TRAP ALREADY USED UP IS FOUND BY THE USE'S IDENTITY OF
+	// IT (traps layer 7, K1, ruled 2026-10-22), for a landing a row's cast delay holds back until the trap is gone.
 	AActor* const StruckWearer = Pierces > 0 || Params.MaxTargets == 1
 		? nullptr
 		: UCataclysmDeployableSelfBlast::WearerInSphere(
-			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm());
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm(), FreeRepeatCastBy);
 	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
 	HitTargets(Targets);
 	if (StruckWearer)

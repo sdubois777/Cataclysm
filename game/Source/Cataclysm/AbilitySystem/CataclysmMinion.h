@@ -520,7 +520,8 @@ public:
 	 * A PLAYER'S DEATH FIRES ITS GADGETS. Ruled 2026-10-19 by the coordinating session (C1-C5), for "When you die, all
 	 * your active traps and gadgets immediately trigger simultaneously": the gadget half, reached by the row action
 	 * `gadgets_cast_now` on `player_death` (`UCataclysmAbilitySystemComponent::GadgetsCastNowAction`). The trap half
-	 * is not built, and joins when traps are.
+	 * is not built, and joins when traps are. SINCE TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as
+	 * `trigger_traps_nearby` on `player_death` (`UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction`).
 	 *
 	 * EVERY SKILL GADGET `Dying` COMMANDS, TAKEN ONCE, FIRES ONCE, ALL INSIDE THIS ONE CALL (C3): `UCataclysmCommand::
 	 * ThingsCommandedBy`, which leaves out the dead, less every minion that is not a skill gadget (an imp, a mote, a
