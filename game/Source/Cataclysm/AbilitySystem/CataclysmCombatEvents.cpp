@@ -176,9 +176,10 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 			// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY, so a death it causes raises
 			// none of its striker's rows. Ruled 2026-10-15.
 			Blow.bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
-			// AND, FOR A BLOW NAMING NO SKILL OBJECT, THE TAGS OF THE SKILL IT IS A BLOW OF: a buried weapon's leap's. Ruled
-			// 2026-10-22 (#2465, N2 (a)). A COPY, kept for every such blow on record as `Skill` is, so the death notice
-			// can point at it after the skill and the leap's component are gone. Empty for every other blow.
+			// AND, FOR A BLOW NAMING NO SKILL OBJECT, THE TAGS OF THE SKILL IT IS A BLOW OF: a buried weapon's leap's, or a
+			// shot's whose firing skill has gone (#2475). Ruled 2026-10-22 (#2465, N2 (a)). A COPY, kept for every such
+			// blow on record as `Skill` is, so the death notice can point at it after the skill and the leap's component
+			// are gone. Empty for every other blow.
 			if (const FGameplayTagContainer* WithNoSkill =
 					UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec))
 			{
@@ -213,6 +214,14 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	{
 		Notice.SkillName = FName(*Skill->SkillName);
 		Notice.SkillTags = &Skill->SkillTags;
+	}
+	// AND A BLOW NAMING NO SKILL OBJECT NAMES THE TAGS ITS DELIVERY NAMED FOR THE SKILL IT IS A BLOW OF, as its kill does,
+	// and no skill's name: a buried weapon's leap, and a shot whose firing skill has gone. #2475, under #2465's ruling N1.
+	// THE DELIVERY'S OWN POINTER, NOT A COPY: it is valid for the whole of `ApplyDirectDamage`'s application of this blow,
+	// and this notice is handed out and read inside it, the broadcast below being synchronous. Null for every other blow.
+	else
+	{
+		Notice.SkillTags = UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec);
 	}
 	Notice.Landed = Outcome.AbsorbedByMana + Outcome.AbsorbedByShield
 		+ Outcome.AbsorbedByTemporary + Outcome.DealtToHealth;
@@ -289,7 +298,8 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 			Notice.KillingSkillTags = &Skill->SkillTags;
 		}
 		// AND A LAST BLOW THAT NAMED NO SKILL OBJECT NAMES THE TAGS OF THE SKILL IT WAS A BLOW OF, the copy on the record,
-		// and no skill's name: a buried weapon's leap. Ruled 2026-10-22 (#2465, N1 (a), N2 (a)).
+		// and no skill's name: a buried weapon's leap, or a shot whose firing skill has gone (#2475). Ruled 2026-10-22
+		// (#2465, N1 (a), N2 (a)).
 		else if (!Blow.SkillTagsWithNoSkill.IsEmpty())
 		{
 			Notice.KillingSkillTags = &Blow.SkillTagsWithNoSkill;

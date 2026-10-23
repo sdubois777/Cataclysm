@@ -2,6 +2,303 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-23 — A shot whose firing skill has gone carries the tags it was fired with, so a trap's rack axe landing after the trap's use has ended explodes its kill; and a blow naming no skill object names its skill's tags on its hit notice, so a leap's hit answers hit rows requiring the throwing skill's tags
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` (`ACataclysmProjectile::HitOne` and
+`StrikeTheWearerInItsBlast` each set `FCataclysmHitDelivery::SkillTagsWithNoSkill`, one line and one comment);
+`CataclysmCombatEvents.cpp` (`UCataclysmCombatEvents::NoteBlow` names the tags on the hit notice for a blow naming no
+skill object; two comments); `CataclysmCombatEvents.h`, `CataclysmSkillEffects.h` and `CataclysmSkillEffects.cpp`
+(comments only), all under `game/Source/Cataclysm/AbilitySystem/`; `game/Source/Cataclysm/Tests/CataclysmNoSkillBlowTagsTests.cpp`
+(new, two tests in `Cataclysm.NoSkillBlowTags.`); and in this file a sentence added to four merged statements this change
+makes false (below). No data row, no tag, no workbook cell, nothing under `game/Data/`, `game/Content/` or
+`game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed. **This closes
+[#2475](https://github.com/sdubois777/Cataclysm/issues/2475).**
+
+### SAID FIRST
+
+**A PLAY CHANGE, AS N1 RULES IT, AT TWO SITES.**
+
+- **Site 1, a shot whose firing skill has gone.** A projectile keeps the tags of the skill that fired it
+  (`ACataclysmProjectile::SkillTags`). When that skill's object is gone by the time the shot lands, its blow now names
+  those tags, so its kill carries them and its hit notice names them. The case in play is **a trap's Butcher's Bill axe
+  that lands after the rack's use has ended**: a trap's cast is a one-use grant, removed when the rack's last axe is
+  thrown, while thirty axes may still be in the air. So "Enemies killed by traps explode, dealing 50%-100% of the
+  trap's damage to all enemies within 4 meters" (`explode_victim_for_killing_blow` on `kill`, `Type.Trap`) now answers
+  such a kill (test 1), and so does "Ranged kills have a 20%-40% chance to refund the cooldown of the skill used"
+  (`cooldown_reset_event_skill` on `kill`, `Type.Ranged`), which refunds the slot the tags name, `Slot.Ultimate` (by
+  reading; not tested). A skill gadget's late rack axe is the same case and carries its cast's tags the same way (by
+  reading). "Melee kills restore 3%-6% of your maximum HP" (`Type.Melee`) still never answers, Butcher's Bill carrying no
+  `Type.Melee`.
+- **Site 2, the hit notice.** A blow that names no skill object but whose delivery names its skill's tags now names those
+  tags on its hit notice (`FCataclysmHitNotice::SkillTags`), as its kill notice already did. **A buried weapon's leap's
+  hit now answers hit rows requiring the throwing skill's tags** (test 2), and so does a late rack axe's hit (test 1).
+  **On development's data that changes no shipped row's answer:** the only hit rows requiring a tag require `Type.Strike`
+  (four), `Type.Melee` (two) or `Type.AOE.PointBlank` (one), and neither Harrower nor Butcher's Bill carries any of them;
+  no `first_hit_dealt` or `critical_strike` row requires a tag. Counted by script over `game/Data/EnchantmentEffects.csv`.
+  It matters for a row written later.
+
+**THE ISSUE'S WORD "DETONATION" IS WRONG.** #2475 calls the second of the projectile's two deliveries "its detonation".
+It is not: it is the copy of the enemy's delivery (`HitOne`) that strikes the projectile's own wearer under "Your
+deployables and traps deal full damage to you if you are within their blast radius" (traps layer 7,
+`StrikeTheWearerInItsBlast`). The issue's comment of 2026-10-22 says so. Both deliveries take the new line, at the same
+place in each list, as `TestADeployablesBlastStrikesItsWearer` in `tools/tests/test_generate_datatables.py` requires.
+
+**NOTHING CHANGES FOR A SHOT THAT NEVER HAD A SKILL.** A creature's shot (the Brute's rock, the Corrupted Sentinel's bolt
+and mortar, the Gatekeeper's soulfall, the Succubus's soulfire) and the Infernal Rain fireball are fired with no skill, so
+`FiringSkill` was never set; the new line names their tags only when `FiringSkill` is stale, and it is not. See the
+judgements.
+
+**NOT COMPILED AND NOT RUN.** A second session wrote the code, the tests and this entry under the enchantment session's
+brief 68. Nothing was compiled and no Unreal test was run by the session that wrote it.
+
+### FOR THE OWNER'S PLAY-CHECK LIST
+
+- a trap's rack axe that kills after the trap's use has ended now explodes its kill under traps layer 4's row
+- a leap's hit now answers hit rows requiring the throwing skill's tags
+
+### WHO RULED
+
+The coordinating session's ruling of 2026-10-22 for #2465, N1, verbatim as relayed:
+
+> Every other blow a skill delivers carries that skill's tags. The leap is a blow of the throwing skill, so it should
+> carry them too; its lack of tags is the bug #2465 records.
+
+The coordinating session ruled that #2475 is covered by N1 and needs no new ruling. No question was found that N1 does
+not answer (see the judgements).
+
+### WHAT WAS READ FIRST
+
+Line numbers are of development `0c6f0c933`, before this change; engine lines are of Unreal Engine 5.8 as installed.
+
+1. **What a trap's late rack axe names.** A trap's cast is `UCataclysmTriggeredSkill::Trigger`
+   (`CataclysmTriggeredSkill.cpp` 66 to 116, from `ACataclysmMinion::StartPlayersSkillFromHere`, `CataclysmMinion.cpp`
+   2344): `GiveAbility`, `TryActivateAbility`, then `SetRemoveAbilityOnEnd` (114). Butcher's Bill fires each axe with
+   `InFiringSkill=this` (`CataclysmSkillTemplates.cpp` 1891 to 1896), kept as `ACataclysmProjectile::FiringSkill`, a
+   `TWeakObjectPtr<const UGameplayAbility>` (`CataclysmProjectile.h` 745, set at `CataclysmProjectile.cpp` 285). The rack's
+   last `ThrowOne` calls `StopThrowing` (`CataclysmSkillTemplates.cpp` 1966), which ends the ability (2039); "THE AXES
+   ALREADY THROWN FLY ON" (`EndAbility`, 2057). The engine then clears the spec (`AbilitySystemComponent_Abilities.cpp`
+   1287 to 1290, `RemoveAfterActivation`), and `OnRemoveAbility` marks the primary instance as garbage (681). A weak
+   pointer to a garbage object answers null (`WeakObjectPtr.h` 215 to 218, `Internal_Get` 560 to 564). So when such an axe
+   lands, **`FiringSkill.Get()` is null**: `HitOne` hands it on as `Delivery.Skill` (655), `ApplyDirectDamage` sets no
+   ability on the context (`CataclysmSkillEffects.cpp` 1325), `CombatEventsSkillOf(Context)` answers null
+   (`CataclysmCombatEvents.cpp` 49 to 53), and the hit notice (212 to 216) and the kill notice (`NoteDeath`, 286 to 296)
+   named no skill and, before this change, no tags. **A player's own rack** is granted in its slot and never removed
+   when it ends, so its instance stays valid, `FiringSkill.Get()` answers it, and its late axe's hit and kill name the
+   skill and its tags already. **A single shot** is not the case: a projectile skill's use stays active until its last
+   shot has finished (`OnProjectileFinished`, 1720 to 1731), so a trap's shot names its skill when it lands.
+2. **Every reader of `FCataclysmHitNotice::SkillTags`**, found where the notice is defined (`CataclysmCombatEvents.h` 69)
+   and where `OnHit` is bound: `OnHit` is bound by `ACataclysmPlayerCharacter` (`CataclysmPlayerCharacter.cpp` 2612) and
+   `ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.cpp` 1319) and nothing else outside the tests. The player's
+   `OnSomethingWasHit` reads `SkillTags` three times, as the tags of `hit_dealt` (1035), `first_hit_dealt` (1047) and
+   `critical_strike` (1064), for its own blows only. The game mode's hit handlers read no `SkillTags` (searched). The
+   passive tree hears no hit notice and has no row on an event (`game/Data/PassiveEffects.csv` has no event column, and
+   no passive tree source names `hit_dealt`). In `UCataclysmAbilitySystemComponent::ActOnEvent` the tags are read by
+   `PoolActionAllowed` (Required Tags, and `hit_dealt_is_not_spell`, which answers "not a spell" for no tags and for
+   Harrower's and Butcher's Bill's alike), by `RollAndResetCooldowns` (the slot of an `EventSkill` or `Others` reset; no
+   hit row is one) and by `UCataclysmContagion::BlastFromTheDying` (on `afflicted_death`, not a hit). What each would
+   answer once a leap's hit carries Harrower's tags: the three hit events now carry them; every shipped hit row requiring
+   a tag still refuses (SAID FIRST); every row requiring none answered already.
+3. **Every reader of the kill notice's tags a late rack axe's kill now reaches.** `KillingSkillTags` is read once,
+   `ACataclysmPlayerCharacter::OnSomethingDied` (`CataclysmPlayerCharacter.cpp` 1188), as the tags of `kill`. Of the
+   thirteen `kill` rows on development, three require a tag: the melee heal (refuses, no `Type.Melee`), the ranged
+   cooldown refund (answers, refunding `Slot.Ultimate`) and traps layer 4's explosion (answers a trap's cast, carrying
+   `Type.Trap`; 1237 to 1270). The rest require none and answered already. Follow Through reads `KillingSkillName`, which
+   stays None.
+4. **The two deliveries.** `HitOne` (645 to 668) builds the enemy's; `StrikeTheWearerInItsBlast` (787 to 795) builds the
+   wearer's copy of it, field for field; `TestADeployablesBlastStrikesItsWearer` holds the two lists equal and requires each
+   to begin with `CritChancePercent` and end with `DamageMultiplierSpent`.
+5. **Every caller of `ACataclysmProjectile::Fire`** (searched outside the tests): Butcher's Bill and the projectile
+   skill's single and fanned shots pass `InFiringSkill=this`; the Brute, the Corrupted Sentinel (two), the Gatekeeper, the
+   Succubus and the dungeon's Infernal Rain pass none.
+
+### THE RULING, AND WHERE IT IS IN THE CODE
+
+Line numbers are of this commit.
+
+| | Ruling | Where it is |
+| :-- | :-- | :-- |
+| N1, site 1 | "Every other blow a skill delivers carries that skill's tags" | `Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;` in `HitOne` (`CataclysmProjectile.cpp` 665, its comment 661 to 664) and in `StrikeTheWearerInItsBlast` (798), each after `Delivery.CastBy`. |
+| N1, site 2 | the same | `NoteBlow`'s `else` after the skill's branch: `Notice.SkillTags = UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec);` (`CataclysmCombatEvents.cpp` 222 to 225, its comment 218 to 221). |
+
+**THE HEADER COMMENT `FCataclysmHitDelivery::SkillTagsWithNoSkill`**, which this change made false, before
+(`CataclysmSkillEffects.h` 741 to 748 at `0c6f0c933`):
+
+> The tags of the skill this blow is a blow of, FOR A BLOW THAT NAMES NO SKILL OBJECT: a buried weapon's leap, whose
+> throwing use ended long before it (`UCataclysmBuriedWeapon::LeapFromDying` is the one writer, with its own
+> `SkillTags`). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)): "a leap's kill carries the throwing skill's tags", as a
+> cast's blow's kill carries its skill's. `ApplyDirectDamage` hands them, for this blow's effect alone, to
+> `UCataclysmCombatEvents::NoteBlow`, which keeps a copy on the struck character's record of its last blow, and the
+> death notice names that copy as `FCataclysmDeathNotice::KillingSkillTags`. NOTHING ELSE READS THEM: the blow is
+> priced with the tags `ApplyHit` is handed, and its hit notice is unchanged. Null for every other blow. Valid only
+> during the call that deals the blow. Not a UPROPERTY, as `Skill` is not.
+
+and after (741 to 751):
+
+> The tags of the skill this blow is a blow of, FOR A BLOW THAT NAMES NO SKILL OBJECT. TWO WRITERS: a buried weapon's
+> leap, whose throwing use ended long before it (`UCataclysmBuriedWeapon::LeapFromDying`, with its own `SkillTags`);
+> and a projectile whose firing skill has gone since it was fired, a trap's rack axe landing after the trap's one-use
+> grant was removed (`ACataclysmProjectile::HitOne` and `StrikeTheWearerInItsBlast`, with the projectile's own
+> `SkillTags`, and only when `FiringSkill` is stale). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)): "a leap's kill carries
+> the throwing skill's tags", as a cast's blow's kill carries its skill's; and #2475 under the same N1.
+> `ApplyDirectDamage` hands them, for this blow's effect alone, to `UCataclysmCombatEvents::NoteBlow`, which keeps a
+> copy on the struck character's record of its last blow, which the death notice names as
+> `FCataclysmDeathNotice::KillingSkillTags`, AND NAMES THEM ON THE BLOW'S HIT NOTICE as `FCataclysmHitNotice::SkillTags`
+> (#2475). Nothing else reads them: the blow is priced with the tags `ApplyHit` is handed. Null for every other blow, a
+> creature's shot included. Valid only during the call that deals the blow. Not a UPROPERTY, as `Skill` is not.
+
+The other comments that named the leap as the one case now name both: `FCataclysmHitNotice::SkillTags`,
+`FCataclysmDeathNotice::KillingSkillTags` and `FCataclysmLastBlow::SkillTagsWithNoSkill` (`CataclysmCombatEvents.h`),
+`NoteBlow`'s record comment and `NoteDeath`'s (`CataclysmCombatEvents.cpp`), `ApplyDirectDamage`'s
+(`CataclysmSkillEffects.cpp`) and `SkillTagsOfABlowWithNoSkill`'s (`CataclysmSkillEffects.h`).
+
+**HOW LONG THE HIT NOTICE'S POINTER IS VALID.** It is the delivery's own pointer, to `UCataclysmBuriedWeapon::SkillTags`
+or to `ACataclysmProjectile::SkillTags`. `SkillTagsOfABlowWithNoSkill` answers it only while `ApplyDirectDamage` applies
+that blow's effect (the `TGuardValue` of #2465). The effect is instant, so the defender's `PostGameplayEffectExecute`, and
+`NoteBlow` inside it, run inside that application, and `OnHit.Broadcast` is a multicast delegate called synchronously
+there; every listener reads the notice inside the call, and the notice is "VALID ONLY WHILE IT IS BEING HANDED OUT".
+Neither object is freed before the call returns: an actor destroyed during it is collected later. The kill notice keeps
+its copy on the record, as before, because a death can be announced later than the blow.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE PROJECTILE NAMES ITS TAGS ONLY WHEN `FiringSkill` IS STALE, NOT ALWAYS.** `IsStale` is true for a weak pointer
+  that pointed at an object that is now gone, and false for one never set or still valid. Options not taken: (a) always,
+  which `NoteDeath` and the hit notice would ignore for a blow naming its skill, since each prefers the skill, BUT which
+  would also give every creature's shot "skill tags" on its hit and kill notices, a change to another blow, and would
+  copy the tags into the record of every projectile blow that reaches health, where an ordinary hit allocates nothing
+  (`FCataclysmLastBlow`'s comment); (b) only when `FiringSkill.Get()` is null, which is the same as (a) for a creature's
+  shot. For a blow that names its skill, (a) would change one thing more: a death announced after that skill is
+  removed, from a blow that did not kill, would name the tags. Not taken either way.
+- **THE HIT NOTICE NAMES THE DELIVERY'S POINTER, NOT A COPY.** The notice is read only while it is handed out, so no copy
+  is needed, as no copy of the effect's tags is made for `EffectTags`. The option not taken: a copy, as the record keeps.
+- **NO SKILL NAME IS GIVEN.** `SkillName` stays None at both sites, as `KillingSkillName` does for a leap, because no skill
+  object is named. The option not taken: carry the skill's name on the projectile.
+- **A SHOT OF A SKILL REMOVED IN FLIGHT FOR ANY OTHER REASON** (a weapon or slot changed with a player's own shot in the
+  air) is the same case, and its blow now carries the tags it was fired with. N1 answers it: it is a blow of that skill.
+  By reading; not tested.
+- **THE TESTS ARE IN A GROUP OF THEIR OWN, `Cataclysm.NoSkillBlowTags.`**, because the change is to two kinds of blow, a
+  projectile's and a leap's, under one rule. Options not taken: `Cataclysm.BuriedWeaponKills.` (#2465's), which test 1 is
+  not about, and `Cataclysm.Traps.`, which test 2 is not about. No test name begins with `Cataclysm.NoSkillBlowTags`
+  today (searched, case ignored).
+- **THE TRAP IS SET OFF WITH NO ENEMY** (`TriggerSkillTrap(nullptr)`, T11), so its cast is thrown from the trap's own place.
+  An Ultimate trap set off by an enemy casts from that enemy's place (`SkillTrapCastsAroundItsEnemy`), and the rack's
+  throws at that enemy, 0 m away, would be no projectile at all (`Fire` refuses a shot aimed at its own feet), so the test
+  could not make the late axe it is about. The option not taken: a trap stepped into triggering by an enemy.
+- **THE HIT ROW OF TEST 2 IS A TEST-ONLY ROW**, `cooldown_reset_special` on `hit_dealt` requiring `Type.Ranged`, as the brief
+  allows: no shipped hit row requires a tag Harrower carries. The option not taken: `first_hit_dealt`, the same path.
+
+### THE GENRE SOURCE
+
+Brief 68 names none and nothing was fetched. The ruling rests on this game's own rule, as N1 states it: every blow a
+skill delivers carries that skill's tags.
+
+### Tests
+
+Two Unreal tests in the new file `game/Source/Cataclysm/Tests/CataclysmNoSkillBlowTagsTests.cpp`, group
+`Cataclysm.NoSkillBlowTags.`. The rig is #2465's: a possessed player character of the players' side holding a Demonic Axe
+(Ultimate Butcher's Bill, Special Harrower), a weapon damage of 100, 10,000 health and 1,000 mana; creatures of the
+monsters' side with no defences and 50,000 health unless a case says otherwise; every body at least 1 m from every
+other; every action written by hand as the item would build it from its row; crit pinned at 100 after the world is made;
+the clock never moved, and every axe stepped by hand. Helper types are `FNoSkillBlowWorld`, `FNoSkillBlowStat`,
+`FNoSkillBlowRig`, `FNoSkillBlowEventCount`, `FNoSkillBlowHitHeard` and `FNoSkillBlowHits`, in the namespace
+`CataclysmNoSkillBlowTagsTest`; no other file of the module declares any of them, or any of its helper functions
+(searched by script, with `FLeapKillRig` as the control, found once, in #2465's file). **Assertions are counted for a
+passing run, 60 in all.** Where health lost is compared with a figure sent (test 1's explosion), the Slashing step is
+allowed for: the Axe is Slashing, asserted in set-up, and the measure is divided by
+`1 + UCataclysmDamageCalculation::SubtypeBonus / 100`, as #2465's test 2 does.
+
+1. `ATrapsRackAxeLandingAfterItsUseHasEndedCarriesTheRacksTagsAndItsKillExplodes`, 38. Three Axe players with the Ultimate
+   trap flag, each trap set off with no enemy and its whole rack emptied by hand before any axe lands: the measure (its
+   enemy 50,000), the control (no row; its enemy 5) and the row ("Enemies killed by traps explode" at 50, as traps layer
+   4's tests write it; its enemy 5); for the control and the row a bystander of 50,000 made 3 m north of the dead once
+   every axe is in the air. In order: a world; set-up, the pin; set-up, the tags; set-up, the measure's and the row's Axe
+   is Slashing; set-up, three creatures (three); set-up, the world's combat events; for the measure, set-up, the trap
+   placed, set off, used up, its rack running, its last throw ending the use, and the grant removed so the axes name a
+   firing skill that is gone (six); set-up, every axe finished; set-up, each struck its enemy once; **each late axe's hit
+   notice names the rack's tags, `Type.Trap` among them, and no skill**; set-up, one axe kills 5; the control's rack
+   (six); set-up, its bystander; set-up, a late axe killed its enemy; set-up, `kill` once; **control, with no row the
+   bystander 3 m from the dead is untouched**; the row's rack (six); set-up, its bystander; set-up, a late axe killed its
+   enemy; set-up, `kill` once; **the late axe's dead explodes: its bystander takes half the killing axe's figure as sent,
+   within 0.5% of an axe**.
+2. `ALeapsHitCarriesTheThrowingSkillsTagsSoARangedHitRowAnswersItAndASkilllessBlowsHitDoesNot`, 22. Two Axe players each
+   holding the test-only row and with the Special cooldown running for 10 s. In order: a world; set-up, the pin; set-up,
+   the tags and the cooldown's tag; set-up, three creatures (three); set-up, the leaping player's cooldown runs; set-up,
+   and the control's; set-up, the world's combat events; set-up, the control's own blow, naming no skill and no tags,
+   struck; set-up, `hit_dealt` once; **control, its hit notice names no skill tags**; **control, so the row refuses it and
+   the cooldown still runs**; set-up, the axe buried with Harrower's tags; set-up, it leaps; set-up, its leap struck the
+   enemy 4 m east; set-up, and killed nothing; set-up, `hit_dealt` once; **the leap's hit notice names skill tags**;
+   **`Type.Ranged` among them**; **and no skill**; **so the row answers the leap's hit and resets the Special cooldown**.
+
+**Every earlier test is unchanged, and expected to pass unchanged.** The tests that read a hit notice's tags
+(`CataclysmCombatEventsTests.cpp`, the notice of a blow naming no skill and the notices of skills and of Hurled Ember's
+shot, each with its skill there; `CataclysmEnchantmentEffectTests.cpp` 5795, a swing's) read no leap and no shot whose
+skill has gone. The leap's tests (`Cataclysm.Skills.ABuriedAxeTearsFreeAndStrikesTheNextEnemy`,
+`Cataclysm.Skills.ABuriedAxeTearingFreeTellsItsThrowersRunningBuff`, traps layer 3b's
+`ABuriedWeaponOfAUsedUpTrapsCastLeapsAsTheTrapsAtEveryLeapAndAPlayerThrownAxeDoesNot` and #2465's three) hold no row on a
+hit event requiring a tag; they count `hit_dealt` and `deployable_hit`, which are raised as before. The gadget's late
+rack axes (`Cataclysm.SkillGadgets.ARacksAxesLandingAfterItsUseHasEndedArePricedAsTheGadgets`) hold no event row; their
+pricing reads the tags `ApplyHit` is handed, unchanged. A creature's shot names no tags, as before.
+
+**Not tested:** the ranged cooldown refund on a trap's late rack axe kill; a skill gadget's late rack axe; a player's own
+shot whose skill is removed in flight; the wearer's own blast from a late axe (`StrikeTheWearerInItsBlast`'s new line);
+`first_hit_dealt` and `critical_strike` on a leap (the same notice); a creature's shot (unchanged by reading); the axes'
+burn; anything in play.
+
+### GUARD PROOFS PROPOSED
+
+Not run. Each old text was counted exactly once in its file by a script at this commit's working tree (CRLF read as LF),
+each new text absent before the break and once after it, and each break keeps the file's round, curly and square brackets
+paired: `CataclysmProjectile.cpp` 257/257, 88/88, 0/0 before and 256/256, 88/88, 0/0 after NS-I;
+`CataclysmCombatEvents.cpp` 143/143, 40/40, 2/2 before and 142/142, 40/40, 2/2 after NS-II. Each compiles alone by
+reading: NS-I assigns `nullptr` to a `const FGameplayTagContainer*`, and `FiringSkill` and `SkillTags` are still read in
+`HitOne`; NS-II assigns `nullptr` to the same type, and `Data` and `UCataclysmSkillEffects` are still used in `NoteBlow`.
+NS-I's anchor takes the comment's last line with it, because the same assignment is also in `StrikeTheWearerInItsBlast`.
+The prefix is `Cataclysm.NoSkillBlowTags.`, with its trailing dot, two tests.
+
+**The events the tests' actors raise, listed before counting, each with its depth.** Every trap is set off, every axe
+thrown and stepped and the leap made by the test, outside any `ActOnEvent`, so each event is raised at depth nought unless
+it says otherwise. On a player: `trap_placed` at each placing; `trap_triggered` after the cast starts (no hit inside the
+cast's activation: the first axe is in the air); `skill_end` when the last `ThrowOne` ends the rack, with the rack's
+tags; at each late axe's landing, `hit_dealt`, `first_hit_dealt` for its first on that enemy, then `deployable_hit` with
+the used-up trap's tags, then the burn's `dot_applied`, each returning before the next; then `kill` for the death the
+killing axe causes, inside its application, after its hit events have returned; the explosion, made after every listener
+has heard the death (`AfterThisDeathIsHeard`), is the consequence of a death and raises no hit event, and kills nothing.
+The later axes strike nothing: a dead enemy is not found (`UCataclysmTargeting::Gather`). In test 2: `hit_dealt` and
+`first_hit_dealt` for the control's blow and for the leap's, and no `kill`. No crit is rolled (the pin). On a creature,
+nothing is worn. **WHAT HANGS ON AN EVENT:** test 1's explosion row on `kill` (the row's player); test 2's reset row on
+`hit_dealt` (both players). Read from the code, not measured.
+
+| Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
+|---|---|---|---|---|---|
+| NS-I, the shot whose skill has gone names no tags (site 1) | `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp` | `names no tags, as before.` + newline + tab + `Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;` | the same comment line + newline + tab + `Delivery.SkillTagsWithNoSkill = nullptr;` | `ATrapsRackAxeLandingAfterItsUseHasEndedCarriesTheRacksTagsAndItsKillExplodes` | none |
+| NS-II, the hit notice names no tags for a blow naming no skill (site 2) | `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.cpp` | `Notice.SkillTags = UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec);` | `Notice.SkillTags = nullptr;` | `ALeapsHitCarriesTheThrowingSkillsTagsSoARangedHitRowAnswersItAndASkilllessBlowsHitDoesNot` | `ATrapsRackAxeLandingAfterItsUseHasEndedCarriesTheRacksTagsAndItsKillExplodes` |
+
+Failed assertions, by reading:
+
+- **NS-I, 2 in 1 test.** Test 1: "each late axe's hit notice names the rack's tags" (nought against the count) and "the late
+  axe's dead explodes" (nought against half an axe as sent). Its set-ups and its control pass; the kills are made either way.
+  Test 2 deals no projectile blow.
+- **NS-II, 4 in 2 tests.** Test 2: "the leap's hit notice names skill tags", "among them Type.Ranged" and "so the ranged hit
+  row answers the leap's hit and resets the Special cooldown" (3); "and it names no skill" passes, None either way. Test 1:
+  "each late axe's hit notice names the rack's tags" (1); the explosion passes, the kill reading the record's copy and not
+  the hit notice.
+
+**Tests of another group expected to fail, to check in the window:** none, by reading. No earlier test reads the tags of a
+shot whose skill has gone or of a leap's hit notice.
+
+**A test and no proof:** `StrikeTheWearerInItsBlast`'s line (no test strikes a wearer with a late axe); the `IsStale` choice
+against a creature's shot (no test fires one with a row hearing it).
+
+### CHANGES TO WHAT A CHECK ACCEPTS
+
+None. No Python check, generator or validator is changed.
+
+### THE WINDOW'S RUN
+
+Not run. The enchantment session records its window here.
+
+---
+
 ## 2026-10-22 — A player killed by its own skill gadget's area cast, inside that cast's activation, is measured for the death sentence's gadget casts and trap triggers: three tests and no fix, step A of #2472
 
 **Affects:** `game/Source/Cataclysm/Tests/CataclysmDeathInActivationTests.cpp` (new, three tests in the new group
@@ -452,7 +749,10 @@ Line numbers are of development `8b31fda27`, before this change.
    granted for one use and taken away (`UCataclysmProjectileSkill::EndAbility`, "THE AXES ALREADY THROWN FLY ON"), so its
    late axe names a skill that is gone and its kill carries none. Carrying them would be the same field set at two other
    sites, the projectile's contact and its detonation, a change to another blow; brief 67 says to build it only if it is
-   the same change, and it is not. Not measured. Left for a ruling if it is wanted.
+   the same change, and it is not. Not measured. Left for a ruling if it is wanted. (SINCE #2475 a shot whose firing
+   skill has gone names the tags it was fired with, so a trap's late rack axe's hit and kill carry them; and the second
+   site is not a detonation but the wearer's copy of the contact's delivery; see the entry of 2026-10-23 headed "A shot
+   whose firing skill has gone carries the tags it was fired with")
 
 ### THE RULINGS, AND WHERE EACH IS IN THE CODE
 
@@ -484,7 +784,10 @@ for its own application; test 2 shows the explosion's kill carrying none.
 
 - **THE LEAP'S HIT NOTICE STILL CARRIES NO SKILL TAGS.** `hit_dealt` and `first_hit_dealt` on a leap's blow are raised with
   `FCataclysmHitNotice::SkillTags`, null for a blow naming no skill, so a hit row requiring a tag does not answer a leap's
-  hit. The rulings are about the kill; nothing here changes the hit notice. By reading.
+  hit. The rulings are about the kill; nothing here changes the hit notice. By reading. (SINCE #2475 the hit notice of
+  a blow naming no skill object names the tags its delivery named, so a leap's hit answers a hit row requiring a tag the
+  throwing skill carries; see the entry of 2026-10-23 headed "A shot whose firing skill has gone carries the tags it was
+  fired with")
 - **A TRAP'S HARROWER LEAP KILL ALSO ANSWERS THE RANGED COOLDOWN REFUND**, its cast carrying Harrower's `Type.Ranged` and
   `Slot.Special`, and refunds the player's Special slot, the slot that trap was placed from. By reading; not tested.
 - **AN AXE WHOSE THROWER HAS GONE** is credited to the dying host (`LeapFromDying`, "THE CASTER IS CREDITED, AND THE DYING
@@ -3708,7 +4011,9 @@ What a player would notice, once the rows are worn:
      `Type.Trap` finds no tags: true of every leap, the player's own too, and of every row on `kill` that requires a tag.
      **A rack's axe landing after its rack's use has ended** (Butcher's Bill, the one rack a trap may cast; "THE AXES
      ALREADY THROWN FLY ON", `UCataclysmProjectileSkill::EndAbility`) names a skill that has been taken away, so its kill
-     carries none either. By reading; not tested. A shot's kill does carry them: a projectile skill's use stays active
+     carries none either. By reading; not tested. (SINCE #2475 that axe names the tags it was fired with, so its kill
+     carries them and explodes under this layer's row; see the entry of 2026-10-23 headed "A shot whose firing skill has
+     gone carries the tags it was fired with") A shot's kill does carry them: a projectile skill's use stays active
      until its last shot has finished (`OnProjectileFinished`), so the skill is there when its shot kills. **LEFT IN THIS
      LAYER (G1 (a)), on the play-check list, and tracked as [#2465](https://github.com/sdubois777/Cataclysm/issues/2465)**,
      a fault of kill events beyond traps, scheduled as its own layer after traps.
@@ -3814,7 +4119,8 @@ dealt the lethal blow, read from the effect's context (`UCataclysmCombatEvents::
 A trap's cast is the player's skill stamped with `Type.Trap` (`TriggerSkillTrap`, `UCataclysmWeaponSkills::StampOnto`:
 `SkillTags = Skill.Tags`), so: an instant blow of the cast, dealt inside its activation, carries `Type.Trap`; a shot
 landing after the trap is used up carries it too, its use running until the shot has finished; a buried weapon's leap
-and a rack's late axe carry no tags (FOUND, item 1); a zone's sweep and the damage over time carry tags or not, but are
+and a rack's late axe carry no tags (FOUND, item 1) (SINCE #2465 a leap's kill, and SINCE #2475 a rack's late axe's,
+carry the throwing or firing skill's tags); a zone's sweep and the damage over time carry tags or not, but are
 refused by the kill site because the death is by damage over time (`Notice.bByDamageOverTime`). Its amount is the dead
 enemy's maximum health and its other character the dead. **Built: the death notice now also carries the killing blow's
 figure before mitigation** (`FCataclysmDeathNotice::KillingBlowDamage`, from `FCataclysmIncomingHit::Damage` of the lethal
