@@ -6704,7 +6704,8 @@ FCataclysmFloorPopulation ACataclysmDungeonGameMode::FloorPopulationNow(const TS
 
 // ---------------------------------------------------------------------------
 // Angelic Wardens: statues that stand as pillars until the player comes near one or uses a skill near it, and then
-// become Abyssal Wardens that come for the player. Issues #1820 and #41. Ruled 2026-10-08.
+// become Abyssal Wardens that come for the player. Issues #1820 and #41. Ruled 2026-10-08. And, since 2026-10-23
+// (G7c), until the player breaks a punishing Edict, a divine law, which wakes the nearest: `NoteDivineLawViolated`.
 // ---------------------------------------------------------------------------
 
 TArray<FIntPoint> ACataclysmDungeonGameMode::AngelicStatueCellsStanding() const
@@ -7289,6 +7290,76 @@ void ACataclysmDungeonGameMode::NoteSkillUseForAngelicWardens(const FCataclysmSk
 		return;
 	}
 	WakeTheAngelicStatuesNear(Notice.Location, Effects::AngelicWardensSkillWakesWithinCm);
+}
+
+void ACataclysmDungeonGameMode::NoteSkillUseForDivineLaws(const FCataclysmSkillUsedNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (AngelicStatues.IsEmpty())
+	{
+		return;
+	}
+
+	// THE PLAYER'S OWN SKILL, as the Wardens' skill trigger asks. A free start and a skill a rule triggers send no notice,
+	// so neither breaks a law; nor does a creature's.
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!Player || Notice.User != Player)
+	{
+		return;
+	}
+
+	// THE EDICT OF STILLNESS: A SKILL IN THE MOVEMENT SLOT, the one `CataclysmSkillTemplate.cpp` notes as a movement
+	// skill, which is what brings its slow on.
+	if (Notice.Slot == ECataclysmAbilitySlot::Movement && FloorBrief.Modifiers.Contains(FName(Effects::EdictOfStillnessKey)))
+	{
+		NoteDivineLawViolated(Notice.Location);
+	}
+
+	// THE EDICT OF PATIENCE: A SKILL WITH A COOLDOWN OF ITS OWN, which the Edict makes longer. The basic attack and an
+	// aura have none.
+	if (Notice.bHasCooldown && FloorBrief.Modifiers.Contains(FName(Effects::EdictOfPatienceKey)))
+	{
+		NoteDivineLawViolated(Notice.Location);
+	}
+}
+
+int32 ACataclysmDungeonGameMode::NoteDivineLawViolated(const FVector& At)
+{
+	if (!CurrentFloor || AngelicStatues.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE NEAREST STANDING STATUE NOT PARTED FROM `At` BY A CLOSED BARRIER, at any distance: the two triggers' tests,
+	// asked of every statue, and the nearest of what is left woken.
+	const int32 Section = FloorSections.SectionOf(CurrentFloor->GetPlan(), CurrentFloor->CellOfWorld(At));
+	FAngelicStatue* Nearest = nullptr;
+	double NearestCm = 0.0;
+	for (FAngelicStatue& One : AngelicStatues)
+	{
+		if (One.bWoken || AClosedBarrierStandsBetweenSections(One.Section, Section))
+		{
+			continue;
+		}
+		const double Cm = FVector::Dist2D(CurrentFloor->WorldOfCell(One.Cell), At);
+		if (!Nearest || Cm < NearestCm)
+		{
+			Nearest = &One;
+			NearestCm = Cm;
+		}
+	}
+	if (!Nearest)
+	{
+		return 0;
+	}
+	WakeTheAngelicStatue(*Nearest);
+	UE_LOG(LogCataclysm, Log, TEXT("Angelic Wardens: a divine law was broken on floor %d and the nearest statue woke"),
+		   FloorNumber);
+	RefreshFloorModifierPanel();
+	return 1;
 }
 
 void ACataclysmDungeonGameMode::PlaceTheShortcutGates()
@@ -13303,6 +13374,9 @@ void ACataclysmDungeonGameMode::OnSkillWasUsed(const FCataclysmSkillUsedNotice& 
 	// AND ANGELIC WARDENS, ON ITS OWN TEST FOR THE SAME REASON. Issues #1820 and #41.
 	NoteSkillUseForAngelicWardens(Notice);
 
+	// AND THE DIVINE LAWS THE EDICTS OF STILLNESS AND PATIENCE SET, ON THEIR OWN TEST TOO. 2026-10-23, G7c.
+	NoteSkillUseForDivineLaws(Notice);
+
 	// THE PLAYER'S OWN SKILL, NOT THE BASIC ATTACK, ON A FLOOR CARRYING THE ROW, AND NOT INSIDE THE WAIT. The notice
 	// is sent for creatures too. A triggered skill sends none, so it never reaches here. Ruled 2026-10-04.
 	UWorld* World = GetWorld();
@@ -14133,7 +14207,7 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// where both rules live. Issue #41.
 	//
 	// NARROWED ONCE, HERE, rather than on every floor.
-	// `UCataclysmEmpireRun::ModifierPool` is the whole 120-row table and
+	// `UCataclysmEmpireRun::ModifierPool` is the whole 123-row table and
 	// `PoolFor` cuts it to the Cataclysms this run is facing, which does not
 	// change while the player is inside one dungeon.
 	DungeonModifiers = Run->ModifiersCarriedBy(DungeonId);
@@ -14862,7 +14936,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::EdictOfStillnessKey));
 	const bool bEdictStrengthMatters =
 		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::EdictOfTemperanceKey))
-		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::EdictOfPatienceKey));
+		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::EdictOfPatienceKey))
+		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::EdictOfAbstinenceKey));
+	// AND THE EDICT OF VIGIL, WHICH MARKS A SMITE WHERE THE PLAYER HAS STOOD STILL; the Edict of Abstinence is above,
+	// its share moving only with the strength. 2026-10-23, G7c.
+	const bool bEdictOfVigil = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::EdictOfVigilKey));
 	// AND DIRGE RESONANCE, WHICH CHANGES CREATURES AND NEVER THE PLAYER, on the Edict's
 	// clock. Issues #1820 and #41.
 	const bool bDirgeResonance = FloorBrief.Modifiers.Contains(
@@ -15123,7 +15202,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay && !bSufferingAura
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence && !bDirgeResonance
-		&& !bEdictOfStillness && !bEdictStrengthMatters
+		&& !bEdictOfStillness && !bEdictStrengthMatters && !bEdictOfVigil
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
@@ -15698,6 +15777,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		StepEdictStrength(Player, AbilitySystem);
 	}
 
+	// AND THE EDICT OF VIGIL, WHICH PLACES ONE MARK OF ITS OWN AND SHARES NO FIELD WITH ANY RULE, so its place here is
+	// free. 2026-10-23, G7c.
+	if (bEdictOfVigil)
+	{
+		StepEdictOfVigil(Player, AbilitySystem);
+	}
+
 	// AND DIRGE RESONANCE, WHICH TOUCHES NOTHING THE PLAYER'S RULES SHARE, so its place in
 	// this order is free. Issues #1820 and #41.
 	if (bDirgeResonance)
@@ -15895,6 +15981,117 @@ void ACataclysmDungeonGameMode::StepEdictStrength(
 	{
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::EdictOfVigilMarkNow() const
+{
+	return EdictOfVigilMark.Get();
+}
+
+void ACataclysmDungeonGameMode::StepEdictOfVigil(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	// A SMITE IS MARKED: COUNT ITS WARNING ON THE BEAT, as Wings of the Host counts a flyover's, and then it lands where it
+	// was called. MOVING DOES NOT CANCEL IT, ruled 2026-10-23: a player who walks off the mark is not struck, and one who
+	// walks back onto it is.
+	if (ACataclysmGroundZone* Mark = EdictOfVigilMark.Get())
+	{
+		EdictOfVigilWarningSoFar += SecondsBetweenWaveChecks;
+		if (!Effects::EdictOfVigilHasLanded(EdictOfVigilWarningSoFar))
+		{
+			return;
+		}
+
+		// THE PLAYER ONLY, AND ONCE, as a feather of Wings of the Host strikes: the hazard source's enemies are the player's
+		// side, which includes the player's minions, and the Edict names the player. IT CAN KILL: a smite is damage and not
+		// a cost, ruled 2026-10-23. Typed by its row, since the source carries no type (issue #1924).
+		if (ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World))
+		{
+			FCataclysmHitDelivery Delivery;
+			Delivery.bIsArea = true;
+			Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::EdictOfVigilKey);
+			const FVector Where = Mark->GetActorLocation();
+			TSet<AActor*> Struck;
+			for (AActor* Target : UCataclysmTargeting::FindEnemiesInLine(
+					 World, Source, Where, Where, Effects::EdictOfVigilMarkRadiusCm))
+			{
+				if (!Cast<ACataclysmPlayerCharacter>(Target) || Struck.Contains(Target))
+				{
+					continue;
+				}
+				Struck.Add(Target);
+				const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Target);
+				const float Damage = Theirs
+					? FMath::Max(0.0f, Theirs->GetNumericAttribute(Vital::GetMaxHealthAttribute()))
+						* EdictOfVigilSmitePercent / 100.0f
+					: 0.0f;
+				if (Damage > 0.0f)
+				{
+					UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, Damage, Delivery);
+				}
+			}
+		}
+		Mark->Destroy();
+		EdictOfVigilMark = nullptr;
+		EdictOfVigilWarningSoFar = 0.0f;
+
+		// RE-ARMED WHEN IT LANDS, ruled 2026-10-23: the next 3 seconds standing still are counted from now, so a player who
+		// never moves is smitten once for every 3 seconds still after each landing, and never by two smites at once.
+		EdictOfVigilArmedAtSeconds = Now;
+		return;
+	}
+
+	// NOT MARKED: HOW LONG HAS THE PLAYER STOOD STILL SINCE IT WAS LAST ARMED? The clock the stationary conditions read,
+	// below nought for a player never sampled, who calls nothing. A blink or a step puts it back to nothing.
+	const float StillFor = AbilitySystem->SecondsSinceMoved();
+	if (StillFor < 0.0f)
+	{
+		return;
+	}
+	const float SinceArmed =
+		EdictOfVigilArmedAtSeconds >= 0.0f ? FMath::Max(0.0f, Now - EdictOfVigilArmedAtSeconds) : StillFor;
+	if (!Effects::EdictOfVigilIsDue(FMath::Min(StillFor, SinceArmed)))
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// ON THAT SPOT, a harmless mark of Wings of the Host's radius drawn in the row's type: "the usual telegraph", ruled
+	// 2026-10-23. Owned by the floor's hazard source, as every zone a rule places is (#1925).
+	const FVector Where = Player->GetActorLocation();
+	ACataclysmGroundZone* Mark = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::EdictOfVigilMarkRadiusCm, 0.0f,
+		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::EdictOfVigilKey));
+	if (!Mark)
+	{
+		// NO MARK COULD BE SPAWNED; the next beat tries again, as Wings of the Host's does.
+		return;
+	}
+	EdictOfVigilMark = Mark;
+	EdictOfVigilWarningSoFar = 0.0f;
+
+	// AT THE STRENGTH WHEN IT IS CALLED, as the Edict of Silence reads it when each silence begins.
+	EdictOfVigilSmitePercent = Effects::EdictOfVigilSmitePercentAt(EdictStrengthHere());
+	UE_LOG(LogCataclysm, Log, TEXT("Edict of Vigil: a smite of %.0f%% of maximum health called on floor %d"),
+		   EdictOfVigilSmitePercent, FloorNumber);
+
+	// AND CALLING IT BREAKS A DIVINE LAW, ruled 2026-10-23.
+	NoteDivineLawViolated(Where);
 }
 
 void ACataclysmDungeonGameMode::StepDirgeResonance()
@@ -21832,6 +22029,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// The Edict strength those rules were put on at is the one the call above used. 2026-10-22, G7b.
 		EdictOfStillnessSlowApplied = 0.0f;
 		EdictStrengthApplied = EdictStrengthHere();
+
+		// AND THE EDICT OF VIGIL, FOR WINGS OF THE HOST'S REASON: a smite called on the last floor never lands on this
+		// one, its mark having gone with the floor's other zones, and standing still is counted from arriving.
+		// 2026-10-23, G7c.
+		EdictOfVigilMark = nullptr;
+		EdictOfVigilWarningSoFar = 0.0f;
+		EdictOfVigilSmitePercent = 0.0f;
+		EdictOfVigilArmedAtSeconds = GetWorld() ? static_cast<float>(GetWorld()->GetTimeSeconds()) : -1.0f;
 
 		// AND INSANITY BURSTS STARTS AGAIN ON EVERY FLOOR, as ruled: exposure is time on this floor. A warning or a lock
 		// under way ends with the floor; the call above has already taken the lock off the character. Issues #1820

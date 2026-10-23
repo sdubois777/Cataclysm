@@ -103,7 +103,7 @@
 /**
  * What the dungeon modifiers do on a floor. Issue #41.
  *
- * WHAT THESE COVER. Starvation and Dehydration, the first two of the 120 rows of
+ * WHAT THESE COVER. Starvation and Dehydration, the first two of the 123 rows of
  * `game/Data/DungeonModifiers.csv` to change anything a player can see; the
  * console variable that puts chosen modifiers on the dungeon being played; and
  * what the floor panel says about each modifier, the ones that do nothing

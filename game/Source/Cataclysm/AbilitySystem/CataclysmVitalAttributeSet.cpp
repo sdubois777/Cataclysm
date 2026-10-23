@@ -1014,6 +1014,22 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 												   /*Target=*/GetOwningActor())
 							: Offence->GetCritMultiplier();
 
+						// AND THE EDICT OF HUMILITY HOLDS IT AT 100: "a critical strike deals no extra damage".
+						// 2026-10-23, G7c. HELD, NOT ZEROED AND NOT REMOVED: 100 keeps the roll's guard in
+						// `UCataclysmDamageCalculation::Resolve` above nought, so a critical strike is still rolled,
+						// reported and heard by every on-crit row, ruled 2026-10-23 on Path of Exile's Elemental
+						// Overload. A MULTIPLIER ALREADY BELOW 100 STAYS BELOW IT: the Edict takes extra damage away
+						// and adds none. With the same `Asking` and `AssetTags` as the multiplier; a creature has no
+						// stat line and reads the fallback, nought, so no creature is held.
+						if (Asking
+							&& Asking->StatForSkill(
+								   FName(UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat), AssetTags,
+								   0.0f) > 0.0f)
+						{
+							Hit.CritMultiplier = FMath::Min(Hit.CritMultiplier,
+															UCataclysmDamageCalculation::NoExtraCriticalMultiplier);
+						}
+
 						// AND WHAT A HIT KEEPS IF ITS ROLL FAILS, ASKED ON THE SAME
 						// TERMS AS THE MULTIPLIER. Issue #1686. Inside this block, so
 						// only a blow that CAN critically strike is a non-critical

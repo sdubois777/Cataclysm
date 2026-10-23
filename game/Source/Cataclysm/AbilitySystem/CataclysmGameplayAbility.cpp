@@ -371,6 +371,8 @@ const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =
 	TEXT("mana_cost_as_current_health_percent");
 const TCHAR* UCataclysmGameplayAbility::ManaCostAsMaximumManaPercentStat =
 	TEXT("mana_cost_as_maximum_mana_percent");
+const TCHAR* UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat =
+	TEXT("mana_cost_also_taken_from_health_percent");
 
 float UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent(
 	const UAbilitySystemComponent* AbilitySystem) const
@@ -592,6 +594,10 @@ void UCataclysmGameplayAbility::ApplyCost(
 	// Cleared first, so a cast that pays in mana never carries the last one's.
 	LastManaCostPaidAsHealthPercent = ManaCostPaidAsHealthPercent(AbilitySystem);
 
+	// AND WHAT THE EDICT OF ABSTINENCE TAKES FROM HEALTH BESIDE THE MANA, CLEARED HERE BEFORE ANY RETURN BELOW and set
+	// only once mana has been taken. 2026-10-23, G7c. See `ManaAlsoTakenAsHealthThisCast`.
+	LastManaAlsoTakenAsHealth = 0.0f;
+
 	// THE FERVOUR `CheckCost` ASKED FOR, TAKEN BEFORE THE MANA ANSWERS RETURN.
 	// Issue #1478. See `FervourCostFor`.
 	const float Fervour = FervourCostFor(AbilitySystem);
@@ -653,6 +659,19 @@ void UCataclysmGameplayAbility::ApplyCost(
 	if (Pool.IsValid())
 	{
 		AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Charged);
+
+		// THE EDICT OF ABSTINENCE: A SHARE OF THE MANA JUST TAKEN, RECORDED AS AN AMOUNT, ONLY WHEN THE POOL PAYING WAS
+		// MANA. 2026-10-23, G7c. "Mana cost" is the mana actually taken from the mana pool, ruled 2026-10-23, so a cost
+		// paid from health or the energy shield owes nothing. `UCataclysmSkillTemplate::PayHealthCost` takes it, beside
+		// every other health cost. Asked with the skill's tags, as Desperate Measures' share is; a fallback of nothing.
+		const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+		if (Cataclysm && Pool == UCataclysmVitalAttributeSet::GetManaAttribute())
+		{
+			LastManaAlsoTakenAsHealth = Charged
+				* FMath::Max(0.0f, Cataclysm->StatForSkill(FName(ManaCostAlsoTakenFromHealthPercentStat),
+													 SkillTagsForStats(), 0.0f))
+				/ 100.0f;
+		}
 	}
 }
 

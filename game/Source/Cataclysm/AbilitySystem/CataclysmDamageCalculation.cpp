@@ -64,6 +64,8 @@ static TAutoConsoleVariable<float> CVarBlockNegationRoll(
 
 const TCHAR* UCataclysmDamageCalculation::NonCriticalDamageStat =
 	TEXT("non_critical_damage");
+const TCHAR* UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat =
+	TEXT("critical_strikes_deal_no_extra_damage");
 const TCHAR* UCataclysmDamageCalculation::ProjectileLaterHitDamageStat =
 	TEXT("projectile_later_hit_damage");
 const TCHAR* UCataclysmDamageCalculation::ZoneFirstSweepDamageStat =
