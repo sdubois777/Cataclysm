@@ -636,6 +636,18 @@ public:
 	static const TCHAR* NonCriticalDamageStat;
 
 	/**
+	 * Above nought, an ATTACKER'S critical strike deals no extra damage: the critical multiplier it is asked for is held
+	 * at `NoExtraCriticalMultiplier`. The Edict of Humility, "a critical strike deals no extra damage", written by
+	 * `UCataclysmDungeonModifierEffects::StatModifiersFor`. 2026-10-23, G7c.
+	 *
+	 * ASKED BESIDE THE MULTIPLIER IN `UCataclysmVitalAttributeSet`, with the blow's tags, and read as a flag. No gameplay
+	 * attribute and no base, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. A CRITICAL STRIKE STILL
+	 * COUNTS AS ONE: the roll, the result's `bWasCritical`, the hit notice and every on-crit row are untouched, ruled
+	 * 2026-10-23 on Path of Exile's Elemental Overload ("Your Critical Strikes do not deal extra Damage").
+	 */
+	static const TCHAR* CriticalStrikesDealNoExtraDamageStat;
+
+	/**
 	 * The share of a blocked hit that a block removes, in per cent, on the
 	 * DEFENDER. Issue #1833 group E part 2, ruled 2026-10-02: "You block for
 	 * 65%-75% of damage instead of the normal 50%" is flat 15 to 25 on a base of
@@ -917,6 +929,13 @@ public:
 
 	/** `NonCriticalDamageStat`'s base: a non-critical hit keeps all of itself. */
 	static constexpr float NormalNonCriticalDamage = 100.0f;
+
+	/**
+	 * What `CriticalStrikesDealNoExtraDamageStat` holds the critical multiplier at: 100, a critical strike worth the hit
+	 * and no more. ABOVE NOUGHT ON PURPOSE: `Resolve` rolls only while the multiplier is above nought, so a held
+	 * multiplier still rolls and still reports a critical strike. 2026-10-23, G7c.
+	 */
+	static constexpr float NoExtraCriticalMultiplier = 100.0f;
 
 	/** `ProjectileLaterHitDamageStat`'s base: a later contact keeps all of itself. */
 	static constexpr float NormalProjectileLaterHitDamage = 100.0f;

@@ -318,6 +318,29 @@ public:
 		return LastManaCostPaidAsHealthPercent;
 	}
 
+	/**
+	 * How much health the last cast of this skill also owes beside the mana it took, as an AMOUNT, or nothing. The Edict
+	 * of Abstinence, "a quarter of a skill's mana cost is also taken from health". Recorded by `ApplyCost` and taken by
+	 * `UCataclysmSkillTemplate::PayHealthCost`. 2026-10-23, G7c.
+	 *
+	 * THE MANA ACTUALLY TAKEN FROM THE MANA POOL TIMES `ManaCostAlsoTakenFromHealthPercentStat`, ruled 2026-10-23: the
+	 * cost after every reduction, and only when the pool `PoolPaying` chose is mana. Nothing for a cast paid from
+	 * health or the energy shield, a free cast, a cast Desperate Measures paid in health instead, or an aura's upkeep,
+	 * which never passes through `ApplyCost`. AN AMOUNT AND NOT A SHARE, because the share is of mana and is paid from
+	 * health. RECORDED AT THE PAYMENT, as the share above is, and cleared first on every one.
+	 */
+	float ManaAlsoTakenAsHealthThisCast() const
+	{
+		return LastManaAlsoTakenAsHealth;
+	}
+
+	/**
+	 * `mana_cost_also_taken_from_health_percent`: what share of the mana a cast takes from the mana pool is also taken
+	 * from health. The Edict of Abstinence's stat, written by `UCataclysmDungeonModifierEffects::StatModifiersFor`.
+	 * No attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. 2026-10-23, G7c.
+	 */
+	static const TCHAR* ManaCostAlsoTakenFromHealthPercentStat;
+
 	/** `mana_cost_as_current_health_percent`. See `ManaCostPaidAsHealthPercent`. */
 	static const TCHAR* ManaCostAsCurrentHealthPercentStat;
 
@@ -559,4 +582,7 @@ private:
 	 * reason.
 	 */
 	mutable float LastManaCostPaidAsHealthPercent = 0.0f;
+
+	/** See `ManaAlsoTakenAsHealthThisCast`. Mutable for the reason the field above gives. 2026-10-23, G7c. */
+	mutable float LastManaAlsoTakenAsHealth = 0.0f;
 };

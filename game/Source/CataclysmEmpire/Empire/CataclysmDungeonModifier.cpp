@@ -113,9 +113,9 @@ TArray<FName> UCataclysmDungeonModifierRules::KeysOf(
 
 const TArray<FName>& UCataclysmDungeonModifierRules::EdictKeys()
 {
-	// THE FIVE THAT ARE ROWS TODAY, in the design's order: its table runs Silence, Temperance, Patience,
+	// ALL EIGHT THE DESIGN NAMES, in the design's order: its table runs Silence, Temperance, Patience,
 	// Abstinence, Stillness, Vigil, Humility, Tithe. Temperance, Patience and Stillness became rows on 2026-10-22
-	// (G7b); Abstinence, Vigil and Humility come with their own layer, G7c, and are added here then.
+	// (G7b); Abstinence, Vigil and Humility on 2026-10-23 (G7c).
 	//
 	// THE ORDER IS READ BY THE DRAW, so adding a key moves every Ascendant's order: `EdictOrderFor` shuffles this
 	// list on the walk seed's stream, and the same seed shuffles a longer list differently.
@@ -123,7 +123,10 @@ const TArray<FName>& UCataclysmDungeonModifierRules::EdictKeys()
 		FName(TEXT("Celestial_Edict_of_Silence")),
 		FName(TEXT("Celestial_Edict_of_Temperance")),
 		FName(TEXT("Celestial_Edict_of_Patience")),
+		FName(TEXT("Celestial_Edict_of_Abstinence")),
 		FName(TEXT("Celestial_Edict_of_Stillness")),
+		FName(TEXT("Celestial_Edict_of_Vigil")),
+		FName(TEXT("Celestial_Edict_of_Humility")),
 		FName(TEXT("Celestial_Forced_Tithes")),
 	};
 	return Keys;
@@ -148,9 +151,21 @@ FString UCataclysmDungeonModifierRules::EdictName(FName RowKey)
 	{
 		return TEXT("Edict of Patience");
 	}
+	if (RowKey == FName(TEXT("Celestial_Edict_of_Abstinence")))
+	{
+		return TEXT("Edict of Abstinence");
+	}
 	if (RowKey == FName(TEXT("Celestial_Edict_of_Stillness")))
 	{
 		return TEXT("Edict of Stillness");
+	}
+	if (RowKey == FName(TEXT("Celestial_Edict_of_Vigil")))
+	{
+		return TEXT("Edict of Vigil");
+	}
+	if (RowKey == FName(TEXT("Celestial_Edict_of_Humility")))
+	{
+		return TEXT("Edict of Humility");
 	}
 	if (RowKey == FName(TEXT("Celestial_Forced_Tithes")))
 	{

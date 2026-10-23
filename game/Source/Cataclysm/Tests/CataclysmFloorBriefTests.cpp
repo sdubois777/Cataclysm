@@ -1613,7 +1613,7 @@ bool FCataclysmFloorBriefWaveKeepsPromisesTest::RunTest(const FString& Parameter
 }
 
 // ---------------------------------------------------------------------------
-// One of the 120 dungeon modifiers through the same seam
+// One of the 123 dungeon modifiers through the same seam
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableTest,
@@ -1915,7 +1915,7 @@ bool FCataclysmFloorBriefEnteringCarriesThePoolTest::RunTest(const FString& Para
 			  CataclysmFloorBriefTest::SortedKeys(Dungeon.Modifiers));
 
 	// **NARROWED TO THE CATACLYSMS THE RUN IS FACING, NOT THE WHOLE TABLE.** A
-	// floor that could re-draw from all 120 rows would put a Celestial modifier
+	// floor that could re-draw from all 123 rows would put a Celestial modifier
 	// in a run that is not facing the Celestial Cataclysm.
 	const TArray<FCataclysmDungeonModifier> Expected =
 		UCataclysmDungeonModifierRules::PoolFor(Run->ModifierPool,
