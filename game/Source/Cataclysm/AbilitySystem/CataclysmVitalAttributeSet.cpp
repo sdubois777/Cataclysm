@@ -103,6 +103,9 @@ static TAutoConsoleVariable<float> CVarCritRoll(
  * chance to; 100 never blocks. Issue #1833 group E part 2: a row that acts on a
  * block can only be tested through a real block if the block is certain, and a
  * chance of 100 can still miss on a roll of exactly 100.
+ * SINCE #2201 a real draw is below 100 (`CataclysmPercentDraw::Draw`), so a
+ * chance of 100 blocks on every drawn roll and only the pin can give a roll of
+ * 100.
  */
 static TAutoConsoleVariable<float> CVarBlockRoll(
 	TEXT("Cataclysm.BlockRoll"),
