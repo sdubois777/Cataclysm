@@ -2,6 +2,373 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — Three Celestial Edicts are rows and are built in the game: Temperance halves healing and stops life leech, Patience lengthens every cooldown by half, Stillness slows the player after a movement skill; each stronger in an Ascendant up to its cap
+
+**Three of the six new Divine Edicts are rows of the design workbook and do what the design says.** The Edict of
+Temperance withholds half of all healing the player receives and life leech does nothing; the Edict of Patience makes
+every cooldown half as long again; the Edict of Stillness slows the player by 40% for 3 seconds after each movement
+skill. Each is a Celestial dungeon modifier any Celestial dungeon can draw, and each is one of the Edicts an Ascendant
+adds a floor, where it is a tenth stronger a floor deeper and half again on the Core's floor while the Core stands, up
+to its cap: Temperance at most 90%, Stillness's slow at most 90% with its 3 seconds fixed, Patience uncapped.
+Abstinence, Vigil and Humility are G7c. Branch `feat/game-edicts-1` on `development` at `195d154cc`. Not built and not
+run: see The editor step, Proofs and Run.
+
+### What changed and why
+
+- **WHAT A PLAYER MEETS.** On a Celestial floor carrying the Edict of Temperance regeneration, direct healing and
+  leech already paying out restore half as much, and no new leech starts; the floor's log line says "healing 50% less and no
+  life leech, by the Edict of Temperance". Under Patience a 10 second cooldown runs 15. Under Stillness a dash, leap or
+  teleport leaves the player 40% slower for 3 seconds. On floor 6 of an Ascendant those are 75%, 75% longer and 60%;
+  on floor 70, 90%, 395% longer and 90%. The floor panel lists each by name and marks it built.
+- **WHY.** The owner's rulings of 2026-10-19 to 2026-10-21 quoted in the two entries below ("All eight", "Delegated, as
+  proposed"), and the coordinating session's rulings for G7b on 2026-10-22, below.
+- **EVERY ASCENDANT'S EDICTS MOVE.** `EdictKeys` grows from two to five, and `EdictOrderFor` shuffles that list on the
+  walk seed's stream, so the same seed now gives another order; what an Ascendant holds, and which Edict its hit
+  leaves, change for every dungeon. No run stream moves. Every Celestial dungeon's draw also moves, because the
+  Celestial pool grows from 15 rows to 18; and Reality Twister, which draws from every built row, can now add any of
+  the three to a floor of any dungeon.
+
+### The rulings
+
+The coordinating session ruled these on 2026-10-22 for G7b:
+
+1. **Rows now: Temperance, Patience and Stillness only**, 117 rows to 120. Abstinence, Vigil and Humility come in G7c
+   with their code. The owner's ruling of 2026-09-11 -- every row stays in the equal-chance draw, and the floor panel
+   marks the rows that do nothing -- is untouched.
+2. **`EdictKeys` gains the three.** G7a's tests that assume exactly two Edicts change from "the two" to "the Edict
+   list", each change ruled one by one: written as proposals in their own commit, "G7a tests follow the Edict list
+   (proposed, awaiting ruling)", and listed below old -> new.
+3. **`PlayerEffectsFor` gains `float EdictStrength = 1.0f`**; its three game callers pass `EdictStrengthHere()`; test
+   callers keep the default.
+4. **Stillness on the floor beat, the Singularity Wells route**: the beat reads `SecondsSinceMovementSkillUsed()`
+   into Stillness's own field, and while that is within 3 seconds movement is `min(40 x S, 90)` percent less. The
+   reason: the timed-condition route (`WithinSecondsOfMovementSkill` on `movement_speed`) could not be shown to be
+   evaluated again as time passes.
+5. **The editor step is the dungeon session's**, under the lock, before the window.
+6. **The rows are 17, 18 and 19** of "Dungeon Modifiers", after the Celestial block.
+7. **Temperance's life leech removal does not scale.**
+
+The caps, the coordinating session's under the owner's delegation and already in the design beside the 10% rule:
+Temperance's healing reduction `min(50 x S, 90)`; Patience `50 x S`, uncapped; Stillness's slow `min(40 x S, 90)`, its
+3 seconds fixed. `S` is `EdictStrengthHere()`: 1 outside an Ascendant and for an Edict left on a city.
+
+### The rows
+
+`docs/All_Things_Cataclysm.xlsx`, sheet "Dungeon Modifiers", granted for these three rows only:
+
+| Row | Cataclysm Type | Modifier Name | Weight | Description | Row key |
+| --: | :-- | :-- | --: | :-- | :-- |
+| 17 | Celestial | Edict of Temperance | 20 | Healing the player receives is halved, and life leech does nothing. | `Celestial_Edict_of_Temperance` |
+| 18 | Celestial | Edict of Patience | 15 | Every cooldown takes 50% longer. | `Celestial_Edict_of_Patience` |
+| 19 | Celestial | Edict of Stillness | 10 | Using a movement skill (a dash, leap or teleport) slows the player by 40% for 3 seconds. | `Celestial_Edict_of_Stillness` |
+
+The descriptions are the design's Edict table, `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath, its "Base effect" cells,
+given a capital and a full stop. **Stillness's cell, "using one slows the player by 40% for 3 seconds", cannot stand
+alone**, because "one" points at the row's action cell, "a movement skill (a dash, leap or teleport)"; the description
+puts that cell's words where "one" stood. The keys are the generator's own `row_name`, asserted by the writing script
+before it wrote anything.
+
+**HOW IT WAS WRITTEN.** With openpyxl 3.1.5 (the workbook's last writer, per its `docProps/app.xml`) by a script in the
+writing session's scratch folder (`g7bw/wb_write.py`), on a copy that was proved before it was moved over the real
+file. It moved every row from 17 to the sheet's last, 1012, down three -- values, styles and heights -- wrote the three
+rows with row 16's styles, and widened the sheet's table `Table6` from `A1:D117` to `A1:D120` and its two data
+validations from `A2:A117`/`C2:C117` to row 120. `tools/generate_datatables.py` then rewrote all 29 CSVs: **28 came back
+byte for byte the same**, and `game/Data/DungeonModifiers.csv` differs by the three lines added after
+`Celestial_Wings_of_the_Host` and none removed; `--check` says "All 29 DataTable CSVs are up to date."
+
+**THE PROOF NOTHING ELSE CHANGED** (`g7bw/wb_prove.py`, printed):
+
+- Every cell of all 27 sheets, value and style, read with `data_only=False` and again with `True`: "the other 26
+  sheets: every cell's value and style equal"; on "Dungeon Modifiers", "4048 cells before, 4060 after; rows 1-16
+  equal, rows 20-1015 equal old rows 17-1012", compared by content: row `r` after against row `r - 3` before.
+- Sheet names and order equal; no defined names before or after; column widths 20.63, 18.25, 13.88 and 60.25 before
+  and after; the frozen pane at A2; no merged cells and no conditional formatting before or after; 0 formula cells, 0
+  drawings, 0 comments and 0 `extLst` in either archive.
+- The archive's 55 members are the same 55; four differ in bytes: `docProps/core.xml` (its modified time),
+  `xl/worksheets/sheet1.xml` (this sheet), `xl/tables/table1.xml` ("only ref A1:D117 -> A1:D120") and
+  `xl/worksheets/sheet27.xml`, Enchantment Effects. **The last is openpyxl's round trip and not this edit**: 23 cells of
+  that sheet's rows 705 to 707 carried no style attribute, and any openpyxl save writes `s="0"` on them, which is the
+  same default style. Shown two ways: a control copy loaded and saved with no change differs from the original in
+  `docProps/core.xml` and that sheet alone, and "before with s="0" added to them == after: True".
+- **openpyxl lost nothing this workbook has.** It drops charts, images, comments' drawing parts and unknown
+  extensions; the workbook has none of them, and it was last saved by openpyxl.
+
+### How it is built
+
+- `CataclysmEmpire/Empire/CataclysmDungeonModifier.h` and `.cpp`: `EdictKeys` holds Silence, Temperance, Patience,
+  Stillness and Forced Tithes, the design table's order; `EdictName` names the three. The empire module still includes
+  nothing from the `Cataclysm` module.
+- `Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`: `EdictOfTemperanceKey`, `EdictOfPatienceKey`,
+  `EdictOfStillnessKey`, each `Built` in `BuiltStateOf` and listed in `KeysWithARule`; the constants
+  `EdictOfTemperanceHealingLessPercent = 50`, `EdictOfTemperanceMostHealingLessPercent = 90`,
+  `EdictOfPatienceCooldownLongerPercent = 50`, `EdictOfStillnessSlowPercent = 40`, `EdictOfStillnessMostSlowPercent =
+  90` and `EdictOfStillnessSeconds = 3`, with three static assertions; `EdictOfTemperanceHealingLessPercentAt`,
+  `EdictOfPatienceCooldownLongerPercentAt` and `EdictOfStillnessSlowPercentAt`; three fields of their own in
+  `FCataclysmPlayerFloorEffects` -- `TemperanceHealingLessPercent`, `PatienceCooldownLongerPercent`,
+  `StillnessMovementLessPercent` -- each in `IsEmpty`, `StatModifiersFor` and `Describe`.
+- **Temperance**: `PlayerEffectsFor` writes its field at `EdictStrength`; `StatModifiersFor` adds it flat to
+  `healing_received_reduction` (held 0 to 100 by the attribute) and, while it is above nought, removes `life_leech`
+  through a new helper, `DungeonModifierEffectsRemoveStat`, `ECataclysmStatBucket::Removed` from `DungeonRule`.
+- **Patience**: `PlayerEffectsFor` writes its field at `EdictStrength`; `StatModifiersFor` adds it flat to
+  `cooldown_lengthening`.
+- **Stillness**: `ACataclysmDungeonGameMode::StepEdictOfStillness`, on the beat on any floor carrying the row, reads
+  `SecondsSinceMovementSkillUsed()` and `EdictStrengthHere()` into `EdictOfStillnessSlowApplied`, and re-applies when
+  that moves; `ApplyChangingFloorEffects` puts it on `StillnessMovementLessPercent`; `StatModifiersFor` writes it as a
+  Less on `movement_speed`; the floor change forgets it as it forgets Singularity Wells' slow.
+- **The strength**: `PlayerEffectsFor(..., float EdictStrength = 1.0f)`; `ApplyFloorRulesTo`,
+  `ApplyChangingFloorEffects` and the floor's log line pass `EdictStrengthHere()`. `StepEdictStrength` re-applies the
+  floor's effects when `EdictStrengthHere()` differs from `EdictStrengthApplied`, the strength they were last applied at.
+
+**THE FIELDS ARE THEIR OWN BECAUSE THE BEAT REASSIGNS SHARED ONES**, issue #1765's trap: `ApplyChangingFloorEffects`
+assigns Death's Embrace's and Necrotic Ground's share to `HealingReceivedLessPercent`, adds Eternal Chorus's to
+`ChorusCooldownLongerPercent` only because Rule of Chaos shares that field, and assigns Singularity Wells' slow to
+`MovementSpeedLessPercent`. Two flat additions to one stat add, and two Less multipliers multiply.
+
+### Judgements made by the writing session, each open to a ruling
+
+- **Stillness's description** joins the design's action cell to its effect cell, as The rows says.
+- **`EdictKeys` is in the design table's order**, Silence, Temperance, Patience, Stillness, Tithe, as the list's own
+  comment promised; appending the three after Forced Tithes would have served as well. Either order moves every draw.
+- **`StepEdictStrength`, not ruled.** Temperance and Patience are written once a floor, so when an Ascendant's Core is
+  destroyed they would keep the Core's half until another rule applied. The step re-applies them on the next beat. The
+  Edict of Silence needs nothing: it reads the strength when each silence begins.
+- **The beat's quarter second.** Stillness's slow begins up to a beat after the movement skill and ends up to a beat
+  after its 3 seconds, as Singularity Wells' slow follows the player into and out of a well.
+- **"A movement skill" is a skill in the Movement slot**, the one `CataclysmSkillTemplate.cpp` records with
+  `NoteMovementSkillUsed`; nothing else counts.
+- **Leech already paying out is not stopped**, only cut by the healing share: the removal takes the stat to nothing, so
+  no new payment starts, and `UCataclysmLeech`'s running payments heal through `healing_received_reduction`.
+- **Mana and energy shield leech are untouched**: the design says "life leech".
+- **The simulation's three rows** sit in its weight bands in name order, which moves the order of its Celestial pool.
+
+### Counts, old -> new
+
+- `CataclysmDataTableTests.cpp`, `CHECK_TABLE(... "DungeonModifiers.csv", 117)` -> `120`, with its comment.
+- `CataclysmDungeonModifierTableTests.cpp`, `TestEqual(TEXT("the table has 117 rows"), ..., 117)` -> `"the table has 120
+  rows"`, `120`; `TestEqual(TEXT("and every one becomes a pool entry"), Pool.Num(), 117)` -> `120`; its comment and the
+  file comment's "really has 117 rows" -> 120.
+- `docs/README.md`, "| Dungeon Modifiers | 117 |" -> 120.
+- `tools/tests/test_dungeon_modifier_port.py`'s SPEAKS_THE_COUNT sentences: `CataclysmDayClock.h` "the 117 dungeon
+  modifiers" and `CataclysmSurge.h` twice -> 120; its own docstring and message "The design has 117 dungeon modifiers"
+  -> 120. The pool it counts, every row but the Generic one, is read from the data: 116 -> 119.
+- `docs/Cataclysm_GDD_v2.md`, the Corrupted Stalker's weight paragraph: "holds 117 modifiers ... one of the thirteen at
+  20" -> "120 ... one of the fourteen at 20". Temperance is the fourteenth at 20.
+- `CataclysmDungeonModifier.h`: "117 rows and five columns" -> 120; "has held 117 rows since the design workbook was
+  imported" -> "held 117 rows from the day the design workbook was imported (120 since 2026-10-22)"; "one active
+  Cataclysm is 12 to 15 rows" -> "12 to 18"; "the pool is 116" -> 119.
+- Comments stating the current count, 117 -> 120: `CataclysmDungeonModifierEffects.h` ("What the 117 dungeon
+  modifiers do on a floor"), `CataclysmDungeonModifierTable.h` (as `CataclysmDungeonModifier.h`'s second),
+  `CataclysmFloorBrief.h` twice, `CataclysmDungeonGameMode.h` and `.cpp`, `CataclysmRoster.h`,
+  `CataclysmDungeonModifierTests.cpp` twice ("this one is the 117th" -> "is among them"),
+  `CataclysmDungeonModifierEffectsTests.cpp`'s file comment, `CataclysmFloorBriefTests.cpp` twice, and
+  `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` twice ("a few of the 117 rows"; "Eight of the 117 rows are
+  written that way", still eight: no new row says "a chance").
+- **Left as written**, each a dated measurement, a quotation or history: `CataclysmDungeonModifierEffects.h`'s "Of the
+  117 rows ... only Unstable Dimensions changed a floor" (before issue #41) and its two "measured 2026-09-14" counts;
+  `CataclysmSaveRecords.h` (quotes what a list said); `CataclysmFloorModifierPanelLayout.h`, "116 of the 117 did nothing"
+  (before issue #41); `CataclysmDataTableTests.cpp`'s "All three of these read 116 until issue #363";
+  `test_dungeon_modifier_rules_are_the_rows.py`'s "measured across all 117 on 2026-09-14" and its quote of "five of the
+  117 rows"; `test_dungeon_modifier_port.py`'s and `sim/cataclysm_sim/modifiers.py`'s "116 rows against the data file's
+  117"; `test_one_name_belongs_to_one_table.py`; `test_unreal_pinned_row_counts.py`; `sim/README.md`'s tier 8 "same 116
+  entries" (a measurement in its own section); `game/README.md`'s "had held 117 rows that nothing in the game had ever
+  read" (before issue #41).
+- **Left and stale before this change**: `game/README.md`'s "four of the 117 change the player" and "Five modifiers of
+  the 117 do something on a floor, and the other 112 are a name and a number". Dozens of rows are built now, so moving
+  117 to 120 there would leave both sentences as wrong as they are; the paragraph needs rewriting, which is not this
+  change's.
+
+### Simulation
+
+`sim/cataclysm_sim/modifiers.py` gains `('Edict of Temperance', 20)`, `('Edict of Patience', 15)` and `('Edict of
+Stillness', 10)` in its Celestial list, so `tools/tests/test_dungeon_modifier_port.py`'s triple comparison holds. What
+moves: the Ascendant stand-in's extra danger a floor, `Simulation.average_modifier_score`, is the mean of the
+campaign's pool -- with all eight Cataclysms 10.862 (116 rows) -> 10.966 (119), with Celestial alone 11.333 (15) ->
+11.944 (18) -- and every draw from a pool holding Celestial rows. **`experiments.py` was not run**, so no tuning figure
+is restated.
+
+### Tests changed (proposed, awaiting the coordinating session's ruling)
+
+All in one commit, "G7a tests follow the Edict list (proposed, awaiting ruling)". Each old -> new:
+
+- **P1** `Cataclysm.DungeonModifiers.TheEdictsAreTheTwoCelestialRowsTheDesignNames` -> renamed
+  `...TheEdictsAreTheCelestialRowsTheDesignNames` (`CataclysmDungeonModifierTests.cpp`). `Expected = { Silence, Tithe }`,
+  "the Edicts are the Edict of Silence and Forced Tithes, in that order" -> `{ Silence, Temperance, Patience,
+  Stillness, Tithe }`, "the Edicts are the Edicts of Silence, Temperance, Patience and Stillness and Forced Tithes, in
+  the design's order". Its other assertions and its control are unchanged; three key constants are added.
+- **P2** `...AnAscendantAddsOneEdictAFloorAndEachFloorHoldsTheLastFloorsUntilNoneIsLeft`: `TestEqual("and two Edicts
+  are rows today", EdictKeys().Num(), 2)` -> `("and five Edicts are rows today", ..., 5)`; control `TestEqual("CONTROL:
+  both Edicts come first on some seed", FirstFloors.Num(), 2)` -> `("CONTROL: every Edict comes first on some seed",
+  FirstFloors.Num(), EdictKeys().Num())`.
+- **P3** `...AnAscendantsEdictsAreDrawnEvenlyAndNotByTheirDanger`: `TestTrue("the Edict of Silence comes first about
+  half the time", Share > 0.45 && Share < 0.55)` -> `TestTrue("the Edict of Silence comes first about one time in as
+  many as there are Edicts", Share > Even - 0.05 && Share < Even + 0.05)`, `Even = 1 / EdictKeys().Num()`, 0.2; control
+  `("CONTROL: which is not the four in seven a draw by danger would give", |Share - 20/35| > 0.02)` -> `("CONTROL: which
+  is not the one in four a draw by danger would give", |Share - 20/80| > 0.02)`, the five dangers summing to 80.
+- **P4** `...AnEdictAlreadyAmongADungeonsModifiersIsNotDrawnAgain`: `TestTrue("seed %d floor %d: with Silence in force
+  only Tithe is added", EdictsOnFloor(Seed, SilenceActive, Floor) == OnlyTithe)` -> `TestTrue("seed %d floor %d: with
+  Silence in force the others are added in their turn", Added == Expected)`, `Expected` being `EdictOrderFor(Seed)`
+  without Silence, cut to `min(Floor, 4, its length)`, and a new `TestFalse("... and Silence is not added again",
+  Added.Contains(Silence))`; `TestEqual("... with both in force none is", EdictsOnFloor(Seed, BothActive, Floor).Num(),
+  0)` -> `("... with every Edict in force none is", EdictsOnFloor(Seed, AllActive, Floor).Num(), 0)`, `AllActive =
+  EdictKeys()`. The control is unchanged.
+- **P5** `...TheEdictAHitLeavesIsOneTheAscendantWouldHoldFromFloorFour`: `TestEqual("seed %d day %d: with Silence
+  among its own it leaves Tithe", EdictLeftBy(Seed, SilenceActive, Day), Tithe)` -> `TestTrue("seed %d day %d: with
+  Silence among its own it leaves another it would hold", Left != Silence && EdictsOnFloor(Seed, SilenceActive,
+  4).Contains(Left))`; `"... with both among its own it holds none and leaves none"`, `BothActive` -> `"... with every
+  Edict among its own ..."`, `AllActive`; control `TestEqual("CONTROL: both Edicts are left by some", Left.Num(), 2)`
+  -> `("CONTROL: every Edict is left by some", Left.Num(), EdictKeys().Num())`.
+- **P6** `Cataclysm.EmpireRun.AnUnwalkedAscendantLeavesAnEdictItWouldHoldFromFloorFour` (`CataclysmEmpireRunTests.cpp`):
+  `TestEqual("one carrying the Edict of Silence leaves the Edict of Tithe", Left, Tithe)` -> `TestNotEqual("one carrying
+  the Edict of Silence never leaves it", Left, Silence)`; the two controls `TestTrue("CONTROL: the Edict of Silence was
+  left by some", Seen.Contains(Silence))` and `TestTrue("CONTROL: and the Edict of Tithe by others",
+  Seen.Contains(Tithe))` -> one, `TestTrue("CONTROL: more than one Edict was left (%d)", Seen.Num() > 1)`. **A weaker
+  control, and why**: eight of the twenty-four cannot leave Silence and each of the other sixteen leaves it about one
+  time in five, so "Silence was left by some" fails about one seed set in thirty-six; the seeds are fixed and were not
+  run.
+- **P7** `Cataclysm.FloorBrief.AnAscendantsFloorsCarryOneMoreEdictAFloorBeyondItsOwnModifiers`
+  (`CataclysmFloorBriefTests.cpp`): `TestEqual("seed %d floor %d: one Edict a floor, two when both are drawn", Num,
+  own + Min(Floor, 2))` -> `("seed %d floor %d: one Edict a floor, up to four", Num, own + Min3(Floor,
+  AscendantMostEdicts, EdictKeys().Num()))`. Its helpers: `AnAscendant`'s pool gains the three new Edicts at their table
+  dangers 20, 15 and 10, and `EdictDanger`'s `Silence ? 20 : 15` -> Silence and Temperance 20, Stillness 10, the rest 15.
+- **P8** `Cataclysm.FloorBrief.AnAscendantPassesOverAnEdictAlreadyAmongItsModifiers`: `TestEqual("floor %d adds the
+  Edict of Tithe, the only one left", Tithes, 1)` -> `TestTrue("floor %d adds the others, one a floor up to four",
+  Brief.Modifiers == own + EdictsOnFloor(11, own, Floor) && that list's length == Min3(Floor, 4, EdictKeys().Num() -
+  1))`; `TestEqual("floor %d adds only its danger", Score, own + 15)` -> `("floor %d adds only their danger", Score, own
+  + EdictDanger(Added))`. "carries the Edict of Silence once" is unchanged.
+- **P9** `Cataclysm.CityScreen.AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore` (`CataclysmCityScreenTests.cpp`):
+  `TestEqual("a deep Ascendant names both Edicts and its Core", Lines[0], "Ascendant, 30 floors, 2 Edicts by its last
+  floor and a Heavenly Core, 9 days until it bites")` -> `("a deep Ascendant names as many Edicts as its last floor
+  holds, and its Core", Lines[0], Printf("Ascendant, 30 floors, %d Edicts by ...", Min(AscendantMostEdicts,
+  EdictKeys().Num())))`, which is 4 today; the include of `Empire/CataclysmDungeonModifier.h` is added. The one-floor
+  line and the control are unchanged.
+- **P10** `tools/tests/test_the_ascendant_in_the_model_and_in_the_game.py::test_every_edict_the_game_lists_is_a_celestial_row`:
+  `keys == ["Celestial_Edict_of_Silence", "Celestial_Forced_Tithes"]`, "the two Edicts that are rows are the Edict of
+  Silence and Forced Tithes, in that order. G7b adds six" -> the five keys in the design's order, "the five Edicts that
+  are rows are the Edicts of Silence, Temperance, Patience and Stillness and Forced Tithes, in the design's order. G7c
+  adds three".
+- **P11, found by reading the medium-risk ones** `Cataclysm.DungeonModifierEffects.AnAscendantsSilenceLastsATenthLongerAFloorUpToItsCap`:
+  floor 6 of an Ascendant with no modifiers of its own now holds four of five Edicts, so it no longer always holds the
+  Edict of Silence. `Mode->DungeonModifiers.Reset()` -> `Mode->DungeonModifiers = {EdictOfSilence}`, and `TestTrue("and
+  carries the Edict of Silence, as every Ascendant's floor 2 on does", ...)` -> `("and carries the Edict of Silence, its
+  own modifier", ...)`. An Edict among the dungeon's own modifiers is scaled in an Ascendant (G7a's judgement), so the
+  22.5 seconds it asserts are unchanged.
+- **Held by reading, unchanged**: `AnEdictIsAtBaseStrengthOutsideAnAscendant` builds no floor;
+  `AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed` and `OnlyAnAscendantsLastFloorHasAHeavenlyCore`
+  read the strength, the Core and the stairs, and none of the three new Edicts seals stairs or touches what they read
+  (two-floor and three-floor dungeons held both old Edicts from floor 2 and hold two or three of five now);
+  `AnAscendantsTitheAsksMoreAFloorDeeperWithItsHealthPriceCappedAtHalf` now carries Silence, Temperance, Patience and
+  Stillness on floor 41 beside its own Tithe, and reads the altar's labels and a health payment, which none of them
+  changes; `ASecondAscendantHitReplacesTheLeftEdictAndRestartsItsThirtyDays` picks the other of Silence and Tithe, still
+  different from what the hit leaves.
+
+### AT RISK
+
+**FOUND BY SEARCH, AT `195d154cc`, BEFORE ANY EDIT.** A script (`g7bw/atrisk.py`) ran these Python regular expressions
+over every `game/Source/**/Tests/*.cpp`, `tools/tests/*.py` and `sim/tests/*.py` read out of git at the base, and named
+for each match the Unreal test or Python `def test_` above it. It cannot see a test that reaches the change through a
+helper whose own name does not match, and it credits a comment heading the next test to the one before. How each test
+reaches the change was judged by reading; nothing was built.
+
+- **(a) `(?<![\d.])(117|116|120)(?![\d.])`**: 101 tests. The pins changed above (`Cataclysm.Data.EveryGeneratedTableImports`
+  **high, CHANGED**; `Cataclysm.DungeonModifiers.EveryRowOfTheTableBecomesAPoolEntry` **high, CHANGED, and fails until
+  the editor step**); `Cataclysm.Data.ValuesSurviveImport` compares with the table's own count, **low**;
+  `test_the_row_is_still_in_the_table_it_is_only_not_drawn` and `test_nothing_else_grants_it`, prose only, **low**;
+  every other match is an unrelated figure (116 health, 117 milliseconds, a cone of 116 degrees and the like), **cannot
+  reach**.
+- **(b) `EdictKeys|EdictsOnFloor|EdictLeftBy|EdictOrderFor|EdictName|IsEdict\(`**: 12 tests. P1 to P8 and P10 above,
+  **high, PROPOSED**; `AnAscendantsTimerLeavesOneOfItsEdictsOnItsCityForThirtyDays` and
+  `ASecondAscendantHitReplacesTheLeftEdictAndRestartsItsThirtyDays` read the draw's answer, **low**;
+  `AnAscendantsEdictsAreTheOnesTheEmpireDrawsForItsWalkEvenOnTheDarkFloor` compares the brief with `EdictsOnFloor`,
+  **low**; `test_the_draw_check_sees_a_danger_read` alters a copy, **low**.
+- **(c) test names matching `Edict|Ascendant|HeavenlyCore|Temperance|Patience|Stillness`**: 25 tests. The eleven above;
+  the Silence rule's own tests (`TheEdictIsDueOnItsCadenceAndTheLockIsAllOrNothing`,
+  `AFloorCarryingTheEdictLocksSkillsThenLetsThemBack`) on dungeons that are no Ascendant, **low**; the left-Edict tests
+  in the city screen, the save writer and the empire run, which name Silence or Tithe, **low**;
+  `EnteringADungeonOnACityCarryingALeftEdictCarriesItBeyondItsCountAndItsScore` reads Silence's danger from the asset,
+  **low**; `CelestialsQuestDungeonIsAnAscendantThatNothingRolls`, **cannot reach**.
+- **(d) `LoadPool|PoolFromTable|ModifierPool\b`**: 17 tests. Those loading the real table draw from a Celestial pool of
+  18 where it was 15, so a seeded run's dungeons carry other modifiers; each reads its expectation from the pool or the
+  dungeon, **low**; `EveryRowOfTheTableBecomesAPoolEntry` as (a).
+- **(e) `BuiltStateOf|KeysWithARule|GetRowNames\(\)|GetRowMap\(\)`**: 96 tests.
+  `Cataclysm.DungeonModifierEffects.EveryRuleNamesARowOfTheTable` **fails until the editor step**: it asks the asset
+  for each key in `KeysWithARule`, and the asset does not hold the three rows yet. **high**.
+  `EveryRowWithSomethingBuiltIsInTheRuleList` walks the asset, which lacks the three, so it passes now and still passes
+  after the rebuild, because they are listed. `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` **fails until
+  the editor step**, **high**. `Cataclysm.FloorBrief.EnteringADungeonCarriesEveryBuiltRowForRealityTwister` counts the
+  built rows from the pool, three more of them after the rebuild, **low**. The rest are other tables' rows or other
+  rows' built states, **cannot reach**.
+- **(f) `healing_received_reduction|HealingReceivedReduction|cooldown_lengthening|CooldownLengthening|movement_speed|MovementSpeedAttribute|life_leech|LifeLeech`
+  in a file that names a dungeon rule**: 44 tests. Each builds its own floor's rows, and none carries the three new
+  rows or is an Ascendant, **low**; the beat tests that compose rules on one stat
+  (`AFloorCarryingBothBeatRulesKeepsBothOfThem`, `TheOtherKindOfMushroomSlowsThePlayerAndTheTwoCompose`,
+  `UnderRuleOfChaosLongerCooldownsRunTwiceAsLongAndAChorusAddsToThem`) are untouched because each new Edict has a field
+  of its own, **low**; the player-movement and skill-template matches, **cannot reach**.
+- **(g) `DungeonModifiers\.csv` in Python**: 11 tests. `test_dungeon_modifier_port.py`'s eight read the rows and are
+  held by the sim change, **high, held**; `test_holy_repercussions_chance_is_still_the_tables_figure_for_an_event`,
+  `test_it_is_a_real_row_of_the_modifier_table` and `test_the_tables_that_used_to_use_another_name_still_describe_the_stat`
+  read other rows, **low**.
+- **AND OUTSIDE THE PATTERNS**: `tools/tests/test_datatable_assets_are_current.py` (the CSV's hash against the
+  asset's record), **fails until the editor step**; `test_docs_readme_sheet_table_is_true.py` and
+  `test_unreal_pinned_row_counts.py`, held by the counts above.
+
+### New tests
+
+Eleven, none run: in `CataclysmDungeonModifierEffectsTests.cpp`,
+`Cataclysm.DungeonModifierEffects.TheEdictsOfTemperancePatienceAndStillnessAreBuiltRules`,
+`...TheEdictOfTemperanceHalvesHealingUpToNinetyAndRemovesLifeLeechAtEveryStrength`,
+`...TheEdictOfPatienceLengthensEveryCooldownByHalfAndHasNoCap`,
+`...TheEdictOfStillnessSlowsForThreeSecondsAfterAMovementSkillUpToNinety`,
+`...TheEdictOfTemperanceSurvivesTheBeatBesideDeathsEmbraceAndTheTwoAdd`,
+`...TheEdictOfPatienceSurvivesTheBeatBesideEternalChorusAndTheTwoAdd`,
+`...TheEdictOfStillnessSlowsOnlyForThreeSecondsAfterAMovementSkill`,
+`...TheEdictOfStillnessAndASingularityWellEachSlowAndTheTwoMultiply`,
+`...InAnAscendantTheThreeEdictsAreStrongerAFloorDeeperUpToTheirCaps` and
+`...DestroyingTheHeavenlyCoreTakesPatienceBackToItsFloorsStrength`; in `CataclysmDungeonModifierTests.cpp`,
+`Cataclysm.DungeonModifiers.AnAscendantCanDrawEachOfItsEdictsAndNamesEachAsTheDesignDoes`. Their controls: War Supply
+Lines still not built; no row withholds nothing and touches no leech, and mana leech is untouched; Eternal Chorus's
+field unwritten by Patience; nothing at 3 seconds or before any movement skill, and nothing after a support skill or on
+a floor without the row; Death's Embrace or the chorus alone on the next floor; the well's slow alone once Stillness's
+3 seconds run; floor 70 of an ordinary dungeon at base strength; Patience staying at the floor's strength over further
+beats; no Edict drawn outside the list and Golden Spires never drawn.
+
+### Python
+
+`tools/tests/test_three_celestial_edicts_in_the_game.py`, nine tests: the three rows are Celestial rows; the base
+numbers (50, 50, 40 for 3 seconds) against the design's table and the rows' descriptions; the caps (Temperance 90,
+Stillness 90 with its 3 seconds fixed, Patience none) against the design's Ascendant paragraph and the scaling
+functions' code; Temperance's leech removal written from its field and never from a strength; and every game caller of
+`PlayerEffectsFor` passing the strength. Four are controls on altered copies.
+
+Checked by the writing session in a `git archive` copy of the branch at `0fe3af2c5`, with `tools/prove_guard.py`,
+narrowed to the new file -- a check of the file and not a registered proof. Each PROVED, restored "9 passed":
+
+- B1, `EdictOfTemperanceMostHealingLessPercent = 90.0f` -> `80.0f`: "2 failed, 7 passed",
+  `test_the_caps_are_the_designs_and_patience_has_none` and `test_the_cap_check_sees_a_changed_cap` (its anchor was
+  gone).
+- B2, the leech removal written `Effects.TemperanceHealingLessPercent > 50.0f`: "2 failed, 7 passed",
+  `test_temperances_leech_removal_does_not_scale` and `test_the_leech_check_sees_a_scaled_removal` (its anchor was gone).
+- B3, the floor's log line calling `PlayerEffectsFor` without the strength: "2 failed, 7 passed",
+  `test_every_game_caller_passes_the_edict_strength` and `test_the_caller_check_sees_a_caller_left_at_the_default` (its
+  anchor was gone).
+
+### The editor step
+
+Not yet run: the dungeon session rebuilds DT_DungeonModifiers under the lock before the window.
+
+### Proofs
+
+Not yet run. Three to be registered by the dungeon session after reading the code:
+
+- **P1**, `EdictStrength` not passed, so it stays 1.
+- **P2**, Temperance's leech removal dropped.
+- **P3**, Stillness's beat slow removed.
+
+### Run
+
+Not yet run.
+
+---
+
 ## 2026-10-22 — A buried weapon's leap kill carries its throwing skill's tags, so a kill row requiring a tag answers it: a Harrower leap kill is a ranged kill, and a trap's leap kill explodes
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::SkillTagsWithNoSkill`
