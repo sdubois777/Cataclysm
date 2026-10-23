@@ -67,7 +67,7 @@ enum class ECataclysmType : uint8
  *     Cataclysm contributes by that shape. This module knows WHICH Cataclysms
  *     are active and nothing about how they differ, so
  *     `UCataclysmEmpireRun::RollCataclysm` draws uniformly. Issue #53.
- *   - Nothing about the 117 dungeon modifiers. `UCataclysmDungeonModifierRules`
+ *   - Nothing about the 120 dungeon modifiers. `UCataclysmDungeonModifierRules`
  *     pools them across the active Cataclysms, exactly as the model does, and
  *     reads `ActiveCataclysms` off the run to do it. Issue #41.
  *   - **The Quest dungeon spawn rate.** The owner ruled it "should depend on the

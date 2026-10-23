@@ -26,7 +26,7 @@
  * passes `-nullrhi`, and a rule that needed an asset loaded could only be
  * checked where content is present.
  * `Cataclysm.DungeonModifiers.EveryRowOfTheTableBecomesAPoolEntry`, over in the
- * `Cataclysm` module, is the one that reads the real 117 rows.
+ * `Cataclysm` module, is the one that reads the real 120 rows.
  */
 
 namespace CataclysmDungeonModifierTest
@@ -268,7 +268,7 @@ bool FCataclysmDungeonModifierGenericTest::RunTest(const FString& Parameters)
 	}
 
 	// AND THE ROW IS STILL IN THE TABLE. It is not drawn; it is not deleted.
-	// The design has 117 dungeon modifiers and this one is the 117th.
+	// The design has 120 dungeon modifiers and this one is among them.
 	const bool bStillThere = All.ContainsByPredicate(
 		[](const FCataclysmDungeonModifier& Modifier)
 		{

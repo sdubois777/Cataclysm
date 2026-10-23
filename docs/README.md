@@ -61,7 +61,7 @@ heading row describe their layout instead. Issue #1884.
 
 | Sheet | Rows | Columns |
 |---|---|---|
-| Dungeon Modifiers | 117 | Cataclysm Type, Modifier Name, Weight, Description |
+| Dungeon Modifiers | 120 | Cataclysm Type, Modifier Name, Weight, Description |
 | Gems | 27 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
 | Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down |

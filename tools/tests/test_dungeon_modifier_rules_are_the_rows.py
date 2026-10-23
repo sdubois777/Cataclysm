@@ -2,7 +2,7 @@
 say what the rules take.
 
 WHY THIS EXISTS. Issue #41. `game/Source/Cataclysm/Dungeon/
-CataclysmDungeonModifierEffects.h` and `.cpp` give a few of the 117 rows of
+CataclysmDungeonModifierEffects.h` and `.cpp` give a few of the 120 rows of
 `game/Data/DungeonModifiers.csv` a rule: Starvation takes 1% of maximum health
 and energy shield a floor up to 60%, Dehydration 1% of maximum mana a floor,
 Forced March a share of maximum health a second from a player standing still,
@@ -967,7 +967,7 @@ def test_spore_clouds_row_still_states_a_chance_and_no_figure_for_it():
 
     THE ROW SAYS "a chance" AND GIVES NO PERCENTAGE, which is why
     `SporeCloudsChancePercentOnDeath` is a judgement rather than a reading. Eight
-    of the 117 rows are written that way and this is one of them.
+    of the 120 rows are written that way and this is one of them.
 
     IF THE ROW EVER STATES A FIGURE, THE RULE MUST USE THAT ONE. A row saying
     "a 25% chance" beside a rule using ten is the exact drift this whole file
