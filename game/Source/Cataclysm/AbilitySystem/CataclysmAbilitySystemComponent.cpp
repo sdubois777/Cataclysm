@@ -8564,7 +8564,12 @@ void UCataclysmAbilitySystemComponent::DrainQueuedGadgetShotsAtTrapEnemies()
 {
 	// ONLY THE OUTERMOST CALL, AT DEPTH NOUGHT: a drain reached from inside a shot (its blows' events) returns at once, and
 	// the loop below takes up whatever those events recorded, at the end.
-	if (PoolActionDepth > 0 || bDrainingQueuedGadgetShotsAtTrapEnemies)
+	// AND NOT WHILE AN ABILITY OF THIS CHARACTER IS ACTIVATING (traps layer 6b, #2471): the engine locks the ability list
+	// then (`ABILITYLIST_SCOPE_LOCK` in `UAbilitySystemComponent::InternalTryActivateAbility`), a grant made under that
+	// lock is only deferred, and `UCataclysmTriggeredSkill::Trigger` refuses a deferred grant, so a shot fired from a
+	// blow's event inside another trap's cast would be taken off the queue and lost. It waits instead, and the end of the
+	// event that recorded it, which is raised outside any activation, fires it.
+	if (PoolActionDepth > 0 || bDrainingQueuedGadgetShotsAtTrapEnemies || AbilityScopeLockCount > 0)
 	{
 		return;
 	}
