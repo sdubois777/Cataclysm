@@ -13,7 +13,7 @@
  * One row of the dungeon modifier table, as the empire layer needs it.
  *
  * A COPY OF THREE COLUMNS AND NOT THE ROW. `game/Data/DungeonModifiers.csv` has
- * 117 rows and five columns; this carries the three the draw uses and leaves the
+ * 120 rows and five columns; this carries the three the draw uses and leaves the
  * description where it is. The table itself is a `UDataTable` whose row type
  * `FCataclysmDungeonModifierRow` lives in the `Cataclysm` module, and this module
  * must not depend on that one.
@@ -64,8 +64,9 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonModifier
 /**
  * Which modifiers a dungeon carries, and how dangerous they make it.
  *
- * WHAT THIS ANSWERS. `game/Data/DungeonModifiers.csv` has held 117 rows since
- * the design workbook was imported and **nothing in the game had ever read one**.
+ * WHAT THIS ANSWERS. `game/Data/DungeonModifiers.csv` held 117 rows from the
+ * day the design workbook was imported (120 since 2026-10-22) and **nothing in the
+ * game had ever read one**.
  * `FCataclysmScoredFloor::ModifierScore` was hard-zeroed with a comment saying
  * dungeon modifiers do not exist. Issue #41.
  *
@@ -189,10 +190,10 @@ public:
 	 * column of `game/Data/DungeonModifiers.csv` of its own, not in `Danger`.
 	 *
 	 * FEWER THAN ASKED FOR WHEN THE POOL RUNS OUT, rather than repeating. It can
-	 * happen: one active Cataclysm is 12 to 15 rows and difficulty tier 8
+	 * happen: one active Cataclysm is 12 to 18 rows and difficulty tier 8
 	 * Sacrificial asks for 16. `config.py` names that exact risk -- "~26
 	 * modifiers to roll from, which is what stops deep tiers running dry" -- and
-	 * a run at tier 8 has all eight Cataclysms active, so the pool is 116 and it
+	 * a run at tier 8 has all eight Cataclysms active, so the pool is 119 and it
 	 * cannot happen in a real run. A test asks for more than a pool holds anyway.
 	 *
 	 * @param Pool    what may be drawn. Not modified
@@ -228,12 +229,15 @@ public:
 	 * Which rows of the modifier table are Divine Edicts, in a fixed order.
 	 *
 	 * `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath: "Each Edict is a Celestial
-	 * dungeon modifier". Eight are designed and two are rows today: the Edict
-	 * of Silence, `Celestial_Edict_of_Silence`, and the Edict of Tithe, which
-	 * is the existing modifier Forced Tithes, `Celestial_Forced_Tithes`. The
-	 * six new rows come with their own layer, G7b, and are added here then. A
-	 * C++ list and not a column of the table, ruled by the coordinating
-	 * session on 2026-10-22.
+	 * dungeon modifier". Eight are designed and five are rows today: the Edict
+	 * of Silence, `Celestial_Edict_of_Silence`; the Edicts of Temperance,
+	 * Patience and Stillness, `Celestial_Edict_of_Temperance`,
+	 * `Celestial_Edict_of_Patience` and `Celestial_Edict_of_Stillness`, rows
+	 * since 2026-10-22 (G7b); and the Edict of Tithe, which is the existing
+	 * modifier Forced Tithes, `Celestial_Forced_Tithes`. The other three --
+	 * Abstinence, Vigil and Humility -- come with their own layer, G7c, and are
+	 * added here then. A C++ list and not a column of the table, ruled by the
+	 * coordinating session on 2026-10-22.
 	 *
 	 * IN THIS MODULE, because the empire's hit and the floor rules both need
 	 * it, and the empire module must not depend on the game's.
@@ -245,6 +249,7 @@ public:
 
 	/**
 	 * What a player is shown for an Edict: "Edict of Silence", "Edict of
+	 * Temperance", "Edict of Patience", "Edict of Stillness", "Edict of
 	 * Tithe". Empty for a row that is not one.
 	 *
 	 * THE DESIGN'S NAMES AND NOT THE ROWS'. The row of the Edict of Tithe is

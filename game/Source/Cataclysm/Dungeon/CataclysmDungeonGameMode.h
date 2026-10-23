@@ -186,7 +186,7 @@ public:
 	/**
 	 * The dungeon's own modifiers, as row keys of the modifier table.
 	 *
-	 * CARRIED SO A PER-FLOOR RULE CAN READ THEM. One of the 117 modifiers,
+	 * CARRIED SO A PER-FLOOR RULE CAN READ THEM. One of the 120 modifiers,
 	 * Unstable Dimensions, gives every floor an extra modifier of its own, and
 	 * whether it fires depends on which modifiers the dungeon drew. The score
 	 * alone cannot answer that.
@@ -1515,6 +1515,33 @@ private:
 	 * whether it has passed.
 	 */
 	void StepEdictOfSilence(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Edict of Stillness: slow the player while a movement skill is fewer than its 3 seconds old. 2026-10-22, G7b.
+	 *
+	 * THE SINGULARITY WELLS ROUTE, ruled 2026-10-22: the beat reads
+	 * `UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillUsed` and keeps what it applies in its own figure,
+	 * `EdictOfStillnessSlowApplied`, re-applying only when that figure moves. The slow is
+	 * `UCataclysmDungeonModifierEffects::EdictOfStillnessSlowPercentAt` at `EdictStrengthHere`. A beat is a quarter of
+	 * a second, so the slow begins up to a beat after the skill and ends up to a beat after its 3 seconds.
+	 */
+	void StepEdictOfStillness(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The Edicts of Temperance and Patience: put them on the player again when the Edict strength here has moved
+	 * since they were put there. 2026-10-22, G7b.
+	 *
+	 * THE STRENGTH MOVES WHILE THE PLAYER STANDS ON ONE FLOOR IN ONE PLACE ONLY: an Ascendant's last floor, when its
+	 * Heavenly Core is destroyed, takes the Edicts from half again as strong to the floor's own strength. Both rules are
+	 * written once a floor by `UCataclysmDungeonModifierEffects::PlayerEffectsFor`, so without this they would keep the
+	 * Core's strength until some other rule happened to apply. The Edict of Silence reads the strength when each silence
+	 * begins and needs nothing here; the Edict of Stillness reads it on its own beat.
+	 */
+	void StepEdictStrength(
 		class ACataclysmPlayerCharacter* Player,
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
@@ -4191,6 +4218,20 @@ private:
 	float EdictOfSilenceSecondsSinceLast = 0.0f;
 	float EdictOfSilencedUntilSeconds = -1.0f;
 	float EdictOfSilenceLockApplied = 0.0f;
+
+	/**
+	 * Edict of Stillness: the slow last put on the player, in percent, or nothing. 2026-10-22, G7b. Forgotten when the
+	 * floor changes, as every beat rule's applied figure is, so the next beat puts it back if a movement skill is still
+	 * fewer than 3 seconds old.
+	 */
+	float EdictOfStillnessSlowApplied = 0.0f;
+
+	/**
+	 * The Edict strength the Edicts of Temperance and Patience were last put on the player at. 2026-10-22, G7b. Set when
+	 * a floor's rules are applied and whenever the shared applier runs; `StepEdictStrength` compares it with
+	 * `EdictStrengthHere`.
+	 */
+	float EdictStrengthApplied = 1.0f;
 
 	/**
 	 * Dirge Resonance: the beat's clock since the last crescendo, when the last one's haste

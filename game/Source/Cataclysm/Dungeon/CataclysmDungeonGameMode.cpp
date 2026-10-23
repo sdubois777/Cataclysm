@@ -14133,7 +14133,7 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// where both rules live. Issue #41.
 	//
 	// NARROWED ONCE, HERE, rather than on every floor.
-	// `UCataclysmEmpireRun::ModifierPool` is the whole 117-row table and
+	// `UCataclysmEmpireRun::ModifierPool` is the whole 120-row table and
 	// `PoolFor` cuts it to the Cataclysms this run is facing, which does not
 	// change while the player is inside one dungeon.
 	DungeonModifiers = Run->ModifiersCarriedBy(DungeonId);
@@ -14381,9 +14381,11 @@ bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
 	// list rather than the dungeon's, so a Volatile dungeon that re-draws
 	// Starvation onto one floor starves the player on that floor only; and the
 	// brief's number, which for a Horde dungeon is the wave.
+	//
+	// AND THE EDICT STRENGTH HERE, since 2026-10-22 (G7b): the Edicts of Temperance and Patience scale in an Ascendant.
 	return UCataclysmDungeonModifierEffects::ApplyToCharacter(
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange),
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange, EdictStrengthHere()),
 		AbilitySystem, Equipment);
 }
 
@@ -14854,6 +14856,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// CLOCK. Issues #1786 and #41.
 	const bool bEdictOfSilence = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::EdictOfSilenceKey));
+	// AND THE EDICT OF STILLNESS, WHICH PLACES NOTHING AND MOVES ONE STAT FOR 3 SECONDS AFTER A MOVEMENT SKILL; and
+	// the Edicts of Temperance and Patience, whose figures move only when the Edict strength does. 2026-10-22, G7b.
+	const bool bEdictOfStillness = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::EdictOfStillnessKey));
+	const bool bEdictStrengthMatters =
+		FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::EdictOfTemperanceKey))
+		|| FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::EdictOfPatienceKey));
 	// AND DIRGE RESONANCE, WHICH CHANGES CREATURES AND NEVER THE PLAYER, on the Edict's
 	// clock. Issues #1820 and #41.
 	const bool bDirgeResonance = FloorBrief.Modifiers.Contains(
@@ -15114,6 +15123,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay && !bSufferingAura
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence && !bDirgeResonance
+		&& !bEdictOfStillness && !bEdictStrengthMatters
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
@@ -15677,6 +15687,17 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		StepEdictOfSilence(Player, AbilitySystem);
 	}
 
+	// AND THE EDICT OF STILLNESS, ON ITS OWN FIELD, so its place here is free for the reason the Edict of Silence's is;
+	// and the strength the Edicts of Temperance and Patience were applied at. 2026-10-22, G7b.
+	if (bEdictOfStillness)
+	{
+		StepEdictOfStillness(Player, AbilitySystem);
+	}
+	if (bEdictStrengthMatters)
+	{
+		StepEdictStrength(Player, AbilitySystem);
+	}
+
 	// AND DIRGE RESONANCE, WHICH TOUCHES NOTHING THE PLAYER'S RULES SHARE, so its place in
 	// this order is free. Issues #1820 and #41.
 	if (bDirgeResonance)
@@ -15838,6 +15859,40 @@ void ACataclysmDungeonGameMode::StepEdictOfSilence(
 	if (!FMath::IsNearlyEqual(Wanted, EdictOfSilenceLockApplied))
 	{
 		EdictOfSilenceLockApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+}
+
+void ACataclysmDungeonGameMode::StepEdictOfStillness(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!Player || !AbilitySystem)
+	{
+		return;
+	}
+
+	// HOW LONG SINCE THE PLAYER'S LAST MOVEMENT SKILL, asked of the ability system that records it: -1 for never, which
+	// slows nothing. A skill in the Movement slot is the design's "a movement skill (a dash, leap or teleport)";
+	// `CataclysmSkillTemplate.cpp` notes it when one is used, and no other slot is noted.
+	const float Wanted = UCataclysmDungeonModifierEffects::EdictOfStillnessSlowPercentAt(
+		EdictStrengthHere(), AbilitySystem->SecondsSinceMovementSkillUsed());
+
+	// ONLY WHEN IT MOVED, the guard every beat rule here keeps: the apply rewrites the whole stat line.
+	if (!FMath::IsNearlyEqual(Wanted, EdictOfStillnessSlowApplied))
+	{
+		EdictOfStillnessSlowApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+}
+
+void ACataclysmDungeonGameMode::StepEdictStrength(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// THE SHARED APPLIER ASKS `PlayerEffectsFor` AT TODAY'S STRENGTH AND RECORDS IT, so calling it is the whole step.
+	if (!FMath::IsNearlyEqual(EdictStrengthHere(), EdictStrengthApplied))
+	{
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
 }
@@ -16528,9 +16583,13 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 
 	// THE FLOOR'S OWN EFFECTS FIRST, because applying replaces them wholesale: a
 	// floor carrying Starvation and The Nihil's Embrace has to keep both.
+	//
+	// AT THE EDICT STRENGTH HERE, AND RECORDED, since 2026-10-22 (G7b): the Edicts of Temperance and Patience are
+	// written here on their own fields, which nothing below assigns, and `StepEdictStrength` compares the record.
+	EdictStrengthApplied = EdictStrengthHere();
 	FCataclysmPlayerFloorEffects Effects =
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange);
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange, EdictStrengthApplied);
 
 	// AND EVERY BEAT-DRIVEN FIELD FROM THIS OBJECT, WHICH IS WHY THERE IS ONE
 	// APPLIER AND NOT ONE PER RULE. Issue #41, slice 5. The fields are read
@@ -16552,6 +16611,10 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// unconditionally like the rest: a floor without that row leaves the field at
 	// nothing, and nothing is what the effects already hold.
 	Effects.MovementSpeedLessPercent = SingularityWellsSlowApplied;
+
+	// AND THE EDICT OF STILLNESS'S SLOW, ON ITS OWN FIELD and not the one above, so a player in a well just after a
+	// dash is slowed by both. Read unconditionally like the rest. 2026-10-22, G7b.
+	Effects.StillnessMovementLessPercent = EdictOfStillnessSlowApplied;
 
 	// AND THE RECOVERY WITHERED GROUND IS TAKING. Read unconditionally like the
 	// rest, for the same reason: a floor without that row leaves the field at
@@ -21764,6 +21827,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// silence is still running.
 		EdictOfSilenceLockApplied = 0.0f;
 
+		// AND THE EDICT OF STILLNESS FORGETS WHAT IT APPLIED, for Singularity Wells' reason: the call above has taken the
+		// slow off the character, and the next beat puts it back if a movement skill is still fewer than 3 seconds old.
+		// The Edict strength those rules were put on at is the one the call above used. 2026-10-22, G7b.
+		EdictOfStillnessSlowApplied = 0.0f;
+		EdictStrengthApplied = EdictStrengthHere();
+
 		// AND INSANITY BURSTS STARTS AGAIN ON EVERY FLOOR, as ruled: exposure is time on this floor. A warning or a lock
 		// under way ends with the floor; the call above has already taken the lock off the character. Issues #1820
 		// and #41.
@@ -21946,7 +22015,7 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 
 	const FString OnThePlayer = UCataclysmDungeonModifierEffects::Describe(
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange));
+			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange, EdictStrengthHere()));
 	const FString Tail = OnThePlayer.IsEmpty()
 		? FString()
 		: FString::Printf(TEXT(" On the player: %s."), *OnThePlayer);
