@@ -445,7 +445,18 @@ quotation of a ruling or a record of its own commit: #15's quotations of Q1 ("th
 quotations in #34's entry; #34's heading; and the header comment at `CataclysmAbilitySystemComponent.h` 4705, which is
 true (the trap half's action). **FOUND IN ANOTHER FILE AND NOT CHANGED, FOR A RULING:** `CataclysmMinion.h` 522 to 523,
 on `FireEveryGadgetAtTheDeathOf`: "The trap half is not built, and joins when traps are." The same falsehood; not one
-of the four ruled, and in a file this commit does not otherwise touch.
+of the four ruled, and in a file this commit does not otherwise touch. **THE THIRD COMMIT CORRECTS IT AND TWO MORE, COMMENTS
+ONLY**, on the coordinating session's ruling of 2026-10-22 ("Correct it in layer 7 NOW, before the window, together with
+two more comments of the same kind ... Layer 7's entry says the trap half is built, so it should not ship beside comments
+that say it is not."): `CataclysmMinion.h`'s "The trap half is not built, and joins when traps are." gains "SINCE TRAPS
+LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as `trigger_traps_nearby` on `player_death`
+(`UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction`)."; `tools/generate_datatables.py`'s `gadgets_cast_now`
+comment, "its trap half joins when traps are built.", gains "SINCE TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as
+`trigger_traps_nearby` on `player_death`."; and its `deployable_blasts_strike_self` comment, "the trap half is not yet
+built.", gains "SINCE TRAPS LAYER 7 (2026-10-22) THE TRAP HALF IS BUILT: a skill trap is a deployable of its wearer's, and
+a shot, landing or held-back swing of one already used up is found by its identity (`IsTheWearersUsedUpTrap`)." The
+generator writes none of its comments into what it generates: run on two `git archive` copies of 13a36624f, one with the
+edits, its 29 CSVs are byte for byte the same, and the same as the committed `game/Data/`.
 
 **L-3, RENUMBERED.** This layer's tests are 53 to 58 (were 52 to 57) and 59 is new; its proofs are TR-XXX to TR-XXXII
 (were TR-XXIX to TR-XXXI) and TR-XXXIII is new, in the test file's headings and throughout this entry. 6b's test 52 and

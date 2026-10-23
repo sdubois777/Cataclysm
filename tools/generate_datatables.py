@@ -5436,7 +5436,9 @@ TELEPORT_RANDOMLY_EVENTS = ("hit_taken",)
 #: at the whole of its damage, ignoring its clock and leaving it as it was.
 #: Ruled 2026-10-19 by the coordinating session (C1-C4), for "When you die, all
 #: your active traps and gadgets immediately trigger simultaneously": the
-#: sentence's gadget half; its trap half joins when traps are built.
+#: sentence's gadget half; its trap half joins when traps are built. SINCE
+#: TRAPS LAYER 5 (2026-10-22) THE TRAP HALF IS BUILT, as
+#: `trigger_traps_nearby` on `player_death`.
 #: `UCataclysmAbilitySystemComponent::GadgetsCastNowAction` holds the same name.
 #:
 #: ITS VALUE IS 100 AND NOTHING ELSE, as a cleanse's is. The game does not read
@@ -11797,6 +11799,9 @@ def refuse_an_ally_buffs_refused_row_the_game_cannot_read(
 #: standing inside it. Ruled 2026-10-19 by the coordinating session (B1-B6),
 #: for "Your deployables and traps deal full damage to you if you are within
 #: their blast radius", the deployable half; the trap half is not yet built.
+#: SINCE TRAPS LAYER 7 (2026-10-22) THE TRAP HALF IS BUILT: a skill trap is a
+#: deployable of its wearer's, and a shot, landing or held-back swing of one
+#: already used up is found by its identity (`IsTheWearersUsedUpTrap`).
 #:
 #: ONE SENTENCE IS ONE ROW: `flat`, 1 to 1, with no Required Tags, no
 #: Condition, no Scale and no Action (B1). Which blows, who is inside and the
