@@ -36,6 +36,12 @@ const TCHAR* UCataclysmDungeonModifierEffects::GraspingTentaclesKey =
 	TEXT("Void_Grasping_Tentacles");
 const TCHAR* UCataclysmDungeonModifierEffects::EdictOfSilenceKey =
 	TEXT("Celestial_Edict_of_Silence");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfTemperanceKey =
+	TEXT("Celestial_Edict_of_Temperance");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfPatienceKey =
+	TEXT("Celestial_Edict_of_Patience");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfStillnessKey =
+	TEXT("Celestial_Edict_of_Stillness");
 const TCHAR* UCataclysmDungeonModifierEffects::ArtilleryStrikeKey =
 	TEXT("War_Artillery_Strike");
 const TCHAR* UCataclysmDungeonModifierEffects::HallowedGroundfallKey =
@@ -611,6 +617,30 @@ namespace
 	}
 
 	/**
+	 * A dungeon rule TAKING A STAT TO NOTHING, whatever else reaches it: `ECataclysmStatBucket::Removed`. The Edict of
+	 * Temperance's "life leech does nothing". 2026-10-22, G7b.
+	 *
+	 * A REMOVAL AND NOT A LESS OF A HUNDRED, which the pipeline would floor at 99. A dungeon rule may remove a stat:
+	 * `UCataclysmStatPipeline::CanGrantMore` decides both, and `DungeonRule` is among the sources it allows. The value is
+	 * not read, and is written as 1, as a data row states it.
+	 */
+	void DungeonModifierEffectsRemoveStat(TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+										  bool bRemoved)
+	{
+		if (!bRemoved)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Removed;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = 1.0f;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
+
+	/**
 	 * The same flat addition, reaching only the skills that carry every one of `Tags`.
 	 * Anti-Magic Zones. Issues #1820 and #41.
 	 *
@@ -706,6 +736,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(WastingSicknessKey)
 		|| RowKey == FName(GraspingTentaclesKey)
 		|| RowKey == FName(EdictOfSilenceKey)
+		// THE EDICTS OF TEMPERANCE, PATIENCE AND STILLNESS, BUILT WITH THEIR ROWS, 2026-10-22 (G7b).
+		|| RowKey == FName(EdictOfTemperanceKey)
+		|| RowKey == FName(EdictOfPatienceKey)
+		|| RowKey == FName(EdictOfStillnessKey)
 		|| RowKey == FName(ArtilleryStrikeKey)
 		|| RowKey == FName(HallowedGroundfallKey)
 		|| RowKey == FName(SporeCloudsKey)
@@ -988,6 +1022,9 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(WastingSicknessKey),
 		FName(GraspingTentaclesKey),
 		FName(EdictOfSilenceKey),
+		FName(EdictOfTemperanceKey),
+		FName(EdictOfPatienceKey),
+		FName(EdictOfStillnessKey),
 		FName(ArtilleryStrikeKey),
 		FName(HallowedGroundfallKey),
 		FName(SporeCloudsKey),
@@ -1204,6 +1241,30 @@ float UCataclysmDungeonModifierEffects::EdictOfSilenceLastsSecondsAt(float Stren
 					  EdictOfSilenceMostLastsSeconds);
 }
 
+float UCataclysmDungeonModifierEffects::EdictOfTemperanceHealingLessPercentAt(float Strength)
+{
+	// SCALED, AND THEN HELD AT ITS CAP. See the header for why the cap.
+	return FMath::Min(EdictOfTemperanceHealingLessPercent * FMath::Max(0.0f, Strength),
+					  EdictOfTemperanceMostHealingLessPercent);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfPatienceCooldownLongerPercentAt(float Strength)
+{
+	// SCALED AND NEVER HELD: "the Edict of Patience has no cap".
+	return EdictOfPatienceCooldownLongerPercent * FMath::Max(0.0f, Strength);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfStillnessSlowPercentAt(float Strength,
+																	  float SecondsSinceMovementSkill)
+{
+	// NOTHING BEFORE ANY MOVEMENT SKILL, AND NOTHING ONCE ITS SECONDS HAVE RUN. The seconds do not scale.
+	if (SecondsSinceMovementSkill < 0.0f || SecondsSinceMovementSkill >= EdictOfStillnessSeconds)
+	{
+		return 0.0f;
+	}
+	return FMath::Min(EdictOfStillnessSlowPercent * FMath::Max(0.0f, Strength), EdictOfStillnessMostSlowPercent);
+}
+
 float UCataclysmDungeonModifierEffects::SkillsLockedWhile(bool bSilenced)
 {
 	// EVERY SILENCE IS THE SAME. The row describes one that prevents all skill
@@ -1286,7 +1347,7 @@ float UCataclysmDungeonModifierEffects::MortalDecayPercentPerSecond(
 }
 
 FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
-	const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange)
+	const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange, float EdictStrength)
 {
 	FCataclysmPlayerFloorEffects Effects;
 
@@ -1335,6 +1396,18 @@ FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 	else if (RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns)
 	{
 		Effects.ChorusCooldownLongerPercent = RuleOfChaosCooldownLongerPercent;
+	}
+
+	// AND THE EDICTS OF TEMPERANCE AND PATIENCE, THE SAME ON EVERY FLOOR BUT AN ASCENDANT'S, where `EdictStrength`
+	// makes them stronger floor by floor up to Temperance's cap. 2026-10-22, G7b. Each on its own field, which the beat
+	// never writes. The Edict of Stillness is not here: it changes while the player plays, and the beat writes it.
+	if (FloorModifiers.Contains(FName(EdictOfTemperanceKey)))
+	{
+		Effects.TemperanceHealingLessPercent = EdictOfTemperanceHealingLessPercentAt(EdictStrength);
+	}
+	if (FloorModifiers.Contains(FName(EdictOfPatienceKey)))
+	{
+		Effects.PatienceCooldownLongerPercent = EdictOfPatienceCooldownLongerPercentAt(EdictStrength);
 	}
 
 	// AND THE THREE ROWS ON POTIONS, THE SAME ON EVERY FLOOR. Issue #806. None
@@ -1768,6 +1841,22 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  Effects.ChorusRegenLessPercent);
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsFervourPerSecondStat,
 								  Effects.ChorusRegenLessPercent);
+
+	// AND THREE OF THE CELESTIAL EDICTS, EACH FROM ITS OWN FIELD. 2026-10-22, G7b.
+	//
+	// TEMPERANCE: a flat addition to `healing_received_reduction`, beside Death's Embrace's and a pact's, which add;
+	// and life leech removed while it is in force, at any strength. The healing share reaches leech that is already
+	// paying out; the removal stops any new leech.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsHealingReceivedStat,
+								  Effects.TemperanceHealingLessPercent);
+	DungeonModifierEffectsRemoveStat(Modifiers, DungeonModifierEffectsLifeLeechStat,
+									 Effects.TemperanceHealingLessPercent > 0.0f);
+	// PATIENCE: a flat addition to `cooldown_lengthening`, beside Eternal Chorus's, which add.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsCooldownLengtheningStat,
+								  Effects.PatienceCooldownLongerPercent);
+	// STILLNESS: a Less on `movement_speed`, its own, beside Singularity Wells' and the rest, which multiply.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
+								  Effects.StillnessMovementLessPercent);
 
 	// AND FRAGMENTED REALITY'S PAIR, WHILE THE PLAYER STANDS IN THE FRAGMENTED SECTION, each from its own field. Issues
 	// #1820 and #41. Damage as Void Parasite's is taken, a More and a Less on attack damage and on spell damage;
@@ -2222,6 +2311,23 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 										 "section"),
 									Effects.FragmentedCooldownRecoveryMorePercent,
 									Effects.FragmentedMaxHealthLessPercent));
+	}
+	// AND THREE OF THE CELESTIAL EDICTS, each named, because "healing 50% less" alone would read as Death's Embrace.
+	// 2026-10-22, G7b.
+	if (Effects.TemperanceHealingLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("healing %.0f%% less and no life leech, by the Edict of Temperance"),
+									Effects.TemperanceHealingLessPercent));
+	}
+	if (Effects.PatienceCooldownLongerPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cooldowns %.0f%% longer, by the Edict of Patience"),
+									Effects.PatienceCooldownLongerPercent));
+	}
+	if (Effects.StillnessMovementLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less after a movement skill, by the Edict of Stillness"),
+									Effects.StillnessMovementLessPercent));
 	}
 	if (Effects.ArmourMorePercent > 0.0f)
 	{
