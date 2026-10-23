@@ -126,12 +126,16 @@ assigns Death's Embrace's and Necrotic Ground's share to `HealingReceivedLessPer
 
 ### Judgements made by the writing session, each open to a ruling
 
-- **Stillness's description** joins the design's action cell to its effect cell, as The rows says.
+- **Stillness's description** joins the design's action cell to its effect cell, as The rows says. **ACCEPTED** by the
+  coordinating session on 2026-10-22: "Q2 Stillness wording: ACCEPTED."
 - **`EdictKeys` is in the design table's order**, Silence, Temperance, Patience, Stillness, Tithe, as the list's own
   comment promised; appending the three after Forced Tithes would have served as well. Either order moves every draw.
-- **`StepEdictStrength`, not ruled.** Temperance and Patience are written once a floor, so when an Ascendant's Core is
-  destroyed they would keep the Core's half until another rule applied. The step re-applies them on the next beat. The
-  Edict of Silence needs nothing: it reads the strength when each silence begins.
+- **`StepEdictStrength`, AN ADDITION BEYOND THE PLAN, ACCEPTED** by the coordinating session on 2026-10-22: "Q1
+  StepEdictStrength: ACCEPTED. The design says the 1.5x holds only while the Core stands, so without the step
+  Temperance and Patience would break the design after the Core falls. Record it as an addition beyond the plan, with
+  that reason." Temperance and Patience are written once a floor, so when an Ascendant's Core is destroyed they would
+  keep the Core's half until another rule applied. The step re-applies them on the next beat. The Edict of Silence
+  needs nothing: it reads the strength when each silence begins.
 - **The beat's quarter second.** Stillness's slow begins up to a beat after the movement skill and ends up to a beat
   after its 3 seconds, as Singularity Wells' slow follows the player into and out of a well.
 - **"A movement skill" is a skill in the Movement slot**, the one `CataclysmSkillTemplate.cpp` records with
@@ -172,10 +176,9 @@ assigns Death's Embrace's and Necrotic Ground's share to `HealingReceivedLessPer
   117"; `test_one_name_belongs_to_one_table.py`; `test_unreal_pinned_row_counts.py`; `sim/README.md`'s tier 8 "same 116
   entries" (a measurement in its own section); `game/README.md`'s "had held 117 rows that nothing in the game had ever
   read" (before issue #41).
-- **Left and stale before this change**: `game/README.md`'s "four of the 117 change the player" and "Five modifiers of
-  the 117 do something on a floor, and the other 112 are a name and a number". Dozens of rows are built now, so moving
-  117 to 120 there would leave both sentences as wrong as they are; the paragraph needs rewriting, which is not this
-  change's.
+- **Stale before this change, and rewritten in it on the coordinating session's ruling**: `game/README.md`'s "four of
+  the 117 change the player" and "Five modifiers of the 117 do something on a floor, and the other 112 are a name and a
+  number". See game/README.md below.
 
 ### Simulation
 
@@ -186,9 +189,13 @@ campaign's pool -- with all eight Cataclysms 10.862 (116 rows) -> 10.966 (119), 
 11.944 (18) -- and every draw from a pool holding Celestial rows. **`experiments.py` was not run**, so no tuning figure
 is restated.
 
-### Tests changed (proposed, awaiting the coordinating session's ruling)
+### Tests changed (accepted by the coordinating session, 2026-10-22)
 
-All in one commit, "G7a tests follow the Edict list (proposed, awaiting ruling)". Each old -> new:
+All in one commit, "G7a tests follow the Edict list (proposed, awaiting ruling)", whose message keeps the word it was
+written with. **All eleven ACCEPTED** by the coordinating session on 2026-10-22, verbatim: "THE ELEVEN TEST CHANGES: all
+ACCEPTED as you sent them (1-11). Each follows from ruling 2 (the Edict list gains the built Edicts). On #6, the weaker
+control is accepted for the reason you gave; say in the entry that it is weaker on purpose, and why. Record each as old
+-> new in the entry." Its #1 to #10 are P1 to P10 below and its #11 is P11. Each old -> new, ruled:
 
 - **P1** `Cataclysm.DungeonModifiers.TheEdictsAreTheTwoCelestialRowsTheDesignNames` -> renamed
   `...TheEdictsAreTheCelestialRowsTheDesignNames` (`CataclysmDungeonModifierTests.cpp`). `Expected = { Silence, Tithe }`,
@@ -221,10 +228,11 @@ All in one commit, "G7a tests follow the Edict list (proposed, awaiting ruling)"
   `TestEqual("one carrying the Edict of Silence leaves the Edict of Tithe", Left, Tithe)` -> `TestNotEqual("one carrying
   the Edict of Silence never leaves it", Left, Silence)`; the two controls `TestTrue("CONTROL: the Edict of Silence was
   left by some", Seen.Contains(Silence))` and `TestTrue("CONTROL: and the Edict of Tithe by others",
-  Seen.Contains(Tithe))` -> one, `TestTrue("CONTROL: more than one Edict was left (%d)", Seen.Num() > 1)`. **A weaker
-  control, and why**: eight of the twenty-four cannot leave Silence and each of the other sixteen leaves it about one
-  time in five, so "Silence was left by some" fails about one seed set in thirty-six; the seeds are fixed and were not
-  run.
+  Seen.Contains(Tithe))` -> one, `TestTrue("CONTROL: more than one Edict was left (%d)", Seen.Num() > 1)`. **THE
+  CONTROL IS WEAKER ON PURPOSE, accepted for this reason**: with five Edicts, eight of the twenty-four cannot leave
+  Silence and each of the other sixteen leaves it about one time in five, so the old pair "Silence left by some, Tithe
+  by others" would fail on about one seed set in thirty-six; the seeds are fixed and were not run, so which way they
+  fall is not known. "More than one Edict was left" still fails if the left Edict stops being drawn.
 - **P7** `Cataclysm.FloorBrief.AnAscendantsFloorsCarryOneMoreEdictAFloorBeyondItsOwnModifiers`
   (`CataclysmFloorBriefTests.cpp`): `TestEqual("seed %d floor %d: one Edict a floor, two when both are drawn", Num,
   own + Min(Floor, 2))` -> `("seed %d floor %d: one Edict a floor, up to four", Num, own + Min3(Floor,
@@ -276,7 +284,7 @@ reaches the change was judged by reading; nothing was built.
   every other match is an unrelated figure (116 health, 117 milliseconds, a cone of 116 degrees and the like), **cannot
   reach**.
 - **(b) `EdictKeys|EdictsOnFloor|EdictLeftBy|EdictOrderFor|EdictName|IsEdict\(`**: 12 tests. P1 to P8 and P10 above,
-  **high, PROPOSED**; `AnAscendantsTimerLeavesOneOfItsEdictsOnItsCityForThirtyDays` and
+  **high, CHANGED, accepted**; `AnAscendantsTimerLeavesOneOfItsEdictsOnItsCityForThirtyDays` and
   `ASecondAscendantHitReplacesTheLeftEdictAndRestartsItsThirtyDays` read the draw's answer, **low**;
   `AnAscendantsEdictsAreTheOnesTheEmpireDrawsForItsWalkEvenOnTheDarkFloor` compares the brief with `EdictsOnFloor`,
   **low**; `test_the_draw_check_sees_a_danger_read` alters a copy, **low**.
@@ -350,6 +358,44 @@ narrowed to the new file -- a check of the file and not a registered proof. Each
 - B3, the floor's log line calling `PlayerEffectsFor` without the strength: "2 failed, 7 passed",
   `test_every_game_caller_passes_the_edict_strength` and `test_the_caller_check_sees_a_caller_left_at_the_default` (its
   anchor was gone).
+
+### game/README.md
+
+**Rewritten in G7b, ruled by the coordinating session on 2026-10-22**, verbatim: "Q3 game/README.md: NOT later.
+Rewrite that paragraph in G7b now, from the current BuiltStateOf, so it is true at G7b's merge. G7b changes that
+paragraph's subject, and this project does not ship a statement it can see is false". Counted by `g7bw/count_built.py`,
+which reads `BuiltStateOf`'s two lists (Built, then Partly; NotBuilt for every other row) out of
+`CataclysmDungeonModifierEffects.cpp`, resolves each key constant to its `TEXT("...")` in that file or
+`CataclysmFloorBrief.cpp`, and asserts every key is a row and no key is in both lists. Printed at `3a034ce4b`:
+
+```
+head 3a034ce4b: 120 rows; Built 116, Partly 1, NotBuilt 3
+  Celestial: {'Built': 18}
+  Chaos: {'Built': 15}
+  Death: {'Built': 15}
+  Demonic: {'Built': 14}
+  Famine: {'Built': 15}
+  Generic: {'NotBuilt': 1}
+  Pestilence: {'Built': 15}
+  Void: {'Built': 11, 'Partly': 1}
+  War: {'NotBuilt': 2, 'Built': 13}
+Partly: ['Void_Insanity_Bursts']
+NotBuilt: ['Generic_Corrupted_Stalker', 'War_Battlefield_Tactics', 'War_Supply_Lines']
+```
+
+The paragraph's "change the player" and "do something on a floor" are not states the code records, so the rewrite
+counts what it does record: built, partly built, not built. Old -> new:
+
+- "Every dungeon carries dungeon modifiers, and four of the 117 change the player." -> "Every dungeon carries dungeon
+  modifiers, and as of 2026-10-22 116 of the 120 do what their rows say." The rest of that paragraph is unchanged and
+  still true: the Modifier Score still raises only a kill's experience, issue #1569 being open.
+- The paragraph beginning "Five modifiers of the 117 do something on a floor, and the other 112 are a name and a
+  number." -- which went on to describe the first five rules and said "No modifier in the table yet makes a floor go
+  dark, drops fire from a ceiling or resurrects an enemy" -- -> "As of 2026-10-22, 116 of the 120 modifiers do what
+  their rows say, one does part of it, and three are a name and a number.", with the count above named by row, where
+  the rules live and how they act, and the sentences on issue #1591 (open), the floor panel and the console command
+  kept. The "Three further gaps" that follow (the Corrupted Stalker, issue #1308, open; the Sacrificial dungeon's
+  doubled modifiers; the equal chance) are unchanged.
 
 ### The editor step
 
