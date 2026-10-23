@@ -4183,6 +4183,21 @@ public:
 	static constexpr float EdictOfSilenceLockValue = 1.0f;
 
 	/**
+	 * The longest an Edict of Silence lasts, however much stronger an Ascendant
+	 * makes it: 67.5 seconds, three quarters of its 90 second cycle. Since
+	 * 2026-10-22.
+	 *
+	 * A CAP AND NOT A NEW CADENCE. An Edict in an Ascendant is 10% stronger a
+	 * floor deeper, and Quest dungeons are 20 to 70 floors deep, so on floor 70
+	 * the silence would be 7.9 times 15, longer than the cycle, and skills
+	 * would never come back. The coordinating session ruled the cap on
+	 * 2026-10-22 under the owner's delegation of the numbers the design leaves
+	 * open; it is written into the design beside the 10% rule. The static
+	 * assertions below keep it inside the cycle and above the base length.
+	 */
+	static constexpr float EdictOfSilenceMostLastsSeconds = 67.5f;
+
+	/**
 	 * How often a strike is called in. THE ROW'S OWN NUMBER: "Every 30 seconds".
 	 */
 	static constexpr float ArtilleryStrikeSecondsBetween = 30.0f;
@@ -5608,6 +5623,17 @@ public:
 		"silences, so the player is never able to use a skill. The row describes "
 		"a silence that sweeps and passes, and 'every 90 seconds ... for 15' is "
 		"a cycle with a quiet part.");
+
+	static_assert(
+		EdictOfSilenceMostLastsSeconds < EdictOfSilenceEverySeconds,
+		"The Edict of Silence's cap now reaches the gap between silences, so an "
+		"Ascendant deep enough silences every skill for good. The cap exists so "
+		"that the strongest silence still has a quiet part.");
+
+	static_assert(
+		EdictOfSilenceLastsSeconds <= EdictOfSilenceMostLastsSeconds,
+		"The Edict of Silence's cap is now below its own base length, so it "
+		"would shorten a silence nothing made stronger.");
 
 	static_assert(
 		EdictOfSilenceLockValue > 0.0f,
@@ -7051,6 +7077,20 @@ public:
 	 *        wait is "no clock to read" and brings nothing
 	 */
 	static bool EdictOfSilenceIsDue(float SecondsSinceLast);
+
+	/**
+	 * How long a silence lasts at `Strength` times its base: the base length
+	 * times it, and never past `EdictOfSilenceMostLastsSeconds`. Since
+	 * 2026-10-22.
+	 *
+	 * THE ONE NUMBER THE EDICT OF SILENCE SCALES. The design: "An Edict's
+	 * numbers are the ones its base effect states (Edict of Silence: how long
+	 * the silence lasts)". The cadence of 90 seconds does not scale. Strength 1
+	 * is the base, which every dungeon but an Ascendant gives; see
+	 * `ACataclysmDungeonGameMode::EdictStrengthHere`. A strength below nought
+	 * is read as nought.
+	 */
+	static float EdictOfSilenceLastsSecondsAt(float Strength);
 
 	/**
 	 * What the skill-lock stat is worth while a silence is running, or nothing

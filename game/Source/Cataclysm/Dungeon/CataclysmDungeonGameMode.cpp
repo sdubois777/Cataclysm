@@ -49,6 +49,7 @@
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmHeavenlyCoreCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
@@ -348,7 +349,7 @@ namespace
 		TEXT("Cataclysm.DungeonSubType"),
 		GCataclysmDungeonSubTypeOverride,
 		TEXT("Which sub-type the dungeon is, by name: None, Timed, Horde, "
-			 "Siege, CowLevel, Elite, Volatile, Sacrificial, Hollow. Letter case does "
+			 "Siege, CowLevel, Elite, Volatile, Sacrificial, Hollow, Ascendant. Letter case does "
 			 "not matter and \"Cow Level\" may be typed with its space. Horde "
 			 "is one arena walked as waves, Elite stands a boss at every "
 			 "floor's exit, and Volatile draws new modifiers on every floor. "
@@ -1448,6 +1449,9 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	Dungeon.Modifiers = ChooseModifiers(Dungeon.ModifierScore);
 	Dungeon.ModifierPool = DungeonModifierPool;
 	Dungeon.EveryBuiltModifier = DungeonEveryBuiltModifier;
+	// AND THE DUNGEON'S OWN SEED, NOT THE DARK FLOOR'S, for an Ascendant's Edicts, which are drawn once for the whole
+	// dungeon. Since 2026-10-22.
+	Dungeon.EdictSeed = ChooseSeed();
 	return Dungeon;
 }
 
@@ -1887,6 +1891,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// AND GOLDEN SPIRES, FOR THE SAME REASON. Issues #1820 and #41.
 		ForgetTheSpires();
 		PlaceTheSpires();
+
+		// AND AN ASCENDANT'S HEAVENLY CORE, ON ITS LAST FLOOR ONLY, FOR THE SAME REASON. Since 2026-10-22.
+		ForgetTheHeavenlyCore();
+		PlaceTheHeavenlyCore();
 
 		// AND PESTILENT EMPOWERMENT'S BEACONS, FOR THE SAME REASON. The last floor's were counted in
 		// `GoToFloor` before its creatures were cleared. Issues #1820 and #41.
@@ -4355,6 +4363,75 @@ void ACataclysmDungeonGameMode::PlaceTheSpires()
 	UE_LOG(LogCataclysm, Log, TEXT("Golden Spires: %d spire(s) placed on floor %d"),
 		   GoldenSpires.Num(), FloorNumber);
 	RefreshFloorModifierPanel();
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::HeavenlyCoreNow() const
+{
+	ACataclysmEnemyCharacter* Core = HeavenlyCore.Get();
+	return IsValid(Core) && !UCataclysmSkillEffects::IsDead(Core) ? Core : nullptr;
+}
+
+bool ACataclysmDungeonGameMode::HeavenlyCoreSealsTheStairs() const
+{
+	return HeavenlyCoreStands() && IsOnTheLastFloor();
+}
+
+float ACataclysmDungeonGameMode::EdictStrengthHere() const
+{
+	// BASE STRENGTH OUTSIDE AN ASCENDANT, which is also the strength of an Edict left on a city.
+	if (ChooseSubType() != ECataclysmDungeonSubType::Ascendant)
+	{
+		return 1.0f;
+	}
+	return UCataclysmDungeonModifierRules::EdictStrengthOn(ChooseFloorNumber(),
+														   IsOnTheLastFloor() && HeavenlyCoreStands());
+}
+
+void ACataclysmDungeonGameMode::ForgetTheHeavenlyCore()
+{
+	if (ACataclysmEnemyCharacter* Core = HeavenlyCore.Get())
+	{
+		Core->Destroy();
+	}
+	HeavenlyCore = nullptr;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheHeavenlyCore()
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| ChooseSubType() != ECataclysmDungeonSubType::Ascendant || !IsOnTheLastFloor())
+	{
+		return;
+	}
+
+	// ONE, WHERE A FLOOR SOURCE STANDS: a floor cell well away from the entrance, on the floor's own stream.
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmHeavenlyCoreCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, 1, HeavenlyCoreCellsSalt))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Core =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Core)
+		{
+			continue;
+		}
+		// THE FLOOR BOSS'S HEALTH AT COMMON, as ruled. It never attacks: a floor source has no brain. It pays
+		// nothing and is not one of the floor's creatures, as the other floor sources are not.
+		Core->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Core->SetHealth(HeavenlyCoreHealth());
+		Core->SetRarityStep(0);
+		Core->bDiesUnpaid = true;
+		Core->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Core);
+		HeavenlyCore = Core;
+		break;
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Ascendant: %s Heavenly Core on floor %d"),
+		   HeavenlyCore.IsValid() ? TEXT("a") : TEXT("no room for a"), FloorNumber);
 }
 
 void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Player)
@@ -13785,6 +13862,11 @@ TArray<FName> ACataclysmDungeonGameMode::StairsSealedBy() const
 	{
 		Sealing.Add(FName(Effects::ThoseInTheDarkKey));
 	}
+	// AND AN ASCENDANT'S HEAVENLY CORE, which seals the last floor's way out while it stands. Since 2026-10-22.
+	if (HeavenlyCoreSealsTheStairs())
+	{
+		Sealing.Add(FName(HeavenlyCoreSealKey));
+	}
 	return Sealing;
 }
 
@@ -14002,8 +14084,11 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// because a dungeon is a strategy-layer record and how a floor is carved is
 	// not its business. Any two dungeons get different floors and one dungeon
 	// gets the same floors twice, which is all a seed has to do.
+	//
+	// FROM `FCataclysmDungeon::WalkSeed`, since 2026-10-22, the same number worked out where the empire can ask it
+	// too: an Ascendant's Edicts are drawn on a stream made from it.
 	EmpireDungeonId = DungeonId;
-	DungeonSeed = FMath::Max(1, DungeonId + 1);
+	DungeonSeed = Dungeon->WalkSeed();
 	TotalFloors = FMath::Max(1, Dungeon->Floors);
 	DungeonType = Dungeon->Type;
 
@@ -14024,7 +14109,12 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// dungeon modifier makes a dungeon harder --
 	// `docs/Cataclysm_GDD_v2.md` section VIII. Until issue #41's modifier slice
 	// this was hard-zeroed in the score model itself.
-	DungeonModifierScore = Dungeon->ModifierScore;
+	//
+	// AND THE EDICT AN ASCENDANT LEFT ON ITS CITY, WHILE ITS 30 DAYS RUN, since 2026-10-22: every dungeon on that
+	// city carries it beyond its count and its score counts it. Read on entry, on the run's day now, so the walk
+	// carries what its city held the day it began. `UCataclysmEmpireRun::ModifierScoreCarriedBy` is the dungeon's
+	// own score when its city carries none.
+	DungeonModifierScore = Run->ModifierScoreCarriedBy(DungeonId);
 
 	// AND WHICH ONES THEY ARE, AND WHAT ELSE THIS DUNGEON COULD HAVE DRAWN.
 	// Both are needed by rules that decide a floor's modifiers rather than a
@@ -14037,7 +14127,7 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// `UCataclysmEmpireRun::ModifierPool` is the whole 117-row table and
 	// `PoolFor` cuts it to the Cataclysms this run is facing, which does not
 	// change while the player is inside one dungeon.
-	DungeonModifiers = Dungeon->Modifiers;
+	DungeonModifiers = Run->ModifiersCarriedBy(DungeonId);
 	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
 		Run->ModifierPool, Run->ActiveCataclysms);
 
@@ -14139,6 +14229,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheChoruses();
 	ForgetTheBlooms();
 	ForgetTheSpires();
+	ForgetTheHeavenlyCore();
 
 	// AND PESTILENT EMPOWERMENT'S BEACONS AND THE COUNT CARRIED BETWEEN FLOORS, beside Echoes' reset:
 	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
@@ -15724,7 +15815,9 @@ void ACataclysmDungeonGameMode::StepEdictOfSilence(
 	if (EdictOfSilencedUntilSeconds <= Now
 		&& Effects::EdictOfSilenceIsDue(EdictOfSilenceSecondsSinceLast))
 	{
-		EdictOfSilencedUntilSeconds = Now + Effects::EdictOfSilenceLastsSeconds;
+		// AS LONG AS THIS FLOOR'S STRENGTH MAKES IT, since 2026-10-22: an Ascendant's floor N and its Core, held
+		// inside the cycle by the cap. The base length everywhere else.
+		EdictOfSilencedUntilSeconds = Now + Effects::EdictOfSilenceLastsSecondsAt(EdictStrengthHere());
 		EdictOfSilenceSecondsSinceLast = 0.0f;
 	}
 

@@ -465,6 +465,31 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	bool IsHollow() const;
 
 	/**
+	 * Whether this is an Ascendant: the Celestial Cataclysm's Quest dungeon.
+	 *
+	 * A QUEST DUNGEON WHOSE SUB-TYPE IS `Ascendant`, since 2026-10-22. Only
+	 * Celestial's Quest dungeons are, by
+	 * `UCataclysmSurgeScheduler::QuestSubTypeFor`, and nothing rolls one. Its
+	 * Edicts are drawn by `UCataclysmDungeonModifierRules::EdictsOnFloor`, and
+	 * its hit leaves one on its city; see `UCataclysmEmpireRun::ResolveDungeon`.
+	 */
+	bool IsAscendant() const;
+
+	/**
+	 * The seed a walk of this dungeon carves its floors from:
+	 * `max(1, DungeonId + 1)`.
+	 *
+	 * ONE NUMBER FOR BOTH MODULES, since 2026-10-22.
+	 * `ACataclysmDungeonGameMode::EnterEmpireDungeon` gives the floors this
+	 * seed, and an Ascendant's Edicts are drawn on a stream made from it, so
+	 * the empire can say which Edicts a walk would meet without walking it.
+	 * That is what lets an Ascendant that hits unwalked leave one of the Edicts
+	 * it would hold from floor 4, ruled by the coordinating session that day.
+	 * The game mode worked out the same number itself until then.
+	 */
+	int32 WalkSeed() const;
+
+	/**
 	 * The fewest natural floors this Hollow shrinks to: half of `HollowFrom`,
 	 * rounded up, and never below one.
 	 *
@@ -1114,20 +1139,22 @@ public:
 	 * The one sub-type a Cataclysm's Quest dungeons take, or `None` for "roll
 	 * one as any dungeon does".
 	 *
-	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR SIX OF ITS EIGHT. The
+	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR SEVEN OF ITS EIGHT. The
 	 * owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
 	 * specific type." Death's are Horde, Demonic's Elite, Pestilence's Timed,
 	 * Famine's Sacrificial and Chaos's Volatile, since 2026-10-21, and the
 	 * Void's Hollow since 2026-10-22.
 	 *
-	 * TWO ANSWER `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR EACH OF THEM.
-	 * War's are Sieges in the model and roll here, because the owner has ruled
-	 * War out of the game. Celestial's are Ascendant in the model, and that
-	 * sub-type is not in `ECataclysmDungeonSubType` yet. `None` itself, the
-	 * Cataclysm nobody named, answers `None` too: a Quest dungeon made without
-	 * a sender rolls, as the model's does.
-	 * `tools/tests/test_two_cataclysms_quest_sub_types_are_in_the_model_and_not_yet_in_the_game.py`
-	 * holds the two; `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the
+	 * And Celestial's Ascendant, the seventh, since 2026-10-22.
+	 *
+	 * ONE ANSWERS `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR IT. War's are
+	 * Sieges in the model and roll here, because the owner has ruled War out
+	 * of the game. Celestial answered `None` too until 2026-10-22, while the
+	 * game had no Ascendant. `None` itself, the Cataclysm nobody named, answers
+	 * `None` too: a Quest dungeon made without a sender rolls, as the model's
+	 * does.
+	 * `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`
+	 * holds War; `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the
 	 * layers.
 	 *
 	 * IT DRAWS NOTHING. `MakeDungeon` still takes the sub-type draw and then

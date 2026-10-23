@@ -4,6 +4,7 @@
 
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
@@ -94,6 +95,18 @@ FString UCataclysmCityScreenLayout::StatusTextFor(const UCataclysmEmpireRun* Run
 								  UCataclysmEmpireMap::VoidStacksToErase));
 	}
 
+	// AND THE EDICT AN ASCENDANT LEFT ON IT, AND ONLY WHILE ITS DAYS RUN, since
+	// 2026-10-22. Every dungeon on the city carries it, so a player choosing
+	// where to walk needs to know.
+	const FName Left = City->EdictCarriedOn(Run->Day());
+	if (!Left.IsNone())
+	{
+		const int32 DaysLeft = City->EdictDaysLeftOn(Run->Day());
+		Parts.Add(FString::Printf(TEXT("%s, %d %s left"),
+								  *UCataclysmDungeonModifierRules::EdictName(Left),
+								  DaysLeft, DaysLeft == 1 ? TEXT("day") : TEXT("days")));
+	}
+
 	Parts.Add(Run->Map->IsExposed(CityId) ? TEXT("exposed")
 										  : TEXT("sealed behind the frontier"));
 
@@ -170,6 +183,24 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 			Lines.Add(FString::Printf(TEXT("%s%d floors, %s, %.0f days until it bites"),
 									  *Marked, Dungeon->Floors, *Shrinking,
 									  Run->Clock->DaysUntilResolveFor(DungeonId)));
+			continue;
+		}
+
+		// AN ASCENDANT SAYS WHAT IT HOLDS, since 2026-10-22: how many Edicts it
+		// adds by its last floor, and its Heavenly Core. Every other dungeon's
+		// line is as it was.
+		if (Dungeon->IsAscendant())
+		{
+			const int32 Edicts = UCataclysmDungeonModifierRules::EdictsOnFloor(
+				Dungeon->WalkSeed(), Dungeon->Modifiers, Dungeon->Floors).Num();
+			const FString Held = Edicts == 1
+				? FString(TEXT("1 Edict"))
+				: FString::Printf(TEXT("%d Edicts"), Edicts);
+
+			Lines.Add(FString::Printf(
+				TEXT("%s%d floors, %s by its last floor and a Heavenly Core, %.0f days until it bites"),
+				*Marked, Dungeon->Floors, *Held,
+				Run->Clock->DaysUntilResolveFor(DungeonId)));
 			continue;
 		}
 
