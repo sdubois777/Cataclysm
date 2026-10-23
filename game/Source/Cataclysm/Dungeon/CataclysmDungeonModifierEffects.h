@@ -3300,7 +3300,9 @@ public:
 	 * - A floor object named "Tithe Altar" ON THE EXIT CELL OF EVERY FLOOR BUT THE LAST, and on each wave of a Horde
 	 *   arena but the last. ANOTHER ALTAR AT THE EXIT GOES ONE CELL APART, never on the same cell: see
 	 *   `ACataclysmDungeonGameMode::ExitAltarWorld`.
-	 * - FIXED PRICES, one paid whole: `ForcedTithesHealthPercent` of maximum health taken from current health, never
+	 * - THE BASE PRICES, one paid whole -- fixed outside an Ascendant; in one, all three scale with the Edict strength,
+	 *   the health share capped, see `ForcedTithesHealthPercentAt` below: `ForcedTithesHealthPercent` of maximum health
+	 *   taken from current health, never
 	 *   leaving less than 1; `ForcedTithesPotionCharges` charges from the fullest potion slot; `ForcedTithesMaterials` of
 	 *   the most plentiful crafting material carried. A PRICE THE PLAYER CANNOT PAY IS SHOWN AND REFUSED; no partial
 	 *   offer. Paying, the altar goes.
