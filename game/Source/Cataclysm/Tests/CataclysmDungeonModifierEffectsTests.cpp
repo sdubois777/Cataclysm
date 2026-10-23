@@ -56260,7 +56260,8 @@ bool FCataclysmAscendantSilenceCapTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and with its Core standing, still the cap"),
 			  Effects::EdictOfSilenceLastsSecondsAt(Rules::EdictStrengthOn(70, true)), 67.5f, 0.0001f);
 
-	// AND IN PLAY: FLOOR 6 OF AN ASCENDANT, WHICH CARRIES BOTH EDICTS, SILENCES FOR 22.5 SECONDS.
+	// AND IN PLAY: FLOOR 6 OF AN ASCENDANT CARRYING THE EDICT OF SILENCE AMONG ITS OWN MODIFIERS, WHICH IT SCALES AS
+	// IT SCALES THE EDICTS IT ADDS, SILENCES FOR 22.5 SECONDS.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
@@ -56277,10 +56278,10 @@ bool FCataclysmAscendantSilenceCapTest::RunTest(const FString& Parameters)
 	}
 
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Ascendant;
-	Mode->DungeonModifiers.Reset();
+	Mode->DungeonModifiers = {EdictOfSilence};
 	Mode->FloorNumber = 6;
 	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
-		|| !TestTrue(TEXT("and carries the Edict of Silence, as every Ascendant's floor 2 on does"),
+		|| !TestTrue(TEXT("and carries the Edict of Silence, its own modifier"),
 					 Mode->FloorBrief.Modifiers.Contains(EdictOfSilence)))
 	{
 		return false;

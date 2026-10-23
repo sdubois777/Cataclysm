@@ -6,6 +6,7 @@
 
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmCityScreenLayout.h"
 #include "Interface/CataclysmCityScreenWidget.h"
@@ -795,7 +796,7 @@ bool FCataclysmCityScreenAscendantLinesTest::RunTest(const FString& Parameters)
 	using namespace CataclysmCityScreenTest;
 
 	// **SINCE 2026-10-22 CELESTIAL'S QUEST DUNGEON IS AN ASCENDANT**, which adds an Edict a floor and has a Heavenly
-	// Core on its last floor. Thirty floors deep it holds both Edicts there; one floor deep, one.
+	// Core on its last floor. Thirty floors deep it holds four Edicts there, the most there can be; one floor deep, one.
 	UCataclysmEmpireRun* Run = MakeRun();
 	const int32 CityId = Run->Map->PillarId;
 
@@ -820,8 +821,12 @@ bool FCataclysmCityScreenAscendantLinesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	TestEqual(TEXT("a deep Ascendant names both Edicts and its Core"), Lines[0],
-			  FString(TEXT("Ascendant, 30 floors, 2 Edicts by its last floor and a Heavenly Core, 9 days until it bites")));
+	const int32 Deepest = FMath::Min(UCataclysmDungeonModifierRules::AscendantMostEdicts,
+									 UCataclysmDungeonModifierRules::EdictKeys().Num());
+	TestEqual(TEXT("a deep Ascendant names as many Edicts as its last floor holds, and its Core"), Lines[0],
+			  FString::Printf(TEXT("Ascendant, 30 floors, %d Edicts by its last floor and a Heavenly Core, 9 days until "
+								   "it bites"),
+							  Deepest));
 	TestEqual(TEXT("a one-floor Ascendant names one"), Lines[1],
 			  FString(TEXT("Ascendant, 1 floors, 1 Edict by its last floor and a Heavenly Core, 25 days until it bites")));
 
