@@ -10,7 +10,7 @@ every cooldown half as long again; the Edict of Stillness slows the player by 40
 skill. Each is a Celestial dungeon modifier any Celestial dungeon can draw, and each is one of the Edicts an Ascendant
 adds a floor, where it is a tenth stronger a floor deeper and half again on the Core's floor while the Core stands, up
 to its cap: Temperance at most 90%, Stillness's slow at most 90% with its 3 seconds fixed, Patience uncapped.
-Abstinence, Vigil and Humility are G7c. Branch `feat/game-edicts-1` on `development` at `195d154cc`. Not built and not
+Abstinence, Vigil and Humility are G7c. Branch `feat/game-edicts-2` on `development` at `0c6f0c933` (written on `195d154cc` as `feat/game-edicts-1` and moved with its zero-context patch ids unchanged). Not built and not
 run: see The editor step, Proofs and Run.
 
 ### What changed and why
