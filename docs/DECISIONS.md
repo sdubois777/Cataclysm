@@ -6,7 +6,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h` (new, header only: the namespace
 `CataclysmPercentDraw`, with `FromFraction`, `Draw` and the constant `HighestDraw`); the draw at seven rolls, an include
-and, at two of them, one comment sentence, in `CataclysmDamageCalculation.cpp`, `CataclysmGameplayAbility.cpp`,
+and, at two of them, one comment sentence (and one more above `Cataclysm.BlockRoll`), in `CataclysmDamageCalculation.cpp`, `CataclysmGameplayAbility.cpp`,
 `CataclysmContagion.cpp` and `CataclysmVitalAttributeSet.cpp`, all under `game/Source/Cataclysm/AbilitySystem/`; and
 `game/Source/Cataclysm/Tests/CataclysmPercentDrawTests.cpp` (new, three tests in `Cataclysm.PercentDraw.`). No comparison,
 no pin, no console variable, no data row, no workbook cell, nothing under `game/Data/`, `game/Content/` or
@@ -31,9 +31,8 @@ no pin, no console variable, no data row, no workbook cell, nothing under `game/
 - **Every pinned roll is unchanged.** A pin bypasses the draw at every one of the seven, so `Cataclysm.CritRoll` and
   `Cataclysm.BlockRoll` at 100 still mean "never", and so do `Cataclysm.CooldownSkipRoll` at 100 and a roll of 100 handed to
   `Resolve` or to the two contagion functions.
-- **One statement that this change makes stale is left as it is,** because no ruling names it: the comment above
-  `Cataclysm.BlockRoll` in `CataclysmVitalAttributeSet.cpp` (about lines 100 to 105) still says "a chance of 100 can still
-  miss on a roll of exactly 100". After this change it can do so only through the pin. See the judgements.
+- **A third comment that this change made stale is corrected too,** by a ruling made after the first hand-back: the
+  comment above `Cataclysm.BlockRoll` in `CataclysmVitalAttributeSet.cpp`. See "THE RULING, AND WHERE IT IS IN THE CODE" below.
 
 ### FOR THE OWNER'S PLAY-CHECK LIST
 
@@ -128,7 +127,7 @@ as left for this issue.
 **The seven draws** now call `CataclysmPercentDraw::Draw()` in place of `FMath::FRandRange(0.0f, 100.0f)`, and nothing
 else on those lines changes. Lines on this commit: `CataclysmDamageCalculation.cpp` 838 (evasion), 881 (critical strike),
 905 (block); `CataclysmGameplayAbility.cpp` 821 (the cooldown skip); `CataclysmContagion.cpp` 247 and 322;
-`CataclysmVitalAttributeSet.cpp` 2551. Each file gains one include with a one-line comment, after its last project
+`CataclysmVitalAttributeSet.cpp` 2554 (2551 before the `Cataclysm.BlockRoll` comment's sentence). Each file gains one include with a one-line comment, after its last project
 include (`CataclysmDamageCalculation.cpp` 24 to 25, `CataclysmGameplayAbility.cpp` 15 to 16, `CataclysmContagion.cpp` 17 to
 18, `CataclysmVitalAttributeSet.cpp` 24 to 25).
 
@@ -137,6 +136,15 @@ include (`CataclysmDamageCalculation.cpp` 24 to 25, `CataclysmGameplayAbility.cp
 `CataclysmPercentDraw::Draw`, below 100, so they still compare strictly and a chance of 100 succeeds on every roll, and
 that the negation roll keeps `FRandRange` and its guard; `CataclysmGameplayAbility.cpp` 825 to 827, that the roll is drawn
 by `CataclysmPercentDraw::Draw`, so a roll of 100 comes only from the pin and a chance of 100 skips on every drawn roll.
+
+**And the comment above `Cataclysm.BlockRoll`**, `CataclysmVitalAttributeSet.cpp` 100 to 109, ruled by the coordinating
+session on 2026-10-23, verbatim as relayed: "#2201 P1 ACCEPTED: correct the Cataclysm.BlockRoll comment in this commit
+with "SINCE #2201 ...", keeping its words." It was found by this layer's sweep and first left as it was, because the
+first ruling named two comments. Its words are kept. Before, it ended: "Issue #1833 group E part 2: a row that acts on a
+block can only be tested through a real block if the block is certain, and a chance of 100 can still miss on a roll of
+exactly 100." After, that sentence is followed by: "SINCE #2201 a real draw is below 100
+(`CataclysmPercentDraw::Draw`), so a chance of 100 blocks on every drawn roll and only the pin can give a roll of 100."
+The console variable's help text is not changed.
 
 ### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
 
@@ -153,11 +161,6 @@ by `CataclysmPercentDraw::Draw`, so a roll of 100 comes only from the pin and a 
   then include for one function, and which a test could reach only through a class it has no other reason to load.
 - **The guard form `Chance >= 100 ||` is not used,** as the ruling says. It would have broken the tests that pin a roll of
   100 against a chance of 100 to mean "no event" (named under Tests).
-- **The comment above `Cataclysm.BlockRoll`** (`CataclysmVitalAttributeSet.cpp` about 100 to 105, "a chance of 100 can still
-  miss on a roll of exactly 100", given as the reason the pin exists) is left as it is, because the ruling names two
-  comments and not this one. The pin is still needed for a test that wants a block on a chance below 100. A sentence
-  "SINCE #2201 a drawn roll is below 100, so only the pin can be 100" would make it current; that is for the coordinating
-  session.
 
 ### THE GENRE SOURCE
 
@@ -220,7 +223,7 @@ test 2 reads `FromFraction(0.0f)`; test 3 reads ten thousand `Draw()`, each `Fro
 
 | Proof | File | Old text | New text | Test stated to fail | Every other test of the prefix expected to fail |
 |---|---|---|---|---|---|
-| PD-I, the mapping is the old range | `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h` | `return FMath::Min(Fraction * 100.0f, HighestDraw);` | `return Fraction * 100.0f;` | `AFractionOfOneDrawsBelowOneHundredSoAChanceOfOneHundredSucceeds` | none for certain; `TenThousandRealDrawsAllFallFromZeroUpToButNotOneHundred` about one run in four |
+| PD-I, the mapping is the old range | `game/Source/Cataclysm/AbilitySystem/CataclysmPercentDraw.h` | `return FMath::Min(Fraction * 100.0f, HighestDraw);` | `return Fraction * 100.0f;` | `AFractionOfOneDrawsBelowOneHundredSoAChanceOfOneHundredSucceeds`, 3 assertions, REQUIRED | `TenThousandRealDrawsAllFallFromZeroUpToButNotOneHundred` MAY fail 1 assertion, NOT required; `AFractionOfZeroDrawsZeroSoAChanceOfZeroNeverSucceeds` passes |
 
 Failed assertions, by reading:
 
@@ -228,9 +231,15 @@ Failed assertions, by reading:
   chance of 100 does not skip on it". Its three controls pass, as they read `OldRange`; "above 99.9999" passes (100 is above
   it); the two fractions below 1 pass, as `Fraction * 100.0f` is what the old range gives them.
 - **Test 2, none.** `0.0f * 100.0f` is 0 either way.
-- **Test 3, 1 or none.** "no draw is 100 or more" fails only if one of the ten thousand draws is 1.0: by arithmetic,
-  `1 - (32767 / 32768)^10000`, about 26% of runs. It is not a guard for this break and is not counted as one; the
-  registered prediction is test 1's 3 assertions, with test 3 either passing or failing on that one assertion.
+- **Test 3, 1 or none.** "no draw is 100 or more" fails with the break in only if one of its 10,000 draws is a fraction
+  of exactly 1.0. Each draw is 1.0 with probability 1/32,768 (`RAND_MAX` `0x7fff`), so the chance that at least one of
+  10,000 is 1.0 is `1 - (1 - 1/32768)^10000`, 0.26 (26%), computed by script (it printed 0.2630096186457004); by
+  arithmetic, not measured. It is not a guard for this break.
+
+**The registration, ruled by the coordinating session on 2026-10-23 (P2 ACCEPTED):** with the break in,
+`AFractionOfOneDrawsBelowOneHundredSoAChanceOfOneHundredSucceeds` fails 3 assertions, REQUIRED;
+`TenThousandRealDrawsAllFallFromZeroUpToButNotOneHundred` MAY fail 1 assertion, NOT required;
+`AFractionOfZeroDrawsZeroSoAChanceOfZeroNeverSucceeds` passes. Test 3 is not changed.
 
 **Tests of another group expected to fail, to check in the window:** none, by reading. No other test calls the helper, and
 the seven sites' tests pin their rolls.
