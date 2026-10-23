@@ -1057,8 +1057,8 @@ bool FCataclysmFloorBriefHordeOneArenaTest::RunTest(const FString& Parameters)
 	// **THE CONTROL, AND IT IS THE HALF THAT MATTERS.** Rule 4 must not leak:
 	// no other sub-type reuses a space, walks a wave in, or is one wave at all.
 	const TArray<ECataclysmDungeonSubType> All = EverySubType();
-	TestTrue(TEXT("the reflected sub-type list found the seven, the Hollow and None"),
-			 All.Num() == 9);
+	TestTrue(TEXT("the reflected sub-type list found the seven, the Hollow, the Ascendant and None"),
+			 All.Num() == 10);
 
 	for (const ECataclysmDungeonSubType SubType : All)
 	{
@@ -2449,6 +2449,167 @@ bool FCataclysmFloorBriefUnstableTwistedTest::RunTest(const FString& Parameters)
 			  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
 	TestTrue(FString::Printf(TEXT("and it imposes a Generic reality (%s)"), *Second.EveryCreatureModifier.ToString()),
 			 Second.EveryCreatureModifier.ToString().StartsWith(TEXT("Generic_")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Ascendant's Edicts on its floors -- 2026-10-22
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFloorBriefTest
+{
+	/** An Ascendant built by hand, its pool holding the two Edicts at their table dangers. */
+	FCataclysmDungeonIdentity AnAscendant(int32 DungeonSeed = 7)
+	{
+		FCataclysmDungeonIdentity Out = Dungeon(ECataclysmDungeonSubType::Ascendant, DungeonSeed);
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Silence"), ECataclysmType::Celestial, 20.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Forced_Tithes"), ECataclysmType::Celestial, 15.0f));
+		return Out;
+	}
+
+	/** What a list of Edicts adds to a floor's score at those dangers. */
+	float EdictDanger(const TArray<FName>& Edicts)
+	{
+		float Total = 0.0f;
+		for (const FName& Edict : Edicts)
+		{
+			Total += Edict == FName(TEXT("Celestial_Edict_of_Silence")) ? 20.0f : 15.0f;
+		}
+		return Total;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefAscendantEdictsTest,
+	"Cataclysm.FloorBrief.AnAscendantsFloorsCarryOneMoreEdictAFloorBeyondItsOwnModifiers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefAscendantEdictsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	for (int32 Seed = 1; Seed <= 20; ++Seed)
+	{
+		const FCataclysmDungeonIdentity Ascendant = AnAscendant(Seed);
+		FCataclysmDungeonIdentity Plain = Ascendant;
+		Plain.SubType = ECataclysmDungeonSubType::None;
+
+		TArray<FName> Previous = Ascendant.Modifiers;
+		for (int32 Floor = 1; Floor <= 5; ++Floor)
+		{
+			const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Ascendant, Floor);
+			const TArray<FName> Edicts =
+				UCataclysmDungeonModifierRules::EdictsOnFloor(Seed, Ascendant.Modifiers, Floor);
+
+			TArray<FName> Expected = Ascendant.Modifiers;
+			Expected.Append(Edicts);
+			TestTrue(FString::Printf(TEXT("seed %d floor %d carries its own and then its Edicts"), Seed, Floor),
+					 Brief.Modifiers == Expected);
+			TestEqual(FString::Printf(TEXT("seed %d floor %d: one Edict a floor, two when both are drawn"), Seed,
+									  Floor),
+					  Brief.Modifiers.Num(), Ascendant.Modifiers.Num() + FMath::Min(Floor, 2));
+			TestEqual(FString::Printf(TEXT("seed %d floor %d: their danger is added to the floor's score"), Seed,
+									  Floor),
+					  Brief.ModifierScore, Ascendant.ModifierScore + EdictDanger(Edicts), 0.001f);
+
+			bool bHoldsTheLast = Brief.Modifiers.Num() >= Previous.Num();
+			for (int32 Index = 0; bHoldsTheLast && Index < Previous.Num(); ++Index)
+			{
+				bHoldsTheLast = Brief.Modifiers[Index] == Previous[Index];
+			}
+			TestTrue(FString::Printf(TEXT("seed %d floor %d holds floor %d's"), Seed, Floor, Floor - 1),
+					 bHoldsTheLast);
+			Previous = Brief.Modifiers;
+
+			// THE CONTROL: THE SAME DUNGEON THAT IS NOT AN ASCENDANT CARRIES ITS OWN AND NOTHING MORE.
+			const FCataclysmFloorBrief PlainBrief = FCataclysmDungeonFloorRules::BriefFor(Plain, Floor);
+			TestTrue(FString::Printf(TEXT("CONTROL: seed %d floor %d of a plain dungeon carries its own"), Seed,
+									 Floor),
+					 PlainBrief.Modifiers == Plain.Modifiers);
+			TestEqual(FString::Printf(TEXT("CONTROL: seed %d floor %d of a plain dungeon scores its own"), Seed,
+									  Floor),
+					  PlainBrief.ModifierScore, Plain.ModifierScore, 0.001f);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefAscendantAlreadyTest,
+	"Cataclysm.FloorBrief.AnAscendantPassesOverAnEdictAlreadyAmongItsModifiers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefAscendantAlreadyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
+	const FName Tithe(TEXT("Celestial_Forced_Tithes"));
+
+	FCataclysmDungeonIdentity Ascendant = AnAscendant(11);
+	Ascendant.Modifiers.Add(Silence);
+	Ascendant.ModifierScore += 20.0f;
+
+	for (int32 Floor = 1; Floor <= 5; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Ascendant, Floor);
+		int32 Silences = 0;
+		int32 Tithes = 0;
+		for (const FName& Key : Brief.Modifiers)
+		{
+			Silences += Key == Silence ? 1 : 0;
+			Tithes += Key == Tithe ? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("floor %d carries the Edict of Silence once"), Floor), Silences, 1);
+		TestEqual(FString::Printf(TEXT("floor %d adds the Edict of Tithe, the only one left"), Floor), Tithes, 1);
+		TestEqual(FString::Printf(TEXT("floor %d adds only its danger"), Floor), Brief.ModifierScore,
+				  Ascendant.ModifierScore + 15.0f, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefAscendantSeedTest,
+	"Cataclysm.FloorBrief.AnAscendantsEdictsAreTheOnesTheEmpireDrawsForItsWalkEvenOnTheDarkFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefAscendantSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// THE DUNGEON ON THE MAP, AND THE SEED A WALK OF IT IS GIVEN.
+	int32 Differs = 0;
+	for (int32 DungeonId = 0; DungeonId < 40; ++DungeonId)
+	{
+		FCataclysmDungeon OnTheMap;
+		OnTheMap.DungeonId = DungeonId;
+		OnTheMap.Type = ECataclysmDungeonType::Quest;
+		OnTheMap.SubType = ECataclysmDungeonSubType::Ascendant;
+
+		FCataclysmDungeonIdentity Walked = AnAscendant(OnTheMap.WalkSeed());
+		OnTheMap.Modifiers = Walked.Modifiers;
+		const TArray<FName> TheEmpiresFour = UCataclysmDungeonModifierRules::EdictsOnFloor(
+			OnTheMap.WalkSeed(), OnTheMap.Modifiers, UCataclysmDungeonModifierRules::AscendantMostEdicts);
+
+		TArray<FName> Expected = Walked.Modifiers;
+		Expected.Append(TheEmpiresFour);
+		TestTrue(FString::Printf(TEXT("dungeon %d's fourth floor carries the Edicts the empire draws for it"),
+								 DungeonId),
+				 FCataclysmDungeonFloorRules::BriefFor(Walked, 4).Modifiers == Expected);
+
+		// ON THE DARK FLOOR THE FLOOR'S SEED IS ANOTHER; THE EDICTS' IS STILL THE DUNGEON'S.
+		FCataclysmDungeonIdentity Dark = Walked;
+		Dark.DungeonSeed = FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(OnTheMap.WalkSeed());
+		Dark.EdictSeed = OnTheMap.WalkSeed();
+		Dark.bTheDarkFloor = true;
+		TestTrue(FString::Printf(TEXT("dungeon %d's dark floor carries the same Edicts"), DungeonId),
+				 FCataclysmDungeonFloorRules::BriefFor(Dark, 4).Modifiers == Expected);
+
+		// THE CONTROL: DRAWN ON THE DARK FLOOR'S SEED, THEY ARE SOMETIMES OTHERS.
+		Dark.EdictSeed = 0;
+		const TArray<FName> FirstOnTheFloorsSeed = FCataclysmDungeonFloorRules::BriefFor(Dark, 1).Modifiers;
+		const TArray<FName> FirstOnTheDungeons = FCataclysmDungeonFloorRules::BriefFor(Walked, 1).Modifiers;
+		Differs += FirstOnTheFloorsSeed != FirstOnTheDungeons ? 1 : 0;
+	}
+	TestTrue(TEXT("CONTROL: on the floor's own seed some first Edicts differ, so the seed is what decides"),
+			 Differs > 0);
 	return true;
 }
 

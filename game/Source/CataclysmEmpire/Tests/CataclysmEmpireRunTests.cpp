@@ -7795,4 +7795,315 @@ bool FCataclysmEmpireRunNotAHollowTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Ascendant: the Edict its hit leaves on its city -- 2026-10-22
+// ---------------------------------------------------------------------------
+//
+// The design, Heaven's Wrath: "When its timer runs out and it hits its city,
+// the Ascendant leaves one of its active Edicts, drawn at random, at base
+// strength, on that city for 30 days: every dungeon on that city, standing or
+// arriving, carries that Edict until the 30 days end. A city carries at most
+// one left Edict; a new hit replaces it and restarts the 30 days." Ruled by
+// the coordinating session on 2026-10-22: one of those it would hold from
+// floor 4, drawn as a walk draws them, and it adds to the modifier score.
+//
+// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND KEEPS SOMETHING STANDING, so
+// no wave lands on an empty board while it runs.
+
+namespace CataclysmEmpireRunTest
+{
+	const FName AscendantSilenceKey(TEXT("Celestial_Edict_of_Silence"));
+	const FName AscendantTitheKey(TEXT("Celestial_Forced_Tithes"));
+
+	/** Puts an Ascendant on a city: a Quest dungeon Celestial sent, carrying `Modifiers` of its own. */
+	void PlaceAscendant(UCataclysmEmpireRun& Run, int32 DungeonId, const FCataclysmCity& City, float ResolveDays,
+						const TArray<FName>& Modifiers)
+	{
+		PlaceDungeon(Run, DungeonId, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::Ascendant, City,
+					 ResolveDays);
+		if (FCataclysmDungeon* Ascendant = Arrange(Run, DungeonId))
+		{
+			Ascendant->Cataclysm = ECataclysmType::Celestial;
+			Ascendant->Modifiers = Modifiers;
+		}
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunAscendantLeavesTest,
+	"Cataclysm.EmpireRun.AnAscendantsTimerLeavesOneOfItsEdictsOnItsCityForThirtyDays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunAscendantLeavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 AscendantId = 9971;
+	const int32 HordeId = 9972;
+	const int32 StandingId = 9973;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	// AN ASCENDANT AND, BESIDE IT, AN ORDINARY DUNGEON WITH A LONG TIMER, which is what carries the Edict once it is
+	// left: the Ascendant may move after its hit. ON THE OTHER OUTPOST, THE CONTROL: a Horde Death sent. Timers of
+	// 200 days after the first, so nothing hits again inside the thirty.
+	PlaceAscendant(*Run, AscendantId, *Run->Map->Find(Outposts[0]), 200.0f, TArray<FName>());
+	PlaceDungeon(*Run, StandingId, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+				 *Run->Map->Find(Outposts[0]), 200.0f);
+	PlaceDungeon(*Run, HordeId, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::Horde,
+				 *Run->Map->Find(Outposts[1]), 200.0f);
+	SendFrom(*Run, HordeId, ECataclysmType::Death, 0);
+	ResolveOnTheNextDay(*Run, AscendantId);
+	ResolveOnTheNextDay(*Run, HordeId);
+
+	const FCataclysmDungeon* Placed = Run->FindDungeon(AscendantId);
+	if (!TestNotNull(TEXT("set-up: the Ascendant is on the map"), Placed)
+		|| !TestTrue(TEXT("set-up: and is one"), Placed->IsAscendant()))
+	{
+		return false;
+	}
+	const FName Expected = UCataclysmDungeonModifierRules::EdictLeftBy(Placed->WalkSeed(), Placed->Modifiers,
+																	   Run->Day() + 1);
+	const FCataclysmDungeonSpec OutpostRow =
+		UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const FCataclysmCity* City = Run->Map->Find(Outposts[0]);
+	const FCataclysmCity* ControlCity = Run->Map->Find(Outposts[1]);
+	const float DefenceBefore = City->Defence;
+
+	TestTrue(TEXT("set-up: no Edict is left on its city yet"), City->LeftEdict.IsNone());
+	TestTrue(TEXT("set-up: and the dungeon beside it carries none"), Run->LeftEdictCarriedBy(StandingId).IsNone());
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	TestTrue(TEXT("the Ascendant's timer ran out"), Report.Resolved.Contains(AscendantId));
+	TestTrue(TEXT("it left an Edict on its city"), UCataclysmDungeonModifierRules::IsEdict(City->LeftEdict));
+	TestEqual(TEXT("the one the walk's draw names for the day of the hit"), City->LeftEdict, Expected);
+	TestEqual(TEXT("for thirty days from the hit"), City->LeftEdictUntilDay, Report.Day + 30);
+	TestEqual(TEXT("which is the named constant"), UCataclysmEmpireMap::LeftEdictDays, 30);
+
+	// AND OTHERWISE EXACTLY THE ORDINARY QUEST HIT.
+	TestEqual(TEXT("its city lost the ordinary row's defence"), DefenceBefore - City->Defence,
+			  OutpostRow.DefenceDamage, 0.01f);
+	TestTrue(TEXT("and the report names the city it hit"), Report.QuestHits.Contains(Outposts[0]));
+	TestNotNull(TEXT("and it is still on the map"), Run->FindDungeon(AscendantId));
+
+	// THE CONTROL: A HORDE'S HIT LEAVES NOTHING.
+	TestTrue(TEXT("CONTROL: the Horde's timer ran out"), Report.Resolved.Contains(HordeId));
+	TestTrue(TEXT("CONTROL: and its city carries no Edict"), ControlCity->LeftEdict.IsNone());
+	TestEqual(TEXT("CONTROL: and no days"), ControlCity->LeftEdictUntilDay, 0);
+	TestEqual(TEXT("two Quest hits in all"), Run->QuestHits, 2);
+
+	// EVERY DAY OF THE THIRTY THE DUNGEON STANDING THERE CARRIES IT, AND NOT THE DAY AFTER.
+	TestEqual(TEXT("the dungeon standing there carries it on the day of the hit"),
+			  Run->LeftEdictCarriedBy(StandingId), Expected);
+	Run->AdvanceDays(29);
+	TestEqual(TEXT("set-up: twenty-nine days on"), Run->Day(), Report.Day + 29);
+	TestEqual(TEXT("and still carries it on the thirtieth day"), Run->LeftEdictCarriedBy(StandingId), Expected);
+	TestEqual(TEXT("with a day left"), City->EdictDaysLeftOn(Run->Day()), 1);
+	Run->AdvanceDay();
+	TestTrue(TEXT("and on the day after, it carries none"), Run->LeftEdictCarriedBy(StandingId).IsNone());
+	TestEqual(TEXT("with no days left"), City->EdictDaysLeftOn(Run->Day()), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunAscendantReplacesTest,
+	"Cataclysm.EmpireRun.ASecondAscendantHitReplacesTheLeftEdictAndRestartsItsThirtyDays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunAscendantReplacesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	const int32 AscendantId = 9974;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	PlaceAscendant(*Run, AscendantId, *Run->Map->Find(Outposts[0]), 200.0f, TArray<FName>());
+	const FCataclysmDungeon* Placed = Run->FindDungeon(AscendantId);
+	if (!TestNotNull(TEXT("set-up: the Ascendant is on the map"), Placed))
+	{
+		return false;
+	}
+
+	// AN EARLIER EDICT, THE OTHER ONE, LEFT BY AN EARLIER HIT AND THREE DAYS FROM ENDING.
+	const FName ThisHit = UCataclysmDungeonModifierRules::EdictLeftBy(Placed->WalkSeed(), Placed->Modifiers,
+																	  Run->Day() + 1);
+	const FName Earlier = ThisHit == AscendantSilenceKey ? AscendantTitheKey : AscendantSilenceKey;
+	FCataclysmCity* City = Run->Map->FindMutable(Outposts[0]);
+	City->LeftEdict = Earlier;
+	City->LeftEdictUntilDay = Run->Day() + 3;
+	TestEqual(TEXT("set-up: the city carries the earlier Edict"), City->EdictCarriedOn(Run->Day()), Earlier);
+	TestTrue(TEXT("CONTROL: which is not the one this hit leaves"), Earlier != ThisHit);
+
+	ResolveOnTheNextDay(*Run, AscendantId);
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	TestTrue(TEXT("the Ascendant's timer ran out"), Report.Resolved.Contains(AscendantId));
+	TestEqual(TEXT("the new Edict replaces the earlier one"), City->LeftEdict, ThisHit);
+	TestEqual(TEXT("and its thirty days start again from the hit"), City->LeftEdictUntilDay, Report.Day + 30);
+
+	// AND THE MAP'S OWN RULE, ASKED DIRECTLY ON THE OTHER OUTPOST.
+	TestTrue(TEXT("an Edict is left"), Run->Map->LeaveEdict(Outposts[1], AscendantSilenceKey, 10));
+	TestTrue(TEXT("and a second"), Run->Map->LeaveEdict(Outposts[1], AscendantTitheKey, 20));
+	const FCataclysmCity* Other = Run->Map->Find(Outposts[1]);
+	TestEqual(TEXT("the second replaces the first"), Other->LeftEdict, AscendantTitheKey);
+	TestEqual(TEXT("and runs thirty days from its own day"), Other->LeftEdictUntilDay, 50);
+	TestFalse(TEXT("leaving no Edict is refused"), Run->Map->LeaveEdict(Outposts[1], NAME_None, 30));
+	TestEqual(TEXT("and changes nothing"), Other->LeftEdict, AscendantTitheKey);
+	TestFalse(TEXT("and so is a city that does not exist"), Run->Map->LeaveEdict(-5, AscendantSilenceKey, 30));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunAscendantUnwalkedTest,
+	"Cataclysm.EmpireRun.AnUnwalkedAscendantLeavesAnEdictItWouldHoldFromFloorFour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunAscendantUnwalkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	// TWENTY-FOUR ASCENDANTS NOBODY WALKED, each in a run of its own; every third carries the Edict of Silence
+	// among its own modifiers, so it holds and leaves only the Edict of Tithe.
+	TSet<FName> Seen;
+	for (int32 Index = 0; Index < 24; ++Index)
+	{
+		UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+		const int32 CityId = FirstStandingOutpost(*Run);
+		if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE))
+		{
+			return false;
+		}
+
+		const int32 AscendantId = 9980 + Index * 7;
+		const TArray<FName> Own = (Index % 3 == 0) ? TArray<FName>({ AscendantSilenceKey }) : TArray<FName>();
+		PlaceAscendant(*Run, AscendantId, *Run->Map->Find(CityId), 200.0f, Own);
+		PlaceDungeon(*Run, AscendantId + 1, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+					 *Run->Map->Find(CityId), 200.0f);
+		ResolveOnTheNextDay(*Run, AscendantId);
+
+		const int32 WalkSeed = Run->FindDungeon(AscendantId)->WalkSeed();
+		TestEqual(TEXT("set-up: nobody is inside it"), Run->Clock->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
+		Run->AdvanceDay();
+
+		const FName Left = Run->Map->Find(CityId)->LeftEdict;
+		const TArray<FName> Held = UCataclysmDungeonModifierRules::EdictsOnFloor(
+			WalkSeed, Own, UCataclysmDungeonModifierRules::AscendantMostEdicts);
+		TestTrue(FString::Printf(TEXT("dungeon %d left %s, one it would hold from floor 4"), AscendantId,
+								 *Left.ToString()),
+				 Held.Contains(Left));
+		if (Index % 3 == 0)
+		{
+			TestEqual(TEXT("one carrying the Edict of Silence leaves the Edict of Tithe"), Left, AscendantTitheKey);
+		}
+		Seen.Add(Left);
+	}
+
+	// THE CONTROL: which one is left really is drawn.
+	TestTrue(TEXT("CONTROL: the Edict of Silence was left by some"), Seen.Contains(AscendantSilenceKey));
+	TestTrue(TEXT("CONTROL: and the Edict of Tithe by others"), Seen.Contains(AscendantTitheKey));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunLeftEdictCarriedTest,
+	"Cataclysm.EmpireRun.EveryDungeonOnACityCarryingALeftEdictCarriesItBeyondItsCountAndItsScoreUntilTheThirtyDaysEnd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunLeftEdictCarriedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	const TArray<int32> Outposts = StandingOutposts(*Run, 2);
+	if (!TestEqual(TEXT("set-up: the map has two Outposts standing"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	// THE TABLE'S DANGER FOR THE EDICT, BY HAND: twenty, the row's weight.
+	FCataclysmDungeonModifier Silence;
+	Silence.RowKey = AscendantSilenceKey;
+	Silence.Cataclysm = ECataclysmType::Celestial;
+	Silence.Danger = 20.0f;
+	Run->ModifierPool.Add(Silence);
+
+	const FName Own(TEXT("Famine_Starvation"));
+	const int32 StandingId = 9990;
+	const int32 ElsewhereId = 9991;
+	const int32 AlreadyId = 9992;
+	const int32 ArrivingId = 9993;
+
+	PlaceDungeon(*Run, StandingId, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+				 *Run->Map->Find(Outposts[0]), 200.0f);
+	PlaceDungeon(*Run, ElsewhereId, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+				 *Run->Map->Find(Outposts[1]), 200.0f);
+	PlaceDungeon(*Run, AlreadyId, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+				 *Run->Map->Find(Outposts[0]), 200.0f);
+	for (const int32 Id : { StandingId, ElsewhereId, AlreadyId })
+	{
+		FCataclysmDungeon* Dungeon = Arrange(*Run, Id);
+		if (!TestNotNull(TEXT("set-up: the dungeon is on the map"), Dungeon))
+		{
+			return false;
+		}
+		Dungeon->Modifiers = { Own };
+		Dungeon->ModifierScore = 5.0f;
+		if (Id == AlreadyId)
+		{
+			Dungeon->Modifiers.Add(AscendantSilenceKey);
+			Dungeon->ModifierScore = 25.0f;
+		}
+	}
+
+	TestTrue(TEXT("set-up: before any Edict is left a dungeon carries its own"),
+			 Run->ModifiersCarriedBy(StandingId) == TArray<FName>({ Own }));
+	TestEqual(TEXT("set-up: and its own score"), Run->ModifierScoreCarriedBy(StandingId), 5.0f, 0.0001f);
+
+	TestTrue(TEXT("an Edict is left on the first Outpost"),
+			 Run->Map->LeaveEdict(Outposts[0], AscendantSilenceKey, Run->Day()));
+
+	// STANDING: BEYOND ITS COUNT, AND ITS SCORE COUNTS IT.
+	TestTrue(TEXT("a dungeon standing there carries it after its own"),
+			 Run->ModifiersCarriedBy(StandingId) == TArray<FName>({ Own, AscendantSilenceKey }));
+	TestEqual(TEXT("and its score counts the Edict's danger"), Run->ModifierScoreCarriedBy(StandingId), 25.0f,
+			  0.0001f);
+	TestEqual(TEXT("while its own list is not touched"), Arrange(*Run, StandingId)->Modifiers.Num(), 1);
+
+	// ARRIVING: ONE THAT COMES AFTER THE HIT CARRIES IT TOO.
+	PlaceDungeon(*Run, ArrivingId, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+				 *Run->Map->Find(Outposts[0]), 200.0f);
+	TestTrue(TEXT("a dungeon arriving after it was left carries it"),
+			 Run->ModifiersCarriedBy(ArrivingId) == TArray<FName>({ AscendantSilenceKey }));
+	TestEqual(TEXT("and counts it"), Run->ModifierScoreCarriedBy(ArrivingId), 20.0f, 0.0001f);
+
+	// ONE ALREADY CARRYING IT: NOT TWICE, AND NOT COUNTED TWICE.
+	TestTrue(TEXT("a dungeon that already carries it carries it once"),
+			 Run->ModifiersCarriedBy(AlreadyId) == TArray<FName>({ Own, AscendantSilenceKey }));
+	TestEqual(TEXT("and its score is its own"), Run->ModifierScoreCarriedBy(AlreadyId), 25.0f, 0.0001f);
+
+	// THE CONTROL: A DUNGEON ON ANOTHER CITY.
+	TestTrue(TEXT("CONTROL: a dungeon on another city carries its own alone"),
+			 Run->ModifiersCarriedBy(ElsewhereId) == TArray<FName>({ Own }));
+	TestEqual(TEXT("CONTROL: and its own score"), Run->ModifierScoreCarriedBy(ElsewhereId), 5.0f, 0.0001f);
+
+	// UNTIL THE THIRTY DAYS END.
+	Run->AdvanceDays(29);
+	TestEqual(TEXT("on the thirtieth day it is still carried"), Run->LeftEdictCarriedBy(StandingId),
+			  AscendantSilenceKey);
+	Run->AdvanceDay();
+	TestTrue(TEXT("and on the day after it is not"),
+			 Run->ModifiersCarriedBy(StandingId) == TArray<FName>({ Own }));
+	TestEqual(TEXT("and the score is the dungeon's own again"), Run->ModifierScoreCarriedBy(StandingId), 5.0f,
+			  0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

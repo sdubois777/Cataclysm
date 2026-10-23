@@ -806,4 +806,258 @@ bool FCataclysmDungeonModifierFamineQuestTest::RunTest(const FString& Parameters
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Divine Edicts and the Ascendant -- 2026-10-22
+// ---------------------------------------------------------------------------
+//
+// `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath, and the coordinating session's
+// rulings of 2026-10-22: one more Edict a floor up to four, drawn evenly from
+// those not already in force on a stream of the dungeon's own, each a tenth
+// stronger a floor deeper and half as strong again on the Core's floor while
+// the Core stands, and one of them left on the city by the hit.
+
+namespace CataclysmDungeonModifierTest
+{
+	const FName EdictOfSilenceKey(TEXT("Celestial_Edict_of_Silence"));
+	const FName EdictOfTitheKey(TEXT("Celestial_Forced_Tithes"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictKeysTest,
+	"Cataclysm.DungeonModifiers.TheEdictsAreTheTwoCelestialRowsTheDesignNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictKeysTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	// THE TWO THAT ARE ROWS TODAY, IN THE DESIGN'S ORDER. The six new ones are G7b.
+	const TArray<FName> Expected = { EdictOfSilenceKey, EdictOfTitheKey };
+	TestTrue(TEXT("the Edicts are the Edict of Silence and Forced Tithes, in that order"),
+			 Rules::EdictKeys() == Expected);
+
+	TestTrue(TEXT("the Edict of Silence is an Edict"), Rules::IsEdict(EdictOfSilenceKey));
+	TestTrue(TEXT("and so is Forced Tithes"), Rules::IsEdict(EdictOfTitheKey));
+	TestEqual(TEXT("which a player is shown as the Edict of Silence"),
+			  Rules::EdictName(EdictOfSilenceKey), FString(TEXT("Edict of Silence")));
+	TestEqual(TEXT("and the design's Edict of Tithe"),
+			  Rules::EdictName(EdictOfTitheKey), FString(TEXT("Edict of Tithe")));
+
+	// THE CONTROL: another Celestial row is not an Edict, and has no Edict's name.
+	const FName Spires(TEXT("Celestial_Golden_Spires"));
+	TestFalse(TEXT("CONTROL: Golden Spires, a Celestial row, is not an Edict"), Rules::IsEdict(Spires));
+	TestTrue(TEXT("CONTROL: and has no Edict's name"), Rules::EdictName(Spires).IsEmpty());
+	TestFalse(TEXT("CONTROL: and no row is none"), Rules::IsEdict(NAME_None));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictsAFloorTest,
+	"Cataclysm.DungeonModifiers.AnAscendantAddsOneEdictAFloorAndEachFloorHoldsTheLastFloorsUntilNoneIsLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictsAFloorTest::RunTest(const FString& Parameters)
+{
+	using Rules = UCataclysmDungeonModifierRules;
+
+	TestEqual(TEXT("four at most, the owner's"), Rules::AscendantMostEdicts, 4);
+	TestEqual(TEXT("and two Edicts are rows today"), Rules::EdictKeys().Num(), 2);
+
+	const TArray<FName> NoneActive;
+	TestEqual(TEXT("a floor numbered below one adds none"), Rules::EdictsOnFloor(7, NoneActive, 0).Num(), 0);
+
+	int32 Wrong = 0;
+	TSet<FName> FirstFloors;
+	for (int32 Seed = 1; Seed <= 200; ++Seed)
+	{
+		TArray<FName> Previous;
+		for (int32 Floor = 1; Floor <= 6; ++Floor)
+		{
+			const TArray<FName> On = Rules::EdictsOnFloor(Seed, NoneActive, Floor);
+
+			// ONE, TWO, THREE, FOUR, AND NO MORE THAN THERE ARE: "when none is left to draw, no further Edict is
+			// added".
+			const int32 Wanted = FMath::Min3(Floor, Rules::AscendantMostEdicts, Rules::EdictKeys().Num());
+			if (On.Num() != Wanted)
+			{
+				++Wrong;
+				AddError(FString::Printf(TEXT("seed %d floor %d holds %d Edicts, not %d"), Seed, Floor, On.Num(),
+										 Wanted));
+				continue;
+			}
+
+			// FLOOR N HOLDS FLOOR N-1'S, IN THE SAME ORDER.
+			for (int32 Index = 0; Index < Previous.Num(); ++Index)
+			{
+				if (On[Index] != Previous[Index])
+				{
+					++Wrong;
+					AddError(FString::Printf(TEXT("seed %d floor %d does not hold floor %d's Edicts"), Seed, Floor,
+											 Floor - 1));
+					break;
+				}
+			}
+
+			// NO REPEATS, AND EVERY ONE AN EDICT.
+			TSet<FName> Distinct;
+			for (const FName& Edict : On)
+			{
+				Distinct.Add(Edict);
+			}
+			if (Distinct.Num() != On.Num())
+			{
+				++Wrong;
+				AddError(FString::Printf(TEXT("seed %d floor %d repeats an Edict"), Seed, Floor));
+			}
+			for (const FName& Edict : On)
+			{
+				if (!Rules::IsEdict(Edict))
+				{
+					++Wrong;
+					AddError(FString::Printf(TEXT("seed %d floor %d holds %s, which is no Edict"), Seed, Floor,
+											 *Edict.ToString()));
+				}
+			}
+
+			if (Floor == 1 && On.Num() == 1)
+			{
+				FirstFloors.Add(On[0]);
+			}
+			Previous = On;
+		}
+
+		// AND THE SAME ANSWER WHOEVER ASKS, AS OFTEN AS THEY ASK.
+		if (Rules::EdictsOnFloor(Seed, NoneActive, 4) != Rules::EdictsOnFloor(Seed, NoneActive, 4))
+		{
+			++Wrong;
+			AddError(FString::Printf(TEXT("seed %d answered two orders"), Seed));
+		}
+	}
+
+	TestEqual(TEXT("every floor of every seed held what it should"), Wrong, 0);
+
+	// THE CONTROL: the order really is drawn, so "holds the last floor's" is not one fixed list read twice.
+	TestEqual(TEXT("CONTROL: both Edicts come first on some seed"), FirstFloors.Num(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictsEvenTest,
+	"Cataclysm.DungeonModifiers.AnAscendantsEdictsAreDrawnEvenlyAndNotByTheirDanger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictsEvenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	// THE OWNER'S RULING OF 2026-09-07, APPLIED TO THE EDICTS: an equal chance. The two rows' dangers are 20 and
+	// 15; drawn by them the Edict of Silence would come first four times in seven. Drawn evenly, half the time.
+	constexpr int32 Seeds = 4000;
+	int32 SilenceFirst = 0;
+	const TArray<FName> NoneActive;
+	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
+	{
+		SilenceFirst += Rules::EdictsOnFloor(Seed, NoneActive, 1)[0] == EdictOfSilenceKey ? 1 : 0;
+	}
+
+	const float Share = static_cast<float>(SilenceFirst) / Seeds;
+	AddInfo(FString::Printf(TEXT("the Edict of Silence came first on %d of %d seeds (%.3f)"), SilenceFirst, Seeds,
+							Share));
+	TestTrue(TEXT("the Edict of Silence comes first about half the time"), Share > 0.45f && Share < 0.55f);
+	TestTrue(TEXT("CONTROL: which is not the four in seven a draw by danger would give"),
+			 FMath::Abs(Share - 20.0f / 35.0f) > 0.02f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictsAlreadyActiveTest,
+	"Cataclysm.DungeonModifiers.AnEdictAlreadyAmongADungeonsModifiersIsNotDrawnAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictsAlreadyActiveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const TArray<FName> SilenceActive = { FName(TEXT("Famine_Starvation")), EdictOfSilenceKey };
+	const TArray<FName> BothActive = { EdictOfTitheKey, EdictOfSilenceKey };
+	const TArray<FName> OnlyTithe = { EdictOfTitheKey };
+
+	for (int32 Seed = 1; Seed <= 50; ++Seed)
+	{
+		for (int32 Floor = 1; Floor <= 5; ++Floor)
+		{
+			TestTrue(FString::Printf(TEXT("seed %d floor %d: with Silence in force only Tithe is added"), Seed, Floor),
+					 Rules::EdictsOnFloor(Seed, SilenceActive, Floor) == OnlyTithe);
+			TestEqual(FString::Printf(TEXT("seed %d floor %d: with both in force none is"), Seed, Floor),
+					  Rules::EdictsOnFloor(Seed, BothActive, Floor).Num(), 0);
+		}
+
+		// THE CONTROL: with nothing in force, floor 2 adds both.
+		TestEqual(FString::Printf(TEXT("CONTROL: seed %d floor 2 with nothing in force adds both"), Seed),
+				  Rules::EdictsOnFloor(Seed, TArray<FName>(), 2).Num(), 2);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictStrengthTest,
+	"Cataclysm.DungeonModifiers.AnEdictIsATenthStrongerAFloorAndHalfAgainWhileTheCoreStands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictStrengthTest::RunTest(const FString& Parameters)
+{
+	using Rules = UCataclysmDungeonModifierRules;
+
+	TestEqual(TEXT("a tenth a floor, the owner's"), Rules::EdictStrongerPerFloor, 0.10f, 0.000001f);
+	TestEqual(TEXT("half again while the Core stands"), Rules::EdictStrongerWhileTheCoreStands, 1.5f, 0.000001f);
+
+	TestEqual(TEXT("floor 1 is the base"), Rules::EdictStrengthOn(1, false), 1.0f, 0.0001f);
+	TestEqual(TEXT("floor 2 is a tenth stronger"), Rules::EdictStrengthOn(2, false), 1.1f, 0.0001f);
+	TestEqual(TEXT("floor 6 half again"), Rules::EdictStrengthOn(6, false), 1.5f, 0.0001f);
+	TestEqual(TEXT("floor 70, the deepest Quest dungeon's last, 7.9 times"), Rules::EdictStrengthOn(70, false), 7.9f,
+			  0.0001f);
+	TestEqual(TEXT("floor 70 with its Core standing, half again"), Rules::EdictStrengthOn(70, true), 11.85f, 0.001f);
+	TestEqual(TEXT("floor 1 with a Core standing on it"), Rules::EdictStrengthOn(1, true), 1.5f, 0.0001f);
+	TestEqual(TEXT("a floor below 1 is read as floor 1"), Rules::EdictStrengthOn(0, false), 1.0f, 0.0001f);
+
+	// THE CONTROL: the Core's half is the only difference between standing and destroyed.
+	TestEqual(TEXT("CONTROL: the Core destroyed takes away exactly its half"),
+			  Rules::EdictStrengthOn(12, true) / Rules::EdictStrengthOn(12, false), 1.5f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictLeftTest,
+	"Cataclysm.DungeonModifiers.TheEdictAHitLeavesIsOneTheAscendantWouldHoldFromFloorFour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictLeftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierTest;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	const TArray<FName> NoneActive;
+	const TArray<FName> SilenceActive = { EdictOfSilenceKey };
+	const TArray<FName> BothActive = { EdictOfSilenceKey, EdictOfTitheKey };
+
+	TSet<FName> Left;
+	for (int32 Seed = 1; Seed <= 100; ++Seed)
+	{
+		for (int32 Day = 10; Day <= 40; Day += 10)
+		{
+			const FName One = Rules::EdictLeftBy(Seed, NoneActive, Day);
+			TestTrue(FString::Printf(TEXT("seed %d day %d leaves one it would hold from floor 4"), Seed, Day),
+					 Rules::EdictsOnFloor(Seed, NoneActive, Rules::AscendantMostEdicts).Contains(One));
+			TestEqual(FString::Printf(TEXT("seed %d day %d leaves the same one asked twice"), Seed, Day),
+					  Rules::EdictLeftBy(Seed, NoneActive, Day), One);
+			TestEqual(FString::Printf(TEXT("seed %d day %d: with Silence among its own it leaves Tithe"), Seed, Day),
+					  Rules::EdictLeftBy(Seed, SilenceActive, Day), EdictOfTitheKey);
+			Left.Add(One);
+		}
+		TestTrue(FString::Printf(TEXT("seed %d: with both among its own it holds none and leaves none"), Seed),
+				 Rules::EdictLeftBy(Seed, BothActive, 10).IsNone());
+	}
+
+	// THE CONTROL: "one at random" really is drawn, so both are left by some.
+	TestEqual(TEXT("CONTROL: both Edicts are left by some"), Left.Num(), 2);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
