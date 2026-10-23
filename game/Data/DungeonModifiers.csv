@@ -14,6 +14,9 @@ Celestial_Trial_of_Endurance,Celestial,Trial of Endurance,10.0,"A divine timer p
 Celestial_Judgment_Zones,Celestial,Judgment Zones,5.0,Radiant zones spawn for 20 seconds; standing inside ramps holy damage to players but increases boss loot quality if triggered 5+ times.
 Celestial_Sanctioned_Passage,Celestial,Sanctioned Passage,15.0,Divine gates require a 10s channel to open; enemies surge toward the gate during the unlock.
 Celestial_Wings_of_the_Host,Celestial,Wings of the Host,5.0,Angelic flyovers carpet-bomb the map with radiant feathers that pierce terrain and deal % max HP damage.
+Celestial_Edict_of_Temperance,Celestial,Edict of Temperance,20.0,"Healing the player receives is halved, and life leech does nothing."
+Celestial_Edict_of_Patience,Celestial,Edict of Patience,15.0,Every cooldown takes 50% longer.
+Celestial_Edict_of_Stillness,Celestial,Edict of Stillness,10.0,"Using a movement skill (a dash, leap or teleport) slows the player by 40% for 3 seconds."
 Chaos_Fragmented_Reality,Chaos,Fragmented Reality,20.0,"Certain sections of the dungeon are ""Fragmented."" When you enter one, your stats are randomly scrambled. For example, your power might be increased but your defenses are halved, or your health is doubled but you can no longer use skills."
 Chaos_Unstable_Portal,Chaos,Unstable Portal,15.0,"The only way to get to the next floor is through a series of unstable portals. Stepping through a portal has a 50% chance of taking you to the next floor, a 25% chance of returning you to the beginning of the current floor, and a 25% chance of spawning a powerful, unpredictable mini-boss."
 Chaos_Reality_Twister,Chaos,Reality Twister,20.0,"Each floor, one random dungeon modifier from any Cataclysm is added, even one this dungeon could not otherwise draw. It is replaced on the next floor."
