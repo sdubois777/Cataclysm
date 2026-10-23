@@ -3300,7 +3300,9 @@ public:
 	 * - A floor object named "Tithe Altar" ON THE EXIT CELL OF EVERY FLOOR BUT THE LAST, and on each wave of a Horde
 	 *   arena but the last. ANOTHER ALTAR AT THE EXIT GOES ONE CELL APART, never on the same cell: see
 	 *   `ACataclysmDungeonGameMode::ExitAltarWorld`.
-	 * - FIXED PRICES, one paid whole: `ForcedTithesHealthPercent` of maximum health taken from current health, never
+	 * - THE BASE PRICES, one paid whole -- fixed outside an Ascendant; in one, all three scale with the Edict strength,
+	 *   the health share capped, see `ForcedTithesHealthPercentAt` below: `ForcedTithesHealthPercent` of maximum health
+	 *   taken from current health, never
 	 *   leaving less than 1; `ForcedTithesPotionCharges` charges from the fullest potion slot; `ForcedTithesMaterials` of
 	 *   the most plentiful crafting material carried. A PRICE THE PLAYER CANNOT PAY IS SHOWN AND REFUSED; no partial
 	 *   offer. Paying, the altar goes.
@@ -3319,16 +3321,46 @@ public:
 	static constexpr const TCHAR* ForcedTithesPayMaterials = TEXT("Materials");
 	static constexpr const TCHAR* ForcedTithesRefuse = TEXT("Refuse");
 
-	/** Forced Tithes' health price for this maximum health. */
-	static float ForcedTithesHealthPrice(float MaximumHealth)
+	/**
+	 * Forced Tithes' three prices at `Strength` times their base, the strength of an Edict on the floor being walked
+	 * (`ACataclysmDungeonGameMode::EdictStrengthHere`: 1 outside an Ascendant). Since 2026-10-22, as the coordinating
+	 * session ruled that day under the owner's delegation, verbatim: "TITHE: scale all three prices together by the
+	 * multiplier, and keep the 8 angels fixed, as you recommend, with one cap. The health price is capped at 50% of
+	 * maximum health, the same cap as Vigil's smite: an uncapped 20% reaches 158% at floor 70, which no player could
+	 * pay. The potion-charge and material prices are uncapped."
+	 *
+	 * THE HEALTH SHARE is `ForcedTithesHealthPercent` times the strength, held at `ForcedTithesMostHealthPercent`.
+	 * THE CHARGES AND THE MATERIALS are whole numbers: the base times the strength, ROUNDED HALF UP
+	 * (`FMath::RoundToInt`, so 12.5 charges are 13), and never below the base. A strength below 1 is read as 1. The
+	 * altar shows and charges these same numbers. THE ANGELS DO NOT SCALE.
+	 */
+	static float ForcedTithesHealthPercentAt(float Strength)
 	{
-		return MaximumHealth * ForcedTithesHealthPercent / 100.0f;
+		return FMath::Min(ForcedTithesHealthPercent * FMath::Max(1.0f, Strength), ForcedTithesMostHealthPercent);
+	}
+
+	static int32 ForcedTithesPotionChargesAt(float Strength)
+	{
+		const int32 Base = FMath::RoundToInt(ForcedTithesPotionCharges);
+		return FMath::Max(Base, FMath::RoundToInt(ForcedTithesPotionCharges * FMath::Max(1.0f, Strength)));
+	}
+
+	static int32 ForcedTithesMaterialsAt(float Strength)
+	{
+		return FMath::Max(ForcedTithesMaterials,
+						  FMath::RoundToInt(static_cast<float>(ForcedTithesMaterials) * FMath::Max(1.0f, Strength)));
+	}
+
+	/** Forced Tithes' health price for this maximum health, at `Strength`. */
+	static float ForcedTithesHealthPrice(float MaximumHealth, float Strength = 1.0f)
+	{
+		return MaximumHealth * ForcedTithesHealthPercentAt(Strength) / 100.0f;
 	}
 
 	/** Whether a player at this health can pay the health price: it never leaves them below 1. */
-	static bool ForcedTithesHealthIsAffordable(float Health, float MaximumHealth)
+	static bool ForcedTithesHealthIsAffordable(float Health, float MaximumHealth, float Strength = 1.0f)
 	{
-		return Health - ForcedTithesHealthPrice(MaximumHealth) >= 1.0f;
+		return Health - ForcedTithesHealthPrice(MaximumHealth, Strength) >= 1.0f;
 	}
 
 	/**
@@ -4181,6 +4213,21 @@ public:
 	static constexpr float EdictOfSilenceEverySeconds = 90.0f;
 	static constexpr float EdictOfSilenceLastsSeconds = 15.0f;
 	static constexpr float EdictOfSilenceLockValue = 1.0f;
+
+	/**
+	 * The longest an Edict of Silence lasts, however much stronger an Ascendant
+	 * makes it: 67.5 seconds, three quarters of its 90 second cycle. Since
+	 * 2026-10-22.
+	 *
+	 * A CAP AND NOT A NEW CADENCE. An Edict in an Ascendant is 10% stronger a
+	 * floor deeper, and Quest dungeons are 20 to 70 floors deep, so on floor 70
+	 * the silence would be 7.9 times 15, longer than the cycle, and skills
+	 * would never come back. The coordinating session ruled the cap on
+	 * 2026-10-22 under the owner's delegation of the numbers the design leaves
+	 * open; it is written into the design beside the 10% rule. The static
+	 * assertions below keep it inside the cycle and above the base length.
+	 */
+	static constexpr float EdictOfSilenceMostLastsSeconds = 67.5f;
 
 	/**
 	 * How often a strike is called in. THE ROW'S OWN NUMBER: "Every 30 seconds".
@@ -5610,6 +5657,17 @@ public:
 		"a cycle with a quiet part.");
 
 	static_assert(
+		EdictOfSilenceMostLastsSeconds < EdictOfSilenceEverySeconds,
+		"The Edict of Silence's cap now reaches the gap between silences, so an "
+		"Ascendant deep enough silences every skill for good. The cap exists so "
+		"that the strongest silence still has a quiet part.");
+
+	static_assert(
+		EdictOfSilenceLastsSeconds <= EdictOfSilenceMostLastsSeconds,
+		"The Edict of Silence's cap is now below its own base length, so it "
+		"would shorten a silence nothing made stronger.");
+
+	static_assert(
 		EdictOfSilenceLockValue > 0.0f,
 		"The Edict of Silence's lock value is no longer above zero, so nothing "
 		"is locked. Everything that reads the skill-lock stat asks only whether "
@@ -6416,6 +6474,19 @@ public:
 	static constexpr float ForcedTithesPotionCharges = 10.0f;
 	static constexpr int32 ForcedTithesMaterials = 5;
 	static constexpr int32 ForcedTithesAngelCount = 8;
+
+	/**
+	 * The most of maximum health Forced Tithes' health price takes however strong an Ascendant makes it: half. The
+	 * coordinating session's, 2026-10-22, under the owner's delegation; the same cap as the Edict of Vigil's smite.
+	 * See `ForcedTithesHealthPercentAt`.
+	 */
+	static constexpr float ForcedTithesMostHealthPercent = 50.0f;
+
+	static_assert(ForcedTithesHealthPercent <= ForcedTithesMostHealthPercent,
+				  "Forced Tithes' health cap is now below its own base price, so it would cut a tithe nothing made "
+				  "stronger.");
+	static_assert(ForcedTithesMostHealthPercent < 100.0f,
+				  "Forced Tithes' health cap now takes all of maximum health, which no player could pay.");
 	static constexpr int32 ForcedTithesAngelRung = 0;
 	static constexpr float ForcedTithesAngelsAwayCm = 800.0f;
 
@@ -7051,6 +7122,20 @@ public:
 	 *        wait is "no clock to read" and brings nothing
 	 */
 	static bool EdictOfSilenceIsDue(float SecondsSinceLast);
+
+	/**
+	 * How long a silence lasts at `Strength` times its base: the base length
+	 * times it, and never past `EdictOfSilenceMostLastsSeconds`. Since
+	 * 2026-10-22.
+	 *
+	 * THE ONE NUMBER THE EDICT OF SILENCE SCALES. The design: "An Edict's
+	 * numbers are the ones its base effect states (Edict of Silence: how long
+	 * the silence lasts)". The cadence of 90 seconds does not scale. Strength 1
+	 * is the base, which every dungeon but an Ascendant gives; see
+	 * `ACataclysmDungeonGameMode::EdictStrengthHere`. A strength below nought
+	 * is read as nought.
+	 */
+	static float EdictOfSilenceLastsSecondsAt(float Strength);
 
 	/**
 	 * What the skill-lock stat is worth while a silence is running, or nothing

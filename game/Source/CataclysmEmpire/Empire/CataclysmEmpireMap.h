@@ -193,6 +193,49 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	int32 VoidStacks = 0;
 
 	/**
+	 * The Divine Edict an Ascendant left on this city, as a row key of the
+	 * modifier table, or none.
+	 *
+	 * SINCE 2026-10-22. When an Ascendant's timer runs out on this city it
+	 * leaves one of its Edicts here, and every dungeon on the city, standing
+	 * or arriving, carries it beyond its own modifiers until
+	 * `LeftEdictUntilDay`. The design, Heaven's Wrath: "A city carries at most
+	 * one left Edict; a new hit replaces it and restarts the 30 days." See
+	 * `UCataclysmEmpireMap::LeaveEdict` and
+	 * `UCataclysmEmpireRun::LeftEdictCarriedBy`.
+	 *
+	 * KEPT WHEN THE CITY FALLS, as the Void stacks are, until its days run
+	 * out; nothing clears it.
+	 *
+	 * SAVED WITH THE REST OF THE CITY, AND NOTHING LOADS IT BACK, because
+	 * nothing loads a run's cities back at all yet. Issue #753.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FName LeftEdict = NAME_None;
+
+	/**
+	 * The first day the left Edict is no longer carried: the day of the hit
+	 * plus `UCataclysmEmpireMap::LeftEdictDays`. Nought when none was left.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LeftEdictUntilDay = 0;
+
+	/**
+	 * The Edict this city's dungeons carry on day `Today`, or none: the left
+	 * one while `Today` is before `LeftEdictUntilDay`.
+	 */
+	FName EdictCarriedOn(int32 Today) const
+	{
+		return Today < LeftEdictUntilDay ? LeftEdict : FName(NAME_None);
+	}
+
+	/** How many days the left Edict has still to run on day `Today`; nought when none is carried. */
+	int32 EdictDaysLeftOn(int32 Today) const
+	{
+		return EdictCarriedOn(Today).IsNone() ? 0 : LeftEdictUntilDay - Today;
+	}
+
+	/**
 	 * What this city has bought, in the order it bought them.
 	 *
 	 * IT USED TO BE A BARE COUNT that nothing read, exactly as
@@ -411,6 +454,12 @@ public:
 	 * back out of this header and compares it with the model's.
 	 */
 	static constexpr int32 VoidStacksToErase = 10;
+
+	/**
+	 * How many days an Edict an Ascendant leaves on a city is carried. The
+	 * owner's 30, 2026-10-19 ("Full plan design").
+	 */
+	static constexpr int32 LeftEdictDays = 30;
 
 	// ----------------------------------------------------------------------
 	// The map itself
@@ -644,6 +693,19 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool AddVoidStacks(int32 CityId, int32 Stacks);
+
+	/**
+	 * An Ascendant leaves a Divine Edict on a city for `LeftEdictDays` from
+	 * `Today`.
+	 *
+	 * A CITY CARRIES AT MOST ONE, AND A NEW ONE REPLACES IT AND RESTARTS THE
+	 * DAYS, ruled by the coordinating session under the owner's delegation and
+	 * written into the design. Nothing else about the city changes.
+	 *
+	 * @return false, and nothing changed, when there is no such city or no
+	 *         Edict was given.
+	 */
+	bool LeaveEdict(int32 CityId, FName Edict, int32 Today);
 
 	// ----------------------------------------------------------------------
 	// City upgrades

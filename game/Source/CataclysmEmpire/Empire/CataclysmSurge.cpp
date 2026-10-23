@@ -60,6 +60,19 @@ bool FCataclysmDungeon::IsHollow() const
 		&& SubType == ECataclysmDungeonSubType::Hollow;
 }
 
+bool FCataclysmDungeon::IsAscendant() const
+{
+	return Type == ECataclysmDungeonType::Quest
+		&& SubType == ECataclysmDungeonSubType::Ascendant;
+}
+
+int32 FCataclysmDungeon::WalkSeed() const
+{
+	// NEVER NOUGHT OR BELOW, the number `EnterEmpireDungeon` used before this
+	// existed. A dungeon built by hand with no identifier still walks.
+	return FMath::Max(1, DungeonId + 1);
+}
+
 int32 FCataclysmDungeon::HollowMinimum() const
 {
 	// HALF, ROUNDED UP, AND ONE AT LEAST. Every whole number up to sixteen
@@ -160,6 +173,9 @@ float UCataclysmSurgeScheduler::SpawnWeightFor(ECataclysmDungeonSubType SubType)
 	// nothing else is; it is numbered past `Sacrificial`, so the roll never
 	// asks. Listed so the switch still names every value.
 	case ECataclysmDungeonSubType::Hollow:			return 0.0f;
+	// NEVER ROLLED, since 2026-10-22, for the Hollow's reason: Celestial's Quest
+	// dungeon is an Ascendant and nothing else is.
+	case ECataclysmDungeonSubType::Ascendant:		return 0.0f;
 	}
 
 	return 0.0f;
@@ -177,6 +193,7 @@ FString UCataclysmSurgeScheduler::SubTypeName(ECataclysmDungeonSubType SubType)
 	case ECataclysmDungeonSubType::Volatile:	return TEXT("Volatile");
 	case ECataclysmDungeonSubType::Sacrificial:	return TEXT("Sacrificial");
 	case ECataclysmDungeonSubType::Hollow:		return TEXT("Hollow");
+	case ECataclysmDungeonSubType::Ascendant:	return TEXT("Ascendant");
 	default:									return FString();
 	}
 }
@@ -378,11 +395,11 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
 	ECataclysmType Cataclysm)
 {
-	// SIX OF THE MODEL'S EIGHT, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
+	// SEVEN OF THE MODEL'S EIGHT, BY NAME. `config.QUEST_SUBTYPE_BY_CATACLYSM` is
 	// the original; `tools/tests/test_dungeon_subtype_port.py` reads this switch
-	// and compares the six pairs with it. The Void's is the sixth, since
-	// 2026-10-22. War and Celestial fall to `default` with `None`, which means
-	// "roll"; the header says why each one.
+	// and compares the seven pairs with it. The Void's is the sixth and
+	// Celestial's the seventh, both since 2026-10-22. War falls to `default`
+	// with `None`, which means "roll"; the header says why.
 	switch (Cataclysm)
 	{
 	case ECataclysmType::Death:			return ECataclysmDungeonSubType::Horde;
@@ -391,6 +408,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::QuestSubTypeFor(
 	case ECataclysmType::Famine:		return ECataclysmDungeonSubType::Sacrificial;
 	case ECataclysmType::Chaos:			return ECataclysmDungeonSubType::Volatile;
 	case ECataclysmType::Void:			return ECataclysmDungeonSubType::Hollow;
+	case ECataclysmType::Celestial:		return ECataclysmDungeonSubType::Ascendant;
 	default:							return ECataclysmDungeonSubType::None;
 	}
 }

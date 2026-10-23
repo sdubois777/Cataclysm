@@ -219,4 +219,130 @@ public:
 
 	/** Just the row keys, in the order they were drawn. */
 	static TArray<FName> KeysOf(const TArray<FCataclysmDungeonModifier>& Drawn);
+
+	// ----------------------------------------------------------------------
+	// The Divine Edicts and the Ascendant -- 2026-10-22
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Which rows of the modifier table are Divine Edicts, in a fixed order.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, Heaven's Wrath: "Each Edict is a Celestial
+	 * dungeon modifier". Eight are designed and two are rows today: the Edict
+	 * of Silence, `Celestial_Edict_of_Silence`, and the Edict of Tithe, which
+	 * is the existing modifier Forced Tithes, `Celestial_Forced_Tithes`. The
+	 * six new rows come with their own layer, G7b, and are added here then. A
+	 * C++ list and not a column of the table, ruled by the coordinating
+	 * session on 2026-10-22.
+	 *
+	 * IN THIS MODULE, because the empire's hit and the floor rules both need
+	 * it, and the empire module must not depend on the game's.
+	 */
+	static const TArray<FName>& EdictKeys();
+
+	/** Whether a row is a Divine Edict. */
+	static bool IsEdict(FName RowKey);
+
+	/**
+	 * What a player is shown for an Edict: "Edict of Silence", "Edict of
+	 * Tithe". Empty for a row that is not one.
+	 *
+	 * THE DESIGN'S NAMES AND NOT THE ROWS'. The row of the Edict of Tithe is
+	 * called Forced Tithes; the design names it the Edict of Tithe and says it
+	 * is that modifier, unchanged. A name and not a lookup, so the city screen
+	 * can say it without the modifier table.
+	 */
+	static FString EdictName(FName RowKey);
+
+	/**
+	 * How many Edicts an Ascendant holds at most beyond its modifiers: four,
+	 * from floor 4. The owner's, 2026-10-19 ("Full plan design"). The model's
+	 * `config.ascendant_extra_modifiers_cap` is the same 4;
+	 * `tools/tests/test_the_ascendant_in_the_model_and_in_the_game.py` holds
+	 * the two together.
+	 */
+	static constexpr int32 AscendantMostEdicts = 4;
+
+	/**
+	 * How much stronger an Edict is for each floor below the first: a tenth.
+	 * The owner's, 2026-10-19, and "From floor 1", 2026-10-20.
+	 */
+	static constexpr float EdictStrongerPerFloor = 0.10f;
+
+	/**
+	 * What an Edict's numbers are multiplied by on the Ascendant's last floor
+	 * while its Heavenly Core stands: half as strong again. The owner's ("Core
+	 * floor only", 2026-10-20); the design's "Edicts are 50% stronger inside
+	 * gate dungeons", read as the Core's floor.
+	 */
+	static constexpr float EdictStrongerWhileTheCoreStands = 1.5f;
+
+	/** Mixed into a dungeon's walk seed for the order its Edicts come in. The letters "edct". */
+	static constexpr int32 EdictSalt = 0x65646374;
+
+	/** Mixed into a dungeon's walk seed for which Edict its hit leaves. The letters "left". */
+	static constexpr int32 LeftEdictSalt = 0x6C656674;
+
+	/**
+	 * Every Edict, in the order an Ascendant of this walk seed takes them.
+	 *
+	 * **EVEN, WITH NO REPEATS, AND DRAWN ONCE FOR THE WHOLE DUNGEON.** The
+	 * owner's ruling of 2026-09-07 for which modifiers a dungeon carries -- an
+	 * equal chance, and the danger score never sets how often; see `Draw` --
+	 * is the ruling the coordinating session applied to the Edicts on
+	 * 2026-10-22, in place of the design's "by their weights". `Draw` itself,
+	 * over every Edict, on a stream made from the walk seed alone: a shuffle.
+	 * NEITHER THE DANGER SCORE NOR ANY WEIGHT IS READ HERE.
+	 *
+	 * FROM THE SEED ALONE, so floor N's Edicts are always the first N of the
+	 * same order and hold floor N-1's, and so the empire can answer what a
+	 * walk would meet. Nothing here advances any of the run's streams.
+	 */
+	static TArray<FName> EdictOrderFor(int32 WalkSeed);
+
+	/**
+	 * The Edicts an Ascendant adds to floor `FloorNumber`, beyond the
+	 * modifiers already in force there.
+	 *
+	 * ONE ON FLOOR 1, TWO ON FLOOR 2, THREE ON FLOOR 3, FOUR FROM FLOOR 4, as
+	 * the design says; and "when none is left to draw, no further Edict is
+	 * added". They are taken from `EdictOrderFor` in order, PASSING OVER ONE
+	 * ALREADY IN FORCE: an Edict among the dungeon's own modifiers is already
+	 * active and is not drawn again. Passing over is still an even draw from
+	 * what is left, because an even shuffle of all of them is an even shuffle
+	 * of any part of them.
+	 *
+	 * @param WalkSeed       `FCataclysmDungeon::WalkSeed`
+	 * @param AlreadyActive  the modifiers in force without the Edicts
+	 * @param FloorNumber    counted from 1; below 1 adds none
+	 */
+	static TArray<FName> EdictsOnFloor(int32 WalkSeed,
+									   const TArray<FName>& AlreadyActive,
+									   int32 FloorNumber);
+
+	/**
+	 * Which of its Edicts an Ascendant's hit leaves on its city, or none.
+	 *
+	 * ONE OF THE EDICTS IT WOULD HOLD FROM FLOOR 4, ruled by the coordinating
+	 * session on 2026-10-22: `EdictsOnFloor` at `AscendantMostEdicts`, the
+	 * same answer a walk gives, walked or not. The owner's "One at random"
+	 * picks between them evenly, on a stream made from the walk seed and the
+	 * day of the hit, so it moves none of the run's streams; a second hit on
+	 * another day may leave another.
+	 */
+	static FName EdictLeftBy(int32 WalkSeed, const TArray<FName>& AlreadyActive,
+							 int32 Day);
+
+	/**
+	 * What an Edict's numbers are multiplied by on this floor of an Ascendant:
+	 * `(1 + 0.10 x (N - 1))`, and half as much again on its last floor while
+	 * its Heavenly Core stands.
+	 *
+	 * Floor 1 is 1, floor 2 1.1, floor 6 1.5, floor 70 7.9. A floor below 1 is
+	 * read as floor 1. ONLY AN ASCENDANT ASKS; an Edict anywhere else, and the
+	 * Edict an Ascendant leaves on its city, is at its base strength. What each
+	 * Edict scales, and the cap that stops one becoming permanent, is the
+	 * Edict's own rule; see `UCataclysmDungeonModifierEffects`.
+	 */
+	static float EdictStrengthOn(int32 FloorNumber, bool bTheCoreStandsOnIt);
 };

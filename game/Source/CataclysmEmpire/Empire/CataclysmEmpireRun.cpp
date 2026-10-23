@@ -529,6 +529,16 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 					Ordinary.PopulationDamage = 0.0f;
 				}
 
+				// AN ASCENDANT ALSO LEAVES ONE OF ITS EDICTS ON THE CITY, since
+				// 2026-10-22: one of those it would hold from floor 4, drawn as
+				// a walk draws them whether or not it was walked, for 30 days,
+				// replacing any earlier one. Its hit is otherwise the ordinary
+				// Quest hit. Drawn here, while `Dungeon` still points at it.
+				const FName LeftEdict = Dungeon->IsAscendant()
+					? UCataclysmDungeonModifierRules::EdictLeftBy(
+						  Dungeon->WalkSeed(), Dungeon->Modifiers, OutReport.Day)
+					: FName(NAME_None);
+
 				++QuestHits;
 				OutReport.QuestHits.Add(HostId);
 
@@ -536,6 +546,13 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				LastHitDay = OutReport.Day;
 				LastHitCityId = HostId;
 				bLastHitWasAQuestTimer = true;
+
+				// LEFT BEFORE THE HIT IS DEALT, so a hit that fells the city
+				// still leaves it there, as a fallen city keeps its stacks.
+				if (!LeftEdict.IsNone())
+				{
+					Map->LeaveEdict(HostId, LeftEdict, OutReport.Day);
+				}
 
 				// THE HIT FELLED THE CITY AND THE FALL MOVED THIS DUNGEON, since
 				// 2026-10-21: `CityFell` sends a Quest dungeon to the city
@@ -1275,6 +1292,59 @@ TArray<int32> UCataclysmEmpireRun::DungeonsOn(int32 CityId) const
 	}
 
 	return Standing;
+}
+
+FName UCataclysmEmpireRun::LeftEdictCarriedBy(int32 DungeonId) const
+{
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	const FCataclysmCity* City =
+		(Dungeon != nullptr && Map != nullptr) ? Map->Find(Dungeon->CityId) : nullptr;
+
+	return City != nullptr ? City->EdictCarriedOn(Day()) : FName(NAME_None);
+}
+
+TArray<FName> UCataclysmEmpireRun::ModifiersCarriedBy(int32 DungeonId) const
+{
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	if (Dungeon == nullptr)
+	{
+		return TArray<FName>();
+	}
+
+	// BEYOND ITS COUNT: after its own, and not in place of one of them.
+	TArray<FName> Carried = Dungeon->Modifiers;
+	const FName Left = LeftEdictCarriedBy(DungeonId);
+	if (!Left.IsNone())
+	{
+		Carried.AddUnique(Left);
+	}
+	return Carried;
+}
+
+float UCataclysmEmpireRun::ModifierScoreCarriedBy(int32 DungeonId) const
+{
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	if (Dungeon == nullptr)
+	{
+		return 0.0f;
+	}
+
+	float Score = Dungeon->ModifierScore;
+	const FName Left = LeftEdictCarriedBy(DungeonId);
+
+	// ONLY WHEN IT WAS ADDED: one already among its own is already in its score.
+	if (!Left.IsNone() && !Dungeon->Modifiers.Contains(Left))
+	{
+		for (const FCataclysmDungeonModifier& Row : ModifierPool)
+		{
+			if (Row.RowKey == Left)
+			{
+				Score += Row.Danger;
+				break;
+			}
+		}
+	}
+	return Score;
 }
 
 bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)

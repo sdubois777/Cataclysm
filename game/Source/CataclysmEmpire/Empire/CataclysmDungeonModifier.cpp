@@ -106,3 +106,100 @@ TArray<FName> UCataclysmDungeonModifierRules::KeysOf(
 
 	return Keys;
 }
+
+// ---------------------------------------------------------------------------
+// The Divine Edicts and the Ascendant -- 2026-10-22
+// ---------------------------------------------------------------------------
+
+const TArray<FName>& UCataclysmDungeonModifierRules::EdictKeys()
+{
+	// THE TWO THAT ARE ROWS TODAY, in the design's order. G7b adds the six new
+	// ones.
+	static const TArray<FName> Keys = {
+		FName(TEXT("Celestial_Edict_of_Silence")),
+		FName(TEXT("Celestial_Forced_Tithes")),
+	};
+	return Keys;
+}
+
+bool UCataclysmDungeonModifierRules::IsEdict(FName RowKey)
+{
+	return EdictKeys().Contains(RowKey);
+}
+
+FString UCataclysmDungeonModifierRules::EdictName(FName RowKey)
+{
+	if (RowKey == FName(TEXT("Celestial_Edict_of_Silence")))
+	{
+		return TEXT("Edict of Silence");
+	}
+	if (RowKey == FName(TEXT("Celestial_Forced_Tithes")))
+	{
+		return TEXT("Edict of Tithe");
+	}
+	return FString();
+}
+
+TArray<FName> UCataclysmDungeonModifierRules::EdictOrderFor(int32 WalkSeed)
+{
+	// EVERY EDICT AS A ROW, and the draw reads nothing of a row but its key.
+	TArray<FCataclysmDungeonModifier> All;
+	for (const FName& Key : EdictKeys())
+	{
+		FCataclysmDungeonModifier Edict;
+		Edict.RowKey = Key;
+		Edict.Cataclysm = ECataclysmType::Celestial;
+		All.Add(Edict);
+	}
+
+	// THE DUNGEON'S OWN STREAM, from its walk seed alone, so the order is the
+	// same whoever asks and nothing the run draws moves it.
+	FRandomStream Stream(UCataclysmRoster::MixedSeed(WalkSeed, EdictSalt));
+	return KeysOf(Draw(All, All.Num(), Stream));
+}
+
+TArray<FName> UCataclysmDungeonModifierRules::EdictsOnFloor(
+	int32 WalkSeed, const TArray<FName>& AlreadyActive, int32 FloorNumber)
+{
+	const int32 Wanted = FMath::Clamp(FloorNumber, 0, AscendantMostEdicts);
+
+	TArray<FName> Added;
+	for (const FName& Edict : EdictOrderFor(WalkSeed))
+	{
+		if (Added.Num() >= Wanted)
+		{
+			break;
+		}
+
+		// ALREADY IN FORCE IS ALREADY ACTIVE, AND NOT DRAWN AGAIN.
+		if (!AlreadyActive.Contains(Edict))
+		{
+			Added.Add(Edict);
+		}
+	}
+
+	return Added;
+}
+
+FName UCataclysmDungeonModifierRules::EdictLeftBy(
+	int32 WalkSeed, const TArray<FName>& AlreadyActive, int32 Day)
+{
+	const TArray<FName> Held =
+		EdictsOnFloor(WalkSeed, AlreadyActive, AscendantMostEdicts);
+	if (Held.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	FRandomStream Stream(UCataclysmRoster::MixedSeed(
+		UCataclysmRoster::MixedSeed(WalkSeed, LeftEdictSalt), Day));
+	return Held[Stream.RandRange(0, Held.Num() - 1)];
+}
+
+float UCataclysmDungeonModifierRules::EdictStrengthOn(int32 FloorNumber,
+													  bool bTheCoreStandsOnIt)
+{
+	const int32 Floor = FMath::Max(1, FloorNumber);
+	const float Deeper = 1.0f + EdictStrongerPerFloor * (Floor - 1);
+	return bTheCoreStandsOnIt ? Deeper * EdictStrongerWhileTheCoreStands : Deeper;
+}

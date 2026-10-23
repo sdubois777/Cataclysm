@@ -786,4 +786,85 @@ bool FCataclysmCityScreenHollowLinesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenAscendantLinesTest,
+	"Cataclysm.CityScreen.AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenAscendantLinesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	// **SINCE 2026-10-22 CELESTIAL'S QUEST DUNGEON IS AN ASCENDANT**, which adds an Edict a floor and has a Heavenly
+	// Core on its last floor. Thirty floors deep it holds both Edicts there; one floor deep, one.
+	UCataclysmEmpireRun* Run = MakeRun();
+	const int32 CityId = Run->Map->PillarId;
+
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 730, /* Floors */ 30, /* ResolveDays */ 9.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 731, /* Floors */ 1, /* ResolveDays */ 25.0f);
+	PlaceDungeon(*Run, CityId, /* DungeonId */ 732, /* Floors */ 30, /* ResolveDays */ 40.0f);
+
+	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.DungeonId < 730 || Dungeon.DungeonId > 732)
+		{
+			continue;
+		}
+		Dungeon.Type = ECataclysmDungeonType::Quest;
+		Dungeon.SubType = (Dungeon.DungeonId == 732) ? ECataclysmDungeonSubType::Horde
+													 : ECataclysmDungeonSubType::Ascendant;
+	}
+
+	const TArray<FString> Lines = UCataclysmCityScreenLayout::DungeonLinesFor(Run, CityId);
+	if (!TestEqual(TEXT("three dungeons are listed"), Lines.Num(), 3))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a deep Ascendant names both Edicts and its Core"), Lines[0],
+			  FString(TEXT("Ascendant, 30 floors, 2 Edicts by its last floor and a Heavenly Core, 9 days until it bites")));
+	TestEqual(TEXT("a one-floor Ascendant names one"), Lines[1],
+			  FString(TEXT("Ascendant, 1 floors, 1 Edict by its last floor and a Heavenly Core, 25 days until it bites")));
+
+	// THE CONTROL. Any other dungeon's line is exactly as it was.
+	TestEqual(TEXT("CONTROL: a Horde's line is as it was"), Lines[2],
+			  FString(TEXT("Horde, 30 floors, 40 days until it bites")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenLeftEdictTest,
+	"Cataclysm.CityScreen.ACitysStatusNamesTheEdictLeftOnItAndTheDaysLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenLeftEdictTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
+	const FName Tithe(TEXT("Celestial_Forced_Tithes"));
+
+	// THE CONTROL FIRST: A CITY CARRYING NO EDICT NEVER MENTIONS ONE.
+	const FString Before = UCataclysmCityScreenLayout::StatusTextFor(Run, 0);
+	TestFalse(TEXT("CONTROL: a city carrying none never mentions an Edict"), Before.Contains(TEXT("Edict")));
+
+	// LEFT TODAY: ALL THIRTY DAYS.
+	TestTrue(TEXT("set-up: an Edict is left on city 0"), Run->Map->LeaveEdict(0, Silence, Run->Day()));
+	const FString Status = UCataclysmCityScreenLayout::StatusTextFor(Run, 0);
+	TestTrue(TEXT("the status names it and its days"), Status.Contains(TEXT("Edict of Silence, 30 days left")));
+	TestEqual(TEXT("and is otherwise exactly what it was"),
+			  Status.Replace(TEXT("   Edict of Silence, 30 days left"), TEXT("")), Before);
+
+	// LEFT TWENTY-NINE DAYS AGO: ONE DAY.
+	TestTrue(TEXT("set-up: another is left on city 1"), Run->Map->LeaveEdict(1, Tithe, Run->Day() - 29));
+	TestTrue(TEXT("the Edict of Tithe with a day left"),
+			 UCataclysmCityScreenLayout::StatusTextFor(Run, 1).Contains(TEXT("Edict of Tithe, 1 day left")));
+
+	// LEFT THIRTY DAYS AGO: GONE.
+	const FString Untouched = UCataclysmCityScreenLayout::StatusTextFor(Run, 2);
+	TestTrue(TEXT("set-up: one is left on city 2 thirty days ago"), Run->Map->LeaveEdict(2, Silence, Run->Day() - 30));
+	TestEqual(TEXT("once its days have run out the status says nothing of it"),
+			  UCataclysmCityScreenLayout::StatusTextFor(Run, 2), Untouched);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
