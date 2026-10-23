@@ -206,7 +206,11 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	 */
 	FName KillingSkillName;
 
-	/** That skill's own tags, or null. */
+	/**
+	 * That skill's own tags, or null. AND FOR A LAST BLOW THAT NAMED NO SKILL OBJECT, a buried weapon's leap, the tags of
+	 * the skill it was a blow of, which the victim's record of its last blow keeps
+	 * (`FCataclysmLastBlow::SkillTagsWithNoSkill`), with no skill name. Ruled 2026-10-22 (#2465, N1 (a), N2 (a)).
+	 */
 	const FGameplayTagContainer* KillingSkillTags = nullptr;
 
 	bool bByDamageOverTime = false;
@@ -344,6 +348,14 @@ struct CATACLYSM_API FCataclysmLastBlow
 	 * `FCataclysmDeathNotice::KillingBlowDamage`.
 	 */
 	float KillingBlowDamage = 0.0f;
+
+	/**
+	 * For a blow that named no skill object, the tags of the skill it was a blow of, copied from
+	 * `FCataclysmHitDelivery::SkillTagsWithNoSkill`: a buried weapon's leap's throwing skill's. Ruled 2026-10-22 (#2465,
+	 * N1 (a), N2 (a)). Written for every such blow on record, as `Skill` is, and empty for every other blow, so an
+	 * ordinary hit costs no allocation here. The death notice's `KillingSkillTags` points at it when no skill is named.
+	 */
+	FGameplayTagContainer SkillTagsWithNoSkill;
 
 	bool IsOnRecord() const { return WorldSeconds >= 0.0; }
 };
