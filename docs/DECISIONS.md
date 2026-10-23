@@ -2,6 +2,366 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-10-22 — A player killed by its own skill gadget's area cast, inside that cast's activation, is measured for the death sentence's gadget casts and trap triggers: three tests and no fix, step A of #2472
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmDeathInActivationTests.cpp` (new, three tests in the new group
+`Cataclysm.DeathInActivation.`). No game code, no data row, no tag, no workbook cell, nothing under `game/Data/`,
+`game/Content/` or `game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or `tools/unreal_build.py` is changed.
+Issue [#2472](https://github.com/sdubois777/Cataclysm/issues/2472), which this step does not close.
+
+### SAID FIRST
+
+- **THIS STEP CHANGES NO GAME CODE AND FIXES NOTHING.** It measures [#2472](https://github.com/sdubois777/Cataclysm/issues/2472):
+  with "Your deployables and traps deal full damage to you if you are within their blast radius" (#34) and "When you die,
+  all your active traps and gadgets immediately trigger simultaneously" worn, a player killed by its own skill gadget's
+  area cast is predicted, by reading, to have NONE of its gadgets cast and NONE of its traps go off at its death.
+- **TWO OF THE THREE TESTS ARE EXPECTED TO FAIL UNTIL STEP B FIXES #2472**, and their messages say so ("expected to fail
+  until #2472 is fixed"). They assert what the sentence promises, not what the code does today. The third, the control,
+  is expected to pass. SINCE STEP B (#2472) THEY PASS, and the words are removed from their messages (STEP B, below).
+- **STEP B, THE FIX, FOLLOWS AFTER THIS STEP'S WINDOW.** This step's commit gets no pull request of its own; it merges
+  with step B.
+- A player would notice nothing from this step. What a player meets today, by reading: standing inside its own gadget's
+  Gathering at low health with both rows worn, it dies, and its other gadgets and its traps stand idle at the death.
+- **NOTHING HERE WAS COMPILED AND NO UNREAL TEST WAS RUN** by the session that wrote it. NOT COMPILED AND NOT RUN.
+
+### WHO RULED
+
+Nothing of the owner's is quoted here. The coordinating session's ruling of 2026-10-22, verbatim as relayed in brief 66:
+
+> BRIEF 66 (#2472): the two-step shape is ACCEPTED, with two conditions on step A.
+> - Step A changes no game code, so its window runs only the new tests' group (one prefix, with a trailing dot), not the
+>   whole suite and not the proofs. Register the prediction before it runs: the two in-activation tests fail, and the
+>   control passes.
+> - Step A's commit does not get its own pull request. It merges with step B.
+> - Step B's shape is ruled after A reports, with your recommendation as the starting point: the drains also return under
+>   AbilityScopeLockCount > 0, and they run again at the player's own activation end. B must say whether
+>   bEvenForADeadPlayer lets an event that late act.
+
+### WHAT WAS READ, ON DEVELOPMENT 8b31fda27
+
+**The killing blow, inside the gadget's activation.** In the tests the cast is the Ultimate skill gadget's own step:
+
+1. `ACataclysmMinion::GadgetStep` (`CataclysmMinion.cpp` 551) → `StepSkillGadget` (923; its first cast at 972) →
+   `CastPlayersSkillFromHere` (981) → `StartPlayersSkillFromHere` (2273; it aims at the nearest enemy within the skill's
+   reach) → `UCataclysmTriggeredSkill::Trigger` (2344; `CataclysmTriggeredSkill.cpp` 66). Outside any activation, so
+   `GiveAbility` (80) grants at once, and `TryActivateAbility` (106) reaches the engine's
+   `UAbilitySystemComponent::InternalTryActivateAbility`, which takes `ABILITYLIST_SCOPE_LOCK()` (UE 5.8
+   `AbilitySystemComponent_Abilities.cpp` 1724) and holds it across `CallActivateAbility` (1918, 1922): from here
+   `AbilityScopeLockCount > 0`.
+2. `UCataclysmStrikeSkill::ActivateAbility` (`CataclysmSkillTemplates.cpp` 203) → `WhenTheSwingConnects` (257;
+   `CataclysmSkillTemplate.cpp` 622), which strikes NOW, inside the activation, because a use cast from a gadget's place
+   has no wind-up (571 to 572) and no row delays it (647 to 651) → `SwingOnce` (`CataclysmSkillTemplates.cpp` 279, 410).
+3. In `SwingOnce` the wearer is found in the same sphere or cone as the enemies (#34's first site: `WearerInSphere` or
+   `WearerInCone`, 462 to 468) and struck after them (509 to 511) by `UCataclysmSkillTemplate::StrikeTheWearerInItsDeployablesBlast`
+   (`CataclysmSkillTemplate.cpp` 2760) → `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow`
+   (`CataclysmDeployableSelfBlast.cpp` 69; `ApplyHit` at 83).
+4. The damage branch of `UCataclysmVitalAttributeSet` writes health (`CataclysmVitalAttributeSet.cpp` 2020 to 2022) and at
+   once calls `NotifyIfHealthReachedZero` (2034; the function at 2733), which calls the character's `HandleDeath` (2846),
+   synchronously: `ACataclysmPlayerCharacter::HandleDeath` (`CataclysmPlayerCharacter.cpp` 1670) marks the player dead
+   (1693) and raises `player_death` (1745) through `UCataclysmAbilitySystemComponent::NotePlayerDeath`
+   (`CataclysmAbilitySystemComponent.cpp` 3084 to 3087, `ActOnEvent`). **So, by reading, `AbilityScopeLockCount > 0` when
+   `player_death` is raised, and `PoolActionDepth` is nought:** no `ActOnEvent` call encloses the swing, and the wearer's
+   `hit_taken` is raised after the write (2302), not around it.
+
+**#34's other four sites reach the same place by reading and are not driven here:** `UCataclysmProjectileSkill::Land` (a
+no-speed bolt lands at once inside its activation); `ACataclysmProjectile::Finish` with `StrikeTheWearerInItsBlast` (a shot
+in flight explodes on a later step, outside the activation); `ACataclysmMinion::Explode` (a skill gadget's explosion deals
+nothing); `ACataclysmMinion::DeathBlast` (a gadget's death, inside whatever killed it).
+
+**The gadget half (#15).** `ActOnEvent` (6089) at depth nought runs its row loop; the branch for `bGadgetsCastNow`
+(6778 to 6785) calls `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` (`CataclysmMinion.cpp` 1027) INSIDE THE EVENT, which
+calls `FireForItsSummonersDeath` (1052) for each skill gadget → `CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true)`
+(1061) → `StartPlayersSkillFromHere` (1018) → `Trigger` (2344). Under the lock `GiveAbility` only queues the spec in
+`AbilityPendingAdds` (engine 309 to 312); `FindAbilitySpecFromHandle` with its default `PendingRemove` (engine header 1116,
+body 923 to 947) does not look there; so `Trigger` finds no instance, calls `ClearAbility` and returns false
+(`CataclysmTriggeredSkill.cpp` 82 to 90). `SkillGadgetDeathCastsMade` is counted only after a cast starts (1065), so it
+stays nought. Nothing is queued: the casts are lost.
+
+**The trap half (traps layer 5).** The branch for `bSetOffTrapsNearby` (6823 to 6832) calls `ActOnSkillTrapsNearby`
+(8463), which on `player_death` calls `ACataclysmMinion::SetOffSkillTrapsNear` (`CataclysmMinion.cpp` 2833) with no place:
+every standing trap is put into `SkillTrapsSetOffThisChain` and recorded by `QueueSkillTrapSetOff`
+(`CataclysmAbilitySystemComponent.cpp` 8415) with `bEvenForADeadPlayer`. At the event's end the `ON_SCOPE_EXIT` (6121 to
+6125) calls `DrainQueuedSkillTrapSetOffs` (8426), whose guard (8431) asks only `PoolActionDepth` and its own flag, so it
+drains at once, still inside the activation: each record is taken off the queue (8446) and set off by
+`ACataclysmMinion::TriggerSkillTrap` (8456; `CataclysmMinion.cpp` 2522) → `StartPlayersSkillFromHere` (2563) → `Trigger`
+(2344), refused as above. `TriggerSkillTrap` returns before `++SkillTrapTriggersMade` (2568), before its `trap_triggered` and before
+the trap is used up, so every trap stays standing, and the chain list is emptied (8460). Nothing is left on the queue: the
+triggers are lost.
+
+### JUDGEMENTS OF THE WRITING SESSION, EACH WITH THE OPTION NOT TAKEN
+
+- **THE TRAP HALF'S PLAYER WEARS ROW #2 AND NOT ROW #1**, reading "the same with the sentence's row #2" as row #2 in
+  place of row #1, so each in-activation test reads one half. The option not taken: both rows on the trap half's player,
+  as traps layer 5's tests 40 and 44 wear them.
+- **THE CONTROL IS TWO PLAYERS, ONE LAID OUT AS EACH IN-ACTIVATION TEST**, because one slot cannot be a gadget and a trap at
+  once, so no single player can hold two skill gadgets and two skill traps. The option not taken: one player with one
+  gadget and two traps, whose gadget half would read one gadget where the in-activation test reads two.
+- **THE DEATH'S PLACE IN AN ACTIVATION IS READ IN THE EVENT'S OWN ANNOUNCEMENT** (`OnActionEvent`, broadcast first in
+  `ActOnEvent`): whether a skill spec of the player's is active then, and whether one is the killing gadget's cast (its
+  `FreeRepeatCastBy`). The Gathering ends inside its own activation, so a cast of it still active at the death means the
+  death is inside that activation. `AbilityScopeLockCount` itself is protected on the engine's class and is not read. The
+  option not taken: no such line, leaving the premise "inside the activation" unmeasured.
+- **THE TRAPS ARE LEFT UNARMED AND NEVER STEPPED**, since a forced trigger takes armed and unarmed alike (H4), so no trap
+  can go off by its own step. The option not taken: arm one by a step, as test 40 does, which the lock does not depend on.
+- **THE PLAYER IS KILLED AT 50 HEALTH OF 10,000**, far below one Gathering blow (385 on an enemy's defences, measured by
+  #15's window), and holds an enemy's defences. The option not taken: a figure matched to the blow, which a change of the
+  skill's numbers could leave alive.
+- **"STRUCK AFTER THE KILLING BLOW" IS READ AGAINST THE ENEMY'S HEALTH AT THE DEATH**, taken in the announcement, because
+  the Ultimate gadget's own clock cast struck the same enemy moments before. The option not taken: against its starting
+  health, which the clock cast alone would pass.
+
+### THE GENRE SOURCE
+
+None. This step measures a fault of this game's own code against the engine's lock; it proposes no formula, affix or
+mechanic, and the brief names no source. Nothing was fetched.
+
+### WHAT WAS BUILT
+
+The test file, alone. Its helpers are in the namespace `CataclysmDeathInActivationTest` and its macro is
+`CATACLYSM_DEATH_IN_ACTIVATION_TEST`; no other source file of the game names any of them, by a script with
+`CataclysmNearbyTrapsTest` as the control (found in one other file).
+
+### Tests
+
+Three Unreal tests in `game/Source/Cataclysm/Tests/CataclysmDeathInActivationTests.cpp`, the new group
+`Cataclysm.DeathInActivation.` (no other source names the prefix, by search), beside `Cataclysm.DeathTriggersGadgets.` and
+`Cataclysm.DeployableSelfBlast.`, whose rigs they follow: a possessed player character on the players' side holding a
+Demonic Whip with a weapon damage of 100, 10,000 health, 1,000 mana and an enemy's defences, never refreshed; its Ultimate,
+The Gathering (a 14 m Strike all round), a skill gadget 3 m west of it with an enemy 3 m further west; its Heavy, Searing
+Lash (a 5 m cone), a second skill gadget 30 m north with an enemy 3 m east of it (the gadget half) or two unarmed skill
+traps 30 m north and 30 m east, each with an enemy 2.5 m east of it (the trap half). The flags (`skill_slot_is_a_gadget`,
+`skill_slot_is_a_trap`, `deployable_blasts_strike_self`) and the death rows are written by hand: row #1 as #15's tests write
+it, row #2 as traps layer 5's. Creatures of the monsters' side with no defences and 50,000 health. Every body at least 1 m
+from every other, and nothing but the Ultimate gadget's own enemy and its player within 14 m of it. NO KEY IS PRESSED and
+nothing waits on a tick; the critical strike roll is pinned at 100 after the world is made. Assertions are counted for a
+run in which every one is reached, 61 in all.
+
+1. `KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast`, 15. One player holding the self-blast flag, both
+   slots' gadget flags and row #1. In order: a world (passes); set-up, the pin (passes); set-up, the Ultimate gadget's enemy
+   and the Heavy gadget's, each by its own assertion (two, pass); set-up, both gadgets are the player's deployables and both
+   creatures its enemies (passes); set-up, the player stands alive at 50 health (passes); then the Ultimate gadget's own step:
+   set-up, it cast The Gathering once (passes); set-up, it struck its enemy (passes); set-up, the player died (passes);
+   set-up, `player_death` was raised once (passes); set-up, when it was raised the gadget's cast was still activating
+   (passes, by reading, steps 1 to 4 above); **the Heavy gadget made its death cast: FAILS, reading 0**; **its death cast
+   struck its enemy: FAILS, the enemy at 50,000**; **the Ultimate gadget made its death cast: FAILS, reading 0**; **its death
+   cast struck its enemy after the killing blow: FAILS, the enemy's health the same as at the death**. 4 failed of 15.
+2. `KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff`, 18. One player holding the self-blast flag, the Heavy trap
+   flag, the Ultimate gadget flag and row #2. In order: a world; set-up, the pin; set-up, the three creatures (three);
+   set-up, the gadget is the player's deployable and the creatures its enemies; set-up, both traps stand and neither has gone
+   off; set-up, the player alive at 50; then the step: set-up, one cast; set-up, it struck its enemy; set-up, the player died;
+   set-up, `player_death` once; set-up, still activating (all pass); **two `trap_triggered`: FAILS, reading 0**; **the north
+   trap went off and was used up: FAILS, it stands**; **its cast struck its enemy: FAILS, at 50,000**; **the east trap went
+   off and was used up: FAILS**; **its cast struck its enemy: FAILS**. 5 failed of 18.
+3. `KilledByAnEnemysBlowOutsideAnyActivationEveryGadgetCastsAndEveryTrapGoesOff`, 28, the control. Two groups 100 m apart
+   laid out as tests 1 and 2, with the same flags and rows, at 50 health, each with a killer 30 m south of its player; no
+   gadget is stepped, and each player dies to its killer's direct blow of 1,000,000. In order: a world; set-up, the pin;
+   set-up, the seven creatures (seven); set-up, each group's deployables and enemies (two); set-up, the traps stand;
+   set-up, both players alive at 50; the gadget-half player died; `player_death` once; no skill of the player's was
+   activating then; its Heavy gadget made its death cast; it struck its enemy; its Ultimate gadget made its death cast; it
+   struck its enemy after the killing blow; the trap-half player died; `player_death` once; no skill activating; two
+   `trap_triggered`; the north trap used up; its cast struck its enemy; the east trap used up; its cast struck its enemy.
+   **Every one passes, by reading**: with no activation the lock is free, so this is #15's test 1 and traps layer 5's test
+   40 with the self-blast flag held and no blow of the player's own; the dead player is no target of its Ultimate gadget's
+   death cast, since `WearerInSphere` refuses the dead.
+
+**THE PREDICTION, FOR THE WINDOW**: on the prefix `Cataclysm.DeathInActivation.`, with its trailing dot, "3 tests performed,
+1 succeeded, 2 failed": `KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast` (4 assertions) and
+`KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff` (5 assertions), every failed one carrying "expected to fail
+until #2472 is fixed"; the control passes. A set-up line failing in either in-activation test would mean the death was not
+where this step says, and step B's shape would need reading again before it is ruled.
+
+**Not tested:** the other four self-blast sites (`Land`, `Finish`, `Explode`, `DeathBlast`); a death inside an activation by
+any other blow of the player's own (a health cost, a reflected blow); the real rows worn; both rows worn together on one
+player inside an activation; a chain begun at the death running on through "Traps trigger simultaneously"; anything in
+play.
+
+### GUARD PROOFS PROPOSED
+
+None. This step changes no code, so there is nothing to break, and the ruling runs no proof in its window; the two
+in-activation tests are themselves the measurement. Step B proposes its own.
+
+### THE WINDOW'S RUN
+
+**ONE MEASURING WINDOW, enchant-t66w, ON 2026-10-22, 20:01:08 to 20:02:41 by its stall guard, on d9a4defa6. It ran the
+`Cataclysm.DeathInActivation.` group alone, as ruled (no whole suite, no proofs). THE READING IS CONFIRMED: the figures
+are the registered ones, the control passed, and every set-up line passed; nothing was re-run.** The pre-checks, run
+just before the lock was taken: development's CI and Unreal runs on 8b31fda27 succeeded, no run in progress, no pull
+request open, the lock free, no Excel, editor or build process, the worktree clean at d9a4defa6.
+
+- "Build: Succeeded - 39 actions, 36 files compiled"; "3 tests performed, 1 succeeded, 2 failed:
+  KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast, KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff",
+  as registered. The control, `KilledByAnEnemysBlowOutsideAnyActivationEveryGadgetCastsAndEveryTrapGoesOff`, passed.
+- **9 "Error: Expected" lines, as registered (4 + 5)**, every one an assertion marked "(expected to fail until #2472 is
+  fixed)":
+  - the gadget half: "'the Heavy gadget made its death cast ...' to be 1, but it was 0"; "'and its death cast struck its
+    enemy: 50000.00 of 50000.00 left ...' to be true"; "'the Ultimate gadget, whose cast killed the player, made its death
+    cast too ...' to be 1, but it was 0"; "'and its death cast struck its enemy after the killing blow: 49615.00 left,
+    49615.00 at the death ...' to be true";
+  - the trap half: "'two trap_triggered, one for each standing trap ...' to be 2, but it was 0"; "'the north trap went off
+    at the death and was used up ...' to be true"; "'and its cast struck its enemy: 50000.00 of 50000.00 left ...' to be
+    true"; the same two lines for the east trap.
+- **Two other Error lines, where the registration said none: the engine's own "Test Completed. Result={Fail}" line for
+  each of the two failing tests.** They mark a failed test's end and are no assertion; the registration should have
+  allowed for them.
+
+So the set-up lines held: the player died to the gadget's own blow, `player_death` was raised once, and the gadget's
+cast was still activating when it was. Under that activation every death cast and every trap's cast was refused, as
+#2472's reading says. Step B, the fix, follows.
+
+### STEP B: THE FIX
+
+**This closes [#2472](https://github.com/sdubois777/Cataclysm/issues/2472).** **Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` (one block of five declarations, the last of the
+public section) and `.cpp` (one condition in `DrainQueuedSkillTrapSetOffs`, one call in `ProcessAbilityInput`, and four new
+functions at the end of the file); `CataclysmMinion.cpp` (one block at the top of `FireEveryGadgetAtTheDeathOf`);
+`CataclysmTriggeredSkill.cpp`, `CataclysmBasicAttack.cpp` and `CataclysmFollowThrough.cpp` (one call after each
+`TryActivateAbility`); and step A's test file (the words removed and line 455's figure, below). No row, no tag, no workbook
+cell, nothing under `game/Data/`, `game/Content/` or `game/Config/Tags/`, and nothing of `CataclysmDungeonGameMode.*` or
+`tools/unreal_build.py`.
+
+**SAID FIRST.** A player killed inside one of its own activations, by its own gadget's blast for one, now has every skill
+gadget make its death cast and every standing trap go off when that activation ends, in the same frame, as a death outside
+any activation already did. **NOTHING HERE WAS COMPILED AND NO UNREAL TEST WAS RUN** by the session that wrote it. NOT
+COMPILED AND NOT RUN.
+
+**WHO RULED.** The coordinating session's rulings of 2026-10-22, verbatim as relayed:
+
+> #2472 STEP B is RULED with your recommended shape:
+> - The two death drains also return while AbilityScopeLockCount > 0, and they run again when the player's own
+>   activation ends.
+> - Before writing, the session reads whether an event that late still acts for a dead player (bEvenForADeadPlayer). If
+>   it does not, stop and tell me before choosing another place.
+> - Step A's commit d9a4defa6 is taken into B. B removes the "(expected to fail ...)" wording from the assertions, adds a
+>   guard proof (the lock condition removed), and corrects nothing else.
+
+> #2472 STEP B, line 455: (a). Change only its figure to Ultimate->SkillGadgetCastsMade - Ultimate->SkillGadgetDeathCastsMade, against 1. The message says "the clock cast once", and (a) keeps the check measuring exactly that whether the fix is in or not. Record it in the entry as old -> new, with the reason (SkillGadgetCastsMade counts death casts too; CataclysmMinion.cpp 1023 / 1065). Nothing else in step A's tests changes beyond the "(expected to fail ...)" wording.
+> The fix's shape is ACCEPTED as you describe it:
+> - AbilityListIsLocked();
+> - the waiting gadget death casts and their drain;
+> - the trap set-off guard returning before the chain reset;
+> - one hook after each of the four TryActivateAbility calls, draining in the inline order;
+> - DA-I predicting step A's 9 assertions in tests 1 and 2.
+> The test for the hook's order is the existing suite; say in the entry that no new test checks the order.
+
+**WHAT WAS READ FIRST, AND ITS ANSWER: A DEATH ACTION RUN WHEN THE PLAYER'S OWN ACTIVATION ENDS STILL ACTS FOR THE DEAD
+PLAYER**, read on 9b74e7e22.
+
+1. *Where the activation ends.* The engine holds the lock across `CallActivateAbility` inside
+   `UAbilitySystemComponent::InternalTryActivateAbility` (UE 5.8 `AbilitySystemComponent_Abilities.cpp` 1724, 1918, 1922)
+   and releases it as that returns; nothing can hook the release (`TryActivateAbility`, `InternalTryActivateAbility` and
+   `DecrementAbilityListLock`, 878, are not virtual). So the place is just after each `TryActivateAbility` this project
+   makes: `UCataclysmTriggeredSkill::Trigger` (`CataclysmTriggeredSkill.cpp` 106), `ProcessAbilityInput`
+   (`CataclysmAbilitySystemComponent.cpp` 313), `UCataclysmBasicAttack::Swing` (`CataclysmBasicAttack.cpp` 254) and
+   `UCataclysmFollowThrough::MakePendingRepeat` (`CataclysmFollowThrough.cpp` 160). No other activation is used: a search of
+   `game/Source` for `HandleGameplayEvent`, `AbilityTriggers`, `GiveAbilityAndActivateOnce` and `TryActivateAbilityByClass`
+   finds none, and no C++ sets `bActivateOnGranted` (Blueprints were not searched).
+2. *The dead player's ability system there.* It is the player state's and the pawn stays its avatar.
+   `ACataclysmPlayerCharacter::HandleDeath` (`CataclysmPlayerCharacter.cpp` 1670) marks it dead (1693), raises
+   `player_death` (1745), then stops movement and input and sets the respawn timer: nothing touches an ability. The
+   respawn's `ClearWhatDeathEnds` runs from `Revive`, on that timer, never inside the same call.
+3. *The casts.* `FireEveryGadgetAtTheDeathOf` finds the gadgets by `UCataclysmCommand::ThingsCommandedBy`, which asks
+   nothing of the commander's life (`CataclysmCommand.cpp` 152 to 182); `FireForItsSummonersDeath` passes
+   `bEvenForADeadPlayer` (#15's J1), and layer 5's records carry it to `TriggerSkillTrap`; `StartPlayersSkillFromHere` and
+   `Trigger` ask nothing of death; `UCataclysmSkillTemplate::CanActivateAbility` (`CataclysmSkillTemplate.cpp` 753) refuses
+   a locked slot, the pit and the engine's own checks, and no source sets an activation-blocking tag; a free start commits
+   nothing (179). So the calls answer as they do for the inline death cast, whose dead caster #15's window measured at
+   385.00.
+
+**WHAT WAS CHANGED** (lines of this commit's tree).
+
+- `AbilityListIsLocked()` (`CataclysmAbilitySystemComponent.cpp` 8609 to 8612; declared in the header at 4800):
+  `AbilityScopeLockCount > 0`, the engine's protected member, read by the two death drains and the hook.
+- **The gadget half waits.** `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` (`CataclysmMinion.cpp` 1029 to 1039) first asks
+  the dying player's `KeepGadgetDeathCastsWhileLocked` (8614 to 8622): under the lock it sets `bGadgetDeathCastsWaiting`
+  (header 4803) and the walk fires nothing. The row loop's branch is unchanged. `DrainWaitingGadgetDeathCasts` (8624 to
+  8641) returns with nothing kept or under the lock; otherwise it clears the flag FIRST, so the kept casts act once, and runs
+  the same walk at depth one, as the death's row action fires them when the list is free (#15), so their blows' events are
+  dropped as there.
+- **The trap half waits.** `DrainQueuedSkillTrapSetOffs`'s guard (8437) also returns under the lock, before the chain list is
+  emptied, so the records and the chain wait together.
+- **The hook.** `ActOnWhatWaitedForTheAbilityList` (8643 to 8657): at depth nought and with the list unlocked, the kept death
+  casts, the queued deaths, the set-off traps and the gadgets' shots, the order the death's own event acts in when the list
+  is free (its row loop, then its two `ON_SCOPE_EXIT`s). Called after each of the four `TryActivateAbility`s:
+  `CataclysmTriggeredSkill.cpp` 110 (the refused activation) and 119; `CataclysmAbilitySystemComponent.cpp` 315;
+  `CataclysmBasicAttack.cpp` 257; `CataclysmFollowThrough.cpp` 162 (its `if` now reads the result it keeps, 160 to 163).
+  **NO NEW TEST CHECKS THE HOOK'S ORDER**; the existing suite is its test, as ruled.
+- **Nothing can be left waiting, by reading.** A record waits only while the list is locked, a lock is held only by an
+  activation in progress, and every activation this project starts ends at one of the four calls, which drains it at depth
+  nought. One that ends inside an event (at depth one) leaves its drains to that event's end, which runs them unlocked. **A
+  record cannot cross a death and a respawn**: the lock ends in the call that holds it, the respawn waits on a timer.
+- **Step A's tests.** The words "(expected to fail until #2472 is fixed)" are removed from the nine assertion messages, and
+  test 1's line 455 has its figure changed, as ruled: OLD `Ultimate->SkillGadgetCastsMade` against 1; NEW
+  `Ultimate->SkillGadgetCastsMade - Ultimate->SkillGadgetDeathCastsMade` against 1. The reason: `SkillGadgetCastsMade`
+  counts death casts too (`CataclysmMinion.cpp` 1023 counts every cast of the clock's path, which the death cast takes, and
+  1077, 1065 before this commit's block above it, counts the death cast), so with the fix the Ultimate gadget's death cast
+  inside the same step made the old figure 2. Nothing else in step A's tests changes. **Its file comment still says the two
+  in-activation tests are expected to fail; it is left as it is, as ruled ("nothing else")**, and is now stale. SINCE STEP
+  B'S SECOND COMMIT IT IS CORRECTED, as ruled on 2026-10-22 (R2): it keeps its words and adds "SINCE STEP B (#2472) THEY
+  PASS". No other "expected to fail" wording remains in the test file; this entry's step A lines keep theirs as the record
+  of step A, and its summary line gains the same sentence.
+- **TWO ADDITIONS BEYOND THE BRIEF, ACCEPTED on 2026-10-22 (R1).** (a) The hook is also called on `Trigger`'s refused path,
+  after `ClearAbility` (`CataclysmTriggeredSkill.cpp` 110): an activation refused while a death inside an enclosing call
+  kept records still reaches the drains, which return under any lock still held. (b) `MakePendingRepeat` keeps
+  `TryActivateAbility`'s result in `const bool bStarted` (`CataclysmFollowThrough.cpp` 160 to 163), so that the hook runs on
+  both the started and the refused path; its behaviour is otherwise the same.
+
+**Tests.** Step A's three, every assertion now expected to pass: 15, 18 and 28, 61 in all.
+
+**THE EVENTS AND THEIR DEPTHS, after the fix, read from the code.** Test 1: the Ultimate gadget's step starts its cast
+(`Trigger`, list unlocked), then under the lock at depth nought the enemy's blow raises `hit_dealt`, `first_hit_dealt`,
+`deployable_hit` and the burn's `dot_applied`; the wearer's blow kills it, so `player_death` (the gadget row keeps the casts)
+and the wearer's `hit_taken` follow, all under the lock and with no row on any but `player_death`. The activation ends; the
+hook, at depth nought and unlocked, fires both death casts at depth one, whose blows' events are dropped and whose own
+`Trigger`s' hooks return at depth one. Test 2: the same to `player_death`, where the trap row records both traps and its
+drain returns under the lock; the hook sets each off at depth nought, its lash raising those four events at depth nought
+(the set-off drain inside them returns while it drains) and then its own `trap_triggered`, on which no row hangs; then the
+chain ends. Test 3: as measured in step A's window, no lock anywhere.
+
+**GUARD PROOF PROPOSED, DA-I: the lock read as free.** File `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`;
+old text `return AbilityScopeLockCount > 0;` (counted once in the file by a script, CRLF read as LF); new text `return false;`
+(absent before the break, once after). One anchor, because every lock condition of the two death drains reads this one
+function; the 6b shot drain reads `AbilityScopeLockCount` itself and is not broken. It compiles alone by reading: a `const`
+member function returning a `bool` literal. The prefix is `Cataclysm.DeathInActivation.`, three tests. **Predicted: 9 failed
+assertions in 2 tests**, step A's measured nine: test 1 its four (the Heavy and the Ultimate death casts, 0 each, and their
+enemies untouched since the death), test 2 its five (0 `trap_triggered`, both traps standing, both enemies untouched).
+Under the break the walk fires inline under the lock and is refused, and the set-off drain drains under the lock and is
+refused, then empties the chain: step A's code path. Line 455's new figure reads 1 - 0 and passes. The control passes: it
+holds no lock. Expected to fail: `KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast` and
+`KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff`; no other test of the prefix.
+
+**Python of record on 368da46a9, two worktrees.** The writing session measured JUnit 6904 tests, 0 failures, 0 errors, 7
+skipped; the enchantment session measured 6904, 0, 0, 8 skipped ("6896 passed, 8 skipped"). The likely reason is that a
+skipped count depends on the worktree (at least one Python test skips when built Unreal binaries are present). NOT
+CHECKED: the extra skip was not named. The window's figure, measured in the worktree it runs in, is the figure of record.
+
+**Not tested:** the hooks after `ProcessAbilityInput`, the basic attack and Follow Through (no test kills a player inside a
+pressed skill, a basic swing or a repeat); a death inside a lock taken by anything but an activation; the order of the
+hook's four drains; the real rows worn; anything in play. Nor a gadget that ends between the death and the end of the
+activation (R3, ruled 2026-10-22): the kept death casts are a flag and not a list, so the walk at the activation's end
+finds the gadgets standing then, and a gadget gone by then makes no death cast; no way for one to end inside a single
+activation is known.
+
+### THE WINDOW'S RUN (STEP B)
+
+Run by the enchantment session on 2026-10-22, window t66bw, under the editor lock as `enchant-t66bw`, at d108885b9 (the
+branch's four commits moved from 1b9a384ee onto development 0c6f0c933, #2478; every commit kept its zero-context patch id,
+whole and outside this file, and its removed lines). Every figure was registered with the coordinating session before the
+run, and every one is as registered.
+
+- **The whole Unreal suite:** "Build: Succeeded - 39 actions, 36 files compiled"; "4092 tests performed, 4092 succeeded,
+  0 failed" (4089 on development + step A's 3); "Declared: 4092 tests in the tree at d108885b9; 4092 performed, gap 0". 40
+  tests skipped part of what they check. So step A's two in-activation tests, which failed in step A's window, pass.
+- **Python of record:** "6904 passed, 8 skipped"; JUnit 6912 tests, 0 failures, 0 errors, 8 skipped. `ruff check .`: "All
+  checks passed!".
+- **DA-I, the lock read as free** (`CataclysmAbilitySystemComponent.cpp`, `return AbilityScopeLockCount > 0;` to `return
+  false;`, anchor counted once): PROVED. With the break in, 3 tests performed, 1 succeeded, 2 failed, the two registered
+  (`KilledByItsOwnGadgetsAreaCastEveryGadgetStillMakesItsDeathCast`, `KilledByItsOwnGadgetsAreaCastEveryStandingTrapStillGoesOff`);
+  9 failed assertions, 9 registered, the nine step A's window measured (the Heavy and the Ultimate gadgets' death casts 0
+  and their enemies untouched; 0 `trap_triggered`, and both traps and both their enemies untouched). Restored, 3 performed,
+  3 succeeded. The file's hash is the same after.
+
+---
+
 ## 2026-10-22 — A buried weapon's leap kill carries its throwing skill's tags, so a kill row requiring a tag answers it: a Harrower leap kill is a ranged kill, and a trap's leap kill explodes
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (`FCataclysmHitDelivery::SkillTagsWithNoSkill`
