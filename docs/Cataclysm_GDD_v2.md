@@ -6500,11 +6500,26 @@ action; which actions and every number are this game's own.
 **The Ascendant, Heaven's Wrath's Quest dungeon (its gate).**
 
 - **One more Edict each floor, up to four.** Floor 1 has one active Edict beyond the dungeon's ordinary modifiers,
-  floor 2 two, floor 3 three, and floor 4 and every floor after it four. Each new Edict is drawn from the Edicts not
-  already active, by their weights. When none is left to draw, no further Edict is added.
+  floor 2 two, floor 3 three, and floor 4 and every floor after it four. Each new Edict is drawn evenly from the Edicts
+  not already active, an Edict among the dungeon's own modifiers being already active. When none is left to draw, no
+  further Edict is added. **Drawn evenly, not by weight**: the owner's ruling of 2026-09-07 is that a dungeon
+  modifier's Weight is a danger score and never sets how often it is drawn, and every Edict is a modifier. This
+  sentence said "by their weights" until the coordinating session corrected it on 2026-10-22. The draw is made once for
+  the whole dungeon, so each floor keeps the floor above's Edicts and adds one.
 - **Each Edict is 10% stronger a floor deeper, counted from floor 1.** On floor N an active Edict's numbers are
   (1 + 0.10 x (N - 1)) times its base: 10% stronger on floor 2, 50% on floor 6. An Edict's numbers are the ones its
   base effect states (Edict of Silence: how long the silence lasts); an Edict with no number does not scale.
+- **Each Edict scales its one number, up to a cap.** Quest dungeons are 20 to 70 floors deep, and on floor 70 an Edict
+  is 7.9 times its base, 11.85 on the Core's floor: an Edict of Silence that strong would silence for longer than its
+  own 90 second cycle, and skills would never come back. So each scales only the one number its base effect states,
+  and is held: the Edict of Silence's silence lasts at most 67.5 seconds of its 90 second cycle; the Edict of
+  Temperance withholds at most 90% of healing; the Edict of Patience has no cap; the Edict of Abstinence takes
+  at most 100% of the mana cost from health; the Edict of Stillness slows by at most 90%, its 3 seconds fixed; the
+  Edict of Vigil smites for at most 50% of maximum health, its 3 seconds fixed; the Edict of Humility does not scale.
+  The Edict of Tithe's price is three alternatives -- a share of health, a potion's charges, or materials -- with the
+  angels if it is refused, so it has no one number to scale and does not scale, until a ruling names one. These caps
+  are the coordinating session's, 2026-10-22, under the owner's delegation of the numbers the design leaves open.
+- **An Edict left on a city is at its base strength**, and so is an Edict in any dungeon that is not an Ascendant.
 - **A Heavenly Core on the last floor.** The dungeon is not cleared, and its quest objective not gained, until the
   Core is destroyed. While it stands, the Edicts on the Core's floor are 50% stronger. That is the opening
   sentence's "Edicts are 50% stronger inside gate dungeons", on the Core's floor only.
@@ -6518,8 +6533,10 @@ Core and its 30 days are the owner's. On 2026-10-20 the owner chose, verbatim, "
 "One at random". That a city carries one left Edict, and that nothing is added when no Edict is left, are the
 coordinating session's rulings under the owner's delegation. The design was proposed on 2026-10-16 with Path of
 Exile's Delirium (difficulty that rises the further the player goes) and Ultimatum (a modifier that escalates each
-round) as its precedents. Built in no half yet: the simulation approximates the Ascendant with one more average
-modifier a floor, and the game has neither the six new Edicts nor the Ascendant.
+round) as its precedents. The simulation approximates the Ascendant with one more average modifier a floor. The game
+has the Ascendant since 2026-10-22, with the two Edicts that are already modifiers, its strength, its Heavenly Core
+(the floor boss's health, never attacking, sealing the last floor's stairs while it stands) and the Edict left on its
+city; it does not yet have the six new Edicts or what they do, nor the Angelic Wardens' "divine laws".
 
   
 
