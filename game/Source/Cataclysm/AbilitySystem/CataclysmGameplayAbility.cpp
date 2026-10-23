@@ -12,6 +12,8 @@
 // mana. Issue #1067.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the cooldown skip roll, drawn below 100. Issue #2201.
+#include "AbilitySystem/CataclysmPercentDraw.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "GameplayEffect.h"
@@ -816,10 +818,13 @@ bool UCataclysmGameplayAbility::CooldownIsSkipped(
 	// or did not go on cooldown would otherwise pass most of the time and fail
 	// the rest, which is worse than failing.
 	const float Pinned = CVarCooldownSkipRoll.GetValueOnAnyThread();
-	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	const float Roll = Pinned >= 0.0f ? Pinned : CataclysmPercentDraw::Draw();
 
 	// STRICTLY LESS THAN, so a roll of 100 never skips and a chance of 0 never
 	// does either. The critical strike roll reads the same way.
+	// SINCE #2201 the roll is drawn by `CataclysmPercentDraw::Draw`, which is
+	// below 100, so a roll of 100 comes only from the pin and a chance of 100
+	// skips on every drawn roll.
 	return Roll < Chance;
 }
 

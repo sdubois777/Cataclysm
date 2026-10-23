@@ -21,6 +21,8 @@
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For that Bleeding's roll, drawn below 100. Issue #2201.
+#include "AbilitySystem/CataclysmPercentDraw.h"
 // For every chance to apply an ailment a blow carried, a blunt weapon's stun
 // among them. Issue #899.
 #include "AbilitySystem/CataclysmAilments.h"
@@ -101,6 +103,9 @@ static TAutoConsoleVariable<float> CVarCritRoll(
  * chance to; 100 never blocks. Issue #1833 group E part 2: a row that acts on a
  * block can only be tested through a real block if the block is certain, and a
  * chance of 100 can still miss on a roll of exactly 100.
+ * SINCE #2201 a real draw is below 100 (`CataclysmPercentDraw::Draw`), so a
+ * chance of 100 blocks on every drawn roll and only the pin can give a roll of
+ * 100.
  */
 static TAutoConsoleVariable<float> CVarBlockRoll(
 	TEXT("Cataclysm.BlockRoll"),
@@ -2546,7 +2551,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				const float Chance =
 					Offence ? Offence->GetBleedOnCritChance() : 0.0f;
 
-				if (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance)
+				if (Chance > 0.0f && CataclysmPercentDraw::Draw() < Chance)
 				{
 					// THE DESIGNED NUMBERS AND NOT INVENTED ONES. The node says
 					// only "apply Bleeding" and states neither a magnitude nor a
