@@ -56,6 +56,8 @@
 			"bDoomed": false,
 			"bErased": false,
 			"VoidStacks": 0,
+			"LeftEdict": "None",
+			"LeftEdictUntilDay": 0,
 			"Upgrades": [
 				{
 					"RowName": "Architect_This_city_repairs_5_defense_every_7_d",
@@ -78,6 +80,8 @@
 			"bDoomed": true,
 			"bErased": false,
 			"VoidStacks": 4,
+			"LeftEdict": "Celestial_Edict_of_Silence",
+			"LeftEdictUntilDay": 140,
 			"Upgrades": [
 				{
 					"RowName": "Architect_Restore_citys_defenses_by_50",

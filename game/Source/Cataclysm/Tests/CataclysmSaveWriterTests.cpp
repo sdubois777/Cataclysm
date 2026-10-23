@@ -2088,4 +2088,31 @@ bool FCataclysmSaveWriterWritesTheSchedule::RunTest(const FString&)
 }
 
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersLeftEdict,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheEdictLeftOnACity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersLeftEdict::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+	Run->Begin(1);
+
+	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
+	TestTrue(TEXT("an Edict is left on city 0 on day 5"), Run->Map->LeaveEdict(0, Silence, 5));
+
+	if (!TestTrue(TEXT("a run that has begun reads"), FCataclysmSaveGather::CitiesFrom(*Run, *Record))
+		|| !TestTrue(TEXT("the record carries city 0"), Record->Cities.IsValidIndex(0))
+		|| !TestTrue(TEXT("and city 1"), Record->Cities.IsValidIndex(1)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the record carries the left Edict"), Record->Cities[0].LeftEdict, Silence);
+	TestEqual(TEXT("and the day it ends"), Record->Cities[0].LeftEdictUntilDay, 35);
+	TestTrue(TEXT("CONTROL: a city carrying none carries none in the record"), Record->Cities[1].LeftEdict.IsNone());
+	TestEqual(TEXT("CONTROL: and no day"), Record->Cities[1].LeftEdictUntilDay, 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

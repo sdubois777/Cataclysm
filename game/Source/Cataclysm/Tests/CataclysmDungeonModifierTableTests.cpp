@@ -347,4 +347,89 @@ bool FCataclysmDungeonModifierEnteringCarriesItTest::RunTest(const FString& Para
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// An Edict an Ascendant left on a city -- 2026-10-22
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModifierLeftEdictTest,
+	"Cataclysm.DungeonModifiers.EnteringADungeonOnACityCarryingALeftEdictCarriesItBeyondItsCountAndItsScore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModifierLeftEdictTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE REAL TABLE, so the Edict's danger is the row's.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	if (!TestTrue(TEXT("the modifier table loaded"), Run->ModifierPool.Num() > 0)
+		|| !TestTrue(TEXT("the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
+	float SilenceDanger = 0.0f;
+	for (const FCataclysmDungeonModifier& Row : Run->ModifierPool)
+	{
+		SilenceDanger = Row.RowKey == Silence ? Row.Danger : SilenceDanger;
+	}
+	if (!TestTrue(TEXT("set-up: the Edict of Silence has a danger in the table"), SilenceDanger > 0.0f))
+	{
+		return false;
+	}
+
+	// AN ORDINARY DUNGEON THAT DID NOT DRAW THE EDICT ITSELF.
+	FCataclysmDungeon& Dungeon = Run->Dungeons[0];
+	Dungeon.SubType = ECataclysmDungeonSubType::None;
+	if (Dungeon.Modifiers.Remove(Silence) > 0)
+	{
+		Dungeon.ModifierScore -= SilenceDanger;
+	}
+	const int32 DungeonId = Dungeon.DungeonId;
+	const int32 CityId = Dungeon.CityId;
+	const TArray<FName> Own = Dungeon.Modifiers;
+	const float OwnScore = Dungeon.ModifierScore;
+
+	TestTrue(TEXT("an Edict is left on its city"), Run->Map->LeaveEdict(CityId, Silence, Run->Day()));
+	if (!TestTrue(TEXT("the dungeon is entered"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+
+	TArray<FName> Expected = Own;
+	Expected.Add(Silence);
+	TestTrue(TEXT("entering carries its own modifiers and then the left Edict"), Mode->DungeonModifiers == Expected);
+	TestEqual(TEXT("and its score counts the Edict's danger"), Mode->DungeonModifierScore, OwnScore + SilenceDanger,
+			  0.01f);
+	TestTrue(TEXT("and the floor carries the Edict"), Mode->FloorBrief.Modifiers.Contains(Silence));
+	TestTrue(TEXT("while the dungeon's own list is not touched"),
+			 Run->FindDungeon(DungeonId) && Run->FindDungeon(DungeonId)->Modifiers == Own);
+
+	// THE CONTROL: THE SAME DUNGEON ON THE SAME CITY ONCE THE DAYS HAVE RUN OUT.
+	Mode->LeaveEmpireDungeon();
+	Run->Map->FindMutable(CityId)->LeftEdictUntilDay = Run->Day();
+	if (!TestTrue(TEXT("CONTROL: the dungeon is entered again"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: with the days run out it carries its own alone"), Mode->DungeonModifiers == Own);
+	TestEqual(TEXT("CONTROL: and its own score"), Mode->DungeonModifierScore, OwnScore, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

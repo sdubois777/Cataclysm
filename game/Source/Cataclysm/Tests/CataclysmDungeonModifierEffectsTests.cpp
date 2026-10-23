@@ -44,6 +44,7 @@
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmHeavenlyCoreCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmPortalCharacter.h"
@@ -56221,6 +56222,311 @@ bool FCataclysmAoeShareBloodGatesTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("and it is not counted: a kill made by a share is not the player's kill of an enemy"),
 		Mode->BloodGatesSlainCount(), Before + 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Ascendant: its Edicts' strength, the Edict of Silence's cap, and the Heavenly Core -- 2026-10-22
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAscendantSilenceCapTest,
+	"Cataclysm.DungeonModifierEffects.AnAscendantsSilenceLastsATenthLongerAFloorUpToItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAscendantSilenceCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Rules = UCataclysmDungeonModifierRules;
+
+	// THE NUMBERS. The cap is three quarters of the cycle, 67.5 of 90, and it is reached: floor 70's 7.9 times 15
+	// would be 118.5 seconds, longer than the cycle, and skills would never come back.
+	TestEqual(TEXT("the cap is 67.5 seconds"), Effects::EdictOfSilenceMostLastsSeconds, 67.5f, 0.0001f);
+	TestTrue(TEXT("inside the 90 second cycle"),
+			 Effects::EdictOfSilenceMostLastsSeconds < Effects::EdictOfSilenceEverySeconds);
+	TestTrue(TEXT("and floor 70 uncapped would not be"),
+			 Effects::EdictOfSilenceLastsSeconds * Rules::EdictStrengthOn(70, false)
+				 > Effects::EdictOfSilenceEverySeconds);
+
+	TestEqual(TEXT("at base strength it lasts its 15"), Effects::EdictOfSilenceLastsSecondsAt(1.0f), 15.0f, 0.0001f);
+	TestEqual(TEXT("on floor 2, 16.5"), Effects::EdictOfSilenceLastsSecondsAt(Rules::EdictStrengthOn(2, false)),
+			  16.5f, 0.001f);
+	TestEqual(TEXT("on floor 6, 22.5"), Effects::EdictOfSilenceLastsSecondsAt(Rules::EdictStrengthOn(6, false)),
+			  22.5f, 0.001f);
+	TestEqual(TEXT("on floor 4 with its Core standing, 29.25"),
+			  Effects::EdictOfSilenceLastsSecondsAt(Rules::EdictStrengthOn(4, true)), 29.25f, 0.001f);
+	TestEqual(TEXT("on floor 70, the cap"), Effects::EdictOfSilenceLastsSecondsAt(Rules::EdictStrengthOn(70, false)),
+			  67.5f, 0.0001f);
+	TestEqual(TEXT("and with its Core standing, still the cap"),
+			  Effects::EdictOfSilenceLastsSecondsAt(Rules::EdictStrengthOn(70, true)), 67.5f, 0.0001f);
+
+	// AND IN PLAY: FLOOR 6 OF AN ASCENDANT, WHICH CARRIES BOTH EDICTS, SILENCES FOR 22.5 SECONDS.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Ascendant;
+	Mode->DungeonModifiers.Reset();
+	Mode->FloorNumber = 6;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("and carries the Edict of Silence, as every Ascendant's floor 2 on does"),
+					 Mode->FloorBrief.Modifiers.Contains(EdictOfSilence)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the floor's Edicts are half again as strong"), Mode->EdictStrengthHere(), 1.5f, 0.0001f);
+
+	const TCHAR* const Locked = UCataclysmSkillSlots::LockedStat;
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) + 1);
+	if (!TestNotNull(TEXT("the cadence brings a silence"), DungeonRuleOn(Player.AbilitySystem, Locked)))
+	{
+		return false;
+	}
+
+	// PAST THE BASE 15, IT IS STILL SILENT: the one place this floor differs from any other.
+	CataclysmTestWorld::RunClock(World, Effects::EdictOfSilenceLastsSeconds + 1.0f);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("sixteen seconds in, the silence still holds"), DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	// AND PAST 22.5 IT LIFTS.
+	CataclysmTestWorld::RunClock(World, 22.5f - (Effects::EdictOfSilenceLastsSeconds + 1.0f) + 1.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("past 22.5 seconds it lifts"), DungeonRuleOn(Player.AbilitySystem, Locked));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAscendantBaseStrengthTest,
+	"Cataclysm.DungeonModifierEffects.AnEdictIsAtBaseStrengthOutsideAnAscendant",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAscendantBaseStrengthTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE SAME FLOOR NUMBER, THREE SUB-TYPES: only the Ascendant scales its Edicts.
+	Mode->FloorNumber = 6;
+	Mode->DungeonSubType = ECataclysmDungeonSubType::None;
+	TestEqual(TEXT("floor 6 of an ordinary dungeon is at base strength"), Mode->EdictStrengthHere(), 1.0f, 0.0001f);
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Hollow;
+	TestEqual(TEXT("and of a Hollow"), Mode->EdictStrengthHere(), 1.0f, 0.0001f);
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Ascendant;
+	TestEqual(TEXT("CONTROL: and of an Ascendant, half again"), Mode->EdictStrengthHere(), 1.5f, 0.0001f);
+	Mode->FloorNumber = 1;
+	TestEqual(TEXT("an Ascendant's floor 1 is the base"), Mode->EdictStrengthHere(), 1.0f, 0.0001f);
+	Mode->FloorNumber = 2;
+	TestEqual(TEXT("and its floor 2 a tenth stronger"), Mode->EdictStrengthHere(), 1.1f, 0.0001f);
+	TestFalse(TEXT("with no Core standing off the empire"), Mode->HeavenlyCoreStands());
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * Enters a dungeon of the run, made `Floors` deep, of this sub-type and carrying no modifiers of its own, and
+	 * answers its identifier, or `INDEX_NONE`.
+	 */
+	int32 EnterADungeonForTheCore(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+								  UCataclysmEmpireRun* Run, int32 Floors, ECataclysmDungeonSubType SubType,
+								  int32 Skip = 0)
+	{
+		int32 Chosen = INDEX_NONE;
+		int32 Passed = 0;
+		for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+		{
+			if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel && Passed++ >= Skip)
+			{
+				Chosen = Index;
+			}
+		}
+		if (!Test.TestTrue(TEXT("set-up: the run has a dungeon to walk"), Chosen != INDEX_NONE))
+		{
+			return INDEX_NONE;
+		}
+
+		FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+		Dungeon.Floors = Floors;
+		Dungeon.Type = ECataclysmDungeonType::Quest;
+		Dungeon.SubType = SubType;
+		Dungeon.Cataclysm = ECataclysmType::Celestial;
+		Dungeon.Modifiers.Reset();
+		Dungeon.ModifierScore = 0.0f;
+		const int32 DungeonId = Dungeon.DungeonId;
+		if (!Test.TestTrue(TEXT("set-up: the dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return INDEX_NONE;
+		}
+		return DungeonId;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAscendantCoreTest,
+	"Cataclysm.DungeonModifierEffects.AnAscendantsLastFloorHasAHeavenlyCoreThatSealsItsWayOutUntilItIsDestroyed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAscendantCoreTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+
+	const int32 DungeonId =
+		EnterADungeonForTheCore(*this, Mode, Run, 2, ECataclysmDungeonSubType::Ascendant);
+	if (DungeonId == INDEX_NONE)
+	{
+		return false;
+	}
+	const FName CoreSeal(ACataclysmDungeonGameMode::HeavenlyCoreSealKey);
+
+	// FLOOR 1 IS NOT THE LAST: NO CORE, AND THE EDICTS AT THEIR FLOOR'S STRENGTH.
+	TestFalse(TEXT("floor 1 is not the last"), Mode->IsOnTheLastFloor());
+	TestNull(TEXT("and has no Heavenly Core"), Mode->HeavenlyCoreNow());
+	TestFalse(TEXT("so the Core seals nothing"), Mode->StairsSealedBy().Contains(CoreSeal));
+	TestEqual(TEXT("and its Edicts are at the base"), Mode->EdictStrengthHere(), 1.0f, 0.0001f);
+
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("and is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Core = Mode->HeavenlyCoreNow();
+	if (!TestNotNull(TEXT("the last floor has a Heavenly Core"), Core))
+	{
+		return false;
+	}
+	TestTrue(TEXT("of its own class"), Core->IsA<ACataclysmHeavenlyCoreCharacter>());
+	TestNull(TEXT("with no brain, so it never attacks"), Core->GetController());
+	TestTrue(TEXT("and no ability"), Core->EnemyAbilities().IsEmpty());
+	TestFalse(TEXT("it pays nothing"), Core->PaysForItsDeath());
+	TestTrue(TEXT("raised by the rule"), Core->bRaisedByARule);
+	TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Core));
+	TestEqual(TEXT("its health is the floor boss's"), MaxHealthOf(Core), Mode->HeavenlyCoreHealth(), 0.5f);
+	TestEqual(TEXT("the Gatekeeper's 1248"), Mode->HeavenlyCoreHealth(), 1248.0f, 0.5f);
+
+	// WHILE IT STANDS THE WAY OUT IS SEALED, AND THE EDICTS ARE HALF AGAIN AS STRONG.
+	TestTrue(TEXT("while it stands the Core seals the stairs"), Mode->StairsSealedBy().Contains(CoreSeal));
+	TestEqual(TEXT("and the Edicts are 1.1 times 1.5"), Mode->EdictStrengthHere(), 1.65f, 0.0001f);
+	Mode->HandleStairsTaken();
+	TestNotNull(TEXT("so taking the stairs does not clear the dungeon"), Run->FindDungeon(DungeonId));
+
+	// DESTROYED.
+	WoundCreatureTo(Core, 100.0f, 0.0f);
+	Core->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(),
+															   0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Core, 100000.0f);
+	if (!TestTrue(TEXT("the Core was destroyed"), UCataclysmSkillEffects::IsDead(Core)))
+	{
+		return false;
+	}
+	TestNull(TEXT("and no Core stands"), Mode->HeavenlyCoreNow());
+	TestFalse(TEXT("the stairs are no longer sealed by it"), Mode->StairsSealedBy().Contains(CoreSeal));
+	TestTrue(TEXT("nor by anything"), Mode->StairsSealedBy().IsEmpty());
+	TestEqual(TEXT("and the Edicts are back to the floor's 1.1"), Mode->EdictStrengthHere(), 1.1f, 0.0001f);
+
+	Mode->HandleStairsTaken();
+	TestNull(TEXT("now taking the stairs clears the dungeon"), Run->FindDungeon(DungeonId));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAscendantCoreOnlyLastTest,
+	"Cataclysm.DungeonModifierEffects.OnlyAnAscendantsLastFloorHasAHeavenlyCore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAscendantCoreOnlyLastTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+
+	// AN ASCENDANT THREE FLOORS DEEP: NONE ON FLOORS 1 AND 2, ONE ON 3.
+	if (EnterADungeonForTheCore(*this, Mode, Run, 3, ECataclysmDungeonSubType::Ascendant) == INDEX_NONE)
+	{
+		return false;
+	}
+	TestNull(TEXT("an Ascendant's floor 1 of 3 has no Core"), Mode->HeavenlyCoreNow());
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestNull(TEXT("nor its floor 2"), Mode->HeavenlyCoreNow());
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestNotNull(TEXT("its floor 3, the last, has one"), Mode->HeavenlyCoreNow());
+
+	// LEAVING TAKES IT AWAY.
+	Mode->LeaveEmpireDungeon();
+	TestNull(TEXT("leaving the dungeon takes the Core away"), Mode->HeavenlyCoreNow());
+
+	// THE CONTROL: THE LAST FLOOR OF A DUNGEON THAT IS NOT AN ASCENDANT.
+	if (EnterADungeonForTheCore(*this, Mode, Run, 2, ECataclysmDungeonSubType::None, 1) == INDEX_NONE)
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("CONTROL: floor 2 was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("CONTROL: and is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	TestNull(TEXT("CONTROL: the last floor of a dungeon that is no Ascendant has no Core"), Mode->HeavenlyCoreNow());
+	TestFalse(TEXT("CONTROL: and nothing it seals"),
+			  Mode->StairsSealedBy().Contains(FName(ACataclysmDungeonGameMode::HeavenlyCoreSealKey)));
 	return true;
 }
 

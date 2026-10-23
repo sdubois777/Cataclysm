@@ -297,6 +297,24 @@ both to add a field the record had gained:
   **Nothing loads a run's dungeons back yet** (issue #753), so the field is
   written and never read, as every dungeon field is.
 
+`Run_v1.json` was edited a seventeenth time on 2026-10-22:
+
+- `LeftEdict` and `LeftEdictUntilDay` on both cities, because a city now
+  records the Divine Edict an Ascendant -- the Celestial Cataclysm's Quest
+  dungeon -- left on it, and the first day it is no longer carried.
+  `docs/DECISIONS.md` has the entry, "In the game the Celestial's Quest dungeon
+  is an Ascendant…".
+
+  **City 7 holds `Celestial_Edict_of_Silence` until day 140 and city 0 holds
+  none**, `"None"` and 0, the fields' defaults. A row key and a day that are not
+  the defaults show that the values survive a round trip rather than being
+  re-defaulted on load, and 140 is no other number in the file. City 7 is fallen
+  and carrying a left Edict, which play can reach: a city keeps its left Edict
+  when it falls, as it keeps its stacks.
+
+  **Nothing loads a run's cities back yet** (issue #753), so both fields are
+  written and never read; that is the gap every city field has.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 
